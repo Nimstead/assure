@@ -38,6 +38,7 @@ from nimstead.versions import comparator_for
 
 SESSION_COOKIE = "nimstead_session"
 INSTALL_SH = Path(__file__).parent / "static" / "install.sh"
+INSTALL_PS1 = Path(__file__).parent / "static" / "install.ps1"
 WEB_DIST = Path(os.environ.get("NIMSTEAD_WEB_DIST", Path(__file__).parents[3] / "web" / "dist"))
 # ponytail: agent served from the repo checkout; ship it as package data (and signed) when packaging releases
 AGENT_FILE = Path(os.environ.get("NIMSTEAD_AGENT_FILE", Path(__file__).parents[3] / "agent" / "nimstead_agent.py"))
@@ -100,6 +101,13 @@ def create_app(db_url: str | None = None) -> FastAPI:
         if not re.fullmatch(r"https?://[A-Za-z0-9.\-]+(:\d{1,5})?", server):  # substituted into shell: strict
             raise HTTPException(400, "Server URL is not safe to embed; set NIMSTEAD_PUBLIC_URL")
         return Response(INSTALL_SH.read_text().replace("__SERVER__", server), media_type="text/x-shellscript")
+
+    @app.get("/install.ps1")
+    def install_ps1(request: Request):
+        server = os.environ.get("NIMSTEAD_PUBLIC_URL") or str(request.base_url).rstrip("/")
+        if not re.fullmatch(r"https?://[A-Za-z0-9.\-]+(:\d{1,5})?", server):  # substituted into a script: strict
+            raise HTTPException(400, "Server URL is not safe to embed; set NIMSTEAD_PUBLIC_URL")
+        return Response(INSTALL_PS1.read_text().replace("__SERVER__", server), media_type="text/plain")
 
     @app.get("/agent/nimstead_agent.py")
     def agent_file():

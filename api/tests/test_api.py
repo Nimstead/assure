@@ -187,3 +187,18 @@ def test_inventory_rate_limited_per_asset(env, monkeypatch):
     assert c.post("/api/agent/inventory", json=INV, headers=h).status_code == 429
     h2 = {"Authorization": f"Bearer {enrol(c)['agent_key']}"}  # other assets unaffected
     assert c.post("/api/agent/inventory", json=INV, headers=h2).status_code == 200
+
+
+def test_windows_installer_served_and_parses(env, tmp_path):
+    import shutil
+    import subprocess
+    c = TestClient(create_app(env))
+    r = c.get("/install.ps1")
+    assert r.status_code == 200 and '$Server = "http://testserver"' in r.text
+    assert c.get("/install.ps1", headers={"Host": "evil$(calc)"}).status_code == 400
+    if shutil.which("powershell"):  # syntax check with the real PowerShell parser
+        f = tmp_path / "i.ps1"
+        f.write_text(r.text)
+        cmd = ("$e=$null; [void][System.Management.Automation.Language.Parser]::ParseFile('" + str(f) +
+               "',[ref]$null,[ref]$e); $e.Count")
+        assert subprocess.run(["powershell", "-NoProfile", "-Command", cmd], capture_output=True, text=True).stdout.strip() == "0"

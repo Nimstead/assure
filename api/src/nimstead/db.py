@@ -28,6 +28,9 @@ class Org(Base):
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     name: Mapped[str] = mapped_column(String(200))
     created: Mapped[datetime] = mapped_column(default=now)
+    # Remediation trust ladder: suggest (plans only) -> approve (one click) -> auto (policy-driven, canary first)
+    remediation_mode: Mapped[str] = mapped_column(String(20), default="approve")
+    canary_soak_hours: Mapped[int] = mapped_column(Integer, default=24)
 
 
 class User(Base):
@@ -52,6 +55,7 @@ class EnrollToken(Base):
     org_id: Mapped[str] = mapped_column(ForeignKey("org.id"), index=True)
     created: Mapped[datetime] = mapped_column(default=now)
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
+    sandbox: Mapped[bool] = mapped_column(Boolean, default=False)  # assets enrolled with it are disposable test targets
 
 
 class Asset(Base):
@@ -64,6 +68,8 @@ class Asset(Base):
     criticality: Mapped[str] = mapped_column(String(20), default="medium")
     internet_facing: Mapped[bool] = mapped_column(Boolean, default=False)
     sandbox: Mapped[bool] = mapped_column(Boolean, default=False)  # disposable test target; remediation dev-guard
+    ring: Mapped[int] = mapped_column(Integer, default=1)  # 0 = canary: auto-remediation lands here first
+    health_units: Mapped[list] = mapped_column(default=list)  # systemd units that must stay active after a change
     agent_key_hash: Mapped[str] = mapped_column(String(64), unique=True)
     first_seen: Mapped[datetime] = mapped_column(default=now)
     last_seen: Mapped[datetime] = mapped_column(default=now)
@@ -157,3 +163,23 @@ class LedgerEntry(Base):
     prev_hash: Mapped[str] = mapped_column(String(64))
     hash: Mapped[str] = mapped_column(String(64))
     __table_args__ = (UniqueConstraint("org_id", "seq"),)  # concurrent appends fail loudly instead of forking
+
+
+class RemediationJob(Base):
+    __tablename__ = "remediation_job"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    org_id: Mapped[str] = mapped_column(ForeignKey("org.id"), index=True)
+    asset_id: Mapped[str] = mapped_column(ForeignKey("asset.id", ondelete="CASCADE"), index=True)
+    # planned -> approved -> dispatched -> succeeded | rolled_back | rollback_failed | aborted | failed
+    status: Mapped[str] = mapped_column(String(20), default="planned", index=True)
+    manager: Mapped[str] = mapped_column(String(10))  # apt | apk | dnf
+    action_key: Mapped[str] = mapped_column(String(300))  # ecosystem|source package: canary gating groups on this
+    packages: Mapped[list]  # [{name, from}] binary packages to upgrade
+    finding_ids: Mapped[list]
+    summary: Mapped[str] = mapped_column(String(500))
+    created_by: Mapped[str] = mapped_column(String(320))  # user email or "policy"
+    approved_by: Mapped[str | None] = mapped_column(String(320))
+    created: Mapped[datetime] = mapped_column(default=now)
+    updated: Mapped[datetime] = mapped_column(default=now)
+    steps: Mapped[list] = mapped_column(default=list)  # agent-reported step log
+    error: Mapped[str | None] = mapped_column(String(2000))

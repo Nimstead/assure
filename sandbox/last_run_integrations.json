@@ -1,0 +1,38 @@
+[
+  {
+    "step": "creating integration VM",
+    "name": "nimstead-sbx-int-fb83ea"
+  },
+  {
+    "step": "test CA created"
+  },
+  {
+    "step": "Keycloak, SMTP and webhook receiver up"
+  },
+  {
+    "step": "DNS TXT domain verification via real dnsmasq",
+    "wrong_value_refused": true,
+    "verified": true
+  },
+  {
+    "step": "OIDC login via real Keycloak",
+    "user": "jane@corp.example.com",
+    "wrong_password_refused": true,
+    "replay_refused": true
+  },
+  {
+    "step": "alerts delivered to real webhook + SMTP",
+    "webhook": "Test alert from Nimstead, requested by admin@corp.example.com",
+    "email": "received"
+  },
+  {
+    "step": "dead webhook recorded as failed, then delivered on retry"
+  },
+  {
+    "step": "RESULT: PASS"
+  },
+  {
+    "step": "VM destroyed",
+    "name": "nimstead-sbx-int-fb83ea"
+  }
+]

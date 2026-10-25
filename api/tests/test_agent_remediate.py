@@ -202,12 +202,12 @@ def test_outcomes_persist_and_retry_when_report_fails(tmp_path, monkeypatch):
     monkeypatch.setattr(agent, "post", fake_post)
     h = FakeApt(tmp_path, OLD, NEW)
     out = tmp_path / "outcomes"
-    assert agent.run_jobs("https://x", "k", False, run=h, outcome_dir=str(out), **job_kw(tmp_path)) == 1
+    assert agent.run_jobs("https://x", "k", False, run=h, outcome_dir=str(out), **job_kw(tmp_path)) == (1, False)
     saved = json.loads((out / "j1.json").read_text())
     assert saved["report"]["outcome"] == "applied" and saved["report"]["versions"] == NEW
 
     fail["on"] = False  # next run: the unsent outcome is delivered, nothing re-executed
-    assert agent.run_jobs("https://x", "k", False, run=h, outcome_dir=str(out), **job_kw(tmp_path)) == 0
+    assert agent.run_jobs("https://x", "k", False, run=h, outcome_dir=str(out), **job_kw(tmp_path)) == (0, False)
     assert not list(out.glob("*.json")) and calls.count("/api/agent/jobs/j1/report") == 2
 
 

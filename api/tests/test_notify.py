@@ -278,3 +278,16 @@ def test_private_targets_only_with_explicit_dev_switch(monkeypatch):
     netguard.check_public_url("https://127.0.0.1:9443/hook")  # allowed for integration tests
     with pytest.raises(ValueError):
         netguard.check_public_url("http://127.0.0.1:9443/hook")  # https is still required
+
+
+def test_failed_channel_not_hidden_by_a_working_one(env, sent):
+    from sqlalchemy import select
+
+    from nimstead.db import Notification, User
+    c = configured(env)
+    s = sessionmaker(make_engine(env))()
+    org_id = s.scalar(select(User.org_id))
+    s.add_all([Notification(org_id=org_id, kind="t", channel="webhook", ok=False, error="down", text="x"),
+               Notification(org_id=org_id, kind="t", channel="email", ok=True, text="x")])  # email went through later
+    s.commit()
+    assert c.get("/api/settings/notifications").json()["last_delivery_failed"] is True

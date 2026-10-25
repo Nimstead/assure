@@ -153,3 +153,11 @@ def test_request_guards(env):
     assert c.post("/api/enroll-tokens", headers={"Origin": "http://testserver"}).status_code == 201
     assert c.post("/api/agent/inventory", content=b"x", headers={"Content-Length": str(11 * 1024 * 1024)}).status_code == 413
     assert c.get("/api/findings", params={"limit": -1}).status_code == 422
+
+
+def test_login_throttled_after_repeated_failures(env):
+    c = user(env)
+    bad = {"email": "a@example.com", "password": "wrong password!"}
+    assert [c.post("/api/auth/login", json=bad).status_code for _ in range(10)] == [401] * 10
+    assert c.post("/api/auth/login", json=bad).status_code == 429
+    assert c.post("/api/auth/login", json={**bad, "password": "correct horse battery"}).status_code == 429

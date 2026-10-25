@@ -4,7 +4,8 @@ import hashlib
 import os
 import re
 import secrets
-from collections import defaultdict
+import time
+from collections import defaultdict, deque
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Literal
@@ -43,6 +44,7 @@ ph = PasswordHasher()
 DUMMY_HASH = ph.hash("nimstead-dummy-password")
 MAX_BODY = 10 * 1024 * 1024
 ENROLL_TOKEN_DAYS = 30
+LOGIN_MAX_FAILURES, LOGIN_WINDOW = 10, 15 * 60
 
 
 def sha(token: str) -> str:
@@ -124,15 +126,28 @@ def create_app(db_url: str | None = None) -> FastAPI:
         start_session(s, user, resp)
         return {"email": user.email, "org": org.name}
 
+    # ponytail: in-process throttle; move to Redis/proxy when running more than one API process
+    failures: dict[str, deque] = defaultdict(deque)
+
+    def throttled(key: str) -> bool:
+        q, cutoff = failures[key], time.monotonic() - LOGIN_WINDOW
+        while q and q[0] < cutoff:
+            q.popleft()
+        return len(q) >= LOGIN_MAX_FAILURES
+
     @app.post("/api/auth/login")
-    def login(body: Login, resp: Response, s: DB):
-        # ponytail: no login rate limiting yet; add per-IP/email throttle before public launch
+    def login(body: Login, request: Request, resp: Response, s: DB):
+        keys = ["email:" + body.email.lower(), "ip:" + (request.client.host if request.client else "?")]
+        if any(throttled(k) for k in keys):
+            raise HTTPException(429, "Too many failed sign-in attempts; try again in 15 minutes")
         user = s.scalar(select(User).where(User.email == body.email.lower()))
         try:
             ph.verify(user.password_hash if user else DUMMY_HASH, body.password)  # same cost whether or not the user exists
             if not user:
                 raise VerifyMismatchError
         except VerifyMismatchError:
+            for k in keys:
+                failures[k].append(time.monotonic())
             raise HTTPException(401, "Email or password is incorrect") from None
         start_session(s, user, resp)
         return {"email": user.email}

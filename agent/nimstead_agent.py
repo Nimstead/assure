@@ -636,6 +636,9 @@ def run_jobs(server, key, insecure_http, run=sh, outcome_dir=None, win_state=Non
 
 WIN_STATE = os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "Nimstead", "pending-job.json")
 SAFE_KB = re.compile(r"^[0-9]{6,8}$")
+# DISM/CBS "busy" results: servicing still running (RPC disconnected, CBS busy/pending, file in use)
+DISM_TRANSIENT = ("0x80010108", "0x800f0816", "0x800f082f", "0x80070020", "0x800f0805", "0x80004005")
+DISM_RETRIES = 15
 SAFE_PRODUCT = re.compile(r"^Windows [A-Za-z0-9 .()-]{1,120}$")
 ROLLUP = re.compile(r"Package Identity : (Package_for_RollupFix~[^\s]+)\s+State : ([A-Za-z ]+)")
 
@@ -675,8 +678,9 @@ def windows_build():
 class WinJob:
     """Phases: start -> (reboot) -> verify -> done | rollback -> (reboot) -> rolled_back. State lives in WIN_STATE."""
 
-    def __init__(self, job=None, run=sh, state_path=WIN_STATE, build=windows_build, settle=None, fail_after_apply=False):
-        self.run, self.state_path, self.build = run, state_path, build
+    def __init__(self, job=None, run=sh, state_path=WIN_STATE, build=windows_build, settle=None, fail_after_apply=False,
+                 retry_wait=60):
+        self.run, self.state_path, self.build, self.retry_wait = run, state_path, build, retry_wait
         if job is not None:
             p = (job.get("packages") or [{}])[0]
             self.s = {"job": job, "phase": "start", "steps": [], "kb": str(p.get("kb", "")), "from": p.get("from"),
@@ -789,7 +793,14 @@ class WinJob:
         s["error"] = err
         try:
             for pkg in s.get("new_packages", []):
-                rc, out = self.run(["dism", "/online", "/remove-package", f"/packagename:{pkg}", "/quiet", "/norestart"])
+                # Right after the reboot Windows is still finalising the update and DISM fails with transient
+                # errors (seen for real: 0x80010108 at +30 s, success 13 min later). Retry those; fail on anything else.
+                for attempt in range(1, DISM_RETRIES + 1):
+                    rc, out = self.run(["dism", "/online", "/remove-package", f"/packagename:{pkg}", "/quiet", "/norestart"])
+                    if rc in (0, 3010) or not any(code in out for code in DISM_TRANSIENT) or attempt == DISM_RETRIES:
+                        break
+                    self.s["steps"].append({"step": f"servicing busy, retry {attempt} removing {pkg}", "ok": True, "output": out[-300:]})
+                    time.sleep(self.retry_wait)
                 self.step(f"remove {pkg}", rc in (0, 3010), out)  # 3010 = success, reboot required
             s["phase"] = "rolled_back_pending"
             self.s["steps"].append({"step": "reboot required to finish rollback", "ok": True, "output": ""})

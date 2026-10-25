@@ -10,10 +10,10 @@ NEW_PKG = "Package_for_RollupFix~31bf3856ad364e35~amd64~~26100.33650.1.3"
 
 
 class FakeWin:
-    def __init__(self, offered=("5126646",), service_breaks_on_new=False, removal_works=True):
+    def __init__(self, offered=("5126646",), service_breaks_on_new=False, removal_works=True, busy_removals=0):
         self.build, self.pkgs = OLD, {BASE_PKG: "Installed"}
         self.offered, self.breaks, self.removal_works = list(offered), service_breaks_on_new, removal_works
-        self.pending_remove, self.log = [], []
+        self.pending_remove, self.log, self.busy = [], [], busy_removals
 
     def __call__(self, cmd, cwd=None):
         self.log.append(cmd)
@@ -34,6 +34,9 @@ class FakeWin:
         if cmd[:3] == ["dism", "/online", "/remove-package"]:
             if not self.removal_works:
                 return 87, "Error: 0x800f0825 The package is permanent"
+            if self.busy:  # servicing still finalising right after the reboot
+                self.busy -= 1
+                return 0x80010108, "Error: 0x80010108\n\nDISM failed. No operation was performed."
             self.pending_remove.append(cmd[3].split(":", 1)[1])
             return 3010, "The operation completed successfully. Restart required."
         raise AssertionError(cmd)
@@ -52,11 +55,11 @@ JOB = {"id": "w1", "manager": "windows", "health_units": ["W3SVC"], "settle_seco
 
 
 def make(tmp_path, host, job=JOB):
-    return agent.WinJob(job, run=host, state_path=str(tmp_path / "state.json"), build=lambda: host.build)
+    return agent.WinJob(job, run=host, state_path=str(tmp_path / "state.json"), build=lambda: host.build, retry_wait=0)
 
 
 def resume(tmp_path, host):
-    return agent.WinJob(run=host, state_path=str(tmp_path / "state.json"), build=lambda: host.build).advance()
+    return agent.WinJob(run=host, state_path=str(tmp_path / "state.json"), build=lambda: host.build, retry_wait=0).advance()
 
 
 def test_update_survives_reboot_and_is_verified(tmp_path):
@@ -121,3 +124,22 @@ def test_rollback_that_does_not_restore_the_build_is_a_failure(tmp_path):
     h.reboot()
     r = resume(tmp_path, h)
     assert r["outcome"] == "rollback_failed" and "expected" in r["error"]
+
+
+def test_transient_dism_errors_right_after_reboot_are_retried(tmp_path):
+    h = FakeWin(service_breaks_on_new=True, busy_removals=3)  # what the real Server 2025 VM did
+    make(tmp_path, h).advance()
+    h.reboot()
+    r = resume(tmp_path, h)
+    assert r["outcome"] == "pending_reboot" and h.pending_remove == [NEW_PKG]
+    assert sum("servicing busy" in s["step"] for s in r["steps"]) == 3
+    h.reboot()
+    assert resume(tmp_path, h)["outcome"] == "rolled_back"
+
+
+def test_persistent_dism_failure_still_fails_loudly(tmp_path):
+    h = FakeWin(service_breaks_on_new=True, busy_removals=99)
+    make(tmp_path, h).advance()
+    h.reboot()
+    r = resume(tmp_path, h)
+    assert r["outcome"] == "rollback_failed" and "0x80010108" in r["error"]

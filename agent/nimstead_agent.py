@@ -18,6 +18,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -167,9 +168,75 @@ class StepFailed(Exception):
     pass
 
 
+DPKG_INFO = "/var/lib/dpkg/info"
+_CONTROL_DROP = ("Status", "Conffiles", "Config-Version")
+_INFO_FILES = ("preinst", "postinst", "prerm", "postrm", "config", "templates", "triggers", "shlibs", "symbols", "conffiles", "md5sums")
+
+
+def repack_deb(run, name, version, arch, outdir, info_dir=DPKG_INFO, root="/"):
+    """Rebuild the installed package from its files and dpkg metadata (what dpkg-repack does).
+
+    Used only when no pristine .deb of the installed version exists anywhere (it has usually been
+    superseded in the archive). Captures the package exactly as installed, including locally edited
+    conffiles, so a rollback restores the real prior state. Returns (path, note)."""
+    qual = f"{name}:{arch}" if os.path.exists(os.path.join(info_dir, f"{name}:{arch}.list")) else name
+    rc, control = run(["dpkg-query", "-s", qual])
+    if rc != 0:
+        raise StepFailed(f"cannot read dpkg metadata for {qual}")
+    fields, keep = [], True
+    for line in control.splitlines():
+        if line and not line[0].isspace():
+            keep = line.split(":", 1)[0] not in _CONTROL_DROP
+        if keep and line.strip():
+            fields.append(line)
+    if f"Version: {version}" not in fields:
+        raise StepFailed(f"installed {qual} is not version {version}")
+    build = tempfile.mkdtemp(prefix=f"repack-{name}-", dir=outdir)
+    debian = os.path.join(build, "DEBIAN")
+    os.makedirs(debian, mode=0o755)
+    with open(os.path.join(debian, "control"), "w") as f:
+        f.write("\n".join(fields) + "\n")
+    for kind in _INFO_FILES:
+        src = os.path.join(info_dir, f"{qual}.{kind}")
+        if os.path.exists(src):
+            shutil.copy2(src, os.path.join(debian, kind))
+    with open(os.path.join(info_dir, f"{qual}.list")) as f:
+        paths = [ln.rstrip("\n") for ln in f if ln.strip() and ln.strip() != "/."]
+    missing = 0
+    for path in paths:
+        src = os.path.join(root, path.lstrip("/"))
+        dst = os.path.join(build, path.lstrip("/"))
+        if os.path.islink(src):
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            os.symlink(os.readlink(src), dst)
+        elif os.path.isdir(src):
+            os.makedirs(dst, exist_ok=True)
+            shutil.copystat(src, dst)
+        elif os.path.isfile(src):
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.copy2(src, dst)
+        else:
+            missing += 1  # e.g. excluded by dpkg path-exclude, or deleted by an admin: not restorable, wasn't there
+            continue
+        if hasattr(os, "lchown"):
+            st = os.lstat(src)
+            os.lchown(dst, st.st_uid, st.st_gid)
+            if not os.path.islink(src):
+                os.chmod(dst, st.st_mode & 0o7777)  # after chown, which clears setuid bits
+    out = os.path.join(outdir, "{}_{}_{}.deb".format(name, version.replace(":", "%3a"), arch))
+    rc, msg = run(["dpkg-deb", "--build", build, out])
+    shutil.rmtree(build, ignore_errors=True)
+    if rc != 0:
+        raise StepFailed(f"dpkg-deb --build failed for {qual}: {msg[-300:]}")
+    rc, got = run(["dpkg-deb", "-f", out, "Package", "Version"])
+    if rc != 0 or f"Package: {name}" not in got or f"Version: {version}" not in got:
+        raise StepFailed(f"rebuilt package for {qual} does not identify as {name} {version}")
+    return out, f"rebuilt from installed files ({len(paths) - missing} paths, {missing} absent on disk)"
+
+
 class Job:
     def __init__(self, job, run=sh, rollback_root=ROLLBACK_ROOT, apt_cache=APT_CACHE, apk_cache=APK_CACHE,
-                 apk_db="/lib/apk/db/installed"):
+                 apk_db="/lib/apk/db/installed", dpkg_info=DPKG_INFO, root="/"):
         self.run, self.steps, self.artefacts = run, [], []
         self.mgr = job.get("manager")
         self.pkgs = job.get("packages") or []
@@ -178,6 +245,7 @@ class Job:
         self.settle = min(max(int(job.get("settle_seconds", 15) or 0), 0), 300)
         self.dir = os.path.join(rollback_root, re.sub(r"[^A-Za-z0-9]", "", str(job.get("id", ""))) or "unknown")
         self.apt_cache, self.apk_cache, self.apk_db = apt_cache, apk_cache, apk_db
+        self.dpkg_info, self.root = dpkg_info, root
 
     def step(self, name, cmd=None, ok=None, output="", cwd=None):
         if cmd is not None:
@@ -220,9 +288,14 @@ class Job:
                 arch = arch.strip() if rc == 0 and SAFE_NAME.match(arch.strip()) else "*"
                 deb = "{}_{}_{}.deb".format(n, v.replace(":", "%3a"), arch)
                 found = glob.glob(os.path.join(self.dir, deb)) or glob.glob(os.path.join(self.apt_cache, deb))
-                if not found:
-                    self.step(f"fetch rollback package {n}={v}", ["apt-get", "download", f"{n}={v}"], cwd=self.dir)
+                if not found:  # pristine copy from the archive if it still carries this version
+                    rc, out = self.run(["apt-get", "download", f"{n}={v}"], cwd=self.dir)
+                    self.steps.append({"step": f"fetch rollback package {n}={v}", "ok": rc == 0, "output": out[-500:]})
                     found = glob.glob(os.path.join(self.dir, deb))
+                if not found and arch != "*":  # superseded everywhere: rebuild it from the installed files
+                    path, why = repack_deb(self.run, n, v, arch, self.dir, self.dpkg_info, self.root)
+                    self.step(f"rollback package {n}={v}", ok=True, output=why)
+                    found = [path]
             else:
                 apk = f"{n}-{v}.apk"
                 found = glob.glob(os.path.join(self.dir, apk)) or glob.glob(os.path.join(self.apk_cache, f"{n}-{v}.*.apk"))

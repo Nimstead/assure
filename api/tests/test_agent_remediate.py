@@ -23,6 +23,8 @@ class FakeApt:
         match cmd:
             case [_, "--version"]:
                 return 0, "1.0"
+            case ["dpkg-query", "-s", _]:
+                return 1, "not in this fake"  # repack path covered by test_repack_*
             case ["dpkg-query", "-W", "-f=${Architecture}", _]:
                 return 0, "amd64"
             case ["dpkg-query", "-W", _, name]:

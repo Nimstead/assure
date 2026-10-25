@@ -41,7 +41,7 @@ def main() -> int:
         wsl("apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq postgresql >/dev/null")
         wsl(f"""set -e
             V=$(ls /etc/postgresql); C=/etc/postgresql/$V/main
-            sed -i "s/^#\\?port = .*/port = {PORT}/; s/^#\\?listen_addresses = .*/listen_addresses = 'localhost'/" $C/postgresql.conf
+            sed -i "s/^#\\?port = .*/port = {PORT}/; s/^#\\?listen_addresses = .*/listen_addresses = 'localhost'/; s/^#\\?max_connections = .*/max_connections = 500/" $C/postgresql.conf
             echo 'host all all 127.0.0.1/32 scram-sha-256' >> $C/pg_hba.conf
             pg_ctlcluster $V main restart
             su postgres -c "psql -p {PORT} -c \\"CREATE ROLE nimstead LOGIN SUPERUSER PASSWORD '{PASSWORD}'\\""

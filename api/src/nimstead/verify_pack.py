@@ -1,7 +1,8 @@
 """Verify a Nimstead evidence pack offline.
 
 Shipped inside every evidence pack zip. Needs Python 3.9+ and `cryptography`.
-Usage: python verify.py pack.json pack.sig public_key.pem
+Usage: python verify.py pack.json pack.sig public_key.pem --expect-fingerprint SHA256HEX
+The fingerprint must come from Nimstead out of band; without it, a forger could re-sign with their own key.
 Checks: (1) Ed25519 signature over pack.json, (2) every ledger entry's hash,
 (3) entries link to each other by prev_hash with no gaps.
 """
@@ -11,7 +12,7 @@ import hashlib
 import json
 import sys
 
-from cryptography.hazmat.primitives.serialization import load_pem_public_key
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat, load_pem_public_key
 
 
 def canonical(obj) -> bytes:
@@ -23,9 +24,18 @@ def entry_hash(e: dict) -> str:
     return hashlib.sha256(canonical(body)).hexdigest()
 
 
-def verify(pack_bytes: bytes, sig_b64: str, pubkey_pem: bytes) -> list[str]:
-    """Returns a list of problems; empty means the pack is authentic and intact."""
+def fingerprint(pubkey_pem: bytes) -> str:
+    raw = load_pem_public_key(pubkey_pem).public_bytes(Encoding.Raw, PublicFormat.Raw)
+    return hashlib.sha256(raw).hexdigest()
+
+
+def verify(pack_bytes: bytes, sig_b64: str, pubkey_pem: bytes, expect_fingerprint=None) -> list:
+    """Returns a list of problems; empty means the pack is authentic, intact and signed by the trusted key."""
     problems = []
+    if expect_fingerprint is None:
+        problems.append("no trusted key fingerprint given (--expect-fingerprint); a signature proves nothing on its own")
+    elif fingerprint(pubkey_pem) != expect_fingerprint.strip().lower():
+        problems.append("public key is not the trusted Nimstead key (fingerprint mismatch)")
     try:
         load_pem_public_key(pubkey_pem).verify(base64.b64decode(sig_b64), pack_bytes)
     except Exception:
@@ -45,13 +55,14 @@ def verify(pack_bytes: bytes, sig_b64: str, pubkey_pem: bytes) -> list[str]:
 
 if __name__ == "__main__":
     pack_path, sig_path, key_path = sys.argv[1:4]
+    expect = sys.argv[sys.argv.index("--expect-fingerprint") + 1] if "--expect-fingerprint" in sys.argv else None
     with open(pack_path, "rb") as f:
         pack_bytes = f.read()
     with open(sig_path) as f:
         sig = f.read().strip()
     with open(key_path, "rb") as f:
         key = f.read()
-    issues = verify(pack_bytes, sig, key)
+    issues = verify(pack_bytes, sig, key, expect)
     for i in issues:
         print("FAIL:", i)
     print("OK: signature valid, ledger chain intact" if not issues else f"{len(issues)} problem(s) found")

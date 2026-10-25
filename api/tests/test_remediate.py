@@ -166,3 +166,70 @@ def test_auto_rollout_halts_after_any_failure(env):
     c.post(f"/api/agent/jobs/{cj['id']}/report", json={"outcome": "rolled_back", "error": "health"}, headers=hc)
     _, hb = add_host(c, "broad")
     assert c.get("/api/agent/jobs", headers=hb).json() == []
+
+
+def _dispatched(c, aid, h):
+    jid = plan(c, aid).json()["id"]
+    c.post(f"/api/remediation/jobs/{jid}/approve")
+    c.get("/api/agent/jobs", headers=h)
+    return jid
+
+
+def _age_jobs(env, hours):
+    s = sessionmaker(make_engine(env))()
+    s.execute(update(RemediationJob).values(updated=now() - timedelta(hours=hours)))
+    s.commit()
+
+
+def test_stale_jobs_swept_without_agent_and_late_report_accepted(env):
+    c = setup(env)
+    aid, h = add_host(c)
+    jid = _dispatched(c, aid, h)
+    _age_jobs(env, 3)
+    s = c.get("/api/summary").json()  # no agent poll needed
+    assert s["attention"][0]["id"] == jid and s["attention"][0]["status"] == "failed"
+    r = c.post(f"/api/agent/jobs/{jid}/report", json={"outcome": "rollback_failed", "error": "ROLLBACK FAILED"}, headers=h)
+    assert r.json()["status"] == "rollback_failed"  # the real outcome still lands, and is ledgered
+    entry = next(e for e in c.get("/api/evidence/ledger").json()["entries"] if e["kind"] == "remediation_rollback_failed")
+    assert entry["data"]["late"] is True
+
+
+def test_kill_switch_cancels_approved_jobs(env):
+    c = setup(env)
+    aid, h = add_host(c)
+    jid = plan(c, aid).json()["id"]
+    c.post(f"/api/remediation/jobs/{jid}/approve")
+    c.patch("/api/settings", json={"remediation_mode": "suggest"})
+    assert c.get("/api/agent/jobs", headers=h).json() == []
+    assert c.get("/api/remediation/jobs").json()[0]["status"] == "cancelled"
+
+
+def test_broad_ring_pinned_to_canary_version_and_held_on_later_failure(env):
+    c = setup(env)
+    c.patch("/api/settings", json={"remediation_mode": "auto", "canary_soak_hours": 1})
+    canary, hc = add_host(c, "canary", version=NEW)
+    c.patch(f"/api/assets/{canary}", json={"ring": 0})
+    c.post("/api/agent/inventory", json=inv(OLD), headers=hc)
+    [cj] = c.get("/api/agent/jobs", headers=hc).json()
+    proven = {"libssl3": "3.0.17-1~deb12u2", "openssl": "3.0.17-1~deb12u2"}
+    c.post(f"/api/agent/jobs/{cj['id']}/report", json={"outcome": "applied", "versions": proven}, headers=hc)
+    c.post("/api/agent/inventory", json=inv(NEW), headers=hc)
+    _age_jobs(env, 2)  # canary soaked
+
+    broad, hb = add_host(c, "broad")
+    b2, hb2 = add_host(c, "broad-2")
+    [bj] = c.get("/api/agent/jobs", headers=hb).json()
+    assert {p["name"]: p["to"] for p in bj["packages"]} == proven  # exactly what the canary proved
+
+    c.post(f"/api/agent/jobs/{bj['id']}/report", json={"outcome": "rolled_back", "error": "health"}, headers=hb)
+    assert c.get("/api/agent/jobs", headers=hb2).json() == []  # approved earlier, held at dispatch
+    held = next(j for j in c.get("/api/remediation/jobs").json() if j["hostname"] == "broad-2")
+    assert held["status"] == "planned" and "halted" in held["error"]
+
+
+def test_rhel_family_not_auto_remediated_yet(env):
+    c = setup(env)
+    token = c.post("/api/enroll-tokens", json={"sandbox": True}).json()["token"]
+    a = c.post("/api/agent/enroll", json={"token": token, "hostname": "rocky", "ecosystem": "Rocky Linux:9"}).json()
+    r = c.post("/api/remediation/jobs", json={"asset_id": a["asset_id"], "ecosystem": "Rocky Linux:9", "package": "openssl"})
+    assert r.status_code == 409 and "not supported" in r.json()["detail"]

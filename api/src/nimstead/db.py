@@ -56,6 +56,7 @@ class EnrollToken(Base):
     created: Mapped[datetime] = mapped_column(default=now)
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
     sandbox: Mapped[bool] = mapped_column(Boolean, default=False)  # assets enrolled with it are disposable test targets
+    expires: Mapped[datetime | None]
 
 
 class Asset(Base):
@@ -191,4 +192,5 @@ class RemediationJob(Base):
     created: Mapped[datetime] = mapped_column(default=now)
     updated: Mapped[datetime] = mapped_column(default=now)
     steps: Mapped[list] = mapped_column(default=list)  # agent-reported step log
+    result_versions: Mapped[dict | None]  # versions installed by a successful apply; pins the broad ring
     error: Mapped[str | None] = mapped_column(String(2000))

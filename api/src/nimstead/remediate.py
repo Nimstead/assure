@@ -24,12 +24,14 @@ from nimstead.db import Asset, Finding, InstalledPackage, Org, RemediationJob, n
 from nimstead.match import normalize_ecosystem
 from nimstead.versions import comparator_for, sort_key
 
-MANAGERS = {"Debian": "apt", "Ubuntu": "apt", "Alpine": "apk", "Rocky Linux": "dnf", "AlmaLinux": "dnf", "Red Hat": "dnf"}
+# dnf (RHEL family) deliberately absent until its executor path is proven in a sandbox
+MANAGERS = {"Debian": "apt", "Ubuntu": "apt", "Alpine": "apk"}
 SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9+._-]{0,200}$")
 SAFE_VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+~:_^-]{0,200}$")
 ACTIVE = ("planned", "approved", "dispatched", "verifying")
 AGENT_OUTCOMES = ("applied", "rolled_back", "rollback_failed", "aborted")
 DISPATCH_TIMEOUT = timedelta(hours=2)
+TIMEOUT_ERROR = "Agent did not report a result within 2 hours; check the host"
 
 
 class RemediationError(Exception):
@@ -121,23 +123,52 @@ def auto_remediate(s: Session, asset: Asset) -> None:
         try:
             job = job or plan(s, asset, eco, pkg, "policy")
             approve(s, job, "policy", policy=True)
+            if asset.ring > 0:
+                pin_to_canary(s, job)
         except RemediationError:
             continue  # stays planned (visible in UI with its reason) or not plannable
 
 
+def pin_to_canary(s: Session, job: RemediationJob) -> None:
+    """Broad ring installs exactly the versions the canary proved, not whatever the repo has now."""
+    canary = s.scalar(select(RemediationJob).join(Asset, Asset.id == RemediationJob.asset_id).where(
+        RemediationJob.org_id == job.org_id, RemediationJob.action_key == job.action_key,
+        RemediationJob.status == "succeeded", Asset.ring == 0, RemediationJob.result_versions.is_not(None),
+    ).order_by(RemediationJob.updated.desc()).limit(1))
+    proven = (canary.result_versions or {}) if canary else {}
+    job.packages = [{**p, "to": proven[p["name"]]} if SAFE_VERSION.match(str(proven.get(p["name"], ""))) else p for p in job.packages]
+
+
+def sweep(s: Session, org_id: str) -> None:
+    """Fail dispatched jobs whose agent went silent. Runs on every jobs/summary read, so it can't be skipped."""
+    stale = now() - DISPATCH_TIMEOUT
+    for job in s.scalars(select(RemediationJob).where(RemediationJob.org_id == org_id, RemediationJob.status == "dispatched",
+                                                      RemediationJob.updated < stale)):
+        job.status, job.error = "failed", TIMEOUT_ERROR
+        _log(s, job, "remediation_failed", error=job.error)
+    s.commit()
+
+
 def dispatch(s: Session, asset: Asset) -> list[dict]:
-    """Hand approved jobs to the agent. Also fails jobs whose agent went silent."""
+    """Hand approved jobs to the agent, re-checking every gate at the last moment."""
+    sweep(s, asset.org_id)
+    org = s.get(Org, asset.org_id)
     out = []
-    for job in s.scalars(select(RemediationJob).where(RemediationJob.asset_id == asset.id, RemediationJob.status.in_(("approved", "dispatched")))):
-        if job.status == "dispatched":
-            if now() - job.updated > DISPATCH_TIMEOUT:
-                job.status, job.error = "failed", "Agent did not report a result within 2 hours; check the host"
-                _log(s, job, "remediation_failed", error=job.error)
-            continue
-        if not asset.sandbox and not production_allowed():  # re-check at dispatch: flags may have changed
+    for job in s.scalars(select(RemediationJob).where(RemediationJob.asset_id == asset.id, RemediationJob.status == "approved")):
+        if not asset.sandbox and not production_allowed():  # flags may have changed since approval
             job.status, job.error = "failed", "Blocked: asset is not a sandbox"
             _log(s, job, "remediation_failed", error=job.error)
             continue
+        if org.remediation_mode == "suggest":  # kill switch applies to already-approved jobs too
+            job.status, job.error = "cancelled", "Cancelled: organisation switched to suggest-only mode"
+            _log(s, job, "remediation_cancelled", error=job.error)
+            continue
+        if job.approved_by == "policy" and asset.ring > 0:
+            ok, why = canary_ok(s, org, job)
+            if not ok:  # e.g. the change failed elsewhere after approval: halt
+                job.status, job.approved_by, job.error = "planned", None, why
+                _log(s, job, "remediation_held", reason=why)
+                continue
         job.status = "dispatched"
         _log(s, job, "remediation_dispatched")
         out.append({"id": job.id, "manager": job.manager, "packages": job.packages, "health_units": asset.health_units})
@@ -145,14 +176,19 @@ def dispatch(s: Session, asset: Asset) -> list[dict]:
     return out
 
 
-def report(s: Session, job: RemediationJob, outcome: str, steps: list[dict], error: str | None) -> RemediationJob:
+def report(s: Session, job: RemediationJob, outcome: str, steps: list[dict], error: str | None,
+           versions: dict | None = None) -> RemediationJob:
     if outcome not in AGENT_OUTCOMES:
         raise RemediationError(f"Unknown outcome {outcome!r}")
-    if job.status != "dispatched":
+    late = job.status == "failed" and job.error == TIMEOUT_ERROR  # agent came back after the timeout: keep the truth
+    if job.status != "dispatched" and not late:
         raise RemediationError(f"Job is {job.status}, not awaiting a report")
-    job.steps, job.error = steps[:200], (error or None) and error[:2000]
+    job.steps = [{"step": str(st.get("step", ""))[:200], "ok": bool(st.get("ok")), "output": str(st.get("output", ""))[:2000]}
+                 for st in steps[:200]]
+    job.error = (error or None) and error[:2000]
+    job.result_versions = {str(k)[:200]: str(v)[:200] for k, v in (versions or {}).items() if v}
     job.status = "verifying" if outcome == "applied" else outcome
-    _log(s, job, f"remediation_{outcome}", error=job.error, steps=[{k: st.get(k) for k in ("step", "ok")} for st in steps[:50]])
+    _log(s, job, f"remediation_{outcome}", error=job.error, late=late, steps=[{k: st[k] for k in ("step", "ok")} for st in job.steps[:50]])
     return job
 
 

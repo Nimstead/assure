@@ -1,6 +1,6 @@
 # Nimstead — status
 
-Read this first each session. Decisions and their reasons: DECISIONS.md (items 1–17). Quick start: README.md.
+Read this first each session. Decisions and their reasons: DECISIONS.md (items 1–21). Quick start: README.md.
 
 ## Done (with evidence)
 | Area | Where | Evidence |
@@ -31,7 +31,9 @@ Real-host E2E (fresh WSL distro each, destroyed after):
 | AlmaLinux 9 | 207 | 50 | glibc | libxml2, real service failure, snapshot |
 | Alpine 3.21 | 32 | 45 | musl | openssl, injected failure (no systemd), snapshot |
 
-All four evidence packs verified, with 6/6 controls met. On Alpine, the dry run refused the openssl and zlib fixes because they would also have upgraded musl.
+All four evidence packs verified, with 6/6 controls met. On Alpine, the dry run refused the openssl fix because it also needed musl. Re-planning "including musl" (which pulls in musl-utils, from the same source package) succeeded and was verified fixed (40 findings resolved).
+
+**Last runs (final code):** API 358 passed on SQLite (foreign keys enforced) and 358 passed on PostgreSQL 17 · web 18 unit + 4 Playwright e2e (axe clean in light and dark) · real-host E2E PASS on all four distros.
 
 ## NOT proven / known gaps (honest)
 - **AI** has never been called against the real API (no key on this machine).
@@ -40,7 +42,7 @@ All four evidence packs verified, with 6/6 controls met. On Alpine, the dry run 
 - **install.ps1** passes a parser check, but the elevated scheduled-task install hasn't been run.
 - **SSO and alerts** are tested only against a fake IdP, fake DNS and mocked webhook/SMTP, never real services.
 - **Snapshot rollback** doesn't reverse maintainer-script side effects (health checks cover the visible ones). Kernel/install-only packages are refused.
-- **When a fix needs a dependency upgrade** (e.g. openssl needs musl), the dry run refuses it. Fix the dependency first or plan both together; there's no automatic plan expansion.
+- **Dependency upgrades are never silent:** when a fix needs another package, the dry run refuses it and the user re-plans "including X" with one click. Nothing expands on its own.
 - **SBOM:** CycloneDX JSON only (no SPDX/VEX). Findings mean "present", not "reachable".
 - **Secrets:** the signing and secret keys are files on disk; use KMS in production. Checkpoints need WORM storage.
 - **Ecosystems:** no Go/crates beyond semver, and no Conda/Composer/Hex comparators.

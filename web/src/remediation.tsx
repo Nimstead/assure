@@ -10,7 +10,7 @@ import { btnPrimary, btnQuiet, EmptyState, ErrorState, Skeleton } from "./ui";
 const STATUS_CLASS: Record<JobStatus, string> = {
   planned: "bg-next-bg text-next-fg", approved: "bg-planned-bg text-planned-fg", dispatched: "bg-planned-bg text-planned-fg", verifying: "bg-planned-bg text-planned-fg",
   succeeded: "bg-accent-soft text-ink", failed: "bg-now-bg text-now-fg", rolled_back: "bg-now-bg text-now-fg", rollback_failed: "bg-now-bg text-now-fg",
-  not_fixed: "bg-now-bg text-now-fg", aborted: "bg-now-bg text-now-fg",
+  not_fixed: "bg-now-bg text-now-fg", aborted: "bg-now-bg text-now-fg", cancelled: "bg-sunken text-ink",
 };
 export const StatusPill = ({ status }: { status: JobStatus }) => (
   <span className={clsx("inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium", STATUS_CLASS[status])}>

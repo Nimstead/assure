@@ -26,7 +26,7 @@ export interface Action {
 export interface Summary { assets: number; open_by_priority: Partial<Record<Priority, number>>; top_actions: Action[]; attention: Job[] }
 
 // ---- remediation -----------------------------------------------------------------
-export type JobStatus = "planned" | "approved" | "dispatched" | "verifying" | "succeeded" | "failed" | "rolled_back" | "rollback_failed" | "not_fixed" | "aborted";
+export type JobStatus = "planned" | "approved" | "dispatched" | "verifying" | "succeeded" | "failed" | "rolled_back" | "rollback_failed" | "not_fixed" | "aborted" | "cancelled";
 export interface JobStep { step: string; ok: boolean; output?: string }
 export interface Job {
   id: string; asset_id: string; hostname: string; status: JobStatus; manager: string; action_key: string;
@@ -37,12 +37,12 @@ export const JOB_GROUPS = [
   { key: "approval", title: "Needs approval", statuses: ["planned"] },
   { key: "progress", title: "In progress", statuses: ["approved", "dispatched", "verifying"] },
   { key: "attention", title: "Needs attention", statuses: ["failed", "rolled_back", "rollback_failed", "not_fixed", "aborted"] },
-  { key: "done", title: "Done", statuses: ["succeeded"] },
+  { key: "done", title: "Done", statuses: ["succeeded", "cancelled"] },
 ] as const;
 export const JOB_STATUS_LABEL: Record<JobStatus, string> = {
   planned: "Awaiting approval", approved: "Approved, waiting for host", dispatched: "Running on host", verifying: "Verifying",
   succeeded: "Fixed and verified", failed: "Failed", rolled_back: "Rolled back", rollback_failed: "Rollback failed",
-  not_fixed: "Applied, still vulnerable", aborted: "Aborted",
+  not_fixed: "Applied, still vulnerable", aborted: "Aborted", cancelled: "Cancelled",
 };
 export const groupJobs = (jobs: Job[]) =>
   JOB_GROUPS.map((g) => ({ ...g, jobs: jobs.filter((j) => (g.statuses as readonly string[]).includes(j.status)) }));
@@ -60,6 +60,7 @@ export interface EvidenceReport {
   metrics: { resolved: number; resolved_within_sla: number; overdue_open: number; mttr_days: number | null };
   ledger: { head_hash: string; entries: number };
 }
+export interface EnrollToken { id: string; created: string; expires: string; revoked: boolean; sandbox: boolean }
 export interface Settings { remediation_mode: "suggest" | "approve" | "auto"; canary_soak_hours: number; production_remediation_allowed: boolean }
 export const settingsQ = queryOptions({ queryKey: ["settings"], queryFn: () => api<Settings>("/api/settings") });
 
@@ -143,7 +144,7 @@ export function installCommands(origin: string, token: string) {
 
 // ---- findings filters <-> URL ----------------------------------------------------
 export interface FindingsFilters {
-  q: string; priority: Priority[]; fixable: boolean; status: Status; asset: string; open: string;
+  q: string; priority: Priority[]; fixable: boolean; kev: boolean; status: Status; asset: string; open: string;
 }
 export type RawSearch = Record<string, string | undefined>;
 
@@ -151,7 +152,7 @@ export type RawSearch = Record<string, string | undefined>;
 export function parseFilters(raw: RawSearch): FindingsFilters {
   const status = (["open", "resolved", "accepted"] as const).find((s) => s === raw.status) ?? "open";
   const priority = (raw.priority ?? "").split(",").filter((p): p is Priority => (PRIORITIES as readonly string[]).includes(p));
-  return { q: raw.q ?? "", priority, fixable: raw.fixable !== "0", status, asset: raw.asset ?? "", open: raw.f ?? "" };
+  return { q: raw.q ?? "", priority, fixable: raw.fixable !== "0", kev: raw.kev === "1", status, asset: raw.asset ?? "", open: raw.f ?? "" };
 }
 
 /** Inverse of parseFilters: only non-default values reach the URL. */
@@ -160,6 +161,7 @@ export function filtersToSearch(f: FindingsFilters): RawSearch {
     q: f.q || undefined,
     priority: f.priority.length ? PRIORITIES.filter((p) => f.priority.includes(p)).join(",") : undefined,
     fixable: f.fixable ? undefined : "0",
+    kev: f.kev ? "1" : undefined,
     status: f.status === "open" ? undefined : f.status,
     asset: f.asset || undefined,
     f: f.open || undefined,
@@ -173,7 +175,22 @@ export function filtersToApi(f: FindingsFilters): string {
   if (f.priority.length) p.set("priority", f.priority.join(","));
   if (f.asset) p.set("asset_id", f.asset);
   if (f.fixable) p.set("fixable", "true");
+  if (f.kev) p.set("kev", "true");
   return p.toString();
+}
+
+// ---- AI (optional) -------------------------------------------------------------
+export interface AiFilter { q?: string | null; priority?: string[] | null; status?: string | null; fixable?: boolean | null; kev?: boolean | null }
+export const aiStatusQ = queryOptions({ queryKey: ["ai-status"], queryFn: () => api<{ enabled: boolean }>("/api/ai/status"), staleTime: 5 * 60_000, retry: false });
+
+/** Looks like a question rather than a package/CVE search. */
+export const looksLikeQuestion = (t: string) => t.trim().endsWith("?") || t.trim().split(/\s+/).length >= 4;
+
+/** Turn an AI filter into the patch applied to the URL filters. Unknown values are ignored. */
+export function aiFilterToPatch(a: AiFilter): Partial<FindingsFilters> {
+  const priority = (a.priority ?? []).filter((p): p is Priority => (PRIORITIES as readonly string[]).includes(p));
+  const status = (["open", "resolved", "accepted"] as const).find((s) => s === a.status);
+  return { q: a.q ?? "", priority, kev: !!a.kev, fixable: !!a.fixable, ...(status ? { status } : {}) };
 }
 
 // ---- misc ----------------------------------------------------------------------

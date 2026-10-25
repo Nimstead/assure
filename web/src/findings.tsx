@@ -3,11 +3,11 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { Dialog, Switch } from "radix-ui";
-import { ArrowRight, ExternalLink, Search, X } from "lucide-react";
+import { ArrowRight, ExternalLink, Search, Sparkles, X } from "lucide-react";
 import clsx from "clsx";
 import {
-  api, assetsQ, filtersToApi, filtersToSearch, parseFilters, pct, plural, PRIORITIES, PRIORITY_LABEL, relativeTime,
-  parseUtc, useTitle, whyMatched, type Finding, type FindingsFilters, type RawSearch, type Status,
+  aiFilterToPatch, aiStatusQ, api, assetsQ, filtersToApi, filtersToSearch, looksLikeQuestion, parseFilters, pct, plural, PRIORITIES, PRIORITY_LABEL, relativeTime,
+  parseUtc, useTitle, whyMatched, type AiFilter, type Finding, type FindingsFilters, type RawSearch, type Status,
 } from "./lib";
 import { PlanFixButton } from "./remediation";
 import { btnPrimary, btnQuiet, EmptyState, ErrorState, input, KevBadge, PriorityPill, Skeleton } from "./ui";
@@ -24,8 +24,15 @@ export function FindingsPage({ search }: { search: RawSearch }) {
   // The search box is local state, debounced into the URL.
   const [text, setText] = useState(f.q);
   useEffect(() => setText(f.q), [f.q]);
+  const ai = useQuery(aiStatusQ).data?.enabled === true;
+  const question = ai && looksLikeQuestion(text);
+  const [asked, setAsked] = useState(false);
+  const ask = useMutation({
+    mutationFn: () => api<AiFilter>("/api/ai/search", { method: "POST", body: { text: text.trim() } }),
+    onSuccess: (a) => { const p = aiFilterToPatch(a); setText(p.q ?? ""); setAsked(true); set(p); },
+  });
   useEffect(() => {
-    if (text === f.q) return;
+    if (text === f.q || question) return; // a question is sent on Ask, not searched literally
     const t = setTimeout(() => set({ q: text.trim() }), 250);
     return () => clearTimeout(t);
   });
@@ -47,9 +54,20 @@ export function FindingsPage({ search }: { search: RawSearch }) {
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden />
           <input
             type="search" aria-label="Search findings by package, vulnerability ID or host" placeholder="Search package, CVE or host"
-            className={clsx(input, "pl-9")} value={text} onChange={(e) => setText(e.target.value)}
+            className={clsx(input, "pl-9")} value={text} onChange={(e) => { setText(e.target.value); setAsked(false); }}
+            onKeyDown={(e) => { if (e.key === "Enter" && question && !ask.isPending) ask.mutate(); }}
           />
         </div>
+        {question && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            <button className={btnPrimary} disabled={ask.isPending} onClick={() => ask.mutate()}>
+              <Sparkles className="size-4" aria-hidden />{ask.isPending ? "Asking…" : "Ask"}
+            </button>
+            <span className="text-sm text-muted">Press Enter to turn this question into filters (uses AI).</span>
+          </div>
+        )}
+        {ask.error && <p role="alert" className="text-sm text-now-fg">{ask.error.message}</p>}
+        {asked && !question && <AppliedChips f={f} set={set} clearText={() => setText("")} />}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2.5">
           <div role="group" aria-label="Status" className="flex rounded-md border border-line-strong bg-surface p-0.5">
             {STATUSES.map((s) => (
@@ -70,6 +88,10 @@ export function FindingsPage({ search }: { search: RawSearch }) {
               );
             })}
           </div>
+          <button aria-pressed={f.kev} onClick={() => set({ kev: !f.kev })}
+            className={clsx("min-h-8 cursor-pointer rounded-full border px-3 text-sm", f.kev ? "border-accent bg-accent-soft font-medium" : "border-line-strong text-muted hover:text-ink")}>
+            Exploited (KEV)
+          </button>
           <label className="flex cursor-pointer items-center gap-2 text-sm">
             <Switch.Root checked={f.fixable} onCheckedChange={(fixable) => set({ fixable })}
               className="relative h-5 w-9 cursor-pointer rounded-full bg-line-strong data-[state=checked]:bg-accent">
@@ -86,7 +108,7 @@ export function FindingsPage({ search }: { search: RawSearch }) {
       </div>
 
       {list.isPending ? <TableSkeleton /> : list.error ? <ErrorState error={list.error} retry={() => list.refetch()} /> : (
-        <Results rows={list.data} f={f} noAssets={assets.data?.length === 0} onClear={() => set({ fixable: false, q: "", priority: [], asset: "" })} onPick={(open) => set({ open }, true)} />
+        <Results rows={list.data} f={f} noAssets={assets.data?.length === 0} onClear={() => { setAsked(false); set({ fixable: false, kev: false, q: "", priority: [], asset: "" }); }} onPick={(open) => set({ open }, true)} />
       )}
 
       <FindingDrawer id={f.open} onClose={() => set({ open: "" }, true)} />
@@ -99,7 +121,7 @@ function Results({ rows, f, noAssets, onClear, onPick }: { rows: Finding[]; f: F
   if (noAssets) {
     return <EmptyState title="No machines yet" action={<Link to="/add" className={clsx(btnQuiet, "no-underline")}>Add a machine <ArrowRight className="size-4" aria-hidden /></Link>}>Findings appear once a machine reports its installed software.</EmptyState>;
   }
-  const filtered = f.q || f.priority.length || f.asset || f.fixable || f.status !== "open";
+  const filtered = f.q || f.kev || f.priority.length || f.asset || f.fixable || f.status !== "open";
   return (
     <EmptyState title={f.status === "open" && !filtered ? "No open findings" : "Nothing matches"}
       action={filtered ? <button className={btnQuiet} onClick={onClear}>{f.fixable ? "Show findings with no fix too" : "Clear filters"}</button> : undefined}>
@@ -175,6 +197,7 @@ function FindingDrawer({ id, onClose }: { id: string; onClose: () => void }) {
 }
 
 function FindingDetail({ f }: { f: Finding }) {
+  const ai = useQuery(aiStatusQ).data?.enabled === true;
   const ids = [...new Set([f.vuln_id, ...f.advisory_ids])];
   const when = (s: string) => <time dateTime={parseUtc(s).toISOString()} title={parseUtc(s).toLocaleString()}>{relativeTime(s)}</time>;
   const H = ({ children }: { children: string }) => <h3 className="mb-1.5 mt-6 text-sm font-semibold">{children}</h3>;
@@ -182,6 +205,7 @@ function FindingDetail({ f }: { f: Finding }) {
     <div>
       <div className="flex flex-wrap items-center gap-2"><PriorityPill priority={f.priority} />{f.kev && <KevBadge />}<span className="num text-sm text-muted">Score {f.score}/100</span></div>
       {f.summary && <p className="mt-3 text-sm">{f.summary}</p>}
+      {ai && <Explain key={f.id} id={f.id} />}
 
       <H>Why it matched</H>
       <p className="text-sm"><strong className="font-semibold">{f.package}</strong> on <strong className="font-semibold">{f.hostname}</strong></p>
@@ -254,5 +278,46 @@ function AcceptRisk({ id }: { id: string }) {
         <button type="button" className={btnQuiet} onClick={() => setOpen(false)}>Cancel</button>
       </div>
     </form>
+  );
+}
+
+/** Shows exactly what an AI question was turned into; each chip removes that part. */
+function AppliedChips({ f, set, clearText }: { f: FindingsFilters; set: (p: Partial<FindingsFilters>) => void; clearText: () => void }) {
+  const chips: [string, () => void][] = [];
+  if (f.q) chips.push([`Text: ${f.q}`, () => { clearText(); set({ q: "" }); }]);
+  f.priority.forEach((p) => chips.push([PRIORITY_LABEL[p], () => set({ priority: f.priority.filter((x) => x !== p) })]));
+  if (f.kev) chips.push(["Exploited (KEV)", () => set({ kev: false })]);
+  if (f.status !== "open") chips.push([`Status: ${f.status}`, () => set({ status: "open" })]);
+  chips.push([f.fixable ? "Fixable only" : "Fix or no fix", () => set({ fixable: !f.fixable })]);
+  return (
+    <div role="group" aria-label="Filters applied from your question" className="flex flex-wrap items-center gap-1.5">
+      <span className="text-sm text-muted">Interpreted as:</span>
+      {chips.map(([label, remove]) => (
+        <button key={label} className="inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-full border border-accent bg-accent-soft px-3 text-sm" onClick={remove}>
+          {label}<X className="size-3.5" aria-label="Remove filter" />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Rendered only when AI is enabled on the server. */
+function Explain({ id }: { id: string }) {
+  const ex = useMutation({ mutationFn: () => api<{ text: string; model: string }>(`/api/ai/explain/${id}`, { method: "POST" }) });
+  return (
+    <div className="mt-6">
+      {!ex.data && (
+        <button className={btnQuiet} disabled={ex.isPending} onClick={() => ex.mutate()}>
+          <Sparkles className="size-4" aria-hidden />{ex.isPending ? "Explaining…" : "Explain in plain English"}
+        </button>
+      )}
+      {ex.error && <p role="alert" className="mt-2 text-sm text-now-fg">{ex.error.message}</p>}
+      {ex.data && (
+        <section aria-label="Plain-English explanation" className="rounded-lg border border-line-strong bg-sunken p-4">
+          <p className="whitespace-pre-line text-sm">{ex.data.text}</p>
+          <p className="mt-2 text-xs text-muted">AI-generated, check before acting.</p>
+        </section>
+      )}
+    </div>
   );
 }

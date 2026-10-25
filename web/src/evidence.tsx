@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { CircleCheck, CircleX, Download, ShieldAlert, ShieldCheck } from "lucide-react";
 import clsx from "clsx";
 import { api, humaniseKind, parseUtc, relativeTime, useTitle, type EvidenceReport, type LedgerEntry } from "./lib";
-import { btnPrimary, ErrorState, input, Skeleton } from "./ui";
+import { btnPrimary, CopyBlock, ErrorState, input, Skeleton } from "./ui";
 
 const PERIODS = [30, 90, 365];
 
@@ -79,8 +79,20 @@ function ReportView({ r, days }: { r: EvidenceReport; days: number }) {
         <h2 className="text-lg font-semibold">Signed evidence pack</h2>
         <p className="max-w-prose text-sm text-muted">Auditors can verify this pack offline with the included script. No access to Nimstead needed.</p>
         <a className={clsx(btnPrimary, "no-underline")} href={`/api/evidence/pack?days=${days}`} download><Download className="size-4" aria-hidden />Download signed evidence pack (last {days} days)</a>
+        <SigningKey />
       </section>
     </>
+  );
+}
+
+function SigningKey() {
+  const q = useQuery({ queryKey: ["public-key"], queryFn: () => api<{ pem: string; fingerprint_sha256: string }>("/api/evidence/public-key"), staleTime: Infinity });
+  if (!q.data) return null;
+  return (
+    <div className="mt-2 w-full max-w-2xl">
+      <CopyBlock label="Signing key fingerprint (SHA-256)" text={q.data.fingerprint_sha256} />
+      <p className="mt-2 text-sm text-muted">Give auditors this fingerprint separately; the verifier needs it.</p>
+    </div>
   );
 }
 

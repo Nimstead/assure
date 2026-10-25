@@ -1,4 +1,4 @@
-import { filtersToApi, filtersToSearch, groupJobs, humaniseKind, installCommands, isActiveJob, parseFilters, priorityOf, relativeTime, whyMatched, type Job } from "./lib";
+import { aiFilterToPatch, looksLikeQuestion, filtersToApi, filtersToSearch, groupJobs, humaniseKind, installCommands, isActiveJob, parseFilters, priorityOf, relativeTime, whyMatched, type Job } from "./lib";
 
 describe("priorityOf", () => {
   it("mirrors the server thresholds and lets KEV override", () => {
@@ -28,9 +28,9 @@ describe("findings filters <-> URL", () => {
     expect(filtersToSearch(f)).toEqual({ q: undefined, priority: undefined, fixable: undefined, status: undefined, asset: undefined, f: undefined });
   });
   it("round-trips non-default state", () => {
-    const raw = { q: "openssl", priority: "fix-now,next", fixable: "0", status: "resolved", asset: "a1", f: "x9" };
+    const raw = { q: "openssl", priority: "fix-now,next", fixable: "0", status: "resolved", asset: "a1", f: "x9", kev: "1" };
     const f = parseFilters(raw);
-    expect(f).toEqual({ q: "openssl", priority: ["fix-now", "next"], fixable: false, status: "resolved", asset: "a1", open: "x9" });
+    expect(f).toEqual({ q: "openssl", priority: ["fix-now", "next"], fixable: false, kev: true, status: "resolved", asset: "a1", open: "x9" });
     expect(filtersToSearch(f)).toEqual(raw);
   });
   it("ignores junk and builds the API query", () => {
@@ -65,5 +65,18 @@ describe("remediation helpers", () => {
     expect(humaniseKind("remediation_not_fixed")).toBe("Remediation not fixed");
     expect(humaniseKind("inventory_received")).toBe("Inventory received");
     expect(humaniseKind("policy_changed")).toBe("Policy changed");
+  });
+});
+
+describe("AI search helpers", () => {
+  it("detects questions", () => {
+    expect(looksLikeQuestion("openssl")).toBe(false);
+    expect(looksLikeQuestion("CVE-2024-1")).toBe(false);
+    expect(looksLikeQuestion("what is exploited?")).toBe(true);
+    expect(looksLikeQuestion("show me exploited openssl bugs")).toBe(true);
+  });
+  it("maps an AI filter to URL filters, dropping junk", () => {
+    expect(aiFilterToPatch({ q: "ssl", priority: ["fix-now", "bogus"], status: "resolved", fixable: null, kev: true }))
+      .toEqual({ q: "ssl", priority: ["fix-now"], kev: true, fixable: false, status: "resolved" });
   });
 });

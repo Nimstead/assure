@@ -26,7 +26,7 @@ PREFIX = "nimstead-sbx-"
 NAME = PREFIX + secrets.token_hex(4)
 DISTRO = sys.argv[sys.argv.index("--distro") + 1] if "--distro" in sys.argv else "Debian"
 TMP = Path(tempfile.mkdtemp(prefix="nimstead-sbx-"))
-os.environ.update(NIMSTEAD_SECURE_COOKIES="0", NIMSTEAD_SIGNING_KEY_FILE=str(TMP / "signing.pem"))
+os.environ.update(NIMSTEAD_SECURE_COOKIES="0", NIMSTEAD_INVENTORY_MIN_SECONDS="0", NIMSTEAD_SIGNING_KEY_FILE=str(TMP / "signing.pem"))
 
 from fastapi.testclient import TestClient  # noqa: E402
 

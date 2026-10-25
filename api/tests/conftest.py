@@ -1,13 +1,32 @@
 import json
+import os
+import subprocess
+import sys
+import uuid
 from pathlib import Path
 
 import pytest
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 from nimstead.db import Advisory, Kev, make_engine
 from nimstead.match import normalize_ecosystem
 
 FIX = Path(__file__).parent / "fixtures" / "osv"
+PG = os.environ.get("NIMSTEAD_TEST_PG_URL")  # e.g. postgresql+psycopg://nimstead:pw@localhost:55432/postgres
+
+
+def fresh_db_url(tmp_path) -> str:
+    """SQLite file by default; with NIMSTEAD_TEST_PG_URL, a brand-new Postgres database migrated by Alembic."""
+    if not PG:
+        return f"sqlite:///{tmp_path}/t.db"
+    name = "t_" + uuid.uuid4().hex[:12]
+    with create_engine(PG, isolation_level="AUTOCOMMIT").connect() as c:
+        c.execute(text(f"CREATE DATABASE {name}"))
+    url = PG.rsplit("/", 1)[0] + "/" + name
+    subprocess.run([sys.executable, "-m", "alembic", "upgrade", "head"], cwd=Path(__file__).parents[1],
+                   env={**os.environ, "NIMSTEAD_DB": url}, check=True, capture_output=True)
+    return url
 
 
 @pytest.fixture
@@ -16,7 +35,7 @@ def env(tmp_path, monkeypatch):
     from nimstead import evidence
     monkeypatch.setattr(evidence, "CHECKPOINT_DIR", tmp_path / "checkpoints")
     monkeypatch.setattr(evidence, "KEY_FILE", tmp_path / "signing.pem")
-    url = f"sqlite:///{tmp_path}/t.db"
+    url = fresh_db_url(tmp_path)
     s = sessionmaker(make_engine(url))()
     for f in ("Debian_12__openssl.json", "PyPI__requests.json"):
         d = json.loads((FIX / f).read_text())
@@ -26,4 +45,5 @@ def env(tmp_path, monkeypatch):
     s.commit()
     import nimstead.app as appmod
     monkeypatch.setattr(appmod, "SECURE_COOKIES", False)
+    monkeypatch.setattr(appmod, "INVENTORY_MIN_SECONDS", 0)
     return url

@@ -47,6 +47,7 @@ DUMMY_HASH = ph.hash("nimstead-dummy-password")
 MAX_BODY = 10 * 1024 * 1024
 ENROLL_TOKEN_DAYS = 30
 LOGIN_MAX_FAILURES, LOGIN_WINDOW = 10, 15 * 60
+INVENTORY_MIN_SECONDS = int(os.environ.get("NIMSTEAD_INVENTORY_MIN_SECONDS", "30"))
 
 
 def sha(token: str) -> str:
@@ -235,8 +236,14 @@ def create_app(db_url: str | None = None) -> FastAPI:
             raise HTTPException(401, "Unknown agent key")
         return asset
 
+    last_inventory: dict[str, float] = {}  # ponytail: per-process; move to shared store with multiple API workers
+
     @app.post("/api/agent/inventory")
     def agent_inventory(body: Inventory, s: DB, asset: Annotated[Asset, Depends(current_agent)]):
+        last = last_inventory.get(asset.id)
+        if last is not None and time.monotonic() - last < INVENTORY_MIN_SECONDS:
+            raise HTTPException(429, f"Inventory already received; send at most one every {INVENTORY_MIN_SECONDS}s")
+        last_inventory[asset.id] = time.monotonic()
         asset.os_name, asset.ecosystem, asset.last_seen = body.os_name or asset.os_name, body.ecosystem or asset.ecosystem, now()
         s.execute(delete(InstalledPackage).where(InstalledPackage.asset_id == asset.id))
         s.add_all(InstalledPackage(asset_id=asset.id, **p.model_dump()) for p in body.packages)

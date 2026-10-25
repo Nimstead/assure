@@ -1,0 +1,33 @@
+[project]
+name = "nimstead"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Ciaran W", email = "ciaranwhiteside@protonmail.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "argon2-cffi>=25.1.0",
+    "cryptography>=50.0.2",
+    "cvss>=3.6",
+    "fastapi>=0.162.0",
+    "httpx>=0.28.1",
+    "packaging>=26.3",
+    "pydantic>=2.14.1",
+    "sqlalchemy>=2.1.6",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[project.scripts]
+nimstead = "nimstead:main"
+
+[build-system]
+requires = ["uv_build>=0.13.1,<0.14.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.17.2",
+]

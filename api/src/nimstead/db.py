@@ -82,6 +82,7 @@ class Asset(Base):
     criticality: Mapped[str] = mapped_column(String(20), default="medium")
     internet_facing: Mapped[bool] = mapped_column(Boolean, default=False)
     sandbox: Mapped[bool] = mapped_column(Boolean, default=False)  # disposable test target; remediation dev-guard
+    kind: Mapped[str] = mapped_column(String(20), default="host", server_default="host")  # host | application (no agent; SBOM only)
     ring: Mapped[int] = mapped_column(Integer, default=1)  # 0 = canary: auto-remediation lands here first
     health_units: Mapped[list] = mapped_column(default=list)  # systemd units that must stay active after a change
     agent_key_hash: Mapped[str] = mapped_column(String(64), unique=True)
@@ -98,6 +99,7 @@ class InstalledPackage(Base):
     name: Mapped[str] = mapped_column(String(255))
     version: Mapped[str] = mapped_column(String(255))
     source: Mapped[str | None] = mapped_column(String(255))
+    origin: Mapped[str] = mapped_column(String(10), default="agent", server_default="agent")  # agent | sbom: each replaces only its own rows
 
 
 class Advisory(Base):

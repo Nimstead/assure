@@ -245,6 +245,175 @@ def windows_cmp(a: str, b: str) -> int:
     return (ta > tb) - (ta < tb)
 
 
+# --- Maven (Apache Maven ComparableVersion, 3.9.x) -----------------------------
+# Items: int, str (qualifier) or list (nested "-" sublist), mirroring IntItem/StringItem/ListItem.
+
+_MVN_QUALIFIERS = ["alpha", "beta", "milestone", "rc", "snapshot", "", "sp"]
+_MVN_ALIASES = {"ga": "", "final": "", "release": "", "cr": "rc"}
+_MVN_RELEASE = str(_MVN_QUALIFIERS.index(""))
+
+
+def _mvn_q(q: str) -> str:
+    return str(_MVN_QUALIFIERS.index(q)) if q in _MVN_QUALIFIERS else f"{len(_MVN_QUALIFIERS)}-{q}"
+
+
+def _mvn_str(v: str, followed_by_digit: bool) -> str:
+    if followed_by_digit and len(v) == 1:
+        v = {"a": "alpha", "b": "beta", "m": "milestone"}.get(v, v)
+    return _MVN_ALIASES.get(v, v)
+
+
+def _mvn_null(i) -> bool:
+    return i == 0 if isinstance(i, int) else (_mvn_q(i) == _MVN_RELEASE if isinstance(i, str) else not i)
+
+
+def _mvn_normalize(lst: list) -> None:
+    for i in range(len(lst) - 1, -1, -1):
+        if _mvn_null(lst[i]):
+            del lst[i]
+        elif not isinstance(lst[i], list):
+            break
+
+
+def _mvn_parse(version: str) -> list:
+    if not version or version != version.strip():
+        raise ValueError(f"invalid Maven version: {version!r}")
+    v = version.lower()
+    root: list = []
+    lst, stack = root, [root]
+    is_digit, start = False, 0
+
+    def item(digit: bool, s: str):
+        return int(s) if digit else _mvn_str(s, False)
+
+    def push():
+        nonlocal lst
+        new: list = []
+        lst.append(new)
+        lst = new
+        stack.append(new)
+
+    for i, c in enumerate(v):
+        if c in ".-":
+            lst.append(0 if i == start else item(is_digit, v[start:i]))
+            start = i + 1
+            if c == "-":
+                push()
+        elif c.isdigit():  # ponytail: str.isdigit also accepts some non-ASCII digits; int() then raises or parses, as Java would not
+            if not is_digit and i > start:
+                if lst:
+                    push()
+                lst.append(_mvn_str(v[start:i], True))
+                start = i
+                push()
+            is_digit = True
+        else:
+            if is_digit and i > start:
+                lst.append(int(v[start:i]))
+                start = i
+                push()
+            is_digit = False
+    if len(v) > start:
+        if not is_digit and lst:
+            push()
+        lst.append(item(is_digit, v[start:]))
+    for ls in reversed(stack):
+        _mvn_normalize(ls)
+    return root
+
+
+def _mvn_cmp_item(l, r) -> int:  # noqa: E741 - l/r as in the reference
+    if isinstance(l, int):
+        if r is None:
+            return 0 if l == 0 else 1
+        return _sign(l - r) if isinstance(r, int) else 1
+    if isinstance(l, str):
+        if r is None:
+            return _sign((_mvn_q(l) > _MVN_RELEASE) - (_mvn_q(l) < _MVN_RELEASE))
+        if isinstance(r, str):
+            a, b = _mvn_q(l), _mvn_q(r)
+            return (a > b) - (a < b)
+        return -1
+    if r is None:  # list vs nothing
+        return _mvn_cmp_item(l[0], None) if l else 0
+    if isinstance(r, int):
+        return -1
+    if isinstance(r, str):
+        return 1
+    for k in range(max(len(l), len(r))):
+        a, b = (l[k] if k < len(l) else None), (r[k] if k < len(r) else None)
+        c = _mvn_cmp_item(a, b) if a is not None else -_mvn_cmp_item(b, None)
+        if c:
+            return c
+    return 0
+
+
+def maven_cmp(a: str, b: str) -> int:
+    return _mvn_cmp_item(_mvn_parse(a), _mvn_parse(b))
+
+
+# --- NuGet (SemVer 2.0 plus a 4th numeric part) ---------------------------------
+
+_NUGET_RE = re.compile(r"(\d+(?:\.\d+){0,3})(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?")
+
+
+def _nuget_parse(v: str):
+    m = _NUGET_RE.fullmatch(v)
+    if not m:
+        raise ValueError(f"invalid NuGet version: {v!r}")
+    nums = [int(x) for x in m[1].split(".")]
+    return nums + [0] * (4 - len(nums)), (m[2].lower().split(".") if m[2] else None)
+
+
+def nuget_cmp(a: str, b: str) -> int:
+    (na, pa), (nb, pb) = _nuget_parse(a), _nuget_parse(b)
+    if na != nb:
+        return 1 if na > nb else -1
+    if pa == pb:
+        return 0
+    if pa is None or pb is None:
+        return 1 if pa is None else -1
+    for x, y in zip(pa, pb, strict=False):
+        if x == y:
+            continue
+        if x.isdigit() and y.isdigit():
+            return _sign(int(x) - int(y))
+        if x.isdigit() != y.isdigit():
+            return -1 if x.isdigit() else 1
+        return 1 if x > y else -1
+    return _sign(len(pa) - len(pb))
+
+
+# --- RubyGems (Gem::Version) ------------------------------------------------------
+
+_GEM_RE = re.compile(r"[0-9]+(\.[0-9a-zA-Z]+)*(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?")
+
+
+def _gem_segments(v: str) -> list:
+    if not _GEM_RE.fullmatch(v):
+        raise ValueError(f"invalid RubyGems version: {v!r}")
+    segs = [int(x) if x.isdigit() else x for x in re.findall(r"[0-9]+|[a-z]+", v.replace("-", ".pre."), re.I)]
+    first_str = next((i for i, s in enumerate(segs) if isinstance(s, str)), len(segs))
+    out = []
+    for part in (segs[:first_str], segs[first_str:]):  # trailing zeros dropped per numeric / prerelease part
+        while part and part[-1] == 0:
+            part.pop()
+        out += part
+    return out
+
+
+def gem_cmp(a: str, b: str) -> int:
+    sa, sb = _gem_segments(a), _gem_segments(b)
+    for i in range(max(len(sa), len(sb))):
+        x, y = (sa[i] if i < len(sa) else 0), (sb[i] if i < len(sb) else 0)
+        if x == y:
+            continue
+        if isinstance(x, str) != isinstance(y, str):
+            return -1 if isinstance(x, str) else 1
+        return 1 if x > y else -1
+    return 0
+
+
 _BY_PREFIX: dict[str, Cmp] = {
     "Windows": windows_cmp,
     "Debian": dpkg_cmp,
@@ -260,6 +429,9 @@ _BY_PREFIX: dict[str, Cmp] = {
     "npm": semver_cmp,
     "Go": semver_cmp,
     "crates.io": semver_cmp,
+    "Maven": maven_cmp,
+    "NuGet": nuget_cmp,
+    "RubyGems": gem_cmp,
 }
 
 

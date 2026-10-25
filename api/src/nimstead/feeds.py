@@ -60,8 +60,9 @@ def _flush(session, ins: list[dict], upd: list[dict]) -> None:
     upd.clear()
 
 
-def sync_osv(session: Session, ecosystems: list[str], client=None, batch: int = 5000) -> dict:
-    """Upsert Advisory rows from each ecosystem's all.zip. Unchanged `modified` rows are skipped."""
+def sync_osv(session: Session, ecosystems: list[str], client=None, batch: int = 5000, only: set[str] | None = None) -> dict:
+    """Upsert Advisory rows from each ecosystem's all.zip. Unchanged `modified` rows are skipped.
+    `only`: keep just these normalized ecosystems (e.g. {"Ubuntu:24.04"}), skipping releases nobody runs."""
     http = _client(client)
     n = {"inserted": 0, "updated": 0, "skipped": 0}
     for top in ecosystems:
@@ -84,6 +85,8 @@ def sync_osv(session: Session, ecosystems: list[str], client=None, batch: int = 
                         continue
                     rec = json.loads(z.read(name))
                     for eco, pkg, out in _rows(rec):
+                        if only is not None and eco not in only:
+                            continue
                         key = (rec["id"], eco, pkg)
                         row = {"id": rec["id"], "ecosystem": eco, "package": pkg,
                                "modified": rec.get("modified", ""), "record": out}
@@ -163,9 +166,10 @@ def update_all(session: Session, client=None) -> dict:
 
     New advisories or exploitation data change findings without waiting for the next
     agent report. Run from cron/systemd timer (e.g. hourly)."""
-    used = sorted({e.split(":", 1)[0] for e in session.scalars(select(InstalledPackage.ecosystem).distinct())})
+    in_use = {normalize_ecosystem(e) for e in session.scalars(select(InstalledPackage.ecosystem).distinct())}
+    used = sorted({e.split(":", 1)[0] for e in in_use})
     out = {"kev": sync_kev(session, client), "epss": sync_epss(session, client), "nvd": sync_nvd(session, ["modified"], client),
-           "osv": sync_osv(session, used, client) if used else {}}
+           "osv": sync_osv(session, used, client, only=in_use) if used else {}}
     out["rescanned"] = 0
     for asset in session.scalars(select(Asset)).all():
         rescan(session, asset, inventory_received=False)

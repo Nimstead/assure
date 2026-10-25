@@ -95,7 +95,7 @@ def main(keep=False):
 
         with make_sessionmaker(db)() as s:
             t = time.time()
-            note("feeds synced", kev=feeds.sync_kev(s), epss=feeds.sync_epss(s), osv=feeds.sync_osv(s, [eco.split(":")[0]]),
+            note("feeds synced", kev=feeds.sync_kev(s), epss=feeds.sync_epss(s), osv=feeds.sync_osv(s, [eco.split(":")[0]], only={eco}),
                  seconds=round(time.time() - t))
 
         token = c.post("/api/enroll-tokens", json={"sandbox": True}).json()["token"]

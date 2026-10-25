@@ -92,3 +92,10 @@ def test_nvd_prefers_v31_primary_and_upserts():
     feed["vulnerabilities"][0]["cve"]["metrics"]["cvssMetricV31"] = [m(9.8, "Primary")]
     sync_nvd(s, ["modified"], client(gzip.compress(json.dumps(feed).encode())))
     assert s.get(Cvss, "CVE-1").score == 9.8 and count(s, Cvss) == 2
+
+
+def test_osv_only_keeps_releases_in_use():
+    s = make_sessionmaker("sqlite://")()
+    z = zip_of(rec("USN-1", "2024-01-01", eco="Ubuntu:22.04:LTS"), rec("USN-2", "2024-01-01", eco="Ubuntu:24.04:LTS"))
+    sync_osv(s, ["Ubuntu"], client(z), only={"Ubuntu:24.04"})
+    assert {a.ecosystem for a in s.scalars(select(Advisory))} == {"Ubuntu:24.04"}

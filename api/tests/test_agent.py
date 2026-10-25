@@ -52,3 +52,10 @@ def test_apk_installed_db():
 def test_refuses_plain_http():
     with pytest.raises(agent.AgentError):
         agent.post("http://x", "/p", {}, insecure_http=False)
+
+
+def test_windows_acl_command():
+    assert agent.windows_acl_cmd(r"C:\ProgramData\Nimstead\agent.json", "alice") == [
+        "icacls", r"C:\ProgramData\Nimstead\agent.json", "/inheritance:r",
+        "/grant:r", "*S-1-5-18:F", "/grant:r", "*S-1-5-32-544:F", "/grant:r", "alice:F"]
+    assert "evil:F" not in " ".join(agent.windows_acl_cmd("x", "evil /grant Everyone"))  # odd usernames not passed through

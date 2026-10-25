@@ -672,7 +672,18 @@ def save_config(cfg):
         os.chmod(p, 0o600)  # in case the file pre-existed with looser perms
     except OSError as e:
         raise AgentError(f"cannot write {p}: {e}")
+    if os.name == "nt":  # chmod is a no-op on Windows and ProgramData is readable by all users: set an explicit ACL
+        rc, out = sh(windows_acl_cmd(p, os.environ.get("USERNAME", "")))
+        if rc != 0:
+            os.remove(p)
+            raise AgentError(f"could not restrict access to {p}; removed it: {out.strip()[-300:]}")
     return p
+
+
+def windows_acl_cmd(path, user):
+    """icacls: drop inherited ACEs; only SYSTEM, Administrators and the installing user may read the agent key."""
+    grants = ["*S-1-5-18:F", "*S-1-5-32-544:F"] + ([f"{user}:F"] if user and SAFE_NAME.match(user) else [])
+    return ["icacls", path, "/inheritance:r", *[x for g in grants for x in ("/grant:r", g)]]
 
 
 def main(argv=None):

@@ -1,6 +1,6 @@
 """End-to-end test in a DISPOSABLE WSL distro: detect -> remediate -> verify -> rollback -> evidence.
 
-Run from api/:  uv run python ../sandbox/sbx.py [--distro Debian|Ubuntu-24.04] [--keep]
+Run from api/:  uv run python ../sandbox/sbx.py [--distro Debian|Ubuntu-24.04|AlmaLinux-9|alpine-3.21.0] [--keep]
 - Creates a fresh distro named nimstead-sbx-<random> (downloads the Debian WSL image the first time),
   and always unregisters it at the end (unless --keep). It refuses to touch any other distro.
 - The API runs in-process on a throwaway SQLite DB with real OSV/KEV/EPSS data. HTTP between agent and
@@ -52,21 +52,41 @@ def wsl(*args, input=None, check=True, timeout=1800):
     return p.returncode, out
 
 
+def import_alpine(version):
+    """Official Alpine minirootfs (an older point release, so its packages have known fixes), sha256-checked."""
+    import hashlib
+    import urllib.request
+    branch = "v" + ".".join(version.split(".")[:2])
+    url = f"https://dl-cdn.alpinelinux.org/alpine/{branch}/releases/x86_64/alpine-minirootfs-{version}-x86_64.tar.gz"
+    tarball = TMP / "rootfs.tar.gz"
+    urllib.request.urlretrieve(url, tarball)
+    want = urllib.request.urlopen(url + ".sha256").read().decode().split()[0]
+    if hashlib.sha256(tarball.read_bytes()).hexdigest() != want:
+        raise RuntimeError("Alpine rootfs checksum mismatch")
+    p = subprocess.run(["wsl", "--import", NAME, str(TMP / "distro"), str(tarball)], capture_output=True, timeout=600)
+    if p.returncode != 0:
+        raise RuntimeError("wsl --import failed: " + (p.stdout + p.stderr).decode("utf-16-le", errors="replace"))
+
+
 def create_sandbox():
     note("creating sandbox distro", name=NAME, distro=DISTRO)
-    p = subprocess.run(["wsl", "--install", DISTRO, "--name", NAME, "--location", str(TMP / "distro"), "--no-launch"],
-                       capture_output=True, timeout=1800)
-    if p.returncode != 0:
-        raise RuntimeError("wsl --install failed: " + (p.stdout + p.stderr).decode("utf-16-le", errors="replace"))
+    if DISTRO.startswith("alpine-"):
+        import_alpine(DISTRO.removeprefix("alpine-"))
+    else:
+        p = subprocess.run(["wsl", "--install", DISTRO, "--name", NAME, "--location", str(TMP / "distro"), "--no-launch"],
+                           capture_output=True, timeout=1800)
+        if p.returncode != 0:
+            raise RuntimeError("wsl --install failed: " + (p.stdout + p.stderr).decode("utf-16-le", errors="replace"))
     wsl("true")
-    # systemd lets the rollback scenario use a real health-checked service
-    wsl("sh", "-c", "grep -q '^systemd=true' /etc/wsl.conf 2>/dev/null || printf '[boot]\nsystemd=true\n' >> /etc/wsl.conf")
-    subprocess.run(["wsl", "--terminate", NAME], capture_output=True)
-    wsl("true")
+    if not DISTRO.startswith("alpine-"):  # systemd lets the rollback scenario use a real health-checked service
+        wsl("sh", "-c", "grep -q '^systemd=true' /etc/wsl.conf 2>/dev/null || printf '[boot]\nsystemd=true\n' >> /etc/wsl.conf")
+        subprocess.run(["wsl", "--terminate", NAME], capture_output=True)
+        wsl("true")
     _, osr = wsl("cat", "/etc/os-release")
     note("sandbox ready", os=next((ln for ln in osr.splitlines() if ln.startswith("PRETTY_NAME")), "?"))
     if wsl("sh", "-c", "command -v python3", check=False)[0] != 0:
-        wsl("sh", "-c", "apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3-minimal")
+        wsl("sh", "-c", "if command -v apk; then apk add -q python3; elif command -v dnf; then dnf -q -y install python3; "
+            "else apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3-minimal; fi")
     wsl("sh", "-c", "mkdir -p /opt/nimstead && cat > /opt/nimstead/agent.py", input=(ROOT / "agent" / "nimstead_agent.py").read_bytes())
 
 
@@ -113,7 +133,7 @@ def main(keep=False):
         actions = [x for x in summ["top_actions"]]
         assert actions, "no fixable findings in this image; cannot exercise remediation"
 
-        def attempt(pkg, health_units=None):
+        def attempt(pkg, health_units=None, inject=False):
             if health_units is not None:
                 c.patch(f"/api/assets/{a['asset_id']}", json={"health_units": health_units})
             r = c.post("/api/remediation/jobs", json={"asset_id": a["asset_id"], "ecosystem": eco, "package": pkg})
@@ -122,7 +142,7 @@ def main(keep=False):
             jid = r.json()["id"]
             assert c.post(f"/api/remediation/jobs/{jid}/approve").status_code == 200
             [job] = c.get("/api/agent/jobs", headers=h).json()
-            rc, out = agent("run-job", "--yes", input=json.dumps(job).encode(), check=False)
+            rc, out = agent("run-job", "--yes", *(["--fail-after-apply"] if inject else []), input=json.dumps(job).encode(), check=False)
             res = json.loads(out.strip().splitlines()[-1])
             c.post(f"/api/agent/jobs/{jid}/report", json=res, headers=h)
             report()
@@ -140,27 +160,29 @@ def main(keep=False):
                 break
         assert success, "no remediation succeeded"
 
-        # 2) forced health failure -> automatic rollback, versions restored
-        has_systemd = wsl("sh", "-c", "[ -d /run/systemd/system ]", check=False)[0] == 0
+        # 2) failure after the change -> automatic rollback, versions restored. With systemd: a real service that
+        #    breaks on the new version. Without (Alpine/OpenRC): the agent's local --fail-after-apply test hook.
+        inject = wsl("sh", "-c", "[ -d /run/systemd/system ]", check=False)[0] != 0
         rollback = None
-        if not has_systemd:
-            note("rollback scenario skipped", reason="systemd not running in sandbox; health checks need systemctl")
-        else:
+        if True:
             remaining = [x for x in c.get("/api/summary").json()["top_actions"] if x["package"] != success["package"]]
             for act in remaining:
                 pkgs = [p for p in json.loads(agent("collect")[1])["packages"] if p["source"] == act["package"]]
                 if not pkgs:
                     continue
                 name, ver = pkgs[0]["name"], pkgs[0]["version"]
-                # a service that dies once the package version changes: stands in for "upgrade broke the app"
-                script = "while [ \"$(dpkg-query -W -f='${Version}' " + name + ")\" = \"" + ver + "\" ]; do sleep 1; done; exit 1\n"
-                wsl("sh", "-c", "cat > /opt/nimstead/canary.sh", input=script.encode())
-                unit = ("[Unit]\nStartLimitIntervalSec=0\n[Service]\nExecStart=/bin/sh /opt/nimstead/canary.sh\n"
-                        "Restart=on-failure\nRestartSec=1\n")
-                wsl("sh", "-c", "cat > /etc/systemd/system/nimstead-canary.service && systemctl daemon-reload && "
-                    "systemctl start nimstead-canary.service", input=unit.encode())
                 before = {p["name"]: p["version"] for p in pkgs}
-                r = attempt(act["package"], health_units=["nimstead-canary.service"])
+                if not inject:
+                    # a service that dies once the package version changes: stands in for "upgrade broke the app"
+                    rpm_family = eco.split(":")[0] in ("AlmaLinux", "Rocky Linux")
+                    query = ("rpm -q --qf '%{EPOCHNUM}:%{VERSION}-%{RELEASE}' " if rpm_family else "dpkg-query -W -f='${Version}' ") + name
+                    script = "while [ \"$(" + query + ")\" = \"" + ver + "\" ]; do sleep 1; done; exit 1\n"
+                    wsl("sh", "-c", "cat > /opt/nimstead/canary.sh", input=script.encode())
+                    unit = ("[Unit]\nStartLimitIntervalSec=0\n[Service]\nExecStart=/bin/sh /opt/nimstead/canary.sh\n"
+                            "Restart=on-failure\nRestartSec=1\n")
+                    wsl("sh", "-c", "cat > /etc/systemd/system/nimstead-canary.service && systemctl daemon-reload && "
+                        "systemctl start nimstead-canary.service", input=unit.encode())
+                r = attempt(act["package"], health_units=None if inject else ["nimstead-canary.service"], inject=inject)
                 after = {p["name"]: p["version"] for p in json.loads(agent("collect")[1])["packages"] if p["name"] in before}
                 note("rollback attempt", **{k: v for k, v in r.items() if k != "job"}, restored=after == before)
                 if r.get("outcome") == "rolled_back":
@@ -176,7 +198,7 @@ def main(keep=False):
         note("evidence pack", problems=problems, resolved=pack["metrics"]["resolved"],
              controls={f"{x['framework']} {x['control']}": x["status"] for x in pack["controls"]})
         assert not problems
-        note("RESULT: PASS", rollback_tested=bool(rollback))
+        note("RESULT: PASS", rollback_tested=bool(rollback), rollback_trigger="injected" if inject else "service health check")
         return 0
     except Exception as e:
         note("RESULT: FAIL", error=str(e)[:2000])

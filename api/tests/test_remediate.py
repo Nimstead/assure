@@ -227,9 +227,9 @@ def test_broad_ring_pinned_to_canary_version_and_held_on_later_failure(env):
     assert held["status"] == "planned" and "halted" in held["error"]
 
 
-def test_rhel_family_not_auto_remediated_yet(env):
+def test_unsupported_ecosystem_not_remediated(env):
     c = setup(env)
     token = c.post("/api/enroll-tokens", json={"sandbox": True}).json()["token"]
-    a = c.post("/api/agent/enroll", json={"token": token, "hostname": "rocky", "ecosystem": "Rocky Linux:9"}).json()
-    r = c.post("/api/remediation/jobs", json={"asset_id": a["asset_id"], "ecosystem": "Rocky Linux:9", "package": "openssl"})
+    a = c.post("/api/agent/enroll", json={"token": token, "hostname": "py", "ecosystem": "Debian:12"}).json()
+    r = c.post("/api/remediation/jobs", json={"asset_id": a["asset_id"], "ecosystem": "PyPI", "package": "requests"})
     assert r.status_code == 409 and "not supported" in r.json()["detail"]

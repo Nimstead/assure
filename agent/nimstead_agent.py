@@ -18,6 +18,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import tarfile
 import tempfile
 import time
 import urllib.error
@@ -233,10 +234,51 @@ def repack_deb(run, name, version, arch, outdir, info_dir=DPKG_INFO, root="/"):
     return out, f"rebuilt from installed files ({len(paths) - missing} paths, {missing} absent on disk)"
 
 
-class Job:
-    """One remediation job. apt only: other managers are refused until proven in a sandbox (DECISIONS 15)."""
+def apk_owned(db_text, names):
+    """Paths owned by the named packages, from apk's installed database (F: dir, R: file within it)."""
+    out = []
+    for block in db_text.split("\n\n"):
+        lines = block.splitlines()
+        if not any(ln[2:] in names for ln in lines if ln.startswith("P:")):
+            continue
+        cur = ""
+        for ln in lines:
+            if ln.startswith("F:"):
+                cur = ln[2:]
+                out.append("/" + cur)
+            elif ln.startswith("R:"):
+                out.append("/" + (cur + "/" if cur else "") + ln[2:])
+    return out
 
-    def __init__(self, job, run=sh, rollback_root=ROLLBACK_ROOT, apt_cache=APT_CACHE, dpkg_info=DPKG_INFO, root="/"):
+
+def dnf_touched(out):
+    """Package names in a dnf4 transaction table (sections between the header and 'Transaction Summary')."""
+    names, section = set(), False
+    for ln in out.splitlines():
+        s = ln.strip()
+        if s.startswith("Transaction Summary"):
+            break
+        if s.endswith(":") and s.rstrip(":").split()[0] in ("Installing", "Upgrading", "Removing", "Downgrading", "Reinstalling", "Obsoleting"):
+            section = True
+            continue
+        if section and ln.startswith(" ") and s:
+            names.add(s.split()[0])
+    return names
+
+
+TOOLS = {"apt": "apt-get", "apk": "apk", "dnf": "dnf"}
+
+
+class Job:
+    """One remediation job: plan check, dry run, rollback artefact, change, health check, rollback on failure.
+
+    apt: rollback = the old .deb (archive copy, or rebuilt from the installed files).
+    apk / dnf: neither keeps old builds, so rollback = snapshot of every file the planned packages own plus
+    the package database. Sound because the dry run proves the transaction touches only those packages.
+    Maintainer-script side effects (e.g. a restarted service) are not snapshotted; health checks cover them."""
+
+    def __init__(self, job, run=sh, rollback_root=ROLLBACK_ROOT, apt_cache=APT_CACHE, dpkg_info=DPKG_INFO, root="/",
+                 fail_after_apply=False):
         self.run, self.steps, self.artefacts = run, [], []
         self.mgr = job.get("manager")
         self.pkgs = job.get("packages") or []
@@ -245,6 +287,10 @@ class Job:
         self.settle = min(max(int(job.get("settle_seconds", 15) or 0), 0), 300)
         self.dir = os.path.join(rollback_root, re.sub(r"[^A-Za-z0-9]", "", str(job.get("id", ""))) or "unknown")
         self.apt_cache, self.dpkg_info, self.root = apt_cache, dpkg_info, root
+        self.fail_after_apply = fail_after_apply  # sandbox fault injection (run-job only; never from the server)
+
+    def path(self, p):
+        return os.path.join(self.root, p.lstrip("/"))
 
     def step(self, name, cmd=None, ok=None, output="", cwd=None):
         if cmd is not None:
@@ -255,20 +301,95 @@ class Job:
             raise StepFailed(f"{name} failed: {output[-300:].strip()}")
         return output
 
+    # --- state --------------------------------------------------------------
+
     def versions(self):
         out = {}
+        if self.mgr == "apk":
+            try:
+                with open(self.path("/lib/apk/db/installed")) as f:
+                    installed = {p["name"]: p["version"] for p in parse_apk(f.read())}
+            except OSError:
+                installed = {}
+            return {p["name"]: installed.get(p["name"]) for p in self.pkgs}
         for p in self.pkgs:
-            rc, v = self.run(["dpkg-query", "-W", "-f=${Version}", p["name"]])
+            if self.mgr == "apt":
+                rc, v = self.run(["dpkg-query", "-W", "-f=${Version}", p["name"]])
+            else:
+                rc, v = self.run(["rpm", "-q", "--qf", "%{EPOCHNUM}:%{VERSION}-%{RELEASE}\\n", p["name"]])
+                if rc == 0 and len(v.split()) != 1:  # several installed (install-only packages like kernels): refuse
+                    rc = 1
             out[p["name"]] = v.strip() if rc == 0 else None
         return out
+
+    def owned_paths(self):
+        names = {p["name"] for p in self.pkgs}
+        if self.mgr == "apk":
+            with open(self.path("/lib/apk/db/installed")) as f:
+                return set(apk_owned(f.read(), names))
+        paths = set()
+        for n in sorted(names):
+            rc, out = self.run(["rpm", "-ql", n])
+            if rc != 0:
+                raise StepFailed(f"cannot list files of {n}")
+            paths |= {ln.strip() for ln in out.splitlines() if ln.startswith("/")}
+        return paths
 
     def health(self, when):
         for u in self.units:
             self.step(f"{u} active {when}", ["systemctl", "is-active", "--quiet", u])
 
+    def targets(self):
+        """Package specs to install: pinned to a canary-proven version when the server provides one."""
+        if self.mgr == "dnf":
+            return [f"{p['name']}-{p['to']}" if p.get("to") else p["name"] for p in self.pkgs]
+        return [f"{p['name']}={p['to']}" if p.get("to") else p["name"] for p in self.pkgs]
+
+    # --- dry run ------------------------------------------------------------
+
+    def simulate(self):
+        """Dry-run the transaction; refuse if it would touch anything outside the plan (rollback couldn't undo it)."""
+        if self.mgr == "apt":
+            out = self.step("simulate upgrade", ["apt-get", "-s", "install", "--only-upgrade", "--no-remove", *self.targets()])
+            touched = {ln.split()[1] for ln in out.splitlines() if ln.split()[:1] in (["Inst"], ["Remv"], ["Purg"])}
+        elif self.mgr == "apk":
+            out = self.step("simulate upgrade", ["apk", "add", "-s", "--upgrade", *self.targets()])
+            touched = set(re.findall(r"\b(?:Upgrading|Installing|Purging|Downgrading|Replacing|Reinstalling) (\S+)", out))
+        else:
+            rc, out = self.run(["dnf", "upgrade", "--assumeno", *self.targets()])  # exits 1 after printing the plan
+            self.steps.append({"step": "simulate upgrade", "ok": "Transaction Summary" in out or "Nothing to do" in out,
+                               "output": out[-1500:]})
+            if "Transaction Summary" not in out:
+                raise StepFailed("simulate upgrade failed: " + out[-300:].strip())
+            touched = dnf_touched(out)
+        planned = {p["name"] for p in self.pkgs}
+        extra = sorted(touched - planned)
+        self.step("change limited to planned packages", ok=not extra,
+                  output=("would also change: " + ", ".join(extra)) if extra else "touches: " + ", ".join(sorted(touched)))
+
+    # --- rollback artefacts -------------------------------------------------
+
     def save_rollback(self):
-        """Copy a rollback package for every planned package into our own dir (caches can be cleaned mid-upgrade)."""
         os.makedirs(self.dir, mode=0o700, exist_ok=True)
+        if self.mgr == "apt":
+            return self._save_debs()
+        self.old_paths = self.owned_paths()
+        tar_path = os.path.join(self.dir, "files.tar")
+        with tarfile.open(tar_path, "w") as tar:
+            for p in sorted(self.old_paths):
+                if os.path.lexists(self.path(p)):
+                    tar.add(self.path(p), arcname=p.lstrip("/"), recursive=False)
+        self.artefacts.append((tar_path, _sha256(tar_path)))
+        dbs = ["/lib/apk/db", "/etc/apk/world"] if self.mgr == "apk" else ["/var/lib/rpm"]
+        self.db_backups = []
+        for i, d in enumerate(dbs):
+            dest = os.path.join(self.dir, f"db{i}")
+            (shutil.copytree if os.path.isdir(self.path(d)) else shutil.copy2)(self.path(d), dest)
+            self.db_backups.append((d, dest, _tree_sha256(dest)))
+        self.step("rollback snapshot saved", ok=True,
+                  output=f"{len(self.old_paths)} owned paths, package database; sha256 {self.artefacts[0][1]}")
+
+    def _save_debs(self):
         for p in self.pkgs:
             n, v = p["name"], p["from"]
             rc, arch = self.run(["dpkg-query", "-W", "-f=${Architecture}", n])
@@ -293,33 +414,57 @@ class Job:
             self.artefacts.append((dest, digest))
             self.step("rollback package saved " + os.path.basename(dest), ok=True, output="sha256 " + digest)
 
-    def targets(self):
-        """Package specs to install: pinned to a canary-proven version when the server provides one."""
-        return [f"{p['name']}={p['to']}" if p.get("to") else p["name"] for p in self.pkgs]
-
-    def simulate(self):
-        """Dry-run the transaction; refuse if it would touch anything outside the plan (rollback couldn't undo it)."""
-        out = self.step("simulate upgrade", ["apt-get", "-s", "install", "--only-upgrade", "--no-remove", *self.targets()])
-        touched = {ln.split()[1] for ln in out.splitlines() if ln.split()[:1] in (["Inst"], ["Remv"], ["Purg"])}
-        planned = {p["name"] for p in self.pkgs}
-        extra = sorted(touched - planned)
-        self.step("change limited to planned packages", ok=not extra, output=("would also change: " + ", ".join(extra)) if extra else
-                  "touches: " + ", ".join(sorted(touched)))
+    # --- change -------------------------------------------------------------
 
     def apply(self):
-        self.step("upgrade", ["apt-get", "install", "-y", "--only-upgrade", "--no-remove",
-                              "-o", "Dpkg::Options::=--force-confold", *self.targets()])
-        out = self.step("package database check", ["dpkg", "--audit"])
-        if out.strip():
-            self.step("package database consistent", ok=False, output=out)
+        if self.mgr == "apt":
+            self.step("upgrade", ["apt-get", "install", "-y", "--only-upgrade", "--no-remove",
+                                  "-o", "Dpkg::Options::=--force-confold", *self.targets()])
+            out = self.step("package database check", ["dpkg", "--audit"])
+            if out.strip():
+                self.step("package database consistent", ok=False, output=out)
+        elif self.mgr == "apk":
+            try:
+                self.step("upgrade", ["apk", "add", "--upgrade", *self.targets()])
+            finally:  # `apk add` would also record these packages (and pins) in the world file: keep it as it was
+                world_bak = next(b for d, b, _ in self.db_backups if d == "/etc/apk/world")
+                shutil.copy2(world_bak, self.path("/etc/apk/world"))
+        else:
+            self.step("upgrade", ["dnf", "upgrade", "-y", *self.targets()])
         self.result_versions = self.versions()
+        if self.fail_after_apply:
+            self.step("injected failure (sandbox test)", ok=False, output="--fail-after-apply")
 
     def rollback(self):
         for path, digest in self.artefacts:
-            self.step("rollback package intact " + os.path.basename(path), ok=os.path.exists(path) and _sha256(path) == digest,
+            self.step("rollback artefact intact " + os.path.basename(path), ok=os.path.exists(path) and _sha256(path) == digest,
                       output="sha256 mismatch or missing")
-        files = [path for path, _ in self.artefacts]
-        self.step("rollback install", ["dpkg", "-i", *files])
+        if self.mgr == "apt":
+            self.step("rollback install", ["dpkg", "-i", *[p for p, _ in self.artefacts]])
+        else:
+            for d, bak, digest in self.db_backups:
+                self.step(f"database backup intact {d}", ok=_tree_sha256(bak) == digest, output="sha256 mismatch")
+            added = sorted(self.owned_paths() - self.old_paths, reverse=True)  # files the new version brought in
+            for p in added:
+                real = self.path(p)
+                if os.path.islink(real) or os.path.isfile(real):
+                    os.remove(real)
+                elif os.path.isdir(real):
+                    try:
+                        os.rmdir(real)  # only if empty; shared dirs stay
+                    except OSError:
+                        pass
+            with tarfile.open(self.artefacts[0][0]) as tar:
+                kw = {"filter": "fully_trusted"} if hasattr(tarfile, "fully_trusted_filter") else {}  # our own, sha-verified
+                tar.extractall(self.root, **kw)  # noqa: S202 — exact restore needs owners/setuid; archive verified above
+            for d, bak, _ in self.db_backups:
+                real = self.path(d)
+                if os.path.isdir(bak):
+                    shutil.rmtree(real)
+                    shutil.copytree(bak, real)
+                else:
+                    shutil.copy2(bak, real)
+            self.step("rollback restore", ok=True, output=f"removed {len(added)} new paths, restored files and package database")
         now_v = self.versions()
         bad = [p["name"] for p in self.pkgs if now_v.get(p["name"]) != p["from"]]
         self.step("versions restored", ok=not bad, output=("mismatch: " + ", ".join(bad)) if bad else "all restored")
@@ -330,17 +475,19 @@ class Job:
     def execute(self):
         """Returns (outcome, steps, error). outcome: applied | rolled_back | rollback_failed | aborted."""
         try:  # prechecks: a failure here means nothing was changed
-            ok = (self.mgr == "apt" and bool(self.pkgs)
+            ok = (self.mgr in TOOLS and bool(self.pkgs)
                   and all(SAFE_NAME.match(str(p.get("name", ""))) and SAFE_VERSION.match(str(p.get("from", ""))) for p in self.pkgs)
                   and all(SAFE_VERSION.match(str(p["to"])) for p in self.pkgs if p.get("to"))
                   and all(SAFE_NAME.match(str(u)) for u in self.units))
             self.step("job validated", ok=ok, output="" if ok else "unsupported manager, or invalid package name, version or unit")
-            self.step("apt-get available", ["apt-get", "--version"])
+            tool = TOOLS[self.mgr]
+            self.step(f"{tool} available", [tool, "--version"])
             cur = self.versions()
             drift = [p["name"] for p in self.pkgs if cur.get(p["name"]) != p["from"]]
             self.step("installed versions match plan", ok=not drift, output=("drifted: " + ", ".join(drift)) if drift else "")
             self.health("before change")
-            self.step("refresh package index", ["apt-get", "update"])
+            self.step("refresh package index", {"apt": ["apt-get", "update"], "apk": ["apk", "update"],
+                                                "dnf": ["dnf", "makecache"]}[self.mgr])
             self.simulate()
             self.save_rollback()
         except Exception as e:
@@ -358,6 +505,19 @@ class Job:
             return "rolled_back", self.steps, f"Change failed and was rolled back: {err}"
         except Exception as e:
             return "rollback_failed", self.steps, f"ROLLBACK FAILED, host needs attention. Change error: {err}; rollback error: {e}"
+
+
+def _tree_sha256(path):
+    """sha256 over a file, or over every file (name + content) under a directory."""
+    if os.path.isfile(path):
+        return _sha256(path)
+    h = hashlib.sha256()
+    for base, dirs, files in os.walk(path):
+        dirs.sort()
+        for fn in sorted(files):
+            fp = os.path.join(base, fn)
+            h.update(os.path.relpath(fp, path).encode() + b"\0" + _sha256(fp).encode())
+    return h.hexdigest()
 
 
 def _sha256(path):
@@ -486,6 +646,7 @@ def main(argv=None):
     sub.add_parser("remediate", help="run approved remediation jobs, then re-report inventory")
     rj = sub.add_parser("run-job", help="run one job read as JSON from stdin, print the result JSON (no network; sandbox testing)")
     rj.add_argument("--yes", action="store_true", help="confirm: this changes installed packages on this host")
+    rj.add_argument("--fail-after-apply", action="store_true", help="sandbox testing: force a failure after the change to exercise rollback")
     a = ap.parse_args(argv)
     try:
         if a.cmd == "collect":
@@ -502,7 +663,7 @@ def main(argv=None):
         elif a.cmd == "run-job":
             if not a.yes:
                 raise AgentError("run-job changes installed packages; pass --yes to confirm")
-            j = Job(json.load(sys.stdin))
+            j = Job(json.load(sys.stdin), fail_after_apply=a.fail_after_apply)
             outcome, steps, error = j.execute()
             print(json.dumps({"outcome": outcome, "steps": steps, "error": error, "versions": getattr(j, "result_versions", None)}))
             return 0 if outcome == "applied" else 2

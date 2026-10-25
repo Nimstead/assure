@@ -1,45 +1,47 @@
 # Nimstead — status
 
-Read this first each session. Decisions and their reasons: DECISIONS.md. Original plan: milestones below.
+Read this first each session. Decisions and their reasons: DECISIONS.md (items 1–14).
 
 ## Done (with evidence)
 | Area | Where | Evidence |
 |---|---|---|
 | Version comparators dpkg/rpm/apk/semver/PEP 440 | `api/src/nimstead/versions.py` | 60 table tests from reference suites |
-| OSV matcher (source-package, backports, CVE dedup, withdrawn) | `api/src/nimstead/match.py` | Exact agreement with OSV API on 16 real cases — `tests/test_match.py` |
+| OSV matcher (source-package, backports, CVE dedup, withdrawn) | `match.py` | Exact agreement with the OSV API on 16 real cases (`tests/test_match.py`) |
 | Risk scorer (KEV override, EPSS, CVSS, criticality, exposure, fix) with reasons | `risk.py` | `tests/test_risk.py` |
-| Feed sync: OSV bulk zips (incremental), CISA KEV, FIRST EPSS | `feeds.py` | Mocked tests + real smoke run: KEV 1,756, EPSS 395,308, OSV Alpine 44,512 rows |
-| API: signup/login (argon2, cookie), enrol tokens, agent enrol + inventory, findings, assets, fix-action summary | `app.py`, `db.py`, `scan.py` | `tests/test_api.py` incl. tenant isolation, forged tokens |
-| Evidence: hash-chained ledger, Ed25519-signed packs, control mapping (CE, ISO 27001 A.8.8, NIST RA-5/SI-2, PCI 6.3.3, CIS 7), offline verifier | `evidence.py`, `verify_pack.py` | `tests/test_evidence.py` incl. tamper detection, refusal to sign a broken chain |
-| Risk acceptance (reason required, expires, ledgered) | `app.py` | `tests/test_evidence.py` |
-| Remediation server: plans, trust ladder (suggest/approve/auto), canary ring + soak, halt on any failure, sandbox-only dev guard, inventory-verified success, silent-agent timeout | `remediate.py` | `tests/test_remediate.py` (9 tests) |
-| Agent: collector (dpkg/rpm/apk), enrol/report, remediation executor (apt/apk/dnf) with rollback artefacts saved before change, health checks, auto-rollback, local opt-in | `agent/nimstead_agent.py` | `tests/test_agent.py` parsers; `tests/test_agent_remediate.py` simulated apt host (9 tests) |
-| Web UI: auth, onboarding, Fix-first home, virtualised findings + drawer, assets, Ctrl+K, dark/light, mobile | `web/` | `npm run build` clean, 9 vitest tests; manually screenshotted desktop + 375px |
+| Feeds: OSV bulk (incremental), CISA KEV, FIRST EPSS, NVD CVSS 2.0; `feeds update` re-matches all assets | `feeds.py` | Mocked tests + real runs: KEV 1,756, EPSS 395,308, OSV Alpine 44,512, NVD modified 21,041 |
+| API: auth (argon2, timing-safe), enrol tokens (30-day expiry, revoke), agent enrol/inventory, findings (+kev filter), assets (+delete), fix-action summary, install.sh + agent download | `app.py`, `db.py`, `scan.py` | `tests/test_api.py` incl. tenant isolation, Origin/CSRF, 413, Host-header injection |
+| Evidence: hash-chained ledger, Ed25519 packs with pinned-fingerprint verification, control mapping, ledger-derived timings, chain head | `evidence.py`, `verify_pack.py` | `tests/test_evidence.py` incl. re-signed forgery, DB edits of findings table |
+| Remediation server: trust ladder, canary + soak, broad ring pinned to canary versions, halt on failure, kill switch at dispatch, stale-job sweep, late reports, inventory-verified success | `remediate.py` | `tests/test_remediate.py` (13 tests) |
+| Agent executor (apt, apk): dry-run scope check, rollback copies + sha256, health checks with settle, auto-rollback, outcomes persisted + retried, run lock, no-redirect HTTP, local opt-in | `agent/nimstead_agent.py` | `tests/test_agent_remediate.py` simulated apt host (15 tests) |
+| Optional AI (Claude Opus 5.5, fallbacks on): plain-English explanations, NL search → validated filter | `ai.py` | `tests/test_ai.py` with a mocked client only |
+| Web UI: onboarding, Fix-first home, findings + drawer, assets, remediation, evidence, settings, Ctrl+K, dark/light, mobile | `web/` | build clean, vitest passing; screenshotted at desktop + 375px (first pass) |
+| Sandbox harness: disposable WSL distro E2E (detect → remediate → verify → forced-failure rollback → evidence) | `sandbox/sbx.py` | **Written, not yet run** (see blockers) |
 
-Totals at last run: `cd api && uv run pytest -q` → 130 passed; `cd web && npm test` → 9 passed.
+Last runs: `cd api && uv run pytest -q` → 152 passed · `cd web && npm test` → passing (count in last web report).
 
-## NOT yet tested / known gaps (be honest)
-- **Agent never run on a real Linux host.** Collector parsers and executor are tested on sample text / a simulated apt host only. apk and dnf executor paths have no tests at all.
-- **No real sandbox yet.** No Docker; WSL sudo needs the user's password. Plan: disposable WSL distros via `wsl --install Debian --name nimstead-sbx-N` / `wsl --import` (no admin), removed with `wsl --unregister` after each test. Needs user OK to download a distro image.
-- Web UI has no pages yet for remediation jobs, evidence/ledger, settings. Nothing serves `/install.sh`.
-- No feed scheduler (feeds run via CLI only). No CVSS for Debian/Ubuntu records lacking `severity` (NVD enrichment not built) → impact defaults to 5.0.
-- No login rate limiting, no OIDC, no CSRF token (SameSite=Strict cookie only). No Alembic migrations (create_all).
-- AI features (M7) not started; need an Anthropic API key from the user.
-- Maven/NuGet/RubyGems comparators missing → no findings for those ecosystems. Windows agent reports no packages.
-- No accessibility audit (axe) run on the UI; no Playwright e2e.
+## NOT tested / known gaps (honest)
+- **Agent has never run on a real Linux host**, and the sandbox E2E has never run. apk executor path untested. dnf removed from remediation until proven.
+- **AI never called against the real API** (no key on this machine).
+- Ledger can still be rewritten wholesale by a DB-level attacker (DECISIONS 14). No off-database checkpoints yet.
+- No login rate limiting / AI rate limiting, no OIDC, no Alembic migrations (create_all; a dev DB must be deleted after schema changes).
+- No inventory throttling per asset; advisory lookups are per package (fine for hundreds, slow at tens of thousands).
+- Maven/NuGet/RubyGems comparators missing; Windows agent reports no packages.
+- Web: Playwright e2e + axe in progress by a subagent (check `web/` for `npm run e2e`).
 
-## Next (in order)
-1. Web pages: Remediation (plan/approve/status with step log), Evidence (ledger, download pack, control status), Settings (trust ladder mode, soak). Serve `/install.sh` + agent from API.
-2. Security review of auth/agent/remediation (Opus reviewer) and fix findings.
-3. Real sandbox E2E in a disposable WSL distro: enrol, detect, remediate, rollback, verify, evidence pack.
-4. Feed scheduler + NVD CVSS enrichment. 5. AI explanations / NL search (needs key). 6. Playwright + axe.
+## Blockers needing the user
+- Permission to let the sandbox harness download the official Debian WSL image (via `wsl --install Debian --name nimstead-sbx-…`, from Microsoft's distro list, a few hundred MB) plus the OSV Debian advisory zip (~79 MB). The distro is unregistered after each run.
+- Optional: an Anthropic API key (env `ANTHROPIC_API_KEY`) to switch on AI features and test them for real.
+
+## Next
+1. Run `sandbox/sbx.py` once allowed; fix whatever breaks on a real host; record results here.
+2. Signed off-database ledger checkpoints; login/AI rate limiting; Alembic.
+3. Batch advisory lookups; per-asset inventory throttle.
+4. Windows inventory (winget/registry + MSRC/OSV), more ecosystems.
 
 ## Run
-- API tests: `cd api && uv run pytest -q` · lint: `uv run ruff check src tests ../agent`
+- API tests: `cd api && uv run pytest -q` · lint: `uv run ruff check src tests ../agent ../sandbox`
 - API dev server: `cd api && NIMSTEAD_SECURE_COOKIES=0 uv run uvicorn --factory nimstead.app:create_app --port 8000`
-- Seed dev advisories: `cd api && uv run python ../web/scripts/seed.py`; real feeds: `uv run python -m nimstead.feeds kev|epss|osv Debian ...`
-- Web: `cd web && npm run dev` (proxies /api to :8000) · `npm test` · `npm run build`
-- Refresh OSV oracle fixtures: `cd api && uv run python tests/fetch_fixtures.py`
-
-## Working method
-Opus (main) for design and safety-critical code; Sonnet subagents for UI and feature work; Haiku for boilerplate/search. Commit small increments; update this file each time.
+- Feeds: `cd api && uv run python -m nimstead.feeds update` (hourly via cron/systemd timer in prod)
+- Seed dev advisories: `cd api && uv run python ../web/scripts/seed.py`
+- Web: `cd web && npm run dev` · `npm test` · `npm run build`
+- Sandbox E2E: `cd api && uv run python ../sandbox/sbx.py` → `sandbox/last_run.json`

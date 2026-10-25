@@ -151,7 +151,8 @@ class Finding(Base):
 def make_engine(url: str = DB_URL):
     kw = {"connect_args": {"check_same_thread": False}} if url.startswith("sqlite") else {}
     engine = create_engine(url, **kw)
-    Base.metadata.create_all(engine)  # ponytail: create_all until first prod deploy, then Alembic
+    if url.startswith("sqlite"):  # dev/tests; Postgres schemas are managed by Alembic: `alembic upgrade head`
+        Base.metadata.create_all(engine)
     return engine
 
 

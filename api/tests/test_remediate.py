@@ -233,3 +233,17 @@ def test_unsupported_ecosystem_not_remediated(env):
     a = c.post("/api/agent/enroll", json={"token": token, "hostname": "py", "ecosystem": "Debian:12"}).json()
     r = c.post("/api/remediation/jobs", json={"asset_id": a["asset_id"], "ecosystem": "PyPI", "package": "requests"})
     assert r.status_code == 409 and "not supported" in r.json()["detail"]
+
+
+def test_plan_can_include_dependencies_named_by_the_dry_run(env):
+    c = setup(env)
+    token = c.post("/api/enroll-tokens", json={"sandbox": True}).json()["token"]
+    a = c.post("/api/agent/enroll", json={"token": token, "hostname": "h", "ecosystem": "Debian:12"}).json()
+    h = {"Authorization": f"Bearer {a['agent_key']}"}
+    c.post("/api/agent/inventory", json={**inv(OLD), "packages": inv(OLD)["packages"] + [
+        {"ecosystem": "Debian:12", "name": "libc6", "version": "2.36-9", "source": "glibc"}]}, headers=h)
+    body = {"asset_id": a["asset_id"], "ecosystem": "Debian:12", "package": "openssl"}
+    assert c.post("/api/remediation/jobs", json={**body, "include": ["not-installed"]}).status_code == 409
+    j = c.post("/api/remediation/jobs", json={**body, "include": ["libc6"]}).json()
+    assert {p["name"] for p in j["packages"]} == {"libssl3", "openssl", "libc6"}
+    assert "with libc6" in j["summary"]

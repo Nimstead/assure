@@ -1,4 +1,4 @@
-import { aiFilterToPatch, looksLikeQuestion, filtersToApi, filtersToSearch, groupJobs, humaniseKind, installCommands, isActiveJob, parseFilters, priorityOf, relativeTime, whyMatched, type Job } from "./lib";
+import { aiFilterToPatch, dependenciesNeeded, looksLikeQuestion, filtersToApi, filtersToSearch, groupJobs, humaniseKind, installCommands, isActiveJob, parseFilters, priorityOf, relativeTime, whyMatched, type Job } from "./lib";
 
 describe("priorityOf", () => {
   it("mirrors the server thresholds and lets KEV override", () => {
@@ -80,4 +80,10 @@ describe("AI search helpers", () => {
     expect(aiFilterToPatch({ q: "ssl", priority: ["fix-now", "bogus"], status: "resolved", fixable: null, kev: true }))
       .toEqual({ q: "ssl", priority: ["fix-now"], kev: true, fixable: false, status: "resolved" });
   });
+});
+
+it("reads the dependencies a refused dry run needs", () => {
+  expect(dependenciesNeeded("No changes made: change limited to planned packages failed: would also change: musl, libcrypto3")).toEqual(["musl", "libcrypto3"]);
+  expect(dependenciesNeeded("No changes made: drifted: openssl")).toEqual([]);
+  expect(dependenciesNeeded(null)).toEqual([]);
 });

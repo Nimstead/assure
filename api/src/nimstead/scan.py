@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from nimstead import evidence, risk
 from nimstead.db import Advisory, Asset, Cvss, Epss, Finding, InstalledPackage, Kev, now
 from nimstead.match import Package, match_package, normalize_ecosystem
+from nimstead.notify import notify
 
 
 def rescan(s: Session, asset: Asset, inventory_received: bool = True) -> dict:
@@ -27,6 +28,7 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True) -> dict:
             "inventory_sha256": hashlib.sha256(json.dumps(inv).encode()).hexdigest(),
         })
     events: list[tuple[str, Finding]] = []
+    fix_now: list[str] = []  # findings that became fix-now in this rescan
 
     wanted: dict[str, set[str]] = defaultdict(set)
     for p in pkgs:
@@ -64,6 +66,7 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True) -> dict:
                 fix_available=m.fixed is not None,
             )
             f = existing.get(key)
+            was_fix_now = f is not None and f.status == "open" and f.priority == "fix-now"
             if f is None:
                 f = Finding(org_id=asset.org_id, asset_id=asset.id, ecosystem=eco, package=name, vuln_id=m.vuln_id, first_seen=t)
                 s.add(f)
@@ -81,6 +84,8 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True) -> dict:
             f.cvss, f.epss, f.kev = cvss, (ep.score if ep else None), kev is not None
             f.score, f.priority, f.reasons = r.score, r.priority, r.reasons
             f.last_seen = t
+            if f.priority == "fix-now" and f.status in (None, "open") and not was_fix_now:  # status None: new row, default not yet applied
+                fix_now.append(m.vuln_id)
 
     resolved = 0
     for key, f in existing.items():
@@ -95,4 +100,7 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True) -> dict:
             "installed_version": f.installed_version, "fixed_version": f.fixed_version, "priority": f.priority,
         })
     s.commit()
+    if fix_now:  # one message per rescan (per host), not per CVE
+        shown = ", ".join(fix_now[:5]) + (f" and {len(fix_now) - 5} more" if len(fix_now) > 5 else "")
+        notify(s, asset.org_id, "fix_now", f"{len(fix_now)} new fix-now finding{'s' * (len(fix_now) > 1)} on {asset.hostname}: {shown}")
     return {"open": len(seen), "resolved": resolved}

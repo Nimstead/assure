@@ -12,6 +12,7 @@ from typing import Annotated, Literal
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
@@ -39,6 +40,9 @@ INSTALL_SH = Path(__file__).parent / "static" / "install.sh"
 AGENT_FILE = Path(os.environ.get("NIMSTEAD_AGENT_FILE", Path(__file__).parents[3] / "agent" / "nimstead_agent.py"))
 SECURE_COOKIES = os.environ.get("NIMSTEAD_SECURE_COOKIES", "1") != "0"
 ph = PasswordHasher()
+DUMMY_HASH = ph.hash("nimstead-dummy-password")
+MAX_BODY = 10 * 1024 * 1024
+ENROLL_TOKEN_DAYS = 30
 
 
 def sha(token: str) -> str:
@@ -48,6 +52,19 @@ def sha(token: str) -> str:
 def create_app(db_url: str | None = None) -> FastAPI:
     Sessions = make_sessionmaker(db_url) if db_url else make_sessionmaker()
     app = FastAPI(title="Nimstead", docs_url="/api/docs", openapi_url="/api/openapi.json")
+    allowed_origins = {o for o in os.environ.get("NIMSTEAD_ALLOWED_ORIGINS", "").split(",") if o}
+
+    @app.middleware("http")
+    async def guard(request: Request, call_next):
+        if int(request.headers.get("content-length") or 0) > MAX_BODY:
+            return JSONResponse({"detail": "Request body too large"}, status_code=413)
+        # ponytail: chunked bodies without content-length aren't capped here; enforce at the reverse proxy too
+        origin = request.headers.get("origin")
+        if request.method not in ("GET", "HEAD", "OPTIONS") and origin:
+            same = origin == f"{request.url.scheme}://{request.headers.get('host', '')}"
+            if not same and origin not in allowed_origins:  # CSRF defence beyond SameSite (e.g. sibling subdomains)
+                return JSONResponse({"detail": "Cross-origin request refused"}, status_code=403)
+        return await call_next(request)
 
     def db():
         with Sessions() as s:
@@ -112,9 +129,9 @@ def create_app(db_url: str | None = None) -> FastAPI:
         # ponytail: no login rate limiting yet; add per-IP/email throttle before public launch
         user = s.scalar(select(User).where(User.email == body.email.lower()))
         try:
+            ph.verify(user.password_hash if user else DUMMY_HASH, body.password)  # same cost whether or not the user exists
             if not user:
                 raise VerifyMismatchError
-            ph.verify(user.password_hash, body.password)
         except VerifyMismatchError:
             raise HTTPException(401, "Email or password is incorrect") from None
         start_session(s, user, resp)
@@ -139,9 +156,28 @@ def create_app(db_url: str | None = None) -> FastAPI:
     @app.post("/api/enroll-tokens", status_code=201)
     def create_enroll_token(user: CurrentUser, s: DB, body: TokenReq | None = None):
         token = "nme_" + secrets.token_urlsafe(24)
-        s.add(EnrollToken(token_hash=sha(token), org_id=user.org_id, sandbox=bool(body and body.sandbox)))
+        et = EnrollToken(token_hash=sha(token), org_id=user.org_id, sandbox=bool(body and body.sandbox),
+                         expires=now() + timedelta(days=ENROLL_TOKEN_DAYS))
+        s.add(et)
+        evidence.append(s, user.org_id, "enroll_token_created", et.token_hash[:12], {"by": user.email, "sandbox": et.sandbox})
         s.commit()
-        return {"token": token}  # shown once
+        return {"token": token, "id": et.token_hash[:12], "expires": et.expires}  # token shown once
+
+    @app.get("/api/enroll-tokens")
+    def list_enroll_tokens(user: CurrentUser, s: DB):
+        rows = s.scalars(select(EnrollToken).where(EnrollToken.org_id == user.org_id).order_by(EnrollToken.created.desc()))
+        return [{"id": e.token_hash[:12], "created": e.created, "expires": e.expires, "revoked": e.revoked, "sandbox": e.sandbox}
+                for e in rows]
+
+    @app.delete("/api/enroll-tokens/{token_id}", status_code=204)
+    def revoke_enroll_token(token_id: str, user: CurrentUser, s: DB):
+        et = s.scalar(select(EnrollToken).where(EnrollToken.org_id == user.org_id, EnrollToken.token_hash.startswith(token_id[:12]),
+                                                func.length(token_id) == 12))
+        if not et:
+            raise HTTPException(404, "Token not found")
+        et.revoked = True
+        evidence.append(s, user.org_id, "enroll_token_revoked", token_id, {"by": user.email})
+        s.commit()
 
     class Enroll(BaseModel):
         token: str = Field(max_length=200)
@@ -154,8 +190,8 @@ def create_app(db_url: str | None = None) -> FastAPI:
         # Owning the enrol token and running the agent on the host is the proof of control:
         # only enrolled assets are ever scanned.
         et = s.get(EnrollToken, sha(body.token))
-        if not et or et.revoked:
-            raise HTTPException(403, "Invalid or revoked enrolment token")
+        if not et or et.revoked or (et.expires and et.expires < now()):
+            raise HTTPException(403, "Invalid, expired or revoked enrolment token")
         key = "nma_" + secrets.token_urlsafe(32)
         asset = Asset(org_id=et.org_id, hostname=body.hostname, os_name=body.os_name, ecosystem=body.ecosystem,
                       agent_key_hash=sha(key), sandbox=et.sandbox)
@@ -201,6 +237,7 @@ def create_app(db_url: str | None = None) -> FastAPI:
     class JobReport(BaseModel):
         outcome: str = Field(max_length=30)
         steps: list[dict] = Field(default_factory=list, max_length=200)
+        versions: dict[str, str | None] | None = Field(None, max_length=500)
         error: str | None = Field(None, max_length=5000)
 
     @app.post("/api/agent/jobs/{job_id}/report")
@@ -209,7 +246,7 @@ def create_app(db_url: str | None = None) -> FastAPI:
         if not job or job.asset_id != asset.id:
             raise HTTPException(404, "Job not found")
         try:
-            remediate.report(s, job, body.outcome, body.steps, body.error)
+            remediate.report(s, job, body.outcome, body.steps, body.error, body.versions)
         except remediate.RemediationError as e:
             raise HTTPException(409, str(e)) from None
         s.commit()
@@ -243,6 +280,15 @@ def create_app(db_url: str | None = None) -> FastAPI:
         if not a or a.org_id != user.org_id:
             raise HTTPException(404, "Asset not found")
         return a
+
+    @app.delete("/api/assets/{asset_id}", status_code=204)
+    def delete_asset(asset_id: str, user: CurrentUser, s: DB):
+        a = owned_asset(s, user, asset_id)
+        evidence.append(s, user.org_id, "asset_deleted", a.id, {"by": user.email, "hostname": a.hostname})
+        for model in (Finding, InstalledPackage, RemediationJob):
+            s.execute(delete(model).where(model.asset_id == a.id))
+        s.delete(a)
+        s.commit()
 
     class AssetPatch(BaseModel):
         criticality: Literal["low", "medium", "high", "critical"] | None = None
@@ -278,7 +324,7 @@ def create_app(db_url: str | None = None) -> FastAPI:
         user: CurrentUser, s: DB,
         status: Literal["open", "resolved", "accepted"] = "open",
         priority: str | None = None, asset_id: str | None = None, q: str | None = None,
-        fixable: bool | None = None, limit: int = 500,
+        fixable: bool | None = None, kev: bool | None = None, limit: int = Query(500, ge=1, le=5000),
     ):
         stmt = (
             select(Finding, Asset.hostname).join(Asset, Asset.id == Finding.asset_id)
@@ -288,6 +334,8 @@ def create_app(db_url: str | None = None) -> FastAPI:
             stmt = stmt.where(Finding.priority.in_(priority.split(",")))
         if asset_id:
             stmt = stmt.where(Finding.asset_id == asset_id)
+        if kev is not None:
+            stmt = stmt.where(Finding.kev == kev)
         if fixable is not None:
             stmt = stmt.where(Finding.fixed_version.is_not(None) if fixable else Finding.fixed_version.is_(None))
         if q:
@@ -326,7 +374,7 @@ def create_app(db_url: str | None = None) -> FastAPI:
             "id": j.id, "asset_id": j.asset_id, "hostname": hostname, "status": j.status, "manager": j.manager,
             "action_key": j.action_key, "packages": j.packages, "finding_ids": j.finding_ids, "summary": j.summary,
             "created_by": j.created_by, "approved_by": j.approved_by, "created": j.created, "updated": j.updated,
-            "steps": j.steps, "error": j.error,
+            "steps": j.steps, "error": j.error, "result_versions": j.result_versions,
         }
 
     class PlanReq(BaseModel):
@@ -346,6 +394,7 @@ def create_app(db_url: str | None = None) -> FastAPI:
 
     @app.get("/api/remediation/jobs")
     def list_jobs(user: CurrentUser, s: DB, status: str | None = None):
+        remediate.sweep(s, user.org_id)
         stmt = (select(RemediationJob, Asset.hostname).join(Asset, Asset.id == RemediationJob.asset_id)
                 .where(RemediationJob.org_id == user.org_id))
         if status:
@@ -387,9 +436,15 @@ def create_app(db_url: str | None = None) -> FastAPI:
     # --- evidence ----------------------------------------------------------
 
     @app.get("/api/evidence/ledger")
-    def ledger(user: CurrentUser, s: DB, limit: int = Query(100, le=1000)):
+    def ledger(user: CurrentUser, s: DB, limit: int = Query(100, ge=1, le=1000)):
         rows = s.scalars(select(LedgerEntry).where(LedgerEntry.org_id == user.org_id).order_by(LedgerEntry.seq.desc()).limit(limit))
         return {"problems": evidence.verify_chain(s, user.org_id), "entries": [evidence.entry_dict(e) for e in rows]}
+
+    @app.get("/api/evidence/public-key")
+    def evidence_public_key():
+        """Publish this out of band (website, contract, auditor email); auditors verify packs against it, not the copy in the zip."""
+        pem = evidence.public_pem(evidence.signing_key())
+        return {"pem": pem.decode(), "fingerprint_sha256": evidence.fingerprint(pem)}
 
     @app.get("/api/evidence/report")
     def evidence_report(user: CurrentUser, s: DB, days: int = Query(90, ge=1, le=730)):
@@ -407,6 +462,7 @@ def create_app(db_url: str | None = None) -> FastAPI:
 
     @app.get("/api/summary")
     def summary(user: CurrentUser, s: DB):
+        remediate.sweep(s, user.org_id)
         open_ = s.execute(
             select(Finding, Asset.hostname).join(Asset, Asset.id == Finding.asset_id)
             .where(Finding.org_id == user.org_id, Finding.status == "open")
@@ -437,7 +493,7 @@ def create_app(db_url: str | None = None) -> FastAPI:
             "attention": [job_json(j, h) for j, h in s.execute(
                 select(RemediationJob, Asset.hostname).join(Asset, Asset.id == RemediationJob.asset_id)
                 .where(RemediationJob.org_id == user.org_id,
-                       RemediationJob.status.in_(("failed", "rolled_back", "rollback_failed", "not_fixed", "aborted")))
+                       RemediationJob.status.in_(("failed", "rolled_back", "rollback_failed", "not_fixed", "aborted", "cancelled")))
                 .order_by(RemediationJob.updated.desc()).limit(20))],
         }
 

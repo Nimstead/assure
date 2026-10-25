@@ -116,3 +116,40 @@ def test_feed_update_rescans_existing_assets(env):
     s.commit()
     rescan(s, s.get(Asset, a["asset_id"]), inventory_received=False)
     assert c.get(f"/api/findings/{target['id']}").json()["priority"] == "fix-now"
+
+
+def test_enrol_tokens_expire_and_revoke(env):
+    from sqlalchemy import update
+    from sqlalchemy.orm import sessionmaker
+
+    from nimstead.db import EnrollToken, make_engine, now
+
+    c = user(env)
+    t1 = c.post("/api/enroll-tokens").json()
+    c.delete(f"/api/enroll-tokens/{t1['id']}")
+    assert c.post("/api/agent/enroll", json={"token": t1["token"], "hostname": "x"}).status_code == 403
+    t2 = c.post("/api/enroll-tokens").json()
+    s = sessionmaker(make_engine(env))()
+    s.execute(update(EnrollToken).values(expires=now()))
+    s.commit()
+    assert c.post("/api/agent/enroll", json={"token": t2["token"], "hostname": "x"}).status_code == 403
+    assert {t["revoked"] for t in c.get("/api/enroll-tokens").json()} == {True, False}
+    assert user(env, "b@example.com").delete(f"/api/enroll-tokens/{t2['id']}").status_code == 404  # other tenant
+
+
+def test_asset_delete(env):
+    c = user(env)
+    a = enrol(c)
+    c.post("/api/agent/inventory", json=INV, headers={"Authorization": f"Bearer {a['agent_key']}"})
+    assert user(env, "b@example.com").delete(f"/api/assets/{a['asset_id']}").status_code == 404
+    assert c.delete(f"/api/assets/{a['asset_id']}").status_code == 204
+    assert c.get("/api/assets").json() == [] and c.get("/api/findings").json() == []
+    assert c.post("/api/agent/inventory", json=INV, headers={"Authorization": f"Bearer {a['agent_key']}"}).status_code == 401
+
+
+def test_request_guards(env):
+    c = user(env)
+    assert c.post("/api/enroll-tokens", headers={"Origin": "https://evil.example"}).status_code == 403
+    assert c.post("/api/enroll-tokens", headers={"Origin": "http://testserver"}).status_code == 201
+    assert c.post("/api/agent/inventory", content=b"x", headers={"Content-Length": str(11 * 1024 * 1024)}).status_code == 413
+    assert c.get("/api/findings", params={"limit": -1}).status_code == 422

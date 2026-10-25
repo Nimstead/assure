@@ -22,7 +22,7 @@ install -d -m 0755 /usr/local/lib/nimstead
 curl -fsSL "$SERVER/agent/nimstead_agent.py" -o /usr/local/lib/nimstead/nimstead_agent.py
 chmod 0755 /usr/local/lib/nimstead/nimstead_agent.py
 AGENT="python3 /usr/local/lib/nimstead/nimstead_agent.py $INSECURE"
-$AGENT enroll --server "$SERVER" --token "$TOKEN" $EXTRA
+NIMSTEAD_TOKEN="$TOKEN" $AGENT enroll --server "$SERVER" $EXTRA
 $AGENT report
 
 if command -v systemctl >/dev/null && [ -d /run/systemd/system ]; then

@@ -1,6 +1,7 @@
 """HTTP API. Web users authenticate with a session cookie; agents with a per-asset bearer key."""
 
 import hashlib
+import json
 import os
 import re
 import secrets
@@ -13,13 +14,14 @@ from typing import Annotated, Literal
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from nimstead import ai, evidence, remediate
+from nimstead import ai, evidence, remediate, sbom
 from nimstead.db import (
     Asset,
     EnrollToken,
@@ -240,7 +242,7 @@ def create_app(db_url: str | None = None) -> FastAPI:
         if not authorization or not authorization.startswith("Bearer "):
             raise HTTPException(401, "Missing agent key")
         asset = s.scalar(select(Asset).where(Asset.agent_key_hash == sha(authorization.removeprefix("Bearer "))))
-        if not asset:
+        if not asset or asset.kind != "host":  # application assets hold an SBOM upload token, never an agent key
             raise HTTPException(401, "Unknown agent key")
         return asset
 
@@ -253,8 +255,8 @@ def create_app(db_url: str | None = None) -> FastAPI:
             raise HTTPException(429, f"Inventory already received; send at most one every {INVENTORY_MIN_SECONDS}s")
         last_inventory[asset.id] = time.monotonic()
         asset.os_name, asset.ecosystem, asset.last_seen = body.os_name or asset.os_name, body.ecosystem or asset.ecosystem, now()
-        s.execute(delete(InstalledPackage).where(InstalledPackage.asset_id == asset.id))
-        s.add_all(InstalledPackage(asset_id=asset.id, **p.model_dump()) for p in body.packages)
+        s.execute(delete(InstalledPackage).where(InstalledPackage.asset_id == asset.id, InstalledPackage.origin == "agent"))
+        s.add_all(InstalledPackage(asset_id=asset.id, origin="agent", **p.model_dump()) for p in body.packages)
         s.flush()
         result = rescan(s, asset)
         remediate.verify(s, asset)
@@ -289,7 +291,7 @@ def create_app(db_url: str | None = None) -> FastAPI:
     def asset_json(a: Asset, counts: dict) -> dict:
         return {
             "id": a.id, "hostname": a.hostname, "os_name": a.os_name, "ecosystem": a.ecosystem,
-            "criticality": a.criticality, "internet_facing": a.internet_facing, "sandbox": a.sandbox,
+            "kind": a.kind, "criticality": a.criticality, "internet_facing": a.internet_facing, "sandbox": a.sandbox,
             "ring": a.ring, "health_units": a.health_units,
             "first_seen": a.first_seen, "last_seen": a.last_seen, "open_by_priority": counts,
         }
@@ -339,6 +341,55 @@ def create_app(db_url: str | None = None) -> FastAPI:
         evidence.append(s, a.org_id, "asset_context_changed", a.id, {"by": user.email, **body.model_dump(exclude_none=True)})
         rescan(s, a, inventory_received=False)  # context changed -> scores change
         return asset_json(a, {})
+
+    # --- applications & SBOM upload ----------------------------------------
+
+    class AppNew(BaseModel):
+        name: str = Field(min_length=1, max_length=255)
+        criticality: Literal["low", "medium", "high", "critical"] = "medium"
+        internet_facing: bool = False
+
+    @app.post("/api/assets", status_code=201)
+    def create_application(body: AppNew, user: CurrentUser, s: DB):
+        token = "nmu_" + secrets.token_urlsafe(32)  # CI upload token: SBOM endpoint only, rejected by every agent endpoint
+        a = Asset(org_id=user.org_id, hostname=body.name, kind="application", criticality=body.criticality,
+                  internet_facing=body.internet_facing, agent_key_hash=sha(token))
+        s.add(a)
+        s.flush()
+        evidence.append(s, user.org_id, "asset_created", a.id, {"by": user.email, "name": a.hostname, "kind": a.kind})
+        s.commit()
+        return {**asset_json(a, {}), "upload_token": token}  # token shown once
+
+    @app.post("/api/assets/{asset_id}/sbom")
+    async def upload_sbom(asset_id: str, request: Request, s: DB):
+        raw = b""
+        async for chunk in request.stream():  # cap chunked bodies too, which the middleware can't see
+            raw += chunk
+            if len(raw) > MAX_BODY:
+                raise HTTPException(413, "Request body too large")
+        return await run_in_threadpool(ingest_sbom, asset_id, request, raw, s)
+
+    def ingest_sbom(asset_id: str, request: Request, raw: bytes, s: Session) -> dict:
+        auth = request.headers.get("authorization", "")
+        if auth.startswith("Bearer "):  # the asset's own key / upload token, for that asset only
+            a = s.scalar(select(Asset).where(Asset.agent_key_hash == sha(auth.removeprefix("Bearer "))))
+            if not a or a.id != asset_id:
+                raise HTTPException(401, "Unknown key for this asset")
+            by = "key"
+        else:
+            user = current_user(request, s)
+            a, by = owned_asset(s, user, asset_id), user.email
+        try:
+            pkgs, counts = sbom.parse(json.loads(raw))
+        except (ValueError, RecursionError) as e:  # bad JSON, bad UTF-8 or SbomError
+            raise HTTPException(422, f"Invalid SBOM: {e}") from None
+        s.execute(delete(InstalledPackage).where(InstalledPackage.asset_id == a.id, InstalledPackage.origin == "sbom"))
+        s.add_all(InstalledPackage(asset_id=a.id, origin="sbom", ecosystem=e, name=n, version=v) for e, n, v in pkgs)
+        a.last_seen = now()
+        s.flush()
+        evidence.append(s, a.org_id, "sbom_received", a.id, {
+            "name": a.hostname, "by": by, "sha256": hashlib.sha256(raw).hexdigest(), **counts})
+        return {**counts, **rescan(s, a, inventory_received=False)}
 
     # --- findings ----------------------------------------------------------
 

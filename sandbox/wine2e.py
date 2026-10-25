@@ -40,7 +40,7 @@ def guest(cmd, timeout=3600, check=True):
     return out
 
 
-def as_system(cmd, name="NimsteadTest", wait_minutes=120):
+def as_system(cmd, name="NimsteadTest", wait_minutes=120, result=None):
     """Run cmd as SYSTEM through a one-off scheduled task (Windows Update refuses remote/network logons)."""
     # the command goes in a .cmd file: cmd /c inside a task argument mangles quoted "C:\Program Files\..." paths
     guest("Set-Content -Path C:\\nimtest\\task.cmd -Encoding ascii -Value @'\r\n" + cmd + "\r\necho done > C:\\nimtest\\done.txt\r\n'@")
@@ -52,6 +52,9 @@ def as_system(cmd, name="NimsteadTest", wait_minutes=120):
     end = time.time() + wait_minutes * 60
     while time.time() < end:
         if "True" in guest(r"Test-Path C:\nimtest\done.txt", check=False):
+            return
+        # the agent's own result file is authoritative (the task's cmd can be torn down by servicing right after it)
+        if result and '"outcome"' in guest(f"Get-Content {result} -Raw -ErrorAction SilentlyContinue", check=False):
             return
         time.sleep(20)
     raise RuntimeError(f"SYSTEM task did not finish in {wait_minutes} min: {cmd}")
@@ -131,18 +134,18 @@ def main(keep=False) -> int:
         note("job dispatched", kb=job["packages"][0]["kb"], target=job["packages"][0]["to"])
         guest("Set-Content -Path C:\\nimtest\\job.json -Value '" + json.dumps(job).replace("'", "''") + "' -Encoding ascii")
         agent = r'"C:\Program Files\Python313\python.exe" "C:\Program Files\Nimstead\nimstead_agent.py"'
-        as_system(rf"{agent} run-job --yes --fail-after-apply < C:\nimtest\job.json > C:\nimtest\out1.json 2>&1", wait_minutes=150)
+        as_system(rf"{agent} run-job --yes --fail-after-apply < C:\nimtest\job.json > C:\nimtest\out1.json 2>&1", wait_minutes=150, result=r"C:\nimtest\out1.json")
         r1 = json.loads(guest(r"Get-Content C:\nimtest\out1.json -Raw").strip().splitlines()[-1])
         note("update installed, waiting for reboot", outcome=r1["outcome"], steps=[s["step"] for s in r1["steps"]][-4:])
         assert r1["outcome"] == "pending_reboot", r1
         reboot_and_wait()
         note("rebooted", build=build())
-        as_system(rf"{agent} resume-job > C:\nimtest\out2.json 2>&1", wait_minutes=90)
+        as_system(rf"{agent} resume-job > C:\nimtest\out2.json 2>&1", wait_minutes=90, result=r"C:\nimtest\out2.json")
         r2 = json.loads(guest(r"Get-Content C:\nimtest\out2.json -Raw").strip().splitlines()[-1])
         note("injected failure -> rollback started", outcome=r2["outcome"], steps=[s["step"] for s in r2["steps"]][-4:])
         assert r2["outcome"] == "pending_reboot", r2
         reboot_and_wait()
-        as_system(rf"{agent} resume-job > C:\nimtest\out3.json 2>&1", wait_minutes=60)
+        as_system(rf"{agent} resume-job > C:\nimtest\out3.json 2>&1", wait_minutes=60, result=r"C:\nimtest\out3.json")
         r3 = json.loads(guest(r"Get-Content C:\nimtest\out3.json -Raw").strip().splitlines()[-1])
         after = build()
         note("rollback finished", outcome=r3["outcome"], build_now=after, build_before=start_build)

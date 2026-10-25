@@ -19,7 +19,8 @@ export function Onboarding() {
   useTitle("Add a machine");
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const token = useMutation({ mutationFn: () => api<{ token: string }>("/api/enroll-tokens", { method: "POST" }) });
+  const [sandbox, setSandbox] = useState(false);
+  const token = useMutation({ mutationFn: () => api<{ token: string }>("/api/enroll-tokens", { method: "POST", body: { sandbox } }) });
   const [celebrate, setCelebrate] = useState(false);
   const baseline = useRef<number | null>(null);
 
@@ -75,6 +76,11 @@ export function Onboarding() {
               <li className="flex items-center gap-2 text-muted"><span className="size-4 text-center text-xs" aria-hidden>2</span>Run one command on the machine</li>
               <li className="flex items-center gap-2 text-muted"><span className="size-4 text-center text-xs" aria-hidden>3</span>See what to fix first</li>
             </ol>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" className="size-4 accent-[var(--accent)]" checked={sandbox} onChange={(e) => setSandbox(e.target.checked)} />
+              This is a disposable test machine
+            </label>
+            {sandbox && <p className="max-w-prose text-sm text-muted">Sandbox machines are the only ones automated fixes may change until production remediation is enabled.</p>}
             <button className={btnPrimary} onClick={() => token.mutate()} disabled={token.isPending}>
               {token.isPending ? "Creating…" : "Add a machine"}
             </button>

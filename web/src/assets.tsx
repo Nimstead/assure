@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Switch } from "radix-ui";
@@ -6,6 +7,7 @@ import { api, assetsQ, filtersToSearch, parseFilters, PRIORITIES, relativeTime, 
 import { btnPrimary, EmptyState, ErrorState, input, PriorityPill, Skeleton } from "./ui";
 import clsx from "clsx";
 
+type AssetPatch = Partial<Pick<Asset, "criticality" | "internet_facing" | "ring" | "health_units">>;
 const LEVELS: Criticality[] = ["low", "medium", "high", "critical"];
 
 export function AssetsPage() {
@@ -14,7 +16,7 @@ export function AssetsPage() {
   const q = useQuery(assetsQ);
 
   const patch = useMutation({
-    mutationFn: ({ id, ...body }: { id: string } & Partial<Pick<Asset, "criticality" | "internet_facing">>) =>
+    mutationFn: ({ id, ...body }: { id: string } & AssetPatch) =>
       api(`/api/assets/${id}`, { method: "PATCH", body }),
     onMutate: async ({ id, ...body }) => {
       await qc.cancelQueries({ queryKey: assetsQ.queryKey });
@@ -50,12 +52,13 @@ export function AssetsPage() {
   );
 }
 
-function AssetRow({ a, onPatch }: { a: Asset; onPatch: (p: Partial<Pick<Asset, "criticality" | "internet_facing">>) => void }) {
+function AssetRow({ a, onPatch }: { a: Asset; onPatch: (p: AssetPatch) => void }) {
   const open = PRIORITIES.filter((p) => a.open_by_priority[p]);
   return (
     <li className="grid gap-x-6 gap-y-3 p-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto] lg:items-center">
       <div className="min-w-0">
-        <h2 className="truncate text-base font-semibold">{a.hostname}</h2>
+        <h2 className="flex items-center gap-2 text-base font-semibold"><span className="truncate">{a.hostname}</span>
+          {a.sandbox && <span title="Disposable test machine: the only kind remediation may change until production remediation is enabled" className="shrink-0 rounded border border-line-strong px-1.5 py-px text-[11px] font-semibold tracking-wide text-muted">Sandbox</span>}</h2>
         <p className="truncate text-sm text-muted">
           {a.os_name || "Unknown OS"} · seen <time dateTime={a.last_seen + "Z"} title={new Date(a.last_seen + "Z").toLocaleString()}>{relativeTime(a.last_seen)}</time>
         </p>
@@ -84,7 +87,31 @@ function AssetRow({ a, onPatch }: { a: Asset; onPatch: (p: Partial<Pick<Asset, "
           </Switch.Root>
           Internet-facing
         </label>
+        <label className="flex items-center gap-2 text-sm">
+          <span className="text-muted">Ring</span>
+          <select className={clsx(input, "min-h-9 w-auto")} value={a.ring} onChange={(e) => onPatch({ ring: Number(e.target.value) as 0 | 1 })}>
+            <option value={0}>Canary</option><option value={1}>Broad</option>
+          </select>
+        </label>
+        <HealthUnits a={a} onPatch={onPatch} />
       </div>
     </li>
+  );
+}
+
+/** Comma-separated systemd units checked before and after a fix; saved on blur / Enter. */
+function HealthUnits({ a, onPatch }: { a: Asset; onPatch: (p: AssetPatch) => void }) {
+  const saved = a.health_units.join(", ");
+  const [text, setText] = useState(saved);
+  const commit = () => {
+    const units = text.split(",").map((u) => u.trim()).filter(Boolean);
+    if (units.join(", ") !== saved) onPatch({ health_units: units });
+  };
+  return (
+    <label className="flex items-center gap-2 text-sm">
+      <span className="text-muted">Health units</span>
+      <input className={clsx(input, "min-h-9 w-48")} value={text} placeholder="nginx, sshd" onChange={(e) => setText(e.target.value)} onBlur={commit}
+        onKeyDown={(e) => e.key === "Enter" && commit()} title="systemd units that must be active before and after a fix" />
+    </label>
   );
 }

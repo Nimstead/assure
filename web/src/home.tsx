@@ -1,8 +1,9 @@
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, CheckCircle2 } from "lucide-react";
+import { ArrowRight, CheckCircle2, TriangleAlert } from "lucide-react";
 import { filtersToSearch, parseFilters, plural, PRIORITIES, PRIORITY_LABEL, priorityOf, summaryQ, useTitle, type Action } from "./lib";
 import { Onboarding } from "./onboarding";
+import { PlanFixButton, StatusPill } from "./remediation";
 import { ErrorState, KevBadge, PriorityPill, Skeleton } from "./ui";
 import clsx from "clsx";
 
@@ -28,6 +29,18 @@ export function Home() {
             : `${plural(total, "open finding")} across ${plural(s.assets, "machine")}. These upgrades clear the most risk.`}
         </p>
       </header>
+
+      {s.attention.length > 0 && (
+        <section aria-labelledby="attention" className="rounded-lg border border-line-strong bg-sunken p-4">
+          <h2 id="attention" className="flex items-center gap-2 font-semibold"><TriangleAlert className="size-4" aria-hidden />{plural(s.attention.length, "fix", "fixes")} need{s.attention.length === 1 ? "s" : ""} a look</h2>
+          <ul className="mt-2 flex flex-col gap-1.5 text-sm">
+            {s.attention.slice(0, 5).map((j) => (
+              <li key={j.id} className="flex flex-wrap items-center gap-x-2 gap-y-1"><StatusPill status={j.status} /><span>{j.summary} on {j.hostname}</span></li>
+            ))}
+          </ul>
+          <Link to="/remediation" className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-accent underline">Review in Remediation <ArrowRight className="size-4" aria-hidden /></Link>
+        </section>
+      )}
 
       <ul className="grid grid-cols-2 gap-2 sm:grid-cols-4" aria-label="Open findings by priority">
         {PRIORITIES.map((p) => (
@@ -80,13 +93,16 @@ function ActionCard({ a }: { a: Action }) {
           </span>
         </p>
       </div>
-      <Link
-        to="/findings"
-        search={filtersToSearch({ ...parseFilters({}), q: a.package })}
-        className="inline-flex shrink-0 items-center gap-1.5 text-sm font-medium text-accent underline"
-      >
-        View findings <ArrowRight className="size-4" aria-hidden />
-      </Link>
+      <div className="flex shrink-0 flex-wrap items-start gap-x-4 gap-y-2">
+        <PlanFixButton ecosystem={a.ecosystem} pkg={a.package} hosts={a.hosts} />
+        <Link
+          to="/findings"
+          search={filtersToSearch({ ...parseFilters({}), q: a.package })}
+          className="inline-flex min-h-9 items-center gap-1.5 text-sm font-medium text-accent underline"
+        >
+          View findings <ArrowRight className="size-4" aria-hidden />
+        </Link>
+      </div>
     </li>
   );
 }

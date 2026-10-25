@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { queryOptions } from "@tanstack/react-query";
 
 // ---- types (mirror api/src/nimstead/app.py) ---------------------------------
 export const PRIORITIES = ["fix-now", "next", "planned", "low"] as const;
@@ -8,7 +9,7 @@ export type Criticality = "low" | "medium" | "high" | "critical";
 
 export interface Asset {
   id: string; hostname: string; os_name: string; ecosystem: string;
-  criticality: Criticality; internet_facing: boolean; sandbox: boolean;
+  criticality: Criticality; internet_facing: boolean; sandbox: boolean; ring: 0 | 1; health_units: string[];
   first_seen: string; last_seen: string; open_by_priority: Partial<Record<Priority, number>>;
 }
 export interface Finding {
@@ -22,7 +23,45 @@ export interface Action {
   ecosystem: string; package: string; fixed_version: string; hosts: string[]; vulns: string[];
   kev: boolean; max_score: number;
 }
-export interface Summary { assets: number; open_by_priority: Partial<Record<Priority, number>>; top_actions: Action[] }
+export interface Summary { assets: number; open_by_priority: Partial<Record<Priority, number>>; top_actions: Action[]; attention: Job[] }
+
+// ---- remediation -----------------------------------------------------------------
+export type JobStatus = "planned" | "approved" | "dispatched" | "verifying" | "succeeded" | "failed" | "rolled_back" | "rollback_failed" | "not_fixed" | "aborted";
+export interface JobStep { step: string; ok: boolean; output?: string }
+export interface Job {
+  id: string; asset_id: string; hostname: string; status: JobStatus; manager: string; action_key: string;
+  packages: unknown; finding_ids: string[]; summary: string; created_by: string; approved_by: string | null;
+  created: string; updated: string; steps: JobStep[] | null; error: string | null;
+}
+export const JOB_GROUPS = [
+  { key: "approval", title: "Needs approval", statuses: ["planned"] },
+  { key: "progress", title: "In progress", statuses: ["approved", "dispatched", "verifying"] },
+  { key: "attention", title: "Needs attention", statuses: ["failed", "rolled_back", "rollback_failed", "not_fixed", "aborted"] },
+  { key: "done", title: "Done", statuses: ["succeeded"] },
+] as const;
+export const JOB_STATUS_LABEL: Record<JobStatus, string> = {
+  planned: "Awaiting approval", approved: "Approved, waiting for host", dispatched: "Running on host", verifying: "Verifying",
+  succeeded: "Fixed and verified", failed: "Failed", rolled_back: "Rolled back", rollback_failed: "Rollback failed",
+  not_fixed: "Applied, still vulnerable", aborted: "Aborted",
+};
+export const groupJobs = (jobs: Job[]) =>
+  JOB_GROUPS.map((g) => ({ ...g, jobs: jobs.filter((j) => (g.statuses as readonly string[]).includes(j.status)) }));
+export const isActiveJob = (j: Pick<Job, "status">) => ["approved", "dispatched", "verifying"].includes(j.status);
+
+export const APPROVE_COPY = "Saves a rollback copy of each package, upgrades, checks health, rolls back automatically on failure. Success is confirmed by the next inventory.";
+
+/** "remediation_not_fixed" -> "Remediation not fixed". */
+export const humaniseKind = (k: string) => { const t = k.replace(/_/g, " ").trim(); return t.charAt(0).toUpperCase() + t.slice(1); };
+
+export interface LedgerEntry { seq: number; ts: string; kind: string; subject: string; hash: string; prev_hash: string; data: Record<string, unknown> }
+export interface Control { framework: string; control: string; requirement: string; status: "met" | "not_met"; evidence: string }
+export interface EvidenceReport {
+  controls: Control[]; period: { from: string; to: string };
+  metrics: { resolved: number; resolved_within_sla: number; overdue_open: number; mttr_days: number | null };
+  ledger: { head_hash: string; entries: number };
+}
+export interface Settings { remediation_mode: "suggest" | "approve" | "auto"; canary_soak_hours: number; production_remediation_allowed: boolean }
+export const settingsQ = queryOptions({ queryKey: ["settings"], queryFn: () => api<Settings>("/api/settings") });
 
 // ---- api ---------------------------------------------------------------------
 export class ApiError extends Error {
@@ -150,7 +189,6 @@ export const isDark = () =>
   (document.documentElement.dataset.theme ?? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")) === "dark";
 
 // ---- shared queries ----------------------------------------------------------------
-import { queryOptions } from "@tanstack/react-query";
 export const meQ = queryOptions({ queryKey: ["me"], queryFn: () => api<{ email: string; org: string }>("/api/me"), retry: false, staleTime: 5 * 60_000 });
 export const summaryQ = queryOptions({ queryKey: ["summary"], queryFn: () => api<Summary>("/api/summary") });
 export const assetsQ = queryOptions({ queryKey: ["assets"], queryFn: () => api<Asset[]>("/api/assets") });

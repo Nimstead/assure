@@ -6,12 +6,17 @@ SSRF-guarded: the issuer, token and JWKS URLs are admin- or IdP-supplied.
 
 import base64
 import hashlib
+import hmac
+import os
 import secrets
 import time
+from pathlib import Path
 from urllib.parse import urlencode
 
+import dns.resolver
 import httpx
 import jwt
+from cryptography.fernet import Fernet
 
 from nimstead.netguard import guarded_client
 
@@ -103,3 +108,54 @@ class Oidc:
         if not secrets.compare_digest(str(claims.get("nonce", "")), flow["nonce"]):
             raise SSOError("nonce")
         return claims
+
+
+# --- secrets at rest -------------------------------------------------------
+
+SECRET_KEY_FILE = Path(os.environ.get("NIMSTEAD_SECRET_KEY_FILE", "./nimstead-secret.key"))
+
+
+def _fernet() -> Fernet:
+    # ponytail: one server key on disk (0600, created once); move to KMS with rotation for production
+    if not SECRET_KEY_FILE.exists():
+        try:
+            fd = os.open(SECRET_KEY_FILE, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, "wb") as f:
+                f.write(Fernet.generate_key())
+        except FileExistsError:
+            pass
+    return Fernet(SECRET_KEY_FILE.read_bytes().strip())
+
+
+def seal(secret: str) -> str:
+    return "fernet:" + _fernet().encrypt(secret.encode()).decode()
+
+
+def unseal(stored: str | None) -> str | None:
+    if not stored:
+        return None
+    if not stored.startswith("fernet:"):
+        raise SSOError("secret_not_encrypted")  # never use a plaintext secret silently; re-save it in Settings
+    return _fernet().decrypt(stored.removeprefix("fernet:").encode()).decode()
+
+
+# --- domain ownership --------------------------------------------------------
+# An org may only use SSO for email domains it proves it controls: a DNS TXT record
+#   _nimstead-verify.<domain>  "nimstead-verify=<token>"
+# The token is an HMAC of (org, domain) under the server key, so nothing extra is stored.
+
+
+def domain_token(org_id: str, domain: str) -> str:
+    _fernet()  # makes sure the server key exists
+    return hmac.new(SECRET_KEY_FILE.read_bytes().strip(), f"{org_id}:{domain}".encode(), hashlib.sha256).hexdigest()[:32]
+
+
+def txt_records(name: str) -> list[str]:
+    try:
+        return [b"".join(r.strings).decode(errors="replace") for r in dns.resolver.resolve(name, "TXT", lifetime=5)]
+    except Exception:
+        return []
+
+
+def domain_verified(org_id: str, domain: str, lookup=txt_records) -> bool:
+    return f"nimstead-verify={domain_token(org_id, domain)}" in lookup(f"_nimstead-verify.{domain}")

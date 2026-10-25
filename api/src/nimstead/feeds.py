@@ -15,7 +15,7 @@ import httpx
 from sqlalchemy import delete, insert, select, update
 from sqlalchemy.orm import Session
 
-from nimstead import evidence
+from nimstead import evidence, notify
 from nimstead.db import Advisory, Asset, Cvss, Epss, InstalledPackage, Kev, Org, make_sessionmaker, now
 from nimstead.match import normalize_ecosystem
 from nimstead.scan import rescan
@@ -256,6 +256,7 @@ def update_all(session: Session, client=None) -> dict:
         out["rescanned"] += 1
     for org_id in session.scalars(select(Org.id)).all():  # hourly signed ledger checkpoints, kept off-database
         evidence.checkpoint(session, org_id)
+    out["alerts_retried"] = notify.retry_failed(session)
     return out
 
 

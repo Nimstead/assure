@@ -63,7 +63,7 @@ def sha(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None) -> FastAPI:
+def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None, dns_lookup=None) -> FastAPI:
     oidc = sso.Oidc(oidc_http)
     Sessions = make_sessionmaker(db_url) if db_url else make_sessionmaker()
     app = FastAPI(title="Nimstead", docs_url="/api/docs", openapi_url="/api/openapi.json")
@@ -178,7 +178,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None)
                 failures[k].append(time.monotonic())
             raise HTTPException(401, "Email or password is incorrect") from None
         if s.get(Org, user.org_id).sso_required:  # checked after the password so this doesn't reveal which emails exist
-            raise HTTPException(403, "Your organisation requires single sign-on. Use Continue with SSO.")
+            if not user.admin:
+                raise HTTPException(403, "Your organisation requires single sign-on. Use Continue with SSO.")
+            # break-glass: a password admin can still get in if the IdP is broken; loud and on the record
+            evidence.append(s, user.org_id, "break_glass_login", user.id, {"email": user.email})
+            notify.notify(s, user.org_id, "break_glass_login",
+                          f"Break-glass password sign-in by {user.email} while SSO is required", urgent=True)
         start_session(s, user, resp)
         return {"email": user.email}
 
@@ -495,7 +500,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None)
             return o if o and o.sso_issuer else None
         domain = (email or "").rpartition("@")[2].lower()
         # ponytail: scans SSO-enabled orgs; add an indexed domain table when there are thousands
-        return next((o for o in s.scalars(select(Org).where(Org.sso_issuer.is_not(None))) if domain and domain in o.sso_domains), None)
+        return next((o for o in s.scalars(select(Org).where(Org.sso_issuer.is_not(None)))
+                     if domain and domain in o.sso_verified_domains), None)
 
     def sso_redirect_uri(request: Request) -> str:
         return (os.environ.get("NIMSTEAD_PUBLIC_URL") or str(request.base_url)).rstrip("/") + "/api/auth/sso/callback"
@@ -508,7 +514,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None)
     @app.get("/api/auth/sso/start")
     def sso_start(request: Request, s: DB, email: str | None = Query(None, max_length=320), org: str | None = Query(None, max_length=32)):
         o = sso_org(s, email, org)
-        if not o or not (o.sso_client_id and o.sso_client_secret and o.sso_domains):
+        if not o or not (o.sso_client_id and o.sso_client_secret and o.sso_verified_domains):
             return sso_fail("not_configured")
         try:
             url, flow = oidc.start(o.sso_issuer, o.sso_client_id, sso_redirect_uri(request))
@@ -533,7 +539,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None)
         if error or not code or not o or not (o.sso_issuer and o.sso_client_id and o.sso_client_secret):
             return sso_fail("idp_error")
         try:
-            claims = oidc.finish(o.sso_issuer, o.sso_client_id, o.sso_client_secret, sso_redirect_uri(request), code, flow)
+            claims = oidc.finish(o.sso_issuer, o.sso_client_id, sso.unseal(o.sso_client_secret), sso_redirect_uri(request), code, flow)
         except sso.SSOError as e:
             log.warning("SSO login failed for org %s: %s (%s)", o.id, e, e.__cause__)
             return sso_fail(str(e))
@@ -543,7 +549,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None)
         email = email.lower()
         if claims.get("email_verified") not in (True, "true"):
             return sso_fail("email_unverified")
-        if email.rpartition("@")[2] not in o.sso_domains:
+        if email.rpartition("@")[2] not in o.sso_verified_domains:
             return sso_fail("domain_not_allowed")
         user = s.scalar(select(User).where(User.email == email))
         if user and user.org_id != o.id:  # emails are globally unique; never let an IdP sign into another tenant's account
@@ -568,7 +574,22 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None)
 
     def sso_json(o: Org, request: Request) -> dict:
         return {"issuer": o.sso_issuer or "", "client_id": o.sso_client_id or "", "client_secret_set": bool(o.sso_client_secret),
-                "domains": o.sso_domains, "required": o.sso_required, "redirect_uri": sso_redirect_uri(request)}
+                "domains": o.sso_domains, "required": o.sso_required, "redirect_uri": sso_redirect_uri(request),
+                "domain_checks": [{"domain": d, "verified": d in o.sso_verified_domains, "txt_name": f"_nimstead-verify.{d}",
+                                   "txt_value": f"nimstead-verify={sso.domain_token(o.id, d)}"} for d in o.sso_domains]}
+
+    @app.post("/api/settings/sso/verify")
+    def verify_sso_domains(request: Request, user: Admin, s: DB):
+        """Check each pending domain's DNS TXT record; only verified domains route SSO sign-ins."""
+        o = s.get(Org, user.org_id)
+        taken = {d for other in s.scalars(select(Org).where(Org.id != o.id)) for d in other.sso_verified_domains}
+        newly = [d for d in o.sso_domains
+                 if d not in o.sso_verified_domains and d not in taken and sso.domain_verified(o.id, d, dns_lookup or sso.txt_records)]
+        if newly:
+            o.sso_verified_domains = sorted({*o.sso_verified_domains, *newly})
+            evidence.append(s, o.id, "sso_domain_verified", o.id, {"by": user.email, "domains": newly})
+            s.commit()
+        return sso_json(o, request)
 
     @app.get("/api/settings/sso")
     def get_sso(request: Request, user: Admin, s: DB):
@@ -580,7 +601,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None)
         issuer, domains = body.issuer.strip(), sorted({d.strip().lower() for d in body.domains if d.strip()})
         if not issuer:
             o.sso_issuer = o.sso_client_id = o.sso_client_secret = None
-            o.sso_domains, o.sso_required = [], False
+            o.sso_domains, o.sso_verified_domains, o.sso_required = [], [], False
         else:
             try:
                 check_public_url(issuer, resolve=False)  # https only; private targets are refused again at fetch time
@@ -588,15 +609,15 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None)
                 raise HTTPException(422, f"Issuer URL: {e}") from None
             if bad := [d for d in domains if not re.fullmatch(r"[a-z0-9-]+(\.[a-z0-9-]+)+", d)]:
                 raise HTTPException(422, f"Not a valid domain: {bad[0]}")
-            secret = body.client_secret or o.sso_client_secret
+            secret = sso.seal(body.client_secret) if body.client_secret else o.sso_client_secret
             if not (body.client_id.strip() and secret and domains):
                 raise HTTPException(422, "Client id, client secret and at least one email domain are required")
             for other in s.scalars(select(Org).where(Org.sso_issuer.is_not(None), Org.id != o.id)):
-                if clash := set(domains) & set(other.sso_domains):
+                if clash := set(domains) & set(other.sso_verified_domains):  # unverified claims can't block the real owner
                     raise HTTPException(409, f"Domain {sorted(clash)[0]} is already used by another organisation's SSO")
             o.sso_issuer, o.sso_client_id, o.sso_client_secret = issuer, body.client_id.strip(), secret
             o.sso_domains, o.sso_required = domains, body.required
-        # ponytail: domains aren't proven by DNS; require a TXT challenge before offering this to untrusted tenants
+            o.sso_verified_domains = [d for d in o.sso_verified_domains if d in domains]
         evidence.append(s, o.id, "sso_configured", o.id, {
             "by": user.email, "issuer": o.sso_issuer, "client_id": o.sso_client_id, "domains": o.sso_domains,
             "required": o.sso_required, "client_secret": "[redacted]" if o.sso_client_secret else None,

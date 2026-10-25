@@ -36,6 +36,7 @@ class Org(Base):
     sso_client_id: Mapped[str | None] = mapped_column(String(300))
     sso_client_secret: Mapped[str | None] = mapped_column(String(500))
     sso_domains: Mapped[list] = mapped_column(default=list)  # lower-case email domains allowed to sign in
+    sso_verified_domains: Mapped[list] = mapped_column(default=list)  # subset proven via DNS TXT; only these work
     sso_required: Mapped[bool] = mapped_column(Boolean, default=False)  # disables password login for the org's users
     # Failure alerts
     notify_webhook_url: Mapped[str | None] = mapped_column(String(500))
@@ -221,3 +222,6 @@ class Notification(Base):
     urgent: Mapped[bool] = mapped_column(Boolean, default=False)
     ok: Mapped[bool] = mapped_column(Boolean)
     error: Mapped[str | None] = mapped_column(String(500))
+    text: Mapped[str] = mapped_column(String(2000), default="")  # kept so a failed delivery can be retried
+    attempt: Mapped[int] = mapped_column(Integer, default=1)
+    retried: Mapped[bool] = mapped_column(Boolean, default=False)

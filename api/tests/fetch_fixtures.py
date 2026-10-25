@@ -1,4 +1,7 @@
-"""Refresh OSV oracle fixtures: `uv run python tests/fetch_fixtures.py`.
+"""Refresh OSV oracle fixtures: `uv run python tests/fetch_fixtures.py [FILTER...]`.
+
+With filters, only cases whose "ecosystem/name" contains one of them are fetched (e.g. `Maven NuGet rack`);
+without, all are refreshed.
 
 For each package we store every OSV record for it plus OSV's own answer
 (advisory ids) for a few installed versions. test_match.py asserts our
@@ -7,6 +10,8 @@ reference implementation on real data.
 """
 
 import json
+import re
+import sys
 from pathlib import Path
 
 import httpx
@@ -19,6 +24,12 @@ CASES = [
     ("Rocky Linux:9", "openssl", ["1:3.0.7-24.el9", "1:3.2.2-6.el9_5"]),
     ("PyPI", "requests", ["2.19.0", "2.31.0", "2.32.4"]),
     ("npm", "lodash", ["4.17.15", "4.17.21"]),
+    ("Maven", "org.apache.logging.log4j:log4j-core", ["2.14.1", "2.17.0", "2.17.1", "2.3.2"]),
+    ("Maven", "com.fasterxml.jackson.core:jackson-databind", ["2.9.10", "2.13.4.2"]),
+    ("NuGet", "Newtonsoft.Json", ["12.0.3", "13.0.1"]),
+    ("NuGet", "System.Text.Encodings.Web", ["4.7.1", "5.0.1"]),
+    ("RubyGems", "rack", ["2.2.3", "2.2.8", "3.0.0.beta1"]),
+    ("RubyGems", "nokogiri", ["1.13.9", "1.16.5"]),
 ]
 
 OUT = Path(__file__).parent / "fixtures" / "osv"
@@ -36,10 +47,12 @@ def query(client: httpx.Client, body: dict) -> list[dict]:
             return vulns
 
 
-def main() -> None:
+def main(filters: list[str]) -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     with httpx.Client(timeout=60) as c:
         for eco, name, versions in CASES:
+            if filters and not any(f in f"{eco}/{name}" for f in filters):
+                continue
             pkg = {"name": name, "ecosystem": eco}
             records = query(c, {"package": pkg})
             keep = ("id", "aliases", "upstream", "withdrawn", "summary", "severity")
@@ -49,10 +62,10 @@ def main() -> None:
                 for r in records
             ]
             oracle = {v: sorted(x["id"] for x in query(c, {"package": pkg, "version": v})) for v in versions}
-            fname = f"{eco.replace(':', '_').replace(' ', '_')}__{name}.json"
+            fname = re.sub(r"[^A-Za-z0-9._-]", "_", f"{eco}__{name}") + ".json"
             (OUT / fname).write_text(json.dumps({"ecosystem": eco, "name": name, "records": slim, "oracle": oracle}))
             print(fname, len(records), {v: len(ids) for v, ids in oracle.items()})
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])

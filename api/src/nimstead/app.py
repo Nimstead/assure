@@ -1,0 +1,272 @@
+"""HTTP API. Web users authenticate with a session cookie; agents with a per-asset bearer key."""
+
+import hashlib
+import os
+import secrets
+from collections import defaultdict
+from datetime import timedelta
+from typing import Annotated, Literal
+
+from argon2 import PasswordHasher
+from argon2.exceptions import VerifyMismatchError
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
+from pydantic import BaseModel, EmailStr, Field
+from sqlalchemy import delete, func, select
+from sqlalchemy.orm import Session
+
+from nimstead.db import Asset, EnrollToken, Finding, InstalledPackage, Org, User, WebSession, make_sessionmaker, now
+from nimstead.scan import rescan
+from nimstead.versions import comparator_for
+
+SESSION_COOKIE = "nimstead_session"
+SECURE_COOKIES = os.environ.get("NIMSTEAD_SECURE_COOKIES", "1") != "0"
+ph = PasswordHasher()
+
+
+def sha(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def create_app(db_url: str | None = None) -> FastAPI:
+    Sessions = make_sessionmaker(db_url) if db_url else make_sessionmaker()
+    app = FastAPI(title="Nimstead", docs_url="/api/docs", openapi_url="/api/openapi.json")
+
+    def db():
+        with Sessions() as s:
+            yield s
+
+    DB = Annotated[Session, Depends(db)]
+
+    def current_user(request: Request, s: DB) -> User:
+        token = request.cookies.get(SESSION_COOKIE)
+        ws = s.get(WebSession, sha(token)) if token else None
+        if not ws or ws.expires < now():
+            raise HTTPException(401, "Not signed in")
+        return s.get(User, ws.user_id)
+
+    CurrentUser = Annotated[User, Depends(current_user)]
+
+    def start_session(s: Session, user: User, resp: Response) -> None:
+        token = secrets.token_urlsafe(32)
+        s.add(WebSession(token_hash=sha(token), user_id=user.id, expires=now() + timedelta(days=14)))
+        s.commit()
+        resp.set_cookie(SESSION_COOKIE, token, httponly=True, samesite="strict", secure=SECURE_COOKIES, max_age=14 * 86400)
+
+    # --- auth --------------------------------------------------------------
+
+    class Signup(BaseModel):
+        email: EmailStr
+        password: str = Field(min_length=12, max_length=200)
+        org_name: str = Field(min_length=1, max_length=200)
+
+    class Login(BaseModel):
+        email: EmailStr
+        password: str = Field(max_length=200)
+
+    @app.post("/api/auth/signup", status_code=201)
+    def signup(body: Signup, resp: Response, s: DB):
+        if s.scalar(select(User).where(User.email == body.email.lower())):
+            raise HTTPException(409, "An account with that email already exists")
+        org = Org(name=body.org_name)
+        s.add(org)
+        s.flush()
+        user = User(org_id=org.id, email=body.email.lower(), password_hash=ph.hash(body.password))
+        s.add(user)
+        s.flush()
+        start_session(s, user, resp)
+        return {"email": user.email, "org": org.name}
+
+    @app.post("/api/auth/login")
+    def login(body: Login, resp: Response, s: DB):
+        # ponytail: no login rate limiting yet; add per-IP/email throttle before public launch
+        user = s.scalar(select(User).where(User.email == body.email.lower()))
+        try:
+            if not user:
+                raise VerifyMismatchError
+            ph.verify(user.password_hash, body.password)
+        except VerifyMismatchError:
+            raise HTTPException(401, "Email or password is incorrect") from None
+        start_session(s, user, resp)
+        return {"email": user.email}
+
+    @app.post("/api/auth/logout", status_code=204)
+    def logout(request: Request, resp: Response, s: DB):
+        if token := request.cookies.get(SESSION_COOKIE):
+            s.execute(delete(WebSession).where(WebSession.token_hash == sha(token)))
+            s.commit()
+        resp.delete_cookie(SESSION_COOKIE)
+
+    @app.get("/api/me")
+    def me(user: CurrentUser, s: DB):
+        return {"email": user.email, "org": s.get(Org, user.org_id).name}
+
+    # --- enrolment & agent -------------------------------------------------
+
+    @app.post("/api/enroll-tokens", status_code=201)
+    def create_enroll_token(user: CurrentUser, s: DB):
+        token = "nme_" + secrets.token_urlsafe(24)
+        s.add(EnrollToken(token_hash=sha(token), org_id=user.org_id))
+        s.commit()
+        return {"token": token}  # shown once
+
+    class Enroll(BaseModel):
+        token: str = Field(max_length=200)
+        hostname: str = Field(min_length=1, max_length=255)
+        os_name: str = Field("", max_length=255)
+        ecosystem: str = Field("", max_length=100)
+
+    @app.post("/api/agent/enroll", status_code=201)
+    def agent_enroll(body: Enroll, s: DB):
+        # Owning the enrol token and running the agent on the host is the proof of control:
+        # only enrolled assets are ever scanned.
+        et = s.get(EnrollToken, sha(body.token))
+        if not et or et.revoked:
+            raise HTTPException(403, "Invalid or revoked enrolment token")
+        key = "nma_" + secrets.token_urlsafe(32)
+        asset = Asset(org_id=et.org_id, hostname=body.hostname, os_name=body.os_name, ecosystem=body.ecosystem, agent_key_hash=sha(key))
+        s.add(asset)
+        s.commit()
+        return {"asset_id": asset.id, "agent_key": key}
+
+    class Pkg(BaseModel):
+        ecosystem: str = Field(max_length=100)
+        name: str = Field(max_length=255)
+        version: str = Field(max_length=255)
+        source: str | None = Field(None, max_length=255)
+
+    class Inventory(BaseModel):
+        os_name: str = Field("", max_length=255)
+        ecosystem: str = Field("", max_length=100)
+        packages: list[Pkg] = Field(max_length=50_000)
+
+    def current_agent(s: DB, authorization: Annotated[str | None, Header()] = None) -> Asset:
+        if not authorization or not authorization.startswith("Bearer "):
+            raise HTTPException(401, "Missing agent key")
+        asset = s.scalar(select(Asset).where(Asset.agent_key_hash == sha(authorization.removeprefix("Bearer "))))
+        if not asset:
+            raise HTTPException(401, "Unknown agent key")
+        return asset
+
+    @app.post("/api/agent/inventory")
+    def agent_inventory(body: Inventory, s: DB, asset: Annotated[Asset, Depends(current_agent)]):
+        asset.os_name, asset.ecosystem, asset.last_seen = body.os_name or asset.os_name, body.ecosystem or asset.ecosystem, now()
+        s.execute(delete(InstalledPackage).where(InstalledPackage.asset_id == asset.id))
+        s.add_all(InstalledPackage(asset_id=asset.id, **p.model_dump()) for p in body.packages)
+        s.flush()
+        return rescan(s, asset)
+
+    # --- assets ------------------------------------------------------------
+
+    def asset_json(a: Asset, counts: dict) -> dict:
+        return {
+            "id": a.id, "hostname": a.hostname, "os_name": a.os_name, "ecosystem": a.ecosystem,
+            "criticality": a.criticality, "internet_facing": a.internet_facing, "sandbox": a.sandbox,
+            "first_seen": a.first_seen, "last_seen": a.last_seen, "open_by_priority": counts,
+        }
+
+    @app.get("/api/assets")
+    def list_assets(user: CurrentUser, s: DB):
+        rows = s.execute(
+            select(Finding.asset_id, Finding.priority, func.count())
+            .where(Finding.org_id == user.org_id, Finding.status == "open")
+            .group_by(Finding.asset_id, Finding.priority)
+        ).all()
+        counts: dict[str, dict] = defaultdict(dict)
+        for aid, prio, n in rows:
+            counts[aid][prio] = n
+        assets = s.scalars(select(Asset).where(Asset.org_id == user.org_id).order_by(Asset.hostname)).all()
+        return [asset_json(a, counts[a.id]) for a in assets]
+
+    def owned_asset(s: Session, user: User, asset_id: str) -> Asset:
+        a = s.get(Asset, asset_id)
+        if not a or a.org_id != user.org_id:
+            raise HTTPException(404, "Asset not found")
+        return a
+
+    class AssetPatch(BaseModel):
+        criticality: Literal["low", "medium", "high", "critical"] | None = None
+        internet_facing: bool | None = None
+
+    @app.patch("/api/assets/{asset_id}")
+    def update_asset(asset_id: str, body: AssetPatch, user: CurrentUser, s: DB):
+        a = owned_asset(s, user, asset_id)
+        for k, v in body.model_dump(exclude_none=True).items():
+            setattr(a, k, v)
+        s.flush()
+        rescan(s, a)  # context changed -> scores change
+        return asset_json(a, {})
+
+    # --- findings ----------------------------------------------------------
+
+    def finding_json(f: Finding, hostname: str) -> dict:
+        return {
+            "id": f.id, "asset_id": f.asset_id, "hostname": hostname, "ecosystem": f.ecosystem,
+            "package": f.package, "installed_version": f.installed_version, "fixed_version": f.fixed_version,
+            "vuln_id": f.vuln_id, "advisory_ids": f.advisory_ids, "summary": f.summary, "cvss": f.cvss,
+            "epss": f.epss, "kev": f.kev, "score": f.score, "priority": f.priority, "reasons": f.reasons,
+            "status": f.status, "first_seen": f.first_seen, "last_seen": f.last_seen, "resolved_at": f.resolved_at,
+        }
+
+    @app.get("/api/findings")
+    def list_findings(
+        user: CurrentUser, s: DB,
+        status: Literal["open", "resolved", "accepted"] = "open",
+        priority: str | None = None, asset_id: str | None = None, q: str | None = None,
+        fixable: bool | None = None, limit: int = 500,
+    ):
+        stmt = (
+            select(Finding, Asset.hostname).join(Asset, Asset.id == Finding.asset_id)
+            .where(Finding.org_id == user.org_id, Finding.status == status)
+        )
+        if priority:
+            stmt = stmt.where(Finding.priority.in_(priority.split(",")))
+        if asset_id:
+            stmt = stmt.where(Finding.asset_id == asset_id)
+        if fixable is not None:
+            stmt = stmt.where(Finding.fixed_version.is_not(None) if fixable else Finding.fixed_version.is_(None))
+        if q:
+            like = f"%{q.lower()}%"
+            stmt = stmt.where(func.lower(Finding.package).like(like) | func.lower(Finding.vuln_id).like(like) | func.lower(Asset.hostname).like(like))
+        rows = s.execute(stmt.order_by(Finding.score.desc()).limit(min(limit, 5000))).all()
+        return [finding_json(f, h) for f, h in rows]
+
+    @app.get("/api/findings/{finding_id}")
+    def get_finding(finding_id: str, user: CurrentUser, s: DB):
+        f = s.get(Finding, finding_id)
+        if not f or f.org_id != user.org_id:
+            raise HTTPException(404, "Finding not found")
+        return finding_json(f, s.get(Asset, f.asset_id).hostname)
+
+    @app.get("/api/summary")
+    def summary(user: CurrentUser, s: DB):
+        open_ = s.execute(
+            select(Finding, Asset.hostname).join(Asset, Asset.id == Finding.asset_id)
+            .where(Finding.org_id == user.org_id, Finding.status == "open")
+        ).all()
+        by_priority: dict[str, int] = defaultdict(int)
+        # Group fixes into actions: "upgrade openssl to X" clears N findings on M hosts.
+        actions: dict[tuple, dict] = {}
+        for f, host in open_:
+            by_priority[f.priority] += 1
+            if not f.fixed_version:
+                continue
+            a = actions.setdefault((f.ecosystem, f.package), {
+                "ecosystem": f.ecosystem, "package": f.package, "fixed_version": f.fixed_version,
+                "hosts": set(), "vulns": set(), "kev": False, "max_score": 0,
+            })
+            cmp = comparator_for(f.ecosystem)
+            if cmp and cmp(f.fixed_version, a["fixed_version"]) > 0:
+                a["fixed_version"] = f.fixed_version  # highest fix clears them all
+            a["hosts"].add(host)
+            a["vulns"].add(f.vuln_id)
+            a["kev"] |= f.kev
+            a["max_score"] = max(a["max_score"], f.score)
+        top = sorted(actions.values(), key=lambda a: (a["kev"], a["max_score"], len(a["vulns"])), reverse=True)[:10]
+        return {
+            "assets": s.scalar(select(func.count()).select_from(Asset).where(Asset.org_id == user.org_id)),
+            "open_by_priority": by_priority,
+            "top_actions": [{**a, "hosts": sorted(a["hosts"]), "vulns": sorted(a["vulns"])} for a in top],
+        }
+
+    return app
+

@@ -241,9 +241,10 @@ def test_plan_can_include_dependencies_named_by_the_dry_run(env):
     a = c.post("/api/agent/enroll", json={"token": token, "hostname": "h", "ecosystem": "Debian:12"}).json()
     h = {"Authorization": f"Bearer {a['agent_key']}"}
     c.post("/api/agent/inventory", json={**inv(OLD), "packages": inv(OLD)["packages"] + [
-        {"ecosystem": "Debian:12", "name": "libc6", "version": "2.36-9", "source": "glibc"}]}, headers=h)
+        {"ecosystem": "Debian:12", "name": "libc6", "version": "2.36-9", "source": "glibc"},
+        {"ecosystem": "Debian:12", "name": "libc-bin", "version": "2.36-9", "source": "glibc"}]}, headers=h)
     body = {"asset_id": a["asset_id"], "ecosystem": "Debian:12", "package": "openssl"}
     assert c.post("/api/remediation/jobs", json={**body, "include": ["not-installed"]}).status_code == 409
     j = c.post("/api/remediation/jobs", json={**body, "include": ["libc6"]}).json()
-    assert {p["name"] for p in j["packages"]} == {"libssl3", "openssl", "libc6"}
+    assert {p["name"] for p in j["packages"]} == {"libssl3", "openssl", "libc6", "libc-bin"}  # sibling binaries come too
     assert "with libc6" in j["summary"]

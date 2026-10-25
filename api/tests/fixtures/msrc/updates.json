@@ -1,0 +1,5 @@
+{"value": [
+ {"ID": "2026-Oct", "Alias": "2026-Oct", "DocumentTitle": "October 2026 Security Updates", "InitialReleaseDate": "2026-10-13T07:00:00Z", "CurrentReleaseDate": "2026-10-25T07:00:00Z", "CvrfUrl": "https://api.msrc.microsoft.com/cvrf/v3.0/cvrf/2026-Oct"},
+ {"ID": "2026-Sep", "Alias": "2026-Sep", "DocumentTitle": "Mariner Release Notes", "InitialReleaseDate": "2026-09-02T00:00:00Z", "CurrentReleaseDate": "2026-09-02T00:00:00Z", "CvrfUrl": "https://api.msrc.microsoft.com/cvrf/v3.0/cvrf/2026-Sep"},
+ {"ID": "2020-Jan", "Alias": "2020-Jan", "DocumentTitle": "January 2020 Security Updates", "InitialReleaseDate": "2020-01-09T08:00:00Z", "CurrentReleaseDate": "2020-02-01T08:00:00Z", "CvrfUrl": "https://api.msrc.microsoft.com/cvrf/v3.0/cvrf/2020-Jan"}
+]}

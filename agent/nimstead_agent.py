@@ -114,10 +114,54 @@ def _run(cmd):
         raise AgentError(f"{cmd[0]} failed: {e}")
 
 
+# MSRC names Windows Server by build; client names come from the feature-update version.
+_SERVER_BY_BUILD = {14393: "Windows Server 2016", 17763: "Windows Server 2019", 20348: "Windows Server 2022", 26100: "Windows Server 2025"}
+_MSRC_ARCH = {"AMD64": "x64-based", "X86": "32-bit", "ARM64": "ARM64-based"}
+
+
+def msrc_product_name(build, display_version, installation_type, machine):
+    """MSRC product name for this OS, or '' if we cannot name it exactly (refuse to guess).
+
+    ponytail: OS only. Server 2012/R2 (6.x builds), Server 23H2 and Insider builds are unmapped."""
+    if installation_type.startswith("Server"):
+        name = _SERVER_BY_BUILD.get(build)
+        return name + (" (Server Core installation)" if installation_type == "Server Core" else "") if name else ""
+    arch = _MSRC_ARCH.get(machine.upper())
+    if not arch or not display_version:
+        return ""
+    if build >= 22000:  # Windows 11 still says "Windows 10" in the ProductName registry value
+        return f"Windows 11 Version {display_version} for {arch} Systems"
+    if 10240 <= build < 22000:
+        return ("Windows 10" if display_version == "1507" else f"Windows 10 Version {display_version}") + f" for {arch} Systems"
+    return ""
+
+
+def collect_windows():
+    import winreg
+    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion", 0,
+                        winreg.KEY_READ | winreg.KEY_WOW64_64KEY) as k:
+        def val(name, default=""):
+            try:
+                return winreg.QueryValueEx(k, name)[0]
+            except OSError:
+                return default
+        build, ubr = int(val("CurrentBuild", 0) or 0), int(val("UBR", 0))
+        dv = val("DisplayVersion") or val("ReleaseId")
+        product, itype = val("ProductName"), val("InstallationType")
+    machine = platform.machine()
+    name = msrc_product_name(build, dv, itype, machine)
+    if not name or not build:
+        raise AgentError(f"unsupported Windows release: {product} {dv} build {build} {itype} {machine}")
+    version = f"10.0.{build}.{ubr}"
+    if build >= 22000:
+        product = product.replace("Windows 10", "Windows 11")
+    return {"os_name": f"{product} {dv} ({machine}) build {version}", "ecosystem": "Windows",
+            "packages": [{"ecosystem": "Windows", "name": name, "version": version, "source": None}]}
+
+
 def collect():
     if os.name == "nt":
-        # ponytail: Windows reports host only, no packages yet; add registry/winget inventory when Windows matching exists
-        return {"os_name": platform.platform(), "ecosystem": "", "packages": []}
+        return collect_windows()
     try:
         with open("/etc/os-release") as f:
             text = f.read()

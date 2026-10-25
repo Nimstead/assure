@@ -10,6 +10,7 @@ Read this first each session. Decisions and their reasons: DECISIONS.md (items 1
 | Version comparators dpkg/rpm/apk/semver/PEP 440 | `api/src/nimstead/versions.py` | 60 table tests from reference suites |
 | OSV matcher (source-package, backports, CVE dedup, withdrawn) | `match.py` | Exact agreement with the OSV API on 16 real cases (`tests/test_match.py`) |
 | Risk scorer (KEV override, EPSS, CVSS, criticality, exposure, fix) with reasons | `risk.py` | `tests/test_risk.py` |
+| Windows OS detection: agent reports MSRC product name + full build; `sync_msrc` loads MSRC CVRF (FixedBuild, KB, CVSS) as OSV-shaped rows; `windows_cmp` | `agent/nimstead_agent.py`, `feeds.py`, `versions.py` | `tests/test_windows.py` (trimmed real CVRF fixture, e2e old build -> finding, fixed build -> resolved); real sync of 2 months = 45,975 rows, 0 findings on this patched machine, 1,009 when the build is set one below the October fix |
 | Feeds: OSV bulk (incremental, only releases in use), CISA KEV, FIRST EPSS, NVD CVSS 2.0; `feeds update` re-matches all assets and checkpoints the ledger | `feeds.py` | Mocked tests + real runs: KEV 1,756, EPSS 395,308, NVD 21,041, OSV Debian 195,692 / Ubuntu 3.3M rows |
 | API: auth (argon2, timing-safe, throttled), enrol tokens (expiry, revoke), agent enrol/inventory (rate-limited), findings, assets, fix-action summary, install.sh, serves the built UI | `app.py`, `db.py`, `scan.py` | `tests/test_api.py` incl. tenant isolation, CSRF/Origin, 413, Host-header injection |
 | DB: SQLite (dev) and PostgreSQL via Alembic | `migrations/` | `tests/test_migrations.py`; **full suite (163) passes on PostgreSQL 17** (`sandbox/pg.py`) |
@@ -23,12 +24,12 @@ Real-host E2E (each in a fresh WSL distro, destroyed afterwards):
 - **Debian 13:** 164 packages, 274 findings. The openssl upgrade was proven fixed by the next inventory (38 resolved). A forced service failure after the perl upgrade rolled back with versions restored. Evidence pack verified; 6/6 controls met.
 - **Ubuntu 24.04:** 523 packages, 369 findings. Same flow, with curl upgraded and glib2.0 rolled back. Evidence pack verified.
 
-Last runs: API 163 passed (SQLite and PostgreSQL 17) · web 14 unit + 4 e2e passed.
+Last runs: API 189 passed (SQLite; PostgreSQL 17 last run at 163, not re-run with the Windows tests) · web 14 unit + 4 e2e passed.
 
 ## NOT proven / known gaps (honest)
 - **AI never called against the real API** (no key on this machine). The UI hides it unless `ANTHROPIC_API_KEY` is set.
 - **Remediation is apt-only** (Debian/Ubuntu). Alpine and RHEL-family are detection-only: no trustworthy rollback artefact yet (DECISIONS 15).
-- **Windows** agent reports no packages, so there's no Windows detection. Maven/NuGet/RubyGems comparators are missing.
+- **Windows is OS-only:** the agent reports the OS build (registry CurrentBuild+UBR) and MSRC matches it by product name. Not covered: Office, Edge, .NET, SQL Server, drivers and other third-party Windows apps (no installed-software inventory); Server 2012/R2, Server 23H2 and Insider builds (unmapped, agent refuses); MSRC lists no "introduced in" build, so a CVE is assumed to affect every build below the fix. Windows remediation is detection-only. Proven: unit and mocked-feed tests plus a real MSRC sync (Aug-Oct 2026) matched against this Windows 11 machine, not yet a full agent-to-server run on a Windows host. Maven/NuGet/RubyGems comparators are missing.
 - **Single API process assumed:** the login and inventory throttles are in-memory. Run one worker, or move them to a shared store.
 - No OIDC/SSO. Web e2e doesn't cover the AI UI, token revoke or asset delete. Moderate/minor axe issues unreviewed.
 - Signed checkpoints are only as strong as their storage: point `NIMSTEAD_CHECKPOINT_DIR` at WORM/object-lock storage in production.
@@ -37,7 +38,7 @@ Last runs: API 163 passed (SQLite and PostgreSQL 17) · web 14 unit + 4 e2e pass
 - Optional: an Anthropic API key to enable and live-test the AI features.
 
 ## Next (v2)
-1. Windows inventory (winget/registry) + matching source.
+1. Windows third-party software inventory (winget/registry Uninstall keys) + a source for it; Windows remediation (Windows Update) is out of scope until there is a rollback story.
 2. Alpine rollback strategy (local apk cache from enrolment onward), then apk remediation; dnf via `dnf download` + sandbox proof on AlmaLinux 9.
 3. OIDC/SSO; shared throttle store; notifications (email/Slack) for failed jobs.
 

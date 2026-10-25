@@ -234,7 +234,19 @@ def pep440_cmp(a: str, b: str) -> int:
     return (va > vb) - (va < vb)
 
 
+# --- Windows OS build (MSRC): 10.0.<build>.<UBR> ------------------------------
+
+def windows_cmp(a: str, b: str) -> int:
+    if not (re.fullmatch(r"\d+(\.\d+)*", a.strip()) and re.fullmatch(r"\d+(\.\d+)*", b.strip())):
+        raise ValueError(f"invalid Windows build: {a!r} / {b!r}")
+    ta, tb = [int(x) for x in a.split(".")], [int(x) for x in b.split(".")]
+    n = max(len(ta), len(tb))
+    ta, tb = ta + [0] * (n - len(ta)), tb + [0] * (n - len(tb))
+    return (ta > tb) - (ta < tb)
+
+
 _BY_PREFIX: dict[str, Cmp] = {
+    "Windows": windows_cmp,
     "Debian": dpkg_cmp,
     "Ubuntu": dpkg_cmp,
     "Alpine": apk_cmp,

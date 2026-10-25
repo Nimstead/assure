@@ -1,6 +1,6 @@
 import pytest
 
-from nimstead.versions import apk_cmp, comparator_for, dpkg_cmp, pep440_cmp, rpm_cmp, semver_cmp
+from nimstead.versions import apk_cmp, comparator_for, dpkg_cmp, pep440_cmp, rpm_cmp, semver_cmp, windows_cmp
 
 # (a, b, expected sign) — cases taken from dpkg, rpm, apk-tools and semver.org test suites
 DPKG = [
@@ -76,6 +76,16 @@ PEP440 = [
     ("1!0.1", "2.0", 1),
 ]
 
+WINDOWS = [
+    ("10.0.26200.6899", "10.0.26200.7019", -1),
+    ("10.0.26200.9711", "10.0.26200.9711", 0),
+    ("10.0.26200.10000", "10.0.26200.9999", 1),  # numeric, not lexical
+    ("10.0.26100.1", "10.0.26200.1", -1),
+    ("10.0.19045.5000", "10.0.26200.1", -1),
+    ("10.0.26200", "10.0.26200.0", 0),  # missing UBR == 0
+    ("6.2.9200.26434", "10.0.26200.1", -1),
+]
+
 
 @pytest.mark.parametrize(
     "cmp,a,b,want",
@@ -83,7 +93,8 @@ PEP440 = [
     + [(rpm_cmp, *c) for c in RPM]
     + [(apk_cmp, *c) for c in APK]
     + [(semver_cmp, *c) for c in SEMVER]
-    + [(pep440_cmp, *c) for c in PEP440],
+    + [(pep440_cmp, *c) for c in PEP440]
+    + [(windows_cmp, *c) for c in WINDOWS],
 )
 def test_compare(cmp, a, b, want):
     assert cmp(a, b) == want
@@ -94,6 +105,7 @@ def test_comparator_for():
     assert comparator_for("Debian:12") is dpkg_cmp
     assert comparator_for("Ubuntu:22.04:LTS") is dpkg_cmp
     assert comparator_for("Rocky Linux:9") is rpm_cmp
+    assert comparator_for("Windows") is windows_cmp
     assert comparator_for("Maven") is None  # unsupported -> refuse to guess
 
 
@@ -102,3 +114,5 @@ def test_invalid_versions_raise():
         apk_cmp("not a version", "1.0")
     with pytest.raises(ValueError):
         semver_cmp("abc", "1.0.0")
+    with pytest.raises(ValueError):
+        windows_cmp("10.0.26200.x", "10.0.26200.1")

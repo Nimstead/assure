@@ -1,0 +1,105 @@
+@import "tailwindcss";
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
+
+/* Tokens. light-dark() follows prefers-color-scheme unless the toggle pins a scheme. */
+:root {
+  color-scheme: light dark;
+  --bg: light-dark(oklch(0.985 0.004 240), oklch(0.17 0.01 250));
+  --surface: light-dark(oklch(1 0 0), oklch(0.215 0.012 250));
+  --sunken: light-dark(oklch(0.962 0.006 240), oklch(0.145 0.01 250));
+  --ink: light-dark(oklch(0.22 0.02 255), oklch(0.95 0.005 250));
+  --muted: light-dark(oklch(0.48 0.02 255), oklch(0.72 0.015 250));
+  --line: light-dark(oklch(0.915 0.008 245), oklch(0.3 0.015 250));
+  --line-strong: light-dark(oklch(0.8 0.01 245), oklch(0.42 0.02 250));
+  --accent: light-dark(oklch(0.5 0.1 195), oklch(0.78 0.11 190));
+  --accent-ink: light-dark(oklch(1 0 0), oklch(0.17 0.01 250));
+  --accent-soft: light-dark(oklch(0.955 0.03 195), oklch(0.27 0.045 195));
+  /* priority: foreground / tinted background. Always paired with a text label. */
+  --now-fg: light-dark(oklch(0.46 0.19 25), oklch(0.8 0.13 25));
+  --now-bg: light-dark(oklch(0.955 0.03 25), oklch(0.3 0.07 25));
+  --next-fg: light-dark(oklch(0.45 0.11 65), oklch(0.82 0.12 75));
+  --next-bg: light-dark(oklch(0.955 0.045 85), oklch(0.3 0.06 70));
+  --planned-fg: light-dark(oklch(0.46 0.12 260), oklch(0.8 0.1 260));
+  --planned-bg: light-dark(oklch(0.955 0.025 260), oklch(0.28 0.05 260));
+  --low-fg: light-dark(oklch(0.48 0.02 255), oklch(0.74 0.015 250));
+  --low-bg: light-dark(oklch(0.95 0.006 250), oklch(0.27 0.012 250));
+}
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+
+@custom-variant dark {
+  &:where([data-theme="dark"] *) { @slot; }
+  @media (prefers-color-scheme: dark) { &:where(:root:not([data-theme="light"]) *) { @slot; } }
+}
+
+@theme inline {
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, monospace;
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-sunken: var(--sunken);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-now-fg: var(--now-fg);
+  --color-now-bg: var(--now-bg);
+  --color-next-fg: var(--next-fg);
+  --color-next-bg: var(--next-bg);
+  --color-planned-fg: var(--planned-fg);
+  --color-planned-bg: var(--planned-bg);
+  --color-low-fg: var(--low-fg);
+  --color-low-bg: var(--low-bg);
+}
+
+html { background: var(--bg); color: var(--ink); font-family: var(--font-sans); font-size: 15px; -webkit-text-size-adjust: 100%; }
+body { margin: 0; min-height: 100dvh; line-height: 1.5; text-rendering: optimizeLegibility; }
+h1, h2, h3 { text-wrap: balance; letter-spacing: -0.015em; }
+a { text-underline-offset: 3px; }
+::selection { background: var(--accent-soft); color: var(--ink); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.num { font-variant-numeric: tabular-nums; }
+* { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+input::placeholder { color: var(--muted); }
+
+.skeleton { background: var(--line); border-radius: 6px; animation: pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.45; } }
+
+/* drawer + palette */
+.overlay { z-index: 50; position: fixed; inset: 0; background: oklch(0.1 0.02 250 / 0.45); animation: fade 0.15s ease-out; }
+.drawer { z-index: 51; position: fixed; inset: 0 0 0 auto; width: min(560px, 100%); background: var(--surface); border-left: 1px solid var(--line); box-shadow: -8px 0 32px oklch(0.1 0.02 250 / 0.18); animation: slide 0.22s cubic-bezier(0.16, 1, 0.3, 1); overflow-y: auto; }
+@keyframes fade { from { opacity: 0; } }
+@keyframes slide { from { transform: translateX(24px); opacity: 0; } }
+
+/* the one authored moment: first machine reporting in */
+.draw { stroke-dasharray: 30; stroke-dashoffset: 30; animation: draw 0.6s 0.15s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; }
+  .draw { stroke-dashoffset: 0; }
+}
+
+@layer components {
+/* findings table: 3-line card on phones, 7-column row from md up */
+.frow { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "vuln prio" "pkg pkg" "ver ver" "host score"; gap: 2px 12px; align-items: center; }
+.frow > [data-c="reason"] { display: none; }
+.frow > [data-c="prio"] { grid-area: prio; }
+.frow > [data-c="vuln"] { grid-area: vuln; }
+.frow > [data-c="pkg"] { grid-area: pkg; }
+.frow > [data-c="ver"] { grid-area: ver; }
+.frow > [data-c="host"] { grid-area: host; }
+.frow > [data-c="score"] { grid-area: score; }
+.frow > [data-c="reason"] { grid-area: reason; }
+@media (min-width: 768px) {
+  .frow { grid-template-columns: 6.75rem 11.5rem minmax(0, 0.9fr) minmax(0, 1.9fr) minmax(0, 1fr) 2.5rem; grid-template-areas: "prio vuln pkg ver host score"; gap: 0 12px; }
+}
+@media (min-width: 1100px) {
+  .frow { grid-template-columns: 6.75rem 11.5rem minmax(0, 0.9fr) minmax(0, 1.6fr) minmax(0, 0.9fr) 2.5rem minmax(0, 1.6fr); grid-template-areas: "prio vuln pkg ver host score reason"; }
+  .frow > [data-c="reason"] { display: block; }
+}
+}

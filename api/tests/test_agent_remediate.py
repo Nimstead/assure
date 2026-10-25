@@ -1,0 +1,136 @@
+"""Agent executor against a simulated apt host (real-host runs happen only in disposable sandboxes)."""
+
+import importlib.util
+import os
+from pathlib import Path
+
+spec = importlib.util.spec_from_file_location("nimstead_agent", Path(__file__).parents[2] / "agent" / "nimstead_agent.py")
+agent = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(agent)
+
+
+class FakeApt:
+    def __init__(self, tmp, installed, candidate, downloadable=True, break_unit_on_upgrade=False, dpkg_i_fails=False):
+        self.tmp, self.installed, self.candidate = tmp, dict(installed), candidate
+        self.downloadable, self.break_unit, self.dpkg_i_fails = downloadable, break_unit_on_upgrade, dpkg_i_fails
+        self.units_ok, self.log = True, []
+
+    def __call__(self, cmd, cwd=None):
+        self.log.append(cmd)
+        match cmd:
+            case [_, "--version"]:
+                return 0, "1.0"
+            case ["dpkg-query", "-W", _, name]:
+                return (0, self.installed[name]) if name in self.installed else (1, "not installed")
+            case ["systemctl", "is-active", "--quiet", _]:
+                return (0, "") if self.units_ok else (3, "inactive")
+            case ["apt-get", "update"]:
+                return 0, "ok"
+            case ["apt-get", "download", spec_]:
+                if not self.downloadable:
+                    return 100, "E: Can't find a source to download version"
+                name, ver = spec_.split("=")
+                Path(cwd, f"{name}_{ver.replace(':', '%3a')}_amd64.deb").write_text(f"{name} {ver}")
+                return 0, ""
+            case ["apt-get", "install", "-y", "--only-upgrade", "-o", _, *names]:
+                for n in names:
+                    self.installed[n] = self.candidate[n]
+                if self.break_unit:
+                    self.units_ok = False
+                return 0, "upgraded"
+            case ["dpkg", "--audit"]:
+                return 0, ""
+            case ["dpkg", "-i", *files]:
+                if self.dpkg_i_fails:
+                    return 1, "dpkg: error processing archive"
+                for f in files:
+                    name, ver = Path(f).read_text().split(" ")
+                    self.installed[name] = ver
+                self.units_ok = True
+                return 0, ""
+        raise AssertionError(f"unexpected command {cmd}")
+
+
+JOB = {"id": "j1", "manager": "apt", "health_units": ["nginx.service"],
+       "packages": [{"name": "libssl3", "from": "3.0.11-1~deb12u1"}, {"name": "openssl", "from": "3.0.11-1~deb12u1"}]}
+NEW = {"libssl3": "3.0.17-1~deb12u2", "openssl": "3.0.17-1~deb12u2"}
+OLD = {"libssl3": "3.0.11-1~deb12u1", "openssl": "3.0.11-1~deb12u1"}
+
+
+def run(tmp_path, host, job=JOB):
+    return agent.Job(job, run=host, rollback_root=str(tmp_path / "rb"), apt_cache=str(tmp_path / "cache")).execute()
+
+
+def test_success_saves_rollback_first(tmp_path):
+    h = FakeApt(tmp_path, OLD, NEW)
+    outcome, steps, err = run(tmp_path, h)
+    assert outcome == "applied" and err is None
+    assert h.installed == NEW
+    first_change = next(i for i, c in enumerate(h.log) if c[:2] == ["apt-get", "install"])
+    last_download = max(i for i, c in enumerate(h.log) if c[:2] == ["apt-get", "download"])
+    assert last_download < first_change  # rollback artefacts exist before anything changes
+    assert len(os.listdir(tmp_path / "rb" / "j1")) == 2
+    assert any("sha256" in s["output"] for s in steps)
+
+
+def test_failed_health_check_rolls_back(tmp_path):
+    h = FakeApt(tmp_path, OLD, NEW, break_unit_on_upgrade=True)
+    outcome, steps, err = run(tmp_path, h)
+    assert outcome == "rolled_back" and "nginx.service" in err
+    assert h.installed == OLD and h.units_ok
+    assert [s["step"] for s in steps][-1].startswith("nginx.service active after rollback")
+
+
+def test_no_rollback_package_means_no_change(tmp_path):
+    h = FakeApt(tmp_path, OLD, NEW, downloadable=False)
+    outcome, _, err = run(tmp_path, h)
+    assert outcome == "aborted" and err.startswith("No changes made")
+    assert h.installed == OLD
+    assert not any(c[:2] == ["apt-get", "install"] for c in h.log)
+
+
+def test_cached_deb_used_without_download(tmp_path):
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    for n, v in OLD.items():
+        (cache / f"{n}_{v}_amd64.deb").write_text(f"{n} {v}")
+    h = FakeApt(tmp_path, OLD, NEW, downloadable=False)
+    assert run(tmp_path, h)[0] == "applied"
+
+
+def test_drift_aborts(tmp_path):
+    h = FakeApt(tmp_path, {**OLD, "openssl": "3.0.15-1~deb12u1"}, NEW)
+    outcome, _, err = run(tmp_path, h)
+    assert outcome == "aborted" and "drifted: openssl" in err
+
+
+def test_unhealthy_before_change_aborts(tmp_path):
+    h = FakeApt(tmp_path, OLD, NEW)
+    h.units_ok = False
+    assert run(tmp_path, h)[0] == "aborted"
+    assert h.installed == OLD
+
+
+def test_rollback_failure_is_loud(tmp_path):
+    h = FakeApt(tmp_path, OLD, NEW, break_unit_on_upgrade=True, dpkg_i_fails=True)
+    outcome, _, err = run(tmp_path, h)
+    assert outcome == "rollback_failed" and err.startswith("ROLLBACK FAILED")
+
+
+def test_hostile_job_rejected_before_any_command(tmp_path):
+    for bad in ({**JOB, "packages": [{"name": "x; rm -rf /", "from": "1"}]},
+                {**JOB, "packages": [{"name": "openssl", "from": "$(id)"}]},
+                {**JOB, "manager": "bash"},
+                {**JOB, "health_units": ["--now"]},
+                {**JOB, "packages": []}):
+        h = FakeApt(tmp_path, OLD, NEW)
+        outcome, _, _ = run(tmp_path, h, bad)
+        assert outcome == "aborted" and h.log == []
+
+
+def test_remediate_requires_local_opt_in(tmp_path, monkeypatch, capsys):
+    cfg = tmp_path / "agent.json"
+    cfg.write_text('{"server": "https://x", "agent_key": "k"}')
+    monkeypatch.setattr(agent, "config_path", lambda: str(cfg))
+    assert agent.main(["remediate"]) == 1
+    assert "not enabled" in capsys.readouterr().err

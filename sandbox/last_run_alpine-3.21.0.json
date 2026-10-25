@@ -1,0 +1,139 @@
+[
+  {
+    "step": "creating sandbox distro",
+    "name": "nimstead-sbx-016cf298",
+    "distro": "alpine-3.21.0"
+  },
+  {
+    "step": "sandbox ready",
+    "os": "PRETTY_NAME=\"Alpine Linux v3.21\""
+  },
+  {
+    "step": "collected inventory",
+    "ecosystem": "Alpine:v3.21",
+    "packages": 32
+  },
+  {
+    "step": "feeds synced",
+    "kev": 1756,
+    "epss": 395308,
+    "osv": {
+      "inserted": 3247,
+      "updated": 0,
+      "skipped": 0
+    },
+    "seconds": 4
+  },
+  {
+    "step": "first inventory",
+    "open": 45,
+    "resolved": 0
+  },
+  {
+    "step": "findings",
+    "open_by_priority": {
+      "low": 37,
+      "next": 1,
+      "planned": 7
+    },
+    "top_actions": [
+      "openssl",
+      "zlib",
+      "musl",
+      "busybox"
+    ]
+  },
+  {
+    "step": "remediation attempt",
+    "package": "openssl",
+    "outcome": "aborted",
+    "status": "aborted",
+    "error": "No changes made: change limited to planned packages failed: would also change: musl",
+    "steps": [
+      "ok  job validated",
+      "ok  apk available",
+      "ok  installed versions match plan",
+      "ok  refresh package index",
+      "ok  simulate upgrade",
+      "FAIL change limited to planned packages"
+    ]
+  },
+  {
+    "step": "remediation attempt",
+    "package": "zlib",
+    "outcome": "aborted",
+    "status": "aborted",
+    "error": "No changes made: change limited to planned packages failed: would also change: musl",
+    "steps": [
+      "ok  job validated",
+      "ok  apk available",
+      "ok  installed versions match plan",
+      "ok  refresh package index",
+      "ok  simulate upgrade",
+      "FAIL change limited to planned packages"
+    ]
+  },
+  {
+    "step": "remediation attempt",
+    "package": "musl",
+    "outcome": "applied",
+    "status": "succeeded",
+    "error": null,
+    "steps": [
+      "ok  job validated",
+      "ok  apk available",
+      "ok  installed versions match plan",
+      "ok  refresh package index",
+      "ok  simulate upgrade",
+      "ok  change limited to planned packages",
+      "ok  rollback snapshot saved",
+      "ok  upgrade"
+    ]
+  },
+  {
+    "step": "rollback attempt",
+    "package": "openssl",
+    "outcome": "rolled_back",
+    "status": "rolled_back",
+    "error": "Change failed and was rolled back: injected failure (sandbox test) failed: --fail-after-apply",
+    "steps": [
+      "ok  job validated",
+      "ok  apk available",
+      "ok  installed versions match plan",
+      "ok  refresh package index",
+      "ok  simulate upgrade",
+      "ok  change limited to planned packages",
+      "ok  rollback snapshot saved",
+      "ok  upgrade",
+      "FAIL injected failure (sandbox test)",
+      "ok  rollback artefact intact files.tar",
+      "ok  database backup intact /lib/apk/db",
+      "ok  database backup intact /etc/apk/world",
+      "ok  rollback restore",
+      "ok  versions restored"
+    ],
+    "restored": true
+  },
+  {
+    "step": "evidence pack",
+    "problems": [],
+    "resolved": 3,
+    "controls": {
+      "UK Cyber Essentials Security update management": "met",
+      "ISO/IEC 27001:2022 A.8.8": "met",
+      "NIST SP 800-53 Rev. 5 RA-5": "met",
+      "NIST SP 800-53 Rev. 5 SI-2": "met",
+      "PCI DSS v4.0.1 6.3.3": "met",
+      "CIS Controls v8.1 7.3 / 7.4": "met"
+    }
+  },
+  {
+    "step": "RESULT: PASS",
+    "rollback_tested": true,
+    "rollback_trigger": "injected"
+  },
+  {
+    "step": "sandbox destroyed",
+    "name": "nimstead-sbx-016cf298"
+  }
+]

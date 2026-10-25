@@ -4,7 +4,7 @@ import os
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, Boolean, Float, ForeignKey, Index, Integer, String, UniqueConstraint, create_engine
+from sqlalchemy import JSON, Boolean, Float, ForeignKey, Index, Integer, String, UniqueConstraint, create_engine, event
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 # ponytail: SQLite default for dev/tests; set NIMSTEAD_DB=postgresql+psycopg://... in prod
@@ -167,6 +167,8 @@ class Finding(Base):
 def make_engine(url: str = DB_URL):
     kw = {"connect_args": {"check_same_thread": False}} if url.startswith("sqlite") else {}
     engine = create_engine(url, **kw)
+    if url.startswith("sqlite"):  # enforce foreign keys like Postgres does, so dev and tests catch the same bugs
+        event.listen(engine, "connect", lambda conn, _: conn.execute("PRAGMA foreign_keys=ON"))
     if url.startswith("sqlite"):  # dev/tests; Postgres schemas are managed by Alembic: `alembic upgrade head`
         Base.metadata.create_all(engine)
     return engine

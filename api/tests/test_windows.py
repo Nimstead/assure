@@ -133,3 +133,22 @@ def test_windows_asset_end_to_end(env):
     other = {"ecosystem": "Windows", "packages": [{"ecosystem": "Windows", "name": "Windows 11 Version 21H2 for x64-based Systems",
                                                    "version": "10.0.22000.1", "source": None}]}
     assert c.post("/api/agent/inventory", json=other, headers=h).json()["open"] == 0
+
+
+def test_windows_fix_is_planned_as_one_kb_with_target_build(env):
+    with make_sessionmaker(env)() as s:
+        sync_msrc(s, 60, msrc_client())
+    c = user(env)
+    token = c.post("/api/enroll-tokens", json={"sandbox": True}).json()["token"]
+    a = c.post("/api/agent/enroll", json={"token": token, "hostname": "pc-1", "ecosystem": "Windows"}).json()
+    h = {"Authorization": f"Bearer {a['agent_key']}"}
+    c.post("/api/agent/inventory", json={"ecosystem": "Windows", "packages": [
+        {"ecosystem": "Windows", "name": W11, "version": "10.0.26200.6899", "source": None}]}, headers=h)
+    r = c.post("/api/remediation/jobs", json={"asset_id": a["asset_id"], "ecosystem": "Windows", "package": W11})
+    assert r.status_code == 201, r.text
+    j = r.json()
+    assert j["manager"] == "windows"
+    assert j["packages"] == [{"name": W11, "from": "10.0.26200.6899", "kb": "5127648", "to": "10.0.26200.9711"}]
+    c.post(f"/api/remediation/jobs/{j['id']}/approve")
+    [job] = c.get("/api/agent/jobs", headers=h).json()
+    assert job["packages"][0]["kb"] == "5127648"

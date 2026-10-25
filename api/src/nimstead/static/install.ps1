@@ -1,6 +1,8 @@
 # Nimstead agent installer for Windows. Run in an elevated PowerShell:
 #   $env:NIMSTEAD_TOKEN = "<token>"; irm __SERVER__/install.ps1 | iex
-# Installs the agent, enrols this machine, and adds a scheduled task (SYSTEM) that reports every 6 hours.
+# Optional: $env:NIMSTEAD_ALLOW_REMEDIATION = "1" lets this machine install approved updates (local opt-in).
+# Installs the agent, enrols this machine, and adds a scheduled task (SYSTEM) that runs every 6 hours and at startup
+# (so an update that needed a restart is verified and reported right after it).
 $ErrorActionPreference = "Stop"
 $Server = "__SERVER__"
 $Token = $env:NIMSTEAD_TOKEN
@@ -21,13 +23,17 @@ Invoke-WebRequest -UseBasicParsing -Uri "$Server/agent/nimstead_agent.py" -OutFi
 $insecure = @()
 if ($Server.StartsWith("http://")) { $insecure = @("--insecure-http"); Write-Warning "Plain HTTP server (dev only)" }
 
-& $py @pyArgs $agent @insecure enroll --server $Server
+$remediate = @()
+if ($env:NIMSTEAD_ALLOW_REMEDIATION -eq "1") { $remediate = @("--allow-remediation") }
+& $py @pyArgs $agent @insecure enroll --server $Server @remediate
 if ($LASTEXITCODE -ne 0) { throw "Enrolment failed." }
 & $py @pyArgs $agent @insecure report
 if ($LASTEXITCODE -ne 0) { throw "First report failed." }
 
-$argList = (@($pyArgs) + @("`"$agent`"") + $insecure + @("report")) -join " "
+$verb = if ($remediate) { "remediate" } else { "report" }  # remediate also re-reports inventory
+$argList = (@($pyArgs) + @("`"$agent`"") + $insecure + @($verb)) -join " "
 $action = New-ScheduledTaskAction -Execute $py -Argument $argList
-$trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(5) -RepetitionInterval (New-TimeSpan -Hours 6)
-Register-ScheduledTask -TaskName "Nimstead agent" -Action $action -Trigger $trigger -User "SYSTEM" -RunLevel Highest -Force | Out-Null
+$triggers = @((New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(5) -RepetitionInterval (New-TimeSpan -Hours 6)),
+              (New-ScheduledTaskTrigger -AtStartup))
+Register-ScheduledTask -TaskName "Nimstead agent" -Action $action -Trigger $triggers -User "SYSTEM" -RunLevel Highest -Force | Out-Null
 Write-Host "Nimstead agent installed; reporting every 6 hours."

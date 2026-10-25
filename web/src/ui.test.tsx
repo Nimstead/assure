@@ -1,3 +1,5 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { NotificationsSection } from "./integrations";
 import { render, screen } from "@testing-library/react";
 import { ApproveDialog } from "./remediation";
 import { APPROVE_COPY } from "./lib";
@@ -24,4 +26,15 @@ it("approve dialog states exactly what will happen", () => {
   expect(screen.getByText(/Saves a rollback copy of each package, upgrades, checks health, rolls back automatically on failure\. Success is confirmed by the next inventory\./)).toBeInTheDocument();
   expect(screen.getByRole("alert")).toHaveTextContent("Production remediation is disabled");
   expect(screen.getByRole("button", { name: "Approve and run" })).toBeEnabled();
+});
+
+it("settings show when the last alert delivery failed", async () => {
+  const body = { webhook_set: true, webhook_host: "hooks.slack.com", webhook_format: "slack", emails: [], email_available: false, last_delivery_failed: true,
+    recent: [{ ts: new Date().toISOString(), kind: "remediation_rolled_back", channel: "webhook", urgent: false, ok: false, error: "RuntimeError: webhook returned HTTP 500" }] };
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(body), { status: 200 })));
+  render(<QueryClientProvider client={new QueryClient()}><NotificationsSection /></QueryClientProvider>);
+  expect(await screen.findByText("Last delivery failed")).toBeInTheDocument();
+  expect(screen.getByText(/webhook returned HTTP 500/)).toBeInTheDocument();
+  expect(screen.getByLabelText(/^Webhook URL/)).toHaveAttribute("placeholder", "Unchanged"); // the saved URL is never echoed back
+  vi.unstubAllGlobals();
 });

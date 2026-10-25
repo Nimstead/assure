@@ -3,7 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertDialog, RadioGroup } from "radix-ui";
 import { Info } from "lucide-react";
 import clsx from "clsx";
-import { api, parseUtc, relativeTime, settingsQ, useTitle, type EnrollToken, type Settings } from "./lib";
+import { api, meQ, parseUtc, relativeTime, settingsQ, useTitle, type EnrollToken, type Settings } from "./lib";
+import { NotificationsSection, SsoSection } from "./integrations";
 import { btnPrimary, btnQuiet, ErrorState, input, Skeleton } from "./ui";
 
 const MODES: { value: Settings["remediation_mode"]; title: string; body: string }[] = [
@@ -16,6 +17,7 @@ export function SettingsPage() {
   useTitle("Settings");
   const qc = useQueryClient();
   const q = useQuery(settingsQ);
+  const me = useQuery(meQ);
   const [hours, setHours] = useState("");
   useEffect(() => { if (q.data) setHours(String(q.data.canary_soak_hours)); }, [q.data]);
   const save = useMutation({
@@ -74,6 +76,8 @@ export function SettingsPage() {
         <p id="soak-hint" className={clsx("text-xs", hoursOk ? "text-muted" : "text-now-fg")}>Whole hours, 1 to 720.</p>
       </section>
       <TokensSection />
+      {me.data?.admin && <NotificationsSection />}
+      {me.data?.admin && <SsoSection />}
     </div>
   );
 }

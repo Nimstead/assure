@@ -1,6 +1,7 @@
 """HTTP API. Web users authenticate with a session cookie; agents with a per-asset bearer key."""
 
 import hashlib
+import logging
 import os
 import re
 import secrets
@@ -9,23 +10,26 @@ from collections import defaultdict, deque
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Literal
+from urllib.parse import urlsplit
 
+import httpx
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from nimstead import ai, evidence, remediate
+from nimstead import ai, evidence, notify, remediate, sso
 from nimstead.db import (
     Asset,
     EnrollToken,
     Finding,
     InstalledPackage,
     LedgerEntry,
+    Notification,
     Org,
     RemediationJob,
     User,
@@ -33,10 +37,13 @@ from nimstead.db import (
     make_sessionmaker,
     now,
 )
+from nimstead.netguard import check_public_url
 from nimstead.scan import rescan
 from nimstead.versions import comparator_for
 
 SESSION_COOKIE = "nimstead_session"
+SSO_COOKIE = "nimstead_sso"
+log = logging.getLogger(__name__)
 INSTALL_SH = Path(__file__).parent / "static" / "install.sh"
 INSTALL_PS1 = Path(__file__).parent / "static" / "install.ps1"
 WEB_DIST = Path(os.environ.get("NIMSTEAD_WEB_DIST", Path(__file__).parents[3] / "web" / "dist"))
@@ -44,6 +51,7 @@ WEB_DIST = Path(os.environ.get("NIMSTEAD_WEB_DIST", Path(__file__).parents[3] / 
 AGENT_FILE = Path(os.environ.get("NIMSTEAD_AGENT_FILE", Path(__file__).parents[3] / "agent" / "nimstead_agent.py"))
 SECURE_COOKIES = os.environ.get("NIMSTEAD_SECURE_COOKIES", "1") != "0"
 ph = PasswordHasher()
+NO_PASSWORD = "!"  # noqa: S105  never a valid argon2 hash
 DUMMY_HASH = ph.hash("nimstead-dummy-password")
 MAX_BODY = 10 * 1024 * 1024
 ENROLL_TOKEN_DAYS = 30
@@ -55,7 +63,8 @@ def sha(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-def create_app(db_url: str | None = None) -> FastAPI:
+def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None) -> FastAPI:
+    oidc = sso.Oidc(oidc_http)
     Sessions = make_sessionmaker(db_url) if db_url else make_sessionmaker()
     app = FastAPI(title="Nimstead", docs_url="/api/docs", openapi_url="/api/openapi.json")
     allowed_origins = {o for o in os.environ.get("NIMSTEAD_ALLOWED_ORIGINS", "").split(",") if o}
@@ -86,6 +95,13 @@ def create_app(db_url: str | None = None) -> FastAPI:
         return s.get(User, ws.user_id)
 
     CurrentUser = Annotated[User, Depends(current_user)]
+
+    def admin_user(user: CurrentUser) -> User:
+        if not user.admin:
+            raise HTTPException(403, "Only organisation admins can change this")
+        return user
+
+    Admin = Annotated[User, Depends(admin_user)]
 
     def start_session(s: Session, user: User, resp: Response) -> None:
         token = secrets.token_urlsafe(32)
@@ -131,7 +147,7 @@ def create_app(db_url: str | None = None) -> FastAPI:
         org = Org(name=body.org_name)
         s.add(org)
         s.flush()
-        user = User(org_id=org.id, email=body.email.lower(), password_hash=ph.hash(body.password))
+        user = User(org_id=org.id, email=body.email.lower(), password_hash=ph.hash(body.password), admin=True)
         s.add(user)
         s.flush()
         start_session(s, user, resp)
@@ -153,13 +169,16 @@ def create_app(db_url: str | None = None) -> FastAPI:
             raise HTTPException(429, "Too many failed sign-in attempts; try again in 15 minutes")
         user = s.scalar(select(User).where(User.email == body.email.lower()))
         try:
-            ph.verify(user.password_hash if user else DUMMY_HASH, body.password)  # same cost whether or not the user exists
-            if not user:
+            pw_user = user if user and user.origin == "password" else None  # SSO users have no password
+            ph.verify(pw_user.password_hash if pw_user else DUMMY_HASH, body.password)  # same cost whether or not the user exists
+            if not pw_user:
                 raise VerifyMismatchError
         except VerifyMismatchError:
             for k in keys:
                 failures[k].append(time.monotonic())
             raise HTTPException(401, "Email or password is incorrect") from None
+        if s.get(Org, user.org_id).sso_required:  # checked after the password so this doesn't reveal which emails exist
+            raise HTTPException(403, "Your organisation requires single sign-on. Use Continue with SSO.")
         start_session(s, user, resp)
         return {"email": user.email}
 
@@ -172,7 +191,7 @@ def create_app(db_url: str | None = None) -> FastAPI:
 
     @app.get("/api/me")
     def me(user: CurrentUser, s: DB):
-        return {"email": user.email, "org": s.get(Org, user.org_id).name}
+        return {"email": user.email, "org": s.get(Org, user.org_id).name, "admin": user.admin}
 
     # --- enrolment & agent -------------------------------------------------
 
@@ -464,6 +483,174 @@ def create_app(db_url: str | None = None) -> FastAPI:
         evidence.append(s, o.id, "policy_changed", o.id, {"by": user.email, **changes})
         s.commit()
         return get_settings(user, s)
+
+    # --- OIDC single sign-on -------------------------------------------------
+
+    # ponytail: in-process login flows (state -> nonce/PKCE verifier), like the throttles; use a table/Redis with several workers
+    flows: dict[str, dict] = {}
+
+    def sso_org(s: Session, email: str | None, org_id: str | None) -> Org | None:
+        if org_id:
+            o = s.get(Org, org_id)
+            return o if o and o.sso_issuer else None
+        domain = (email or "").rpartition("@")[2].lower()
+        # ponytail: scans SSO-enabled orgs; add an indexed domain table when there are thousands
+        return next((o for o in s.scalars(select(Org).where(Org.sso_issuer.is_not(None))) if domain and domain in o.sso_domains), None)
+
+    def sso_redirect_uri(request: Request) -> str:
+        return (os.environ.get("NIMSTEAD_PUBLIC_URL") or str(request.base_url)).rstrip("/") + "/api/auth/sso/callback"
+
+    def sso_fail(reason: str) -> RedirectResponse:
+        resp = RedirectResponse(f"/signin?sso_error={reason}", status_code=303)
+        resp.delete_cookie(SSO_COOKIE, path="/api/auth/sso")
+        return resp
+
+    @app.get("/api/auth/sso/start")
+    def sso_start(request: Request, s: DB, email: str | None = Query(None, max_length=320), org: str | None = Query(None, max_length=32)):
+        o = sso_org(s, email, org)
+        if not o or not (o.sso_client_id and o.sso_client_secret and o.sso_domains):
+            return sso_fail("not_configured")
+        try:
+            url, flow = oidc.start(o.sso_issuer, o.sso_client_id, sso_redirect_uri(request))
+        except sso.SSOError as e:
+            log.warning("SSO start failed for org %s: %s (%s)", o.id, e, e.__cause__)
+            return sso_fail(str(e))
+        for k in [k for k, v in flows.items() if v["expires"] < time.monotonic()]:
+            del flows[k]
+        flows[flow["state"]] = {**flow, "org_id": o.id}
+        resp = RedirectResponse(url, status_code=303)
+        # Lax, not Strict: the IdP's redirect back is a cross-site navigation. The cookie binds the flow to this browser (login CSRF).
+        resp.set_cookie(SSO_COOKIE, flow["state"], max_age=sso.FLOW_SECONDS, httponly=True, samesite="lax", secure=SECURE_COOKIES, path="/api/auth/sso")
+        return resp
+
+    @app.get("/api/auth/sso/callback")
+    def sso_callback(request: Request, s: DB, code: str | None = None, state: str | None = None, error: str | None = None):
+        flow = flows.pop(state, None) if state else None  # single use
+        cookie = request.cookies.get(SSO_COOKIE)
+        if not flow or flow["expires"] < time.monotonic() or not cookie or not secrets.compare_digest(cookie, state):
+            return sso_fail("state")
+        o = s.get(Org, flow["org_id"])
+        if error or not code or not o or not (o.sso_issuer and o.sso_client_id and o.sso_client_secret):
+            return sso_fail("idp_error")
+        try:
+            claims = oidc.finish(o.sso_issuer, o.sso_client_id, o.sso_client_secret, sso_redirect_uri(request), code, flow)
+        except sso.SSOError as e:
+            log.warning("SSO login failed for org %s: %s (%s)", o.id, e, e.__cause__)
+            return sso_fail(str(e))
+        email = claims.get("email")
+        if not isinstance(email, str) or email.count("@") != 1 or len(email) > 320:
+            return sso_fail("no_email")
+        email = email.lower()
+        if claims.get("email_verified") not in (True, "true"):
+            return sso_fail("email_unverified")
+        if email.rpartition("@")[2] not in o.sso_domains:
+            return sso_fail("domain_not_allowed")
+        user = s.scalar(select(User).where(User.email == email))
+        if user and user.org_id != o.id:  # emails are globally unique; never let an IdP sign into another tenant's account
+            return sso_fail("account_elsewhere")
+        if not user:
+            user = User(org_id=o.id, email=email, password_hash=NO_PASSWORD, origin="sso")
+            s.add(user)
+            s.flush()
+            evidence.append(s, o.id, "sso_user_created", user.id, {"email": email, "issuer": o.sso_issuer})
+        evidence.append(s, o.id, "sso_login", user.id, {"email": email})
+        resp = RedirectResponse("/", status_code=303)
+        resp.delete_cookie(SSO_COOKIE, path="/api/auth/sso")
+        start_session(s, user, resp)
+        return resp
+
+    class SSOConfig(BaseModel):
+        issuer: str = Field("", max_length=500)  # empty = switch SSO off
+        client_id: str = Field("", max_length=300)
+        client_secret: str | None = Field(None, max_length=500)  # write-only; omit to keep the stored one
+        domains: list[str] = Field(default_factory=list, max_length=20)
+        required: bool = False
+
+    def sso_json(o: Org, request: Request) -> dict:
+        return {"issuer": o.sso_issuer or "", "client_id": o.sso_client_id or "", "client_secret_set": bool(o.sso_client_secret),
+                "domains": o.sso_domains, "required": o.sso_required, "redirect_uri": sso_redirect_uri(request)}
+
+    @app.get("/api/settings/sso")
+    def get_sso(request: Request, user: Admin, s: DB):
+        return sso_json(s.get(Org, user.org_id), request)
+
+    @app.put("/api/settings/sso")
+    def put_sso(body: SSOConfig, request: Request, user: Admin, s: DB):
+        o = s.get(Org, user.org_id)
+        issuer, domains = body.issuer.strip(), sorted({d.strip().lower() for d in body.domains if d.strip()})
+        if not issuer:
+            o.sso_issuer = o.sso_client_id = o.sso_client_secret = None
+            o.sso_domains, o.sso_required = [], False
+        else:
+            try:
+                check_public_url(issuer, resolve=False)  # https only; private targets are refused again at fetch time
+            except ValueError as e:
+                raise HTTPException(422, f"Issuer URL: {e}") from None
+            if bad := [d for d in domains if not re.fullmatch(r"[a-z0-9-]+(\.[a-z0-9-]+)+", d)]:
+                raise HTTPException(422, f"Not a valid domain: {bad[0]}")
+            secret = body.client_secret or o.sso_client_secret
+            if not (body.client_id.strip() and secret and domains):
+                raise HTTPException(422, "Client id, client secret and at least one email domain are required")
+            for other in s.scalars(select(Org).where(Org.sso_issuer.is_not(None), Org.id != o.id)):
+                if clash := set(domains) & set(other.sso_domains):
+                    raise HTTPException(409, f"Domain {sorted(clash)[0]} is already used by another organisation's SSO")
+            o.sso_issuer, o.sso_client_id, o.sso_client_secret = issuer, body.client_id.strip(), secret
+            o.sso_domains, o.sso_required = domains, body.required
+        # ponytail: domains aren't proven by DNS; require a TXT challenge before offering this to untrusted tenants
+        evidence.append(s, o.id, "sso_configured", o.id, {
+            "by": user.email, "issuer": o.sso_issuer, "client_id": o.sso_client_id, "domains": o.sso_domains,
+            "required": o.sso_required, "client_secret": "[redacted]" if o.sso_client_secret else None,
+            "secret_changed": bool(body.client_secret),
+        })
+        s.commit()
+        return sso_json(o, request)
+
+    # --- failure alerts ------------------------------------------------------
+
+    class NotifyConfig(BaseModel):
+        webhook_url: str | None = Field(None, max_length=500)  # omit to keep, "" to remove (Slack URLs are secrets: never echoed back)
+        webhook_format: Literal["slack", "json"] | None = None
+        emails: list[EmailStr] | None = Field(None, max_length=10)
+
+    def notify_json(o: Org, s: Session) -> dict:
+        recent = s.scalars(select(Notification).where(Notification.org_id == o.id).order_by(Notification.id.desc()).limit(5)).all()
+        host = urlsplit(o.notify_webhook_url).hostname if o.notify_webhook_url else None
+        return {
+            "webhook_set": bool(o.notify_webhook_url), "webhook_host": host, "webhook_format": o.notify_webhook_format,
+            "emails": o.notify_emails, "email_available": notify.smtp_configured(),
+            "last_delivery_failed": bool(recent) and not recent[0].ok,
+            "recent": [{"ts": n.ts, "kind": n.kind, "channel": n.channel, "urgent": n.urgent, "ok": n.ok, "error": n.error} for n in recent],
+        }
+
+    @app.get("/api/settings/notifications")
+    def get_notifications(user: Admin, s: DB):
+        return notify_json(s.get(Org, user.org_id), s)
+
+    @app.put("/api/settings/notifications")
+    def put_notifications(body: NotifyConfig, user: Admin, s: DB):
+        o = s.get(Org, user.org_id)
+        if body.webhook_url is not None:
+            if body.webhook_url:
+                try:
+                    check_public_url(body.webhook_url, resolve=False)  # re-checked with DNS resolution at every delivery
+                except ValueError as e:
+                    raise HTTPException(422, f"Webhook URL: {e}") from None
+            o.notify_webhook_url = body.webhook_url or None
+        if body.webhook_format:
+            o.notify_webhook_format = body.webhook_format
+        if body.emails is not None:
+            o.notify_emails = sorted({e.lower() for e in body.emails})
+        evidence.append(s, o.id, "notifications_configured", o.id, {
+            "by": user.email, "webhook_host": urlsplit(o.notify_webhook_url).hostname if o.notify_webhook_url else None,
+            "format": o.notify_webhook_format, "emails": o.notify_emails,
+        })
+        s.commit()
+        return notify_json(o, s)
+
+    @app.post("/api/settings/notifications/test", status_code=202)
+    def test_notification(user: Admin, s: DB):
+        notify.notify(s, user.org_id, "test", f"Test alert from Nimstead, requested by {user.email}")
+        return {"queued": True}
 
     # --- AI (optional) -----------------------------------------------------
 

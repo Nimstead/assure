@@ -52,14 +52,27 @@ def idp():
     return FakeIdP()
 
 
-def make(env, idp):
+DNS: dict[str, list[str]] = {}  # fake public DNS: TXT name -> records
+
+
+def publish_and_verify(admin, r):
+    """Do what a domain owner does: publish the TXT record Nimstead shows, then press Verify."""
+    for chk in r.json()["domain_checks"]:
+        DNS[chk["txt_name"]] = [chk["txt_value"]]
+    return admin.post("/api/settings/sso/verify")
+
+
+def make(env, idp, verify=True):
     """One app (and DB) shared by an admin client and fresh browsers; the OIDC client is wired to the fake IdP."""
-    app = create_app(env, oidc_http=httpx.Client(transport=httpx.MockTransport(idp.handle)))
+    DNS.clear()
+    app = create_app(env, oidc_http=httpx.Client(transport=httpx.MockTransport(idp.handle)), dns_lookup=lambda n: DNS.get(n, []))
     admin = TestClient(app)
     r = admin.post("/api/auth/signup", json={"email": "admin@corp.example.com", "password": "correct horse battery", "org_name": "Corp"})
     assert r.status_code == 201
     r = admin.put("/api/settings/sso", json={"issuer": ISSUER, "client_id": CLIENT, "client_secret": SECRET, "domains": ["Corp.example.com"]})
     assert r.status_code == 200, r.text
+    if verify:
+        assert publish_and_verify(admin, r).json()["domain_checks"][0]["verified"]
     return app, admin
 
 
@@ -189,8 +202,17 @@ def test_replayed_callback_is_refused(env, idp):
 
 
 def test_sso_required_blocks_password_login_for_its_users_only(env, idp):
+    from sqlalchemy import select
+    from sqlalchemy.orm import sessionmaker
+
+    from nimstead.app import ph
+    from nimstead.db import User, make_engine
     app, admin = make(env, idp)
-    pw = {"email": "admin@corp.example.com", "password": "correct horse battery"}
+    s = sessionmaker(make_engine(env))()
+    org_id = s.scalar(select(User.org_id).where(User.email == "admin@corp.example.com"))
+    s.add(User(org_id=org_id, email="staff@corp.example.com", password_hash=ph.hash("correct horse battery"), admin=False))
+    s.commit()
+    pw = {"email": "staff@corp.example.com", "password": "correct horse battery"}  # a non-admin password user
     assert TestClient(app).post("/api/auth/login", json=pw).status_code == 200
     r = admin.put("/api/settings/sso", json={"issuer": ISSUER, "client_id": CLIENT, "domains": ["corp.example.com"], "required": True})
     assert r.json()["required"] is True
@@ -225,3 +247,57 @@ def test_only_admins_configure_sso_and_config_is_validated(env, idp):
     assert admin.put("/api/settings/sso", json={"issuer": ""}).json()["issuer"] == ""  # switch off
     r = TestClient(app).get("/api/auth/sso/start", params={"email": "jane@corp.example.com"}, follow_redirects=False)
     assert error_of(r) == "not_configured"
+
+
+
+def test_unverified_domain_cannot_be_used(env, idp):
+    app, admin = make(env, idp, verify=False)
+    c = TestClient(app)
+    r = c.get("/api/auth/sso/start", params={"email": "jane@corp.example.com"}, follow_redirects=False)
+    assert error_of(r) == "not_configured"
+    v = admin.post("/api/settings/sso/verify").json()  # no TXT record published yet
+    assert v["domain_checks"][0]["verified"] is False
+
+
+def test_domain_verified_by_one_org_cannot_be_taken_by_another(env, idp):
+    app, _ = make(env, idp)
+    rival = TestClient(app)
+    rival.post("/api/auth/signup", json={"email": "boss@rival.example.net", "password": "correct horse battery", "org_name": "Rival"})
+    r = rival.put("/api/settings/sso", json={"issuer": ISSUER, "client_id": "x", "client_secret": "y", "domains": ["corp.example.com"]})
+    assert r.status_code == 409
+
+
+def test_unverified_claim_does_not_block_real_owner(env, idp):
+    app = create_app(env, oidc_http=httpx.Client(transport=httpx.MockTransport(idp.handle)), dns_lookup=lambda n: DNS.get(n, []))
+    DNS.clear()
+    squatter = TestClient(app)
+    squatter.post("/api/auth/signup", json={"email": "x@squat.example.net", "password": "correct horse battery", "org_name": "Squat"})
+    assert squatter.put("/api/settings/sso", json={"issuer": ISSUER, "client_id": "x", "client_secret": "y",
+                                                   "domains": ["corp.example.com"]}).status_code == 200
+    assert squatter.post("/api/settings/sso/verify").json()["domain_checks"][0]["verified"] is False  # can't publish their DNS
+    owner = TestClient(app)
+    owner.post("/api/auth/signup", json={"email": "admin@corp.example.com", "password": "correct horse battery", "org_name": "Corp"})
+    r = owner.put("/api/settings/sso", json={"issuer": ISSUER, "client_id": CLIENT, "client_secret": SECRET, "domains": ["corp.example.com"]})
+    assert r.status_code == 200 and publish_and_verify(owner, r).json()["domain_checks"][0]["verified"]
+    # the squatter's token differs (HMAC of their org), so the owner's record never verifies them
+    assert squatter.post("/api/settings/sso/verify").json()["domain_checks"][0]["verified"] is False
+
+
+def test_client_secret_encrypted_at_rest(env, idp):
+    from sqlalchemy import select
+    from sqlalchemy.orm import sessionmaker
+
+    from nimstead.db import Org, make_engine
+    make(env, idp)
+    stored = sessionmaker(make_engine(env))().scalar(select(Org.sso_client_secret).where(Org.sso_client_secret.is_not(None)))
+    assert stored.startswith("fernet:") and SECRET not in stored
+
+
+def test_break_glass_admin_password_login_is_recorded(env, idp):
+    app, admin = make(env, idp)
+    r = admin.get("/api/settings/sso").json()
+    admin.put("/api/settings/sso", json={"issuer": ISSUER, "client_id": CLIENT, "domains": r["domains"], "required": True})
+    c = TestClient(app)
+    assert c.post("/api/auth/login", json={"email": "admin@corp.example.com", "password": "correct horse battery"}).status_code == 200
+    kinds = [e["kind"] for e in admin.get("/api/evidence/ledger").json()["entries"]]
+    assert "break_glass_login" in kinds

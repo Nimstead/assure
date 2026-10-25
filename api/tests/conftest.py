@@ -35,6 +35,8 @@ def env(tmp_path, monkeypatch):
     from nimstead import evidence
     monkeypatch.setattr(evidence, "CHECKPOINT_DIR", tmp_path / "checkpoints")
     monkeypatch.setattr(evidence, "KEY_FILE", tmp_path / "signing.pem")
+    from nimstead import sso
+    monkeypatch.setattr(sso, "SECRET_KEY_FILE", tmp_path / "secret.key")
     url = fresh_db_url(tmp_path)
     s = sessionmaker(make_engine(url))()
     for f in ("Debian_12__openssl.json", "PyPI__requests.json"):

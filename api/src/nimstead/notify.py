@@ -9,13 +9,15 @@ import os
 import smtplib
 import ssl
 from concurrent.futures import Future, ThreadPoolExecutor
+from datetime import timedelta
 from email.message import EmailMessage
 from urllib.parse import urlsplit
 
 import httpx
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from nimstead.db import Notification, Org
+from nimstead.db import Notification, Org, now
 from nimstead.netguard import check_public_url, guarded_client
 
 log = logging.getLogger(__name__)
@@ -42,12 +44,38 @@ def notify(s: Session, org_id: str, kind: str, text: str, urgent: bool = False) 
             targets.append(("email", list(org.notify_emails), ""))
         if not targets:
             return
-        # ponytail: unbounded in-process queue, no retry; move to a persistent outbox if alerts must survive restarts
-        f = _pool.submit(_deliver, s.get_bind(), org_id, kind, text, urgent, targets)
-        _pending.add(f)
-        f.add_done_callback(_pending.discard)
+        # ponytail: in-process queue; failed attempts are persisted and retried by retry_failed() (hourly feed run)
+        _submit(s.get_bind(), org_id, kind, text, urgent, targets, 1)
     except Exception:
         log.exception("could not queue notification")
+
+
+def _submit(bind, org_id, kind, text, urgent, targets, attempt):
+    f = _pool.submit(_deliver, bind, org_id, kind, text, urgent, targets, attempt)
+    _pending.add(f)
+    f.add_done_callback(_pending.discard)
+
+
+MAX_ATTEMPTS, RETRY_WINDOW = 3, timedelta(hours=24)
+
+
+def retry_failed(s: Session) -> int:
+    """Re-send failed deliveries (up to MAX_ATTEMPTS within RETRY_WINDOW) to the org's current targets."""
+    n = 0
+    for row in s.scalars(select(Notification).where(Notification.ok.is_(False), Notification.retried.is_(False),
+                                                    Notification.attempt < MAX_ATTEMPTS, Notification.ts > now() - RETRY_WINDOW)):
+        org = s.get(Org, row.org_id)
+        if row.channel == "webhook" and org.notify_webhook_url:
+            target = [("webhook", org.notify_webhook_url, org.notify_webhook_format)]
+        elif row.channel == "email" and org.notify_emails and smtp_configured():
+            target = [("email", list(org.notify_emails), "")]
+        else:
+            continue
+        row.retried = True
+        _submit(s.get_bind(), row.org_id, row.kind, row.text, row.urgent, target, row.attempt + 1)
+        n += 1
+    s.commit()
+    return n
 
 
 def flush() -> None:
@@ -56,7 +84,7 @@ def flush() -> None:
         f.result()
 
 
-def _deliver(bind, org_id: str, kind: str, text: str, urgent: bool, targets: list) -> None:
+def _deliver(bind, org_id: str, kind: str, text: str, urgent: bool, targets: list, attempt: int = 1) -> None:
     results = []
     for channel, target, fmt in targets:
         try:
@@ -71,7 +99,8 @@ def _deliver(bind, org_id: str, kind: str, text: str, urgent: bool, targets: lis
             results.append((channel, False, err))
     try:
         with Session(bind) as s:
-            s.add_all(Notification(org_id=org_id, kind=kind, channel=c, urgent=urgent, ok=ok, error=err) for c, ok, err in results)
+            s.add_all(Notification(org_id=org_id, kind=kind, channel=c, urgent=urgent, ok=ok, error=err, text=text[:2000],
+                                   attempt=attempt) for c, ok, err in results)
             s.commit()
     except Exception:
         log.exception("could not record notification attempt")

@@ -24,8 +24,8 @@ from nimstead.db import Asset, Finding, InstalledPackage, Org, RemediationJob, n
 from nimstead.match import normalize_ecosystem
 from nimstead.versions import comparator_for, sort_key
 
-# dnf (RHEL family) deliberately absent until its executor path is proven in a sandbox
-MANAGERS = {"Debian": "apt", "Ubuntu": "apt", "Alpine": "apk"}
+# Only apt is proven end to end in a sandbox. apk/dnf refused: no trustworthy rollback artefact yet (DECISIONS 15)
+MANAGERS = {"Debian": "apt", "Ubuntu": "apt"}
 SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9+._-]{0,200}$")
 SAFE_VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+~:_^-]{0,200}$")
 ACTIVE = ("planned", "approved", "dispatched", "verifying")

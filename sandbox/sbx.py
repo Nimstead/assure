@@ -1,6 +1,6 @@
 """End-to-end test in a DISPOSABLE WSL distro: detect -> remediate -> verify -> rollback -> evidence.
 
-Run from api/:  uv run python ../sandbox/sbx.py [--keep]
+Run from api/:  uv run python ../sandbox/sbx.py [--distro Debian|Ubuntu-24.04] [--keep]
 - Creates a fresh distro named nimstead-sbx-<random> (downloads the Debian WSL image the first time),
   and always unregisters it at the end (unless --keep). It refuses to touch any other distro.
 - The API runs in-process on a throwaway SQLite DB with real OSV/KEV/EPSS data. HTTP between agent and
@@ -24,6 +24,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PREFIX = "nimstead-sbx-"
 NAME = PREFIX + secrets.token_hex(4)
+DISTRO = sys.argv[sys.argv.index("--distro") + 1] if "--distro" in sys.argv else "Debian"
 TMP = Path(tempfile.mkdtemp(prefix="nimstead-sbx-"))
 os.environ.update(NIMSTEAD_SECURE_COOKIES="0", NIMSTEAD_SIGNING_KEY_FILE=str(TMP / "signing.pem"))
 
@@ -52,8 +53,8 @@ def wsl(*args, input=None, check=True, timeout=1800):
 
 
 def create_sandbox():
-    note("creating sandbox distro", name=NAME)
-    p = subprocess.run(["wsl", "--install", "Debian", "--name", NAME, "--location", str(TMP / "distro"), "--no-launch"],
+    note("creating sandbox distro", name=NAME, distro=DISTRO)
+    p = subprocess.run(["wsl", "--install", DISTRO, "--name", NAME, "--location", str(TMP / "distro"), "--no-launch"],
                        capture_output=True, timeout=1800)
     if p.returncode != 0:
         raise RuntimeError("wsl --install failed: " + (p.stdout + p.stderr).decode("utf-16-le", errors="replace"))
@@ -183,7 +184,7 @@ def main(keep=False):
     finally:
         if not keep:
             destroy_sandbox()
-        (ROOT / "sandbox" / "last_run.json").write_text(json.dumps(log, indent=2, default=str))
+        (ROOT / "sandbox" / f"last_run_{DISTRO.lower()}.json").write_text(json.dumps(log, indent=2, default=str))
 
 
 if __name__ == "__main__":

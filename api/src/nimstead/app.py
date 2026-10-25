@@ -17,7 +17,7 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from nimstead import evidence, remediate
+from nimstead import ai, evidence, remediate
 from nimstead.db import (
     Asset,
     EnrollToken,
@@ -432,6 +432,31 @@ def create_app(db_url: str | None = None) -> FastAPI:
         evidence.append(s, o.id, "policy_changed", o.id, {"by": user.email, **changes})
         s.commit()
         return get_settings(user, s)
+
+    # --- AI (optional) -----------------------------------------------------
+
+    @app.get("/api/ai/status")
+    def ai_status(user: CurrentUser):
+        return {"enabled": ai.enabled()}
+
+    @app.post("/api/ai/explain/{finding_id}")
+    def ai_explain(finding_id: str, user: CurrentUser, s: DB):
+        # ponytail: no per-user AI rate limit yet; add with login throttling
+        f = get_finding(finding_id, user, s)
+        try:
+            return {"text": ai.explain(f), "model": ai.MODEL}
+        except ai.AIUnavailable as e:
+            raise HTTPException(503, str(e)) from None
+
+    class AskReq(BaseModel):
+        text: str = Field(min_length=2, max_length=500)
+
+    @app.post("/api/ai/search")
+    def ai_search(body: AskReq, user: CurrentUser):
+        try:
+            return ai.parse_search(body.text).model_dump()
+        except ai.AIUnavailable as e:
+            raise HTTPException(503, str(e)) from None
 
     # --- evidence ----------------------------------------------------------
 

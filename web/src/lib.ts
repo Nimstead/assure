@@ -8,10 +8,13 @@ export type Status = "open" | "resolved" | "accepted";
 export type Criticality = "low" | "medium" | "high" | "critical";
 
 export interface Asset {
-  id: string; hostname: string; os_name: string; ecosystem: string;
+  id: string; hostname: string; os_name: string; ecosystem: string; kind: "host" | "application";
   criticality: Criticality; internet_facing: boolean; sandbox: boolean; ring: 0 | 1; health_units: string[];
   first_seen: string; last_seen: string; open_by_priority: Partial<Record<Priority, number>>;
 }
+export interface SbomResult { components: number; mapped: number; unique_packages: number; skipped: Record<string, number>; open: number; resolved: number }
+export const sbomSummary = (r: SbomResult) =>
+  `${r.mapped} of ${r.components} components recognised (${r.unique_packages} unique packages), ${r.components - r.mapped} skipped. ${r.open} open finding${r.open === 1 ? "" : "s"}, ${r.resolved} resolved.`;
 export interface Finding {
   id: string; asset_id: string; hostname: string; ecosystem: string; package: string;
   installed_version: string; fixed_version: string | null; vuln_id: string; advisory_ids: string[];
@@ -77,13 +80,14 @@ export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }
 
+/** A string body is sent as-is (already-serialised JSON, e.g. an uploaded SBOM); anything else is JSON-encoded. */
 export async function api<T>(path: string, init?: { method?: string; body?: unknown }): Promise<T> {
   let res: Response;
   try {
     res = await fetch(path, {
       method: init?.method,
       headers: init?.body ? { "Content-Type": "application/json" } : undefined,
-      body: init?.body ? JSON.stringify(init.body) : undefined,
+      body: init?.body ? (typeof init.body === "string" ? init.body : JSON.stringify(init.body)) : undefined,
     });
   } catch {
     throw new ApiError(0, "Can't reach the server. Check your connection and try again.");

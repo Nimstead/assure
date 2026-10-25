@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertDialog, Switch } from "radix-ui";
-import { ArrowRight, Plus, Trash2 } from "lucide-react";
-import { api, assetsQ, filtersToSearch, parseFilters, PRIORITIES, relativeTime, useTitle, type Asset, type Criticality } from "./lib";
+import { AlertDialog, Dialog, Switch } from "radix-ui";
+import { AppWindow, ArrowRight, Plus, Trash2, Upload } from "lucide-react";
+import { api, assetsQ, filtersToSearch, parseFilters, PRIORITIES, relativeTime, sbomSummary, useTitle, type Asset, type Criticality, type SbomResult } from "./lib";
 import { btnPrimary, btnQuiet, EmptyState, ErrorState, input, PriorityPill, Skeleton } from "./ui";
 import clsx from "clsx";
 
@@ -39,7 +39,10 @@ export function AssetsPage() {
     <div className="flex flex-col gap-6">
       <header className="flex items-center justify-between gap-4">
         <h1 className="text-3xl font-semibold">Assets</h1>
-        <Link to="/add" className={clsx(btnPrimary, "no-underline")}><Plus className="size-4" aria-hidden />Add machine</Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <AddApplication />
+          <Link to="/add" className={clsx(btnPrimary, "no-underline")}><Plus className="size-4" aria-hidden />Add machine</Link>
+        </div>
       </header>
       {patch.error && <p role="alert" className="rounded-md bg-now-bg px-3 py-2 text-sm text-now-fg">Couldn't save that change: {patch.error.message}</p>}
 
@@ -82,7 +85,7 @@ function AssetRow({ a, onPatch, onDelete }: { a: Asset; onPatch: (p: AssetPatch)
         <h2 className="flex items-center gap-2 text-base font-semibold"><span className="truncate">{a.hostname}</span>
           {a.sandbox && <span title="Disposable test machine: the only kind remediation may change until production remediation is enabled" className="shrink-0 rounded border border-line-strong px-1.5 py-px text-[11px] font-semibold tracking-wide text-muted">Sandbox</span>}</h2>
         <p className="truncate text-sm text-muted">
-          {a.os_name || "Unknown OS"} · seen <time dateTime={a.last_seen + "Z"} title={new Date(a.last_seen + "Z").toLocaleString()}>{relativeTime(a.last_seen)}</time>
+          {a.kind === "application" ? "Application (SBOM)" : a.os_name || "Unknown OS"} · seen <time dateTime={a.last_seen + "Z"} title={new Date(a.last_seen + "Z").toLocaleString()}>{relativeTime(a.last_seen)}</time>
         </p>
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
@@ -109,13 +112,14 @@ function AssetRow({ a, onPatch, onDelete }: { a: Asset; onPatch: (p: AssetPatch)
           </Switch.Root>
           Internet-facing
         </label>
-        <label className="flex items-center gap-2 text-sm">
+        {a.kind === "host" && <><label className="flex items-center gap-2 text-sm">
           <span className="text-muted">Ring</span>
           <select className={clsx(input, "min-h-9 w-auto")} value={a.ring} onChange={(e) => onPatch({ ring: Number(e.target.value) as 0 | 1 })}>
             <option value={0}>Canary</option><option value={1}>Broad</option>
           </select>
         </label>
-        <HealthUnits a={a} onPatch={onPatch} />
+        <HealthUnits a={a} onPatch={onPatch} /></>}
+        <SbomUpload a={a} />
         <button className={btnQuiet} onClick={onDelete}><Trash2 className="size-4" aria-hidden />Delete<span className="sr-only"> {a.hostname}</span></button>
       </div>
     </li>
@@ -136,5 +140,74 @@ function HealthUnits({ a, onPatch }: { a: Asset; onPatch: (p: AssetPatch) => voi
       <input className={clsx(input, "min-h-9 w-48")} value={text} placeholder="nginx, sshd" onChange={(e) => setText(e.target.value)} onBlur={commit}
         onKeyDown={(e) => e.key === "Enter" && commit()} title="systemd units that must be active before and after a fix" />
     </label>
+  );
+}
+
+/** Creates an agent-less application asset; the one-time upload token lets CI post SBOMs without a login. */
+function AddApplication() {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [made, setMade] = useState<{ id: string; name: string; token: string } | null>(null);
+  const create = useMutation({
+    mutationFn: (n: string) => api<Asset & { upload_token: string }>("/api/assets", { method: "POST", body: { name: n } }),
+    onSuccess: (a) => { setMade({ id: a.id, name: a.hostname, token: a.upload_token }); setName(""); void qc.invalidateQueries({ queryKey: ["assets"] }); },
+  });
+  const close = (o: boolean) => { setOpen(o); if (!o) { setMade(null); create.reset(); } };
+  return (
+    <Dialog.Root open={open} onOpenChange={close}>
+      <Dialog.Trigger className={btnQuiet}><AppWindow className="size-4" aria-hidden />Add application</Dialog.Trigger>
+      <Dialog.Portal>
+        <Dialog.Overlay className="overlay" />
+        <Dialog.Content className="fixed left-1/2 top-[15vh] z-[51] w-[min(30rem,calc(100%-2rem))] -translate-x-1/2 rounded-xl border border-line bg-surface p-5 shadow-2xl">
+          <Dialog.Title className="text-lg font-semibold">Add an application</Dialog.Title>
+          {made ? (
+            <>
+              <Dialog.Description className="mt-2 text-sm">
+                <strong>{made.name}</strong> was added. Upload its CycloneDX SBOM from the Assets page, or from CI with this token (shown once):
+              </Dialog.Description>
+              <pre className="mt-3 overflow-x-auto rounded-md bg-bg p-3 text-xs" tabIndex={0} aria-label="Upload token and example command">{`curl -X POST -H "Authorization: Bearer ${made.token}" \\
+  --data-binary @bom.json ${location.origin}/api/assets/${made.id}/sbom`}</pre>
+              <div className="mt-5 flex justify-end"><Dialog.Close className={btnPrimary}>Done</Dialog.Close></div>
+            </>
+          ) : (
+            <form className="mt-3 flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); if (name.trim()) create.mutate(name.trim()); }}>
+              <Dialog.Description className="text-sm text-muted">Software without an agent: findings come from the CycloneDX SBOM you upload.</Dialog.Description>
+              <label className="flex flex-col gap-1 text-sm font-medium">Name
+                <input className={input} value={name} onChange={(e) => setName(e.target.value)} maxLength={255} required autoComplete="off" placeholder="billing-service" />
+              </label>
+              {create.error && <p role="alert" className="text-sm text-now-fg">{create.error.message}</p>}
+              <div className="flex justify-end gap-2">
+                <Dialog.Close className={btnQuiet}>Cancel</Dialog.Close>
+                <button className={btnPrimary} disabled={create.isPending || !name.trim()}>{create.isPending ? "Adding…" : "Add application"}</button>
+              </div>
+            </form>
+          )}
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
+/** Button -> file picker -> POST of the raw CycloneDX JSON. The result is announced in a live region. */
+export function SbomUpload({ a }: { a: Asset }) {
+  const qc = useQueryClient();
+  const file = useRef<HTMLInputElement>(null);
+  const up = useMutation({
+    mutationFn: async (f: File) => api<SbomResult>(`/api/assets/${a.id}/sbom`, { method: "POST", body: await f.text() }),
+    onSuccess: () => Promise.all(["assets", "findings", "summary", "finding", "ledger"].map((k) => qc.invalidateQueries({ queryKey: [k] }))),
+  });
+  return (
+    <div className="flex flex-col gap-1">
+      <button className={btnQuiet} disabled={up.isPending} aria-label={`Upload SBOM for ${a.hostname}`} onClick={() => file.current?.click()}>
+        <Upload className="size-4" aria-hidden />{up.isPending ? "Uploading…" : "Upload SBOM"}
+      </button>
+      <input ref={file} type="file" accept=".json,application/json" hidden tabIndex={-1} data-testid={`sbom-file-${a.id}`}
+        onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) up.mutate(f); }} />
+      <div aria-live="polite" className="max-w-sm text-xs text-muted">
+        {up.data && <span role="status">{sbomSummary(up.data)}</span>}
+        {up.error && <span role="alert" className="text-now-fg">SBOM rejected: {up.error.message}</span>}
+      </div>
+    </div>
   );
 }

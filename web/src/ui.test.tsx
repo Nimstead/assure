@@ -15,11 +15,11 @@ it("priority pill carries a text label, not just colour", () => {
   expect(screen.getByText("3")).toBeInTheDocument();
 });
 
-it("onboarding shows both copyable commands", () => {
+it("onboarding shows the Linux, Windows and Python commands", () => {
   render(<InstallCommands origin="http://localhost:5173" token="nme_t0k" />);
   expect(screen.getByText(/curl -fsSL http:\/\/localhost:5173\/install\.sh \| sudo sh -s -- --token nme_t0k/)).toBeInTheDocument();
   expect(screen.getByText(/enroll --server http:\/\/localhost:5173 --token nme_t0k/)).toBeInTheDocument();
-  expect(screen.getAllByRole("button", { name: "Copy" })).toHaveLength(2);
+  expect(screen.getAllByRole("button", { name: "Copy" })).toHaveLength(3);
 });
 
 it("approve dialog states exactly what will happen", () => {

@@ -45,6 +45,7 @@ describe("install commands", () => {
   it("renders both commands with origin and token", () => {
     const c = installCommands("https://nim.example", "nme_abc");
     expect(c.curl).toBe("curl -fsSL https://nim.example/install.sh | sudo sh -s -- --token nme_abc");
+    expect(c.windows).toBe('$env:NIMSTEAD_TOKEN = "nme_abc"; irm https://nim.example/install.ps1 | iex');
     expect(c.python).toBe("python3 nimstead_agent.py enroll --server https://nim.example --token nme_abc && python3 nimstead_agent.py report");
   });
 });

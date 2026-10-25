@@ -151,6 +151,7 @@ export function installCommands(origin: string, token: string) {
   return {
     curl: `curl -fsSL ${origin}/install.sh | sudo sh -s -- --token ${token}`,
     python: `python3 nimstead_agent.py enroll --server ${origin} --token ${token} && python3 nimstead_agent.py report`,
+    windows: `$env:NIMSTEAD_TOKEN = "${token}"; irm ${origin}/install.ps1 | iex`,
   };
 }
 

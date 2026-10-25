@@ -18,6 +18,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -173,6 +174,8 @@ class Job:
         self.mgr = job.get("manager")
         self.pkgs = job.get("packages") or []
         self.units = job.get("health_units") or []
+        # services often fail a few seconds after a library upgrade, not instantly
+        self.settle = min(max(int(job.get("settle_seconds", 15) or 0), 0), 300)
         self.dir = os.path.join(rollback_root, re.sub(r"[^A-Za-z0-9]", "", str(job.get("id", ""))) or "unknown")
         self.apt_cache, self.apk_cache, self.apk_db = apt_cache, apk_cache, apk_db
 
@@ -272,6 +275,8 @@ class Job:
         now_v = self.versions()
         bad = [p["name"] for p in self.pkgs if now_v.get(p["name"]) != p["from"]]
         self.step("versions restored", ok=not bad, output=("mismatch: " + ", ".join(bad)) if bad else "all restored")
+        if self.units and self.settle:
+            time.sleep(self.settle)  # let restarted services come back before judging
         self.health("after rollback")
 
     def execute(self):
@@ -295,6 +300,8 @@ class Job:
             return "aborted", self.steps, f"No changes made: {e}"
         try:
             self.apply()
+            if self.units and self.settle:
+                time.sleep(self.settle)
             self.health("after change")
             return "applied", self.steps, None
         except Exception as e:
@@ -430,6 +437,8 @@ def main(argv=None):
     sub.add_parser("report")
     sub.add_parser("collect")
     sub.add_parser("remediate", help="run approved remediation jobs, then re-report inventory")
+    rj = sub.add_parser("run-job", help="run one job read as JSON from stdin, print the result JSON (no network; sandbox testing)")
+    rj.add_argument("--yes", action="store_true", help="confirm: this changes installed packages on this host")
     a = ap.parse_args(argv)
     try:
         if a.cmd == "collect":
@@ -443,6 +452,13 @@ def main(argv=None):
             if "agent_key" not in res:
                 raise AgentError("enroll response missing agent_key")
             print("enrolled as asset {}; config saved to {}".format(res.get("asset_id"), save_config({"server": a.server, "allow_remediation": a.allow_remediation, **res})))
+        elif a.cmd == "run-job":
+            if not a.yes:
+                raise AgentError("run-job changes installed packages; pass --yes to confirm")
+            j = Job(json.load(sys.stdin))
+            outcome, steps, error = j.execute()
+            print(json.dumps({"outcome": outcome, "steps": steps, "error": error, "versions": getattr(j, "result_versions", None)}))
+            return 0 if outcome == "applied" else 2
         elif a.cmd == "remediate":
             cfg = load_config()
             if not cfg.get("allow_remediation"):

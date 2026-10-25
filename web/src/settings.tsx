@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { RadioGroup } from "radix-ui";
+import { AlertDialog, RadioGroup } from "radix-ui";
 import { Info } from "lucide-react";
 import clsx from "clsx";
-import { api, settingsQ, useTitle, type Settings } from "./lib";
-import { btnPrimary, ErrorState, input, Skeleton } from "./ui";
+import { api, parseUtc, relativeTime, settingsQ, useTitle, type EnrollToken, type Settings } from "./lib";
+import { btnPrimary, btnQuiet, ErrorState, input, Skeleton } from "./ui";
 
 const MODES: { value: Settings["remediation_mode"]; title: string; body: string }[] = [
   { value: "suggest", title: "Suggest", body: "Nimstead recommends upgrades. It never changes a machine; you apply fixes yourself." },
@@ -73,6 +73,57 @@ export function SettingsPage() {
         </form>
         <p id="soak-hint" className={clsx("text-xs", hoursOk ? "text-muted" : "text-now-fg")}>Whole hours, 1 to 720.</p>
       </section>
+      <TokensSection />
     </div>
+  );
+}
+
+function TokensSection() {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ["enroll-tokens"], queryFn: () => api<EnrollToken[]>("/api/enroll-tokens") });
+  const [target, setTarget] = useState<EnrollToken | null>(null);
+  const revoke = useMutation({
+    mutationFn: (id: string) => api(`/api/enroll-tokens/${id}`, { method: "DELETE" }),
+    onSuccess: () => { setTarget(null); void Promise.all(["enroll-tokens", "ledger"].map((k) => qc.invalidateQueries({ queryKey: [k] }))); },
+  });
+  const now = Date.now();
+  return (
+    <section aria-labelledby="tokens" className="flex flex-col gap-3">
+      <h2 id="tokens" className="text-lg font-semibold">Enrolment tokens</h2>
+      <p className="max-w-prose text-sm text-muted">Tokens let a machine join. Revoke any you no longer need; machines already enrolled keep working.</p>
+      {q.isPending ? <Skeleton className="h-20" /> : q.error ? <ErrorState error={q.error} retry={() => q.refetch()} />
+        : q.data.length === 0 ? <p className="text-sm text-muted">No tokens yet.</p> : (
+          <ul className="flex flex-col divide-y divide-line overflow-hidden rounded-lg border border-line bg-surface">
+            {q.data.map((t) => {
+              const expired = parseUtc(t.expires).getTime() < now;
+              return (
+                <li key={t.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 text-sm">
+                  <code className="font-mono text-xs">{t.id}</code>
+                  {t.sandbox && <span className="rounded border border-line-strong px-1.5 py-px text-[11px] font-semibold tracking-wide text-muted">Sandbox</span>}
+                  <span className="min-w-0 flex-1 text-muted">
+                    {t.revoked ? "Revoked" : expired ? "Expired " : "Expires "}
+                    {!t.revoked && <time dateTime={parseUtc(t.expires).toISOString()} title={parseUtc(t.expires).toLocaleString()}>{relativeTime(t.expires)}</time>}
+                  </span>
+                  {!t.revoked && !expired && <button className={btnQuiet} onClick={() => { revoke.reset(); setTarget(t); }}>Revoke<span className="sr-only"> token {t.id}</span></button>}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      <AlertDialog.Root open={!!target} onOpenChange={(o) => !o && setTarget(null)}>
+        <AlertDialog.Portal>
+          <AlertDialog.Overlay className="overlay" />
+          <AlertDialog.Content className="fixed left-1/2 top-[15vh] z-[51] w-[min(30rem,calc(100%-2rem))] -translate-x-1/2 rounded-xl border border-line bg-surface p-5 shadow-2xl">
+            <AlertDialog.Title className="text-lg font-semibold">Revoke this token?</AlertDialog.Title>
+            <AlertDialog.Description className="mt-2 text-sm">Token <code className="font-mono">{target?.id}</code> will stop working for new machines. This can't be undone.</AlertDialog.Description>
+            {revoke.error && <p role="alert" className="mt-3 text-sm text-now-fg">{revoke.error.message}</p>}
+            <div className="mt-5 flex justify-end gap-2">
+              <AlertDialog.Cancel className={btnQuiet}>Cancel</AlertDialog.Cancel>
+              <button className={btnPrimary} disabled={revoke.isPending} onClick={() => target && revoke.mutate(target.id)}>{revoke.isPending ? "Revoking…" : "Revoke token"}</button>
+            </div>
+          </AlertDialog.Content>
+        </AlertDialog.Portal>
+      </AlertDialog.Root>
+    </section>
   );
 }

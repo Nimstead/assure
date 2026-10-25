@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Switch } from "radix-ui";
-import { ArrowRight, Plus } from "lucide-react";
+import { AlertDialog, Switch } from "radix-ui";
+import { ArrowRight, Plus, Trash2 } from "lucide-react";
 import { api, assetsQ, filtersToSearch, parseFilters, PRIORITIES, relativeTime, useTitle, type Asset, type Criticality } from "./lib";
-import { btnPrimary, EmptyState, ErrorState, input, PriorityPill, Skeleton } from "./ui";
+import { btnPrimary, btnQuiet, EmptyState, ErrorState, input, PriorityPill, Skeleton } from "./ui";
 import clsx from "clsx";
 
 type AssetPatch = Partial<Pick<Asset, "criticality" | "internet_facing" | "ring" | "health_units">>;
@@ -29,6 +29,12 @@ export function AssetsPage() {
     onSettled: () => Promise.all(["assets", "findings", "summary", "finding"].map((k) => qc.invalidateQueries({ queryKey: [k] }))),
   });
 
+  const [target, setTarget] = useState<Asset | null>(null);
+  const del = useMutation({
+    mutationFn: (id: string) => api(`/api/assets/${id}`, { method: "DELETE" }),
+    onSuccess: () => { setTarget(null); void Promise.all(["assets", "findings", "summary", "finding", "ledger", "jobs"].map((k) => qc.invalidateQueries({ queryKey: [k] }))); },
+  });
+
   return (
     <div className="flex flex-col gap-6">
       <header className="flex items-center justify-between gap-4">
@@ -45,14 +51,30 @@ export function AssetsPage() {
           </EmptyState>
         ) : (
           <ul className="flex flex-col divide-y divide-line overflow-hidden rounded-lg border border-line bg-surface">
-            {q.data.map((a) => <AssetRow key={a.id} a={a} onPatch={(p) => patch.mutate({ id: a.id, ...p })} />)}
+            {q.data.map((a) => <AssetRow key={a.id} a={a} onPatch={(p) => patch.mutate({ id: a.id, ...p })} onDelete={() => { del.reset(); setTarget(a); }} />)}
           </ul>
         )}
+      <AlertDialog.Root open={!!target} onOpenChange={(o) => !o && setTarget(null)}>
+        <AlertDialog.Portal>
+          <AlertDialog.Overlay className="overlay" />
+          <AlertDialog.Content className="fixed left-1/2 top-[15vh] z-[51] w-[min(30rem,calc(100%-2rem))] -translate-x-1/2 rounded-xl border border-line bg-surface p-5 shadow-2xl">
+            <AlertDialog.Title className="text-lg font-semibold">Delete {target?.hostname}?</AlertDialog.Title>
+            <AlertDialog.Description className="mt-2 text-sm">
+              Its findings and installed-software list are removed. The evidence ledger keeps the history of what was detected and fixed, so audit records stay intact. This can't be undone.
+            </AlertDialog.Description>
+            {del.error && <p role="alert" className="mt-3 text-sm text-now-fg">{del.error.message}</p>}
+            <div className="mt-5 flex justify-end gap-2">
+              <AlertDialog.Cancel className={btnQuiet}>Cancel</AlertDialog.Cancel>
+              <button className={btnPrimary} disabled={del.isPending} onClick={() => target && del.mutate(target.id)}>{del.isPending ? "Deleting…" : "Delete asset"}</button>
+            </div>
+          </AlertDialog.Content>
+        </AlertDialog.Portal>
+      </AlertDialog.Root>
     </div>
   );
 }
 
-function AssetRow({ a, onPatch }: { a: Asset; onPatch: (p: AssetPatch) => void }) {
+function AssetRow({ a, onPatch, onDelete }: { a: Asset; onPatch: (p: AssetPatch) => void; onDelete: () => void }) {
   const open = PRIORITIES.filter((p) => a.open_by_priority[p]);
   return (
     <li className="grid gap-x-6 gap-y-3 p-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto] lg:items-center">
@@ -94,6 +116,7 @@ function AssetRow({ a, onPatch }: { a: Asset; onPatch: (p: AssetPatch) => void }
           </select>
         </label>
         <HealthUnits a={a} onPatch={onPatch} />
+        <button className={btnQuiet} onClick={onDelete}><Trash2 className="size-4" aria-hidden />Delete<span className="sr-only"> {a.hostname}</span></button>
       </div>
     </li>
   );

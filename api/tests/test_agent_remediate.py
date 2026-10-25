@@ -63,7 +63,7 @@ class FakeApt:
         raise AssertionError(f"unexpected command {cmd}")
 
 
-JOB = {"id": "j1", "manager": "apt", "health_units": ["nginx.service"],
+JOB = {"id": "j1", "manager": "apt", "health_units": ["nginx.service"], "settle_seconds": 0,
        "packages": [{"name": "libssl3", "from": "3.0.11-1~deb12u1"}, {"name": "openssl", "from": "3.0.11-1~deb12u1"}]}
 NEW = {"libssl3": "3.0.17-1~deb12u2", "openssl": "3.0.17-1~deb12u2"}
 OLD = {"libssl3": "3.0.11-1~deb12u1", "openssl": "3.0.11-1~deb12u1"}

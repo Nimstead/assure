@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+from collections import defaultdict
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -27,11 +28,20 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True) -> dict:
         })
     events: list[tuple[str, Finding]] = []
 
-    # ponytail: one advisory query per package; batch by ecosystem if large inventories are slow
+    wanted: dict[str, set[str]] = defaultdict(set)
+    for p in pkgs:
+        wanted[normalize_ecosystem(p.ecosystem)].add(p.source or p.name)
+    advisories: dict[tuple[str, str], list[dict]] = defaultdict(list)
+    for eco, names in wanted.items():
+        names_l = sorted(names)
+        for i in range(0, len(names_l), 500):  # stay under SQL parameter limits
+            for a in s.scalars(select(Advisory).where(Advisory.ecosystem == eco, Advisory.package.in_(names_l[i:i + 500]))):
+                advisories[(eco, a.package)].append(a.record)
+
     for p in pkgs:
         eco = normalize_ecosystem(p.ecosystem)
         name = p.source or p.name
-        records = [a.record for a in s.scalars(select(Advisory).where(Advisory.ecosystem == eco, Advisory.package == name))]
+        records = advisories.get((eco, name))
         if not records:
             continue
         for m in match_package(Package(p.name, p.version, p.source), p.ecosystem, records):

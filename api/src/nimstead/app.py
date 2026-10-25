@@ -483,12 +483,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         asset_id: str
         ecosystem: str = Field(max_length=100)
         package: str = Field(max_length=255)
+        include: list[str] = Field(default_factory=list, max_length=20)
 
     @app.post("/api/remediation/jobs", status_code=201)
     def create_job(body: PlanReq, user: CurrentUser, s: DB):
         a = owned_asset(s, user, body.asset_id)
         try:
-            job = remediate.plan(s, a, body.ecosystem, body.package, user.email)
+            job = remediate.plan(s, a, body.ecosystem, body.package, user.email, body.include)
         except remediate.RemediationError as e:
             raise HTTPException(409, str(e)) from None
         s.commit()

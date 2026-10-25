@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Dialog } from "radix-ui";
 import { Check, Wrench, X } from "lucide-react";
 import clsx from "clsx";
-import { api, APPROVE_COPY, groupJobs, isActiveJob, JOB_STATUS_LABEL, relativeTime, useTitle, type Finding, type Job, type JobStatus } from "./lib";
+import { api, APPROVE_COPY, dependenciesNeeded, groupJobs, isActiveJob, JOB_STATUS_LABEL, relativeTime, useTitle, type Finding, type Job, type JobStatus } from "./lib";
 import { btnPrimary, btnQuiet, EmptyState, ErrorState, Skeleton } from "./ui";
 
 const STATUS_CLASS: Record<JobStatus, string> = {
@@ -58,6 +58,13 @@ export function RemediationPage() {
 
 export function JobCard({ job: j, onApprove }: { job: Job; onApprove?: () => void }) {
   const steps = j.steps ?? [];
+  const qc = useQueryClient();
+  const deps = j.status === "aborted" ? dependenciesNeeded(j.error) : [];
+  const [ecosystem, pkg] = j.action_key.split("|");
+  const replan = useMutation({
+    mutationFn: () => api<Job>("/api/remediation/jobs", { method: "POST", body: { asset_id: j.asset_id, ecosystem, package: pkg, include: deps } }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["jobs"] }),
+  });
   return (
     <li className="rounded-lg border border-line bg-surface p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -76,6 +83,15 @@ export function JobCard({ job: j, onApprove }: { job: Job; onApprove?: () => voi
         )}
       </div>
       {j.error && <p className="mt-3 rounded-md bg-now-bg px-3 py-2 text-sm text-now-fg">{j.error}</p>}
+      {deps.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <button className={btnQuiet} onClick={() => replan.mutate()} disabled={replan.isPending || replan.isSuccess}>
+            <Wrench className="size-4" aria-hidden />{replan.isSuccess ? "Planned" : `Plan again including ${deps.join(", ")}`}
+          </button>
+          <span className="text-sm text-muted">They'll be saved and rolled back together with {pkg}.</span>
+          {replan.error && <span role="alert" className="text-sm text-now-fg">{replan.error.message}</span>}
+        </div>
+      )}
       {steps.length > 0 && (
         <details className="group mt-3">
           <summary className="min-h-9 w-fit cursor-pointer text-sm font-medium text-accent underline">

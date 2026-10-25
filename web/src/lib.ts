@@ -222,3 +222,9 @@ export const isDark = () =>
 export const meQ = queryOptions({ queryKey: ["me"], queryFn: () => api<{ email: string; org: string; admin: boolean }>("/api/me"), retry: false, staleTime: 5 * 60_000 });
 export const summaryQ = queryOptions({ queryKey: ["summary"], queryFn: () => api<Summary>("/api/summary") });
 export const assetsQ = queryOptions({ queryKey: ["assets"], queryFn: () => api<Asset[]>("/api/assets") });
+
+/** Packages a refused dry run said the fix also needs ("would also change: musl, libcrypto3"). */
+export function dependenciesNeeded(error: string | null | undefined): string[] {
+  const m = /would also change: ([^\n;]+)/.exec(error ?? "");
+  return m?.[1] ? m[1].split(",").map((s) => s.trim()).filter(Boolean) : [];
+}

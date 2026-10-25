@@ -133,10 +133,10 @@ def main(keep=False):
         actions = [x for x in summ["top_actions"]]
         assert actions, "no fixable findings in this image; cannot exercise remediation"
 
-        def attempt(pkg, health_units=None, inject=False):
+        def attempt(pkg, health_units=None, inject=False, include=()):
             if health_units is not None:
                 c.patch(f"/api/assets/{a['asset_id']}", json={"health_units": health_units})
-            r = c.post("/api/remediation/jobs", json={"asset_id": a["asset_id"], "ecosystem": eco, "package": pkg})
+            r = c.post("/api/remediation/jobs", json={"asset_id": a["asset_id"], "ecosystem": eco, "package": pkg, "include": list(include)})
             if r.status_code != 201:
                 return {"package": pkg, "planned": False, "detail": r.json().get("detail")}
             jid = r.json()["id"]
@@ -155,6 +155,11 @@ def main(keep=False):
         for act in actions:
             r = attempt(act["package"])
             note("remediation attempt", **{k: v for k, v in r.items() if k != "job"})
+            if r.get("status") == "aborted" and "would also change: " in (r.get("error") or ""):
+                # what the UI's "Plan again including …" does: add the dependencies the dry run named
+                deps = [d.strip() for d in r["error"].split("would also change: ", 1)[1].split(";")[0].split(",") if d.strip()]
+                r = attempt(act["package"], include=deps)
+                note("remediation attempt with dependencies", include=deps, **{k: v for k, v in r.items() if k != "job"})
             if r.get("status") == "succeeded":
                 success = r
                 break

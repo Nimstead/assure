@@ -51,7 +51,9 @@ def _log(s: Session, job: RemediationJob, kind: str, **data) -> None:
         notify(s, job.org_id, f"remediation_{job.status}", f"Remediation {job.status}: {job.summary}" + (f" ({job.error})" if job.error else ""), urgent=job.status == "rollback_failed")
 
 
-def plan(s: Session, asset: Asset, ecosystem: str, package: str, created_by: str) -> RemediationJob:
+def plan(s: Session, asset: Asset, ecosystem: str, package: str, created_by: str, include: list[str] | None = None) -> RemediationJob:
+    """include: extra installed packages the dry run said the fix also needs (e.g. musl for openssl).
+    They join the plan, so they are snapshotted and rolled back with it."""
     manager = MANAGERS.get(ecosystem.split(":", 1)[0])
     if not manager:
         raise RemediationError(f"Automatic remediation is not supported for {ecosystem} packages")
@@ -64,16 +66,24 @@ def plan(s: Session, asset: Asset, ecosystem: str, package: str, created_by: str
     if s.scalar(select(RemediationJob).where(RemediationJob.asset_id == asset.id, RemediationJob.action_key == key,
                                              RemediationJob.status.in_(ACTIVE))):
         raise RemediationError("A remediation for this package is already in progress on this asset")
-    pkgs = [{"name": b.name, "from": b.version}
-            for b in s.scalars(select(InstalledPackage).where(InstalledPackage.asset_id == asset.id))
-            if normalize_ecosystem(b.ecosystem) == ecosystem and (b.source or b.name) == package]
+    installed = [b for b in s.scalars(select(InstalledPackage).where(InstalledPackage.asset_id == asset.id))
+                 if normalize_ecosystem(b.ecosystem) == ecosystem]
+    extra = set(include or [])
+    if unknown := extra - {b.name for b in installed}:
+        raise RemediationError(f"Not installed on this asset: {', '.join(sorted(unknown))}")
+    pkgs = [{"name": b.name, "from": b.version} for b in installed if (b.source or b.name) == package or b.name in extra]
+    if extra:  # their own open findings are fixed (and verified) by this job too
+        sources = {b.source or b.name for b in installed if b.name in extra}
+        findings = [*findings, *s.scalars(select(Finding).where(
+            Finding.asset_id == asset.id, Finding.ecosystem == ecosystem, Finding.package.in_(sources), Finding.status == "open"))]
     if not pkgs or not all(SAFE_NAME.match(p["name"]) and SAFE_VERSION.match(p["from"]) for p in pkgs):
         raise RemediationError("Installed package names or versions failed validation; refusing to plan")
     target = max((f.fixed_version for f in findings), key=sort_key(comparator_for(ecosystem)))  # agent upgrades to repo candidate
     job = RemediationJob(
         org_id=asset.org_id, asset_id=asset.id, manager=manager, action_key=key, packages=pkgs,
         finding_ids=[f.id for f in findings], created_by=created_by,
-        summary=f"Upgrade {package} ({len(pkgs)} package{'s' * (len(pkgs) > 1)}) to fix {len(findings)} "
+        summary=f"Upgrade {package}{' with ' + ', '.join(sorted(extra)) if extra else ''} ({len(pkgs)} package{'s' * (len(pkgs) > 1)}) "
+                f"to fix {len(findings)} "
                 f"vulnerabilit{'ies' if len(findings) > 1 else 'y'} on {asset.hostname} (fixed in {target})",
     )
     s.add(job)

@@ -31,6 +31,16 @@ class Org(Base):
     # Remediation trust ladder: suggest (plans only) -> approve (one click) -> auto (policy-driven, canary first)
     remediation_mode: Mapped[str] = mapped_column(String(20), default="approve")
     canary_soak_hours: Mapped[int] = mapped_column(Integer, default=24)
+    # OIDC single sign-on (all null = off). ponytail: client secret stored plaintext in the DB; encrypt with a KMS/env key when needed
+    sso_issuer: Mapped[str | None] = mapped_column(String(500))
+    sso_client_id: Mapped[str | None] = mapped_column(String(300))
+    sso_client_secret: Mapped[str | None] = mapped_column(String(500))
+    sso_domains: Mapped[list] = mapped_column(default=list)  # lower-case email domains allowed to sign in
+    sso_required: Mapped[bool] = mapped_column(Boolean, default=False)  # disables password login for the org's users
+    # Failure alerts
+    notify_webhook_url: Mapped[str | None] = mapped_column(String(500))
+    notify_webhook_format: Mapped[str] = mapped_column(String(10), default="slack")  # slack | json
+    notify_emails: Mapped[list] = mapped_column(default=list)
 
 
 class User(Base):
@@ -38,7 +48,9 @@ class User(Base):
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     org_id: Mapped[str] = mapped_column(ForeignKey("org.id"), index=True)
     email: Mapped[str] = mapped_column(String(320), unique=True)
-    password_hash: Mapped[str] = mapped_column(String(200))
+    password_hash: Mapped[str] = mapped_column(String(200))  # "!" for SSO users: never matches
+    origin: Mapped[str] = mapped_column(String(10), default="password")  # password | sso
+    admin: Mapped[bool] = mapped_column(Boolean, default=False)  # may change SSO/alert settings; the org creator
     created: Mapped[datetime] = mapped_column(default=now)
 
 
@@ -195,3 +207,17 @@ class RemediationJob(Base):
     steps: Mapped[list] = mapped_column(default=list)  # agent-reported step log
     result_versions: Mapped[dict | None]  # versions installed by a successful apply; pins the broad ring
     error: Mapped[str | None] = mapped_column(String(2000))
+
+
+class Notification(Base):
+    """One delivery attempt per channel, so a failing webhook is visible rather than silent."""
+
+    __tablename__ = "notification"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    org_id: Mapped[str] = mapped_column(ForeignKey("org.id"), index=True)
+    ts: Mapped[datetime] = mapped_column(default=now)
+    kind: Mapped[str] = mapped_column(String(40))
+    channel: Mapped[str] = mapped_column(String(10))  # webhook | email
+    urgent: Mapped[bool] = mapped_column(Boolean, default=False)
+    ok: Mapped[bool] = mapped_column(Boolean)
+    error: Mapped[str | None] = mapped_column(String(500))

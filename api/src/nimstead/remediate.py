@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from nimstead import evidence
 from nimstead.db import Asset, Finding, InstalledPackage, Org, RemediationJob, now
 from nimstead.match import normalize_ecosystem
+from nimstead.notify import notify
 from nimstead.versions import comparator_for, sort_key
 
 # apt: rollback = old .deb; apk/dnf: rollback = file + package-database snapshot (DECISIONS 16)
@@ -30,6 +31,7 @@ SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9+._-]{0,200}$")
 SAFE_VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+~:_^-]{0,200}$")
 ACTIVE = ("planned", "approved", "dispatched", "verifying")
 AGENT_OUTCOMES = ("applied", "rolled_back", "rollback_failed", "aborted")
+ALERT_STATUSES = ("rolled_back", "rollback_failed", "failed", "not_fixed", "aborted")
 DISPATCH_TIMEOUT = timedelta(hours=2)
 TIMEOUT_ERROR = "Agent did not report a result within 2 hours; check the host"
 
@@ -45,6 +47,8 @@ def production_allowed() -> bool:
 def _log(s: Session, job: RemediationJob, kind: str, **data) -> None:
     job.updated = now()
     evidence.append(s, job.org_id, kind, job.id, {"asset_id": job.asset_id, "action": job.action_key, "status": job.status, **data})
+    if job.status in ALERT_STATUSES:
+        notify(s, job.org_id, f"remediation_{job.status}", f"Remediation {job.status}: {job.summary}" + (f" ({job.error})" if job.error else ""), urgent=job.status == "rollback_failed")
 
 
 def plan(s: Session, asset: Asset, ecosystem: str, package: str, created_by: str) -> RemediationJob:

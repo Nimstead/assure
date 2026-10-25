@@ -30,11 +30,14 @@ def wsl(script: str):
 
 
 def main() -> int:
+    keepalive = None
     try:
         r = subprocess.run(["wsl", "--install", "Debian", "--name", NAME, "--location", str(TMP / "d"), "--no-launch"],
                            capture_output=True, timeout=1800)
         if r.returncode != 0:
             raise RuntimeError((r.stdout + r.stderr).decode("utf-16-le", errors="replace"))
+        # WSL stops an idle distro seconds after its last command exits, killing Postgres: hold a session open
+        keepalive = subprocess.Popen(["wsl", "-d", NAME, "-u", "root", "--", "sleep", "infinity"])
         wsl("apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq postgresql >/dev/null")
         wsl(f"""set -e
             V=$(ls /etc/postgresql); C=/etc/postgresql/$V/main
@@ -44,10 +47,13 @@ def main() -> int:
             su postgres -c "psql -p {PORT} -c \\"CREATE ROLE nimstead LOGIN SUPERUSER PASSWORD '{PASSWORD}'\\""
         """)
         print(wsl(f"su postgres -c 'psql -p {PORT} -tAc \"select version()\"'").strip(), flush=True)
-        url = f"postgresql+psycopg://nimstead:{PASSWORD}@localhost:{PORT}/postgres"
+        # 127.0.0.1, not "localhost": Windows tries ::1 first, WSL forwards only IPv4, and every connect waits for a timeout
+        url = f"postgresql+psycopg://nimstead:{PASSWORD}@127.0.0.1:{PORT}/postgres"
         return subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:warnings", *sys.argv[1:]],
                               env={**os.environ, "NIMSTEAD_TEST_PG_URL": url}).returncode
     finally:
+        if keepalive:
+            keepalive.kill()
         subprocess.run(["wsl", "--unregister", NAME], capture_output=True)
         shutil.rmtree(TMP, ignore_errors=True)
         print("sandbox destroyed", NAME)

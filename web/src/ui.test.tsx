@@ -1,6 +1,10 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { vi } from "vitest";
+import { SbomUpload } from "./assets";
 import { ApproveDialog } from "./remediation";
-import { APPROVE_COPY } from "./lib";
+import { APPROVE_COPY, type Asset } from "./lib";
 import { InstallCommands } from "./onboarding";
 import { PriorityPill } from "./ui";
 
@@ -24,4 +28,25 @@ it("approve dialog states exactly what will happen", () => {
   expect(screen.getByText(/Saves a rollback copy of each package, upgrades, checks health, rolls back automatically on failure\. Success is confirmed by the next inventory\./)).toBeInTheDocument();
   expect(screen.getByRole("alert")).toHaveTextContent("Production remediation is disabled");
   expect(screen.getByRole("button", { name: "Approve and run" })).toBeEnabled();
+});
+
+it("SBOM upload posts the raw file and announces the counts", async () => {
+  const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ components: 5, mapped: 4, unique_packages: 3, skipped: {}, open: 2, resolved: 1 }), { status: 200 }));
+  vi.stubGlobal("fetch", fetchMock);
+  const asset = { id: "a1", hostname: "billing", kind: "application" } as Asset;
+  render(<QueryClientProvider client={new QueryClient()}><SbomUpload a={asset} /></QueryClientProvider>);
+  expect(screen.getByRole("button", { name: "Upload SBOM for billing" })).toBeEnabled();
+  const bom = '{"bomFormat":"CycloneDX"}';
+  await userEvent.upload(screen.getByTestId("sbom-file-a1"), new File([bom], "bom.json", { type: "application/json" }));
+  expect(await screen.findByRole("status")).toHaveTextContent("4 of 5 components recognised (3 unique packages), 1 skipped. 2 open findings, 1 resolved.");
+  expect(fetchMock).toHaveBeenCalledWith("/api/assets/a1/sbom", expect.objectContaining({ method: "POST", body: bom }));
+  vi.unstubAllGlobals();
+});
+
+it("SBOM upload shows the server's rejection", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ detail: "Invalid SBOM: Not a CycloneDX JSON document" }), { status: 422 })));
+  render(<QueryClientProvider client={new QueryClient()}><SbomUpload a={{ id: "a1", hostname: "billing" } as Asset} /></QueryClientProvider>);
+  await userEvent.upload(screen.getByTestId("sbom-file-a1"), new File(["{}"], "x.json"));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Not a CycloneDX JSON document");
+  vi.unstubAllGlobals();
 });

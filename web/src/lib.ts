@@ -62,6 +62,11 @@ export interface EvidenceReport {
 }
 export interface EnrollToken { id: string; created: string; expires: string; revoked: boolean; sandbox: boolean }
 export interface Settings { remediation_mode: "suggest" | "approve" | "auto"; canary_soak_hours: number; production_remediation_allowed: boolean }
+export interface SsoSettings { issuer: string; client_id: string; client_secret_set: boolean; domains: string[]; required: boolean; redirect_uri: string }
+export interface NotifySettings {
+  webhook_set: boolean; webhook_host: string | null; webhook_format: "slack" | "json"; emails: string[]; email_available: boolean;
+  last_delivery_failed: boolean; recent: { ts: string; kind: string; channel: string; urgent: boolean; ok: boolean; error: string | null }[];
+}
 export const settingsQ = queryOptions({ queryKey: ["settings"], queryFn: () => api<Settings>("/api/settings") });
 
 // ---- api ---------------------------------------------------------------------
@@ -206,6 +211,6 @@ export const isDark = () =>
   (document.documentElement.dataset.theme ?? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")) === "dark";
 
 // ---- shared queries ----------------------------------------------------------------
-export const meQ = queryOptions({ queryKey: ["me"], queryFn: () => api<{ email: string; org: string }>("/api/me"), retry: false, staleTime: 5 * 60_000 });
+export const meQ = queryOptions({ queryKey: ["me"], queryFn: () => api<{ email: string; org: string; admin: boolean }>("/api/me"), retry: false, staleTime: 5 * 60_000 });
 export const summaryQ = queryOptions({ queryKey: ["summary"], queryFn: () => api<Summary>("/api/summary") });
 export const assetsQ = queryOptions({ queryKey: ["assets"], queryFn: () => api<Asset[]>("/api/assets") });

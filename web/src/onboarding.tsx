@@ -10,6 +10,7 @@ export function InstallCommands({ origin, token }: { origin: string; token: stri
   return (
     <div className="flex flex-col gap-5">
       <CopyBlock label="Linux, one line" text={c.curl} />
+      <CopyBlock label="Windows, in an Administrator PowerShell (needs Python 3)" text={c.windows} />
       <CopyBlock label="Or with Python directly" text={c.python} />
     </div>
   );

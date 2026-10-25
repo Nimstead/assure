@@ -47,6 +47,7 @@ def wsl(*args, input=None, check=True, timeout=1800):
     assert NAME.startswith(PREFIX)  # never run commands in a non-sandbox distro
     p = subprocess.run(["wsl", "-d", NAME, "-u", "root", "--", *args], input=input, capture_output=True, timeout=timeout)
     out = p.stdout.decode(errors="replace")
+    wsl.last_stderr = p.stderr.decode(errors="replace")
     if check and p.returncode != 0:
         raise RuntimeError(f"sandbox command failed ({p.returncode}): {' '.join(args)}\n{out}\n{p.stderr.decode(errors='replace')}")
     return p.returncode, out
@@ -143,7 +144,10 @@ def main(keep=False):
             assert c.post(f"/api/remediation/jobs/{jid}/approve").status_code == 200
             [job] = c.get("/api/agent/jobs", headers=h).json()
             rc, out = agent("run-job", "--yes", *(["--fail-after-apply"] if inject else []), input=json.dumps(job).encode(), check=False)
-            res = json.loads(out.strip().splitlines()[-1])
+            lines = [ln for ln in out.splitlines() if ln.startswith("{")]
+            if not lines:
+                raise RuntimeError(f"agent run-job printed no result (rc {rc}): {wsl.last_stderr[-2000:]}")
+            res = json.loads(lines[-1])
             c.post(f"/api/agent/jobs/{jid}/report", json=res, headers=h)
             report()
             j = next(x for x in c.get("/api/remediation/jobs").json() if x["id"] == jid)

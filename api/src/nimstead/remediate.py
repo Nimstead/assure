@@ -71,9 +71,11 @@ def plan(s: Session, asset: Asset, ecosystem: str, package: str, created_by: str
     extra = set(include or [])
     if unknown := extra - {b.name for b in installed}:
         raise RemediationError(f"Not installed on this asset: {', '.join(sorted(unknown))}")
-    pkgs = [{"name": b.name, "from": b.version} for b in installed if (b.source or b.name) == package or b.name in extra]
+    # a dependency comes with its sibling binaries (musl brings musl-utils): findings are per source package,
+    # so upgrading only part of a source would leave it vulnerable
+    sources = {b.source or b.name for b in installed if b.name in extra}
+    pkgs = [{"name": b.name, "from": b.version} for b in installed if (b.source or b.name) in {package, *sources}]
     if extra:  # their own open findings are fixed (and verified) by this job too
-        sources = {b.source or b.name for b in installed if b.name in extra}
         findings = [*findings, *s.scalars(select(Finding).where(
             Finding.asset_id == asset.id, Finding.ecosystem == ecosystem, Finding.package.in_(sources), Finding.status == "open"))]
     if not pkgs or not all(SAFE_NAME.match(p["name"]) and SAFE_VERSION.match(p["from"]) for p in pkgs):

@@ -248,3 +248,23 @@ def test_settings_are_per_org_and_need_login(env, sent):
     report(c, h, jid, "rolled_back")
     assert other.get("/api/settings/notifications").json()["recent"] == []
     assert TestClient(c.app).get("/api/settings/notifications").status_code == 401
+
+
+def test_failed_alert_is_retried_with_its_text_and_gives_up_after_three_attempts(env, sent):
+    from sqlalchemy import select
+
+    from nimstead.db import Notification
+    c = configured(env)
+    sent.behaviour["fn"] = lambda req: httpx.Response(503)
+    _, h, jid = dispatched_job(c)
+    report(c, h, jid, "rollback_failed", "disk full")
+    s = sessionmaker(make_engine(env))()
+    for _ in range(4):  # hourly feed runs
+        notify.retry_failed(s)
+        notify.flush()
+    rows = s.scalars(select(Notification).order_by(Notification.id)).all()
+    assert [r.attempt for r in rows] == [1, 2, 3]  # stops at MAX_ATTEMPTS
+    texts = {p["text"] for _, p in sent}
+    assert len(texts) == 1 and "URGENT" in texts.pop()  # same message each time
+    sent.behaviour["fn"] = lambda req: httpx.Response(200)
+    assert notify.retry_failed(s) == 0  # nothing left to retry once exhausted

@@ -8,6 +8,7 @@ Never touches VMs whose names don't start with nimstead-sbx-win-. Credentials ar
 the VM's own folder (it is disposable).
 """
 
+import base64
 import json
 import secrets
 import subprocess
@@ -59,9 +60,11 @@ def create(iso: str) -> str:
 def run(name: str, command: str, timeout=3600) -> tuple[int, str]:
     assert name.startswith(PREFIX)
     c = creds(name)
+    # guest control re-joins argv without quoting, so send the script base64-encoded (UTF-16LE, as PowerShell expects)
+    encoded = base64.b64encode(("$ProgressPreference = 'SilentlyContinue'\n" + command).encode("utf-16-le")).decode()
     p = subprocess.run([VBOX, "guestcontrol", name, "run", "--username", c["user"], "--password", c["password"],
                         "--exe", r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe", "--wait-stdout", "--wait-stderr",
-                        "--", "powershell", "-NoProfile", "-NonInteractive", "-Command", command],
+                        "--", "powershell", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
                        capture_output=True, text=True, timeout=timeout)
     return p.returncode, p.stdout + p.stderr
 

@@ -1,7 +1,7 @@
 [
   {
     "step": "creating sandbox distro",
-    "name": "nimstead-sbx-ace68db6",
+    "name": "nimstead-sbx-1f99dec9",
     "distro": "Ubuntu-24.04"
   },
   {
@@ -18,11 +18,11 @@
     "kev": 1756,
     "epss": 395308,
     "osv": {
-      "inserted": 3300346,
+      "inserted": 509852,
       "updated": 0,
       "skipped": 0
     },
-    "seconds": 381
+    "seconds": 108
   },
   {
     "step": "first inventory",
@@ -103,10 +103,10 @@
       "ok  upgrade",
       "ok  package database check",
       "FAIL nimstead-canary.service active after change",
-      "ok  rollback package intact gir1.2-glib-2.0_2.80.0-6ubuntu3.8_amd64.deb",
-      "ok  rollback package intact libglib2.0-0t64_2.80.0-6ubuntu3.8_amd64.deb",
-      "ok  rollback package intact libglib2.0-bin_2.80.0-6ubuntu3.8_amd64.deb",
-      "ok  rollback package intact libglib2.0-data_2.80.0-6ubuntu3.8_all.deb",
+      "ok  rollback artefact intact gir1.2-glib-2.0_2.80.0-6ubuntu3.8_amd64.deb",
+      "ok  rollback artefact intact libglib2.0-0t64_2.80.0-6ubuntu3.8_amd64.deb",
+      "ok  rollback artefact intact libglib2.0-bin_2.80.0-6ubuntu3.8_amd64.deb",
+      "ok  rollback artefact intact libglib2.0-data_2.80.0-6ubuntu3.8_all.deb",
       "ok  rollback install",
       "ok  versions restored",
       "ok  nimstead-canary.service active after rollback"
@@ -128,10 +128,11 @@
   },
   {
     "step": "RESULT: PASS",
-    "rollback_tested": true
+    "rollback_tested": true,
+    "rollback_trigger": "service health check"
   },
   {
     "step": "sandbox destroyed",
-    "name": "nimstead-sbx-ace68db6"
+    "name": "nimstead-sbx-1f99dec9"
   }
 ]

@@ -1,0 +1,114 @@
+[
+  {
+    "step": "creating sandbox distro",
+    "name": "nimstead-sbx-5108f14d",
+    "distro": "AlmaLinux-9"
+  },
+  {
+    "step": "sandbox ready",
+    "os": "PRETTY_NAME=\"AlmaLinux 9.8 (Olive Jaguar)\""
+  },
+  {
+    "step": "collected inventory",
+    "ecosystem": "AlmaLinux:9",
+    "packages": 207
+  },
+  {
+    "step": "feeds synced",
+    "kev": 1756,
+    "epss": 395308,
+    "osv": {
+      "inserted": 25931,
+      "updated": 0,
+      "skipped": 0
+    },
+    "seconds": 5
+  },
+  {
+    "step": "first inventory",
+    "open": 50,
+    "resolved": 0
+  },
+  {
+    "step": "findings",
+    "open_by_priority": {
+      "low": 50
+    },
+    "top_actions": [
+      "glibc",
+      "libxml2",
+      "expat",
+      "openssl",
+      "openssh",
+      "glib2",
+      "curl",
+      "coreutils",
+      "sudo",
+      "pcre2"
+    ]
+  },
+  {
+    "step": "remediation attempt",
+    "package": "glibc",
+    "outcome": "applied",
+    "status": "succeeded",
+    "error": null,
+    "steps": [
+      "ok  job validated",
+      "ok  dnf available",
+      "ok  installed versions match plan",
+      "ok  refresh package index",
+      "ok  simulate upgrade",
+      "ok  change limited to planned packages",
+      "ok  rollback snapshot saved",
+      "ok  upgrade"
+    ]
+  },
+  {
+    "step": "rollback attempt",
+    "package": "libxml2",
+    "outcome": "rolled_back",
+    "status": "rolled_back",
+    "error": "Change failed and was rolled back: nimstead-canary.service active after change failed: ",
+    "steps": [
+      "ok  job validated",
+      "ok  dnf available",
+      "ok  installed versions match plan",
+      "ok  nimstead-canary.service active before change",
+      "ok  refresh package index",
+      "ok  simulate upgrade",
+      "ok  change limited to planned packages",
+      "ok  rollback snapshot saved",
+      "ok  upgrade",
+      "FAIL nimstead-canary.service active after change",
+      "ok  rollback artefact intact files.tar",
+      "ok  database backup intact /var/lib/rpm",
+      "ok  rollback restore",
+      "ok  versions restored",
+      "ok  nimstead-canary.service active after rollback"
+    ],
+    "restored": true
+  },
+  {
+    "step": "evidence pack",
+    "problems": [],
+    "resolved": 4,
+    "controls": {
+      "UK Cyber Essentials Security update management": "met",
+      "ISO/IEC 27001:2022 A.8.8": "met",
+      "NIST SP 800-53 Rev. 5 RA-5": "met",
+      "NIST SP 800-53 Rev. 5 SI-2": "met",
+      "PCI DSS v4.0.1 6.3.3": "met",
+      "CIS Controls v8.1 7.3 / 7.4": "met"
+    }
+  },
+  {
+    "step": "RESULT: PASS",
+    "rollback_tested": true,
+    "rollback_trigger": "service health check"
+  },
+  {
+    "step": "sandbox destroyed",
+    "name": "nimstead-sbx-5108f14d"
+  }
+]

@@ -14,8 +14,20 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from nimstead import evidence
-from nimstead.db import Asset, EnrollToken, Finding, InstalledPackage, LedgerEntry, Org, User, WebSession, make_sessionmaker, now
+from nimstead import evidence, remediate
+from nimstead.db import (
+    Asset,
+    EnrollToken,
+    Finding,
+    InstalledPackage,
+    LedgerEntry,
+    Org,
+    RemediationJob,
+    User,
+    WebSession,
+    make_sessionmaker,
+    now,
+)
 from nimstead.scan import rescan
 from nimstead.versions import comparator_for
 
@@ -103,10 +115,13 @@ def create_app(db_url: str | None = None) -> FastAPI:
 
     # --- enrolment & agent -------------------------------------------------
 
+    class TokenReq(BaseModel):
+        sandbox: bool = False
+
     @app.post("/api/enroll-tokens", status_code=201)
-    def create_enroll_token(user: CurrentUser, s: DB):
+    def create_enroll_token(user: CurrentUser, s: DB, body: TokenReq | None = None):
         token = "nme_" + secrets.token_urlsafe(24)
-        s.add(EnrollToken(token_hash=sha(token), org_id=user.org_id))
+        s.add(EnrollToken(token_hash=sha(token), org_id=user.org_id, sandbox=bool(body and body.sandbox)))
         s.commit()
         return {"token": token}  # shown once
 
@@ -124,7 +139,8 @@ def create_app(db_url: str | None = None) -> FastAPI:
         if not et or et.revoked:
             raise HTTPException(403, "Invalid or revoked enrolment token")
         key = "nma_" + secrets.token_urlsafe(32)
-        asset = Asset(org_id=et.org_id, hostname=body.hostname, os_name=body.os_name, ecosystem=body.ecosystem, agent_key_hash=sha(key))
+        asset = Asset(org_id=et.org_id, hostname=body.hostname, os_name=body.os_name, ecosystem=body.ecosystem,
+                      agent_key_hash=sha(key), sandbox=et.sandbox)
         s.add(asset)
         s.commit()
         return {"asset_id": asset.id, "agent_key": key}
@@ -154,7 +170,32 @@ def create_app(db_url: str | None = None) -> FastAPI:
         s.execute(delete(InstalledPackage).where(InstalledPackage.asset_id == asset.id))
         s.add_all(InstalledPackage(asset_id=asset.id, **p.model_dump()) for p in body.packages)
         s.flush()
-        return rescan(s, asset)
+        result = rescan(s, asset)
+        remediate.verify(s, asset)
+        remediate.auto_remediate(s, asset)
+        s.commit()
+        return result
+
+    @app.get("/api/agent/jobs")
+    def agent_jobs(s: DB, asset: Annotated[Asset, Depends(current_agent)]):
+        return remediate.dispatch(s, asset)
+
+    class JobReport(BaseModel):
+        outcome: str = Field(max_length=30)
+        steps: list[dict] = Field(default_factory=list, max_length=200)
+        error: str | None = Field(None, max_length=5000)
+
+    @app.post("/api/agent/jobs/{job_id}/report")
+    def agent_job_report(job_id: str, body: JobReport, s: DB, asset: Annotated[Asset, Depends(current_agent)]):
+        job = s.get(RemediationJob, job_id)
+        if not job or job.asset_id != asset.id:
+            raise HTTPException(404, "Job not found")
+        try:
+            remediate.report(s, job, body.outcome, body.steps, body.error)
+        except remediate.RemediationError as e:
+            raise HTTPException(409, str(e)) from None
+        s.commit()
+        return {"status": job.status}
 
     # --- assets ------------------------------------------------------------
 
@@ -162,6 +203,7 @@ def create_app(db_url: str | None = None) -> FastAPI:
         return {
             "id": a.id, "hostname": a.hostname, "os_name": a.os_name, "ecosystem": a.ecosystem,
             "criticality": a.criticality, "internet_facing": a.internet_facing, "sandbox": a.sandbox,
+            "ring": a.ring, "health_units": a.health_units,
             "first_seen": a.first_seen, "last_seen": a.last_seen, "open_by_priority": counts,
         }
 
@@ -187,10 +229,14 @@ def create_app(db_url: str | None = None) -> FastAPI:
     class AssetPatch(BaseModel):
         criticality: Literal["low", "medium", "high", "critical"] | None = None
         internet_facing: bool | None = None
+        ring: Literal[0, 1] | None = None
+        health_units: list[str] | None = Field(None, max_length=20)
 
     @app.patch("/api/assets/{asset_id}")
     def update_asset(asset_id: str, body: AssetPatch, user: CurrentUser, s: DB):
         a = owned_asset(s, user, asset_id)
+        if body.health_units and not all(remediate.SAFE_NAME.match(u) for u in body.health_units):
+            raise HTTPException(422, "Invalid systemd unit name")
         for k, v in body.model_dump(exclude_none=True).items():
             setattr(a, k, v)
         s.flush()
@@ -255,6 +301,71 @@ def create_app(db_url: str | None = None) -> FastAPI:
         s.commit()
         return finding_json(f, s.get(Asset, f.asset_id).hostname)
 
+    # --- remediation -------------------------------------------------------
+
+    def job_json(j: RemediationJob, hostname: str) -> dict:
+        return {
+            "id": j.id, "asset_id": j.asset_id, "hostname": hostname, "status": j.status, "manager": j.manager,
+            "action_key": j.action_key, "packages": j.packages, "finding_ids": j.finding_ids, "summary": j.summary,
+            "created_by": j.created_by, "approved_by": j.approved_by, "created": j.created, "updated": j.updated,
+            "steps": j.steps, "error": j.error,
+        }
+
+    class PlanReq(BaseModel):
+        asset_id: str
+        ecosystem: str = Field(max_length=100)
+        package: str = Field(max_length=255)
+
+    @app.post("/api/remediation/jobs", status_code=201)
+    def create_job(body: PlanReq, user: CurrentUser, s: DB):
+        a = owned_asset(s, user, body.asset_id)
+        try:
+            job = remediate.plan(s, a, body.ecosystem, body.package, user.email)
+        except remediate.RemediationError as e:
+            raise HTTPException(409, str(e)) from None
+        s.commit()
+        return job_json(job, a.hostname)
+
+    @app.get("/api/remediation/jobs")
+    def list_jobs(user: CurrentUser, s: DB, status: str | None = None):
+        stmt = (select(RemediationJob, Asset.hostname).join(Asset, Asset.id == RemediationJob.asset_id)
+                .where(RemediationJob.org_id == user.org_id))
+        if status:
+            stmt = stmt.where(RemediationJob.status.in_(status.split(",")))
+        return [job_json(j, h) for j, h in s.execute(stmt.order_by(RemediationJob.updated.desc()).limit(500))]
+
+    @app.post("/api/remediation/jobs/{job_id}/approve")
+    def approve_job(job_id: str, user: CurrentUser, s: DB):
+        job = s.get(RemediationJob, job_id)
+        if not job or job.org_id != user.org_id:
+            raise HTTPException(404, "Job not found")
+        try:
+            remediate.approve(s, job, user.email)
+        except remediate.RemediationError as e:
+            raise HTTPException(409, str(e)) from None
+        s.commit()
+        return job_json(job, s.get(Asset, job.asset_id).hostname)
+
+    class Policy(BaseModel):
+        remediation_mode: Literal["suggest", "approve", "auto"] | None = None
+        canary_soak_hours: int | None = Field(None, ge=1, le=720)
+
+    @app.get("/api/settings")
+    def get_settings(user: CurrentUser, s: DB):
+        o = s.get(Org, user.org_id)
+        return {"remediation_mode": o.remediation_mode, "canary_soak_hours": o.canary_soak_hours,
+                "production_remediation_allowed": remediate.production_allowed()}
+
+    @app.patch("/api/settings")
+    def update_settings(body: Policy, user: CurrentUser, s: DB):
+        o = s.get(Org, user.org_id)
+        changes = body.model_dump(exclude_none=True)
+        for k, v in changes.items():
+            setattr(o, k, v)
+        evidence.append(s, o.id, "policy_changed", o.id, {"by": user.email, **changes})
+        s.commit()
+        return get_settings(user, s)
+
     # --- evidence ----------------------------------------------------------
 
     @app.get("/api/evidence/ledger")
@@ -305,6 +416,11 @@ def create_app(db_url: str | None = None) -> FastAPI:
             "assets": s.scalar(select(func.count()).select_from(Asset).where(Asset.org_id == user.org_id)),
             "open_by_priority": by_priority,
             "top_actions": [{**a, "hosts": sorted(a["hosts"]), "vulns": sorted(a["vulns"])} for a in top],
+            "attention": [job_json(j, h) for j, h in s.execute(
+                select(RemediationJob, Asset.hostname).join(Asset, Asset.id == RemediationJob.asset_id)
+                .where(RemediationJob.org_id == user.org_id,
+                       RemediationJob.status.in_(("failed", "rolled_back", "rollback_failed", "not_fixed", "aborted")))
+                .order_by(RemediationJob.updated.desc()).limit(20))],
         }
 
     return app

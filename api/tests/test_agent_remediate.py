@@ -180,7 +180,7 @@ def test_hostile_job_rejected_before_any_command(tmp_path):
                 {**JOB, "packages": [{"name": "openssl", "from": "$(id)"}]},
                 {**JOB, "packages": [{"name": "openssl", "from": "1", "to": "-o APT::x"}]},
                 {**JOB, "manager": "bash"},
-                {**JOB, "manager": "dnf"},  # not supported until tested in a sandbox
+                {**JOB, "manager": "yum"},
                 {**JOB, "health_units": ["--now"]},
                 {**JOB, "packages": []}):
         h = FakeApt(tmp_path, OLD, NEW)

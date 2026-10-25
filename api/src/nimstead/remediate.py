@@ -24,8 +24,8 @@ from nimstead.db import Asset, Finding, InstalledPackage, Org, RemediationJob, n
 from nimstead.match import normalize_ecosystem
 from nimstead.versions import comparator_for, sort_key
 
-# Only apt is proven end to end in a sandbox. apk/dnf refused: no trustworthy rollback artefact yet (DECISIONS 15)
-MANAGERS = {"Debian": "apt", "Ubuntu": "apt"}
+# apt: rollback = old .deb; apk/dnf: rollback = file + package-database snapshot (DECISIONS 16)
+MANAGERS = {"Debian": "apt", "Ubuntu": "apt", "Alpine": "apk", "Rocky Linux": "dnf", "AlmaLinux": "dnf"}
 SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9+._-]{0,200}$")
 SAFE_VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+~:_^-]{0,200}$")
 ACTIVE = ("planned", "approved", "dispatched", "verifying")

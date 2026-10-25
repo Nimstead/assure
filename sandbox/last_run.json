@@ -1,7 +1,7 @@
 [
   {
     "step": "creating sandbox distro",
-    "name": "nimstead-sbx-9928112a"
+    "name": "nimstead-sbx-fca24665"
   },
   {
     "step": "sandbox ready",
@@ -21,7 +21,7 @@
       "updated": 0,
       "skipped": 0
     },
-    "seconds": 15
+    "seconds": 12
   },
   {
     "step": "first inventory",
@@ -50,9 +50,9 @@
   {
     "step": "remediation attempt",
     "package": "openssl",
-    "outcome": "aborted",
-    "status": "aborted",
-    "error": "No changes made: fetch rollback package libssl3t64=3.5.6-1~deb13u1 failed: E: Can't find a source to download version '3.5.6-1~deb13u1' of 'libssl3t64:amd64'",
+    "outcome": "applied",
+    "status": "succeeded",
+    "error": null,
     "steps": [
       "ok  job validated",
       "ok  apt-get available",
@@ -60,159 +60,65 @@
       "ok  refresh package index",
       "ok  simulate upgrade",
       "ok  change limited to planned packages",
-      "FAIL fetch rollback package libssl3t64=3.5.6-1~deb13u1"
+      "FAIL fetch rollback package libssl3t64=3.5.6-1~deb13u1",
+      "ok  rollback package libssl3t64=3.5.6-1~deb13u1",
+      "ok  rollback package saved libssl3t64_3.5.6-1~deb13u1_amd64.deb",
+      "FAIL fetch rollback package openssl=3.5.6-1~deb13u1",
+      "ok  rollback package openssl=3.5.6-1~deb13u1",
+      "ok  rollback package saved openssl_3.5.6-1~deb13u1_amd64.deb",
+      "FAIL fetch rollback package openssl-provider-legacy=3.5.6-1~deb13u1",
+      "ok  rollback package openssl-provider-legacy=3.5.6-1~deb13u1",
+      "ok  rollback package saved openssl-provider-legacy_3.5.6-1~deb13u1_amd64.deb",
+      "ok  upgrade",
+      "ok  package database check"
     ]
   },
   {
-    "step": "remediation attempt",
+    "step": "rollback attempt",
     "package": "perl",
-    "outcome": "aborted",
-    "status": "aborted",
-    "error": "No changes made: fetch rollback package perl-base=5.40.1-6 failed: E: Can't find a source to download version '5.40.1-6' of 'perl-base:amd64'",
+    "outcome": "rolled_back",
+    "status": "rolled_back",
+    "error": "Change failed and was rolled back: nimstead-canary.service active after change failed: ",
     "steps": [
       "ok  job validated",
       "ok  apt-get available",
       "ok  installed versions match plan",
+      "ok  nimstead-canary.service active before change",
       "ok  refresh package index",
       "ok  simulate upgrade",
       "ok  change limited to planned packages",
-      "FAIL fetch rollback package perl-base=5.40.1-6"
-    ]
+      "FAIL fetch rollback package perl-base=5.40.1-6",
+      "ok  rollback package perl-base=5.40.1-6",
+      "ok  rollback package saved perl-base_5.40.1-6_amd64.deb",
+      "ok  upgrade",
+      "ok  package database check",
+      "FAIL nimstead-canary.service active after change",
+      "ok  rollback package intact perl-base_5.40.1-6_amd64.deb",
+      "ok  rollback install",
+      "ok  versions restored",
+      "ok  nimstead-canary.service active after rollback"
+    ],
+    "restored": true
   },
   {
-    "step": "remediation attempt",
-    "package": "glibc",
-    "outcome": "aborted",
-    "status": "aborted",
-    "error": "No changes made: fetch rollback package libc-bin=2.41-12+deb13u3 failed: E: Can't find a source to download version '2.41-12+deb13u3' of 'libc-bin:amd64'",
-    "steps": [
-      "ok  job validated",
-      "ok  apt-get available",
-      "ok  installed versions match plan",
-      "ok  refresh package index",
-      "ok  simulate upgrade",
-      "ok  change limited to planned packages",
-      "FAIL fetch rollback package libc-bin=2.41-12+deb13u3"
-    ]
+    "step": "evidence pack",
+    "problems": [],
+    "resolved": 38,
+    "controls": {
+      "UK Cyber Essentials Security update management": "met",
+      "ISO/IEC 27001:2022 A.8.8": "met",
+      "NIST SP 800-53 Rev. 5 RA-5": "met",
+      "NIST SP 800-53 Rev. 5 SI-2": "met",
+      "PCI DSS v4.0.1 6.3.3": "met",
+      "CIS Controls v8.1 7.3 / 7.4": "met"
+    }
   },
   {
-    "step": "remediation attempt",
-    "package": "expat",
-    "outcome": "aborted",
-    "status": "aborted",
-    "error": "No changes made: fetch rollback package libexpat1=2.7.1-2 failed: E: Can't find a source to download version '2.7.1-2' of 'libexpat1:amd64'",
-    "steps": [
-      "ok  job validated",
-      "ok  apt-get available",
-      "ok  installed versions match plan",
-      "ok  refresh package index",
-      "ok  simulate upgrade",
-      "ok  change limited to planned packages",
-      "FAIL fetch rollback package libexpat1=2.7.1-2"
-    ]
-  },
-  {
-    "step": "remediation attempt",
-    "package": "sqlite3",
-    "outcome": "aborted",
-    "status": "aborted",
-    "error": "No changes made: fetch rollback package libsqlite3-0=3.46.1-7+deb13u1 failed: E: Can't find a source to download version '3.46.1-7+deb13u1' of 'libsqlite3-0:amd64'",
-    "steps": [
-      "ok  job validated",
-      "ok  apt-get available",
-      "ok  installed versions match plan",
-      "ok  refresh package index",
-      "ok  simulate upgrade",
-      "ok  change limited to planned packages",
-      "FAIL fetch rollback package libsqlite3-0=3.46.1-7+deb13u1"
-    ]
-  },
-  {
-    "step": "remediation attempt",
-    "package": "pcre2",
-    "outcome": "aborted",
-    "status": "aborted",
-    "error": "No changes made: fetch rollback package libpcre2-8-0=10.46-1~deb13u1 failed: E: Can't find a source to download version '10.46-1~deb13u1' of 'libpcre2-8-0:amd64'",
-    "steps": [
-      "ok  job validated",
-      "ok  apt-get available",
-      "ok  installed versions match plan",
-      "ok  refresh package index",
-      "ok  simulate upgrade",
-      "ok  change limited to planned packages",
-      "FAIL fetch rollback package libpcre2-8-0=10.46-1~deb13u1"
-    ]
-  },
-  {
-    "step": "remediation attempt",
-    "package": "util-linux",
-    "outcome": "aborted",
-    "status": "aborted",
-    "error": "No changes made: fetch rollback package bsdutils=1:2.41-5 failed: E: Can't find a source to download version '1:2.41-5' of 'bsdutils:amd64'",
-    "steps": [
-      "ok  job validated",
-      "ok  apt-get available",
-      "ok  installed versions match plan",
-      "ok  refresh package index",
-      "ok  simulate upgrade",
-      "ok  change limited to planned packages",
-      "FAIL fetch rollback package bsdutils=1:2.41-5"
-    ]
-  },
-  {
-    "step": "remediation attempt",
-    "package": "gzip",
-    "outcome": "aborted",
-    "status": "aborted",
-    "error": "No changes made: fetch rollback package gzip=1.13-1 failed: E: Can't find a source to download version '1.13-1' of 'gzip:amd64'",
-    "steps": [
-      "ok  job validated",
-      "ok  apt-get available",
-      "ok  installed versions match plan",
-      "ok  refresh package index",
-      "ok  simulate upgrade",
-      "ok  change limited to planned packages",
-      "FAIL fetch rollback package gzip=1.13-1"
-    ]
-  },
-  {
-    "step": "remediation attempt",
-    "package": "krb5",
-    "outcome": "aborted",
-    "status": "aborted",
-    "error": "No changes made: fetch rollback package libgssapi-krb5-2=1.21.3-5 failed: E: Can't find a source to download version '1.21.3-5' of 'libgssapi-krb5-2:amd64'",
-    "steps": [
-      "ok  job validated",
-      "ok  apt-get available",
-      "ok  installed versions match plan",
-      "ok  refresh package index",
-      "ok  simulate upgrade",
-      "ok  change limited to planned packages",
-      "FAIL fetch rollback package libgssapi-krb5-2=1.21.3-5"
-    ]
-  },
-  {
-    "step": "remediation attempt",
-    "package": "dhcpcd",
-    "outcome": "aborted",
-    "status": "aborted",
-    "error": "No changes made: fetch rollback package dhcpcd-base=1:10.1.0-11+deb13u2 failed: E: Can't find a source to download version '1:10.1.0-11+deb13u2' of 'dhcpcd-base:amd64'",
-    "steps": [
-      "ok  job validated",
-      "ok  apt-get available",
-      "ok  installed versions match plan",
-      "ok  refresh package index",
-      "ok  simulate upgrade",
-      "ok  change limited to planned packages",
-      "FAIL fetch rollback package dhcpcd-base=1:10.1.0-11+deb13u2"
-    ]
-  },
-  {
-    "step": "RESULT: FAIL",
-    "error": "no remediation succeeded"
+    "step": "RESULT: PASS",
+    "rollback_tested": true
   },
   {
     "step": "sandbox destroyed",
-    "name": "nimstead-sbx-9928112a"
+    "name": "nimstead-sbx-fca24665"
   }
 ]

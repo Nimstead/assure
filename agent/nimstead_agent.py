@@ -151,7 +151,6 @@ SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9+._-]{0,200}$")
 SAFE_VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+~:_^-]{0,200}$")
 ROLLBACK_ROOT = "/var/lib/nimstead/rollback"
 APT_CACHE = "/var/cache/apt/archives"
-APK_CACHE = "/etc/apk/cache"
 
 
 def sh(cmd, cwd=None):
@@ -235,8 +234,9 @@ def repack_deb(run, name, version, arch, outdir, info_dir=DPKG_INFO, root="/"):
 
 
 class Job:
-    def __init__(self, job, run=sh, rollback_root=ROLLBACK_ROOT, apt_cache=APT_CACHE, apk_cache=APK_CACHE,
-                 apk_db="/lib/apk/db/installed", dpkg_info=DPKG_INFO, root="/"):
+    """One remediation job. apt only: other managers are refused until proven in a sandbox (DECISIONS 15)."""
+
+    def __init__(self, job, run=sh, rollback_root=ROLLBACK_ROOT, apt_cache=APT_CACHE, dpkg_info=DPKG_INFO, root="/"):
         self.run, self.steps, self.artefacts = run, [], []
         self.mgr = job.get("manager")
         self.pkgs = job.get("packages") or []
@@ -244,8 +244,7 @@ class Job:
         # services often fail a few seconds after a library upgrade, not instantly
         self.settle = min(max(int(job.get("settle_seconds", 15) or 0), 0), 300)
         self.dir = os.path.join(rollback_root, re.sub(r"[^A-Za-z0-9]", "", str(job.get("id", ""))) or "unknown")
-        self.apt_cache, self.apk_cache, self.apk_db = apt_cache, apk_cache, apk_db
-        self.dpkg_info, self.root = dpkg_info, root
+        self.apt_cache, self.dpkg_info, self.root = apt_cache, dpkg_info, root
 
     def step(self, name, cmd=None, ok=None, output="", cwd=None):
         if cmd is not None:
@@ -257,21 +256,10 @@ class Job:
         return output
 
     def versions(self):
-        installed = {}
-        if self.mgr == "apk":
-            try:
-                with open(self.apk_db) as f:
-                    installed = {p["name"]: p["version"] for p in parse_apk(f.read())}
-            except OSError:
-                pass
         out = {}
         for p in self.pkgs:
-            n = p["name"]
-            if self.mgr == "apt":
-                rc, v = self.run(["dpkg-query", "-W", "-f=${Version}", n])
-            else:
-                rc, v = (0, installed[n]) if n in installed else (1, "")
-            out[n] = v.strip() if rc == 0 else None
+            rc, v = self.run(["dpkg-query", "-W", "-f=${Version}", p["name"]])
+            out[p["name"]] = v.strip() if rc == 0 else None
         return out
 
     def health(self, when):
@@ -283,25 +271,19 @@ class Job:
         os.makedirs(self.dir, mode=0o700, exist_ok=True)
         for p in self.pkgs:
             n, v = p["name"], p["from"]
-            if self.mgr == "apt":
-                rc, arch = self.run(["dpkg-query", "-W", "-f=${Architecture}", n])
-                arch = arch.strip() if rc == 0 and SAFE_NAME.match(arch.strip()) else "*"
-                deb = "{}_{}_{}.deb".format(n, v.replace(":", "%3a"), arch)
-                found = glob.glob(os.path.join(self.dir, deb)) or glob.glob(os.path.join(self.apt_cache, deb))
-                if not found:  # pristine copy from the archive if it still carries this version
-                    rc, out = self.run(["apt-get", "download", f"{n}={v}"], cwd=self.dir)
-                    self.steps.append({"step": f"fetch rollback package {n}={v}", "ok": rc == 0, "output": out[-500:]})
-                    found = glob.glob(os.path.join(self.dir, deb))
-                if not found and arch != "*":  # superseded everywhere: rebuild it from the installed files
-                    path, why = repack_deb(self.run, n, v, arch, self.dir, self.dpkg_info, self.root)
-                    self.step(f"rollback package {n}={v}", ok=True, output=why)
-                    found = [path]
-            else:
-                apk = f"{n}-{v}.apk"
-                found = glob.glob(os.path.join(self.dir, apk)) or glob.glob(os.path.join(self.apk_cache, f"{n}-{v}.*.apk"))
-                if not found:
-                    self.step(f"fetch rollback package {n}={v}", ["apk", "fetch", "-o", self.dir, f"{n}={v}"])
-                    found = glob.glob(os.path.join(self.dir, apk))
+            rc, arch = self.run(["dpkg-query", "-W", "-f=${Architecture}", n])
+            arch = arch.strip() if rc == 0 and SAFE_NAME.match(arch.strip()) else "*"
+            deb = "{}_{}_{}.deb".format(n, v.replace(":", "%3a"), arch)
+            found = glob.glob(os.path.join(self.dir, deb)) or glob.glob(os.path.join(self.apt_cache, deb))
+            if not found:  # pristine copy from the archive if it still carries this version
+                rc, out = self.run(["apt-get", "download", f"{n}={v}"], cwd=self.dir)
+                self.steps.append({"step": f"archive copy of {n}={v}" + ("" if rc == 0 else " not available (superseded); rebuilding"),
+                                   "ok": True, "output": out[-500:]})
+                found = glob.glob(os.path.join(self.dir, deb))
+            if not found and arch != "*":  # superseded everywhere: rebuild it from the installed files
+                path, why = repack_deb(self.run, n, v, arch, self.dir, self.dpkg_info, self.root)
+                self.step(f"rollback package {n}={v}", ok=True, output=why)
+                found = [path]
             if not found:
                 self.step(f"rollback package for {n}={v} present", ok=False, output="not available; refusing an irreversible change")
             dest = os.path.join(self.dir, os.path.basename(found[0]))
@@ -317,26 +299,19 @@ class Job:
 
     def simulate(self):
         """Dry-run the transaction; refuse if it would touch anything outside the plan (rollback couldn't undo it)."""
-        if self.mgr == "apt":
-            out = self.step("simulate upgrade", ["apt-get", "-s", "install", "--only-upgrade", "--no-remove", *self.targets()])
-            touched = {ln.split()[1] for ln in out.splitlines() if ln.split()[:1] in (["Inst"], ["Remv"], ["Purg"])}
-        else:
-            out = self.step("simulate upgrade", ["apk", "add", "-s", "--upgrade", *self.targets()])
-            touched = {m.group(1) for m in re.finditer(r"\b(?:Upgrading|Installing|Purging|Downgrading|Replacing|Reinstalling) (\S+)", out)}
+        out = self.step("simulate upgrade", ["apt-get", "-s", "install", "--only-upgrade", "--no-remove", *self.targets()])
+        touched = {ln.split()[1] for ln in out.splitlines() if ln.split()[:1] in (["Inst"], ["Remv"], ["Purg"])}
         planned = {p["name"] for p in self.pkgs}
         extra = sorted(touched - planned)
         self.step("change limited to planned packages", ok=not extra, output=("would also change: " + ", ".join(extra)) if extra else
                   "touches: " + ", ".join(sorted(touched)))
 
     def apply(self):
-        if self.mgr == "apt":
-            self.step("upgrade", ["apt-get", "install", "-y", "--only-upgrade", "--no-remove",
-                                  "-o", "Dpkg::Options::=--force-confold", *self.targets()])
-            out = self.step("package database check", ["dpkg", "--audit"])
-            if out.strip():
-                self.step("package database consistent", ok=False, output=out)
-        else:
-            self.step("upgrade", ["apk", "add", "--upgrade", *self.targets()])
+        self.step("upgrade", ["apt-get", "install", "-y", "--only-upgrade", "--no-remove",
+                              "-o", "Dpkg::Options::=--force-confold", *self.targets()])
+        out = self.step("package database check", ["dpkg", "--audit"])
+        if out.strip():
+            self.step("package database consistent", ok=False, output=out)
         self.result_versions = self.versions()
 
     def rollback(self):
@@ -344,7 +319,7 @@ class Job:
             self.step("rollback package intact " + os.path.basename(path), ok=os.path.exists(path) and _sha256(path) == digest,
                       output="sha256 mismatch or missing")
         files = [path for path, _ in self.artefacts]
-        self.step("rollback install", ["dpkg", "-i", *files] if self.mgr == "apt" else ["apk", "add", *files])
+        self.step("rollback install", ["dpkg", "-i", *files])
         now_v = self.versions()
         bad = [p["name"] for p in self.pkgs if now_v.get(p["name"]) != p["from"]]
         self.step("versions restored", ok=not bad, output=("mismatch: " + ", ".join(bad)) if bad else "all restored")
@@ -355,18 +330,17 @@ class Job:
     def execute(self):
         """Returns (outcome, steps, error). outcome: applied | rolled_back | rollback_failed | aborted."""
         try:  # prechecks: a failure here means nothing was changed
-            ok = (self.mgr in ("apt", "apk") and bool(self.pkgs)
+            ok = (self.mgr == "apt" and bool(self.pkgs)
                   and all(SAFE_NAME.match(str(p.get("name", ""))) and SAFE_VERSION.match(str(p.get("from", ""))) for p in self.pkgs)
                   and all(SAFE_VERSION.match(str(p["to"])) for p in self.pkgs if p.get("to"))
                   and all(SAFE_NAME.match(str(u)) for u in self.units))
             self.step("job validated", ok=ok, output="" if ok else "unsupported manager, or invalid package name, version or unit")
-            tool = "apt-get" if self.mgr == "apt" else "apk"
-            self.step(f"{tool} available", [tool, "--version"])
+            self.step("apt-get available", ["apt-get", "--version"])
             cur = self.versions()
             drift = [p["name"] for p in self.pkgs if cur.get(p["name"]) != p["from"]]
             self.step("installed versions match plan", ok=not drift, output=("drifted: " + ", ".join(drift)) if drift else "")
             self.health("before change")
-            self.step("refresh package index", ["apt-get", "update"] if self.mgr == "apt" else ["apk", "update"])
+            self.step("refresh package index", ["apt-get", "update"])
             self.simulate()
             self.save_rollback()
         except Exception as e:

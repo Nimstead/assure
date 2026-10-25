@@ -40,7 +40,8 @@ def create(iso: str) -> str:
     password = "Nim!" + secrets.token_hex(8)
     (folder / "creds.json").write_text(json.dumps({"user": "Administrator", "password": password}))
     vbox("createvm", "--name", name, "--ostype", "Windows2025_64", "--basefolder", str(folder), "--register")
-    vbox("modifyvm", name, "--memory", "4096", "--cpus", "2", "--firmware", "efi", "--nic1", "nat", "--graphicscontroller", "vboxsvga")
+    vbox("modifyvm", name, "--memory", "4096", "--cpus", "2", "--firmware", "efi", "--nic1", "nat", "--graphicscontroller", "vboxsvga",
+         "--nat-localhostreachable1", "on")  # VirtualBox 7 blocks guest -> host 127.0.0.1 (10.0.2.2) by default
     disk = folder / f"{name}.vdi"
     vbox("createmedium", "disk", "--filename", str(disk), "--size", "40960")
     vbox("storagectl", name, "--name", "SATA", "--add", "sata", "--controller", "IntelAhci")
@@ -69,10 +70,10 @@ def run(name: str, command: str, timeout=3600) -> tuple[int, str]:
     return p.returncode, p.stdout + p.stderr
 
 
-def wait_ready(name: str, minutes=60, reset_after=25) -> None:
-    """Until guest additions answer and PowerShell runs. Under Hyper-V's NEM backend the post-setup reboot can hang
-    (seen in practice); one hard reset after reset_after minutes recovers it."""
-    start, end, did_reset = time.time(), time.time() + minutes * 60, False
+def wait_ready(name: str, minutes=90, reset_after=12, max_resets=3) -> None:
+    """Until guest additions answer and PowerShell runs. Under Hyper-V's NEM backend the reboots during unattended
+    setup hang (seen every time on this host: idle, no guest activity); a hard reset recovers each one."""
+    last, end, resets = time.time(), time.time() + minutes * 60, 0
     while time.time() < end:
         try:
             rc, out = run(name, "'ready'", timeout=60)
@@ -80,9 +81,9 @@ def wait_ready(name: str, minutes=60, reset_after=25) -> None:
                 return
         except (subprocess.TimeoutExpired, FileNotFoundError):
             pass
-        if not did_reset and time.time() - start > reset_after * 60:
+        if resets < max_resets and time.time() - last > reset_after * 60:
             vbox("controlvm", name, "reset", check=False)
-            did_reset = True
+            last, resets = time.time(), resets + 1
         time.sleep(20)
     raise RuntimeError(f"{name} not ready after {minutes} min")
 

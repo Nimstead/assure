@@ -4,9 +4,11 @@ import csv
 import gzip
 import io
 import json
+import re
 import sys
 import tempfile
 import zipfile
+from datetime import timedelta
 from urllib.parse import quote
 
 import httpx
@@ -14,14 +16,16 @@ from sqlalchemy import delete, insert, select, update
 from sqlalchemy.orm import Session
 
 from nimstead import evidence
-from nimstead.db import Advisory, Asset, Cvss, Epss, InstalledPackage, Kev, Org, make_sessionmaker
+from nimstead.db import Advisory, Asset, Cvss, Epss, InstalledPackage, Kev, Org, make_sessionmaker, now
 from nimstead.match import normalize_ecosystem
 from nimstead.scan import rescan
+from nimstead.versions import windows_cmp
 
 OSV_URL = "https://osv-vulnerabilities.storage.googleapis.com/{}/all.zip"  # dir names have spaces: "Rocky Linux"
 KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
 EPSS_URL = "https://epss.empiricalsecurity.com/epss_scores-current.csv.gz"  # old cyentia.com URL 301s here
 NVD_URL = "https://nvd.nist.gov/feeds/json/cve/2.0/nvdcve-2.0-{}.json.gz"  # {year} or "modified"
+MSRC_URL = "https://api.msrc.microsoft.com/cvrf/v3.0/"  # "updates" lists months; "cvrf/{ID}" is one month
 KEEP = ("id", "aliases", "upstream", "withdrawn", "summary", "severity", "modified")
 
 
@@ -161,15 +165,91 @@ def sync_epss(session: Session, client=None) -> int:
     return len(rows)
 
 
+def sync_msrc(session: Session, months: int = 12, client=None) -> dict:
+    """Windows OS advisories from the MSRC CVRF API, stored as OSV-shaped rows (ecosystem Windows, package =
+    MSRC product name, fixed = FixedBuild) so the normal matcher works. Only Windows 10/11/Server products
+    with a dotted FixedBuild are kept; Office, .NET, Edge etc. are not covered.
+    # ponytail: a month is skipped when its CurrentReleaseDate is already stored on some row; a CVE re-released
+    # in a later month overwrites the older row, which makes that older month re-download. Fine at this scale."""
+    http = _client(client)
+
+    def get(url):
+        r = http.get(url, headers={"Accept": "application/json"})
+        r.raise_for_status()
+        return r.json()
+
+    cutoff = (now() - timedelta(days=30 * months)).strftime("%Y-%m-%d")
+    docs = sorted((d for d in get(MSRC_URL + "updates")["value"]
+                   if re.fullmatch(r"\d{4}-[A-Z][a-z]{2}", d["ID"]) and "Mariner" not in (d["DocumentTitle"] or "")
+                   and d["InitialReleaseDate"] >= cutoff), key=lambda d: d["InitialReleaseDate"])
+    have = {(i, p): m for i, p, m in session.execute(
+        select(Advisory.id, Advisory.package, Advisory.modified).where(Advisory.ecosystem == "Windows"))}
+    stored = set(have.values())
+    n = {"documents": 0, "skipped_documents": 0, "inserted": 0, "updated": 0, "skipped": 0}
+    for d in docs:
+        mod = d["CurrentReleaseDate"]
+        if mod in stored:
+            n["skipped_documents"] += 1
+            continue
+        doc = get(MSRC_URL + "cvrf/" + d["ID"])
+        names = {p["ProductID"]: p["Value"] for p in doc["ProductTree"]["FullProductName"]}
+        ins: list[dict] = []
+        upd: list[dict] = []
+        for v in doc["Vulnerability"]:
+            cve = v["CVE"]
+            if not cve.startswith("CVE-"):
+                continue
+            fixes: dict[str, tuple[str, str | None]] = {}  # product id -> lowest (FixedBuild, KB): any listed fix suffices
+            for r in v.get("Remediations", []):
+                b = r.get("FixedBuild")
+                if b and re.fullmatch(r"\d+(\.\d+){2,3}", b):
+                    kb = (r.get("Description") or {}).get("Value", "")
+                    for pid in r["ProductID"]:
+                        if pid not in fixes or windows_cmp(b, fixes[pid][0]) < 0:
+                            fixes[pid] = (b, kb if kb.isdigit() else None)
+            scores = {pid: s for s in v.get("CVSSScoreSets", []) for pid in s["ProductID"]}
+            for pid, (build, kb) in fixes.items():
+                # some entries say "Windows 11 version 26H1" (lowercase v); make the names uniform
+                name = re.sub(r"^(Windows 11) version", r"\1 Version", names.get(pid, ""))
+                if not re.match(r"Windows (10|11|Server)\b", name):
+                    continue
+                sc = scores.get(pid)
+                vec = (sc or {}).get("Vector", "")
+                rec = {"id": f"MSRC-{cve}-{pid}", "aliases": [cve], "modified": mod,
+                       "summary": (v["Title"]["Value"] + (f" (KB{kb})" if kb else ""))[:500],
+                       "database_specific": {"kb": kb},
+                       "affected": [{"package": {"ecosystem": "Windows", "name": name},
+                                     "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": build}]}]}]}
+                if vec.startswith("CVSS:3"):
+                    rec["severity"] = [{"type": "CVSS_V3", "score": vec}]
+                elif sc:  # no vector: risk.cvss_base can't read it, so keep the score in the Cvss table
+                    session.merge(Cvss(cve=cve, score=float(sc["BaseScore"]), vector=""))
+                row = {"id": rec["id"], "ecosystem": "Windows", "package": name, "modified": mod, "record": rec}
+                if (rec["id"], name) not in have:
+                    ins.append(row)
+                    n["inserted"] += 1
+                elif have[(rec["id"], name)] != mod:
+                    upd.append(row)
+                    n["updated"] += 1
+                else:
+                    n["skipped"] += 1
+                have[(rec["id"], name)] = mod
+        _flush(session, ins, upd)
+        n["documents"] += 1
+    return n
+
+
 def update_all(session: Session, client=None) -> dict:
     """Refresh every feed for the ecosystems actually in use, then re-match every asset.
 
     New advisories or exploitation data change findings without waiting for the next
     agent report. Run from cron/systemd timer (e.g. hourly)."""
     in_use = {normalize_ecosystem(e) for e in session.scalars(select(InstalledPackage.ecosystem).distinct())}
-    used = sorted({e.split(":", 1)[0] for e in in_use})
+    used = sorted({e.split(":", 1)[0] for e in in_use} - {"Windows"})  # Windows comes from MSRC, not OSV
     out = {"kev": sync_kev(session, client), "epss": sync_epss(session, client), "nvd": sync_nvd(session, ["modified"], client),
            "osv": sync_osv(session, used, client, only=in_use) if used else {}}
+    if "Windows" in in_use:
+        out["msrc"] = sync_msrc(session, client=client)
     out["rescanned"] = 0
     for asset in session.scalars(select(Asset)).all():
         rescan(session, asset, inventory_received=False)
@@ -180,12 +260,12 @@ def update_all(session: Session, client=None) -> dict:
 
 
 def main(argv: list[str]) -> int:
-    if not argv or argv[0] not in ("osv", "kev", "epss", "nvd", "update") or (argv[0] in ("osv", "nvd") and len(argv) < 2):
-        print("usage: python -m nimstead.feeds [update|osv ECOSYSTEM...|nvd YEAR...|modified|kev|epss]", file=sys.stderr)
+    if not argv or argv[0] not in ("osv", "kev", "epss", "nvd", "msrc", "update") or (argv[0] in ("osv", "nvd") and len(argv) < 2):
+        print("usage: python -m nimstead.feeds [update|osv ECOSYSTEM...|nvd YEAR...|modified|kev|epss|msrc [MONTHS]]", file=sys.stderr)
         return 2
     with make_sessionmaker()() as s:
         print({"osv": lambda: sync_osv(s, argv[1:]), "kev": lambda: sync_kev(s), "epss": lambda: sync_epss(s),
-               "nvd": lambda: sync_nvd(s, argv[1:]), "update": lambda: update_all(s)}[argv[0]]())
+               "nvd": lambda: sync_nvd(s, argv[1:]), "msrc": lambda: sync_msrc(s, int(argv[1]) if len(argv) > 1 else 12), "update": lambda: update_all(s)}[argv[0]]())
     return 0
 
 

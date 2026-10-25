@@ -1,4 +1,4 @@
-import { filtersToApi, filtersToSearch, installCommands, parseFilters, priorityOf, relativeTime, whyMatched } from "./lib";
+import { filtersToApi, filtersToSearch, groupJobs, humaniseKind, installCommands, isActiveJob, parseFilters, priorityOf, relativeTime, whyMatched, type Job } from "./lib";
 
 describe("priorityOf", () => {
   it("mirrors the server thresholds and lets KEV override", () => {
@@ -46,5 +46,24 @@ describe("install commands", () => {
     const c = installCommands("https://nim.example", "nme_abc");
     expect(c.curl).toBe("curl -fsSL https://nim.example/install.sh | sudo sh -s -- --token nme_abc");
     expect(c.python).toBe("python3 nimstead_agent.py enroll --server https://nim.example --token nme_abc && python3 nimstead_agent.py report");
+  });
+});
+
+describe("remediation helpers", () => {
+  const job = (status: string) => ({ id: status, status }) as unknown as Job;
+  it("groups jobs by state and drops nothing", () => {
+    const jobs = ["planned", "approved", "dispatched", "verifying", "succeeded", "failed", "rolled_back", "rollback_failed", "not_fixed", "aborted"].map(job);
+    const g = Object.fromEntries(groupJobs(jobs).map((x) => [x.key, x.jobs.map((j) => j.status)]));
+    expect(g.approval).toEqual(["planned"]);
+    expect(g.progress).toEqual(["approved", "dispatched", "verifying"]);
+    expect(g.done).toEqual(["succeeded"]);
+    expect(g.attention).toEqual(["failed", "rolled_back", "rollback_failed", "not_fixed", "aborted"]);
+    expect(isActiveJob(job("verifying"))).toBe(true);
+    expect(isActiveJob(job("planned"))).toBe(false);
+  });
+  it("humanises ledger kinds", () => {
+    expect(humaniseKind("remediation_not_fixed")).toBe("Remediation not fixed");
+    expect(humaniseKind("inventory_received")).toBe("Inventory received");
+    expect(humaniseKind("policy_changed")).toBe("Policy changed");
   });
 });

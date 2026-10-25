@@ -6,8 +6,11 @@ import "./index.css";
 import { AuthPage } from "./auth";
 import { AssetsPage } from "./assets";
 import { FindingsPage } from "./findings";
+import { EvidencePage } from "./evidence";
 import { Home } from "./home";
 import { Onboarding } from "./onboarding";
+import { RemediationPage } from "./remediation";
+import { SettingsPage } from "./settings";
 import { Shell } from "./shell";
 import type { RawSearch } from "./lib";
 
@@ -20,6 +23,9 @@ const shell = createRoute({ getParentRoute: () => root, id: "app", component: Sh
 const home = createRoute({ getParentRoute: () => shell, path: "/", component: Home });
 const add = createRoute({ getParentRoute: () => shell, path: "/add", component: Onboarding });
 const assets = createRoute({ getParentRoute: () => shell, path: "/assets", component: AssetsPage });
+const remediation = createRoute({ getParentRoute: () => shell, path: "/remediation", component: RemediationPage });
+const evidence = createRoute({ getParentRoute: () => shell, path: "/evidence", component: EvidencePage });
+const settings = createRoute({ getParentRoute: () => shell, path: "/settings", component: SettingsPage });
 const findings = createRoute({
   getParentRoute: () => shell, path: "/findings",
   validateSearch: (raw: Record<string, unknown>): RawSearch => Object.fromEntries(Object.entries(raw).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)])),
@@ -28,7 +34,7 @@ const findings = createRoute({
 
 // Plain `?q=openssl&priority=fix-now,next` URLs instead of JSON-encoded values.
 const router = createRouter({
-  routeTree: root.addChildren([signin, signup, shell.addChildren([home, add, assets, findings])]),
+  routeTree: root.addChildren([signin, signup, shell.addChildren([home, add, assets, findings, remediation, evidence, settings])]),
   parseSearch: (s) => Object.fromEntries(new URLSearchParams(s)),
   stringifySearch: (o) => {
     const p = new URLSearchParams();

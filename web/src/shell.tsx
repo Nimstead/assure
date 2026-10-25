@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, Navigate, Outlet, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Dialog } from "radix-ui";
-import { ListChecks, LogOut, Moon, Plus, Search, Server, ShieldAlert, Sun, type LucideIcon } from "lucide-react";
+import { Dialog, DropdownMenu } from "radix-ui";
+import { FileCheck2, ListChecks, LogOut, MoreHorizontal, Moon, Plus, Search, Server, Settings, ShieldAlert, Sun, Wrench, type LucideIcon } from "lucide-react";
 import clsx from "clsx";
 import { api, ApiError, filtersToSearch, isDark, meQ, parseFilters, setTheme, type Finding } from "./lib";
 import { Skeleton } from "./ui";
@@ -14,11 +14,17 @@ export const Logo = () => (
   </span>
 );
 
-const NAV: { to: "/" | "/findings" | "/assets"; label: string; icon: LucideIcon }[] = [
+type NavTo = "/" | "/findings" | "/assets" | "/remediation" | "/evidence" | "/settings";
+const NAV: { to: NavTo; label: string; icon: LucideIcon }[] = [
   { to: "/", label: "Fix first", icon: ListChecks },
   { to: "/findings", label: "Findings", icon: ShieldAlert },
   { to: "/assets", label: "Assets", icon: Server },
+  { to: "/remediation", label: "Remediation", icon: Wrench },
+  { to: "/evidence", label: "Evidence", icon: FileCheck2 },
+  { to: "/settings", label: "Settings", icon: Settings },
 ];
+const TABS = NAV.slice(0, 4); // the rest live under "More" on small screens
+const MORE = NAV.slice(4);
 
 function useSignOut() {
   const qc = useQueryClient();
@@ -85,8 +91,9 @@ export function Shell() {
 
       <main id="main" className="mx-auto w-full max-w-6xl px-4 pb-28 pt-6 md:px-8 md:pb-12 md:pt-8"><Outlet /></main>
 
-      <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-10 grid grid-cols-3 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] md:hidden">
-        {NAV.map((n) => <NavLink key={n.to} {...n} tab />)}
+      <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-10 grid grid-cols-5 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] md:hidden">
+        {TABS.map((n) => <NavLink key={n.to} {...n} tab />)}
+        <MoreMenu />
       </nav>
 
       <Palette open={paletteOpen} onOpenChange={setPaletteOpen} signOut={() => signOut.mutate()} />
@@ -100,6 +107,29 @@ function NavLink({ to, label, icon: Icon, tab }: (typeof NAV)[number] & { tab?: 
       className={clsx("flex items-center text-sm text-muted no-underline", tab ? "min-h-14 flex-col justify-center gap-0.5 text-xs" : "min-h-9 gap-3 rounded-md px-3 hover:bg-sunken hover:text-ink")}>
       <Icon className="size-4" aria-hidden />{label}
     </Link>
+  );
+}
+
+function MoreMenu() {
+  const navigate = useNavigate();
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger className="flex min-h-14 cursor-pointer flex-col items-center justify-center gap-0.5 text-xs text-muted data-[state=open]:text-ink">
+        <MoreHorizontal className="size-4" aria-hidden />More
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content side="top" align="end" sideOffset={8} className="z-[51] min-w-44 rounded-lg border border-line bg-surface p-1.5 shadow-2xl">
+          {MORE.map(({ to, label, icon: Icon }) => (
+            <DropdownMenu.Item key={to} onSelect={() => void navigate({ to })} className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md px-3 text-sm outline-none data-[highlighted]:bg-accent-soft">
+              <Icon className="size-4" aria-hidden />{label}
+            </DropdownMenu.Item>
+          ))}
+          <DropdownMenu.Item onSelect={() => void navigate({ to: "/add" })} className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md px-3 text-sm outline-none data-[highlighted]:bg-accent-soft">
+            <Plus className="size-4" aria-hidden />Add machine
+          </DropdownMenu.Item>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
   );
 }
 
@@ -123,6 +153,9 @@ function Palette({ open, onOpenChange, signOut }: { open: boolean; onOpenChange:
       { id: "home", label: "Go to Fix first", run: done(() => navigate({ to: "/" })) },
       { id: "findings", label: "Go to Findings", run: done(() => navigate({ to: "/findings" })) },
       { id: "assets", label: "Go to Assets", run: done(() => navigate({ to: "/assets" })) },
+      { id: "remediation", label: "Go to Remediation", run: done(() => navigate({ to: "/remediation" })) },
+      { id: "evidence", label: "Go to Evidence", run: done(() => navigate({ to: "/evidence" })) },
+      { id: "settings", label: "Go to Settings", run: done(() => navigate({ to: "/settings" })) },
       { id: "add", label: "Add a machine", run: done(() => navigate({ to: "/add" })) },
       { id: "theme", label: "Toggle light or dark theme", run: done(toggleTheme) },
       { id: "out", label: "Sign out", run: done(signOut) },

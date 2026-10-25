@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { Dialog, Switch } from "radix-ui";
 import { ArrowRight, ExternalLink, Search, X } from "lucide-react";
@@ -9,7 +9,8 @@ import {
   api, assetsQ, filtersToApi, filtersToSearch, parseFilters, pct, plural, PRIORITIES, PRIORITY_LABEL, relativeTime,
   parseUtc, useTitle, whyMatched, type Finding, type FindingsFilters, type RawSearch, type Status,
 } from "./lib";
-import { btnQuiet, EmptyState, ErrorState, input, KevBadge, PriorityPill, Skeleton } from "./ui";
+import { PlanFixButton } from "./remediation";
+import { btnPrimary, btnQuiet, EmptyState, ErrorState, input, KevBadge, PriorityPill, Skeleton } from "./ui";
 
 const STATUSES: Status[] = ["open", "resolved", "accepted"];
 
@@ -208,9 +209,50 @@ function FindingDetail({ f }: { f: Finding }) {
         ))}
       </ul>
 
+      {f.status === "open" && (
+        <>
+          <H>Act on it</H>
+          <div className="flex flex-wrap items-start gap-2">
+            {f.fixed_version && <PlanFixButton ecosystem={f.ecosystem} pkg={f.package} hosts={[f.hostname]} />}
+            <AcceptRisk id={f.id} />
+          </div>
+        </>
+      )}
+
       <p className="mt-6 text-sm text-muted">
         First seen {when(f.first_seen)}, last seen {when(f.last_seen)}{f.resolved_at && <>, resolved {when(f.resolved_at)}</>}.
       </p>
     </div>
+  );
+}
+
+function AcceptRisk({ id }: { id: string }) {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const [days, setDays] = useState(90);
+  const accept = useMutation({
+    mutationFn: () => api(`/api/findings/${id}/accept`, { method: "POST", body: { reason: reason.trim(), days } }),
+    onSuccess: () => Promise.all(["finding", "findings", "summary", "ledger"].map((k) => qc.invalidateQueries({ queryKey: [k] }))),
+  });
+  if (!open) return <button className={btnQuiet} onClick={() => setOpen(true)}>Accept risk</button>;
+  const ok = reason.trim().length >= 10;
+  return (
+    <form className="w-full rounded-lg border border-line-strong p-3" onSubmit={(e) => { e.preventDefault(); if (ok) accept.mutate(); }}>
+      <p className="text-sm text-muted">Accepting hides this finding for a limited time, then it comes back for review. Your reason, your name and the expiry are recorded in the tamper-evident evidence ledger and shown to auditors.</p>
+      <label className="mt-3 block text-sm font-medium" htmlFor="accept-reason">Reason (at least 10 characters)</label>
+      <textarea id="accept-reason" autoFocus rows={3} className={clsx(input, "mt-1 py-2")} value={reason} onChange={(e) => setReason(e.target.value)} />
+      <label className="mt-3 flex items-center gap-2 text-sm">
+        <span className="font-medium">Accept for</span>
+        <select className={clsx(input, "min-h-9 w-auto")} value={days} onChange={(e) => setDays(Number(e.target.value))}>
+          {[30, 90, 180].map((d) => <option key={d} value={d}>{d} days</option>)}
+        </select>
+      </label>
+      {accept.error && <p role="alert" className="mt-2 text-sm text-now-fg">{accept.error.message}</p>}
+      <div className="mt-3 flex gap-2">
+        <button className={btnPrimary} disabled={!ok || accept.isPending}>{accept.isPending ? "Saving…" : "Accept risk"}</button>
+        <button type="button" className={btnQuiet} onClick={() => setOpen(false)}>Cancel</button>
+      </div>
+    </form>
   );
 }

@@ -176,3 +176,14 @@ def test_serves_web_ui_with_spa_fallback(env, tmp_path, monkeypatch):
     assert c.get("/assets/app.js").text == "console.log(1)"
     assert c.get("/api/nope").status_code == 404
     assert c.get("/install.sh").status_code == 200  # real routes still win
+
+
+def test_inventory_rate_limited_per_asset(env, monkeypatch):
+    import nimstead.app as appmod
+    monkeypatch.setattr(appmod, "INVENTORY_MIN_SECONDS", 3600)
+    c = user(env)
+    h = {"Authorization": f"Bearer {enrol(c)['agent_key']}"}
+    assert c.post("/api/agent/inventory", json=INV, headers=h).status_code == 200
+    assert c.post("/api/agent/inventory", json=INV, headers=h).status_code == 429
+    h2 = {"Authorization": f"Bearer {enrol(c)['agent_key']}"}  # other assets unaffected
+    assert c.post("/api/agent/inventory", json=INV, headers=h2).status_code == 200

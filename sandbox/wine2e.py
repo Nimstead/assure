@@ -34,7 +34,11 @@ def note(step, **kw):
 
 
 def guest(cmd, timeout=3600, check=True):
-    rc, out = winvm.run(NAME, cmd, timeout=timeout)
+    for _ in range(4):  # VirtualBox guest control flakes right after boot (VERR_* from VBoxManage itself)
+        rc, out = winvm.run(NAME, cmd, timeout=timeout)
+        if rc == 0 or not any(s in out for s in ("VERR_", "guest execution service is not ready")):
+            break
+        time.sleep(15)
     if check and rc != 0:
         raise RuntimeError(f"guest command failed ({rc}): {cmd[:200]}\n{out[-2000:]}")
     return out

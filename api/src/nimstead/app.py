@@ -13,7 +13,8 @@ from typing import Annotated, Literal
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
@@ -37,6 +38,7 @@ from nimstead.versions import comparator_for
 
 SESSION_COOKIE = "nimstead_session"
 INSTALL_SH = Path(__file__).parent / "static" / "install.sh"
+WEB_DIST = Path(os.environ.get("NIMSTEAD_WEB_DIST", Path(__file__).parents[3] / "web" / "dist"))
 # ponytail: agent served from the repo checkout; ship it as package data (and signed) when packaging releases
 AGENT_FILE = Path(os.environ.get("NIMSTEAD_AGENT_FILE", Path(__file__).parents[3] / "agent" / "nimstead_agent.py"))
 SECURE_COOKIES = os.environ.get("NIMSTEAD_SECURE_COOKIES", "1") != "0"
@@ -537,6 +539,16 @@ def create_app(db_url: str | None = None) -> FastAPI:
                        RemediationJob.status.in_(("failed", "rolled_back", "rollback_failed", "not_fixed", "aborted", "cancelled")))
                 .order_by(RemediationJob.updated.desc()).limit(20))],
         }
+
+    # Built web UI (cd web && npm run build): one process serves everything. SPA routes fall back to index.html.
+    if WEB_DIST.is_dir():
+        app.mount("/assets", StaticFiles(directory=WEB_DIST / "assets"), name="assets")
+
+        @app.get("/{path:path}", include_in_schema=False)
+        def spa(path: str):
+            if path.startswith("api/"):
+                raise HTTPException(404, "Not found")
+            return FileResponse(WEB_DIST / "index.html", headers={"Cache-Control": "no-cache"})
 
     return app
 

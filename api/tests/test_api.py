@@ -161,3 +161,18 @@ def test_login_throttled_after_repeated_failures(env):
     assert [c.post("/api/auth/login", json=bad).status_code for _ in range(10)] == [401] * 10
     assert c.post("/api/auth/login", json=bad).status_code == 429
     assert c.post("/api/auth/login", json={**bad, "password": "correct horse battery"}).status_code == 429
+
+
+def test_serves_web_ui_with_spa_fallback(env, tmp_path, monkeypatch):
+    import nimstead.app as appmod
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text("<div id=root></div>")
+    (dist / "assets" / "app.js").write_text("console.log(1)")
+    monkeypatch.setattr(appmod, "WEB_DIST", dist)
+    c = TestClient(create_app(env))
+    assert c.get("/").text == "<div id=root></div>"
+    assert c.get("/findings?f=abc").text == "<div id=root></div>"  # client-side route
+    assert c.get("/assets/app.js").text == "console.log(1)"
+    assert c.get("/api/nope").status_code == 404
+    assert c.get("/install.sh").status_code == 200  # real routes still win

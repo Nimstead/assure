@@ -675,13 +675,14 @@ def windows_build():
 class WinJob:
     """Phases: start -> (reboot) -> verify -> done | rollback -> (reboot) -> rolled_back. State lives in WIN_STATE."""
 
-    def __init__(self, job=None, run=sh, state_path=WIN_STATE, build=windows_build, settle=None):
+    def __init__(self, job=None, run=sh, state_path=WIN_STATE, build=windows_build, settle=None, fail_after_apply=False):
         self.run, self.state_path, self.build = run, state_path, build
         if job is not None:
             p = (job.get("packages") or [{}])[0]
             self.s = {"job": job, "phase": "start", "steps": [], "kb": str(p.get("kb", "")), "from": p.get("from"),
                       "to": p.get("to"), "product": p.get("name"), "units": job.get("health_units") or [],
-                      "settle": min(max(int(job.get("settle_seconds", 60) or 0), 0), 900) if settle is None else settle}
+                      "settle": min(max(int(job.get("settle_seconds", 60) or 0), 0), 900) if settle is None else settle,
+                      "inject": bool(fail_after_apply)}  # sandbox fault injection (run-job only; never from the server)
         else:
             with open(state_path) as f:
                 self.s = json.load(f)
@@ -779,6 +780,8 @@ class WinJob:
         if s["units"] and s["settle"]:
             time.sleep(s["settle"])
         self.health("after change")
+        if s.get("inject"):
+            self.step("injected failure (sandbox test)", False, "--fail-after-apply")
         return self.result("applied")
 
     def _rollback(self, err):
@@ -928,7 +931,7 @@ def main(argv=None):
                 raise AgentError("run-job changes installed packages; pass --yes to confirm")
             job = json.load(sys.stdin)
             if job.get("manager") == "windows":
-                res = WinJob(job).advance()
+                res = WinJob(job, fail_after_apply=a.fail_after_apply).advance()
                 print(json.dumps(res))
                 return 0 if res["outcome"] in ("applied", "pending_reboot") else 2
             j = Job(job, fail_after_apply=a.fail_after_apply)

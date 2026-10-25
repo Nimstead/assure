@@ -13,13 +13,14 @@ import httpx
 from sqlalchemy import delete, insert, select, update
 from sqlalchemy.orm import Session
 
-from nimstead.db import Advisory, Asset, Epss, InstalledPackage, Kev, make_sessionmaker
+from nimstead.db import Advisory, Asset, Cvss, Epss, InstalledPackage, Kev, make_sessionmaker
 from nimstead.match import normalize_ecosystem
 from nimstead.scan import rescan
 
 OSV_URL = "https://osv-vulnerabilities.storage.googleapis.com/{}/all.zip"  # dir names have spaces: "Rocky Linux"
 KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
 EPSS_URL = "https://epss.empiricalsecurity.com/epss_scores-current.csv.gz"  # old cyentia.com URL 301s here
+NVD_URL = "https://nvd.nist.gov/feeds/json/cve/2.0/nvdcve-2.0-{}.json.gz"  # {year} or "modified"
 KEEP = ("id", "aliases", "upstream", "withdrawn", "summary", "severity", "modified")
 
 
@@ -111,6 +112,33 @@ def sync_kev(session: Session, client=None) -> int:
     return len(rows)
 
 
+def nvd_score(cve: dict) -> tuple[float, str] | None:
+    """Prefer CVSS v3.1, then v3.0 (what Cyber Essentials/PCI thresholds use), then v4.0; Primary source first."""
+    metrics = cve.get("metrics") or {}
+    for key in ("cvssMetricV31", "cvssMetricV30", "cvssMetricV40"):
+        ms = sorted(metrics.get(key) or [], key=lambda m: m.get("type") != "Primary")
+        if ms:
+            d = ms[0]["cvssData"]
+            return float(d["baseScore"]), d.get("vectorString", "")
+    return None
+
+
+def sync_nvd(session: Session, feeds: list[str], client=None) -> int:
+    """feeds: years ("2024") and/or "modified". Upserts by delete+insert per batch of CVE ids."""
+    # ponytail: whole yearly feed decompressed in memory (~150 MB peak); stream-parse if memory matters
+    n = 0
+    for feed in feeds:
+        vulns = json.loads(gzip.decompress(_get(client, NVD_URL.format(feed))))["vulnerabilities"]
+        rows = [{"cve": v["cve"]["id"], "score": s[0], "vector": s[1][:200]} for v in vulns if (s := nvd_score(v["cve"]))]
+        for i in range(0, len(rows), 5000):
+            batch = rows[i:i + 5000]
+            session.execute(delete(Cvss).where(Cvss.cve.in_([r["cve"] for r in batch])))
+            session.execute(insert(Cvss), batch)
+        session.commit()
+        n += len(rows)
+    return n
+
+
 def sync_epss(session: Session, client=None) -> int:
     text = gzip.decompress(_get(client, EPSS_URL)).decode()
     lines = (ln for ln in text.splitlines() if not ln.startswith("#"))  # leading "#model_version:..." line
@@ -135,7 +163,8 @@ def update_all(session: Session, client=None) -> dict:
     New advisories or exploitation data change findings without waiting for the next
     agent report. Run from cron/systemd timer (e.g. hourly)."""
     used = sorted({e.split(":", 1)[0] for e in session.scalars(select(InstalledPackage.ecosystem).distinct())})
-    out = {"kev": sync_kev(session, client), "epss": sync_epss(session, client), "osv": sync_osv(session, used, client) if used else {}}
+    out = {"kev": sync_kev(session, client), "epss": sync_epss(session, client), "nvd": sync_nvd(session, ["modified"], client),
+           "osv": sync_osv(session, used, client) if used else {}}
     out["rescanned"] = 0
     for asset in session.scalars(select(Asset)).all():
         rescan(session, asset, inventory_received=False)
@@ -144,12 +173,12 @@ def update_all(session: Session, client=None) -> dict:
 
 
 def main(argv: list[str]) -> int:
-    if not argv or argv[0] not in ("osv", "kev", "epss", "update") or (argv[0] == "osv" and len(argv) < 2):
-        print("usage: python -m nimstead.feeds [update|osv ECOSYSTEM...|kev|epss]", file=sys.stderr)
+    if not argv or argv[0] not in ("osv", "kev", "epss", "nvd", "update") or (argv[0] in ("osv", "nvd") and len(argv) < 2):
+        print("usage: python -m nimstead.feeds [update|osv ECOSYSTEM...|nvd YEAR...|modified|kev|epss]", file=sys.stderr)
         return 2
     with make_sessionmaker()() as s:
         print({"osv": lambda: sync_osv(s, argv[1:]), "kev": lambda: sync_kev(s), "epss": lambda: sync_epss(s),
-               "update": lambda: update_all(s)}[argv[0]]())
+               "nvd": lambda: sync_nvd(s, argv[1:]), "update": lambda: update_all(s)}[argv[0]]())
     return 0
 
 

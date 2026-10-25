@@ -112,6 +112,15 @@ class Epss(Base):
     percentile: Mapped[float] = mapped_column(Float)
 
 
+class Cvss(Base):
+    """NVD base score, used when an advisory carries no severity of its own."""
+
+    __tablename__ = "cvss"
+    cve: Mapped[str] = mapped_column(String(30), primary_key=True)
+    score: Mapped[float] = mapped_column(Float)
+    vector: Mapped[str] = mapped_column(String(200), default="")
+
+
 class Finding(Base):
     __tablename__ = "finding"
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)

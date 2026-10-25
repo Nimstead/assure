@@ -1,7 +1,8 @@
 [
   {
     "step": "creating sandbox distro",
-    "name": "nimstead-sbx-fca24665"
+    "name": "nimstead-sbx-365d6ac0",
+    "distro": "Debian"
   },
   {
     "step": "sandbox ready",
@@ -17,11 +18,11 @@
     "kev": 1756,
     "epss": 395308,
     "osv": {
-      "inserted": 195692,
+      "inserted": 60179,
       "updated": 0,
       "skipped": 0
     },
-    "seconds": 12
+    "seconds": 10
   },
   {
     "step": "first inventory",
@@ -60,13 +61,13 @@
       "ok  refresh package index",
       "ok  simulate upgrade",
       "ok  change limited to planned packages",
-      "FAIL fetch rollback package libssl3t64=3.5.6-1~deb13u1",
+      "ok  archive copy of libssl3t64=3.5.6-1~deb13u1 not available (superseded); rebuilding",
       "ok  rollback package libssl3t64=3.5.6-1~deb13u1",
       "ok  rollback package saved libssl3t64_3.5.6-1~deb13u1_amd64.deb",
-      "FAIL fetch rollback package openssl=3.5.6-1~deb13u1",
+      "ok  archive copy of openssl=3.5.6-1~deb13u1 not available (superseded); rebuilding",
       "ok  rollback package openssl=3.5.6-1~deb13u1",
       "ok  rollback package saved openssl_3.5.6-1~deb13u1_amd64.deb",
-      "FAIL fetch rollback package openssl-provider-legacy=3.5.6-1~deb13u1",
+      "ok  archive copy of openssl-provider-legacy=3.5.6-1~deb13u1 not available (superseded); rebuilding",
       "ok  rollback package openssl-provider-legacy=3.5.6-1~deb13u1",
       "ok  rollback package saved openssl-provider-legacy_3.5.6-1~deb13u1_amd64.deb",
       "ok  upgrade",
@@ -87,13 +88,13 @@
       "ok  refresh package index",
       "ok  simulate upgrade",
       "ok  change limited to planned packages",
-      "FAIL fetch rollback package perl-base=5.40.1-6",
+      "ok  archive copy of perl-base=5.40.1-6 not available (superseded); rebuilding",
       "ok  rollback package perl-base=5.40.1-6",
       "ok  rollback package saved perl-base_5.40.1-6_amd64.deb",
       "ok  upgrade",
       "ok  package database check",
       "FAIL nimstead-canary.service active after change",
-      "ok  rollback package intact perl-base_5.40.1-6_amd64.deb",
+      "ok  rollback artefact intact perl-base_5.40.1-6_amd64.deb",
       "ok  rollback install",
       "ok  versions restored",
       "ok  nimstead-canary.service active after rollback"
@@ -115,10 +116,11 @@
   },
   {
     "step": "RESULT: PASS",
-    "rollback_tested": true
+    "rollback_tested": true,
+    "rollback_trigger": "service health check"
   },
   {
     "step": "sandbox destroyed",
-    "name": "nimstead-sbx-fca24665"
+    "name": "nimstead-sbx-365d6ac0"
   }
 ]

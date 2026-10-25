@@ -35,7 +35,7 @@ def cvss_base(severity: list[dict] | None) -> float | None:
                 v = CVSS4(s["score"]).base_score
             else:
                 continue
-        except Exception:  # malformed vector in feed: ignore that vector only
+        except Exception:  # noqa: S112 — malformed vector in feed: ignore that vector only
             continue
         best = v if best is None else max(best, v)
     return float(best) if best is not None else None

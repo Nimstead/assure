@@ -128,6 +128,7 @@ class Finding(Base):
     first_seen: Mapped[datetime] = mapped_column(default=now)
     last_seen: Mapped[datetime] = mapped_column(default=now)
     resolved_at: Mapped[datetime | None]
+    accepted_until: Mapped[datetime | None]
     __table_args__ = (UniqueConstraint("asset_id", "ecosystem", "package", "vuln_id"),)
 
 
@@ -140,3 +141,19 @@ def make_engine(url: str = DB_URL):
 
 def make_sessionmaker(url: str = DB_URL):
     return sessionmaker(make_engine(url), expire_on_commit=False)
+
+
+class LedgerEntry(Base):
+    """Append-only, hash-chained evidence. Never updated or deleted by the app."""
+
+    __tablename__ = "ledger_entry"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    org_id: Mapped[str] = mapped_column(ForeignKey("org.id"), index=True)
+    seq: Mapped[int] = mapped_column(Integer)
+    ts: Mapped[str] = mapped_column(String(32))  # ISO-8601 UTC, part of the hash
+    kind: Mapped[str] = mapped_column(String(40))
+    subject: Mapped[str] = mapped_column(String(100), default="")  # asset id / finding id
+    data: Mapped[dict]
+    prev_hash: Mapped[str] = mapped_column(String(64))
+    hash: Mapped[str] = mapped_column(String(64))
+    __table_args__ = (UniqueConstraint("org_id", "seq"),)  # concurrent appends fail loudly instead of forking

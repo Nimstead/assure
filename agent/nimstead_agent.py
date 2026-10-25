@@ -572,12 +572,16 @@ def _sha256(path):
     return h.hexdigest()
 
 
-OUTCOME_DIR = "/var/lib/nimstead/outcomes"
+OUTCOME_DIR = (os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "Nimstead", "outcomes") if os.name == "nt"
+               else "/var/lib/nimstead/outcomes")
 
 
-def run_jobs(server, key, insecure_http, run=sh, outcome_dir=OUTCOME_DIR, **job_kw):
+def run_jobs(server, key, insecure_http, run=sh, outcome_dir=None, win_state=None, **job_kw):
     """Execute jobs, persisting every outcome before reporting so none is lost if the report fails.
-    Unsent outcomes from earlier runs are retried first. Returns the number of jobs not applied or not reported."""
+    Unsent outcomes from earlier runs are retried first.
+    Returns (number of jobs not applied or not reported, whether a reboot is needed to continue a Windows job)."""
+    outcome_dir = outcome_dir or OUTCOME_DIR
+    win_state = win_state or WIN_STATE
     os.makedirs(outcome_dir, mode=0o700, exist_ok=True)
     problems = 0
 
@@ -594,19 +598,217 @@ def run_jobs(server, key, insecure_http, run=sh, outcome_dir=OUTCOME_DIR, **job_
             print("job {}: report failed: {}".format(rec["id"], e), file=sys.stderr)
             problems += 1
 
+    def record(job_id, report):
+        nonlocal problems
+        path = os.path.join(outcome_dir, re.sub(r"[^A-Za-z0-9]", "", str(job_id)) + ".json")
+        with open(path, "w") as f:
+            json.dump({"id": job_id, "report": report}, f)
+        print("job {}: {}{}".format(job_id, report["outcome"], f" ({report['error']})" if report.get("error") else ""))
+        problems += report["outcome"] != "applied"
+        send(path)
+
     for path in sorted(glob.glob(os.path.join(outcome_dir, "*.json"))):
         send(path)
+    if os.name == "nt" and os.path.exists(win_state):  # a Windows job is mid-flight across a reboot: finish it first
+        w = WinJob(run=run, state_path=win_state)
+        res = w.advance()
+        if res["outcome"] == "pending_reboot":
+            return problems, True
+        record(w.s["job"]["id"], res)
     for job in post(server, "/api/agent/jobs", None, insecure_http, key):
+        if job.get("manager") == "windows":
+            res = WinJob(job, run=run, state_path=win_state).advance()
+            if res["outcome"] == "pending_reboot":
+                return problems, True  # the server keeps it dispatched; the next run after the reboot reports it
+            record(job.get("id"), res)
+            continue
         j = Job(job, run=run, **job_kw)
         outcome, steps, error = j.execute()
-        report = {"outcome": outcome, "steps": steps, "error": error, "versions": getattr(j, "result_versions", None)}
-        path = os.path.join(outcome_dir, re.sub(r"[^A-Za-z0-9]", "", str(job.get("id"))) + ".json")
-        with open(path, "w") as f:
-            json.dump({"id": job.get("id"), "report": report}, f)
-        print("job {}: {}{}".format(job.get("id"), outcome, f" ({error})" if error else ""))
-        problems += outcome != "applied"
-        send(path)
-    return problems
+        record(job.get("id"), {"outcome": outcome, "steps": steps, "error": error, "versions": getattr(j, "result_versions", None)})
+    return problems, False
+
+
+# ---- Windows remediation -------------------------------------------------------
+# One cumulative update by KB through the Windows Update Agent, run as SYSTEM. It needs a reboot, so the job is a
+# small state machine persisted to disk: apply -> reboot -> verify/health -> done, or -> remove the new package with
+# DISM -> reboot -> verify the original build is back. Rollback = DISM removal of the newly added RollupFix package;
+# if Windows marks that package permanent the change can't be undone, which is reported loudly, never as success.
+
+WIN_STATE = os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "Nimstead", "pending-job.json")
+SAFE_KB = re.compile(r"^[0-9]{6,8}$")
+SAFE_PRODUCT = re.compile(r"^Windows [A-Za-z0-9 .()-]{1,120}$")
+ROLLUP = re.compile(r"Package Identity : (Package_for_RollupFix~[^\s]+)\s+State : ([A-Za-z ]+)")
+
+PS_FIND = r"""
+$s = New-Object -ComObject Microsoft.Update.Session
+$r = $s.CreateUpdateSearcher().Search("IsInstalled=0 and Type='Software'")
+ConvertTo-Json -Compress -InputObject @($r.Updates | Where-Object { $_.KBArticleIDs -contains '%KB%' } | ForEach-Object {
+  [pscustomobject]@{ title = $_.Title; uninstallable = $_.IsUninstallable; reboot = $_.InstallationBehavior.RebootBehavior } })
+"""
+PS_INSTALL = r"""
+$s = New-Object -ComObject Microsoft.Update.Session
+$r = $s.CreateUpdateSearcher().Search("IsInstalled=0 and Type='Software'")
+$c = New-Object -ComObject Microsoft.Update.UpdateColl
+$r.Updates | Where-Object { $_.KBArticleIDs -contains '%KB%' } | ForEach-Object { if (-not $_.EulaAccepted) { $_.AcceptEula() }; [void]$c.Add($_) }
+if ($c.Count -ne 1) { throw "expected exactly one update for KB%KB%, found $($c.Count)" }
+$d = $s.CreateUpdateDownloader(); $d.Updates = $c; $dr = $d.Download()
+$i = $s.CreateUpdateInstaller(); $i.Updates = $c; $ir = $i.Install()
+[pscustomobject]@{ download = [int]$dr.ResultCode; install = [int]$ir.ResultCode; reboot = $ir.RebootRequired } | ConvertTo-Json -Compress
+"""
+PS_REBOOT_PENDING = r"""
+(Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending') -or
+(Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired')
+"""
+
+
+def ps(run, script):
+    return run(["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script])
+
+
+def windows_build():
+    import winreg
+    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion", 0,
+                        winreg.KEY_READ | winreg.KEY_WOW64_64KEY) as k:
+        return "10.0.{}.{}".format(int(winreg.QueryValueEx(k, "CurrentBuild")[0]), int(winreg.QueryValueEx(k, "UBR")[0]))
+
+
+class WinJob:
+    """Phases: start -> (reboot) -> verify -> done | rollback -> (reboot) -> rolled_back. State lives in WIN_STATE."""
+
+    def __init__(self, job=None, run=sh, state_path=WIN_STATE, build=windows_build, settle=None):
+        self.run, self.state_path, self.build = run, state_path, build
+        if job is not None:
+            p = (job.get("packages") or [{}])[0]
+            self.s = {"job": job, "phase": "start", "steps": [], "kb": str(p.get("kb", "")), "from": p.get("from"),
+                      "to": p.get("to"), "product": p.get("name"), "units": job.get("health_units") or [],
+                      "settle": min(max(int(job.get("settle_seconds", 60) or 0), 0), 900) if settle is None else settle}
+        else:
+            with open(state_path) as f:
+                self.s = json.load(f)
+
+    # -- plumbing
+    def save(self):
+        os.makedirs(os.path.dirname(self.state_path), exist_ok=True)
+        with open(self.state_path, "w") as f:
+            json.dump(self.s, f)
+        if os.name == "nt":
+            sh(windows_acl_cmd(self.state_path, os.environ.get("USERNAME", "")))
+
+    def clear(self):
+        if os.path.exists(self.state_path):
+            os.remove(self.state_path)
+
+    def step(self, name, ok, output=""):
+        self.s["steps"].append({"step": name, "ok": bool(ok), "output": str(output)[-1500:]})
+        if not ok:
+            raise StepFailed(f"{name} failed: {str(output)[-300:].strip()}")
+
+    def result(self, outcome, error=None):
+        self.clear()
+        return {"outcome": outcome, "steps": self.s["steps"], "error": error,
+                "versions": {self.s["product"]: self.build()} if outcome == "applied" else None}
+
+    def pending(self):
+        self.save()
+        return {"outcome": "pending_reboot", "steps": self.s["steps"], "error": None, "versions": None}
+
+    def rollups(self):
+        rc, out = self.run(["dism", "/online", "/get-packages", "/format:list", "/english"])
+        if rc != 0:
+            raise StepFailed("dism /get-packages failed: " + out[-300:])
+        return dict(ROLLUP.findall(out.replace("\r", "")))
+
+    def health(self, when):
+        for u in self.s["units"]:
+            rc, out = ps(self.run, f"(Get-Service -Name '{u}' -ErrorAction Stop).Status")
+            self.step(f"{u} running {when}", rc == 0 and out.strip() == "Running", out)
+
+    # -- phases
+    def advance(self):
+        """Run until finished or until a reboot is needed. Returns a report dict (outcome may be pending_reboot)."""
+        phase = self.s["phase"]
+        try:
+            if phase == "start":
+                return self._start()
+            if phase == "verify":
+                return self._verify()
+            if phase == "rolled_back_pending":
+                return self._after_rollback()
+            raise StepFailed(f"unknown phase {phase}")
+        except Exception as e:
+            now = self.s["phase"]  # where we were when it failed decides what is safe
+            if now == "start":
+                return self.result("aborted", f"No changes made: {e}")
+            if now == "verify":
+                return self._rollback(str(e))
+            return self.result("rollback_failed", f"ROLLBACK FAILED, host needs attention: {e}")
+
+    def _start(self):
+        s = self.s
+        ok = bool(SAFE_KB.match(s["kb"]) and SAFE_PRODUCT.match(str(s["product"])) and s["from"]
+                  and all(SAFE_NAME.match(str(u)) for u in s["units"]))
+        self.step("job validated", ok, "" if ok else "invalid KB, product or service name")
+        cur = self.build()
+        self.step("installed build matches plan", cur == s["from"], f"installed {cur}, planned {s['from']}")
+        rc, out = ps(self.run, PS_REBOOT_PENDING)
+        self.step("no reboot already pending", rc == 0 and out.strip().lower() == "false", out)
+        self.health("before change")
+        rc, out = ps(self.run, PS_FIND.replace("%KB%", s["kb"]))
+        offered = json.loads(out) if rc == 0 and out.strip().startswith("[") else []
+        self.step(f"Windows Update offers exactly KB{s['kb']}", len(offered) == 1, out)
+        s["baseline"] = self.rollups()
+        self.step("rollback baseline recorded", any(v.strip() == "Installed" for v in s["baseline"].values()),
+                  "installed cumulative packages: " + ", ".join(k for k, v in s["baseline"].items() if v.strip() == "Installed"))
+        rc, out = ps(self.run, PS_INSTALL.replace("%KB%", s["kb"]))
+        res = json.loads(out) if rc == 0 and out.strip().startswith("{") else {}
+        s["phase"] = "verify"  # from here on, failures roll back
+        self.step(f"KB{s['kb']} downloaded and installed", res.get("install") in (2, 3), out)
+        new = sorted(set(self.rollups()) - set(s["baseline"]))
+        s["new_packages"] = new
+        self.step("new cumulative package identified", len(new) >= 1, ", ".join(new) or "none")
+        if res.get("reboot"):
+            self.s["steps"].append({"step": "reboot required to finish", "ok": True, "output": ""})
+            return self.pending()
+        return self._verify()
+
+    def _verify(self):
+        s = self.s
+        cur = self.build()
+        reached = (windows_version_key(cur) >= windows_version_key(s["to"])) if s.get("to") else cur != s["from"]
+        self.step("build updated", reached, f"now {cur}, target {s.get('to')}")
+        if s["units"] and s["settle"]:
+            time.sleep(s["settle"])
+        self.health("after change")
+        return self.result("applied")
+
+    def _rollback(self, err):
+        s = self.s
+        s["error"] = err
+        try:
+            for pkg in s.get("new_packages", []):
+                rc, out = self.run(["dism", "/online", "/remove-package", f"/packagename:{pkg}", "/quiet", "/norestart"])
+                self.step(f"remove {pkg}", rc in (0, 3010), out)  # 3010 = success, reboot required
+            s["phase"] = "rolled_back_pending"
+            self.s["steps"].append({"step": "reboot required to finish rollback", "ok": True, "output": ""})
+            return self.pending()
+        except Exception as e:
+            return self.result("rollback_failed", f"ROLLBACK FAILED, host needs attention. Change error: {err}; rollback error: {e}")
+
+    def _after_rollback(self):
+        s = self.s
+        cur = self.build()
+        if cur != s["from"]:
+            return self.result("rollback_failed", f"ROLLBACK FAILED: build is {cur}, expected {s['from']}. Change error: {s.get('error')}")
+        self.s["steps"].append({"step": "original build restored", "ok": True, "output": cur})
+        try:
+            self.health("after rollback")
+        except StepFailed as e:
+            return self.result("rollback_failed", f"ROLLBACK FAILED: {e}")
+        return self.result("rolled_back", f"Change failed and was rolled back: {s.get('error')}")
+
+
+def windows_version_key(v):
+    return tuple(int(x) for x in str(v).split("."))
 
 
 # ---- network ----------------------------------------------------------------
@@ -623,11 +825,16 @@ class run_lock:
     """Single remediation run at a time (cron/timer overlap)."""
 
     def __enter__(self):
-        import fcntl
-        os.makedirs("/var/lib/nimstead", exist_ok=True)
-        self.f = open("/var/lib/nimstead/agent.lock", "w")
+        d = os.path.dirname(WIN_STATE) if os.name == "nt" else "/var/lib/nimstead"
+        os.makedirs(d, exist_ok=True)
+        self.f = open(os.path.join(d, "agent.lock"), "w")
         try:
-            fcntl.flock(self.f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            if os.name == "nt":
+                import msvcrt
+                msvcrt.locking(self.f.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(self.f, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
             raise AgentError("another nimstead-agent run is in progress") from None
         return self
@@ -701,6 +908,7 @@ def main(argv=None):
     sub.add_parser("remediate", help="run approved remediation jobs, then re-report inventory")
     rj = sub.add_parser("run-job", help="run one job read as JSON from stdin, print the result JSON (no network; sandbox testing)")
     rj.add_argument("--yes", action="store_true", help="confirm: this changes installed packages on this host")
+    sub.add_parser("resume-job", help="Windows: continue the pending job after its reboot (no network)")
     rj.add_argument("--fail-after-apply", action="store_true", help="sandbox testing: force a failure after the change to exercise rollback")
     a = ap.parse_args(argv)
     try:
@@ -718,16 +926,33 @@ def main(argv=None):
         elif a.cmd == "run-job":
             if not a.yes:
                 raise AgentError("run-job changes installed packages; pass --yes to confirm")
-            j = Job(json.load(sys.stdin), fail_after_apply=a.fail_after_apply)
+            job = json.load(sys.stdin)
+            if job.get("manager") == "windows":
+                res = WinJob(job).advance()
+                print(json.dumps(res))
+                return 0 if res["outcome"] in ("applied", "pending_reboot") else 2
+            j = Job(job, fail_after_apply=a.fail_after_apply)
             outcome, steps, error = j.execute()
             print(json.dumps({"outcome": outcome, "steps": steps, "error": error, "versions": getattr(j, "result_versions", None)}))
             return 0 if outcome == "applied" else 2
+        elif a.cmd == "resume-job":  # Windows: continue a job after the reboot it asked for
+            if not os.path.exists(WIN_STATE):
+                raise AgentError("no pending job")
+            res = WinJob().advance()
+            print(json.dumps(res))
+            return 0 if res["outcome"] in ("applied", "pending_reboot", "rolled_back") else 2
         elif a.cmd == "remediate":
             cfg = load_config()
             if not cfg.get("allow_remediation"):
                 raise AgentError("remediation is not enabled on this host (re-enroll with --allow-remediation)")
             with run_lock():
-                problems = run_jobs(cfg["server"], cfg["agent_key"], a.insecure_http)
+                problems, reboot = run_jobs(cfg["server"], cfg["agent_key"], a.insecure_http)
+                if reboot:  # Windows update needs a restart; the startup run resumes the job and reports it
+                    print("restarting to finish the update")
+                    rc, out = sh(["shutdown", "/r", "/t", "60", "/c", "Nimstead: finishing a security update"])
+                    if rc != 0:
+                        raise AgentError(f"could not schedule the restart the update needs: {out.strip()}")
+                    return 0
                 post(cfg["server"], "/api/agent/inventory", collect(), a.insecure_http, cfg["agent_key"])  # server verifies the fix
             if problems:
                 return 2

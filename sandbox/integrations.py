@@ -71,6 +71,30 @@ s.serve_forever()
 '''
 
 
+# Each long-running service lives in its own wsl session held open by this script: WSL tears down
+# processes left behind when the session that started them exits.
+SERVICES = {
+    "keycloak": "cd /opt/int && JAVA_OPTS_APPEND=-Djava.net.preferIPv4Stack=true exec kc/bin/kc.sh start-dev --http-host=0.0.0.0 --import-realm --http-enabled=false --https-port=8443 "
+                "--https-certificate-file=/opt/int/tls/server.pem --https-certificate-key-file=/opt/int/tls/server.key "
+                "--hostname=https://127.0.0.1:8443",
+    "smtp": "exec python3 -m aiosmtpd -n -l 0.0.0.0:2525 -c aiosmtpd.handlers.Mailbox /opt/int/maildir",
+    "hook": "exec python3 /opt/int/hook.py",
+}
+running: dict[str, subprocess.Popen] = {}
+
+
+def start_service(name: str, cmd: str):
+    logf = open(TMP / f"{name}.log", "ab")
+    running[name] = subprocess.Popen(["wsl", "-d", NAME, "-u", "root", "--", "sh", "-c", cmd], stdout=logf, stderr=logf)
+
+
+def stop_service(name: str):
+    p = running.pop(name, None)
+    if p:
+        p.kill()
+        vm({"dns": "pkill dnsmasq", "hook": "pkill -f hook.py", "smtp": "pkill -f aiosmtpd", "keycloak": "pkill -f keycloak"}[name], check=False)
+
+
 def build_vm():
     note("creating integration VM", name=NAME)
     r = subprocess.run(["wsl", "--install", "Debian", "--name", NAME, "--location", str(TMP / "d"), "--no-launch"],
@@ -81,10 +105,12 @@ def build_vm():
     vm("apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "
        "openjdk-21-jre-headless dnsmasq-base python3-aiosmtpd openssl curl ca-certificates >/dev/null")
     vm("""set -e
-        mkdir -p /opt/int/tls /opt/int/maildir && cd /opt/int/tls
-        openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj "/CN=Nimstead test CA" -keyout ca.key -out ca.pem 2>/dev/null
+        mkdir -p /opt/int/tls /opt/int/maildir/tmp /opt/int/maildir/new /opt/int/maildir/cur && cd /opt/int/tls
+        openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj "/CN=Nimstead test CA" -keyout ca.key -out ca.pem \
+          -addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,keyCertSign,cRLSign" \
+          -addext "subjectKeyIdentifier=hash" 2>/dev/null
         openssl req -newkey rsa:2048 -nodes -subj "/CN=127.0.0.1" -keyout server.key -out server.csr 2>/dev/null
-        printf 'subjectAltName=IP:127.0.0.1,DNS:localhost\\n' > san.ext
+        printf 'subjectAltName=IP:127.0.0.1,DNS:localhost\\nbasicConstraints=CA:FALSE\\nkeyUsage=critical,digitalSignature,keyEncipherment\\nextendedKeyUsage=serverAuth\\nauthorityKeyIdentifier=keyid\\n' > san.ext
         openssl x509 -req -in server.csr -CA ca.pem -CAkey ca.key -CAcreateserial -days 2 -extfile san.ext -out server.pem 2>/dev/null
         chmod 644 server.key
     """)
@@ -96,13 +122,8 @@ def build_vm():
     """)
     vm("cat > /opt/int/kc/data/import/realm.json <<'EOF'\n" + json.dumps(REALM) + "\nEOF")
     vm("cat > /opt/int/hook.py <<'EOF'\n" + HOOK_SERVER + "\nEOF")
-    vm("""cd /opt/int
-        setsid nohup kc/bin/kc.sh start-dev --import-realm --http-enabled=false --https-port=8443 \
-          --https-certificate-file=/opt/int/tls/server.pem --https-certificate-key-file=/opt/int/tls/server.key \
-          --hostname=https://127.0.0.1:8443 > kc.log 2>&1 &
-        setsid nohup python3 -m aiosmtpd -n -l 0.0.0.0:2525 -c aiosmtpd.handlers.Mailbox /opt/int/maildir > smtp.log 2>&1 &
-        setsid nohup python3 /opt/int/hook.py > hook.log 2>&1 &
-    """)
+    for name, cmd in SERVICES.items():
+        start_service(name, cmd)
     for _ in range(90):  # Keycloak takes a while on first start
         if "200" in vm("curl -s -o /dev/null -w '%{http_code}' --cacert /opt/int/tls/ca.pem "
                        "https://127.0.0.1:8443/realms/nimstead/.well-known/openid-configuration", check=False):
@@ -115,10 +136,10 @@ def build_vm():
 
 
 def serve_txt(name: str, value: str):
-    vm(f"""pkill dnsmasq; cd /opt/int
-        printf 'port=5353\\nno-resolv\\nno-hosts\\nlisten-address=0.0.0.0\\nbind-interfaces\\ntxt-record={name},"{value}"\\n' > dnsmasq.conf
-        setsid nohup dnsmasq -k -C /opt/int/dnsmasq.conf > dns.log 2>&1 &
-        sleep 1""", check=False)
+    vm(f"""printf 'port=5353\nno-resolv\nno-hosts\nlisten-address=0.0.0.0\nbind-interfaces\ntxt-record={name},"{value}"\n' > /opt/int/dnsmasq.conf""")
+    stop_service("dns")
+    start_service("dns", "dnsmasq -k -C /opt/int/dnsmasq.conf")
+    time.sleep(1)
 
 
 def main(keep=False) -> int:
@@ -194,12 +215,12 @@ def main(keep=False) -> int:
         assert all(x["ok"] for x in recent[:2]), recent[:2]
         note("alerts delivered to real webhook + SMTP", webhook=hooks[-1]["text"][:80], email="received")
 
-        vm("pkill -f hook.py", check=False)  # receiver down -> failure must be recorded, then retried
+        stop_service("hook")  # receiver down -> failure must be recorded, then retried
         admin.post("/api/settings/notifications/test")
         notify.flush()
         n = admin.get("/api/settings/notifications").json()
         assert n["last_delivery_failed"] is True
-        vm("cd /opt/int && setsid nohup python3 /opt/int/hook.py > hook.log 2>&1 &")
+        start_service("hook", SERVICES["hook"])
         time.sleep(1)
         from sqlalchemy.orm import sessionmaker
 
@@ -214,6 +235,8 @@ def main(keep=False) -> int:
         note("RESULT: FAIL", error=f"{type(e).__name__}: {e}"[:2000])
         return 1
     finally:
+        for name in list(running):
+            running.pop(name).kill()
         if keepalive:
             keepalive.kill()
         if not keep:

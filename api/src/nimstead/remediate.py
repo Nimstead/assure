@@ -20,13 +20,16 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from nimstead import evidence
-from nimstead.db import Asset, Finding, InstalledPackage, Org, RemediationJob, now
+from nimstead.db import Advisory, Asset, Finding, InstalledPackage, Org, RemediationJob, now
 from nimstead.match import normalize_ecosystem
 from nimstead.notify import notify
 from nimstead.versions import comparator_for, sort_key
 
 # apt: rollback = old .deb; apk/dnf: rollback = file + package-database snapshot (DECISIONS 16)
-MANAGERS = {"Debian": "apt", "Ubuntu": "apt", "Alpine": "apk", "Rocky Linux": "dnf", "AlmaLinux": "dnf"}
+MANAGERS = {"Debian": "apt", "Ubuntu": "apt", "Alpine": "apk", "Rocky Linux": "dnf", "AlmaLinux": "dnf",
+            "Windows": "windows"}  # windows: one cumulative update by KB, rollback = DISM removal (DECISIONS 22)
+SAFE_PRODUCT = re.compile(r"^Windows [A-Za-z0-9 .()-]{1,120}$")
+SAFE_KB = re.compile(r"^[0-9]{6,8}$")
 SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9+._-]{0,200}$")
 SAFE_VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+~:_^-]{0,200}$")
 ACTIVE = ("planned", "approved", "dispatched", "verifying")
@@ -78,9 +81,17 @@ def plan(s: Session, asset: Asset, ecosystem: str, package: str, created_by: str
     if extra:  # their own open findings are fixed (and verified) by this job too
         findings = [*findings, *s.scalars(select(Finding).where(
             Finding.asset_id == asset.id, Finding.ecosystem == ecosystem, Finding.package.in_(sources), Finding.status == "open"))]
-    if not pkgs or not all(SAFE_NAME.match(p["name"]) and SAFE_VERSION.match(p["from"]) for p in pkgs):
+    name_ok = SAFE_PRODUCT.match if manager == "windows" else SAFE_NAME.match
+    if not pkgs or not all(name_ok(p["name"]) and SAFE_VERSION.match(p["from"]) for p in pkgs):
         raise RemediationError("Installed package names or versions failed validation; refusing to plan")
     target = max((f.fixed_version for f in findings), key=sort_key(comparator_for(ecosystem)))  # agent upgrades to repo candidate
+    if manager == "windows":  # the cumulative update that reaches the highest fixed build fixes them all
+        top = next(f for f in findings if f.fixed_version == target)
+        rec = s.get(Advisory, (top.advisory_ids[0], ecosystem, package)) if top.advisory_ids else None
+        kb = str(((rec.record if rec else {}).get("database_specific") or {}).get("kb", ""))
+        if not SAFE_KB.match(kb):
+            raise RemediationError("No Windows update (KB) is known for the fixing build; refusing to plan")
+        pkgs = [{**pkgs[0], "kb": kb, "to": target}]
     job = RemediationJob(
         org_id=asset.org_id, asset_id=asset.id, manager=manager, action_key=key, packages=pkgs,
         finding_ids=[f.id for f in findings], created_by=created_by,

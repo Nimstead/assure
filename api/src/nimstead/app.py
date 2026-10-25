@@ -688,7 +688,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         return {
             "webhook_set": bool(o.notify_webhook_url), "webhook_host": host, "webhook_format": o.notify_webhook_format,
             "emails": o.notify_emails, "email_available": notify.smtp_configured(),
-            "last_delivery_failed": bool(recent) and not recent[0].ok,
+            # per channel: a dead webhook must not be hidden by an email that went through a second later
+            "last_delivery_failed": any(not next(n for n in recent if n.channel == ch).ok for ch in {n.channel for n in recent}),
             "recent": [{"ts": n.ts, "kind": n.kind, "channel": n.channel, "urgent": n.urgent, "ok": n.ok, "error": n.error} for n in recent],
         }
 

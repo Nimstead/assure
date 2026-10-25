@@ -10,7 +10,7 @@ from test_api import INV, enrol, user
 
 from nimstead import feeds, sbom
 from nimstead.app import create_app
-from nimstead.db import Advisory, Asset, InstalledPackage, LedgerEntry, make_engine
+from nimstead.db import Advisory, Asset, InstalledPackage, LedgerEntry, Org, make_engine
 from nimstead.match import normalize_ecosystem
 
 FIX = Path(__file__).parent / "fixtures" / "osv"
@@ -177,7 +177,10 @@ def test_oversized_body_413(env):
 
 def test_osv_sync_follows_sbom_ecosystems(env, monkeypatch):
     s = sessionmaker(make_engine(env))()
-    a = Asset(org_id="o", hostname="app", kind="application", agent_key_hash="h")
+    org = Org(name="o")
+    s.add(org)
+    s.flush()
+    a = Asset(org_id=org.id, hostname="app", kind="application", agent_key_hash="h")
     s.add(a)
     s.flush()
     s.add_all([InstalledPackage(asset_id=a.id, origin="sbom", ecosystem="PyPI", name="x", version="1"),

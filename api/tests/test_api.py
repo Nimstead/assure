@@ -91,3 +91,28 @@ def test_auth(env):
     assert c.post("/api/auth/login", json={"email": "a@example.com", "password": "correct horse battery"}).status_code == 200
     assert c.post("/api/auth/signup", json={"email": "a@example.com", "password": "correct horse battery", "org_name": "X"}).status_code == 409
     assert c.post("/api/auth/signup", json={"email": "z@example.com", "password": "short", "org_name": "X"}).status_code == 422
+
+
+def test_install_script_and_agent_served(env):
+    c = TestClient(create_app(env))
+    r = c.get("/install.sh")
+    assert r.status_code == 200 and 'SERVER="http://testserver"' in r.text and "__SERVER__" not in r.text
+    assert c.get("/install.sh", headers={"Host": "evil$(id)"}).status_code == 400
+    assert b"def collect" in c.get("/agent/nimstead_agent.py").content
+
+
+def test_feed_update_rescans_existing_assets(env):
+    from sqlalchemy.orm import sessionmaker
+
+    from nimstead.db import Asset, Kev, make_engine
+    from nimstead.scan import rescan
+
+    c = user(env)
+    a = enrol(c)
+    c.post("/api/agent/inventory", json=INV, headers={"Authorization": f"Bearer {a['agent_key']}"})
+    target = next(f for f in c.get("/api/findings").json() if not f["kev"] and f["fixed_version"])
+    s = sessionmaker(make_engine(env))()
+    s.add(Kev(cve=target["vuln_id"], date_added="2026-10-25"))  # newly exploited, no new agent report
+    s.commit()
+    rescan(s, s.get(Asset, a["asset_id"]), inventory_received=False)
+    assert c.get(f"/api/findings/{target['id']}").json()["priority"] == "fix-now"

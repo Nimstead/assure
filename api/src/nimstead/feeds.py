@@ -13,8 +13,9 @@ import httpx
 from sqlalchemy import delete, insert, select, update
 from sqlalchemy.orm import Session
 
-from nimstead.db import Advisory, Epss, Kev, make_sessionmaker
+from nimstead.db import Advisory, Asset, Epss, InstalledPackage, Kev, make_sessionmaker
 from nimstead.match import normalize_ecosystem
+from nimstead.scan import rescan
 
 OSV_URL = "https://osv-vulnerabilities.storage.googleapis.com/{}/all.zip"  # dir names have spaces: "Rocky Linux"
 KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
@@ -128,12 +129,27 @@ def sync_epss(session: Session, client=None) -> int:
     return len(rows)
 
 
+def update_all(session: Session, client=None) -> dict:
+    """Refresh every feed for the ecosystems actually in use, then re-match every asset.
+
+    New advisories or exploitation data change findings without waiting for the next
+    agent report. Run from cron/systemd timer (e.g. hourly)."""
+    used = sorted({e.split(":", 1)[0] for e in session.scalars(select(InstalledPackage.ecosystem).distinct())})
+    out = {"kev": sync_kev(session, client), "epss": sync_epss(session, client), "osv": sync_osv(session, used, client) if used else {}}
+    out["rescanned"] = 0
+    for asset in session.scalars(select(Asset)).all():
+        rescan(session, asset, inventory_received=False)
+        out["rescanned"] += 1
+    return out
+
+
 def main(argv: list[str]) -> int:
-    if not argv or argv[0] not in ("osv", "kev", "epss") or (argv[0] == "osv" and len(argv) < 2):
-        print("usage: python -m nimstead.feeds [osv ECOSYSTEM...|kev|epss]", file=sys.stderr)
+    if not argv or argv[0] not in ("osv", "kev", "epss", "update") or (argv[0] == "osv" and len(argv) < 2):
+        print("usage: python -m nimstead.feeds [update|osv ECOSYSTEM...|kev|epss]", file=sys.stderr)
         return 2
     with make_sessionmaker()() as s:
-        print({"osv": lambda: sync_osv(s, argv[1:]), "kev": lambda: sync_kev(s), "epss": lambda: sync_epss(s)}[argv[0]]())
+        print({"osv": lambda: sync_osv(s, argv[1:]), "kev": lambda: sync_kev(s), "epss": lambda: sync_epss(s),
+               "update": lambda: update_all(s)}[argv[0]]())
     return 0
 
 

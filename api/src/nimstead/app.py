@@ -2,9 +2,11 @@
 
 import hashlib
 import os
+import re
 import secrets
 from collections import defaultdict
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Annotated, Literal
 
 from argon2 import PasswordHasher
@@ -32,6 +34,9 @@ from nimstead.scan import rescan
 from nimstead.versions import comparator_for
 
 SESSION_COOKIE = "nimstead_session"
+INSTALL_SH = Path(__file__).parent / "static" / "install.sh"
+# ponytail: agent served from the repo checkout; ship it as package data (and signed) when packaging releases
+AGENT_FILE = Path(os.environ.get("NIMSTEAD_AGENT_FILE", Path(__file__).parents[3] / "agent" / "nimstead_agent.py"))
 SECURE_COOKIES = os.environ.get("NIMSTEAD_SECURE_COOKIES", "1") != "0"
 ph = PasswordHasher()
 
@@ -64,6 +69,19 @@ def create_app(db_url: str | None = None) -> FastAPI:
         s.add(WebSession(token_hash=sha(token), user_id=user.id, expires=now() + timedelta(days=14)))
         s.commit()
         resp.set_cookie(SESSION_COOKIE, token, httponly=True, samesite="strict", secure=SECURE_COOKIES, max_age=14 * 86400)
+
+    # --- agent distribution -----------------------------------------------
+
+    @app.get("/install.sh")
+    def install_sh(request: Request):
+        server = os.environ.get("NIMSTEAD_PUBLIC_URL") or str(request.base_url).rstrip("/")
+        if not re.fullmatch(r"https?://[A-Za-z0-9.\-]+(:\d{1,5})?", server):  # substituted into shell: strict
+            raise HTTPException(400, "Server URL is not safe to embed; set NIMSTEAD_PUBLIC_URL")
+        return Response(INSTALL_SH.read_text().replace("__SERVER__", server), media_type="text/x-shellscript")
+
+    @app.get("/agent/nimstead_agent.py")
+    def agent_file():
+        return Response(AGENT_FILE.read_bytes(), media_type="text/x-python")
 
     # --- auth --------------------------------------------------------------
 

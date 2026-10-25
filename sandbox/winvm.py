@@ -69,9 +69,10 @@ def run(name: str, command: str, timeout=3600) -> tuple[int, str]:
     return p.returncode, p.stdout + p.stderr
 
 
-def wait_ready(name: str, minutes=60) -> None:
-    """Until guest additions answer and PowerShell runs."""
-    end = time.time() + minutes * 60
+def wait_ready(name: str, minutes=60, reset_after=25) -> None:
+    """Until guest additions answer and PowerShell runs. Under Hyper-V's NEM backend the post-setup reboot can hang
+    (seen in practice); one hard reset after reset_after minutes recovers it."""
+    start, end, did_reset = time.time(), time.time() + minutes * 60, False
     while time.time() < end:
         try:
             rc, out = run(name, "'ready'", timeout=60)
@@ -79,6 +80,9 @@ def wait_ready(name: str, minutes=60) -> None:
                 return
         except (subprocess.TimeoutExpired, FileNotFoundError):
             pass
+        if not did_reset and time.time() - start > reset_after * 60:
+            vbox("controlvm", name, "reset", check=False)
+            did_reset = True
         time.sleep(20)
     raise RuntimeError(f"{name} not ready after {minutes} min")
 

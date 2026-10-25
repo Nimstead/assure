@@ -1,0 +1,26 @@
+[
+  {
+    "step": "feeds",
+    "msrc": {
+      "documents": 2,
+      "skipped_documents": 0,
+      "inserted": 45975,
+      "updated": 0,
+      "skipped": 0
+    },
+    "kev": 1756,
+    "epss": 395308
+  },
+  {
+    "step": "VM ready",
+    "build": "10.0.26100.32230"
+  },
+  {
+    "step": "Python installed in VM",
+    "version": "Python 3.13.17"
+  },
+  {
+    "step": "RESULT: FAIL",
+    "error": "AssertionError: []"
+  }
+]

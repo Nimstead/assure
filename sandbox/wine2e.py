@@ -42,11 +42,13 @@ def guest(cmd, timeout=3600, check=True):
 
 def as_system(cmd, name="NimsteadTest", wait_minutes=120):
     """Run cmd as SYSTEM through a one-off scheduled task (Windows Update refuses remote/network logons)."""
-    guest(rf"""$ErrorActionPreference='Stop'
+    # the command goes in a .cmd file: cmd /c inside a task argument mangles quoted "C:\Program Files\..." paths
+    guest("Set-Content -Path C:\\nimtest\\task.cmd -Encoding ascii -Value @'\r\n" + cmd + "\r\necho done > C:\\nimtest\\done.txt\r\n'@")
+    guest(r"""$ErrorActionPreference='Stop'
         Remove-Item C:\nimtest\done.txt -ErrorAction SilentlyContinue
-        $a = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument '/c {cmd} & echo done > C:\nimtest\done.txt'
-        Register-ScheduledTask -TaskName {name} -Action $a -User SYSTEM -RunLevel Highest -Force | Out-Null
-        Start-ScheduledTask -TaskName {name}""")
+        $a = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument '/c C:\nimtest\task.cmd'
+        Register-ScheduledTask -TaskName NAME -Action $a -User SYSTEM -RunLevel Highest -Force | Out-Null
+        Start-ScheduledTask -TaskName NAME""".replace("NAME", name))
     end = time.time() + wait_minutes * 60
     while time.time() < end:
         if "True" in guest(r"Test-Path C:\nimtest\done.txt", check=False):

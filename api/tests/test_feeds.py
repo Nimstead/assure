@@ -72,3 +72,23 @@ def test_epss_parse_and_failure_keeps_old_data():
     with pytest.raises(httpx.HTTPStatusError):
         sync_epss(s, client(status=500))
     assert count(s, Epss) == 2
+
+
+def test_nvd_prefers_v31_primary_and_upserts():
+    from nimstead.db import Cvss
+    from nimstead.feeds import sync_nvd
+
+    def m(score, typ):
+        return {"type": typ, "cvssData": {"baseScore": score, "vectorString": f"v{score}"}}
+
+    feed = {"vulnerabilities": [
+        {"cve": {"id": "CVE-1", "metrics": {"cvssMetricV31": [m(5.0, "Secondary"), m(7.5, "Primary")], "cvssMetricV40": [m(9.0, "Primary")]}}},
+        {"cve": {"id": "CVE-2", "metrics": {"cvssMetricV40": [m(6.1, "Secondary")]}}},
+        {"cve": {"id": "CVE-3", "metrics": {}}},
+    ]}
+    s = make_sessionmaker("sqlite://")()
+    assert sync_nvd(s, ["2024"], client(gzip.compress(json.dumps(feed).encode()))) == 2
+    assert s.get(Cvss, "CVE-1").score == 7.5 and s.get(Cvss, "CVE-2").score == 6.1
+    feed["vulnerabilities"][0]["cve"]["metrics"]["cvssMetricV31"] = [m(9.8, "Primary")]
+    sync_nvd(s, ["modified"], client(gzip.compress(json.dumps(feed).encode())))
+    assert s.get(Cvss, "CVE-1").score == 9.8 and count(s, Cvss) == 2

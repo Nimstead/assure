@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from nimstead import evidence, risk
-from nimstead.db import Advisory, Asset, Epss, Finding, InstalledPackage, Kev, now
+from nimstead.db import Advisory, Asset, Cvss, Epss, Finding, InstalledPackage, Kev, now
 from nimstead.match import Package, match_package, normalize_ecosystem
 
 
@@ -43,6 +43,8 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True) -> dict:
             kev = s.get(Kev, cve) if cve else None
             ep = s.get(Epss, cve) if cve else None
             cvss = risk.cvss_base(m.record.get("severity"))
+            if cvss is None and cve and (nvd := s.get(Cvss, cve)):
+                cvss = nvd.score
             r = risk.score(
                 kev=kev is not None,
                 epss=ep.score if ep else None,

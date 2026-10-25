@@ -50,11 +50,49 @@ export function SsoSection() {
         </Field>
         <label className="flex items-start gap-2 text-sm">
           <input type="checkbox" name="required" defaultChecked={s.required} className="mt-1 size-4" />
-          <span><span className="font-medium">Require SSO</span><br /><span className="text-muted">Password sign-in is switched off for everyone in this organisation. Check SSO works first: nobody can sign in with a password to fix a mistake.</span></span>
+          <span><span className="font-medium">Require SSO</span><br /><span className="text-muted">Password sign-in is switched off for everyone except admins, whose password sign-ins are recorded and alerted as break-glass.</span></span>
         </label>
         <div><button className={btnPrimary} disabled={save.isPending}>{save.isPending ? "Saving…" : "Save SSO settings"}</button></div>
       </form>
+      {s.domain_checks.length > 0 && <DomainChecks checks={s.domain_checks} />}
     </section>
+  );
+}
+
+function DomainChecks({ checks }: { checks: SsoSettings["domain_checks"] }) {
+  const qc = useQueryClient();
+  const verify = useMutation({
+    mutationFn: () => api<SsoSettings>("/api/settings/sso/verify", { method: "POST" }),
+    onSuccess: (data) => qc.setQueryData(["sso"], data),
+  });
+  const pending = checks.filter((c) => !c.verified);
+  return (
+    <div className="flex max-w-xl flex-col gap-3 rounded-lg border border-line p-4">
+      <h3 className="font-semibold">Domain ownership</h3>
+      <p className="text-sm text-muted">SSO only works for domains you prove you control. Add each TXT record at your DNS provider, then verify.</p>
+      <ul className="flex flex-col gap-3">
+        {checks.map((c) => (
+          <li key={c.domain} className="text-sm">
+            <span className="font-medium">{c.domain}</span>{" "}
+            <span className={c.verified ? "font-medium text-accent-ink" : "text-muted"}>{c.verified ? "Verified" : "Not verified"}</span>
+            {!c.verified && (
+              <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 font-mono text-xs">
+                <dt className="text-muted">Name</dt><dd className="break-all">{c.txt_name}</dd>
+                <dt className="text-muted">Value</dt><dd className="break-all">{c.txt_value}</dd>
+              </dl>
+            )}
+          </li>
+        ))}
+      </ul>
+      {pending.length > 0 && (
+        <div className="flex items-center gap-3">
+          <button className={btnQuiet} onClick={() => verify.mutate()} disabled={verify.isPending}>{verify.isPending ? "Checking DNS…" : "Verify domains"}</button>
+          {verify.isSuccess && verify.data.domain_checks.some((c) => !c.verified) && (
+            <span role="status" className="text-sm text-muted">Some records weren't found yet. DNS changes can take a few minutes.</span>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

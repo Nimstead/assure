@@ -62,7 +62,10 @@ export interface EvidenceReport {
 }
 export interface EnrollToken { id: string; created: string; expires: string; revoked: boolean; sandbox: boolean }
 export interface Settings { remediation_mode: "suggest" | "approve" | "auto"; canary_soak_hours: number; production_remediation_allowed: boolean }
-export interface SsoSettings { issuer: string; client_id: string; client_secret_set: boolean; domains: string[]; required: boolean; redirect_uri: string }
+export interface SsoSettings {
+  issuer: string; client_id: string; client_secret_set: boolean; domains: string[]; required: boolean; redirect_uri: string;
+  domain_checks: { domain: string; verified: boolean; txt_name: string; txt_value: string }[];
+}
 export interface NotifySettings {
   webhook_set: boolean; webhook_host: string | null; webhook_format: "slack" | "json"; emails: string[]; email_available: boolean;
   last_delivery_failed: boolean; recent: { ts: string; kind: string; channel: string; urgent: boolean; ok: boolean; error: string | null }[];

@@ -187,7 +187,7 @@ def apk_cmp(a: str, b: str) -> int:
         if x != y:
             return 1 if x > y else -1
     pad = (4, 0)
-    for x, y in zip(sa + [pad] * (len(sb) - len(sa)), sb + [pad] * (len(sa) - len(sb))):
+    for x, y in zip(sa + [pad] * (len(sb) - len(sa)), sb + [pad] * (len(sa) - len(sb)), strict=True):
         if x != y:
             return 1 if x > y else -1
     return _sign(ra - rb)
@@ -213,7 +213,7 @@ def semver_cmp(a: str, b: str) -> int:
         return 1
     if pb is None:
         return -1
-    for x, y in zip(pa.split("."), pb.split(".")):
+    for x, y in zip(pa.split("."), pb.split("."), strict=False):
         if x == y:
             continue
         if x.isdigit() and y.isdigit():

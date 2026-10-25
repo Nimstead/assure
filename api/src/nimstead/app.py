@@ -4,17 +4,18 @@ import hashlib
 import os
 import secrets
 from collections import defaultdict
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Annotated, Literal
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
-from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from nimstead.db import Asset, EnrollToken, Finding, InstalledPackage, Org, User, WebSession, make_sessionmaker, now
+from nimstead import evidence
+from nimstead.db import Asset, EnrollToken, Finding, InstalledPackage, LedgerEntry, Org, User, WebSession, make_sessionmaker, now
 from nimstead.scan import rescan
 from nimstead.versions import comparator_for
 
@@ -193,7 +194,8 @@ def create_app(db_url: str | None = None) -> FastAPI:
         for k, v in body.model_dump(exclude_none=True).items():
             setattr(a, k, v)
         s.flush()
-        rescan(s, a)  # context changed -> scores change
+        evidence.append(s, a.org_id, "asset_context_changed", a.id, {"by": user.email, **body.model_dump(exclude_none=True)})
+        rescan(s, a, inventory_received=False)  # context changed -> scores change
         return asset_json(a, {})
 
     # --- findings ----------------------------------------------------------
@@ -236,6 +238,43 @@ def create_app(db_url: str | None = None) -> FastAPI:
         if not f or f.org_id != user.org_id:
             raise HTTPException(404, "Finding not found")
         return finding_json(f, s.get(Asset, f.asset_id).hostname)
+
+    class Accept(BaseModel):
+        reason: str = Field(min_length=10, max_length=2000)
+        days: int = Field(90, ge=1, le=365)  # acceptance expires; never permanent
+
+    @app.post("/api/findings/{finding_id}/accept")
+    def accept_finding(finding_id: str, body: Accept, user: CurrentUser, s: DB):
+        f = s.get(Finding, finding_id)
+        if not f or f.org_id != user.org_id:
+            raise HTTPException(404, "Finding not found")
+        f.status, f.accepted_until = "accepted", now() + timedelta(days=body.days)
+        evidence.append(s, user.org_id, "finding_accepted", f.id, {
+            "by": user.email, "reason": body.reason, "expires_in_days": body.days, "vuln_id": f.vuln_id, "package": f.package,
+        })
+        s.commit()
+        return finding_json(f, s.get(Asset, f.asset_id).hostname)
+
+    # --- evidence ----------------------------------------------------------
+
+    @app.get("/api/evidence/ledger")
+    def ledger(user: CurrentUser, s: DB, limit: int = Query(100, le=1000)):
+        rows = s.scalars(select(LedgerEntry).where(LedgerEntry.org_id == user.org_id).order_by(LedgerEntry.seq.desc()).limit(limit))
+        return {"problems": evidence.verify_chain(s, user.org_id), "entries": [evidence.entry_dict(e) for e in rows]}
+
+    @app.get("/api/evidence/report")
+    def evidence_report(user: CurrentUser, s: DB, days: int = Query(90, ge=1, le=730)):
+        pack = evidence.build_pack(s, user.org_id, *evidence.default_period(days))
+        pack["ledger"] = {"head_hash": pack["ledger"]["head_hash"], "entries": len(pack["ledger"]["entries"])}
+        return pack
+
+    @app.get("/api/evidence/pack")
+    def evidence_pack(user: CurrentUser, s: DB, days: int = Query(90, ge=1, le=730)):
+        if problems := evidence.verify_chain(s, user.org_id):
+            raise HTTPException(409, f"Ledger integrity check failed; refusing to sign: {problems[:3]}")
+        data = evidence.pack_zip(evidence.build_pack(s, user.org_id, *evidence.default_period(days)))
+        name = f"nimstead-evidence-{datetime.now():%Y%m%d}.zip"
+        return Response(data, media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
     @app.get("/api/summary")
     def summary(user: CurrentUser, s: DB):

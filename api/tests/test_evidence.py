@@ -73,8 +73,9 @@ def test_pack_verifies_offline_and_detects_edits(env, tmp_path, monkeypatch):
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
     k = Ed25519PrivateKey.generate()
     their_pem = k.public_key().public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
-    assert verify(forged, base64.b64encode(k.sign(forged)).decode(), their_pem, fp) == [
-        "public key is not the trusted Nimstead key (fingerprint mismatch)"]
+    forged_problems = verify(forged, base64.b64encode(k.sign(forged)).decode(), their_pem, fp)
+    assert "public key is not the trusted Nimstead key (fingerprint mismatch)" in forged_problems
+    assert "signature does not match pack contents or key" not in forged_problems  # the forgery itself is self-consistent
 
     pack["ledger"]["entries"].pop(1)  # drop an entry, keep signature
     problems = verify(json.dumps(pack).encode(), sig, key, fp)
@@ -132,3 +133,62 @@ def test_pack_pins_whole_chain_head(env, tmp_path, monkeypatch):
     pack = evidence.build_pack(s, org_id, *evidence.default_period(30))
     last = s.scalar(select(LedgerEntry).order_by(LedgerEntry.seq.desc()).limit(1))
     assert pack["ledger"]["chain_head"] == {"seq": last.seq, "hash": last.hash}
+
+
+def _rewrite_chain_consistently(s, org_id, from_seq):
+    """What a DB-level attacker can do: alter an entry and re-hash everything after it."""
+    from nimstead.verify_pack import entry_hash
+    rows = s.scalars(select(LedgerEntry).where(LedgerEntry.org_id == org_id).order_by(LedgerEntry.seq)).all()
+    prev = None
+    for e in rows:
+        if e.seq >= from_seq:
+            if e.seq == from_seq:
+                e.data = {**e.data, "vuln_id": "nothing to see"}
+            e.prev_hash = prev
+            e.hash = entry_hash(evidence.entry_dict(e))
+        prev = e.hash
+    s.commit()
+
+
+def test_without_checkpoint_consistent_rewrite_is_invisible(env):
+    setup_flow(env)
+    s = sessionmaker(make_engine(env))()
+    org_id = s.scalar(select(Finding.org_id))
+    _rewrite_chain_consistently(s, org_id, 3)
+    assert evidence.verify_chain(s, org_id) == []  # documents why checkpoints exist
+
+
+def test_checkpoint_detects_rewrite(env):
+    c, _ = setup_flow(env)
+    s = sessionmaker(make_engine(env))()
+    org_id = s.scalar(select(Finding.org_id))
+    cp = evidence.checkpoint(s, org_id)
+    assert evidence.checkpoint(s, org_id) == cp  # idempotent while head unchanged
+    _rewrite_chain_consistently(s, org_id, 3)
+    assert any("ledger rewritten" in p for p in evidence.verify_chain(s, org_id))
+    assert c.get("/api/evidence/pack").status_code == 409
+
+
+def test_checkpoint_detects_truncation(env):
+    from sqlalchemy import delete
+    c, _ = setup_flow(env)
+    s = sessionmaker(make_engine(env))()
+    org_id = s.scalar(select(Finding.org_id))
+    cp = evidence.checkpoint(s, org_id)
+    s.execute(delete(LedgerEntry).where(LedgerEntry.seq >= cp["seq"] - 1))
+    s.commit()
+    assert any("truncated" in p for p in evidence.verify_chain(s, org_id))
+
+
+def test_pack_carries_checkpoints_and_verifier_checks_them(env):
+    c, _ = setup_flow(env)
+    r = c.get("/api/evidence/pack")  # takes a checkpoint first
+    z = zipfile.ZipFile(io.BytesIO(r.content))
+    body, sig, key = z.read("pack.json"), z.read("pack.sig").decode(), z.read("public_key.pem")
+    fp = c.get("/api/evidence/public-key").json()["fingerprint_sha256"]
+    pack = json.loads(body)
+    assert pack["ledger"]["checkpoints"] and verify(body, sig, key, fp) == []
+    cp = pack["ledger"]["checkpoints"][-1]
+    entry = next(e for e in pack["ledger"]["entries"] if e["seq"] == cp["seq"])
+    entry["hash"] = "0" * 64
+    assert any("checkpoint" in p for p in verify(json.dumps(pack).encode(), sig, key, fp))

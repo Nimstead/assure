@@ -13,6 +13,9 @@ FIX = Path(__file__).parent / "fixtures" / "osv"
 @pytest.fixture
 def env(tmp_path, monkeypatch):
     monkeypatch.setenv("NIMSTEAD_SECURE_COOKIES", "0")
+    from nimstead import evidence
+    monkeypatch.setattr(evidence, "CHECKPOINT_DIR", tmp_path / "checkpoints")
+    monkeypatch.setattr(evidence, "KEY_FILE", tmp_path / "signing.pem")
     url = f"sqlite:///{tmp_path}/t.db"
     s = sessionmaker(make_engine(url))()
     for f in ("Debian_12__openssl.json", "PyPI__requests.json"):

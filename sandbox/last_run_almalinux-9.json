@@ -1,7 +1,7 @@
 [
   {
     "step": "creating sandbox distro",
-    "name": "nimstead-sbx-5108f14d",
+    "name": "nimstead-sbx-a7239566",
     "distro": "AlmaLinux-9"
   },
   {
@@ -109,6 +109,6 @@
   },
   {
     "step": "sandbox destroyed",
-    "name": "nimstead-sbx-5108f14d"
+    "name": "nimstead-sbx-a7239566"
   }
 ]

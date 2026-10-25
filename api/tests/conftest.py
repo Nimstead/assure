@@ -48,4 +48,7 @@ def env(tmp_path, monkeypatch):
     import nimstead.app as appmod
     monkeypatch.setattr(appmod, "SECURE_COOKIES", False)
     monkeypatch.setattr(appmod, "INVENTORY_MIN_SECONDS", 0)
-    return url
+    yield url
+    if PG:  # drop it (closing its connections) so a long suite stays within Postgres limits
+        with create_engine(PG, isolation_level="AUTOCOMMIT").connect() as c:
+            c.execute(text(f"DROP DATABASE IF EXISTS {url.rsplit('/', 1)[1]} WITH (FORCE)"))

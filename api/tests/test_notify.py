@@ -268,3 +268,13 @@ def test_failed_alert_is_retried_with_its_text_and_gives_up_after_three_attempts
     assert len(texts) == 1 and "URGENT" in texts.pop()  # same message each time
     sent.behaviour["fn"] = lambda req: httpx.Response(200)
     assert notify.retry_failed(s) == 0  # nothing left to retry once exhausted
+
+
+def test_private_targets_only_with_explicit_dev_switch(monkeypatch):
+    monkeypatch.delenv("NIMSTEAD_ALLOW_PRIVATE_TARGETS", raising=False)
+    with pytest.raises(ValueError):
+        netguard.check_public_url("https://127.0.0.1:9443/hook")
+    monkeypatch.setenv("NIMSTEAD_ALLOW_PRIVATE_TARGETS", "1")
+    netguard.check_public_url("https://127.0.0.1:9443/hook")  # allowed for integration tests
+    with pytest.raises(ValueError):
+        netguard.check_public_url("http://127.0.0.1:9443/hook")  # https is still required

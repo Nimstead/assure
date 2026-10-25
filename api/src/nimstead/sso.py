@@ -151,8 +151,16 @@ def domain_token(org_id: str, domain: str) -> str:
 
 
 def txt_records(name: str) -> list[str]:
+    """Public DNS by default; NIMSTEAD_DNS_SERVER=host:port pins a resolver (split-horizon setups, integration tests)."""
     try:
-        return [b"".join(r.strings).decode(errors="replace") for r in dns.resolver.resolve(name, "TXT", lifetime=5)]
+        if server := os.environ.get("NIMSTEAD_DNS_SERVER"):
+            host, _, port = server.partition(":")
+            r = dns.resolver.Resolver(configure=False)
+            r.nameservers, r.port = [host], int(port or 53)
+            answer = r.resolve(name, "TXT", lifetime=5, tcp=True)
+        else:
+            answer = dns.resolver.resolve(name, "TXT", lifetime=5)
+        return [b"".join(rr.strings).decode(errors="replace") for rr in answer]
     except Exception:
         return []
 

@@ -496,6 +496,7 @@ def create_app(db_url: str | None = None) -> FastAPI:
     def evidence_pack(user: CurrentUser, s: DB, days: int = Query(90, ge=1, le=730)):
         if problems := evidence.verify_chain(s, user.org_id):
             raise HTTPException(409, f"Ledger integrity check failed; refusing to sign: {problems[:3]}")
+        evidence.checkpoint(s, user.org_id)
         data = evidence.pack_zip(evidence.build_pack(s, user.org_id, *evidence.default_period(days)))
         name = f"nimstead-evidence-{datetime.now():%Y%m%d}.zip"
         return Response(data, media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{name}"'})

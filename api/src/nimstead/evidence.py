@@ -2,7 +2,9 @@
 
 import base64
 import io
+import json
 import os
+import re
 import zipfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -53,7 +55,57 @@ def verify_chain(s: Session, org_id: str) -> list[str]:
         if entry_hash(d) != e.hash:
             problems.append(f"entry {e.seq}: hash mismatch")
         prev_hash = e.hash
+    by_seq = {e.seq: e.hash for e in entries}
+    for cp in load_checkpoints(org_id):
+        if not checkpoint_valid(cp):
+            problems.append(f"checkpoint at seq {cp.get('seq')}: bad signature")
+        elif cp["seq"] not in by_seq and cp["seq"] > 0:
+            problems.append(f"checkpoint at seq {cp['seq']}: entry missing (ledger truncated)")
+        elif cp["seq"] > 0 and by_seq[cp["seq"]] != cp["hash"]:
+            problems.append(f"checkpoint at seq {cp['seq']}: hash differs (ledger rewritten)")
     return problems
+
+
+# --- off-database checkpoints ------------------------------------------------
+# A DB-level attacker can rewrite the whole chain consistently. Signed (seq, hash) checkpoints written
+# outside the database (append-only file; point NIMSTEAD_CHECKPOINT_DIR at WORM/object-lock storage
+# in production) pin history: rewriting or truncating anything before a checkpoint is then detected.
+
+CHECKPOINT_DIR = Path(os.environ.get("NIMSTEAD_CHECKPOINT_DIR", "./checkpoints"))
+
+
+def _cp_file(org_id: str) -> Path:
+    return CHECKPOINT_DIR / (re.sub(r"[^A-Za-z0-9]", "", org_id) + ".jsonl")
+
+
+def load_checkpoints(org_id: str) -> list[dict]:
+    f = _cp_file(org_id)
+    return [json.loads(ln) for ln in f.read_text().splitlines() if ln.strip()] if f.exists() else []
+
+
+def checkpoint_valid(cp: dict) -> bool:
+    body = {k: cp[k] for k in ("org_id", "seq", "hash", "ts")}
+    try:
+        signing_key().public_key().verify(base64.b64decode(cp["sig"]), canonical(body))
+        return True
+    except Exception:
+        return False
+
+
+def checkpoint(s: Session, org_id: str) -> dict | None:
+    """Sign the current head and append it off-database. No-op if the head hasn't moved."""
+    head = s.scalar(select(LedgerEntry).where(LedgerEntry.org_id == org_id).order_by(LedgerEntry.seq.desc()).limit(1))
+    if not head:
+        return None
+    existing = load_checkpoints(org_id)
+    if existing and existing[-1]["seq"] == head.seq:
+        return existing[-1]
+    body = {"org_id": org_id, "seq": head.seq, "hash": head.hash, "ts": datetime.now(UTC).isoformat()}
+    cp = {**body, "sig": base64.b64encode(signing_key().sign(canonical(body))).decode()}
+    CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
+    with open(_cp_file(org_id), "a") as f:
+        f.write(json.dumps(cp) + "\n")
+    return cp
 
 
 # --- signing ---------------------------------------------------------------
@@ -185,7 +237,8 @@ def build_pack(s: Session, org_id: str, start: datetime, end: datetime) -> dict:
         "findings": rows,
         # chain_head pins the whole chain at signing time; compare across successive packs to detect rewritten history
         "ledger": {"entries": entries, "head_hash": entries[-1]["hash"] if entries else GENESIS,
-                   "chain_head": {"seq": head.seq, "hash": head.hash} if head else {"seq": 0, "hash": GENESIS}},
+                   "chain_head": {"seq": head.seq, "hash": head.hash} if head else {"seq": 0, "hash": GENESIS},
+                   "checkpoints": load_checkpoints(org_id)},
     }
 
 

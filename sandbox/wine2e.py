@@ -100,10 +100,11 @@ def main(keep=False) -> int:
         # 1) the real installer, elevated, with the remediation opt-in
         out = guest(rf"""$env:Path = 'C:\Program Files\Python313;C:\Program Files\Python313\Scripts;' + $env:Path
             $env:NIMSTEAD_TOKEN = '{token}'; $env:NIMSTEAD_ALLOW_REMEDIATION = '1'
-            irm http://10.0.2.2:{PORT}/install.ps1 | iex
-            (Get-ScheduledTask -TaskName 'Nimstead agent').Triggers | ForEach-Object {{ $_.CimClass.CimClassName }}""", timeout=1800)
+            try {{ irm http://10.0.2.2:{PORT}/install.ps1 | iex }} catch {{ "INSTALL FAILED: $_"; exit 1 }}
+            (Get-ScheduledTask -TaskName 'Nimstead agent').Triggers | ForEach-Object {{ $_.CimClass.CimClassName }}""", timeout=1800, check=False)
+        note("install.ps1 output", output=out[-3000:])
         assets = api.get("/api/assets").json()
-        assert len(assets) == 1 and assets[0]["ecosystem"] == "Windows", assets
+        assert len(assets) == 1 and assets[0]["ecosystem"] == "Windows", (assets, out[-2000:])
         a = assets[0]
         summ = api.get("/api/summary").json()
         top = summ["top_actions"][0]
@@ -179,10 +180,13 @@ def main(keep=False) -> int:
         return 1
     finally:
         server.kill()
-        (ROOT / "sandbox" / "last_run_windows.json").write_text(json.dumps(log, indent=2, default=str))
-        if "--keep" not in sys.argv:
+        passed = any(e["step"] == "RESULT: PASS" for e in log)
+        if passed and "--keep" not in sys.argv:  # a failed run keeps the VM for inspection; destroy it with winvm.py destroy
             winvm.destroy(NAME)
             note("VM destroyed", name=NAME)
+        elif not passed:
+            note("VM kept for inspection", name=NAME, destroy=f"uv run python ../sandbox/winvm.py destroy {NAME}")
+        (ROOT / "sandbox" / "last_run_windows.json").write_text(json.dumps(log, indent=2, default=str))
 
 
 if __name__ == "__main__":

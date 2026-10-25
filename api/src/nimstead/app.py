@@ -5,8 +5,7 @@ import logging
 import os
 import re
 import secrets
-import time
-from collections import defaultdict, deque
+from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Literal
@@ -25,12 +24,14 @@ from sqlalchemy.orm import Session
 from nimstead import ai, evidence, notify, remediate, sso
 from nimstead.db import (
     Asset,
+    AuthFailure,
     EnrollToken,
     Finding,
     InstalledPackage,
     LedgerEntry,
     Notification,
     Org,
+    PendingLogin,
     RemediationJob,
     User,
     WebSession,
@@ -153,19 +154,15 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         start_session(s, user, resp)
         return {"email": user.email, "org": org.name}
 
-    # ponytail: in-process throttle; move to Redis/proxy when running more than one API process
-    failures: dict[str, deque] = defaultdict(deque)
-
-    def throttled(key: str) -> bool:
-        q, cutoff = failures[key], time.monotonic() - LOGIN_WINDOW
-        while q and q[0] < cutoff:
-            q.popleft()
-        return len(q) >= LOGIN_MAX_FAILURES
+    def throttled(s: Session, key: str) -> bool:
+        since = now() - timedelta(seconds=LOGIN_WINDOW)
+        return s.scalar(select(func.count()).select_from(AuthFailure).where(AuthFailure.key == key, AuthFailure.ts > since)) \
+            >= LOGIN_MAX_FAILURES
 
     @app.post("/api/auth/login")
     def login(body: Login, request: Request, resp: Response, s: DB):
         keys = ["email:" + body.email.lower(), "ip:" + (request.client.host if request.client else "?")]
-        if any(throttled(k) for k in keys):
+        if any(throttled(s, k) for k in keys):
             raise HTTPException(429, "Too many failed sign-in attempts; try again in 15 minutes")
         user = s.scalar(select(User).where(User.email == body.email.lower()))
         try:
@@ -174,8 +171,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             if not pw_user:
                 raise VerifyMismatchError
         except VerifyMismatchError:
-            for k in keys:
-                failures[k].append(time.monotonic())
+            s.execute(delete(AuthFailure).where(AuthFailure.ts < now() - timedelta(seconds=LOGIN_WINDOW)))  # housekeeping
+            s.add_all(AuthFailure(key=k) for k in keys)
+            s.commit()
             raise HTTPException(401, "Email or password is incorrect") from None
         if s.get(Org, user.org_id).sso_required:  # checked after the password so this doesn't reveal which emails exist
             if not user.admin:
@@ -268,14 +266,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             raise HTTPException(401, "Unknown agent key")
         return asset
 
-    last_inventory: dict[str, float] = {}  # ponytail: per-process; move to shared store with multiple API workers
-
     @app.post("/api/agent/inventory")
     def agent_inventory(body: Inventory, s: DB, asset: Annotated[Asset, Depends(current_agent)]):
-        last = last_inventory.get(asset.id)
-        if last is not None and time.monotonic() - last < INVENTORY_MIN_SECONDS:
+        if asset.last_inventory_at and now() - asset.last_inventory_at < timedelta(seconds=INVENTORY_MIN_SECONDS):
             raise HTTPException(429, f"Inventory already received; send at most one every {INVENTORY_MIN_SECONDS}s")
-        last_inventory[asset.id] = time.monotonic()
+        asset.last_inventory_at = now()
         asset.os_name, asset.ecosystem, asset.last_seen = body.os_name or asset.os_name, body.ecosystem or asset.ecosystem, now()
         s.execute(delete(InstalledPackage).where(InstalledPackage.asset_id == asset.id))
         s.add_all(InstalledPackage(asset_id=asset.id, **p.model_dump()) for p in body.packages)
@@ -491,9 +486,6 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     # --- OIDC single sign-on -------------------------------------------------
 
-    # ponytail: in-process login flows (state -> nonce/PKCE verifier), like the throttles; use a table/Redis with several workers
-    flows: dict[str, dict] = {}
-
     def sso_org(s: Session, email: str | None, org_id: str | None) -> Org | None:
         if org_id:
             o = s.get(Org, org_id)
@@ -521,9 +513,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         except sso.SSOError as e:
             log.warning("SSO start failed for org %s: %s (%s)", o.id, e, e.__cause__)
             return sso_fail(str(e))
-        for k in [k for k, v in flows.items() if v["expires"] < time.monotonic()]:
-            del flows[k]
-        flows[flow["state"]] = {**flow, "org_id": o.id}
+        s.execute(delete(PendingLogin).where(PendingLogin.expires < now()))
+        s.add(PendingLogin(state=flow["state"], org_id=o.id, data={"nonce": flow["nonce"], "verifier": flow["verifier"]},
+                           expires=now() + timedelta(seconds=sso.FLOW_SECONDS)))
+        s.commit()
         resp = RedirectResponse(url, status_code=303)
         # Lax, not Strict: the IdP's redirect back is a cross-site navigation. The cookie binds the flow to this browser (login CSRF).
         resp.set_cookie(SSO_COOKIE, flow["state"], max_age=sso.FLOW_SECONDS, httponly=True, samesite="lax", secure=SECURE_COOKIES, path="/api/auth/sso")
@@ -531,11 +524,15 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/auth/sso/callback")
     def sso_callback(request: Request, s: DB, code: str | None = None, state: str | None = None, error: str | None = None):
-        flow = flows.pop(state, None) if state else None  # single use
+        pending = s.get(PendingLogin, state) if state else None
+        if pending:  # single use, whatever happens next
+            s.delete(pending)
+            s.commit()
         cookie = request.cookies.get(SSO_COOKIE)
-        if not flow or flow["expires"] < time.monotonic() or not cookie or not secrets.compare_digest(cookie, state):
+        if not pending or pending.expires < now() or not cookie or not secrets.compare_digest(cookie, state):
             return sso_fail("state")
-        o = s.get(Org, flow["org_id"])
+        flow = {**pending.data, "state": state}
+        o = s.get(Org, pending.org_id)
         if error or not code or not o or not (o.sso_issuer and o.sso_client_id and o.sso_client_secret):
             return sso_fail("idp_error")
         try:

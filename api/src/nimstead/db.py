@@ -87,6 +87,7 @@ class Asset(Base):
     agent_key_hash: Mapped[str] = mapped_column(String(64), unique=True)
     first_seen: Mapped[datetime] = mapped_column(default=now)
     last_seen: Mapped[datetime] = mapped_column(default=now)
+    last_inventory_at: Mapped[datetime | None]  # rate limit, shared by every API worker
 
 
 class InstalledPackage(Base):
@@ -208,6 +209,25 @@ class RemediationJob(Base):
     steps: Mapped[list] = mapped_column(default=list)  # agent-reported step log
     result_versions: Mapped[dict | None]  # versions installed by a successful apply; pins the broad ring
     error: Mapped[str | None] = mapped_column(String(2000))
+
+
+class AuthFailure(Base):
+    """Failed sign-ins per key (email:/ip:), in the DB so the throttle holds across API workers."""
+
+    __tablename__ = "auth_failure"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    key: Mapped[str] = mapped_column(String(400), index=True)
+    ts: Mapped[datetime] = mapped_column(default=now, index=True)
+
+
+class PendingLogin(Base):
+    """An SSO login in flight (state -> nonce, PKCE verifier). Single use, short-lived."""
+
+    __tablename__ = "pending_login"
+    state: Mapped[str] = mapped_column(String(100), primary_key=True)
+    org_id: Mapped[str] = mapped_column(ForeignKey("org.id"))
+    data: Mapped[dict]
+    expires: Mapped[datetime]
 
 
 class Notification(Base):

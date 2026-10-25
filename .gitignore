@@ -10,3 +10,4 @@ dist/
 data/
 *.pem
 checkpoints/
+.claude/worktrees/

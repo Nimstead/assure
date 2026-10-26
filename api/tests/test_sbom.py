@@ -203,3 +203,73 @@ def test_osv_sync_only_filter_keeps_language_ecosystem(monkeypatch):
     r = rec("GHSA-1", "2024-01-01", eco="PyPI", pkg="requests")
     assert feeds.sync_osv(s, ["PyPI"], client(zip_of(r)), only={"PyPI"}) == {"inserted": 2, "updated": 0, "skipped": 0}
     assert count(s, Advisory) == 2 and s.get(Advisory, ("GHSA-1", normalize_ecosystem("PyPI"), "requests"))
+
+
+# --- SPDX JSON 2.2/2.3 ---------------------------------------------------------
+
+def spdx(*pkgs, version="SPDX-2.3"):
+    return {"spdxVersion": version, "dataLicense": "CC0-1.0", "SPDXID": "SPDXRef-DOCUMENT", "name": "app", "packages": list(pkgs)}
+
+
+def spkg(name, purl=None, version=None, ref_type="purl"):
+    p = {"SPDXID": f"SPDXRef-{name}", "name": name, "downloadLocation": "NOASSERTION"}
+    if version:
+        p["versionInfo"] = version
+    if purl:
+        p["externalRefs"] = [{"referenceCategory": "PACKAGE-MANAGER", "referenceType": ref_type, "referenceLocator": purl}]
+    return p
+
+
+def test_spdx_parse_counts_and_skips():
+    doc = spdx(
+        spkg("app"),  # the root package has no purl
+        spkg("log4j-core", LOG4J, "2.14.1"),
+        spkg("lodash", "pkg:npm/lodash", "4.17.21"),  # purl without a version takes versionInfo
+        spkg("laravel", "pkg:composer/laravel/framework@10.48.29"),
+        spkg("deb", "pkg:deb/debian/curl@7", "7"),
+        spkg("cpe", "cpe:2.3:a:x:y:1:*:*:*:*:*:*:*", ref_type="cpe23Type"),  # other ref types are not purls
+        spkg("log4j-core-again", LOG4J, "2.14.1"),
+        version="SPDX-2.2",
+    )
+    pkgs, counts = sbom.parse(doc)
+    assert pkgs == [("Maven", "org.apache.logging.log4j:log4j-core", "2.14.1"), ("Packagist", "laravel/framework", "10.48.29"),
+                    ("npm", "lodash", "4.17.21")]
+    assert counts == {"components": 7, "mapped": 4, "unique_packages": 3, "skipped": {"no_purl": 2, "unsupported_or_invalid_purl": 1}}
+
+
+def test_spdx_log4shell_end_to_end(maven_env):
+    c = user(maven_env)
+    a = app_asset(c)
+    r = put(c, a["id"], spdx(spkg("app"), spkg("log4j-core", LOG4J, "2.14.1")))
+    assert r.status_code == 200, r.text
+    assert (r.json()["components"], r.json()["mapped"], r.json()["skipped"]["no_purl"]) == (2, 1, 1)
+    assert "CVE-2021-44228" in {f["vuln_id"] for f in c.get("/api/findings", params={"asset_id": a["id"]}).json()}
+
+
+def test_spdx_cap(monkeypatch):
+    monkeypatch.setattr(sbom, "MAX_COMPONENTS", 2)
+    with pytest.raises(sbom.SbomError):
+        sbom.parse(spdx(spkg("a"), spkg("b"), spkg("c")))
+
+
+@pytest.mark.parametrize("purl,want", [
+    ("pkg:composer/laravel/framework@10.0.0", ("Packagist", "laravel/framework", "10.0.0")),
+    ("pkg:hex/plug@1.14.0", ("Hex", "plug", "1.14.0")), ("pkg:hex/org/plug@1.14.0", None), ("pkg:pub/http@1.2.0", ("Pub", "http", "1.2.0")),
+])
+def test_php_hex_pub_purls(purl, want):
+    assert sbom.parse_purl(purl) == want
+
+
+@pytest.mark.parametrize("body,msg", [
+    (b"SPDXVersion: SPDX-2.3\nDataLicense: CC0-1.0\n", "tag-value"),
+    (b'<?xml version="1.0"?><Document/>', "XML"),
+    (b"<bom xmlns='http://cyclonedx.org/schema/bom/1.5'/>", "XML"),
+    (b"{nope", "not valid JSON"),
+    (json.dumps(spdx(version="SPDX-2.1")).encode(), "SPDX-2.2"),
+    (json.dumps({**spdx(), "packages": "x"}).encode(), "packages"),
+    (json.dumps(spdx("x")).encode(), "not an object"),
+])
+def test_unsupported_formats_422_with_message(env, body, msg):
+    c = user(env)
+    r = put(c, app_asset(c)["id"], body)
+    assert r.status_code == 422 and msg in r.json()["detail"]

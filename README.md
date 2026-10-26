@@ -1,6 +1,6 @@
 # Nimstead Assure
 
-[![CI](https://github.com/nimstead/assure/actions/workflows/ci.yml/badge.svg)](https://github.com/nimstead/assure/actions/workflows/ci.yml)
+[![CI](https://github.com/Nimstead/assure/actions/workflows/ci.yml/badge.svg)](https://github.com/Nimstead/assure/actions/workflows/ci.yml)
 
 Vulnerability scanning, patch assurance, audit evidence and safe automatic remediation in one product.
 
@@ -10,7 +10,8 @@ Vulnerability scanning, patch assurance, audit evidence and safe automatic remed
 | [`agent/`](agent) | The agent: one stdlib-only Python file for Linux (apt, dnf, zypper, apk) and Windows |
 | [`web/`](web) | The UI: React + TanStack, served by the API once built |
 | [`sandbox/`](sandbox) | Real-host and real-service proofs in disposable WSL distros and VMs |
-| [`brand/`](brand) | Brand guidelines |
+
+The brand guidelines live in [Nimstead/brand](https://github.com/Nimstead/brand).
 
 - **Accurate, low-noise detection:** agents report installed packages, and Nimstead matches them against OSV advisories using each distro's own version rules and source-package names. Backported fixes aren't flagged. Results are tested to agree with the OSV API on real data.
 - **Application dependencies too:** add an application on the Assets page and upload a CycloneDX (JSON 1.4-1.6) or SPDX (JSON 2.2/2.3) SBOM (not XML or SPDX tag-value; via the UI or `POST /api/assets/{id}/sbom` from CI with the asset's upload token); PyPI, npm, Maven, NuGet, RubyGems, Go, crates.io, Packagist (Composer), Hex and Pub packages are matched like OS packages.

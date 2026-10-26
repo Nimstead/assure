@@ -130,7 +130,7 @@ class VM:
 
     def sh(self, script: str, input: bytes | None = None, check=True, timeout=1800) -> tuple[int, str]:
         """Runs `script` as root. With `input`, the script is a command line and input goes to its stdin."""
-        cmd = ["ssh", "-i", str(self.key), "-p", str(self.port), "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=NUL",
+        cmd = ["ssh", "-i", str(self.key), "-p", str(self.port), "-o", "StrictHostKeyChecking=no", "-o", f"UserKnownHostsFile={TMP / 'known_hosts'}",
                "-o", "LogLevel=ERROR", "-o", "ConnectTimeout=10", "-o", "BatchMode=yes", "root@127.0.0.1"]
         cmd += [script] if input is not None else ["sh", "-s"]
         p = subprocess.run(cmd, input=input if input is not None else script.encode(), capture_output=True, timeout=timeout)

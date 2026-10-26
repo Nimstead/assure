@@ -35,7 +35,7 @@ Real-host E2E (fresh WSL distro each, destroyed after):
 
 All four evidence packs verified, with 6/6 controls met. On Alpine, the dry run refused the openssl fix because it also needed musl. Re-planning "including musl" (which pulls in musl-utils, from the same source package) succeeded and was verified fixed (40 findings resolved).
 
-**Last runs (final code):** API 450 passed on SQLite (PostgreSQL 17 not re-run since the SBOM/comparator change) · web 18 unit + 4 Playwright e2e (axe clean in light and dark) · real-host E2E PASS on all four distros.
+**Last runs (final code):** API 450 passed on SQLite and 450 passed on PostgreSQL 17 · web 18 unit + 4 Playwright e2e (axe clean in light and dark) · real-host E2E PASS on Debian 13, Ubuntu 24.04, AlmaLinux 9, Alpine 3.21 and Windows Server 2025 · real-service integrations PASS (Keycloak, DNS, SMTP, webhook).
 
 ## NOT proven / known gaps (honest)
 - **AI** has never been called against the real API (no key on this machine).

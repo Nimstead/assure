@@ -52,3 +52,16 @@ def env(tmp_path, monkeypatch):
     if PG:  # drop it (closing its connections) so a long suite stays within Postgres limits
         with create_engine(PG, isolation_level="AUTOCOMMIT").connect() as c:
             c.execute(text(f"DROP DATABASE IF EXISTS {url.rsplit('/', 1)[1]} WITH (FORCE)"))
+
+
+@pytest.fixture(autouse=True)
+def _agent_never_touches_this_host(monkeypatch, request):
+    """agent.main() locks down the agent's ProgramData folder on Windows: never on the developer's machine. Tests of the
+    lockdown itself opt in with @pytest.mark.real_lockdown and pass a fake command runner."""
+    mod = getattr(request.module, "agent", None)
+    if mod is not None and hasattr(mod, "secure_windows_dir") and not request.node.get_closest_marker("real_lockdown"):
+        monkeypatch.setattr(mod, "secure_windows_dir", lambda *a, **k: [])
+
+
+def pytest_configure(config):
+    config.addinivalue_line("markers", "real_lockdown: run the real secure_windows_dir (with a fake command runner)")

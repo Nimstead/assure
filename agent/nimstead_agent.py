@@ -146,15 +146,30 @@ def msrc_product_name(build, display_version, installation_type, machine):
 UNINSTALL = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
 
 
+USER_SID = re.compile(r"^S-1-5-21-[0-9-]+$")
+
+
 def windows_apps(reg):
-    """Installed apps from the registry Uninstall keys (HKLM 64-bit and 32-bit views, then HKCU).
+    """Installed apps from the registry Uninstall keys: HKLM 64-bit and 32-bit views, then every loaded user hive
+    (per-user installs such as VS Code (User); the agent runs as SYSTEM, whose own HKCU has none), then HKCU.
+    Profiles of users who aren't logged on aren't loaded and so aren't seen.
     `reg` is the winreg module (or a fake). Skips SystemComponent=1 and entries without a name or version.
     The publisher travels in `source`; the server decides which apps it can match (curated map only)."""
     seen, out = set(), []
-    for hive, view in ((reg.HKEY_LOCAL_MACHINE, reg.KEY_WOW64_64KEY), (reg.HKEY_LOCAL_MACHINE, reg.KEY_WOW64_32KEY),
-                       (reg.HKEY_CURRENT_USER, 0)):
+    places = [(reg.HKEY_LOCAL_MACHINE, UNINSTALL, reg.KEY_WOW64_64KEY), (reg.HKEY_LOCAL_MACHINE, UNINSTALL, reg.KEY_WOW64_32KEY)]
+    i = 0
+    while True:
         try:
-            root = reg.OpenKey(hive, UNINSTALL, 0, reg.KEY_READ | view)
+            sid = reg.EnumKey(reg.HKEY_USERS, i)
+        except OSError:
+            break
+        i += 1
+        if USER_SID.match(sid):
+            places.append((reg.HKEY_USERS, sid + "\\" + UNINSTALL, 0))
+    places.append((reg.HKEY_CURRENT_USER, UNINSTALL, 0))
+    for hive, path, view in places:
+        try:
+            root = reg.OpenKey(hive, path, 0, reg.KEY_READ | view)
         except OSError:
             continue
         with root:
@@ -683,8 +698,16 @@ def run_jobs(server, key, insecure_http, run=sh, outcome_dir=None, win_state=Non
 
     def send(path):
         nonlocal problems
-        with open(path) as f:
-            rec = json.load(f)
+        try:
+            with open(path) as f:
+                rec = json.load(f)
+            if not SAFE_NAME.match(str(rec.get("id"))):
+                raise ValueError("bad job id")
+        except (OSError, ValueError, AttributeError) as e:
+            os.replace(path, path + ".invalid")
+            print(f"outcome file {path} is unreadable or invalid ({e}); set aside", file=sys.stderr)
+            problems += 1
+            return
         try:
             post(server, "/api/agent/jobs/{}/report".format(rec["id"]), rec["report"], insecure_http, key)
             os.remove(path)
@@ -706,19 +729,31 @@ def run_jobs(server, key, insecure_http, run=sh, outcome_dir=None, win_state=Non
     for path in sorted(glob.glob(os.path.join(outcome_dir, "*.json"))):
         send(path)
     if os.name == "nt" and os.path.exists(win_state):  # a Windows job is mid-flight across a reboot: finish it first
-        w = WinJob(run=run, state_path=win_state)
-        res = w.advance()
-        if res["outcome"] == "pending_reboot":
-            return problems, True
-        record(w.s["job"]["id"], res)
+        try:
+            w = WinJob(run=run, state_path=win_state)
+        except (AgentError, OSError, ValueError) as e:
+            os.replace(win_state, win_state + ".invalid")
+            print(f"pending Windows job not resumed: {e}; set aside, host needs attention", file=sys.stderr)
+            problems += 1
+        else:
+            res = w.advance()
+            if res["outcome"] == "pending_reboot":
+                return problems, True
+            record(w.s["job"]["id"], res)
     for job in post(server, "/api/agent/jobs", None, insecure_http, key):
-        if job.get("manager") == "windows":
-            res = WinJob(job, run=run, state_path=win_state).advance()
+        try:
+            runner = WinJob(job, run=run, state_path=win_state) if job.get("manager") == "windows" else Job(job, run=run, **job_kw)
+        except Exception as e:  # malformed job from the server: report it, keep going
+            record(job.get("id"), {"outcome": "aborted", "steps": [], "error": f"No changes made: malformed job: {e}"[:500],
+                                   "versions": None})
+            continue
+        if isinstance(runner, WinJob):
+            res = runner.advance()
             if res["outcome"] == "pending_reboot":
                 return problems, True  # the server keeps it dispatched; the next run after the reboot reports it
             record(job.get("id"), res)
             continue
-        j = Job(job, run=run, **job_kw)
+        j = runner
         outcome, steps, error = j.execute()
         record(job.get("id"), {"outcome": outcome, "steps": steps, "error": error, "versions": getattr(j, "result_versions", None)})
     return problems, False
@@ -737,6 +772,8 @@ DISM_TRANSIENT = ("0x80010108", "0x800f0816", "0x800f082f", "0x80070020", "0x800
 DISM_RETRIES = 15
 SAFE_PRODUCT = re.compile(r"^Windows [A-Za-z0-9 .()-]{1,120}$")
 ROLLUP = re.compile(r"Package Identity : (Package_for_RollupFix~[^\s]+)\s+State : ([A-Za-z ]+)")
+ROLLUP_NAME = re.compile(r"^Package_for_RollupFix~[A-Za-z0-9._~-]{1,200}$")
+TRUSTED_OWNERS = {"S-1-5-18", "S-1-5-32-544"}  # SYSTEM, Administrators
 
 PS_FIND = r"""
 $s = New-Object -ComObject Microsoft.Update.Session
@@ -759,7 +796,7 @@ PS_PERMANENCE = r"""
 $f = Get-ChildItem C:\Windows\SoftwareDistribution\Download -Recurse -Depth 1 -File -Include '*KB%KB%*.wim','*KB%KB%*.cab' |
   Where-Object { $_.FullName -notmatch '\\Metadata\\' } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 if (-not $f) { throw "downloaded package for KB%KB% not found" }
-$tmp = Join-Path $env:TEMP ('nimstead-mum-' + [guid]::NewGuid()); New-Item -ItemType Directory $tmp | Out-Null
+$tmp = Join-Path $env:ProgramData ('Nimstead\mum-' + [guid]::NewGuid()); New-Item -ItemType Directory $tmp | Out-Null
 try {
   if ($f.Extension -eq '.wim') {
     dism /mount-wim "/wimfile:$($f.FullName)" /index:1 "/mountdir:$tmp" /readonly /english | Out-Null
@@ -811,19 +848,32 @@ class WinJob:
             p = (job.get("packages") or [{}])[0]
             self.s = {"job": job, "phase": "start", "steps": [], "kb": str(p.get("kb", "")), "from": p.get("from"),
                       "to": p.get("to"), "product": p.get("name"), "units": job.get("health_units") or [],
-                      "settle": min(max(int(job.get("settle_seconds", 60) or 0), 0), 900) if settle is None else settle,
+                      "settle": min(max(int(job.get("settle_seconds", 60) or 0), 0), 900) if settle is None else int(settle),
                       "inject": bool(fail_after_apply)}  # sandbox fault injection (run-job only; never from the server)
         else:
             with open(state_path) as f:
                 self.s = json.load(f)
+            if not self.valid():  # never trust the file: it decides what runs as SYSTEM after the reboot
+                raise AgentError(f"{state_path} failed validation; not resumed")
+
+    def valid(self):
+        s = self.s
+        try:
+            return bool(
+                s.get("phase") in ("start", "verify", "rolled_back_pending") and isinstance(s.get("steps"), list)
+                and SAFE_KB.match(str(s.get("kb", ""))) and SAFE_PRODUCT.match(str(s.get("product")))
+                and SAFE_VERSION.match(str(s.get("from") or "")) and (s.get("to") is None or SAFE_VERSION.match(str(s["to"])))
+                and isinstance(s.get("units"), list) and all(SAFE_NAME.match(str(u)) for u in s["units"])
+                and isinstance(s.get("settle"), int) and 0 <= s["settle"] <= 900
+                and all(ROLLUP_NAME.match(str(x)) for x in [*s.get("new_packages", []), *s.get("baseline", {})]))
+        except (TypeError, AttributeError):
+            return False
 
     # -- plumbing
     def save(self):
         os.makedirs(os.path.dirname(self.state_path), exist_ok=True)
         with open(self.state_path, "w") as f:
-            json.dump(self.s, f)
-        if os.name == "nt":
-            sh(windows_acl_cmd(self.state_path, os.environ.get("USERNAME", "")))
+            json.dump(self.s, f)  # inherits the locked-down folder ACL (secure_windows_dir)
 
     def clear(self):
         if os.path.exists(self.state_path):
@@ -876,9 +926,8 @@ class WinJob:
 
     def _start(self):
         s = self.s
-        ok = bool(SAFE_KB.match(s["kb"]) and SAFE_PRODUCT.match(str(s["product"])) and s["from"]
-                  and all(SAFE_NAME.match(str(u)) for u in s["units"]))
-        self.step("job validated", ok, "" if ok else "invalid KB, product or service name")
+        ok = self.valid()
+        self.step("job validated", ok, "" if ok else "invalid KB, product, version or service name")
         cur = self.build()
         self.step("installed build matches plan", cur == s["from"], f"installed {cur}, planned {s['from']}")
         rc, out = ps(self.run, PS_REBOOT_PENDING)
@@ -1027,18 +1076,48 @@ def save_config(cfg):
         os.chmod(p, 0o600)  # in case the file pre-existed with looser perms
     except OSError as e:
         raise AgentError(f"cannot write {p}: {e}")
-    if os.name == "nt":  # chmod is a no-op on Windows and ProgramData is readable by all users: set an explicit ACL
-        rc, out = sh(windows_acl_cmd(p, os.environ.get("USERNAME", "")))
-        if rc != 0:
+    if os.name == "nt":  # chmod is a no-op on Windows and ProgramData is readable by all users
+        try:
+            secure_windows_dir(d=os.path.dirname(p))
+        except AgentError:
             os.remove(p)
-            raise AgentError(f"could not restrict access to {p}; removed it: {out.strip()[-300:]}")
+            raise
     return p
 
 
-def windows_acl_cmd(path, user):
-    """icacls: drop inherited ACEs; only SYSTEM, Administrators and the installing user may read the agent key."""
-    grants = ["*S-1-5-18:F", "*S-1-5-32-544:F"] + ([f"{user}:F"] if user and SAFE_NAME.match(user) else [])
-    return ["icacls", path, "/inheritance:r", *[x for g in grants for x in ("/grant:r", g)]]
+PS_OWNERS = r"""
+Get-ChildItem -LiteralPath '%DIR%' -Recurse -Force | ForEach-Object {
+  $_.FullName + '|' + (Get-Acl -LiteralPath $_.FullName).GetOwner([Security.Principal.SecurityIdentifier]).Value }
+"""
+
+
+def secure_windows_dir(run=sh, d=None):
+    """ProgramData lets every user create files, and a file planted in our folder would be read by the SYSTEM task
+    (a pending job decides what runs after a reboot). So: anything in it not owned by SYSTEM or Administrators is
+    removed and reported, then Administrators own everything and only SYSTEM and Administrators have access.
+    Returns the paths removed."""
+    d = d or os.path.dirname(WIN_STATE)
+    os.makedirs(d, exist_ok=True)
+    rc, out = ps(run, PS_OWNERS.replace("%DIR%", d.replace("'", "''")))
+    if rc != 0:
+        raise AgentError(f"cannot read owners in {d}: {out.strip()[-300:]}")
+    removed = []
+    for line in out.splitlines():
+        path, _, sid = line.strip().rpartition("|")
+        if path and sid not in TRUSTED_OWNERS and os.path.exists(path):
+            shutil.rmtree(path, ignore_errors=True) if os.path.isdir(path) else os.remove(path)
+            removed.append(path)
+    cmds = [["icacls", d, "/inheritance:r", "/grant:r", "*S-1-5-18:(OI)(CI)F", "/grant:r", "*S-1-5-32-544:(OI)(CI)F", "/Q"],
+            ["icacls", d, "/setowner", "*S-1-5-32-544", "/T", "/C", "/Q"]]
+    if os.listdir(d):  # children: drop any explicit ACEs, inherit only the folder's
+        cmds.append(["icacls", os.path.join(d, "*"), "/reset", "/T", "/C", "/Q"])
+    for cmd in cmds:
+        rc, out = run(cmd)
+        if rc != 0:
+            raise AgentError(f"could not lock down {d}: {out.strip()[-300:]}")
+    for path in removed:
+        print(f"removed {path}: not created by SYSTEM or Administrators", file=sys.stderr)
+    return removed
 
 
 def main(argv=None):
@@ -1060,6 +1139,8 @@ def main(argv=None):
     rj.add_argument("--fail-after-apply", action="store_true", help="sandbox testing: force a failure after the change to exercise rollback")
     a = ap.parse_args(argv)
     try:
+        if os.name == "nt" and a.cmd in ("report", "remediate", "resume-job"):  # before reading anything from the folder
+            secure_windows_dir()
         if a.cmd == "collect":
             print(json.dumps(collect(), indent=2))
         elif a.cmd == "enroll":

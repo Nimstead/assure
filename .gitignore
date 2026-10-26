@@ -11,3 +11,4 @@ data/
 *.pem
 checkpoints/
 .claude/worktrees/
+*.key

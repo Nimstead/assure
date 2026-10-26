@@ -35,8 +35,8 @@ def _p(pattern: str) -> re.Pattern:
 PRODUCTS: tuple[Product, ...] = (
     Product("google:chrome", _p(r"Google Chrome")),
     Product("microsoft:edge_chromium", _p(r"Microsoft Edge")),  # not "Microsoft Edge WebView2 Runtime"
-    Product("mozilla:firefox", _p(rf"Mozilla Firefox(?: [\d.]+)? \((?:x64|x86|arm64) [A-Za-z-]+\)")),
-    Product("mozilla:firefox_esr", _p(rf"Mozilla Firefox ESR(?: [\d.]+)? \((?:x64|x86|arm64) [A-Za-z-]+\)"),
+    Product("mozilla:firefox", _p(r"Mozilla Firefox(?: [\d.]+)? \((?:x64|x86|arm64) [A-Za-z-]+\)")),
+    Product("mozilla:firefox_esr", _p(r"Mozilla Firefox ESR(?: [\d.]+)? \((?:x64|x86|arm64) [A-Za-z-]+\)"),
             version=lambda m, v: re.sub(r"(?i)\s*esr$", "", v), branch=True),
     Product("7-zip:7-zip", _p(r"7-Zip \d+\.\d+(?: \((?:x64|x86|arm64)(?: edition)?\))?")),
     Product("notepad-plus-plus:notepad++", _p(r"Notepad\+\+ \((?:64-bit x64|32-bit x86|ARM 64-bit)\)")),

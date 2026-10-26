@@ -1,6 +1,6 @@
 # Nimstead — status
 
-Read this first each session. Decisions and their reasons: DECISIONS.md (items 1–21). Quick start: README.md.
+Read this first each session. Decisions and their reasons: DECISIONS.md (items 1–22). Quick start: README.md.
 
 ## Done (with evidence)
 | Area | Where | Evidence |
@@ -21,6 +21,7 @@ Read this first each session. Decisions and their reasons: DECISIONS.md (items 1
 | Agent remediation: apt (old .deb or rebuilt), apk + dnf (file + package-DB snapshot); dry-run scope check, health checks, auto-rollback, persisted outcomes, Windows key ACL | `agent/nimstead_agent.py` | Unit tests + **real-host E2E PASS in disposable VMs on Debian 13, Ubuntu 24.04, AlmaLinux 9 and Alpine 3.21** (`sandbox/last_run_*.json`) |
 | Windows remediation: one cumulative update by KB via Windows Update Agent (as SYSTEM), state persisted across reboots, health checks, rollback = DISM removal of the new package with retries for servicing-busy errors | agent `WinJob`, `remediate.py` | `tests/test_winjob.py` (9) + **real Windows Server 2025 VM PASS**: install.ps1 elevated (enrol, report, SYSTEM task with startup trigger); forced-failure rollback 26100.33650 → DISM removal → reboot → 26100.32230 restored; then the installed scheduled task alone installed KB5126646, rebooted, resumed at startup and reported, and the server marked the job succeeded from fresh inventory (0 open findings, evidence verified) — `sandbox/last_run_windows*.json` |
 | Real-service integrations: Keycloak OIDC login, DNS TXT verification (dnsmasq), SMTP + HTTPS webhook alerts, dead-webhook retry | `sandbox/integrations.py` | **PASS** in a disposable WSL VM (`sandbox/last_run_integrations.json`) |
+| Windows third-party apps (Chrome, Edge, Firefox/ESR, 7-Zip, Notepad++, VLC, Zoom, Acrobat Reader, Oracle JDK 11+, Git for Windows, Python, Node.js, PuTTY, WinRAR, Wireshark, VS Code): registry inventory → curated CPE map → NVD CPE ranges, exact comparator | `winapps.py`, `feeds.py` (`sync_winapps`, run by `sync_nvd`), `scan.py`, agent `windows_apps` | `tests/test_winapps.py` (88: map positives/near-misses, comparator table, real NVD fixtures, fake registry, end to end) + real run on this machine (see below) |
 | Optional AI (Claude Opus 5.5): explanations, NL search → validated filter | `ai.py` | Mocked client only |
 | Web UI: onboarding, Fix-first home, findings, assets (+applications/SBOM), remediation, evidence, settings (trust ladder, tokens, SSO + domain verification, alerts) | `web/` | build clean; 17 vitest; Playwright e2e + axe (0 serious/critical) |
 
@@ -40,7 +41,7 @@ All four evidence packs verified, with 6/6 controls met. On Alpine, the dry run 
 ## NOT proven / known gaps (honest)
 - **AI:** tested with a mocked client only. Owner decision (2026-10-26): skip live AI testing. The features stay off unless `ANTHROPIC_API_KEY` is set.
 - **Windows remediation:** proven on Windows Server 2025 Core. Windows 10/11 clients are not run in a VM (owner decision 2026-10-26: the Server 2025 pass is sufficient proof of the mechanism), and a cumulative update Windows marks permanent can't be removed (reported as rollback_failed, never as success). The VM run was split into rollback and success passes because a VirtualBox update interrupted it.
-- **Windows third-party apps** are not covered: there's no reliable advisory source keyed by installed software.
+- **Windows third-party apps:** only the ~18 curated products are matched (DECISIONS 22); everything else is inventory. NVD data limits apply: an NVD range typo produces a finding (seen for real: CVE-2026-113344 lists Chrome fixed at 156.0.8087.47 while its own text says 156.0.8078.47, so 156.0.8078.48 is flagged); NVD can lag vendors; Chromium CVEs that Microsoft tracks only in MSRC aren't seen for Edge; Oracle JDK CVEs list exact affected versions only (no fix version, older unlisted versions are missed); Java 8 and Temurin aren't covered; only CVEs from the synced NVD years are present (run `feeds nvd 2023 2024 2025 2026` once; `update` adds the modified feed); Zoom, Acrobat, Firefox ESR, WinRAR, PuTTY, Wireshark registry formats were not checked on a real install; two installs of one app report the oldest; no remediation (Windows Update can't patch them).
 - **Snapshot rollback** doesn't reverse maintainer-script side effects (health checks cover the visible ones). Kernel/install-only packages are refused.
 - **Dependency upgrades are never silent:** when a fix needs another package, the dry run refuses it and the user re-plans "including X" with one click. Nothing expands on its own.
 - **SBOM:** CycloneDX and SPDX JSON only (no XML, SPDX tag-value or VEX); SPDX relationships are ignored, so every package with a purl is scanned. Findings mean "present", not "reachable".

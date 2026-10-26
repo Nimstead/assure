@@ -165,11 +165,11 @@ def _controls(m: dict) -> list[dict]:
         {"framework": "NIST SP 800-53 Rev. 5", "control": "RA-5", "requirement": "Vulnerability monitoring and scanning",
          "status": st(scanned), "evidence": f"{m['assets_reporting']}/{m['assets']} assets reported inventory in period"},
         {"framework": "NIST SP 800-53 Rev. 5", "control": "SI-2", "requirement": "Flaw remediation within organisation-defined time periods",
-         "status": st(sla_ok), "evidence": f"{m['resolved_within_sla']}/{m['resolved']} fixes within SLA {SLA_DAYS}"},
+         "status": st(sla_ok), "evidence": f"{m['resolved_within_sla']}/{m['resolved']} fixes within SLA ({', '.join(f'{p} {d} days' for p, d in SLA_DAYS.items())})"},
         {"framework": "PCI DSS v4.0.1", "control": "6.3.3", "requirement": "Critical security patches installed within one month of release",
          "status": st(m["critical_overdue_30d"] == 0), "evidence": f"{m['critical_overdue_30d']} critical findings open longer than 30 days"},
         {"framework": "CIS Controls v8.1", "control": "7.3 / 7.4", "requirement": "Automated OS and application patch management",
-         "status": st(sla_ok), "evidence": f"Mean time to remediate: {m['mttr_days']} days"},
+         "status": st(sla_ok), "evidence": f"Mean time to remediate: {m['mttr_days']} days" if m["mttr_days"] is not None else "Mean time to remediate: no fixes in period"},
     ]
 
 

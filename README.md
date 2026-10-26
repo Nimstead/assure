@@ -1,17 +1,19 @@
-# Nimstead Assure
+<h1 align="center">Nimstead Assure</h1>
 
-[![CI](https://github.com/Nimstead/assure/actions/workflows/ci.yml/badge.svg)](https://github.com/Nimstead/assure/actions/workflows/ci.yml)
+<p align="center"><b>Find what's vulnerable. Fix it safely. Prove it to an auditor.</b></p>
 
-Vulnerability scanning, patch assurance, audit evidence and safe automatic remediation in one product.
+<p align="center">
+  <a href="https://github.com/Nimstead/assure/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Nimstead/assure/actions/workflows/ci.yml/badge.svg"></a>
+  <img alt="Python 3.14" src="https://img.shields.io/badge/python-3.14-0b0b0b">
+  <img alt="PostgreSQL 17" src="https://img.shields.io/badge/postgresql-17-0b0b0b">
+  <img alt="Licence: proprietary" src="https://img.shields.io/badge/licence-proprietary-b3122e">
+</p>
 
-| Directory | What it is |
-|---|---|
-| [`api/`](api) | Server: FastAPI + SQLAlchemy (SQLite for dev, PostgreSQL in production), feeds, matching, risk, remediation, evidence |
-| [`agent/`](agent) | The agent: one stdlib-only Python file for Linux (apt, dnf, zypper, apk) and Windows |
-| [`web/`](web) | The UI: React + TanStack, served by the API once built |
-| [`sandbox/`](sandbox) | Real-host and real-service proofs in disposable WSL distros and VMs |
+<p align="center"><img src="docs/images/home-1440.png" alt="The Fix first screen: open findings by priority, and the one upgrade that clears the most risk" width="900"></p>
 
-The brand guidelines live in [Nimstead/brand](https://github.com/Nimstead/brand).
+Vulnerability scanning, patch assurance, audit evidence and safe automatic remediation in one product. It shows the upgrades that clear the most risk instead of a wall of CVEs, can apply those upgrades for you with rollback, and records each step in a tamper-evident ledger an auditor can check offline.
+
+## What it does
 
 - **Accurate, low-noise detection:** agents report installed packages, and Nimstead matches them against OSV advisories using each distro's own version rules and source-package names. Backported fixes aren't flagged. Results are tested to agree with the OSV API on real data.
 - **Application dependencies too:** add an application on the Assets page and upload a CycloneDX (JSON 1.4-1.6) or SPDX (JSON 2.2/2.3) SBOM (not XML or SPDX tag-value; via the UI or `POST /api/assets/{id}/sbom` from CI with the asset's upload token); PyPI, npm, Maven, NuGet, RubyGems, Go, crates.io, Packagist (Composer), Hex and Pub packages are matched like OS packages.
@@ -23,6 +25,59 @@ The brand guidelines live in [Nimstead/brand](https://github.com/Nimstead/brand)
   - Services are health-checked, and a failure triggers automatic rollback.
   - Changes go to canaries first; the broad ring is pinned to the versions the canaries proved.
   - Success is confirmed by the next inventory, never by the agent's say-so.
+
+| Why a finding matched, and why it's ranked there | Controls an auditor can check | Light and dark, down to phone width |
+|---|---|---|
+| ![Finding detail: installed vs fixed version, risk signals, advisories](docs/images/findings-1440.png) | ![Evidence: Cyber Essentials, ISO 27001, NIST, PCI DSS and CIS control status](docs/images/evidence-1440.png) | ![Fix first in dark mode at 375px](docs/images/home-375-dark.png) |
+
+## How it works
+
+```mermaid
+flowchart LR
+  subgraph Hosts
+    A["Agent<br/>(Linux / Windows)"]
+  end
+  CI["CI pipeline"] -- "SBOM" --> API
+  A -- "inventory every 6 h" --> API["API server"]
+  API -- "approved fix jobs" --> A
+  F["Feeds hourly<br/>OSV · NVD · KEV · EPSS · MSRC"] --> API
+  API --> DB[("PostgreSQL")]
+  API --> L["Hash-chained ledger<br/>+ signed checkpoints"]
+  L --> P["Ed25519 evidence pack<br/>(verifies offline)"]
+  API --> UI["Web UI"]
+  API -. "TCP + TLS checks<br/>(DNS-proven owned hosts)" .-> X["Internet-facing hosts"]
+```
+
+1. **Inventory.** The agent (one stdlib-only Python file) reports installed packages. CI uploads SBOMs for applications.
+2. **Match.** The server matches packages against advisories using each ecosystem's own version rules, then scores each finding by real-world risk.
+3. **Fix.** An admin approves a fix (or turns on auto-remediation). It goes to canary hosts first, with a dry run, health checks and automatic rollback.
+4. **Verify.** A fix only counts once the next inventory shows the vulnerability is gone. Every step lands in the ledger.
+
+## Proven on real systems
+
+Not just unit tests. Each of these ran end to end in a disposable VM or WSL distro; the logs are in [`sandbox/`](sandbox) and the details in [STATUS.md](STATUS.md).
+
+| Platform | Detect | Fix verified by inventory | Automatic rollback |
+|---|---|---|---|
+| Debian 13 · Ubuntu 24.04 | ✓ | ✓ apt | ✓ after a real service failure |
+| AlmaLinux 9 | ✓ | ✓ dnf | ✓ after a real service failure |
+| Alpine 3.21 | ✓ | ✓ apk | ✓ after an injected failure |
+| openSUSE Leap 16.0 | ✓ | ✓ zypper | ✓ after a real service failure; snapper also undoes install-script side effects |
+| Windows Server 2025 | ✓ | ✓ cumulative update as SYSTEM | ✓ after an injected failure (DISM removal); permanent updates refused up front |
+
+Plus real Keycloak SSO, DNS, SMTP and webhook integrations, Vault and S3 object-lock key storage, and 1,000-host performance runs on SQLite and PostgreSQL 17.
+
+## Repository layout
+
+| Directory | What it is |
+|---|---|
+| [`api/`](api) | Server: FastAPI + SQLAlchemy (SQLite for dev, PostgreSQL in production), feeds, matching, risk, remediation, evidence |
+| [`agent/`](agent) | The agent: one stdlib-only Python file for Linux (apt, dnf, zypper, apk) and Windows |
+| [`web/`](web) | The UI: React + TanStack, served by the API once built |
+| [`sandbox/`](sandbox) | Real-host and real-service proofs in disposable WSL distros and VMs |
+| [`docs/`](docs) | Images for this README |
+
+The brand guidelines live in [Nimstead/brand](https://github.com/Nimstead/brand).
 
 ## Quick start (local)
 
@@ -63,7 +118,7 @@ Run that hourly (cron or a systemd timer). It refreshes KEV, EPSS, NVD and OSV f
 - **Real-host end to end in a disposable WSL distro:** `cd api && uv run python ../sandbox/sbx.py`
 - **Full suite on PostgreSQL in a disposable distro:** `cd api && uv run python ../sandbox/pg.py`
 
-See [STATUS.md](STATUS.md) for what is and isn't proven, and [DECISIONS.md](DECISIONS.md) for why things are the way they are.
+See [STATUS.md](STATUS.md) for what is and isn't proven, [DECISIONS.md](DECISIONS.md) for why things are the way they are, and [CONTRIBUTING.md](CONTRIBUTING.md) for how to work on it.
 
 ## Licence
 

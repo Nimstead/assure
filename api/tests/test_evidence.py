@@ -192,3 +192,13 @@ def test_pack_carries_checkpoints_and_verifier_checks_them(env):
     entry = next(e for e in pack["ledger"]["entries"] if e["seq"] == cp["seq"])
     entry["hash"] = "0" * 64
     assert any("checkpoint" in p for p in verify(json.dumps(pack).encode(), sig, key, fp))
+
+
+def test_control_evidence_is_plain_text():
+    """No Python reprs (dicts, None) leak into what auditors read."""
+    from collections import defaultdict
+
+    from nimstead import evidence
+    m = defaultdict(int, mttr_days=None)
+    for c in evidence._controls(m):
+        assert "None" not in c["evidence"] and "{" not in c["evidence"], c

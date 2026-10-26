@@ -29,7 +29,12 @@ class FakeSuse:
             case ["rpm", "-q", "--qf", _, name]:
                 return (0, self.installed[name]) if name in self.installed else (1, "not installed")
             case ["systemctl", "is-active", "--quiet", _]:
-                return (3, "") if self.breaks and self.installed["openssl-3"] == NEW else (0, "")
+                if self.breaks and self.installed["openssl-3"] == NEW:
+                    self.crashed = True  # like a real service: stays down until restarted
+                return (3, "") if getattr(self, "crashed", False) else (0, "")
+            case ["systemctl", "restart", _]:
+                self.crashed = self.breaks and self.installed["openssl-3"] == NEW
+                return 0, ""
             case ["zypper", "--non-interactive", "--xmlout", "install", "--dry-run", *specs]:
                 return 0, xml_summary(*specs, *self.extra)
             case ["snapper", "-c", "root", "list", "--columns", "number"]:
@@ -74,6 +79,7 @@ def test_snapper_undo_reverts_script_side_effects_too(tmp_path):
     assert h.installed["openssl-3"] == OLD
     assert h.config == "original"  # the %post edit outside the package's files is undone as well
     assert any(c[:4] == ["snapper", "-c", "root", "undochange"] for c in h.log)
+    assert ["systemctl", "restart", "sshd.service"] in h.log  # the crashed service is brought back on the old version
 
 
 def test_zypper_scope_check_refuses_unplanned_changes(tmp_path):
@@ -103,3 +109,9 @@ def test_suse_ecosystems():
     assert agent.ecosystem_from_os_release(osr) == "openSUSE:Leap 16.0"
     assert agent.ecosystem_from_os_release('ID="sles"\nVERSION_ID="15.6"\n') == "SUSE:Linux Enterprise Server 15 SP6"
     assert agent.ecosystem_from_os_release('ID="opensuse-tumbleweed"\nVERSION_ID="20261024"\n') == "openSUSE:Tumbleweed"
+
+
+def test_default_runner_returns_full_output_for_parsers():
+    import sys
+    rc, out = agent.sh([sys.executable, "-c", "print('<stream>' + 'x' * 20000 + '</stream>')"])
+    assert rc == 0 and out.startswith("<stream>") and len(out) > 20000

@@ -1,0 +1,1168 @@
+{
+ "vulnerabilities": [
+  {
+   "cve": {
+    "id": "CVE-2024-8385",
+    "sourceIdentifier": "security@mozilla.org",
+    "published": "2024-09-03T13:15:05.803",
+    "lastModified": "2026-06-17T08:22:28.963",
+    "vulnStatus": "Modified",
+    "descriptions": [
+     {
+      "lang": "en",
+      "value": "A difference in the handling of StructFields and ArrayTypes in WASM could be used to trigger an exploitable type confusion vulnerability. This vulnerability affects Firefox < 130, Firefox ESR < 128.2, and Thunderbird < 128.2."
+     }
+    ],
+    "affected": [
+     {
+      "source": "security@mozilla.org",
+      "affectedData": [
+       {
+        "vendor": "Mozilla",
+        "product": "Firefox",
+        "versions": [
+         {
+          "version": "unspecified",
+          "lessThan": "130",
+          "versionType": "custom",
+          "status": "affected"
+         }
+        ]
+       },
+       {
+        "vendor": "Mozilla",
+        "product": "Firefox ESR",
+        "versions": [
+         {
+          "version": "unspecified",
+          "lessThan": "128.2",
+          "versionType": "custom",
+          "status": "affected"
+         }
+        ]
+       },
+       {
+        "vendor": "Mozilla",
+        "product": "Thunderbird",
+        "versions": [
+         {
+          "version": "unspecified",
+          "lessThan": "128.2",
+          "versionType": "custom",
+          "status": "affected"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "source": "134c704f-9b21-4f2e-91b3-4a467353bcc0",
+      "affectedData": [
+       {
+        "vendor": "mozilla",
+        "product": "firefox",
+        "defaultStatus": "unknown",
+        "cpes": [
+         "cpe:2.3:a:mozilla:firefox:*:*:*:*:*:*:*:*"
+        ],
+        "versions": [
+         {
+          "version": "0",
+          "lessThan": "130",
+          "versionType": "custom",
+          "status": "affected"
+         }
+        ]
+       },
+       {
+        "vendor": "mozilla",
+        "product": "firefox_esr",
+        "defaultStatus": "unknown",
+        "cpes": [
+         "cpe:2.3:a:mozilla:firefox_esr:*:*:*:*:*:*:*:*"
+        ],
+        "versions": [
+         {
+          "version": "0",
+          "lessThan": "128.2",
+          "versionType": "custom",
+          "status": "affected"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "metrics": {
+     "cvssMetricV31": [
+      {
+       "source": "nvd@nist.gov",
+       "type": "Primary",
+       "cvssData": {
+        "version": "3.1",
+        "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+        "baseScore": 9.8,
+        "baseSeverity": "CRITICAL",
+        "attackVector": "NETWORK",
+        "attackComplexity": "LOW",
+        "privilegesRequired": "NONE",
+        "userInteraction": "NONE",
+        "scope": "UNCHANGED",
+        "confidentialityImpact": "HIGH",
+        "integrityImpact": "HIGH",
+        "availabilityImpact": "HIGH"
+       },
+       "exploitabilityScore": 3.9,
+       "impactScore": 5.9
+      },
+      {
+       "source": "134c704f-9b21-4f2e-91b3-4a467353bcc0",
+       "type": "Secondary",
+       "cvssData": {
+        "version": "3.1",
+        "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+        "baseScore": 9.8,
+        "baseSeverity": "CRITICAL",
+        "attackVector": "NETWORK",
+        "attackComplexity": "LOW",
+        "privilegesRequired": "NONE",
+        "userInteraction": "NONE",
+        "scope": "UNCHANGED",
+        "confidentialityImpact": "HIGH",
+        "integrityImpact": "HIGH",
+        "availabilityImpact": "HIGH"
+       },
+       "exploitabilityScore": 3.9,
+       "impactScore": 5.9
+      }
+     ],
+     "ssvcV203": [
+      {
+       "source": "134c704f-9b21-4f2e-91b3-4a467353bcc0",
+       "ssvcData": {
+        "timestamp": "2024-09-03T15:46:49.316374Z",
+        "id": "CVE-2024-8385",
+        "options": [
+         {
+          "exploitation": "none"
+         },
+         {
+          "automatable": "yes"
+         },
+         {
+          "technicalImpact": "total"
+         }
+        ],
+        "role": "CISA Coordinator",
+        "version": "2.0.3"
+       }
+      }
+     ]
+    },
+    "configurations": [
+     {
+      "nodes": [
+       {
+        "operator": "OR",
+        "negate": false,
+        "cpeMatch": [
+         {
+          "vulnerable": true,
+          "criteria": "cpe:2.3:a:mozilla:firefox:*:*:*:*:*:*:*:*",
+          "versionEndExcluding": "130.0",
+          "matchCriteriaId": "87E41A09-924E-494F-BDF3-8C17EF330178"
+         },
+         {
+          "vulnerable": true,
+          "criteria": "cpe:2.3:a:mozilla:firefox_esr:*:*:*:*:*:*:*:*",
+          "versionEndExcluding": "128.2",
+          "matchCriteriaId": "4530A3A8-2C08-4E9B-9CCB-1B6A65780491"
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "cve": {
+    "id": "CVE-2024-9393",
+    "sourceIdentifier": "security@mozilla.org",
+    "published": "2024-10-01T16:15:10.623",
+    "lastModified": "2026-06-17T08:24:28.693",
+    "vulnStatus": "Modified",
+    "descriptions": [
+     {
+      "lang": "en",
+      "value": "An attacker could, via a specially crafted multipart response, execute arbitrary JavaScript under the `resource://pdf.js` origin.  This could allow them to access cross-origin PDF content. This access is limited to \"same site\" documents by the Site Isolation feature on desktop clients, but full cross-origin access is possible on Android versions. This vulnerability affects Firefox < 131, Firefox ESR < 128.3, Firefox ESR < 115.16, Thunderbird < 128.3, and Thunderbird < 131."
+     }
+    ],
+    "affected": [
+     {
+      "source": "security@mozilla.org",
+      "affectedData": [
+       {
+        "vendor": "Mozilla",
+        "product": "Firefox",
+        "versions": [
+         {
+          "version": "unspecified",
+          "lessThan": "131",
+          "versionType": "custom",
+          "status": "affected"
+         }
+        ]
+       },
+       {
+        "vendor": "Mozilla",
+        "product": "Firefox ESR",
+        "versions": [
+         {
+          "version": "unspecified",
+          "lessThan": "128.3",
+          "versionType": "custom",
+          "status": "affected"
+         }
+        ]
+       },
+       {
+        "vendor": "Mozilla",
+        "product": "Firefox ESR",
+        "versions": [
+         {
+          "version": "unspecified",
+          "lessThan": "115.16",
+          "versionType": "custom",
+          "status": "affected"
+         }
+        ]
+       },
+       {
+        "vendor": "Mozilla",
+        "product": "Thunderbird",
+        "versions": [
+         {
+          "version": "unspecified",
+          "lessThan": "128.3",
+          "versionType": "custom",
+          "status": "affected"
+         }
+        ]
+       },
+       {
+        "vendor": "Mozilla",
+        "product": "Thunderbird",
+        "versions": [
+         {
+          "version": "unspecified",
+          "lessThan": "131",
+          "versionType": "custom",
+          "status": "affected"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "metrics": {
+     "cvssMetricV31": [
+      {
+       "source": "nvd@nist.gov",
+       "type": "Primary",
+       "cvssData": {
+        "version": "3.1",
+        "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+        "baseScore": 7.5,
+        "baseSeverity": "HIGH",
+        "attackVector": "NETWORK",
+        "attackComplexity": "LOW",
+        "privilegesRequired": "NONE",
+        "userInteraction": "NONE",
+        "scope": "UNCHANGED",
+        "confidentialityImpact": "HIGH",
+        "integrityImpact": "NONE",
+        "availabilityImpact": "NONE"
+       },
+       "exploitabilityScore": 3.9,
+       "impactScore": 3.6
+      },
+      {
+       "source": "134c704f-9b21-4f2e-91b3-4a467353bcc0",
+       "type": "Secondary",
+       "cvssData": {
+        "version": "3.1",
+        "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+        "baseScore": 7.5,
+        "baseSeverity": "HIGH",
+        "attackVector": "NETWORK",
+        "attackComplexity": "LOW",
+        "privilegesRequired": "NONE",
+        "userInteraction": "NONE",
+        "scope": "UNCHANGED",
+        "confidentialityImpact": "HIGH",
+        "integrityImpact": "NONE",
+        "availabilityImpact": "NONE"
+       },
+       "exploitabilityScore": 3.9,
+       "impactScore": 3.6
+      }
+     ],
+     "ssvcV203": [
+      {
+       "source": "134c704f-9b21-4f2e-91b3-4a467353bcc0",
+       "ssvcData": {
+        "timestamp": "2025-03-14T15:14:36.763792Z",
+        "id": "CVE-2024-9393",
+        "options": [
+         {
+          "exploitation": "none"
+         },
+         {
+          "automatable": "yes"
+         },
+         {
+          "technicalImpact": "partial"
+         }
+        ],
+        "role": "CISA Coordinator",
+        "version": "2.0.3"
+       }
+      }
+     ]
+    },
+    "configurations": [
+     {
+      "nodes": [
+       {
+        "operator": "OR",
+        "negate": false,
+        "cpeMatch": [
+         {
+          "vulnerable": true,
+          "criteria": "cpe:2.3:a:mozilla:firefox:*:*:*:*:*:*:*:*",
+          "versionEndExcluding": "131.0",
+          "matchCriteriaId": "DA47FFCA-3451-462C-8FFB-47143C65E65A"
+         },
+         {
+          "vulnerable": true,
+          "criteria": "cpe:2.3:a:mozilla:firefox_esr:*:*:*:*:*:*:*:*",
+          "versionEndExcluding": "115.16.0",
+          "matchCriteriaId": "BE98FB6E-21A3-4917-8806-09D3AF4FB876"
+         },
+         {
+          "vulnerable": true,
+          "criteria": "cpe:2.3:a:mozilla:firefox_esr:*:*:*:*:*:*:*:*",
+          "versionStartIncluding": "116.0",
+          "versionEndExcluding": "128.3.0",
+          "matchCriteriaId": "CAB84369-2EC9-42EC-A9BF-95A3EB9925C1"
+         },
+         {
+          "vulnerable": true,
+          "criteria": "cpe:2.3:a:mozilla:thunderbird:*:*:*:*:*:*:*:*",
+          "versionEndExcluding": "128.3",
+          "matchCriteriaId": "2B27464A-8C97-4D45-B7BE-CD1E3EA1DFD6"
+         },
+         {
+          "vulnerable": true,
+          "criteria": "cpe:2.3:a:mozilla:thunderbird:129.0:beta:*:*:*:*:*:*",
+          "matchCriteriaId": "1CF643F7-C722-44F1-827C-3974B45A3D0D"
+         },
+         {
+          "vulnerable": true,
+          "criteria": "cpe:2.3:a:mozilla:thunderbird:129.0:beta2:*:*:*:*:*:*",
+          "matchCriteriaId": "963ACFD6-B12A-4A66-A539-FD156C6F5220"
+         },
+         {
+          "vulnerable": true,
+          "criteria": "cpe:2.3:a:mozilla:thunderbird:129.0:beta3:*:*:*:*:*:*",
+          "matchCriteriaId": "B9E39014-2E8F-4E19-9575-978AB56E451A"
+         },
+         {
+          "vulnerable": true,
+          "criteria": "cpe:2.3:a:mozilla:thunderbird:129.0:beta4:*:*:*:*:*:*",
+          "matchCriteriaId": "28752A54-6016-4F6E-983B-CB54FEA19E5F"
+         },
+         {
+          "vulnerable": true,
+          "criteria": "cpe:2.3:a:mozilla:thunderbird:129.0:beta5:*:*:*:*:*:*",
+          "matchCriteriaId": "DA46E15E-0C2B-4F6E-8BA3-B7CB32C58D43"
+         },
+         {
+          "vulnerable": true,
+          "criteria": "cpe:2.3:a:mozilla:thunderbird:129.0:beta6:*:*:*:*:*:*",
+          "matchCriteriaId": "90AD96F8-A88B-4B70-A4D2-CD7637DF239A"
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "cve": {
+    "id": "CVE-2025-0435",
+    "sourceIdentifier": "chrome-cve-admin@google.com",
+    "published": "2025-01-15T11:15:09.580",
+    "lastModified": "2026-06-17T08:26:28.270",
+    "vulnStatus": "Analyzed",
+    "descriptions": [
+     {
+      "lang": "en",
+      "value": "Inappropriate implementation in Navigation in Google Chrome on Android prior to 132.0.6834.83 allowed a remote attacker to perform UI spoofing via a crafted HTML page. (Chromium security severity: High)"
+     }
+    ],
+    "affected": [
+     {
+      "source": "chrome-cve-admin@google.com",
+      "affectedData": [
+       {
+        "vendor": "Google",
+        "product": "Chrome",
+        "versions": [
+         {
+          "version": "132.0.6834.83",
+          "lessThan": "132.0.6834.83",
+          "versionType": "custom",
+          "status": "affected"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "metrics": {
+     "cvssMetricV31": [
+      {
+       "source": "134c704f-9b21-4f2e-91b3-4a467353bcc0",
+       "type": "Secondary",
+       "cvssData": {
+        "version": "3.1",
+        "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:H/A:N",
+        "baseScore": 6.5,
+        "baseSeverity": "MEDIUM",
+        "attackVector": "NETWORK",
+        "attackComplexity": "LOW",
+        "privilegesRequired": "NONE",
+        "userInteraction": "REQUIRED",
+        "scope": "UNCHANGED",
+        "confidentialityImpact": "NONE",
+        "integrityImpact": "HIGH",
+        "availabilityImpact": "NONE"
+       },
+       "exploitabilityScore": 2.8,
+       "impactScore": 3.6
+      }
+     ],
+     "ssvcV203": [
+      {
+       "source": "134c704f-9b21-4f2e-91b3-4a467353bcc0",
+       "ssvcData": {
+        "timestamp": "2025-01-15T14:51:47.694157Z",
+        "id": "CVE-2025-0435",
+        "options": [
+         {
+          "exploitation": "none"
+         },
+         {
+          "automatable": "no"
+         },
+         {
+          "technicalImpact": "partial"
+         }
+        ],
+        "role": "CISA Coordinator",
+        "version": "2.0.3"
+       }
+      }
+     ]
+    },
+    "configurations": [
+     {
+      "operator": "AND",
+      "nodes": [
+       {
+        "operator": "OR",
+        "negate": false,
+        "cpeMatch": [
+         {
+          "vulnerable": true,
+          "criteria": "cpe:2.3:a:google:chrome:*:*:*:*:*:*:*:*",
+          "versionEndExcluding": "132.0.6834.83",
+          "matchCriteriaId": "1FC28099-9736-4AB4-96EB-207A2FC64ACD"
+         }
+        ]
+       },
+       {
+        "operator": "OR",
+        "negate": false,
+        "cpeMatch": [
+         {
+          "vulnerable": false,
+          "criteria": "cpe:2.3:o:google:android:12.0:*:*:*:*:*:*:*",
+          "matchCriteriaId": "F8FB8EE9-FC56-4D5E-AE55-A5967634740C"
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "cve": {
+    "id": "CVE-2026-30900",
+    "sourceIdentifier": "security@zoom.us",
+    "published": "2026-03-11T15:16:29.787",
+    "lastModified": "2026-06-17T10:33:07.040",
+    "vulnStatus": "Analyzed",
+    "descriptions": [
+     {
+      "lang": "en",
+      "value": "Improper Check of minimum version in update functionality of certain Zoom Clients for Windows may allow an authenticated user to conduct an escalation of privilege via local access."
+     }
+    ],
+    "affected": [
+     {
+      "source": "security@zoom.us",
+      "affectedData": [
+       {
+        "vendor": "Zoom Communications Inc.",
+        "product": "Zoom Workplace",
+        "defaultStatus": "unaffected",
+        "platforms": [
+         "Windows"
+        ],
+        "versions": [
+         {
+          "version": "6.6.0",
+          "lessThan": "6.6.11",
+          "versionType": "custom",
+          "status": "affected"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "metrics": {
+     "cvssMetricV31": [
+      {
+       "source": "security@zoom.us",
+       "type": "Secondary",
+       "cvssData": {
+        "version": "3.1",
+        "vectorString": "CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+        "baseScore": 7.8,
+        "baseSeverity": "HIGH",
+        "attackVector": "LOCAL",
+        "attackComplexity": "LOW",
+        "privilegesRequired": "LOW",
+        "userInteraction": "NONE",
+        "scope": "UNCHANGED",
+        "confidentialityImpact": "HIGH",
+        "integrityImpact": "HIGH",
+        "availabilityImpact": "HIGH"
+       },
+       "exploitabilityScore": 1.8,
+       "impactScore": 5.9
+      }
+     ],
+     "ssvcV203": [
+      {
+       "source": "134c704f-9b21-4f2e-91b3-4a467353bcc0",
+       "ssvcData": {
+        "timestamp": "2026-03-11T00:00:00+00:00",
+        "id": "CVE-2026-30900",
+        "options": [
+         {
+          "exploitation": "none"
+         },
+         {
+          "automatable": "no"
+         },
+         {
+          "technicalImpact": "total"
+         }
+        ],
+        "role": "CISA Coordinator",
+        "version": "2.0.3"
+       }
+      }
+     ]
+    },
+    "configurations": [
+     {
+      "nodes": [
+       {
+        "operator": "OR",
+        "negate": false,
+        "cpeMatch": [
+         {
+          "vulnerable": true,
+          "criteria": "cpe:2.3:a:zoom:meeting_software_development_kit:*:*:*:*:*:windows:*:*",
+          "versionStartIncluding": "6.6.0",
+          "versionEndExcluding": "6.6.11",
+          "matchCriteriaId": "FD804C73-54B7-4FF6-ADEF-EB279977FAF3"
+         },
+         {
+          "vulnerable": true,
+          "criteria": "cpe:2.3:a:zoom:workplace_desktop:*:*:*:*:*:windows:*:*",
+          "versionStartIncluding": "6.6.0",
+          "versionEndExcluding": "6.6.11",
+          "matchCriteriaId": "C04F1CBB-A53C-421A-BBA5-6EC3B2CB4BE3"
+         },
+         {
+          "vulnerable": true,
+          "criteria": "cpe:2.3:a:zoom:workplace_virtual_desktop_infrastructure:*:*:*:*:*:windows:*:*",
+          "versionEndIncluding": "6.6.10",
+          "matchCriteriaId": "EB3D3897-5003-4611-96FE-11E50164E4E6"
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "cve": {
+    "id": "CVE-2026-48101",
+    "sourceIdentifier": "security-advisories@github.com",
+    "published": "2026-06-05T16:16:41.423",
+    "lastModified": "2026-06-17T10:54:51.213",
+    "vulnStatus": "Analyzed",
+    "descriptions": [
+     {
+      "lang": "en",
+      "value": "7-Zip is a file archiver with a high compression ratio. Versions 9.21 through 26.00 contain an An uninitialized memory disclosure vulnerability in the UEFI capsule (.scap) parser in 7-Zip. The OpenCapsule function allocates a heap buffer of attacker-declared CapsuleImageSize (up to 1 GiB) without zero-initialization, then reads the file contents into it with ReadStream_FALSE whose return value is silently discarded. If the file is truncated, the unread tail of the buffer retains uninitialized heap memory, which is then exposed as extracted file content via GetStream. Version 26.0.1 fixes the issue."
+     }
+    ],
+    "affected": [
+     {
+      "source": "security-advisories@github.com",
+      "affectedData": [
+       {
+        "vendor": "mcmilk",
+        "product": "7-Zip",
+        "versions": [
+         {
+          "version": ">= 9.21, < 26.01",
+          "status": "affected"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "metrics": {
+     "cvssMetricV31": [
+      {
+       "source": "security-advisories@github.com",
+       "type": "Secondary",
+       "cvssData": {
+        "version": "3.1",
+        "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:N/A:N",
+        "baseScore": 6.5,
+        "baseSeverity": "MEDIUM",
+        "attackVector": "NETWORK",
+        "attackComplexity": "LOW",
+        "privilegesRequired": "NONE",
+        "userInteraction": "REQUIRED",
+        "scope": "UNCHANGED",
+        "confidentialityImpact": "HIGH",
+        "integrityImpact": "NONE",
+        "availabilityImpact": "NONE"
+       },
+       "exploitabilityScore": 2.8,
+       "impactScore": 3.6
+      }
+     ],
+     "ssvcV203": [
+      {
+       "source": "134c704f-9b21-4f2e-91b3-4a467353bcc0",
+       "ssvcData": {
+        "timestamp": "2026-06-05T19:38:03.046726Z",
+        "id": "CVE-2026-48101",
+        "options": [
+         {
+          "exploitation": "none"
+         },
+         {
+          "automatable": "no"
+         },
+         {
+          "technicalImpact": "partial"
+         }
+        ],
+        "role": "CISA Coordinator",
+        "version": "2.0.3"
+       }
+      }
+     ]
+    },
+    "configurations": [
+     {
+      "nodes": [
+       {
+        "operator": "OR",
+        "negate": false,
+        "cpeMatch": [
+         {
+          "vulnerable": true,
+          "criteria": "cpe:2.3:a:7-zip:7-zip:*:*:*:*:*:*:*:*",
+          "versionStartIncluding": "9.21",
+          "versionEndExcluding": "26.01",
+          "matchCriteriaId": "2D228E42-C0A6-4867-8BDF-476F22CFF883"
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "cve": {
+    "id": "CVE-2026-47013",
+    "sourceIdentifier": "secalert_us@oracle.com",
+    "published": "2026-07-21T22:17:06.857",
+    "lastModified": "2026-10-24T19:10:00.127",
+    "vulnStatus": "Analyzed",
+    "descriptions": [
+     {
+      "lang": "en",
+      "value": "Vulnerability in Oracle Java SE (component: JavaFX).   The supported version that is affected is Oracle Java SE: 8u491. Easily exploitable vulnerability allows unauthenticated attacker with network access via multiple protocols to compromise Oracle Java SE.  Successful attacks of this vulnerability can result in unauthorized ability to cause a partial denial of service (partial DOS) of Oracle Java SE. Note: This vulnerability can be exploited by using APIs in the specified Component, e.g., through a web service which supplies data to the APIs. This vulnerability also applies to Java deployments, typically in clients running sandboxed Java Web Start applications or sandboxed Java applets, that load and run untrusted code (e.g., code that comes from the internet) and rely on the Java sandbox for security. CVSS 3.1 Base Score 5.3 (Availability impacts).  CVSS Vector: (CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L)."
+     }
+    ],
+    "affected": [
+     {
+      "source": "secalert_us@oracle.com",
+      "affectedData": [
+       {
+        "vendor": "Oracle Corporation",
+        "product": "Oracle Java SE",
+        "versions": [
+         {
+          "version": "8u491",
+          "status": "affected"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "metrics": {
+     "cvssMetricV31": [
+      {
+       "source": "secalert_us@oracle.com",
+       "type": "Secondary",
+       "cvssData": {
+        "version": "3.1",
+        "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L",
+        "baseScore": 5.3,
+        "baseSeverity": "MEDIUM",
+        "attackVector": "NETWORK",
+        "attackComplexity": "LOW",
+        "privilegesRequired": "NONE",
+        "userInteraction": "NONE",
+        "scope": "UNCHANGED",
+        "confidentialityImpact": "NONE",
+        "integrityImpact": "NONE",
+        "availabilityImpact": "LOW"
+       },
+       "exploitabilityScore": 3.9,
+       "impactScore": 1.4
+      }
+     ],
+     "ssvcV203": [
+      {
+       "source": "134c704f-9b21-4f2e-91b3-4a467353bcc0",
+       "ssvcData": {
+        "timestamp": "2026-08-12T18:59:35.549565Z",
+        "id": "CVE-2026-47013",
+        "options": [
+         {
+          "exploitation": "none"
+         },
+         {
+          "automatable": "yes"
+         },
+         {
+          "technicalImpact": "partial"
+         }
+        ],
+        "role": "CISA Coordinator",
+        "version": "2.0.3"
+       }
+      }
+     ]
+    },
+    "configurations": [
+     {
+      "nodes": [
+       {
+        "operator": "OR",
+        "negate": false,
+        "cpeMatch": [
+         {
+          "vulnerable": true,
+          "criteria": "cpe:2.3:a:oracle:jdk:1.8.0:update491:*:*:-:*:*:*",
+          "matchCriteriaId": "26A3520C-C410-4AC7-93CF-69F5CBD23CA8"
+         },
+         {
+          "vulnerable": true,
+          "criteria": "cpe:2.3:a:oracle:jre:1.8.0:update491:*:*:-:*:*:*",
+          "matchCriteriaId": "D0DE5FE4-2686-4C60-B4C6-2AC9E7A538D5"
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "cve": {
+    "id": "CVE-2026-60147",
+    "sourceIdentifier": "secalert_us@oracle.com",
+    "published": "2026-07-21T22:17:15.407",
+    "lastModified": "2026-08-03T18:49:46.977",
+    "vulnStatus": "Analyzed",
+    "descriptions": [
+     {
+      "lang": "en",
+      "value": "Vulnerability in the Oracle Java SE, Oracle GraalVM for JDK, Oracle GraalVM Enterprise Edition product of Oracle Java SE (component: Security).  Supported versions that are affected are Oracle Java SE: 8u491, 8u491-perf, 11.0.31, 17.0.19, 21.0.11, 25.0.3, 26.0.1; Oracle GraalVM for JDK: 17.0.19 and  21.0.11; Oracle GraalVM Enterprise Edition: 21.3.18. Easily exploitable vulnerability allows unauthenticated attacker with network access via multiple protocols to compromise Oracle Java SE, Oracle GraalVM for JDK, Oracle GraalVM Enterprise Edition.  Successful attacks of this vulnerability can result in  unauthorized update, insert or delete access to some of Oracle Java SE, Oracle GraalVM for JDK, Oracle GraalVM Enterprise Edition accessible data as well as  unauthorized read access to a subset of Oracle Java SE, Oracle GraalVM for JDK, Oracle GraalVM Enterprise Edition accessible data. Note: This vulnerability can be exploited by using APIs in the specified Component, e.g., through a web service which supplies data to the APIs. This vulnerability also applies to Java deployments, typically in clients running sandboxed Java Web Start applications or sandboxed Java applets, that load and run untrusted code (e.g., code that comes from the internet) and rely on the Java sandbox for security. CVSS 3.1 Base Score 6.5 (Confidentiality and Integrity impacts).  CVSS Vector: (CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:N)."
+     }
+    ],
+    "affected": [
+     {
+      "source": "secalert_us@oracle.com",
+      "affectedData": [
+       {
+        "vendor": "Oracle Corporation",
+        "product": "Oracle Java SE",
+        "versions": [
+         {
+          "version": "8u491",
+          "status": "affected"
+         },
+         {
+          "version": "8u491-perf",
+          "status": "affected"
+         },
+         {
+          "version": "11.0.31",
+          "status": "affected"
+         },
+         {
+          "version": "17.0.19",
+          "status": "affected"
+         },
+         {
+          "version": "21.0.11",
+          "status": "affected"
+         },
+         {
+          "version": "25.0.3",
+          "status": "affected"
+         },
+         {
+          "version": "26.0.1",
+          "status": "affected"
+         }
+        ]
+       },
+       {
+        "vendor": "Oracle Corporation",
+        "product": "Oracle GraalVM for JDK",
+        "versions": [
+         {
+          "version": "17.0.19",
+          "status": "affected"
+         },
+         {
+          "version": "21.0.11",
+          "status": "affected"
+         }
+        ]
+       },
+       {
+        "vendor": "Oracle Corporation",
+        "product": "Oracle GraalVM Enterprise Edition",
+        "versions": [
+         {
+          "version": "21.3.18",
+          "status": "affected"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "metrics": {
+     "cvssMetricV31": [
+      {
+       "source": "secalert_us@oracle.com",
+       "type": "Secondary",
+       "cvssData": {
+        "version": "3.1",
+        "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:N",
+        "baseScore": 6.5,
+        "baseSeverity": "MEDIUM",
+        "attackVector": "NETWORK",
+        "attackComplexity": "LOW",
+        "privilegesRequired": "NONE",
+        "userInteraction": "NONE",
+        "scope": "UNCHANGED",
+        "confidentialityImpact": "LOW",
+        "integrityImpact": "LOW",
+        "availabilityImpact": "NONE"
+       },
+       "exploitabilityScore": 3.9,
+       "impactScore": 2.5
+      }
+     ],
+     "ssvcV203": [
+      {
+       "source": "134c704f-9b21-4f2e-91b3-4a467353bcc0",
+       "ssvcData": {
+        "timestamp": "2026-07-23T15:24:51.961625Z",
+        "id": "CVE-2026-60147",
+        "options": [
+         {
+          "exploitation": "none"
+         },
+         {
+          "automatable": "yes"
+         },
+         {
+          "technicalImpact": "partial"
+         }
+        ],
+        "role": "CISA Coordinator",
+        "version": "2.0.3"
+       }
+      }
+     ]
+    },
+    "configurations": [
+     {
+      "nodes": [
+       {
+        "operator": "OR",
+        "negate": false,
+        "cpeMatch": [
+         {
+          "vulnerable": true,
+          "criteria": "cpe:2.3:a:oracle:jre:1.8.0:update491:*:*:-:*:*:*",
+          "matchCriteriaId": "D0DE5FE4-2686-4C60-B4C6-2AC9E7A538D5"
+         },
+         {
+          "vulnerable": true,
+          "criteria": "cpe:2.3:a:oracle:jre:1.8.0:update491:*:*:enterprise_performance_pack:*:*:*",
+          "matchCriteriaId": "D60FEE5A-22B8-4F6C-AF4F-C8B317C2D102"
+         },
+         {
+          "vulnerable": true,
+          "criteria": "cpe:2.3:a:oracle:jre:11.0.31:*:*:*:*:*:*:*",
+          "matchCriteriaId": "FB3E4F54-F4A3-40E8-8662-EA181BEE59E5"
+         },
+         {
+          "vulnerable": true,
+          "criteria": "cpe:2.3:a:oracle:jre:17.0.19:*:*:*:*:*:*:*",
+          "matchCriteriaId": "1F21877D-7A65-4208-B050-C6E2D5857861"
+         },
+         {
+          "vulnerable": true,
+          "criteria": "cpe:2.3:a:oracle:jre:21.0.11:*:*:*:*:*:*:*",
+          "matchCriteriaId": "9A3AFF47-354C-4942-9EB7-45D2193EF63E"
+         },
+         {
+          "vulnerable": true,
+          "criteria": "cpe:2.3:a:oracle:jre:25.0.3:*:*:*:*:*:*:*",
+          "matchCriteriaId": "8F08B2DE-C919-46C7-8F5B-76C1FF0534BB"
+         },
+         {
+          "vulnerable": true,
+          "criteria": "cpe:2.3:a:oracle:jre:26.0.1:*:*:*:*:*:*:*",
+          "matchCriteriaId": "0FCAAFC2-C392-4D78-8027-0D40135AE0E9"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "nodes": [
+       {
+        "operator": "OR",
+        "negate": false,
+        "cpeMatch": [
+         {
+          "vulnerable": true,
+          "criteria": "cpe:2.3:a:oracle:jdk:1.8.0:update491:*:*:-:*:*:*",
+          "matchCriteriaId": "26A3520C-C410-4AC7-93CF-69F5CBD23CA8"
+         },
+         {
+          "vulnerable": true,
+          "criteria": "cpe:2.3:a:oracle:jdk:1.8.0:update491:*:*:enterprise_performance_pack:*:*:*",
+          "matchCriteriaId": "35F51EB5-DF63-47B3-9EFF-E52B0538747E"
+         },
+         {
+          "vulnerable": true,
+          "criteria": "cpe:2.3:a:oracle:jdk:11.0.31:*:*:*:*:*:*:*",
+          "matchCriteriaId": "2CBF2718-F1CA-4BB6-8FE5-C106C444DFA6"
+         },
+         {
+          "vulnerable": true,
+          "criteria": "cpe:2.3:a:oracle:jdk:17.0.19:*:*:*:*:*:*:*",
+          "matchCriteriaId": "0AF814DE-A1D5-44E6-B868-733F0BB4EB64"
+         },
+         {
+          "vulnerable": true,
+          "criteria": "cpe:2.3:a:oracle:jdk:21.0.11:*:*:*:*:*:*:*",
+          "matchCriteriaId": "6FC66081-3173-4BEB-A10E-DBDEDCD7C8E5"
+         },
+         {
+          "vulnerable": true,
+          "criteria": "cpe:2.3:a:oracle:jdk:25.0.3:*:*:*:*:*:*:*",
+          "matchCriteriaId": "A8496CC4-C134-44F9-826A-492C5714B751"
+         },
+         {
+          "vulnerable": true,
+          "criteria": "cpe:2.3:a:oracle:jdk:26.0.1:*:*:*:*:*:*:*",
+          "matchCriteriaId": "D3FCB650-0CC3-41E5-8B44-449F4C851DD5"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "nodes": [
+       {
+        "operator": "OR",
+        "negate": false,
+        "cpeMatch": [
+         {
+          "vulnerable": true,
+          "criteria": "cpe:2.3:a:oracle:graalvm:21.3.18:*:*:*:enterprise:*:*:*",
+          "matchCriteriaId": "EF86D60E-69A7-4037-981F-314D48C69EEE"
+         },
+         {
+          "vulnerable": true,
+          "criteria": "cpe:2.3:a:oracle:graalvm_for_jdk:17.0.19:*:*:*:*:*:*:*",
+          "matchCriteriaId": "2EB67235-B538-415E-ABDD-53446AF5E7B8"
+         },
+         {
+          "vulnerable": true,
+          "criteria": "cpe:2.3:a:oracle:graalvm_for_jdk:21.0.11:*:*:*:*:*:*:*",
+          "matchCriteriaId": "FBAA4BB5-D7E9-4F1A-AD13-65915A099495"
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "cve": {
+    "id": "CVE-2026-113343",
+    "sourceIdentifier": "chrome-cve-admin@google.com",
+    "published": "2026-10-20T22:19:29.000",
+    "lastModified": "2026-10-21T17:02:24.853",
+    "vulnStatus": "Analyzed",
+    "descriptions": [
+     {
+      "lang": "en",
+      "value": "Memory corruption in Sandbox in Google Chrome prior to 156.0.8078.47 allowed a remote attacker to execute arbitrary code inside the sandbox via a crafted HTML page. (Chromium security severity: Medium)"
+     }
+    ],
+    "affected": [
+     {
+      "source": "chrome-cve-admin@google.com",
+      "affectedData": [
+       {
+        "vendor": "Google",
+        "product": "Chrome",
+        "versions": [
+         {
+          "version": "156.0.8078.47",
+          "lessThan": "156.0.8078.47",
+          "versionType": "custom",
+          "status": "affected"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "metrics": {
+     "cvssMetricV31": [
+      {
+       "source": "134c704f-9b21-4f2e-91b3-4a467353bcc0",
+       "type": "Secondary",
+       "cvssData": {
+        "version": "3.1",
+        "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H",
+        "baseScore": 8.8,
+        "baseSeverity": "HIGH",
+        "attackVector": "NETWORK",
+        "attackComplexity": "LOW",
+        "privilegesRequired": "NONE",
+        "userInteraction": "REQUIRED",
+        "scope": "UNCHANGED",
+        "confidentialityImpact": "HIGH",
+        "integrityImpact": "HIGH",
+        "availabilityImpact": "HIGH"
+       },
+       "exploitabilityScore": 2.8,
+       "impactScore": 5.9
+      }
+     ],
+     "ssvcV203": [
+      {
+       "source": "134c704f-9b21-4f2e-91b3-4a467353bcc0",
+       "ssvcData": {
+        "timestamp": "2026-10-20T00:00:00+00:00",
+        "id": "CVE-2026-113343",
+        "options": [
+         {
+          "exploitation": "none"
+         },
+         {
+          "automatable": "no"
+         },
+         {
+          "technicalImpact": "total"
+         }
+        ],
+        "role": "CISA Coordinator",
+        "version": "2.0.3"
+       }
+      }
+     ]
+    },
+    "configurations": [
+     {
+      "nodes": [
+       {
+        "operator": "OR",
+        "negate": false,
+        "cpeMatch": [
+         {
+          "vulnerable": true,
+          "criteria": "cpe:2.3:a:google:chrome:*:*:*:*:*:*:*:*",
+          "versionEndExcluding": "156.0.8078.47",
+          "matchCriteriaId": "5D2AC575-58E7-4796-8513-60CE9FF161B7"
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

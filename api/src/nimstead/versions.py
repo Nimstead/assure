@@ -245,6 +245,25 @@ def windows_cmp(a: str, b: str) -> int:
     return (ta > tb) - (ta < tb)
 
 
+# --- Windows third-party apps (curated map in winapps.py): dotted numeric -------
+
+_APPVER = re.compile(r"v?(\d+(?:\.\d+)*)(?: \(\d+\))?")  # "6.2.5 (47209)" -> 6.2.5; anything else is refused
+
+
+def appver_parts(v: str) -> list[int]:
+    m = _APPVER.fullmatch(v.strip())
+    if not m:
+        raise ValueError(f"invalid app version: {v!r}")
+    return [int(x) for x in m.group(1).split(".")]
+
+
+def appver_cmp(a: str, b: str) -> int:
+    ta, tb = appver_parts(a), appver_parts(b)
+    n = max(len(ta), len(tb))
+    ta, tb = ta + [0] * (n - len(ta)), tb + [0] * (n - len(tb))
+    return (ta > tb) - (ta < tb)
+
+
 # --- Maven (Apache Maven ComparableVersion, 3.9.x) -----------------------------
 # Items: int, str (qualifier) or list (nested "-" sublist), mirroring IntItem/StringItem/ListItem.
 
@@ -471,6 +490,7 @@ def composer_cmp(a: str, b: str) -> int:
 
 _BY_PREFIX: dict[str, Cmp] = {
     "Windows": windows_cmp,
+    "WinApp": appver_cmp,
     "Debian": dpkg_cmp,
     "Ubuntu": dpkg_cmp,
     "Alpine": apk_cmp,

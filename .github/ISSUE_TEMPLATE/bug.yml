@@ -1,0 +1,26 @@
+name: Bug
+description: Something behaves wrongly
+labels: [bug]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options: [API / server, Agent (Linux), Agent (Windows), Web UI, Feeds / matching, Remediation, Evidence]
+    validations: { required: true }
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+    validations: { required: true }
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Include OS / distro and the package versions involved if it's a matching issue.
+    validations: { required: true }
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or output
+      render: text

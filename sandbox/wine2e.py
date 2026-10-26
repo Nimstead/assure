@@ -133,28 +133,29 @@ def main(keep=False) -> int:
         h = {"Authorization": f"Bearer {cfg['agent_key']}"}
 
         # 2) rollback: real install of the KB, forced failure after the reboot, DISM removal, reboot, original build back
-        jid = plan_and_get_job()
-        [job] = api.get("/api/agent/jobs", headers=h).json()
-        note("job dispatched", kb=job["packages"][0]["kb"], target=job["packages"][0]["to"])
-        guest("Set-Content -Path C:\\nimtest\\job.json -Value '" + json.dumps(job).replace("'", "''") + "' -Encoding ascii")
         agent = r'"C:\Program Files\Python313\python.exe" "C:\Program Files\Nimstead\nimstead_agent.py"'
-        as_system(rf"{agent} run-job --yes --fail-after-apply < C:\nimtest\job.json > C:\nimtest\out1.json 2>&1", wait_minutes=150, result=r"C:\nimtest\out1.json")
-        r1 = json.loads(guest(r"Get-Content C:\nimtest\out1.json -Raw").strip().splitlines()[-1])
-        note("update installed, waiting for reboot", outcome=r1["outcome"], steps=[s["step"] for s in r1["steps"]][-4:])
-        assert r1["outcome"] == "pending_reboot", r1
-        reboot_and_wait()
-        note("rebooted", build=build())
-        as_system(rf"{agent} resume-job > C:\nimtest\out2.json 2>&1", wait_minutes=90, result=r"C:\nimtest\out2.json")
-        r2 = json.loads(guest(r"Get-Content C:\nimtest\out2.json -Raw").strip().splitlines()[-1])
-        note("injected failure -> rollback started", outcome=r2["outcome"], steps=[s["step"] for s in r2["steps"]][-4:])
-        assert r2["outcome"] == "pending_reboot", r2
-        reboot_and_wait()
-        as_system(rf"{agent} resume-job > C:\nimtest\out3.json 2>&1", wait_minutes=60, result=r"C:\nimtest\out3.json")
-        r3 = json.loads(guest(r"Get-Content C:\nimtest\out3.json -Raw").strip().splitlines()[-1])
-        after = build()
-        note("rollback finished", outcome=r3["outcome"], build_now=after, build_before=start_build)
-        assert r3["outcome"] == "rolled_back" and after == start_build, r3
-        api.post(f"/api/agent/jobs/{jid}/report", json=r3, headers=h)
+        if "--success-only" not in sys.argv:  # --success-only: rollback already proven on this VM
+            jid = plan_and_get_job()
+            [job] = api.get("/api/agent/jobs", headers=h).json()
+            note("job dispatched", kb=job["packages"][0]["kb"], target=job["packages"][0]["to"])
+            guest("Set-Content -Path C:\\nimtest\\job.json -Value '" + json.dumps(job).replace("'", "''") + "' -Encoding ascii")
+            as_system(rf"{agent} run-job --yes --fail-after-apply < C:\nimtest\job.json > C:\nimtest\out1.json 2>&1", wait_minutes=150, result=r"C:\nimtest\out1.json")
+            r1 = json.loads(guest(r"Get-Content C:\nimtest\out1.json -Raw").strip().splitlines()[-1])
+            note("update installed, waiting for reboot", outcome=r1["outcome"], steps=[s["step"] for s in r1["steps"]][-4:])
+            assert r1["outcome"] == "pending_reboot", r1
+            reboot_and_wait()
+            note("rebooted", build=build())
+            as_system(rf"{agent} resume-job > C:\nimtest\out2.json 2>&1", wait_minutes=90, result=r"C:\nimtest\out2.json")
+            r2 = json.loads(guest(r"Get-Content C:\nimtest\out2.json -Raw").strip().splitlines()[-1])
+            note("injected failure -> rollback started", outcome=r2["outcome"], steps=[s["step"] for s in r2["steps"]][-4:])
+            assert r2["outcome"] == "pending_reboot", r2
+            reboot_and_wait()
+            as_system(rf"{agent} resume-job > C:\nimtest\out3.json 2>&1", wait_minutes=60, result=r"C:\nimtest\out3.json")
+            r3 = json.loads(guest(r"Get-Content C:\nimtest\out3.json -Raw").strip().splitlines()[-1])
+            after = build()
+            note("rollback finished", outcome=r3["outcome"], build_now=after, build_before=start_build)
+            assert r3["outcome"] == "rolled_back" and after == start_build, r3
+            api.post(f"/api/agent/jobs/{jid}/report", json=r3, headers=h)
 
         # 3) success, driven only by the installed scheduled task: install -> reboot -> startup run resumes -> report
         jid = plan_and_get_job()

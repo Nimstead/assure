@@ -56,7 +56,7 @@ export function TargetRow({ t, onDelete }: { t: Asset; onDelete: () => void }) {
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
         <div className="min-w-0">
           <h3 className="flex items-center gap-2 text-base font-semibold"><span className="truncate">{t.hostname}</span>
-            <span className="inline-flex shrink-0 items-center gap-1 rounded border border-line-strong px-1.5 py-px text-[11px] font-semibold tracking-wide text-muted">
+            <span className="inline-flex shrink-0 items-center gap-1 border border-line-strong px-1.5 py-px text-[11px] font-semibold tracking-wide text-muted">
               {t.verified && <ShieldCheck className="size-3" aria-hidden />}{t.verified ? "Verified" : "Unverified"}</span></h3>
           <p className="text-sm text-muted">
             {plural(open, "open finding")} · {t.verified && t.last_seen !== t.first_seen ? <>last scanned <time dateTime={t.last_seen + "Z"}>{relativeTime(t.last_seen)}</time></> : "not scanned"}

@@ -105,7 +105,7 @@ function TokensSection() {
               return (
                 <li key={t.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 text-sm">
                   <code className="font-mono text-xs">{t.id}</code>
-                  {t.sandbox && <span className="rounded border border-line-strong px-1.5 py-px text-[11px] font-semibold tracking-wide text-muted">Sandbox</span>}
+                  {t.sandbox && <span className="border border-line-strong px-1.5 py-px text-[11px] font-semibold tracking-wide text-muted">Sandbox</span>}
                   <span className="min-w-0 flex-1 text-muted">
                     {t.revoked ? "Revoked" : expired ? "Expired " : "Expires "}
                     {!t.revoked && <time dateTime={parseUtc(t.expires).toISOString()} title={parseUtc(t.expires).toLocaleString()}>{relativeTime(t.expires)}</time>}

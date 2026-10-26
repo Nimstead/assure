@@ -82,7 +82,7 @@ function ActionCard({ a }: { a: Action }) {
       <div className="min-w-0">
         <p className="text-base">
           Upgrade <strong className="font-semibold">{a.package}</strong> to{" "}
-          <code className="break-all rounded bg-sunken px-1.5 py-0.5 font-mono text-[13px]">{a.fixed_version}</code>
+          <code className="break-all bg-sunken px-1.5 py-0.5 font-mono text-[13px]">{a.fixed_version}</code>
         </p>
         <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm text-muted">
           <PriorityPill priority={priorityOf(a.max_score, a.kev)} />

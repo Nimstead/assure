@@ -13,8 +13,8 @@ const STATUS_CLASS: Record<JobStatus, string> = {
   not_fixed: "bg-now-bg text-now-fg", aborted: "bg-now-bg text-now-fg", cancelled: "bg-sunken text-ink",
 };
 export const StatusPill = ({ status }: { status: JobStatus }) => (
-  <span className={clsx("inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium", STATUS_CLASS[status])}>
-    <span aria-hidden className="size-1.5 rounded-full bg-current" />{JOB_STATUS_LABEL[status]}
+  <span className={clsx("inline-flex items-center gap-1.5 whitespace-nowrap px-2 py-0.5 text-xs font-medium", STATUS_CLASS[status])}>
+    <span aria-hidden className="size-1.5 bg-current" />{JOB_STATUS_LABEL[status]}
   </span>
 );
 

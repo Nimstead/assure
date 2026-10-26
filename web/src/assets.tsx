@@ -87,7 +87,7 @@ function AssetRow({ a, onPatch, onDelete }: { a: Asset; onPatch: (p: AssetPatch)
       <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
       <div className="min-w-0 flex-1 basis-60">
         <h2 className="flex items-center gap-2 text-base font-semibold"><span className="truncate">{a.hostname}</span>
-          {a.sandbox && <span title="Disposable test machine: the only kind remediation may change until production remediation is enabled" className="shrink-0 rounded border border-line-strong px-1.5 py-px text-[11px] font-semibold tracking-wide text-muted">Sandbox</span>}</h2>
+          {a.sandbox && <span title="Disposable test machine: the only kind remediation may change until production remediation is enabled" className="shrink-0 border border-line-strong px-1.5 py-px text-[11px] font-semibold tracking-wide text-muted">Sandbox</span>}</h2>
         <p className="truncate text-sm text-muted">
           {a.kind === "application" ? "Application (SBOM)" : a.os_name || "Unknown OS"} · seen <time dateTime={a.last_seen + "Z"} title={new Date(a.last_seen + "Z").toLocaleString()}>{relativeTime(a.last_seen)}</time>
         </p>

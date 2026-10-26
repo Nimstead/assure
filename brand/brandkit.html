@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nimstead Brand Kit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* Tokens lifted from web/src/index.css (dark scheme) so the kit and the product stay one system. */
+  :root {
+    --canvas: oklch(0.13 0.008 250);
+    --ink: oklch(0.17 0.01 250);
+    --panel: oklch(0.195 0.011 250);
+    --raise: oklch(0.235 0.013 250);
+    --line: oklch(0.3 0.015 250);
+    --fog: oklch(0.95 0.005 250);
+    --muted: oklch(0.66 0.015 250);
+    --teal: oklch(0.78 0.11 190);
+    --teal-deep: oklch(0.5 0.1 195);
+    --teal-soft: oklch(0.27 0.045 195);
+    --coral: oklch(0.8 0.13 25);
+    --coral-soft: oklch(0.3 0.07 25);
+    --amber: oklch(0.82 0.12 75);
+    --amber-soft: oklch(0.3 0.06 70);
+    --blue: oklch(0.8 0.1 260);
+    --blue-soft: oklch(0.28 0.05 260);
+    --sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+    --mono: "Geist Mono", ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--canvas); color: var(--fog); font-family: var(--sans); }
+  body { min-height: 100dvh; display: grid; place-items: center; padding: 16px; }
+
+  /* The board scales as one image: everything inside sizes in cqw. */
+  .board { width: min(100%, calc((100dvh - 32px) * 1.6)); aspect-ratio: 16 / 10; container-type: inline-size;
+    display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); gap: 1.1cqw; }
+  .p { position: relative; overflow: hidden; background: var(--panel); border-radius: 0.9cqw; padding: 2cqw; }
+  .lbl { position: absolute; left: 2cqw; bottom: 1.5cqw; font: 500 0.62cqw/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+  .no { position: absolute; right: 2cqw; bottom: 1.5cqw; font: 400 0.62cqw/1 var(--mono); color: var(--muted); }
+  .no::before { content: ""; display: inline-block; width: 1.4cqw; height: 1px; background: var(--line); vertical-align: middle; margin-right: 0.6cqw; }
+  svg { display: block; }
+
+  /* 01 cover */
+  .cover { display: grid; place-items: center; }
+  .lockup { display: flex; align-items: center; gap: 1.3cqw; }
+  .lockup svg { width: 4.6cqw; height: 4.6cqw; }
+  .word { font: 500 3.6cqw/1 var(--sans); letter-spacing: -0.045em; }
+
+  /* 02 construction */
+  .build { display: grid; place-items: center; background:
+    linear-gradient(var(--line) 1px, transparent 1px) 0 0 / 1.25cqw 1.25cqw,
+    linear-gradient(90deg, var(--line) 1px, transparent 1px) 0 0 / 1.25cqw 1.25cqw, var(--panel); }
+  .build::after { content: ""; position: absolute; inset: 0; background: radial-gradient(closest-side, transparent 30%, var(--panel) 100%); }
+  .build svg { position: relative; z-index: 1; width: 15cqw; }
+  .build .lbl, .build .no { z-index: 1; }
+
+  /* 03 browser */
+  .web { background: linear-gradient(160deg, var(--raise), var(--panel) 60%); padding: 1.6cqw 1.6cqw 3.6cqw; }
+  .chrome { height: 100%; border: 1px solid var(--line); border-radius: 0.6cqw; background: var(--ink); overflow: hidden; display: flex; flex-direction: column; }
+  .bar { display: flex; align-items: center; gap: 0.4cqw; padding: 0.7cqw 0.9cqw; border-bottom: 1px solid var(--line); }
+  .bar i { width: 0.5cqw; height: 0.5cqw; border-radius: 50%; background: var(--line); }
+  .url { margin-left: 0.8cqw; flex: 1; display: flex; align-items: center; gap: 0.5cqw; padding: 0.35cqw 0.8cqw; border-radius: 99px; background: var(--panel); font: 400 0.7cqw/1 var(--mono); color: var(--muted); }
+  .url svg { width: 0.9cqw; height: 0.9cqw; }
+  .view { flex: 1; min-height: 0; padding: 1cqw 1.3cqw; display: flex; flex-direction: column; gap: 0.6cqw; }
+  .eyebrow { font: 500 0.6cqw/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+  .action { display: flex; align-items: center; gap: 0.9cqw; padding: 0.6cqw 1cqw; border: 1px solid var(--line); border-radius: 0.5cqw; background: var(--panel); }
+  .action b { font-weight: 500; font-size: 0.95cqw; display: block; letter-spacing: -0.01em; }
+  .action span { font-size: 0.72cqw; color: var(--muted); }
+  .action .chip { margin-left: auto; }
+  .action.dim { opacity: 0.5; }
+  .chip { display: inline-flex; align-items: center; gap: 0.35cqw; padding: 0.3cqw 0.65cqw; border-radius: 99px; font: 500 0.62cqw/1 var(--mono); letter-spacing: 0.04em; white-space: nowrap; }
+  .chip::before { content: ""; width: 0.42cqw; height: 0.42cqw; border-radius: 50%; background: currentColor; }
+  .now { color: var(--coral); background: var(--coral-soft); }
+  .next { color: var(--amber); background: var(--amber-soft); }
+  .plan { color: var(--blue); background: var(--blue-soft); }
+  .ok { color: var(--teal); background: var(--teal-soft); }
+
+  /* 04 tagline */
+  .tag { display: flex; flex-direction: column; justify-content: center; padding-left: 2.6cqw; }
+  .tag h2 { margin: 0; font: 400 3.3cqw/1.02 var(--sans); letter-spacing: -0.045em; }
+  .tag h2 em { font-style: normal; color: var(--teal); }
+
+  /* 05 colour */
+  .color { display: grid; grid-template-columns: 2.2fr 1fr 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 0.5cqw; padding-bottom: 3.6cqw; }
+  .sw { border-radius: 0.5cqw; padding: 0.8cqw; display: flex; flex-direction: column; justify-content: flex-end; font: 500 0.62cqw/1.35 var(--mono); }
+  .sw small { display: block; font-weight: 400; opacity: 0.7; }
+  .sw.big { grid-row: span 2; background: var(--teal); color: var(--ink); }
+  .sw.big strong { font: 500 1.25cqw/1.1 var(--sans); letter-spacing: -0.02em; margin-bottom: 0.3cqw; }
+
+  /* 06 type */
+  .type { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 2cqw; padding-left: 2.6cqw; padding-bottom: 3.6cqw; }
+  .type .aa { font: 500 7.5cqw/0.9 var(--sans); letter-spacing: -0.06em; }
+  .type .meta { display: flex; flex-direction: column; gap: 0.9cqw; }
+  .type .meta div { font-size: 1cqw; letter-spacing: -0.01em; }
+  .type .meta small { display: block; font: 400 0.62cqw/1.5 var(--mono); color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; }
+  .type .monorow { font-family: var(--mono); font-size: 0.85cqw; color: var(--teal); }
+
+  /* 07 evidence pack */
+  .phys { background: radial-gradient(120% 90% at 70% 0%, var(--raise), var(--panel)); }
+  .doc { position: absolute; width: 11cqw; aspect-ratio: 1 / 1.3; border-radius: 0.35cqw; padding: 1cqw; }
+  .doc.back { left: 11.6cqw; top: 1.6cqw; transform: rotate(7deg); background: var(--teal-deep); }
+  .doc.front { left: 9.2cqw; top: 2cqw; transform: rotate(-3deg); background: oklch(0.955 0.006 90); color: var(--ink);
+    box-shadow: 0 1.5cqw 3cqw oklch(0.05 0.01 250 / 0.55); display: flex; flex-direction: column; }
+  .doc.front .h { display: flex; align-items: center; gap: 0.45cqw; font: 600 0.8cqw/1 var(--sans); letter-spacing: -0.03em; }
+  .doc.front .h svg { width: 1.1cqw; height: 1.1cqw; }
+  .doc.front h3 { margin: auto 0 0.5cqw; font: 500 1.35cqw/1.05 var(--sans); letter-spacing: -0.035em; }
+  .doc.front .f { font: 400 0.52cqw/1.6 var(--mono); color: oklch(0.45 0.02 250); border-top: 1px solid oklch(0.85 0.01 250); padding-top: 0.5cqw; }
+  .seal { position: absolute; right: 1cqw; top: 3.4cqw; width: 3.6cqw; height: 3.6cqw; }
+
+  /* 08 image */
+  .img { padding: 0; }
+  .img svg { width: 100%; height: 100%; }
+  .img .lbl { color: oklch(0.8 0.02 250); }
+
+  /* 09 system */
+  .sys { display: flex; flex-direction: column; gap: 1cqw; padding-bottom: 3.6cqw; }
+  .term { flex: 1; border: 1px solid var(--line); border-radius: 0.5cqw; background: var(--ink); padding: 0.9cqw 1.1cqw; font: 400 0.72cqw/1.75 var(--mono); color: var(--muted); }
+  .term .c { color: var(--fog); }
+  .term .c::before { content: "$ "; color: var(--teal); }
+  .term .g { color: var(--teal); }
+  .chips { display: flex; gap: 0.45cqw; flex-wrap: wrap; }
+  .chain { display: flex; align-items: center; }
+  .chain span { font: 400 0.58cqw/1 var(--mono); color: var(--muted); padding: 0.45cqw 0.6cqw; border: 1px solid var(--line); border-radius: 0.3cqw; }
+  .chain span.last { color: var(--teal); border-color: var(--teal-deep); }
+  .chain i { width: 0.9cqw; height: 1px; background: var(--line); }
+
+  @media (max-width: 720px) {
+    .board { width: 100%; aspect-ratio: auto; grid-template-columns: 1fr; grid-template-rows: none; gap: 3cqw; }
+    .p { aspect-ratio: 16 / 10; zoom: 3; }
+  }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <!-- The mark: one continuous path from finding to fix, ending at a proof point. -->
+    <symbol id="mark" viewBox="0 0 32 32">
+      <rect width="32" height="32" rx="8" fill="oklch(0.78 0.11 190)"/>
+      <path d="M9 23V9l14 14V13" stroke="oklch(0.17 0.01 250)" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="23" cy="8.4" r="1.9" fill="oklch(0.17 0.01 250)"/>
+    </symbol>
+    <symbol id="glyph" viewBox="0 0 32 32">
+      <path d="M9 23V9l14 14V13" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="23" cy="8.4" r="1.9" fill="currentColor"/>
+    </symbol>
+  </defs>
+</svg>
+
+<main class="board">
+
+  <!-- 01 -->
+  <section class="p cover">
+    <div class="lockup">
+      <svg><use href="#mark"/></svg>
+      <span class="word">nimstead</span>
+    </div>
+    <span class="lbl">Identity</span><span class="no">01</span>
+  </section>
+
+  <!-- 02 -->
+  <section class="p build">
+    <svg viewBox="-6 -6 44 44" fill="none" font-family="Geist Mono, monospace">
+      <rect x="0" y="0" width="32" height="32" rx="8" stroke="oklch(0.5 0.1 195)" stroke-width="0.15" stroke-dasharray="0.6 0.6"/>
+      <circle cx="9" cy="9" r="14" stroke="oklch(0.42 0.02 250)" stroke-width="0.12"/>
+      <line x1="9" y1="-4" x2="9" y2="36" stroke="oklch(0.42 0.02 250)" stroke-width="0.1"/>
+      <line x1="23" y1="-4" x2="23" y2="36" stroke="oklch(0.42 0.02 250)" stroke-width="0.1"/>
+      <line x1="-4" y1="23" x2="36" y2="23" stroke="oklch(0.42 0.02 250)" stroke-width="0.1"/>
+      <line x1="-4" y1="9" x2="36" y2="9" stroke="oklch(0.42 0.02 250)" stroke-width="0.1"/>
+      <path d="M9 23V9l14 14V13" stroke="oklch(0.95 0.005 250)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M9 23V9l14 14V13" stroke="oklch(0.78 0.11 190)" stroke-width="0.15"/>
+      <circle cx="23" cy="8.4" r="1.9" fill="oklch(0.78 0.11 190)"/>
+      <circle cx="23" cy="8.4" r="3.6" stroke="oklch(0.78 0.11 190)" stroke-width="0.12"/>
+      <g fill="oklch(0.66 0.015 250)" font-size="1.7">
+        <text x="-1" y="5">finding</text>
+        <text x="16.4" y="13.2" transform="rotate(45 16.4 13.2)">fix</text>
+        <text x="27.2" y="9">proof</text>
+        <text x="9" y="28.4">3u stroke · 45°</text>
+      </g>
+    </svg>
+    <span class="lbl">Construction</span><span class="no">02</span>
+  </section>
+
+  <!-- 03 -->
+  <section class="p web">
+    <div class="chrome">
+      <div class="bar"><i></i><i></i><i></i>
+        <div class="url"><svg style="color:var(--teal)"><use href="#glyph"/></svg>app.nimstead / fix</div>
+      </div>
+      <div class="view">
+        <div class="eyebrow">Do these first</div>
+        <div class="action">
+          <div><b>Upgrade openssl</b><span>Fixes 12 vulnerabilities on 3 hosts</span></div>
+          <span class="chip now">Fix now</span>
+        </div>
+        <div class="action dim">
+          <div><b>Upgrade libxml2</b><span>Fixes 4 vulnerabilities on 7 hosts</span></div>
+          <span class="chip next">Next</span>
+        </div>
+      </div>
+    </div>
+    <span class="lbl">Product</span><span class="no">03</span>
+  </section>
+
+  <!-- 04 -->
+  <section class="p tag">
+    <h2>Fixed.<br><em>And proven.</em></h2>
+    <span class="lbl">Promise</span><span class="no">04</span>
+  </section>
+
+  <!-- 05 -->
+  <section class="p color">
+    <div class="sw big"><strong>Signal Teal</strong>oklch 0.78 0.11 190</div>
+    <div class="sw" style="background:var(--ink);border:1px solid var(--line)">Stead Ink<small>0.17 0.01 250</small></div>
+    <div class="sw" style="background:var(--fog);color:var(--ink)">Fog<small>0.95 0.005 250</small></div>
+    <div class="sw" style="background:var(--teal-deep);color:var(--fog)">Deep Teal<small>0.50 0.10 195</small></div>
+    <div class="sw" style="background:var(--coral);color:var(--ink)">Fix now<small>0.80 0.13 25</small></div>
+    <div class="sw" style="background:var(--amber);color:var(--ink)">Next<small>0.82 0.12 75</small></div>
+    <div class="sw" style="background:var(--blue);color:var(--ink)">Planned<small>0.80 0.10 260</small></div>
+    <span class="lbl">Colour</span><span class="no">05</span>
+  </section>
+
+  <!-- 06 -->
+  <section class="p type">
+    <div class="aa">Aa</div>
+    <div class="meta">
+      <div><small>Primary · Geist</small>Plain English, every score.</div>
+      <div class="monorow"><small style="color:var(--muted)">Data · Geist Mono</small>CVE-2026-0412 → 3.0.15</div>
+    </div>
+    <span class="lbl">Typography</span><span class="no">06</span>
+  </section>
+
+  <!-- 07 -->
+  <section class="p phys">
+    <div class="doc back"></div>
+    <div class="doc front">
+      <div class="h"><svg><use href="#mark"/></svg>nimstead</div>
+      <h3>Evidence<br>pack</h3>
+      <div class="f">ISO 27001 A.8.8 · NIST SI-2<br>Ed25519 signed · ledger #4,812</div>
+    </div>
+    <svg class="seal" viewBox="0 0 40 40">
+      <defs><path id="ring" d="M20 20m-14 0a14 14 0 1 1 28 0a14 14 0 1 1-28 0"/></defs>
+      <circle cx="20" cy="20" r="19" fill="oklch(0.17 0.01 250)" stroke="oklch(0.78 0.11 190)" stroke-width="0.6"/>
+      <text font-family="Geist Mono, monospace" font-size="3.3" letter-spacing="1.1" fill="oklch(0.78 0.11 190)"><textPath href="#ring">VERIFIED · OFFLINE · VERIFIED ·</textPath></text>
+      <use href="#glyph" x="11" y="11" width="18" height="18" style="color:oklch(0.95 0.005 250)"/>
+    </svg>
+    <span class="lbl">Evidence</span><span class="no">07</span>
+  </section>
+
+  <!-- 08: the stead at dusk — one lit window inside a watched boundary -->
+  <section class="p img">
+    <svg viewBox="0 0 400 250" preserveAspectRatio="xMidYMid slice">
+      <defs>
+        <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="oklch(0.15 0.02 250)"/>
+          <stop offset="0.7" stop-color="oklch(0.3 0.06 210)"/>
+          <stop offset="1" stop-color="oklch(0.55 0.09 195)"/>
+        </linearGradient>
+        <pattern id="dots" width="4" height="4" patternUnits="userSpaceOnUse">
+          <circle cx="2" cy="2" r="1.05" fill="oklch(0.85 0.06 195)"/>
+        </pattern>
+        <linearGradient id="fadeG" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0.25" stop-color="#000"/><stop offset="1" stop-color="#fff"/>
+        </linearGradient>
+        <mask id="fade"><rect width="400" height="250" fill="url(#fadeG)"/></mask>
+        <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+          <stop offset="0" stop-color="oklch(0.85 0.12 190)" stop-opacity="0.55"/>
+          <stop offset="1" stop-color="oklch(0.85 0.12 190)" stop-opacity="0"/>
+        </radialGradient>
+      </defs>
+      <rect width="400" height="250" fill="url(#sky)"/>
+      <rect width="400" height="250" fill="url(#dots)" mask="url(#fade)" opacity="0.45"/>
+      <g fill="none" stroke="oklch(0.78 0.11 190)" stroke-width="0.6" opacity="0.5">
+        <ellipse cx="236" cy="176" rx="70" ry="16" stroke-dasharray="2 3"/>
+        <ellipse cx="236" cy="176" rx="130" ry="30" stroke-dasharray="1 4" opacity="0.6"/>
+      </g>
+      <path d="M0 168 C60 150 110 160 160 152 C220 142 280 158 330 148 C360 142 385 146 400 150 V250 H0Z" fill="oklch(0.2 0.025 230)"/>
+      <path d="M0 196 C80 178 150 186 240 176 C300 170 360 180 400 174 V250 H0Z" fill="oklch(0.13 0.012 250)"/>
+      <circle cx="236" cy="168" r="22" fill="url(#glow)"/>
+      <path d="M224 177 V166 L232 159 L240 166 V177 Z" fill="oklch(0.11 0.01 250)"/>
+      <path d="M240 177 V169 H250 V177Z" fill="oklch(0.11 0.01 250)"/>
+      <rect x="230" y="168" width="3.4" height="4" fill="oklch(0.88 0.12 190)"/>
+    </svg>
+    <span class="lbl">Atmosphere</span><span class="no">08</span>
+  </section>
+
+  <!-- 09 -->
+  <section class="p sys">
+    <div class="term">
+      <div class="c">nimstead feeds update</div>
+      <div>KEV · EPSS · NVD · OSV&nbsp;&nbsp;refreshed</div>
+      <div>canary ring&nbsp;&nbsp;openssl 3.0.15&nbsp;&nbsp;healthy</div>
+      <div class="g">✓ fixed · confirmed by next inventory</div>
+    </div>
+    <div class="chips">
+      <span class="chip now">Fix now</span><span class="chip next">Next</span><span class="chip plan">Planned</span><span class="chip ok">Verified</span>
+    </div>
+    <div class="chain"><span>a41f…</span><i></i><span>9c0e…</span><i></i><span>e27b…</span><i></i><span class="last">checkpoint ✓</span></div>
+    <span class="lbl">System</span><span class="no">09</span>
+  </section>
+
+</main>
+</body>
+</html>

@@ -11,8 +11,8 @@ export const input = "min-h-10 w-full rounded-md border border-line-strong bg-su
 /** Colour is never the only signal: dot + text label. */
 export function PriorityPill({ priority, count }: { priority: Priority; count?: number }) {
   return (
-    <span className={clsx("inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium", PRIORITY_CLASS[priority])}>
-      <span aria-hidden className="size-1.5 rounded-full bg-current" />
+    <span className={clsx("inline-flex items-center gap-1.5 whitespace-nowrap px-2 py-0.5 text-xs font-medium", PRIORITY_CLASS[priority])}>
+      <span aria-hidden className="size-1.5 bg-current" />
       {PRIORITY_LABEL[priority]}
       {count !== undefined && <span className="num font-semibold">{count}</span>}
     </span>
@@ -20,7 +20,7 @@ export function PriorityPill({ priority, count }: { priority: Priority; count?: 
 }
 
 export const KevBadge = () => (
-  <span title="Listed in CISA's Known Exploited Vulnerabilities catalog" className="rounded border border-now-fg px-1.5 py-px text-[11px] font-semibold tracking-wide text-now-fg">KEV</span>
+  <span title="Listed in CISA's Known Exploited Vulnerabilities catalog" className="border border-now-fg px-1.5 py-px text-[11px] font-semibold tracking-wide text-now-fg">KEV</span>
 );
 
 export const Skeleton = ({ className }: { className?: string }) => <div aria-hidden className={clsx("skeleton", className)} />;

@@ -86,7 +86,7 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True) -> dict:
             elif f.status == "accepted" and f.accepted_until and f.accepted_until < t:
                 f.status, f.accepted_until = "open", None
                 events.append(("acceptance_expired", f))
-            f.installed_version = p.version
+            f.installed_version = version  # normalised for WinApp (Python: 3.14-64 -> 3.14.5)
             f.advisory_ids = sorted(m.advisory_ids)
             f.fixed_version = m.fixed
             f.summary = (m.summary or "")[:1000]

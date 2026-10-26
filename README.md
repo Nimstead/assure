@@ -3,7 +3,7 @@
 Vulnerability scanning, patch assurance, audit evidence and safe automatic remediation in one product.
 
 - **Accurate, low-noise detection:** agents report installed packages, and Nimstead matches them against OSV advisories using each distro's own version rules and source-package names. Backported fixes aren't flagged. Results are tested to agree with the OSV API on real data.
-- **Application dependencies too:** add an application on the Assets page and upload a CycloneDX SBOM (JSON 1.4-1.6, via the UI or `POST /api/assets/{id}/sbom` from CI with the asset's upload token); PyPI, npm, Maven, NuGet, RubyGems, Go and crates.io packages are matched like OS packages.
+- **Application dependencies too:** add an application on the Assets page and upload a CycloneDX (JSON 1.4-1.6) or SPDX (JSON 2.2/2.3) SBOM (not XML or SPDX tag-value; via the UI or `POST /api/assets/{id}/sbom` from CI with the asset's upload token); PyPI, npm, Maven, NuGet, RubyGems, Go, crates.io, Packagist (Composer), Hex and Pub packages are matched like OS packages.
 - **Prioritised by real-world risk:** CISA KEV first, then EPSS likelihood, CVSS, asset criticality and internet exposure, with a plain-English reason for every score. The home screen shows fix *actions* ("upgrade openssl → fixes 12 vulnerabilities on 3 hosts"), not a wall of CVEs.
 - **Evidence an auditor can check:** every detection, fix and decision is recorded in a hash-chained ledger with signed off-database checkpoints. Ed25519-signed evidence packs map to Cyber Essentials, ISO 27001 A.8.8, NIST RA-5/SI-2, PCI DSS 6.3.3 and CIS 7, and verify offline against a pinned key fingerprint.
 - **Remediation you can switch on:**

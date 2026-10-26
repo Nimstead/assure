@@ -5,10 +5,10 @@ Read this first each session. Decisions and their reasons: DECISIONS.md (items 1
 ## Done (with evidence)
 | Area | Where | Evidence |
 |---|---|---|
-| Version comparators: dpkg, rpm, apk, semver, PEP 440, Maven, NuGet, RubyGems, Windows build | `api/src/nimstead/versions.py` | Table tests from each reference suite |
-| OSV matcher (source-package, backports, CVE dedup, withdrawn) | `match.py` | Exact agreement with the OSV API on 31 real package/version cases across Debian, Ubuntu, Alpine, Rocky, PyPI, npm, Maven (log4j-core, jackson-databind), NuGet, RubyGems |
+| Version comparators: dpkg, rpm, apk, semver, PEP 440, Maven, NuGet, RubyGems, Composer, Windows build; Hex and Pub reuse semver | `api/src/nimstead/versions.py` | Table tests from each reference suite |
+| OSV matcher (source-package, backports, CVE dedup, withdrawn) | `match.py` | Exact agreement with the OSV API on 49 real package/version cases across Debian, Ubuntu, Alpine, Rocky, PyPI, npm, Maven (log4j-core, jackson-databind), NuGet, RubyGems, Packagist (laravel/framework, symfony/http-kernel, guzzle), Hex (plug, phoenix), Pub (http, archive) |
 | Windows OS detection via MSRC (FixedBuild/KB per product) | `feeds.py` (`sync_msrc`), agent | Real MSRC sync + real agent→server run on this Windows 11 machine (0 findings, fully patched; 1,009 at one build below, all one KB) |
-| SBOM ingest (CycloneDX 1.4–1.6, purl → ecosystem), application assets with upload tokens | `sbom.py`, `app.py` | `tests/test_sbom.py` incl. log4j-core 2.14.1 → CVE-2021-44228 |
+| SBOM ingest (CycloneDX 1.4–1.6 and SPDX 2.2/2.3 JSON, purl → ecosystem), application assets with upload tokens | `sbom.py`, `app.py` | `tests/test_sbom.py` incl. log4j-core 2.14.1 → CVE-2021-44228 from both formats |
 | Risk scorer (KEV override, EPSS, CVSS, criticality, exposure, fix) with reasons | `risk.py` | `tests/test_risk.py` |
 | Feeds: OSV (incremental, releases in use only), KEV, EPSS, NVD CVSS, MSRC; `feeds update` re-matches assets, checkpoints the ledger, retries failed alerts | `feeds.py` | Mocked tests + real runs (KEV 1,756; EPSS 395k; OSV Debian 196k, Ubuntu 3.3M, Alpine, AlmaLinux 26k; MSRC 46k) |
 | API: auth (argon2, throttled in DB), enrol tokens, agent enrol/inventory, findings, assets, summary, install.sh + install.ps1, serves the built UI | `app.py`, `db.py`, `scan.py` | `tests/test_api.py` incl. tenant isolation, CSRF/Origin, 413, Host-header injection |
@@ -35,7 +35,7 @@ Real-host E2E (fresh WSL distro each, destroyed after):
 
 All four evidence packs verified, with 6/6 controls met. On Alpine, the dry run refused the openssl fix because it also needed musl. Re-planning "including musl" (which pulls in musl-utils, from the same source package) succeeded and was verified fixed (40 findings resolved).
 
-**Last runs (final code):** API 358 passed on SQLite (foreign keys enforced) and 358 passed on PostgreSQL 17 · web 18 unit + 4 Playwright e2e (axe clean in light and dark) · real-host E2E PASS on all four distros.
+**Last runs (final code):** API 450 passed on SQLite (PostgreSQL 17 not re-run since the SBOM/comparator change) · web 18 unit + 4 Playwright e2e (axe clean in light and dark) · real-host E2E PASS on all four distros.
 
 ## NOT proven / known gaps (honest)
 - **AI** has never been called against the real API (no key on this machine).
@@ -43,9 +43,9 @@ All four evidence packs verified, with 6/6 controls met. On Alpine, the dry run 
 - **Windows third-party apps** are not covered: there's no reliable advisory source keyed by installed software.
 - **Snapshot rollback** doesn't reverse maintainer-script side effects (health checks cover the visible ones). Kernel/install-only packages are refused.
 - **Dependency upgrades are never silent:** when a fix needs another package, the dry run refuses it and the user re-plans "including X" with one click. Nothing expands on its own.
-- **SBOM:** CycloneDX JSON only (no SPDX/VEX). Findings mean "present", not "reachable".
+- **SBOM:** CycloneDX and SPDX JSON only (no XML, SPDX tag-value or VEX); SPDX relationships are ignored, so every package with a purl is scanned. Findings mean "present", not "reachable".
 - **Secrets:** the signing and secret keys are files on disk; use KMS in production. Checkpoints need WORM storage.
-- **Ecosystems:** no Go/crates beyond semver, and no Conda/Composer/Hex comparators.
+- **Ecosystems:** Go/crates/Hex/Pub use the semver comparator (Pub build-metadata ordering differs); Composer `dev-*` branches are refused; no Conda comparator.
 
 ## Needs the user
 - Optional: an Anthropic API key to enable and live-test AI.

@@ -1,7 +1,6 @@
 """HTTP API. Web users authenticate with a session cookie; agents with a per-asset bearer key."""
 
 import hashlib
-import json
 import logging
 import os
 import re
@@ -399,7 +398,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             user = current_user(request, s)
             a, by = owned_asset(s, user, asset_id), user.email
         try:
-            pkgs, counts = sbom.parse(json.loads(raw))
+            pkgs, counts = sbom.parse(sbom.load(raw))
         except (ValueError, RecursionError) as e:  # bad JSON, bad UTF-8 or SbomError
             raise HTTPException(422, f"Invalid SBOM: {e}") from None
         s.execute(delete(InstalledPackage).where(InstalledPackage.asset_id == a.id, InstalledPackage.origin == "sbom"))

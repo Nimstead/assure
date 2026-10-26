@@ -30,6 +30,13 @@ CASES = [
     ("NuGet", "System.Text.Encodings.Web", ["4.7.1", "5.0.1"]),
     ("RubyGems", "rack", ["2.2.3", "2.2.8", "3.0.0.beta1"]),
     ("RubyGems", "nokogiri", ["1.13.9", "1.16.5"]),
+    ("Packagist", "laravel/framework", ["8.0.0", "9.52.0", "10.48.29"]),
+    ("Packagist", "symfony/http-kernel", ["4.4.0", "5.4.20", "6.4.0"]),
+    ("Packagist", "guzzlehttp/guzzle", ["6.5.7", "7.4.4"]),
+    ("Hex", "plug", ["1.10.0", "1.14.0"]),
+    ("Hex", "phoenix", ["1.5.0", "1.6.14"]),
+    ("Pub", "http", ["0.12.2", "0.13.3", "1.2.0"]),
+    ("Pub", "archive", ["3.3.0", "3.3.8", "3.6.1"]),
 ]
 
 OUT = Path(__file__).parent / "fixtures" / "osv"

@@ -3,6 +3,7 @@ import pytest
 from nimstead.versions import (
     apk_cmp,
     comparator_for,
+    composer_cmp,
     dpkg_cmp,
     gem_cmp,
     maven_cmp,
@@ -117,7 +118,7 @@ def test_comparator_for():
     assert comparator_for("Ubuntu:22.04:LTS") is dpkg_cmp
     assert comparator_for("Rocky Linux:9") is rpm_cmp
     assert comparator_for("Windows") is windows_cmp
-    assert comparator_for("Hex") is None  # unsupported -> refuse to guess
+    assert comparator_for("Conda") is None  # unsupported -> refuse to guess
 
 
 def test_invalid_versions_raise():
@@ -192,3 +193,40 @@ def test_new_comparators_refuse_garbage(fn, bad):
 
 def test_registered():
     assert comparator_for("Maven") is maven_cmp and comparator_for("NuGet") is nuget_cmp and comparator_for("RubyGems") is gem_cmp
+
+
+COMPOSER = [  # from Composer's VersionParserTest / Semver ComparatorTest
+    ("1.0", "1.0.0.0", 0), ("v1.2", "1.2.0.0", 0), ("1.0.0", "1.0.0.1", -1), ("1.2.3.4", "1.2.3.10", -1), ("1.10", "1.9", 1),
+    ("1.0.0-dev", "1.0.0-alpha", -1), ("1.0.0-alpha", "1.0.0-a", 0), ("1.0.0-alpha", "1.0.0-beta", -1), ("1.0.0-b", "1.0.0-beta", 0),
+    ("1.0.0-beta", "1.0.0-RC", -1), ("1.0.0-rc1", "1.0.0-RC1", 0), ("1.0.0-RC2", "1.0.0-RC10", -1), ("1.0.0-RC1", "1.0.0", -1),
+    ("1.0.0-stable", "1.0.0", 0), ("1.0.0", "1.0.0-patch", -1), ("1.0.0-pl1", "1.0.0-p1", 0), ("1.0.0-patch1", "1.0.1", -1),
+    ("1.0.0-beta1", "1.0.0-beta.1", 0), ("1.0.0_beta1", "1.0.0-beta-1", 0), ("1.0.0-beta1", "1.0.0-beta2", -1),
+    ("1.0.0-beta1-dev", "1.0.0-beta1", -1), ("1.0.0-dev", "1.0.0", -1), ("1.0.0-dev", "0.9.9", 1),
+    ("1.0.0+build.5", "1.0.0", 0), ("8.0.0", "9.52.0", -1), ("10.48.29", "9.52.0", 1), ("6.5.7", "7.4.4", -1),
+]
+
+
+@pytest.mark.parametrize("a,b,want", COMPOSER)
+def test_composer(a, b, want):
+    assert composer_cmp(a, b) == want and composer_cmp(b, a) == -want
+
+
+@pytest.mark.parametrize("bad", ["dev-master", "dev-feature/x", "1.x-dev", "", "abc", "1.2.3.4.5", "1..2", "20100102-x"])
+def test_composer_refuses_branches_and_garbage(bad):
+    with pytest.raises(ValueError):
+        composer_cmp(bad, "1.0.0")
+
+
+# Hex (Elixir Version) and Pub (pub_semver) are semver 2.0; OSV stores SEMVER / ECOSYSTEM ranges of that shape
+SEMVER_HEX_PUB = [("1.6.0-rc.0", "1.6.0", -1), ("1.5.15", "1.6.0-rc.0", -1), ("1.14.0", "1.9.0", 1), ("0.13.3", "0.13.3", 0),
+                  ("1.2.0-rc.0", "1.2.0-rc.1", -1), ("3.3.8", "3.3.10", -1)]
+
+
+@pytest.mark.parametrize("eco", ["Hex", "Pub"])
+@pytest.mark.parametrize("a,b,want", SEMVER_HEX_PUB)
+def test_hex_pub_use_semver(eco, a, b, want):
+    assert comparator_for(eco)(a, b) == want
+
+
+def test_registered_php():
+    assert comparator_for("Packagist") is composer_cmp

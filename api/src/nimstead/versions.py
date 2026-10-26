@@ -414,6 +414,61 @@ def gem_cmp(a: str, b: str) -> int:
     return 0
 
 
+# --- Packagist (Composer: VersionParser::normalize + PHP version_compare) ---------
+
+_COMPOSER_RE = re.compile(
+    r"v?(\d{1,5})(\.\d+)?(\.\d+)?(\.\d+)?"
+    r"[._-]?(?:(stable|beta|b|rc|alpha|a|patch|pl|p)((?:[.-]?\d+)*)?)?([.-]?dev)?",
+    re.I,
+)
+_COMPOSER_STABILITY = {"a": "alpha", "b": "beta", "rc": "RC", "pl": "patch", "p": "patch"}
+_PHP_FORMS = ["dev", "alpha", "a", "beta", "b", "RC", "rc", "#", "pl", "p"]  # PHP order; prefix match, unknown = -1
+_PHP_RANK = {"dev": 0, "alpha": 1, "a": 1, "beta": 2, "b": 2, "RC": 3, "rc": 3, "#": 4, "pl": 5, "p": 5}
+
+
+def _composer_normalize(v: str) -> str:
+    v = v.strip()
+    if "+" in v:
+        v = v.split("+", 1)[0]  # build metadata is ignored
+    m = _COMPOSER_RE.fullmatch(v)
+    if not m:  # includes dev-* branches and 1.x-dev aliases: no version to compare
+        raise ValueError(f"invalid Composer version: {v!r}")
+    nums = [m[1]] + [x[1:] for x in m.groups()[1:4] if x]
+    out = ".".join(nums + ["0"] * (4 - len(nums)))
+    if m[5] and m[5].lower() != "stable":
+        s = m[5].lower()
+        out += "-" + _COMPOSER_STABILITY.get(s, s) + (m[6] or "").lstrip(".-")
+    if m[7]:
+        out += "-dev"
+    return out
+
+
+def _php_parts(v: str) -> list[str]:
+    return re.sub(r"(\d)(?=[^\d.])|([^\d.])(?=\d)", r"\g<0>.", re.sub(r"[-_+]", ".", v)).split(".")
+
+
+def _php_form(p: str) -> int:
+    return next((_PHP_RANK[f] for f in _PHP_FORMS if p.startswith(f)), -1)
+
+
+def _php_part_cmp(a: str, b: str) -> int:
+    if a.isdigit() and b.isdigit():
+        return _sign(int(a) - int(b))
+    return _sign(_php_form("#" if a.isdigit() else a) - _php_form("#" if b.isdigit() else b))
+
+
+def composer_cmp(a: str, b: str) -> int:
+    pa, pb = _php_parts(_composer_normalize(a)), _php_parts(_composer_normalize(b))
+    for x, y in zip(pa, pb, strict=False):
+        if c := _php_part_cmp(x, y):
+            return c
+    if len(pa) == len(pb):
+        return 0
+    longer, sign = (pa, 1) if len(pa) > len(pb) else (pb, -1)
+    rest = longer[min(len(pa), len(pb))]
+    return sign if rest.isdigit() else sign * _sign(_php_form(rest) - _PHP_RANK["#"])
+
+
 _BY_PREFIX: dict[str, Cmp] = {
     "Windows": windows_cmp,
     "Debian": dpkg_cmp,
@@ -432,6 +487,9 @@ _BY_PREFIX: dict[str, Cmp] = {
     "Maven": maven_cmp,
     "NuGet": nuget_cmp,
     "RubyGems": gem_cmp,
+    "Packagist": composer_cmp,
+    "Hex": semver_cmp,  # OSV uses SEMVER ranges and Elixir Version is semver 2.0 (checked on plug, phoenix)
+    "Pub": semver_cmp,  # ponytail: pub_semver orders build metadata (1.0.0+2 > 1.0.0+1), semver_cmp calls them equal; add if a Pub advisory needs it
 }
 
 

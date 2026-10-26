@@ -24,6 +24,8 @@ import time
 import urllib.error
 import urllib.request
 
+AGENT_VERSION = "0.1.0"  # the server reads this line to flag outdated agents; bump on every agent change
+
 
 class AgentError(Exception):
     pass
@@ -219,7 +221,7 @@ def collect_windows():
     version = f"10.0.{build}.{ubr}"
     if build >= 22000:
         product = product.replace("Windows 10", "Windows 11")
-    return {"os_name": f"{product} {dv} ({machine}) build {version}", "ecosystem": "Windows",
+    return {"os_name": f"{product} {dv} ({machine}) build {version}", "ecosystem": "Windows", "agent_version": AGENT_VERSION,
             "packages": [{"ecosystem": "Windows", "name": name, "version": version, "source": None}, *windows_apps(winreg)]}
 
 
@@ -246,7 +248,7 @@ def collect():
         raise AgentError("no package manager found (dpkg-query, rpm, apk db)")
     if not pkgs:
         raise AgentError("collected zero packages; refusing to report an empty inventory")
-    return {"os_name": r.get("PRETTY_NAME") or r.get("NAME", ""), "ecosystem": eco,
+    return {"os_name": r.get("PRETTY_NAME") or r.get("NAME", ""), "ecosystem": eco, "agent_version": AGENT_VERSION,
             "packages": [dict(p, ecosystem=eco) for p in pkgs]}
 
 

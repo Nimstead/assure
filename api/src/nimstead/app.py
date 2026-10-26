@@ -52,6 +52,18 @@ INSTALL_PS1 = Path(__file__).parent / "static" / "install.ps1"
 WEB_DIST = Path(os.environ.get("NIMSTEAD_WEB_DIST", Path(__file__).parents[3] / "web" / "dist"))
 # ponytail: agent served from the repo checkout; ship it as package data (and signed) when packaging releases
 AGENT_FILE = Path(os.environ.get("NIMSTEAD_AGENT_FILE", Path(__file__).parents[3] / "agent" / "nimstead_agent.py"))
+
+
+@functools.cache
+def latest_agent_version() -> str:
+    """The version of the agent this server hands out; any host reporting something else is outdated."""
+    try:
+        m = re.search(r'^AGENT_VERSION = "([^"]+)"', AGENT_FILE.read_text(encoding="utf-8"), re.M)
+    except OSError:
+        return ""
+    return m.group(1) if m else ""
+
+
 SECURE_COOKIES = os.environ.get("NIMSTEAD_SECURE_COOKIES", "1") != "0"
 ph = PasswordHasher()
 NO_PASSWORD = "!"  # noqa: S105  never a valid argon2 hash
@@ -261,6 +273,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         os_name: str = Field("", max_length=255)
         ecosystem: str = Field("", max_length=100)
         packages: list[Pkg] = Field(max_length=50_000)
+        agent_version: str = Field("", max_length=50)
 
     def current_agent(s: DB, authorization: Annotated[str | None, Header()] = None) -> Asset:
         if not authorization or not authorization.startswith("Bearer "):
@@ -276,6 +289,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             raise HTTPException(429, f"Inventory already received; send at most one every {INVENTORY_MIN_SECONDS}s")
         asset.last_inventory_at = now()
         asset.os_name, asset.ecosystem, asset.last_seen = body.os_name or asset.os_name, body.ecosystem or asset.ecosystem, now()
+        asset.agent_version = body.agent_version
         s.execute(delete(InstalledPackage).where(InstalledPackage.asset_id == asset.id, InstalledPackage.origin == "agent"))
         s.add_all(InstalledPackage(asset_id=asset.id, origin="agent", **p.model_dump()) for p in body.packages)
         s.flush()
@@ -315,6 +329,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             "kind": a.kind, "criticality": a.criticality, "internet_facing": a.internet_facing, "sandbox": a.sandbox,
             "ring": a.ring, "health_units": a.health_units,
             "first_seen": a.first_seen, "last_seen": a.last_seen, "open_by_priority": counts,
+            **({"agent_version": a.agent_version, "agent_outdated": a.agent_version != latest_agent_version()} if a.kind == "host" else {}),
             **({"verified": a.verified_at is not None, "verified_at": a.verified_at, "txt_name": external.txt_name(a.hostname),
                 "txt_value": external.txt_value(a.org_id, a.hostname)} if a.kind == "external" else {}),
         }

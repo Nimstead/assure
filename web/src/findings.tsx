@@ -72,7 +72,7 @@ export function FindingsPage({ search }: { search: RawSearch }) {
           <div role="group" aria-label="Status" className="flex rounded-md border border-line-strong bg-surface p-0.5">
             {STATUSES.map((s) => (
               <button key={s} aria-pressed={f.status === s} onClick={() => set({ status: s })}
-                className={clsx("min-h-8 cursor-pointer rounded px-3 text-sm capitalize", f.status === s ? "bg-accent-soft font-medium text-ink" : "text-muted hover:text-ink")}>
+                className={clsx("min-h-8 cursor-pointer px-3 text-sm capitalize", f.status === s ? "bg-accent-soft font-medium text-ink" : "text-muted hover:text-ink")}>
                 {s}
               </button>
             ))}
@@ -226,7 +226,7 @@ function FindingDetail({ f }: { f: Finding }) {
       <ul className="flex flex-wrap gap-2">
         {ids.map((i) => (
           <li key={i}>
-            <a href={`https://osv.dev/vulnerability/${encodeURIComponent(i)}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded border border-line-strong px-2 py-1 font-mono text-xs hover:bg-sunken">
+            <a href={`https://osv.dev/vulnerability/${encodeURIComponent(i)}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 border border-line-strong px-2 py-1 font-mono text-xs hover:bg-sunken">
               {i} <ExternalLink className="size-3" aria-label="(opens in a new tab)" />
             </a>
           </li>

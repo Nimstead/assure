@@ -8,9 +8,9 @@ import { api, ApiError, filtersToSearch, isDark, meQ, parseFilters, setTheme, ty
 import { Skeleton } from "./ui";
 
 export const Logo = () => (
-  <span className="flex items-center gap-2 text-lg font-semibold tracking-tight">
-    <svg viewBox="0 0 32 32" className="size-7" aria-hidden><rect width="32" height="32" rx="8" fill="var(--accent)" /><path d="M9 23V9l14 14V9" stroke="var(--accent-ink)" strokeWidth="3" fill="none" strokeLinejoin="round" /></svg>
-    Nimstead
+  // product lockup: company in ExtraBold, product word in Regular; the seal belongs to the company mark only
+  <span className="text-xl leading-none tracking-[-0.045em] text-ink">
+    <span className="font-extrabold">Nimstead</span> <span className="font-normal">Assure</span>
   </span>
 );
 
@@ -57,7 +57,7 @@ export function Shell() {
   const iconBtn = "inline-flex size-10 cursor-pointer items-center justify-center rounded-md text-muted hover:bg-sunken hover:text-ink";
   return (
     <div className="min-h-dvh md:grid md:grid-cols-[15rem_1fr]">
-      <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-50 focus:rounded focus:bg-surface focus:px-3 focus:py-2">Skip to content</a>
+      <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-50 focus:bg-surface focus:px-3 focus:py-2">Skip to content</a>
 
       <aside className="sticky top-0 hidden h-dvh flex-col gap-6 border-r border-line bg-surface p-4 md:flex">
         <Link to="/" className="px-2 no-underline"><Logo /></Link>

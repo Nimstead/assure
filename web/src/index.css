@@ -1,29 +1,32 @@
 @import "tailwindcss";
-@import "@fontsource-variable/geist";
+@import "@fontsource-variable/archivo";
 @import "@fontsource-variable/geist-mono";
 
 /* Tokens. light-dark() follows prefers-color-scheme unless the toggle pins a scheme. */
 :root {
   color-scheme: light dark;
-  --bg: light-dark(oklch(0.985 0.004 240), oklch(0.17 0.01 250));
-  --surface: light-dark(oklch(1 0 0), oklch(0.215 0.012 250));
-  --sunken: light-dark(oklch(0.962 0.006 240), oklch(0.145 0.01 250));
-  --ink: light-dark(oklch(0.22 0.02 255), oklch(0.95 0.005 250));
-  --muted: light-dark(oklch(0.48 0.02 255), oklch(0.72 0.015 250));
-  --line: light-dark(oklch(0.915 0.008 245), oklch(0.3 0.015 250));
-  --line-strong: light-dark(oklch(0.8 0.01 245), oklch(0.42 0.02 250));
-  --accent: light-dark(oklch(0.5 0.1 195), oklch(0.78 0.11 190));
-  --accent-ink: light-dark(oklch(1 0 0), oklch(0.17 0.01 250));
-  --accent-soft: light-dark(oklch(0.955 0.03 195), oklch(0.27 0.045 195));
-  /* priority: foreground / tinted background. Always paired with a text label. */
-  --now-fg: light-dark(oklch(0.46 0.19 25), oklch(0.8 0.13 25));
-  --now-bg: light-dark(oklch(0.955 0.03 25), oklch(0.3 0.07 25));
-  --next-fg: light-dark(oklch(0.45 0.11 65), oklch(0.82 0.12 75));
-  --next-bg: light-dark(oklch(0.955 0.045 85), oklch(0.3 0.06 70));
-  --planned-fg: light-dark(oklch(0.46 0.12 260), oklch(0.8 0.1 260));
-  --planned-bg: light-dark(oklch(0.955 0.025 260), oklch(0.28 0.05 260));
-  --low-fg: light-dark(oklch(0.48 0.02 255), oklch(0.74 0.015 250));
-  --low-bg: light-dark(oklch(0.95 0.006 250), oklch(0.27 0.012 250));
+  /* Plain Sight (brand/nimstead.html): ink on paper, crimson rationed to the seal and "fix now". */
+  --bg: light-dark(#F6F6F5, #111111);
+  --surface: light-dark(#FFFFFF, #1A1A1A);
+  --sunken: light-dark(#EDEDEB, #0B0B0B);
+  --ink: light-dark(#111111, #F2F2F0);
+  --muted: light-dark(#5C5C5C, #A3A3A0);
+  --line: light-dark(#E4E4E2, #2C2C2C);
+  --line-strong: light-dark(#8A8A87, #6E6E6C);
+  --accent: light-dark(#111111, #F2F2F0);
+  --accent-ink: light-dark(#FFFFFF, #111111);
+  --accent-soft: light-dark(#EDEDEB, #2A2A2A);
+  --seal: #B0122C; /* fill only: fails as text on dark (2.67:1) */
+  --focus: light-dark(#B0122C, #F2F2F0);
+  /* priority: foreground / tinted background. Always paired with a text label; only "now" carries colour. */
+  --now-fg: light-dark(#8E0E23, #F4A3AE);
+  --now-bg: light-dark(#F8E3E6, #3A1016);
+  --next-fg: light-dark(#111111, #F2F2F0);
+  --next-bg: light-dark(#E4E4E2, #2E2E2E);
+  --planned-fg: light-dark(#111111, #F2F2F0);
+  --planned-bg: light-dark(#FFFFFF, #1A1A1A);
+  --low-fg: light-dark(#5C5C5C, #A3A3A0);
+  --low-bg: light-dark(#F0F0EE, #262626);
 }
 :root[data-theme="light"] { color-scheme: light; }
 :root[data-theme="dark"] { color-scheme: dark; }
@@ -34,7 +37,10 @@
 }
 
 @theme inline {
-  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Archivo Variable", ui-sans-serif, system-ui, sans-serif;
+  /* square everything; rounded-full (switches, dots) is untouched */
+  --radius-xs: 0; --radius-sm: 0; --radius-md: 0; --radius-lg: 0; --radius-xl: 0; --radius-2xl: 0;
+  --color-seal: var(--seal);
   --font-mono: "Geist Mono Variable", ui-monospace, monospace;
   --color-bg: var(--bg);
   --color-surface: var(--surface);
@@ -61,7 +67,7 @@ body { margin: 0; min-height: 100dvh; line-height: 1.5; text-rendering: optimize
 h1, h2, h3 { text-wrap: balance; letter-spacing: -0.015em; }
 a { text-underline-offset: 3px; }
 ::selection { background: var(--accent-soft); color: var(--ink); }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .num { font-variant-numeric: tabular-nums; }
 * { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
 input::placeholder { color: var(--muted); }

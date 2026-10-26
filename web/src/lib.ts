@@ -209,7 +209,7 @@ export function aiFilterToPatch(a: AiFilter): Partial<FindingsFilters> {
 
 // ---- misc ----------------------------------------------------------------------
 export function useTitle(title: string) {
-  useEffect(() => { document.title = `${title} · Nimstead`; }, [title]);
+  useEffect(() => { document.title = `${title} · Nimstead Assure`; }, [title]);
 }
 
 export function setTheme(t: "light" | "dark") {

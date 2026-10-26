@@ -9,6 +9,7 @@ Run from api/:  uv run python ../sandbox/suse.py [--keep]
 Writes a summary to sandbox/last_run_suse.json.
 """
 
+import functools
 import hashlib
 import io
 import json
@@ -21,12 +22,15 @@ import sys
 import tempfile
 import time
 import urllib.request
+import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "sandbox"))
 from winvm import vbox  # noqa: E402
+
+from nimstead.versions import rpm_cmp  # noqa: E402
 
 PREFIX = "nimstead-sbx-suse-"
 NAME = PREFIX + secrets.token_hex(3)
@@ -159,16 +163,14 @@ def make_vulnerable(vm, advisories) -> list[str]:
     downgraded = []
     for pkg in sorted({p for p in advisories if p in installed}):
         _, out = vm.sh(f"zypper --non-interactive --xmlout search -s --match-exact {pkg}", check=False)
-        import xml.etree.ElementTree as ET
         try:
-            tree = ET.fromstring(out[out.index("<stream"):])
+            tree = ET.fromstring(out[out.index("<stream"):])  # noqa: S314 — zypper's own output in our disposable VM
         except ValueError:
             continue
         eds = sorted({s.get("edition") for s in tree.iter("solvable") if s.get("kind", "package") == "package" and s.get("arch") != "src"})
         if len(eds) < 2:
             continue
-        from nimstead.versions import rpm_cmp as compare_rpm
-        oldest = min(eds, key=__import__("functools").cmp_to_key(compare_rpm))
+        oldest = min(eds, key=functools.cmp_to_key(rpm_cmp))
         rc, _ = vm.sh(f"zypper --non-interactive install --oldpackage --no-recommends --force-resolution '{pkg}={oldest}'", check=False)
         if rc == 0:
             downgraded.append(f"{pkg}={oldest}")

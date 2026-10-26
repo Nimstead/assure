@@ -163,6 +163,16 @@ def test_login_throttled_after_repeated_failures(env):
     assert c.post("/api/auth/login", json={**bad, "password": "correct horse battery"}).status_code == 429
 
 
+
+def test_one_attacker_cannot_lock_out_the_account_everywhere(env):
+    c = user(env)
+    attacker = TestClient(c.app, client=("203.0.113.9", 4444))
+    bad = {"email": "a@example.com", "password": "wrong password!"}
+    assert [attacker.post("/api/auth/login", json=bad).status_code for _ in range(11)][-1] == 429
+    owner = TestClient(c.app, client=("198.51.100.7", 5555))  # the real admin, elsewhere (e.g. break-glass while SSO is down)
+    assert owner.post("/api/auth/login", json={**bad, "password": "correct horse battery"}).status_code == 200
+
+
 def test_serves_web_ui_with_spa_fallback(env, tmp_path, monkeypatch):
     import nimstead.app as appmod
     dist = tmp_path / "dist"
@@ -202,3 +212,29 @@ def test_windows_installer_served_and_parses(env, tmp_path):
         cmd = ("$e=$null; [void][System.Management.Automation.Language.Parser]::ParseFile('" + str(f) +
                "',[ref]$null,[ref]$e); $e.Count")
         assert subprocess.run(["powershell", "-NoProfile", "-Command", cmd], capture_output=True, text=True).stdout.strip() == "0"
+
+
+def test_non_admins_can_read_but_not_change_remediation_or_assets(env):
+    from sqlalchemy import select
+    from sqlalchemy.orm import sessionmaker
+
+    from nimstead.app import create_app, ph
+    from nimstead.db import User, make_engine
+    app = create_app(env)
+    admin = TestClient(app)
+    admin.post("/api/auth/signup", json={"email": "owner@example.com", "password": "correct horse battery", "org_name": "O"})
+    s = sessionmaker(make_engine(env))()
+    org_id = s.scalar(select(User.org_id).where(User.email == "owner@example.com"))
+    s.add(User(org_id=org_id, email="staff@example.com", password_hash=ph.hash("correct horse battery"), admin=False))  # e.g. SSO-created
+    s.commit()
+    staff = TestClient(app)
+    assert staff.post("/api/auth/login", json={"email": "staff@example.com", "password": "correct horse battery"}).status_code == 200
+    for method, path, body in (("post", "/api/enroll-tokens", {}), ("delete", "/api/enroll-tokens/x", None),
+                               ("delete", "/api/assets/x", None), ("patch", "/api/assets/x", {"ring": 0}),
+                               ("post", "/api/assets", {"name": "app"}), ("post", "/api/findings/x/accept", {"reason": "r", "days": 30}),
+                               ("post", "/api/remediation/jobs", {"asset_id": "x", "ecosystem": "Debian:12", "package": "p"}),
+                               ("post", "/api/remediation/jobs/x/approve", None), ("patch", "/api/settings", {"remediation_mode": "auto"})):
+        r = getattr(staff, method)(path, **({"json": body} if body is not None else {}))
+        assert r.status_code == 403, (method, path, r.status_code)
+    for path in ("/api/summary", "/api/findings", "/api/assets", "/api/remediation/jobs", "/api/settings"):
+        assert staff.get(path).status_code == 200, path

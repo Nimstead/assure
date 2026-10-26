@@ -19,11 +19,22 @@ def private_targets_allowed() -> bool:
     return False
 
 
-def check_public_url(url: str, resolve: bool = True) -> None:
-    """Raise ValueError unless url is https and (after DNS resolution) every address is globally routable.
+NAT64, V4COMPAT = ipaddress.ip_network("64:ff9b::/96"), ipaddress.ip_network("::/96")
 
-    ponytail: resolve-then-connect leaves a DNS-rebinding window; pin the resolved IP in a custom transport if that matters.
-    """
+
+def is_public(a: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """Globally routable, including any IPv4 address carried inside an IPv6 one (mapped, compatible, NAT64, 6to4, Teredo)."""
+    if a.version == 6:
+        inner = a.ipv4_mapped or a.sixtofour or (a.teredo[1] if a.teredo else None)
+        if inner is None and (a in NAT64 or a in V4COMPAT):
+            inner = ipaddress.IPv4Address(int(a) & 0xFFFFFFFF)
+        if inner is not None and not inner.is_global:
+            return False
+    return a.is_global
+
+
+def check_public_url(url: str, resolve: bool = True) -> list[str]:
+    """Raise ValueError unless url is https and (after DNS resolution) every address is public. Returns the addresses."""
     u = urlsplit(url)
     if u.scheme != "https" or not u.hostname or u.username or u.password:
         raise ValueError("URL must be https without embedded credentials")
@@ -31,18 +42,26 @@ def check_public_url(url: str, resolve: bool = True) -> None:
         addrs = [ipaddress.ip_address(u.hostname)]
     except ValueError:
         if not resolve:
-            return
+            return []
         try:
-            addrs = [ipaddress.ip_address(i[4][0]) for i in socket.getaddrinfo(u.hostname, u.port or 443, proto=socket.IPPROTO_TCP)]
+            addrs = [ipaddress.ip_address(i[4][0].split("%")[0]) for i in socket.getaddrinfo(u.hostname, u.port or 443, proto=socket.IPPROTO_TCP)]
         except OSError:
             raise ValueError("Host does not resolve") from None
-    if not addrs or (not all(a.is_global for a in addrs) and not private_targets_allowed()):  # loopback, private, link-local (169.254.x metadata), CGNAT, ...
+    if not addrs or (not all(is_public(a) for a in addrs) and not private_targets_allowed()):  # loopback, private, link-local (169.254.x metadata), CGNAT, ...
         raise ValueError("URL points at a private or non-public address")
+    return [str(a) for a in addrs]
 
 
 class GuardedTransport(httpx.HTTPTransport):
+    """Connects to the address it checked, so DNS can't answer differently between the check and the connection
+    (rebinding). TLS still verifies the certificate against the real hostname (SNI)."""
+
     def handle_request(self, request):
-        check_public_url(str(request.url))
+        host = request.url.host
+        ip = check_public_url(str(request.url))[0]
+        if ip != host:
+            request.url = request.url.copy_with(host=ip)  # the Host header keeps the original name
+            request.extensions = {**request.extensions, "sni_hostname": host}
         return super().handle_request(request)
 
 

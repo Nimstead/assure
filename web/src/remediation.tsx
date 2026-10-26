@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Dialog } from "radix-ui";
 import { Check, Wrench, X } from "lucide-react";
 import clsx from "clsx";
-import { api, APPROVE_COPY, dependenciesNeeded, groupJobs, isActiveJob, JOB_STATUS_LABEL, relativeTime, useTitle, type Finding, type Job, type JobStatus } from "./lib";
+import { adminGate, api, APPROVE_COPY, dependenciesNeeded, groupJobs, isActiveJob, JOB_STATUS_LABEL, relativeTime, useIsAdmin, useTitle, type Finding, type Job, type JobStatus } from "./lib";
 import { btnPrimary, btnQuiet, EmptyState, ErrorState, Skeleton } from "./ui";
 
 const STATUS_CLASS: Record<JobStatus, string> = {
@@ -57,6 +57,7 @@ export function RemediationPage() {
 }
 
 export function JobCard({ job: j, onApprove }: { job: Job; onApprove?: () => void }) {
+  const admin = useIsAdmin();
   const steps = j.steps ?? [];
   const qc = useQueryClient();
   const deps = j.status === "aborted" ? dependenciesNeeded(j.error) : [];
@@ -79,13 +80,13 @@ export function JobCard({ job: j, onApprove }: { job: Job; onApprove?: () => voi
           </p>
         </div>
         {j.status === "planned" && onApprove && (
-          <button className={clsx(btnPrimary, "shrink-0")} onClick={onApprove}><Check className="size-4" aria-hidden />Approve<span className="sr-only"> fix on {j.hostname}</span></button>
+          <button className={clsx(btnPrimary, "shrink-0")} onClick={onApprove} {...adminGate(admin)}><Check className="size-4" aria-hidden />Approve<span className="sr-only"> fix on {j.hostname}</span></button>
         )}
       </div>
       {j.error && <p className="mt-3 rounded-md bg-now-bg px-3 py-2 text-sm text-now-fg">{j.error}</p>}
       {deps.length > 0 && (
         <div className="mt-2 flex flex-wrap items-center gap-3">
-          <button className={btnQuiet} onClick={() => replan.mutate()} disabled={replan.isPending || replan.isSuccess}>
+          <button className={btnQuiet} onClick={() => replan.mutate()} disabled={replan.isPending || replan.isSuccess} {...adminGate(admin)}>
             <Wrench className="size-4" aria-hidden />{replan.isSuccess ? "Planned" : `Plan again including ${deps.join(", ")}`}
           </button>
           <span className="text-sm text-muted">They'll be saved and rolled back together with {pkg}.</span>
@@ -141,6 +142,7 @@ export function ApproveDialog({ job, onOpenChange, onConfirm, pending, error }: 
 
 /** Plans a fix for one package on one or more hosts. Host names are mapped to asset ids via /api/findings. */
 export function PlanFixButton({ ecosystem, pkg, hosts, className }: { ecosystem: string; pkg: string; hosts: string[]; className?: string }) {
+  const admin = useIsAdmin();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const plan = useMutation({
@@ -160,7 +162,7 @@ export function PlanFixButton({ ecosystem, pkg, hosts, className }: { ecosystem:
   });
   return (
     <div className={clsx("flex flex-col items-start gap-1.5", className)}>
-      <button className={btnQuiet} disabled={plan.isPending} onClick={() => plan.mutate()}>
+      <button className={btnQuiet} disabled={plan.isPending} onClick={() => plan.mutate()} {...adminGate(admin)}>
         <Wrench className="size-4" aria-hidden />{plan.isPending ? "Planning…" : "Plan fix"}
         <span className="sr-only"> for {pkg}{hosts.length > 1 ? ` on ${hosts.length} hosts` : ""}</span>
       </button>

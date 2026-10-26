@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertDialog, Dialog, Switch } from "radix-ui";
 import { AppWindow, ArrowRight, Plus, Trash2, Upload } from "lucide-react";
-import { api, assetsQ, filtersToSearch, parseFilters, PRIORITIES, relativeTime, sbomSummary, useTitle, type Asset, type Criticality, type SbomResult } from "./lib";
+import { adminGate, api, assetsQ, filtersToSearch, parseFilters, PRIORITIES, relativeTime, sbomSummary, useIsAdmin, useTitle, type Asset, type Criticality, type SbomResult } from "./lib";
 import { btnPrimary, btnQuiet, EmptyState, ErrorState, input, PriorityPill, Skeleton } from "./ui";
 import clsx from "clsx";
 
@@ -78,6 +78,7 @@ export function AssetsPage() {
 }
 
 function AssetRow({ a, onPatch, onDelete }: { a: Asset; onPatch: (p: AssetPatch) => void; onDelete: () => void }) {
+  const admin = useIsAdmin();
   const open = PRIORITIES.filter((p) => a.open_by_priority[p]);
   return (
     <li className="grid gap-x-6 gap-y-3 p-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto] lg:items-center">
@@ -120,7 +121,7 @@ function AssetRow({ a, onPatch, onDelete }: { a: Asset; onPatch: (p: AssetPatch)
         </label>
         <HealthUnits a={a} onPatch={onPatch} /></>}
         <SbomUpload a={a} />
-        <button className={btnQuiet} onClick={onDelete}><Trash2 className="size-4" aria-hidden />Delete<span className="sr-only"> {a.hostname}</span></button>
+        <button className={btnQuiet} onClick={onDelete} {...adminGate(admin)}><Trash2 className="size-4" aria-hidden />Delete<span className="sr-only"> {a.hostname}</span></button>
       </div>
     </li>
   );
@@ -145,6 +146,7 @@ function HealthUnits({ a, onPatch }: { a: Asset; onPatch: (p: AssetPatch) => voi
 
 /** Creates an agent-less application asset; the one-time upload token lets CI post SBOMs without a login. */
 function AddApplication() {
+  const admin = useIsAdmin();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -156,7 +158,7 @@ function AddApplication() {
   const close = (o: boolean) => { setOpen(o); if (!o) { setMade(null); create.reset(); } };
   return (
     <Dialog.Root open={open} onOpenChange={close}>
-      <Dialog.Trigger className={btnQuiet}><AppWindow className="size-4" aria-hidden />Add application</Dialog.Trigger>
+      <Dialog.Trigger className={btnQuiet} {...adminGate(admin)}><AppWindow className="size-4" aria-hidden />Add application</Dialog.Trigger>
       <Dialog.Portal>
         <Dialog.Overlay className="overlay" />
         <Dialog.Content className="fixed left-1/2 top-[15vh] z-[51] w-[min(30rem,calc(100%-2rem))] -translate-x-1/2 rounded-xl border border-line bg-surface p-5 shadow-2xl">

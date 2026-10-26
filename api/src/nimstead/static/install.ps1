@@ -11,10 +11,18 @@ $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
     [Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $admin) { throw "Run this in an elevated (Administrator) PowerShell." }
 
-$py = (Get-Command py -ErrorAction SilentlyContinue).Source
-$pyArgs = @("-3")
-if (-not $py) { $py = (Get-Command python -ErrorAction SilentlyContinue).Source; $pyArgs = @() }
-if (-not $py) { throw "Python 3.9+ is required (winget install Python.Python.3.13)." }
+# The SYSTEM task runs this interpreter, so it must be one only administrators can change: an all-users install under
+# Program Files. A per-user Python (AppData) would hand SYSTEM to whoever can write there.
+$launcher = (Get-Command py -ErrorAction SilentlyContinue).Source
+$launcherArgs = @("-3")
+if (-not $launcher) { $launcher = (Get-Command python -ErrorAction SilentlyContinue).Source; $launcherArgs = @() }
+if (-not $launcher) { throw "Python 3.9+ is required (winget install Python.Python.3.13 --scope machine)." }
+$py = (& $launcher @launcherArgs -I -c "import sys; print(sys.executable)").Trim()
+$trusted = @($env:ProgramFiles, ${env:ProgramFiles(x86)}) | Where-Object { $_ } | ForEach-Object { $_.TrimEnd('') + '' }
+if (-not ($trusted | Where-Object { $py.StartsWith($_, [StringComparison]::OrdinalIgnoreCase) })) {
+  throw "Python at $py is not an all-users install under Program Files; SYSTEM must not run an interpreter other users can modify. Install one with: winget install Python.Python.3.13 --scope machine"
+}
+$pyArgs = @("-I")  # isolated: no user site-packages, no PYTHON* environment variables
 
 $dir = Join-Path $env:ProgramFiles "Nimstead"
 New-Item -ItemType Directory -Force -Path $dir | Out-Null

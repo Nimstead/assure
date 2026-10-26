@@ -83,8 +83,9 @@ function AssetRow({ a, onPatch, onDelete }: { a: Asset; onPatch: (p: AssetPatch)
   const admin = useIsAdmin();
   const open = PRIORITIES.filter((p) => a.open_by_priority[p]);
   return (
-    <li className="grid gap-x-6 gap-y-3 p-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto] lg:items-center">
-      <div className="min-w-0">
+    <li className="flex flex-col gap-3 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
+      <div className="min-w-0 flex-1 basis-60">
         <h2 className="flex items-center gap-2 text-base font-semibold"><span className="truncate">{a.hostname}</span>
           {a.sandbox && <span title="Disposable test machine: the only kind remediation may change until production remediation is enabled" className="shrink-0 rounded border border-line-strong px-1.5 py-px text-[11px] font-semibold tracking-wide text-muted">Sandbox</span>}</h2>
         <p className="truncate text-sm text-muted">
@@ -101,14 +102,15 @@ function AssetRow({ a, onPatch, onDelete }: { a: Asset; onPatch: (p: AssetPatch)
           <Link to="/findings" search={filtersToSearch({ ...parseFilters({}), asset: a.id })} aria-label={`View findings for ${a.hostname}`} className="ml-1 text-muted hover:text-ink"><ArrowRight className="size-4" aria-hidden /></Link>
         )}
       </div>
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+      </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <label className="flex items-center gap-2 text-sm">
-          <span className="text-muted">Criticality</span>
+          <span className="whitespace-nowrap text-muted">Criticality</span>
           <select className={clsx(input, "min-h-9 w-auto capitalize")} value={a.criticality} onChange={(e) => onPatch({ criticality: e.target.value as Criticality })}>
             {LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
           </select>
         </label>
-        <label className="flex cursor-pointer items-center gap-2 text-sm">
+        <label className="flex cursor-pointer items-center gap-2 whitespace-nowrap text-sm">
           <Switch.Root checked={a.internet_facing} onCheckedChange={(internet_facing) => onPatch({ internet_facing })}
             className="relative h-5 w-9 shrink-0 cursor-pointer rounded-full bg-line-strong data-[state=checked]:bg-accent">
             <Switch.Thumb className="block size-4 translate-x-0.5 rounded-full bg-surface transition-transform data-[state=checked]:translate-x-[18px]" />
@@ -116,14 +118,14 @@ function AssetRow({ a, onPatch, onDelete }: { a: Asset; onPatch: (p: AssetPatch)
           Internet-facing
         </label>
         {a.kind === "host" && <><label className="flex items-center gap-2 text-sm">
-          <span className="text-muted">Ring</span>
+          <span className="whitespace-nowrap text-muted">Ring</span>
           <select className={clsx(input, "min-h-9 w-auto")} value={a.ring} onChange={(e) => onPatch({ ring: Number(e.target.value) as 0 | 1 })}>
             <option value={0}>Canary</option><option value={1}>Broad</option>
           </select>
         </label>
         <HealthUnits a={a} onPatch={onPatch} /></>}
         <SbomUpload a={a} />
-        <button className={btnQuiet} onClick={onDelete} {...adminGate(admin)}><Trash2 className="size-4" aria-hidden />Delete<span className="sr-only"> {a.hostname}</span></button>
+        <button className={clsx(btnQuiet, "ml-auto px-2.5")} onClick={onDelete} title={`Delete ${a.hostname}`} {...adminGate(admin)}><Trash2 className="size-4" aria-hidden /><span className="sr-only">Delete {a.hostname}</span></button>
       </div>
     </li>
   );
@@ -139,8 +141,8 @@ function HealthUnits({ a, onPatch }: { a: Asset; onPatch: (p: AssetPatch) => voi
   };
   return (
     <label className="flex items-center gap-2 text-sm">
-      <span className="text-muted">Health units</span>
-      <input className={clsx(input, "min-h-9 w-48")} value={text} placeholder="nginx, sshd" onChange={(e) => setText(e.target.value)} onBlur={commit}
+      <span className="whitespace-nowrap text-muted">Health units</span>
+      <input className={clsx(input, "min-h-9 w-40")} value={text} placeholder="nginx, sshd" onChange={(e) => setText(e.target.value)} onBlur={commit}
         onKeyDown={(e) => e.key === "Enter" && commit()} title="systemd units that must be active before and after a fix" />
     </label>
   );

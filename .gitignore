@@ -13,3 +13,4 @@ checkpoints/
 .claude/worktrees/
 *.key
 *.tsbuildinfo
+api/demo/

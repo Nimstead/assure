@@ -14,7 +14,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from nimstead import verify_pack
+from nimstead import keys, verify_pack
 from nimstead.db import Asset, Finding, LedgerEntry, Org
 from nimstead.verify_pack import canonical, entry_hash
 
@@ -79,6 +79,8 @@ def _cp_file(org_id: str) -> Path:
 
 
 def load_checkpoints(org_id: str) -> list[dict]:
+    if keys.s3_enabled():
+        return keys.s3_load_checkpoints(org_id)
     f = _cp_file(org_id)
     return [json.loads(ln) for ln in f.read_text().splitlines() if ln.strip()] if f.exists() else []
 
@@ -102,6 +104,9 @@ def checkpoint(s: Session, org_id: str) -> dict | None:
         return existing[-1]
     body = {"org_id": org_id, "seq": head.seq, "hash": head.hash, "ts": datetime.now(UTC).isoformat()}
     cp = {**body, "sig": base64.b64encode(signing_key().sign(canonical(body))).decode()}
+    if keys.s3_enabled():  # write-once: COMPLIANCE object lock, nobody can delete or overwrite it
+        keys.s3_put_checkpoint(org_id, cp)
+        return cp
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
     with open(_cp_file(org_id), "a") as f:
         f.write(json.dumps(cp) + "\n")
@@ -114,7 +119,9 @@ KEY_FILE = Path(os.environ.get("NIMSTEAD_SIGNING_KEY_FILE", "./nimstead-signing.
 
 
 def signing_key() -> Ed25519PrivateKey:
-    # ponytail: one server key on disk; move to KMS/HSM with per-org keys and rotation for production
+    """Vault transit (key never leaves Vault) when configured, else the on-disk dev key."""
+    if keys.vault_enabled():
+        return keys.vault()  # same .sign() / .public_key() interface
     if KEY_FILE.exists():
         return serialization.load_pem_private_key(KEY_FILE.read_bytes(), None)
     key = Ed25519PrivateKey.generate()

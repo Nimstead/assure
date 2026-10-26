@@ -18,6 +18,7 @@ import httpx
 import jwt
 from cryptography.fernet import Fernet
 
+from nimstead import keys
 from nimstead.netguard import guarded_client
 
 ALGS = ["RS256", "RS384", "RS512", "PS256", "ES256", "ES384"]  # asymmetric only: never accept HS* (key-confusion)
@@ -128,12 +129,16 @@ def _fernet() -> Fernet:
 
 
 def seal(secret: str) -> str:
+    if keys.vault_enabled():
+        return keys.vault().encrypt(secret)  # "vault:v1:..."; the key never leaves Vault
     return "fernet:" + _fernet().encrypt(secret.encode()).decode()
 
 
 def unseal(stored: str | None) -> str | None:
     if not stored:
         return None
+    if stored.startswith("vault:"):
+        return keys.vault().decrypt(stored)
     if not stored.startswith("fernet:"):
         raise SSOError("secret_not_encrypted")  # never use a plaintext secret silently; re-save it in Settings
     return _fernet().decrypt(stored.removeprefix("fernet:").encode()).decode()
@@ -146,6 +151,8 @@ def unseal(stored: str | None) -> str | None:
 
 
 def domain_token(org_id: str, domain: str) -> str:
+    if keys.vault_enabled():
+        return hashlib.sha256(keys.vault().hmac(f"{org_id}:{domain}".encode()).encode()).hexdigest()[:32]
     _fernet()  # makes sure the server key exists
     return hmac.new(SECRET_KEY_FILE.read_bytes().strip(), f"{org_id}:{domain}".encode(), hashlib.sha256).hexdigest()[:32]
 

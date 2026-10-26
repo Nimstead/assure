@@ -1,0 +1,54 @@
+[
+  {
+    "step": "distro up",
+    "name": "nimstead-sbx-ext-050f5e",
+    "address": "172.25.98.1",
+    "redis": "v=8.0.2",
+    "openssl": "OpenSSL 3.5.7"
+  },
+  {
+    "step": "unverified target",
+    "status": 409,
+    "detail": "Prove you own this host first (DNS TXT record), then verify",
+    "probes_sent": 0
+  },
+  {
+    "step": "scan 1: Redis open, expired cert, TLS 1.0 on",
+    "result": {
+      "address": "172.25.98.1",
+      "open": 3,
+      "resolved": 0,
+      "skipped": []
+    },
+    "findings": {
+      "NIM-EXPOSED-REDIS": "fix-now",
+      "NIM-TLS-EXPIRED": "planned",
+      "NIM-TLS-LEGACY": "planned"
+    }
+  },
+  {
+    "step": "scan 2: Redis closed, valid self-signed cert, TLS 1.2+",
+    "result": {
+      "address": "172.25.98.1",
+      "open": 1,
+      "resolved": 3,
+      "skipped": []
+    },
+    "open": [
+      "NIM-TLS-UNTRUSTED"
+    ],
+    "resolved": [
+      "NIM-EXPOSED-REDIS",
+      "NIM-TLS-EXPIRED",
+      "NIM-TLS-LEGACY"
+    ]
+  },
+  {
+    "step": "RESULT: PASS",
+    "legacy_tls_checked": true
+  },
+  {
+    "step": "distro destroyed",
+    "name": "nimstead-sbx-ext-050f5e"
+  }
+]

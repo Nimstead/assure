@@ -8,9 +8,10 @@ export type Status = "open" | "resolved" | "accepted";
 export type Criticality = "low" | "medium" | "high" | "critical";
 
 export interface Asset {
-  id: string; hostname: string; os_name: string; ecosystem: string; kind: "host" | "application";
+  id: string; hostname: string; os_name: string; ecosystem: string; kind: "host" | "application" | "external";
   criticality: Criticality; internet_facing: boolean; sandbox: boolean; ring: 0 | 1; health_units: string[];
   first_seen: string; last_seen: string; open_by_priority: Partial<Record<Priority, number>>;
+  verified?: boolean; verified_at?: string | null; txt_name?: string; txt_value?: string; // external targets only
 }
 export interface SbomResult { components: number; mapped: number; unique_packages: number; skipped: Record<string, number>; open: number; resolved: number }
 export const sbomSummary = (r: SbomResult) =>

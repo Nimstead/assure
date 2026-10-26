@@ -23,7 +23,7 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import Integer, delete, func, select
 from sqlalchemy.orm import Session
 
-from nimstead import ai, evidence, notify, remediate, sbom, sso
+from nimstead import ai, evidence, external, notify, remediate, sbom, sso
 from nimstead.db import (
     Asset,
     AuthFailure,
@@ -315,6 +315,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             "kind": a.kind, "criticality": a.criticality, "internet_facing": a.internet_facing, "sandbox": a.sandbox,
             "ring": a.ring, "health_units": a.health_units,
             "first_seen": a.first_seen, "last_seen": a.last_seen, "open_by_priority": counts,
+            **({"verified": a.verified_at is not None, "verified_at": a.verified_at, "txt_name": external.txt_name(a.hostname),
+                "txt_value": external.txt_value(a.org_id, a.hostname)} if a.kind == "external" else {}),
         }
 
     @app.get("/api/assets")
@@ -364,6 +366,53 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         return asset_json(a, {})
 
     # --- applications & SBOM upload ----------------------------------------
+
+    # --- external targets: outside-in scans of hosts the org proves it owns ----------
+
+    class TargetNew(BaseModel):
+        hostname: str = Field(min_length=4, max_length=253)
+        criticality: Literal["low", "medium", "high", "critical"] = "medium"
+
+    def owned_target(s: Session, user: User, target_id: str) -> Asset:
+        a = owned_asset(s, user, target_id)
+        if a.kind != "external":
+            raise HTTPException(404, "Not an external target")
+        return a
+
+    @app.post("/api/targets", status_code=201)
+    def create_target(body: TargetNew, user: Admin, s: DB):
+        host = body.hostname.strip().lower().rstrip(".")
+        if not external.HOSTNAME.fullmatch(host):
+            raise HTTPException(422, "Enter a public DNS hostname, e.g. www.example.com")
+        if s.scalar(select(Asset.id).where(Asset.kind == "external", Asset.hostname == host)):
+            raise HTTPException(409, "That host is already a target (here or in another organisation)")
+        t = now()  # last_seen == first_seen until the first scan ("not scanned yet" in the UI)
+        a = Asset(org_id=user.org_id, hostname=host, kind="external", criticality=body.criticality, internet_facing=True,
+                  agent_key_hash=sha(secrets.token_urlsafe(32)), first_seen=t, last_seen=t)  # no agent: key never handed out
+        s.add(a)
+        s.flush()
+        evidence.append(s, user.org_id, "asset_created", a.id, {"by": user.email, "name": host, "kind": "external"})
+        s.commit()
+        return asset_json(a, {})
+
+    @app.post("/api/targets/{target_id}/verify")
+    def verify_target(target_id: str, user: Admin, s: DB):
+        a = owned_target(s, user, target_id)
+        if not external.owned(a.org_id, a.hostname, dns_lookup or sso.txt_records):
+            raise HTTPException(409, f"TXT record not found: add {external.txt_name(a.hostname)} = {external.txt_value(a.org_id, a.hostname)}")
+        if a.verified_at is None:
+            a.verified_at = now()
+            evidence.append(s, a.org_id, "external_target_verified", a.id, {"by": user.email, "host": a.hostname})
+            s.commit()
+        return asset_json(a, {})
+
+    @app.post("/api/targets/{target_id}/scan")
+    def scan_target(target_id: str, user: Admin, s: DB):
+        a = owned_target(s, user, target_id)
+        try:
+            return external.scan(s, a, dns_lookup or sso.txt_records)
+        except external.ScanRefused as e:
+            raise HTTPException(409, str(e)) from None
 
     class AppNew(BaseModel):
         name: str = Field(min_length=1, max_length=255)

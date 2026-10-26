@@ -15,7 +15,7 @@ import httpx
 from sqlalchemy import delete, insert, select, update
 from sqlalchemy.orm import Session
 
-from nimstead import evidence, notify, winapps
+from nimstead import evidence, external, notify, winapps
 from nimstead.db import Advisory, Asset, Cvss, Epss, InstalledPackage, Kev, Org, make_sessionmaker, now
 from nimstead.match import normalize_ecosystem
 from nimstead.scan import rescan
@@ -269,7 +269,16 @@ def update_all(session: Session, client=None) -> dict:
         out["msrc"] = sync_msrc(session, client=client)
     out["rescanned"] = 0
     cache: dict = {}  # advisories decoded once per pass: hosts on one release share most packages
+    out["external"] = {"scanned": 0, "refused": 0}
     for asset in session.scalars(select(Asset)).all():
+        if asset.kind == "external":  # outside-in targets: re-prove ownership, then scan (never if it lapsed)
+            if asset.verified_at is not None:
+                try:
+                    external.scan(session, asset)
+                    out["external"]["scanned"] += 1
+                except external.ScanRefused:
+                    out["external"]["refused"] += 1
+            continue
         rescan(session, asset, inventory_received=False, cache=cache)
         out["rescanned"] += 1
     for org_id in session.scalars(select(Org.id)).all():  # hourly signed ledger checkpoints, kept off-database

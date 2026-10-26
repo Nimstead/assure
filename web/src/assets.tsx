@@ -6,6 +6,7 @@ import { AppWindow, ArrowRight, Plus, Trash2, Upload } from "lucide-react";
 import { adminGate, api, assetsQ, filtersToSearch, parseFilters, PRIORITIES, relativeTime, sbomSummary, useIsAdmin, useTitle, type Asset, type Criticality, type SbomResult } from "./lib";
 import { btnPrimary, btnQuiet, EmptyState, ErrorState, input, PriorityPill, Skeleton } from "./ui";
 import clsx from "clsx";
+import { ExternalTargets } from "./targets";
 
 type AssetPatch = Partial<Pick<Asset, "criticality" | "internet_facing" | "ring" | "health_units">>;
 const LEVELS: Criticality[] = ["low", "medium", "high", "critical"];
@@ -48,15 +49,16 @@ export function AssetsPage() {
 
       {q.isPending ? <div className="flex flex-col gap-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-20" />)}</div>
         : q.error ? <ErrorState error={q.error} retry={() => q.refetch()} />
-        : q.data.length === 0 ? (
+        : q.data.every((a) => a.kind === "external") ? (
           <EmptyState title="No machines yet" action={<Link to="/add" className={clsx(btnPrimary, "no-underline")}>Add your first machine</Link>}>
             Machines show up here once they report in.
           </EmptyState>
         ) : (
           <ul className="flex flex-col divide-y divide-line overflow-hidden rounded-lg border border-line bg-surface">
-            {q.data.map((a) => <AssetRow key={a.id} a={a} onPatch={(p) => patch.mutate({ id: a.id, ...p })} onDelete={() => { del.reset(); setTarget(a); }} />)}
+            {q.data.filter((a) => a.kind !== "external").map((a) => <AssetRow key={a.id} a={a} onPatch={(p) => patch.mutate({ id: a.id, ...p })} onDelete={() => { del.reset(); setTarget(a); }} />)}
           </ul>
         )}
+      {q.data && <ExternalTargets targets={q.data.filter((a) => a.kind === "external")} onDelete={(a) => { del.reset(); setTarget(a); }} />}
       <AlertDialog.Root open={!!target} onOpenChange={(o) => !o && setTarget(null)}>
         <AlertDialog.Portal>
           <AlertDialog.Overlay className="overlay" />

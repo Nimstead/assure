@@ -7,6 +7,7 @@ import { SbomUpload } from "./assets";
 import { ApproveDialog, PlanFixButton } from "./remediation";
 import { APPROVE_COPY, type Asset } from "./lib";
 import { InstallCommands } from "./onboarding";
+import { TargetRow } from "./targets";
 import { PriorityPill } from "./ui";
 
 it("priority pill carries a text label, not just colour", () => {
@@ -60,6 +61,17 @@ it("SBOM upload shows the server's rejection", async () => {
   render(<QueryClientProvider client={new QueryClient()}><SbomUpload a={{ id: "a1", hostname: "billing" } as Asset} /></QueryClientProvider>);
   await userEvent.upload(screen.getByTestId("sbom-file-a1"), new File(["{}"], "x.json"));
   expect(await screen.findByRole("alert")).toHaveTextContent("Not a CycloneDX JSON document");
+  vi.unstubAllGlobals();
+});
+
+it("unverified target shows the TXT record and a Verify button", () => {
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ email: "a@b.c", org: "o", admin: true }), { status: 200 })));
+  const t = { id: "t1", hostname: "www.example.com", kind: "external", verified: false, txt_name: "_nimstead-verify.www.example.com", txt_value: "nimstead-verify=abc", open_by_priority: {}, last_seen: "2026-01-01T00:00:00" } as Asset;
+  render(<QueryClientProvider client={new QueryClient()}><TargetRow t={t} onDelete={() => {}} /></QueryClientProvider>);
+  expect(screen.getByText("Unverified")).toBeInTheDocument();
+  expect(screen.getByText("_nimstead-verify.www.example.com")).toBeInTheDocument();
+  expect(screen.getByText("nimstead-verify=abc")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /^Verify/ })).toBeInTheDocument();
   vi.unstubAllGlobals();
 });
 

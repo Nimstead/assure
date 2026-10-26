@@ -44,7 +44,7 @@ All four evidence packs verified, with 6/6 controls met. On Alpine, the dry run 
 - **Snapshot rollback** doesn't reverse maintainer-script side effects (health checks cover the visible ones). Kernel/install-only packages are refused.
 - **Dependency upgrades are never silent:** when a fix needs another package, the dry run refuses it and the user re-plans "including X" with one click. Nothing expands on its own.
 - **SBOM:** CycloneDX and SPDX JSON only (no XML, SPDX tag-value or VEX); SPDX relationships are ignored, so every package with a purl is scanned. Findings mean "present", not "reachable".
-- **Secrets:** the signing and secret keys are files on disk; use KMS in production. Checkpoints need WORM storage.
+- **Key storage:** Vault transit (signing, encryption, HMAC) and S3 object-lock checkpoints are built and pass against real Vault 2.1.1 and an S3 gateway with COMPLIANCE lock (`sandbox/keystore.py`). Cloud KMS (AWS/GCP/Azure) adapters aren't built; on-disk keys remain the dev default.
 - **Ecosystems:** Go/crates/Hex/Pub use the semver comparator (Pub build-metadata ordering differs); Composer `dev-*` branches are refused; no Conda comparator.
 
 ## Needs the user

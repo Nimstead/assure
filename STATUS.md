@@ -38,8 +38,8 @@ All four evidence packs verified, with 6/6 controls met. On Alpine, the dry run 
 **Last runs (final code):** API 450 passed on SQLite and 450 passed on PostgreSQL 17 · web 18 unit + 4 Playwright e2e (axe clean in light and dark) · real-host E2E PASS on Debian 13, Ubuntu 24.04, AlmaLinux 9, Alpine 3.21 and Windows Server 2025 · real-service integrations PASS (Keycloak, DNS, SMTP, webhook).
 
 ## NOT proven / known gaps (honest)
-- **AI** has never been called against the real API (no key on this machine).
-- **Windows remediation:** proven on Windows Server 2025 Core. Windows 10/11 clients are not yet run in a VM, and a cumulative update Windows marks permanent can't be removed (reported as rollback_failed, never as success). The VM run was split into rollback and success passes because a VirtualBox update interrupted it.
+- **AI:** tested with a mocked client only. Owner decision (2026-10-26): skip live AI testing. The features stay off unless `ANTHROPIC_API_KEY` is set.
+- **Windows remediation:** proven on Windows Server 2025 Core. Windows 10/11 clients are not run in a VM (owner decision 2026-10-26: the Server 2025 pass is sufficient proof of the mechanism), and a cumulative update Windows marks permanent can't be removed (reported as rollback_failed, never as success). The VM run was split into rollback and success passes because a VirtualBox update interrupted it.
 - **Windows third-party apps** are not covered: there's no reliable advisory source keyed by installed software.
 - **Snapshot rollback** doesn't reverse maintainer-script side effects (health checks cover the visible ones). Kernel/install-only packages are refused.
 - **Dependency upgrades are never silent:** when a fix needs another package, the dry run refuses it and the user re-plans "including X" with one click. Nothing expands on its own.
@@ -48,7 +48,7 @@ All four evidence packs verified, with 6/6 controls met. On Alpine, the dry run 
 - **Ecosystems:** Go/crates/Hex/Pub use the semver comparator (Pub build-metadata ordering differs); Composer `dev-*` branches are refused; no Conda comparator.
 
 ## Needs the user
-- Optional: an Anthropic API key to enable and live-test AI.
+- Nothing. Live AI testing and a Windows 11 client VM were both scoped out by the owner on 2026-10-26.
 
 ## Run
 - **API:** `cd api && uv run pytest -q` · lint: `uv run ruff check src tests ../agent ../sandbox`

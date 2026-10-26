@@ -39,7 +39,7 @@ Real-host E2E (fresh WSL distro each, destroyed after):
 
 All four evidence packs verified, with 6/6 controls met. On Alpine, the dry run refused the openssl fix because it also needed musl. Re-planning "including musl" (which pulls in musl-utils, from the same source package) succeeded and was verified fixed (40 findings resolved).
 
-**Last runs (final code):** API 577 passed on SQLite · ruff clean · web 18 unit + 4 Playwright e2e (axe clean in light and dark) · real-host E2E PASS on Debian 13, Ubuntu 24.04, AlmaLinux 9, Alpine 3.21, openSUSE Leap 16.0 (snapper) and Windows Server 2025 · real-service integrations PASS (Keycloak, DNS, SMTP, webhook).
+**Last runs (final code):** API 577 passed on SQLite and 577 on PostgreSQL 17 · ruff clean · web 18 unit + 4 Playwright e2e (axe clean in light and dark) · real-host E2E PASS on Debian 13, Ubuntu 24.04, AlmaLinux 9, Alpine 3.21, openSUSE Leap 16.0 (snapper) and Windows Server 2025 · real-service integrations PASS (Keycloak, DNS, SMTP, webhook).
 
 ## NOT proven / known gaps (honest)
 - **AI:** tested with a mocked client only. Owner decision (2026-10-26): skip live AI testing. The features stay off unless `ANTHROPIC_API_KEY` is set.

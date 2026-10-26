@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, assetsQ, installCommands, useTitle } from "./lib";
+import { adminGate, api, assetsQ, installCommands, useIsAdmin, useTitle } from "./lib";
 import { btnPrimary, CopyBlock } from "./ui";
 
 /** Pure view so the rendered commands can be tested without a network. */
@@ -20,6 +20,7 @@ export function Onboarding() {
   useTitle("Add a machine");
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const admin = useIsAdmin();
   const [sandbox, setSandbox] = useState(false);
   const token = useMutation({ mutationFn: () => api<{ token: string }>("/api/enroll-tokens", { method: "POST", body: { sandbox } }) });
   const [celebrate, setCelebrate] = useState(false);
@@ -82,7 +83,7 @@ export function Onboarding() {
               This is a disposable test machine
             </label>
             {sandbox && <p className="max-w-prose text-sm text-muted">Sandbox machines are the only ones automated fixes may change until production remediation is enabled.</p>}
-            <button className={btnPrimary} onClick={() => token.mutate()} disabled={token.isPending}>
+            <button className={btnPrimary} onClick={() => token.mutate()} disabled={token.isPending} {...adminGate(admin)}>
               {token.isPending ? "Creating…" : "Add a machine"}
             </button>
             {token.error && <p role="alert" className="text-sm text-now-fg">{token.error.message}</p>}

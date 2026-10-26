@@ -4,7 +4,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 import { SbomUpload } from "./assets";
-import { ApproveDialog } from "./remediation";
+import { ApproveDialog, PlanFixButton } from "./remediation";
 import { APPROVE_COPY, type Asset } from "./lib";
 import { InstallCommands } from "./onboarding";
 import { PriorityPill } from "./ui";
@@ -60,5 +60,14 @@ it("SBOM upload shows the server's rejection", async () => {
   render(<QueryClientProvider client={new QueryClient()}><SbomUpload a={{ id: "a1", hostname: "billing" } as Asset} /></QueryClientProvider>);
   await userEvent.upload(screen.getByTestId("sbom-file-a1"), new File(["{}"], "x.json"));
   expect(await screen.findByRole("alert")).toHaveTextContent("Not a CycloneDX JSON document");
+  vi.unstubAllGlobals();
+});
+
+it("admin-only buttons are disabled with an explanation while /api/me loads and for non-admins", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ email: "a@b.c", org: "o", admin: false }), { status: 200 })));
+  render(<QueryClientProvider client={new QueryClient()}><PlanFixButton ecosystem="deb" pkg="openssl" hosts={["web-1"]} /></QueryClientProvider>);
+  const btn = screen.getByRole("button", { name: /Plan fix/ });
+  expect(btn).toBeDisabled();
+  expect(btn).toHaveAttribute("title", "Only organisation admins can do this");
   vi.unstubAllGlobals();
 });

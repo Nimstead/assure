@@ -136,6 +136,8 @@ def _send_email(to: list[str], kind: str, text: str, urgent: bool) -> None:
             if srv.has_extn("starttls"):
                 srv.starttls(context=ssl.create_default_context())
                 srv.ehlo()
+            elif u.username:  # a stripped STARTTLS offer must not make us send the password in clear
+                raise smtplib.SMTPException("server offers no STARTTLS; refusing to send credentials unencrypted")
         if u.username:
             srv.login(u.username, u.password or "")
         srv.send_message(m)

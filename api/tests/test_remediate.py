@@ -227,6 +227,22 @@ def test_broad_ring_pinned_to_canary_version_and_held_on_later_failure(env):
     assert held["status"] == "planned" and "halted" in held["error"]
 
 
+def test_canary_report_cannot_pin_the_fleet_to_an_older_version(env):
+    c = setup(env)
+    c.patch("/api/settings", json={"remediation_mode": "auto", "canary_soak_hours": 1})
+    canary, hc = add_host(c, "canary", version=NEW)
+    c.patch(f"/api/assets/{canary}", json={"ring": 0})
+    c.post("/api/agent/inventory", json=inv(OLD), headers=hc)
+    [cj] = c.get("/api/agent/jobs", headers=hc).json()
+    bogus = {"libssl3": "3.0.0-1", "openssl": "3.0.0-1"}  # a compromised canary claims an old, vulnerable build "worked"
+    c.post(f"/api/agent/jobs/{cj['id']}/report", json={"outcome": "applied", "versions": bogus}, headers=hc)
+    c.post("/api/agent/inventory", json=inv(NEW), headers=hc)
+    _age_jobs(env, 2)
+    _, hb = add_host(c, "broad")
+    [bj] = c.get("/api/agent/jobs", headers=hb).json()
+    assert all("to" not in p for p in bj["packages"])  # not pinned: the agent installs the repo's current fix
+
+
 def test_unsupported_ecosystem_not_remediated(env):
     c = setup(env)
     token = c.post("/api/enroll-tokens", json={"sandbox": True}).json()["token"]

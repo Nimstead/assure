@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { queryOptions } from "@tanstack/react-query";
+import { queryOptions, useQuery } from "@tanstack/react-query";
 
 // ---- types (mirror api/src/nimstead/app.py) ---------------------------------
 export const PRIORITIES = ["fix-now", "next", "planned", "low"] as const;
@@ -220,6 +220,11 @@ export const isDark = () =>
 
 // ---- shared queries ----------------------------------------------------------------
 export const meQ = queryOptions({ queryKey: ["me"], queryFn: () => api<{ email: string; org: string; admin: boolean }>("/api/me"), retry: false, staleTime: 5 * 60_000 });
+/** Admin-only actions are disabled until /api/me says otherwise (loading counts as non-admin). */
+export const useIsAdmin = () => useQuery(meQ).data?.admin === true;
+export const ADMIN_ONLY = "Only organisation admins can do this";
+/** Spread onto a button after its own `disabled`: no-op for admins, disables with an explanation for everyone else. */
+export const adminGate = (admin: boolean) => (admin ? {} : { disabled: true, title: ADMIN_ONLY });
 export const summaryQ = queryOptions({ queryKey: ["summary"], queryFn: () => api<Summary>("/api/summary") });
 export const assetsQ = queryOptions({ queryKey: ["assets"], queryFn: () => api<Asset[]>("/api/assets") });
 

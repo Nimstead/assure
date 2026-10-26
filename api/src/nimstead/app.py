@@ -58,6 +58,7 @@ DUMMY_HASH = ph.hash("nimstead-dummy-password")
 MAX_BODY = 10 * 1024 * 1024
 ENROLL_TOKEN_DAYS = 30
 LOGIN_MAX_FAILURES, LOGIN_WINDOW = 10, 15 * 60
+LOGIN_MAX_PER_EMAIL = 100  # across all addresses: slows distributed guessing without letting one attacker lock out an admin
 INVENTORY_MIN_SECONDS = int(os.environ.get("NIMSTEAD_INVENTORY_MIN_SECONDS", "30"))
 
 
@@ -157,12 +158,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     def throttled(s: Session, key: str) -> bool:
         since = now() - timedelta(seconds=LOGIN_WINDOW)
-        return s.scalar(select(func.count()).select_from(AuthFailure).where(AuthFailure.key == key, AuthFailure.ts > since)) \
-            >= LOGIN_MAX_FAILURES
+        limit = LOGIN_MAX_PER_EMAIL if key.startswith("email:") else LOGIN_MAX_FAILURES
+        return s.scalar(select(func.count()).select_from(AuthFailure).where(AuthFailure.key == key, AuthFailure.ts > since)) >= limit
 
     @app.post("/api/auth/login")
     def login(body: Login, request: Request, resp: Response, s: DB):
-        keys = ["email:" + body.email.lower(), "ip:" + (request.client.host if request.client else "?")]
+        ip = request.client.host if request.client else "?"  # behind a proxy: uvicorn --proxy-headers --forwarded-allow-ips
+        keys = ["email:" + body.email.lower(), "email+ip:" + body.email.lower() + "|" + ip, "ip:" + ip]
         if any(throttled(s, k) for k in keys):
             raise HTTPException(429, "Too many failed sign-in attempts; try again in 15 minutes")
         user = s.scalar(select(User).where(User.email == body.email.lower()))
@@ -203,7 +205,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         sandbox: bool = False
 
     @app.post("/api/enroll-tokens", status_code=201)
-    def create_enroll_token(user: CurrentUser, s: DB, body: TokenReq | None = None):
+    def create_enroll_token(user: Admin, s: DB, body: TokenReq | None = None):
         token = "nme_" + secrets.token_urlsafe(24)
         et = EnrollToken(token_hash=sha(token), org_id=user.org_id, sandbox=bool(body and body.sandbox),
                          expires=now() + timedelta(days=ENROLL_TOKEN_DAYS))
@@ -219,7 +221,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                 for e in rows]
 
     @app.delete("/api/enroll-tokens/{token_id}", status_code=204)
-    def revoke_enroll_token(token_id: str, user: CurrentUser, s: DB):
+    def revoke_enroll_token(token_id: str, user: Admin, s: DB):
         et = s.scalar(select(EnrollToken).where(EnrollToken.org_id == user.org_id, EnrollToken.token_hash.startswith(token_id[:12]),
                                                 func.length(token_id) == 12))
         if not et:
@@ -334,7 +336,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         return a
 
     @app.delete("/api/assets/{asset_id}", status_code=204)
-    def delete_asset(asset_id: str, user: CurrentUser, s: DB):
+    def delete_asset(asset_id: str, user: Admin, s: DB):
         a = owned_asset(s, user, asset_id)
         evidence.append(s, user.org_id, "asset_deleted", a.id, {"by": user.email, "hostname": a.hostname})
         for model in (Finding, InstalledPackage, RemediationJob):
@@ -349,7 +351,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         health_units: list[str] | None = Field(None, max_length=20)
 
     @app.patch("/api/assets/{asset_id}")
-    def update_asset(asset_id: str, body: AssetPatch, user: CurrentUser, s: DB):
+    def update_asset(asset_id: str, body: AssetPatch, user: Admin, s: DB):
         a = owned_asset(s, user, asset_id)
         if body.health_units and not all(remediate.SAFE_NAME.match(u) for u in body.health_units):
             raise HTTPException(422, "Invalid systemd unit name")
@@ -368,7 +370,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         internet_facing: bool = False
 
     @app.post("/api/assets", status_code=201)
-    def create_application(body: AppNew, user: CurrentUser, s: DB):
+    def create_application(body: AppNew, user: Admin, s: DB):
         token = "nmu_" + secrets.token_urlsafe(32)  # CI upload token: SBOM endpoint only, rejected by every agent endpoint
         a = Asset(org_id=user.org_id, hostname=body.name, kind="application", criticality=body.criticality,
                   internet_facing=body.internet_facing, agent_key_hash=sha(token))
@@ -457,7 +459,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         days: int = Field(90, ge=1, le=365)  # acceptance expires; never permanent
 
     @app.post("/api/findings/{finding_id}/accept")
-    def accept_finding(finding_id: str, body: Accept, user: CurrentUser, s: DB):
+    def accept_finding(finding_id: str, body: Accept, user: Admin, s: DB):
         f = s.get(Finding, finding_id)
         if not f or f.org_id != user.org_id:
             raise HTTPException(404, "Finding not found")
@@ -485,7 +487,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         include: list[str] = Field(default_factory=list, max_length=20)
 
     @app.post("/api/remediation/jobs", status_code=201)
-    def create_job(body: PlanReq, user: CurrentUser, s: DB):
+    def create_job(body: PlanReq, user: Admin, s: DB):
         a = owned_asset(s, user, body.asset_id)
         try:
             job = remediate.plan(s, a, body.ecosystem, body.package, user.email, body.include)
@@ -504,7 +506,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         return [job_json(j, h) for j, h in s.execute(stmt.order_by(RemediationJob.updated.desc()).limit(500))]
 
     @app.post("/api/remediation/jobs/{job_id}/approve")
-    def approve_job(job_id: str, user: CurrentUser, s: DB):
+    def approve_job(job_id: str, user: Admin, s: DB):
         job = s.get(RemediationJob, job_id)
         if not job or job.org_id != user.org_id:
             raise HTTPException(404, "Job not found")
@@ -526,7 +528,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                 "production_remediation_allowed": remediate.production_allowed()}
 
     @app.patch("/api/settings")
-    def update_settings(body: Policy, user: CurrentUser, s: DB):
+    def update_settings(body: Policy, user: Admin, s: DB):
         o = s.get(Org, user.org_id)
         changes = body.model_dump(exclude_none=True)
         for k, v in changes.items():

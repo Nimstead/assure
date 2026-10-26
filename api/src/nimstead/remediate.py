@@ -164,7 +164,12 @@ def pin_to_canary(s: Session, job: RemediationJob) -> None:
         RemediationJob.status == "succeeded", Asset.ring == 0, RemediationJob.result_versions.is_not(None),
     ).order_by(RemediationJob.updated.desc()).limit(1))
     proven = (canary.result_versions or {}) if canary else {}
-    job.packages = [{**p, "to": proven[p["name"]]} if SAFE_VERSION.match(str(proven.get(p["name"], ""))) else p for p in job.packages]
+    cmp = comparator_for(job.action_key.split("|", 1)[0])
+
+    def upgrade(p):  # the canary's report is input from a host: never let it pin the fleet to an older version
+        to = str(proven.get(p["name"], ""))
+        return bool(cmp and SAFE_VERSION.match(to) and p.get("from") and cmp(to, str(p["from"])) > 0)
+    job.packages = [{**p, "to": proven[p["name"]]} if upgrade(p) else p for p in job.packages]
 
 
 def sweep(s: Session, org_id: str) -> None:
@@ -182,7 +187,14 @@ def dispatch(s: Session, asset: Asset) -> list[dict]:
     sweep(s, asset.org_id)
     org = s.get(Org, asset.org_id)
     out = []
+    # one Windows job in flight per host: it may reboot the machine, and anything handed out alongside it would be stranded
+    win_busy = s.scalar(select(RemediationJob.id).where(RemediationJob.asset_id == asset.id, RemediationJob.manager == "windows",
+                                                        RemediationJob.status == "dispatched").limit(1)) is not None
     for job in s.scalars(select(RemediationJob).where(RemediationJob.asset_id == asset.id, RemediationJob.status == "approved")):
+        if job.manager == "windows":
+            if win_busy:
+                continue  # stays approved; handed out once the current one reports
+            win_busy = True
         if not asset.sandbox and not production_allowed():  # flags may have changed since approval
             job.status, job.error = "failed", "Blocked: asset is not a sandbox"
             _log(s, job, "remediation_failed", error=job.error)

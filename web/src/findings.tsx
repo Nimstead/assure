@@ -6,8 +6,8 @@ import { Dialog, Switch } from "radix-ui";
 import { ArrowRight, ExternalLink, Search, Sparkles, X } from "lucide-react";
 import clsx from "clsx";
 import {
-  aiFilterToPatch, aiStatusQ, api, assetsQ, filtersToApi, filtersToSearch, looksLikeQuestion, parseFilters, pct, plural, PRIORITIES, PRIORITY_LABEL, relativeTime,
-  parseUtc, useTitle, whyMatched, type AiFilter, type Finding, type FindingsFilters, type RawSearch, type Status,
+  adminGate, aiFilterToPatch, aiStatusQ, api, assetsQ, filtersToApi, filtersToSearch, looksLikeQuestion, parseFilters, pct, plural, PRIORITIES, PRIORITY_LABEL, relativeTime,
+  parseUtc, useIsAdmin, useTitle, whyMatched, type AiFilter, type Finding, type FindingsFilters, type RawSearch, type Status,
 } from "./lib";
 import { PlanFixButton } from "./remediation";
 import { btnPrimary, btnQuiet, EmptyState, ErrorState, input, KevBadge, PriorityPill, Skeleton } from "./ui";
@@ -251,6 +251,7 @@ function FindingDetail({ f }: { f: Finding }) {
 }
 
 function AcceptRisk({ id }: { id: string }) {
+  const admin = useIsAdmin();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
@@ -259,7 +260,7 @@ function AcceptRisk({ id }: { id: string }) {
     mutationFn: () => api(`/api/findings/${id}/accept`, { method: "POST", body: { reason: reason.trim(), days } }),
     onSuccess: () => Promise.all(["finding", "findings", "summary", "ledger"].map((k) => qc.invalidateQueries({ queryKey: [k] }))),
   });
-  if (!open) return <button className={btnQuiet} onClick={() => setOpen(true)}>Accept risk</button>;
+  if (!open) return <button className={btnQuiet} onClick={() => setOpen(true)} {...adminGate(admin)}>Accept risk</button>;
   const ok = reason.trim().length >= 10;
   return (
     <form className="w-full rounded-lg border border-line-strong p-3" onSubmit={(e) => { e.preventDefault(); if (ok) accept.mutate(); }}>

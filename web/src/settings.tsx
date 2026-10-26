@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertDialog, RadioGroup } from "radix-ui";
 import { Info } from "lucide-react";
 import clsx from "clsx";
-import { api, meQ, parseUtc, relativeTime, settingsQ, useTitle, type EnrollToken, type Settings } from "./lib";
+import { adminGate, api, meQ, parseUtc, relativeTime, settingsQ, useIsAdmin, useTitle, type EnrollToken, type Settings } from "./lib";
 import { NotificationsSection, SsoSection } from "./integrations";
 import { btnPrimary, btnQuiet, ErrorState, input, Skeleton } from "./ui";
 
@@ -18,6 +18,7 @@ export function SettingsPage() {
   const qc = useQueryClient();
   const q = useQuery(settingsQ);
   const me = useQuery(meQ);
+  const admin = useIsAdmin();
   const [hours, setHours] = useState("");
   useEffect(() => { if (q.data) setHours(String(q.data.canary_soak_hours)); }, [q.data]);
   const save = useMutation({
@@ -48,7 +49,7 @@ export function SettingsPage() {
 
       <section aria-labelledby="ladder">
         <h2 id="ladder" className="text-lg font-semibold">Trust ladder</h2>
-        <RadioGroup.Root aria-labelledby="ladder" value={s.remediation_mode} onValueChange={(v) => save.mutate({ remediation_mode: v as Settings["remediation_mode"] })} className="mt-3 grid gap-2 md:grid-cols-3">
+        {!admin ? <p className="mt-3 text-sm"><strong className="font-semibold">{MODES.find((m) => m.value === s.remediation_mode)?.title}.</strong> {MODES.find((m) => m.value === s.remediation_mode)?.body} <span className="text-muted">Only organisation admins can change this.</span></p> : <RadioGroup.Root aria-labelledby="ladder" value={s.remediation_mode} onValueChange={(v) => save.mutate({ remediation_mode: v as Settings["remediation_mode"] })} className="mt-3 grid gap-2 md:grid-cols-3">
           {MODES.map((m) => (
             <RadioGroup.Item key={m.value} value={m.value} className="group flex cursor-pointer flex-col items-start gap-1.5 rounded-lg border border-line bg-surface p-4 text-left hover:border-line-strong data-[state=checked]:border-accent data-[state=checked]:bg-accent-soft">
               <span className="flex w-full items-center justify-between font-semibold">
@@ -58,7 +59,7 @@ export function SettingsPage() {
               <span className="text-sm text-muted group-data-[state=checked]:text-ink">{m.body}</span>
             </RadioGroup.Item>
           ))}
-        </RadioGroup.Root>
+        </RadioGroup.Root>}
       </section>
 
       <section aria-labelledby="canary" className="flex flex-col items-start gap-3">
@@ -66,14 +67,14 @@ export function SettingsPage() {
         <p className="max-w-prose text-sm text-muted">
           Each machine is in a ring. <strong className="font-semibold text-ink">Canary</strong> (ring 0) machines get a change first. <strong className="font-semibold text-ink">Broad</strong> (ring 1) machines only get it after a canary has succeeded and stayed healthy for the soak period below. Set rings and health checks per machine on the Assets page.
         </p>
-        <form className="flex flex-wrap items-end gap-3" onSubmit={(e) => { e.preventDefault(); if (hoursOk) save.mutate({ canary_soak_hours: n }); }}>
+        {!admin ? <p className="text-sm">Soak time: <strong className="font-semibold">{s.canary_soak_hours} hours.</strong> <span className="text-muted">Only organisation admins can change this.</span></p> : <form className="flex flex-wrap items-end gap-3" onSubmit={(e) => { e.preventDefault(); if (hoursOk) save.mutate({ canary_soak_hours: n }); }}>
           <label className="flex flex-col gap-1 text-sm">
             <span className="font-medium">Soak time (hours)</span>
             <input className={clsx(input, "w-32")} type="number" inputMode="numeric" min={1} max={720} value={hours} onChange={(e) => setHours(e.target.value)} aria-invalid={!hoursOk} aria-describedby="soak-hint" />
           </label>
           <button className={btnPrimary} disabled={!hoursOk || save.isPending || n === s.canary_soak_hours}>{save.isPending ? "Saving…" : "Save"}</button>
-        </form>
-        <p id="soak-hint" className={clsx("text-xs", hoursOk ? "text-muted" : "text-now-fg")}>Whole hours, 1 to 720.</p>
+        </form>}
+        {admin && <p id="soak-hint" className={clsx("text-xs", hoursOk ? "text-muted" : "text-now-fg")}>Whole hours, 1 to 720.</p>}
       </section>
       <TokensSection />
       {me.data?.admin && <NotificationsSection />}
@@ -83,6 +84,7 @@ export function SettingsPage() {
 }
 
 function TokensSection() {
+  const admin = useIsAdmin();
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["enroll-tokens"], queryFn: () => api<EnrollToken[]>("/api/enroll-tokens") });
   const [target, setTarget] = useState<EnrollToken | null>(null);
@@ -108,7 +110,7 @@ function TokensSection() {
                     {t.revoked ? "Revoked" : expired ? "Expired " : "Expires "}
                     {!t.revoked && <time dateTime={parseUtc(t.expires).toISOString()} title={parseUtc(t.expires).toLocaleString()}>{relativeTime(t.expires)}</time>}
                   </span>
-                  {!t.revoked && !expired && <button className={btnQuiet} onClick={() => { revoke.reset(); setTarget(t); }}>Revoke<span className="sr-only"> token {t.id}</span></button>}
+                  {!t.revoked && !expired && <button className={btnQuiet} onClick={() => { revoke.reset(); setTarget(t); }} {...adminGate(admin)}>Revoke<span className="sr-only"> token {t.id}</span></button>}
                 </li>
               );
             })}

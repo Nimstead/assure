@@ -152,3 +152,26 @@ def test_windows_fix_is_planned_as_one_kb_with_target_build(env):
     c.post(f"/api/remediation/jobs/{j['id']}/approve")
     [job] = c.get("/api/agent/jobs", headers=h).json()
     assert job["packages"][0]["kb"] == "5127648"
+
+
+def test_only_one_windows_job_in_flight_per_host(env):
+    from nimstead.db import RemediationJob
+    with make_sessionmaker(env)() as s:
+        sync_msrc(s, 60, msrc_client())
+    c = user(env)
+    token = c.post("/api/enroll-tokens", json={"sandbox": True}).json()["token"]
+    a = c.post("/api/agent/enroll", json={"token": token, "hostname": "pc-1", "ecosystem": "Windows"}).json()
+    h = {"Authorization": f"Bearer {a['agent_key']}"}
+    c.post("/api/agent/inventory", json={"ecosystem": "Windows", "packages": [
+        {"ecosystem": "Windows", "name": W11, "version": "10.0.26200.6899", "source": None}]}, headers=h)
+    j = c.post("/api/remediation/jobs", json={"asset_id": a["asset_id"], "ecosystem": "Windows", "package": W11}).json()
+    c.post(f"/api/remediation/jobs/{j['id']}/approve")
+    with make_sessionmaker(env)() as s:  # a second approved Windows job for the same host
+        first = s.get(RemediationJob, j["id"])
+        s.add(RemediationJob(org_id=first.org_id, asset_id=first.asset_id, action_key=first.action_key + "-2", manager="windows",
+                             packages=first.packages, finding_ids=[], summary="second", created_by="test", status="approved", approved_by="test"))
+        s.commit()
+    assert len(c.get("/api/agent/jobs", headers=h).json()) == 1  # the first may reboot the machine
+    assert c.get("/api/agent/jobs", headers=h).json() == []  # still in flight: the second waits
+    c.post(f"/api/agent/jobs/{j['id']}/report", json={"outcome": "applied", "versions": {W11: "10.0.26200.9711"}}, headers=h)
+    assert len(c.get("/api/agent/jobs", headers=h).json()) == 1  # now the second goes out

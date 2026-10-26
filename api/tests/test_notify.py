@@ -182,6 +182,7 @@ def test_request_path_unaffected_by_broken_or_slow_webhook(env, sent):
 class FakeSMTP:
     sent: list = []
     fail = False
+    tls = True
 
     def __init__(self, host, port, **kw):
         self.host, self.port = host, port
@@ -196,7 +197,10 @@ class FakeSMTP:
         pass
 
     def has_extn(self, name):
-        return False
+        return FakeSMTP.tls and name == "starttls"
+
+    def starttls(self, context=None):
+        FakeSMTP.sent.append(("starttls",))
 
     def login(self, user, pw):
         FakeSMTP.sent.append(("login", user, pw))
@@ -211,7 +215,7 @@ def test_email_channel(env, sent, monkeypatch):
     monkeypatch.setenv("NIMSTEAD_SMTP_URL", "smtp://bot:pw@mail.example.com:587")
     monkeypatch.setenv("NIMSTEAD_SMTP_FROM", "nimstead@example.com")
     monkeypatch.setattr(notify.smtplib, "SMTP", FakeSMTP)
-    FakeSMTP.sent, FakeSMTP.fail = [], False
+    FakeSMTP.sent, FakeSMTP.fail, FakeSMTP.tls = [], False, True
     c = setup(env)
     assert c.put("/api/settings/notifications", json={"emails": ["Ops@Example.com", "sec@example.com"]}).json()["email_available"]
     _, h, jid = dispatched_job(c)
@@ -291,3 +295,37 @@ def test_failed_channel_not_hidden_by_a_working_one(env, sent):
                Notification(org_id=org_id, kind="t", channel="email", ok=True, text="x")])  # email went through later
     s.commit()
     assert c.get("/api/settings/notifications").json()["last_delivery_failed"] is True
+
+
+def test_transport_connects_to_the_address_it_checked(monkeypatch):
+    answers = iter([[(2, 1, 6, "", ("93.184.216.34", 443))], [(2, 1, 6, "", ("10.0.0.5", 443))]])  # rebinding DNS
+    monkeypatch.setattr(netguard.socket, "getaddrinfo", lambda *a, **k: next(answers))
+    seen = {}
+
+    def capture(self, request):
+        seen.update(host=request.url.host, sni=request.extensions.get("sni_hostname"), header=request.headers["host"])
+        return httpx.Response(204)
+    monkeypatch.setattr(httpx.HTTPTransport, "handle_request", capture)
+    netguard.guarded_client().post("https://hooks.example.com/x", json={})
+    assert seen == {"host": "93.184.216.34", "sni": "hooks.example.com", "header": "hooks.example.com"}
+
+
+@pytest.mark.parametrize("url", ["https://[::127.0.0.1]/", "https://[::ffff:10.0.0.1]/", "https://[64:ff9b::a9fe:a9fe]/",
+                                 "https://[2002:a00:1::]/", "https://[::1]/"])
+def test_ipv6_forms_hiding_private_ipv4_are_refused(url):
+    with pytest.raises(ValueError):
+        netguard.check_public_url(url)
+
+
+def test_email_never_sends_credentials_without_tls(env, sent, monkeypatch):
+    monkeypatch.setenv("NIMSTEAD_SMTP_URL", "smtp://bot:pw@mail.example.com:587")
+    monkeypatch.setenv("NIMSTEAD_SMTP_FROM", "nimstead@example.com")
+    monkeypatch.setattr(notify.smtplib, "SMTP", FakeSMTP)
+    FakeSMTP.sent, FakeSMTP.fail, FakeSMTP.tls = [], False, False  # STARTTLS offer stripped
+    c = setup(env)
+    c.put("/api/settings/notifications", json={"emails": ["ops@example.com"]})
+    _, h, jid = dispatched_job(c)
+    report(c, h, jid, "rollback_failed", "x")
+    assert FakeSMTP.sent == []  # no login, no message
+    n = c.get("/api/settings/notifications").json()
+    assert n["last_delivery_failed"] and "STARTTLS" in n["recent"][0]["error"]

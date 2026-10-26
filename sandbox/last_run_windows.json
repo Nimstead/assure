@@ -9,7 +9,7 @@
       "skipped": 0
     },
     "kev": 1756,
-    "epss": 395308
+    "epss": 395492
   },
   {
     "step": "VM ready",
@@ -21,19 +21,19 @@
   },
   {
     "step": "install.ps1 output",
-    "output": "enrolled as asset 6fd31cc3403e44d4be808bebfe14530e; config saved to C:\\ProgramData\\Nimstead\\agent.json\nreported 4 packages\nNimstead agent installed; reporting every 6 hours.\nMSFT_TaskTimeTrigger\nMSFT_TaskBootTrigger\n#< CLIXML\n<Objs Version=\"1.1.0.1\" xmlns=\"http://schemas.microsoft.com/powershell/2004/04\"><S S=\"warning\">Plain HTTP server (dev only)</S><Obj S=\"information\" RefId=\"0\"><TN RefId=\"0\"><T>System.Management.Automation.InformationRecord</T><T>System.Object</T></TN><ToString>Nimstead agent installed; reporting every 6 hours.</ToString><Props><Obj N=\"MessageData\" RefId=\"1\"><TN RefId=\"1\"><T>System.Management.Automation.HostInformationMessage</T><T>System.Object</T></TN><ToString>Nimstead agent installed; reporting every 6 hours.</ToString><Props><S N=\"Message\">Nimstead agent installed; reporting every 6 hours.</S><B N=\"NoNewLine\">false</B><S N=\"ForegroundColor\">Gray</S><S N=\"BackgroundColor\">Black</S></Props></Obj><S N=\"Source\">Write-Host</S><DT N=\"TimeGenerated\">2026-10-26T04:37:41.7858148-07:00</DT><Obj N=\"Tags\" RefId=\"2\"><TN RefId=\"2\"><T>System.Collections.Generic.List`1[[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]]</T><T>System.Object</T></TN><LST><S>PSHOST</S></LST></Obj><S N=\"User\">NIMSTEAD-SBX\\Administrator</S><S N=\"Computer\">nimstead-sbx</S><U32 N=\"ProcessId\">2628</U32><U32 N=\"NativeThreadId\">3564</U32><U32 N=\"ManagedThreadId\">9</U32></Props></Obj></Objs>"
+    "output": "enrolled as asset c4944a847fd44daba75cd9065551b3b5; config saved to C:\\ProgramData\\Nimstead\\agent.json\nreported 4 packages\nNimstead agent installed; reporting every 6 hours.\nMSFT_TaskTimeTrigger\nMSFT_TaskBootTrigger\n#< CLIXML\n<Objs Version=\"1.1.0.1\" xmlns=\"http://schemas.microsoft.com/powershell/2004/04\"><S S=\"warning\">Plain HTTP server (dev only)</S><Obj S=\"information\" RefId=\"0\"><TN RefId=\"0\"><T>System.Management.Automation.InformationRecord</T><T>System.Object</T></TN><ToString>Nimstead agent installed; reporting every 6 hours.</ToString><Props><Obj N=\"MessageData\" RefId=\"1\"><TN RefId=\"1\"><T>System.Management.Automation.HostInformationMessage</T><T>System.Object</T></TN><ToString>Nimstead agent installed; reporting every 6 hours.</ToString><Props><S N=\"Message\">Nimstead agent installed; reporting every 6 hours.</S><B N=\"NoNewLine\">false</B><S N=\"ForegroundColor\">Gray</S><S N=\"BackgroundColor\">Black</S></Props></Obj><S N=\"Source\">Write-Host</S><DT N=\"TimeGenerated\">2026-10-26T07:54:27.6650025-07:00</DT><Obj N=\"Tags\" RefId=\"2\"><TN RefId=\"2\"><T>System.Collections.Generic.List`1[[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]]</T><T>System.Object</T></TN><LST><S>PSHOST</S></LST></Obj><S N=\"User\">NIMSTEAD-SBX\\Administrator</S><S N=\"Computer\">nimstead-sbx</S><U32 N=\"ProcessId\">3844</U32><U32 N=\"NativeThreadId\">1068</U32><U32 N=\"ManagedThreadId\">9</U32></Props></Obj></Objs>"
   },
   {
     "step": "install.ps1 ran elevated: enrolled, reported, task registered",
     "triggers": [
       "#< CLIXML",
-      "<Objs Version=\"1.1.0.1\" xmlns=\"http://schemas.microsoft.com/powershell/2004/04\"><S S=\"warning\">Plain HTTP server (dev only)</S><Obj S=\"information\" RefId=\"0\"><TN RefId=\"0\"><T>System.Management.Automation.InformationRecord</T><T>System.Object</T></TN><ToString>Nimstead agent installed; reporting every 6 hours.</ToString><Props><Obj N=\"MessageData\" RefId=\"1\"><TN RefId=\"1\"><T>System.Management.Automation.HostInformationMessage</T><T>System.Object</T></TN><ToString>Nimstead agent installed; reporting every 6 hours.</ToString><Props><S N=\"Message\">Nimstead agent installed; reporting every 6 hours.</S><B N=\"NoNewLine\">false</B><S N=\"ForegroundColor\">Gray</S><S N=\"BackgroundColor\">Black</S></Props></Obj><S N=\"Source\">Write-Host</S><DT N=\"TimeGenerated\">2026-10-26T04:37:41.7858148-07:00</DT><Obj N=\"Tags\" RefId=\"2\"><TN RefId=\"2\"><T>System.Collections.Generic.List`1[[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]]</T><T>System.Object</T></TN><LST><S>PSHOST</S></LST></Obj><S N=\"User\">NIMSTEAD-SBX\\Administrator</S><S N=\"Computer\">nimstead-sbx</S><U32 N=\"ProcessId\">2628</U32><U32 N=\"NativeThreadId\">3564</U32><U32 N=\"ManagedThreadId\">9</U32></Props></Obj></Objs>"
+      "<Objs Version=\"1.1.0.1\" xmlns=\"http://schemas.microsoft.com/powershell/2004/04\"><S S=\"warning\">Plain HTTP server (dev only)</S><Obj S=\"information\" RefId=\"0\"><TN RefId=\"0\"><T>System.Management.Automation.InformationRecord</T><T>System.Object</T></TN><ToString>Nimstead agent installed; reporting every 6 hours.</ToString><Props><Obj N=\"MessageData\" RefId=\"1\"><TN RefId=\"1\"><T>System.Management.Automation.HostInformationMessage</T><T>System.Object</T></TN><ToString>Nimstead agent installed; reporting every 6 hours.</ToString><Props><S N=\"Message\">Nimstead agent installed; reporting every 6 hours.</S><B N=\"NoNewLine\">false</B><S N=\"ForegroundColor\">Gray</S><S N=\"BackgroundColor\">Black</S></Props></Obj><S N=\"Source\">Write-Host</S><DT N=\"TimeGenerated\">2026-10-26T07:54:27.6650025-07:00</DT><Obj N=\"Tags\" RefId=\"2\"><TN RefId=\"2\"><T>System.Collections.Generic.List`1[[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]]</T><T>System.Object</T></TN><LST><S>PSHOST</S></LST></Obj><S N=\"User\">NIMSTEAD-SBX\\Administrator</S><S N=\"Computer\">nimstead-sbx</S><U32 N=\"ProcessId\">3844</U32><U32 N=\"NativeThreadId\">1068</U32><U32 N=\"ManagedThreadId\">9</U32></Props></Obj></Objs>"
     ],
     "os": "Windows Server 2025 Standard Evaluation 24H2 (AMD64) build 10.0.26100.32230",
     "open_by_priority": {
+      "fix-now": 2,
       "low": 1464,
-      "planned": 258,
-      "fix-now": 2
+      "planned": 258
     },
     "fix": "Windows Server 2025 (Server Core installation) -> 10.0.26100.33650"
   },
@@ -55,6 +55,6 @@
   },
   {
     "step": "VM destroyed",
-    "name": "nimstead-sbx-win-03f89a"
+    "name": "nimstead-sbx-win-d1e18a"
   }
 ]

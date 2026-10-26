@@ -248,11 +248,12 @@ APT_CACHE = "/var/cache/apt/archives"
 
 
 def sh(cmd, cwd=None):
-    """Default runner: (returncode, output tail). Never raises for a failing command."""
+    """Default runner: (returncode, full output). Never raises for a failing command. Steps keep only the tail;
+    parsers (zypper's XML dry run runs to tens of KB with package descriptions) need all of it."""
     env = dict(os.environ, DEBIAN_FRONTEND="noninteractive", LC_ALL="C")
     try:
         p = subprocess.run(cmd, cwd=cwd, env=env, capture_output=True, text=True, errors="replace", timeout=1800)
-        return p.returncode, (p.stdout + p.stderr)[-4000:]
+        return p.returncode, p.stdout + p.stderr
     except (OSError, subprocess.TimeoutExpired) as e:
         return 127, str(e)
 
@@ -602,6 +603,10 @@ class Job:
         now_v = self.versions()
         bad = [p["name"] for p in self.pkgs if now_v.get(p["name"]) != p["from"]]
         self.step("versions restored", ok=not bad, output=("mismatch: " + ", ".join(bad)) if bad else "all restored")
+        for u in self.units:  # a service the bad version crashed stays down until restarted on the restored files
+            if self.run(["systemctl", "is-active", "--quiet", u])[0] != 0:
+                rc, out = self.run(["systemctl", "restart", u])
+                self.steps.append({"step": f"restart {u} on the restored version", "ok": rc == 0, "output": out[-500:]})
         if self.units and self.settle:
             time.sleep(self.settle)  # let restarted services come back before judging
         self.health("after rollback")

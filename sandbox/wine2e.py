@@ -175,6 +175,9 @@ def main(keep=False) -> int:
         final = build()
         f_open = len(api.get("/api/findings").json())
         note("scheduled-task fix finished", status=status, build=final, open_findings=f_open)
+        if status != "succeeded":  # the agent's own step log says why
+            j = next(j for j in api.get("/api/remediation/jobs").json() if j["id"] == jid)
+            note("job steps", error=j.get("error"), steps=[f"{'ok ' if s['ok'] else 'FAIL'} {s['step']}: {s['output'][-200:]}" for s in j.get("steps", [])])
         assert status == "succeeded", status
 
         z = zipfile.ZipFile(io.BytesIO(api.get("/api/evidence/pack", params={"days": 1}).content))

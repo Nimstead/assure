@@ -27,6 +27,7 @@ from nimstead.versions import comparator_for, sort_key
 
 # apt: rollback = old .deb; apk/dnf: rollback = file + package-database snapshot (DECISIONS 16)
 MANAGERS = {"Debian": "apt", "Ubuntu": "apt", "Alpine": "apk", "Rocky Linux": "dnf", "AlmaLinux": "dnf",
+            "openSUSE": "zypper", "SUSE": "zypper",
             "Windows": "windows"}  # windows: one cumulative update by KB, rollback = DISM removal (DECISIONS 22)
 SAFE_PRODUCT = re.compile(r"^Windows [A-Za-z0-9 .()-]{1,120}$")
 SAFE_KB = re.compile(r"^[0-9]{6,8}$")

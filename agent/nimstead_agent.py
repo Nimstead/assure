@@ -66,6 +66,13 @@ def ecosystem_from_os_release(text):
         return "Rocky Linux:" + ver.split(".")[0]
     if distro == "almalinux":
         return "AlmaLinux:" + ver.split(".")[0]
+    if distro == "opensuse-leap":
+        return "openSUSE:Leap " + ver
+    if distro == "opensuse-tumbleweed":
+        return "openSUSE:Tumbleweed"
+    if distro == "sles" and "." in ver:
+        major, minor = ver.split(".", 1)
+        return f"SUSE:Linux Enterprise Server {major} SP{minor}"
     return ""
 
 
@@ -310,7 +317,19 @@ def dnf_touched(out):
     return names
 
 
-TOOLS = {"apt": "apt-get", "apk": "apk", "dnf": "dnf"}
+def zypper_touched(xml):
+    """Package names in a `zypper --xmlout ... --dry-run` install summary."""
+    import xml.etree.ElementTree as ET
+    names = set()
+    # local root-run zypper output, not network input; the agent is stdlib-only so defusedxml isn't available
+    tree = ET.fromstring(xml[xml.index("<stream"):] if "<stream" in xml else xml)  # noqa: S314
+    for section in ("to-install", "to-upgrade", "to-downgrade", "to-remove", "to-reinstall", "to-upgrade-change-arch"):
+        for el in tree.iter(section):
+            names |= {s.get("name") for s in el.iter("solvable") if s.get("type", "package") == "package"}
+    return names
+
+
+TOOLS = {"apt": "apt-get", "apk": "apk", "dnf": "dnf", "zypper": "zypper"}
 
 
 class Job:
@@ -383,6 +402,16 @@ class Job:
         for u in self.units:
             self.step(f"{u} active {when}", ["systemctl", "is-active", "--quiet", u])
 
+    def snapper_ok(self):
+        rc, out = self.run(["snapper", "-c", "root", "list", "--columns", "number"])
+        return rc == 0
+
+    def _snap_post(self):
+        if getattr(self, "snap_pre", None) and not getattr(self, "snap_post", None):
+            rc, out = self.run(["snapper", "-c", "root", "create", "--type", "post", "--pre-number", self.snap_pre, "--print-number"])
+            self.step("snapper post-change snapshot", ok=rc == 0 and out.strip().isdigit(), output=out)
+            self.snap_post = out.strip()
+
     def targets(self):
         """Package specs to install: pinned to a canary-proven version when the server provides one."""
         if self.mgr == "dnf":
@@ -399,6 +428,9 @@ class Job:
         elif self.mgr == "apk":
             out = self.step("simulate upgrade", ["apk", "add", "-s", "--upgrade", *self.targets()])
             touched = set(re.findall(r"\b(?:Upgrading|Installing|Purging|Downgrading|Replacing|Reinstalling) (\S+)", out))
+        elif self.mgr == "zypper":
+            out = self.step("simulate upgrade", ["zypper", "--non-interactive", "--xmlout", "install", "--dry-run", *self.targets()])
+            touched = zypper_touched(out)
         else:
             rc, out = self.run(["dnf", "upgrade", "--assumeno", *self.targets()])  # exits 1 after printing the plan
             self.steps.append({"step": "simulate upgrade", "ok": "Transaction Summary" in out or "Nothing to do" in out,
@@ -417,6 +449,14 @@ class Job:
         os.makedirs(self.dir, mode=0o700, exist_ok=True)
         if self.mgr == "apt":
             return self._save_debs()
+        if self.mgr == "zypper" and self.snapper_ok():
+            # btrfs + snapper: a pre/post snapshot pair captures EVERYTHING the change does to the root filesystem,
+            # including what the packages' install scripts touch outside their own files
+            rc, out = self.run(["snapper", "-c", "root", "create", "--type", "pre", "--print-number",
+                                "--cleanup-algorithm", "number", "--description", f"nimstead job {os.path.basename(self.dir)}"])
+            self.step("snapper pre-change snapshot", ok=rc == 0 and out.strip().isdigit(), output=out)
+            self.snap_pre = out.strip()
+            return
         self.old_paths = self.owned_paths()
         tar_path = os.path.join(self.dir, "files.tar")
         with tarfile.open(tar_path, "w") as tar:
@@ -427,9 +467,10 @@ class Job:
         dbs = ["/lib/apk/db", "/etc/apk/world"] if self.mgr == "apk" else ["/var/lib/rpm"]
         self.db_backups = []
         for i, d in enumerate(dbs):
+            real = os.path.realpath(self.path(d))  # newer rpm systems: /var/lib/rpm -> /usr/lib/sysimage/rpm
             dest = os.path.join(self.dir, f"db{i}")
-            (shutil.copytree if os.path.isdir(self.path(d)) else shutil.copy2)(self.path(d), dest)
-            self.db_backups.append((d, dest, _tree_sha256(dest)))
+            (shutil.copytree if os.path.isdir(real) else shutil.copy2)(real, dest)
+            self.db_backups.append((d, dest, _tree_sha256(dest), real))
         self.step("rollback snapshot saved", ok=True,
                   output=f"{len(self.old_paths)} owned paths, package database; sha256 {self.artefacts[0][1]}")
 
@@ -471,8 +512,13 @@ class Job:
             try:
                 self.step("upgrade", ["apk", "add", "--upgrade", *self.targets()])
             finally:  # `apk add` would also record these packages (and pins) in the world file: keep it as it was
-                world_bak = next(b for d, b, _ in self.db_backups if d == "/etc/apk/world")
+                world_bak = next(b for d, b, *_ in self.db_backups if d == "/etc/apk/world")
                 shutil.copy2(world_bak, self.path("/etc/apk/world"))
+        elif self.mgr == "zypper":
+            try:
+                self.step("upgrade", ["zypper", "--non-interactive", "install", "--no-recommends", *self.targets()])
+            finally:
+                self._snap_post()
         else:
             self.step("upgrade", ["dnf", "upgrade", "-y", *self.targets()])
         self.result_versions = self.versions()
@@ -485,8 +531,11 @@ class Job:
                       output="sha256 mismatch or missing")
         if self.mgr == "apt":
             self.step("rollback install", ["dpkg", "-i", *[p for p, _ in self.artefacts]])
+        elif getattr(self, "snap_pre", None):
+            self._snap_post()
+            self.step("snapper undo of all changes", ["snapper", "-c", "root", "undochange", f"{self.snap_pre}..{self.snap_post}"])
         else:
-            for d, bak, digest in self.db_backups:
+            for d, bak, digest, _real in self.db_backups:
                 self.step(f"database backup intact {d}", ok=_tree_sha256(bak) == digest, output="sha256 mismatch")
             added = sorted(self.owned_paths() - self.old_paths, reverse=True)  # files the new version brought in
             for p in added:
@@ -501,8 +550,7 @@ class Job:
             with tarfile.open(self.artefacts[0][0]) as tar:
                 kw = {"filter": "fully_trusted"} if hasattr(tarfile, "fully_trusted_filter") else {}  # our own, sha-verified
                 tar.extractall(self.root, **kw)  # noqa: S202 — exact restore needs owners/setuid; archive verified above
-            for d, bak, _ in self.db_backups:
-                real = self.path(d)
+            for _d, bak, _, real in self.db_backups:
                 if os.path.isdir(bak):
                     shutil.rmtree(real)
                     shutil.copytree(bak, real)
@@ -531,7 +579,8 @@ class Job:
             self.step("installed versions match plan", ok=not drift, output=("drifted: " + ", ".join(drift)) if drift else "")
             self.health("before change")
             self.step("refresh package index", {"apt": ["apt-get", "update"], "apk": ["apk", "update"],
-                                                "dnf": ["dnf", "makecache"]}[self.mgr])
+                                                "dnf": ["dnf", "makecache"],
+                                                "zypper": ["zypper", "--non-interactive", "refresh"]}[self.mgr])
             self.simulate()
             self.save_rollback()
         except Exception as e:

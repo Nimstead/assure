@@ -1,0 +1,36 @@
+{
+  "assets": 1000,
+  "db": "postgresql+psycopg",
+  "advisories": 99000,
+  "inventory_ingest": {
+    "median_s": 0.805,
+    "p95_s": 0.86,
+    "max_s": 1.012
+  },
+  "GET /api/summary (home page)": {
+    "median_s": 0.365,
+    "max_s": 0.376
+  },
+  "open_findings": 297000,
+  "GET /api/findings (default 500)": {
+    "median_s": 0.064,
+    "max_s": 0.068
+  },
+  "GET /api/findings?limit=5000": {
+    "median_s": 0.244,
+    "max_s": 0.452
+  },
+  "GET /api/findings?q=pkg42": {
+    "median_s": 0.078,
+    "max_s": 0.082
+  },
+  "GET /api/assets": {
+    "median_s": 0.055,
+    "max_s": 0.059
+  },
+  "GET /api/evidence/pack": {
+    "median_s": 10.615,
+    "max_s": 10.615
+  },
+  "rematch_all_s": 74.8
+}

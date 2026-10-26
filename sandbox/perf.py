@@ -3,7 +3,7 @@
 Run from api/:  uv run python ../sandbox/perf.py [--assets 1000] [--db postgresql+psycopg://...]
 Sizes follow the real-host runs (Debian 13: 164 pkgs / 274 findings, Ubuntu 24.04: 523 / 369). Times every
 user-facing endpoint the home page and findings views hit, agent inventory ingest, and the hourly re-match.
-Writes sandbox/last_run_perf.json.
+Writes sandbox/last_run_perf_<sqlite|postgresql>.json.
 """
 
 import json
@@ -108,7 +108,7 @@ def main():
         s.commit()
         result["rematch_all_s"] = round(time.perf_counter() - t, 1)
         print(f"re-match all {len(assets)} hosts (hourly feed update): {result['rematch_all_s']}s", flush=True)
-    (ROOT / "sandbox" / "last_run_perf.json").write_text(json.dumps(result, indent=2))
+    (ROOT / "sandbox" / f"last_run_perf_{result['db'].split('+')[0]}.json").write_text(json.dumps(result, indent=2))
 
 
 if __name__ == "__main__":

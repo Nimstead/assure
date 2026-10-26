@@ -1,6 +1,6 @@
 """Run the full API test suite against real PostgreSQL in a DISPOSABLE WSL distro.
 
-Run from api/:  uv run python ../sandbox/pg.py
+Run from api/:  uv run python ../sandbox/pg.py [pytest args]   |   uv run python ../sandbox/pg.py --perf 1000
 Creates nimstead-sbx-pg-<random>, installs PostgreSQL, runs pytest with NIMSTEAD_TEST_PG_URL (each test
 gets a fresh database built by Alembic), then always unregisters the distro.
 """
@@ -49,6 +49,14 @@ def main() -> int:
         print(wsl(f"su postgres -c 'psql -p {PORT} -tAc \"select version()\"'").strip(), flush=True)
         # 127.0.0.1, not "localhost": Windows tries ::1 first, WSL forwards only IPv4, and every connect waits for a timeout
         url = f"postgresql+psycopg://nimstead:{PASSWORD}@127.0.0.1:{PORT}/postgres"
+        if "--perf" in sys.argv:  # benchmark (sandbox/perf.py) on a database migrated by Alembic, as in production
+            wsl(f"su postgres -c 'psql -p {PORT} -c \"CREATE DATABASE perf OWNER nimstead\"'")
+            db = url.rsplit("/", 1)[0] + "/perf"
+            here = Path(__file__).resolve().parent
+            subprocess.run([sys.executable, "-m", "alembic", "upgrade", "head"], cwd=here.parent / "api",
+                           env={**os.environ, "NIMSTEAD_DB": db}, check=True, capture_output=True)
+            n = sys.argv[sys.argv.index("--perf") + 1]
+            return subprocess.run([sys.executable, str(here / "perf.py"), "--assets", n, "--db", db]).returncode
         return subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:warnings", *sys.argv[1:]],
                               env={**os.environ, "NIMSTEAD_TEST_PG_URL": url}).returncode
     finally:

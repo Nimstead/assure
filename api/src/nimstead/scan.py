@@ -7,7 +7,7 @@ from collections import defaultdict
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from nimstead import evidence, risk
+from nimstead import evidence, risk, winapps
 from nimstead.db import Advisory, Asset, Cvss, Epss, Finding, InstalledPackage, Kev, now
 from nimstead.match import Package, match_package, normalize_ecosystem
 from nimstead.notify import notify
@@ -30,9 +30,20 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True) -> dict:
     events: list[tuple[str, Finding]] = []
     fix_now: list[str] = []  # findings that became fix-now in this rescan
 
-    wanted: dict[str, set[str]] = defaultdict(set)
+    # (package, advisory ecosystem, advisory package name, version to compare). Installed Windows apps are looked up by
+    # the curated product key only; an app the map doesn't know is inventory and never matched.
+    targets = []
     for p in pkgs:
-        wanted[normalize_ecosystem(p.ecosystem)].add(p.source or p.name)
+        eco = normalize_ecosystem(p.ecosystem)
+        if eco == winapps.ECOSYSTEM:
+            if hit := winapps.identify(p.name, p.source, p.version):
+                targets.append((p, eco, hit[0], hit[1]))
+        else:
+            targets.append((p, eco, p.source or p.name, p.version))
+    targets.sort(key=lambda t: winapps.appver_parts(t[3]) if t[1] == winapps.ECOSYSTEM else [])  # stable: oldest install of an app is reported
+    wanted: dict[str, set[str]] = defaultdict(set)
+    for _, eco, name, _ in targets:
+        wanted[eco].add(name)
     advisories: dict[tuple[str, str], list[dict]] = defaultdict(list)
     for eco, names in wanted.items():
         names_l = sorted(names)
@@ -40,13 +51,11 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True) -> dict:
             for a in s.scalars(select(Advisory).where(Advisory.ecosystem == eco, Advisory.package.in_(names_l[i:i + 500]))):
                 advisories[(eco, a.package)].append(a.record)
 
-    for p in pkgs:
-        eco = normalize_ecosystem(p.ecosystem)
-        name = p.source or p.name
+    for p, eco, name, version in targets:
         records = advisories.get((eco, name))
         if not records:
             continue
-        for m in match_package(Package(p.name, p.version, p.source), p.ecosystem, records):
+        for m in match_package(Package(p.name, version, name), p.ecosystem, records):
             key = (eco, name, m.vuln_id)
             if key in seen:  # several binaries from one source package -> one finding
                 continue

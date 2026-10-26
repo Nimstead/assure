@@ -15,7 +15,7 @@ import httpx
 from sqlalchemy import delete, insert, select, update
 from sqlalchemy.orm import Session
 
-from nimstead import evidence, notify
+from nimstead import evidence, notify, winapps
 from nimstead.db import Advisory, Asset, Cvss, Epss, InstalledPackage, Kev, Org, make_sessionmaker, now
 from nimstead.match import normalize_ecosystem
 from nimstead.scan import rescan
@@ -144,6 +144,23 @@ def sync_nvd(session: Session, feeds: list[str], client=None) -> int:
             session.execute(insert(Cvss), batch)
         session.commit()
         n += len(rows)
+        sync_winapps(session, [v["cve"] for v in vulns])
+    return n
+
+
+def sync_winapps(session: Session, cves: list[dict]) -> int:
+    """Curated third-party Windows app advisories (ecosystem WinApp) from NVD CPE configurations; see winapps.py.
+    Replaces every WinApp row of the CVEs given, so a corrected or rejected CVE loses its stale rows."""
+    n = 0
+    for i in range(0, len(cves), 5000):
+        batch = cves[i:i + 5000]
+        session.execute(delete(Advisory).where(Advisory.ecosystem == winapps.ECOSYSTEM, Advisory.id.in_([c["id"] for c in batch])))
+        rows = [{"id": rec["id"], "ecosystem": winapps.ECOSYSTEM, "package": key, "modified": rec["modified"], "record": rec}
+                for c in batch if c.get("vulnStatus") != "Rejected" for key, rec in winapps.advisories(c)]
+        if rows:
+            session.execute(insert(Advisory), rows)
+        session.commit()
+        n += len(rows)
     return n
 
 
@@ -245,7 +262,7 @@ def update_all(session: Session, client=None) -> dict:
     New advisories or exploitation data change findings without waiting for the next
     agent report. Run from cron/systemd timer (e.g. hourly)."""
     in_use = {normalize_ecosystem(e) for e in session.scalars(select(InstalledPackage.ecosystem).distinct())}
-    used = sorted({e.split(":", 1)[0] for e in in_use} - {"Windows"})  # Windows comes from MSRC, not OSV
+    used = sorted({e.split(":", 1)[0] for e in in_use} - {"Windows", "WinApp"})  # Windows comes from MSRC, WinApp from NVD; neither is in OSV
     out = {"kev": sync_kev(session, client), "epss": sync_epss(session, client), "nvd": sync_nvd(session, ["modified"], client),
            "osv": sync_osv(session, used, client, only=in_use) if used else {}}
     if "Windows" in in_use:

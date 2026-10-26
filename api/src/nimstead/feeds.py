@@ -268,8 +268,9 @@ def update_all(session: Session, client=None) -> dict:
     if "Windows" in in_use:
         out["msrc"] = sync_msrc(session, client=client)
     out["rescanned"] = 0
+    cache: dict = {}  # advisories decoded once per pass: hosts on one release share most packages
     for asset in session.scalars(select(Asset)).all():
-        rescan(session, asset, inventory_received=False)
+        rescan(session, asset, inventory_received=False, cache=cache)
         out["rescanned"] += 1
     for org_id in session.scalars(select(Org.id)).all():  # hourly signed ledger checkpoints, kept off-database
         evidence.checkpoint(session, org_id)

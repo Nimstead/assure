@@ -54,8 +54,27 @@ def test_refuses_plain_http():
         agent.post("http://x", "/p", {}, insecure_http=False)
 
 
-def test_windows_acl_command():
-    assert agent.windows_acl_cmd(r"C:\ProgramData\Nimstead\agent.json", "alice") == [
-        "icacls", r"C:\ProgramData\Nimstead\agent.json", "/inheritance:r",
-        "/grant:r", "*S-1-5-18:F", "/grant:r", "*S-1-5-32-544:F", "/grant:r", "alice:F"]
-    assert "evil:F" not in " ".join(agent.windows_acl_cmd("x", "evil /grant Everyone"))  # odd usernames not passed through
+@pytest.mark.real_lockdown
+def test_lockdown_removes_files_users_planted_then_restricts_the_folder(tmp_path):
+    d = tmp_path / "Nimstead"
+    d.mkdir()
+    (d / "pending-job.json").write_text("{}")  # planted by a normal user: would run as SYSTEM after the next boot
+    (d / "agent.json").write_text("{}")
+    calls = []
+
+    def run(cmd, cwd=None):
+        calls.append(cmd)
+        if cmd[0] == "powershell":
+            return 0, f"{d / 'pending-job.json'}|S-1-5-21-1-2-3-1001\n{d / 'agent.json'}|S-1-5-32-544\n"
+        return 0, ""
+    assert agent.secure_windows_dir(run, str(d)) == [str(d / "pending-job.json")]
+    assert (d / "agent.json").exists() and not (d / "pending-job.json").exists()
+    icacls = [c[2:] for c in calls if c[0] == "icacls"]
+    assert icacls[0] == ["/inheritance:r", "/grant:r", "*S-1-5-18:(OI)(CI)F", "/grant:r", "*S-1-5-32-544:(OI)(CI)F", "/Q"]
+    assert ["/setowner", "*S-1-5-32-544", "/T", "/C", "/Q"] in icacls and ["/reset", "/T", "/C", "/Q"] in icacls
+
+
+@pytest.mark.real_lockdown
+def test_lockdown_failure_is_loud(tmp_path):
+    with pytest.raises(agent.AgentError):
+        agent.secure_windows_dir(lambda cmd, cwd=None: (5, "Access is denied."), str(tmp_path))

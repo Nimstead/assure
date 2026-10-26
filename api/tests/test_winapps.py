@@ -213,7 +213,7 @@ class FakeKey:
 
 
 class FakeReg:
-    HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER = "HKLM", "HKCU"
+    HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER, HKEY_USERS = "HKLM", "HKCU", "HKU"
     KEY_READ, KEY_WOW64_64KEY, KEY_WOW64_32KEY = 1, 0x100, 0x200
 
     def __init__(self, tree):
@@ -223,11 +223,20 @@ class FakeReg:
         if isinstance(parent, FakeKey):
             return FakeKey(parent.subs[path])
         view = access & (self.KEY_WOW64_64KEY | self.KEY_WOW64_32KEY)
+        if parent == self.HKEY_USERS:  # per-user hive: "<SID>\\<Uninstall path>"
+            sid, _, rest = path.partition("\\")
+            parent, view = ("HKU", sid), 0
+            path = rest
         if path != agent.UNINSTALL or (parent, view) not in self.tree:
             raise FileNotFoundError(path)
         return FakeKey(subs=self.tree[(parent, view)])
 
     def EnumKey(self, key, i):  # noqa: N802
+        if key == self.HKEY_USERS:
+            sids = [p[1] for p, _ in self.tree if isinstance(p, tuple)] + [".DEFAULT", "S-1-5-18"]
+            if i >= len(sids):
+                raise OSError("no more")
+            return sids[i]
         try:
             return list(key.subs)[i]
         except IndexError:
@@ -299,3 +308,13 @@ def test_winapp_asset_end_to_end(env):
     assert r["open"] == 0 and r["resolved"] == 1
     assert not c.get("/api/findings").json()
     assert [x["status"] for x in c.get("/api/findings", params={"status": "resolved"}).json()] == ["resolved"]
+
+
+def test_windows_apps_reads_per_user_installs_from_every_loaded_profile():
+    reg = FakeReg({
+        (("HKU", "S-1-5-21-111-222-333-1001"), 0): {"code": {"DisplayName": "Microsoft Visual Studio Code (User)",
+                                                             "DisplayVersion": "1.141.2", "Publisher": "Microsoft Corporation"}},
+        (("HKU", "S-1-5-21-111-222-333-1002"), 0): {"zoom": {"DisplayName": "Zoom Workplace (64-bit)", "DisplayVersion": "6.4.1"}},
+    })
+    names = [a["name"] for a in agent.windows_apps(reg)]
+    assert names == ["Microsoft Visual Studio Code (User)", "Zoom Workplace (64-bit)"]

@@ -2,6 +2,7 @@
 
 import json
 
+import pytest
 from test_agent_remediate import agent
 
 OLD, NEW = "10.0.26100.32230", "10.0.26100.33650"
@@ -120,6 +121,21 @@ def test_removable_update_notes_permanent_parts(tmp_path):
     r = make(tmp_path, FakeWin()).advance()
     step = next(s for s in r["steps"] if "removable" in s["step"])
     assert step["ok"] and "SenseClient" in step["output"]
+
+
+def test_tampered_state_is_never_resumed(tmp_path):
+    for field, value in (("units", ["x' -EA Stop).Status; Start-Process calc; (Get-Service -Name 'y"]),
+                         ("new_packages", ["Package_for_ServicingStack~31bf3856ad364e35~amd64~~26100.1"]),
+                         ("kb", "1; calc"), ("phase", "anything")):
+        h = FakeWin()
+        assert make(tmp_path, h).advance()["outcome"] == "pending_reboot"
+        state = json.loads((tmp_path / "state.json").read_text())
+        state[field] = value
+        (tmp_path / "state.json").write_text(json.dumps(state))
+        h.reboot()
+        with pytest.raises(agent.AgentError, match="failed validation"):
+            resume(tmp_path, h)
+        (tmp_path / "state.json").unlink()
 
 
 def test_build_drift_aborts(tmp_path):

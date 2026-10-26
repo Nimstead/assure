@@ -1,7 +1,8 @@
 [project]
 name = "nimstead"
 version = "0.1.0"
-description = "Add your description here"
+description = "Nimstead Assure: vulnerability scanning, patch assurance, audit evidence and safe remediation"
+license = "LicenseRef-Proprietary"
 readme = "README.md"
 authors = [
     { name = "Ciaran W", email = "ciaranwhiteside@protonmail.com" }

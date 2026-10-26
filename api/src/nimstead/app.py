@@ -1,5 +1,6 @@
 """HTTP API. Web users authenticate with a session cookie; agents with a per-asset bearer key."""
 
+import functools
 import hashlib
 import logging
 import os
@@ -19,7 +20,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import delete, func, select
+from sqlalchemy import Integer, delete, func, select
 from sqlalchemy.orm import Session
 
 from nimstead import ai, evidence, notify, remediate, sbom, sso
@@ -780,33 +781,27 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     @app.get("/api/summary")
     def summary(user: CurrentUser, s: DB):
         remediate.sweep(s, user.org_id)
-        open_ = s.execute(
-            select(Finding, Asset.hostname).join(Asset, Asset.id == Finding.asset_id)
-            .where(Finding.org_id == user.org_id, Finding.status == "open")
+        is_open = (Finding.org_id == user.org_id, Finding.status == "open")
+        by_priority = dict(s.execute(select(Finding.priority, func.count()).where(*is_open).group_by(Finding.priority)).all())
+        # Group fixes into actions: "upgrade openssl to X" clears N findings on M hosts. Rank in SQL, detail only the top 10.
+        ranked = s.execute(
+            select(Finding.ecosystem, Finding.package, func.max(Finding.kev.cast(Integer)), func.max(Finding.score),
+                   func.count(Finding.vuln_id.distinct()))
+            .where(*is_open, Finding.fixed_version.is_not(None)).group_by(Finding.ecosystem, Finding.package)
         ).all()
-        by_priority: dict[str, int] = defaultdict(int)
-        # Group fixes into actions: "upgrade openssl to X" clears N findings on M hosts.
-        actions: dict[tuple, dict] = {}
-        for f, host in open_:
-            by_priority[f.priority] += 1
-            if not f.fixed_version:
-                continue
-            a = actions.setdefault((f.ecosystem, f.package), {
-                "ecosystem": f.ecosystem, "package": f.package, "fixed_version": f.fixed_version,
-                "hosts": set(), "vulns": set(), "kev": False, "max_score": 0,
-            })
-            cmp = comparator_for(f.ecosystem)
-            if cmp and cmp(f.fixed_version, a["fixed_version"]) > 0:
-                a["fixed_version"] = f.fixed_version  # highest fix clears them all
-            a["hosts"].add(host)
-            a["vulns"].add(f.vuln_id)
-            a["kev"] |= f.kev
-            a["max_score"] = max(a["max_score"], f.score)
-        top = sorted(actions.values(), key=lambda a: (a["kev"], a["max_score"], len(a["vulns"])), reverse=True)[:10]
+        top = []
+        for eco, pkg, kev, max_score, _ in sorted(ranked, key=lambda r: (bool(r[2]), r[3], r[4]), reverse=True)[:10]:
+            rows = s.execute(select(Finding.fixed_version, Finding.vuln_id, Asset.hostname).join(Asset, Asset.id == Finding.asset_id)
+                             .where(*is_open, Finding.ecosystem == eco, Finding.package == pkg, Finding.fixed_version.is_not(None))).all()
+            cmp = comparator_for(eco)
+            fixes = {r[0] for r in rows}
+            fixed = max(fixes, key=functools.cmp_to_key(cmp)) if cmp else sorted(fixes)[-1]  # highest fix clears them all
+            top.append({"ecosystem": eco, "package": pkg, "fixed_version": fixed, "hosts": sorted({r[2] for r in rows}),
+                        "vulns": sorted({r[1] for r in rows}), "kev": bool(kev), "max_score": max_score})
         return {
             "assets": s.scalar(select(func.count()).select_from(Asset).where(Asset.org_id == user.org_id)),
             "open_by_priority": by_priority,
-            "top_actions": [{**a, "hosts": sorted(a["hosts"]), "vulns": sorted(a["vulns"])} for a in top],
+            "top_actions": top,
             "attention": [job_json(j, h) for j, h in s.execute(
                 select(RemediationJob, Asset.hostname).join(Asset, Asset.id == RemediationJob.asset_id)
                 .where(RemediationJob.org_id == user.org_id,

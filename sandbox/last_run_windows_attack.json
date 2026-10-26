@@ -1,0 +1,37 @@
+[
+  {
+    "step": "standard user created",
+    "groups": "1"
+  },
+  {
+    "step": "locked folder: standard user writes",
+    "job_state": false,
+    "outcome": false,
+    "acl": [
+      "C:\\ProgramData\\Nimstead BUILTIN\\Administrators:(OI)(CI)(F)",
+      "                        NT AUTHORITY\\SYSTEM:(OI)(CI)(F)",
+      "",
+      "Successfully processed 1 files; Failed processing 0 files"
+    ]
+  },
+  {
+    "step": "old-style folder: user planted a pending job",
+    "owner": "NIMSTEAD-SBX\\nimuser"
+  },
+  {
+    "step": "SYSTEM agent run",
+    "agent_output": "removed C:\\ProgramData\\Nimstead\\pending-job.json: not created by SYSTEM or Administrators\nnimstead-agent: error: refusing non-HTTPS server 'http://10.0.2.2:8766' (use --insecure-http for local dev)",
+    "planted_file_still_there": "False",
+    "payload_ran": "False",
+    "acl": [
+      "C:\\ProgramData\\Nimstead BUILTIN\\Administrators:(OI)(CI)(F)",
+      "                        NT AUTHORITY\\SYSTEM:(OI)(CI)(F)",
+      "",
+      "Successfully processed 1 files; Failed processing 0 files"
+    ],
+    "user_can_write_again": false
+  },
+  {
+    "step": "RESULT: PASS"
+  }
+]

@@ -161,7 +161,8 @@ class Finding(Base):
     last_seen: Mapped[datetime] = mapped_column(default=now)
     resolved_at: Mapped[datetime | None]
     accepted_until: Mapped[datetime | None]
-    __table_args__ = (UniqueConstraint("asset_id", "ecosystem", "package", "vuln_id"),)
+    __table_args__ = (UniqueConstraint("asset_id", "ecosystem", "package", "vuln_id"),
+                      Index("ix_finding_open_actions", "org_id", "status", "ecosystem", "package"))  # home-page summary
 
 
 def make_engine(url: str = DB_URL):

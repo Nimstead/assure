@@ -58,9 +58,10 @@ def create(iso: str) -> str:
     return name
 
 
-def run(name: str, command: str, timeout=3600) -> tuple[int, str]:
+def run(name: str, command: str, timeout=3600, user: dict | None = None) -> tuple[int, str]:
+    """`user`: {"user", "password"} of another guest account (default: the VM's Administrator)."""
     assert name.startswith(PREFIX)
-    c = creds(name)
+    c = user or creds(name)
     # guest control re-joins argv without quoting, so send the script base64-encoded (UTF-16LE, as PowerShell expects)
     encoded = base64.b64encode(("$ProgressPreference = 'SilentlyContinue'\n" + command).encode("utf-16-le")).decode()
     p = subprocess.run([VBOX, "guestcontrol", name, "run", "--username", c["user"], "--password", c["password"],

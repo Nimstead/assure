@@ -15,6 +15,9 @@ from nimstead.notify import notify
 
 def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dict | None = None) -> dict:
     """`cache`: decoded advisory records by (ecosystem, package), shared across hosts within one feed-update pass."""
+    if asset.kind == "external":  # no inventory: findings come from external.scan(); only re-score here
+        from nimstead import external
+        return external.rescore(s, asset)
     t = now()
     pkgs = s.scalars(select(InstalledPackage).where(InstalledPackage.asset_id == asset.id)).all()
     existing = {

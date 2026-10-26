@@ -42,6 +42,7 @@ Run that hourly (cron or a systemd timer). It refreshes KEV, EPSS, NVD and OSV f
 - **Behind a reverse proxy:** run uvicorn with `--proxy-headers --forwarded-allow-ips <proxy IP>` so sign-in throttling sees real client addresses (otherwise every user shares the proxy's).
 - **Roles:** the person who signs up is the org admin. Users created by SSO can view everything but only admins can enrol machines, plan or approve fixes, change the remediation policy, accept risk or delete assets.
 - **Windows agents:** need an all-users Python under Program Files (`winget install Python.Python.3.13 --scope machine`); the installer refuses a per-user one, because the SYSTEM task would run it.
+- **External scans:** admins add internet hostnames on the Assets page and prove ownership with a DNS TXT record; scans run on demand and with the hourly `feeds update`. The server needs outbound access to the targets; names resolving to private addresses are refused.
 - **AI (optional):** set `ANTHROPIC_API_KEY` to enable plain-English explanations and natural-language search.
 
 ## Tests

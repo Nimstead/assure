@@ -49,7 +49,11 @@ def score(
     criticality: str = "medium",
     internet_facing: bool = False,
     fix_available: bool = True,
+    likelihood: float | None = None,
+    likelihood_reason: str | None = None,
 ) -> Risk:
+    """`likelihood`/`likelihood_reason`: for findings with no CVE (external exposure checks), a stated estimate
+    instead of EPSS, so the reason shown says where it came from."""
     reasons: list[str] = []
     if kev:
         reasons.append("Exploited in the wild (CISA KEV)")
@@ -58,6 +62,9 @@ def score(
         likelihood = epss**0.5  # spreads the long tail of small probabilities
         if epss >= 0.1:
             reasons.append(f"{epss:.0%} chance of exploitation in 30 days (EPSS)")
+    elif likelihood is not None:
+        if likelihood_reason:
+            reasons.append(likelihood_reason)
     else:
         likelihood = 0.1
 

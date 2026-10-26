@@ -136,6 +136,48 @@ def msrc_product_name(build, display_version, installation_type, machine):
     return ""
 
 
+UNINSTALL = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
+
+
+def windows_apps(reg):
+    """Installed apps from the registry Uninstall keys (HKLM 64-bit and 32-bit views, then HKCU).
+    `reg` is the winreg module (or a fake). Skips SystemComponent=1 and entries without a name or version.
+    The publisher travels in `source`; the server decides which apps it can match (curated map only)."""
+    seen, out = set(), []
+    for hive, view in ((reg.HKEY_LOCAL_MACHINE, reg.KEY_WOW64_64KEY), (reg.HKEY_LOCAL_MACHINE, reg.KEY_WOW64_32KEY),
+                       (reg.HKEY_CURRENT_USER, 0)):
+        try:
+            root = reg.OpenKey(hive, UNINSTALL, 0, reg.KEY_READ | view)
+        except OSError:
+            continue
+        with root:
+            i = 0
+            while True:
+                try:
+                    sub = reg.EnumKey(root, i)
+                except OSError:
+                    break
+                i += 1
+                try:
+                    with reg.OpenKey(root, sub) as k:
+                        def val(n, k=k):
+                            try:
+                                return reg.QueryValueEx(k, n)[0]
+                            except OSError:
+                                return None
+                        name, ver, pub, sysc = val("DisplayName"), val("DisplayVersion"), val("Publisher"), val("SystemComponent")
+                except OSError:
+                    continue
+                if sysc == 1 or not isinstance(name, str) or not isinstance(ver, str) or not name.strip() or not ver.strip():
+                    continue
+                pub = pub.strip()[:255] if isinstance(pub, str) and pub.strip() else None
+                item = (name.strip()[:255], ver.strip()[:255], pub)
+                if item not in seen:
+                    seen.add(item)
+                    out.append({"ecosystem": "WinApp", "name": item[0], "version": item[1], "source": pub})
+    return sorted(out, key=lambda p: (p["name"], p["version"]))
+
+
 def collect_windows():
     import winreg
     with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion", 0,
@@ -156,7 +198,7 @@ def collect_windows():
     if build >= 22000:
         product = product.replace("Windows 10", "Windows 11")
     return {"os_name": f"{product} {dv} ({machine}) build {version}", "ecosystem": "Windows",
-            "packages": [{"ecosystem": "Windows", "name": name, "version": version, "source": None}]}
+            "packages": [{"ecosystem": "Windows", "name": name, "version": version, "source": None}, *windows_apps(winreg)]}
 
 
 def collect():

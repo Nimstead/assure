@@ -41,12 +41,17 @@ def append(s: Session, org_id: str, kind: str, subject: str, data: dict) -> Ledg
     return row
 
 
-def entry_dict(e: LedgerEntry) -> dict:
+# plain rows, not ORM objects: a pack reads every ledger entry, and object construction dominated the time
+LEDGER_COLS = (LedgerEntry.seq, LedgerEntry.ts, LedgerEntry.kind, LedgerEntry.subject, LedgerEntry.data, LedgerEntry.prev_hash,
+               LedgerEntry.hash)
+
+
+def entry_dict(e) -> dict:
     return {"seq": e.seq, "ts": e.ts, "kind": e.kind, "subject": e.subject, "data": e.data, "prev_hash": e.prev_hash, "hash": e.hash}
 
 
 def verify_chain(s: Session, org_id: str) -> list[str]:
-    entries = s.scalars(select(LedgerEntry).where(LedgerEntry.org_id == org_id).order_by(LedgerEntry.seq)).all()
+    entries = s.execute(select(*LEDGER_COLS).where(LedgerEntry.org_id == org_id).order_by(LedgerEntry.seq)).all()
     problems, prev_hash = [], GENESIS
     for i, e in enumerate(entries, 1):
         d = entry_dict(e)
@@ -171,13 +176,14 @@ def _controls(m: dict) -> list[dict]:
 def build_pack(s: Session, org_id: str, start: datetime, end: datetime) -> dict:
     org = s.get(Org, org_id)
     assets = s.scalars(select(Asset).where(Asset.org_id == org_id)).all()
-    findings = s.scalars(select(Finding).where(Finding.org_id == org_id, Finding.first_seen <= end)).all()
+    findings = s.execute(select(Finding.id, Finding.asset_id, Finding.vuln_id, Finding.package, Finding.status, Finding.priority,
+                                Finding.cvss, Finding.kev).where(Finding.org_id == org_id, Finding.first_seen <= end)).all()
     host = {a.id: a.hostname for a in assets}
 
     # Lifecycle times come from the hash-chained ledger, not the mutable findings table: editing a
     # finding's dates in the database can't make a control pass without breaking the chain.
     opened, closed_at = {}, {}
-    for e in s.scalars(select(LedgerEntry).where(LedgerEntry.org_id == org_id,
+    for e in s.execute(select(LedgerEntry.ts, LedgerEntry.kind, LedgerEntry.subject).where(LedgerEntry.org_id == org_id,
                                                  LedgerEntry.kind.in_(("finding_opened", "finding_reopened", "finding_resolved")))
                        .order_by(LedgerEntry.seq)):
         ts = datetime.fromisoformat(e.ts).replace(tzinfo=None)
@@ -226,8 +232,8 @@ def build_pack(s: Session, org_id: str, start: datetime, end: datetime) -> dict:
 
     s_iso, e_iso = start.replace(tzinfo=UTC).isoformat(), end.replace(tzinfo=UTC).isoformat()
     head = s.scalar(select(LedgerEntry).where(LedgerEntry.org_id == org_id).order_by(LedgerEntry.seq.desc()).limit(1))
-    entries = [entry_dict(e) for e in s.scalars(
-        select(LedgerEntry).where(LedgerEntry.org_id == org_id, LedgerEntry.ts >= s_iso, LedgerEntry.ts <= e_iso).order_by(LedgerEntry.seq))]
+    entries = [entry_dict(e) for e in s.execute(
+        select(*LEDGER_COLS).where(LedgerEntry.org_id == org_id, LedgerEntry.ts >= s_iso, LedgerEntry.ts <= e_iso).order_by(LedgerEntry.seq))]
     return {
         "format": "nimstead-evidence/1",
         "organisation": org.name,

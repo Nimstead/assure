@@ -739,6 +739,36 @@ $r = $s.CreateUpdateSearcher().Search("IsInstalled=0 and Type='Software'")
 ConvertTo-Json -Compress -InputObject @($r.Updates | Where-Object { $_.KBArticleIDs -contains '%KB%' } | ForEach-Object {
   [pscustomobject]@{ title = $_.Title; uninstallable = $_.IsUninstallable; reboot = $_.InstallationBehavior.RebootBehavior } })
 """
+PS_DOWNLOAD = r"""
+$s = New-Object -ComObject Microsoft.Update.Session
+$r = $s.CreateUpdateSearcher().Search("IsInstalled=0 and Type='Software'")
+$c = New-Object -ComObject Microsoft.Update.UpdateColl
+$r.Updates | Where-Object { $_.KBArticleIDs -contains '%KB%' } | ForEach-Object { [void]$c.Add($_) }
+if ($c.Count -ne 1) { throw "expected exactly one update for KB%KB%, found $($c.Count)" }
+$d = $s.CreateUpdateDownloader(); $d.Updates = $c; [int]$d.Download().ResultCode
+"""
+# Whether the downloaded package is permanent, read from its own top-level manifest (update.mum) BEFORE installing.
+# WUA's IsUninstallable can't be used: on Server 2025 it says False for cumulative updates that DISM removes fine.
+# Newer cumulative updates arrive as a .wim (mounted read-only), older ones as a .cab. Anything else: can't tell -> fail.
+PS_PERMANENCE = r"""
+$f = Get-ChildItem C:\Windows\SoftwareDistribution\Download -Recurse -Depth 1 -File -Include '*KB%KB%*.wim','*KB%KB%*.cab' |
+  Where-Object { $_.FullName -notmatch '\\Metadata\\' } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+if (-not $f) { throw "downloaded package for KB%KB% not found" }
+$tmp = Join-Path $env:TEMP ('nimstead-mum-' + [guid]::NewGuid()); New-Item -ItemType Directory $tmp | Out-Null
+try {
+  if ($f.Extension -eq '.wim') {
+    dism /mount-wim "/wimfile:$($f.FullName)" /index:1 "/mountdir:$tmp" /readonly /english | Out-Null
+    if ($LASTEXITCODE) { throw "mounting $($f.Name) failed: $LASTEXITCODE" }
+  } else { expand.exe "-F:*.mum" $f.FullName $tmp | Out-Null }
+  $x = [xml](Get-Content -LiteralPath (Join-Path $tmp 'update.mum') -Raw -ErrorAction Stop)
+  $parts = @(Get-ChildItem -LiteralPath $tmp -File -Filter *.mum | Select-String -Pattern 'permanence="permanent"' -List | ForEach-Object { $_.Filename })
+  [pscustomobject]@{ file = $f.Name; permanent = (@($x.assembly.permanence, $x.assembly.package.permanence) -contains 'permanent');
+                     permanent_parts = $parts } | ConvertTo-Json -Compress
+} finally {
+  if ($f.Extension -eq '.wim') { dism /unmount-wim "/mountdir:$tmp" /discard | Out-Null }
+  Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
+}
+"""
 PS_INSTALL = r"""
 $s = New-Object -ComObject Microsoft.Update.Session
 $r = $s.CreateUpdateSearcher().Search("IsInstalled=0 and Type='Software'")
@@ -855,6 +885,14 @@ class WinJob:
         s["baseline"] = self.rollups()
         self.step("rollback baseline recorded", any(v.strip() == "Installed" for v in s["baseline"].values()),
                   "installed cumulative packages: " + ", ".join(k for k, v in s["baseline"].items() if v.strip() == "Installed"))
+        rc, out = ps(self.run, PS_DOWNLOAD.replace("%KB%", s["kb"]))
+        self.step(f"KB{s['kb']} downloaded", rc == 0 and out.strip().splitlines()[-1:] in (["2"], ["3"]), out)
+        rc, out = ps(self.run, PS_PERMANENCE.replace("%KB%", s["kb"]))
+        perm = json.loads(out) if rc == 0 and out.strip().startswith("{") else {}
+        # permanent sub-packages (Features on Demand) stay behind on removal; rollback is judged by the build returning
+        self.step("update is removable (manifest checked before install)", perm.get("permanent") is False,
+                  out if perm.get("permanent") is not False else
+                  f"{perm['file']}: update.mum not permanent; permanent parts: {', '.join(perm.get('permanent_parts') or []) or 'none'}")
         rc, out = ps(self.run, PS_INSTALL.replace("%KB%", s["kb"]))
         res = json.loads(out) if rc == 0 and out.strip().startswith("{") else {}
         s["phase"] = "verify"  # from here on, failures roll back

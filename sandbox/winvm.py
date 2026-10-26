@@ -66,8 +66,8 @@ def run(name: str, command: str, timeout=3600) -> tuple[int, str]:
     p = subprocess.run([VBOX, "guestcontrol", name, "run", "--username", c["user"], "--password", c["password"],
                         "--exe", r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe", "--wait-stdout", "--wait-stderr",
                         "--", "powershell", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
-                       capture_output=True, text=True, timeout=timeout)
-    return p.returncode, p.stdout + p.stderr
+                       capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout)
+    return p.returncode, (p.stdout or "") + (p.stderr or "")
 
 
 def wait_ready(name: str, minutes=90, reset_after=12, max_resets=3) -> None:

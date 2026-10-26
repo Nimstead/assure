@@ -39,7 +39,7 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - run: uv python install 3.14 && uv sync --locked
         working-directory: api
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm

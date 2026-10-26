@@ -238,3 +238,16 @@ def test_non_admins_can_read_but_not_change_remediation_or_assets(env):
         assert r.status_code == 403, (method, path, r.status_code)
     for path in ("/api/summary", "/api/findings", "/api/assets", "/api/remediation/jobs", "/api/settings"):
         assert staff.get(path).status_code == 200, path
+
+
+def test_agent_version_flags_outdated_agents(env):
+    from nimstead.app import latest_agent_version
+    latest = latest_agent_version()
+    assert latest  # read from the agent file the server hands out
+    c = user(env)
+    h = {"Authorization": f"Bearer {enrol(c)['agent_key']}"}
+    asset = lambda: c.get("/api/assets").json()[0]  # noqa: E731
+    c.post("/api/agent/inventory", json=INV, headers=h)  # agent too old to report a version
+    assert asset()["agent_version"] == "" and asset()["agent_outdated"]
+    c.post("/api/agent/inventory", json={**INV, "agent_version": latest}, headers=h)
+    assert asset()["agent_version"] == latest and not asset()["agent_outdated"]

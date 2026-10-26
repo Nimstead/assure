@@ -90,6 +90,7 @@ class Asset(Base):
     first_seen: Mapped[datetime] = mapped_column(default=now)
     last_seen: Mapped[datetime] = mapped_column(default=now)
     last_inventory_at: Mapped[datetime | None]  # rate limit, shared by every API worker
+    agent_version: Mapped[str] = mapped_column(String(50), default="", server_default="")  # "" = agent too old to say
 
 
 class InstalledPackage(Base):

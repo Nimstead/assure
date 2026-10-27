@@ -1,0 +1,56 @@
+{
+  "result": "PASS",
+  "steps": [
+    {
+      "step": "versions",
+      "docker": "Docker version 26.1.5+dfsg1, build a72d7cd",
+      "compose": "2.26.1-4",
+      "files": 168
+    },
+    {
+      "step": "compose up: built and serving",
+      "seconds": 37,
+      "ps": [
+        "app running",
+        "db running",
+        "feeds running",
+        ""
+      ]
+    },
+    {
+      "step": "migrations",
+      "current": "d5e8a1c37f92 (head)"
+    },
+    {
+      "step": "real agent installed from install.sh, enrolled and reported",
+      "agent_output": [
+        "reported 238 packages",
+        "Created symlink '/etc/systemd/system/timers.target.wants/nimstead-agent.timer' \u2192 '/etc/systemd/system/nimstead-agent.timer'.",
+        "Nimstead agent installed; reporting every 6 hours."
+      ],
+      "hostname": "DESKTOP-H2C7SKP",
+      "agent_version": "0.1.0",
+      "outdated": false
+    },
+    {
+      "step": "real feed pulled inside the container (CISA KEV)",
+      "result": "1760"
+    },
+    {
+      "step": "hourly feeds service running",
+      "state": "running"
+    },
+    {
+      "step": "restart: login, host and evidence signing key survived",
+      "assets": 1,
+      "data": [
+        "nimstead-signing.pem"
+      ],
+      "fingerprint": "cee7eb4368bee6b52a1fa815006687f0ade0caae9576c8998d6af119f38d0690"
+    },
+    {
+      "step": "non-root",
+      "user": "nimstead"
+    }
+  ]
+}

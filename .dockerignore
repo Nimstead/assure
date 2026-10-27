@@ -1,0 +1,16 @@
+**/.venv
+**/node_modules
+**/__pycache__
+**/*.db
+**/*.key
+**/*.pem
+**/checkpoints
+web/dist
+web/test-results
+web/e2e-screenshots
+.git
+.claude
+.github
+docs
+sandbox
+.env

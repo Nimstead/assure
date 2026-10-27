@@ -1,0 +1,51 @@
+# Nimstead Assure for evaluation: `docker compose up -d`, then open http://localhost:8000.
+# Before agents on other machines can reach it, set NIMSTEAD_PUBLIC_URL in .env to the HTTPS address they'll use.
+x-app: &app
+  build: .
+  image: nimstead/assure:0.1.0
+  restart: unless-stopped
+  environment:
+    NIMSTEAD_DB: postgresql+psycopg://nimstead:${POSTGRES_PASSWORD:-nimstead}@db:5432/nimstead
+    NIMSTEAD_PUBLIC_URL: ${NIMSTEAD_PUBLIC_URL:-http://localhost:8000}
+    FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1}  # your reverse proxy's address, so sign-in throttling sees real clients
+    ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}  # optional: plain-English explanations and search
+    NIMSTEAD_SMTP_URL: ${NIMSTEAD_SMTP_URL:-}
+    NIMSTEAD_SMTP_FROM: ${NIMSTEAD_SMTP_FROM:-}
+    NIMSTEAD_ALLOW_PRODUCTION_REMEDIATION: ${NIMSTEAD_ALLOW_PRODUCTION_REMEDIATION:-0}  # 1 = fixes may target hosts not enrolled with a sandbox token
+    # Vault, S3 object lock and the rest: docs/configuration.md
+  volumes:
+    - data:/data
+  depends_on:
+    db:
+      condition: service_healthy
+
+services:
+  app:
+    <<: *app
+    ports:
+      - "${NIMSTEAD_PORT:-8000}:8000"
+
+  # Refreshes KEV, EPSS, NVD, OSV and MSRC, re-matches every asset and checkpoints the ledger, hourly
+  feeds:
+    <<: *app
+    command: ["sh", "-c", "until alembic current | grep -q head; do sleep 5; done; while true; do python -m nimstead.feeds update; sleep 3600; done"]
+    healthcheck:
+      disable: true
+
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nimstead
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nimstead}
+      POSTGRES_DB: nimstead
+    volumes:
+      - pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "nimstead"]
+      interval: 2s
+      retries: 30
+
+volumes:
+  data:
+  pg:

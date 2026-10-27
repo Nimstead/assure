@@ -1,6 +1,6 @@
 # Nimstead — status
 
-Read this first each session. Decisions and their reasons: DECISIONS.md (items 1–28; 27 is the threat model). Quick start: README.md.
+Read this first each session. Decisions and their reasons: DECISIONS.md (items 1–28; 27 is the threat model). Install: docs/install.md.
 
 ## Done (with evidence)
 | Area | Where | Evidence |
@@ -28,6 +28,7 @@ Read this first each session. Decisions and their reasons: DECISIONS.md (items 1
 | Optional AI (Claude Opus 5.5): explanations, NL search → validated filter | `ai.py` | Mocked client only |
 | Agent version: `AGENT_VERSION` in the agent, sent with every inventory; the server reads the same line from the agent file it serves, and any host reporting something else (or nothing: older agents) is flagged "Agent outdated" on Assets. Updating = replacing the agent file; enrolment is kept | agent, `app.py` (`latest_agent_version`), `web/src/assets.tsx` | `test_agent_version_flags_outdated_agents` + e2e screenshot (the e2e host sends no version, so it shows the badge) |
 | CI: GitHub Actions runs ruff + the API suite on SQLite and on a PostgreSQL 17 service, and the web build, unit tests and Playwright e2e (traces uploaded on failure) | `.github/workflows/ci.yml` | **Green on GitHub** ([Nimstead/assure](https://github.com/Nimstead/assure/actions)): 579 on SQLite, 579 on PostgreSQL 17 (3 min 19 s), web build + unit + e2e. The first PostgreSQL runs hung because `localhost` went to ::1 through Docker's proxy; it connects to 127.0.0.1 now, and a test over 2 minutes dumps every thread's stack |
+| Docker Compose install: one image (UI built in, non-root, migrations on start), PostgreSQL 17, hourly `feeds` service; keys and checkpoints in a `data` volume | `Dockerfile`, `compose.yaml`, `.env.example`, `docs/install.md` | **PASS** in a disposable WSL Debian 13 distro with Docker 26 and Compose 2.26 (`sandbox/compose.py`, `last_run_compose.json`): built from the working tree and serving in under 40 s, migrations at head, the real agent installed with the app's `install.sh` command (238 packages, agent 0.1.0, not outdated), CISA KEV pulled inside the container, then after a restart: sign-in, the host and the evidence signing key fingerprint all unchanged |
 | Web UI: onboarding, Fix-first home, findings, assets (+applications/SBOM), remediation, evidence, settings (trust ladder, tokens, SSO + domain verification, alerts) | `web/` | build clean; 17 vitest; Playwright e2e + axe (0 serious/critical) |
 
 Real-host E2E (fresh WSL distro each, destroyed after):
@@ -41,7 +42,7 @@ Real-host E2E (fresh WSL distro each, destroyed after):
 
 All four evidence packs verified, with 6/6 controls met. On Alpine, the dry run refused the openssl fix because it also needed musl. Re-planning "including musl" (which pulls in musl-utils, from the same source package) succeeded and was verified fixed (40 findings resolved).
 
-**Last runs (final code):** API 579 passed on SQLite and 579 on PostgreSQL 17 (locally and in CI) · ruff clean · web 20 unit + 4 Playwright e2e on the rebranded UI (axe clean in light and dark) · real-host E2E PASS on Debian 13, Ubuntu 24.04, AlmaLinux 9, Alpine 3.21, openSUSE Leap 16.0 (snapper) and Windows Server 2025 · real-service integrations PASS (Keycloak, DNS, SMTP, webhook).
+**Last runs (final code):** API 579 passed on SQLite and 579 on PostgreSQL 17 (locally and in CI) · ruff clean · web 20 unit + 4 Playwright e2e on the rebranded UI (axe clean in light and dark) · real-host E2E PASS on Debian 13, Ubuntu 24.04, AlmaLinux 9, Alpine 3.21, openSUSE Leap 16.0 (snapper) and Windows Server 2025 · Docker Compose install PASS · real-service integrations PASS (Keycloak, DNS, SMTP, webhook).
 
 ## NOT proven / known gaps (honest)
 - **AI:** tested with a mocked client only. Owner decision (2026-10-26): skip live AI testing. The features stay off unless `ANTHROPIC_API_KEY` is set.
@@ -66,4 +67,5 @@ All four evidence packs verified, with 6/6 controls met. On Alpine, the dry run 
 - **Performance:** `cd api && uv run python ../sandbox/perf.py --assets 1000` (SQLite) · `uv run python ../sandbox/pg.py --perf 1000` (PostgreSQL)
 - **External scanning (real services):** `cd api && uv run python ../sandbox/extscan.py`
 - **Real-host E2E:** `cd api && uv run python ../sandbox/sbx.py --distro Debian|Ubuntu-24.04|AlmaLinux-9|alpine-3.21.0` · openSUSE + snapper: `uv run python ../sandbox/suse.py` · Windows: `../sandbox/winvm.py create ISO`, then `../sandbox/wine2e.py VM`
+- **Docker Compose install:** `cd api && uv run python ../sandbox/compose.py`
 - **PostgreSQL suite:** `cd api && uv run python ../sandbox/pg.py`

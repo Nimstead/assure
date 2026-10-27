@@ -12,7 +12,7 @@ cd api && uv sync
 cd web && npm ci && npm run build
 ```
 
-Then run the app as in the [README quick start](README.md#quick-start-local).
+Then run the app as in [Install → Without Docker](docs/install.md#without-docker), with `NIMSTEAD_SECURE_COOKIES=0` if you browse from another machine over plain HTTP. For live UI work, `cd web && npm run dev` proxies the API on port 8000.
 
 ## Before you open a pull request
 
@@ -33,4 +33,5 @@ CI runs the same checks, plus the API suite on PostgreSQL 17. Pull requests are 
 - **The agent is one file.** [`agent/nimstead_agent.py`](agent/nimstead_agent.py) uses only the standard library and runs on Python 3.9+, because it has to work on any host as-is. Bump `AGENT_VERSION` whenever you change it: the server uses it to flag outdated agents.
 - **Schema changes need a migration.** Add an Alembic revision in `api/migrations/versions/` (history is linear). `tests/test_migrations.py` checks it matches the models.
 - **Nothing changes a host silently.** Remediation code fails closed: refuse, report and roll back instead of guessing. Keep it that way.
+- **Licence.** By contributing, you agree your contribution is licensed under the project's [licence](LICENSE.md) (FSL-1.1-ALv2).
 - **Security issues** go to [SECURITY.md](SECURITY.md), never to a public issue.

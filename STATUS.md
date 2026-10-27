@@ -27,7 +27,7 @@ Read this first each session. Decisions and their reasons: DECISIONS.md (items 1
 | External (outside-in) scanning of internet hosts the org proves it owns: DNS TXT ownership proof re-checked before every scan (lapsed proof = no scan, recorded), public addresses only with the connection pinned to the checked IP; checks exposed risky services (Telnet, FTP, SMB, RDP, VNC, MySQL, PostgreSQL, SQL Server, Redis, Elasticsearch, MongoDB, Memcached, Docker API) by TCP connect and TLS on 443 (expired / expiring / untrusted / name mismatch / TLS 1.0-1.1 accepted); findings scored, ledgered, opened and closed like any other; hourly re-scan with the feed update; admin-only; UI on the Assets page | `external.py`, `app.py` (`/api/targets`), `feeds.py`, `web/src/targets.tsx` | `tests/test_external.py` (13: unverified target refused with **zero packets sent**, ownership re-check, private-address refusal, hostname validation, one org per host, findings lifecycle, check classification) + **real services PASS** in a disposable WSL distro (`sandbox/extscan.py`): Redis 8.0.2 exposed → fix-now; OpenSSL 3.5.7 server with an expired certificate and TLS 1.0 enabled → both found (legacy check really ran); after fixing, all three closed and the self-signed certificate was reported untrusted |
 | Optional AI (Claude Opus 5.5): explanations, NL search → validated filter | `ai.py` | Mocked client only |
 | Agent version: `AGENT_VERSION` in the agent, sent with every inventory; the server reads the same line from the agent file it serves, and any host reporting something else (or nothing: older agents) is flagged "Agent outdated" on Assets. Updating = replacing the agent file; enrolment is kept | agent, `app.py` (`latest_agent_version`), `web/src/assets.tsx` | `test_agent_version_flags_outdated_agents` + e2e screenshot (the e2e host sends no version, so it shows the badge) |
-| CI: GitHub Actions runs ruff + the API suite on SQLite and on a PostgreSQL 17 service, and the web build, unit tests and Playwright e2e (traces uploaded on failure) | `.github/workflows/ci.yml` | **Not run yet: the repo has no git remote** |
+| CI: GitHub Actions runs ruff + the API suite on SQLite and on a PostgreSQL 17 service, and the web build, unit tests and Playwright e2e (traces uploaded on failure) | `.github/workflows/ci.yml` | **Green on GitHub** ([Nimstead/assure](https://github.com/Nimstead/assure/actions)): 579 on SQLite, 579 on PostgreSQL 17 (3 min 19 s), web build + unit + e2e. The first PostgreSQL runs hung because `localhost` went to ::1 through Docker's proxy; it connects to 127.0.0.1 now, and a test over 2 minutes dumps every thread's stack |
 | Web UI: onboarding, Fix-first home, findings, assets (+applications/SBOM), remediation, evidence, settings (trust ladder, tokens, SSO + domain verification, alerts) | `web/` | build clean; 17 vitest; Playwright e2e + axe (0 serious/critical) |
 
 Real-host E2E (fresh WSL distro each, destroyed after):
@@ -41,7 +41,7 @@ Real-host E2E (fresh WSL distro each, destroyed after):
 
 All four evidence packs verified, with 6/6 controls met. On Alpine, the dry run refused the openssl fix because it also needed musl. Re-planning "including musl" (which pulls in musl-utils, from the same source package) succeeded and was verified fixed (40 findings resolved).
 
-**Last runs (final code):** API 578 passed on SQLite and 578 on PostgreSQL 17 · ruff clean · web 20 unit + 4 Playwright e2e on the rebranded UI (axe clean in light and dark) · real-host E2E PASS on Debian 13, Ubuntu 24.04, AlmaLinux 9, Alpine 3.21, openSUSE Leap 16.0 (snapper) and Windows Server 2025 · real-service integrations PASS (Keycloak, DNS, SMTP, webhook).
+**Last runs (final code):** API 579 passed on SQLite and 579 on PostgreSQL 17 (locally and in CI) · ruff clean · web 20 unit + 4 Playwright e2e on the rebranded UI (axe clean in light and dark) · real-host E2E PASS on Debian 13, Ubuntu 24.04, AlmaLinux 9, Alpine 3.21, openSUSE Leap 16.0 (snapper) and Windows Server 2025 · real-service integrations PASS (Keycloak, DNS, SMTP, webhook).
 
 ## NOT proven / known gaps (honest)
 - **AI:** tested with a mocked client only. Owner decision (2026-10-26): skip live AI testing. The features stay off unless `ANTHROPIC_API_KEY` is set.
@@ -56,8 +56,7 @@ All four evidence packs verified, with 6/6 controls met. On Alpine, the dry run 
 - **Ecosystems:** Go/crates/Hex/Pub use the semver comparator (Pub build-metadata ordering differs); Composer `dev-*` branches are refused; no Conda comparator.
 
 ## Needs the user
-- Push to a GitHub remote so CI runs (none is configured).
-- Nothing else. Live AI testing and a Windows 11 client VM were both scoped out by the owner on 2026-10-26.
+- Nothing. Live AI testing and a Windows 11 client VM were both scoped out by the owner on 2026-10-26.
 
 ## Run
 - **API:** `cd api && uv run pytest -q` · lint: `uv run ruff check src tests ../agent ../sandbox`

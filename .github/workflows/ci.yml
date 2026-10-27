@@ -20,7 +20,7 @@ jobs:
       NIMSTEAD_TEST_PG_URL: ${{ matrix.db == 'postgres' && 'postgresql+psycopg://nimstead:ci@127.0.0.1:5432/postgres' || '' }}
     steps:
       - uses: actions/checkout@v4
-      # each test gets its own database and pool: the default 100 connections run out (as sandbox/pg.py sets)
+      # same settings as sandbox/pg.py (each test gets its own database and pool)
       - name: Start PostgreSQL 17
         if: matrix.db == 'postgres'
         run: |

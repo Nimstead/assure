@@ -7,17 +7,10 @@ on:
 jobs:
   api:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       matrix:
         db: [sqlite, postgres]
-    services:
-      postgres:
-        image: postgres:17
-        env:
-          POSTGRES_USER: nimstead
-          POSTGRES_PASSWORD: ci
-        ports: ["5432:5432"]
-        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     defaults:
       run:
         working-directory: api
@@ -25,6 +18,12 @@ jobs:
       NIMSTEAD_TEST_PG_URL: ${{ matrix.db == 'postgres' && 'postgresql+psycopg://nimstead:ci@localhost:5432/postgres' || '' }}
     steps:
       - uses: actions/checkout@v4
+      # each test gets its own database and pool: the default 100 connections run out (as sandbox/pg.py sets)
+      - name: Start PostgreSQL 17
+        if: matrix.db == 'postgres'
+        run: |
+          docker run -d --name pg -p 5432:5432 -e POSTGRES_USER=nimstead -e POSTGRES_PASSWORD=ci postgres:17 -c max_connections=500
+          until docker exec pg pg_isready -h 127.0.0.1 -U nimstead; do sleep 1; done  # TCP: not the init-time socket server
       - uses: astral-sh/setup-uv@v6
       - run: uv python install 3.14
       - run: uv sync --locked
@@ -34,6 +33,7 @@ jobs:
 
   web:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6

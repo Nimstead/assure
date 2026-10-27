@@ -24,7 +24,7 @@ import time
 import urllib.error
 import urllib.request
 
-AGENT_VERSION = "0.1.0"  # the server reads this line to flag outdated agents; bump on every agent change
+AGENT_VERSION = "0.1.1"  # the server reads this line to flag outdated agents; bump on every agent change
 
 
 class AgentError(Exception):
@@ -406,6 +406,7 @@ class Job:
         self.mgr = job.get("manager")
         self.pkgs = job.get("packages") or []
         self.units = job.get("health_units") or []
+        self.restarts = {}  # unit -> systemd's NRestarts when the change (or rollback) began
         # services often fail a few seconds after a library upgrade, not instantly
         self.settle = min(max(int(job.get("settle_seconds", 15) or 0), 0), 300)
         self.dir = os.path.join(rollback_root, re.sub(r"[^A-Za-z0-9]", "", str(job.get("id", ""))) or "unknown")
@@ -460,7 +461,18 @@ class Job:
 
     def health(self, when):
         for u in self.units:
-            self.step(f"{u} active {when}", ["systemctl", "is-active", "--quiet", u])
+            rc, state = self.run(["systemctl", "is-active", u])  # prints the state, so a failure says why
+            # one sample can catch a crash-looping service in its moment of "active": restarts since the mark count too
+            more = self.restart_count(u) - self.restarts[u] if u in self.restarts else 0
+            why = f"service is {state.strip() or ('active' if rc == 0 else 'not active')}" + (f", restarted {more} times since the change" if more > 0 else "")
+            self.step(f"{u} active {when}", ok=rc == 0 and more <= 0, output=why)
+
+    def restart_count(self, u):
+        out = self.run(["systemctl", "show", "-p", "NRestarts", "--value", u])[1].strip()
+        return int(out) if out.isdigit() else 0
+
+    def mark_restarts(self):
+        self.restarts = {u: self.restart_count(u) for u in self.units}
 
     def snapper_ok(self):
         rc, out = self.run(["snapper", "-c", "root", "list", "--columns", "number"])
@@ -624,6 +636,7 @@ class Job:
             if self.run(["systemctl", "is-active", "--quiet", u])[0] != 0:
                 rc, out = self.run(["systemctl", "restart", u])
                 self.steps.append({"step": f"restart {u} on the restored version", "ok": rc == 0, "output": out[-500:]})
+        self.mark_restarts()
         if self.units and self.settle:
             time.sleep(self.settle)  # let restarted services come back before judging
         self.health("after rollback")
@@ -650,6 +663,7 @@ class Job:
         except Exception as e:
             return "aborted", self.steps, f"No changes made: {e}"
         try:
+            self.mark_restarts()
             self.apply()
             if self.units and self.settle:
                 time.sleep(self.settle)

@@ -1,0 +1,119 @@
+[
+  {
+    "step": "host ready",
+    "host": "web-prod-01",
+    "distro": "Ubuntu-24.04",
+    "os": "Ubuntu 24.04.5 LTS"
+  },
+  {
+    "step": "host ready",
+    "host": "web-prod-02",
+    "distro": "Ubuntu-24.04",
+    "os": "Ubuntu 24.04.5 LTS"
+  },
+  {
+    "step": "host ready",
+    "host": "db-prod-01",
+    "distro": "Debian",
+    "os": "Debian GNU/Linux 13 (trixie)"
+  },
+  {
+    "step": "host ready",
+    "host": "build-runner-01",
+    "distro": "AlmaLinux-9",
+    "os": "AlmaLinux 9.8 (Olive Jaguar)"
+  },
+  {
+    "step": "host ready",
+    "host": "edge-proxy-01",
+    "distro": "alpine-3.21.0",
+    "os": "Alpine Linux v3.21"
+  },
+  {
+    "step": "feeds",
+    "kev": 1760,
+    "epss": 396257,
+    "osv": {
+      "inserted": 611267,
+      "updated": 0,
+      "skipped": 0
+    },
+    "seconds": 94
+  },
+  {
+    "step": "enrolled and reported",
+    "host": "web-prod-01",
+    "open": 377,
+    "resolved": 0
+  },
+  {
+    "step": "enrolled and reported",
+    "host": "web-prod-02",
+    "open": 377,
+    "resolved": 0
+  },
+  {
+    "step": "enrolled and reported",
+    "host": "db-prod-01",
+    "open": 274,
+    "resolved": 0
+  },
+  {
+    "step": "enrolled and reported",
+    "host": "build-runner-01",
+    "open": 52,
+    "resolved": 0
+  },
+  {
+    "step": "enrolled and reported",
+    "host": "edge-proxy-01",
+    "open": 45,
+    "resolved": 0
+  },
+  {
+    "step": "billing-service SBOM",
+    "components": 2,
+    "mapped": 2,
+    "unique_packages": 2,
+    "skipped": {
+      "no_purl": 0,
+      "unsupported_or_invalid_purl": 0
+    },
+    "open": 54,
+    "resolved": 0
+  },
+  {
+    "step": "fix: web-prod-01",
+    "package": "brotli",
+    "status": "succeeded",
+    "error": null
+  },
+  {
+    "step": "rollback: db-prod-01",
+    "package": "openssl",
+    "status": "rolled_back",
+    "error": "Change failed and was rolled back: billing-api.service active after change failed: service is activating, restarted 11 times since the change"
+  },
+  {
+    "step": "pending: build-runner-01",
+    "package": "acl",
+    "status": "planned",
+    "error": null
+  },
+  {
+    "step": "fix: edge-proxy-01",
+    "package": "openssl",
+    "status": "aborted",
+    "error": "No changes made: change limited to planned packages failed: would also change: musl"
+  },
+  {
+    "step": "open by priority",
+    "fix-now": 6,
+    "low": 590,
+    "next": 25,
+    "planned": 557
+  },
+  {
+    "step": "RESULT: PASS"
+  }
+]

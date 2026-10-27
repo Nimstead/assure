@@ -28,7 +28,9 @@ class FakeSuse:
                 return 0, ""
             case ["rpm", "-q", "--qf", _, name]:
                 return (0, self.installed[name]) if name in self.installed else (1, "not installed")
-            case ["systemctl", "is-active", "--quiet", _]:
+            case ["systemctl", "show", "-p", "NRestarts", "--value", _]:
+                return 0, "0"
+            case ["systemctl", "is-active", *_]:
                 if self.breaks and self.installed["openssl-3"] == NEW:
                     self.crashed = True  # like a real service: stays down until restarted
                 return (3, "") if getattr(self, "crashed", False) else (0, "")

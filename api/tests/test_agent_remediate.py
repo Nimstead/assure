@@ -12,11 +12,12 @@ spec.loader.exec_module(agent)
 
 class FakeApt:
     def __init__(self, tmp, installed, candidate, downloadable=True, break_unit_on_upgrade=False, dpkg_i_fails=False,
-                 also_upgrades=(), clean_cache_on_upgrade=False):
+                 also_upgrades=(), clean_cache_on_upgrade=False, crash_loop_on_upgrade=False):
         self.tmp, self.installed, self.candidate = tmp, dict(installed), candidate
         self.downloadable, self.break_unit, self.dpkg_i_fails = downloadable, break_unit_on_upgrade, dpkg_i_fails
         self.also, self.clean_cache = list(also_upgrades), clean_cache_on_upgrade
         self.units_ok, self.log = True, []
+        self.crash_loop, self.restart_n = crash_loop_on_upgrade, 0  # systemd restarting a dying service: is-active can still say active
 
     def __call__(self, cmd, cwd=None):
         self.log.append(cmd)
@@ -29,8 +30,10 @@ class FakeApt:
                 return 0, "amd64"
             case ["dpkg-query", "-W", _, name]:
                 return (0, self.installed[name]) if name in self.installed else (1, "not installed")
-            case ["systemctl", "is-active", "--quiet", _]:
+            case ["systemctl", "is-active", *_]:
                 return (0, "") if self.units_ok else (3, "inactive")
+            case ["systemctl", "show", "-p", "NRestarts", "--value", _]:
+                return 0, str(self.restart_n)
             case ["apt-get", "update"]:
                 return 0, "ok"
             case ["apt-get", "-s", "install", "--only-upgrade", "--no-remove", *specs]:
@@ -48,6 +51,8 @@ class FakeApt:
                     self.installed[n] = pin or self.candidate[n]
                 if self.break_unit:
                     self.units_ok = False
+                if self.crash_loop:
+                    self.restart_n += 5
                 if self.clean_cache:  # e.g. Debian docker-clean hook
                     for f in Path(self.tmp, "cache").glob("*.deb"):
                         f.unlink()
@@ -101,9 +106,17 @@ def test_success_saves_rollback_first(tmp_path):
 def test_failed_health_check_rolls_back(tmp_path):
     h = FakeApt(tmp_path, OLD, NEW, break_unit_on_upgrade=True)
     outcome, steps, err = run(tmp_path, h)
-    assert outcome == "rolled_back" and "nginx.service" in err
+    assert outcome == "rolled_back" and err.endswith("nginx.service active after change failed: service is inactive")
     assert h.installed == OLD and h.units_ok
     assert steps[-1]["step"] == "nginx.service active after rollback"
+
+
+def test_crash_looping_service_rolls_back_even_when_sampled_active(tmp_path):
+    h = FakeApt(tmp_path, OLD, NEW, crash_loop_on_upgrade=True)  # is-active says active, but systemd keeps restarting it
+    outcome, steps, err = run(tmp_path, h)
+    assert outcome == "rolled_back" and err.endswith("nginx.service active after change failed: service is active, restarted 5 times since the change")
+    assert h.installed == OLD
+    assert steps[-1]["step"] == "nginx.service active after rollback" and steps[-1]["ok"]
 
 
 def test_transaction_touching_unplanned_packages_is_refused(tmp_path):

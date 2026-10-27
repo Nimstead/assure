@@ -10,7 +10,7 @@
   <img alt="PostgreSQL 17" src="https://img.shields.io/badge/postgresql-17-111111">
 </p>
 
-<p align="center"><img src="docs/images/home-1440.png" alt="The Fix first screen: open findings by priority, and the one upgrade that clears the most risk" width="900"></p>
+<p align="center"><img src="docs/images/home-1440.png" alt="Fix first: 1,178 open findings across five real Linux machines and an application, two fixes that need a look, and the upgrades that clear the most risk" width="900"></p>
 
 Nimstead Assure scans your Linux and Windows machines and your applications' dependencies for known vulnerabilities, tells you which few upgrades clear the most real risk, can apply them for you with automatic rollback, and keeps a tamper-evident record your auditor can check without asking us.
 
@@ -27,9 +27,15 @@ Nimstead Assure scans your Linux and Windows machines and your applications' dep
 - **Watches your edge.** Internet hosts you prove you own (DNS TXT) are checked for exposed risky services and weak TLS.
 - **Fits your organisation.** OIDC single sign-on with verified domains, admin and read-only roles, webhook and email alerts for failed fixes and new urgent findings, keys in Vault and checkpoints in object-locked S3.
 
-| Why a finding matched, and why it's ranked there | Controls an auditor can check | Light and dark, down to phone width |
+Every screenshot here is from a real run ([`sandbox/demo.py`](sandbox/demo.py)): five disposable Linux machines (Ubuntu 24.04, Debian 13, AlmaLinux 9, Alpine 3.21) running the real agent, real vulnerability feeds, an application SBOM, and real fixes on those machines.
+
+| A fix verified, a fix rolled back when it broke a service, and one the dry run refused | Why a finding matched, and why it's ranked there |
+|---|---|
+| ![Remediation: acl awaiting approval; openssl on Alpine refused because it would also change musl; openssl on Debian rolled back after billing-api.service kept restarting; brotli on Ubuntu fixed and verified](docs/images/remediation-1440.png) | ![Log4Shell (CVE-2021-44228) on billing-service: installed 2.14.1, fixed 2.15.0, ranked by CISA KEV, CVSS 10, internet-facing and high criticality](docs/images/findings-1440.png) |
+
+| Every machine, its ring and its health checks | Controls an auditor can check | Light and dark, down to phone width |
 |---|---|---|
-| ![Finding detail: installed vs fixed version, risk signals, advisories](docs/images/findings-1440.png) | ![Evidence: Cyber Essentials, ISO 27001, NIST, PCI DSS and CIS control status](docs/images/evidence-1440.png) | ![Fix first in dark mode at 375px](docs/images/home-375-dark.png) |
+| ![Assets: five Linux machines and an application, with criticality, canary and broad rings, health units and agent versions](docs/images/assets-1440.png) | ![Evidence: Cyber Essentials, ISO 27001, NIST, PCI DSS and CIS control status](docs/images/evidence-1440.png) | ![Fix first in dark mode at 375px](docs/images/home-375-dark.png) |
 
 ## Get started
 

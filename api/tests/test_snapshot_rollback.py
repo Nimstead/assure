@@ -30,7 +30,9 @@ class FakeApk:
         match cmd:
             case ["apk", "--version"] | ["apk", "update"]:
                 return 0, "ok"
-            case ["systemctl", "is-active", "--quiet", _]:
+            case ["systemctl", "show", "-p", "NRestarts", "--value", _]:
+                return 0, "0"
+            case ["systemctl", "is-active", *_]:
                 broken = self.break_health and (self.root / "usr/lib/libcrypto.so.3").read_text() == "new library"
                 return (3, "") if broken or not self.healthy else (0, "")
             case ["apk", "add", "-s", "--upgrade", *_]:

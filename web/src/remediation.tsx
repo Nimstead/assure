@@ -126,7 +126,7 @@ export function ApproveDialog({ job, onOpenChange, onConfirm, pending, error }: 
         <Dialog.Content className="fixed left-1/2 top-[15vh] z-[51] w-[min(30rem,calc(100%-2rem))] -translate-x-1/2 rounded-xl border border-line bg-surface p-5 shadow-2xl">
           <Dialog.Title className="text-lg font-semibold">Approve this fix?</Dialog.Title>
           <Dialog.Description className="mt-2 text-sm">
-            <strong className="font-semibold">{job?.summary}</strong> on <strong className="font-semibold">{job?.hostname}</strong>.
+            <strong className="font-semibold">{job?.summary}</strong>.
           </Dialog.Description>
           <p className="mt-3 rounded-md bg-sunken p-3 text-sm">{APPROVE_COPY}</p>
           {error && <p role="alert" className="mt-3 rounded-md bg-now-bg px-3 py-2 text-sm text-now-fg">{error}</p>}

@@ -35,7 +35,7 @@ export function Home() {
           <h2 id="attention" className="flex items-center gap-2 font-semibold"><TriangleAlert className="size-4" aria-hidden />{plural(s.attention.length, "fix", "fixes")} need{s.attention.length === 1 ? "s" : ""} a look</h2>
           <ul className="mt-2 flex flex-col gap-1.5 text-sm">
             {s.attention.slice(0, 5).map((j) => (
-              <li key={j.id} className="flex flex-wrap items-center gap-x-2 gap-y-1"><StatusPill status={j.status} /><span>{j.summary} on {j.hostname}</span></li>
+              <li key={j.id} className="flex flex-wrap items-center gap-x-2 gap-y-1"><StatusPill status={j.status} /><span>{j.summary}</span></li>
             ))}
           </ul>
           <Link to="/remediation" className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-accent underline">Review in Remediation <ArrowRight className="size-4" aria-hidden /></Link>

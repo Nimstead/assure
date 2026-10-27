@@ -55,8 +55,9 @@ def main() -> int:
         step("versions", docker=wsl("docker --version").strip(), compose=wsl("docker-compose version --short").strip(), files=len(files))
 
         t0 = time.time()
-        wsl("cd /src && POSTGRES_PASSWORD=$(head -c 12 /dev/urandom | od -An -tx1 | tr -d ' \\n') && echo POSTGRES_PASSWORD=$POSTGRES_PASSWORD > .env "
-            "&& docker-compose up -d --build 2>&1 | tail -5", timeout=3600)
+        # exactly the README's steps: copy the example, set the password, `up -d` (no --build: pull_policy builds it)
+        wsl("cd /src && cp .env.example .env && sed -i \"s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$(head -c 12 /dev/urandom | od -An -tx1 | tr -d ' \\n')/\" .env "
+            "&& docker-compose up -d 2>&1 | tail -5", timeout=3600)
         wsl("for i in $(seq 120); do curl -sf -o /dev/null http://localhost:8000/ && exit 0; sleep 2; done; cd /src && docker-compose logs app; exit 1")
         step("compose up: built and serving", seconds=round(time.time() - t0), ps=wsl("cd /src && docker-compose ps --format '{{.Service}} {{.State}}'").split("\n"))
         step("migrations", current=wsl("cd /src && docker-compose exec -T app alembic current 2>/dev/null").strip())

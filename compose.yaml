@@ -3,6 +3,7 @@
 x-app: &app
   build: .
   image: nimstead/assure:0.1.0
+  pull_policy: build  # always built from this source, never pulled: nobody else's image can stand in for it
   restart: unless-stopped
   environment:
     NIMSTEAD_DB: postgresql+psycopg://nimstead:${POSTGRES_PASSWORD:-nimstead}@db:5432/nimstead

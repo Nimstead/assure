@@ -6,7 +6,7 @@ FSL-1.1-ALv2
 
 ## Notice
 
-Copyright 2026 Ciaran W
+Copyright 2026 Ciaran Whiteside
 
 ## Terms and Conditions
 

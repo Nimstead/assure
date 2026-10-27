@@ -9,7 +9,7 @@
     },
     {
       "step": "compose up: built and serving",
-      "seconds": 37,
+      "seconds": 32,
       "ps": [
         "app running",
         "db running",
@@ -46,7 +46,7 @@
       "data": [
         "nimstead-signing.pem"
       ],
-      "fingerprint": "cee7eb4368bee6b52a1fa815006687f0ade0caae9576c8998d6af119f38d0690"
+      "fingerprint": "edce13c5b0eb92632eb66a2af6c839737995ab88ff3d3de9c2cee7bb277f305a"
     },
     {
       "step": "non-root",

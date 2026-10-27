@@ -20,7 +20,10 @@ Edit `.env`: set `POSTGRES_PASSWORD` to a long random value now (it's fixed into
 docker compose up -d
 ```
 
-Open http://localhost:8000 and create an account. The first account in an organisation is its admin.
+Open http://localhost:8000 on the same machine and create an account. The first account in an organisation is its admin.
+
+> [!IMPORTANT]
+> Sign-in cookies only travel over HTTPS, or plain HTTP to `localhost`. From another computer, `http://<server-ip>:8000` will show the sign-in page but never sign you in. [Put it behind HTTPS](#put-it-behind-https) first, or for a quick look tunnel the port: `ssh -L 8000:localhost:8000 <server>`, then open http://localhost:8000.
 
 Three containers run:
 

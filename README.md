@@ -43,6 +43,8 @@ git clone https://github.com/Nimstead/assure.git && cd assure
 cp .env.example .env
 ```
 
+Set `POSTGRES_PASSWORD` in `.env` to a long random value, then:
+
 ```bash
 docker compose up -d
 ```

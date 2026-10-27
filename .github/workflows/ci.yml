@@ -24,7 +24,7 @@ jobs:
         run: |
           docker run -d --name pg -p 5432:5432 -e POSTGRES_USER=nimstead -e POSTGRES_PASSWORD=ci postgres:17 -c max_connections=500
           until docker exec pg pg_isready -h 127.0.0.1 -U nimstead; do sleep 1; done  # TCP: not the init-time socket server
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
       - run: uv python install 3.14
       - run: uv sync --locked
       - run: uv run ruff check src tests ../agent ../sandbox
@@ -36,7 +36,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
       - run: uv python install 3.14 && uv sync --locked
         working-directory: api
       - uses: actions/setup-node@v4

@@ -19,14 +19,14 @@ jobs:
       PYTHONUNBUFFERED: "1"
       NIMSTEAD_TEST_PG_URL: ${{ matrix.db == 'postgres' && 'postgresql+psycopg://nimstead:ci@127.0.0.1:5432/postgres' || '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # same settings as sandbox/pg.py (each test gets its own database and pool)
       - name: Start PostgreSQL 17
         if: matrix.db == 'postgres'
         run: |
           docker run -d --name pg -p 5432:5432 -e POSTGRES_USER=nimstead -e POSTGRES_PASSWORD=ci postgres:17 -c max_connections=500
           until docker exec pg pg_isready -h 127.0.0.1 -U nimstead; do sleep 1; done  # TCP: not the init-time socket server
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
       - run: uv python install 3.14
       - run: uv sync --locked
       - run: uv run ruff check src tests ../agent ../sandbox
@@ -37,18 +37,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: docker compose config --quiet && docker build -t nimstead/assure:ci .
 
   web:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
       - run: uv python install 3.14 && uv sync --locked
         working-directory: api
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -57,7 +57,7 @@ jobs:
         working-directory: web
       - run: npx playwright install --with-deps chromium && npm run e2e
         working-directory: web
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-traces

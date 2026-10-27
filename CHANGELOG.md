@@ -4,9 +4,17 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-27
+
 ### Fixed
 - **Agent 0.1.1:** a service crash-looping after a fix could pass the health check if it was sampled in a moment of "active". The check now also counts systemd restarts since the change, so the fix is rolled back. Found on a real Debian 13 host.
 - **Agent 0.1.1:** a failed health check now says the service's state (for example "service is inactive") instead of ending in an empty reason.
+- **Web:** the home page and the approval dialog no longer repeat the host name after a fix's summary.
+
+### Changed
+- README screenshots now come from a real run on five disposable Linux machines (`sandbox/demo.py`).
+
+Machines on agent 0.1.0 show **Agent outdated** after you upgrade the server; rerun the install command on each to update (enrolment is kept). This release becomes available under Apache 2.0 on 2028-10-27.
 
 ## [0.1.0] - 2026-10-27
 
@@ -24,5 +32,6 @@ The first early-access release. Everything listed is proven by tests and, for an
 
 Licensed under FSL-1.1-ALv2: this release becomes available under Apache 2.0 on 2028-10-27.
 
-[Unreleased]: https://github.com/Nimstead/assure/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Nimstead/assure/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/Nimstead/assure/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Nimstead/assure/releases/tag/v0.1.0

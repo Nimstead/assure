@@ -33,6 +33,13 @@ jobs:
         if: matrix.db == 'sqlite'
       - run: uv run pytest -q --durations=10 -o faulthandler_timeout=120  # a hung test dumps every thread's stack
 
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose config --quiet && docker build -t nimstead/assure:ci .
+
   web:
     runs-on: ubuntu-latest
     timeout-minutes: 20

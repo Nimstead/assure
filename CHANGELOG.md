@@ -4,10 +4,9 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
-### Fixed
-- Evidence page: control text no longer shows Python values ("None days", a raw SLA dictionary).
+## [0.1.0] - 2026-10-27
 
-## [0.1.0] - first release candidate
+The first early-access release. Everything listed is proven by tests and, for anything that touches real systems, by runs on real machines (see [STATUS.md](STATUS.md)). Expect breaking changes before 1.0.
 
 ### Added
 - **Detection:** agents for Debian, Ubuntu, RHEL-family, Alpine, SUSE and Windows (the OS and common third-party apps such as Chrome, Firefox, 7-Zip and VS Code); CycloneDX and SPDX SBOM upload; OSV, NVD, CISA KEV, EPSS and MSRC feeds; ecosystem-exact version comparison.
@@ -17,3 +16,9 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 - **External scanning** of internet hosts proven owned by DNS TXT.
 - **Platform:** OIDC SSO with verified domains, failure alerts (webhook, email), Vault and S3 object-lock key storage, PostgreSQL, multi-worker safe.
 - Agent version reporting, with outdated agents flagged on the Assets page.
+- **Install:** Docker Compose (server, PostgreSQL 17 and the hourly feed update), install and configuration guides.
+
+Licensed under FSL-1.1-ALv2: this release becomes available under Apache 2.0 on 2028-10-27.
+
+[Unreleased]: https://github.com/Nimstead/assure/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/Nimstead/assure/releases/tag/v0.1.0

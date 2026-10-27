@@ -4,7 +4,7 @@ Nimstead Assure runs agents as root and SYSTEM and changes installed packages, s
 
 ## Reporting a vulnerability
 
-**Never open a public issue for a vulnerability.** Email **security@nimstead.systems**, or, if you have access to this repository, open a draft advisory: **Security → Advisories → New draft security advisory**. Both stay private to the maintainers, so we can agree a fix and a CVE before anything is public.
+**Never open a public issue for a vulnerability.** Email **security@nimstead.systems**, or report it privately on GitHub: **Security → Report a vulnerability**. Both stay private to the maintainers, so we can agree a fix and a CVE before anything is public.
 
 Include what you can:
 - the component (`api/`, `agent/`, `web/`) and commit,

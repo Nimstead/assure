@@ -90,6 +90,8 @@ Remediation is off until you turn it on in three places:
 
 Every fix takes a rollback copy first, refuses to touch anything outside the plan, checks your services afterwards and rolls back on its own if they fail. It only counts as fixed when the next inventory shows it.
 
+**Tell it which services matter.** On the **Assets** page, list each machine's important services under **Health units** (for example `nginx, postgresql`). After a change the agent waits 15 seconds, then each one must be running and must not have been restarted since the change, so a service stuck restarting counts as broken. On Windows it waits 60 seconds after the update, then checks each service is running.
+
 ## Upgrade
 
 ```bash

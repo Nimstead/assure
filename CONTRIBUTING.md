@@ -26,6 +26,14 @@ cd web && npm test && npm run e2e
 
 CI runs the same checks, plus the API suite on PostgreSQL 17. Pull requests are squash-merged, so the PR title becomes the commit message: say what changed and why.
 
+## Releasing
+
+1. Bump the version in `api/pyproject.toml`, `web/package.json` (`npm version X.Y.Z --no-git-tag-version`) and the image tag in `compose.yaml`, then run `uv lock` in `api/`. Bump `AGENT_VERSION` too if the agent changed.
+2. Move the changelog's Unreleased entries under the new version with today's date, and update the compare links at the bottom.
+3. Push to `main` and wait for CI to pass.
+4. Tag (`git tag -a vX.Y.Z -m "Nimstead Assure X.Y.Z"`) and push the tag.
+5. Publish a GitHub release from the tag with `agent/nimstead_agent.py` and a `SHA256SUMS` made from the tagged file (`git show vX.Y.Z:agent/nimstead_agent.py`). Mark it a pre-release until 1.0.
+
 ## How we work
 
 - **Prove it, then claim it.** A feature is done when a test shows it works. For anything that touches real systems (package managers, Windows Update, SSO, DNS, mail), that means a run against the real thing in [`sandbox/`](sandbox), not a mock. [STATUS.md](STATUS.md) records what is proven and what isn't. Update it in the same PR.

@@ -92,7 +92,7 @@ Not just unit tests. Each of these ran end to end in a disposable VM or WSL dist
 | openSUSE Leap 16.0 | ✓ | ✓ zypper | ✓ after a real service failure; snapper also undoes install-script side effects |
 | Windows Server 2025 | ✓ | ✓ cumulative update as SYSTEM | ✓ after an injected failure (DISM removal); permanent updates refused up front |
 
-Plus real Keycloak SSO, DNS, SMTP and webhook integrations, Vault and S3 object-lock key storage, the Docker Compose install, and 1,000-host performance runs on SQLite and PostgreSQL 17. 579 API tests run on both databases in CI.
+Plus real Keycloak SSO, DNS, SMTP and webhook integrations, Vault and S3 object-lock key storage, the Docker Compose install, and 1,000-host performance runs on SQLite and PostgreSQL 17. 580 API tests run on both databases in CI.
 
 ## Known limitations
 

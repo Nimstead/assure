@@ -1,7 +1,7 @@
 # Nimstead Assure: the API server with the web UI and agent it serves.
 # Base images are pinned by digest (tag kept for reading), so a signed release commit pins what gets built.
 # Refresh: look up each tag's current digest and update it in a release PR.
-FROM node:22-slim@sha256:4b150b48b4116e2a22f2c39cc27025fbf4f153e2078fd3b14d159fdb5c7279da AS web
+FROM node:25-slim@sha256:81db02c4b671288a03915da9534dbd54f96d0e7c24d80ccc54f5b36b2e684370 AS web
 WORKDIR /src/web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci

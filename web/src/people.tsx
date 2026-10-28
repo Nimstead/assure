@@ -76,7 +76,7 @@ export function AccountSection() {
           <label className="flex flex-col gap-1.5 text-sm font-medium">New password<input className={input} name="new" type="password" required minLength={12} autoComplete="new-password" /></label>
           {me.mfa && <label className="flex flex-col gap-1.5 text-sm font-medium">Authenticator code<input className={input} name="code" required autoComplete="one-time-code" /></label>}
           <Alert error={pw.error} />
-          {pw.isSuccess && <Done>Password changed. Other devices were signed out.</Done>}
+          {pw.isSuccess && <Done>Password changed. Other devices were signed out and your API tokens revoked.</Done>}
           <button className={clsx(btnPrimary, "self-start")} disabled={pw.isPending}>{pw.isPending ? "Saving…" : "Change password"}</button>
         </form>
       )}

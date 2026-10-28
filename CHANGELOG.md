@@ -9,14 +9,15 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 Security round 4 and what a first team needs: people management, two-step sign-in, API tokens and CSV export. Agent 0.3.0.
 
 **Upgrade from 0.3.x:** run `deploy/update.sh` on the Docker host. Things to know:
-- **Admins who sign in with a password set up two-step sign-in at their next sign-in** (any authenticator app), including break-glass sign-in. Save the recovery codes it shows.
+- **Admins who sign in with a password are signed out by the upgrade and set up two-step sign-in at their next sign-in** (any authenticator app), including break-glass sign-in. Save the recovery codes it shows.
+- Swagger UI at `/api/docs` is off unless `NIMSTEAD_API_DOCS=1` (it runs scripts from a CDN); `/api/openapi.json` is still served.
 - **The app now listens on `127.0.0.1:8000` only.** Your HTTPS proxy on the same host keeps working. If something on another machine reached port 8000 directly, put it behind the proxy, or set `NIMSTEAD_BIND=0.0.0.0` in `.env`.
 - Sign-up links sent before the upgrade stop working; ask for a new one.
 - Agents update themselves to 0.3.0. Machines enrolled before 0.3.0 keep taking every channel; rerun the install command to tie one to your server's channel.
 
 ### Security
 - **Sign-up can no longer be used to pre-set someone else's password.** Emailed sign-ups, invitations and resets let the address owner choose the password on the link's page; the request never carries one.
-- **Two-step sign-in (TOTP) is required for admins** who sign in with a password, with one-time recovery codes; anyone else can turn it on in Settings.
+- **Two-step sign-in (TOTP) is required for admins** who sign in with a password, with one-time recovery codes; anyone else can turn it on in Settings. A new admin's first session comes from signing in (after sign-up you're sent to the sign-in page), wrong codes are limited per account from every address, and promoting someone signs them out so they set it up.
 - Request bodies are capped at 10 MB as they arrive, so a chunked upload can't exhaust memory.
 - Per-organisation limits: assets (`NIMSTEAD_MAX_ASSETS_PER_ORG`, 5,000), enrolments per token, inventories per hour, and AI calls per user and organisation.
 - Security headers on every response: Content-Security-Policy, HSTS (with secure cookies), `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy: no-referrer`. `/.well-known/security.txt` is served.
@@ -29,7 +30,7 @@ Security round 4 and what a first team needs: people management, two-step sign-i
 ### Added
 - **People** in Settings: invite by email, make admin or member, remove (signed out at once). An organisation always keeps one admin. Sessions end after 12 hours idle; **Sign out everywhere**.
 - **Change password** and **Forgot password?** (emailed link, 1 hour; you still need your authenticator code).
-- **API tokens:** read-only access for scripts to findings, assets, the summary and evidence, as `Authorization: Bearer …`. A token stops working when its creator is no longer an admin.
+- **API tokens:** read-only access for scripts to findings, assets, the summary and evidence, as `Authorization: Bearer …`. Creating one needs your authenticator code; each expires within a year, and stops working when its creator is no longer an admin, signs out everywhere, or changes or resets their password.
 - **Export CSV** on Findings, with the page's filters (cells a spreadsheet would run as formulas are escaped).
 - **Remediation deadlines** per priority in Settings, used and shown in evidence packs.
 - Evidence packs map to **SOC 2 CC7.1 and CC8.1** and **NIS2 Art. 21(2)(e)** too.

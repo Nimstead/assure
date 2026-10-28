@@ -5,11 +5,11 @@
       "step": "versions",
       "docker": "Docker version 26.1.5+dfsg1, build a72d7cd",
       "compose": "2.26.1-4",
-      "files": 178
+      "files": 206
     },
     {
       "step": "compose up: built and serving",
-      "seconds": 96,
+      "seconds": 34,
       "ps": [
         "app running",
         "db running",
@@ -19,17 +19,17 @@
     },
     {
       "step": "migrations",
-      "current": "e7a2c94b1d05 (head)"
+      "current": "b41c7d9e2a58 (head)"
     },
     {
       "step": "real agent installed from install.sh, enrolled and reported",
       "agent_output": [
         "reported 238 packages",
-        "Created symlink '/etc/systemd/system/timers.target.wants/nimstead-agent.timer' \u2192 '/etc/systemd/system/nimstead-agent.timer'.",
-        "Nimstead agent installed; reporting every 6 hours."
+        "scheduled: inventory every 6 hours",
+        "Nimstead agent installed."
       ],
       "hostname": "DESKTOP-H2C7SKP",
-      "agent_version": "0.1.3",
+      "agent_version": "0.3.0",
       "outdated": false
     },
     {
@@ -44,13 +44,24 @@
       "step": "restart: login, host and evidence signing key survived",
       "assets": 1,
       "data": [
+        "nimstead-secret.key",
         "nimstead-signing.pem"
       ],
-      "fingerprint": "cb12252534f583d6b81a2b65cf70a2b1902ca95f77c42e1ab0cfc649cc1a3d93"
+      "fingerprint": "583f817fac78b7807e26a43a440ea2745db69407feb99cee27843dc23d2ef97a"
     },
     {
       "step": "non-root",
       "user": "nimstead"
+    },
+    {
+      "step": "listens on loopback only",
+      "port": "127.0.0.1:8000"
+    },
+    {
+      "step": "backup and restore onto fresh volumes, as documented",
+      "assets": 1,
+      "fingerprint_unchanged": true,
+      "chain_problems": []
     }
   ]
 }

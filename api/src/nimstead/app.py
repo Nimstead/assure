@@ -479,16 +479,20 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             raise HTTPException(429, "Too many failed sign-in attempts; try again in 15 minutes")
 
         def fail(msg: str, code_for: User | None = None):
-            s.rollback()  # a half-checked recovery code isn't spent
+            # a wrong code changed nothing, so no rollback: that keeps the account row locked until this failure is counted
+            if not code_for:
+                s.rollback()
             s.execute(delete(AuthFailure).where(AuthFailure.ts < now() - timedelta(seconds=RATE_WINDOW)))  # housekeeping
             s.add_all(AuthFailure(key=k) for k in keys + (["mfa:" + code_for.id] if code_for else []))
-            s.commit()
-            if code_for and failures(s, "mfa:" + code_for.id) == MFA_MAX_FAILURES:  # someone has the password: say so, once
+            s.flush()
+            if (code_for and failures(s, "mfa:" + code_for.id) >= MFA_MAX_FAILURES
+                    and not failures(s, "mfa-alerted:" + code_for.id)):  # someone has the password: say so, once a window
+                s.add(AuthFailure(key="mfa-alerted:" + code_for.id))
                 evidence.append(s, code_for.org_id, "mfa_guessing_stopped", code_for.id, {"email": code_for.email})
                 notify.notify(s, code_for.org_id, "mfa_guessing_stopped",
                               f"Sign-in codes for {code_for.email} were guessed {MFA_MAX_FAILURES} times with the right password: "
                               "code sign-in is paused for 15 minutes. Change that password.", urgent=True)
-                s.commit()
+            s.commit()
             raise HTTPException(401, msg) from None
 
         user = s.scalar(select(User).where(User.email == body.email.lower()))
@@ -503,9 +507,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             raise HTTPException(403, "Your organisation requires single sign-on. Use Continue with SSO.")
         answer: dict = {"email": user.email}
         # Per account, from every address: with the password in hand, spreading code guesses over many IPv6 /64s
-        # must not add up to a 6-digit brute force. Only someone who has the password can trip this.
-        if (user.totp_secret or user.admin) and body.code and failures(s, "mfa:" + user.id) >= MFA_MAX_FAILURES:
-            raise HTTPException(429, "Too many wrong codes for this account; try again in 15 minutes")
+        # must not add up to a 6-digit brute force. Only someone who has the password can trip this. The account row is
+        # locked (PostgreSQL) from this count until the attempt's failure is committed, so simultaneous guesses queue.
+        if (user.totp_secret or user.admin) and body.code:
+            s.refresh(user, with_for_update=True)
+            if failures(s, "mfa:" + user.id) >= MFA_MAX_FAILURES:
+                raise HTTPException(429, "Too many wrong codes for this account; try again in 15 minutes")
         if user.totp_secret:
             if not body.code:
                 return {"mfa": "required"}  # no session yet
@@ -567,6 +574,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         user.password_hash = ph.hash(body.new)
         keep = sha(request.cookies.get(SESSION_COOKIE, ""))
         s.execute(delete(WebSession).where(WebSession.user_id == user.id, WebSession.token_hash != keep))  # other devices out
+        s.execute(delete(ApiToken).where(ApiToken.user_id == user.id))  # a password change is also how people recover
         evidence.append(s, user.org_id, "password_changed", user.id, {"by": user.email})
         s.commit()
 

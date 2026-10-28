@@ -183,7 +183,8 @@ def test_totp_matches_rfc6238_vectors():
     assert mfa.verify(s, "12345", 0) is None and mfa.verify(s, "abcdef", 0) is None
 
 
-def test_admin_password_sign_in_needs_mfa(env):
+def test_admin_password_sign_in_needs_mfa(env, monkeypatch):
+    monkeypatch.setattr(time, "time", lambda: 1_800_000_015.0)  # mid-step: "this step's code is spent" can't cross a boundary
     c = user(env)
     c.post("/api/auth/logout")
     pw = {"email": "a@example.com", "password": PW}
@@ -241,6 +242,13 @@ def test_password_change_needs_current_password_and_code_and_signs_out_other_dev
     assert c.post("/api/me/password", json={**body, "code": now_code(secret, 1)}).status_code == 204
     assert c.get("/api/me").status_code == 200 and laptop.get("/api/me").status_code == 401
     assert "password_changed" in kinds(env)
+
+
+def test_password_change_revokes_api_tokens(env):
+    c = user(env)  # dev-mode admin without a code: no code needed for either step here
+    h = {"Authorization": "Bearer " + c.post("/api/tokens", json={"name": "thief's"}).json()["token"]}
+    assert c.post("/api/me/password", json={"current": PW, "new": "a brand new passphrase"}).status_code == 204
+    assert TestClient(c.app).get("/api/findings", headers=h).status_code == 401
 
 
 def test_password_reset_by_email(env, monkeypatch, mail):

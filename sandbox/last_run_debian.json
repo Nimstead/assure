@@ -1,7 +1,7 @@
 [
   {
     "step": "creating sandbox distro",
-    "name": "nimstead-sbx-365d6ac0",
+    "name": "nimstead-sbx-fb3e2c34",
     "distro": "Debian"
   },
   {
@@ -15,24 +15,24 @@
   },
   {
     "step": "feeds synced",
-    "kev": 1756,
-    "epss": 395308,
+    "kev": 1760,
+    "epss": 396966,
     "osv": {
-      "inserted": 60179,
+      "inserted": 60648,
       "updated": 0,
       "skipped": 0
     },
-    "seconds": 10
+    "seconds": 9
   },
   {
     "step": "first inventory",
-    "open": 274,
+    "open": 276,
     "resolved": 0
   },
   {
     "step": "findings",
     "open_by_priority": {
-      "low": 258,
+      "low": 260,
       "planned": 16
     },
     "top_actions": [
@@ -58,8 +58,12 @@
       "ok  job validated",
       "ok  apt-get available",
       "ok  installed versions match plan",
+      "ok  fix is newer than installed",
+      "ok  no rollback copy kept from an earlier job with this id",
+      "ok  free space for the rollback copy",
       "ok  refresh package index",
       "ok  simulate upgrade",
+      "ok  no package downgraded",
       "ok  change limited to planned packages",
       "ok  archive copy of libssl3t64=3.5.6-1~deb13u1 not available (superseded); rebuilding",
       "ok  rollback package libssl3t64=3.5.6-1~deb13u1",
@@ -79,14 +83,18 @@
     "package": "perl",
     "outcome": "rolled_back",
     "status": "rolled_back",
-    "error": "Change failed and was rolled back: nimstead-canary.service active after change failed: ",
+    "error": "Change failed and was rolled back: nimstead-canary.service active after change failed: service is activating, restarted 11 times since the change",
     "steps": [
       "ok  job validated",
       "ok  apt-get available",
       "ok  installed versions match plan",
+      "ok  fix is newer than installed",
+      "ok  no rollback copy kept from an earlier job with this id",
+      "ok  free space for the rollback copy",
       "ok  nimstead-canary.service active before change",
       "ok  refresh package index",
       "ok  simulate upgrade",
+      "ok  no package downgraded",
       "ok  change limited to planned packages",
       "ok  archive copy of perl-base=5.40.1-6 not available (superseded); rebuilding",
       "ok  rollback package perl-base=5.40.1-6",
@@ -97,9 +105,20 @@
       "ok  rollback artefact intact perl-base_5.40.1-6_amd64.deb",
       "ok  rollback install",
       "ok  versions restored",
+      "ok  restart nimstead-canary.service on the restored version",
       "ok  nimstead-canary.service active after rollback"
     ],
     "restored": true
+  },
+  {
+    "step": "rollback copies left after success and rollback",
+    "count": "0"
+  },
+  {
+    "step": "forged downgrade job",
+    "outcome": "aborted",
+    "error": "No changes made: fix is newer than installed failed: not newer: libssl3t64 0.0.1-1",
+    "unchanged": true
   },
   {
     "step": "evidence pack",
@@ -111,6 +130,9 @@
       "NIST SP 800-53 Rev. 5 RA-5": "met",
       "NIST SP 800-53 Rev. 5 SI-2": "met",
       "PCI DSS v4.0.1 6.3.3": "met",
+      "SOC 2 (TSC 2017) CC7.1": "met",
+      "SOC 2 (TSC 2017) CC8.1": "met",
+      "NIS2 Directive Art. 21(2)(e)": "met",
       "CIS Controls v8.1 7.3 / 7.4": "met"
     }
   },
@@ -121,6 +143,6 @@
   },
   {
     "step": "sandbox destroyed",
-    "name": "nimstead-sbx-365d6ac0"
+    "name": "nimstead-sbx-fb3e2c34"
   }
 ]

@@ -14,12 +14,44 @@ const inv = (version: string) => ({
 
 test.describe.configure({ mode: "serial" });
 
+function totp(secret: string, at = Date.now()): string {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  const bits = [...secret.replace(/=+$/, "")].map((c) => alphabet.indexOf(c).toString(2).padStart(5, "0")).join("");
+  const key = Buffer.from(bits.match(/.{8}/g)!.map((b) => parseInt(b, 2)));
+  const msg = Buffer.alloc(8);
+  msg.writeBigUInt64BE(BigInt(Math.floor(at / 30_000)));
+  const mac = createHmac("sha1", key).update(msg).digest();
+  const off = mac[mac.length - 1]! & 0x0f;
+  return String((mac.readUInt32BE(off) & 0x7fffffff) % 1_000_000).padStart(6, "0");
+}
+
+// A code for a 30 s step not used yet (each works once), waiting for the next step if need be, as a person would.
+let secret = "", lastStep = 0;
+async function freshCode(page: Page): Promise<string> {
+  while (Math.floor(Date.now() / 30_000) <= lastStep) await page.waitForTimeout(1000);
+  lastStep = Math.floor(Date.now() / 30_000);
+  return totp(secret);
+}
+
+
 test("sign up, enrol a sandbox host, plan and approve a fix, see evidence", async ({ page }) => {
   await page.goto("/signup");
   await page.getByLabel("Organisation").fill("Acme E2E");
   await page.getByLabel("Email").fill("e2e@example.com");
   await page.getByLabel("Password").fill("correct horse battery staple");
   await page.getByRole("button", { name: "Create account" }).click();
+
+  // An admin's first session comes from signing in, which sets up two-step sign-in
+  await expect(page.getByText(/Account created\. Sign in to set up two-step sign-in/)).toBeVisible();
+  await page.getByLabel("Email", { exact: true }).fill("e2e@example.com");
+  await page.getByLabel("Password").fill("correct horse battery staple");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Set up two-step sign-in" })).toBeVisible();
+  secret = (await page.locator("pre code").first().textContent())!.trim();
+  await page.getByLabel("Code from the app").fill(await freshCode(page));
+  await page.getByRole("button", { name: "Turn on" }).click();
+  await expect(page.getByText(/Save these recovery codes now/)).toBeVisible();
+  await page.getByRole("button", { name: /saved them, continue/ }).click();
 
   // Onboarding
   await page.getByRole("checkbox", { name: /disposable test machine/ }).check();
@@ -72,30 +104,16 @@ test("sign up, enrol a sandbox host, plan and approve a fix, see evidence", asyn
   await page.context().storageState({ path: STATE });
 });
 
-function totp(secret: string, at = Date.now()): string {
-  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-  const bits = [...secret.replace(/=+$/, "")].map((c) => alphabet.indexOf(c).toString(2).padStart(5, "0")).join("");
-  const key = Buffer.from(bits.match(/.{8}/g)!.map((b) => parseInt(b, 2)));
-  const msg = Buffer.alloc(8);
-  msg.writeBigUInt64BE(BigInt(Math.floor(at / 30_000)));
-  const mac = createHmac("sha1", key).update(msg).digest();
-  const off = mac[mac.length - 1]! & 0x0f;
-  return String((mac.readUInt32BE(off) & 0x7fffffff) % 1_000_000).padStart(6, "0");
-}
-
-test("admins sign in with a second step, manage people and API tokens", async ({ browser }) => {
+test("admins sign in with their code, manage people and API tokens", async ({ browser }) => {
   const context = await browser.newContext();
   const page = await context.newPage();
   await page.goto("/signin");
   await page.getByLabel("Email", { exact: true }).fill("e2e@example.com");
   await page.getByLabel("Password").fill("correct horse battery staple");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Set up two-step sign-in" })).toBeVisible();
-  const secret = (await page.locator("pre code").first().textContent())!.trim();
-  await page.getByLabel("Code from the app").fill(totp(secret));
-  await page.getByRole("button", { name: "Turn on" }).click();
-  await expect(page.getByText(/Save these recovery codes now/)).toBeVisible();
-  await page.getByRole("button", { name: /saved them, continue/ }).click();
+  await expect(page.getByRole("heading", { name: "Enter your code" })).toBeVisible();  // enrolled in the first test
+  await page.getByLabel(/Code from your authenticator app/).fill(await freshCode(page));
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Fix first" })).toBeVisible();
 
   // a second member of the org, as an invitation or SSO would add (no SMTP or IdP in this test)
@@ -118,6 +136,7 @@ test("admins sign in with a second step, manage people and API tokens", async ({
 
   const tokens = page.locator("section[aria-labelledby=api-tokens]");
   await tokens.getByLabel("Name").fill("ci export");
+  await tokens.getByLabel("Authenticator code").fill(await freshCode(page));  // a session alone can't mint a token
   await tokens.getByRole("button", { name: "Create token" }).click();
   const token = (await tokens.locator("pre code").textContent())!.trim();
   const anon = await pwRequest.newContext({ baseURL: "http://localhost:5173" });

@@ -42,3 +42,12 @@ def test_signing_runs_only_hash_pinned_code_next_to_the_key():
     req = (GITHUB.parent / "scripts" / "sign-requirements.txt").read_text()
     pinned = [ln for ln in req.splitlines() if ln and not ln.startswith((" ", "#"))]
     assert pinned and all("==" in ln for ln in pinned) and req.count("--hash=sha256:") >= len(pinned)
+
+
+def test_the_signing_job_downloads_no_package_tool():
+    """The signing job's code is the runner image plus hash-pinned wheels: no setup-uv or setup-python, whose 'latest'
+    binary would run before the key is used (round 4 review)."""
+    steps = yaml.safe_load((GITHUB / "workflows" / "release.yml").read_text())["jobs"]["sign"]["steps"]
+    uses = [s["uses"].split("@")[0] for s in steps if "uses" in s]
+    assert set(uses) <= {"actions/checkout", "actions/attest-build-provenance"}, uses
+    assert "pip install" in str(steps) and "--only-binary :all:" in str(steps)

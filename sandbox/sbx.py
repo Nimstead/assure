@@ -29,6 +29,7 @@ TMP = Path(tempfile.mkdtemp(prefix="nimstead-sbx-"))
 os.environ.update(NIMSTEAD_SECURE_COOKIES="0", NIMSTEAD_INVENTORY_MIN_SECONDS="0", NIMSTEAD_SIGNING_KEY_FILE=str(TMP / "signing.pem"))
 
 from fastapi.testclient import TestClient  # noqa: E402
+from signin import signup  # noqa: E402  first account + its admin's TOTP sign-in
 
 from nimstead import feeds  # noqa: E402
 from nimstead.app import create_app  # noqa: E402
@@ -107,7 +108,7 @@ def agent(*args, input=None, check=True):
 def main(keep=False):
     db = f"sqlite:///{(TMP / 'nimstead.db').as_posix()}"
     c = TestClient(create_app(db))
-    c.post("/api/auth/signup", json={"email": "sbx@example.com", "password": "sandbox-only-password", "org_name": "Sandbox"})
+    signup(c, {"email": "sbx@example.com", "password": "sandbox-only-password", "org_name": "Sandbox"})
     try:
         create_sandbox()
         inv = json.loads(agent("collect")[1])
@@ -198,6 +199,21 @@ def main(keep=False):
                     rollback = {**r, "restored": after == before}
                     break
             assert rollback and rollback["restored"], "rollback scenario did not roll back cleanly"
+
+        # 2b) round 4: rollback copies don't pile up, and a forged job (as a compromised server could send) asking for an
+        #     older version is refused by the host's own package manager before anything changes
+        left = wsl("sh", "-c", "ls -A /var/lib/nimstead/rollback 2>/dev/null | wc -l")[1].strip()
+        note("rollback copies left after success and rollback", count=left)
+        assert left == "0", "rollback copies were left behind"
+        pkg = next(p for p in json.loads(agent("collect")[1])["packages"] if p["name"] == success["job"]["packages"][0]["name"])
+        manager = success["job"]["manager"]
+        forged = {"id": "forged1", "manager": manager, "settle_seconds": 0, "health_units": [],
+                  "packages": [{"name": pkg["name"], "from": pkg["version"], "to": "0.0.1-r0" if manager == "apk" else "0.0.1-1"}]}
+        rc, out = agent("run-job", "--yes", input=json.dumps(forged).encode(), check=False)
+        res = json.loads([ln for ln in out.splitlines() if ln.startswith("{")][-1])
+        same = next(p for p in json.loads(agent("collect")[1])["packages"] if p["name"] == pkg["name"])["version"] == pkg["version"]
+        note("forged downgrade job", outcome=res["outcome"], error=res["error"], unchanged=same)
+        assert res["outcome"] == "aborted" and "not newer" in (res["error"] or "") and same, "a downgrade was not refused"
 
         # 3) evidence pack verifies offline against the pinned key
         z = zipfile.ZipFile(io.BytesIO(c.get("/api/evidence/pack", params={"days": 1}).content))

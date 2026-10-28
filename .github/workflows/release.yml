@@ -38,12 +38,12 @@ jobs:
         run: |
           echo "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || { echo "not a release tag: $TAG"; exit 1; }
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
+      # No package tool is downloaded into this job: the runner image's own Python and pip, and every package by hash
       - name: Signing environment (cryptography and its dependencies only, each pinned by hash)
         run: |
-          uv python install 3.14
-          uv venv --python 3.14 "$RUNNER_TEMP/sign"
-          uv pip install --python "$RUNNER_TEMP/sign/bin/python" --require-hashes --no-deps -r scripts/sign-requirements.txt
+          python3 -I -m venv "$RUNNER_TEMP/sign"
+          "$RUNNER_TEMP/sign/bin/python" -I -m pip install --disable-pip-version-check --no-input --require-hashes --no-deps \
+            --only-binary :all: -r scripts/sign-requirements.txt
       - name: Sign release.json
         env:
           NIMSTEAD_RELEASE_KEY: ${{ secrets.NIMSTEAD_RELEASE_KEY }}

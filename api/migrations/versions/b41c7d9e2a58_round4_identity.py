@@ -32,6 +32,8 @@ def upgrade() -> None:
         b.add_column(sa.Column('recovery_codes', sa.JSON(), nullable=False, server_default='[]'))
     with op.batch_alter_table('web_session') as b:
         b.add_column(sa.Column('last_used', sa.DateTime(), nullable=False, server_default=sa.func.now()))
+    # admin sessions from before had no second factor: those admins sign in again, setting it up (DECISIONS 35)
+    op.execute("DELETE FROM web_session WHERE user_id IN (SELECT id FROM \"user\" WHERE admin = true AND origin = 'password')")
     with op.batch_alter_table('asset') as b:
         b.add_column(sa.Column('enrolled_by', sa.String(length=12), nullable=True))
     with op.batch_alter_table('org') as b:

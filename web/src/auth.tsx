@@ -30,7 +30,7 @@ export function AuthPage({ mode }: { mode: "signin" | "signup" }) {
   const params = new URLSearchParams(window.location.search);
   const ssoMsg = ssoError(params.get("sso_error"));
   const enter = async () => { qc.clear(); await navigate({ to: "/" }); };
-  type Answer = { status?: string; email?: string; mfa?: "required" | "setup"; recovery_codes?: string[] } & Partial<MfaSetup>;
+  type Answer = { status?: string; email?: string; next?: "signin"; mfa?: "required" | "setup"; recovery_codes?: string[] } & Partial<MfaSetup>;
   const go = useMutation({
     mutationFn: (b: { email: string; password: string; code?: string; setup?: string }) =>
       signup
@@ -38,6 +38,7 @@ export function AuthPage({ mode }: { mode: "signin" | "signup" }) {
         : api<Answer>("/api/auth/login", { method: "POST", body: b }),
     onSuccess: async (r) => {
       if (r.status === "check_email") return setSentTo(r.email ?? ""); // the account is created from the emailed link
+      if (r.next === "signin") return navigate({ to: "/signin", search: { created: "1" } }); // signing in sets up the second step
       if (r.mfa === "required") return setMfa({ mfa: "required" });
       if (r.mfa === "setup") return setMfa(r as { mfa: "setup" } & MfaSetup);
       if (r.recovery_codes) return setCodes(r.recovery_codes); // shown once, then Continue
@@ -107,6 +108,7 @@ export function AuthPage({ mode }: { mode: "signin" | "signup" }) {
         {go.error && <p role="alert" className="rounded-md bg-now-bg px-3 py-2 text-sm text-now-fg">{go.error.message}</p>}
         {sentTo && <p role="status" className="rounded-md bg-surface px-3 py-2 text-sm">Check {sentTo} for a link to finish creating your account and choose your password.</p>}
         {!signup && params.get("reset") && <p role="status" className="rounded-md bg-surface px-3 py-2 text-sm">Password changed. Sign in with your new password.</p>}
+        {!signup && params.get("created") && <p role="status" className="rounded-md bg-surface px-3 py-2 text-sm">Account created. Sign in to set up two-step sign-in and get started.</p>}
         <button className={btnPrimary} disabled={go.isPending}>{go.isPending ? "One moment…" : signup ? "Create account" : "Sign in"}</button>
       </form>
       {!signup && (forgot ? (

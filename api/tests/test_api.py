@@ -317,7 +317,8 @@ def test_signup_never_says_whether_an_email_has_an_account(env, monkeypatch):
     assert browser.get(link).status_code == 200 and browser.get("/api/me").status_code == 401  # opening it isn't enough
     assert browser.post(link, data={"password": "short"}).status_code == 422  # still usable after a bad password
     r = browser.post(link, data={"password": "chosen by the owner"}, follow_redirects=False)
-    assert r.status_code == 303 and browser.get("/api/me").json()["email"] == "new@example.com"
+    assert r.status_code == 303 and r.headers["location"] == "/signin?created=1" and browser.get("/api/me").status_code == 401
+    assert mfa_login(browser, "new@example.com", "chosen by the owner").json()["email"] == "new@example.com"  # sets up the code
     assert TestClient(c.app).post(link, data={"password": "chosen by the owner"}).status_code == 404  # single use
 
 

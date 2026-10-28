@@ -154,13 +154,14 @@ def main(keep=False) -> int:
         })
         import httpx
         from fastapi.testclient import TestClient
+        from signin import signup  # first account + its admin's TOTP sign-in
 
         from nimstead import notify
         from nimstead.app import create_app
 
         app = create_app(f"sqlite:///{(TMP / 'n.db').as_posix()}")
         admin = TestClient(app)
-        assert admin.post("/api/auth/signup", json={"email": "admin@corp.example.com", "password": "admin-password-123", "org_name": "Corp"}).status_code == 201
+        assert signup(admin, {"email": "admin@corp.example.com", "password": "admin-password-123", "org_name": "Corp"}).status_code == 201
         issuer = "https://127.0.0.1:8443/realms/nimstead"
         r = admin.put("/api/settings/sso", json={"issuer": issuer, "client_id": "nimstead", "client_secret": CLIENT_SECRET,
                                                  "domains": ["corp.example.com"]})

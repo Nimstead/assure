@@ -68,6 +68,18 @@ def test_rollback_copy_is_removed_once_the_outcome_is_saved(tmp_path, monkeypatc
     assert (tmp_path / "rb" / "j1").exists() == kept  # a failed rollback keeps its copy for whoever repairs the host
 
 
+def test_a_reused_job_id_cannot_delete_a_kept_rollback_copy(tmp_path):
+    kept = tmp_path / "rb" / "j1"  # left by an earlier job's failed rollback, for whoever repairs the host
+    kept.mkdir(parents=True)
+    (kept / "files.tar").write_text("the only copy")
+    h = FakeApt(tmp_path, OLD, NEW)
+    job = agent.Job(JOB, run=h, **job_kw(tmp_path))
+    outcome, _, err = job.execute()
+    job.discard_rollback(outcome)
+    assert outcome == "aborted" and "rollback copy kept from an earlier job" in err and h.installed == OLD
+    assert (kept / "files.tar").read_text() == "the only copy"
+
+
 # --- A4: signed channels -----------------------------------------------------------------------------------------------
 
 @pytest.mark.parametrize(("release", "mine", "ok"), [

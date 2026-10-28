@@ -160,6 +160,8 @@ SESSION_DAYS, SESSION_IDLE = 14, timedelta(hours=12)
 MFA_SETUP_SECONDS = 600
 INVITE_MAX_PER_HOUR = 20  # per org
 RESET_MAX_PER_HOUR = 10  # per client address
+MFA_MAX_FAILURES = 10  # wrong codes per account in LOGIN_WINDOW, from any address
+EXPORT_MAX_PER_HOUR = 30  # CSV exports per org
 # Per-tenant quotas: anyone can sign up, so one org mustn't be able to load the shared server
 MAX_ASSETS_PER_ORG = int(os.environ.get("NIMSTEAD_MAX_ASSETS_PER_ORG", "5000"))
 ENROLL_MAX_PER_TOKEN_HOUR = 100
@@ -233,7 +235,9 @@ def csp(index: Path) -> str:
 def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None, dns_lookup=None) -> FastAPI:
     oidc = sso.Oidc(oidc_http)
     Sessions = make_sessionmaker(db_url) if db_url else make_sessionmaker()
-    app = FastAPI(title="Nimstead", docs_url="/api/docs", openapi_url="/api/openapi.json")
+    # Swagger UI runs scripts from a CDN on this origin, so it's opt-in; /api/openapi.json is always there for tools
+    docs = os.environ.get("NIMSTEAD_API_DOCS") == "1"
+    app = FastAPI(title="Nimstead", docs_url="/api/docs" if docs else None, redoc_url=None, openapi_url="/api/openapi.json")
     allowed_origins = {o for o in os.environ.get("NIMSTEAD_ALLOWED_ORIGINS", "").split(",") if o}
     policy = csp(WEB_DIST / "index.html")
     app.add_middleware(BodyLimit)  # first, so innermost: routes read the body through it directly, not via a task group
@@ -250,7 +254,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         h.setdefault("X-Content-Type-Options", "nosniff")
         h.setdefault("Referrer-Policy", "no-referrer")
         h.setdefault("X-Frame-Options", "DENY")
-        if not request.url.path.startswith("/api/docs"):  # Swagger UI loads from a CDN; it has no tenant data
+        if not (docs and request.url.path.startswith("/api/docs")):  # opted-in Swagger UI loads from a CDN
             h.setdefault("Content-Security-Policy", policy)
         if SECURE_COOKIES:
             h.setdefault("Strict-Transport-Security", "max-age=31536000")
@@ -290,6 +294,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def admin_user(request: Request, user: CurrentUser) -> User:
         if not user.admin or getattr(request.state, "api_token", False):  # tokens read; admin pages and changes need a person
             raise HTTPException(403, "Only organisation admins can change this")
+        if user.origin == "password" and not user.totp_secret and not open_signup():  # whatever path made the session
+            raise HTTPException(403, "Set up two-step sign-in first: sign out and sign in again")
         return user
 
     Admin = Annotated[User, Depends(admin_user)]
@@ -368,12 +374,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         """Email a single-use link that lets the address owner choose a password (sign-up, invitation or reset).
         A newer link replaces older ones of the same kind for that address."""
         token = secrets.token_urlsafe(32)
-        s.execute(delete(PendingSignup).where(PendingSignup.email == email, PendingSignup.purpose == purpose))
+        same_org = PendingSignup.org_id == org_id if org_id else PendingSignup.org_id.is_(None)  # one org can't cancel another's invite
+        s.execute(delete(PendingSignup).where(PendingSignup.email == email, PendingSignup.purpose == purpose, same_org))
         s.add(PendingSignup(token_hash=sha(token), email=email, purpose=purpose, org_name=org_name, org_id=org_id,
                             expires=now() + timedelta(hours=RESET_LINK_HOURS if purpose == "reset" else SIGNUP_LINK_HOURS)))
         s.commit()
-        notify.send_account_email(email, purpose, f"{public_base(request)}/api/auth/signup/confirm?{urlencode({'token': token})}",
-                                  org_name)
+        notify.send_account_email(email, purpose, f"{public_base(request)}/api/auth/signup/confirm?{urlencode({'token': token})}")
 
     NEEDS_SMTP = "this server needs email to be set up (NIMSTEAD_SMTP_URL). Ask your Nimstead administrator, or sign in with single sign-on."
 
@@ -388,6 +394,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             if s.scalar(select(User).where(User.email == email)):
                 raise HTTPException(409, "An account with that email already exists")
             user = create_account(s, email, body.org_name, ph.hash(body.password))
+            if not open_signup():  # an admin's first session comes from signing in, which sets up the second factor
+                s.commit()
+                return {"email": user.email, "org": body.org_name, "next": "signin"}
             start_session(s, user, resp)
             return {"email": user.email, "org": body.org_name}
         # From here the answer is the same whether or not the email has an account: the address owner gets the next step,
@@ -425,6 +434,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     def second_factor(s: Session, user: User, given: str | None) -> bool:
         """A current TOTP code (each works once) or an unused recovery code (spent)."""
+        s.refresh(user, with_for_update=True)  # PostgreSQL: two requests with the same code can't both pass
         step = mfa.verify(sso.unseal(user.totp_secret), given or "", user.totp_last_step)
         if step:
             user.totp_last_step = step
@@ -468,11 +478,17 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                 or (per_ip and failures(s, keys[0]) >= LOGIN_MAX_PER_EMAIL)):
             raise HTTPException(429, "Too many failed sign-in attempts; try again in 15 minutes")
 
-        def fail(msg: str):
+        def fail(msg: str, code_for: User | None = None):
             s.rollback()  # a half-checked recovery code isn't spent
             s.execute(delete(AuthFailure).where(AuthFailure.ts < now() - timedelta(seconds=RATE_WINDOW)))  # housekeeping
-            s.add_all(AuthFailure(key=k) for k in keys)
+            s.add_all(AuthFailure(key=k) for k in keys + (["mfa:" + code_for.id] if code_for else []))
             s.commit()
+            if code_for and failures(s, "mfa:" + code_for.id) == MFA_MAX_FAILURES:  # someone has the password: say so, once
+                evidence.append(s, code_for.org_id, "mfa_guessing_stopped", code_for.id, {"email": code_for.email})
+                notify.notify(s, code_for.org_id, "mfa_guessing_stopped",
+                              f"Sign-in codes for {code_for.email} were guessed {MFA_MAX_FAILURES} times with the right password: "
+                              "code sign-in is paused for 15 minutes. Change that password.", urgent=True)
+                s.commit()
             raise HTTPException(401, msg) from None
 
         user = s.scalar(select(User).where(User.email == body.email.lower()))
@@ -486,16 +502,20 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         if s.get(Org, user.org_id).sso_required and not user.admin:  # after the password: doesn't reveal which emails exist
             raise HTTPException(403, "Your organisation requires single sign-on. Use Continue with SSO.")
         answer: dict = {"email": user.email}
+        # Per account, from every address: with the password in hand, spreading code guesses over many IPv6 /64s
+        # must not add up to a 6-digit brute force. Only someone who has the password can trip this.
+        if (user.totp_secret or user.admin) and body.code and failures(s, "mfa:" + user.id) >= MFA_MAX_FAILURES:
+            raise HTTPException(429, "Too many wrong codes for this account; try again in 15 minutes")
         if user.totp_secret:
             if not body.code:
                 return {"mfa": "required"}  # no session yet
             if not second_factor(s, user, body.code):
-                fail("That code is incorrect or already used")
+                fail("That code is incorrect or already used", code_for=user)
         elif user.admin:  # admins can drive root/SYSTEM remediation: a password alone is never enough
             if not (body.setup and body.code):
                 return {"mfa": "setup", **mfa_setup(user)}
             if not (codes := finish_mfa_setup(s, user, body.setup, body.code)):
-                fail("That code doesn't match; check the authenticator app's clock and try again")
+                fail("That code doesn't match; check the authenticator app's clock and try again", code_for=user)
             answer["recovery_codes"] = codes  # shown once
         if s.get(Org, user.org_id).sso_required:
             # break-glass: a password admin can still get in if the IdP is broken; loud and on the record
@@ -521,7 +541,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/me/sessions/revoke", status_code=204)
     def sign_out_everywhere(user: Person, resp: Response, s: DB):
-        s.execute(delete(WebSession).where(WebSession.user_id == user.id))
+        for model in (WebSession, ApiToken):  # recovering from a stolen session: tokens it could have made go too
+            s.execute(delete(model).where(model.user_id == user.id))
         evidence.append(s, user.org_id, "sessions_revoked", user.id, {"by": user.email})
         s.commit()
         resp.delete_cookie(SESSION_COOKIE)
@@ -625,19 +646,21 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.patch("/api/users/{user_id}")
     def update_user(user_id: str, body: UserPatch, user: Admin, s: DB):
+        s.get(Org, user.org_id, with_for_update=True)  # PostgreSQL: two admins demoting each other can't leave none
         u = org_user(s, user, user_id)
         if not body.admin and last_admin(s, u):
             raise HTTPException(409, "An organisation needs at least one admin; make someone else admin first")
         if u.admin != body.admin:
             u.admin = body.admin
-            if not body.admin:  # tokens act as their admin: a demoted admin's tokens go too
-                s.execute(delete(ApiToken).where(ApiToken.user_id == u.id))
+            # demoted: tokens act as their admin, so they go. Promoted: sessions from before had no second factor.
+            s.execute(delete(WebSession if body.admin else ApiToken).where((WebSession if body.admin else ApiToken).user_id == u.id))
             evidence.append(s, user.org_id, "user_role_changed", u.id, {"by": user.email, "email": u.email, "admin": u.admin})
             s.commit()
         return user_json(u)
 
     @app.delete("/api/users/{user_id}", status_code=204)
     def remove_user(user_id: str, user: Admin, s: DB):
+        s.get(Org, user.org_id, with_for_update=True)
         u = org_user(s, user, user_id)
         if last_admin(s, u):
             raise HTTPException(409, "An organisation needs at least one admin; make someone else admin first")
@@ -669,13 +692,19 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     class TokenNew(BaseModel):
         name: str = Field(min_length=1, max_length=100)
-        days: int | None = Field(90, ge=1, le=365)  # None = no expiry
+        days: int = Field(90, ge=1, le=365)  # always expires
+        code: str | None = Field(None, max_length=40)  # a current authenticator code: a stolen session alone can't mint one
 
     @app.post("/api/tokens", status_code=201)
     def create_api_token(body: TokenNew, user: Admin, s: DB):
+        if user.totp_secret:
+            if over_limit(s, "mfa-token:" + user.id, LOGIN_MAX_FAILURES, LOGIN_WINDOW):
+                raise HTTPException(429, "Too many attempts; try again in 15 minutes")
+            if not second_factor(s, user, body.code):
+                raise HTTPException(403, "Enter a current authenticator code to create a token")
         token = "nmt_" + secrets.token_urlsafe(32)
         t = ApiToken(token_hash=sha(token), org_id=user.org_id, user_id=user.id, name=body.name,
-                     expires=now() + timedelta(days=body.days) if body.days else None)
+                     expires=now() + timedelta(days=body.days))
         s.add(t)
         evidence.append(s, user.org_id, "api_token_created", t.token_hash[:12], {"by": user.email, "name": body.name, "days": body.days})
         s.commit()
@@ -998,10 +1027,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/findings.csv")
     def export_findings(user: CurrentUser, s: DB, f: Annotated[FindingFilter, Query()]):
+        if over_limit(s, "export:" + user.org_id, EXPORT_MAX_PER_HOUR):  # each one reads a whole tenant's findings
+            raise HTTPException(429, f"At most {EXPORT_MAX_PER_HOUR} exports an hour")
         out = io.StringIO()
         w = csv.writer(out)
         w.writerow(CSV_COLUMNS)
-        for x, h in find(s, user, f, 200_000):
+        for x, h in find(s, user, f, 100_000):  # shortcut: built in memory, stream it if tenants outgrow 100k open findings
             d = finding_json(x, h)
             # cells a spreadsheet would run as a formula (package names and summaries come from hosts and advisories)
             w.writerow(["'" + v if isinstance(v, str) and v[:1] in ("=", "+", "-", "@", "\t", "\r") else v
@@ -1434,7 +1465,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                 s.commit()
                 return Response(CONFIRM_INVALID, 404, media_type="text/html")
             user.password_hash = ph.hash(password)
-            s.execute(delete(WebSession).where(WebSession.user_id == user.id))
+            for model in (WebSession, ApiToken):  # recovering an account: whatever a thief made with it goes too
+                s.execute(delete(model).where(model.user_id == user.id))
             evidence.append(s, user.org_id, "password_reset", user.id, {"email": user.email})
             s.commit()
             # no session: signing in again still needs the authenticator code, which an emailed link can't stand in for
@@ -1448,8 +1480,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             s.add(user)
             s.flush()
             evidence.append(s, user.org_id, "user_joined", user.id, {"email": user.email})
-        else:
-            user = create_account(s, p.email, p.org_name, ph.hash(password))
+        else:  # a new org's admin: the first session comes from signing in, which sets up the second factor
+            create_account(s, p.email, p.org_name, ph.hash(password))
+            s.commit()
+            return RedirectResponse("/signin?created=1", status_code=303)
         resp = RedirectResponse("/", status_code=303)
         start_session(s, user, resp)
         return resp

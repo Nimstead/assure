@@ -21,6 +21,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 import wine2e as h  # noqa: E402  (reads VM_NAME from argv)
+from signin import signup  # noqa: E402  first account + its admin's TOTP sign-in
 
 ROOT = Path(__file__).resolve().parents[1]
 DIR = r"C:\ProgramData\Nimstead"
@@ -53,7 +54,7 @@ def main() -> int:
                     break
             except httpx.HTTPError:
                 time.sleep(1)
-        api.post("/api/auth/signup", json={"email": "win@example.com", "password": "windows-local-password", "org_name": "WinLocal"})
+        signup(api, {"email": "win@example.com", "password": "windows-local-password", "org_name": "WinLocal"})
         token = api.post("/api/enroll-tokens", json={"sandbox": True}).json()["token"]
 
         h.winvm.wait_ready(h.NAME, minutes=150)

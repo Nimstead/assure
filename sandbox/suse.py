@@ -28,6 +28,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "sandbox"))
+from signin import signup  # noqa: E402  first account + its admin's TOTP sign-in
 from winvm import vbox  # noqa: E402
 
 from nimstead.versions import rpm_cmp  # noqa: E402
@@ -189,7 +190,7 @@ def main(keep=False):
 
     db = f"sqlite:///{(TMP / 'nimstead.db').as_posix()}"
     c = TestClient(create_app(db))
-    c.post("/api/auth/signup", json={"email": "sbx@example.com", "password": "sandbox-only-password", "org_name": "Sandbox"})
+    signup(c, {"email": "sbx@example.com", "password": "sandbox-only-password", "org_name": "Sandbox"})
     vm = VM()
     try:
         vm.create()

@@ -73,18 +73,20 @@ ACCOUNT_EMAILS = {
               "If it wasn't you, ignore this email: no account is created.",
     "exists": "you already have an account\n\nSomeone tried to create a Nimstead account with this address, which already "
               "has one. Sign in here instead:\n{link}\n\nIf it wasn't you, nothing has changed.",
-    "invite": "you're invited to {org}\n\nAn administrator of {org} invited this address to Nimstead. To join and choose "
-              "your password, open this link within 24 hours:\n{link}\n\nIf you didn't expect this, ignore this email.",
+    # no org name here: it's the tenant's own text, and this mail goes to any address; the link's page names the org
+    "invite": "you're invited to an organisation on Nimstead\n\nAn administrator invited this address to their organisation "
+              "on this Nimstead server. To see which one, join and choose your password, open this link within 24 hours:\n{link}\n\n"
+              "If you didn't expect this, ignore this email.",
     "reset": "reset your password\n\nSomeone, hopefully you, asked to reset the Nimstead password for this address. To choose "
              "a new one, open this link within 1 hour:\n{link}\n\nIf it wasn't you, ignore this email: your password is unchanged.",
 }
 
 
-def send_account_email(email: str, purpose: str, link: str, org: str = "") -> None:
+def send_account_email(email: str, purpose: str, link: str) -> None:
     """Account email sent to the address itself (sign-up link, "already has an account", invitation, password reset), so
     whoever asked sees the same response either way and can't use it to test addresses. Failures are logged, not recorded
-    per org (a sign-up has no org yet). The org name is the tenant's own text: kept to one plain line."""
-    text = ACCOUNT_EMAILS[purpose].format(link=link, org=" ".join(org.split())[:100] or "an organisation")
+    per org (a sign-up has no org yet)."""
+    text = ACCOUNT_EMAILS[purpose].format(link=link)
 
     def send():
         try:

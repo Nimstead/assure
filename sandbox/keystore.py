@@ -19,6 +19,8 @@ import time
 import zipfile
 from pathlib import Path
 
+from signin import signup  # noqa: E402  first account + its admin's TOTP sign-in
+
 PREFIX = "nimstead-sbx-"
 NAME = PREFIX + "keys-" + secrets.token_hex(3)
 TMP = Path(tempfile.mkdtemp(prefix="nimstead-sbx-keys-"))
@@ -120,7 +122,7 @@ def main(keep=False) -> int:
             s.merge(Advisory(id=rec["id"], ecosystem=normalize_ecosystem(fx["ecosystem"]), package=fx["name"], record=rec))
         s.commit()
         c = TestClient(app)
-        c.post("/api/auth/signup", json={"email": "k@example.com", "password": "keystore-test-pass", "org_name": "K"})
+        signup(c, {"email": "k@example.com", "password": "keystore-test-pass", "org_name": "K"})
         token = c.post("/api/enroll-tokens").json()["token"]
         a = c.post("/api/agent/enroll", json={"token": token, "hostname": "h", "ecosystem": "Debian:12"}).json()
         c.post("/api/agent/inventory", headers={"Authorization": f"Bearer {a['agent_key']}"}, json={"ecosystem": "Debian:12", "packages": [

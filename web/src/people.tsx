@@ -123,11 +123,12 @@ export function UsersSection() {
 
 export function ApiTokensSection() {
   const qc = useQueryClient();
+  const me = useQuery(meQ).data;
   const q = useQuery({ queryKey: ["api-tokens"], queryFn: () => api<ApiTokenRow[]>("/api/tokens") });
   const [made, setMade] = useState("");
   const done = () => Promise.all(["api-tokens", "ledger"].map((k) => qc.invalidateQueries({ queryKey: [k] })));
   const create = useMutation({
-    mutationFn: (f: FormData) => api<{ token: string }>("/api/tokens", { method: "POST", body: { name: f.get("name"), days: f.get("days") ? Number(f.get("days")) : null } }),
+    mutationFn: (f: FormData) => api<{ token: string }>("/api/tokens", { method: "POST", body: { name: f.get("name"), days: Number(f.get("days")), code: f.get("code") || null } }),
     onSuccess: (r) => { setMade(r.token); void done(); },
   });
   const revoke = useMutation({ mutationFn: (id: string) => api(`/api/tokens/${id}`, { method: "DELETE" }), onSuccess: done });
@@ -140,7 +141,7 @@ export function ApiTokensSection() {
           {q.data.map((t) => (
             <li key={t.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 text-sm">
               <span className="font-medium">{t.name}</span>
-              <span className="min-w-0 flex-1 text-muted">by {t.created_by} · {t.expires ? `expires ${relativeTime(t.expires)}` : "no expiry"} · {t.last_used ? `used ${relativeTime(t.last_used)}` : "never used"}</span>
+              <span className="min-w-0 flex-1 text-muted">by {t.created_by} · expires {relativeTime(t.expires ?? "")} · {t.last_used ? `used ${relativeTime(t.last_used)}` : "never used"}</span>
               <button className={btnQuiet} disabled={revoke.isPending} onClick={() => revoke.mutate(t.id)}>Revoke<span className="sr-only"> {t.name}</span></button>
             </li>
           ))}
@@ -151,9 +152,10 @@ export function ApiTokensSection() {
         <label className="flex flex-col gap-1.5 text-sm font-medium">Name<input className={clsx(input, "w-56")} name="name" required maxLength={100} placeholder="Jira sync" /></label>
         <label className="flex flex-col gap-1.5 text-sm font-medium">Expires
           <select className={clsx(input, "w-36")} name="days" defaultValue="90">
-            <option value="30">in 30 days</option><option value="90">in 90 days</option><option value="365">in a year</option><option value="">never</option>
+            <option value="30">in 30 days</option><option value="90">in 90 days</option><option value="365">in a year</option>
           </select>
         </label>
+        {me?.mfa && <label className="flex flex-col gap-1.5 text-sm font-medium">Authenticator code<input className={clsx(input, "w-36")} name="code" required autoComplete="one-time-code" /></label>}
         <button className={btnPrimary} disabled={create.isPending}>{create.isPending ? "Creating…" : "Create token"}</button>
       </form>
       <Alert error={create.error ?? revoke.error} />

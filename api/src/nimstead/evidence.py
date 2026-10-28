@@ -170,7 +170,8 @@ def _controls(m: dict, sla: dict) -> list[dict]:
         {"framework": "NIST SP 800-53 Rev. 5", "control": "RA-5", "requirement": "Vulnerability monitoring and scanning",
          "status": st(scanned), "evidence": f"{m['assets_reporting']}/{m['assets']} assets reported inventory in period"},
         {"framework": "NIST SP 800-53 Rev. 5", "control": "SI-2", "requirement": "Flaw remediation within organisation-defined time periods",
-         "status": st(sla_ok), "evidence": f"{m['resolved_within_sla']}/{m['resolved']} fixes within the organisation's SLA ({', '.join(f'{p} {d} days' for p, d in sla.items())})"},
+         "status": st(sla_ok), "evidence": f"{m['resolved_within_sla']}/{m['resolved']} fixes within the organisation's SLA ({', '.join(f'{p} {d} days' for p, d in sla.items())})"
+                     + (f"; deadlines changed {m['sla_changes']} times in the period (sla_changes)" if m.get("sla_changes") else "")},
         {"framework": "PCI DSS v4.0.1", "control": "6.3.3", "requirement": "Critical security patches installed within one month of release",
          "status": st(m["critical_overdue_30d"] == 0),
          "evidence": f"{m['critical_overdue_30d']} critical findings open longer than 30 days (measured from first detection, not the vendor's release date)"},
@@ -249,6 +250,12 @@ def build_pack(s: Session, org_id: str, start: datetime, end: datetime) -> dict:
     m["changes"], m["changes_authorised"] = len(ran), sum(1 for by in ran if by)
 
     s_iso, e_iso = start.replace(tzinfo=UTC).isoformat(), end.replace(tzinfo=UTC).isoformat()
+    # shortcut: today's deadlines are applied to the whole period; changes made during it are listed (and counted in SI-2)
+    # so an auditor sees a deadline relaxed just before the pack. Upgrade to per-date deadlines if auditors ask.
+    sla_changes = [{"ts": ts, "by": d.get("by"), "sla_days": d["sla_days"]} for ts, d in s.execute(
+        select(LedgerEntry.ts, LedgerEntry.data).where(LedgerEntry.org_id == org_id, LedgerEntry.kind == "policy_changed",
+                                                       LedgerEntry.ts >= s_iso, LedgerEntry.ts <= e_iso)) if "sla_days" in d]
+    m["sla_changes"] = len(sla_changes)
     head = s.scalar(select(LedgerEntry).where(LedgerEntry.org_id == org_id).order_by(LedgerEntry.seq.desc()).limit(1))
     entries = [entry_dict(e) for e in s.execute(
         select(*LEDGER_COLS).where(LedgerEntry.org_id == org_id, LedgerEntry.ts >= s_iso, LedgerEntry.ts <= e_iso).order_by(LedgerEntry.seq))]
@@ -269,6 +276,7 @@ def build_pack(s: Session, org_id: str, start: datetime, end: datetime) -> dict:
                   "Every detection, resolution and inventory receipt is recorded in a SHA-256 hash-chained ledger; "
                   "this pack is signed with Ed25519."),
         "sla_days": sla_by_priority,
+        "sla_changes": sla_changes,
         "metrics": m,
         "controls": _controls(m, sla_by_priority),
         "assets": [{"hostname": a.hostname, "os": a.os_name, "last_seen": a.last_seen.isoformat()} for a in assets],

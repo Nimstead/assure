@@ -542,7 +542,9 @@ class Job:
     # --- rollback artefacts -------------------------------------------------
 
     def save_rollback(self):
-        os.makedirs(self.dir, mode=0o700, exist_ok=True)
+        os.makedirs(os.path.dirname(self.dir), mode=0o700, exist_ok=True)
+        os.mkdir(self.dir, mode=0o700)  # new, never reused: the precheck refused a job whose folder exists
+        self.made_dir = True
         if self.mgr == "apt":
             return self._save_debs()
         if self.mgr == "zypper" and self.snapper_ok():
@@ -665,6 +667,12 @@ class Job:
             time.sleep(self.settle)  # let restarted services come back before judging
         self.health("after rollback")
 
+    def discard_rollback(self, outcome):
+        """After the outcome is saved: the copy has done its job. A failed rollback keeps it for whoever repairs the host.
+        Only a folder this run made: a job id reused by a server can't delete a copy an earlier job kept."""
+        if outcome != "rollback_failed" and getattr(self, "made_dir", False):
+            shutil.rmtree(self.dir, ignore_errors=True)
+
     def execute(self):
         """Returns (outcome, steps, error). outcome: applied | rolled_back | rollback_failed | aborted."""
         try:  # prechecks: a failure here means nothing was changed
@@ -680,6 +688,8 @@ class Job:
             self.step("installed versions match plan", ok=not drift, output=("drifted: " + ", ".join(drift)) if drift else "")
             older = [f"{p['name']} {p['to']}" for p in self.pkgs if p.get("to") and not self.newer(p["to"], p["from"])]
             self.step("fix is newer than installed", ok=not older, output=("not newer: " + ", ".join(older)) if older else "")
+            self.step("no rollback copy kept from an earlier job with this id", ok=not os.path.lexists(self.dir),
+                      output=f"{self.dir} exists (a failed rollback keeps it for repair); remove it once the host is fixed")
             free = free_bytes(self.dir)
             self.step("free space for the rollback copy", ok=free >= MIN_FREE_BYTES,
                       output=f"{free // 2**20} MiB free; at least {MIN_FREE_BYTES // 2**20} MiB needed")
@@ -810,8 +820,7 @@ def run_jobs(server, key, insecure_http, run=sh, outcome_dir=None, win_state=Non
         j = runner
         outcome, steps, error = j.execute()
         record(job.get("id"), {"outcome": outcome, "steps": steps, "error": error, "versions": getattr(j, "result_versions", None)})
-        if outcome != "rollback_failed":  # outcome persisted; a failed rollback keeps its copy for whoever repairs the host
-            shutil.rmtree(j.dir, ignore_errors=True)
+        j.discard_rollback(outcome)
     return problems, False
 
 
@@ -1677,6 +1686,7 @@ def main(argv=None):
             j = Job(job, fail_after_apply=a.fail_after_apply)
             outcome, steps, error = j.execute()
             print(json.dumps({"outcome": outcome, "steps": steps, "error": error, "versions": getattr(j, "result_versions", None)}))
+            j.discard_rollback(outcome)
             return 0 if outcome == "applied" else 2
         elif a.cmd == "resume-job":  # Windows: continue a job after the reboot it asked for
             if not os.path.exists(WIN_STATE):

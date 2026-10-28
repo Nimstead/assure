@@ -2,6 +2,7 @@
 user management, MFA, password change/reset, API tokens, CSV export."""
 
 import time
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -58,7 +59,7 @@ def test_attacker_cannot_preset_the_password_of_an_address_they_dont_own(env, mo
     assert victim.get(first).status_code == 404
     assert "type=password" in victim.get(second).text
     assert victim.post(second, data={"password": "the victim's own pass"}, follow_redirects=False).status_code == 303
-    assert victim.get("/api/me").json()["email"] == "victim@corp.com"
+    assert victim.get("/api/me").status_code == 401  # an admin's first session comes from signing in with a code
     assert TestClient(c.app).post("/api/auth/login", json={"email": "victim@corp.com", "password": "attacker knows this"}).status_code == 401
     assert mfa_login(TestClient(c.app), "victim@corp.com", "the victim's own pass").status_code == 200
 
@@ -135,7 +136,10 @@ def test_security_headers(env, monkeypatch):
     h = TestClient(create_app(env)).get("/api/health").headers
     assert h["x-content-type-options"] == "nosniff" and h["x-frame-options"] == "DENY" and h["referrer-policy"] == "no-referrer"
     assert "frame-ancestors 'none'" in h["content-security-policy"] and "max-age=" in h["strict-transport-security"]
-    assert "content-security-policy" not in TestClient(create_app(env)).get("/api/docs").headers  # Swagger UI's CDN
+    assert TestClient(create_app(env)).get("/api/docs").status_code == 404  # Swagger UI runs CDN scripts: opt-in
+    assert TestClient(create_app(env)).get("/api/openapi.json").status_code == 200
+    monkeypatch.setenv("NIMSTEAD_API_DOCS", "1")
+    assert "content-security-policy" not in TestClient(create_app(env)).get("/api/docs").headers
 
 
 def test_csp_allows_the_spas_inline_theme_script_by_hash(tmp_path):
@@ -281,6 +285,8 @@ def test_invite_promote_demote_and_remove(env, mail):
     assert admin.patch(f"/api/users/{me_id}", json={"admin": False}).status_code == 409  # last admin
     assert admin.delete(f"/api/users/{me_id}").status_code == 409
     assert admin.patch(f"/api/users/{bob_id}", json={"admin": True}).json()["admin"] is True
+    assert bob.get("/api/me").status_code == 401  # promoted: sessions from before had no second factor
+    assert mfa_login(bob, "bob@example.com", "bob's own password").status_code == 200
     assert bob.get("/api/users").status_code == 200
     assert admin.delete(f"/api/users/{bob_id}").status_code == 204
     assert bob.get("/api/me").status_code == 401  # signed out at once
@@ -350,9 +356,12 @@ def test_api_token_ends_with_its_admin(env, mail):
     bob.post(link_in(mail("bob@example.com")), data={"password": "bob's own password"})
     bob_id = next(u["id"] for u in admin.get("/api/users").json() if u["email"] == "bob@example.com")
     admin.patch(f"/api/users/{bob_id}", json={"admin": True})
-    t = bob.post("/api/tokens", json={"name": "bob's script", "days": None}).json()
+    secret = mfa_login(bob, "bob@example.com", "bob's own password").secret
+    assert bob.post("/api/tokens", json={"name": "x", "days": None}).status_code == 422  # tokens always expire
+    assert bob.post("/api/tokens", json={"name": "x"}).status_code == 403  # a session alone can't mint one: code needed
+    t = bob.post("/api/tokens", json={"name": "bob's script", "days": 30, "code": now_code(secret, 1)}).json()
     h = {"Authorization": f"Bearer {t['token']}"}
-    assert t["expires"] is None and TestClient(admin.app).get("/api/findings", headers=h).status_code == 200
+    assert TestClient(admin.app).get("/api/findings", headers=h).status_code == 200
     admin.patch(f"/api/users/{bob_id}", json={"admin": False})
     assert TestClient(admin.app).get("/api/findings", headers=h).status_code == 401
 
@@ -420,3 +429,97 @@ def test_security_txt(env, monkeypatch):
     lines = r.text.splitlines()
     assert r.status_code == 200 and lines[:2] == ["Contact: mailto:soc@customer.example", "Contact: mailto:security@nimstead.systems"]
     assert any(ln.startswith("Expires: 20") and ln.endswith("Z") for ln in lines) and any(ln.startswith("Policy: https://") for ln in lines)
+
+
+# --- review of the round-4 changes ------------------------------------------------------------------------------------
+
+def test_code_guesses_are_capped_per_account_from_any_address(env):
+    from nimstead.db import AuthFailure
+    c = user(env)
+    secret = mfa_login(TestClient(c.app), "a@example.com").secret
+    s = sessionmaker(make_engine(env))()
+    pw = {"email": "a@example.com", "password": PW}
+    for _ in range(10):  # each from a "new" address: clear the per-address rows the way rotating /64s would
+        assert c.post("/api/auth/login", json={**pw, "code": "000000"}).status_code == 401
+        s.execute(AuthFailure.__table__.delete().where(AuthFailure.key.not_like("mfa:%")))
+        s.commit()
+    r = c.post("/api/auth/login", json={**pw, "code": now_code(secret, 1)})  # even the right code waits now
+    assert r.status_code == 429 and "wrong codes" in r.json()["detail"]
+    assert kinds(env).count("mfa_guessing_stopped") == 1
+
+
+def test_no_admin_session_without_a_second_factor(env, monkeypatch):
+    c = user(env)  # dev-mode instant sign-up: no code yet
+    monkeypatch.delenv("NIMSTEAD_OPEN_SIGNUP")
+    r = c.get("/api/users")
+    assert r.status_code == 403 and "two-step" in r.json()["detail"]  # whatever path made the session
+    assert c.get("/api/findings").status_code == 200  # reading is still fine
+    assert mfa_login(c, "a@example.com").status_code == 200 and c.get("/api/users").status_code == 200
+
+
+def test_recovery_ends_api_tokens_too(env, mail):
+    from nimstead.db import ApiToken
+    c = user(env)
+    h = {"Authorization": "Bearer " + c.post("/api/tokens", json={"name": "made with a stolen session"}).json()["token"]}
+    assert c.post("/api/me/sessions/revoke").status_code == 204
+    assert TestClient(c.app).get("/api/findings", headers=h).status_code == 401
+    c2 = TestClient(c.app)
+    mfa_login(c2, "a@example.com")
+    assert c2.post("/api/tokens", json={"name": "another", "code": "000000"}).status_code == 403  # enrolled: a real code needed
+    s = sessionmaker(make_engine(env))()
+    u = s.scalar(select(User).where(User.email == "a@example.com"))
+    s.add(ApiToken(token_hash="f" * 64, org_id=u.org_id, user_id=u.id, name="planted"))
+    s.commit()
+    TestClient(c.app).post("/api/auth/password/reset", json={"email": "a@example.com"})
+    TestClient(c.app).post(link_in(mail("a@example.com")), data={"password": "a new long password"})
+    assert s.scalar(select(ApiToken.token_hash).where(ApiToken.user_id == u.id)) is None
+
+
+def test_an_invite_from_one_org_does_not_cancel_anothers(env, mail):
+    a, b = user(env), user(env, "b@example.com")
+    a.post("/api/users/invite", json={"email": "x@example.com"})
+    first = link_in(mail("x@example.com"))
+    b.post("/api/users/invite", json={"email": "x@example.com"})
+    assert TestClient(a.app).get(first).status_code == 200
+    assert "Acme" not in mail("x@example.com")  # the tenant's own org name stays out of the email
+
+
+def test_csv_exports_are_rate_limited(env, monkeypatch):
+    import nimstead.app as appmod
+    monkeypatch.setattr(appmod, "EXPORT_MAX_PER_HOUR", 1)
+    c = user(env)
+    assert [c.get("/api/findings.csv").status_code for _ in range(2)] == [200, 429]
+
+
+def test_sla_changes_in_the_period_are_in_the_pack(env):
+    c = user(env)
+    c.patch("/api/settings", json={"sla_days": {"fix-now": 365}})
+    pack = c.get("/api/evidence/report").json()
+    assert [x["sla_days"] for x in pack["sla_changes"]] == [{"fix-now": 365}]
+    si2 = next(x for x in pack["controls"] if x["control"] == "SI-2")
+    assert "deadlines changed 1 times in the period" in si2["evidence"]
+
+
+def test_upgrade_ends_admin_password_sessions(tmp_path):
+    import os
+    import subprocess
+    import sys
+
+    from sqlalchemy import create_engine, text
+    url = f"sqlite:///{(tmp_path / 'u.db').as_posix()}"
+
+    def upgrade(rev):
+        subprocess.run([sys.executable, "-m", "alembic", "upgrade", rev], cwd=Path(__file__).parents[1],
+                       env={**os.environ, "NIMSTEAD_DB": url}, check=True, capture_output=True)
+    upgrade("a3c8e5f20b17")
+    with create_engine(url).begin() as conn:
+        conn.execute(text("INSERT INTO org (id, name, created, remediation_mode, canary_soak_hours, sso_domains, sso_verified_domains, "
+                          "sso_required, notify_webhook_format, notify_emails, notify_emails_confirmed, agent_updates_paused) "
+                          "VALUES ('o', 'O', '2026-01-01', 'approve', 24, '[]', '[]', 0, 'slack', '[]', '[]', 0)"))
+        for uid, admin, origin in (("adm", 1, "password"), ("mem", 0, "password"), ("sso", 1, "sso")):
+            conn.execute(text("INSERT INTO user (id, org_id, email, password_hash, origin, admin, created) "
+                              "VALUES (:u, 'o', :e, '!', :o, :a, '2026-01-01')"), {"u": uid, "e": f"{uid}@x.example", "o": origin, "a": admin})
+            conn.execute(text("INSERT INTO web_session (token_hash, user_id, expires) VALUES (:u, :u, '2099-01-01')"), {"u": uid})
+    upgrade("head")
+    with create_engine(url).connect() as conn:
+        assert sorted(r[0] for r in conn.execute(text("SELECT user_id FROM web_session"))) == ["mem", "sso"]

@@ -41,6 +41,32 @@ def api(method, path, body=None, jar="/root/jar"):
     return json.loads(out) if out.strip() else None
 
 
+SECRETS: dict[str, list] = {}  # email -> [TOTP secret, last 30 s step used]
+
+
+def fresh_code(email):
+    """A code for a step not used yet (each works once), waiting for the next step if need be, as a person would."""
+    from nimstead import mfa
+    secret, used = SECRETS[email]
+    while int(time.time() // 30) <= used:
+        time.sleep(1)
+    SECRETS[email][1] = step = int(time.time() // 30)
+    return mfa.code(secret, step)
+
+
+def sign_in(email, password, jar):
+    """Password sign-in as the admin, enrolling TOTP as a person would (admins must have it since 0.4.0)."""
+    body = {"email": email, "password": password}
+    r = api("POST", "/api/auth/login", body, jar=jar)
+    if r.get("mfa") == "setup":
+        SECRETS[email] = [r["secret"], 0]
+        r = api("POST", "/api/auth/login", {**body, "setup": r["setup"], "code": fresh_code(email)}, jar=jar)
+    elif r.get("mfa") == "required":
+        r = api("POST", "/api/auth/login", {**body, "code": fresh_code(email)}, jar=jar)
+    assert r.get("email") == email, r
+    return r
+
+
 def health():
     return json.loads(wsl("curl -s http://localhost:8000/api/health"))
 
@@ -139,19 +165,23 @@ def main() -> int:
         wsl("cd /rel && (nohup python3 -m http.server 9000 >/var/log/rel.log 2>&1 &); sleep 1")
 
         t0 = time.time()
+        # this install follows beta (B is a beta release): the server's channel, which install.sh also gives the agent
         wsl("cd /app && cp .env.example .env && sed -i \"s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$(head -c 12 /dev/urandom | od -An -tx1 | tr -d ' \\n')/\" .env "
-            "&& docker-compose up -d 2>&1 | tail -3", timeout=3600)
+            "&& sed -i 's/^NIMSTEAD_UPDATE_CHANNEL=.*/NIMSTEAD_UPDATE_CHANNEL=beta/' .env && docker-compose up -d 2>&1 | tail -3", timeout=3600)
         wsl("for i in $(seq 120); do curl -sf -o /dev/null http://localhost:8000/api/health && exit 0; sleep 2; done; cd /app && docker-compose logs app; exit 1")
         assert health()["version"] == a
         step("running release installed with Docker Compose", version=a, health=health(), seconds=round(time.time() - t0))
 
         email, password = "admin@example.com", "Update-" + secrets.token_urlsafe(9)
         api("POST", "/api/auth/signup", {"email": email, "password": password, "org_name": "Update proof"})
+        sign_in(email, password, "/root/jar")  # sign-up gives no session: the admin signs in and sets up TOTP
         tok = api("POST", "/api/enroll-tokens", {"sandbox": True})["token"]
         wsl(f"export NIMSTEAD_TOKEN={tok}; curl -fsSL http://localhost:8000/install.sh | sh 2>&1")
         host = api("GET", "/api/assets")[0]
         assert host["agent_version"] == old_agent, host
-        step("real agent installed and reporting", agent=host["agent_version"], agent_update=host["agent_update"])
+        channel = json.loads(wsl("cat /etc/nimstead/agent.json"))["channel"]
+        assert channel == "beta", channel
+        step("real agent installed and reporting", agent=host["agent_version"], agent_update=host["agent_update"], channel=channel)
 
         base = "cd /app && NIMSTEAD_REPO_URL=http://localhost:9000 NIMSTEAD_HEALTH_TRIES=24"
         rc, out = wsl(f"{base} NIMSTEAD_UPDATE_CHANNEL=stable sh deploy/update.sh --dry-run", check=False)
@@ -170,7 +200,7 @@ def main() -> int:
         rc, out = wsl(f"{upd} --to v{d}", check=False, timeout=3600)
         probe = wsl("cd /app && docker-compose exec -T db psql -U nimstead -d nimstead -tAc \"select to_regclass('broken_probe')\"").strip()
         status = json.loads(wsl("cat /app/deploy/last-update.json"))
-        api("POST", "/api/auth/login", {"email": email, "password": password}, jar="/root/jar2")
+        sign_in(email, password, "/root/jar2")
         n = len(api("GET", "/api/assets", jar="/root/jar2"))
         assert rc == 1 and status["outcome"] == "rolled_back" and health()["version"] == a and probe == "" and n == 1, (out, status, probe, n)
         step("broken release rolled back: old version healthy, database restored from the backup", outcome=status["outcome"],

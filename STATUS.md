@@ -68,9 +68,8 @@ All four evidence packs verified, with 6/6 controls met. On Alpine, the dry run 
 - **Ecosystems:** Go/crates/Hex/Pub use the semver comparator (Pub build-metadata ordering differs); Composer `dev-*` branches are refused; no Conda comparator.
 
 ## Needs the user
-- Release 0.4.0: merge `security-round-4`, tag `v0.4.0`, approve the Release environment run, then promote it to **stable** (there's no stable release yet, so new installs on the default channel hear about nothing until then).
-- GitHub settings: secret scanning + push protection, CodeQL default setup, CI required on `main` before tagging.
-- Commit the `.env.example` comment about the loopback bind by hand (a local hook refuses commits touching `.env*` files).
+- Promote 0.4.0 to **stable**: run the Release workflow from the `v0.4.0` tag with `channel=stable` and approve it. 0.4.0 is out as a preview pre-release (2026-10-28, #11 merged as `cfa10f9`, signed manifest and agent verified, SBOMs attached); there's no stable release yet, so installs on the default channel hear about nothing until then.
+- GitHub settings: secret scanning + push protection, CodeQL default setup. (`main` already requires `api (sqlite)`, `api (postgres)`, `web` and `docker` to pass.)
 - An independent human pentest; legal (CLA/DCO, DPA and sub-processors, copyright holder); a decision on the Python-on-Windows install requirement (tasks/plan-0.4-security.md, "Needs the owner").
 - Live AI testing was scoped out by the owner on 2026-10-26.
 

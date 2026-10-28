@@ -97,6 +97,7 @@ def test_install_script_and_agent_served(env):
     c = TestClient(create_app(env))
     r = c.get("/install.sh")
     assert r.status_code == 200 and 'SERVER="http://testserver"' in r.text and "__SERVER__" not in r.text
+    assert 'TOKEN="${NIMSTEAD_TOKEN:-}"' in r.text  # the token comes from the environment: argv is visible to every local user
     assert c.get("/install.sh", headers={"Host": "evil$(id)"}).status_code == 400
     assert b"def collect" in c.get("/agent/nimstead_agent.py").content
 
@@ -233,7 +234,8 @@ def test_non_admins_can_read_but_not_change_remediation_or_assets(env):
                                ("delete", "/api/assets/x", None), ("patch", "/api/assets/x", {"ring": 0}),
                                ("post", "/api/assets", {"name": "app"}), ("post", "/api/findings/x/accept", {"reason": "r", "days": 30}),
                                ("post", "/api/remediation/jobs", {"asset_id": "x", "ecosystem": "Debian:12", "package": "p"}),
-                               ("post", "/api/remediation/jobs/x/approve", None), ("patch", "/api/settings", {"remediation_mode": "auto"})):
+                               ("post", "/api/remediation/jobs/x/approve", None), ("patch", "/api/settings", {"remediation_mode": "auto"}),
+                               ("post", "/api/assets/x/sbom", {})):  # replacing an SBOM resolves findings and writes evidence
         r = getattr(staff, method)(path, **({"json": body} if body is not None else {}))
         assert r.status_code == 403, (method, path, r.status_code)
     for path in ("/api/summary", "/api/findings", "/api/assets", "/api/remediation/jobs", "/api/settings"):
@@ -251,3 +253,68 @@ def test_agent_version_flags_outdated_agents(env):
     assert asset()["agent_version"] == "" and asset()["agent_outdated"]
     c.post("/api/agent/inventory", json={**INV, "agent_version": latest}, headers=h)
     assert asset()["agent_version"] == latest and not asset()["agent_outdated"]
+
+
+def test_signup_is_rate_limited_per_address(env):
+    c = TestClient(create_app(env))
+    codes = [c.post("/api/auth/signup", json={"email": f"u{i}@example.com", "password": "correct horse battery",
+                                              "org_name": "X"}).status_code for i in range(11)]
+    assert codes == [201] * 10 + [429]  # signup has to say whether an email is taken, so probing stays slow
+
+
+def test_distributed_guessing_cannot_lock_the_owner_out(env):
+    from sqlalchemy.orm import sessionmaker
+
+    from nimstead.db import AuthFailure, make_engine
+    c = user(env, "admin@example.com")
+    c.post("/api/auth/logout")
+    s = sessionmaker(make_engine(env))()
+    s.add_all(AuthFailure(key="email:admin@example.com") for _ in range(100))  # the email-wide cap, reached from elsewhere
+    s.commit()
+    good = {"email": "admin@example.com", "password": "correct horse battery"}
+    assert c.post("/api/auth/login", json=good).status_code == 200  # from an address with no failures: let through
+    s.add(AuthFailure(key="ip:testclient"))
+    s.commit()
+    assert c.post("/api/auth/login", json=good).status_code == 429  # an address that has been guessing is stopped
+
+
+def test_ipv6_clients_are_throttled_by_their_64():
+    from types import SimpleNamespace
+
+    from nimstead.app import client_key
+    key = lambda ip: client_key(SimpleNamespace(client=SimpleNamespace(host=ip)))  # noqa: E731
+    assert key("2001:db8:1:2::1") == key("2001:db8:1:2:ffff::9") == "2001:db8:1:2::/64"
+    assert key("2001:db8:1:3::1") != key("2001:db8:1:2::1") and key("203.0.113.7") == "203.0.113.7"
+
+
+def test_signup_never_says_whether_an_email_has_an_account(env, monkeypatch):
+    """Default mode: the first account sets the server up; after that the response is the same for a new address and a
+    taken one, and the next step goes to the address itself."""
+    from test_notify import FakeSMTP
+
+    from nimstead import notify
+    monkeypatch.delenv("NIMSTEAD_OPEN_SIGNUP")
+    c = TestClient(create_app(env))
+    body = lambda e: {"email": e, "password": "correct horse battery", "org_name": "Acme"}  # noqa: E731
+    assert c.post("/api/auth/signup", json=body("first@example.com")).status_code == 201  # empty server: instant
+    c.post("/api/auth/logout")
+    taken, new = c.post("/api/auth/signup", json=body("first@example.com")), c.post("/api/auth/signup", json=body("new@example.com"))
+    assert taken.status_code == new.status_code == 403 and taken.json() == new.json()  # no email set up: same refusal
+
+    monkeypatch.setenv("NIMSTEAD_SMTP_URL", "smtp://mail.example.com:587")
+    monkeypatch.setenv("NIMSTEAD_SMTP_FROM", "nimstead@example.com")
+    monkeypatch.setattr(notify.smtplib, "SMTP", FakeSMTP)
+    FakeSMTP.sent, FakeSMTP.fail, FakeSMTP.tls = [], False, True
+    taken, new = c.post("/api/auth/signup", json=body("first@example.com")), c.post("/api/auth/signup", json=body("new@example.com"))
+    assert taken.status_code == new.status_code == 202
+    assert {k: v for k, v in taken.json().items() if k != "email"} == {k: v for k, v in new.json().items() if k != "email"}
+    assert "set-cookie" not in taken.headers and "set-cookie" not in new.headers
+    notify.flush()
+    mails = {m["To"]: m.get_content() for m in FakeSMTP.sent if not isinstance(m, tuple)}
+    assert "already has one" in mails["first@example.com"] and "/signin" in mails["first@example.com"]
+    link = next(ln for ln in mails["new@example.com"].splitlines() if "/api/auth/signup/confirm?" in ln)
+    browser = TestClient(c.app)
+    assert browser.get(link).status_code == 200 and browser.get("/api/me").status_code == 401  # opening it isn't enough
+    r = browser.post(link, follow_redirects=False)
+    assert r.status_code == 303 and browser.get("/api/me").json() == {"email": "new@example.com", "org": "Acme", "admin": True}
+    assert TestClient(c.app).post(link).status_code == 404  # single use

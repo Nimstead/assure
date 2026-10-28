@@ -17,6 +17,7 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from nimstead import sso
 from nimstead.db import Notification, Org, now
 from nimstead.netguard import check_public_url, guarded_client
 
@@ -31,6 +32,60 @@ def smtp_configured() -> bool:
     return bool(os.environ.get("NIMSTEAD_SMTP_URL") and os.environ.get("NIMSTEAD_SMTP_FROM"))
 
 
+def webhook_url(org: Org) -> str | None:
+    """Sealed at rest; a URL saved before sealing existed is used as-is until seal_legacy() runs."""
+    u = org.notify_webhook_url
+    return sso.unseal(u) if u and u.startswith(("fernet:", "vault:")) else u
+
+
+def seal_legacy(s: Session) -> int:
+    """Seal webhook URLs stored in plaintext by older versions. Runs with the hourly feed update."""
+    n = 0
+    for org in s.scalars(select(Org).where(Org.notify_webhook_url.is_not(None))):
+        if not org.notify_webhook_url.startswith(("fernet:", "vault:")):
+            org.notify_webhook_url, n = sso.seal(org.notify_webhook_url), n + 1
+    s.commit()
+    return n
+
+
+def recipients(org: Org) -> list[str]:
+    """Only addresses whose owner confirmed: an admin can't make the server mail arbitrary people."""
+    return [e for e in org.notify_emails if e in org.notify_emails_confirmed]
+
+
+def confirm_token(org_id: str, email: str) -> str:
+    return sso.domain_token(org_id, "notify-email:" + email)
+
+
+def send_confirmation(bind, org_id: str, email: str, link: str) -> None:
+    """Fixed text plus a link to this server: nothing the requesting admin wrote reaches the recipient."""
+    text = ("confirm you want to receive security alerts\n\n"
+            "This address was added to receive Nimstead security alerts. If you expected this, confirm here:\n"
+            f"{link}\n\nIf you didn't, ignore this email: no alerts are sent until the address is confirmed.")
+    _submit(bind, org_id, "email_confirmation", text, False, [("email", [email], "")], 1)
+
+
+def send_signup_email(email: str, link: str | None, signin_url: str) -> None:
+    """The second half of a sign-up, sent to the address itself: a link to finish, or (the address already has an account)
+    a note saying so. Either way the person signing up sees the same response, so it can't be used to test addresses.
+    No org exists yet, so failures are logged rather than recorded per org."""
+    if link:
+        text = ("finish creating your account\n\nSomeone, hopefully you, asked to create a Nimstead account with this address. "
+                f"To finish, open this link within 24 hours:\n{link}\n\nIf it wasn't you, ignore this email: no account is created.")
+    else:
+        text = ("you already have an account\n\nSomeone tried to create a Nimstead account with this address, which already "
+                f"has one. Sign in here instead:\n{signin_url}\n\nIf it wasn't you, nothing has changed.")
+
+    def send():
+        try:
+            _send_email([email], "signup", text, False)
+        except Exception as e:
+            log.warning("sign-up email could not be sent: %s", type(e).__name__)
+    f = _pool.submit(send)
+    _pending.add(f)
+    f.add_done_callback(_pending.discard)
+
+
 def notify(s: Session, org_id: str, kind: str, text: str, urgent: bool = False) -> None:
     """Best-effort and non-blocking: never raises, never waits on the network. No config -> no-op."""
     try:
@@ -38,10 +93,10 @@ def notify(s: Session, org_id: str, kind: str, text: str, urgent: bool = False) 
         if not org:
             return
         targets = []
-        if org.notify_webhook_url:
-            targets.append(("webhook", org.notify_webhook_url, org.notify_webhook_format))
-        if org.notify_emails and smtp_configured():
-            targets.append(("email", list(org.notify_emails), ""))
+        if url := webhook_url(org):
+            targets.append(("webhook", url, org.notify_webhook_format))
+        if recipients(org) and smtp_configured():
+            targets.append(("email", recipients(org), ""))
         if not targets:
             return
         # ponytail: in-process queue; failed attempts are persisted and retried by retry_failed() (hourly feed run)
@@ -66,9 +121,9 @@ def retry_failed(s: Session) -> int:
                                                     Notification.attempt < MAX_ATTEMPTS, Notification.ts > now() - RETRY_WINDOW)):
         org = s.get(Org, row.org_id)
         if row.channel == "webhook" and org.notify_webhook_url:
-            target = [("webhook", org.notify_webhook_url, org.notify_webhook_format)]
-        elif row.channel == "email" and org.notify_emails and smtp_configured():
-            target = [("email", list(org.notify_emails), "")]
+            target = [("webhook", webhook_url(org), org.notify_webhook_format)]
+        elif row.channel == "email" and row.kind != "email_confirmation" and recipients(org) and smtp_configured():
+            target = [("email", recipients(org), "")]
         else:
             continue
         row.retried = True
@@ -109,6 +164,8 @@ def _deliver(bind, org_id: str, kind: str, text: str, urgent: bool, targets: lis
 def _send_webhook(url: str, fmt: str, kind: str, text: str, urgent: bool) -> None:
     check_public_url(url)
     msg = f"URGENT: {text}" if urgent else text
+    if fmt == "slack":  # agent-supplied text (hostnames, job errors) must not become links or @channel mentions
+        msg = msg.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     body = {"text": msg} if fmt == "slack" else {"kind": kind, "urgent": urgent, "text": msg, "source": "nimstead"}
     client = http_client or guarded_client()
     try:

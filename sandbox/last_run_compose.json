@@ -5,11 +5,11 @@
       "step": "versions",
       "docker": "Docker version 26.1.5+dfsg1, build a72d7cd",
       "compose": "2.26.1-4",
-      "files": 168
+      "files": 178
     },
     {
       "step": "compose up: built and serving",
-      "seconds": 32,
+      "seconds": 96,
       "ps": [
         "app running",
         "db running",
@@ -19,7 +19,7 @@
     },
     {
       "step": "migrations",
-      "current": "d5e8a1c37f92 (head)"
+      "current": "e7a2c94b1d05 (head)"
     },
     {
       "step": "real agent installed from install.sh, enrolled and reported",
@@ -29,7 +29,7 @@
         "Nimstead agent installed; reporting every 6 hours."
       ],
       "hostname": "DESKTOP-H2C7SKP",
-      "agent_version": "0.1.0",
+      "agent_version": "0.1.3",
       "outdated": false
     },
     {
@@ -46,7 +46,7 @@
       "data": [
         "nimstead-signing.pem"
       ],
-      "fingerprint": "edce13c5b0eb92632eb66a2af6c839737995ab88ff3d3de9c2cee7bb277f305a"
+      "fingerprint": "cb12252534f583d6b81a2b65cf70a2b1902ca95f77c42e1ab0cfc649cc1a3d93"
     },
     {
       "step": "non-root",

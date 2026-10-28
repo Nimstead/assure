@@ -1,7 +1,7 @@
 [
   {
     "step": "creating integration VM",
-    "name": "nimstead-sbx-int-fb83ea"
+    "name": "nimstead-sbx-int-3db08b"
   },
   {
     "step": "test CA created"
@@ -33,6 +33,6 @@
   },
   {
     "step": "VM destroyed",
-    "name": "nimstead-sbx-int-fb83ea"
+    "name": "nimstead-sbx-int-3db08b"
   }
 ]

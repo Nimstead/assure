@@ -1,8 +1,10 @@
+import hashlib
 import io
 import json
 import zipfile
 from datetime import timedelta
 
+from fastapi.testclient import TestClient
 from sqlalchemy import select, update
 from sqlalchemy.orm import sessionmaker
 from test_api import INV, enrol, user
@@ -51,15 +53,21 @@ def test_pack_verifies_offline_and_detects_edits(env, tmp_path, monkeypatch):
     r = c.get("/api/evidence/pack")
     assert r.status_code == 200 and r.headers["content-type"] == "application/zip"
     z = zipfile.ZipFile(io.BytesIO(r.content))
-    assert {"pack.json", "pack.sig", "public_key.pem", "verify.py", "README.txt"} <= set(z.namelist())
+    assert {"pack.json", "pack.sig", "public_key.pem", "README.txt"} == set(z.namelist())
+    assert "verify.py" not in z.namelist()  # the checker can't come inside what it checks: a forger would swap it
     body, sig, key = z.read("pack.json"), z.read("pack.sig").decode(), z.read("public_key.pem")
     fp = c.get("/api/evidence/public-key").json()["fingerprint_sha256"]
     assert verify(body, sig, key, fp) == []
     assert any("no trusted key" in p for p in verify(body, sig, key))  # fingerprint is mandatory
     assert fp in z.read("README.txt").decode()
+    pk = c.get("/api/evidence/public-key").json()  # the verifier is published by the server, pinned by hash beside the key
+    script = TestClient(c.app).get("/api/evidence/verify.py")
+    assert script.status_code == 200 and hashlib.sha256(script.content).hexdigest() == pk["verifier_sha256"]
 
     pack = json.loads(body)
     assert pack["metrics"]["resolved"] >= 1
+    # one key signs every tenant's packs and org names are free text: the signed body says who the tenant provably is
+    assert pack["organisation_id"] and pack["organisation_created"] and pack["verified_domains"] == []
     assert {c["framework"] for c in pack["controls"]} >= {"UK Cyber Essentials", "ISO/IEC 27001:2022", "PCI DSS v4.0.1"}
 
     forged = body.replace(b'"organisation":"Acme"', b'"organisation":"Acmf"')

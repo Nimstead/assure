@@ -1,7 +1,7 @@
 [
   {
     "step": "distro up",
-    "name": "nimstead-sbx-ext-050f5e",
+    "name": "nimstead-sbx-ext-dfbfc1",
     "address": "172.25.98.1",
     "redis": "v=8.0.2",
     "openssl": "OpenSSL 3.5.7"
@@ -11,6 +11,14 @@
     "status": 409,
     "detail": "Prove you own this host first (DNS TXT record), then verify",
     "probes_sent": 0
+  },
+  {
+    "step": "TXT only, no address proof",
+    "status": 409,
+    "detail": "172.25.98.1 doesn't serve the value at /.well-known/nimstead-verify.txt: serve nimstead-verify=366bf55f0dd8f99fe6f4c0eee3121eb0 there over HTTPS or HTTP"
+  },
+  {
+    "step": "verified: TXT record and the value served by the address itself"
   },
   {
     "step": "scan 1: Redis open, expired cert, TLS 1.0 on",
@@ -49,6 +57,6 @@
   },
   {
     "step": "distro destroyed",
-    "name": "nimstead-sbx-ext-050f5e"
+    "name": "nimstead-sbx-ext-dfbfc1"
   }
 ]

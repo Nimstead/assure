@@ -77,7 +77,7 @@ function ReportView({ r, days }: { r: EvidenceReport; days: number }) {
 
       <section className="flex flex-col items-start gap-2 rounded-lg border border-line bg-surface p-4">
         <h2 className="text-lg font-semibold">Signed evidence pack</h2>
-        <p className="max-w-prose text-sm text-muted">Auditors can verify this pack offline with the included script. No access to Nimstead needed.</p>
+        <p className="max-w-prose text-sm text-muted">Auditors verify this pack offline with the verifier and fingerprint below, which you give them separately from the pack. No access to Nimstead needed.</p>
         <a className={clsx(btnPrimary, "no-underline")} href={`/api/evidence/pack?days=${days}`} download><Download className="size-4" aria-hidden />Download signed evidence pack (last {days} days)</a>
         <SigningKey />
       </section>
@@ -86,12 +86,16 @@ function ReportView({ r, days }: { r: EvidenceReport; days: number }) {
 }
 
 function SigningKey() {
-  const q = useQuery({ queryKey: ["public-key"], queryFn: () => api<{ pem: string; fingerprint_sha256: string }>("/api/evidence/public-key"), staleTime: Infinity });
+  const q = useQuery({ queryKey: ["public-key"], queryFn: () => api<{ pem: string; fingerprint_sha256: string; verifier_sha256: string }>("/api/evidence/public-key"), staleTime: Infinity });
   if (!q.data) return null;
   return (
     <div className="mt-2 w-full max-w-2xl">
       <CopyBlock label="Signing key fingerprint (SHA-256)" text={q.data.fingerprint_sha256} />
-      <p className="mt-2 text-sm text-muted">Give auditors this fingerprint separately; the verifier needs it.</p>
+      <CopyBlock label="Verifier script SHA-256" text={q.data.verifier_sha256} />
+      <p className="mt-2 text-sm text-muted">
+        Give auditors these separately from the pack, with the <a className="underline" href="/api/evidence/verify.py" download>verifier script</a>.
+        The pack doesn't include a verifier: a script inside it could have been swapped by whoever handed it over.
+      </p>
     </div>
   );
 }

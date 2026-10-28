@@ -4,6 +4,7 @@ import csv
 import gzip
 import io
 import json
+import logging
 import re
 import sys
 import tempfile
@@ -20,6 +21,8 @@ from nimstead.db import Advisory, Asset, Cvss, Epss, InstalledPackage, Kev, Org,
 from nimstead.match import normalize_ecosystem
 from nimstead.scan import rescan
 from nimstead.versions import windows_cmp
+
+log = logging.getLogger(__name__)
 
 OSV_URL = "https://osv-vulnerabilities.storage.googleapis.com/{}/all.zip"  # dir names have spaces: "Rocky Linux"
 KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
@@ -263,8 +266,14 @@ def update_all(session: Session, client=None) -> dict:
     agent report. Run from cron/systemd timer (e.g. hourly)."""
     in_use = {normalize_ecosystem(e) for e in session.scalars(select(InstalledPackage.ecosystem).distinct())}
     used = sorted({e.split(":", 1)[0] for e in in_use} - {"Windows", "WinApp"})  # Windows comes from MSRC, WinApp from NVD; neither is in OSV
-    out = {"kev": sync_kev(session, client), "epss": sync_epss(session, client), "nvd": sync_nvd(session, ["modified"], client),
-           "osv": sync_osv(session, used, client, only=in_use) if used else {}}
+    out = {"kev": sync_kev(session, client), "epss": sync_epss(session, client), "nvd": sync_nvd(session, ["modified"], client), "osv": {}}
+    for eco in used:  # one at a time: ecosystem names come from agents, and an unknown one must not stop every tenant's update
+        try:
+            out["osv"][eco] = sync_osv(session, [eco], client, only=in_use)
+        except Exception as e:
+            session.rollback()
+            log.warning("OSV sync skipped for %r: %s", eco, e)
+            out["osv"][eco] = {"error": f"{type(e).__name__}: {e}"[:200]}
     if "Windows" in in_use:
         out["msrc"] = sync_msrc(session, client=client)
     out["rescanned"] = 0
@@ -283,6 +292,7 @@ def update_all(session: Session, client=None) -> dict:
         out["rescanned"] += 1
     for org_id in session.scalars(select(Org.id)).all():  # hourly signed ledger checkpoints, kept off-database
         evidence.checkpoint(session, org_id)
+    out["webhooks_sealed"] = notify.seal_legacy(session)
     out["alerts_retried"] = notify.retry_failed(session)
     return out
 

@@ -12,7 +12,7 @@ export interface Asset {
   criticality: Criticality; internet_facing: boolean; sandbox: boolean; ring: 0 | 1; health_units: string[];
   first_seen: string; last_seen: string; open_by_priority: Partial<Record<Priority, number>>;
   agent_version?: string; agent_outdated?: boolean; // hosts only
-  verified?: boolean; verified_at?: string | null; txt_name?: string; txt_value?: string; // external targets only
+  verified?: boolean; verified_at?: string | null; txt_name?: string; txt_value?: string; proof_path?: string; // external targets only
 }
 export interface SbomResult { components: number; mapped: number; unique_packages: number; skipped: Record<string, number>; open: number; resolved: number }
 export const sbomSummary = (r: SbomResult) =>
@@ -72,7 +72,7 @@ export interface SsoSettings {
   domain_checks: { domain: string; verified: boolean; txt_name: string; txt_value: string }[];
 }
 export interface NotifySettings {
-  webhook_set: boolean; webhook_host: string | null; webhook_format: "slack" | "json"; emails: string[]; email_available: boolean;
+  webhook_set: boolean; webhook_host: string | null; webhook_format: "slack" | "json"; emails: string[]; emails_confirmed: string[]; email_available: boolean;
   last_delivery_failed: boolean; recent: { ts: string; kind: string; channel: string; urgent: boolean; ok: boolean; error: string | null }[];
 }
 export const settingsQ = queryOptions({ queryKey: ["settings"], queryFn: () => api<Settings>("/api/settings") });
@@ -151,8 +151,9 @@ export function whyMatched(f: Pick<Finding, "installed_version" | "fixed_version
 
 export function installCommands(origin: string, token: string) {
   return {
-    curl: `curl -fsSL ${origin}/install.sh | sudo sh -s -- --token ${token}`,
-    python: `python3 nimstead_agent.py enroll --server ${origin} --token ${token} && python3 nimstead_agent.py report`,
+    // the token goes in the environment (export is a shell builtin), never argv: ps and sudo logs show every argument
+    curl: `export NIMSTEAD_TOKEN=${token}; curl -fsSL ${origin}/install.sh | sudo --preserve-env=NIMSTEAD_TOKEN sh; unset NIMSTEAD_TOKEN`,
+    python: `export NIMSTEAD_TOKEN=${token}; python3 nimstead_agent.py enroll --server ${origin} && python3 nimstead_agent.py report; unset NIMSTEAD_TOKEN`,
     windows: `$env:NIMSTEAD_TOKEN = "${token}"; irm ${origin}/install.ps1 | iex`,
   };
 }

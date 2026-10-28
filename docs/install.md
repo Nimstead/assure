@@ -58,13 +58,17 @@ FORWARDED_ALLOW_IPS=<your proxy's address as the app container sees it>
 
 and run `docker compose up -d` again.
 
+The first account you create sets the server up and is its admin. Later sign-ups (another organisation on the same server) finish from an emailed link, so set up SMTP (`docs/configuration.md`) if you need them; colleagues in your own organisation join through single sign-on.
+
 ## Add your first machine
 
 In the app, **Add your first machine** gives you an enrolment token and the exact command. On Linux it looks like this:
 
 ```bash
-curl -fsSL https://assure.example.com/install.sh | sudo sh -s -- --token nme_…
+export NIMSTEAD_TOKEN=nme_…; curl -fsSL https://assure.example.com/install.sh | sudo --preserve-env=NIMSTEAD_TOKEN sh; unset NIMSTEAD_TOKEN
 ```
+
+The token travels in an environment variable, never as a command-line argument, which every user on the machine (and sudo's log) could read. A token works for 30 days and for any number of machines: revoke it in the app when you've finished enrolling.
 
 On Windows, in an elevated PowerShell:
 

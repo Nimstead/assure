@@ -65,7 +65,7 @@ def main() -> int:
         email, password = "admin@example.com", "Compose-" + secrets.token_urlsafe(9)
         api("POST", "/api/auth/signup", {"email": email, "password": password, "org_name": "Compose proof"})
         tok = api("POST", "/api/enroll-tokens", {"sandbox": True})["token"]
-        out = wsl(f"curl -fsSL http://localhost:8000/install.sh | sh -s -- --token {tok} 2>&1")  # the command the app shows
+        out = wsl(f"export NIMSTEAD_TOKEN={tok}; curl -fsSL http://localhost:8000/install.sh | sh 2>&1")  # the command the app shows (as root: no sudo)
         hosts = [a for a in api("GET", "/api/assets") if a["kind"] == "host"]
         assert len(hosts) == 1 and hosts[0]["agent_version"] and not hosts[0]["agent_outdated"], hosts
         step("real agent installed from install.sh, enrolled and reported", agent_output=out.strip().splitlines()[-3:], hostname=hosts[0]["hostname"],

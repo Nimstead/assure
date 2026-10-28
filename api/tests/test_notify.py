@@ -218,6 +218,7 @@ def test_email_channel(env, sent, monkeypatch):
     FakeSMTP.sent, FakeSMTP.fail, FakeSMTP.tls = [], False, True
     c = setup(env)
     assert c.put("/api/settings/notifications", json={"emails": ["Ops@Example.com", "sec@example.com"]}).json()["email_available"]
+    confirm_all(c, ["ops@example.com", "sec@example.com"])
     _, h, jid = dispatched_job(c)
     report(c, h, jid, "rollback_failed", "x")
     msgs = [m for m in FakeSMTP.sent if not isinstance(m, tuple)]
@@ -232,6 +233,70 @@ def test_email_channel(env, sent, monkeypatch):
     assert report(c, h2, jid2, "aborted").status_code == 200
     n = c.get("/api/settings/notifications").json()
     assert n["last_delivery_failed"] and n["recent"][0]["channel"] == "email" and "smtp down" in n["recent"][0]["error"]
+
+
+def confirm_all(c, expect):
+    """Each new recipient got one fixed-text confirmation email; opening the link alone confirms nothing (mail scanners
+    open links), pressing the button does."""
+    notify.flush()
+    confirms = [m for m in FakeSMTP.sent if not isinstance(m, tuple)]
+    assert sorted(m["To"] for m in confirms) == expect
+    assert c.get("/api/settings/notifications").json()["emails_confirmed"] == []
+    for m in confirms:
+        assert m["Subject"] == "Nimstead: confirm you want to receive security alerts" and "Test" not in m.get_content()
+        link = next(ln for ln in m.get_content().splitlines() if ln.startswith("http"))
+        browser = TestClient(c.app)
+        assert browser.get(link).status_code == 200 and c.get("/api/settings/notifications").json()["emails_confirmed"] != expect
+        assert "Confirmed" in browser.post(link).text
+        assert browser.post(link.replace("token=", "token=0")).status_code == 404
+    assert c.get("/api/settings/notifications").json()["emails_confirmed"] == expect
+    FakeSMTP.sent.clear()
+
+
+def test_unconfirmed_recipients_get_no_alerts(env, sent, monkeypatch):
+    """An admin (anyone can sign up as one) can't use the server's mail relay to send its text to arbitrary people."""
+    monkeypatch.setenv("NIMSTEAD_SMTP_URL", "smtp://bot:pw@mail.example.com:587")
+    monkeypatch.setenv("NIMSTEAD_SMTP_FROM", "nimstead@example.com")
+    monkeypatch.setattr(notify.smtplib, "SMTP", FakeSMTP)
+    FakeSMTP.sent, FakeSMTP.fail, FakeSMTP.tls = [], False, True
+    c = setup(env)
+    c.put("/api/settings/notifications", json={"emails": ["victim@example.org"]})
+    notify.flush()
+    FakeSMTP.sent.clear()
+    c.put("/api/settings/notifications", json={"emails": ["victim@example.org"]})  # saving again doesn't re-send
+    assert c.post("/api/settings/notifications/test").status_code == 202
+    _, h, jid = dispatched_job(c)
+    report(c, h, jid, "rollback_failed", "phishing text")
+    assert [m for m in FakeSMTP.sent if not isinstance(m, tuple)] == []
+
+
+def test_test_alerts_are_rate_limited(env, sent):
+    c = configured(env)
+    assert [c.post("/api/settings/notifications/test").status_code for _ in range(6)] == [202] * 5 + [429]
+
+
+def test_slack_messages_escape_agent_supplied_markup(env, sent):
+    notify._send_webhook(HOOK, "slack", "k", "host <!channel> <https://evil.example|Sign in> & more", False)
+    assert sent[-1][1]["text"] == "host &lt;!channel&gt; &lt;https://evil.example|Sign in&gt; &amp; more"
+    notify._send_webhook(HOOK, "json", "k", "a <b>", False)
+    assert sent[-1][1]["text"] == "a <b>"  # generic JSON consumers get the text as it is
+
+
+def test_webhook_url_is_sealed_at_rest_and_legacy_rows_get_sealed(env, sent):
+    from sqlalchemy import select
+
+    from nimstead.db import Org
+    c = configured(env)
+    s = sessionmaker(make_engine(env))()
+    stored = s.scalar(select(Org.notify_webhook_url).where(Org.notify_webhook_url.is_not(None)))
+    assert stored.startswith("fernet:") and "hooks.slack.com" not in stored
+    assert c.get("/api/settings/notifications").json()["webhook_host"] == "hooks.slack.com"
+    s.execute(update(Org).values(notify_webhook_url=HOOK))  # as an older version stored it
+    s.commit()
+    assert notify.seal_legacy(s) == 1 and s.scalar(select(Org.notify_webhook_url)).startswith("fernet:")
+    c.post("/api/settings/notifications/test")
+    notify.flush()
+    assert sent[-1][0] == HOOK  # still delivered to the real URL
 
 
 def test_email_ignored_without_smtp_env(env, sent, monkeypatch):
@@ -329,3 +394,9 @@ def test_email_never_sends_credentials_without_tls(env, sent, monkeypatch):
     assert FakeSMTP.sent == []  # no login, no message
     n = c.get("/api/settings/notifications").json()
     assert n["last_delivery_failed"] and "STARTTLS" in n["recent"][0]["error"]
+
+
+def test_guarded_client_never_reuses_a_connection():
+    """The pool is keyed by the IP the guard rewrote the URL to, so a kept-alive connection verified for one hostname
+    could serve another hostname on that IP without a new certificate check."""
+    assert netguard.guarded_client()._transport._pool._max_keepalive_connections == 0

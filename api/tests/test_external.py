@@ -14,6 +14,7 @@ PUBLIC = [(2, 1, 6, "", ("93.184.216.34", 443))]
 class DNS:
     def __init__(self):
         self.records: dict[str, list[str]] = {}
+        self.served: set[tuple[str, str]] = set()  # (address, value) pairs the "server at that address" serves
 
     def __call__(self, name):
         return self.records.get(name, [])
@@ -23,6 +24,7 @@ class DNS:
 def world(env, monkeypatch):
     dns = DNS()
     monkeypatch.setattr(netguard.socket, "getaddrinfo", lambda *a, **k: PUBLIC)
+    monkeypatch.setattr(external, "address_proven", lambda ip, host, value, **k: (ip, value) in dns.served)
     c = TestClient(create_app(env, dns_lookup=dns))
     c.post("/api/auth/signup", json={"email": "admin@example.com", "password": "correct horse battery", "org_name": "Ex"})
     return c, dns
@@ -32,6 +34,7 @@ def add(c, dns, host="www.example.com", prove=True):
     t = c.post("/api/targets", json={"hostname": host}).json()
     if prove:
         dns.records[t["txt_name"]] = [t["txt_value"]]
+        dns.served.add((PUBLIC[0][4][0], t["txt_value"]))
     return t
 
 
@@ -96,12 +99,26 @@ def test_only_public_dns_names_can_be_targets(world, host):
     assert c.post("/api/targets", json={"hostname": host}).status_code == 422
 
 
-def test_one_org_per_host_and_admin_only(world, env):
+def test_another_orgs_claim_neither_blocks_nor_reveals_a_host(world, env):
+    """Each org proves ownership with its own TXT token, so a squatter's unverified row can't lock the real owner out,
+    and adding a host never tells you whether another tenant monitors it."""
     c, dns = world
-    add(c, dns)
     other = TestClient(c.app)
     other.post("/api/auth/signup", json={"email": "x@other.example", "password": "correct horse battery", "org_name": "Other"})
-    assert other.post("/api/targets", json={"hostname": "www.example.com"}).status_code == 409
+    assert other.post("/api/targets", json={"hostname": "www.example.com"}).status_code == 201  # squatter goes first
+    t = add(c, dns)  # the real owner can still add it...
+    assert c.post(f"/api/targets/{t['id']}/verify").json()["verified"]  # ...and prove it with its own token
+    r = c.post("/api/targets", json={"hostname": "www.example.com"})
+    assert r.status_code == 409 and "organisation" not in r.json()["detail"]  # a duplicate within the org is still refused
+
+
+def test_manual_scans_are_rate_limited_per_org(world, monkeypatch):
+    c, dns = world
+    t = add(c, dns)
+    c.post(f"/api/targets/{t['id']}/verify")
+    monkeypatch.setattr(external, "checks", fake_checks([]))
+    codes = [c.post(f"/api/targets/{t['id']}/scan").status_code for _ in range(11)]
+    assert codes[:10] == [200] * 10 and codes[10] == 429
 
 
 def test_context_rescore_never_closes_external_findings(world, monkeypatch):
@@ -131,3 +148,48 @@ def test_checks_classify_ports_and_tls(monkeypatch):
         found, skipped = external.checks("www.example.com", "93.184.216.34")
         assert {f["id"] for f in found} == {"NIM-EXPOSED-REDIS"} | want
         assert bool(skipped) == (probe["legacy"] is None)  # an untested check is said, never silently passed
+
+
+def test_a_name_pointed_at_someone_elses_server_is_never_scanned(world, monkeypatch):
+    """The tenant controls the DNS name (TXT proof passes) but the A record points at a third party's IP, which of course
+    doesn't serve the tenant's token: refused at verification and before every scan, with no probe sent."""
+    c, dns = world
+    t = add(c, dns)
+    dns.served.clear()  # the address the name resolves to isn't the tenant's
+    monkeypatch.setattr(external, "checks", lambda *a: pytest.fail("probed an address nobody proved"))
+    r = c.post(f"/api/targets/{t['id']}/verify")
+    assert r.status_code == 409 and "/.well-known/nimstead-verify.txt" in r.json()["detail"]
+    dns.served.add(("93.184.216.34", t["txt_value"]))
+    assert c.post(f"/api/targets/{t['id']}/verify").json()["verified"]
+    monkeypatch.setattr(netguard.socket, "getaddrinfo", lambda *a, **k: [(2, 1, 6, "", ("1.1.1.1", 443))])  # re-pointed
+    r = c.post(f"/api/targets/{t['id']}/scan")
+    assert r.status_code == 409 and "1.1.1.1" in r.json()["detail"]
+    assert "external_scan_refused" in [e["kind"] for e in c.get("/api/evidence/ledger").json()["entries"]]
+
+
+def test_address_proof_reads_the_value_from_that_exact_address():
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    seen = []
+
+    class H(BaseHTTPRequestHandler):
+        def do_GET(self):
+            seen.append((self.path, self.headers["Host"]))
+            ok = self.path == external.PROOF_PATH
+            self.send_response(200 if ok else 404)
+            self.end_headers()
+            self.wfile.write(b"nimstead-verify=abc\n" if ok else b"nimstead-verify=abc")
+
+        def log_message(self, *a):
+            pass
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    port = [(srv.server_address[1], False)]
+    try:
+        assert external.address_proven("127.0.0.1", "www.example.com", "nimstead-verify=abc", ports=port)
+        assert not external.address_proven("127.0.0.1", "www.example.com", "nimstead-verify=other", ports=port)
+        assert seen[0] == (external.PROOF_PATH, "www.example.com")  # asked for the target's name, at the checked address
+    finally:
+        srv.shutdown()
+    assert not external.address_proven("127.0.0.1", "www.example.com", "nimstead-verify=abc", ports=port, timeout=1)  # nothing listening

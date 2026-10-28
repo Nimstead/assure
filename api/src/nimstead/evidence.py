@@ -16,12 +16,16 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from nimstead import keys, verify_pack
-from nimstead.db import Asset, Finding, LedgerEntry, Org
+from nimstead.db import Asset, Finding, LedgerEntry, Org, RemediationJob
 from nimstead.verify_pack import canonical, entry_hash
 
 GENESIS = "0" * 64
 # Remediation deadlines by priority (days from detection). fix-now = Cyber Essentials 14 days.
-SLA_DAYS = {"fix-now": 14, "next": 30, "planned": 90, "low": 180}
+SLA_DAYS = {"fix-now": 14, "next": 30, "planned": 90, "low": 180}  # defaults; each org can set its own (Org.sla_days)
+
+
+def sla_days(org: Org) -> dict:
+    return {**SLA_DAYS, **{k: int(v) for k, v in (org.sla_days or {}).items() if k in SLA_DAYS}}
 
 
 def append(s: Session, org_id: str, kind: str, subject: str, data: dict) -> LedgerEntry:
@@ -150,7 +154,7 @@ def public_pem(key: Ed25519PrivateKey) -> bytes:
 
 # --- evidence pack ---------------------------------------------------------
 
-def _controls(m: dict) -> list[dict]:
+def _controls(m: dict, sla: dict) -> list[dict]:
     ce_ok = m["ce_in_scope_resolved"] == m["ce_in_scope_resolved_in_14d"] and m["ce_in_scope_overdue"] == 0
     sla_ok = m["overdue_open"] == 0
     scanned = m["assets_reporting"] == m["assets"] and m["assets"] > 0
@@ -166,9 +170,18 @@ def _controls(m: dict) -> list[dict]:
         {"framework": "NIST SP 800-53 Rev. 5", "control": "RA-5", "requirement": "Vulnerability monitoring and scanning",
          "status": st(scanned), "evidence": f"{m['assets_reporting']}/{m['assets']} assets reported inventory in period"},
         {"framework": "NIST SP 800-53 Rev. 5", "control": "SI-2", "requirement": "Flaw remediation within organisation-defined time periods",
-         "status": st(sla_ok), "evidence": f"{m['resolved_within_sla']}/{m['resolved']} fixes within SLA ({', '.join(f'{p} {d} days' for p, d in SLA_DAYS.items())})"},
+         "status": st(sla_ok), "evidence": f"{m['resolved_within_sla']}/{m['resolved']} fixes within the organisation's SLA in force when each was detected (now: {', '.join(f'{p} {d} days' for p, d in sla.items())})"
+                     + (f"; deadlines changed {m['sla_changes']} times in the period (sla_changes)" if m.get("sla_changes") else "")},
         {"framework": "PCI DSS v4.0.1", "control": "6.3.3", "requirement": "Critical security patches installed within one month of release",
-         "status": st(m["critical_overdue_30d"] == 0), "evidence": f"{m['critical_overdue_30d']} critical findings open longer than 30 days"},
+         "status": st(m["critical_overdue_30d"] == 0),
+         "evidence": f"{m['critical_overdue_30d']} critical findings open longer than 30 days (measured from first detection, not the vendor's release date)"},
+        {"framework": "SOC 2 (TSC 2017)", "control": "CC7.1", "requirement": "Detection and monitoring procedures identify susceptibilities to newly discovered vulnerabilities",
+         "status": st(scanned and sla_ok), "evidence": f"{m['assets_reporting']}/{m['assets']} assets assessed in period against continuously updated advisories; {m['overdue_open']} findings past SLA"},
+        {"framework": "SOC 2 (TSC 2017)", "control": "CC8.1", "requirement": "Changes are authorised, tested and approved before implementation",
+         "status": st(m["changes"] == m["changes_authorised"]),
+         "evidence": f"{m['changes_authorised']}/{m['changes']} remediation changes in period approved by a named person or the recorded auto policy; each dry-run checked, health-checked and rolled back on failure"},
+        {"framework": "NIS2 Directive", "control": "Art. 21(2)(e)", "requirement": "Vulnerability handling in network and information systems maintenance",
+         "status": st(scanned and sla_ok), "evidence": f"{m['assets_reporting']}/{m['assets']} assets assessed; {m['resolved_within_sla']}/{m['resolved']} fixes within SLA"},
         {"framework": "CIS Controls v8.1", "control": "7.3 / 7.4", "requirement": "Automated OS and application patch management",
          "status": st(sla_ok), "evidence": f"Mean time to remediate: {m['mttr_days']} days" if m["mttr_days"] is not None else "Mean time to remediate: no fixes in period"},
     ]
@@ -180,6 +193,7 @@ def build_pack(s: Session, org_id: str, start: datetime, end: datetime) -> dict:
     findings = s.execute(select(Finding.id, Finding.asset_id, Finding.vuln_id, Finding.package, Finding.status, Finding.priority,
                                 Finding.cvss, Finding.kev).where(Finding.org_id == org_id, Finding.first_seen <= end)).all()
     host = {a.id: a.hostname for a in assets}
+    sla_by_priority = sla_days(org)
 
     # Lifecycle times come from the hash-chained ledger, not the mutable findings table: editing a
     # finding's dates in the database can't make a control pass without breaking the chain.
@@ -194,6 +208,14 @@ def build_pack(s: Session, org_id: str, start: datetime, end: datetime) -> dict:
             opened.setdefault(e.subject, ts)
             if e.kind == "finding_reopened":
                 closed_at.pop(e.subject, None)
+    # Each finding is held to the deadline in force when it was detected, from the ledger (tamper-evident), so relaxing
+    # a deadline later can't turn an old miss into a pass.
+    history = [(datetime.fromisoformat(ts).replace(tzinfo=None), {**SLA_DAYS, **d["sla_days"]}) for ts, d in s.execute(
+        select(LedgerEntry.ts, LedgerEntry.data).where(LedgerEntry.org_id == org_id, LedgerEntry.kind == "policy_changed")
+        .order_by(LedgerEntry.seq)) if "sla_days" in d]
+
+    def sla_at(t: datetime) -> dict:
+        return next((d for ts, d in reversed(history) if ts <= t), SLA_DAYS)
     rows, ttr = [], []
     m = dict.fromkeys(["resolved", "resolved_within_sla", "overdue_open", "ce_in_scope_resolved",
                        "ce_in_scope_resolved_in_14d", "ce_in_scope_overdue", "critical_overdue_30d"], 0)
@@ -206,7 +228,7 @@ def build_pack(s: Session, org_id: str, start: datetime, end: datetime) -> dict:
         if closed and closed < start:
             continue  # closed before the period: out of scope
         days = ((closed or end) - first_seen).total_seconds() / 86400
-        sla = SLA_DAYS.get(f.priority, 180)
+        sla = sla_at(first_seen).get(f.priority, 180)
         ce = f.kev or (f.cvss or 0) >= 7
         within = days <= sla
         if closed:
@@ -230,8 +252,17 @@ def build_pack(s: Session, org_id: str, start: datetime, end: datetime) -> dict:
     m["assets"] = len(assets)
     m["assets_reporting"] = sum(1 for a in assets if start <= a.last_seen <= end or a.last_seen > end)
     m["mttr_days"] = round(sum(ttr) / len(ttr), 1) if ttr else None
+    ran = s.execute(select(RemediationJob.approved_by).where(RemediationJob.org_id == org_id, RemediationJob.updated >= start,
+                                                             RemediationJob.updated <= end,
+                                                             RemediationJob.status.not_in(("planned", "cancelled")))).scalars().all()
+    m["changes"], m["changes_authorised"] = len(ran), sum(1 for by in ran if by)
 
     s_iso, e_iso = start.replace(tzinfo=UTC).isoformat(), end.replace(tzinfo=UTC).isoformat()
+    # deadline changes made in the period, listed (and counted in SI-2) so an auditor sees them
+    sla_changes = [{"ts": ts, "by": d.get("by"), "sla_days": d["sla_days"]} for ts, d in s.execute(
+        select(LedgerEntry.ts, LedgerEntry.data).where(LedgerEntry.org_id == org_id, LedgerEntry.kind == "policy_changed",
+                                                       LedgerEntry.ts >= s_iso, LedgerEntry.ts <= e_iso)) if "sla_days" in d]
+    m["sla_changes"] = len(sla_changes)
     head = s.scalar(select(LedgerEntry).where(LedgerEntry.org_id == org_id).order_by(LedgerEntry.seq.desc()).limit(1))
     entries = [entry_dict(e) for e in s.execute(
         select(*LEDGER_COLS).where(LedgerEntry.org_id == org_id, LedgerEntry.ts >= s_iso, LedgerEntry.ts <= e_iso).order_by(LedgerEntry.seq))]
@@ -247,12 +278,14 @@ def build_pack(s: Session, org_id: str, start: datetime, end: datetime) -> dict:
         "generated_at": datetime.now(UTC).isoformat(),
         "period": {"from": s_iso, "to": e_iso},
         "basis": ("Findings come from authenticated agent inventories matched against OSV advisories. "
-                  "Time to remediate is measured from first detection to the first inventory showing a fixed version. "
+                  "Time to remediate is measured from first detection to the first inventory showing a fixed version "
+                  "(not from the vendor's release date). "
                   "Every detection, resolution and inventory receipt is recorded in a SHA-256 hash-chained ledger; "
                   "this pack is signed with Ed25519."),
-        "sla_days": SLA_DAYS,
+        "sla_days": sla_by_priority,
+        "sla_changes": sla_changes,
         "metrics": m,
-        "controls": _controls(m),
+        "controls": _controls(m, sla_by_priority),
         "assets": [{"hostname": a.hostname, "os": a.os_name, "last_seen": a.last_seen.isoformat()} for a in assets],
         "findings": rows,
         # chain_head pins the whole chain at signing time; compare across successive packs to detect rewritten history

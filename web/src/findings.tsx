@@ -46,7 +46,10 @@ export function FindingsPage({ search }: { search: RawSearch }) {
     <div className="flex flex-col gap-4">
       <header className="flex items-baseline justify-between gap-4">
         <h1 className="text-3xl font-semibold">Findings</h1>
-        {list.data && <p className="num text-sm text-muted" aria-live="polite">{plural(list.data.length, "result")}</p>}
+        <div className="flex items-baseline gap-4">
+          {list.data && <p className="num text-sm text-muted" aria-live="polite">{plural(list.data.length, "result")}</p>}
+          <a className={btnQuiet} href={`/api/findings.csv?${apiQs}`} download>Export CSV</a>
+        </div>
       </header>
 
       <div className="flex flex-col gap-3">
@@ -238,8 +241,14 @@ function FindingDetail({ f }: { f: Finding }) {
           <H>Act on it</H>
           <div className="flex flex-wrap items-start gap-2">
             {f.fixed_version && <PlanFixButton ecosystem={f.ecosystem} pkg={f.package} hosts={[f.hostname]} />}
-            <AcceptRisk id={f.id} />
+            <AcceptRisk f={f} />
           </div>
+        </>
+      )}
+      {f.status === "accepted" && (
+        <>
+          <H>Accepted risk</H>
+          <RevokeAcceptance id={f.id} />
         </>
       )}
 
@@ -250,15 +259,40 @@ function FindingDetail({ f }: { f: Finding }) {
   );
 }
 
-function AcceptRisk({ id }: { id: string }) {
+const refreshFindings = (qc: ReturnType<typeof useQueryClient>) =>
+  Promise.all(["finding", "findings", "summary", "ledger"].map((k) => qc.invalidateQueries({ queryKey: [k] })));
+
+function RevokeAcceptance({ id }: { id: string }) {
+  const admin = useIsAdmin();
+  const qc = useQueryClient();
+  const [reason, setReason] = useState("");
+  const revoke = useMutation({
+    mutationFn: () => api(`/api/findings/${id}/revoke-acceptance`, { method: "POST", body: { reason: reason.trim() } }),
+    onSuccess: () => refreshFindings(qc),
+  });
+  return (
+    <form className="flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); revoke.mutate(); }}>
+      <label className="flex min-w-60 flex-1 flex-col gap-1 text-sm font-medium">Why it needs fixing after all
+        <input className={input} value={reason} onChange={(e) => setReason(e.target.value)} minLength={3} required />
+      </label>
+      <button className={btnQuiet} disabled={revoke.isPending || reason.trim().length < 3} {...adminGate(admin)}>Revoke acceptance</button>
+      {revoke.error && <p role="alert" className="w-full text-sm text-now-fg">{revoke.error.message}</p>}
+    </form>
+  );
+}
+
+function AcceptRisk({ f }: { f: Finding }) {
   const admin = useIsAdmin();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [days, setDays] = useState(90);
+  const [everywhere, setEverywhere] = useState(false);
   const accept = useMutation({
-    mutationFn: () => api(`/api/findings/${id}/accept`, { method: "POST", body: { reason: reason.trim(), days } }),
-    onSuccess: () => Promise.all(["finding", "findings", "summary", "ledger"].map((k) => qc.invalidateQueries({ queryKey: [k] }))),
+    mutationFn: () => everywhere
+      ? api("/api/findings/accept", { method: "POST", body: { vuln_id: f.vuln_id, reason: reason.trim(), days } })
+      : api(`/api/findings/${f.id}/accept`, { method: "POST", body: { reason: reason.trim(), days } }),
+    onSuccess: () => refreshFindings(qc),
   });
   if (!open) return <button className={btnQuiet} onClick={() => setOpen(true)} {...adminGate(admin)}>Accept risk</button>;
   const ok = reason.trim().length >= 10;
@@ -272,6 +306,10 @@ function AcceptRisk({ id }: { id: string }) {
         <select className={clsx(input, "min-h-9 w-auto")} value={days} onChange={(e) => setDays(Number(e.target.value))}>
           {[30, 90, 180].map((d) => <option key={d} value={d}>{d} days</option>)}
         </select>
+      </label>
+      <label className="mt-3 flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={everywhere} onChange={(e) => setEverywhere(e.target.checked)} />
+        On every host where {f.vuln_id} is open now, not just {f.hostname}
       </label>
       {accept.error && <p role="alert" className="mt-2 text-sm text-now-fg">{accept.error.message}</p>}
       <div className="mt-3 flex gap-2">

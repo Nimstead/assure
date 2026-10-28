@@ -1,7 +1,7 @@
 [
   {
     "step": "creating sandbox distro",
-    "name": "nimstead-sbx-5f2f7657",
+    "name": "nimstead-sbx-974dfc70",
     "distro": "alpine-3.21.0"
   },
   {
@@ -15,14 +15,14 @@
   },
   {
     "step": "feeds synced",
-    "kev": 1756,
-    "epss": 395308,
+    "kev": 1760,
+    "epss": 396966,
     "osv": {
-      "inserted": 3247,
+      "inserted": 3266,
       "updated": 0,
       "skipped": 0
     },
-    "seconds": 4
+    "seconds": 3
   },
   {
     "step": "first inventory",
@@ -53,8 +53,12 @@
       "ok  job validated",
       "ok  apk available",
       "ok  installed versions match plan",
+      "ok  fix is newer than installed",
+      "ok  no rollback copy kept from an earlier job with this id",
+      "ok  free space for the rollback copy",
       "ok  refresh package index",
       "ok  simulate upgrade",
+      "ok  no package downgraded",
       "FAIL change limited to planned packages"
     ]
   },
@@ -71,8 +75,12 @@
       "ok  job validated",
       "ok  apk available",
       "ok  installed versions match plan",
+      "ok  fix is newer than installed",
+      "ok  no rollback copy kept from an earlier job with this id",
+      "ok  free space for the rollback copy",
       "ok  refresh package index",
       "ok  simulate upgrade",
+      "ok  no package downgraded",
       "ok  change limited to planned packages",
       "ok  rollback snapshot saved",
       "ok  upgrade"
@@ -88,8 +96,12 @@
       "ok  job validated",
       "ok  apk available",
       "ok  installed versions match plan",
+      "ok  fix is newer than installed",
+      "ok  no rollback copy kept from an earlier job with this id",
+      "ok  free space for the rollback copy",
       "ok  refresh package index",
       "ok  simulate upgrade",
+      "ok  no package downgraded",
       "ok  change limited to planned packages",
       "ok  rollback snapshot saved",
       "ok  upgrade",
@@ -103,6 +115,16 @@
     "restored": true
   },
   {
+    "step": "rollback copies left after success and rollback",
+    "count": "0"
+  },
+  {
+    "step": "forged downgrade job",
+    "outcome": "aborted",
+    "error": "No changes made: fix is newer than installed failed: not newer: libcrypto3 0.0.1-r0",
+    "unchanged": true
+  },
+  {
     "step": "evidence pack",
     "problems": [],
     "resolved": 40,
@@ -112,6 +134,9 @@
       "NIST SP 800-53 Rev. 5 RA-5": "met",
       "NIST SP 800-53 Rev. 5 SI-2": "met",
       "PCI DSS v4.0.1 6.3.3": "met",
+      "SOC 2 (TSC 2017) CC7.1": "met",
+      "SOC 2 (TSC 2017) CC8.1": "met",
+      "NIS2 Directive Art. 21(2)(e)": "met",
       "CIS Controls v8.1 7.3 / 7.4": "met"
     }
   },
@@ -122,6 +147,6 @@
   },
   {
     "step": "sandbox destroyed",
-    "name": "nimstead-sbx-5f2f7657"
+    "name": "nimstead-sbx-974dfc70"
   }
 ]

@@ -22,6 +22,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 import winvm  # noqa: E402
+from signin import signup  # noqa: E402  first account + its admin's TOTP sign-in
 
 ROOT = Path(__file__).resolve().parents[1]
 NAME = sys.argv[1]
@@ -109,7 +110,7 @@ def main(keep=False) -> int:
                     break
             except httpx.HTTPError:
                 time.sleep(1)
-        api.post("/api/auth/signup", json={"email": "win@example.com", "password": "windows-update-password", "org_name": "WinUpdate"})
+        signup(api, {"email": "win@example.com", "password": "windows-update-password", "org_name": "WinUpdate"})
         token = api.post("/api/enroll-tokens", json={"sandbox": True}).json()["token"]
 
         winvm.wait_ready(NAME, minutes=120)

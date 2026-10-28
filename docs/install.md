@@ -29,7 +29,7 @@ Three containers run:
 
 | Service | What it does |
 |---|---|
-| `app` | The server on port 8000. Applies database migrations on start. Keys and checkpoints live in the `data` volume. |
+| `app` | The server on port 8000 of `127.0.0.1` only (the first account sets the server up, so nobody else on the network may create it first; your HTTPS proxy on this host forwards to it). Applies database migrations on start. Keys and checkpoints live in the `data` volume. |
 | `feeds` | Every hour: refreshes CISA KEV, EPSS, NVD, OSV and MSRC, re-matches every asset, retries failed alerts and writes a signed ledger checkpoint. The first run takes a while. |
 | `db` | PostgreSQL 17, in the `pg` volume. Not exposed outside Compose. |
 
@@ -65,7 +65,7 @@ The first account you create sets the server up and is its admin. Later sign-ups
 In the app, **Add your first machine** gives you an enrolment token and the exact command. On Linux it looks like this:
 
 ```bash
-export NIMSTEAD_TOKEN=nme_…; curl -fsSL https://assure.example.com/install.sh | sudo --preserve-env=NIMSTEAD_TOKEN sh; unset NIMSTEAD_TOKEN
+export NIMSTEAD_TOKEN=nme_…; curl -fsSL --proto '=https' https://assure.example.com/install.sh | sudo --preserve-env=NIMSTEAD_TOKEN sh; unset NIMSTEAD_TOKEN
 ```
 
 The token travels in an environment variable, never as a command-line argument, which every user on the machine (and sudo's log) could read. A token works for 30 days and for any number of machines: revoke it in the app when you've finished enrolling.
@@ -92,6 +92,15 @@ At each run the agent asks your server for a newer release. It installs one only
 - **Pause it for the whole organisation:** **Settings → Agent updates**.
 - **Turn it off on one machine:** enrol with `--no-auto-update`. That machine then shows **Agent outdated** after each release until you rerun the install command.
 - **Agents older than 0.2.0** can't update themselves. Rerun the install command on each once; the enrolment is kept.
+- **Channels:** an agent takes releases signed for its server's channel at install time (`--channel`, set by the install command) or anything more proven, so a stable machine never runs a preview build, whatever the server hands it. Agents enrolled before 0.3.0 take every channel until you rerun the install command.
+
+### Install without trusting the server
+
+Updates have to be signed, but the first copy of the agent comes from your server, so a compromised server could hand new machines a modified one (machines already enrolled are unaffected). The install command prints the `agent sha256` it installed. To be sure of a machine, compare it with the signed release:
+
+1. From the [GitHub release](https://github.com/Nimstead/assure/releases) your server runs, download `release.json`, `release.json.sig` and `nimstead_agent.py`.
+2. Check the signature with an agent you already trust: `python3 nimstead_agent.py verify-release release.json release.json.sig` prints the manifest only if a pinned Nimstead release key signed it (key fingerprints `a91fa653…` and backup `2438f2cc…`, also in `RELEASE_KEYS` at the top of the agent).
+3. The manifest's `agent_sha256` must equal `sha256sum nimstead_agent.py` and the `agent sha256` the installer printed. Or skip the installer: copy this verified file to `/usr/local/lib/nimstead/` yourself, then run its `enroll --server https://… --channel stable`, `report` and `schedule` as root, with `NIMSTEAD_TOKEN` set.
 
 A machine that hasn't reported for 14 hours shows **Not reporting** and sends one alert, so a stopped agent doesn't quietly leave stale findings.
 
@@ -125,7 +134,7 @@ To install the update, run this in the checkout on the Docker host:
 sudo deploy/update.sh
 ```
 
-It updates only to a release signed by the Nimstead release key, and only if the release tag points at exactly the signed commit. Your checkout must have no local changes (`.env` is fine), and when run as root the checkout must be owned by root. It builds the new version while the old one keeps serving, then stops the server for a moment to back up a quiet database to `backups/`. It starts the new version (migrations run on start) and waits up to 5 minutes for `/api/health` to answer for it, then restarts the feed updates. If that doesn't happen, it puts the previous version back with the database from the backup. The outcome shows in **Settings**, and a failure alerts. Add `--dry-run` to see what it would do.
+It updates only to a release signed by the Nimstead release key, and only if the release tag points at exactly the signed commit. Your checkout must have no local changes or untracked files (`.env`, `backups/` and other ignored files are fine; a `compose.override.yaml` is not used), and when run as root every file in the checkout must be owned by root and not writable by anyone else, because the timer runs this script as root. It builds the new version while the old one keeps serving, then stops the server for a moment to back up a quiet database to `backups/`. It starts the new version (migrations run on start) and waits up to 5 minutes for `/api/health` to answer for it, then restarts the feed updates. If that doesn't happen, it puts the previous version back with the database from the backup. The outcome shows in **Settings**, and a failure alerts. Add `--dry-run` to see what it would do.
 
 To install releases on their own each night (03:00–04:00), turn on the timer once:
 
@@ -137,15 +146,47 @@ Agents then update themselves from the new release at their next run.
 
 ## Back up
 
-Back up both volumes: `pg` (the database) and `data` (signing keys and checkpoints). Without the signing key, new evidence packs get a new fingerprint and you'll need to send it to your auditor again.
+Back up both volumes together: `pg` (the database) and `data` (signing keys and checkpoints). Without the signing key, new evidence packs get a new fingerprint and you'll need to send it to your auditor again. Pause `feeds` meanwhile, because it writes signed checkpoints of the ledger, so the two copies match. Write the backups outside the checkout (`deploy/update.sh` refuses untracked files in it):
 
 ```bash
-docker compose exec -T db pg_dump -U nimstead nimstead > nimstead.sql
+docker compose stop feeds
 ```
 
 ```bash
-docker compose cp app:/data ./nimstead-data
+docker compose exec -T db pg_dump -U nimstead nimstead > ~/nimstead.sql
 ```
+
+```bash
+docker compose cp app:/data ~/nimstead-data
+```
+
+```bash
+docker compose start feeds
+```
+
+Run this at least daily and keep copies off the host. What a restore loses is what changed since the last backup: inventories come back at the agents' next 6-hourly run, but ledger entries made after the backup are gone. With checkpoints in object-locked S3, a restore from before the newest checkpoint shows as a shortened ledger on **Evidence**. That's the tamper evidence doing its job: restore the newest backup, and note the restore in your records for the auditor. A restore takes minutes.
+
+### Restore
+
+On a fresh host, with the same release checked out and the same `.env`, from the checkout:
+
+```bash
+docker compose up -d db
+```
+
+```bash
+docker compose exec -T db psql -U nimstead -d nimstead < ~/nimstead.sql
+```
+
+```bash
+docker compose run --rm --no-deps -T --user root -v "$HOME/nimstead-data:/restore:ro" --entrypoint sh app -c 'cp -R /restore/. /data/ && chown -R nimstead /data'
+```
+
+```bash
+docker compose up -d
+```
+
+Then open **Evidence**: *Chain verified* means the ledger matches its signed checkpoints, and the key fingerprint should be the one your auditor has.
 
 ## Without Docker
 

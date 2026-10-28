@@ -22,6 +22,8 @@ import tempfile
 import time
 from pathlib import Path
 
+from signin import signup  # noqa: E402  first account + its admin's TOTP sign-in
+
 ROOT = Path(__file__).resolve().parents[1]
 PREFIX = "nimstead-sbx-"
 NAME = PREFIX + "ext-" + secrets.token_hex(3)
@@ -116,7 +118,7 @@ def main(keep=False) -> int:
         netguard.socket.getaddrinfo = lambda h, *a, **k: [(2, 1, 6, "", (ip, 443))] if h == HOST else real_gai(h, *a, **k)
         txt = {}
         c = TestClient(create_app(f"sqlite:///{(TMP / 'n.db').as_posix()}", dns_lookup=lambda n: txt.get(n, [])))
-        c.post("/api/auth/signup", json={"email": "ext@example.com", "password": "correct horse battery", "org_name": "Ext"})
+        signup(c, {"email": "ext@example.com", "password": "correct horse battery", "org_name": "Ext"})
         t = c.post("/api/targets", json={"hostname": HOST}).json()
 
         # 1) not proven: refused, nothing probed

@@ -27,6 +27,13 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+# As root, everything here runs with root's power (the timer runs this very file): nobody else may be able to change it
+root_only() {
+  bad=$(find "$ROOT" \( ! -user 0 -o -perm /022 \) ! -type l -print -quit 2>/dev/null)
+  [ -z "$bad" ] || { echo "error: $bad is not owned by root or is writable by others; as root, update.sh only runs from a checkout only root can change (chown -R root:root $ROOT; chmod -R go-w $ROOT)" >&2; exit 1; }
+}
+[ "$(id -u)" != 0 ] || root_only
+
 if [ "${INSTALL_TIMER:-0}" = 1 ]; then
   [ "$(id -u)" = 0 ] || { echo "error: run as root to install the timer" >&2; exit 1; }
   cat > /etc/systemd/system/nimstead-update.service <<UNIT
@@ -56,7 +63,8 @@ fi
 for c in git curl python3 sha256sum; do
   command -v "$c" >/dev/null || { echo "error: $c is required" >&2; exit 1; }
 done
-if docker compose version >/dev/null 2>&1; then DC="docker compose"; else DC="docker-compose"; fi
+# -f: only the released compose.yaml, never a compose.override.yaml that Compose would otherwise merge in silently
+if docker compose version >/dev/null 2>&1; then DC="docker compose -f compose.yaml"; else DC="docker-compose -f compose.yaml"; fi
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 if command -v flock >/dev/null; then
@@ -66,7 +74,6 @@ fi
 
 version() { sed -n 's/^version = "\(.*\)"$/\1/p' api/pyproject.toml; }
 CUR=$(version)
-FROM_TAG="v$CUR"
 
 # status OUTCOME TO ERROR: recorded on the host and in the data volume, whether or not the app is running
 status() {
@@ -86,8 +93,8 @@ CHANNEL=${NIMSTEAD_UPDATE_CHANNEL:-$(sed -n 's/^NIMSTEAD_UPDATE_CHANNEL=//p' .en
 CHANNEL=${CHANNEL:-stable}
 rank() { case "$1" in preview) echo 0 ;; beta) echo 1 ;; stable) echo 2 ;; *) echo -1 ;; esac; }
 [ "$(rank "$CHANNEL")" -ge 0 ] || refuse "${TO:-?}" "NIMSTEAD_UPDATE_CHANNEL must be preview, beta or stable, not '$CHANNEL'"
-CHANGES=$(git status --porcelain --untracked-files=no) || refuse "${TO:-?}" "git can't read this checkout (as root, it must be owned by root: see git's safe.directory)"
-[ -z "$CHANGES" ] || refuse "${TO:-?}" "this checkout has local changes; update.sh only updates unmodified release checkouts"
+CHANGES=$(git status --porcelain) || refuse "${TO:-?}" "git can't read this checkout (as root, it must be owned by root: see git's safe.directory)"
+[ -z "$CHANGES" ] || refuse "${TO:-?}" "this checkout has local changes or untracked files (they'd be built into the image); update.sh only updates unmodified release checkouts"
 git fetch --quiet --tags origin || refuse "${TO:-?}" "git fetch failed (a release tag that moved is refused too)"
 
 # verified TAG: 0 with $WORK/verified.json when TAG's manifest is signed by a pinned key and matches the tag's commit and
@@ -96,6 +103,7 @@ git fetch --quiet --tags origin || refuse "${TO:-?}" "git fetch failed (a releas
 field() { python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1])).get(sys.argv[2], ""))' "$WORK/verified.json" "$1"; }
 verified() {
   WHY=""
+  # shellcheck disable=SC2015  # intended: either download failing is the same refusal
   curl -fsSL "$REPO_URL/releases/download/$1/release.json" -o "$WORK/release.json" 2>/dev/null \
     && curl -fsSL "$REPO_URL/releases/download/$1/release.json.sig" -o "$WORK/release.json.sig" 2>/dev/null \
     || { WHY="couldn't download the signed release manifest for $1 (not signed yet?)"; return 1; }
@@ -155,7 +163,7 @@ sys.exit(0 if r['status'] == 'ok' and r['version'] == '$1' else 1)" >/dev/null 2
 
 PREV=$(git rev-parse HEAD)
 back() { git -c advice.detachedHead=false checkout --quiet "$PREV"; }
-git -c advice.detachedHead=false checkout --quiet "$TARGET"
+git -c advice.detachedHead=false checkout --quiet "$COMMIT"  # the verified commit: a branch named like the tag can't stand in
 # Build while the running version keeps serving: a build failure changes nothing
 $DC build >"$WORK/build.log" 2>&1 || { back; refuse "$TARGET" "build failed: $(tail -c 300 "$WORK/build.log")"; }
 
@@ -188,7 +196,8 @@ echo "$ERR; rolling back to $CUR" >&2
 back
 $DC stop app >/dev/null 2>&1 || true
 # Restore into a fresh database: the new version's migrations may have added tables a plain restore would leave behind
-if $DC exec -T db sh -c 'dropdb -U nimstead --force nimstead && createdb -U nimstead nimstead' \
+if $DC exec -T db pg_restore --list < "$DUMP" >/dev/null 2>&1 \
+   && $DC exec -T db sh -c 'dropdb -U nimstead --force nimstead && createdb -U nimstead nimstead' \
    && $DC exec -T db pg_restore -U nimstead -d nimstead --no-owner < "$DUMP" \
    && $DC up -d --build >"$WORK/up.log" 2>&1 && healthy "$CUR"; then
   status rolled_back "$NEW" "$ERR"

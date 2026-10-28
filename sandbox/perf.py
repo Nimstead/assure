@@ -21,6 +21,7 @@ os.environ.update(NIMSTEAD_SECURE_COOKIES="0", NIMSTEAD_INVENTORY_MIN_SECONDS="0
                   NIMSTEAD_CHECKPOINT_DIR=str(TMP / "cp"))
 
 from fastapi.testclient import TestClient  # noqa: E402
+from signin import signup  # noqa: E402  first account + its admin's TOTP sign-in
 from sqlalchemy import insert  # noqa: E402
 
 from nimstead.app import create_app  # noqa: E402
@@ -68,7 +69,7 @@ def main():
         result["advisories"] = len(rows)
         print(f"loaded {len(rows)} advisories in {time.perf_counter() - t:.1f}s", flush=True)
     c = TestClient(app)
-    c.post("/api/auth/signup", json={"email": "perf@example.com", "password": "perf-test-password", "org_name": "Perf"})
+    signup(c, {"email": "perf@example.com", "password": "perf-test-password", "org_name": "Perf"})
     token = c.post("/api/enroll-tokens").json()["token"]
 
     ingest = []

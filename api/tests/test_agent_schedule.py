@@ -63,8 +63,19 @@ def test_schedule_failures_are_loud_and_cron_hosts_get_the_lines(tmp_path, cfgfi
 def test_windows_tasks_are_quoted_and_the_poll_is_removed_when_not_opted_in():
     s = agent.schedule_windows_script({**CFG, "allow_remediation": True})
     assert "'Nimstead jobs'" in s and "remediate --if-jobs" in s and "-AtStartup" in s and "-User 'SYSTEM'" in s
-    assert "Unregister-ScheduledTask -TaskName 'Nimstead jobs'" in agent.schedule_windows_script(CFG)
+    last = agent.schedule_windows_script(CFG).splitlines()[-1]
+    assert "'Nimstead jobs'" in last and "Unregister-ScheduledTask" in last and "SilentlyContinue" not in last
     assert agent._ps_quote("C:\\it's\\python.exe") == "'C:\\it''s\\python.exe'"
+
+
+@pytest.mark.skipif(agent.os.name != "nt", reason="PowerShell's -Command exit code")
+def test_removing_a_missing_job_poll_still_exits_0():
+    """Seen on a real Windows 11 VM: a silenced 'not found' as the last statement made powershell -Command exit 1 with no
+    output, so every install without remediation failed at scheduling. Uses a task name that can't exist: changes nothing."""
+    last = agent.schedule_windows_script(CFG).splitlines()[-1].replace("'Nimstead jobs'", "'nimstead-test-no-such-task'")
+    old = "Unregister-ScheduledTask -TaskName 'nimstead-test-no-such-task' -Confirm:$false -ErrorAction SilentlyContinue"
+    assert agent.ps(agent.sh, f"$ErrorActionPreference = 'Stop'\n{old}")[0] == 1  # the bug, as Windows behaves
+    assert agent.ps(agent.sh, f"$ErrorActionPreference = 'Stop'\n{last}")[0] == 0
 
 
 def test_schedule_if_changed_does_nothing_when_current(cfgfile, monkeypatch):

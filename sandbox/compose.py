@@ -33,6 +33,32 @@ def api(method, path, body=None, jar="/root/jar"):
     return json.loads(out) if out.strip() else None
 
 
+SECRETS: dict[str, list] = {}  # email -> [TOTP secret, last 30 s step used]
+
+
+def fresh_code(email):
+    """A code for a step not used yet (each works once), waiting for the next step if need be, as a person would."""
+    from nimstead import mfa
+    secret, used = SECRETS[email]
+    while int(time.time() // 30) <= used:
+        time.sleep(1)
+    SECRETS[email][1] = step = int(time.time() // 30)
+    return mfa.code(secret, step)
+
+
+def sign_in(email, password, jar):
+    """Password sign-in as the admin, enrolling TOTP as a person would (admins must have it since 0.4.0)."""
+    body = {"email": email, "password": password}
+    r = api("POST", "/api/auth/login", body, jar=jar)
+    if r.get("mfa") == "setup":
+        SECRETS[email] = [r["secret"], 0]
+        r = api("POST", "/api/auth/login", {**body, "setup": r["setup"], "code": fresh_code(email)}, jar=jar)
+    elif r.get("mfa") == "required":
+        r = api("POST", "/api/auth/login", {**body, "code": fresh_code(email)}, jar=jar)
+    assert r.get("email") == email, r
+    return r
+
+
 def main() -> int:
     sys.stdout.reconfigure(encoding="utf-8")  # agent output has arrows; the Windows console codepage can't print them
     keepalive, steps = None, []
@@ -64,6 +90,7 @@ def main() -> int:
 
         email, password = "admin@example.com", "Compose-" + secrets.token_urlsafe(9)
         api("POST", "/api/auth/signup", {"email": email, "password": password, "org_name": "Compose proof"})
+        sign_in(email, password, "/root/jar")  # sign-up gives no session: the admin signs in and sets up TOTP
         tok = api("POST", "/api/enroll-tokens", {"sandbox": True})["token"]
         out = wsl(f"export NIMSTEAD_TOKEN={tok}; curl -fsSL http://localhost:8000/install.sh | sh 2>&1")  # the command the app shows (as root: no sudo)
         hosts = [a for a in api("GET", "/api/assets") if a["kind"] == "host"]
@@ -79,13 +106,32 @@ def main() -> int:
 
         fp = api("GET", "/api/evidence/public-key")["fingerprint_sha256"]  # creates the signing key on first use
         wsl("cd /src && docker-compose restart app >/dev/null 2>&1 && for i in $(seq 60); do curl -sf -o /dev/null http://localhost:8000/ && exit 0; sleep 2; done; exit 1")
-        api("POST", "/api/auth/login", {"email": email, "password": password}, jar="/root/jar2")
+        sign_in(email, password, "/root/jar2")
         n = len(api("GET", "/api/assets", jar="/root/jar2"))
         keys = wsl("cd /src && docker-compose exec -T app ls /data").split()
         fp2 = api("GET", "/api/evidence/public-key", jar="/root/jar2")["fingerprint_sha256"]
         assert n == 1 and "nimstead-signing.pem" in keys and fp2 == fp, (n, keys, fp, fp2)
         step("restart: login, host and evidence signing key survived", assets=n, data=keys, fingerprint=fp)
         step("non-root", user=wsl("cd /src && docker-compose exec -T app id -un").strip())
+        port = wsl("cd /src && docker-compose port app 8000").strip()
+        assert port.startswith("127.0.0.1:"), port  # loopback only: nobody else on the network can create the first account
+        step("listens on loopback only", port=port)
+
+        # docs/install.md "Back up" and "Restore", exactly as written, onto brand-new volumes
+        wsl("cd /src && docker-compose stop feeds >/dev/null 2>&1 && docker-compose exec -T db pg_dump -U nimstead nimstead > ~/nimstead.sql "
+            "&& docker-compose cp app:/data ~/nimstead-data && docker-compose start feeds >/dev/null 2>&1")
+        wsl("cd /src && docker-compose down -v >/dev/null 2>&1 && docker-compose up -d db >/dev/null 2>&1 "
+            "&& for i in $(seq 60); do docker-compose exec -T db pg_isready -h 127.0.0.1 -U nimstead >/dev/null && exit 0; sleep 2; done; exit 1")
+        wsl("cd /src && docker-compose exec -T db psql -q -U nimstead -d nimstead < ~/nimstead.sql >/dev/null")
+        wsl("cd /src && docker-compose run --rm --no-deps -T --user root "
+            "-v \"$HOME/nimstead-data:/restore:ro\" --entrypoint sh app -c 'cp -R /restore/. /data/ && chown -R nimstead /data'")
+        wsl("cd /src && docker-compose up -d >/dev/null 2>&1 && for i in $(seq 120); do curl -sf -o /dev/null http://localhost:8000/api/health && exit 0; sleep 2; done; exit 1")
+        sign_in(email, password, "/root/jar3")
+        n3 = len(api("GET", "/api/assets", jar="/root/jar3"))
+        fp3 = api("GET", "/api/evidence/public-key", jar="/root/jar3")["fingerprint_sha256"]
+        chain = api("GET", "/api/evidence/ledger?limit=1", jar="/root/jar3")["problems"]
+        assert n3 == 1 and fp3 == fp and chain == [], (n3, fp3, chain)
+        step("backup and restore onto fresh volumes, as documented", assets=n3, fingerprint_unchanged=True, chain_problems=chain)
         result = {"result": "PASS", "steps": steps}
         rc = 0
     except Exception as e:

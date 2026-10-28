@@ -21,6 +21,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 import wine2e as h  # noqa: E402  (reads VM_NAME from argv)
+from signin import signup  # noqa: E402  first account + its admin's TOTP sign-in
 
 ROOT = Path(__file__).resolve().parents[1]
 DIR = r"C:\ProgramData\Nimstead"
@@ -53,7 +54,7 @@ def main() -> int:
                     break
             except httpx.HTTPError:
                 time.sleep(1)
-        api.post("/api/auth/signup", json={"email": "win@example.com", "password": "windows-local-password", "org_name": "WinLocal"})
+        signup(api, {"email": "win@example.com", "password": "windows-local-password", "org_name": "WinLocal"})
         token = api.post("/api/enroll-tokens", json={"sandbox": True}).json()["token"]
 
         h.winvm.wait_ready(h.NAME, minutes=150)
@@ -79,6 +80,10 @@ def main() -> int:
         assets = api.get("/api/assets").json()
         h.note("install.ps1 ran elevated", output=out.strip()[-1500:], assets=[(a["hostname"], a["agent_version"]) for a in assets])
         assert len(assets) == 1 and assets[0]["last_seen"], (assets, out[-2000:])
+        # the install must finish too: this harness once passed on permissions alone while scheduling failed
+        task = h.guest("(Get-ScheduledTask -TaskName 'Nimstead agent').Principal.UserId", check=False).strip()
+        h.note("SYSTEM task registered", user=task)
+        assert "INSTALL FAILED" not in out and "Nimstead agent installed" in out and task == "SYSTEM", (out[-1500:], task)
 
         read = as_user(attacker, f"Get-Content -LiteralPath '{DIR}\\agent.json' -Raw | Out-Null; 'READ'")
         write = as_user(attacker, f"Set-Content -LiteralPath '{DIR}\\pending-job.json' -Value x; 'WROTE'")

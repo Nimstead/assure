@@ -57,6 +57,9 @@ class FakeApt:
                     for f in Path(self.tmp, "cache").glob("*.deb"):
                         f.unlink()
                 return 0, "upgraded"
+            case ["dpkg", "--compare-versions", a, "gt", b]:
+                from nimstead.versions import dpkg_cmp
+                return (0 if dpkg_cmp(a, b) > 0 else 1), ""
             case ["dpkg", "--audit"]:
                 return 0, ""
             case ["dpkg", "-i", *files]:

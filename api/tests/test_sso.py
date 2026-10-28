@@ -11,6 +11,7 @@ import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
+from test_api import mfa_login
 
 from nimstead.app import create_app
 
@@ -102,7 +103,8 @@ def test_happy_path_creates_user_in_org_and_starts_session(env, idp):
     c, cb = sso_login(app, idp)
     assert cb.status_code == 303 and cb.headers["location"] == "/"
     me = c.get("/api/me").json()
-    assert me == {"email": "jane@corp.example.com", "org": "Corp", "admin": False}
+    assert me | {"mfa": False} == {"email": "jane@corp.example.com", "org": "Corp", "admin": False, "origin": "sso", "mfa": False,
+                                   "recovery_codes_left": 0}
     ledger = admin.get("/api/evidence/ledger").json()["entries"]
     assert {"sso_user_created", "sso_login", "sso_configured"} <= {e["kind"] for e in ledger}
     # second login reuses the user
@@ -298,7 +300,7 @@ def test_break_glass_admin_password_login_is_recorded(env, idp):
     r = admin.get("/api/settings/sso").json()
     admin.put("/api/settings/sso", json={"issuer": ISSUER, "client_id": CLIENT, "domains": r["domains"], "required": True})
     c = TestClient(app)
-    assert c.post("/api/auth/login", json={"email": "admin@corp.example.com", "password": "correct horse battery"}).status_code == 200
+    assert mfa_login(c, "admin@corp.example.com").status_code == 200  # break-glass still needs the admin's second factor
     kinds = [e["kind"] for e in admin.get("/api/evidence/ledger").json()["entries"]]
     assert "break_glass_login" in kinds
 

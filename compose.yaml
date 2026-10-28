@@ -2,7 +2,7 @@
 # Before agents on other machines can reach it, set NIMSTEAD_PUBLIC_URL in .env to the HTTPS address they'll use.
 x-app: &app
   build: .
-  image: nimstead/assure:0.3.1
+  image: nimstead/assure:0.4.0
   pull_policy: build  # always built from this source, never pulled: nobody else's image can stand in for it
   restart: unless-stopped
   environment:
@@ -12,8 +12,8 @@ x-app: &app
     ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}  # optional: plain-English explanations and search
     NIMSTEAD_SMTP_URL: ${NIMSTEAD_SMTP_URL:-}
     NIMSTEAD_SMTP_FROM: ${NIMSTEAD_SMTP_FROM:-}
-    NIMSTEAD_ALLOW_PRODUCTION_REMEDIATION: ${NIMSTEAD_ALLOW_PRODUCTION_REMEDIATION:-0}
-    NIMSTEAD_UPDATE_CHANNEL: ${NIMSTEAD_UPDATE_CHANNEL:-stable}  # preview | beta | stable: which releases Settings offers and deploy/update.sh installs  # 1 = fixes may target hosts not enrolled with a sandbox token
+    NIMSTEAD_ALLOW_PRODUCTION_REMEDIATION: ${NIMSTEAD_ALLOW_PRODUCTION_REMEDIATION:-0}  # 1 = fixes may target hosts not enrolled with a sandbox token
+    NIMSTEAD_UPDATE_CHANNEL: ${NIMSTEAD_UPDATE_CHANNEL:-stable}  # preview | beta | stable: which releases Settings offers and deploy/update.sh installs
     # Vault, S3 object lock and the rest: docs/configuration.md
   volumes:
     - data:/data
@@ -25,7 +25,9 @@ services:
   app:
     <<: *app
     ports:
-      - "${NIMSTEAD_PORT:-8000}:8000"
+      # loopback only: the first account created sets the server up, so nobody else on the network may get there first.
+      # Your HTTPS reverse proxy on this host forwards to it (docs/install.md); NIMSTEAD_BIND=0.0.0.0 only if you must.
+      - "${NIMSTEAD_BIND:-127.0.0.1}:${NIMSTEAD_PORT:-8000}:8000"
 
   # Refreshes KEV, EPSS, NVD, OSV and MSRC, re-matches every asset and checkpoints the ledger, hourly
   feeds:

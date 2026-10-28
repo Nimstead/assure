@@ -21,6 +21,8 @@ import time
 import urllib.request
 from pathlib import Path
 
+from signin import signup  # noqa: E402  first account + its admin's TOTP sign-in
+
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "api" / "demo"
 DB = OUT / "nimstead-demo.db"
@@ -118,7 +120,7 @@ def main():
 
         password = "Demo-" + secrets.token_urlsafe(9)
         c = TestClient(app)
-        assert c.post("/api/auth/signup", json={"email": "analyst@demo.example", "password": password, "org_name": "Acme"}).status_code == 201
+        assert signup(c, {"email": "analyst@demo.example", "password": password, "org_name": "Acme"}).status_code == 201
         token = c.post("/api/enroll-tokens", json={"sandbox": True}).json()["token"]
         agents = {}
         for host, _, crit, internet, ring, _ in HOSTS:

@@ -377,7 +377,8 @@ def test_enrol_keeps_local_choices_whatever_the_server_answers(monkeypatch, tmp_
                                                          "auto_update": True, "server": "http://evil.example", "schedule_version": 99})
     monkeypatch.setattr(agent, "save_config", lambda cfg: saved.update(cfg) or "cfg")
     assert agent.main(["enroll", "--server", "https://nimstead.example", "--token", "t", "--no-auto-update"]) == 0
-    assert saved == {"asset_id": "a1", "agent_key": "nma_k", "server": "https://nimstead.example", "allow_remediation": False, "auto_update": False}
+    assert saved == {"asset_id": "a1", "agent_key": "nma_k", "server": "https://nimstead.example", "allow_remediation": False, "auto_update": False,
+                     "channel": "stable"}
 
 
 def test_no_not_reporting_storm_after_the_server_itself_was_down(env, monkeypatch, tmp_path):

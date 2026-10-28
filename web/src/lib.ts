@@ -80,7 +80,7 @@ export interface EvidenceReport {
 export interface EnrollToken { id: string; created: string; expires: string; revoked: boolean; sandbox: boolean }
 export interface Settings {
   remediation_mode: "suggest" | "approve" | "auto"; canary_soak_hours: number; production_remediation_allowed: boolean;
-  agent_updates_paused: boolean; signed_agent_release: boolean; platform: Platform;
+  agent_updates_paused: boolean; signed_agent_release: boolean; platform: Platform; sla_days: Record<Priority, number>;
 }
 // updates.status(): last_update is what deploy/update.sh last did on the Docker host
 export interface Platform {
@@ -173,7 +173,7 @@ export function whyMatched(f: Pick<Finding, "installed_version" | "fixed_version
 export function installCommands(origin: string, token: string) {
   return {
     // the token goes in the environment (export is a shell builtin), never argv: ps and sudo logs show every argument
-    curl: `export NIMSTEAD_TOKEN=${token}; curl -fsSL ${origin}/install.sh | sudo --preserve-env=NIMSTEAD_TOKEN sh; unset NIMSTEAD_TOKEN`,
+    curl: `export NIMSTEAD_TOKEN=${token}; curl -fsSL ${origin.startsWith("https://") ? "--proto '=https' " : ""}${origin}/install.sh | sudo --preserve-env=NIMSTEAD_TOKEN sh; unset NIMSTEAD_TOKEN`,
     python: `export NIMSTEAD_TOKEN=${token}; python3 nimstead_agent.py enroll --server ${origin} && python3 nimstead_agent.py report; unset NIMSTEAD_TOKEN`,
     windows: `$env:NIMSTEAD_TOKEN = "${token}"; irm ${origin}/install.ps1 | iex`,
   };
@@ -243,7 +243,11 @@ export const isDark = () =>
   (document.documentElement.dataset.theme ?? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")) === "dark";
 
 // ---- shared queries ----------------------------------------------------------------
-export const meQ = queryOptions({ queryKey: ["me"], queryFn: () => api<{ email: string; org: string; admin: boolean }>("/api/me"), retry: false, staleTime: 5 * 60_000 });
+export interface Me { email: string; org: string; admin: boolean; origin: "password" | "sso"; mfa: boolean; recovery_codes_left: number }
+export const meQ = queryOptions({ queryKey: ["me"], queryFn: () => api<Me>("/api/me"), retry: false, staleTime: 5 * 60_000 });
+export interface OrgUser { id: string; email: string; admin: boolean; origin: "password" | "sso"; mfa: boolean; created: string }
+export interface ApiTokenRow { id: string; name: string; created_by: string; created: string; expires: string | null; last_used: string | null }
+export interface MfaSetup { setup: string; secret: string; uri: string }
 /** Admin-only actions are disabled until /api/me says otherwise (loading counts as non-admin). */
 export const useIsAdmin = () => useQuery(meQ).data?.admin === true;
 export const ADMIN_ONLY = "Only organisation admins can do this";

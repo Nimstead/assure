@@ -3,8 +3,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertDialog, RadioGroup, Switch } from "radix-ui";
 import { Info } from "lucide-react";
 import clsx from "clsx";
-import { adminGate, api, meQ, parseUtc, relativeTime, settingsQ, useIsAdmin, useTitle, type EnrollToken, type Settings } from "./lib";
+import { adminGate, api, meQ, parseUtc, PRIORITIES, PRIORITY_LABEL, relativeTime, settingsQ, useIsAdmin, useTitle, type EnrollToken, type Settings } from "./lib";
 import { NotificationsSection, SsoSection } from "./integrations";
+import { AccountSection, ApiTokensSection, UsersSection } from "./people";
 import { btnPrimary, btnQuiet, ErrorState, input, Skeleton } from "./ui";
 
 const MODES: { value: Settings["remediation_mode"]; title: string; body: string }[] = [
@@ -22,7 +23,7 @@ export function SettingsPage() {
   const [hours, setHours] = useState("");
   useEffect(() => { if (q.data) setHours(String(q.data.canary_soak_hours)); }, [q.data]);
   const save = useMutation({
-    mutationFn: (body: Partial<Pick<Settings, "remediation_mode" | "canary_soak_hours" | "agent_updates_paused">>) => api<Settings>("/api/settings", { method: "PATCH", body }),
+    mutationFn: (body: Partial<Pick<Settings, "remediation_mode" | "canary_soak_hours" | "agent_updates_paused" | "sla_days">>) => api<Settings>("/api/settings", { method: "PATCH", body }),
     onSuccess: (data) => { qc.setQueryData(settingsQ.queryKey, data); void qc.invalidateQueries({ queryKey: ["ledger"] }); },
   });
 
@@ -76,6 +77,23 @@ export function SettingsPage() {
         </form>}
         {admin && <p id="soak-hint" className={clsx("text-xs", hoursOk ? "text-muted" : "text-now-fg")}>Whole hours, 1 to 720.</p>}
       </section>
+      <section aria-labelledby="sla" className="flex flex-col items-start gap-3">
+        <h2 id="sla" className="text-lg font-semibold">Remediation deadlines</h2>
+        <p className="max-w-prose text-sm text-muted">Days from first detection to fix, by priority. Evidence packs measure your SLA against these and show them to auditors; Cyber Essentials' 14 days is checked separately.</p>
+        <form className="flex flex-wrap items-end gap-3" onSubmit={(e) => {
+          e.preventDefault();
+          const f = new FormData(e.currentTarget);
+          save.mutate({ sla_days: Object.fromEntries(PRIORITIES.map((p) => [p, Number(f.get(p))])) as Settings["sla_days"] });
+        }}>
+          {PRIORITIES.map((p) => (
+            <label key={p} className="flex flex-col gap-1 text-sm">
+              <span className="font-medium">{PRIORITY_LABEL[p]}</span>
+              <input className={clsx(input, "w-24")} name={p} type="number" inputMode="numeric" min={1} max={365} required defaultValue={s.sla_days[p]} disabled={!admin} />
+            </label>
+          ))}
+          {admin && <button className={btnPrimary} disabled={save.isPending}>{save.isPending ? "Saving…" : "Save"}</button>}
+        </form>
+      </section>
       <section aria-labelledby="agent-updates" className="flex flex-col items-start gap-3">
         <h2 id="agent-updates" className="text-lg font-semibold">Agent updates</h2>
         <p className="max-w-prose text-sm text-muted">
@@ -97,7 +115,10 @@ export function SettingsPage() {
           </label>
         )}
       </section>
+      <AccountSection />
+      {me.data?.admin && <UsersSection />}
       <TokensSection />
+      {me.data?.admin && <ApiTokensSection />}
       {me.data?.admin && <NotificationsSection />}
       {me.data?.admin && <SsoSection />}
       <PlatformSection p={s.platform} />

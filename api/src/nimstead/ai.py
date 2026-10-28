@@ -68,7 +68,7 @@ Never invent version numbers, CVE ids or facts not present in the input."""
 def explain(f: dict) -> str:
     facts = {
         "vulnerability": f["vuln_id"], "package": f["package"], "installed_version": f["installed_version"],
-        "fixed_version": f["fixed_version"] or "no fix available yet", "host": f["hostname"],
+        "fixed_version": f["fixed_version"] or "no fix available yet",  # no hostname: one explanation per advisory and context
         "known_exploited_cisa_kev": f["kev"], "epss_30_day_exploit_probability": f["epss"], "cvss": f["cvss"],
         "nimstead_priority": f["priority"], "risk_reasons": f["reasons"],
     }

@@ -1,31 +1,35 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { createRootRoute, createRoute, createRouter, Outlet, RouterProvider } from "@tanstack/react-router";
+import { createRootRoute, createRoute, createRouter, lazyRouteComponent, Outlet, RouterProvider } from "@tanstack/react-router";
 import "./index.css";
-import { AuthPage } from "./auth";
 import { AssetsPage } from "./assets";
 import { FindingsPage } from "./findings";
-import { EvidencePage } from "./evidence";
 import { Home } from "./home";
-import { Onboarding } from "./onboarding";
 import { RemediationPage } from "./remediation";
-import { SettingsPage } from "./settings";
 import { Shell } from "./shell";
 import type { RawSearch } from "./lib";
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 15_000, refetchOnWindowFocus: false, retry: 1 } } });
 
+// Pages used rarely or once (sign-in, settings, evidence) load on demand, keeping the everyday bundle small.
+const SignIn = lazyRouteComponent(() => import("./auth"), "SignInPage");
+const SignUp = lazyRouteComponent(() => import("./auth"), "SignUpPage");
+
 const root = createRootRoute({ component: Outlet });
-const signin = createRoute({ getParentRoute: () => root, path: "/signin", component: () => <AuthPage mode="signin" /> });
-const signup = createRoute({ getParentRoute: () => root, path: "/signup", component: () => <AuthPage mode="signup" /> });
+const signin = createRoute({ getParentRoute: () => root, path: "/signin", component: SignIn });
+const signup = createRoute({ getParentRoute: () => root, path: "/signup", component: SignUp });
 const shell = createRoute({ getParentRoute: () => root, id: "app", component: Shell });
 const home = createRoute({ getParentRoute: () => shell, path: "/", component: Home });
-const add = createRoute({ getParentRoute: () => shell, path: "/add", component: Onboarding });
+const add = createRoute({ getParentRoute: () => shell, path: "/add", component: lazyRouteComponent(() => import("./onboarding"), "Onboarding") });
 const assets = createRoute({ getParentRoute: () => shell, path: "/assets", component: AssetsPage });
 const remediation = createRoute({ getParentRoute: () => shell, path: "/remediation", component: RemediationPage });
-const evidence = createRoute({ getParentRoute: () => shell, path: "/evidence", component: EvidencePage });
-const settings = createRoute({ getParentRoute: () => shell, path: "/settings", component: SettingsPage });
+const evidence = createRoute({
+  getParentRoute: () => shell, path: "/evidence",
+  validateSearch: (raw: Record<string, unknown>): { period?: string } => (raw.period ? { period: String(raw.period) } : {}),
+  component: lazyRouteComponent(() => import("./evidence"), "EvidencePage"),
+});
+const settings = createRoute({ getParentRoute: () => shell, path: "/settings", component: lazyRouteComponent(() => import("./settings"), "SettingsPage") });
 const findings = createRoute({
   getParentRoute: () => shell, path: "/findings",
   validateSearch: (raw: Record<string, unknown>): RawSearch => Object.fromEntries(Object.entries(raw).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)])),

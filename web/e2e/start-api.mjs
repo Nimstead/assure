@@ -18,6 +18,6 @@ const env = {
 };
 const run = (args, opts = {}) => spawnSync("uv", ["run", ...args], { cwd: api, env, stdio: "inherit", ...opts });
 if (run(["python", join(web, "scripts", "seed.py")]).status !== 0) process.exit(1);
-const srv = spawn("uv", ["run", "uvicorn", "--factory", "nimstead.app:create_app", "--port", "8000"], { cwd: api, env, stdio: "inherit" });
+const srv = spawn("uv", ["run", "uvicorn", "--factory", "nimstead.app:create_app", "--port", process.env.NIMSTEAD_API_PORT ?? "8000"], { cwd: api, env, stdio: "inherit" });
 srv.on("exit", (c) => process.exit(c ?? 0));
 for (const s of ["SIGINT", "SIGTERM"]) process.on(s, () => srv.kill());

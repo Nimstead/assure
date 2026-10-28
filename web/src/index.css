@@ -38,7 +38,7 @@
 
 @theme inline {
   --font-sans: "Archivo Variable", ui-sans-serif, system-ui, sans-serif;
-  /* square everything; rounded-full (switches, dots) is untouched */
+  /* square everything; rounded-full is kept only for real circles (the switch track and thumb) */
   --radius-xs: 0; --radius-sm: 0; --radius-md: 0; --radius-lg: 0; --radius-xl: 0; --radius-2xl: 0;
   --color-seal: var(--seal);
   --font-mono: "Geist Mono Variable", ui-monospace, monospace;
@@ -72,12 +72,12 @@ a { text-underline-offset: 3px; }
 * { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
 input::placeholder { color: var(--muted); }
 
-.skeleton { background: var(--line); border-radius: 6px; animation: pulse 1.4s ease-in-out infinite; }
+.skeleton { background: var(--line); animation: pulse 1.4s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: 0.45; } }
 
 /* drawer + palette */
-.overlay { z-index: 50; position: fixed; inset: 0; background: oklch(0.1 0.02 250 / 0.45); animation: fade 0.15s ease-out; }
-.drawer { z-index: 51; position: fixed; inset: 0 0 0 auto; width: min(560px, 100%); background: var(--surface); border-left: 1px solid var(--line); box-shadow: -8px 0 32px oklch(0.1 0.02 250 / 0.18); animation: slide 0.22s cubic-bezier(0.16, 1, 0.3, 1); overflow-y: auto; }
+.overlay { z-index: 50; position: fixed; inset: 0; background: oklch(0.12 0 0 / 0.5); animation: fade 0.15s ease-out; }
+.drawer { z-index: 51; position: fixed; inset: 0 0 0 auto; width: min(560px, 100%); background: var(--surface); border-left: 1px solid var(--line); box-shadow: -8px 0 32px oklch(0.12 0 0 / 0.18); animation: slide 0.22s cubic-bezier(0.16, 1, 0.3, 1); overflow-y: auto; }
 @keyframes fade { from { opacity: 0; } }
 @keyframes slide { from { transform: translateX(24px); opacity: 0; } }
 
@@ -86,7 +86,8 @@ input::placeholder { color: var(--muted); }
 @keyframes draw { to { stroke-dashoffset: 0; } }
 
 @media (prefers-reduced-motion: reduce) {
-  *, ::before, ::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; }
+  /* state still changes (switches flip, drawers appear); only the movement goes */
+  *, ::before, ::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
   .draw { stroke-dashoffset: 0; }
 }
 

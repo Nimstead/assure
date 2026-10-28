@@ -2,12 +2,15 @@ import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, CheckCircle2, TriangleAlert } from "lucide-react";
 import { filtersToSearch, parseFilters, plural, PRIORITIES, PRIORITY_LABEL, priorityOf, summaryQ, useTitle, type Action } from "./lib";
-import { Onboarding } from "./onboarding";
-import { PlanFixButton, StatusPill } from "./remediation";
-import { ErrorState, KevBadge, PriorityPill, Skeleton } from "./ui";
+import { PlanFixButton } from "./remediation";
+import { ErrorState, KevBadge, Loading, PriorityPill, StatusPill } from "./ui";
 import clsx from "clsx";
+import { lazy, Suspense } from "react";
 
-const TILE: Record<string, string> = { "fix-now": "text-now-fg", next: "text-next-fg", planned: "text-planned-fg", low: "text-low-fg" };
+const Onboarding = lazy(() => import("./onboarding").then((m) => ({ default: m.Onboarding })));
+
+// Only "fix now" carries colour; the rest are ink so a count never reads as disabled.
+const TILE: Record<string, string> = { "fix-now": "text-now-fg", next: "text-ink", planned: "text-ink", low: "text-ink" };
 
 export function Home() {
   const q = useQuery(summaryQ);
@@ -16,7 +19,7 @@ export function Home() {
   if (q.isPending) return <HomeSkeleton />;
   if (q.error) return <ErrorState error={q.error} retry={() => q.refetch()} />;
   const s = q.data;
-  if (s.assets === 0) return <Onboarding />;
+  if (s.assets === 0) return <Suspense fallback={<Loading className="h-64" />}><Onboarding /></Suspense>;
 
   const total = PRIORITIES.reduce((n, p) => n + (s.open_by_priority[p] ?? 0), 0);
   return (
@@ -31,25 +34,25 @@ export function Home() {
       </header>
 
       {s.attention.length > 0 && (
-        <section aria-labelledby="attention" className="rounded-lg border border-line-strong bg-sunken p-4">
+        <section aria-labelledby="attention" className="border border-line-strong bg-surface p-4">
           <h2 id="attention" className="flex items-center gap-2 font-semibold"><TriangleAlert className="size-4" aria-hidden />{plural(s.attention.length, "fix", "fixes")} need{s.attention.length === 1 ? "s" : ""} a look</h2>
           <ul className="mt-2 flex flex-col gap-1.5 text-sm">
             {s.attention.slice(0, 5).map((j) => (
               <li key={j.id} className="flex flex-wrap items-center gap-x-2 gap-y-1"><StatusPill status={j.status} /><span>{j.summary}</span></li>
             ))}
           </ul>
-          <Link to="/remediation" className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-accent underline">Review in Remediation <ArrowRight className="size-4" aria-hidden /></Link>
+          <Link to="/remediation" className="mt-1 inline-flex min-h-[44px] items-center gap-1.5 text-sm font-medium text-accent underline md:min-h-0">Review in Remediation <ArrowRight className="size-4" aria-hidden /></Link>
         </section>
       )}
 
       {(s.hosts_not_reporting > 0 || s.agents_need_attention > 0) && (
-        <section aria-labelledby="fleet" className="rounded-lg border border-line-strong bg-sunken p-4">
+        <section aria-labelledby="fleet" className="border border-line-strong bg-surface p-4">
           <h2 id="fleet" className="flex items-center gap-2 font-semibold"><TriangleAlert className="size-4" aria-hidden />Machines need a look</h2>
           <ul className="mt-2 flex flex-col gap-1 text-sm">
             {s.hosts_not_reporting > 0 && <li>{plural(s.hosts_not_reporting, "machine")} stopped reporting, so {s.hosts_not_reporting === 1 ? "its" : "their"} findings may be out of date.</li>}
             {s.agents_need_attention > 0 && <li>{plural(s.agents_need_attention, "agent")} can't update {s.agents_need_attention === 1 ? "itself" : "themselves"}; each machine says why.</li>}
           </ul>
-          <Link to="/assets" className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-accent underline">Review in Assets <ArrowRight className="size-4" aria-hidden /></Link>
+          <Link to="/assets" className="mt-1 inline-flex min-h-[44px] items-center gap-1.5 text-sm font-medium text-accent underline md:min-h-0">Review in Assets <ArrowRight className="size-4" aria-hidden /></Link>
         </section>
       )}
 
@@ -59,7 +62,7 @@ export function Home() {
             <Link
               to="/findings"
               search={filtersToSearch({ ...parseFilters({}), priority: [p], fixable: false })}
-              className="flex flex-col rounded-lg border border-line bg-surface px-3.5 py-2.5 hover:border-line-strong"
+              className="flex flex-col border border-line bg-surface px-3.5 py-2.5 no-underline hover:border-line-strong"
             >
               <span className={clsx("num text-2xl font-semibold", TILE[p])}>{s.open_by_priority[p] ?? 0}</span>
               <span className="text-sm text-muted">{PRIORITY_LABEL[p]}</span>
@@ -71,7 +74,7 @@ export function Home() {
       <section aria-labelledby="actions">
         <h2 id="actions" className="mb-3 text-lg font-semibold">Recommended upgrades</h2>
         {s.top_actions.length === 0 ? (
-          <div className="flex items-start gap-3 rounded-lg border border-dashed border-line-strong p-5">
+          <div className="flex items-start gap-3 border border-dashed border-line-strong p-5">
             <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-accent" aria-hidden />
             <p className="text-sm text-muted">
               {total === 0 ? "Everything reported so far is clean. New findings will show up here." : "Nothing here can be fixed by an upgrade yet. Review the findings with no fix to mitigate or accept them."}
@@ -89,7 +92,7 @@ export function Home() {
 
 function ActionCard({ a }: { a: Action }) {
   return (
-    <li className="flex flex-col gap-3 rounded-lg border border-line bg-surface p-4 sm:flex-row sm:items-center sm:justify-between">
+    <li className="flex flex-col gap-3 border border-line bg-surface p-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
         <p className="text-base">
           Upgrade <strong className="font-semibold">{a.package}</strong> to{" "}
@@ -105,11 +108,16 @@ function ActionCard({ a }: { a: Action }) {
         </p>
       </div>
       <div className="flex shrink-0 flex-wrap items-start gap-x-4 gap-y-2">
-        <PlanFixButton ecosystem={a.ecosystem} pkg={a.package} hosts={a.hosts} />
+        {a.job ? (
+          <span className="flex flex-col items-start gap-1.5">
+            <StatusPill status={a.job.status} />
+            <Link to="/remediation" className="inline-flex min-h-[44px] items-center gap-1.5 text-sm font-medium text-accent underline md:min-h-9">View fix<span className="sr-only"> for {a.package}</span> <ArrowRight className="size-4" aria-hidden /></Link>
+          </span>
+        ) : <PlanFixButton ecosystem={a.ecosystem} pkg={a.package} assetIds={a.asset_ids} hosts={a.hosts.length} />}
         <Link
           to="/findings"
           search={filtersToSearch({ ...parseFilters({}), q: a.package })}
-          className="inline-flex min-h-9 items-center gap-1.5 text-sm font-medium text-accent underline"
+          className="inline-flex min-h-[44px] items-center gap-1.5 text-sm font-medium text-accent underline md:min-h-9"
         >
           View findings <ArrowRight className="size-4" aria-hidden />
         </Link>
@@ -120,10 +128,9 @@ function ActionCard({ a }: { a: Action }) {
 
 function HomeSkeleton() {
   return (
-    <div className="flex flex-col gap-8" aria-busy="true" aria-label="Loading">
-      <Skeleton className="h-16 w-72" />
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-16" />)}</div>
-      <div className="flex flex-col gap-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-20" />)}</div>
+    <div className="flex flex-col gap-8">
+      <Loading className="h-16 w-72" label="Loading Fix first…" />
+      <Loading className="h-20" rows={3} label="" />
     </div>
   );
 }

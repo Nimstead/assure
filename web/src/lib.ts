@@ -34,8 +34,10 @@ export interface Finding {
   resolved_at: string | null;
 }
 export interface Action {
-  ecosystem: string; package: string; fixed_version: string; hosts: string[]; vulns: string[];
+  ecosystem: string; package: string; fixed_version: string; hosts: string[]; asset_ids: string[]; vulns: string[];
   kev: boolean; max_score: number;
+  /** A fix already in flight for this package, if any: link to it rather than planning another. */
+  job: { id: string; status: JobStatus } | null;
 }
 export interface Summary {
   assets: number; open_by_priority: Partial<Record<Priority, number>>; top_actions: Action[]; attention: Job[];
@@ -71,7 +73,9 @@ export const APPROVE_COPY = "Saves a rollback copy of each package, upgrades, ch
 export const humaniseKind = (k: string) => { const t = k.replace(/_/g, " ").trim(); return t.charAt(0).toUpperCase() + t.slice(1); };
 
 export interface LedgerEntry { seq: number; ts: string; kind: string; subject: string; hash: string; prev_hash: string; data: Record<string, unknown> }
-export interface Control { framework: string; control: string; requirement: string; status: "met" | "not_met"; evidence: string }
+export interface Control { framework: string; control: string; requirement: string; status: ControlStatus; evidence: string }
+/** "no_activity": a timeliness control with nothing fixed or changed in the period and nothing overdue (DECISIONS 45). */
+export type ControlStatus = "met" | "not_met" | "no_activity";
 export interface EvidenceReport {
   controls: Control[]; period: { from: string; to: string };
   metrics: { resolved: number; resolved_within_sla: number; overdue_open: number; mttr_days: number | null };
@@ -136,7 +140,7 @@ async function errorMessage(res: Response): Promise<string> {
 export const PRIORITY_LABEL: Record<Priority, string> = { "fix-now": "Fix now", next: "Next", planned: "Planned", low: "Low" };
 export const PRIORITY_CLASS: Record<Priority, string> = {
   "fix-now": "bg-now-bg text-now-fg", next: "bg-next-bg text-next-fg",
-  planned: "bg-planned-bg text-planned-fg", low: "bg-low-bg text-low-fg",
+  planned: "bg-planned-bg text-planned-fg shadow-[inset_0_0_0_1px_var(--line-strong)]", low: "bg-low-bg text-low-fg",  // planned sits on the surface colour, so it gets an outline
 };
 
 /** Same thresholds as api/src/nimstead/risk.py. */
@@ -235,12 +239,18 @@ export function useTitle(title: string) {
   useEffect(() => { document.title = `${title} · Nimstead Assure`; }, [title]);
 }
 
-export function setTheme(t: "light" | "dark") {
-  document.documentElement.dataset.theme = t;
-  try { localStorage.setItem("theme", t); } catch { /* storage blocked */ }
+export type ThemeChoice = "system" | "light" | "dark";
+/** "system" follows prefers-color-scheme; index.html's inline script applies a stored choice before first paint. */
+export const themeChoice = (): ThemeChoice => {
+  const t = document.documentElement.dataset.theme;
+  return t === "light" || t === "dark" ? t : "system";
+};
+export function setTheme(t: ThemeChoice) {
+  if (t === "system") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = t;
+  try { if (t === "system") localStorage.removeItem("theme"); else localStorage.setItem("theme", t); } catch { /* storage blocked */ }
 }
-export const isDark = () =>
-  (document.documentElement.dataset.theme ?? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")) === "dark";
+export const NEXT_THEME: Record<ThemeChoice, ThemeChoice> = { system: "light", light: "dark", dark: "system" };
+export const THEME_LABEL: Record<ThemeChoice, string> = { system: "System", light: "Light", dark: "Dark" };
 
 // ---- shared queries ----------------------------------------------------------------
 export interface Me { email: string; org: string; admin: boolean; origin: "password" | "sso"; mfa: boolean; recovery_codes_left: number }
@@ -251,8 +261,13 @@ export interface MfaSetup { setup: string; secret: string; uri: string }
 /** Admin-only actions are disabled until /api/me says otherwise (loading counts as non-admin). */
 export const useIsAdmin = () => useQuery(meQ).data?.admin === true;
 export const ADMIN_ONLY = "Only organisation admins can do this";
-/** Spread onto a button after its own `disabled`: no-op for admins, disables with an explanation for everyone else. */
-export const adminGate = (admin: boolean) => (admin ? {} : { disabled: true, title: ADMIN_ONLY });
+export const ADMIN_ONLY_ID = "admin-only-note";
+/** Spread onto a button after its own props: no-op for admins. For everyone else the button stays focusable (so the reason
+ *  can be reached by keyboard and screen reader) but does nothing; the shell renders the visible note it points to. */
+export const adminGate = (admin: boolean) => (admin ? {} : {
+  "aria-disabled": true, "aria-describedby": ADMIN_ONLY_ID, title: ADMIN_ONLY,
+  onClick: (e: { preventDefault: () => void; stopPropagation: () => void }) => { e.preventDefault(); e.stopPropagation(); },
+});
 export const summaryQ = queryOptions({ queryKey: ["summary"], queryFn: () => api<Summary>("/api/summary") });
 export const assetsQ = queryOptions({ queryKey: ["assets"], queryFn: () => api<Asset[]>("/api/assets") });
 

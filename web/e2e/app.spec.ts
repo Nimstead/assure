@@ -53,9 +53,11 @@ test("sign up, enrol a sandbox host, plan and approve a fix, see evidence", asyn
   await expect(page.getByText(/Save these recovery codes now/)).toBeVisible();
   await page.getByRole("button", { name: /saved them, continue/ }).click();
 
-  // Onboarding
-  await page.getByRole("checkbox", { name: /disposable test machine/ }).check();
-  await page.getByRole("button", { name: "Add a machine" }).click();
+  // Onboarding: test or production is a required choice, nothing preselected
+  const create = page.getByRole("button", { name: "Create install command" });
+  await expect(create).toBeDisabled();
+  await page.getByRole("radio", { name: /Test machines/ }).click();
+  await create.click();
   await expect(page.getByText(/install\.sh \| sudo --preserve-env=NIMSTEAD_TOKEN sh/)).toBeVisible();
 
   // Enrol a fake sandbox asset through the agent API
@@ -64,8 +66,9 @@ test("sign up, enrol a sandbox host, plan and approve a fix, see evidence", asyn
   const r = await page.request.post("/api/agent/inventory", { data: inv("3.0.11-1~deb12u1"), headers: { Authorization: `Bearer ${agent.agent_key}` } });
   expect(r.ok()).toBe(true);
 
-  // Home: top action for openssl (onboarding polls, then navigates home)
-  await expect(page.getByRole("heading", { name: "Fix first" })).toBeVisible({ timeout: 20_000 });
+  // Home: top action for openssl (onboarding polls, then offers the way home)
+  await page.getByRole("link", { name: "Go to Fix first" }).click({ timeout: 20_000 });
+  await expect(page.getByRole("heading", { name: "Fix first" })).toBeVisible();
   await expect(page.getByText(/Upgrade\s+openssl/)).toBeVisible();
 
   // Findings + drawer
@@ -89,6 +92,18 @@ test("sign up, enrol a sandbox host, plan and approve a fix, see evidence", asyn
   await dlg.getByRole("button", { name: "Approve and run" }).click();
   await expect(page.getByRole("heading", { name: "In progress" })).toBeVisible();
   await expect(page.getByText("Approved, waiting for host")).toBeVisible();
+
+  // Home links to the fix in flight instead of offering another one the API would refuse
+  await page.getByRole("link", { name: "Fix first", exact: true }).first().click();
+  const action = page.getByRole("listitem").filter({ hasText: /Upgrade\s+openssl/ });
+  await expect(action.getByRole("link", { name: /View fix/ })).toBeVisible();
+  await expect(action.getByRole("button", { name: /Plan fix/ })).toHaveCount(0);
+
+  // A job's host links to that machine's findings
+  await page.getByRole("link", { name: "Remediation", exact: true }).first().click();
+  await page.getByRole("link", { name: "sbx-1", exact: true }).click();
+  await expect(page).toHaveURL(/\/findings\?.*asset=/);
+  await expect(page.getByRole("button", { name: /Host: sbx-1/ })).toBeVisible();
 
   // Evidence
   await page.getByRole("link", { name: "Evidence", exact: true }).first().click();
@@ -128,11 +143,15 @@ test("admins sign in with their code, manage people and API tokens", async ({ br
   const member = people.getByRole("listitem").filter({ hasText: "member@example.com" });
   await expect(member).toContainText("Member · password");
   await expect(people.getByRole("listitem").filter({ hasText: "(you)" })).toContainText("Admin · password + code");
+  await expect(people.getByRole("listitem").filter({ hasText: "(you)" }).getByRole("button")).toHaveCount(0);  // no self-demotion
   await people.getByRole("button", { name: "Make admin member@example.com" }).click();
+  await page.getByRole("alertdialog", { name: "Make member@example.com an admin?" }).getByRole("button", { name: "Make admin" }).click();
   await expect(people.getByRole("button", { name: "Make member member@example.com" })).toBeVisible();
-  page.once("dialog", (d) => d.accept());
+  await expect(page.getByRole("alertdialog")).toHaveCount(0);
   await people.getByRole("button", { name: "Remove member@example.com" }).click();
+  await page.getByRole("alertdialog", { name: "Remove member@example.com?" }).getByRole("button", { name: "Remove" }).click();
   await expect(member).toHaveCount(0);
+  await expect(page.getByRole("alertdialog")).toHaveCount(0);  // the page is inert until the dialog has closed
 
   const tokens = page.locator("section[aria-labelledby=api-tokens]");
   await tokens.getByLabel("Name").fill("ci export");
@@ -174,18 +193,99 @@ async function ctx(browser: Browser, width: number, colorScheme: "light" | "dark
   return { context, page: await context.newPage() };
 }
 
-for (const scheme of ["light", "dark"] as const) {
-  test(`axe: no serious or critical violations (${scheme})`, async ({ browser }) => {
-    const { context, page } = await ctx(browser, 1440, scheme);
-    for (const p of PAGES) {
-      await load(page, p);
-      const { violations } = await new AxeBuilder({ page }).analyze();
-      const bad = violations.filter((v) => v.impact === "serious" || v.impact === "critical");
-      expect(bad.map((v) => `${p.name}: ${v.id} (${v.impact}) ${v.nodes.slice(0, 3).map((n) => n.target.join(" ")).join(" | ")}`), `${p.name} ${scheme}`).toEqual([]);
-    }
-    await context.close();
-  });
+async function axe(page: Page, label: string) {
+  const { violations } = await new AxeBuilder({ page }).analyze();
+  const bad = violations.filter((v) => v.impact === "serious" || v.impact === "critical");
+  expect(bad.map((v) => `${label}: ${v.id} (${v.impact}) ${v.nodes.slice(0, 3).map((n) => n.target.join(" ")).join(" | ")}`), label).toEqual([]);
 }
+
+for (const width of [1440, 375] as const) {
+  for (const scheme of ["light", "dark"] as const) {
+    test(`axe: no serious or critical violations (${width}, ${scheme})`, async ({ browser }) => {
+      const { context, page } = await ctx(browser, width, scheme);
+      for (const p of PAGES) {
+        await load(page, p);
+        await axe(page, `${p.name} @${width} ${scheme}`);
+      }
+      // open dialogs: the Auto confirmation, a ConfirmDialog, the command palette
+      await load(page, PAGES[5]);
+      await page.getByRole("radio", { name: /^Auto/ }).click();
+      await page.locator("section[aria-labelledby=ladder]").getByRole("button", { name: "Save" }).click();
+      await expect(page.getByRole("alertdialog", { name: /without asking/ })).toBeVisible();
+      await axe(page, `auto confirm @${width} ${scheme}`);
+      await page.keyboard.press("Escape");
+      await page.locator("section[aria-labelledby=tokens]").getByRole("button", { name: /^Revoke/ }).first().click();
+      await expect(page.getByRole("alertdialog", { name: "Revoke this token?" })).toBeVisible();
+      await axe(page, `confirm dialog @${width} ${scheme}`);
+      await page.keyboard.press("Escape");
+      await page.keyboard.press("Control+k");
+      await page.getByRole("combobox").fill("openssl");
+      await expect(page.getByRole("option").first()).toBeVisible();
+      await axe(page, `palette @${width} ${scheme}`);
+      await page.keyboard.press("Escape");
+      await context.close();
+      // signed-out pages
+      const anon = await browser.newContext({ viewport: { width, height: 812 }, colorScheme: scheme });
+      const ap = await anon.newPage();
+      for (const path of ["/signin", "/signup"]) {
+        await ap.goto(path);
+        await expect(ap.locator("h1")).toBeVisible();
+        await axe(ap, `${path} @${width} ${scheme}`);
+      }
+      await anon.close();
+    });
+  }
+}
+
+test("keyboard: choosing on the trust ladder saves nothing; findings open with Enter and close with Escape", async ({ browser }) => {
+  const { context, page } = await ctx(browser, 1440, "light");
+  await load(page, PAGES[5]);
+  const patches: string[] = [];
+  page.on("request", (r) => { if (r.method() === "PATCH" && r.url().includes("/api/settings")) patches.push(r.url()); });
+  await page.getByRole("radio", { name: /^Approve/ }).focus();
+  await page.keyboard.press("ArrowRight");  // Approve → Auto
+  await expect(page.getByRole("radio", { name: /^Auto/ })).toBeFocused();
+  await page.keyboard.press("Space");  // selecting by keyboard saves nothing
+  await expect(page.getByRole("radio", { name: /^Auto/ })).toBeChecked();
+  await page.waitForTimeout(300);
+  expect(patches).toEqual([]);
+  await page.reload();
+  await expect(page.getByRole("radio", { name: /^Approve/ })).toBeChecked();
+
+  await page.goto("/findings");
+  const first = page.getByRole("row").nth(1).getByRole("button");
+  await first.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("dialog").getByRole("heading", { name: "Why it matched" })).toBeVisible();
+  await expect(page.getByRole("dialog").getByRole("heading", { level: 2 }).first()).toBeFocused();  // the title, not the close button
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByRole("row").nth(1).getByRole("button")).toBeFocused();  // focus comes back to the row
+  await context.close();
+});
+
+test("phones: Evidence is one tap away and controls are at least 44px tall", async ({ browser }) => {
+  const { context, page } = await ctx(browser, 375, "light");
+  await load(page, PAGES[0]);
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Evidence" }).click();
+  await expect(page.locator("h1")).toContainText("Evidence");
+  for (const p of PAGES) {
+    await load(page, p);
+    const small = await page.evaluate(() => [...document.querySelectorAll("main button, main a, main select, main input, nav button, nav a")]
+      .filter((e) => {
+        const r = e.getBoundingClientRect(), cs = getComputedStyle(e);
+        // inline text links inside sentences are exempt (WCAG 2.5.8); so are hidden and sr-only elements
+        if (!r.width || !r.height || cs.display === "inline" || e.closest(".sr-only") || (e as HTMLInputElement).type === "file") return false;
+        // a findings row is one tappable card (≥104px on phones); the ID button inside it is the keyboard handle
+        if (e.closest("[role=row]") && e.closest("[role=row]")!.getBoundingClientRect().height >= 44) return false;
+        // switches and checkboxes are tapped through their whole label, which is the 44px target
+        if ((e.getAttribute("role") === "switch" || (e as HTMLInputElement).type === "checkbox") && (e.closest("label")?.getBoundingClientRect().height ?? 0) >= 44) return false;
+        return r.height < 44;
+      }).map((e) => `${e.tagName.toLowerCase()} "${(e.textContent || e.getAttribute("aria-label") || "").trim().slice(0, 40)}" ${Math.round(e.getBoundingClientRect().height)}px`));
+    expect(small, `${p.name}: touch targets under 44px`).toEqual([]);
+  }
+  await context.close();
+});
 
 test("screenshots at 1440 and 375", async ({ browser }) => {
   mkdirSync(SHOTS, { recursive: true });

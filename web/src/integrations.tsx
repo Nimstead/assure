@@ -1,16 +1,8 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { TriangleAlert } from "lucide-react";
-import { api, relativeTime, type NotifySettings, type SsoSettings } from "./lib";
-import { btnPrimary, btnQuiet, ErrorState, input, Skeleton } from "./ui";
-
-const Field = ({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) => (
-  <label className="flex flex-col gap-1.5 text-sm font-medium">
-    {label}
-    {children}
-    {hint && <span className="text-xs font-normal text-muted">{hint}</span>}
-  </label>
-);
+import { CircleCheck, TriangleAlert } from "lucide-react";
+import { api, parseUtc, relativeTime, type NotifySettings, type SsoSettings } from "./lib";
+import { Alert, btnPrimary, btnQuiet, Done, ErrorState, Field, input, Loading } from "./ui";
 
 const list = (s: string) => s.split(/[\s,]+/).filter(Boolean);
 
@@ -21,7 +13,7 @@ export function SsoSection() {
     mutationFn: (body: object) => api<SsoSettings>("/api/settings/sso", { method: "PUT", body }),
     onSuccess: (data) => { qc.setQueryData(["sso"], data); void qc.invalidateQueries({ queryKey: ["ledger"] }); },
   });
-  if (q.isPending) return <Skeleton className="h-40" />;
+  if (q.isPending) return <Loading className="h-40" />;
   if (q.error) return <ErrorState error={q.error} retry={() => q.refetch()} />;
   const s = q.data;
   const submit = (e: FormEvent<HTMLFormElement>) => {
@@ -34,11 +26,11 @@ export function SsoSection() {
   };
   return (
     <section aria-labelledby="sso" className="flex flex-col gap-3">
-      <h2 id="sso" className="text-lg font-semibold">Single sign-on (OIDC)</h2>
+      <h3 id="sso" className="text-lg font-semibold">Single sign-on (OIDC)</h3>
       <p className="max-w-prose text-sm text-muted">
         Let people sign in with your identity provider. Register this redirect URI there: <code className="font-mono text-xs text-ink">{s.redirect_uri}</code>. People whose email is on an allowed domain get an account here the first time they sign in. Leave the issuer empty to switch SSO off.
       </p>
-      {save.error && <p role="alert" className="rounded-md bg-now-bg px-3 py-2 text-sm text-now-fg">Couldn't save: {save.error.message}</p>}
+      <Alert error={save.error} prefix="Couldn't save: " />
       <form key={JSON.stringify(s)} onSubmit={submit} className="grid max-w-xl gap-4">
         <Field label="Issuer URL"><input className={input} name="issuer" type="url" defaultValue={s.issuer} placeholder="https://login.example.com" autoComplete="off" /></Field>
         <Field label="Client ID"><input className={input} name="client_id" defaultValue={s.client_id} autoComplete="off" /></Field>
@@ -52,7 +44,7 @@ export function SsoSection() {
           <input type="checkbox" name="required" defaultChecked={s.required} className="mt-1 size-4" />
           <span><span className="font-medium">Require SSO</span><br /><span className="text-muted">Password sign-in is switched off for everyone except admins, whose password sign-ins are recorded and alerted as break-glass.</span></span>
         </label>
-        <div><button className={btnPrimary} disabled={save.isPending}>{save.isPending ? "Saving…" : "Save SSO settings"}</button></div>
+        <div className="flex items-center gap-3"><button className={btnPrimary} disabled={save.isPending}>{save.isPending ? "Saving…" : "Save SSO settings"}</button>{save.isSuccess && <Done>Saved</Done>}</div>
       </form>
       {s.domain_checks.length > 0 && <DomainChecks checks={s.domain_checks} />}
     </section>
@@ -67,14 +59,16 @@ function DomainChecks({ checks }: { checks: SsoSettings["domain_checks"] }) {
   });
   const pending = checks.filter((c) => !c.verified);
   return (
-    <div className="flex max-w-xl flex-col gap-3 rounded-lg border border-line p-4">
-      <h3 className="font-semibold">Domain ownership</h3>
+    <div className="flex max-w-xl flex-col gap-3 border border-line p-4">
+      <h4 className="font-semibold">Domain ownership</h4>
       <p className="text-sm text-muted">SSO only works for domains you prove you control. Add each TXT record at your DNS provider, then verify.</p>
       <ul className="flex flex-col gap-3">
         {checks.map((c) => (
           <li key={c.domain} className="text-sm">
             <span className="font-medium">{c.domain}</span>{" "}
-            <span className={c.verified ? "font-medium text-accent-ink" : "text-muted"}>{c.verified ? "Verified" : "Not verified"}</span>
+            {c.verified
+              ? <span className="inline-flex items-center gap-1 font-medium text-ink"><CircleCheck className="size-4" aria-hidden />Verified</span>
+              : <span className="text-muted">Not verified</span>}
             {!c.verified && (
               <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 font-mono text-xs">
                 <dt className="text-muted">Name</dt><dd className="break-all">{c.txt_name}</dd>
@@ -109,7 +103,7 @@ export function NotificationsSection() {
     onSuccess: () => setTimeout(() => void qc.invalidateQueries({ queryKey: ["notifications"] }), 1500),
   });
   const [removing, setRemoving] = useState(false);
-  if (q.isPending) return <Skeleton className="h-40" />;
+  if (q.isPending) return <Loading className="h-40" />;
   if (q.error) return <ErrorState error={q.error} retry={() => q.refetch()} />;
   const s = q.data;
   const last = s.recent[0];
@@ -122,21 +116,21 @@ export function NotificationsSection() {
     }, { onSuccess: () => { form.reset(); setRemoving(false); } });
   };
   return (
-    <section aria-labelledby="alerts" className="flex flex-col gap-3">
-      <h2 id="alerts" className="text-lg font-semibold">Failure alerts</h2>
+    <section aria-labelledby="failure-alerts" className="flex flex-col gap-3">
+      <h3 id="failure-alerts" className="text-lg font-semibold">Failure alerts</h3>
       <p className="max-w-prose text-sm text-muted">
         Get told when a fix is rolled back, fails or doesn't take, and when a new fix-now vulnerability (known exploited) appears. One message per machine, not one per CVE.
       </p>
       <div role="status" aria-live="polite">
         {last && !last.ok && (
-          <p className="flex items-start gap-2 rounded-md bg-now-bg px-3 py-2 text-sm text-now-fg">
+          <p className="flex items-start gap-2 bg-now-bg px-3 py-2 text-sm text-now-fg">
             <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
-            <span><strong className="font-semibold">Last delivery failed</strong> ({last.channel}, <time>{relativeTime(last.ts)}</time>): {last.error}</span>
+            <span><strong className="font-semibold">Last delivery failed</strong> ({last.channel}, <time dateTime={parseUtc(last.ts).toISOString()}>{relativeTime(last.ts)}</time>): {last.error}</span>
           </p>
         )}
         {last?.ok && <p className="text-sm text-muted">Last delivery succeeded {relativeTime(last.ts)} ({last.channel}).</p>}
       </div>
-      {save.error && <p role="alert" className="rounded-md bg-now-bg px-3 py-2 text-sm text-now-fg">Couldn't save: {save.error.message}</p>}
+      <Alert error={save.error} prefix="Couldn't save: " />
       <form key={JSON.stringify([s.webhook_set, s.webhook_format, s.emails])} onSubmit={submit} className="grid max-w-xl gap-4">
         <Field label="Webhook URL" hint={s.webhook_set ? `Saved for ${s.webhook_host}. Enter a new URL to replace it.` : "https only. Slack incoming webhooks work as they are."}>
           <input className={input} name="webhook_url" type="url" autoComplete="off" placeholder={s.webhook_set ? "Unchanged" : "https://hooks.slack.com/services/…"} disabled={removing} />
@@ -155,11 +149,12 @@ export function NotificationsSection() {
         )}
         <div className="flex flex-wrap items-center gap-2">
           <button className={btnPrimary} disabled={save.isPending}>{save.isPending ? "Saving…" : "Save alert settings"}</button>
+          {save.isSuccess && <Done>Saved</Done>}
           <button type="button" className={btnQuiet} disabled={test.isPending || (!s.webhook_set && !(s.emails_confirmed.length && s.email_available))} onClick={() => test.mutate()}>
             {test.isPending ? "Sending…" : "Send test alert"}
           </button>
           {s.webhook_set && (
-            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={removing} onChange={(e) => setRemoving(e.target.checked)} className="size-4" />Remove webhook on save</label>
+            <label className="flex min-h-[44px] items-center gap-2 text-sm md:min-h-0"><input type="checkbox" checked={removing} onChange={(e) => setRemoving(e.target.checked)} className="size-4" />Remove webhook on save</label>
           )}
         </div>
       </form>

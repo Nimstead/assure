@@ -1,22 +1,13 @@
 import { useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Dialog } from "radix-ui";
 import { Check, Wrench, X } from "lucide-react";
 import clsx from "clsx";
-import { adminGate, api, APPROVE_COPY, dependenciesNeeded, groupJobs, isActiveJob, JOB_STATUS_LABEL, relativeTime, useIsAdmin, useTitle, type Finding, type Job, type JobStatus } from "./lib";
-import { btnPrimary, btnQuiet, EmptyState, ErrorState, Skeleton } from "./ui";
+import { adminGate, api, APPROVE_COPY, dependenciesNeeded, filtersToSearch, groupJobs, isActiveJob, parseFilters, parseUtc, relativeTime, useIsAdmin, useTitle, type Job } from "./lib";
+import { Alert, btnPrimary, btnQuiet, ConfirmDialog, dialogBox, EmptyState, ErrorState, Loading, StatusPill } from "./ui";
 
-const STATUS_CLASS: Record<JobStatus, string> = {
-  planned: "bg-next-bg text-next-fg", approved: "bg-planned-bg text-planned-fg", dispatched: "bg-planned-bg text-planned-fg", verifying: "bg-planned-bg text-planned-fg",
-  succeeded: "bg-accent-soft text-ink", failed: "bg-now-bg text-now-fg", rolled_back: "bg-now-bg text-now-fg", rollback_failed: "bg-now-bg text-now-fg",
-  not_fixed: "bg-now-bg text-now-fg", aborted: "bg-now-bg text-now-fg", cancelled: "bg-sunken text-ink",
-};
-export const StatusPill = ({ status }: { status: JobStatus }) => (
-  <span className={clsx("inline-flex items-center gap-1.5 whitespace-nowrap px-2 py-0.5 text-xs font-medium", STATUS_CLASS[status])}>
-    <span aria-hidden className="size-1.5 bg-current" />{JOB_STATUS_LABEL[status]}
-  </span>
-);
+const CANCELLABLE: Job["status"][] = ["planned", "approved"];
 
 export function RemediationPage() {
   useTitle("Remediation");
@@ -27,9 +18,15 @@ export function RemediationPage() {
     refetchInterval: (query) => (query.state.data?.some(isActiveJob) ? 3000 : false),
   });
   const [target, setTarget] = useState<Job | null>(null);
+  const [cancelling, setCancelling] = useState<Job | null>(null);
+  const refresh = () => Promise.all(["jobs", "summary", "ledger"].map((k) => qc.invalidateQueries({ queryKey: [k] })));
   const approve = useMutation({
     mutationFn: (id: string) => api<Job>(`/api/remediation/jobs/${id}/approve`, { method: "POST" }),
-    onSuccess: () => { setTarget(null); void Promise.all(["jobs", "summary"].map((k) => qc.invalidateQueries({ queryKey: [k] }))); },
+    onSuccess: () => { setTarget(null); void refresh(); },
+  });
+  const cancel = useMutation({
+    mutationFn: (id: string) => api<Job>(`/api/remediation/jobs/${id}/cancel`, { method: "POST" }),
+    onSuccess: () => { setCancelling(null); void refresh(); },
   });
   const groups = q.data ? groupJobs(q.data).filter((g) => g.jobs.length) : [];
 
@@ -39,24 +36,27 @@ export function RemediationPage() {
         <h1 className="text-3xl font-semibold">Remediation</h1>
         <p className="mt-1 max-w-prose text-muted">Every fix is planned first, approved by a person (unless you enable auto), and only counted as done once the next inventory proves the vulnerability is gone.</p>
       </header>
-      {q.isPending ? <div className="flex flex-col gap-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-24" />)}</div>
+      {q.isPending ? <Loading className="h-24" rows={3} label="Loading fixes…" />
         : q.error ? <ErrorState error={q.error} retry={() => q.refetch()} />
         : groups.length === 0 ? <EmptyState title="No fixes planned yet">Use “Plan fix” on a recommended upgrade or a finding. Nothing changes on a machine until you approve it.</EmptyState>
         : groups.map((g) => (
           <section key={g.key} aria-labelledby={`g-${g.key}`}>
-            <h2 id={`g-${g.key}`} className="mb-3 flex items-center gap-2 text-lg font-semibold">{g.title}<span className="num rounded-full bg-sunken px-2 text-sm font-medium text-muted">{g.jobs.length}</span></h2>
+            <h2 id={`g-${g.key}`} className="mb-3 flex items-center gap-2 text-lg font-semibold">{g.title}<span className="num border border-line px-2 text-sm font-medium text-muted">{g.jobs.length}</span></h2>
             <ul className="flex flex-col gap-2">
-              {g.jobs.map((j) => <JobCard key={j.id} job={j} onApprove={() => { approve.reset(); setTarget(j); }} />)}
+              {g.jobs.map((j) => <JobCard key={j.id} job={j} onApprove={() => { approve.reset(); setTarget(j); }} onCancel={() => { cancel.reset(); setCancelling(j); }} />)}
             </ul>
           </section>
         ))}
       <ApproveDialog job={target} onOpenChange={(o) => !o && setTarget(null)} pending={approve.isPending}
         error={approve.error?.message} onConfirm={() => target && approve.mutate(target.id)} />
+      <ConfirmDialog open={!!cancelling} onOpenChange={(o) => !o && setCancelling(null)} title="Cancel this fix?"
+        description={<><strong className="font-semibold">{cancelling?.summary}</strong>. No machine has picked it up yet, so nothing has changed on {cancelling?.hostname}. You can plan it again later.</>}
+        confirmLabel="Cancel fix" pendingLabel="Cancelling…" pending={cancel.isPending} error={cancel.error} onConfirm={() => cancelling && cancel.mutate(cancelling.id)} />
     </div>
   );
 }
 
-export function JobCard({ job: j, onApprove }: { job: Job; onApprove?: () => void }) {
+export function JobCard({ job: j, onApprove, onCancel }: { job: Job; onApprove?: () => void; onCancel?: () => void }) {
   const admin = useIsAdmin();
   const steps = j.steps ?? [];
   const qc = useQueryClient();
@@ -67,35 +67,43 @@ export function JobCard({ job: j, onApprove }: { job: Job; onApprove?: () => voi
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["jobs"] }),
   });
   return (
-    <li className="rounded-lg border border-line bg-surface p-4">
+    <li className="border border-line bg-surface p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <p className="font-medium">{j.summary}</p>
-          <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm text-muted">
-            <StatusPill status={j.status} />
-            <span>on <strong className="font-semibold text-ink">{j.hostname}</strong></span>
-            <span>· planned by {j.created_by}</span>
-            {j.approved_by && <span>· approved by {j.approved_by}</span>}
-            <span>· <time dateTime={j.updated}>{relativeTime(j.updated)}</time></span>
+          <p className="font-medium">
+            <Link to="/findings" search={filtersToSearch({ ...parseFilters({}), asset: j.asset_id, q: pkg ?? "", fixable: false })} className="text-ink underline decoration-line-strong hover:decoration-ink">{j.summary}</Link>
           </p>
+          {/* no dot separators: on a phone they'd start wrapped lines; spacing alone separates the facts */}
+          <ul className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm text-muted">
+            <li><StatusPill status={j.status} /></li>
+            <li>on <Link to="/findings" search={filtersToSearch({ ...parseFilters({}), asset: j.asset_id, fixable: false })} className="font-semibold text-ink underline decoration-line-strong hover:decoration-ink">{j.hostname}</Link></li>
+            <li>planned by {j.created_by}</li>
+            {j.approved_by && <li>approved by {j.approved_by}</li>}
+            <li><time dateTime={parseUtc(j.updated).toISOString()} title={parseUtc(j.updated).toLocaleString()}>{relativeTime(j.updated)}</time></li>
+          </ul>
         </div>
-        {j.status === "planned" && onApprove && (
-          <button className={clsx(btnPrimary, "shrink-0")} onClick={onApprove} {...adminGate(admin)}><Check className="size-4" aria-hidden />Approve<span className="sr-only"> fix on {j.hostname}</span></button>
-        )}
+        <div className="flex shrink-0 flex-wrap gap-2">
+          {CANCELLABLE.includes(j.status) && onCancel && (
+            <button className={btnQuiet} onClick={onCancel} {...adminGate(admin)}>Cancel<span className="sr-only"> fix on {j.hostname}</span></button>
+          )}
+          {j.status === "planned" && onApprove && (
+            <button className={btnPrimary} onClick={onApprove} {...adminGate(admin)}><Check className="size-4" aria-hidden />Approve<span className="sr-only"> fix on {j.hostname}</span></button>
+          )}
+        </div>
       </div>
-      {j.error && <p className="mt-3 rounded-md bg-now-bg px-3 py-2 text-sm text-now-fg">{j.error}</p>}
+      {j.error && <RefusalNote error={j.error} />}
       {deps.length > 0 && (
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <button className={btnQuiet} onClick={() => replan.mutate()} disabled={replan.isPending || replan.isSuccess} {...adminGate(admin)}>
             <Wrench className="size-4" aria-hidden />{replan.isSuccess ? "Planned" : `Plan again including ${deps.join(", ")}`}
           </button>
           <span className="text-sm text-muted">They'll be saved and rolled back together with {pkg}.</span>
-          {replan.error && <span role="alert" className="text-sm text-now-fg">{replan.error.message}</span>}
+          <Alert error={replan.error} />
         </div>
       )}
       {steps.length > 0 && (
         <details className="group mt-3">
-          <summary className="min-h-9 w-fit cursor-pointer text-sm font-medium text-accent underline">
+          <summary className="flex min-h-[44px] w-fit cursor-pointer items-center text-sm font-medium text-accent underline md:min-h-9">
             <span className="group-open:hidden">Show step log ({steps.length})</span><span className="hidden group-open:inline">Hide step log</span>
           </summary>
           <ol className="mt-2 flex flex-col gap-2">
@@ -105,7 +113,7 @@ export function JobCard({ job: j, onApprove }: { job: Job; onApprove?: () => voi
                   {s.ok ? <Check className="mt-0.5 size-4 shrink-0 text-accent" aria-hidden /> : <X className="mt-0.5 size-4 shrink-0 text-now-fg" aria-hidden />}
                   <span><span className="sr-only">{s.ok ? "Passed: " : "Failed: "}</span>{s.step}</span>
                 </p>
-                {s.output && <pre tabIndex={0} className="ml-6 mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-md bg-sunken p-2 font-mono text-xs">{s.output}</pre>}
+                {s.output && <pre tabIndex={0} className="ml-6 mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-all bg-sunken p-2 font-mono text-xs">{s.output}</pre>}
               </li>
             ))}
           </ol>
@@ -123,13 +131,13 @@ export function ApproveDialog({ job, onOpenChange, onConfirm, pending, error }: 
     <Dialog.Root open={!!job} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="overlay" />
-        <Dialog.Content className="fixed left-1/2 top-[15vh] z-[51] w-[min(30rem,calc(100%-2rem))] -translate-x-1/2 rounded-xl border border-line bg-surface p-5 shadow-2xl">
+        <Dialog.Content className={dialogBox}>
           <Dialog.Title className="text-lg font-semibold">Approve this fix?</Dialog.Title>
           <Dialog.Description className="mt-2 text-sm">
             <strong className="font-semibold">{job?.summary}</strong>.
           </Dialog.Description>
-          <p className="mt-3 rounded-md bg-sunken p-3 text-sm">{APPROVE_COPY}</p>
-          {error && <p role="alert" className="mt-3 rounded-md bg-now-bg px-3 py-2 text-sm text-now-fg">{error}</p>}
+          <p className="mt-3 border border-line p-3 text-sm">{APPROVE_COPY}</p>
+          <Alert error={error} className="mt-3" />
           <div className="mt-5 flex justify-end gap-2">
             <Dialog.Close className={btnQuiet}>Cancel</Dialog.Close>
             <button className={btnPrimary} onClick={onConfirm} disabled={pending}>{pending ? "Approving…" : "Approve and run"}</button>
@@ -140,33 +148,40 @@ export function ApproveDialog({ job, onOpenChange, onConfirm, pending, error }: 
   );
 }
 
-/** Plans a fix for one package on one or more hosts. Host names are mapped to asset ids via /api/findings. */
-export function PlanFixButton({ ecosystem, pkg, hosts, className }: { ecosystem: string; pkg: string; hosts: string[]; className?: string }) {
+/** A job error, with a way to Settings when the refusal is about production remediation being off. */
+function RefusalNote({ error }: { error: string }) {
+  return (
+    <p className="mt-3 bg-now-bg px-3 py-2 text-sm text-now-fg">
+      {error}
+      {/sandbox/i.test(error) && <> <Link to="/settings" hash="remediation" className="font-medium text-now-fg underline">Why, and how to allow it</Link></>}
+    </p>
+  );
+}
+
+/** Plans a fix for one package on the given machines (one job each). */
+export function PlanFixButton({ ecosystem, pkg, assetIds, hosts = assetIds.length, className }: { ecosystem: string; pkg: string; assetIds: string[]; hosts?: number; className?: string }) {
   const admin = useIsAdmin();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const plan = useMutation({
     mutationFn: async () => {
-      const found = await api<Finding[]>(`/api/findings?${new URLSearchParams({ q: pkg, fixable: "true", limit: "5000" })}`);
-      const ids = [...new Set(found.filter((f) => f.package === pkg && f.ecosystem === ecosystem && hosts.includes(f.hostname)).map((f) => f.asset_id))];
-      if (!ids.length) throw new Error("Couldn't find these machines. Refresh and try again.");
       const errors: string[] = [];
-      for (const asset_id of ids) {
+      for (const asset_id of assetIds) {
         try { await api("/api/remediation/jobs", { method: "POST", body: { asset_id, ecosystem, package: pkg } }); }
         catch (e) { errors.push((e as Error).message); }
       }
       if (errors.length) throw new Error([...new Set(errors)].join(" "));
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: ["jobs"] }), // partial failures still created some jobs
+    onSettled: () => Promise.all(["jobs", "summary"].map((k) => qc.invalidateQueries({ queryKey: [k] }))), // partial failures still created some jobs
     onSuccess: () => navigate({ to: "/remediation" }),
   });
   return (
     <div className={clsx("flex flex-col items-start gap-1.5", className)}>
       <button className={btnQuiet} disabled={plan.isPending} onClick={() => plan.mutate()} {...adminGate(admin)}>
         <Wrench className="size-4" aria-hidden />{plan.isPending ? "Planning…" : "Plan fix"}
-        <span className="sr-only"> for {pkg}{hosts.length > 1 ? ` on ${hosts.length} hosts` : ""}</span>
+        <span className="sr-only"> for {pkg}{hosts > 1 ? ` on ${hosts} hosts` : ""}</span>
       </button>
-      {plan.error && <p role="alert" className="max-w-sm text-sm text-now-fg">{plan.error.message}</p>}
+      <Alert error={plan.error} className="max-w-sm" />
     </div>
   );
 }

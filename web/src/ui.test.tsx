@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 import { AssetRow, SbomUpload } from "./assets";
 import { ApproveDialog, PlanFixButton } from "./remediation";
-import { APPROVE_COPY, meQ, type Asset } from "./lib";
+import { ADMIN_ONLY_ID, APPROVE_COPY, meQ, type Asset } from "./lib";
 import { InstallCommands } from "./onboarding";
 import { PlatformSection } from "./settings";
 import { TargetRow } from "./targets";
@@ -52,7 +52,7 @@ const signedIn = (admin: boolean) => {
 
 it("SBOM upload is for admins only: replacing an SBOM resolves findings", () => {
   render(<QueryClientProvider client={signedIn(false)}><SbomUpload a={{ id: "a1", hostname: "billing" } as Asset} /></QueryClientProvider>);
-  expect(screen.getByRole("button", { name: "Upload SBOM for billing" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Upload SBOM for billing" })).toHaveAttribute("aria-disabled", "true");
 });
 
 it("SBOM upload posts the raw file and announces the counts", async () => {
@@ -87,12 +87,16 @@ it("unverified target shows the TXT record and a Verify button", () => {
   vi.unstubAllGlobals();
 });
 
-it("admin-only buttons are disabled with an explanation while /api/me loads and for non-admins", async () => {
-  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ email: "a@b.c", org: "o", admin: false }), { status: 200 })));
-  render(<QueryClientProvider client={new QueryClient()}><PlanFixButton ecosystem="deb" pkg="openssl" hosts={["web-1"]} /></QueryClientProvider>);
+it("admin-only buttons stay focusable, explain themselves and do nothing for non-admins", async () => {
+  const fetchMock = vi.fn(async (_url: string) => new Response(JSON.stringify({ email: "a@b.c", org: "o", admin: false }), { status: 200 }));
+  vi.stubGlobal("fetch", fetchMock);
+  render(<QueryClientProvider client={new QueryClient()}><p id={ADMIN_ONLY_ID}>Read-only.</p><PlanFixButton ecosystem="deb" pkg="openssl" assetIds={["a1"]} /></QueryClientProvider>);
   const btn = screen.getByRole("button", { name: /Plan fix/ });
-  expect(btn).toBeDisabled();
-  expect(btn).toHaveAttribute("title", "Only organisation admins can do this");
+  expect(btn).toBeEnabled();  // reachable by keyboard and screen reader, unlike a disabled button
+  expect(btn).toHaveAttribute("aria-disabled", "true");
+  expect(btn).toHaveAccessibleDescription("Read-only.");
+  await userEvent.click(btn);
+  expect(fetchMock.mock.calls.filter(([url]) => String(url).includes("/remediation/jobs"))).toHaveLength(0);
   vi.unstubAllGlobals();
 });
 
@@ -120,5 +124,7 @@ it("settings say when a platform update is available and when one failed", () =>
   expect(screen.getByText(/beta and stable releases/)).toBeInTheDocument();
   r.unmount();
   render(<PlatformSection p={{ ...base, update_available: false, latest: "0.3.0", last_update: { outcome: "rolled_back", from: "0.3.0", to: "0.3.1", error: "health check failed" } }} />);
-  expect(screen.getByRole("alert")).toHaveTextContent("Update failed and was rolled back (0.3.0 → 0.3.1): health check failed");
+  // past news, so plain text rather than an alert announced on every visit
+  expect(screen.getByText(/Update failed and was rolled back \(0\.3\.0 → 0\.3\.1\): health check failed/)).toBeInTheDocument();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 });

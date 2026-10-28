@@ -39,9 +39,10 @@ class Org(Base):
     sso_verified_domains: Mapped[list] = mapped_column(default=list)  # subset proven via DNS TXT; only these work
     sso_required: Mapped[bool] = mapped_column(Boolean, default=False)  # disables password login for the org's users
     # Failure alerts
-    notify_webhook_url: Mapped[str | None] = mapped_column(String(500))
+    notify_webhook_url: Mapped[str | None] = mapped_column(String(2000))  # sealed (sso.seal): Slack-style URLs are bearer secrets
     notify_webhook_format: Mapped[str] = mapped_column(String(10), default="slack")  # slack | json
     notify_emails: Mapped[list] = mapped_column(default=list)
+    notify_emails_confirmed: Mapped[list] = mapped_column(default=list)  # subset that clicked the confirmation link; only these get mail
 
 
 class User(Base):
@@ -219,12 +220,23 @@ class RemediationJob(Base):
 
 
 class AuthFailure(Base):
-    """Failed sign-ins per key (email:/ip:), in the DB so the throttle holds across API workers."""
+    """Failed sign-ins per key (email:/ip:) and rate-limited actions (signup:, extscan:, ...), in the DB so limits hold across API workers."""
 
     __tablename__ = "auth_failure"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     key: Mapped[str] = mapped_column(String(400), index=True)
     ts: Mapped[datetime] = mapped_column(default=now, index=True)
+
+
+class PendingSignup(Base):
+    """A sign-up waiting for its emailed link. The account (and its org) only exist once the address owner opens it."""
+
+    __tablename__ = "pending_signup"
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    email: Mapped[str] = mapped_column(String(320))
+    org_name: Mapped[str] = mapped_column(String(200))
+    password_hash: Mapped[str] = mapped_column(String(200))
+    expires: Mapped[datetime]
 
 
 class PendingLogin(Base):

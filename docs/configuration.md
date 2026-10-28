@@ -45,7 +45,8 @@ Each host must also opt in locally (`--allow-remediation` at install). The serve
 | Variable | Default | What it does |
 |---|---|---|
 | `NIMSTEAD_SMTP_URL` | none | `smtp://user:pass@host:587` (STARTTLS) or `smtps://host:465`. Credentials are never sent without TLS. |
-| `NIMSTEAD_SMTP_FROM` | none | Sender address for alert email. |
+| `NIMSTEAD_OPEN_SIGNUP` | off | `1` = dev/test/demo only: sign-ups create accounts instantly, which tells anyone whether an email has an account. Off: the first account sets the server up, later sign-ups finish from an emailed link (SMTP needed; without it they're closed and staff join by SSO). |
+| `NIMSTEAD_SMTP_FROM` | none | Sender address for alert email. Each recipient added in Settings first gets a confirmation email (fixed text, a link built from `NIMSTEAD_PUBLIC_URL`) and receives alerts only after confirming. |
 
 Webhook and email recipients are set by an admin in **Settings**.
 

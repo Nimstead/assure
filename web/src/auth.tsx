@@ -20,13 +20,15 @@ export function AuthPage({ mode }: { mode: "signin" | "signup" }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [org, setOrg] = useState("");
+  const [sentTo, setSentTo] = useState("");
   const ssoMsg = ssoError(new URLSearchParams(window.location.search).get("sso_error"));
   const go = useMutation({
     mutationFn: (f: FormData) =>
       signup
-        ? api("/api/auth/signup", { method: "POST", body: { email: f.get("email"), password: f.get("password"), org_name: org } })
-        : api("/api/auth/login", { method: "POST", body: { email: f.get("email"), password: f.get("password") } }),
-    onSuccess: async () => {
+        ? api<{ status?: string; email: string }>("/api/auth/signup", { method: "POST", body: { email: f.get("email"), password: f.get("password"), org_name: org } })
+        : api<{ status?: string; email: string }>("/api/auth/login", { method: "POST", body: { email: f.get("email"), password: f.get("password") } }),
+    onSuccess: async (r) => {
+      if (r.status === "check_email") return setSentTo(r.email); // the account is created from the emailed link
       qc.clear();
       await navigate({ to: "/" });
     },
@@ -62,10 +64,11 @@ export function AuthPage({ mode }: { mode: "signin" | "signup" }) {
           {signup && <span id="pw-hint" className="text-xs font-normal text-muted">At least 12 characters. A few random words works well.</span>}
         </label>
         {go.error && <p role="alert" className="rounded-md bg-now-bg px-3 py-2 text-sm text-now-fg">{go.error.message}</p>}
+        {sentTo && <p role="status" className="rounded-md bg-surface px-3 py-2 text-sm">Check {sentTo} for a link to finish creating your account.</p>}
         <button className={btnPrimary} disabled={go.isPending}>{go.isPending ? "One moment…" : signup ? "Create account" : "Sign in"}</button>
       </form>
       {!signup && (
-        <form method="get" action="/api/auth/sso/start" className="flex flex-col gap-3 border-t border-line pt-6" aria-labelledby="sso-h">
+        <form method="post" action="/api/auth/sso/start" className="flex flex-col gap-3 border-t border-line pt-6" aria-labelledby="sso-h">
           <h2 id="sso-h" className="text-sm font-semibold">Single sign-on</h2>
           {ssoMsg && <p role="alert" className="rounded-md bg-now-bg px-3 py-2 text-sm text-now-fg">{ssoMsg}</p>}
           <label className="flex flex-col gap-1.5 text-sm font-medium">

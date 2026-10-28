@@ -66,4 +66,7 @@ class GuardedTransport(httpx.HTTPTransport):
 
 
 def guarded_client(timeout: float = 5.0) -> httpx.Client:
-    return httpx.Client(transport=GuardedTransport(), timeout=timeout, follow_redirects=False)
+    # No keep-alive: the pool is keyed by the rewritten IP, not the hostname, so a connection whose certificate was
+    # checked for one name could otherwise be reused for another name on the same address without a new TLS check.
+    transport = GuardedTransport(limits=httpx.Limits(max_keepalive_connections=0))
+    return httpx.Client(transport=transport, timeout=timeout, follow_redirects=False)

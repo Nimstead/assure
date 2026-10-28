@@ -1,18 +1,19 @@
 #!/bin/sh
-# Nimstead agent installer. Usage: curl -fsSL https://SERVER/install.sh | sudo sh -s -- --token TOKEN [--allow-remediation]
+# Nimstead agent installer. Usage (the token travels in the environment, never on a command line other users can see):
+#   export NIMSTEAD_TOKEN=TOKEN; curl -fsSL https://SERVER/install.sh | sudo --preserve-env=NIMSTEAD_TOKEN sh [-s -- --allow-remediation]
 # Installs the agent, enrols this host, and adds a systemd timer that reports inventory every 6 hours.
 set -eu
 SERVER="__SERVER__"
-TOKEN=""
+TOKEN="${NIMSTEAD_TOKEN:-}"
 EXTRA=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --token) TOKEN="$2"; shift 2 ;;
+    --token) TOKEN="$2"; echo "warning: --token is visible to other users in the process list; set NIMSTEAD_TOKEN instead" >&2; shift 2 ;;
     --allow-remediation) EXTRA="--allow-remediation"; shift ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
-[ -n "$TOKEN" ] || { echo "error: --token is required" >&2; exit 2; }
+[ -n "$TOKEN" ] || { echo "error: set NIMSTEAD_TOKEN to your enrolment token (and run sudo with --preserve-env=NIMSTEAD_TOKEN)" >&2; exit 2; }
 [ "$(id -u)" = 0 ] || { echo "error: run as root (sudo)" >&2; exit 1; }
 command -v python3 >/dev/null || { echo "error: python3 is required" >&2; exit 1; }
 INSECURE=""

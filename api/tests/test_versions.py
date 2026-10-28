@@ -230,3 +230,12 @@ def test_hex_pub_use_semver(eco, a, b, want):
 
 def test_registered_php():
     assert comparator_for("Packagist") is composer_cmp
+
+
+def test_composer_version_cannot_backtrack_catastrophically():
+    """Versions come from agents and SBOMs. The old pattern doubled its work per digit (40 digits: years)."""
+    import time
+    t = time.monotonic()
+    with pytest.raises(ValueError):
+        composer_cmp("1.0-beta" + "1" * 40 + "x", "1.0")
+    assert time.monotonic() - t < 1

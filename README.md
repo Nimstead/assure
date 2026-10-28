@@ -93,7 +93,7 @@ Not just unit tests. Each of these ran end to end in a disposable VM or WSL dist
 | Windows Server 2025 | ✓ | ✓ cumulative update as SYSTEM | ✓ after an injected failure (DISM removal); permanent updates refused up front |
 | Windows 11 Pro 26H2 | ✓ | ✓ cumulative update as SYSTEM | ✓ after an injected failure (DISM removal); every package the update brings checked up front |
 
-Plus real Keycloak SSO, DNS, SMTP and webhook integrations, Vault and S3 object-lock key storage, the Docker Compose install, and 1,000-host performance runs on SQLite and PostgreSQL 17. 589 API tests run on both databases in CI.
+Plus real Keycloak SSO, DNS, SMTP and webhook integrations, Vault and S3 object-lock key storage, the Docker Compose install, and 1,000-host performance runs on SQLite and PostgreSQL 17. 608 API tests run on both databases in CI.
 
 ## Known limitations
 

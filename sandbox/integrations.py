@@ -178,7 +178,7 @@ def main(keep=False) -> int:
         # 2) SSO: real browser-style login against Keycloak
         def login(password):
             browser = TestClient(app)
-            start = browser.get("/api/auth/sso/start", params={"email": "jane@corp.example.com"}, follow_redirects=False)
+            start = browser.post("/api/auth/sso/start", data={"email": "jane@corp.example.com"}, follow_redirects=False)
             assert start.status_code == 303 and start.headers["location"].startswith(issuer), start.headers.get("location")
             with httpx.Client(verify=str(CA), follow_redirects=True) as kc:
                 page = kc.get(start.headers["location"])
@@ -204,6 +204,14 @@ def main(keep=False) -> int:
         r = admin.put("/api/settings/notifications", json={"webhook_url": "https://127.0.0.1:9443/hook", "webhook_format": "slack",
                                                            "emails": ["secops@corp.example.com"]})
         assert r.status_code == 200, r.text
+        notify.flush()  # the confirmation email went out; confirm the way the recipient's button does
+        from sqlalchemy import select
+        from sqlalchemy.orm import sessionmaker
+
+        from nimstead.db import Org, make_engine
+        org_id = sessionmaker(make_engine(f"sqlite:///{(TMP / 'n.db').as_posix()}"))().scalar(select(Org.id))
+        q = {"org": org_id, "email": "secops@corp.example.com", "token": notify.confirm_token(org_id, "secops@corp.example.com")}
+        assert "Confirmed" in TestClient(app).post("/api/notify/confirm", params=q).text
         assert admin.post("/api/settings/notifications/test").status_code == 202
         notify.flush()
         time.sleep(1)

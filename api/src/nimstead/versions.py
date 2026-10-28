@@ -437,7 +437,7 @@ def gem_cmp(a: str, b: str) -> int:
 
 _COMPOSER_RE = re.compile(
     r"v?(\d{1,5})(\.\d+)?(\.\d+)?(\.\d+)?"
-    r"[._-]?(?:(stable|beta|b|rc|alpha|a|patch|pl|p)((?:[.-]?\d+)*)?)?([.-]?dev)?",
+    r"[._-]?(?:(stable|beta|b|rc|alpha|a|patch|pl|p)((?:[.-]?\d+)*+)?)?([.-]?dev)?",  # *+ possessive: no catastrophic backtracking
     re.I,
 )
 _COMPOSER_STABILITY = {"a": "alpha", "b": "beta", "rc": "RC", "pl": "patch", "p": "patch"}

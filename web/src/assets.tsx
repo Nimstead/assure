@@ -199,6 +199,7 @@ function AddApplication() {
 /** Button -> file picker -> POST of the raw CycloneDX JSON. The result is announced in a live region. */
 export function SbomUpload({ a }: { a: Asset }) {
   const qc = useQueryClient();
+  const admin = useIsAdmin();
   const file = useRef<HTMLInputElement>(null);
   const up = useMutation({
     mutationFn: async (f: File) => api<SbomResult>(`/api/assets/${a.id}/sbom`, { method: "POST", body: await f.text() }),
@@ -206,7 +207,7 @@ export function SbomUpload({ a }: { a: Asset }) {
   });
   return (
     <div className="flex flex-col gap-1">
-      <button className={btnQuiet} disabled={up.isPending} aria-label={`Upload SBOM for ${a.hostname}`} onClick={() => file.current?.click()}>
+      <button className={btnQuiet} disabled={up.isPending} aria-label={`Upload SBOM for ${a.hostname}`} onClick={() => file.current?.click()} {...adminGate(admin)}>
         <Upload className="size-4" aria-hidden />{up.isPending ? "Uploading…" : "Upload SBOM"}
       </button>
       <input ref={file} type="file" accept=".json,application/json" hidden tabIndex={-1} data-testid={`sbom-file-${a.id}`}

@@ -1,4 +1,6 @@
 import importlib.util
+import json
+import os
 from pathlib import Path
 
 import pytest
@@ -65,13 +67,62 @@ def test_lockdown_removes_files_users_planted_then_restricts_the_folder(tmp_path
     def run(cmd, cwd=None):
         calls.append(cmd)
         if cmd[0] == "powershell":
-            return 0, f"{d / 'pending-job.json'}|S-1-5-21-1-2-3-1001\n{d / 'agent.json'}|S-1-5-32-544\n"
+            return 0, f"{d / 'pending-job.json'}|S-1-5-21-1-2-3-1001|0\n{d / 'agent.json'}|S-1-5-32-544|0\n"
         return 0, ""
     assert agent.secure_windows_dir(run, str(d)) == [str(d / "pending-job.json")]
     assert (d / "agent.json").exists() and not (d / "pending-job.json").exists()
-    icacls = [c[2:] for c in calls if c[0] == "icacls"]
-    assert icacls[0] == ["/inheritance:r", "/grant:r", "*S-1-5-18:(OI)(CI)F", "/grant:r", "*S-1-5-32-544:(OI)(CI)F", "/Q"]
-    assert ["/setowner", "*S-1-5-32-544", "/T", "/C", "/Q"] in icacls and ["/reset", "/T", "/C", "/Q"] in icacls
+    steps = [c[2:] if c[0] == "icacls" else "list" for c in calls]
+    # the folder is taken before anything is listed: owner first, then every explicit ACE dropped (a user who created the
+    # folder could have granted themselves access, and /grant:r alone keeps such an ACE), then SYSTEM + Administrators only
+    assert steps[:4] == [["/setowner", "*S-1-5-32-544", "/Q"], ["/reset", "/Q"],
+                         ["/inheritance:r", "/grant:r", "*S-1-5-18:(OI)(CI)F", "/grant:r", "*S-1-5-32-544:(OI)(CI)F", "/Q"], "list"]
+    assert steps[4:] == [["/setowner", "*S-1-5-32-544", "/T", "/C", "/Q"], ["/reset", "/T", "/C", "/Q"]]
+
+
+@pytest.mark.real_lockdown
+@pytest.mark.skipif(os.name != "nt", reason="directory junctions are Windows-only")
+def test_lockdown_never_follows_junctions_out_of_the_folder(tmp_path):
+    import _winapi
+    victim = tmp_path / "Users" / "victim"
+    victim.mkdir(parents=True)
+    (victim / "Documents.txt").write_text("not ours")
+    d = tmp_path / "Nimstead"
+    d.mkdir()
+    _winapi.CreateJunction(str(victim), str(d / "x"))  # planted by a standard user before install
+
+    def run(cmd, cwd=None):  # as if PowerShell had listed through the junction anyway, with the victim as owner
+        if cmd[0] == "powershell":
+            return 0, f"{d / 'x'}||1\n{d / 'x' / 'Documents.txt'}|S-1-5-21-1-2-3-1002|0\n"
+        return 0, ""
+    removed = agent.secure_windows_dir(run, str(d))
+    assert removed == [str(d / "x")] and not os.path.lexists(d / "x")  # the link is gone...
+    assert (victim / "Documents.txt").read_text() == "not ours"  # ...and nothing it pointed at was touched
+
+
+@pytest.mark.real_lockdown
+@pytest.mark.skipif(os.name != "nt", reason="directory junctions are Windows-only")
+def test_lockdown_replaces_a_folder_planted_as_a_junction(tmp_path):
+    import _winapi
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (elsewhere / "keep.txt").write_text("x")
+    d = tmp_path / "Nimstead"
+    _winapi.CreateJunction(str(elsewhere), str(d))
+    calls = []
+    agent.secure_windows_dir(lambda cmd, cwd=None: (calls.append(cmd), (0, ""))[1], str(d))
+    assert not agent.is_link(str(d)) and os.path.isdir(d) and (elsewhere / "keep.txt").exists()
+    assert all(c[1] == str(d) for c in calls if c[0] == "icacls" and "/T" not in c)
+
+
+def test_windows_enroll_locks_the_folder_before_the_key_is_written(tmp_path, monkeypatch):
+    cfg = tmp_path / "Nimstead" / "agent.json"
+    seen = []
+    monkeypatch.setattr(agent, "config_path", lambda: str(cfg))
+    monkeypatch.setattr(agent, "secure_windows_dir", lambda d=None, **k: seen.append((d, cfg.exists())))
+    monkeypatch.setattr(agent.os, "name", "nt")
+    agent.save_config({"agent_key": "nma_x"})
+    monkeypatch.undo()
+    assert seen == [(str(cfg.parent), False)] and json.loads(cfg.read_text()) == {"agent_key": "nma_x"}
 
 
 @pytest.mark.real_lockdown

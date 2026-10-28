@@ -74,7 +74,7 @@ export function Onboarding() {
         ) : (
           <div className="flex flex-col items-start gap-4">
             <ol className="flex flex-col gap-2 text-sm">
-              <li className="flex items-center gap-2"><span className="size-4 text-center text-xs" aria-hidden>1</span>Create a one-time enrolment token</li>
+              <li className="flex items-center gap-2"><span className="size-4 text-center text-xs" aria-hidden>1</span>Create an enrolment token (valid 30 days; revoke it when you're done)</li>
               <li className="flex items-center gap-2 text-muted"><span className="size-4 text-center text-xs" aria-hidden>2</span>Run one command on the machine</li>
               <li className="flex items-center gap-2 text-muted"><span className="size-4 text-center text-xs" aria-hidden>3</span>See what to fix first</li>
             </ol>

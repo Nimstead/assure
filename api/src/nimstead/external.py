@@ -1,7 +1,11 @@
 """Outside-in checks of internet-facing hosts the customer has proven they own.
 
-Ownership: a DNS TXT record `_nimstead-verify.<host>` = "nimstead-verify=<per-org token>" (the scheme SSO domains use),
-checked when the target is added and AGAIN before every scan, so a lapsed or transferred name is never scanned.
+Ownership is proven twice, when the target is verified and AGAIN before every scan, so a lapsed or transferred name is
+never scanned:
+- the name: a DNS TXT record `_nimstead-verify.<host>` = "nimstead-verify=<per-org token>" (the scheme SSO domains use)
+- the address: the same value served at /.well-known/nimstead-verify.txt by the very address about to be scanned (HTTPS
+  on 443 or HTTP on 80). Owning a name proves nothing about the IP it points at: without this a tenant could point a name
+  it controls at someone else's server and have us probe it.
 Only public addresses are scanned (never a customer's or our own internal network), and every connection goes to the
 address that was checked. Checks are deliberately few and certain:
 - dangerous services reachable from the internet (TCP connect only: no logins, no exploits, no payloads)
@@ -45,6 +49,8 @@ SERVICES = {
 }
 TLS_PORT = 443
 EXPIRY_WARN_DAYS = 14
+PROOF_PATH = "/.well-known/nimstead-verify.txt"
+PROOF_PORTS = ((443, True), (80, False))  # (port, TLS)
 
 
 class ScanRefused(Exception):
@@ -61,6 +67,32 @@ def txt_value(org_id: str, host: str) -> str:
 
 def owned(org_id: str, host: str, lookup) -> bool:
     return txt_value(org_id, host) in lookup(txt_name(host))
+
+
+def address_proven(ip: str, host: str, value: str, ports=PROOF_PORTS, timeout: float = 5.0) -> bool:
+    """True if the server at this exact IP serves value at PROOF_PATH for host. Connects to the IP itself (no DNS, no
+    redirects). The certificate isn't checked: the per-org secret in the body is the proof, and an expired or
+    self-signed certificate is one of the things the scan exists to report."""
+    req = f"GET {PROOF_PATH} HTTP/1.1\r\nHost: {host}\r\nUser-Agent: nimstead-verify\r\nConnection: close\r\n\r\n".encode()
+    for port, tls in ports:
+        try:
+            with socket.create_connection((ip, port), timeout=timeout) as raw:
+                if tls:
+                    ctx = ssl.create_default_context()
+                    ctx.check_hostname, ctx.verify_mode = False, ssl.CERT_NONE
+                    conn = ctx.wrap_socket(raw, server_hostname=host)
+                else:
+                    conn = raw
+                conn.sendall(req)
+                data = b""
+                while len(data) < 8192 and (chunk := conn.recv(4096)):
+                    data += chunk
+        except (OSError, ssl.SSLError):
+            continue
+        head, _, body = data.partition(b"\r\n\r\n")
+        if head.split(b" ", 2)[1:2] == [b"200"] and value.encode() in body[:4096]:
+            return True
+    return False
 
 
 def port_open(ip: str, port: int, timeout: float = 3.0) -> bool:
@@ -158,8 +190,8 @@ def _tls(cid, cvss, text):
 
 
 def scan(s: Session, asset: Asset, lookup=None, run_checks=None) -> dict:
-    """Re-prove ownership, scan, and open/resolve findings with ledger entries. Raises ScanRefused, changing nothing,
-    if the target isn't (or is no longer) verified or doesn't resolve to public addresses only."""
+    """Re-prove ownership of the name and of the address, scan, and open/resolve findings with ledger entries. Raises
+    ScanRefused, probing nothing, if the target isn't (or is no longer) proven or doesn't resolve to public addresses only."""
     if asset.kind != "external":
         raise ScanRefused("Only external targets are scanned from outside")
     if asset.verified_at is None:
@@ -173,6 +205,12 @@ def scan(s: Session, asset: Asset, lookup=None, run_checks=None) -> dict:
         ip = netguard.check_public_url(f"https://{asset.hostname}/")[0]
     except ValueError as e:
         raise ScanRefused(f"Not scanned: {e}") from None
+    if not address_proven(ip, asset.hostname, txt_value(asset.org_id, asset.hostname)):
+        evidence.append(s, asset.org_id, "external_scan_refused", asset.id, {"host": asset.hostname, "address": ip,
+                                                                             "reason": "address proof missing"})
+        s.commit()
+        raise ScanRefused(f"Not scanned: {ip} doesn't serve the verification value at {PROOF_PATH} (HTTPS or HTTP). "
+                          "Owning the name doesn't prove you run the server it points at")
     found, skipped = (run_checks or checks)(asset.hostname, ip)
     t = now()
     existing = {f.vuln_id: f for f in s.scalars(select(Finding).where(Finding.asset_id == asset.id))}

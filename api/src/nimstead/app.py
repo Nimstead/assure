@@ -2,6 +2,8 @@
 
 import functools
 import hashlib
+import html
+import ipaddress
 import logging
 import os
 import re
@@ -10,7 +12,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Literal
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 import httpx
 from argon2 import PasswordHasher
@@ -34,6 +36,7 @@ from nimstead.db import (
     Notification,
     Org,
     PendingLogin,
+    PendingSignup,
     RemediationJob,
     User,
     WebSession,
@@ -71,12 +74,36 @@ DUMMY_HASH = ph.hash("nimstead-dummy-password")
 MAX_BODY = 10 * 1024 * 1024
 ENROLL_TOKEN_DAYS = 30
 LOGIN_MAX_FAILURES, LOGIN_WINDOW = 10, 15 * 60
-LOGIN_MAX_PER_EMAIL = 100  # across all addresses: slows distributed guessing without letting one attacker lock out an admin
+LOGIN_MAX_PER_EMAIL = 100  # across all addresses, but only stops addresses that already failed: no one can lock out the owner
+SIGNUP_MAX_PER_HOUR = 10  # per client address: signup necessarily says whether an email is taken, so keep probing slow
+EXTSCAN_MAX_PER_HOUR = 10  # manual outside-in scans per org (the hourly feed run scans every verified target anyway)
+CONFIRM_MAIL_MAX_PER_HOUR = 20  # alert-recipient confirmation emails per org
+TEST_ALERT_MAX_PER_HOUR = 5
+RATE_WINDOW = 3600
+SIGNUP_LINK_HOURS = 24
+
+
+def open_signup() -> bool:
+    """Dev/test/demo only: NIMSTEAD_OPEN_SIGNUP=1 creates accounts instantly, which says whether an email is taken."""
+    if os.environ.get("NIMSTEAD_OPEN_SIGNUP") == "1":
+        log.warning("NIMSTEAD_OPEN_SIGNUP=1: sign-up reveals which emails have accounts (never in production)")
+        return True
+    return False
 INVENTORY_MIN_SECONDS = int(os.environ.get("NIMSTEAD_INVENTORY_MIN_SECONDS", "30"))
 
 
 def sha(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+def client_key(request: Request) -> str:
+    """The client address for throttling; IPv6 by /64, the block one host or customer usually gets."""
+    ip = request.client.host if request.client else "?"  # behind a proxy: uvicorn --proxy-headers --forwarded-allow-ips
+    try:
+        a = ipaddress.ip_address(ip)
+    except ValueError:
+        return ip
+    return str(ipaddress.ip_network(f"{a}/64", strict=False)) if a.version == 6 else ip
 
 
 def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None, dns_lookup=None) -> FastAPI:
@@ -156,29 +183,68 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         email: EmailStr
         password: str = Field(max_length=200)
 
-    @app.post("/api/auth/signup", status_code=201)
-    def signup(body: Signup, resp: Response, s: DB):
-        if s.scalar(select(User).where(User.email == body.email.lower())):
-            raise HTTPException(409, "An account with that email already exists")
-        org = Org(name=body.org_name)
+    def over_limit(s: Session, key: str, limit: int, seconds: int = RATE_WINDOW) -> bool:
+        """Record one attempt under key; True if that makes more than limit within the window. In the DB: holds across workers."""
+        s.execute(delete(AuthFailure).where(AuthFailure.ts < now() - timedelta(seconds=RATE_WINDOW)))  # housekeeping
+        n = s.scalar(select(func.count()).select_from(AuthFailure).where(AuthFailure.key == key,
+                                                                         AuthFailure.ts > now() - timedelta(seconds=seconds)))
+        s.add(AuthFailure(key=key))
+        s.commit()
+        return n >= limit
+
+    def create_account(s: Session, email: str, org_name: str, password_hash: str) -> User:
+        org = Org(name=org_name)
         s.add(org)
         s.flush()
-        user = User(org_id=org.id, email=body.email.lower(), password_hash=ph.hash(body.password), admin=True)
+        user = User(org_id=org.id, email=email, password_hash=password_hash, admin=True)
         s.add(user)
         s.flush()
-        start_session(s, user, resp)
-        return {"email": user.email, "org": org.name}
+        return user
 
-    def throttled(s: Session, key: str) -> bool:
+    def public_base(request: Request) -> str:
+        return (os.environ.get("NIMSTEAD_PUBLIC_URL") or str(request.base_url)).rstrip("/")
+
+    @app.post("/api/auth/signup", status_code=201)
+    def signup(body: Signup, request: Request, resp: Response, s: DB):
+        if over_limit(s, "signup:" + client_key(request), SIGNUP_MAX_PER_HOUR):
+            raise HTTPException(429, "Too many sign-ups from this address; try again in an hour")
+        email, password_hash = body.email.lower(), ph.hash(body.password)  # hashed either way: equal timing on every path
+        if open_signup() or not s.scalar(select(func.count()).select_from(User)):  # the first account sets the server up
+            if s.scalar(select(User).where(User.email == email)):
+                raise HTTPException(409, "An account with that email already exists")
+            user = create_account(s, email, body.org_name, password_hash)
+            start_session(s, user, resp)
+            return {"email": user.email, "org": body.org_name}
+        # From here the answer is the same whether or not the email has an account: the address owner gets the next step.
+        if not notify.smtp_configured():
+            raise HTTPException(403, "Sign-up on this server needs email to be set up (NIMSTEAD_SMTP_URL). "
+                                     "Ask your Nimstead administrator, or sign in with single sign-on.")
+        s.execute(delete(PendingSignup).where(PendingSignup.expires < now()))
+        if not over_limit(s, "signup-mail:" + email, 3):  # nobody can flood an inbox with sign-up emails
+            if s.scalar(select(User.id).where(User.email == email)):
+                notify.send_signup_email(email, None, public_base(request) + "/signin")
+            else:
+                token = secrets.token_urlsafe(32)
+                s.add(PendingSignup(token_hash=sha(token), email=email, org_name=body.org_name, password_hash=password_hash,
+                                    expires=now() + timedelta(hours=SIGNUP_LINK_HOURS)))
+                s.commit()
+                notify.send_signup_email(email, f"{public_base(request)}/api/auth/signup/confirm?{urlencode({'token': token})}", "")
+        resp.status_code = 202
+        return {"status": "check_email", "email": email}
+
+    def failures(s: Session, key: str) -> int:
         since = now() - timedelta(seconds=LOGIN_WINDOW)
-        limit = LOGIN_MAX_PER_EMAIL if key.startswith("email:") else LOGIN_MAX_FAILURES
-        return s.scalar(select(func.count()).select_from(AuthFailure).where(AuthFailure.key == key, AuthFailure.ts > since)) >= limit
+        return s.scalar(select(func.count()).select_from(AuthFailure).where(AuthFailure.key == key, AuthFailure.ts > since))
 
     @app.post("/api/auth/login")
     def login(body: Login, request: Request, resp: Response, s: DB):
-        ip = request.client.host if request.client else "?"  # behind a proxy: uvicorn --proxy-headers --forwarded-allow-ips
+        ip = client_key(request)
         keys = ["email:" + body.email.lower(), "email+ip:" + body.email.lower() + "|" + ip, "ip:" + ip]
-        if any(throttled(s, k) for k in keys):
+        per_ip = failures(s, keys[2])
+        # The email-wide cap only stops addresses that have failed recently, so an attacker spreading guesses over many
+        # addresses still gets slowed but can't lock the real user (or a break-glass admin) out from a clean address.
+        if (failures(s, keys[1]) >= LOGIN_MAX_FAILURES or per_ip >= LOGIN_MAX_FAILURES
+                or (per_ip and failures(s, keys[0]) >= LOGIN_MAX_PER_EMAIL)):
             raise HTTPException(429, "Too many failed sign-in attempts; try again in 15 minutes")
         user = s.scalar(select(User).where(User.email == body.email.lower()))
         try:
@@ -187,7 +253,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             if not pw_user:
                 raise VerifyMismatchError
         except VerifyMismatchError:
-            s.execute(delete(AuthFailure).where(AuthFailure.ts < now() - timedelta(seconds=LOGIN_WINDOW)))  # housekeeping
+            s.execute(delete(AuthFailure).where(AuthFailure.ts < now() - timedelta(seconds=RATE_WINDOW)))  # housekeeping
             s.add_all(AuthFailure(key=k) for k in keys)
             s.commit()
             raise HTTPException(401, "Email or password is incorrect") from None
@@ -331,7 +397,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             "first_seen": a.first_seen, "last_seen": a.last_seen, "open_by_priority": counts,
             **({"agent_version": a.agent_version, "agent_outdated": a.agent_version != latest_agent_version()} if a.kind == "host" else {}),
             **({"verified": a.verified_at is not None, "verified_at": a.verified_at, "txt_name": external.txt_name(a.hostname),
-                "txt_value": external.txt_value(a.org_id, a.hostname)} if a.kind == "external" else {}),
+                "txt_value": external.txt_value(a.org_id, a.hostname), "proof_path": external.PROOF_PATH} if a.kind == "external" else {}),
         }
 
     @app.get("/api/assets")
@@ -399,8 +465,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         host = body.hostname.strip().lower().rstrip(".")
         if not external.HOSTNAME.fullmatch(host):
             raise HTTPException(422, "Enter a public DNS hostname, e.g. www.example.com")
-        if s.scalar(select(Asset.id).where(Asset.kind == "external", Asset.hostname == host)):
-            raise HTTPException(409, "That host is already a target (here or in another organisation)")
+        # Unique per org only: each org proves ownership with its own TXT token, so another tenant's claim (verified or
+        # not) can neither block the real owner nor reveal that someone else monitors the host.
+        if s.scalar(select(Asset.id).where(Asset.org_id == user.org_id, Asset.kind == "external", Asset.hostname == host)):
+            raise HTTPException(409, "That host is already a target")
         t = now()  # last_seen == first_seen until the first scan ("not scanned yet" in the UI)
         a = Asset(org_id=user.org_id, hostname=host, kind="external", criticality=body.criticality, internet_facing=True,
                   agent_key_hash=sha(secrets.token_urlsafe(32)), first_seen=t, last_seen=t)  # no agent: key never handed out
@@ -413,8 +481,15 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     @app.post("/api/targets/{target_id}/verify")
     def verify_target(target_id: str, user: Admin, s: DB):
         a = owned_target(s, user, target_id)
+        value = external.txt_value(a.org_id, a.hostname)
         if not external.owned(a.org_id, a.hostname, dns_lookup or sso.txt_records):
-            raise HTTPException(409, f"TXT record not found: add {external.txt_name(a.hostname)} = {external.txt_value(a.org_id, a.hostname)}")
+            raise HTTPException(409, f"TXT record not found: add {external.txt_name(a.hostname)} = {value}")
+        try:  # the name is yours; now the server it points at must say so too (re-checked against every scanned address)
+            ip = check_public_url(f"https://{a.hostname}/")[0]
+        except ValueError as e:
+            raise HTTPException(409, f"Not verifiable: {e}") from None
+        if not external.address_proven(ip, a.hostname, value):
+            raise HTTPException(409, f"{ip} doesn't serve the value at {external.PROOF_PATH}: serve {value} there over HTTPS or HTTP")
         if a.verified_at is None:
             a.verified_at = now()
             evidence.append(s, a.org_id, "external_target_verified", a.id, {"by": user.email, "host": a.hostname})
@@ -424,6 +499,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     @app.post("/api/targets/{target_id}/scan")
     def scan_target(target_id: str, user: Admin, s: DB):
         a = owned_target(s, user, target_id)
+        if over_limit(s, "extscan:" + user.org_id, EXTSCAN_MAX_PER_HOUR):  # bounds what a tenant can aim at a DNS name it controls
+            raise HTTPException(429, f"At most {EXTSCAN_MAX_PER_HOUR} manual scans an hour; verified targets are also scanned hourly")
         try:
             return external.scan(s, a, dns_lookup or sso.txt_records)
         except external.ScanRefused as e:
@@ -462,7 +539,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                 raise HTTPException(401, "Unknown key for this asset")
             by = "key"
         else:
-            user = current_user(request, s)
+            user = admin_user(current_user(request, s))  # replacing an SBOM resolves findings: not for read-only members
             a, by = owned_asset(s, user, asset_id), user.email
         try:
             pkgs, counts = sbom.parse(sbom.load(raw))
@@ -621,8 +698,17 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         resp.delete_cookie(SSO_COOKIE, path="/api/auth/sso")
         return resp
 
-    @app.get("/api/auth/sso/start")
-    def sso_start(request: Request, s: DB, email: str | None = Query(None, max_length=320), org: str | None = Query(None, max_length=32)):
+    @app.post("/api/auth/sso/start")
+    async def sso_start(request: Request, s: DB):
+        # POST from the sign-in form, never a GET: the Origin check refuses a flow started by another site, which could
+        # otherwise sign a victim's browser into an attacker's org (login CSRF) or bounce them to any URL (open redirect).
+        form = parse_qs((await request.body()).decode(errors="replace"))
+        email, org = (form.get("email") or [None])[0], (form.get("org") or [None])[0]
+        if (email and len(email) > 320) or (org and len(org) > 32):
+            return sso_fail("not_configured")
+        return await run_in_threadpool(sso_begin, request, s, email, org)
+
+    def sso_begin(request: Request, s: Session, email: str | None, org: str | None):
         o = sso_org(s, email, org)
         if not o or not (o.sso_client_id and o.sso_client_secret and o.sso_verified_domains):
             return sso_fail("not_configured")
@@ -750,10 +836,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     def notify_json(o: Org, s: Session) -> dict:
         recent = s.scalars(select(Notification).where(Notification.org_id == o.id).order_by(Notification.id.desc()).limit(5)).all()
-        host = urlsplit(o.notify_webhook_url).hostname if o.notify_webhook_url else None
+        url = notify.webhook_url(o)
         return {
-            "webhook_set": bool(o.notify_webhook_url), "webhook_host": host, "webhook_format": o.notify_webhook_format,
-            "emails": o.notify_emails, "email_available": notify.smtp_configured(),
+            "webhook_set": bool(url), "webhook_host": urlsplit(url).hostname if url else None, "webhook_format": o.notify_webhook_format,
+            "emails": o.notify_emails, "emails_confirmed": notify.recipients(o), "email_available": notify.smtp_configured(),
             # per channel: a dead webhook must not be hidden by an email that went through a second later
             "last_delivery_failed": any(not next(n for n in recent if n.channel == ch).ok for ch in {n.channel for n in recent}),
             "recent": [{"ts": n.ts, "kind": n.kind, "channel": n.channel, "urgent": n.urgent, "ok": n.ok, "error": n.error} for n in recent],
@@ -764,28 +850,94 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         return notify_json(s.get(Org, user.org_id), s)
 
     @app.put("/api/settings/notifications")
-    def put_notifications(body: NotifyConfig, user: Admin, s: DB):
+    def put_notifications(body: NotifyConfig, request: Request, user: Admin, s: DB):
         o = s.get(Org, user.org_id)
+        added = []
         if body.webhook_url is not None:
             if body.webhook_url:
                 try:
                     check_public_url(body.webhook_url, resolve=False)  # re-checked with DNS resolution at every delivery
                 except ValueError as e:
                     raise HTTPException(422, f"Webhook URL: {e}") from None
-            o.notify_webhook_url = body.webhook_url or None
+            o.notify_webhook_url = sso.seal(body.webhook_url) if body.webhook_url else None
         if body.webhook_format:
             o.notify_webhook_format = body.webhook_format
         if body.emails is not None:
-            o.notify_emails = sorted({e.lower() for e in body.emails})
+            emails = sorted({e.lower() for e in body.emails})
+            added = [e for e in emails if e not in o.notify_emails]
+            o.notify_emails, o.notify_emails_confirmed = emails, [e for e in o.notify_emails_confirmed if e in emails]
+        url = notify.webhook_url(o)
         evidence.append(s, o.id, "notifications_configured", o.id, {
-            "by": user.email, "webhook_host": urlsplit(o.notify_webhook_url).hostname if o.notify_webhook_url else None,
+            "by": user.email, "webhook_host": urlsplit(url).hostname if url else None,
             "format": o.notify_webhook_format, "emails": o.notify_emails,
         })
         s.commit()
+        base = public_base(request)
+        for e in added:  # each new address must confirm before it gets alerts; the email itself is fixed text
+            if notify.smtp_configured() and not over_limit(s, "confirm-mail:" + o.id, CONFIRM_MAIL_MAX_PER_HOUR):
+                q = urlencode({"org": o.id, "email": e, "token": notify.confirm_token(o.id, e)})
+                notify.send_confirmation(s.get_bind(), o.id, e, f"{base}/api/notify/confirm?{q}")
         return notify_json(o, s)
+
+    CONFIRM_PAGE = ("<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width'><title>Nimstead alerts</title>"
+                    "<body style='font-family:system-ui;max-width:32rem;margin:4rem auto;padding:0 1rem'>{}</body>")
+    CONFIRM_INVALID = CONFIRM_PAGE.format("<p>This confirmation link is invalid or no longer needed.</p>")
+
+    def confirmable(s: Session, org: str, email: str, token: str) -> Org | None:
+        o = s.get(Org, org[:32])
+        email = email.lower()
+        ok = o and email in o.notify_emails and secrets.compare_digest(token, notify.confirm_token(o.id, email))
+        return o if ok else None
+
+    @app.get("/api/notify/confirm")
+    def confirm_page(s: DB, org: str = "", email: str = "", token: str = ""):
+        if not confirmable(s, org, email, token):
+            return Response(CONFIRM_INVALID, 404, media_type="text/html")
+        # a button, not an automatic confirm: mail scanners open links on their own
+        return Response(CONFIRM_PAGE.format("<h1>Nimstead security alerts</h1><p>Send security alerts to this address?</p>"
+                                            "<form method=post><button>Yes, send me alerts</button></form>"), media_type="text/html")
+
+    @app.post("/api/notify/confirm")
+    def confirm_email(s: DB, org: str = "", email: str = "", token: str = ""):
+        o = confirmable(s, org, email, token)
+        if not o:
+            return Response(CONFIRM_INVALID, 404, media_type="text/html")
+        email = email.lower()
+        if email not in o.notify_emails_confirmed:
+            o.notify_emails_confirmed = sorted({*o.notify_emails_confirmed, email})
+            evidence.append(s, o.id, "notification_email_confirmed", o.id, {"email": email})
+            s.commit()
+        return Response(CONFIRM_PAGE.format(f"<p>Confirmed: {html.escape(email)} will receive Nimstead security alerts.</p>"),
+                        media_type="text/html")
+
+    @app.get("/api/auth/signup/confirm")
+    def signup_confirm_page(s: DB, token: str = ""):
+        p = s.get(PendingSignup, sha(token))
+        if not p or p.expires < now():
+            return Response(CONFIRM_INVALID, 404, media_type="text/html")
+        # a button, not an automatic confirm: mail scanners open links on their own
+        return Response(CONFIRM_PAGE.format("<h1>Create your Nimstead account</h1><p>Finish creating your account?</p>"
+                                            "<form method=post><button>Create my account</button></form>"), media_type="text/html")
+
+    @app.post("/api/auth/signup/confirm")
+    def signup_confirm(s: DB, token: str = ""):
+        p = s.get(PendingSignup, sha(token))
+        if not p or p.expires < now():
+            return Response(CONFIRM_INVALID, 404, media_type="text/html")
+        s.delete(p)  # single use
+        if s.scalar(select(User.id).where(User.email == p.email)):
+            s.commit()
+            return Response(CONFIRM_PAGE.format("<p>This address already has an account. <a href='/signin'>Sign in</a>.</p>"),
+                            409, media_type="text/html")
+        user = create_account(s, p.email, p.org_name, p.password_hash)
+        resp = RedirectResponse("/", status_code=303)
+        start_session(s, user, resp)
+        return resp
 
     @app.post("/api/settings/notifications/test", status_code=202)
     def test_notification(user: Admin, s: DB):
+        if over_limit(s, "notify-test:" + user.org_id, TEST_ALERT_MAX_PER_HOUR):
+            raise HTTPException(429, f"At most {TEST_ALERT_MAX_PER_HOUR} test alerts an hour")
         notify.notify(s, user.org_id, "test", f"Test alert from Nimstead, requested by {user.email}")
         return {"queued": True}
 
@@ -825,7 +977,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def evidence_public_key():
         """Publish this out of band (website, contract, auditor email); auditors verify packs against it, not the copy in the zip."""
         pem = evidence.public_pem(evidence.signing_key())
-        return {"pem": pem.decode(), "fingerprint_sha256": evidence.fingerprint(pem)}
+        return {"pem": pem.decode(), "fingerprint_sha256": evidence.fingerprint(pem), "verifier_sha256": evidence.verifier_sha256()}
+
+    @app.get("/api/evidence/verify.py")
+    def evidence_verifier():
+        """The offline verifier, published here (and by hash next to the key) rather than inside the pack it checks."""
+        return Response(evidence.verifier_source(), media_type="text/x-python")
 
     @app.get("/api/evidence/report")
     def evidence_report(user: CurrentUser, s: DB, days: int = Query(90, ge=1, le=730)):

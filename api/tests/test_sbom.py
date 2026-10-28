@@ -2,6 +2,7 @@ import hashlib
 import json
 from pathlib import Path
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -191,10 +192,38 @@ def test_osv_sync_follows_sbom_ecosystems(env, monkeypatch):
     monkeypatch.setattr(feeds, "sync_kev", lambda *a, **k: 0)
     monkeypatch.setattr(feeds, "sync_epss", lambda *a, **k: 0)
     monkeypatch.setattr(feeds, "sync_nvd", lambda *a, **k: {})
-    monkeypatch.setattr(feeds, "sync_osv", lambda sess, ecos, client=None, only=None: seen.update(ecos=ecos, only=only) or {})
+    monkeypatch.setattr(feeds, "sync_osv", lambda sess, ecos, client=None, only=None: seen.setdefault("ecos", []).extend(ecos)
+                        or seen.update(only=only) or {})
     feeds.update_all(s)
     assert seen["ecos"] == ["Maven", "PyPI", "Ubuntu"]
     assert seen["only"] == {"PyPI", "Maven", "Ubuntu:22.04"}  # no release suffix for language ecosystems
+
+
+def test_unknown_agent_ecosystem_cannot_stop_the_hourly_update(env, monkeypatch):
+    """Ecosystem names come from agents. A made-up one (OSV answers 404) is skipped; everything else still runs."""
+    s = sessionmaker(make_engine(env))()
+    org = Org(name="o")
+    s.add(org)
+    s.flush()
+    a = Asset(org_id=org.id, hostname="h", agent_key_hash="h")
+    s.add(a)
+    s.flush()
+    s.add_all([InstalledPackage(asset_id=a.id, origin="agent", ecosystem="Bogus", name="x", version="1"),
+               InstalledPackage(asset_id=a.id, origin="agent", ecosystem="PyPI", name="x", version="1")])
+    s.commit()
+    synced = []
+
+    def osv(sess, ecos, client=None, only=None):
+        if ecos == ["Bogus"]:
+            raise httpx.HTTPStatusError("404", request=httpx.Request("GET", "https://osv"), response=httpx.Response(404))
+        synced.extend(ecos)
+        return {}
+    for name in ("sync_kev", "sync_epss", "sync_nvd"):
+        monkeypatch.setattr(feeds, name, lambda *a, **k: {})
+    monkeypatch.setattr(feeds, "sync_osv", osv)
+    out = feeds.update_all(s)
+    assert synced == ["PyPI"] and "error" in out["osv"]["Bogus"]
+    assert out["rescanned"] == 1 and "alerts_retried" in out  # re-matching, checkpoints and retries still ran
 
 
 def test_osv_sync_only_filter_keeps_language_ecosystem(monkeypatch):

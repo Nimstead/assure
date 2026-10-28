@@ -16,6 +16,7 @@ import platform
 import re
 import shutil
 import socket
+import stat
 import subprocess
 import sys
 import tarfile
@@ -24,7 +25,7 @@ import time
 import urllib.error
 import urllib.request
 
-AGENT_VERSION = "0.1.2"  # the server reads this line to flag outdated agents; bump on every agent change
+AGENT_VERSION = "0.1.3"  # the server reads this line to flag outdated agents; bump on every agent change
 
 
 class AgentError(Exception):
@@ -1128,6 +1129,8 @@ def load_config():
 
 def save_config(cfg):
     p = config_path()
+    if os.name == "nt":  # chmod is a no-op on Windows and ProgramData is open to all users: lock it before the key lands
+        secure_windows_dir(d=os.path.dirname(p))
     try:
         os.makedirs(os.path.dirname(p), exist_ok=True)
         fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
@@ -1136,45 +1139,73 @@ def save_config(cfg):
         os.chmod(p, 0o600)  # in case the file pre-existed with looser perms
     except OSError as e:
         raise AgentError(f"cannot write {p}: {e}")
-    if os.name == "nt":  # chmod is a no-op on Windows and ProgramData is readable by all users
-        try:
-            secure_windows_dir(d=os.path.dirname(p))
-        except AgentError:
-            os.remove(p)
-            raise
     return p
 
 
+# Lists the folder without ever following a junction or symlink (Windows PowerShell 5.1's -Recurse would): path|owner|link
 PS_OWNERS = r"""
-Get-ChildItem -LiteralPath '%DIR%' -Recurse -Force | ForEach-Object {
-  $_.FullName + '|' + (Get-Acl -LiteralPath $_.FullName).GetOwner([Security.Principal.SecurityIdentifier]).Value }
+function Walk($p) { Get-ChildItem -LiteralPath $p -Force | ForEach-Object {
+  $link = [int][bool]($_.Attributes -band [IO.FileAttributes]::ReparsePoint)
+  $owner = if ($link) { '' } else { (Get-Acl -LiteralPath $_.FullName).GetOwner([Security.Principal.SecurityIdentifier]).Value }
+  $_.FullName + '|' + $owner + '|' + $link
+  if ($_.PSIsContainer -and -not $link) { Walk $_.FullName } } }
+Walk '%DIR%'
 """
 
 
+def is_link(path):
+    """Symlink or junction (any reparse point): something to remove, never to follow."""
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return False
+    return stat.S_ISLNK(st.st_mode) or bool(getattr(st, "st_file_attributes", 0) & 0x400)  # FILE_ATTRIBUTE_REPARSE_POINT
+
+
+def remove_link(path):
+    (os.rmdir if os.path.isdir(path) else os.remove)(path)  # removes the link itself, not what it points at
+
+
 def secure_windows_dir(run=sh, d=None):
-    """ProgramData lets every user create files, and a file planted in our folder would be read by the SYSTEM task
-    (a pending job decides what runs after a reboot). So: anything in it not owned by SYSTEM or Administrators is
-    removed and reported, then Administrators own everything and only SYSTEM and Administrators have access.
-    Returns the paths removed."""
+    """ProgramData lets every user create files and folders, including this folder before the agent is installed, and a
+    file planted in it would be read by the SYSTEM task (a pending job decides what runs after a reboot). So, in order:
+    take the folder (Administrators own it, every explicit ACE dropped, then only SYSTEM and Administrators have access),
+    list what's inside, give all of it to Administrators, then remove links and anything a non-admin created.
+    Nothing outside the folder is ever touched. Returns the paths removed."""
     d = d or os.path.dirname(WIN_STATE)
+    if is_link(d):  # our folder itself planted as a junction would aim the lockdown, and our files, somewhere else
+        remove_link(d)
     os.makedirs(d, exist_ok=True)
-    rc, out = ps(run, PS_OWNERS.replace("%DIR%", d.replace("'", "''")))
-    if rc != 0:
-        raise AgentError(f"cannot read owners in {d}: {out.strip()[-300:]}")
-    removed = []
-    for line in out.splitlines():
-        path, _, sid = line.strip().rpartition("|")
-        if path and sid not in TRUSTED_OWNERS and os.path.exists(path):
-            shutil.rmtree(path, ignore_errors=True) if os.path.isdir(path) else os.remove(path)
-            removed.append(path)
-    cmds = [["icacls", d, "/inheritance:r", "/grant:r", "*S-1-5-18:(OI)(CI)F", "/grant:r", "*S-1-5-32-544:(OI)(CI)F", "/Q"],
-            ["icacls", d, "/setowner", "*S-1-5-32-544", "/T", "/C", "/Q"]]
-    if os.listdir(d):  # children: drop any explicit ACEs, inherit only the folder's
-        cmds.append(["icacls", os.path.join(d, "*"), "/reset", "/T", "/C", "/Q"])
-    for cmd in cmds:
+    take = [["icacls", d, "/setowner", "*S-1-5-32-544", "/Q"],  # an owner can always rewrite the ACL, so owner first
+            ["icacls", d, "/reset", "/Q"],  # drops explicit ACEs that /grant:r would keep (it replaces only the SIDs it names)
+            ["icacls", d, "/inheritance:r", "/grant:r", "*S-1-5-18:(OI)(CI)F", "/grant:r", "*S-1-5-32-544:(OI)(CI)F", "/Q"]]
+    for cmd in take:
         rc, out = run(cmd)
         if rc != 0:
             raise AgentError(f"could not lock down {d}: {out.strip()[-300:]}")
+    rc, out = ps(run, PS_OWNERS.replace("%DIR%", d.replace("'", "''")))
+    if rc != 0:
+        raise AgentError(f"cannot read owners in {d}: {out.strip()[-300:]}")
+    entries = [line.strip().rsplit("|", 2) for line in out.splitlines() if line.count("|") >= 2]
+    # after this no user can change anything inside, so what was listed is what gets removed
+    give = [["icacls", d, "/setowner", "*S-1-5-32-544", "/T", "/C", "/Q"]]
+    if os.listdir(d):  # children: drop any explicit ACEs, inherit only the folder's
+        give.append(["icacls", os.path.join(d, "*"), "/reset", "/T", "/C", "/Q"])
+    for cmd in give:
+        rc, out = run(cmd)
+        if rc != 0:
+            raise AgentError(f"could not lock down {d}: {out.strip()[-300:]}")
+    root, removed = os.path.realpath(d), []
+    for path, sid, link in sorted(entries, key=lambda e: e[2] != "1"):  # links first, so no removal can go through one
+        if not os.path.lexists(path):
+            continue
+        if link == "1" or is_link(path):
+            remove_link(path)
+        elif sid in TRUSTED_OWNERS or os.path.commonpath([root, os.path.realpath(path)]) != root:
+            continue
+        else:
+            shutil.rmtree(path, ignore_errors=True) if os.path.isdir(path) else os.remove(path)
+        removed.append(path)
     for path in removed:
         print(f"removed {path}: not created by SYSTEM or Administrators", file=sys.stderr)
     return removed

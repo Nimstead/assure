@@ -147,12 +147,15 @@ export function NotificationsSection() {
             <option value="json">Generic JSON (kind, urgent, text)</option>
           </select>
         </Field>
-        <Field label="Email recipients" hint={s.email_available ? "Comma or space separated." : "Email isn't set up on this server (NIMSTEAD_SMTP_URL and NIMSTEAD_SMTP_FROM), so these won't be sent."}>
+        <Field label="Email recipients" hint={s.email_available ? "Comma or space separated. Each new address gets a confirmation email and receives alerts only after confirming." : "Email isn't set up on this server (NIMSTEAD_SMTP_URL and NIMSTEAD_SMTP_FROM), so these won't be sent."}>
           <input className={input} name="emails" type="text" defaultValue={s.emails.join(", ")} autoComplete="off" />
         </Field>
+        {s.emails.some((e) => !s.emails_confirmed.includes(e)) && (
+          <p className="text-sm text-muted">Waiting for confirmation: {s.emails.filter((e) => !s.emails_confirmed.includes(e)).join(", ")}</p>
+        )}
         <div className="flex flex-wrap items-center gap-2">
           <button className={btnPrimary} disabled={save.isPending}>{save.isPending ? "Saving…" : "Save alert settings"}</button>
-          <button type="button" className={btnQuiet} disabled={test.isPending || (!s.webhook_set && !(s.emails.length && s.email_available))} onClick={() => test.mutate()}>
+          <button type="button" className={btnQuiet} disabled={test.isPending || (!s.webhook_set && !(s.emails_confirmed.length && s.email_available))} onClick={() => test.mutate()}>
             {test.isPending ? "Sending…" : "Send test alert"}
           </button>
           {s.webhook_set && (

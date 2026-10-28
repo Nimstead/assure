@@ -1,6 +1,7 @@
 """Verify a Nimstead evidence pack offline.
 
-Shipped inside every evidence pack zip. Needs Python 3.9+ and `cryptography`.
+Served by the Nimstead server at /api/evidence/verify.py, with its SHA-256 published next to the key fingerprint;
+never run a copy that came inside a pack. Needs Python 3.9+ and `cryptography`.
 Usage: python verify.py pack.json pack.sig public_key.pem --expect-fingerprint SHA256HEX
 The fingerprint must come from Nimstead out of band; without it, a forger could re-sign with their own key.
 Checks: (1) Ed25519 signature over pack.json, (2) every ledger entry's hash,
@@ -76,5 +77,9 @@ if __name__ == "__main__":
     issues = verify(pack_bytes, sig, key, expect)
     for i in issues:
         print("FAIL:", i)
+    if not issues:
+        p = json.loads(pack_bytes)
+        print(f"Organisation: {p.get('organisation')} (id {p.get('organisation_id')}, created {p.get('organisation_created')})")
+        print("Verified domains:", ", ".join(p.get("verified_domains") or []) or "none: the name above is self-declared")
     print("OK: signature valid, ledger chain intact" if not issues else f"{len(issues)} problem(s) found")
     sys.exit(1 if issues else 0)

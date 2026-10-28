@@ -1,0 +1,45 @@
+[
+  {
+    "step": "VM ready",
+    "build": "10.0.26300.9457"
+  },
+  {
+    "step": "standard user prepared the folder before install",
+    "output": "PLANTED",
+    "acl": [
+      "C:\\ProgramData\\Nimstead NIMSTEAD-SBX\\nimuser:(OI)(CI)(F)",
+      "                        NT AUTHORITY\\SYSTEM:(I)(OI)(CI)(F)",
+      "                        BUILTIN\\Administrators:(I)(OI)(CI)(F)",
+      "                        NIMSTEAD-SBX\\nimuser:(I)(F)",
+      "                        CREATOR OWNER:(I)(OI)(CI)(IO)(F)"
+    ],
+    "owner": "NIMSTEAD-SBX\\nimuser"
+  },
+  {
+    "step": "install.ps1 ran elevated",
+    "output": "enrolled as asset e8faa0f56a444b1c8864f6f6e16d7d4b; config saved to C:\\ProgramData\\Nimstead\\agent.json\nreported 6 packages\nNimstead agent installed; reporting every 6 hours.\n#< CLIXML\nremoved C:\\ProgramData\\Nimstead\\x: not created by SYSTEM or Administrators\n<Objs Version=\"1.1.0.1\" xmlns=\"http://schemas.microsoft.com/powershell/2004/04\"><S S=\"warning\">Plain HTTP server (dev only)</S><Obj S=\"information\" RefId=\"0\"><TN RefId=\"0\"><T>System.Management.Automation.InformationRecord</T><T>System.Object</T></TN><ToString>Nimstead agent installed; reporting every 6 hours.</ToString><Props><Obj N=\"MessageData\" RefId=\"1\"><TN RefId=\"1\"><T>System.Management.Automation.HostInformationMessage</T><T>System.Object</T></TN><ToString>Nimstead agent installed; reporting every 6 hours.</ToString><Props><S N=\"Message\">Nimstead agent installed; reporting every 6 hours.</S><B N=\"NoNewLine\">false</B><S N=\"ForegroundColor\">Gray</S><S N=\"BackgroundColor\">Black</S></Props></Obj><S N=\"Source\">Write-Host</S><DT N=\"TimeGenerated\">2026-10-28T02:26:52.7296546-07:00</DT><Obj N=\"Tags\" RefId=\"2\"><TN RefId=\"2\"><T>System.Collections.Generic.List`1[[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]]</T><T>System.Object</T></TN><LST><S>PSHOST</S></LST></Obj><S N=\"User\">NIMSTEAD-SBX\\Administrator</S><S N=\"Computer\">nimstead-sbx</S><U32 N=\"ProcessId\">4788</U32><U32 N=\"NativeThreadId\">1044</U32><U32 N=\"ManagedThreadId\">9</U32></Props></Obj></Objs>",
+    "assets": [
+      [
+        "nimstead-sbx",
+        "0.1.3"
+      ]
+    ]
+  },
+  {
+    "step": "after install",
+    "attacker_read_key": false,
+    "attacker_wrote": false,
+    "acl": [
+      "C:\\ProgramData\\Nimstead BUILTIN\\Administrators:(OI)(CI)(F)",
+      "                        NT AUTHORITY\\SYSTEM:(OI)(CI)(F)",
+      "",
+      "Successfully processed 1 files; Failed processing 0 files"
+    ],
+    "owner": "BUILTIN\\Administrators",
+    "junction_left": "False",
+    "victim_file": "not yours"
+  },
+  {
+    "step": "RESULT: PASS"
+  }
+]

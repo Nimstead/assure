@@ -1,6 +1,7 @@
 """Evidence ledger and signed evidence packs for auditors."""
 
 import base64
+import hashlib
 import io
 import json
 import os
@@ -234,9 +235,15 @@ def build_pack(s: Session, org_id: str, start: datetime, end: datetime) -> dict:
     head = s.scalar(select(LedgerEntry).where(LedgerEntry.org_id == org_id).order_by(LedgerEntry.seq.desc()).limit(1))
     entries = [entry_dict(e) for e in s.execute(
         select(*LEDGER_COLS).where(LedgerEntry.org_id == org_id, LedgerEntry.ts >= s_iso, LedgerEntry.ts <= e_iso).order_by(LedgerEntry.seq))]
+    # One server key signs every tenant's packs and anyone can name an org anything, so the signed body also says who
+    # the tenant provably is: its id, when it was created, and the domains it proved by DNS (which no other org can hold).
+    domains = {*org.sso_verified_domains, *(a.hostname for a in assets if a.kind == "external" and a.verified_at is not None)}
     return {
         "format": "nimstead-evidence/1",
         "organisation": org.name,
+        "organisation_id": org.id,
+        "organisation_created": org.created.replace(tzinfo=UTC).isoformat(),
+        "verified_domains": sorted(domains),
         "generated_at": datetime.now(UTC).isoformat(),
         "period": {"from": s_iso, "to": e_iso},
         "basis": ("Findings come from authenticated agent inventories matched against OSV advisories. "
@@ -255,14 +262,30 @@ def build_pack(s: Session, org_id: str, start: datetime, end: datetime) -> dict:
     }
 
 
-README = """Verify offline:
-  pip install cryptography
-  python verify.py pack.json pack.sig public_key.pem --expect-fingerprint <FINGERPRINT>
+README = """Verify offline. Use nothing from this zip except pack.json and pack.sig: whoever handed you the
+zip could have changed anything else in it.
 
-Get <FINGERPRINT> from Nimstead out of band (not from this zip): anyone can re-sign an edited pack
-with their own key, so a valid signature only matters if the key is the one you independently trust.
-Fingerprint of the key that signed this pack: {fp}
+1. Get these from Nimstead out of band (its website, contract or an email from them, not from this zip):
+   the public key fingerprint and the SHA-256 of verify.py. The server publishes both at /api/evidence/public-key.
+2. Get verify.py the same way (the server serves it at /api/evidence/verify.py), check its SHA-256, then run:
+     pip install cryptography
+     python verify.py pack.json pack.sig public_key.pem --expect-fingerprint <FINGERPRINT>
+   Or check the signature alone with standard tools and a public key you obtained out of band:
+     base64 -d pack.sig > pack.sig.bin
+     openssl pkeyutl -verify -pubin -inkey trusted_key.pem -rawin -in pack.json -sigfile pack.sig.bin
+3. Check the pack is from the organisation you are auditing: verified_domains must include a domain it owns
+   (each is proven by DNS and can't be held by another organisation), and organisation_id should match its earlier packs.
+
+Fingerprint of the key that signed this pack (compare, don't trust): {fp}
 """
+
+
+def verifier_source() -> str:
+    return Path(verify_pack.__file__).read_text(encoding="utf-8")
+
+
+def verifier_sha256() -> str:
+    return hashlib.sha256(verifier_source().encode()).hexdigest()
 
 
 def pack_zip(pack: dict) -> bytes:
@@ -273,8 +296,7 @@ def pack_zip(pack: dict) -> bytes:
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("pack.json", body)
         z.writestr("pack.sig", sig)
-        z.writestr("public_key.pem", public_pem(key))
-        z.writestr("verify.py", Path(verify_pack.__file__).read_text())
+        z.writestr("public_key.pem", public_pem(key))  # verify.py is not shipped here: the checker can't come with what it checks
         z.writestr("README.txt", README.format(fp=fingerprint(public_pem(key))))
     return buf.getvalue()
 

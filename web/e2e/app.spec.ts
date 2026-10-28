@@ -21,7 +21,7 @@ test("sign up, enrol a sandbox host, plan and approve a fix, see evidence", asyn
   // Onboarding
   await page.getByRole("checkbox", { name: /disposable test machine/ }).check();
   await page.getByRole("button", { name: "Add a machine" }).click();
-  await expect(page.getByText(/install\.sh \| sudo sh/)).toBeVisible();
+  await expect(page.getByText(/install\.sh \| sudo --preserve-env=NIMSTEAD_TOKEN sh/)).toBeVisible();
 
   // Enrol a fake sandbox asset through the agent API
   const tok = await (await page.request.post("/api/enroll-tokens", { data: { sandbox: true } })).json();
@@ -59,7 +59,8 @@ test("sign up, enrol a sandbox host, plan and approve a fix, see evidence", asyn
   await page.getByRole("link", { name: "Evidence", exact: true }).first().click();
   await expect(page.getByText(/Chain verified/)).toBeVisible();
   await expect(page.getByRole("heading", { name: "Control status" })).toBeVisible();
-  await expect(page.getByText(/Give auditors this fingerprint separately/)).toBeVisible();
+  await expect(page.getByText(/Give auditors these separately from the pack/)).toBeVisible();
+  await expect(page.getByText("Verifier script SHA-256")).toBeVisible();
 
   // Settings lists the tokens
   await page.goto("/settings");

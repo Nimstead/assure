@@ -78,7 +78,7 @@ def make(env, idp, verify=True):
 
 def sso_login(app, idp, email="jane@corp.example.com", code="good-code", state=None, drop_cookie=False, client=None):
     c = client or TestClient(app)
-    r = c.get("/api/auth/sso/start", params={"email": email}, follow_redirects=False)
+    r = c.post("/api/auth/sso/start", data={"email": email}, follow_redirects=False)
     assert r.status_code == 303, r.text
     loc = urlparse(r.headers["location"])
     q = {k: v[0] for k, v in parse_qs(loc.query).items()}
@@ -167,19 +167,19 @@ def test_domain_not_allowed(env, idp):
     app, _ = make(env, idp)
     # IdP asserts an email outside the org's domains even though the flow was started for corp.example.com
     c = TestClient(app)
-    r = c.get("/api/auth/sso/start", params={"email": "jane@corp.example.com"}, follow_redirects=False)
+    r = c.post("/api/auth/sso/start", data={"email": "jane@corp.example.com"}, follow_redirects=False)
     q = {k: v[0] for k, v in parse_qs(urlparse(r.headers["location"]).query).items()}
     idp.challenge, idp.nonce, idp.email = q["code_challenge"], q["nonce"], "mallory@other.example.com"
     cb = c.get("/api/auth/sso/callback", params={"code": "good-code", "state": q["state"]}, follow_redirects=False)
     assert error_of(cb) == "domain_not_allowed" and c.get("/api/me").status_code == 401
     # and a lookalike suffix doesn't match
-    r = c.get("/api/auth/sso/start", params={"email": "mallory@evilcorp.example.com"}, follow_redirects=False)
+    r = c.post("/api/auth/sso/start", data={"email": "mallory@evilcorp.example.com"}, follow_redirects=False)
     assert error_of(r) == "not_configured"
 
 
 def test_unknown_domain_has_no_sso(env, idp):
     app, _ = make(env, idp)
-    r = TestClient(app).get("/api/auth/sso/start", params={"email": "x@unknown.example.com"}, follow_redirects=False)
+    r = TestClient(app).post("/api/auth/sso/start", data={"email": "x@unknown.example.com"}, follow_redirects=False)
     assert error_of(r) == "not_configured"
 
 
@@ -245,7 +245,7 @@ def test_only_admins_configure_sso_and_config_is_validated(env, idp):
     other.post("/api/auth/signup", json={"email": "o@elsewhere.example.com", "password": "correct horse battery", "org_name": "E"})
     assert other.put("/api/settings/sso", json={**base, "issuer": ISSUER}).status_code == 409  # corp.example.com already claimed
     assert admin.put("/api/settings/sso", json={"issuer": ""}).json()["issuer"] == ""  # switch off
-    r = TestClient(app).get("/api/auth/sso/start", params={"email": "jane@corp.example.com"}, follow_redirects=False)
+    r = TestClient(app).post("/api/auth/sso/start", data={"email": "jane@corp.example.com"}, follow_redirects=False)
     assert error_of(r) == "not_configured"
 
 
@@ -253,7 +253,7 @@ def test_only_admins_configure_sso_and_config_is_validated(env, idp):
 def test_unverified_domain_cannot_be_used(env, idp):
     app, admin = make(env, idp, verify=False)
     c = TestClient(app)
-    r = c.get("/api/auth/sso/start", params={"email": "jane@corp.example.com"}, follow_redirects=False)
+    r = c.post("/api/auth/sso/start", data={"email": "jane@corp.example.com"}, follow_redirects=False)
     assert error_of(r) == "not_configured"
     v = admin.post("/api/settings/sso/verify").json()  # no TXT record published yet
     assert v["domain_checks"][0]["verified"] is False
@@ -301,3 +301,26 @@ def test_break_glass_admin_password_login_is_recorded(env, idp):
     assert c.post("/api/auth/login", json={"email": "admin@corp.example.com", "password": "correct horse battery"}).status_code == 200
     kinds = [e["kind"] for e in admin.get("/api/evidence/ledger").json()["entries"]]
     assert "break_glass_login" in kinds
+
+
+def test_sso_cannot_be_started_by_another_site(env, idp):
+    """A GET link or a cross-site form could otherwise sign the visitor's browser into an attacker's org (login CSRF)
+    or bounce them through this origin to any URL."""
+    app, _ = make(env, idp)
+    c = TestClient(app)
+    r = c.get("/api/auth/sso/start", params={"email": "jane@corp.example.com"}, follow_redirects=False)
+    assert r.status_code in (404, 405) and "set-cookie" not in r.headers  # 404 when the built SPA's catch-all route is mounted
+    r = c.post("/api/auth/sso/start", data={"email": "jane@corp.example.com"}, headers={"Origin": "https://evil.example"},
+               follow_redirects=False)
+    assert r.status_code == 403 and "set-cookie" not in r.headers
+    r = c.post("/api/auth/sso/start", data={"email": "jane@corp.example.com"}, headers={"Origin": "http://testserver"},
+               follow_redirects=False)
+    assert r.status_code == 303  # the sign-in page's own form
+
+
+def test_idp_endpoints_must_be_https():
+    from nimstead import sso
+    doc = {"issuer": ISSUER, "authorization_endpoint": "javascript:alert(1)", "token_endpoint": f"{ISSUER}/token", "jwks_uri": f"{ISSUER}/jwks"}
+    oidc = sso.Oidc(httpx.Client(transport=httpx.MockTransport(lambda req: httpx.Response(200, json=doc))))
+    with pytest.raises(sso.SSOError, match="idp_misconfigured"):
+        oidc.discover(ISSUER)

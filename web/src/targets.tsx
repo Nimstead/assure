@@ -71,9 +71,10 @@ export function TargetRow({ t, onDelete }: { t: Asset; onDelete: () => void }) {
       </div>
       {!t.verified && (
         <div className="flex flex-col gap-2">
-          <p className="text-sm">Add this DNS TXT record to prove you own {t.hostname}, then press Verify.</p>
+          <p className="text-sm">Add this DNS TXT record to prove you own {t.hostname}, and serve the same value from the server it points at (HTTPS or HTTP), then press Verify. Owning the name alone doesn't prove the server is yours.</p>
           <CopyBlock label="TXT record name" text={t.txt_name ?? ""} />
           <CopyBlock label="TXT record value" text={t.txt_value ?? ""} />
+          <CopyBlock label="Serve the value at" text={`${t.hostname}${t.proof_path ?? "/.well-known/nimstead-verify.txt"}`} />
           {verify.error && <p role="alert" className="text-sm text-now-fg">{verify.error.message}</p>}
         </div>
       )}

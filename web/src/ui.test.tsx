@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 import { SbomUpload } from "./assets";
 import { ApproveDialog, PlanFixButton } from "./remediation";
-import { APPROVE_COPY, type Asset } from "./lib";
+import { APPROVE_COPY, meQ, type Asset } from "./lib";
 import { InstallCommands } from "./onboarding";
 import { TargetRow } from "./targets";
 import { PriorityPill } from "./ui";
@@ -18,8 +18,8 @@ it("priority pill carries a text label, not just colour", () => {
 
 it("onboarding shows the Linux, Windows and Python commands", () => {
   render(<InstallCommands origin="http://localhost:5173" token="nme_t0k" />);
-  expect(screen.getByText(/curl -fsSL http:\/\/localhost:5173\/install\.sh \| sudo sh -s -- --token nme_t0k/)).toBeInTheDocument();
-  expect(screen.getByText(/enroll --server http:\/\/localhost:5173 --token nme_t0k/)).toBeInTheDocument();
+  expect(screen.getByText(/export NIMSTEAD_TOKEN=nme_t0k; curl -fsSL http:\/\/localhost:5173\/install\.sh \| sudo --preserve-env=NIMSTEAD_TOKEN sh/)).toBeInTheDocument();
+  expect(screen.getByText(/export NIMSTEAD_TOKEN=nme_t0k; python3 nimstead_agent\.py enroll --server http:\/\/localhost:5173 &&/)).toBeInTheDocument();
   expect(screen.getAllByRole("button", { name: "Copy" })).toHaveLength(3);
 });
 
@@ -43,11 +43,22 @@ it("settings show when the last alert delivery failed", async () => {
   vi.unstubAllGlobals();
 });
 
+const signedIn = (admin: boolean) => {
+  const qc = new QueryClient();
+  qc.setQueryData(meQ.queryKey, { email: "a@example.com", org: "Acme", admin });
+  return qc;
+};
+
+it("SBOM upload is for admins only: replacing an SBOM resolves findings", () => {
+  render(<QueryClientProvider client={signedIn(false)}><SbomUpload a={{ id: "a1", hostname: "billing" } as Asset} /></QueryClientProvider>);
+  expect(screen.getByRole("button", { name: "Upload SBOM for billing" })).toBeDisabled();
+});
+
 it("SBOM upload posts the raw file and announces the counts", async () => {
   const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ components: 5, mapped: 4, unique_packages: 3, skipped: {}, open: 2, resolved: 1 }), { status: 200 }));
   vi.stubGlobal("fetch", fetchMock);
   const asset = { id: "a1", hostname: "billing", kind: "application" } as Asset;
-  render(<QueryClientProvider client={new QueryClient()}><SbomUpload a={asset} /></QueryClientProvider>);
+  render(<QueryClientProvider client={signedIn(true)}><SbomUpload a={asset} /></QueryClientProvider>);
   expect(screen.getByRole("button", { name: "Upload SBOM for billing" })).toBeEnabled();
   const bom = '{"bomFormat":"CycloneDX"}';
   await userEvent.upload(screen.getByTestId("sbom-file-a1"), new File([bom], "bom.json", { type: "application/json" }));
@@ -58,7 +69,7 @@ it("SBOM upload posts the raw file and announces the counts", async () => {
 
 it("SBOM upload shows the server's rejection", async () => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ detail: "Invalid SBOM: Not a CycloneDX JSON document" }), { status: 422 })));
-  render(<QueryClientProvider client={new QueryClient()}><SbomUpload a={{ id: "a1", hostname: "billing" } as Asset} /></QueryClientProvider>);
+  render(<QueryClientProvider client={signedIn(true)}><SbomUpload a={{ id: "a1", hostname: "billing" } as Asset} /></QueryClientProvider>);
   await userEvent.upload(screen.getByTestId("sbom-file-a1"), new File(["{}"], "x.json"));
   expect(await screen.findByRole("alert")).toHaveTextContent("Not a CycloneDX JSON document");
   vi.unstubAllGlobals();

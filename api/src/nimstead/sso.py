@@ -55,7 +55,7 @@ class Oidc:
         doc = self._get(issuer.rstrip("/") + "/.well-known/openid-configuration")
         if doc.get("issuer") != issuer:  # RFC 8414 / mix-up defence: the document must name the issuer we configured
             raise SSOError("issuer_mismatch")
-        if not all(isinstance(doc.get(k), str) for k in ("authorization_endpoint", "token_endpoint", "jwks_uri")):
+        if not all(isinstance(doc.get(k), str) and doc[k].startswith("https://") for k in ("authorization_endpoint", "token_endpoint", "jwks_uri")):
             raise SSOError("idp_misconfigured")
         self._disc[issuer] = (time.monotonic(), doc)
         return doc

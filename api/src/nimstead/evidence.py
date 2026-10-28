@@ -159,10 +159,15 @@ def _controls(m: dict, sla: dict) -> list[dict]:
     sla_ok = m["overdue_open"] == 0
     scanned = m["assets_reporting"] == m["assets"] and m["assets"] > 0
     st = lambda ok: "met" if ok else "not_met"  # noqa: E731
+
+    # Timeliness controls with nothing to assess say so rather than "met" (DECISIONS 45). A failure always wins.
+    def timely(ok: bool, activity: int) -> str:
+        return "no_activity" if ok and not activity else st(ok)
+
     return [
         {"framework": "UK Cyber Essentials", "control": "Security update management",
          "requirement": "High/critical updates (CVSS ≥ 7 or known exploited) applied within 14 days",
-         "status": st(ce_ok),
+         "status": timely(ce_ok, m["ce_in_scope_resolved"]),
          "evidence": f"{m['ce_in_scope_resolved_in_14d']}/{m['ce_in_scope_resolved']} in-scope fixes within 14 days; {m['ce_in_scope_overdue']} open past 14 days"},
         {"framework": "ISO/IEC 27001:2022", "control": "A.8.8", "requirement": "Management of technical vulnerabilities",
          "status": st(scanned and sla_ok),
@@ -170,7 +175,7 @@ def _controls(m: dict, sla: dict) -> list[dict]:
         {"framework": "NIST SP 800-53 Rev. 5", "control": "RA-5", "requirement": "Vulnerability monitoring and scanning",
          "status": st(scanned), "evidence": f"{m['assets_reporting']}/{m['assets']} assets reported inventory in period"},
         {"framework": "NIST SP 800-53 Rev. 5", "control": "SI-2", "requirement": "Flaw remediation within organisation-defined time periods",
-         "status": st(sla_ok), "evidence": f"{m['resolved_within_sla']}/{m['resolved']} fixes within the organisation's SLA in force when each was detected (now: {', '.join(f'{p} {d} days' for p, d in sla.items())})"
+         "status": timely(sla_ok, m["resolved"]), "evidence": f"{m['resolved_within_sla']}/{m['resolved']} fixes within the organisation's SLA in force when each was detected (now: {', '.join(f'{p} {d} days' for p, d in sla.items())})"
                      + (f"; deadlines changed {m['sla_changes']} times in the period (sla_changes)" if m.get("sla_changes") else "")},
         {"framework": "PCI DSS v4.0.1", "control": "6.3.3", "requirement": "Critical security patches installed within one month of release",
          "status": st(m["critical_overdue_30d"] == 0),
@@ -178,12 +183,12 @@ def _controls(m: dict, sla: dict) -> list[dict]:
         {"framework": "SOC 2 (TSC 2017)", "control": "CC7.1", "requirement": "Detection and monitoring procedures identify susceptibilities to newly discovered vulnerabilities",
          "status": st(scanned and sla_ok), "evidence": f"{m['assets_reporting']}/{m['assets']} assets assessed in period against continuously updated advisories; {m['overdue_open']} findings past SLA"},
         {"framework": "SOC 2 (TSC 2017)", "control": "CC8.1", "requirement": "Changes are authorised, tested and approved before implementation",
-         "status": st(m["changes"] == m["changes_authorised"]),
+         "status": timely(m["changes"] == m["changes_authorised"], m["changes"]),
          "evidence": f"{m['changes_authorised']}/{m['changes']} remediation changes in period approved by a named person or the recorded auto policy; each dry-run checked, health-checked and rolled back on failure"},
         {"framework": "NIS2 Directive", "control": "Art. 21(2)(e)", "requirement": "Vulnerability handling in network and information systems maintenance",
          "status": st(scanned and sla_ok), "evidence": f"{m['assets_reporting']}/{m['assets']} assets assessed; {m['resolved_within_sla']}/{m['resolved']} fixes within SLA"},
         {"framework": "CIS Controls v8.1", "control": "7.3 / 7.4", "requirement": "Automated OS and application patch management",
-         "status": st(sla_ok), "evidence": f"Mean time to remediate: {m['mttr_days']} days" if m["mttr_days"] is not None else "Mean time to remediate: no fixes in period"},
+         "status": timely(sla_ok, m["resolved"]), "evidence": f"Mean time to remediate: {m['mttr_days']} days" if m["mttr_days"] is not None else "Mean time to remediate: no fixes in period"},
     ]
 
 

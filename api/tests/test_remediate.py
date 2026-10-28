@@ -63,6 +63,39 @@ def test_full_lifecycle_verified_by_inventory(env):
             "remediation_succeeded"} <= set(ledger_kinds(c))
 
 
+def test_cancel_only_before_a_machine_picks_the_fix_up(env):
+    c = setup(env)
+    aid, h = add_host(c)
+    jid = plan(c, aid).json()["id"]
+    r = c.post(f"/api/remediation/jobs/{jid}/cancel")
+    assert r.status_code == 200 and r.json()["status"] == "cancelled" and "a@example.com" in r.json()["error"]
+    assert "remediation_cancelled" in ledger_kinds(c)
+    assert c.post(f"/api/remediation/jobs/{jid}/approve").status_code == 409  # cancelled stays cancelled
+    jid = plan(c, aid).json()["id"]  # and no longer blocks planning again
+    c.post(f"/api/remediation/jobs/{jid}/approve")
+    assert c.post(f"/api/remediation/jobs/{jid}/cancel").json()["status"] == "cancelled"  # approved, not yet dispatched
+    assert c.get("/api/agent/jobs", headers=h).json() == []  # nothing handed out
+    jid = plan(c, aid).json()["id"]
+    c.post(f"/api/remediation/jobs/{jid}/approve")
+    c.get("/api/agent/jobs", headers=h)  # dispatched: the host may be running it
+    r = c.post(f"/api/remediation/jobs/{jid}/cancel")
+    assert r.status_code == 409 and "dispatched" in r.json()["detail"]
+    assert c.post("/api/remediation/jobs/nope/cancel").status_code == 404
+
+
+def test_summary_actions_carry_asset_ids_and_the_fix_in_flight(env):
+    c = setup(env)
+    aid, _ = add_host(c)
+    action = next(a for a in c.get("/api/summary").json()["top_actions"] if a["package"] == "openssl")
+    assert action["asset_ids"] == [aid] and action["job"] is None
+    jid = plan(c, aid).json()["id"]
+    c.post(f"/api/remediation/jobs/{jid}/approve")
+    action = next(a for a in c.get("/api/summary").json()["top_actions"] if a["package"] == "openssl")
+    assert action["job"] == {"id": jid, "status": "approved"}
+    c.post(f"/api/remediation/jobs/{jid}/cancel")
+    assert next(a for a in c.get("/api/summary").json()["top_actions"] if a["package"] == "openssl")["job"] is None
+
+
 def test_agent_claim_is_not_trusted_without_inventory_proof(env):
     c = setup(env)
     aid, h = add_host(c)

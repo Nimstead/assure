@@ -138,6 +138,15 @@ def approve(s: Session, job: RemediationJob, by: str, policy: bool = False) -> R
     return job
 
 
+def cancel(s: Session, job: RemediationJob, by: str) -> RemediationJob:
+    """Withdraw a fix no agent holds yet. Dispatched or later may already be running on the host, so those are refused."""
+    if job.status not in ("planned", "approved"):
+        raise RemediationError(f"Job is {job.status}; only planned or approved fixes that no machine has picked up can be cancelled")
+    job.status, job.error = "cancelled", f"Cancelled by {by}"
+    _log(s, job, "remediation_cancelled", by=by)
+    return job
+
+
 def auto_remediate(s: Session, asset: Asset) -> None:
     """Called after each inventory. In auto mode, plan fixable actions and approve those the policy allows."""
     org = s.get(Org, asset.org_id)

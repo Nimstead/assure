@@ -1182,6 +1182,18 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         s.commit()
         return job_json(job, s.get(Asset, job.asset_id).hostname)
 
+    @app.post("/api/remediation/jobs/{job_id}/cancel")
+    def cancel_job(job_id: str, user: Admin, s: DB):
+        job = s.get(RemediationJob, job_id)
+        if not job or job.org_id != user.org_id:
+            raise HTTPException(404, "Job not found")
+        try:
+            remediate.cancel(s, job, user.email)
+        except remediate.RemediationError as e:
+            raise HTTPException(409, str(e)) from None
+        s.commit()
+        return job_json(job, s.get(Asset, job.asset_id).hostname)
+
     class Policy(BaseModel):
         remediation_mode: Literal["suggest", "approve", "auto"] | None = None
         canary_soak_hours: int | None = Field(None, ge=1, le=720)
@@ -1615,12 +1627,20 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         ).all()
         top = []
         for eco, pkg, kev, max_score, _ in sorted(ranked, key=lambda r: (bool(r[2]), r[3], r[4]), reverse=True)[:10]:
-            rows = s.execute(select(Finding.fixed_version, Finding.vuln_id, Asset.hostname).join(Asset, Asset.id == Finding.asset_id)
+            rows = s.execute(select(Finding.fixed_version, Finding.vuln_id, Asset.hostname, Asset.id).join(Asset, Asset.id == Finding.asset_id)
                              .where(*is_open, Finding.ecosystem == eco, Finding.package == pkg, Finding.fixed_version.is_not(None))).all()
             cmp = comparator_for(eco)
             fixes = {r[0] for r in rows}
             fixed = max(fixes, key=functools.cmp_to_key(cmp)) if cmp else sorted(fixes)[-1]  # highest fix clears them all
+            asset_ids = sorted({r[3] for r in rows})
+            # A fix already in flight for this package: Home links to it instead of offering "Plan fix", which the API refuses
+            # while one is active. Failed ones are listed under "needs a look" and can be planned again.
+            job = s.scalar(select(RemediationJob).where(
+                RemediationJob.org_id == user.org_id, RemediationJob.action_key == f"{eco}|{pkg}", RemediationJob.asset_id.in_(asset_ids),
+                RemediationJob.status.in_(remediate.ACTIVE),
+            ).order_by(RemediationJob.updated.desc()).limit(1))
             top.append({"ecosystem": eco, "package": pkg, "fixed_version": fixed, "hosts": sorted({r[2] for r in rows}),
+                        "asset_ids": asset_ids, "job": {"id": job.id, "status": job.status} if job else None,
                         "vulns": sorted({r[1] for r in rows}), "kev": bool(kev), "max_score": max_score})
         hosts = s.scalars(select(Asset).where(Asset.org_id == user.org_id, Asset.kind == "host")).all()
         paused, release = s.get(Org, user.org_id).agent_updates_paused, signed_release() is not None

@@ -1,4 +1,4 @@
-# Base images and actions are pinned by digest/SHA (DECISIONS 31-32); this proposes the bumps as PRs so pins don't go stale.
+# Base images and actions are pinned by digest/SHA (DECISIONS 31-32), dependencies by lockfile; this proposes the bumps as PRs.
 version: 2
 updates:
   - package-ecosystem: docker
@@ -11,5 +11,14 @@ updates:
       interval: weekly
   - package-ecosystem: github-actions
     directory: /
+    schedule:
+      interval: weekly
+  # application dependencies too: the CI audit job fails on a known vulnerability, these propose the fix
+  - package-ecosystem: uv
+    directory: /api
+    schedule:
+      interval: weekly
+  - package-ecosystem: npm
+    directory: /web
     schedule:
       interval: weekly

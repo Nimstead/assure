@@ -4,6 +4,9 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read  # nothing here writes to the repository
+
 jobs:
   api:
     runs-on: ubuntu-latest
@@ -19,36 +22,50 @@ jobs:
       PYTHONUNBUFFERED: "1"
       NIMSTEAD_TEST_PG_URL: ${{ matrix.db == 'postgres' && 'postgresql+psycopg://nimstead:ci@127.0.0.1:5432/postgres' || '' }}
     steps:
-      - uses: actions/checkout@v7
-      # same settings as sandbox/pg.py (each test gets its own database and pool)
+      # actions pinned to commit SHAs (Dependabot proposes bumps), as in release.yml
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      # same settings as sandbox/pg.py (each test gets its own database and pool); same image digest as compose.yaml
       - name: Start PostgreSQL 17
         if: matrix.db == 'postgres'
         run: |
-          docker run -d --name pg -p 5432:5432 -e POSTGRES_USER=nimstead -e POSTGRES_PASSWORD=ci postgres:17 -c max_connections=500
+          docker run -d --name pg -p 5432:5432 -e POSTGRES_USER=nimstead -e POSTGRES_PASSWORD=ci postgres:17@sha256:31ba9c94a03ada9988f2bb493a22a75eef3a185884533e5cdbcd498ea835b08f -c max_connections=500
           until docker exec pg pg_isready -h 127.0.0.1 -U nimstead; do sleep 1; done  # TCP: not the init-time socket server
-      - uses: astral-sh/setup-uv@v7
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
       - run: uv python install 3.14
       - run: uv sync --locked
       - run: uv run ruff check src tests ../agent ../sandbox ../scripts
         if: matrix.db == 'sqlite'
       - run: uv run pytest -q --durations=10 -o faulthandler_timeout=120  # a hung test dumps every thread's stack
 
+  audit:
+    # known vulnerabilities in what Nimstead ships: the locked Python dependencies and the web build's npm packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
+      - run: uv export --locked --no-dev --no-emit-project --format requirements.txt > ../requirements.txt
+        working-directory: api
+      - run: uvx pip-audit==2.10.1 --strict --disable-pip --no-deps -r requirements.txt
+      - run: npm audit --omit=dev --audit-level=high
+        working-directory: web
+
   docker:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
       - run: docker compose config --quiet && docker build -t nimstead/assure:ci .
 
   web:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
       - run: uv python install 3.14 && uv sync --locked
         working-directory: api
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7
         with:
           node-version: 22
           cache: npm
@@ -57,7 +74,7 @@ jobs:
         working-directory: web
       - run: npx playwright install --with-deps chromium && npm run e2e
         working-directory: web
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
         if: failure()
         with:
           name: playwright-traces

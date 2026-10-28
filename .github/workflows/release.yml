@@ -39,12 +39,16 @@ jobs:
           echo "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || { echo "not a release tag: $TAG"; exit 1; }
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
       - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
-      - run: uv python install 3.14
+      - name: Signing environment (cryptography and its dependencies only, each pinned by hash)
+        run: |
+          uv python install 3.14
+          uv venv --python 3.14 "$RUNNER_TEMP/sign"
+          uv pip install --python "$RUNNER_TEMP/sign/bin/python" --require-hashes --no-deps -r scripts/sign-requirements.txt
       - name: Sign release.json
         env:
           NIMSTEAD_RELEASE_KEY: ${{ secrets.NIMSTEAD_RELEASE_KEY }}
         run: >-
-          uv run --no-project --python 3.14 --with 'cryptography==50.0.2' python -I scripts/sign_release.py sign
+          "$RUNNER_TEMP/sign/bin/python" -I scripts/sign_release.py sign
           --tag "$TAG" --commit "$GITHUB_SHA" --channel "$CHANNEL" --out signed
       - name: Verify with the agent's own verifier and pinned keys
         run: python3 -I agent/nimstead_agent.py verify-release signed/release.json signed/release.json.sig
@@ -66,3 +70,25 @@ jobs:
           gh release upload "$TAG" signed/release.json signed/release.json.sig signed/nimstead_agent.py --clobber
           gh release edit "$TAG" $labels
           echo "$TAG signed for the $CHANNEL channel"
+
+  sbom:
+    # Nimstead's own SBOMs (CycloneDX), in a job that never sees the signing key: upload them to an application asset
+    # in Assure to scan Assure itself.
+    needs: sign
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7
+        with:
+          node-version: 22
+      - name: Generate
+        run: |
+          (cd api && uv export --locked --no-dev --format cyclonedx1.5 --preview-features sbom-export > ../nimstead-api.cdx.json)
+          (cd web && npm sbom --package-lock-only --omit=dev --sbom-format cyclonedx > ../nimstead-web.cdx.json)
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release upload "$TAG" nimstead-api.cdx.json nimstead-web.cdx.json --clobber

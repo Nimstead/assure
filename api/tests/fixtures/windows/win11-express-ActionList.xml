@@ -1,0 +1,37 @@
+<?xml version='1.0' encoding='utf-8'?>
+<ActionList xmlns="urn:schemas-microsoft-com:os-update-actionlist" SessionId="2026-10-27T16:33:51" Revision="1" SessionData="DesktopServicing" BuildInfo="ge_release.26100.1.240331-1435" CorrelationVector="SHWNZvT9xk2Rmdv0.2.0.0.15.1" Operation="DesktopServicing">
+    <Downloads>
+        <Package Id="Package_for_KB5121794" Reason="GDR" FeatureId="GDR_KB5121794">
+            <Payload PayloadType="PSFX" Hash="A1nhCbsUmYdRIExba3eUr6h59n4qjuVexrt9WemyZYw=" DownloadSize="26004" SourceName="Windows11.0-KB5121794-x64.cab"/>
+        </Package>
+        <Package Id="Package_for_RollupFix~~amd64~~26100.9711.1.30" Reason="CumulativeUpdate" FeatureId="CumulativeUpdate_KB5127648" PackagePath="Package_for_RollupFix~~amd64~~26100.9711.1.30" ExpressPackagePath="metadata\Windows11.0-KB5127648-x64">
+            <Payload PayloadType="Express" Hash="pMNtDkrA6KLoaiUogwBlh4ihHzcXJ4ikBf4weoyUaKw=" DownloadSize="117219164" SourceName="Windows11.0-KB5127648-x64.mumx.esd" AltSourceName="Windows11.0-KB5127648-x64.msu" AltSourceCiXPath="Windows11.0-KB5127648-x64.msu.cix.xml" AltSourceHash="ihBnx2MSGVOHbi4Ny/XixYMlRaRO9rq6Nik4KH4F/Ps=" ExpressHash="rgkJ1XDR5xtfiY1Vk7LctvtW8IpAMoIOsby5d5TV14A=" ExpressSourceName="Windows11.0-KB5127648-x64.psf" ExpressTargetName="Windows11.0-KB5127648-x64_psf.rng" CiXPath="Windows11.0-KB5127648-x64\express.psf.cix.xml" ExpressPackagePath="metadata\Windows11.0-KB5127648-x64"/>
+        </Package>
+        <Package Id="Package_for_SafeOSDU" Reason="SafeOSDU" FeatureId="SafeOSUpdate_KB5127654">
+            <Payload PayloadType="PSFX" Hash="YOvTjmmd9maHXIV/VqN9Pi0qZOtps1OhxZvmz3BW4/Q=" DownloadSize="194170907" SourceName="Windows11.0-KB5127654-x64.cab"/>
+        </Package>
+        <Package Id="Package_for_ServicingStack_9703" Reason="ServicingStackUpdate" FeatureId="ServicingStackUpdate_KB5127647">
+            <Payload PayloadType="Canonical" Hash="/nS/ImUQUwvxIqShHyMjWxkGEvgbk+mdZ9FlP2WmSSw=" DownloadSize="21110997" SourceName="SSU-26100.9703-x64.cab" AltSourceName="Windows11.0-KB5127648-x64.msu" AltSourceCiXPath="Windows11.0-KB5127648-x64.msu.cix.xml" AltSourceHash="ihBnx2MSGVOHbi4Ny/XixYMlRaRO9rq6Nik4KH4F/Ps="/>
+        </Package>
+    </Downloads>
+    <Plan>
+        <InstallFeature Id="CumulativeUpdate_KB5127648" Group="Microsoft"/>
+        <InstallFeature Id="GDR_KB5121794" Group="Microsoft"/>
+        <InstallFeature Id="SafeOSUpdate_KB5127654" Group="Microsoft"/>
+        <InstallFeature Id="ServicingStackUpdate_KB5127647" Group="Microsoft"/>
+    </Plan>
+    <Actions>
+        <InstallPackage Keyform="Package_for_KB5121794~~amd64~~26100.9544.1.2" InstalledSize="37369" StagedSize="0" FilePath="Windows11.0-KB5121794-x64.cab" Reason="GDR" FeatureId="GDR_KB5121794" Partition="MainOS" BinaryPartition="false">
+            <InstallPayload FilePath="Windows11.0-KB5121794-x64.cab" PayloadType="PSFX"/>
+        </InstallPackage>
+        <InstallPackage Keyform="Package_for_RollupFix~~amd64~~26100.9711.1.30" InstalledSize="9999999999" StagedSize="0" PayloadType="Express" FilePath="Package_for_RollupFix~~amd64~~26100.9711.1.30" ExpressPackagePath="metadata\Windows11.0-KB5127648-x64" ExpressMetadataContainerPath="Windows11.0-KB5127648-x64.mumx.esd" Reason="CumulativeUpdate" FeatureId="CumulativeUpdate_KB5127648" Partition="MainOS" BinaryPartition="false">
+            <InstallPayload FilePath="Windows11.0-KB5127648-x64.mumx.esd" ExpressPackagePath="metadata\Windows11.0-KB5127648-x64" ExpressMetadataContainerPath="Windows11.0-KB5127648-x64.mumx.esd" PayloadType="Express"/>
+        </InstallPackage>
+        <InstallPackage Keyform="Package_for_SafeOSDU~~amd64~~26100.9711.1.21" InstalledSize="1013747312" StagedSize="0" FilePath="Windows11.0-KB5127654-x64.cab" Reason="SafeOSDU" FeatureId="SafeOSUpdate_KB5127654" Partition="WinRE" BinaryPartition="false">
+            <InstallPayload FilePath="Windows11.0-KB5127654-x64.cab" PayloadType="PSFX"/>
+        </InstallPackage>
+        <InstallPackage Keyform="Package_for_ServicingStack_9703~~amd64~~26100.9703.1.4" InstalledSize="75623854" StagedSize="0" FilePath="SSU-26100.9703-x64.cab" Reason="ServicingStackUpdate" FeatureId="ServicingStackUpdate_KB5127647" Partition="MainOS" BinaryPartition="false">
+            <InstallPayload FilePath="SSU-26100.9703-x64.cab" PayloadType="Canonical"/>
+        </InstallPackage>
+    </Actions>
+</ActionList>

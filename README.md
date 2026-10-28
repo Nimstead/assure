@@ -91,14 +91,15 @@ Not just unit tests. Each of these ran end to end in a disposable VM or WSL dist
 | Alpine 3.21 | ✓ | ✓ apk | ✓ after an injected failure |
 | openSUSE Leap 16.0 | ✓ | ✓ zypper | ✓ after a real service failure; snapper also undoes install-script side effects |
 | Windows Server 2025 | ✓ | ✓ cumulative update as SYSTEM | ✓ after an injected failure (DISM removal); permanent updates refused up front |
+| Windows 11 Pro 26H2 | ✓ | ✓ cumulative update as SYSTEM | ✓ after an injected failure (DISM removal); every package the update brings checked up front |
 
-Plus real Keycloak SSO, DNS, SMTP and webhook integrations, Vault and S3 object-lock key storage, the Docker Compose install, and 1,000-host performance runs on SQLite and PostgreSQL 17. 580 API tests run on both databases in CI.
+Plus real Keycloak SSO, DNS, SMTP and webhook integrations, Vault and S3 object-lock key storage, the Docker Compose install, and 1,000-host performance runs on SQLite and PostgreSQL 17. 589 API tests run on both databases in CI.
 
 ## Known limitations
 
 The full, honest list is in [STATUS.md](STATUS.md#not-proven--known-gaps-honest). The ones you're most likely to meet:
 
-- Windows remediation is proven on Windows Server 2025; Windows 10/11 machines are detected but fixes there haven't been run in a VM.
+- Windows remediation is proven on Windows Server 2025 and Windows 11; Windows 10 machines are detected but fixes there haven't been run in a VM.
 - Windows third-party apps cover about 18 common products; other apps are inventoried but not matched.
 - Rollback restores package files and the package database everywhere, but undoes changes install scripts made elsewhere only with zypper and snapper.
 - SBOMs must be JSON (CycloneDX 1.4–1.6, SPDX 2.2/2.3). Findings mean a package is present, not that the vulnerable code is reachable.

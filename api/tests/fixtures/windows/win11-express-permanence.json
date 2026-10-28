@@ -1,0 +1,40 @@
+[
+ {
+  "file": "Windows11.0-KB5121794-x64.cab",
+  "reason": "GDR",
+  "partition": "MainOS",
+  "permanent": false,
+  "permanent_parts": []
+ },
+ {
+  "file": "Windows11.0-KB5127648-x64",
+  "reason": "CumulativeUpdate",
+  "partition": "MainOS",
+  "permanent": false,
+  "permanent_parts": [
+   "Microsoft-Windows-SenseClient-FoD-Package~31bf3856ad364e35~amd64~~10.0.26100.9711.mum"
+  ]
+ },
+ {
+  "file": "Windows11.0-KB5127654-x64.cab",
+  "reason": "SafeOSDU",
+  "partition": "WinRE",
+  "permanent": true,
+  "permanent_parts": [
+   "Language-00816435615F13A79DE24CE5C46EEED13BDFDEDAEAE45D3C267FE08B3031EC33~31bf3856ad364e35~amd64~en-US~10.0.26100.9711.mum",
+   "Language-00FF6CA2240B1C4280D9CC744C8B369B5E321558BA1B2503C1F54DFB93B3776A~31bf3856ad364e35~amd64~hu-HU~10.0.26100.9711.mum",
+   "Language-0256C7FDE02DB6D9CB26282CAC1564C8E4FDEF9063208C244EC54325582594D4~31bf3856ad364e35~amd64~sv-SE~10.0.26100.9711.mum"
+  ]
+ },
+ {
+  "file": "SSU-26100.9703-x64.cab",
+  "reason": "ServicingStackUpdate",
+  "partition": "MainOS",
+  "permanent": true,
+  "permanent_parts": [
+   "Shared-D56CE883D1E5E444EFB9AFBAB4F190EC3864576B7337129CE6A9F69F1E99355B~31bf3856ad364e35~amd64~~10.0.26100.9703.mum",
+   "update.mum",
+   "Wrapper-041FE68E70E8D58D3777AC64D5B5B7F298DA1F3C725CE321B22E250168F7284E~31bf3856ad364e35~amd64~~10.0.26100.9703.mum"
+  ]
+ }
+]

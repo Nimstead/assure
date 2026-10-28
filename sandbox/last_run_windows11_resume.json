@@ -1,0 +1,42 @@
+[
+  {
+    "step": "resume start",
+    "build": "10.0.26300.9711",
+    "pending": "True"
+  },
+  {
+    "step": "resume 1",
+    "outcome": "pending_reboot",
+    "error": null,
+    "steps": [
+      "new cumulative package identified",
+      "reboot required to finish",
+      "build updated",
+      "injected failure (sandbox test)",
+      "remove Package_for_RollupFix~31bf3856ad364e35~amd64~~26100.9711.1.30",
+      "reboot required to finish rollback"
+    ]
+  },
+  {
+    "step": "rebooted",
+    "build": "10.0.26300.9457"
+  },
+  {
+    "step": "resume 2",
+    "outcome": "rolled_back",
+    "error": "Change failed and was rolled back: injected failure (sandbox test) failed: --fail-after-apply",
+    "steps": [
+      "reboot required to finish",
+      "build updated",
+      "injected failure (sandbox test)",
+      "remove Package_for_RollupFix~31bf3856ad364e35~amd64~~26100.9711.1.30",
+      "reboot required to finish rollback",
+      "original build restored"
+    ]
+  },
+  {
+    "step": "final",
+    "outcome": "rolled_back",
+    "build": "10.0.26300.9457"
+  }
+]

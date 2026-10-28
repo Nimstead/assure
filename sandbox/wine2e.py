@@ -26,6 +26,7 @@ TMP = Path(tempfile.mkdtemp(prefix="nimstead-wine2e-"))
 PORT = 8766
 PY = "3.13.17"
 log: list[dict] = []
+OUT = "last_run_windows.json"  # last_run_windows11.json once the VM reports Windows 11
 
 
 def note(step, **kw):
@@ -36,9 +37,12 @@ def note(step, **kw):
 def guest(cmd, timeout=3600, check=True):
     for _ in range(4):  # VirtualBox guest control flakes right after boot (VERR_* from VBoxManage itself)
         rc, out = winvm.run(NAME, cmd, timeout=timeout)
-        if rc == 0 or not any(s in out for s in ("VERR_", "guest execution service is not ready")):
+        if rc == 0 or not any(s in out for s in ("VERR_", "not ready")) and out.strip():
             break
+        # Windows 11 finishes a cumulative update with a second restart, which can land between two commands (seen
+        # for real: empty output, then "Guest Additions are not ready"); wait it out, cold-booting a firmware hang
         time.sleep(15)
+        winvm.wait_ready(NAME, minutes=30)
     if check and rc != 0:
         raise RuntimeError(f"guest command failed ({rc}): {cmd[:200]}\n{out[-2000:]}")
     return out
@@ -80,13 +84,22 @@ def main(keep=False) -> int:
            "NIMSTEAD_SIGNING_KEY_FILE": str(TMP / "sign.pem"), "NIMSTEAD_CHECKPOINT_DIR": str(TMP / "cp"),
            "NIMSTEAD_SECRET_KEY_FILE": str(TMP / "secret.key")}
     os.environ.update(env)
+    import httpx
+
     from nimstead import feeds
     from nimstead.db import make_sessionmaker
     with make_sessionmaker(env["NIMSTEAD_DB"])() as s:
-        note("feeds", msrc=feeds.sync_msrc(s, 2), kev=feeds.sync_kev(s), epss=feeds.sync_epss(s))
+        for attempt in range(10):  # MSRC rate-limits repeated full syncs (429, no Retry-After); production retries hourly
+            try:
+                msrc = feeds.sync_msrc(s, 2)
+                break
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code != 429 or attempt == 9:
+                    raise
+                time.sleep(120)
+        note("feeds", msrc=msrc, kev=feeds.sync_kev(s), epss=feeds.sync_epss(s))
     server = subprocess.Popen([sys.executable, "-m", "uvicorn", "--factory", "nimstead.app:create_app", "--host", "127.0.0.1",
                                "--port", str(PORT)], env=env, cwd=ROOT / "api", stdout=open(TMP / "api.log", "wb"), stderr=subprocess.STDOUT)
-    import httpx
     api = httpx.Client(base_url=f"http://127.0.0.1:{PORT}", timeout=60)
     try:
         for _ in range(60):
@@ -115,6 +128,9 @@ def main(keep=False) -> int:
         assets = api.get("/api/assets").json()
         assert len(assets) == 1 and assets[0]["ecosystem"] == "Windows", (assets, out[-2000:])
         a = assets[0]
+        if "Windows 11" in a["os_name"]:
+            global OUT
+            OUT = "last_run_windows11.json"
         summ = api.get("/api/summary").json()
         top = summ["top_actions"][0]
         note("install.ps1 ran elevated: enrolled, reported, task registered", triggers=out.strip().splitlines()[-2:],
@@ -170,6 +186,7 @@ def main(keep=False) -> int:
                 pass
             if status in ("succeeded", "not_fixed", "rolled_back", "rollback_failed", "failed", "aborted"):
                 break
+            winvm.unstick(NAME)  # the agent's own reboot
             time.sleep(60)
         winvm.wait_ready(NAME, minutes=30)
         final = build()
@@ -199,7 +216,7 @@ def main(keep=False) -> int:
             note("VM destroyed", name=NAME)
         elif not passed:
             note("VM kept for inspection", name=NAME, destroy=f"uv run python ../sandbox/winvm.py destroy {NAME}")
-        (ROOT / "sandbox" / "last_run_windows.json").write_text(json.dumps(log, indent=2, default=str))
+        (ROOT / "sandbox" / OUT).write_text(json.dumps(log, indent=2, default=str))
 
 
 if __name__ == "__main__":

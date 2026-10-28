@@ -74,7 +74,7 @@ $env:NIMSTEAD_TOKEN = "nme_…"; irm https://assure.example.com/install.ps1 | ie
 
 | | Linux | Windows |
 |---|---|---|
-| **Supported** | Debian, Ubuntu, RHEL family (AlmaLinux, Rocky), Alpine, SUSE | Windows Server 2025 (proven); Windows 10/11 detection |
+| **Supported** | Debian, Ubuntu, RHEL family (AlmaLinux, Rocky), Alpine, SUSE | Windows Server 2025 and Windows 11 (proven); Windows 10 detection |
 | **Needs** | Python 3.9+ and curl | Python for all users (`winget install Python.Python.3.13 --scope machine`) |
 | **Runs** | a systemd timer every 6 hours | a SYSTEM scheduled task every 6 hours and at startup |
 

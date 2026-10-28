@@ -24,7 +24,7 @@ import time
 import urllib.error
 import urllib.request
 
-AGENT_VERSION = "0.1.1"  # the server reads this line to flag outdated agents; bump on every agent change
+AGENT_VERSION = "0.1.2"  # the server reads this line to flag outdated agents; bump on every agent change
 
 
 class AgentError(Exception):
@@ -805,28 +805,74 @@ $r.Updates | Where-Object { $_.KBArticleIDs -contains '%KB%' } | ForEach-Object 
 if ($c.Count -ne 1) { throw "expected exactly one update for KB%KB%, found $($c.Count)" }
 $d = $s.CreateUpdateDownloader(); $d.Updates = $c; [int]$d.Download().ResultCode
 """
-# Whether the downloaded package is permanent, read from its own top-level manifest (update.mum) BEFORE installing.
+# Whether the downloaded packages are permanent, read from their own top-level manifests (update.mum) BEFORE installing.
 # WUA's IsUninstallable can't be used: on Server 2025 it says False for cumulative updates that DISM removes fine.
-# Newer cumulative updates arrive as a .wim (mounted read-only), older ones as a .cab. Anything else: can't tell -> fail.
+# Windows 11 downloads "express" updates: Windows Update's own install plan (ActionList.xml) lists every package it will
+# install (the cumulative update plus companions: servicing stack, Safe OS, enablement), and the cumulative update's
+# manifests are already expanded under its ExpressPackagePath at download time. Without an ActionList (Server 2025) the
+# update is one .wim (mounted read-only) or .cab. Anything else, or a manifest that can't be read: fail, never guess.
 PS_PERMANENCE = r"""
-$f = Get-ChildItem C:\Windows\SoftwareDistribution\Download -Recurse -Depth 1 -File -Include '*KB%KB%*.wim','*KB%KB%*.cab' |
-  Where-Object { $_.FullName -notmatch '\\Metadata\\' } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-if (-not $f) { throw "downloaded package for KB%KB% not found" }
-$tmp = Join-Path $env:ProgramData ('Nimstead\mum-' + [guid]::NewGuid()); New-Item -ItemType Directory $tmp | Out-Null
-try {
-  if ($f.Extension -eq '.wim') {
-    dism /mount-wim "/wimfile:$($f.FullName)" /index:1 "/mountdir:$tmp" /readonly /english | Out-Null
-    if ($LASTEXITCODE) { throw "mounting $($f.Name) failed: $LASTEXITCODE" }
-  } else { expand.exe "-F:*.mum" $f.FullName $tmp | Out-Null }
-  $x = [xml](Get-Content -LiteralPath (Join-Path $tmp 'update.mum') -Raw -ErrorAction Stop)
-  $parts = @(Get-ChildItem -LiteralPath $tmp -File -Filter *.mum | Select-String -Pattern 'permanence="permanent"' -List | ForEach-Object { $_.Filename })
-  [pscustomobject]@{ file = $f.Name; permanent = (@($x.assembly.permanence, $x.assembly.package.permanence) -contains 'permanent');
-                     permanent_parts = $parts } | ConvertTo-Json -Compress
-} finally {
-  if ($f.Extension -eq '.wim') { dism /unmount-wim "/mountdir:$tmp" /discard | Out-Null }
-  Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
+$dl = 'C:\Windows\SoftwareDistribution\Download'
+function Read-Manifest($path, $reason, $partition) {
+  $tmp = $null; $mounted = $false
+  try {
+    if (Test-Path -LiteralPath $path -PathType Container) { $dir = $path } else {
+      $tmp = Join-Path $env:ProgramData ('Nimstead\mum-' + [guid]::NewGuid()); New-Item -ItemType Directory $tmp | Out-Null; $dir = $tmp
+      if ($path -like '*.wim') {
+        dism /mount-wim "/wimfile:$path" /index:1 "/mountdir:$tmp" /readonly /english | Out-Null
+        if ($LASTEXITCODE) { throw "mounting $path failed: $LASTEXITCODE" }
+        $mounted = $true
+      } elseif ($path -like '*.cab') { expand.exe "-F:*.mum" $path $tmp | Out-Null } else { throw "unknown package format: $path" }
+    }
+    $x = [xml](Get-Content -LiteralPath (Join-Path $dir 'update.mum') -Raw -ErrorAction Stop)
+    [pscustomobject]@{ file = (Split-Path $path -Leaf); reason = $reason; partition = $partition;
+      permanent = (@($x.assembly.permanence, $x.assembly.package.permanence) -contains 'permanent');
+      permanent_parts = @(Get-ChildItem -LiteralPath $dir -File -Filter *.mum | Select-String -Pattern 'permanence="permanent"' -List | ForEach-Object { $_.Filename }) }
+  } finally {
+    if ($mounted) { dism /unmount-wim "/mountdir:$tmp" /discard | Out-Null }
+    if ($tmp) { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue }
+  }
 }
+$al = Get-ChildItem $dl -Directory | ForEach-Object { Get-Item -LiteralPath (Join-Path $_.FullName 'ActionList.xml') -ErrorAction SilentlyContinue } |
+  Where-Object { (Get-Content -LiteralPath $_.FullName -Raw) -match 'FeatureId="CumulativeUpdate_KB%KB%"' } |
+  Sort-Object LastWriteTime -Descending | Select-Object -First 1
+if ($al) {
+  $root = $al.DirectoryName
+  $acts = @(([xml](Get-Content -LiteralPath $al.FullName -Raw)).ActionList.Actions.InstallPackage)
+  if (-not $acts) { throw "no packages in $($al.FullName)" }
+  $out = foreach ($a in $acts) {
+    $rel = if ($a.PayloadType -eq 'Express') { $a.ExpressPackagePath } else { $a.FilePath }
+    $p = [IO.Path]::GetFullPath((Join-Path $root $rel))
+    if (-not $p.StartsWith($root + '\', [StringComparison]::OrdinalIgnoreCase)) { throw "package path outside the download folder: $rel" }
+    Read-Manifest $p $a.Reason $a.Partition
+  }
+} else {
+  $f = Get-ChildItem $dl -Recurse -Depth 1 -File -Include '*KB%KB%*.wim','*KB%KB%*.cab' |
+    Where-Object { $_.FullName -notmatch '\\Metadata\\' } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+  if (-not $f) { throw "downloaded package for KB%KB% not found" }
+  $out = Read-Manifest $f.FullName 'CumulativeUpdate' 'MainOS'
+}
+ConvertTo-Json -Compress -Depth 4 -InputObject @($out)
 """
+# Companions Windows ships as permanent with every Windows 11 cumulative update. Neither changes the OS build that
+# rollback restores, so like permanent Feature-on-Demand parts they stay after a rollback and are reported, not refused.
+PERMANENT_COMPANIONS = {("ServicingStackUpdate", "MainOS"), ("SafeOSDU", "WinRE")}
+
+
+def removable(pkgs):
+    """(ok, detail) for the packages Windows Update will install. Rollback removes only the new cumulative package, so
+    that must not be permanent; every companion must be readable and either removable or a known permanent companion."""
+    main = [p for p in pkgs if p.get("reason") == "CumulativeUpdate"]
+    if len(main) != 1:
+        return False, f"expected one cumulative update package, found {len(main)}: {json.dumps(pkgs)[:600]}"
+    rest = [p for p in pkgs if p is not main[0]]
+    bad = [p for p in [main[0], *rest] if p.get("permanent") is not False
+           and not (p is not main[0] and p.get("permanent") is True and (p.get("reason"), p.get("partition")) in PERMANENT_COMPANIONS)]
+    if bad:
+        return False, "permanent or unreadable: " + ", ".join(f"{p.get('file')} ({p.get('reason')}, {p.get('partition')})" for p in bad)
+    stays = ", ".join(f"{p.get('file')} ({p.get('reason')}, {p.get('partition')}{', permanent' if p['permanent'] else ''})" for p in rest)
+    return True, (f"{main[0].get('file')}: update.mum not permanent; permanent parts: {', '.join(main[0].get('permanent_parts') or []) or 'none'}"
+                  + (f"; also installed, stays after rollback: {stays}" if stays else ""))
 PS_INSTALL = r"""
 $s = New-Object -ComObject Microsoft.Update.Session
 $r = $s.CreateUpdateSearcher().Search("IsInstalled=0 and Type='Software'")
@@ -958,11 +1004,9 @@ class WinJob:
         rc, out = ps(self.run, PS_DOWNLOAD.replace("%KB%", s["kb"]))
         self.step(f"KB{s['kb']} downloaded", rc == 0 and out.strip().splitlines()[-1:] in (["2"], ["3"]), out)
         rc, out = ps(self.run, PS_PERMANENCE.replace("%KB%", s["kb"]))
-        perm = json.loads(out) if rc == 0 and out.strip().startswith("{") else {}
         # permanent sub-packages (Features on Demand) stay behind on removal; rollback is judged by the build returning
-        self.step("update is removable (manifest checked before install)", perm.get("permanent") is False,
-                  out if perm.get("permanent") is not False else
-                  f"{perm['file']}: update.mum not permanent; permanent parts: {', '.join(perm.get('permanent_parts') or []) or 'none'}")
+        ok, detail = removable(json.loads(out)) if rc == 0 and out.strip().startswith("[") else (False, out)
+        self.step("update is removable (manifest checked before install)", ok, detail)
         rc, out = ps(self.run, PS_INSTALL.replace("%KB%", s["kb"]))
         res = json.loads(out) if rc == 0 and out.strip().startswith("{") else {}
         s["phase"] = "verify"  # from here on, failures roll back

@@ -1,9 +1,16 @@
-"""Windows remediation state machine against a simulated host (real proof: sandbox/winvm.py on Windows Server 2025)."""
+"""Windows remediation state machine against a simulated host (real proof: sandbox/winvm.py on Windows Server 2025
+and Windows 11)."""
 
 import json
+import re
+import xml.etree.ElementTree as ET
+from pathlib import Path
 
 import pytest
 from test_agent_remediate import agent
+
+FIX = Path(__file__).parent / "fixtures" / "windows"
+WIN11 = json.loads((FIX / "win11-express-permanence.json").read_text())  # the real check's output on the Windows 11 VM
 
 OLD, NEW = "10.0.26100.32230", "10.0.26100.33650"
 BASE_PKG = "Package_for_RollupFix~31bf3856ad364e35~amd64~~26100.32230.1.10"
@@ -32,8 +39,11 @@ class FakeWin:
             if "update.mum" in script:
                 if self.manifest == "unreadable":
                     return 1, "downloaded package for KB5126646 not found"
-                return 0, json.dumps({"file": "Windows11.0-KB5126646-x64.wim", "permanent": self.manifest == "permanent",
-                                      "permanent_parts": ["Microsoft-Windows-SenseClient-FoD-Package.mum"]})
+                if isinstance(self.manifest, list):  # Windows 11 express: every package in ActionList.xml
+                    return 0, json.dumps(self.manifest)
+                return 0, json.dumps([{"file": "Windows11.0-KB5126646-x64.wim", "reason": "CumulativeUpdate", "partition": "MainOS",
+                                       "permanent": self.manifest == "permanent",
+                                       "permanent_parts": ["Microsoft-Windows-SenseClient-FoD-Package.mum"]}])
             if "KBArticleIDs" in script:
                 kb = script.split("-contains '")[1].split("'")[0]
                 return 0, json.dumps([{"title": f"Cumulative Update (KB{kb})", "uninstallable": False}] if kb in self.offered else [])
@@ -121,6 +131,54 @@ def test_removable_update_notes_permanent_parts(tmp_path):
     r = make(tmp_path, FakeWin()).advance()
     step = next(s for s in r["steps"] if "removable" in s["step"])
     assert step["ok"] and "SenseClient" in step["output"]
+
+
+def test_windows11_express_update_with_its_companions_is_installed(tmp_path):
+    h = FakeWin(manifest=WIN11)
+    assert make(tmp_path, h).advance()["outcome"] == "pending_reboot"
+    step = next(s for s in h_steps(tmp_path) if "removable" in s["step"])
+    # the cumulative update itself is removable; the permanent servicing stack and WinRE update are named as staying
+    assert step["ok"] and "Windows11.0-KB5127648-x64: update.mum not permanent" in step["output"]
+    assert "SenseClient" in step["output"] and "stays after rollback" in step["output"]
+    assert "SafeOSDU, WinRE, permanent" in step["output"] and "ServicingStackUpdate, MainOS, permanent" in step["output"]
+
+
+def h_steps(tmp_path):
+    return json.loads((tmp_path / "state.json").read_text())["steps"]
+
+
+def changed(pkgs, file, **kw):
+    return [{**p, **kw} if p["file"] == file else p for p in pkgs]
+
+
+@pytest.mark.parametrize("pkgs, why", [
+    (changed(WIN11, "Windows11.0-KB5127648-x64", permanent=True), "cumulative update itself permanent"),
+    (changed(WIN11, "Windows11.0-KB5121794-x64.cab", permanent=True), "permanent companion that isn't servicing infrastructure"),
+    (changed(WIN11, "Windows11.0-KB5127654-x64.cab", partition="MainOS"), "permanent Safe OS update outside WinRE"),
+    (changed(WIN11, "SSU-26100.9703-x64.cab", permanent=None), "companion manifest unreadable"),
+    ([p for p in WIN11 if p["reason"] != "CumulativeUpdate"], "no cumulative update in the plan"),
+    (WIN11 + [p for p in WIN11 if p["reason"] == "CumulativeUpdate"], "two cumulative updates in the plan"),
+    ([], "empty plan"),
+])
+def test_windows11_express_update_refused_before_install(tmp_path, pkgs, why):
+    h = FakeWin(manifest=pkgs)
+    r = make(tmp_path, h).advance()
+    assert r["outcome"] == "aborted" and r["error"].startswith("No changes made") and "removable" in r["error"], why
+    assert not any("CreateUpdateInstaller" in c[-1] for c in h.log if c[0] == "powershell")
+
+
+def test_real_windows11_action_list_matches_what_the_check_reads():
+    # the real ActionList.xml Windows Update wrote on the Windows 11 VM for KB5127648
+    ns = {"a": "urn:schemas-microsoft-com:os-update-actionlist"}
+    root = ET.parse(FIX / "win11-express-ActionList.xml").getroot()  # noqa: S314 — checked-in fixture
+    acts = root.findall("a:Actions/a:InstallPackage", ns)
+    assert re.search(agent.PS_PERMANENCE.split("FeatureId=")[1].split("'")[0].replace("%KB%", "5127648"),
+                     (FIX / "win11-express-ActionList.xml").read_text())
+    plan = {(a.get("Reason"), a.get("Partition")) for a in acts}
+    assert ("CumulativeUpdate", "MainOS") in plan and agent.PERMANENT_COMPANIONS <= plan
+    express = next(a for a in acts if a.get("PayloadType") == "Express")
+    assert express.get("ExpressPackagePath") == "metadata\\Windows11.0-KB5127648-x64"  # where update.mum is read
+    assert [p["file"] for p in WIN11] == [(a.get("ExpressPackagePath") or a.get("FilePath")).split("\\")[-1] for a in acts]
 
 
 def test_tampered_state_is_never_resumed(tmp_path):

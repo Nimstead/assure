@@ -26,7 +26,7 @@ import time
 import urllib.error
 import urllib.request
 
-AGENT_VERSION = "0.2.0"  # the server reads this line to flag outdated agents; bump on every agent change
+AGENT_VERSION = "0.3.0"  # the server reads this line to flag outdated agents; bump on every agent change
 # Ed25519 public keys (hex) allowed to sign releases (DECISIONS 31): primary (GitHub Actions) and offline backup.
 # The server only relays signed releases, so it can withhold an update but never forge one. Empty = never self-update.
 RELEASE_KEYS = ["a91fa6539c6c2593009fc71b1c1fba341b5685ba7bc97c127c068b1d732b21d2", "2438f2ccebab5bf26edf9e21a8aa8f09abd1861f52fbe0d6641b28b90f8b0e5a"]  # noqa: E501
@@ -154,7 +154,7 @@ def msrc_product_name(build, display_version, installation_type, machine):
 UNINSTALL = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
 
 
-USER_SID = re.compile(r"^S-1-5-21-[0-9-]+$")
+USER_SID = re.compile(r"^S-1-5-21-[0-9-]+\Z")
 
 
 def windows_apps(reg):
@@ -264,9 +264,10 @@ def collect():
 # change, and any failure after a change triggers rollback. Nothing is silent:
 # every step is reported back and lands in the evidence ledger.
 
-SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9+._-]{0,200}$")
-SAFE_VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+~:_^-]{0,200}$")
+SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9+._-]{0,200}\Z")  # \Z: $ also matches before a final newline
+SAFE_VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+~:_^-]{0,200}\Z")
 ROLLBACK_ROOT = "/var/lib/nimstead/rollback"
+MIN_FREE_BYTES = 1 << 30  # refuse a change rather than fill the disk with its rollback copy
 APT_CACHE = "/var/cache/apt/archives"
 
 
@@ -368,28 +369,32 @@ def apk_owned(db_text, names):
     return out
 
 
-def dnf_touched(out):
+DNF_SECTIONS = ("Installing", "Upgrading", "Removing", "Downgrading", "Reinstalling", "Obsoleting")
+ZYPPER_SECTIONS = ("to-install", "to-upgrade", "to-downgrade", "to-remove", "to-reinstall", "to-upgrade-change-arch")
+
+
+def dnf_touched(out, sections=DNF_SECTIONS):
     """Package names in a dnf4 transaction table (sections between the header and 'Transaction Summary')."""
     names, section = set(), False
     for ln in out.splitlines():
         s = ln.strip()
         if s.startswith("Transaction Summary"):
             break
-        if s.endswith(":") and s.rstrip(":").split()[0] in ("Installing", "Upgrading", "Removing", "Downgrading", "Reinstalling", "Obsoleting"):
-            section = True
+        if s.endswith(":") and s.rstrip(":").split()[0] in DNF_SECTIONS:
+            section = s.rstrip(":").split()[0] in sections
             continue
         if section and ln.startswith(" ") and s:
             names.add(s.split()[0])
     return names
 
 
-def zypper_touched(xml):
+def zypper_touched(xml, sections=ZYPPER_SECTIONS):
     """Package names in a `zypper --xmlout ... --dry-run` install summary."""
     import xml.etree.ElementTree as ET
     names = set()
     # local root-run zypper output, not network input; the agent is stdlib-only so defusedxml isn't available
     tree = ET.fromstring(xml[xml.index("<stream"):] if "<stream" in xml else xml)  # noqa: S314
-    for section in ("to-install", "to-upgrade", "to-downgrade", "to-remove", "to-reinstall", "to-upgrade-change-arch"):
+    for section in sections:
         for el in tree.iter(section):
             names |= {s.get("name") for s in el.iter("solvable") if s.get("type", "package") == "package"}
     return names
@@ -480,6 +485,15 @@ class Job:
     def mark_restarts(self):
         self.restarts = {u: self.restart_count(u) for u in self.units}
 
+    def newer(self, to, cur):
+        """The package manager's own ordering (rpm-based managers refuse downgrades themselves; the dry run checks too)."""
+        if self.mgr == "apt":
+            return self.run(["dpkg", "--compare-versions", to, "gt", cur])[0] == 0
+        if self.mgr == "apk":
+            rc, out = self.run(["apk", "version", "-t", to, cur])
+            return rc == 0 and out.strip() == ">"
+        return True
+
     def snapper_ok(self):
         rc, out = self.run(["snapper", "-c", "root", "list", "--columns", "number"])
         return rc == 0
@@ -500,22 +514,26 @@ class Job:
 
     def simulate(self):
         """Dry-run the transaction; refuse if it would touch anything outside the plan (rollback couldn't undo it)."""
+        down = set()  # apt: --only-upgrade, and pins are compared with dpkg before this (newer_than_installed)
         if self.mgr == "apt":
             out = self.step("simulate upgrade", ["apt-get", "-s", "install", "--only-upgrade", "--no-remove", *self.targets()])
             touched = {ln.split()[1] for ln in out.splitlines() if ln.split()[:1] in (["Inst"], ["Remv"], ["Purg"])}
         elif self.mgr == "apk":
             out = self.step("simulate upgrade", ["apk", "add", "-s", "--upgrade", *self.targets()])
             touched = set(re.findall(r"\b(?:Upgrading|Installing|Purging|Downgrading|Replacing|Reinstalling) (\S+)", out))
+            down = set(re.findall(r"\bDowngrading (\S+)", out))
         elif self.mgr == "zypper":
             out = self.step("simulate upgrade", ["zypper", "--non-interactive", "--xmlout", "install", "--dry-run", *self.targets()])
-            touched = zypper_touched(out)
+            touched, down = zypper_touched(out), zypper_touched(out, ("to-downgrade",))
         else:
             rc, out = self.run(["dnf", "upgrade", "--assumeno", *self.targets()])  # exits 1 after printing the plan
             self.steps.append({"step": "simulate upgrade", "ok": "Transaction Summary" in out or "Nothing to do" in out,
                                "output": out[-1500:]})
             if "Transaction Summary" not in out:
                 raise StepFailed("simulate upgrade failed: " + out[-300:].strip())
-            touched = dnf_touched(out)
+            touched, down = dnf_touched(out), dnf_touched(out, ("Downgrading",))
+        # a fix only ever moves forward: an older build (with its known flaws) is never installed on a server's say-so
+        self.step("no package downgraded", ok=not down, output=("would downgrade: " + ", ".join(sorted(down))) if down else "")
         planned = {p["name"] for p in self.pkgs}
         extra = sorted(touched - planned)
         self.step("change limited to planned packages", ok=not extra,
@@ -660,6 +678,11 @@ class Job:
             cur = self.versions()
             drift = [p["name"] for p in self.pkgs if cur.get(p["name"]) != p["from"]]
             self.step("installed versions match plan", ok=not drift, output=("drifted: " + ", ".join(drift)) if drift else "")
+            older = [f"{p['name']} {p['to']}" for p in self.pkgs if p.get("to") and not self.newer(p["to"], p["from"])]
+            self.step("fix is newer than installed", ok=not older, output=("not newer: " + ", ".join(older)) if older else "")
+            free = free_bytes(self.dir)
+            self.step("free space for the rollback copy", ok=free >= MIN_FREE_BYTES,
+                      output=f"{free // 2**20} MiB free; at least {MIN_FREE_BYTES // 2**20} MiB needed")
             self.health("before change")
             self.step("refresh package index", {"apt": ["apt-get", "update"], "apk": ["apk", "update"],
                                                 "dnf": ["dnf", "makecache"],
@@ -682,6 +705,13 @@ class Job:
             return "rolled_back", self.steps, f"Change failed and was rolled back: {err}"
         except Exception as e:
             return "rollback_failed", self.steps, f"ROLLBACK FAILED, host needs attention. Change error: {err}; rollback error: {e}"
+
+
+def free_bytes(path):
+    """Free space on the filesystem that holds path (or would, once created)."""
+    while not os.path.isdir(path) and os.path.dirname(path) != path:
+        path = os.path.dirname(path)
+    return shutil.disk_usage(path).free
 
 
 def _tree_sha256(path):
@@ -780,6 +810,8 @@ def run_jobs(server, key, insecure_http, run=sh, outcome_dir=None, win_state=Non
         j = runner
         outcome, steps, error = j.execute()
         record(job.get("id"), {"outcome": outcome, "steps": steps, "error": error, "versions": getattr(j, "result_versions", None)})
+        if outcome != "rollback_failed":  # outcome persisted; a failed rollback keeps its copy for whoever repairs the host
+            shutil.rmtree(j.dir, ignore_errors=True)
     return problems, False
 
 
@@ -790,13 +822,13 @@ def run_jobs(server, key, insecure_http, run=sh, outcome_dir=None, win_state=Non
 # if Windows marks that package permanent the change can't be undone, which is reported loudly, never as success.
 
 WIN_STATE = os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "Nimstead", "pending-job.json")
-SAFE_KB = re.compile(r"^[0-9]{6,8}$")
+SAFE_KB = re.compile(r"^[0-9]{6,8}\Z")
 # DISM/CBS "busy" results: servicing still running (RPC disconnected, CBS busy/pending, file in use)
 DISM_TRANSIENT = ("0x80010108", "0x800f0816", "0x800f082f", "0x80070020", "0x800f0805", "0x80004005")
 DISM_RETRIES = 15
-SAFE_PRODUCT = re.compile(r"^Windows [A-Za-z0-9 .()-]{1,120}$")
+SAFE_PRODUCT = re.compile(r"^Windows [A-Za-z0-9 .()-]{1,120}\Z")
 ROLLUP = re.compile(r"Package Identity : (Package_for_RollupFix~[^\s]+)\s+State : ([A-Za-z ]+)")
-ROLLUP_NAME = re.compile(r"^Package_for_RollupFix~[A-Za-z0-9._~-]{1,200}$")
+ROLLUP_NAME = re.compile(r"^Package_for_RollupFix~[A-Za-z0-9._~-]{1,200}\Z")
 TRUSTED_OWNERS = {"S-1-5-18", "S-1-5-32-544"}  # SYSTEM, Administrators
 
 PS_FIND = r"""
@@ -1188,12 +1220,10 @@ def post(server, path, body, insecure_http, key=None, raw=False):
     req = urllib.request.Request(server.rstrip("/") + path, data, headers, method="GET" if body is None else "POST")
     try:
         with _opener.open(req, timeout=60) as r:
-            if raw:
-                data = r.read(MAX_AGENT_BYTES + 1)
-                if len(data) > MAX_AGENT_BYTES:
-                    raise AgentError(f"response from {path} is larger than {MAX_AGENT_BYTES} bytes")
-                return data
-            return json.loads(r.read() or b"{}")
+            data = r.read(MAX_AGENT_BYTES + 1)  # JSON too: a server can't exhaust a root process's memory
+            if len(data) > MAX_AGENT_BYTES:
+                raise AgentError(f"response from {path} is larger than {MAX_AGENT_BYTES} bytes")
+            return data if raw else json.loads(data or b"{}")
     except urllib.error.HTTPError as e:
         raise AgentError("server returned {}: {}".format(e.code, e.read(300).decode(errors="replace")))
     except (urllib.error.URLError, OSError, ValueError) as e:
@@ -1224,6 +1254,17 @@ def verify_release(manifest, sig_b64, keys=None):
 
 
 FAILED_RETRY_SECONDS = 24 * 3600
+CHANNELS = ("preview", "beta", "stable")  # least to most proven, as the server's updates.CHANNELS
+
+
+def release_channel(rel):
+    return rel.get("channel") if rel.get("channel") in CHANNELS else "preview"  # manifests from before channels (0.3.0)
+
+
+def channel_ok(rel, cfg):
+    """A host takes its channel and anything more proven. Enrolled before channels existed: everything, as then."""
+    mine = cfg.get("channel") if cfg.get("channel") in CHANNELS else "preview"
+    return CHANNELS.index(release_channel(rel)) >= CHANNELS.index(mine)
 
 
 def _failed_releases(memo):
@@ -1264,6 +1305,8 @@ def self_update(cfg, insecure_http, path=None, keys=None, smoke=None, memo=None)
         rel = verify_release(str(m["release"]).encode(), m["sig"], keys)
         if version_tuple(rel["agent_version"]) <= version_tuple(AGENT_VERSION):  # anti-rollback: only strictly newer
             return None, None
+        if not channel_ok(rel, cfg):  # the channel is signed: a server can't hand a stable host a preview build
+            return None, f"skipping agent {rel['agent_version']}: signed for {release_channel(rel)}, this host takes {cfg.get('channel', 'preview')}"
         failed = _failed_releases(memo)
         if time.time() - failed.get(rel["agent_sha256"], 0) < FAILED_RETRY_SECONDS:  # don't redo a failing self-test every poll
             return None, f"skipping agent {rel['agent_version']}: it failed its self-test on this host in the last 24 hours"
@@ -1575,6 +1618,8 @@ def main(argv=None):
                     help="let this host run approved package upgrades (local opt-in; the server cannot enable it)")
     en.add_argument("--no-auto-update", action="store_true",
                     help="never replace this agent with newer signed releases (default: update automatically)")
+    en.add_argument("--channel", choices=CHANNELS, default="stable",
+                    help="least proven signed releases this agent takes (the installer passes its server's channel)")
     sub.add_parser("report")
     sub.add_parser("collect")
     rm = sub.add_parser("remediate", help="run approved remediation jobs, then re-report inventory")
@@ -1606,7 +1651,7 @@ def main(argv=None):
                 raise AgentError("enroll response missing agent_key")
             # only the fields we expect from the server, and local choices last: the server can't opt a host in
             cfg = {"asset_id": res.get("asset_id"), "agent_key": res["agent_key"], "server": a.server,
-                   "allow_remediation": a.allow_remediation, "auto_update": not a.no_auto_update}
+                   "allow_remediation": a.allow_remediation, "auto_update": not a.no_auto_update, "channel": a.channel}
             print("enrolled as asset {}; config saved to {}".format(res.get("asset_id"), save_config(cfg)))
         elif a.cmd == "uninstall":
             if not a.yes:

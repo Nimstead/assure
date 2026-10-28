@@ -44,7 +44,7 @@ describe("findings filters <-> URL", () => {
 describe("install commands", () => {
   it("renders every command with origin and token, the token never in a program's arguments", () => {
     const c = installCommands("https://nim.example", "nme_abc");
-    expect(c.curl).toBe("export NIMSTEAD_TOKEN=nme_abc; curl -fsSL https://nim.example/install.sh | sudo --preserve-env=NIMSTEAD_TOKEN sh; unset NIMSTEAD_TOKEN");
+    expect(c.curl).toBe("export NIMSTEAD_TOKEN=nme_abc; curl -fsSL --proto '=https' https://nim.example/install.sh | sudo --preserve-env=NIMSTEAD_TOKEN sh; unset NIMSTEAD_TOKEN");
     expect(c.windows).toBe('$env:NIMSTEAD_TOKEN = "nme_abc"; irm https://nim.example/install.ps1 | iex');
     expect(c.python).toBe("export NIMSTEAD_TOKEN=nme_abc; python3 nimstead_agent.py enroll --server https://nim.example && python3 nimstead_agent.py report; unset NIMSTEAD_TOKEN");
     for (const cmd of Object.values(c)) expect(cmd).not.toContain("--token"); // ps and sudo logs show every argument

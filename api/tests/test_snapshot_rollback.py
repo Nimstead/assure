@@ -28,6 +28,9 @@ class FakeApk:
     def __call__(self, cmd, cwd=None):
         self.log.append(cmd)
         match cmd:
+            case ["apk", "version", "-t", a, b]:
+                from nimstead.versions import apk_cmp
+                return 0, {1: ">", 0: "=", -1: "<"}[apk_cmp(a, b)]
             case ["apk", "--version"] | ["apk", "update"]:
                 return 0, "ok"
             case ["systemctl", "show", "-p", "NRestarts", "--value", _]:

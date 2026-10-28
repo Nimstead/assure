@@ -314,14 +314,16 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         server = os.environ.get("NIMSTEAD_PUBLIC_URL") or str(request.base_url).rstrip("/")
         if not re.fullmatch(r"https?://[A-Za-z0-9.\-]+(:\d{1,5})?", server):  # substituted into shell: strict
             raise HTTPException(400, "Server URL is not safe to embed; set NIMSTEAD_PUBLIC_URL")
-        return Response(INSTALL_SH.read_text().replace("__SERVER__", server), media_type="text/x-shellscript")
+        return Response(INSTALL_SH.read_text().replace("__SERVER__", server).replace("__CHANNEL__", updates.channel()),
+                        media_type="text/x-shellscript")
 
     @app.get("/install.ps1")
     def install_ps1(request: Request):
         server = os.environ.get("NIMSTEAD_PUBLIC_URL") or str(request.base_url).rstrip("/")
         if not re.fullmatch(r"https?://[A-Za-z0-9.\-]+(:\d{1,5})?", server):  # substituted into a script: strict
             raise HTTPException(400, "Server URL is not safe to embed; set NIMSTEAD_PUBLIC_URL")
-        return Response(INSTALL_PS1.read_text().replace("__SERVER__", server), media_type="text/plain")
+        return Response(INSTALL_PS1.read_text().replace("__SERVER__", server).replace("__CHANNEL__", updates.channel()),
+                        media_type="text/plain")
 
     @app.get("/agent/nimstead_agent.py")
     def agent_file():

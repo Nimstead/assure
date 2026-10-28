@@ -173,7 +173,7 @@ export function whyMatched(f: Pick<Finding, "installed_version" | "fixed_version
 export function installCommands(origin: string, token: string) {
   return {
     // the token goes in the environment (export is a shell builtin), never argv: ps and sudo logs show every argument
-    curl: `export NIMSTEAD_TOKEN=${token}; curl -fsSL ${origin}/install.sh | sudo --preserve-env=NIMSTEAD_TOKEN sh; unset NIMSTEAD_TOKEN`,
+    curl: `export NIMSTEAD_TOKEN=${token}; curl -fsSL ${origin.startsWith("https://") ? "--proto '=https' " : ""}${origin}/install.sh | sudo --preserve-env=NIMSTEAD_TOKEN sh; unset NIMSTEAD_TOKEN`,
     python: `export NIMSTEAD_TOKEN=${token}; python3 nimstead_agent.py enroll --server ${origin} && python3 nimstead_agent.py report; unset NIMSTEAD_TOKEN`,
     windows: `$env:NIMSTEAD_TOKEN = "${token}"; irm ${origin}/install.ps1 | iex`,
   };

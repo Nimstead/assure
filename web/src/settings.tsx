@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertDialog, RadioGroup } from "radix-ui";
+import { AlertDialog, RadioGroup, Switch } from "radix-ui";
 import { Info } from "lucide-react";
 import clsx from "clsx";
 import { adminGate, api, meQ, parseUtc, relativeTime, settingsQ, useIsAdmin, useTitle, type EnrollToken, type Settings } from "./lib";
@@ -22,7 +22,7 @@ export function SettingsPage() {
   const [hours, setHours] = useState("");
   useEffect(() => { if (q.data) setHours(String(q.data.canary_soak_hours)); }, [q.data]);
   const save = useMutation({
-    mutationFn: (body: Partial<Pick<Settings, "remediation_mode" | "canary_soak_hours">>) => api<Settings>("/api/settings", { method: "PATCH", body }),
+    mutationFn: (body: Partial<Pick<Settings, "remediation_mode" | "canary_soak_hours" | "agent_updates_paused">>) => api<Settings>("/api/settings", { method: "PATCH", body }),
     onSuccess: (data) => { qc.setQueryData(settingsQ.queryKey, data); void qc.invalidateQueries({ queryKey: ["ledger"] }); },
   });
 
@@ -76,10 +76,52 @@ export function SettingsPage() {
         </form>}
         {admin && <p id="soak-hint" className={clsx("text-xs", hoursOk ? "text-muted" : "text-now-fg")}>Whole hours, 1 to 720.</p>}
       </section>
+      <section aria-labelledby="agent-updates" className="flex flex-col items-start gap-3">
+        <h2 id="agent-updates" className="text-lg font-semibold">Agent updates</h2>
+        <p className="max-w-prose text-sm text-muted">
+          Agents replace themselves with newer releases at their next run. A release is accepted only if it's signed by the Nimstead release key built into the agent, so this server can hold an update back but can't change one. Each agent tests the new version on its host before switching and keeps the old one if the test fails.
+        </p>
+        {!s.signed_agent_release && (
+          <p className="flex items-start gap-2 rounded-lg border border-line-strong bg-sunken p-3 text-sm">
+            <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
+            <span>This server has no signed release for the agent it serves (a development build, or the release files haven't been fetched yet), so agents stay on their current version.</span>
+          </p>
+        )}
+        {!admin ? <p className="text-sm">Agent updates are <strong className="font-semibold">{s.agent_updates_paused ? "paused" : "on"}</strong>. <span className="text-muted">Only organisation admins can change this.</span></p> : (
+          <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <Switch.Root checked={s.agent_updates_paused} disabled={save.isPending} onCheckedChange={(agent_updates_paused) => save.mutate({ agent_updates_paused })}
+              className="relative h-5 w-9 shrink-0 cursor-pointer rounded-full bg-line-strong data-[state=checked]:bg-accent">
+              <Switch.Thumb className="block size-4 translate-x-0.5 rounded-full bg-surface transition-transform data-[state=checked]:translate-x-[18px]" />
+            </Switch.Root>
+            Pause agent updates for this organisation
+          </label>
+        )}
+      </section>
       <TokensSection />
       {me.data?.admin && <NotificationsSection />}
       {me.data?.admin && <SsoSection />}
+      <PlatformSection p={s.platform} />
     </div>
+  );
+}
+
+const UPDATE_OUTCOME = { updated: "Updated", rolled_back: "Update failed and was rolled back", rollback_failed: "Update failed and the rollback failed too", refused: "Update refused" } as const;
+
+export function PlatformSection({ p }: { p: Settings["platform"] }) {
+  const last = p.last_update;
+  return (
+    <section aria-labelledby="platform" className="flex flex-col items-start gap-2">
+      <h2 id="platform" className="text-lg font-semibold">This server</h2>
+      <p className="text-sm">Nimstead Assure <strong className="font-semibold">{p.version || "development build"}</strong>
+        {p.update_available ? <> · <a href={p.latest_url ?? undefined} className="font-medium text-accent underline">{p.latest} is available</a></> : p.latest ? <span className="text-muted"> · up to date</span> : null}
+      </p>
+      {p.update_available && <p className="max-w-prose text-sm text-muted">Install it on the Docker host with <code className="rounded bg-sunken px-1">deploy/update.sh</code>. It checks the release signature, backs up the database, and rolls back automatically if the new version doesn't come up healthy.</p>}
+      {last && (
+        <p role={last.outcome === "updated" ? undefined : "alert"} className={clsx("text-sm", last.outcome === "updated" ? "text-muted" : "rounded-md bg-now-bg px-3 py-2 text-now-fg")}>
+          {UPDATE_OUTCOME[last.outcome] ?? last.outcome}{last.to && ` (${last.from ? `${last.from} → ` : ""}${last.to})`}{last.at && `, ${relativeTime(last.at)}`}{last.error && `: ${last.error}`}
+        </p>
+      )}
+    </section>
   );
 }
 

@@ -81,8 +81,27 @@ $env:NIMSTEAD_TOKEN = "nme_…"; irm https://assure.example.com/install.ps1 | ie
 | **Supported** | Debian, Ubuntu, RHEL family (AlmaLinux, Rocky), Alpine, SUSE | Windows Server 2025 and Windows 11 (proven); Windows 10 detection |
 | **Needs** | Python 3.9+ and curl | Python for all users (`winget install Python.Python.3.13 --scope machine`) |
 | **Runs** | a systemd timer every 6 hours | a SYSTEM scheduled task every 6 hours and at startup |
+| **With remediation** | plus a 15-minute check for approved fixes | plus a 15-minute check for approved fixes |
 
 The agent is one readable file, [`agent/nimstead_agent.py`](../agent/nimstead_agent.py), using only Python's standard library.
+
+### The agent updates itself
+
+At each run the agent asks your server for a newer release. It installs one only if the release is signed by the Nimstead release key built into the agent, and only if it's newer than the version already running. Your server passes the release along but can't sign one, so even a compromised server can't push code to your machines. The agent then runs the new version's inventory on the machine before switching. If that fails, it keeps the old version and the reason shows on the **Assets** page. The previous version is kept beside it as `nimstead_agent.py.prev`.
+
+- **Pause it for the whole organisation:** **Settings → Agent updates**.
+- **Turn it off on one machine:** enrol with `--no-auto-update`. That machine then shows **Agent outdated** after each release until you rerun the install command.
+- **Agents older than 0.2.0** can't update themselves. Rerun the install command on each once; the enrolment is kept.
+
+A machine that hasn't reported for 14 hours shows **Not reporting** and sends one alert, so a stopped agent doesn't quietly leave stale findings.
+
+### Remove the agent
+
+```bash
+sudo python3 /usr/local/lib/nimstead/nimstead_agent.py uninstall --yes
+```
+
+On Windows, in an elevated PowerShell: `py -3 -I "$env:ProgramFiles\Nimstead\nimstead_agent.py" uninstall --yes`. This removes the timers or scheduled tasks, the agent key, saved state and the agent itself, then tells you to delete the machine on the **Assets** page. It's refused while a Windows update is waiting for its restart.
 
 ### Fixing things automatically
 
@@ -98,11 +117,21 @@ Every fix takes a rollback copy first, refuses to touch anything outside the pla
 
 ## Upgrade
 
+**Settings → This server** shows your version and says when a newer release is out (alert targets hear about it once). To install it, run this in the checkout on the Docker host:
+
 ```bash
-git pull && docker compose up -d --build
+sudo deploy/update.sh
 ```
 
-Migrations run on start. When a release changes the agent, hosts show **Agent outdated** on the Assets page; rerun the install command on each (enrolment is kept).
+It updates only to a release signed by the Nimstead release key, and only if the release tag points at exactly the signed commit. Your checkout must have no local changes (`.env` is fine), and when run as root the checkout must be owned by root. It builds the new version while the old one keeps serving, then stops the server for a moment to back up a quiet database to `backups/`. It starts the new version (migrations run on start) and waits up to 5 minutes for `/api/health` to answer for it, then restarts the feed updates. If that doesn't happen, it puts the previous version back with the database from the backup. The outcome shows in **Settings**, and a failure alerts. Add `--dry-run` to see what it would do.
+
+To install releases on their own each night (03:00–04:00), turn on the timer once:
+
+```bash
+sudo deploy/update.sh --install-timer
+```
+
+Agents then update themselves from the new release at their next run.
 
 ## Back up
 

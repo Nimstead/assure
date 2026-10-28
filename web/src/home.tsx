@@ -42,6 +42,17 @@ export function Home() {
         </section>
       )}
 
+      {(s.hosts_not_reporting > 0 || s.agents_need_attention > 0) && (
+        <section aria-labelledby="fleet" className="rounded-lg border border-line-strong bg-sunken p-4">
+          <h2 id="fleet" className="flex items-center gap-2 font-semibold"><TriangleAlert className="size-4" aria-hidden />Machines need a look</h2>
+          <ul className="mt-2 flex flex-col gap-1 text-sm">
+            {s.hosts_not_reporting > 0 && <li>{plural(s.hosts_not_reporting, "machine")} stopped reporting, so {s.hosts_not_reporting === 1 ? "its" : "their"} findings may be out of date.</li>}
+            {s.agents_need_attention > 0 && <li>{plural(s.agents_need_attention, "agent")} can't update {s.agents_need_attention === 1 ? "itself" : "themselves"}; each machine says why.</li>}
+          </ul>
+          <Link to="/assets" className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-accent underline">Review in Assets <ArrowRight className="size-4" aria-hidden /></Link>
+        </section>
+      )}
+
       <ul className="grid grid-cols-2 gap-2 sm:grid-cols-4" aria-label="Open findings by priority">
         {PRIORITIES.map((p) => (
           <li key={p}>

@@ -1,9 +1,11 @@
 """HTTP API. Web users authenticate with a session cookie; agents with a per-asset bearer key."""
 
+import base64
 import functools
 import hashlib
 import html
 import ipaddress
+import json
 import logging
 import os
 import re
@@ -17,6 +19,8 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 import httpx
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
@@ -25,7 +29,7 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import Integer, delete, func, select
 from sqlalchemy.orm import Session
 
-from nimstead import ai, evidence, external, notify, remediate, sbom, sso
+from nimstead import ai, evidence, external, notify, remediate, sbom, sso, updates
 from nimstead.db import (
     Asset,
     AuthFailure,
@@ -65,6 +69,64 @@ def latest_agent_version() -> str:
     except OSError:
         return ""
     return m.group(1) if m else ""
+
+
+# Signed release manifest for the agent this server ships (DECISIONS 31). Written by deploy/update.sh or the daily
+# release check (feeds.check_release); a dev checkout has none, so agents never update from it.
+RELEASE_DIR = Path(os.environ.get("NIMSTEAD_RELEASE_DIR", Path(__file__).parents[3] / "release"))
+
+
+def release_keys() -> list[str]:
+    m = re.search(r"^RELEASE_KEYS = \[(.*)\]", AGENT_FILE.read_text(encoding="utf-8"), re.M)
+    return re.findall(r'"([0-9a-f]{64})"', m.group(1)) if m else []
+
+
+@functools.cache
+def migration_head() -> str:
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+    return ScriptDirectory.from_config(Config(str(Path(__file__).parents[2] / "alembic.ini"))).get_current_head()
+
+
+def migration_state(s: Session) -> str:
+    """head | behind | unmanaged (a SQLite dev database made with create_all has no alembic_version table)."""
+    from sqlalchemy import inspect, text
+    if not inspect(s.get_bind()).has_table("alembic_version"):
+        return "unmanaged"
+    return "head" if s.execute(text("SELECT version_num FROM alembic_version")).scalar() == migration_head() else "behind"
+
+
+def agent_update_status(a: Asset, paused: bool, release: bool) -> str:
+    """What happens to this host's agent next: current | updating | failed | paused | off (host opted out) | reinstall."""
+    if a.agent_version == latest_agent_version():
+        return "current"
+    if not a.auto_update:
+        return "off" if a.auto_update is False else "reinstall"  # None: agent too old to update itself
+    if not release:
+        return "reinstall"  # this server has no signed release for the agent it serves
+    if paused:
+        return "paused"
+    return "failed" if a.agent_update_error else "updating"
+
+
+def signed_release() -> dict | None:
+    """{release, sig} when RELEASE_DIR holds a manifest signed by a pinned key for exactly the agent served here, else None.
+    Agents verify it themselves; checking here only keeps the Assets page honest about who will update."""
+    try:
+        manifest, sig = (RELEASE_DIR / "release.json").read_bytes(), (RELEASE_DIR / "release.json.sig").read_text().strip()
+        raw_sig, rel = base64.b64decode(sig, validate=True), json.loads(manifest)
+        agent_sha = hashlib.sha256(AGENT_FILE.read_bytes()).hexdigest()
+    except (OSError, ValueError):
+        return None
+    if not isinstance(rel, dict) or rel.get("agent_sha256") != agent_sha:
+        return None
+    for k in release_keys():
+        try:
+            Ed25519PublicKey.from_public_bytes(bytes.fromhex(k)).verify(raw_sig, manifest)
+            return {"release": manifest.decode(), "sig": sig}
+        except InvalidSignature:
+            continue
+    return None
 
 
 SECURE_COOKIES = os.environ.get("NIMSTEAD_SECURE_COOKIES", "1") != "0"
@@ -340,6 +402,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         ecosystem: str = Field("", max_length=100)
         packages: list[Pkg] = Field(max_length=50_000)
         agent_version: str = Field("", max_length=50)
+        auto_update: bool | None = None  # None: agent older than 0.2.0, can't update itself
+        update_error: str | None = Field(None, max_length=500)
 
     def current_agent(s: DB, authorization: Annotated[str | None, Header()] = None) -> Asset:
         if not authorization or not authorization.startswith("Bearer "):
@@ -355,7 +419,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             raise HTTPException(429, f"Inventory already received; send at most one every {INVENTORY_MIN_SECONDS}s")
         asset.last_inventory_at = now()
         asset.os_name, asset.ecosystem, asset.last_seen = body.os_name or asset.os_name, body.ecosystem or asset.ecosystem, now()
-        asset.agent_version = body.agent_version
+        asset.agent_version, asset.auto_update, asset.agent_update_error = body.agent_version, body.auto_update, body.update_error
+        asset.silent_alerted_at = None
         s.execute(delete(InstalledPackage).where(InstalledPackage.asset_id == asset.id, InstalledPackage.origin == "agent"))
         s.add_all(InstalledPackage(asset_id=asset.id, origin="agent", **p.model_dump()) for p in body.packages)
         s.flush()
@@ -364,6 +429,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         remediate.auto_remediate(s, asset)
         s.commit()
         return result
+
+    @app.get("/api/agent/manifest")
+    def agent_manifest(s: DB, asset: Annotated[Asset, Depends(current_agent)]):
+        # paused is unsigned on purpose: it can only withhold an update, which the server could do anyway
+        return {"paused": s.get(Org, asset.org_id).agent_updates_paused, **(signed_release() or {})}
 
     @app.get("/api/agent/jobs")
     def agent_jobs(s: DB, asset: Annotated[Asset, Depends(current_agent)]):
@@ -389,13 +459,18 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     # --- assets ------------------------------------------------------------
 
-    def asset_json(a: Asset, counts: dict) -> dict:
+    def asset_json(a: Asset, counts: dict, paused: bool = False, release: bool | None = None) -> dict:
+        if release is None and a.kind == "host":
+            release = signed_release() is not None
         return {
             "id": a.id, "hostname": a.hostname, "os_name": a.os_name, "ecosystem": a.ecosystem,
             "kind": a.kind, "criticality": a.criticality, "internet_facing": a.internet_facing, "sandbox": a.sandbox,
             "ring": a.ring, "health_units": a.health_units,
             "first_seen": a.first_seen, "last_seen": a.last_seen, "open_by_priority": counts,
-            **({"agent_version": a.agent_version, "agent_outdated": a.agent_version != latest_agent_version()} if a.kind == "host" else {}),
+            **({"agent_version": a.agent_version, "agent_outdated": a.agent_version != latest_agent_version(),
+                "agent_update": agent_update_status(a, paused, release), "agent_update_error": a.agent_update_error,
+                "not_reporting": a.last_seen < now() - notify.SILENT_AFTER}
+               if a.kind == "host" else {}),
             **({"verified": a.verified_at is not None, "verified_at": a.verified_at, "txt_name": external.txt_name(a.hostname),
                 "txt_value": external.txt_value(a.org_id, a.hostname), "proof_path": external.PROOF_PATH} if a.kind == "external" else {}),
         }
@@ -411,7 +486,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         for aid, prio, n in rows:
             counts[aid][prio] = n
         assets = s.scalars(select(Asset).where(Asset.org_id == user.org_id).order_by(Asset.hostname)).all()
-        return [asset_json(a, counts[a.id]) for a in assets]
+        paused, release = s.get(Org, user.org_id).agent_updates_paused, signed_release() is not None
+        return [asset_json(a, counts[a.id], paused, release) for a in assets]
 
     def owned_asset(s: Session, user: User, asset_id: str) -> Asset:
         a = s.get(Asset, asset_id)
@@ -662,11 +738,14 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     class Policy(BaseModel):
         remediation_mode: Literal["suggest", "approve", "auto"] | None = None
         canary_soak_hours: int | None = Field(None, ge=1, le=720)
+        agent_updates_paused: bool | None = None
 
     @app.get("/api/settings")
     def get_settings(user: CurrentUser, s: DB):
         o = s.get(Org, user.org_id)
         return {"remediation_mode": o.remediation_mode, "canary_soak_hours": o.canary_soak_hours,
+                "agent_updates_paused": o.agent_updates_paused, "signed_agent_release": signed_release() is not None,
+                "platform": updates.status(),
                 "production_remediation_allowed": remediate.production_allowed()}
 
     @app.patch("/api/settings")
@@ -999,6 +1078,20 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         name = f"nimstead-evidence-{datetime.now():%Y%m%d}.zip"
         return Response(data, media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
+    @app.get("/api/health", include_in_schema=False)
+    def health(s: DB):
+        """For Docker's healthcheck and deploy/update.sh: no auth, no tenant data. 503 unless the database answers and
+        its schema is at this release's migration head."""
+        try:
+            s.execute(select(1))
+            at = migration_state(s)
+        except Exception as e:
+            log.warning("health: database unavailable: %s", e)
+            return JSONResponse({"status": "error", "version": updates.current_version(), "db": "unavailable"}, 503)
+        ok = at in ("head", "unmanaged")
+        return JSONResponse({"status": "ok" if ok else "error", "version": updates.current_version(), "db": "ok", "migrations": at},
+                            200 if ok else 503)
+
     @app.get("/api/summary")
     def summary(user: CurrentUser, s: DB):
         remediate.sweep(s, user.org_id)
@@ -1019,8 +1112,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             fixed = max(fixes, key=functools.cmp_to_key(cmp)) if cmp else sorted(fixes)[-1]  # highest fix clears them all
             top.append({"ecosystem": eco, "package": pkg, "fixed_version": fixed, "hosts": sorted({r[2] for r in rows}),
                         "vulns": sorted({r[1] for r in rows}), "kev": bool(kev), "max_score": max_score})
+        hosts = s.scalars(select(Asset).where(Asset.org_id == user.org_id, Asset.kind == "host")).all()
+        paused, release = s.get(Org, user.org_id).agent_updates_paused, signed_release() is not None
         return {
             "assets": s.scalar(select(func.count()).select_from(Asset).where(Asset.org_id == user.org_id)),
+            "hosts_not_reporting": sum(a.last_seen < now() - notify.SILENT_AFTER for a in hosts),
+            "agents_need_attention": sum(agent_update_status(a, paused, release) in ("failed", "off", "reinstall") for a in hosts),
             "open_by_priority": by_priority,
             "top_actions": top,
             "attention": [job_json(j, h) for j, h in s.execute(

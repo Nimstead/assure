@@ -3,10 +3,11 @@ import { NotificationsSection } from "./integrations";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
-import { SbomUpload } from "./assets";
+import { AssetRow, SbomUpload } from "./assets";
 import { ApproveDialog, PlanFixButton } from "./remediation";
 import { APPROVE_COPY, meQ, type Asset } from "./lib";
 import { InstallCommands } from "./onboarding";
+import { PlatformSection } from "./settings";
 import { TargetRow } from "./targets";
 import { PriorityPill } from "./ui";
 
@@ -93,4 +94,29 @@ it("admin-only buttons are disabled with an explanation while /api/me loads and 
   expect(btn).toBeDisabled();
   expect(btn).toHaveAttribute("title", "Only organisation admins can do this");
   vi.unstubAllGlobals();
+});
+
+it("asset row says why an agent is outdated and what happens next", () => {
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ email: "a@b.c", org: "o", admin: true }), { status: 200 })));
+  const base = { id: "a1", hostname: "web-1", kind: "host", os_name: "Debian 13", criticality: "medium", internet_facing: false, sandbox: false, ring: 1, health_units: [], open_by_priority: {}, last_seen: "2026-01-01T00:00:00", agent_version: "0.2.0" } as unknown as Asset;
+  const row = (a: Partial<Asset>) => render(<QueryClientProvider client={new QueryClient()}><ul><AssetRow a={{ ...base, ...a }} onPatch={() => {}} onDelete={() => {}} /></ul></QueryClientProvider>);
+  const failed = row({ agent_update: "failed", agent_update_error: "self-update failed: new agent 0.3.0 failed its self-test" });
+  expect(screen.getByText("Agent update failed")).toBeInTheDocument();
+  expect(screen.getByText(/failed its self-test/)).toBeInTheDocument();
+  failed.unmount();
+  const reinstall = row({ agent_update: "reinstall", agent_version: "0.1.3" });
+  expect(screen.getByText(/can't update itself. Rerun the install command/)).toBeInTheDocument();
+  reinstall.unmount();
+  row({ agent_update: "current" });
+  expect(screen.queryByText(/Agent (outdated|update)/)).not.toBeInTheDocument();
+  vi.unstubAllGlobals();
+});
+
+it("settings say when a platform update is available and when one failed", () => {
+  const base = { version: "0.3.0", latest: "0.3.1", latest_url: "https://github.com/Nimstead/assure/releases/tag/v0.3.1", update_available: true, checked: null, last_update: null };
+  const r = render(<PlatformSection p={base} />);
+  expect(screen.getByRole("link", { name: "0.3.1 is available" })).toHaveAttribute("href", base.latest_url);
+  r.unmount();
+  render(<PlatformSection p={{ ...base, update_available: false, latest: "0.3.0", last_update: { outcome: "rolled_back", from: "0.3.0", to: "0.3.1", error: "health check failed" } }} />);
+  expect(screen.getByRole("alert")).toHaveTextContent("Update failed and was rolled back (0.3.0 → 0.3.1): health check failed");
 });

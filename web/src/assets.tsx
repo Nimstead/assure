@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertDialog, Dialog, Switch } from "radix-ui";
 import { AppWindow, ArrowRight, Plus, Trash2, Upload } from "lucide-react";
-import { adminGate, api, assetsQ, filtersToSearch, parseFilters, PRIORITIES, relativeTime, sbomSummary, useIsAdmin, useTitle, type Asset, type Criticality, type SbomResult } from "./lib";
+import { adminGate, AGENT_UPDATE, api, assetsQ, filtersToSearch, parseFilters, PRIORITIES, relativeTime, sbomSummary, useIsAdmin, useTitle, type Asset, type Criticality, type SbomResult } from "./lib";
 import { btnPrimary, btnQuiet, EmptyState, ErrorState, input, PriorityPill, Skeleton } from "./ui";
 import clsx from "clsx";
 import { ExternalTargets } from "./targets";
@@ -79,7 +79,7 @@ export function AssetsPage() {
   );
 }
 
-function AssetRow({ a, onPatch, onDelete }: { a: Asset; onPatch: (p: AssetPatch) => void; onDelete: () => void }) {
+export function AssetRow({ a, onPatch, onDelete }: { a: Asset; onPatch: (p: AssetPatch) => void; onDelete: () => void }) {
   const admin = useIsAdmin();
   const open = PRIORITIES.filter((p) => a.open_by_priority[p]);
   return (
@@ -88,10 +88,14 @@ function AssetRow({ a, onPatch, onDelete }: { a: Asset; onPatch: (p: AssetPatch)
       <div className="min-w-0 flex-1 basis-60">
         <h2 className="flex items-center gap-2 text-base font-semibold"><span className="truncate">{a.hostname}</span>
           {a.sandbox && <span title="Disposable test machine: the only kind remediation may change until production remediation is enabled" className="shrink-0 border border-line-strong px-1.5 py-px text-[11px] font-semibold tracking-wide text-muted">Sandbox</span>}
-          {a.agent_outdated && <span title={`Agent ${a.agent_version || "version unknown"} is older than this server's. Replace the agent file with ${location.origin}/agent/nimstead_agent.py; the enrolment is kept.`} className="shrink-0 border border-line-strong px-1.5 py-px text-[11px] font-semibold tracking-wide text-muted">Agent outdated</span>}</h2>
+          {a.not_reporting && <span title="No report for over 14 hours: findings may be out of date. Check the host is running and the agent's timer or scheduled task." className="shrink-0 border border-now-fg px-1.5 py-px text-[11px] font-semibold tracking-wide text-now-fg">Not reporting</span>}
+          {a.agent_update && a.agent_update !== "current" && <span title={AGENT_UPDATE[a.agent_update].why(a)} className={clsx("shrink-0 border px-1.5 py-px text-[11px] font-semibold tracking-wide", a.agent_update === "failed" ? "border-now-fg text-now-fg" : "border-line-strong text-muted")}>{AGENT_UPDATE[a.agent_update].label}</span>}</h2>
         <p className="truncate text-sm text-muted">
           {a.kind === "application" ? "Application (SBOM)" : a.os_name || "Unknown OS"}{a.agent_version && ` · agent ${a.agent_version}`} · seen <time dateTime={a.last_seen + "Z"} title={new Date(a.last_seen + "Z").toLocaleString()}>{relativeTime(a.last_seen)}</time>
         </p>
+        {a.agent_update && !["current", "updating"].includes(a.agent_update) && (
+          <p className={clsx("mt-1 text-xs", a.agent_update === "failed" ? "text-now-fg" : "text-muted")}>{AGENT_UPDATE[a.agent_update as Exclude<typeof a.agent_update, "current">].why(a)}</p>
+        )}
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
         {open.length === 0 ? <span className="text-sm text-muted">No open findings</span> : open.map((p) => (

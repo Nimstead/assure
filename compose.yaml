@@ -2,7 +2,7 @@
 # Before agents on other machines can reach it, set NIMSTEAD_PUBLIC_URL in .env to the HTTPS address they'll use.
 x-app: &app
   build: .
-  image: nimstead/assure:0.2.0
+  image: nimstead/assure:0.3.0
   pull_policy: build  # always built from this source, never pulled: nobody else's image can stand in for it
   restart: unless-stopped
   environment:

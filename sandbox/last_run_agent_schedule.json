@@ -1,0 +1,65 @@
+{
+  "result": "PASS",
+  "steps": [
+    {
+      "step": "systemd host ready",
+      "systemd": "systemd 257 (257.13-1~deb13u1)",
+      "python": "Python 3.13.5"
+    },
+    {
+      "step": "schedule installed the timers",
+      "output": "scheduled: inventory every 6 hours, approved fixes checked every 15 minutes",
+      "units": [
+        "nimstead-agent-jobs.service",
+        "nimstead-agent-jobs.timer",
+        "nimstead-agent.service",
+        "nimstead-agent.timer"
+      ],
+      "systemd_analyze": "clean",
+      "timers": [
+        "nimstead-agent-jobs.timer nimstead-agent-jobs.service",
+        "nimstead-agent.timer nimstead-agent.service"
+      ]
+    },
+    {
+      "step": "job poll fired from its own timer; nothing to do, so no inventory sent",
+      "service": [
+        "Result=success",
+        "ExecMainStartTimestamp=Wed 2026-10-28 11:40:21 GMT",
+        "ExecMainStatus=0"
+      ],
+      "requests": [
+        "GET /api/agent/manifest",
+        "GET /api/agent/jobs"
+      ]
+    },
+    {
+      "step": "6-hour run (remediate) reports inventory",
+      "service": [
+        "Result=success",
+        "ExecMainStatus=0"
+      ],
+      "requests": [
+        "GET /api/agent/manifest",
+        "GET /api/agent/jobs",
+        "POST /api/agent/inventory"
+      ]
+    },
+    {
+      "step": "remediation turned off: poll removed, 6-hour run only reports",
+      "units": [
+        "nimstead-agent.service",
+        "nimstead-agent.timer"
+      ]
+    },
+    {
+      "step": "uninstall left nothing behind",
+      "output": [
+        "removed /etc/nimstead",
+        "removed /var/lib/nimstead",
+        "removed /usr/local/lib/nimstead/nimstead_agent.py",
+        "Nimstead agent uninstalled. Delete this host on the Assets page to remove its findings and history."
+      ]
+    }
+  ]
+}

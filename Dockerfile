@@ -23,8 +23,9 @@ ENV PATH=/app/api/.venv/bin:$PATH \
     NIMSTEAD_DB=sqlite:////data/nimstead.db \
     NIMSTEAD_SECRET_KEY_FILE=/data/nimstead-secret.key \
     NIMSTEAD_SIGNING_KEY_FILE=/data/nimstead-signing.pem \
-    NIMSTEAD_CHECKPOINT_DIR=/data/checkpoints
+    NIMSTEAD_CHECKPOINT_DIR=/data/checkpoints \
+    NIMSTEAD_RELEASE_DIR=/data/release
 VOLUME /data
 EXPOSE 8000
-HEALTHCHECK CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/')"
+HEALTHCHECK --interval=30s --start-period=60s CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=5)"
 CMD ["sh", "-c", "alembic upgrade head && exec uvicorn --factory nimstead.app:create_app --host 0.0.0.0 --port 8000 --proxy-headers"]

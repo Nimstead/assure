@@ -32,7 +32,24 @@ CI runs the same checks, plus the API suite on PostgreSQL 17. Pull requests are 
 2. Move the changelog's Unreleased entries under the new version with today's date, and update the compare links at the bottom.
 3. Push to `main` and wait for CI to pass.
 4. Tag (`git tag -a vX.Y.Z -m "Nimstead Assure X.Y.Z"`) and push the tag.
-5. Publish a GitHub release from the tag with `agent/nimstead_agent.py` and a `SHA256SUMS` made from the tagged file (`git show vX.Y.Z:agent/nimstead_agent.py`). Mark it a pre-release until 1.0.
+5. Approve the **Release** workflow's `release` environment. It signs `release.json` (version, agent SHA-256, commit) with the release key, checks it with the agent's own verifier, adds a build attestation and publishes the GitHub release with `release.json`, `release.json.sig` and the agent. Servers fetch those files, agents update themselves from them, and `deploy/update.sh` installs the release. **Don't mark it a pre-release:** servers ignore pre-releases.
+
+### Release keys (once)
+
+Agents trust only the Ed25519 keys in `RELEASE_KEYS` in the agent (DECISIONS 31). Make two on a machine you trust, outside the repository:
+
+```bash
+cd api && uv run python ../scripts/sign_release.py keygen ~/nimstead-keys
+```
+
+```bash
+cd api && uv run python ../scripts/sign_release.py keygen ~/nimstead-keys
+```
+
+1. Put both public keys in `RELEASE_KEYS` (primary first) and release that agent. Agents from before that release must be reinstalled once.
+2. Paste the **primary** private key into the repository's `release` environment as the secret `NIMSTEAD_RELEASE_KEY`, with yourself as the required reviewer. Add a tag ruleset for `v*`, and use passkey 2FA on every account with write access.
+3. Store the **backup** private key in your password manager. Then delete both key files.
+4. **Rotation:** if the primary key is lost or leaked, sign one release with the backup key (as the secret, temporarily) whose agent pins a new primary key, then remove the old one.
 
 ## How we work
 

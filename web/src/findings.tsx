@@ -46,7 +46,10 @@ export function FindingsPage({ search }: { search: RawSearch }) {
     <div className="flex flex-col gap-4">
       <header className="flex items-baseline justify-between gap-4">
         <h1 className="text-3xl font-semibold">Findings</h1>
-        {list.data && <p className="num text-sm text-muted" aria-live="polite">{plural(list.data.length, "result")}</p>}
+        <div className="flex items-baseline gap-4">
+          {list.data && <p className="num text-sm text-muted" aria-live="polite">{plural(list.data.length, "result")}</p>}
+          <a className={btnQuiet} href={`/api/findings.csv?${apiQs}`} download>Export CSV</a>
+        </div>
       </header>
 
       <div className="flex flex-col gap-3">

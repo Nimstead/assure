@@ -1,9 +1,11 @@
 """HTTP API. Web users authenticate with a session cookie; agents with a per-asset bearer key."""
 
 import base64
+import csv
 import functools
 import hashlib
 import html
+import io
 import ipaddress
 import json
 import logging
@@ -29,8 +31,9 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import Integer, delete, func, select
 from sqlalchemy.orm import Session
 
-from nimstead import ai, evidence, external, notify, remediate, sbom, sso, updates
+from nimstead import ai, evidence, external, mfa, notify, remediate, sbom, sso, updates
 from nimstead.db import (
+    ApiToken,
     Asset,
     AuthFailure,
     EnrollToken,
@@ -152,6 +155,16 @@ CONFIRM_MAIL_MAX_PER_HOUR = 20  # alert-recipient confirmation emails per org
 TEST_ALERT_MAX_PER_HOUR = 5
 RATE_WINDOW = 3600
 SIGNUP_LINK_HOURS = 24
+RESET_LINK_HOURS = 1
+SESSION_DAYS, SESSION_IDLE = 14, timedelta(hours=12)
+MFA_SETUP_SECONDS = 600
+INVITE_MAX_PER_HOUR = 20  # per org
+RESET_MAX_PER_HOUR = 10  # per client address
+# Per-tenant quotas: anyone can sign up, so one org mustn't be able to load the shared server
+MAX_ASSETS_PER_ORG = int(os.environ.get("NIMSTEAD_MAX_ASSETS_PER_ORG", "5000"))
+ENROLL_MAX_PER_TOKEN_HOUR = 100
+ORG_INVENTORY_MAX_PER_HOUR = int(os.environ.get("NIMSTEAD_ORG_INVENTORY_MAX_PER_HOUR", "20000"))
+AI_MAX_PER_USER_HOUR, AI_MAX_PER_ORG_HOUR = 30, 200  # each call costs the operator's Anthropic credits
 
 
 def open_signup() -> bool:
@@ -177,23 +190,71 @@ def client_key(request: Request) -> str:
     return str(ipaddress.ip_network(f"{a}/64", strict=False)) if a.version == 6 else ip
 
 
+class TooLarge(HTTPException):
+    def __init__(self):
+        super().__init__(413, "Request body too large")
+
+
+class BodyLimit:
+    """Caps every request body at MAX_BODY as it's read, chunked or not: Content-Length alone can be left out."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        if int(dict(scope["headers"]).get(b"content-length") or 0) > MAX_BODY:
+            return await JSONResponse({"detail": "Request body too large"}, status_code=413)(scope, receive, send)
+        seen = 0
+
+        async def capped():
+            nonlocal seen
+            msg = await receive()
+            seen += len(msg.get("body", b""))
+            if seen > MAX_BODY:
+                raise TooLarge  # an HTTPException: FastAPI passes it out of body parsing, and routes' handlers turn it into a 413
+            return msg
+        await self.app(scope, capped, send)
+
+
+def csp(index: Path) -> str:
+    """The SPA's policy; its one inline script (the theme, before first paint) is allowed by hash."""
+    try:
+        inline = re.findall(r"<script>(.*?)</script>", index.read_text(encoding="utf-8"), re.S)
+    except OSError:
+        inline = []
+    hashes = "".join(f" 'sha256-{base64.b64encode(hashlib.sha256(js.encode()).digest()).decode()}'" for js in inline)
+    # style 'unsafe-inline': the confirmation pages and React style props; no form-action: SSO's form redirects to the IdP
+    return (f"default-src 'self'; script-src 'self'{hashes}; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+            "object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
+
+
 def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None, dns_lookup=None) -> FastAPI:
     oidc = sso.Oidc(oidc_http)
     Sessions = make_sessionmaker(db_url) if db_url else make_sessionmaker()
     app = FastAPI(title="Nimstead", docs_url="/api/docs", openapi_url="/api/openapi.json")
     allowed_origins = {o for o in os.environ.get("NIMSTEAD_ALLOWED_ORIGINS", "").split(",") if o}
+    policy = csp(WEB_DIST / "index.html")
+    app.add_middleware(BodyLimit)  # first, so innermost: routes read the body through it directly, not via a task group
 
     @app.middleware("http")
     async def guard(request: Request, call_next):
-        if int(request.headers.get("content-length") or 0) > MAX_BODY:
-            return JSONResponse({"detail": "Request body too large"}, status_code=413)
-        # ponytail: chunked bodies without content-length aren't capped here; enforce at the reverse proxy too
         origin = request.headers.get("origin")
         if request.method not in ("GET", "HEAD", "OPTIONS") and origin:
             same = origin == f"{request.url.scheme}://{request.headers.get('host', '')}"
             if not same and origin not in allowed_origins:  # CSRF defence beyond SameSite (e.g. sibling subdomains)
                 return JSONResponse({"detail": "Cross-origin request refused"}, status_code=403)
-        return await call_next(request)
+        resp = await call_next(request)
+        h = resp.headers
+        h.setdefault("X-Content-Type-Options", "nosniff")
+        h.setdefault("Referrer-Policy", "no-referrer")
+        h.setdefault("X-Frame-Options", "DENY")
+        if not request.url.path.startswith("/api/docs"):  # Swagger UI loads from a CDN; it has no tenant data
+            h.setdefault("Content-Security-Policy", policy)
+        if SECURE_COOKIES:
+            h.setdefault("Strict-Transport-Security", "max-age=31536000")
+        return resp
 
     def db():
         with Sessions() as s:
@@ -202,26 +263,49 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     DB = Annotated[Session, Depends(db)]
 
     def current_user(request: Request, s: DB) -> User:
+        auth = request.headers.get("authorization", "")
+        if auth.startswith("Bearer nmt_"):  # an org API token: read-only, acts as the admin who made it
+            t = s.get(ApiToken, sha(auth.removeprefix("Bearer ")))
+            user = s.get(User, t.user_id) if t and not (t.expires and t.expires < now()) else None
+            if not user or not user.admin or user.org_id != t.org_id:
+                raise HTTPException(401, "Invalid or expired API token")
+            if request.method not in ("GET", "HEAD"):
+                raise HTTPException(403, "API tokens are read-only")
+            if not t.last_used or now() - t.last_used > timedelta(minutes=5):
+                t.last_used = now()
+                s.commit()
+            request.state.api_token = True
+            return user
         token = request.cookies.get(SESSION_COOKIE)
         ws = s.get(WebSession, sha(token)) if token else None
-        if not ws or ws.expires < now():
+        if not ws or ws.expires < now() or ws.last_used < now() - SESSION_IDLE:
             raise HTTPException(401, "Not signed in")
+        if now() - ws.last_used > timedelta(minutes=5):  # bounded writes: idle time is only checked to the minute
+            ws.last_used = now()
+            s.commit()
         return s.get(User, ws.user_id)
 
     CurrentUser = Annotated[User, Depends(current_user)]
 
-    def admin_user(user: CurrentUser) -> User:
-        if not user.admin:
+    def admin_user(request: Request, user: CurrentUser) -> User:
+        if not user.admin or getattr(request.state, "api_token", False):  # tokens read; admin pages and changes need a person
             raise HTTPException(403, "Only organisation admins can change this")
         return user
 
     Admin = Annotated[User, Depends(admin_user)]
 
+    def signed_in(request: Request, user: CurrentUser) -> User:
+        if getattr(request.state, "api_token", False):
+            raise HTTPException(403, "Sign in to do this")
+        return user
+
+    Person = Annotated[User, Depends(signed_in)]  # a signed-in browser, never an API token
+
     def start_session(s: Session, user: User, resp: Response) -> None:
         token = secrets.token_urlsafe(32)
-        s.add(WebSession(token_hash=sha(token), user_id=user.id, expires=now() + timedelta(days=14)))
+        s.add(WebSession(token_hash=sha(token), user_id=user.id, expires=now() + timedelta(days=SESSION_DAYS)))
         s.commit()
-        resp.set_cookie(SESSION_COOKIE, token, httponly=True, samesite="strict", secure=SECURE_COOKIES, max_age=14 * 86400)
+        resp.set_cookie(SESSION_COOKIE, token, httponly=True, samesite="strict", secure=SECURE_COOKIES, max_age=SESSION_DAYS * 86400)
 
     # --- agent distribution -----------------------------------------------
 
@@ -247,12 +331,14 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     class Signup(BaseModel):
         email: EmailStr
-        password: str = Field(min_length=12, max_length=200)
+        password: str | None = Field(None, min_length=12, max_length=200)  # first account only: emailed sign-ups choose it from the link
         org_name: str = Field(min_length=1, max_length=200)
 
     class Login(BaseModel):
         email: EmailStr
         password: str = Field(max_length=200)
+        code: str | None = Field(None, max_length=40)  # TOTP or recovery code
+        setup: str | None = Field(None, max_length=1000)  # from a {"mfa": "setup"} answer: confirms enrolment with code
 
     def over_limit(s: Session, key: str, limit: int, seconds: int = RATE_WINDOW) -> bool:
         """Record one attempt under key; True if that makes more than limit within the window. In the DB: holds across workers."""
@@ -270,42 +356,104 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         user = User(org_id=org.id, email=email, password_hash=password_hash, admin=True)
         s.add(user)
         s.flush()
+        evidence.append(s, org.id, "org_created", org.id, {"by": email, "name": org_name})
         return user
 
     def public_base(request: Request) -> str:
         return (os.environ.get("NIMSTEAD_PUBLIC_URL") or str(request.base_url)).rstrip("/")
 
+    def email_link(s: Session, request: Request, email: str, purpose: str, org_name: str = "", org_id: str | None = None) -> None:
+        """Email a single-use link that lets the address owner choose a password (sign-up, invitation or reset).
+        A newer link replaces older ones of the same kind for that address."""
+        token = secrets.token_urlsafe(32)
+        s.execute(delete(PendingSignup).where(PendingSignup.email == email, PendingSignup.purpose == purpose))
+        s.add(PendingSignup(token_hash=sha(token), email=email, purpose=purpose, org_name=org_name, org_id=org_id,
+                            expires=now() + timedelta(hours=RESET_LINK_HOURS if purpose == "reset" else SIGNUP_LINK_HOURS)))
+        s.commit()
+        notify.send_account_email(email, purpose, f"{public_base(request)}/api/auth/signup/confirm?{urlencode({'token': token})}",
+                                  org_name)
+
+    NEEDS_SMTP = "this server needs email to be set up (NIMSTEAD_SMTP_URL). Ask your Nimstead administrator, or sign in with single sign-on."
+
     @app.post("/api/auth/signup", status_code=201)
     def signup(body: Signup, request: Request, resp: Response, s: DB):
         if over_limit(s, "signup:" + client_key(request), SIGNUP_MAX_PER_HOUR):
             raise HTTPException(429, "Too many sign-ups from this address; try again in an hour")
-        email, password_hash = body.email.lower(), ph.hash(body.password)  # hashed either way: equal timing on every path
+        email = body.email.lower()
         if open_signup() or not s.scalar(select(func.count()).select_from(User)):  # the first account sets the server up
+            if not body.password:
+                raise HTTPException(422, "Choose a password of at least 12 characters")
             if s.scalar(select(User).where(User.email == email)):
                 raise HTTPException(409, "An account with that email already exists")
-            user = create_account(s, email, body.org_name, password_hash)
+            user = create_account(s, email, body.org_name, ph.hash(body.password))
             start_session(s, user, resp)
             return {"email": user.email, "org": body.org_name}
-        # From here the answer is the same whether or not the email has an account: the address owner gets the next step.
+        # From here the answer is the same whether or not the email has an account: the address owner gets the next step,
+        # and chooses the password from the link, so nobody can pre-set one for an address they don't own.
         if not notify.smtp_configured():
-            raise HTTPException(403, "Sign-up on this server needs email to be set up (NIMSTEAD_SMTP_URL). "
-                                     "Ask your Nimstead administrator, or sign in with single sign-on.")
+            raise HTTPException(403, "Sign-up on " + NEEDS_SMTP)
         s.execute(delete(PendingSignup).where(PendingSignup.expires < now()))
         if not over_limit(s, "signup-mail:" + email, 3):  # nobody can flood an inbox with sign-up emails
             if s.scalar(select(User.id).where(User.email == email)):
-                notify.send_signup_email(email, None, public_base(request) + "/signin")
+                notify.send_account_email(email, "exists", public_base(request) + "/signin")
             else:
-                token = secrets.token_urlsafe(32)
-                s.add(PendingSignup(token_hash=sha(token), email=email, org_name=body.org_name, password_hash=password_hash,
-                                    expires=now() + timedelta(hours=SIGNUP_LINK_HOURS)))
-                s.commit()
-                notify.send_signup_email(email, f"{public_base(request)}/api/auth/signup/confirm?{urlencode({'token': token})}", "")
+                email_link(s, request, email, "signup", org_name=body.org_name)
         resp.status_code = 202
+        return {"status": "check_email", "email": email}
+
+    class ResetReq(BaseModel):
+        email: EmailStr
+
+    @app.post("/api/auth/password/reset", status_code=202)
+    def request_reset(body: ResetReq, request: Request, s: DB):
+        """Same answer whether or not the address has an account; the link goes to the address itself."""
+        if over_limit(s, "reset:" + client_key(request), RESET_MAX_PER_HOUR):
+            raise HTTPException(429, "Too many reset requests from this address; try again in an hour")
+        if not notify.smtp_configured():
+            raise HTTPException(403, "Password reset on " + NEEDS_SMTP)
+        email = body.email.lower()
+        user = s.scalar(select(User).where(User.email == email))
+        if user and user.origin == "password" and not over_limit(s, "reset-mail:" + email, 3):
+            email_link(s, request, email, "reset")
         return {"status": "check_email", "email": email}
 
     def failures(s: Session, key: str) -> int:
         since = now() - timedelta(seconds=LOGIN_WINDOW)
         return s.scalar(select(func.count()).select_from(AuthFailure).where(AuthFailure.key == key, AuthFailure.ts > since))
+
+    def second_factor(s: Session, user: User, given: str | None) -> bool:
+        """A current TOTP code (each works once) or an unused recovery code (spent)."""
+        step = mfa.verify(sso.unseal(user.totp_secret), given or "", user.totp_last_step)
+        if step:
+            user.totp_last_step = step
+            return True
+        h = mfa.code_hash(given or "")
+        if given and h in user.recovery_codes:
+            user.recovery_codes = [c for c in user.recovery_codes if c != h]
+            evidence.append(s, user.org_id, "mfa_recovery_code_used", user.id, {"email": user.email, "left": len(user.recovery_codes)})
+            return True
+        return False
+
+    def mfa_setup(user: User) -> dict:
+        secret = mfa.new_secret()
+        blob = sso.seal(json.dumps({"uid": user.id, "secret": secret, "exp": (now() + timedelta(seconds=MFA_SETUP_SECONDS)).isoformat()}))
+        return {"setup": blob, "secret": secret, "uri": mfa.uri(secret, user.email)}
+
+    def finish_mfa_setup(s: Session, user: User, blob: str, given: str | None) -> list[str] | None:
+        """Saves the secret from a setup blob if the code proves the authenticator has it; returns new recovery codes."""
+        try:
+            d = json.loads(sso.unseal(blob))
+        except Exception:  # tampered, foreign or undecryptable
+            return None
+        if d.get("uid") != user.id or datetime.fromisoformat(d["exp"]) < now():
+            return None
+        step = mfa.verify(d["secret"], given or "", 0)
+        if not step:
+            return None
+        codes = mfa.recovery_codes()
+        user.totp_secret, user.totp_last_step, user.recovery_codes = sso.seal(d["secret"]), step, [mfa.code_hash(c) for c in codes]
+        evidence.append(s, user.org_id, "mfa_enrolled", user.id, {"email": user.email})
+        return codes
 
     @app.post("/api/auth/login")
     def login(body: Login, request: Request, resp: Response, s: DB):
@@ -317,6 +465,14 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         if (failures(s, keys[1]) >= LOGIN_MAX_FAILURES or per_ip >= LOGIN_MAX_FAILURES
                 or (per_ip and failures(s, keys[0]) >= LOGIN_MAX_PER_EMAIL)):
             raise HTTPException(429, "Too many failed sign-in attempts; try again in 15 minutes")
+
+        def fail(msg: str):
+            s.rollback()  # a half-checked recovery code isn't spent
+            s.execute(delete(AuthFailure).where(AuthFailure.ts < now() - timedelta(seconds=RATE_WINDOW)))  # housekeeping
+            s.add_all(AuthFailure(key=k) for k in keys)
+            s.commit()
+            raise HTTPException(401, msg) from None
+
         user = s.scalar(select(User).where(User.email == body.email.lower()))
         try:
             pw_user = user if user and user.origin == "password" else None  # SSO users have no password
@@ -324,19 +480,30 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             if not pw_user:
                 raise VerifyMismatchError
         except VerifyMismatchError:
-            s.execute(delete(AuthFailure).where(AuthFailure.ts < now() - timedelta(seconds=RATE_WINDOW)))  # housekeeping
-            s.add_all(AuthFailure(key=k) for k in keys)
-            s.commit()
-            raise HTTPException(401, "Email or password is incorrect") from None
-        if s.get(Org, user.org_id).sso_required:  # checked after the password so this doesn't reveal which emails exist
-            if not user.admin:
-                raise HTTPException(403, "Your organisation requires single sign-on. Use Continue with SSO.")
+            fail("Email or password is incorrect")
+        if s.get(Org, user.org_id).sso_required and not user.admin:  # after the password: doesn't reveal which emails exist
+            raise HTTPException(403, "Your organisation requires single sign-on. Use Continue with SSO.")
+        answer: dict = {"email": user.email}
+        if user.totp_secret:
+            if not body.code:
+                return {"mfa": "required"}  # no session yet
+            if not second_factor(s, user, body.code):
+                fail("That code is incorrect or already used")
+        elif user.admin:  # admins can drive root/SYSTEM remediation: a password alone is never enough
+            if not (body.setup and body.code):
+                return {"mfa": "setup", **mfa_setup(user)}
+            if not (codes := finish_mfa_setup(s, user, body.setup, body.code)):
+                fail("That code doesn't match; check the authenticator app's clock and try again")
+            answer["recovery_codes"] = codes  # shown once
+        if s.get(Org, user.org_id).sso_required:
             # break-glass: a password admin can still get in if the IdP is broken; loud and on the record
             evidence.append(s, user.org_id, "break_glass_login", user.id, {"email": user.email})
             notify.notify(s, user.org_id, "break_glass_login",
                           f"Break-glass password sign-in by {user.email} while SSO is required", urgent=True)
+        else:
+            evidence.append(s, user.org_id, "password_login", user.id, {"email": user.email})
         start_session(s, user, resp)
-        return {"email": user.email}
+        return answer
 
     @app.post("/api/auth/logout", status_code=204)
     def logout(request: Request, resp: Response, s: DB):
@@ -347,7 +514,60 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/me")
     def me(user: CurrentUser, s: DB):
-        return {"email": user.email, "org": s.get(Org, user.org_id).name, "admin": user.admin}
+        return {"email": user.email, "org": s.get(Org, user.org_id).name, "admin": user.admin, "origin": user.origin,
+                "mfa": bool(user.totp_secret), "recovery_codes_left": len(user.recovery_codes)}
+
+    @app.post("/api/me/sessions/revoke", status_code=204)
+    def sign_out_everywhere(user: Person, resp: Response, s: DB):
+        s.execute(delete(WebSession).where(WebSession.user_id == user.id))
+        evidence.append(s, user.org_id, "sessions_revoked", user.id, {"by": user.email})
+        s.commit()
+        resp.delete_cookie(SESSION_COOKIE)
+
+    class PasswordChange(BaseModel):
+        current: str = Field(max_length=200)
+        new: str = Field(min_length=12, max_length=200)
+        code: str | None = Field(None, max_length=40)
+
+    @app.post("/api/me/password", status_code=204)
+    def change_password(body: PasswordChange, request: Request, user: Person, s: DB):
+        if user.origin != "password":
+            raise HTTPException(409, "You sign in with single sign-on; change your password with your identity provider")
+        if over_limit(s, "pwchange:" + user.id, LOGIN_MAX_FAILURES, LOGIN_WINDOW):
+            raise HTTPException(429, "Too many attempts; try again in 15 minutes")
+        try:
+            ph.verify(user.password_hash, body.current)
+        except VerifyMismatchError:
+            raise HTTPException(403, "Current password is incorrect") from None
+        if user.totp_secret and not second_factor(s, user, body.code):
+            raise HTTPException(403, "Enter a current authenticator code")
+        user.password_hash = ph.hash(body.new)
+        keep = sha(request.cookies.get(SESSION_COOKIE, ""))
+        s.execute(delete(WebSession).where(WebSession.user_id == user.id, WebSession.token_hash != keep))  # other devices out
+        evidence.append(s, user.org_id, "password_changed", user.id, {"by": user.email})
+        s.commit()
+
+    @app.post("/api/me/mfa/setup")
+    def start_mfa(user: Person):
+        if user.origin != "password":
+            raise HTTPException(409, "You sign in with single sign-on; your identity provider handles MFA")
+        return mfa_setup(user)
+
+    class MfaConfirm(BaseModel):
+        setup: str = Field(max_length=1000)
+        code: str = Field(max_length=40)
+        current_code: str | None = Field(None, max_length=40)  # replacing an authenticator needs the old one (or a recovery code)
+
+    @app.post("/api/me/mfa")
+    def confirm_mfa(body: MfaConfirm, user: Person, s: DB):
+        if over_limit(s, "mfa:" + user.id, LOGIN_MAX_FAILURES, LOGIN_WINDOW):
+            raise HTTPException(429, "Too many attempts; try again in 15 minutes")
+        if user.totp_secret and not second_factor(s, user, body.current_code):
+            raise HTTPException(403, "Enter a code from your current authenticator, or a recovery code")
+        if not (codes := finish_mfa_setup(s, user, body.setup, body.code)):
+            raise HTTPException(422, "That code doesn't match; check the authenticator app's clock and try again")
+        s.commit()
+        return {"recovery_codes": codes}
 
     # --- enrolment & agent -------------------------------------------------
 
@@ -372,12 +592,108 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.delete("/api/enroll-tokens/{token_id}", status_code=204)
     def revoke_enroll_token(token_id: str, user: Admin, s: DB):
-        et = s.scalar(select(EnrollToken).where(EnrollToken.org_id == user.org_id, EnrollToken.token_hash.startswith(token_id[:12]),
+        et = s.scalar(select(EnrollToken).where(EnrollToken.org_id == user.org_id, EnrollToken.token_hash.startswith(token_id[:12], autoescape=True),
                                                 func.length(token_id) == 12))
         if not et:
             raise HTTPException(404, "Token not found")
         et.revoked = True
         evidence.append(s, user.org_id, "enroll_token_revoked", token_id, {"by": user.email})
+        s.commit()
+
+    # --- people: users, invitations, API tokens -------------------------------
+
+    def user_json(u: User) -> dict:
+        return {"id": u.id, "email": u.email, "admin": u.admin, "origin": u.origin, "mfa": bool(u.totp_secret), "created": u.created}
+
+    def org_user(s: Session, admin: User, user_id: str) -> User:
+        u = s.get(User, user_id[:32])
+        if not u or u.org_id != admin.org_id:
+            raise HTTPException(404, "User not found")
+        return u
+
+    def last_admin(s: Session, u: User) -> bool:
+        return u.admin and s.scalar(select(func.count()).select_from(User).where(User.org_id == u.org_id, User.admin)) <= 1
+
+    @app.get("/api/users")
+    def list_users(user: Admin, s: DB):
+        return [user_json(u) for u in s.scalars(select(User).where(User.org_id == user.org_id).order_by(User.email))]
+
+    class UserPatch(BaseModel):
+        admin: bool
+
+    @app.patch("/api/users/{user_id}")
+    def update_user(user_id: str, body: UserPatch, user: Admin, s: DB):
+        u = org_user(s, user, user_id)
+        if not body.admin and last_admin(s, u):
+            raise HTTPException(409, "An organisation needs at least one admin; make someone else admin first")
+        if u.admin != body.admin:
+            u.admin = body.admin
+            if not body.admin:  # tokens act as their admin: a demoted admin's tokens go too
+                s.execute(delete(ApiToken).where(ApiToken.user_id == u.id))
+            evidence.append(s, user.org_id, "user_role_changed", u.id, {"by": user.email, "email": u.email, "admin": u.admin})
+            s.commit()
+        return user_json(u)
+
+    @app.delete("/api/users/{user_id}", status_code=204)
+    def remove_user(user_id: str, user: Admin, s: DB):
+        u = org_user(s, user, user_id)
+        if last_admin(s, u):
+            raise HTTPException(409, "An organisation needs at least one admin; make someone else admin first")
+        for model in (WebSession, ApiToken):  # signed out everywhere, tokens revoked
+            s.execute(delete(model).where(model.user_id == u.id))
+        evidence.append(s, user.org_id, "user_removed", u.id, {"by": user.email, "email": u.email})
+        s.delete(u)
+        s.commit()
+
+    class Invite(BaseModel):
+        email: EmailStr
+
+    @app.post("/api/users/invite", status_code=202)
+    def invite_user(body: Invite, request: Request, user: Admin, s: DB):
+        """Same answer whether or not the address already has an account (anywhere): the address owner gets the next step."""
+        if not notify.smtp_configured():
+            raise HTTPException(403, "Inviting by email needs SMTP (NIMSTEAD_SMTP_URL). With single sign-on, people join by signing in.")
+        if over_limit(s, "invite:" + user.org_id, INVITE_MAX_PER_HOUR):
+            raise HTTPException(429, f"At most {INVITE_MAX_PER_HOUR} invitations an hour")
+        email = body.email.lower()
+        evidence.append(s, user.org_id, "user_invited", user.org_id, {"by": user.email, "email": email})
+        s.commit()
+        if not over_limit(s, "signup-mail:" + email, 3):
+            if s.scalar(select(User.id).where(User.email == email)):
+                notify.send_account_email(email, "exists", public_base(request) + "/signin")
+            else:
+                email_link(s, request, email, "invite", org_name=s.get(Org, user.org_id).name, org_id=user.org_id)
+        return {"status": "invited", "email": email}
+
+    class TokenNew(BaseModel):
+        name: str = Field(min_length=1, max_length=100)
+        days: int | None = Field(90, ge=1, le=365)  # None = no expiry
+
+    @app.post("/api/tokens", status_code=201)
+    def create_api_token(body: TokenNew, user: Admin, s: DB):
+        token = "nmt_" + secrets.token_urlsafe(32)
+        t = ApiToken(token_hash=sha(token), org_id=user.org_id, user_id=user.id, name=body.name,
+                     expires=now() + timedelta(days=body.days) if body.days else None)
+        s.add(t)
+        evidence.append(s, user.org_id, "api_token_created", t.token_hash[:12], {"by": user.email, "name": body.name, "days": body.days})
+        s.commit()
+        return {"token": token, "id": t.token_hash[:12], "name": t.name, "expires": t.expires}  # token shown once
+
+    @app.get("/api/tokens")
+    def list_api_tokens(user: Admin, s: DB):
+        rows = s.execute(select(ApiToken, User.email).join(User, User.id == ApiToken.user_id)
+                         .where(ApiToken.org_id == user.org_id).order_by(ApiToken.created.desc()))
+        return [{"id": t.token_hash[:12], "name": t.name, "created_by": e, "created": t.created, "expires": t.expires,
+                 "last_used": t.last_used} for t, e in rows]
+
+    @app.delete("/api/tokens/{token_id}", status_code=204)
+    def revoke_api_token(token_id: str, user: Admin, s: DB):
+        t = s.scalar(select(ApiToken).where(ApiToken.org_id == user.org_id, ApiToken.token_hash.startswith(token_id[:12], autoescape=True),
+                                            func.length(token_id) == 12))
+        if not t:
+            raise HTTPException(404, "Token not found")
+        evidence.append(s, user.org_id, "api_token_revoked", token_id, {"by": user.email, "name": t.name})
+        s.delete(t)
         s.commit()
 
     class Enroll(BaseModel):
@@ -393,12 +709,22 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         et = s.get(EnrollToken, sha(body.token))
         if not et or et.revoked or (et.expires and et.expires < now()):
             raise HTTPException(403, "Invalid, expired or revoked enrolment token")
+        if over_limit(s, "enroll:" + et.token_hash, ENROLL_MAX_PER_TOKEN_HOUR):
+            raise HTTPException(429, f"At most {ENROLL_MAX_PER_TOKEN_HOUR} enrolments an hour per token; try again later")
+        room_for_asset(s, et.org_id)
         key = "nma_" + secrets.token_urlsafe(32)
         asset = Asset(org_id=et.org_id, hostname=body.hostname, os_name=body.os_name, ecosystem=body.ecosystem,
-                      agent_key_hash=sha(key), sandbox=et.sandbox)
+                      agent_key_hash=sha(key), sandbox=et.sandbox, enrolled_by=et.token_hash[:12])
         s.add(asset)
+        s.flush()
+        evidence.append(s, et.org_id, "asset_enrolled", asset.id, {"token": et.token_hash[:12], "hostname": body.hostname})
         s.commit()
         return {"asset_id": asset.id, "agent_key": key}
+
+    def room_for_asset(s: Session, org_id: str) -> None:
+        if s.scalar(select(func.count()).select_from(Asset).where(Asset.org_id == org_id)) >= MAX_ASSETS_PER_ORG:
+            raise HTTPException(403, f"This organisation has reached its limit of {MAX_ASSETS_PER_ORG} assets "
+                                     "(NIMSTEAD_MAX_ASSETS_PER_ORG); delete unused ones or ask your Nimstead administrator")
 
     class Pkg(BaseModel):
         ecosystem: str = Field(max_length=100)
@@ -426,6 +752,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def agent_inventory(body: Inventory, s: DB, asset: Annotated[Asset, Depends(current_agent)]):
         if asset.last_inventory_at and now() - asset.last_inventory_at < timedelta(seconds=INVENTORY_MIN_SECONDS):
             raise HTTPException(429, f"Inventory already received; send at most one every {INVENTORY_MIN_SECONDS}s")
+        if over_limit(s, "inventory:" + asset.org_id, ORG_INVENTORY_MAX_PER_HOUR):  # many fake hosts can't bypass the per-host limit
+            raise HTTPException(429, "This organisation is sending too many inventories; try again later")
         asset.last_inventory_at = now()
         asset.os_name, asset.ecosystem, asset.last_seen = body.os_name or asset.os_name, body.ecosystem or asset.ecosystem, now()
         asset.agent_version, asset.auto_update, asset.agent_update_error = body.agent_version, body.auto_update, body.update_error
@@ -554,6 +882,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         # not) can neither block the real owner nor reveal that someone else monitors the host.
         if s.scalar(select(Asset.id).where(Asset.org_id == user.org_id, Asset.kind == "external", Asset.hostname == host)):
             raise HTTPException(409, "That host is already a target")
+        room_for_asset(s, user.org_id)
         t = now()  # last_seen == first_seen until the first scan ("not scanned yet" in the UI)
         a = Asset(org_id=user.org_id, hostname=host, kind="external", criticality=body.criticality, internet_facing=True,
                   agent_key_hash=sha(secrets.token_urlsafe(32)), first_seen=t, last_seen=t)  # no agent: key never handed out
@@ -598,7 +927,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/assets", status_code=201)
     def create_application(body: AppNew, user: Admin, s: DB):
-        token = "nmu_" + secrets.token_urlsafe(32)  # CI upload token: SBOM endpoint only, rejected by every agent endpoint
+        room_for_asset(s, user.org_id)
+        token ="nmu_" + secrets.token_urlsafe(32)  # CI upload token: SBOM endpoint only, rejected by every agent endpoint
         a = Asset(org_id=user.org_id, hostname=body.name, kind="application", criticality=body.criticality,
                   internet_facing=body.internet_facing, agent_key_hash=sha(token))
         s.add(a)
@@ -624,7 +954,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                 raise HTTPException(401, "Unknown key for this asset")
             by = "key"
         else:
-            user = admin_user(current_user(request, s))  # replacing an SBOM resolves findings: not for read-only members
+            user = admin_user(request, current_user(request, s))  # replacing an SBOM resolves findings: not for read-only members
             a, by = owned_asset(s, user, asset_id), user.email
         try:
             pkgs, counts = sbom.parse(sbom.load(raw))
@@ -649,13 +979,36 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             "status": f.status, "first_seen": f.first_seen, "last_seen": f.last_seen, "resolved_at": f.resolved_at,
         }
 
+    class FindingFilter(BaseModel):
+        status: Literal["open", "resolved", "accepted"] = "open"
+        priority: str | None = None
+        asset_id: str | None = None
+        q: str | None = Field(None, max_length=200)
+        fixable: bool | None = None
+        kev: bool | None = None
+
     @app.get("/api/findings")
-    def list_findings(
-        user: CurrentUser, s: DB,
-        status: Literal["open", "resolved", "accepted"] = "open",
-        priority: str | None = None, asset_id: str | None = None, q: str | None = None,
-        fixable: bool | None = None, kev: bool | None = None, limit: int = Query(500, ge=1, le=5000),
-    ):
+    def list_findings(user: CurrentUser, s: DB, f: Annotated[FindingFilter, Query()], limit: int = Query(500, ge=1, le=5000)):
+        return [finding_json(x, h) for x, h in find(s, user, f, limit)]
+
+    CSV_COLUMNS = ["hostname", "package", "installed_version", "fixed_version", "vuln_id", "priority", "score", "cvss", "epss",
+                   "kev", "status", "first_seen", "last_seen", "resolved_at", "summary"]
+
+    @app.get("/api/findings.csv")
+    def export_findings(user: CurrentUser, s: DB, f: Annotated[FindingFilter, Query()]):
+        out = io.StringIO()
+        w = csv.writer(out)
+        w.writerow(CSV_COLUMNS)
+        for x, h in find(s, user, f, 200_000):
+            d = finding_json(x, h)
+            # cells a spreadsheet would run as a formula (package names and summaries come from hosts and advisories)
+            w.writerow(["'" + v if isinstance(v, str) and v[:1] in ("=", "+", "-", "@", "\t", "\r") else v
+                        for v in (d[c] for c in CSV_COLUMNS)])
+        return Response(out.getvalue(), media_type="text/csv",
+                        headers={"Content-Disposition": f'attachment; filename="nimstead-findings-{f.status}.csv"'})
+
+    def find(s: Session, user: User, f: FindingFilter, limit: int):
+        status, priority, asset_id, q, fixable, kev = f.status, f.priority, f.asset_id, f.q, f.fixable, f.kev
         stmt = (
             select(Finding, Asset.hostname).join(Asset, Asset.id == Finding.asset_id)
             .where(Finding.org_id == user.org_id, Finding.status == status)
@@ -671,8 +1024,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         if q:
             like = f"%{q.lower()}%"
             stmt = stmt.where(func.lower(Finding.package).like(like) | func.lower(Finding.vuln_id).like(like) | func.lower(Asset.hostname).like(like))
-        rows = s.execute(stmt.order_by(Finding.score.desc()).limit(min(limit, 5000))).all()
-        return [finding_json(f, h) for f, h in rows]
+        return s.execute(stmt.order_by(Finding.score.desc()).limit(limit)).all()
 
     @app.get("/api/findings/{finding_id}")
     def get_finding(finding_id: str, user: CurrentUser, s: DB):
@@ -998,26 +1350,67 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         return Response(CONFIRM_PAGE.format(f"<p>Confirmed: {html.escape(email)} will receive Nimstead security alerts.</p>"),
                         media_type="text/html")
 
+    LINK_TITLES = {"signup": ("Create your Nimstead account", "Create my account"),
+                   "invite": ("Join {org} on Nimstead", "Join"), "reset": ("Choose a new Nimstead password", "Set password")}
+
+    def link_form(p: PendingSignup, org: Org | None, error: str = "") -> str:
+        title, button = LINK_TITLES[p.purpose]
+        org = org.name if org else ""
+        err = f"<p role=alert style='color:#b0122c'>{html.escape(error)}</p>" if error else ""
+        # a form, not an automatic confirm: mail scanners open links on their own; the password is chosen here, by the address owner
+        return CONFIRM_PAGE.format(
+            f"<h1>{html.escape(title.format(org=org))}</h1><p>{html.escape(p.email)}</p>{err}<form method=post>"
+            "<label>Password (at least 12 characters)<br><input type=password name=password minlength=12 maxlength=200 required "
+            "autocomplete=new-password style='width:100%;padding:.5rem;margin:.25rem 0 1rem'></label>"
+            f"<button>{button}</button></form>")
+
+    def pending_link(s: Session, token: str) -> tuple[PendingSignup | None, Org | None]:
+        p = s.get(PendingSignup, sha(token))
+        if not p or p.expires < now():
+            return None, None
+        return p, s.get(Org, p.org_id) if p.org_id else None
+
     @app.get("/api/auth/signup/confirm")
     def signup_confirm_page(s: DB, token: str = ""):
-        p = s.get(PendingSignup, sha(token))
-        if not p or p.expires < now():
+        p, org = pending_link(s, token)
+        if not p:
             return Response(CONFIRM_INVALID, 404, media_type="text/html")
-        # a button, not an automatic confirm: mail scanners open links on their own
-        return Response(CONFIRM_PAGE.format("<h1>Create your Nimstead account</h1><p>Finish creating your account?</p>"
-                                            "<form method=post><button>Create my account</button></form>"), media_type="text/html")
+        return Response(link_form(p, org), media_type="text/html")
 
     @app.post("/api/auth/signup/confirm")
-    def signup_confirm(s: DB, token: str = ""):
-        p = s.get(PendingSignup, sha(token))
-        if not p or p.expires < now():
+    async def signup_confirm(request: Request, s: DB, token: str = ""):
+        form = parse_qs((await request.body()).decode(errors="replace"))
+        return await run_in_threadpool(finish_link, s, token, (form.get("password") or [""])[0])
+
+    def finish_link(s: Session, token: str, password: str):
+        p, org = pending_link(s, token)
+        if not p:
             return Response(CONFIRM_INVALID, 404, media_type="text/html")
+        if not 12 <= len(password) <= 200:
+            return Response(link_form(p, org, "Choose a password of at least 12 characters."), 422, media_type="text/html")
         s.delete(p)  # single use
-        if s.scalar(select(User.id).where(User.email == p.email)):
+        user = s.scalar(select(User).where(User.email == p.email))
+        if p.purpose == "reset":
+            if not user or user.origin != "password":
+                s.commit()
+                return Response(CONFIRM_INVALID, 404, media_type="text/html")
+            user.password_hash = ph.hash(password)
+            s.execute(delete(WebSession).where(WebSession.user_id == user.id))
+            evidence.append(s, user.org_id, "password_reset", user.id, {"email": user.email})
+            s.commit()
+            # no session: signing in again still needs the authenticator code, which an emailed link can't stand in for
+            return RedirectResponse("/signin?reset=1", status_code=303)
+        if user or (p.purpose == "invite" and not org):
             s.commit()
             return Response(CONFIRM_PAGE.format("<p>This address already has an account. <a href='/signin'>Sign in</a>.</p>"),
                             409, media_type="text/html")
-        user = create_account(s, p.email, p.org_name, p.password_hash)
+        if p.purpose == "invite":
+            user = User(org_id=org.id, email=p.email, password_hash=ph.hash(password))
+            s.add(user)
+            s.flush()
+            evidence.append(s, user.org_id, "user_joined", user.id, {"email": user.email})
+        else:
+            user = create_account(s, p.email, p.org_name, ph.hash(password))
         resp = RedirectResponse("/", status_code=303)
         start_session(s, user, resp)
         return resp
@@ -1035,10 +1428,16 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def ai_status(user: CurrentUser):
         return {"enabled": ai.enabled()}
 
+    def ai_budget(s: Session, user: User) -> None:
+        if not ai.enabled():
+            return
+        if over_limit(s, "ai:" + user.id, AI_MAX_PER_USER_HOUR) or over_limit(s, "ai-org:" + user.org_id, AI_MAX_PER_ORG_HOUR):
+            raise HTTPException(429, "AI limit reached for this hour; try again later")
+
     @app.post("/api/ai/explain/{finding_id}")
     def ai_explain(finding_id: str, user: CurrentUser, s: DB):
-        # ponytail: no per-user AI rate limit yet; add with login throttling
         f = get_finding(finding_id, user, s)
+        ai_budget(s, user)
         try:
             return {"text": ai.explain(f), "model": ai.MODEL}
         except ai.AIUnavailable as e:
@@ -1048,7 +1447,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         text: str = Field(min_length=2, max_length=500)
 
     @app.post("/api/ai/search")
-    def ai_search(body: AskReq, user: CurrentUser):
+    def ai_search(body: AskReq, user: CurrentUser, s: DB):
+        ai_budget(s, user)
         try:
             return ai.parse_search(body.text).model_dump()
         except ai.AIUnavailable as e:

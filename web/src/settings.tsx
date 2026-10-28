@@ -5,6 +5,7 @@ import { Info } from "lucide-react";
 import clsx from "clsx";
 import { adminGate, api, meQ, parseUtc, relativeTime, settingsQ, useIsAdmin, useTitle, type EnrollToken, type Settings } from "./lib";
 import { NotificationsSection, SsoSection } from "./integrations";
+import { AccountSection, ApiTokensSection, UsersSection } from "./people";
 import { btnPrimary, btnQuiet, ErrorState, input, Skeleton } from "./ui";
 
 const MODES: { value: Settings["remediation_mode"]; title: string; body: string }[] = [
@@ -97,7 +98,10 @@ export function SettingsPage() {
           </label>
         )}
       </section>
+      <AccountSection />
+      {me.data?.admin && <UsersSection />}
       <TokensSection />
+      {me.data?.admin && <ApiTokensSection />}
       {me.data?.admin && <NotificationsSection />}
       {me.data?.admin && <SsoSection />}
       <PlatformSection p={s.platform} />

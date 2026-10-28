@@ -44,6 +44,7 @@ class Org(Base):
     notify_emails: Mapped[list] = mapped_column(default=list)
     notify_emails_confirmed: Mapped[list] = mapped_column(default=list)  # subset that clicked the confirmation link; only these get mail
     agent_updates_paused: Mapped[bool] = mapped_column(Boolean, default=False)  # org-wide hold on agent self-updates
+    sla_days: Mapped[dict] = mapped_column(default=dict)  # priority -> days to remediate; {} = evidence.SLA_DAYS defaults
 
 
 class User(Base):
@@ -55,6 +56,9 @@ class User(Base):
     origin: Mapped[str] = mapped_column(String(10), default="password")  # password | sso
     admin: Mapped[bool] = mapped_column(Boolean, default=False)  # may change SSO/alert settings; the org creator
     created: Mapped[datetime] = mapped_column(default=now)
+    totp_secret: Mapped[str | None] = mapped_column(String(500))  # sealed (sso.seal); set = every password sign-in needs a code
+    totp_last_step: Mapped[int] = mapped_column(Integer, default=0)  # last accepted 30 s step: a code works once
+    recovery_codes: Mapped[list] = mapped_column(default=list)  # sha256 of the unused one-time recovery codes
 
 
 class WebSession(Base):
@@ -62,6 +66,20 @@ class WebSession(Base):
     token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("user.id"), index=True)
     expires: Mapped[datetime]
+    last_used: Mapped[datetime] = mapped_column(default=now)  # idle timeout
+
+
+class ApiToken(Base):
+    """Read-only bearer credential for scripts. Acts as the admin who made it, so removing that user ends it too."""
+
+    __tablename__ = "api_token"
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    org_id: Mapped[str] = mapped_column(ForeignKey("org.id"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("user.id"), index=True)
+    name: Mapped[str] = mapped_column(String(100))
+    created: Mapped[datetime] = mapped_column(default=now)
+    expires: Mapped[datetime | None]
+    last_used: Mapped[datetime | None]
 
 
 class EnrollToken(Base):
@@ -96,6 +114,7 @@ class Asset(Base):
     auto_update: Mapped[bool | None]  # agent can replace itself with signed releases; None = agent too old to say
     agent_update_error: Mapped[str | None] = mapped_column(String(500))  # last self-update failure the agent reported
     silent_alerted_at: Mapped[datetime | None]  # "not reporting" alert sent for the current outage; cleared by the next report
+    enrolled_by: Mapped[str | None] = mapped_column(String(12))  # enrolment token id, so a leaked token's hosts can be found
 
 
 class InstalledPackage(Base):
@@ -233,13 +252,15 @@ class AuthFailure(Base):
 
 
 class PendingSignup(Base):
-    """A sign-up waiting for its emailed link. The account (and its org) only exist once the address owner opens it."""
+    """An emailed link that sets a password: a sign-up (account and org exist only once the address owner opens it and
+    chooses the password), an invitation into an org, or a password reset. Never holds a password chosen by the requester."""
 
     __tablename__ = "pending_signup"
     token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
-    email: Mapped[str] = mapped_column(String(320))
-    org_name: Mapped[str] = mapped_column(String(200))
-    password_hash: Mapped[str] = mapped_column(String(200))
+    email: Mapped[str] = mapped_column(String(320), index=True)
+    purpose: Mapped[str] = mapped_column(String(10), default="signup", server_default="signup")  # signup | invite | reset
+    org_name: Mapped[str] = mapped_column(String(200), default="")
+    org_id: Mapped[str | None] = mapped_column(String(32))  # invite: the org to join
     expires: Mapped[datetime]
 
 

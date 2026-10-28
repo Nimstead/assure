@@ -67,22 +67,30 @@ def send_confirmation(bind, org_id: str, email: str, link: str) -> None:
     _submit(bind, org_id, "email_confirmation", text, False, [("email", [email], "")], 1)
 
 
-def send_signup_email(email: str, link: str | None, signin_url: str) -> None:
-    """The second half of a sign-up, sent to the address itself: a link to finish, or (the address already has an account)
-    a note saying so. Either way the person signing up sees the same response, so it can't be used to test addresses.
-    No org exists yet, so failures are logged rather than recorded per org."""
-    if link:
-        text = ("finish creating your account\n\nSomeone, hopefully you, asked to create a Nimstead account with this address. "
-                f"To finish, open this link within 24 hours:\n{link}\n\nIf it wasn't you, ignore this email: no account is created.")
-    else:
-        text = ("you already have an account\n\nSomeone tried to create a Nimstead account with this address, which already "
-                f"has one. Sign in here instead:\n{signin_url}\n\nIf it wasn't you, nothing has changed.")
+ACCOUNT_EMAILS = {
+    "signup": "finish creating your account\n\nSomeone, hopefully you, asked to create a Nimstead account with this address. "
+              "To finish and choose your password, open this link within 24 hours:\n{link}\n\n"
+              "If it wasn't you, ignore this email: no account is created.",
+    "exists": "you already have an account\n\nSomeone tried to create a Nimstead account with this address, which already "
+              "has one. Sign in here instead:\n{link}\n\nIf it wasn't you, nothing has changed.",
+    "invite": "you're invited to {org}\n\nAn administrator of {org} invited this address to Nimstead. To join and choose "
+              "your password, open this link within 24 hours:\n{link}\n\nIf you didn't expect this, ignore this email.",
+    "reset": "reset your password\n\nSomeone, hopefully you, asked to reset the Nimstead password for this address. To choose "
+             "a new one, open this link within 1 hour:\n{link}\n\nIf it wasn't you, ignore this email: your password is unchanged.",
+}
+
+
+def send_account_email(email: str, purpose: str, link: str, org: str = "") -> None:
+    """Account email sent to the address itself (sign-up link, "already has an account", invitation, password reset), so
+    whoever asked sees the same response either way and can't use it to test addresses. Failures are logged, not recorded
+    per org (a sign-up has no org yet). The org name is the tenant's own text: kept to one plain line."""
+    text = ACCOUNT_EMAILS[purpose].format(link=link, org=" ".join(org.split())[:100] or "an organisation")
 
     def send():
         try:
             _send_email([email], "signup", text, False)
         except Exception as e:
-            log.warning("sign-up email could not be sent: %s", type(e).__name__)
+            log.warning("account email could not be sent: %s", type(e).__name__)
     f = _pool.submit(send)
     _pending.add(f)
     f.add_done_callback(_pending.discard)

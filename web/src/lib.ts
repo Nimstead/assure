@@ -243,7 +243,11 @@ export const isDark = () =>
   (document.documentElement.dataset.theme ?? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")) === "dark";
 
 // ---- shared queries ----------------------------------------------------------------
-export const meQ = queryOptions({ queryKey: ["me"], queryFn: () => api<{ email: string; org: string; admin: boolean }>("/api/me"), retry: false, staleTime: 5 * 60_000 });
+export interface Me { email: string; org: string; admin: boolean; origin: "password" | "sso"; mfa: boolean; recovery_codes_left: number }
+export const meQ = queryOptions({ queryKey: ["me"], queryFn: () => api<Me>("/api/me"), retry: false, staleTime: 5 * 60_000 });
+export interface OrgUser { id: string; email: string; admin: boolean; origin: "password" | "sso"; mfa: boolean; created: string }
+export interface ApiTokenRow { id: string; name: string; created_by: string; created: string; expires: string | null; last_used: string | null }
+export interface MfaSetup { setup: string; secret: string; uri: string }
 /** Admin-only actions are disabled until /api/me says otherwise (loading counts as non-admin). */
 export const useIsAdmin = () => useQuery(meQ).data?.admin === true;
 export const ADMIN_ONLY = "Only organisation admins can do this";

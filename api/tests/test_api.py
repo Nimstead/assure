@@ -272,7 +272,7 @@ def test_distributed_guessing_cannot_lock_the_owner_out(env):
     s.add_all(AuthFailure(key="email:admin@example.com") for _ in range(100))  # the email-wide cap, reached from elsewhere
     s.commit()
     good = {"email": "admin@example.com", "password": "correct horse battery"}
-    assert c.post("/api/auth/login", json=good).status_code == 200  # from an address with no failures: let through
+    assert c.post("/api/auth/login", json=good).json()["mfa"] == "setup"  # from an address with no failures: let through
     s.add(AuthFailure(key="ip:testclient"))
     s.commit()
     assert c.post("/api/auth/login", json=good).status_code == 429  # an address that has been guessing is stopped
@@ -315,6 +315,21 @@ def test_signup_never_says_whether_an_email_has_an_account(env, monkeypatch):
     link = next(ln for ln in mails["new@example.com"].splitlines() if "/api/auth/signup/confirm?" in ln)
     browser = TestClient(c.app)
     assert browser.get(link).status_code == 200 and browser.get("/api/me").status_code == 401  # opening it isn't enough
-    r = browser.post(link, follow_redirects=False)
-    assert r.status_code == 303 and browser.get("/api/me").json() == {"email": "new@example.com", "org": "Acme", "admin": True}
-    assert TestClient(c.app).post(link).status_code == 404  # single use
+    assert browser.post(link, data={"password": "short"}).status_code == 422  # still usable after a bad password
+    r = browser.post(link, data={"password": "chosen by the owner"}, follow_redirects=False)
+    assert r.status_code == 303 and browser.get("/api/me").json()["email"] == "new@example.com"
+    assert TestClient(c.app).post(link, data={"password": "chosen by the owner"}).status_code == 404  # single use
+
+
+def mfa_login(c, email, password="correct horse battery"):  # noqa: S107  the test password
+    """Sign in as a password user, enrolling TOTP first if the server asks (admins must). Returns the final answer."""
+    import time
+
+    from nimstead import mfa
+    body = {"email": email, "password": password}
+    r = c.post("/api/auth/login", json=body)
+    if r.status_code == 200 and r.json().get("mfa") == "setup":
+        d = r.json()
+        r = c.post("/api/auth/login", json={**body, "setup": d["setup"], "code": mfa.code(d["secret"], int(time.time() // 30))})
+        r.secret = d["secret"]
+    return r

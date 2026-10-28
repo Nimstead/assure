@@ -46,7 +46,7 @@ it("settings show when the last alert delivery failed", async () => {
 
 const signedIn = (admin: boolean) => {
   const qc = new QueryClient();
-  qc.setQueryData(meQ.queryKey, { email: "a@example.com", org: "Acme", admin });
+  qc.setQueryData(meQ.queryKey, { email: "a@example.com", org: "Acme", admin, origin: "password", mfa: admin, recovery_codes_left: 10 });
   return qc;
 };
 

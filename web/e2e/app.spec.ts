@@ -1,6 +1,9 @@
-import { expect, test, type Browser, type Page } from "@playwright/test";
+import { expect, request as pwRequest, test, type Browser, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
+import { spawnSync } from "node:child_process";
+import { createHmac } from "node:crypto";
 import { mkdirSync } from "node:fs";
+import { join } from "node:path";
 
 const STATE = "e2e-data/state.json";
 const SHOTS = "e2e-screenshots";
@@ -67,6 +70,63 @@ test("sign up, enrol a sandbox host, plan and approve a fix, see evidence", asyn
   await expect(page.getByRole("heading", { name: "Enrolment tokens" })).toBeVisible();
 
   await page.context().storageState({ path: STATE });
+});
+
+function totp(secret: string, at = Date.now()): string {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  const bits = [...secret.replace(/=+$/, "")].map((c) => alphabet.indexOf(c).toString(2).padStart(5, "0")).join("");
+  const key = Buffer.from(bits.match(/.{8}/g)!.map((b) => parseInt(b, 2)));
+  const msg = Buffer.alloc(8);
+  msg.writeBigUInt64BE(BigInt(Math.floor(at / 30_000)));
+  const mac = createHmac("sha1", key).update(msg).digest();
+  const off = mac[mac.length - 1]! & 0x0f;
+  return String((mac.readUInt32BE(off) & 0x7fffffff) % 1_000_000).padStart(6, "0");
+}
+
+test("admins sign in with a second step, manage people and API tokens", async ({ browser }) => {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  await page.goto("/signin");
+  await page.getByLabel("Email", { exact: true }).fill("e2e@example.com");
+  await page.getByLabel("Password").fill("correct horse battery staple");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Set up two-step sign-in" })).toBeVisible();
+  const secret = (await page.locator("pre code").first().textContent())!.trim();
+  await page.getByLabel("Code from the app").fill(totp(secret));
+  await page.getByRole("button", { name: "Turn on" }).click();
+  await expect(page.getByText(/Save these recovery codes now/)).toBeVisible();
+  await page.getByRole("button", { name: /saved them, continue/ }).click();
+  await expect(page.getByRole("heading", { name: "Fix first" })).toBeVisible();
+
+  // a second member of the org, as an invitation or SSO would add (no SMTP or IdP in this test)
+  const db = join(process.cwd(), "e2e-data", "e2e.db").replaceAll("\\", "/");
+  const py = "from sqlalchemy import select; from sqlalchemy.orm import sessionmaker; from nimstead.db import User, make_engine; "
+    + "s = sessionmaker(make_engine())(); o = s.scalar(select(User.org_id).where(User.email == 'e2e@example.com')); "
+    + "s.add(User(org_id=o, email='member@example.com', password_hash='!')); s.commit()";
+  expect(spawnSync("uv", ["run", "python", "-c", py], { cwd: join(process.cwd(), "..", "api"), env: { ...process.env, NIMSTEAD_DB: `sqlite:///${db}` } }).status).toBe(0);
+
+  await page.goto("/settings");
+  const people = page.locator("section[aria-labelledby=people]");
+  const member = people.getByRole("listitem").filter({ hasText: "member@example.com" });
+  await expect(member).toContainText("Member · password");
+  await expect(people.getByRole("listitem").filter({ hasText: "(you)" })).toContainText("Admin · password + code");
+  await people.getByRole("button", { name: "Make admin member@example.com" }).click();
+  await expect(people.getByRole("button", { name: "Make member member@example.com" })).toBeVisible();
+  page.once("dialog", (d) => d.accept());
+  await people.getByRole("button", { name: "Remove member@example.com" }).click();
+  await expect(member).toHaveCount(0);
+
+  const tokens = page.locator("section[aria-labelledby=api-tokens]");
+  await tokens.getByLabel("Name").fill("ci export");
+  await tokens.getByRole("button", { name: "Create token" }).click();
+  const token = (await tokens.locator("pre code").textContent())!.trim();
+  const anon = await pwRequest.newContext({ baseURL: "http://localhost:5173" });
+  const csv = await anon.get("/api/findings.csv", { headers: { Authorization: `Bearer ${token}` } });
+  expect(csv.ok()).toBe(true);
+  expect(await csv.text()).toMatch(/^hostname,package/);
+  expect((await anon.post("/api/enroll-tokens", { headers: { Authorization: `Bearer ${token}` } })).status()).toBe(403);
+  await expect(tokens.getByRole("listitem").filter({ hasText: "ci export" })).toContainText("by e2e@example.com");
+  await context.close();
 });
 
 const PAGES = [

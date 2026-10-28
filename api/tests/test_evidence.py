@@ -208,5 +208,22 @@ def test_control_evidence_is_plain_text():
 
     from nimstead import evidence
     m = defaultdict(int, mttr_days=None)
-    for c in evidence._controls(m):
+    for c in evidence._controls(m, evidence.SLA_DAYS):
         assert "None" not in c["evidence"] and "{" not in c["evidence"], c
+
+
+def test_org_sla_and_new_framework_mappings_are_in_the_pack(env):
+    from test_api import INV, enrol, user
+    c = user(env)
+    a = enrol(c)
+    c.post("/api/agent/inventory", json=INV, headers={"Authorization": f"Bearer {a['agent_key']}"})
+    assert c.patch("/api/settings", json={"sla_days": {"fix-now": 7, "next": 21}}).status_code == 200
+    assert c.get("/api/settings").json()["sla_days"] == {"fix-now": 7, "next": 21, "planned": 90, "low": 180}
+    pack = c.get("/api/evidence/report").json()
+    assert pack["sla_days"]["fix-now"] == 7 and {r["sla_days"] for r in pack["findings"] if r["priority"] == "fix-now"} == {7}
+    controls = {(x["framework"], x["control"]): x for x in pack["controls"]}
+    assert {("SOC 2 (TSC 2017)", "CC7.1"), ("SOC 2 (TSC 2017)", "CC8.1"), ("NIS2 Directive", "Art. 21(2)(e)")} <= set(controls)
+    assert "fix-now 7 days" in controls[("NIST SP 800-53 Rev. 5", "SI-2")]["evidence"]
+    assert "not the vendor's release date" in controls[("PCI DSS v4.0.1", "6.3.3")]["evidence"]
+    for bad in ({"fix-now": 0}, {"fix-now": 400}, {"urgent": 5}):
+        assert c.patch("/api/settings", json={"sla_days": bad}).status_code == 422

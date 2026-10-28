@@ -389,3 +389,34 @@ def test_users_table_has_no_password_material_in_json(env):
     c = user(env)
     assert set(c.get("/api/users").json()[0]) == {"id", "email", "admin", "origin", "mfa", "created"}
     assert sessionmaker(make_engine(env))().scalar(select(User.recovery_codes)) == []
+
+
+# --- P3: risk acceptance ------------------------------------------------------------------------------------------------
+
+def test_accept_a_vulnerability_everywhere_and_revoke_one(env):
+    c = user(env)
+    for _ in range(2):
+        c.post("/api/agent/inventory", json=INV, headers={"Authorization": f"Bearer {enrol(c)['agent_key']}"})
+    vuln = c.get("/api/findings").json()[0]["vuln_id"]
+    hosts = [f for f in c.get("/api/findings").json() if f["vuln_id"] == vuln]
+    assert len(hosts) == 2
+    reason = {"reason": "compensating WAF rule in place", "days": 30}
+    assert c.post("/api/findings/accept", json={**reason, "vuln_id": vuln}).json() == {"accepted": 2}
+    assert not [f for f in c.get("/api/findings").json() if f["vuln_id"] == vuln]
+    assert c.post("/api/findings/accept", json={**reason, "vuln_id": vuln}).status_code == 404  # nothing open left
+    r = c.post(f"/api/findings/{hosts[0]['id']}/revoke-acceptance", json={"reason": "WAF rule removed"})
+    assert r.status_code == 200 and r.json()["status"] == "open"
+    assert c.post(f"/api/findings/{hosts[0]['id']}/revoke-acceptance", json={"reason": "again"}).status_code == 409
+    other = user(env, "b@example.com")
+    assert other.post(f"/api/findings/{hosts[1]['id']}/revoke-acceptance", json={"reason": "not mine"}).status_code == 404
+    assert other.post("/api/findings/accept", json={**reason, "vuln_id": vuln}).status_code == 404  # only its own org
+    k = kinds(env)
+    assert k.count("finding_accepted") == 2 and "finding_acceptance_revoked" in k
+
+
+def test_security_txt(env, monkeypatch):
+    monkeypatch.setenv("NIMSTEAD_SECURITY_CONTACT", "mailto:soc@customer.example")
+    r = TestClient(create_app(env)).get("/.well-known/security.txt")
+    lines = r.text.splitlines()
+    assert r.status_code == 200 and lines[:2] == ["Contact: mailto:soc@customer.example", "Contact: mailto:security@nimstead.systems"]
+    assert any(ln.startswith("Expires: 20") and ln.endswith("Z") for ln in lines) and any(ln.startswith("Policy: https://") for ln in lines)

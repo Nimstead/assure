@@ -80,7 +80,7 @@ export interface EvidenceReport {
 export interface EnrollToken { id: string; created: string; expires: string; revoked: boolean; sandbox: boolean }
 export interface Settings {
   remediation_mode: "suggest" | "approve" | "auto"; canary_soak_hours: number; production_remediation_allowed: boolean;
-  agent_updates_paused: boolean; signed_agent_release: boolean; platform: Platform;
+  agent_updates_paused: boolean; signed_agent_release: boolean; platform: Platform; sla_days: Record<Priority, number>;
 }
 // updates.status(): last_update is what deploy/update.sh last did on the Docker host
 export interface Platform {

@@ -1044,10 +1044,44 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         f = s.get(Finding, finding_id)
         if not f or f.org_id != user.org_id:
             raise HTTPException(404, "Finding not found")
+        accept(s, user, f, body)
+        s.commit()
+        return finding_json(f, s.get(Asset, f.asset_id).hostname)
+
+    def accept(s: Session, user: User, f: Finding, body: Accept, everywhere: bool = False) -> None:
         f.status, f.accepted_until = "accepted", now() + timedelta(days=body.days)
         evidence.append(s, user.org_id, "finding_accepted", f.id, {
             "by": user.email, "reason": body.reason, "expires_in_days": body.days, "vuln_id": f.vuln_id, "package": f.package,
+            **({"everywhere": True} if everywhere else {}),
         })
+
+    class AcceptEverywhere(Accept):
+        vuln_id: str = Field(min_length=1, max_length=200)
+
+    @app.post("/api/findings/accept")
+    def accept_everywhere(body: AcceptEverywhere, user: Admin, s: DB):
+        """One decision for one vulnerability on every host it's open on now (each recorded; new hosts aren't covered)."""
+        rows = s.scalars(select(Finding).where(Finding.org_id == user.org_id, Finding.vuln_id == body.vuln_id, Finding.status == "open")).all()
+        if not rows:
+            raise HTTPException(404, "No open findings for that vulnerability")
+        for f in rows:
+            accept(s, user, f, body, everywhere=True)
+        s.commit()
+        return {"accepted": len(rows)}
+
+    class Revoke(BaseModel):
+        reason: str = Field(min_length=3, max_length=2000)
+
+    @app.post("/api/findings/{finding_id}/revoke-acceptance")
+    def revoke_acceptance(finding_id: str, body: Revoke, user: Admin, s: DB):
+        f = s.get(Finding, finding_id)
+        if not f or f.org_id != user.org_id:
+            raise HTTPException(404, "Finding not found")
+        if f.status != "accepted":
+            raise HTTPException(409, "This finding isn't accepted")
+        f.status, f.accepted_until = "open", None
+        evidence.append(s, user.org_id, "finding_acceptance_revoked", f.id, {"by": user.email, "reason": body.reason,
+                                                                             "vuln_id": f.vuln_id, "package": f.package})
         s.commit()
         return finding_json(f, s.get(Asset, f.asset_id).hostname)
 
@@ -1102,11 +1136,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         remediation_mode: Literal["suggest", "approve", "auto"] | None = None
         canary_soak_hours: int | None = Field(None, ge=1, le=720)
         agent_updates_paused: bool | None = None
+        sla_days: dict[Literal["fix-now", "next", "planned", "low"], Annotated[int, Field(ge=1, le=365)]] | None = None
 
     @app.get("/api/settings")
     def get_settings(user: CurrentUser, s: DB):
         o = s.get(Org, user.org_id)
-        return {"remediation_mode": o.remediation_mode, "canary_soak_hours": o.canary_soak_hours,
+        return {"remediation_mode": o.remediation_mode, "canary_soak_hours": o.canary_soak_hours, "sla_days": evidence.sla_days(o),
                 "agent_updates_paused": o.agent_updates_paused, "signed_agent_release": signed_release() is not None,
                 "platform": updates.status(),
                 "production_remediation_allowed": remediate.production_allowed()}
@@ -1115,6 +1150,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def update_settings(body: Policy, user: Admin, s: DB):
         o = s.get(Org, user.org_id)
         changes = body.model_dump(exclude_none=True)
+        if "sla_days" in changes:  # organisation-defined periods (NIST SI-2): given priorities change, the rest stay
+            changes["sla_days"] = {**o.sla_days, **changes["sla_days"]}
         for k, v in changes.items():
             setattr(o, k, v)
         evidence.append(s, o.id, "policy_changed", o.id, {"by": user.email, **changes})
@@ -1488,6 +1525,15 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         data = evidence.pack_zip(evidence.build_pack(s, user.org_id, *evidence.default_period(days)))
         name = f"nimstead-evidence-{datetime.now():%Y%m%d}.zip"
         return Response(data, media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+    @app.get("/.well-known/security.txt", include_in_schema=False)
+    def security_txt():
+        """RFC 9116. Reports about this software go to Nimstead; an operator can add their own contact first."""
+        contacts = [c for c in (os.environ.get("NIMSTEAD_SECURITY_CONTACT", ""), "mailto:security@nimstead.systems") if c]
+        expires = (now() + timedelta(days=180)).strftime("%Y-%m-%dT00:00:00Z")  # regenerated on every request
+        body = "".join(f"Contact: {c}\n" for c in contacts) + (
+            f"Expires: {expires}\nPolicy: https://github.com/Nimstead/assure/blob/main/SECURITY.md\nPreferred-Languages: en\n")
+        return Response(body, media_type="text/plain")
 
     @app.get("/api/health", include_in_schema=False)
     def health(s: DB):

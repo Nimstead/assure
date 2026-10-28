@@ -1,6 +1,6 @@
 [project]
 name = "nimstead"
-version = "0.3.1"
+version = "0.4.0"
 description = "Nimstead Assure: vulnerability scanning, patch assurance, audit evidence and safe remediation"
 license = "FSL-1.1-ALv2"
 readme = "README.md"

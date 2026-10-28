@@ -4,6 +4,42 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-28
+
+Security round 4 and what a first team needs: people management, two-step sign-in, API tokens and CSV export. Agent 0.3.0.
+
+**Upgrade from 0.3.x:** run `deploy/update.sh` on the Docker host. Things to know:
+- **Admins who sign in with a password set up two-step sign-in at their next sign-in** (any authenticator app), including break-glass sign-in. Save the recovery codes it shows.
+- **The app now listens on `127.0.0.1:8000` only.** Your HTTPS proxy on the same host keeps working. If something on another machine reached port 8000 directly, put it behind the proxy, or set `NIMSTEAD_BIND=0.0.0.0` in `.env`.
+- Sign-up links sent before the upgrade stop working; ask for a new one.
+- Agents update themselves to 0.3.0. Machines enrolled before 0.3.0 keep taking every channel; rerun the install command to tie one to your server's channel.
+
+### Security
+- **Sign-up can no longer be used to pre-set someone else's password.** Emailed sign-ups, invitations and resets let the address owner choose the password on the link's page; the request never carries one.
+- **Two-step sign-in (TOTP) is required for admins** who sign in with a password, with one-time recovery codes; anyone else can turn it on in Settings.
+- Request bodies are capped at 10 MB as they arrive, so a chunked upload can't exhaust memory.
+- Per-organisation limits: assets (`NIMSTEAD_MAX_ASSETS_PER_ORG`, 5,000), enrolments per token, inventories per hour, and AI calls per user and organisation.
+- Security headers on every response: Content-Security-Policy, HSTS (with secure cookies), `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy: no-referrer`. `/.well-known/security.txt` is served.
+- The evidence ledger now records organisation creation, every agent enrolment (with the token used), password sign-ins and every change to people and tokens.
+- **Agent 0.3.0:** a fix never installs an older version (pins are compared by the package manager; dry-run downgrades are refused); rollback copies are deleted once the outcome is saved and no change starts below 1 GiB free; signed releases from a less proven channel than the machine's are refused; job fields are validated without trailing newlines; server responses are size-capped.
+- The Windows installer's trusted-folder check had lost a backslash, so `C:\Program Files Evil\` passed it (the agent's own check still stopped it). Fixed. The Linux installer fetches over HTTPS only and prints the agent's SHA-256.
+- `deploy/update.sh` refuses untracked files and Compose override files, checks out the exact verified commit, runs as root only from a checkout only root can change, and checks the backup is readable before dropping the database on rollback.
+- CI actions are pinned to commits with a read-only token; a CI job audits Python and npm dependencies; Dependabot covers both; the release signing step installs only hash-pinned packages.
+
+### Added
+- **People** in Settings: invite by email, make admin or member, remove (signed out at once). An organisation always keeps one admin. Sessions end after 12 hours idle; **Sign out everywhere**.
+- **Change password** and **Forgot password?** (emailed link, 1 hour; you still need your authenticator code).
+- **API tokens:** read-only access for scripts to findings, assets, the summary and evidence, as `Authorization: Bearer …`. A token stops working when its creator is no longer an admin.
+- **Export CSV** on Findings, with the page's filters (cells a spreadsheet would run as formulas are escaped).
+- **Remediation deadlines** per priority in Settings, used and shown in evidence packs.
+- Evidence packs map to **SOC 2 CC7.1 and CC8.1** and **NIS2 Art. 21(2)(e)** too.
+- Risk acceptance: accept one vulnerability on every host it's open on, and revoke an acceptance (both recorded).
+- Each release publishes CycloneDX SBOMs of Assure's own dependencies; upload them to an application to scan Assure with Assure.
+- Docs: installing an agent without trusting the server, restoring a backup, release-key rotation and the bad-release runbook (`docs/release-keys.md`).
+
+### Changed
+- `SECURITY.md`: response targets per severity, safe harbour, and which releases get fixes.
+
 ## [0.3.1] - 2026-10-28 (preview)
 
 **Release channels.** Releases now come in three channels: **preview** (earliest, may break), **beta** (feature-complete, being proven) and **stable** (public). Your server follows one and also takes anything more stable. There's no beta or stable release yet, so **set `NIMSTEAD_UPDATE_CHANNEL=preview` in `.env` to keep getting updates**; the default is `stable`. Agents are unchanged (still 0.2.0), so machines need nothing.

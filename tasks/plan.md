@@ -1,4 +1,4 @@
-# Implementation Plan: A great agent, with automatic updates for the agent and the Assure platform
+# Implementation Plan (done, shipped in 0.3.0): A great agent, with automatic updates for the agent and the Assure platform
 
 ## Overview
 Today an agent update means rerunning the install command on every host (the Assets page only flags "Agent outdated"), and updating the Assure server means pulling the repo and rebuilding by hand. The agent also reports and picks up jobs only every 6 hours, and nothing tells an admin when a host goes quiet. This plan makes both update paths automatic **without weakening the threat model** (DECISIONS 7 and 27: a compromised server can only ask opted-in hosts to upgrade real packages, never run code), makes the agent faster to act, and makes silent failures visible.
@@ -34,7 +34,7 @@ T11 docs / DECISIONS / STATUS / CHANGELOG / release  (last)
 Parallel-safe: T6 and T8 can run alongside Phase 1. T1 and T2 can run together (T2 needs a verifier only in its test).
 
 ## Task list
-Full tasks with acceptance criteria are in `tasks/todo.md`.
+Done: evidence in STATUS.md. The current plan is `tasks/plan-0.4-security.md`.
 
 ### Phase 1: Signed agent self-update (highest risk, so first)
 - T1 Pure-Python Ed25519 verify in the agent

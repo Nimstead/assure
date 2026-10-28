@@ -4,6 +4,12 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-28 (preview)
+
+**Release channels.** Releases now come in three channels: **preview** (earliest, may break), **beta** (feature-complete, being proven) and **stable** (public). Your server follows one and also takes anything more stable. There's no beta or stable release yet, so **set `NIMSTEAD_UPDATE_CHANNEL=preview` in `.env` to keep getting updates**; the default is `stable`. Agents are unchanged (still 0.2.0), so machines need nothing.
+
+**Upgrade from 0.3.0:** 0.3.0's Settings doesn't show preview releases, so run `deploy/update.sh` on the Docker host (it checks the signature, backs up the database and rolls back if needed). Then add `NIMSTEAD_UPDATE_CHANNEL=preview` to `.env` and restart with `docker compose up -d`. From 0.2.0: `git fetch --tags && git checkout v0.3.1 && docker compose up -d --build`, then rerun the install command on each machine once.
+
 ### Added
 - **Release channels:** preview, beta and stable. Each release's signed manifest says its channel, and a server follows one (`NIMSTEAD_UPDATE_CHANNEL`, default `stable`), taking its channel and anything more stable. Settings shows the channel, and `deploy/update.sh` installs the newest release the channel allows. A tag is released as preview; promoting it re-signs the same commit for beta or stable with your approval. 0.3.0 is a preview release.
 - Docker base images and the PostgreSQL image are pinned by digest, and Dependabot proposes updates to them and to the pinned GitHub Actions.
@@ -88,7 +94,8 @@ The first early-access release. Everything listed is proven by tests and, for an
 
 Licensed under FSL-1.1-ALv2: this release becomes available under Apache 2.0 on 2028-10-27.
 
-[Unreleased]: https://github.com/Nimstead/assure/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Nimstead/assure/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/Nimstead/assure/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Nimstead/assure/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Nimstead/assure/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/Nimstead/assure/compare/v0.1.0...v0.1.1

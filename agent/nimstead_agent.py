@@ -1504,7 +1504,8 @@ def schedule_windows_script(cfg):
                   "Register-ScheduledTask -TaskName 'Nimstead jobs' -Action (New-ScheduledTaskAction -Execute $py -Argument "
                   f"{_ps_quote(base + ' remediate --if-jobs')}) -Trigger $poll -User 'SYSTEM' -RunLevel Highest -Force | Out-Null"]
     else:
-        lines.append("Unregister-ScheduledTask -TaskName 'Nimstead jobs' -Confirm:$false -ErrorAction SilentlyContinue")
+        # only if it's there: a silenced "not found" still sets $?, and powershell -Command exits 1 on the last statement's $?
+        lines.append("Get-ScheduledTask | Where-Object TaskName -eq 'Nimstead jobs' | Unregister-ScheduledTask -Confirm:$false")
     return "\n".join(lines)
 
 
@@ -1519,7 +1520,7 @@ def schedule(cfg, run=sh, unit_dir=SYSTEMD_DIR, systemd=None):
                              "an interpreter other users can modify (winget install Python.Python.3.13 --scope machine)")
         rc, out = ps(run, schedule_windows_script(cfg))
         if rc != 0:
-            raise AgentError(f"could not register the scheduled tasks: {out.strip()[-300:]}")
+            raise AgentError(f"could not register the scheduled tasks (PowerShell exit {rc}): {out.strip()[-300:]}")
         msg = "scheduled: every 6 hours and at startup" + poll
     else:
         if systemd is None:

@@ -5,7 +5,7 @@
       "step": "versions",
       "docker": "Docker version 26.1.5+dfsg1, build a72d7cd",
       "compose": "2.26.1-4",
-      "files": 206
+      "files": 208
     },
     {
       "step": "compose up: built and serving",
@@ -47,7 +47,7 @@
         "nimstead-secret.key",
         "nimstead-signing.pem"
       ],
-      "fingerprint": "583f817fac78b7807e26a43a440ea2745db69407feb99cee27843dc23d2ef97a"
+      "fingerprint": "511bd9b4e24ff6551f12a292577f2b9b7d67e44d4bc8ae5ff524651bcdbc9521"
     },
     {
       "step": "non-root",

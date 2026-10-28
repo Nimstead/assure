@@ -80,6 +80,10 @@ def main() -> int:
         assets = api.get("/api/assets").json()
         h.note("install.ps1 ran elevated", output=out.strip()[-1500:], assets=[(a["hostname"], a["agent_version"]) for a in assets])
         assert len(assets) == 1 and assets[0]["last_seen"], (assets, out[-2000:])
+        # the install must finish too: this harness once passed on permissions alone while scheduling failed
+        task = h.guest("(Get-ScheduledTask -TaskName 'Nimstead agent').Principal.UserId", check=False).strip()
+        h.note("SYSTEM task registered", user=task)
+        assert "INSTALL FAILED" not in out and "Nimstead agent installed" in out and task == "SYSTEM", (out[-1500:], task)
 
         read = as_user(attacker, f"Get-Content -LiteralPath '{DIR}\\agent.json' -Raw | Out-Null; 'READ'")
         write = as_user(attacker, f"Set-Content -LiteralPath '{DIR}\\pending-job.json' -Value x; 'WROTE'")

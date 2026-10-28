@@ -25,7 +25,7 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import Integer, delete, func, select
@@ -1028,7 +1028,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/findings")
     def list_findings(user: CurrentUser, s: DB, f: Annotated[FindingFilter, Query()], limit: int = Query(500, ge=1, le=5000)):
-        return [finding_json(x, h) for x, h in find(s, user, f, limit)]
+        return [finding_json(x, h) for x, h in find(s, user.org_id, f, limit)]
 
     CSV_COLUMNS = ["hostname", "package", "installed_version", "fixed_version", "vuln_id", "priority", "score", "cvss", "epss",
                    "kev", "status", "first_seen", "last_seen", "resolved_at", "summary"]
@@ -1037,22 +1037,32 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def export_findings(user: CurrentUser, s: DB, f: Annotated[FindingFilter, Query()]):
         if over_limit(s, "export:" + user.org_id, EXPORT_MAX_PER_HOUR):  # each one reads a whole tenant's findings
             raise HTTPException(429, f"At most {EXPORT_MAX_PER_HOUR} exports an hour")
-        out = io.StringIO()
-        w = csv.writer(out)
-        w.writerow(CSV_COLUMNS)
-        for x, h in find(s, user, f, 100_000):  # shortcut: built in memory, stream it if tenants outgrow 100k open findings
-            d = finding_json(x, h)
-            # cells a spreadsheet would run as a formula (package names and summaries come from hosts and advisories)
-            w.writerow(["'" + v if isinstance(v, str) and v[:1] in ("=", "+", "-", "@", "\t", "\r") else v
-                        for v in (d[c] for c in CSV_COLUMNS)])
-        return Response(out.getvalue(), media_type="text/csv",
-                        headers={"Content-Disposition": f'attachment; filename="nimstead-findings-{f.status}.csv"'})
+        org_id = user.org_id
 
-    def find(s: Session, user: User, f: FindingFilter, limit: int):
+        def rows():  # streamed in batches from its own session: a whole tenant's findings never sit in memory at once
+            buf = io.StringIO()
+            w = csv.writer(buf)
+
+            def line(cells):
+                buf.seek(0)
+                buf.truncate()
+                w.writerow(cells)
+                return buf.getvalue()
+            yield line(CSV_COLUMNS)
+            with Sessions() as s2:
+                for x, h in find(s2, org_id, f):
+                    d = finding_json(x, h)
+                    # cells a spreadsheet would run as a formula (package names and summaries come from hosts and advisories)
+                    yield line(["'" + v if isinstance(v, str) and v[:1] in ("=", "+", "-", "@", "\t", "\r") else v
+                                for v in (d[c] for c in CSV_COLUMNS)])
+        return StreamingResponse(rows(), media_type="text/csv",
+                                 headers={"Content-Disposition": f'attachment; filename="nimstead-findings-{f.status}.csv"'})
+
+    def find(s: Session, org_id: str, f: FindingFilter, limit: int | None = None):
         status, priority, asset_id, q, fixable, kev = f.status, f.priority, f.asset_id, f.q, f.fixable, f.kev
         stmt = (
             select(Finding, Asset.hostname).join(Asset, Asset.id == Finding.asset_id)
-            .where(Finding.org_id == user.org_id, Finding.status == status)
+            .where(Finding.org_id == org_id, Finding.status == status)
         )
         if priority:
             stmt = stmt.where(Finding.priority.in_(priority.split(",")))
@@ -1065,7 +1075,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         if q:
             like = f"%{q.lower()}%"
             stmt = stmt.where(func.lower(Finding.package).like(like) | func.lower(Finding.vuln_id).like(like) | func.lower(Asset.hostname).like(like))
-        return s.execute(stmt.order_by(Finding.score.desc()).limit(limit)).all()
+        stmt = stmt.order_by(Finding.score.desc())
+        return s.execute(stmt.limit(limit) if limit else stmt, execution_options={"yield_per": 1000})
 
     @app.get("/api/findings/{finding_id}")
     def get_finding(finding_id: str, user: CurrentUser, s: DB):

@@ -216,14 +216,18 @@ def test_org_sla_and_new_framework_mappings_are_in_the_pack(env):
     from test_api import INV, enrol, user
     c = user(env)
     a = enrol(c)
-    c.post("/api/agent/inventory", json=INV, headers={"Authorization": f"Bearer {a['agent_key']}"})
-    assert c.patch("/api/settings", json={"sla_days": {"fix-now": 7, "next": 21}}).status_code == 200
+    assert c.patch("/api/settings", json={"sla_days": {"fix-now": 7, "next": 21}}).status_code == 200  # in force before detection
     assert c.get("/api/settings").json()["sla_days"] == {"fix-now": 7, "next": 21, "planned": 90, "low": 180}
+    c.post("/api/agent/inventory", json=INV, headers={"Authorization": f"Bearer {a['agent_key']}"})
     pack = c.get("/api/evidence/report").json()
     assert pack["sla_days"]["fix-now"] == 7 and {r["sla_days"] for r in pack["findings"] if r["priority"] == "fix-now"} == {7}
+    c.patch("/api/settings", json={"sla_days": {"fix-now": 365}})  # relaxed after detection: those findings keep 7
+    pack = c.get("/api/evidence/report").json()
+    assert pack["sla_days"]["fix-now"] == 365 and {r["sla_days"] for r in pack["findings"] if r["priority"] == "fix-now"} == {7}
     controls = {(x["framework"], x["control"]): x for x in pack["controls"]}
     assert {("SOC 2 (TSC 2017)", "CC7.1"), ("SOC 2 (TSC 2017)", "CC8.1"), ("NIS2 Directive", "Art. 21(2)(e)")} <= set(controls)
-    assert "fix-now 7 days" in controls[("NIST SP 800-53 Rev. 5", "SI-2")]["evidence"]
+    si2 = controls[("NIST SP 800-53 Rev. 5", "SI-2")]["evidence"]
+    assert "in force when each was detected" in si2 and "fix-now 365 days" in si2 and "changed 2 times" in si2
     assert "not the vendor's release date" in controls[("PCI DSS v4.0.1", "6.3.3")]["evidence"]
     for bad in ({"fix-now": 0}, {"fix-now": 400}, {"urgent": 5}):
         assert c.patch("/api/settings", json={"sla_days": bad}).status_code == 422

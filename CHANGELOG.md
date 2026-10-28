@@ -33,7 +33,7 @@ Security round 4 and what a first team needs: people management, two-step sign-i
 - **Change password** and **Forgot password?** (emailed link, 1 hour; you still need your authenticator code).
 - **API tokens:** read-only access for scripts to findings, assets, the summary and evidence, as `Authorization: Bearer …`. Creating one needs your authenticator code; each expires within a year, and stops working when its creator is no longer an admin, signs out everywhere, or changes or resets their password.
 - **Export CSV** on Findings, with the page's filters (cells a spreadsheet would run as formulas are escaped).
-- **Remediation deadlines** per priority in Settings, used and shown in evidence packs.
+- **Remediation deadlines** per priority in Settings, used and shown in evidence packs. Each finding is held to the deadline in force when it was detected, so relaxing one later can't make an old miss pass.
 - Evidence packs map to **SOC 2 CC7.1 and CC8.1** and **NIS2 Art. 21(2)(e)** too.
 - Risk acceptance: accept one vulnerability on every host it's open on, and revoke an acceptance (both recorded).
 - Each release publishes CycloneDX SBOMs of Assure's own dependencies; upload them to an application to scan Assure with Assure.

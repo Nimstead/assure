@@ -170,7 +170,7 @@ def _controls(m: dict, sla: dict) -> list[dict]:
         {"framework": "NIST SP 800-53 Rev. 5", "control": "RA-5", "requirement": "Vulnerability monitoring and scanning",
          "status": st(scanned), "evidence": f"{m['assets_reporting']}/{m['assets']} assets reported inventory in period"},
         {"framework": "NIST SP 800-53 Rev. 5", "control": "SI-2", "requirement": "Flaw remediation within organisation-defined time periods",
-         "status": st(sla_ok), "evidence": f"{m['resolved_within_sla']}/{m['resolved']} fixes within the organisation's SLA ({', '.join(f'{p} {d} days' for p, d in sla.items())})"
+         "status": st(sla_ok), "evidence": f"{m['resolved_within_sla']}/{m['resolved']} fixes within the organisation's SLA in force when each was detected (now: {', '.join(f'{p} {d} days' for p, d in sla.items())})"
                      + (f"; deadlines changed {m['sla_changes']} times in the period (sla_changes)" if m.get("sla_changes") else "")},
         {"framework": "PCI DSS v4.0.1", "control": "6.3.3", "requirement": "Critical security patches installed within one month of release",
          "status": st(m["critical_overdue_30d"] == 0),
@@ -208,6 +208,14 @@ def build_pack(s: Session, org_id: str, start: datetime, end: datetime) -> dict:
             opened.setdefault(e.subject, ts)
             if e.kind == "finding_reopened":
                 closed_at.pop(e.subject, None)
+    # Each finding is held to the deadline in force when it was detected, from the ledger (tamper-evident), so relaxing
+    # a deadline later can't turn an old miss into a pass.
+    history = [(datetime.fromisoformat(ts).replace(tzinfo=None), {**SLA_DAYS, **d["sla_days"]}) for ts, d in s.execute(
+        select(LedgerEntry.ts, LedgerEntry.data).where(LedgerEntry.org_id == org_id, LedgerEntry.kind == "policy_changed")
+        .order_by(LedgerEntry.seq)) if "sla_days" in d]
+
+    def sla_at(t: datetime) -> dict:
+        return next((d for ts, d in reversed(history) if ts <= t), SLA_DAYS)
     rows, ttr = [], []
     m = dict.fromkeys(["resolved", "resolved_within_sla", "overdue_open", "ce_in_scope_resolved",
                        "ce_in_scope_resolved_in_14d", "ce_in_scope_overdue", "critical_overdue_30d"], 0)
@@ -220,7 +228,7 @@ def build_pack(s: Session, org_id: str, start: datetime, end: datetime) -> dict:
         if closed and closed < start:
             continue  # closed before the period: out of scope
         days = ((closed or end) - first_seen).total_seconds() / 86400
-        sla = sla_by_priority.get(f.priority, 180)
+        sla = sla_at(first_seen).get(f.priority, 180)
         ce = f.kev or (f.cvss or 0) >= 7
         within = days <= sla
         if closed:
@@ -250,8 +258,7 @@ def build_pack(s: Session, org_id: str, start: datetime, end: datetime) -> dict:
     m["changes"], m["changes_authorised"] = len(ran), sum(1 for by in ran if by)
 
     s_iso, e_iso = start.replace(tzinfo=UTC).isoformat(), end.replace(tzinfo=UTC).isoformat()
-    # shortcut: today's deadlines are applied to the whole period; changes made during it are listed (and counted in SI-2)
-    # so an auditor sees a deadline relaxed just before the pack. Upgrade to per-date deadlines if auditors ask.
+    # deadline changes made in the period, listed (and counted in SI-2) so an auditor sees them
     sla_changes = [{"ts": ts, "by": d.get("by"), "sla_days": d["sla_days"]} for ts, d in s.execute(
         select(LedgerEntry.ts, LedgerEntry.data).where(LedgerEntry.org_id == org_id, LedgerEntry.kind == "policy_changed",
                                                        LedgerEntry.ts >= s_iso, LedgerEntry.ts <= e_iso)) if "sla_days" in d]

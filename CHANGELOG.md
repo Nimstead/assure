@@ -4,6 +4,28 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+UI/UX round 1 (tasks/plan-0.5-ux.md): safer controls, connected pages, one set of shared components. The look stays the same.
+
+### Changed
+- **The trust ladder no longer switches itself to Auto.** Before, choosing a mode (one click, or one arrow key) saved it at once. Now choosing only selects; Save applies it, and Auto asks first, naming how many machines it covers and the canary-first order.
+- **Destructive actions ask first, the same way everywhere:** revoking an API token, removing someone, changing someone's role and signing out everywhere now use the same confirmation as deleting an asset. You can't demote or remove yourself from the People list.
+- **Fixes can be cancelled before a machine picks them up** (planned or approved), and cancelling one lets you plan it again. `POST /api/remediation/jobs/{id}/cancel`, admin only, recorded in the ledger.
+- **Home links to a fix already in flight** ("View fix") instead of offering "Plan fix" again. The finding drawer shows "Fix in progress" the same way. A job's summary and host link to that machine's findings. `/api/summary` actions carry `asset_ids` and `job`.
+- **Evidence says "No activity in period"** for timeliness controls (Cyber Essentials update management, NIST SI-2, CIS 7.3/7.4, SOC 2 CC8.1) when nothing was fixed or changed in the period and nothing is overdue, instead of "Met". Overdue findings still fail. **Signed packs can carry the new status `no_activity`**; the pack format and verifier are unchanged. The period's dates, an "as of" time and each control's counts are shown, and the period is kept in the URL (`?period=30`).
+- **Onboarding asks "test or production machines?"** with nothing preselected (it can't be changed after enrolment). It shows troubleshooting after two minutes without a report, and waits for you instead of redirecting on its own.
+- **Two-step sign-in shows a QR code** to scan, drawn in the page; the typed key stays as a fallback.
+- Settings is grouped into Remediation, Access, Alerts, Your account and This server, with a section bar. Saves say "Saved"; asset changes say the findings were re-ranked.
+- Theme follows your system until you pick light or dark, and can go back to following it.
+- On phones, Evidence is in the tab bar (Assets moved under More, with Sign out), and buttons, links and form controls are at least 44px tall.
+
+### Fixed
+- "Verified" next to an SSO domain was the same colour as the page in both themes.
+- Admin-only buttons could not be focused, so keyboard and touch users never saw why they were off; they now stay focusable and point to a visible "Read-only" note.
+- Focus returns to the finding you opened when its drawer closes.
+- Keyboard focus on menus, the command palette and filters is visible (not just a faint tint); loading states are announced; the findings table names its columns on phones; reduced motion also stops transitions.
+- Plan fix no longer downloads up to 5,000 findings to look up machine ids.
+- The web bundle loads Settings, Evidence, sign-in and onboarding on demand (entry chunk 587 kB to 392 kB).
+
 ## [0.4.0] - 2026-10-28
 
 Security round 4 and what a first team needs: people management, two-step sign-in, API tokens and CSV export. Agent 0.3.0.

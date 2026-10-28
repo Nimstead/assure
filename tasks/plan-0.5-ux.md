@@ -14,13 +14,13 @@ This plan fixes those with the smallest changes, reusing what exists. **No visua
 
 ## Goal: done when
 All of these hold. Each task's own "Done when" is the detail.
-- [ ] Every task T1–T18 below is checked off with its "Done when" met.
-- [ ] `cd web && npm run lint && npm test && npm run build`: clean, and the new tests pass.
-- [ ] `cd web && npm run e2e`: passes, with axe at 0 serious/critical at **1440 and 375, light and dark**, including the open dialogs added in T16.
-- [ ] `cd api && uv run pytest -q` passes (T4, T6 and T12 touch the API), and `uv run ruff check src tests` is clean.
-- [ ] `cd web && npm audit` reports 0 vulnerabilities after T18 adds `uqr`.
-- [ ] `~/.claude/skills/impeccable/scripts/impeccable detect --json web/src` still reports `[]`.
-- [ ] CHANGELOG has an "Unreleased" entry. STATUS.md has a row for this round with its evidence. No version bump or release, which is the owner's call.
+- [x] Every task T1–T18 below is checked off with its "Done when" met.
+- [x] `cd web && npm run lint && npm test && npm run build`: clean, and the new tests pass.
+- [x] `cd web && npm run e2e`: passes, with axe at 0 serious/critical at **1440 and 375, light and dark**, including the open dialogs added in T16.
+- [x] `cd api && uv run pytest -q` passes (T4, T6 and T12 touch the API), and `uv run ruff check src tests` is clean.
+- [x] `cd web && npm audit` reports 0 vulnerabilities after T18 adds `uqr`.
+- [x] `~/.claude/skills/impeccable/scripts/impeccable detect --json web/src` still reports `[]`.
+- [x] CHANGELOG has an "Unreleased" entry. STATUS.md has a row for this round with its evidence. No version bump or release, which is the owner's call.
 
 ## What exists (reuse, don't rebuild)
 - **`web/src/ui.tsx`:**
@@ -360,3 +360,24 @@ T1 → T2 → T3 → T4 → T5 → T6 → T7 → T8 → T9 → T10 → T11 → T
 
 - **Commits:** one per task, on a `ux-round-1` branch. Don't push or open a PR without asking.
 - **Stop and report** only if a task turns up a new product, security or compliance choice that decisions 1–7 don't cover. Otherwise keep going to the end.
+
+## Done (2026-10-28, branch `ux-round-1`)
+Every task's "Done when" is met; the evidence is in STATUS.md (row "UI/UX round 1").
+
+- **Checks:**
+  - API 736 passed and ruff is clean.
+  - Web: lint, 33 unit tests and the build all pass.
+  - 9 Playwright e2e tests pass, including axe at 1440 and 375 in light and dark with dialogs open, a keyboard pass, and 44px touch targets.
+  - The Impeccable detector reports `[]` and `npm audit` reports 0.
+- **Bundle:** the entry chunk went from 587 kB to 392 kB.
+- **Contrast:** the new highlight (an inset ink ring) on surface measures about 18.9:1 in light and 15.6:1 in dark, where the old tint was 1.17:1 and 1.21:1.
+
+### Where the work differed from the plan
+- **The QR code (T18) lives in `people.tsx` next to `MfaEnrol`, not in `ui.tsx`.** `ui.tsx` loads with every page, so putting it there would pull `uqr` into the entry chunk. `people.tsx` is only loaded with Settings and sign-in.
+- **The phone tab bar is Fix first, Findings, Remediation and Evidence (T12).** Assets moved under More, with Sign out (T9). Assets is configuration you visit less often; Remediation is where the daily work happens.
+- **Radix radio groups move focus on arrow keys without always checking the radio.** The e2e test therefore arrows to Auto, presses Space, and asserts that nothing was saved. The unit test clicks instead, because jsdom has no roving focus.
+- **Finding a real bug: the drawer didn't return focus to the row it opened from.** Radix only restores focus to a `Dialog.Trigger`, and this drawer opens from the URL. The fix captures the opener and refocuses it on close.
+- **The root font size is 15px, so Tailwind's `min-h-11` (2.75rem) is only 41px.** Touch targets therefore use explicit `min-h-[44px]`.
+- **e2e can run beside another dev server:** `NIMSTEAD_API_PORT` moves the test API off 8000 in `playwright.config.ts`, `e2e/start-api.mjs` and the Vite proxy.
+- **`web/scripts/readme-shots.mjs` now signs in with a TOTP code from the demo's key.** Admins need two-step sign-in since 0.4.0.
+- **Commits:** the work landed as a few grouped commits rather than one per task. The shared primitives (T1) touched every page, so per-task commits would not have built on their own.

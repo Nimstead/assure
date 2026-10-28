@@ -68,6 +68,22 @@ New issues introduced by the fixes: none at medium or above (cap-based lockout n
 Not tested by the reviewer: the locking on real PostgreSQL (the PostgreSQL suite passes), deadlocks from housekeeping
 deletes under the lock (no cycle seen).
 
+## Pass 4: the last two changes (`git diff 9558e4d HEAD -- agent api/src deploy .github`)
+
+> Neither change opens anything medium or higher, and the rest of the diff is clean.
+
+- Windows scheduling fix: no security issue. It removes only an existing task named exactly 'Nimstead jobs'; nothing in it
+  comes from the server; remediation is still gated by the agent's local opt-in. The error text adds PowerShell's exit
+  code and local output only.
+- Enrolment default 100 → 2,000 an hour per token: low. A leaked token reaches the org's 5,000-asset cap in about 2.5 hours
+  instead of about 50; the damage stays in that org, and the asset cap and the per-org inventory limit still protect a
+  shared server. A non-numeric value stops the app at startup (operator error).
+- update.sh lint fixes: behaviour unchanged.
+
+**Verdict on the whole branch: no medium-or-higher finding open.** Remaining low items: packs judge the period against
+today's SLA (changes listed), the in-memory CSV export (capped), the PostgreSQL-only row locks, and the sign-in test the
+reviewer saw flake once (already fixed by pinning the clock; five clean runs since).
+
 ## After the review
 
 One later change touched security-relevant code: the Windows schedule fix (agent: remove the job-poll task only if it

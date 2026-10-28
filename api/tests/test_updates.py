@@ -16,23 +16,33 @@ from nimstead.db import make_engine, now
 
 @pytest.fixture
 def gh(env, tmp_path, monkeypatch):
-    """Release dir in tmp, the check switched on, running version 0.3.0, a fake GitHub, and captured alerts."""
+    """Release dir in tmp, the check switched on, running 0.3.0 on the preview channel, a fake GitHub with signed
+    (sig "ok") release manifests per tag, and captured alerts. Real signature checking is tested in test_agent_update."""
     import nimstead.app as appmod
     monkeypatch.setattr(appmod, "RELEASE_DIR", tmp_path / "release")
+    monkeypatch.setattr(appmod, "verify_manifest", lambda m, sig: json.loads(m) if sig.strip() == "ok" else None)
     monkeypatch.setenv("NIMSTEAD_UPDATE_CHECK", "1")
+    monkeypatch.setenv("NIMSTEAD_UPDATE_CHANNEL", "preview")
     monkeypatch.setattr(updates, "current_version", lambda: "0.3.0")
     sent = []
     monkeypatch.setattr(notify, "notify", lambda s, org_id, kind, text, urgent=False: sent.append((kind, text, urgent)))
-    state = {"latest": "v0.3.1", "files": {"release.json": b'{"version":"0.3.0"}', "release.json.sig": b"c2ln\n"}, "calls": []}
+    # tag -> (channel or None, signature); v0.3.0 is the running release
+    state = {"releases": {"v0.3.0": ("preview", "ok"), "v0.3.1": ("preview", "ok")}, "down": False, "calls": []}
 
     def handler(req: httpx.Request):
         state["calls"].append(str(req.url))
-        if req.url.path == "/repos/Nimstead/assure/releases/latest":
-            return httpx.Response(200, json={"tag_name": state["latest"]}) if state["latest"] else httpx.Response(503)
-        name = req.url.path.rsplit("/", 1)[1]
-        if req.url.path.startswith("/Nimstead/assure/releases/download/v0.3.0/") and name in state["files"]:
-            return httpx.Response(200, content=state["files"][name])
-        return httpx.Response(404)
+        if req.url.path == "/repos/Nimstead/assure/releases":
+            if state["down"]:
+                return httpx.Response(503)
+            return httpx.Response(200, json=[{"tag_name": t, "draft": False, "prerelease": ch != "stable"}
+                                             for t, (ch, _) in state["releases"].items()] + [{"tag_name": "v9.0.0-rc1"}])
+        parts = req.url.path.split("/")  # /Nimstead/assure/releases/download/<tag>/<file>
+        tag, name = parts[-2], parts[-1]
+        if tag not in state["releases"]:
+            return httpx.Response(404)
+        ch, sig = state["releases"][tag]
+        manifest = json.dumps({"version": tag[1:], **({"channel": ch} if ch else {})}).encode()
+        return httpx.Response(200, content=manifest if name == "release.json" else sig.encode())
     client = httpx.Client(transport=httpx.MockTransport(handler))
     s = sessionmaker(make_engine(env))()
     yield s, client, state, sent, tmp_path / "release"
@@ -58,12 +68,44 @@ def test_new_release_is_found_shown_and_alerted_once(gh):
     user_c = user(s.get_bind().url.render_as_string(hide_password=False))
     out = updates.check(s, client)
     assert out["latest"] == "0.3.1" and out["release_files_fetched"] and out["alerted"] == ["update_available"]
-    assert (d / "release.json").read_bytes() == b'{"version":"0.3.0"}'  # for agents; the server checks its signature before relaying
+    assert json.loads((d / "release.json").read_text())["version"] == "0.3.0"  # for agents; checked again before relaying
     p = user_c.get("/api/settings").json()["platform"]
-    assert p["version"] == "0.3.0" and p["latest"] == "0.3.1" and p["update_available"]
-    assert sent[0][0] == "update_available" and "0.3.1 is available" in sent[0][1]
+    assert p["version"] == "0.3.0" and p["latest"] == "0.3.1" and p["update_available"] and p["channel"] == "preview"
+    assert p["running_channel"] == "preview" and p["latest_channel"] == "preview"
+    assert sent[0][0] == "update_available" and "0.3.1 (preview) is available" in sent[0][1]
     n = len(state["calls"])
     assert updates.check(s, client)["alerted"] == [] and len(state["calls"]) == n  # checked today, files present, already alerted
+
+
+@pytest.mark.parametrize("server,releases,expect", [
+    ("stable", {"v0.3.1": ("stable", "ok"), "v0.3.2": ("beta", "ok"), "v0.3.3": ("preview", "ok")}, "0.3.1"),
+    ("beta", {"v0.3.1": ("stable", "ok"), "v0.3.2": ("beta", "ok"), "v0.3.3": ("preview", "ok")}, "0.3.2"),
+    ("preview", {"v0.3.1": ("stable", "ok"), "v0.3.2": ("beta", "ok"), "v0.3.3": ("preview", "ok")}, "0.3.3"),
+    ("stable", {"v0.3.1": ("preview", "ok"), "v0.3.2": ("beta", "ok")}, None),  # nothing stable yet: no update offered
+    ("stable", {"v0.3.1": (None, "ok")}, None),  # signed before channels existed: preview
+    ("preview", {"v0.3.1": ("preview", "ok"), "v0.3.2": ("preview", "forged")}, "0.3.1"),  # unsigned/forged skipped
+])
+def test_a_server_takes_its_channel_and_anything_more_stable(gh, monkeypatch, server, releases, expect):
+    s, client, state, sent, d = gh
+    monkeypatch.setenv("NIMSTEAD_UPDATE_CHANNEL", server)
+    state["releases"] = {"v0.3.0": ("preview", "ok"), **releases}
+    updates.check(s, client)
+    st = updates.status()
+    assert st["latest"] == expect and st["update_available"] is bool(expect)
+
+
+def test_changing_channel_rechecks_at_once(gh, monkeypatch):
+    s, client, state, sent, d = gh
+    state["releases"]["v0.3.1"] = ("beta", "ok")
+    monkeypatch.setenv("NIMSTEAD_UPDATE_CHANNEL", "stable")
+    updates.check(s, client)
+    assert updates.status()["latest"] is None
+    monkeypatch.setenv("NIMSTEAD_UPDATE_CHANNEL", "beta")
+    assert updates.status()["latest"] is None  # the stable answer doesn't apply to beta
+    updates.check(s, client)  # within the day, but for another channel: checks again
+    assert updates.status()["latest"] == "0.3.1"
+    monkeypatch.setenv("NIMSTEAD_UPDATE_CHANNEL", "nightly")
+    assert updates.channel() == "stable"  # unknown values fall back to the safest channel
 
 
 def test_daily_check_runs_again_after_24h_and_survives_github_being_down(gh):
@@ -71,21 +113,21 @@ def test_daily_check_runs_again_after_24h_and_survives_github_being_down(gh):
     updates.check(s, client)
     latest = json.loads((d / "latest.json").read_text())
     (d / "latest.json").write_text(json.dumps({**latest, "checked": (now() - timedelta(hours=25)).isoformat()}))
-    state["latest"] = None  # GitHub unavailable
+    state["down"] = True
     out = updates.check(s, client)
     assert "error" in out and updates.status()["latest"] == "0.3.1"  # last good answer kept
 
 
 def test_same_or_older_release_is_not_an_update(gh):
     s, client, state, sent, d = gh
-    state["latest"] = "v0.3.0"
+    del state["releases"]["v0.3.1"]
     updates.check(s, client)
     assert not updates.status()["update_available"] and sent == []
 
 
 def test_missing_release_files_are_retried_not_invented(gh):
     s, client, state, sent, d = gh
-    state["files"] = {}
+    state["releases"] = {}
     assert updates.check(s, client)["release_files_fetched"] is False and not (d / "release.json").exists()
 
 
@@ -114,5 +156,5 @@ def test_failed_update_is_alerted_once_and_rollback_failure_is_urgent(gh):
 def test_release_files_left_from_the_previous_version_are_replaced(gh):
     s, client, state, sent, d = gh
     d.mkdir(parents=True)
-    (d / "release.json").write_text('{"version":"0.2.9"}')
+    (d / "release.json").write_text('{"version":"0.2.9","channel":"preview"}')
     assert updates.check(s, client)["release_files_fetched"] and json.loads((d / "release.json").read_text())["version"] == "0.3.0"

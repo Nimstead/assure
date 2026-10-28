@@ -82,10 +82,11 @@ Full tasks with acceptance criteria are in `tasks/todo.md`.
 4. Assure platform = **self-hosted Docker Compose** (no hosted instance).
 
 ## Owner setup before Task 2 can ship (one-off, ~10 min)
-- [ ] Passkey 2FA on the GitHub account(s) with write access to Nimstead/assure
+- [x] Passkey 2FA on the GitHub account(s) with write access to Nimstead/assure (owner confirmed, 2026-10-28)
 - [x] Repository → Environments → `release`, required reviewer = owner, deployable from `v*` tags only; primary key stored as `NIMSTEAD_RELEASE_KEY` (2026-10-28)
-- [ ] Tag protection (ruleset) for `v*`
-- [ ] Backup private key (C:/Users/Ciaran/nimstead-release-keys/backup) saved in the password manager, then both key files deleted from disk
+- [x] Tag protection (ruleset "Release tags", id 26039402) for `v*`: no deletion or moving; repository admins can bypass (2026-10-28)
+- [x] v0.3.0 released: Release workflow approved, signed manifest published and verified with the agent's verifier (2026-10-28)
+- [x] Backup private key saved in the password manager (owner confirmed); both key files deleted from disk (2026-10-28)
 
 ## Skipped on purpose
 deb/rpm/MSI packages, a hosted update CDN, staged/percentage agent rollouts (the canary ring already exists for package fixes; add one for agent updates only if a bad release ever escapes the smoke test), Windows 10 remediation proof, agent error telemetry.

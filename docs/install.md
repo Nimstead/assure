@@ -117,7 +117,9 @@ Every fix takes a rollback copy first, refuses to touch anything outside the pla
 
 ## Upgrade
 
-**Settings → This server** shows your version and says when a newer release is out (alert targets hear about it once). To install it, run this in the checkout on the Docker host:
+**Settings → This server** shows your version and says when a newer release is out on your **channel** (alert targets hear about it once). Releases come in three channels: **preview** (earliest, may break), **beta** (feature-complete, being proven) and **stable** (public). `NIMSTEAD_UPDATE_CHANNEL` in `.env` picks one. It defaults to `stable`, and a server also takes anything more stable than its channel. There's no stable release yet, so set `NIMSTEAD_UPDATE_CHANNEL=preview` to follow the current releases.
+
+To install the update, run this in the checkout on the Docker host:
 
 ```bash
 sudo deploy/update.sh

@@ -11,6 +11,7 @@ Nimstead Assure is configured with environment variables. With Docker Compose, p
 | `NIMSTEAD_SECURE_COOKIES` | `1` | `0` allows sign-in over plain HTTP from a non-localhost address. Development only. |
 | `NIMSTEAD_ALLOWED_ORIGINS` | none | Extra comma-separated origins allowed to make changes (the same origin always is). |
 | `NIMSTEAD_INVENTORY_MIN_SECONDS` | `30` | Minimum gap between two inventories from one agent. |
+| `NIMSTEAD_UPDATE_CHANNEL` | `stable` | Which releases this server takes: `stable`, `beta` (beta and stable) or `preview` (everything, earliest). Read by **Settings → This server** and `deploy/update.sh`, and judged by the channel signed into each release, never GitHub's labels. There's no stable release yet: trial installs set `preview`. |
 | `NIMSTEAD_UPDATE_CHECK` | `1` | `0` stops the hourly feed run from asking GitHub for new releases and fetching the signed release files agents update from. Offline installs: copy `release.json` and `release.json.sig` from the release page into `NIMSTEAD_RELEASE_DIR` instead. |
 | `NIMSTEAD_RELEASE_DIR` | `./release` (`/data/release` in Docker) | Signed release files, the release check's state and `deploy/update.sh`'s last result. Agents only update when this holds a release signed for the agent the server serves. |
 | `FORWARDED_ALLOW_IPS` | `127.0.0.1` | Read by uvicorn: the reverse proxy whose `X-Forwarded-For` is trusted, so sign-in throttling sees real client addresses. |

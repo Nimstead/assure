@@ -113,7 +113,11 @@ export function PlatformSection({ p }: { p: Settings["platform"] }) {
     <section aria-labelledby="platform" className="flex flex-col items-start gap-2">
       <h2 id="platform" className="text-lg font-semibold">This server</h2>
       <p className="text-sm">Nimstead Assure <strong className="font-semibold">{p.version || "development build"}</strong>
-        {p.update_available ? <> · <a href={p.latest_url ?? undefined} className="font-medium text-accent underline">{p.latest} is available</a></> : p.latest ? <span className="text-muted"> · up to date</span> : null}
+        {p.running_channel && <span className="text-muted"> ({p.running_channel})</span>}
+        {p.update_available ? <> · <a href={p.latest_url ?? undefined} className="font-medium text-accent underline">{p.latest} ({p.latest_channel}) is available</a></> : p.checked ? <span className="text-muted"> · up to date</span> : null}
+      </p>
+      <p className="max-w-prose text-sm text-muted">
+        Follows the <strong className="font-semibold text-ink">{p.channel}</strong> channel{p.channel === "stable" ? "" : p.channel === "beta" ? " (beta and stable releases)" : " (every release, earliest first)"}. Set <code className="rounded bg-sunken px-1">NIMSTEAD_UPDATE_CHANNEL</code> to preview, beta or stable in <code className="rounded bg-sunken px-1">.env</code> on the server.
       </p>
       {p.update_available && <p className="max-w-prose text-sm text-muted">Install it on the Docker host with <code className="rounded bg-sunken px-1">deploy/update.sh</code>. It checks the release signature, backs up the database, and rolls back automatically if the new version doesn't come up healthy.</p>}
       {last && (

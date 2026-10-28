@@ -12,7 +12,8 @@ x-app: &app
     ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}  # optional: plain-English explanations and search
     NIMSTEAD_SMTP_URL: ${NIMSTEAD_SMTP_URL:-}
     NIMSTEAD_SMTP_FROM: ${NIMSTEAD_SMTP_FROM:-}
-    NIMSTEAD_ALLOW_PRODUCTION_REMEDIATION: ${NIMSTEAD_ALLOW_PRODUCTION_REMEDIATION:-0}  # 1 = fixes may target hosts not enrolled with a sandbox token
+    NIMSTEAD_ALLOW_PRODUCTION_REMEDIATION: ${NIMSTEAD_ALLOW_PRODUCTION_REMEDIATION:-0}
+    NIMSTEAD_UPDATE_CHANNEL: ${NIMSTEAD_UPDATE_CHANNEL:-stable}  # preview | beta | stable: which releases Settings offers and deploy/update.sh installs  # 1 = fixes may target hosts not enrolled with a sandbox token
     # Vault, S3 object lock and the rest: docs/configuration.md
   volumes:
     - data:/data
@@ -34,7 +35,7 @@ services:
       disable: true
 
   db:
-    image: postgres:17
+    image: postgres:17@sha256:31ba9c94a03ada9988f2bb493a22a75eef3a185884533e5cdbcd498ea835b08f  # pinned by digest
     restart: unless-stopped
     environment:
       POSTGRES_USER: nimstead

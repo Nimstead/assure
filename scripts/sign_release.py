@@ -1,10 +1,11 @@
 """Release signing (DECISIONS 31). Runs in the GitHub Actions `release` environment; the private key never reaches a server.
 
   sign_release.py keygen OUT_DIR             # once: writes OUT_DIR/release-<id>.key (keep offline), prints the public key to pin
-  sign_release.py sign --tag vX.Y.Z --commit SHA --out DIR   # key from $NIMSTEAD_RELEASE_KEY (base64 raw 32 bytes)
+  sign_release.py sign --tag vX.Y.Z --commit SHA --channel preview|beta|stable --out DIR   # key from $NIMSTEAD_RELEASE_KEY
 
-`sign` writes DIR/release.json {version, agent_version, agent_sha256, commit} and DIR/release.json.sig (base64 Ed25519
-over the exact bytes of release.json). Agents and deploy/update.sh verify it with the keys pinned in the agent.
+`sign` writes DIR/release.json {version, agent_version, agent_sha256, commit, channel} and DIR/release.json.sig (base64
+Ed25519 over the exact bytes of release.json). Agents and deploy/update.sh verify it with the keys pinned in the agent.
+The channel is signed so nobody can relabel a preview build as stable; promoting a release re-signs it (DECISIONS 33).
 """
 
 import argparse
@@ -28,7 +29,12 @@ def public_hex(k: Ed25519PrivateKey) -> str:
     return k.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw).hex()
 
 
-def release_manifest(tag: str, commit: str, agent_bytes: bytes, platform_version: str) -> bytes:
+CHANNELS = ("preview", "beta", "stable")  # least to most proven; a server takes its channel and anything more stable
+
+
+def release_manifest(tag: str, commit: str, agent_bytes: bytes, platform_version: str, channel: str = "preview") -> bytes:
+    if channel not in CHANNELS:
+        raise SystemExit(f"channel must be one of {', '.join(CHANNELS)}, not {channel!r}")
     if not re.fullmatch(r"v\d+\.\d+\.\d+", tag):
         raise SystemExit(f"release tags look like v1.2.3, not {tag!r}")
     if tag[1:] != platform_version:
@@ -39,7 +45,7 @@ def release_manifest(tag: str, commit: str, agent_bytes: bytes, platform_version
     if not m:
         raise SystemExit("AGENT_VERSION not found in the agent")
     body = {"version": platform_version, "agent_version": m.group(1).decode(),
-            "agent_sha256": hashlib.sha256(agent_bytes).hexdigest(), "commit": commit}
+            "agent_sha256": hashlib.sha256(agent_bytes).hexdigest(), "commit": commit, "channel": channel}
     return json.dumps(body, sort_keys=True, separators=(",", ":")).encode()
 
 
@@ -51,6 +57,7 @@ def main(argv=None) -> int:
     sg = sub.add_parser("sign")
     sg.add_argument("--tag", required=True)
     sg.add_argument("--commit", required=True)
+    sg.add_argument("--channel", default="preview", choices=CHANNELS)
     sg.add_argument("--out", required=True)
     a = ap.parse_args(argv)
 
@@ -73,7 +80,7 @@ def main(argv=None) -> int:
         raise SystemExit("NIMSTEAD_RELEASE_KEY is not set")
     k = Ed25519PrivateKey.from_private_bytes(base64.b64decode(key_b64, validate=True))
     version = tomllib.loads((ROOT / "api" / "pyproject.toml").read_text())["project"]["version"]
-    manifest = release_manifest(a.tag, a.commit, AGENT.read_bytes(), version)
+    manifest = release_manifest(a.tag, a.commit, AGENT.read_bytes(), version, a.channel)
     if public_hex(k) not in AGENT.read_text(encoding="utf-8"):
         raise SystemExit("this key isn't pinned in the agent's RELEASE_KEYS: agents would reject the release")
     out = Path(a.out)

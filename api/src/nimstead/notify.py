@@ -4,13 +4,15 @@ notify() reads the org's settings, hands delivery to a background thread and ret
 recorded in the notification table (ok/failed + error) so a dead webhook shows up in Settings.
 """
 
+import json
 import logging
 import os
 import smtplib
 import ssl
 from concurrent.futures import Future, ThreadPoolExecutor
-from datetime import timedelta
+from datetime import datetime, timedelta
 from email.message import EmailMessage
+from pathlib import Path
 from urllib.parse import urlsplit
 
 import httpx
@@ -113,11 +115,38 @@ def _submit(bind, org_id, kind, text, urgent, targets, attempt):
 
 MAX_ATTEMPTS, RETRY_WINDOW = 3, timedelta(hours=24)
 SILENT_AFTER = timedelta(hours=14)  # two missed 6-hour reports plus timer jitter
+SERVER_GAP = timedelta(hours=2)  # the feed run is hourly: a longer gap means the server, not the hosts, was down
+GRACE = timedelta(hours=7)  # after such a gap, one 6-hour report cycle (plus jitter) for hosts to catch up
 
 
-def alert_silent_hosts(s: Session) -> int:
+def _monitor_state() -> Path:
+    from nimstead.app import RELEASE_DIR  # the server's data folder (/data/release in Docker)
+    return RELEASE_DIR / "monitor.json"
+
+
+def _in_server_grace(state_file: Path) -> bool:
+    """Records this check; True while hosts are still catching up after the server itself was down."""
+    try:
+        st = json.loads(state_file.read_text())
+        last, grace = datetime.fromisoformat(st["last_check"]), datetime.fromisoformat(st["grace_until"]) if st.get("grace_until") else None
+    except (OSError, ValueError, KeyError, TypeError):
+        last, grace = None, None
+    if last and now() - last > SERVER_GAP:
+        grace = now() + GRACE
+    try:
+        state_file.parent.mkdir(parents=True, exist_ok=True)
+        state_file.write_text(json.dumps({"last_check": now().isoformat(), "grace_until": grace.isoformat() if grace else None}))
+    except OSError as e:
+        log.warning("could not record the not-reporting check: %s", e)
+    return bool(grace and now() < grace)
+
+
+def alert_silent_hosts(s: Session, state_file: Path | None = None) -> int:
     """One alert per org per run, naming each host that has newly stopped reporting; the next inventory clears a host's
-    marker. Returns the number of hosts newly flagged."""
+    marker. Held back for one report cycle after the server itself was down, so an outage doesn't page about every host.
+    Returns the number of hosts newly flagged."""
+    if _in_server_grace(state_file or _monitor_state()):
+        return 0
     by_org: dict[str, list[Asset]] = {}
     for a in s.scalars(select(Asset).where(Asset.kind == "host", Asset.last_seen < now() - SILENT_AFTER, Asset.silent_alerted_at.is_(None))
                        .order_by(Asset.hostname)):

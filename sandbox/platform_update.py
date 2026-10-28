@@ -67,9 +67,9 @@ open(p, "w").write(s)
 PY
   sed -i "s#image: nimstead/assure:$OLD#image: nimstead/assure:$1#" compose.yaml
 }
-release() {  # release TAG: commit, tag, sign with the pinned key, publish under /rel
+release() {  # release TAG [CHANNEL]: commit, tag, sign with the pinned key for CHANNEL (default preview), publish under /rel
   git add -A && git commit -qm "release $1" && git tag "$1"
-  python3 scripts/sign_release.py sign --tag "$1" --commit "$(git rev-parse "$1^{commit}")" --out "/rel/releases/download/$1" >/dev/null
+  python3 scripts/sign_release.py sign --tag "$1" --commit "$(git rev-parse "$1^{commit}")" --channel "${2:-preview}" --out "/rel/releases/download/$1" >/dev/null
 }
 inc() { echo "$1" | awk -F. -v n="$2" '{print $1"."$2"."$3+n}'; }
 A=$BASE; C=$(inc "$BASE" 1); D=$(inc "$BASE" 2); B=$(inc "$BASE" 3)
@@ -107,7 +107,7 @@ bump "$B"
 OLDAGENT=$(sed -n 's/^AGENT_VERSION = "\(.*\)".*/\1/p' agent/nimstead_agent.py)
 NEWAGENT=$(echo "$OLDAGENT" | awk -F. '{print $1"."$2"."$3+1}')
 sed -i "s/^AGENT_VERSION = \"$OLDAGENT\"/AGENT_VERSION = \"$NEWAGENT\"/" agent/nimstead_agent.py
-release "v$B"
+release "v$B" beta
 git tag v99.0.0-rc1 HEAD   # not a release: must never be picked, or block updates
 git clone -q --bare /src /origin.git
 git clone -q /origin.git /app && cd /app && git -c advice.detachedHead=false checkout -q "v$A"
@@ -153,10 +153,14 @@ def main() -> int:
         assert host["agent_version"] == old_agent, host
         step("real agent installed and reporting", agent=host["agent_version"], agent_update=host["agent_update"])
 
-        upd = "cd /app && NIMSTEAD_REPO_URL=http://localhost:9000 NIMSTEAD_HEALTH_TRIES=24 sh deploy/update.sh"
+        base = "cd /app && NIMSTEAD_REPO_URL=http://localhost:9000 NIMSTEAD_HEALTH_TRIES=24"
+        rc, out = wsl(f"{base} NIMSTEAD_UPDATE_CHANNEL=stable sh deploy/update.sh --dry-run", check=False)
+        assert rc == 0 and f"skipping v{b}: a beta release" in out and "up to date for the stable channel" in out, out
+        step("stable channel: the newest release is beta, so nothing is offered", output=out.strip().splitlines())
+        upd = f"{base} NIMSTEAD_UPDATE_CHANNEL=beta sh deploy/update.sh"
         rc, out = wsl(f"{upd} --dry-run", check=False)
-        assert rc == 0 and f"-> {b}" in out and "verified" in out, out
-        step("dry run picks the newest release and verifies it", output=out.strip().splitlines()[-2:])
+        assert rc == 0 and f"-> {b} (beta release, beta channel)" in out and "verified" in out, out
+        step("beta channel: dry run picks the newest beta release and verifies it", output=out.strip().splitlines()[-2:])
 
         rc, out = wsl(f"{upd} --to v{c}", check=False, timeout=600)
         assert rc == 1 and "signature check failed" in out and health()["version"] == a, out

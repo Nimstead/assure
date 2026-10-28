@@ -1,13 +1,15 @@
 # Nimstead Assure: the API server with the web UI and agent it serves.
-FROM node:22-slim AS web
+# Base images are pinned by digest (tag kept for reading), so a signed release commit pins what gets built.
+# Refresh: look up each tag's current digest and update it in a release PR.
+FROM node:22-slim@sha256:4b150b48b4116e2a22f2c39cc27025fbf4f153e2078fd3b14d159fdb5c7279da AS web
 WORKDIR /src/web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci
 COPY web/ ./
 RUN npm run build
 
-FROM python:3.14-slim
-COPY --from=ghcr.io/astral-sh/uv:0.9 /uv /usr/local/bin/uv
+FROM python:3.14-slim@sha256:cd89c30eda26ee911a4611b18680086e0ea42e6f5f8cbe653d07fa7958c9cec8
+COPY --from=ghcr.io/astral-sh/uv:0.9@sha256:538e0b39736e7feae937a65983e49d2ab75e1559d35041f9878b7b7e51de91e4 /uv /usr/local/bin/uv
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never PYTHONUNBUFFERED=1
 WORKDIR /app/api
 COPY api/pyproject.toml api/uv.lock api/README.md ./

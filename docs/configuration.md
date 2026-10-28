@@ -17,6 +17,7 @@ Nimstead Assure is configured with environment variables. With Docker Compose, p
 | `FORWARDED_ALLOW_IPS` | `127.0.0.1` | Read by uvicorn: the reverse proxy whose `X-Forwarded-For` is trusted, so sign-in throttling sees real client addresses. |
 | `NIMSTEAD_BIND` | `127.0.0.1` | Compose only: the host address the app's port listens on. Keep it on loopback behind your HTTPS proxy; `0.0.0.0` lets anyone on the network reach it, including to create the first account. |
 | `NIMSTEAD_MAX_ASSETS_PER_ORG` | `5000` | Most assets (hosts, applications and external targets) one organisation may have. Anyone who can sign up gets an organisation, so this bounds what one can load onto the server. |
+| `NIMSTEAD_ENROLL_MAX_PER_TOKEN_HOUR` | `2000` | Most machines one enrolment token can enrol in an hour (a fleet rollout enrols quickly; the asset cap bounds the total). |
 | `NIMSTEAD_ORG_INVENTORY_MAX_PER_HOUR` | `20000` | Most agent inventories one organisation may send in an hour (on top of one per agent every 30 seconds). |
 | `NIMSTEAD_API_DOCS` | `0` | `1` serves Swagger UI at `/api/docs`. Off by default because it runs scripts from a CDN on this origin; `/api/openapi.json` is always served for tools. |
 | `NIMSTEAD_SECURITY_CONTACT` | none | Your own security contact (`mailto:…` or a URL), listed first in `/.well-known/security.txt` before Nimstead's. |

@@ -164,7 +164,7 @@ MFA_MAX_FAILURES = 10  # wrong codes per account in LOGIN_WINDOW, from any addre
 EXPORT_MAX_PER_HOUR = 30  # CSV exports per org
 # Per-tenant quotas: anyone can sign up, so one org mustn't be able to load the shared server
 MAX_ASSETS_PER_ORG = int(os.environ.get("NIMSTEAD_MAX_ASSETS_PER_ORG", "5000"))
-ENROLL_MAX_PER_TOKEN_HOUR = 100
+ENROLL_MAX_PER_TOKEN_HOUR = int(os.environ.get("NIMSTEAD_ENROLL_MAX_PER_TOKEN_HOUR", "2000"))  # a fleet rollout enrols fast
 ORG_INVENTORY_MAX_PER_HOUR = int(os.environ.get("NIMSTEAD_ORG_INVENTORY_MAX_PER_HOUR", "20000"))
 AI_MAX_PER_USER_HOUR, AI_MAX_PER_ORG_HOUR = 30, 200  # each call costs the operator's Anthropic credits
 

@@ -3,34 +3,34 @@
   "db": "sqlite",
   "advisories": 99000,
   "inventory_ingest": {
-    "median_s": 0.506,
-    "p95_s": 0.573,
-    "max_s": 0.739
+    "median_s": 0.465,
+    "p95_s": 0.495,
+    "max_s": 0.542
   },
   "GET /api/summary (home page)": {
-    "median_s": 0.298,
-    "max_s": 0.304
+    "median_s": 0.296,
+    "max_s": 0.308
   },
   "open_findings": 297000,
   "GET /api/findings (default 500)": {
-    "median_s": 0.156,
-    "max_s": 0.175
+    "median_s": 0.149,
+    "max_s": 0.151
   },
   "GET /api/findings?limit=5000": {
-    "median_s": 0.306,
-    "max_s": 0.338
+    "median_s": 0.292,
+    "max_s": 0.513
   },
   "GET /api/findings?q=pkg42": {
     "median_s": 0.278,
-    "max_s": 0.295
+    "max_s": 0.28
   },
   "GET /api/assets": {
-    "median_s": 0.206,
-    "max_s": 0.211
+    "median_s": 0.218,
+    "max_s": 0.219
   },
   "GET /api/evidence/pack": {
-    "median_s": 10.866,
-    "max_s": 10.866
+    "median_s": 9.607,
+    "max_s": 9.607
   },
-  "rematch_all_s": 32.7
+  "rematch_all_s": 20.8
 }

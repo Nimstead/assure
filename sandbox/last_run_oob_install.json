@@ -1,0 +1,17 @@
+{
+  "result": "PASS",
+  "release": "v0.3.1",
+  "steps": [
+    {
+      "step": "v0.3.1: downloaded, signature valid with the pinned keys, agent SHA-256 matches the manifest",
+      "output": [
+        "signed 017bf2d4dcd89f75a5271c96fc0588ccbbc16f4ecfebc412f000278c3b29b6ba",
+        "file   017bf2d4dcd89f75a5271c96fc0588ccbbc16f4ecfebc412f000278c3b29b6ba"
+      ]
+    },
+    {
+      "step": "a modified agent fails the hash comparison; a modified manifest fails the signature",
+      "output": "nimstead-agent: error: release signature doesn't match any pinned release key"
+    }
+  ]
+}

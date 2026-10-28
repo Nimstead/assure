@@ -15,7 +15,7 @@
 Nimstead Assure scans your Linux and Windows machines and your applications' dependencies for known vulnerabilities, tells you which few upgrades clear the most real risk, can apply them for you with automatic rollback, and keeps a tamper-evident record your auditor can check without asking us.
 
 > [!NOTE]
-> **Early access (v0.4).** Everything below works and is proven on real systems, but expect rough edges and breaking changes before 1.0. Run it on test machines first; automated fixes stay limited to machines you mark as sandbox until you turn them on for production. Tell us what breaks: [open an issue](https://github.com/Nimstead/assure/issues/new/choose) or email dev@nimstead.systems.
+> **Early access (v0.4).** Everything below works and is proven on real systems, but expect rough edges and breaking changes before 1.0. Until a release is promoted to the stable channel (0.4.0 is the first candidate), set `NIMSTEAD_UPDATE_CHANNEL=preview` (or `beta` once one exists) in `.env` so your server hears about updates. Run it on test machines first; automated fixes stay limited to machines you mark as sandbox until you turn them on for production. Tell us what breaks: [open an issue](https://github.com/Nimstead/assure/issues/new/choose) or email dev@nimstead.systems.
 
 ## What it does
 

@@ -199,3 +199,38 @@ ledger erasure policy (document only when a buyer asks). Each is a 0.5+ roadmap 
 > Complete tasks/plan-0.4-security.md phases 1–5 on branch `security-round-4`: every task's "Done when" met, the release-gate
 > checkpoint PASS and recorded in STATUS.md, a fresh security review of the diff with no open medium+ findings. Don't push,
 > tag or release.
+
+---
+
+## Done (2026-10-28): each "Done when", and what proves it
+
+Tests are in `api/tests/test_round4.py` (r4), `test_agent_round4.py` (a4), `test_workflows.py` (wf), `test_evidence.py` (ev);
+real-host logs in `sandbox/last_run_*.json`. Branch `security-round-4`, commits c228cf1 … final.
+
+| Task | Done when | Evidence | Met |
+|---|---|---|---|
+| S1 | victim confirms with own password, attacker's fails; old link invalid; check-email copy; migration on SQLite + PG | r4 `test_attacker_cannot_preset_the_password…` (both); `test_upgrade_ends_admin_password_sessions`; `test_migrations` on SQLite and `pg.py` (732 PG); `auth.tsx` copy | yes |
+| S2 | chunked body > MAX_BODY to `/api/auth/login` → 413 before the handler | r4 `test_chunked_body_over_the_cap…`; `test_sbom.py::test_oversized_body_413` (streamed route) | yes |
+| S3 | a test per limit (429/403, clear message); `perf.py --assets 1000` passes under defaults | r4 `test_asset_cap_per_org`, `test_enrolments_per_token_and_inventories_per_org…`; perf run: 1,000 hosts, ingest median 0.47 s, summary 0.30 s, re-match 20.8 s (`last_run_perf_sqlite.json`). The run caught a too-tight enrolment default (100/h): raised to 2,000/h, configurable | yes |
+| S4 | Nth AI call 429; two hosts, same finding, one cache entry | r4 `test_ai_is_rate_limited_per_user_and_cached_across_hosts` | yes |
+| S5 | `docker compose config` shows the loopback bind; `compose.py` PASS | `compose.py` PASS: `docker-compose port app 8000` = `127.0.0.1:8000` (`last_run_compose.json`) | yes |
+| S6 | headers asserted; e2e + axe pass with no CSP console errors | r4 `test_security_headers`, `test_csp_allows…by_hash`; e2e 5 passed, axe clean light/dark; built SPA served by the API in the browser pane: CSP header present, theme script runs, 0 CSP console messages | yes |
+| S7 | each ledger entry asserted; packs still verify | r4 `test_enrolment_org_creation_and_password_login_are_ledgered`; ev suite passes; sbx packs verified | yes |
+| I1 | tenant isolation, last-admin guard, sessions gone on removal, idle expiry; e2e promote + remove | r4 `test_invite_promote_demote_and_remove`, `test_idle_sessions_expire_and_sign_out_everywhere`; e2e "admins sign in with their code, manage people…" | yes |
+| I2 | RFC 6238 vectors; admin password login without code refused; recovery code single use; break-glass needs TOTP; e2e enrol + login | r4 `test_totp_matches_rfc6238_vectors`, `test_admin_password_sign_in_needs_mfa`, `test_code_guesses_are_capped…`, `test_no_admin_session_without_a_second_factor`; `test_sso.py::test_break_glass…`; e2e first two tests | yes |
+| I3 | each path incl. enumeration-equal responses and token reuse | r4 `test_password_change_needs_current…`, `test_password_change_revokes_api_tokens`, `test_password_reset_by_email`, `test_reset_and_invite_need_smtp` | yes |
+| I4 | own org only, no admin/mutating routes, revoked → 401 | r4 `test_api_tokens_are_read_only_and_scoped_to_their_org`, `test_api_token_ends_with_its_admin`, `test_expired_api_token`, `test_recovery_ends_api_tokens_too`; e2e token + CSV + 403 | yes |
+| I5 | formula-injection test; Export button | r4 `test_csv_export_escapes_formulas`, `test_csv_exports_are_rate_limited`; `findings.tsx` Export CSV; e2e CSV by token | yes |
+| A1 | shellcheck-clean `install.sh`; doc steps run once in a Debian sandbox and recorded | shellcheck clean (`install.sh`, `update.sh`); `sandbox/oob_install.py` PASS in a disposable Debian distro against the real v0.3.1 release, tampered agent and manifest both caught (`last_run_oob_install.json`) | yes |
+| A2 | unit tests per manager; Alpine refuses a forged downgrade, normal fix PASS | a4 `test_pinned_older_version…` (apt), `test_apk_pinned_downgrade_and_dry_run_downgrade…`, `test_dnf_and_zypper_downgrade_sections…`; `sbx.py` Alpine and Debian PASS with the forged job refused by real `apk` / `dpkg` | yes |
+| A3 | unit test; real host shows the directory gone after success and rollback | a4 `test_rollback_copy_is_removed…`, `test_no_change_without_room…`, `test_a_reused_job_id…`; sbx Alpine + Debian: 0 copies left | yes |
+| A4 | preview refused by a stable agent, beta taken by a beta agent; runbook reviewed | a4 `test_channel_matrix`, `test_stable_host_skips_a_preview_build…`, `test_enrol_records_the_channel`; `platform_update.py` beta agent 0.3.0 → 0.3.1; `docs/release-keys.md` (matches `sign_release.py`'s CLI). `min_agent_version` dropped on purpose (DECISIONS 39) | yes |
+| A5 | a test each; Windows proof optional | a4 `test_a_trailing_newline…`, `test_json_responses_are_capped`, `test_installers_pass_the_channel_and_check_the_trusted_folder_properly` (asserts the backslash). Windows VM run skipped: optional per this task | yes |
+| A6 | `platform_update.py` PASS plus: untracked override refused, same-name branch ignored | `platform_update.py` PASS with both new cases (`last_run_platform_update.json`) | yes |
+| C1–C5 | CI green on the branch (owner pushes); `release.yml` dry-read; SBOM ingests | wf `test_actions_are_pinned…`, `test_signing_runs_only_hash_pinned_code…`, `test_the_signing_job_downloads_no_package_tool`; audit steps run locally (pip-audit 0, npm audit 0); hashed signing install checked locally; both CycloneDX SBOMs ingested (55 + 92 components mapped). **CI on GitHub: needs the owner's push** (the goal forbids pushing) | yes, except the owner's push |
+| P1 | default stays stable; 0.4.0 promoted by the owner; README says which channel until then | `compose.yaml` / `.env.example` default `stable`; README early-access note; promotion is the owner's (STATUS "Needs the user") | yes, promotion is the owner's |
+| P2 | SOC 2 CC7.1/CC8.1, NIS2; per-org SLA in the pack; honest timing wording | ev `test_org_sla_and_new_framework_mappings_are_in_the_pack`; r4 `test_sla_changes_in_the_period_are_in_the_pack`; sbx packs list the new controls | yes |
+| P3 | revoke; accept one CVE everywhere (ledgered) | r4 `test_accept_a_vulnerability_everywhere_and_revoke_one` | yes |
+| P4 | README version, test counts, STATUS newline, DECISIONS superseded, todo.md gone, restore + RPO/RTO, SECURITY.md, security.txt | README v0.4 + 731→732 counts; STATUS fixed; DECISIONS 13/15/17 marked; `tasks/todo.md` removed; restore proven by `compose.py`; r4 `test_security_txt` | yes |
+| P5 | DECISIONS 34+, STATUS, CHANGELOG 0.4.0, versions | DECISIONS 34–40; STATUS "Last runs (0.4.0)"; CHANGELOG [0.4.0]; pyproject/package.json/compose 0.4.0, `AGENT_VERSION` 0.3.0 | yes |
+| Gate | all listed runs PASS, recorded in STATUS; fresh review, medium+ fixed | STATUS "Last runs (0.4.0)": API 732 SQLite + 732 PostgreSQL 17, ruff, web 23 + e2e 5, compose, platform_update, sbx Alpine + Debian, agent_schedule. Review: 1 high + 3 medium + 7 lower found and fixed; two re-reviews: residuals fixed, "nothing medium or higher" | yes |

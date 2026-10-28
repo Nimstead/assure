@@ -1,8 +1,9 @@
 # Nimstead agent installer for Windows. Run in an elevated PowerShell:
 #   $env:NIMSTEAD_TOKEN = "<token>"; irm __SERVER__/install.ps1 | iex
 # Optional: $env:NIMSTEAD_ALLOW_REMEDIATION = "1" lets this machine install approved updates (local opt-in).
-# Installs the agent, enrols this machine, and adds a scheduled task (SYSTEM) that runs every 6 hours and at startup
-# (so an update that needed a restart is verified and reported right after it).
+# Installs the agent, enrols this machine, and adds SYSTEM scheduled tasks: every 6 hours and at startup (so an update
+# that needed a restart is verified and reported right after it), and with remediation a 15-minute check for approved
+# fixes. The agent updates itself from signed releases.
 $ErrorActionPreference = "Stop"
 $Server = "__SERVER__"
 $Token = $env:NIMSTEAD_TOKEN
@@ -38,10 +39,6 @@ if ($LASTEXITCODE -ne 0) { throw "Enrolment failed." }
 & $py @pyArgs $agent @insecure report
 if ($LASTEXITCODE -ne 0) { throw "First report failed." }
 
-$verb = if ($remediate) { "remediate" } else { "report" }  # remediate also re-reports inventory
-$argList = (@($pyArgs) + @("`"$agent`"") + $insecure + @($verb)) -join " "
-$action = New-ScheduledTaskAction -Execute $py -Argument $argList
-$triggers = @((New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(5) -RepetitionInterval (New-TimeSpan -Hours 6)),
-              (New-ScheduledTaskTrigger -AtStartup))
-Register-ScheduledTask -TaskName "Nimstead agent" -Action $action -Trigger $triggers -User "SYSTEM" -RunLevel Highest -Force | Out-Null
-Write-Host "Nimstead agent installed; reporting every 6 hours."
+& $py @pyArgs $agent @insecure schedule  # SYSTEM tasks; the agent keeps them current when it updates itself
+if ($LASTEXITCODE -ne 0) { throw "Scheduling failed." }
+Write-Host "Nimstead agent installed."

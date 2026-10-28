@@ -1,7 +1,8 @@
 #!/bin/sh
 # Nimstead agent installer. Usage (the token travels in the environment, never on a command line other users can see):
 #   export NIMSTEAD_TOKEN=TOKEN; curl -fsSL https://SERVER/install.sh | sudo --preserve-env=NIMSTEAD_TOKEN sh [-s -- --allow-remediation]
-# Installs the agent, enrols this host, and adds a systemd timer that reports inventory every 6 hours.
+# Installs the agent, enrols this host, and adds systemd timers: inventory every 6 hours, and on hosts that allow
+# remediation a check for approved fixes every 15 minutes. The agent updates itself from signed releases.
 set -eu
 SERVER="__SERVER__"
 TOKEN="${NIMSTEAD_TOKEN:-}"
@@ -26,30 +27,5 @@ AGENT="python3 /usr/local/lib/nimstead/nimstead_agent.py $INSECURE"
 NIMSTEAD_TOKEN="$TOKEN" $AGENT enroll --server "$SERVER" $EXTRA
 $AGENT report
 
-if command -v systemctl >/dev/null && [ -d /run/systemd/system ]; then
-  RUN="$AGENT report"
-  [ -n "$EXTRA" ] && RUN="$AGENT remediate"   # remediate also re-reports inventory
-  cat > /etc/systemd/system/nimstead-agent.service <<UNIT
-[Unit]
-Description=Nimstead agent
-After=network-online.target
-[Service]
-Type=oneshot
-ExecStart=$RUN
-UNIT
-  cat > /etc/systemd/system/nimstead-agent.timer <<UNIT
-[Unit]
-Description=Run Nimstead agent periodically
-[Timer]
-OnBootSec=5min
-OnUnitActiveSec=6h
-RandomizedDelaySec=15min
-[Install]
-WantedBy=timers.target
-UNIT
-  systemctl daemon-reload
-  systemctl enable --now nimstead-agent.timer
-  echo "Nimstead agent installed; reporting every 6 hours."
-else
-  echo "Nimstead agent enrolled. No systemd: schedule '$AGENT report' with cron."
-fi
+$AGENT schedule  # systemd timers (or the cron line to add); the agent keeps them current when it updates itself
+echo "Nimstead agent installed."

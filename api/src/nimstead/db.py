@@ -43,6 +43,7 @@ class Org(Base):
     notify_webhook_format: Mapped[str] = mapped_column(String(10), default="slack")  # slack | json
     notify_emails: Mapped[list] = mapped_column(default=list)
     notify_emails_confirmed: Mapped[list] = mapped_column(default=list)  # subset that clicked the confirmation link; only these get mail
+    agent_updates_paused: Mapped[bool] = mapped_column(Boolean, default=False)  # org-wide hold on agent self-updates
 
 
 class User(Base):
@@ -92,6 +93,9 @@ class Asset(Base):
     last_seen: Mapped[datetime] = mapped_column(default=now)
     last_inventory_at: Mapped[datetime | None]  # rate limit, shared by every API worker
     agent_version: Mapped[str] = mapped_column(String(50), default="", server_default="")  # "" = agent too old to say
+    auto_update: Mapped[bool | None]  # agent can replace itself with signed releases; None = agent too old to say
+    agent_update_error: Mapped[str | None] = mapped_column(String(500))  # last self-update failure the agent reported
+    silent_alerted_at: Mapped[datetime | None]  # "not reporting" alert sent for the current outage; cleared by the next report
 
 
 class InstalledPackage(Base):

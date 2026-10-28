@@ -18,7 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from nimstead import sso
-from nimstead.db import Notification, Org, now
+from nimstead.db import Asset, Notification, Org, now
 from nimstead.netguard import check_public_url, guarded_client
 
 log = logging.getLogger(__name__)
@@ -112,6 +112,26 @@ def _submit(bind, org_id, kind, text, urgent, targets, attempt):
 
 
 MAX_ATTEMPTS, RETRY_WINDOW = 3, timedelta(hours=24)
+SILENT_AFTER = timedelta(hours=14)  # two missed 6-hour reports plus timer jitter
+
+
+def alert_silent_hosts(s: Session) -> int:
+    """One alert per org per run, naming each host that has newly stopped reporting; the next inventory clears a host's
+    marker. Returns the number of hosts newly flagged."""
+    by_org: dict[str, list[Asset]] = {}
+    for a in s.scalars(select(Asset).where(Asset.kind == "host", Asset.last_seen < now() - SILENT_AFTER, Asset.silent_alerted_at.is_(None))
+                       .order_by(Asset.hostname)):
+        by_org.setdefault(a.org_id, []).append(a)
+    for org_id, hosts in by_org.items():
+        names = ", ".join(f"{a.hostname} ({int((now() - a.last_seen).total_seconds() // 3600)} h)" for a in hosts[:20])
+        more = f" and {len(hosts) - 20} more" if len(hosts) > 20 else ""
+        notify(s, org_id, "host_not_reporting",
+               f"{len(hosts)} machine{'s' * (len(hosts) > 1)} stopped reporting: {names}{more}. Their findings may be out of date: "
+               "check each is running and the Nimstead agent's timer or scheduled task.")
+        for a in hosts:
+            a.silent_alerted_at = now()
+    s.commit()
+    return sum(len(h) for h in by_org.values())
 
 
 def retry_failed(s: Session) -> int:

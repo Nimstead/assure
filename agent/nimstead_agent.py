@@ -8,6 +8,7 @@
 """
 
 import argparse
+import base64
 import glob
 import hashlib
 import json
@@ -25,7 +26,11 @@ import time
 import urllib.error
 import urllib.request
 
-AGENT_VERSION = "0.1.3"  # the server reads this line to flag outdated agents; bump on every agent change
+AGENT_VERSION = "0.2.0"  # the server reads this line to flag outdated agents; bump on every agent change
+# Ed25519 public keys (hex) allowed to sign releases (DECISIONS 31): primary (GitHub Actions) and offline backup.
+# The server only relays signed releases, so it can withhold an update but never forge one. Empty = never self-update.
+RELEASE_KEYS = ["a91fa6539c6c2593009fc71b1c1fba341b5685ba7bc97c127c068b1d732b21d2", "2438f2ccebab5bf26edf9e21a8aa8f09abd1861f52fbe0d6641b28b90f8b0e5a"]  # noqa: E501
+MAX_AGENT_BYTES = 5 * 1024 * 1024
 
 
 class AgentError(Exception):
@@ -704,9 +709,9 @@ OUTCOME_DIR = (os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "N
                else "/var/lib/nimstead/outcomes")
 
 
-def run_jobs(server, key, insecure_http, run=sh, outcome_dir=None, win_state=None, **job_kw):
+def run_jobs(server, key, insecure_http, run=sh, outcome_dir=None, win_state=None, ran=None, **job_kw):
     """Execute jobs, persisting every outcome before reporting so none is lost if the report fails.
-    Unsent outcomes from earlier runs are retried first.
+    Unsent outcomes from earlier runs are retried first. The id of every job that ran is appended to `ran`.
     Returns (number of jobs not applied or not reported, whether a reboot is needed to continue a Windows job)."""
     outcome_dir = outcome_dir or OUTCOME_DIR
     win_state = win_state or WIN_STATE
@@ -740,6 +745,8 @@ def run_jobs(server, key, insecure_http, run=sh, outcome_dir=None, win_state=Non
         with open(path, "w") as f:
             json.dump({"id": job_id, "report": report}, f)
         print("job {}: {}{}".format(job_id, report["outcome"], f" ({report['error']})" if report.get("error") else ""))
+        if ran is not None:
+            ran.append(job_id)
         problems += report["outcome"] != "applied"
         send(path)
 
@@ -1071,6 +1078,71 @@ def windows_version_key(v):
 
 # ---- network ----------------------------------------------------------------
 
+# --- Ed25519 verification (RFC 8032 5.1.7), stdlib only, for release signatures. Verify only: no signing code here.
+_P = 2**255 - 19
+_L = 2**252 + 27742317777372353535851937790883648493
+_D = -121665 * pow(121666, _P - 2, _P) % _P
+_SQRT_M1 = pow(2, (_P - 1) // 4, _P)
+
+
+def _ed_add(a, b):  # extended homogeneous coordinates (RFC 8032 5.1.4)
+    x1, y1, z1, t1 = a
+    x2, y2, z2, t2 = b
+    pa, pb = (y1 - x1) * (y2 - x2) % _P, (y1 + x1) * (y2 + x2) % _P
+    pc, pd = 2 * t1 * t2 * _D % _P, 2 * z1 * z2 % _P
+    e, f, g, h = pb - pa, pd - pc, pd + pc, pb + pa
+    return (e * f % _P, g * h % _P, f * g % _P, e * h % _P)
+
+
+def _ed_mul(s, pt):
+    q = (0, 1, 1, 0)
+    while s:
+        if s & 1:
+            q = _ed_add(q, pt)
+        pt, s = _ed_add(pt, pt), s >> 1
+    return q
+
+
+def _ed_decode(b):
+    """Point decompression (RFC 8032 5.1.3); None for anything that isn't a valid encoding."""
+    if len(b) != 32:
+        return None
+    y = int.from_bytes(b, "little")
+    sign, y = y >> 255, y & ((1 << 255) - 1)
+    if y >= _P:
+        return None
+    x2 = (y * y - 1) * pow(_D * y * y + 1, _P - 2, _P) % _P
+    if x2 == 0:
+        if sign:
+            return None
+        return (0, y, 1, 0)
+    x = pow(x2, (_P + 3) // 8, _P)
+    if (x * x - x2) % _P:
+        x = x * _SQRT_M1 % _P
+    if (x * x - x2) % _P:
+        return None
+    if x & 1 != sign:
+        x = _P - x
+    return (x, y, 1, x * y % _P)
+
+
+_ED_BASE = _ed_decode((4 * pow(5, _P - 2, _P) % _P).to_bytes(32, "little"))
+
+
+def ed25519_verify(pub, msg, sig):
+    """True only for a valid signature by pub over msg; never raises on malformed input."""
+    if not (isinstance(pub, bytes) and isinstance(sig, bytes)) or len(pub) != 32 or len(sig) != 64:
+        return False
+    a, r = _ed_decode(pub), _ed_decode(sig[:32])
+    s = int.from_bytes(sig[32:], "little")
+    if a is None or r is None or s >= _L:  # s < L rules out malleable signatures
+        return False
+    h = int.from_bytes(hashlib.sha512(sig[:32] + pub + msg).digest(), "little") % _L
+    x1, y1, z1, _ = _ed_mul(s, _ED_BASE)
+    x2, y2, z2, _ = _ed_add(r, _ed_mul(h, a))
+    return (x1 * z2 - x2 * z1) % _P == 0 and (y1 * z2 - y2 * z1) % _P == 0
+
+
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *a, **kw):  # never forward the agent key to another URL
         return None
@@ -1101,8 +1173,8 @@ class run_lock:
         self.f.close()
 
 
-def post(server, path, body, insecure_http, key=None):
-    """POST JSON, or GET when body is None."""
+def post(server, path, body, insecure_http, key=None, raw=False):
+    """POST JSON, or GET when body is None; raw=True returns the response bytes (capped) instead of parsed JSON."""
     if not server.startswith("https://") and not (insecure_http and server.startswith("http://")):
         raise AgentError(f"refusing non-HTTPS server {server!r} (use --insecure-http for local dev)")
     headers = {"Content-Type": "application/json"}
@@ -1112,11 +1184,122 @@ def post(server, path, body, insecure_http, key=None):
     req = urllib.request.Request(server.rstrip("/") + path, data, headers, method="GET" if body is None else "POST")
     try:
         with _opener.open(req, timeout=60) as r:
+            if raw:
+                data = r.read(MAX_AGENT_BYTES + 1)
+                if len(data) > MAX_AGENT_BYTES:
+                    raise AgentError(f"response from {path} is larger than {MAX_AGENT_BYTES} bytes")
+                return data
             return json.loads(r.read() or b"{}")
     except urllib.error.HTTPError as e:
         raise AgentError("server returned {}: {}".format(e.code, e.read(300).decode(errors="replace")))
     except (urllib.error.URLError, OSError, ValueError) as e:
         raise AgentError(f"request to {server} failed: {e}")
+
+
+def version_tuple(v):
+    m = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", v) if isinstance(v, str) else None
+    return tuple(int(x) for x in m.groups()) if m else None
+
+
+def verify_release(manifest, sig_b64, keys=None):
+    """The fields of a release manifest signed by a pinned key over these exact bytes; AgentError otherwise."""
+    keys = RELEASE_KEYS if keys is None else keys
+    if not keys:
+        raise AgentError("no release keys are pinned in this agent")
+    try:
+        sig = base64.b64decode(sig_b64, validate=True)
+    except (ValueError, TypeError):
+        raise AgentError("release signature is not base64") from None
+    if not any(ed25519_verify(bytes.fromhex(k), manifest, sig) for k in keys):
+        raise AgentError("release signature doesn't match any pinned release key")
+    rel = json.loads(manifest)
+    if not (isinstance(rel, dict) and version_tuple(rel.get("version")) and version_tuple(rel.get("agent_version"))
+            and re.fullmatch(r"[0-9a-f]{64}", str(rel.get("agent_sha256"))) and re.fullmatch(r"[0-9a-f]{40}", str(rel.get("commit")))):
+        raise AgentError("signed release manifest is malformed")
+    return rel
+
+
+FAILED_RETRY_SECONDS = 24 * 3600
+
+
+def _failed_releases(memo):
+    try:
+        with open(memo) as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _remember_failed(memo, sha):
+    try:
+        with open(memo, "w") as f:
+            json.dump({**_failed_releases(memo), sha: time.time()}, f)
+    except OSError:
+        pass
+
+
+def self_update(cfg, insecure_http, path=None, keys=None, smoke=None, memo=None):
+    """Replace this agent file with a newer signed release relayed by the server.
+
+    Returns (new_version, None) after an update, (None, None) when there's nothing to do, or (None, reason) when an update
+    was refused or failed; the working agent is then left exactly as it was and the run carries on with it."""
+    if not cfg.get("auto_update", True):
+        return None, None
+    if os.name == "nt" and os.path.exists(WIN_STATE):  # never swap the agent while a Windows job waits for its reboot
+        return None, None
+    path = path or os.path.abspath(__file__)
+    tmp = path + ".new"
+    memo = memo or os.path.join(os.path.dirname(config_path()), "failed-updates.json")
+    try:
+        m = post(cfg["server"], "/api/agent/manifest", None, insecure_http, cfg["agent_key"])
+        if not isinstance(m, dict):
+            raise AgentError("manifest response is not a JSON object")
+        if m.get("paused") or not m.get("release") or not m.get("sig"):
+            return None, None
+        rel = verify_release(str(m["release"]).encode(), m["sig"], keys)
+        if version_tuple(rel["agent_version"]) <= version_tuple(AGENT_VERSION):  # anti-rollback: only strictly newer
+            return None, None
+        failed = _failed_releases(memo)
+        if time.time() - failed.get(rel["agent_sha256"], 0) < FAILED_RETRY_SECONDS:  # don't redo a failing self-test every poll
+            return None, f"skipping agent {rel['agent_version']}: it failed its self-test on this host in the last 24 hours"
+        body = post(cfg["server"], "/agent/nimstead_agent.py", None, insecure_http, raw=True)
+        if hashlib.sha256(body).hexdigest() != rel["agent_sha256"]:
+            raise AgentError("downloaded agent doesn't match the signed release")
+        with open(tmp, "wb") as f:
+            f.write(body)
+        os.chmod(tmp, stat.S_IMODE(os.stat(path).st_mode))  # same mode as the agent it replaces
+        smoke = smoke or _smoke_test
+        problem = smoke(tmp)
+        if problem:
+            _remember_failed(memo, rel["agent_sha256"])
+            raise AgentError(f"new agent {rel['agent_version']} failed its self-test, kept {AGENT_VERSION}: {problem}")
+        shutil.copy2(path, path + ".prev")  # kept for manual recovery
+        os.replace(tmp, path)
+        return rel["agent_version"], None
+    except Exception as e:  # nothing about an update may stop the run that follows it
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        return None, f"self-update failed: {e}"[:500]
+
+
+def _smoke_test(path):
+    """The new agent must run on this host and collect a real inventory (no network). Returns a problem or None."""
+    try:
+        p = subprocess.run([sys.executable, "-I", path, "collect"], capture_output=True, text=True, errors="replace", timeout=600)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return str(e)
+    if p.returncode != 0:
+        return (p.stderr or p.stdout).strip()[-300:] or f"exit {p.returncode}"
+    try:
+        inv = json.loads(p.stdout)
+    except ValueError:
+        return "collect printed no JSON"
+    if not (isinstance(inv, dict) and isinstance(inv.get("packages"), list) and inv["packages"]):
+        return "collect returned no packages"
+    return None
 
 
 def load_config():
@@ -1211,9 +1394,174 @@ def secure_windows_dir(run=sh, d=None):
     return removed
 
 
+# ---- schedule -----------------------------------------------------------------
+# The agent owns its schedule, so an updated agent can change it without a reinstall. Bump SCHEDULE_VERSION whenever
+# the units or tasks below change; an updated agent re-applies them once.
+SCHEDULE_VERSION = 1
+SYSTEMD_DIR = "/etc/systemd/system"
+_SERVICE = "[Unit]\nDescription={desc}\nAfter=network-online.target\n[Service]\nType=oneshot\nExecStart={cmd}\n"
+_TIMER = "[Unit]\nDescription={desc}\n[Timer]\n{when}\n[Install]\nWantedBy=timers.target\n"
+JOB_UNITS = ("nimstead-agent-jobs.service", "nimstead-agent-jobs.timer")
+
+
+def _agent_cmd(cfg):
+    return [sys.executable, "-I", os.path.abspath(__file__), *(["--insecure-http"] if cfg["server"].startswith("http://") else [])]
+
+
+def _join(args):
+    return " ".join(f'"{a}"' if " " in a else a for a in args)
+
+
+def schedule_units(cfg):
+    """systemd units: inventory every 6 hours (remediate on opted-in hosts, which re-reports too), and on opted-in
+    hosts a 15-minute poll that only fetches approved jobs, so a fix starts within minutes of approval."""
+    cmd = _join(_agent_cmd(cfg))
+    verb = "remediate" if cfg.get("allow_remediation") else "report"
+    units = {"nimstead-agent.service": _SERVICE.format(desc="Nimstead agent", cmd=f"{cmd} {verb}"),
+             "nimstead-agent.timer": _TIMER.format(desc="Run Nimstead agent periodically",
+                                                   when="OnBootSec=5min\nOnUnitActiveSec=6h\nRandomizedDelaySec=15min")}
+    if cfg.get("allow_remediation"):
+        units["nimstead-agent-jobs.service"] = _SERVICE.format(desc="Nimstead agent: approved fixes", cmd=f"{cmd} remediate --if-jobs")
+        units["nimstead-agent-jobs.timer"] = _TIMER.format(desc="Check for approved Nimstead fixes",
+                                                           when="OnBootSec=2min\nOnUnitActiveSec=15min\nRandomizedDelaySec=2min")
+    return units
+
+
+def _ps_quote(v):
+    return "'" + v.replace("'", "''") + "'"
+
+
+def schedule_windows_script(cfg):
+    """SYSTEM scheduled tasks: every 6 hours and at startup (so an update that needed a restart is finished and reported
+    right after it), plus the 15-minute job poll on opted-in hosts."""
+    py, *args = _agent_cmd(cfg)
+    base = _join(args)
+    verb = "remediate" if cfg.get("allow_remediation") else "report"
+    lines = ["$ErrorActionPreference = 'Stop'",
+             f"$py = {_ps_quote(py)}",
+             "$main = @((New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(5) -RepetitionInterval (New-TimeSpan -Hours 6)), "
+             "(New-ScheduledTaskTrigger -AtStartup))",
+             f"Register-ScheduledTask -TaskName 'Nimstead agent' -Action (New-ScheduledTaskAction -Execute $py -Argument {_ps_quote(base + ' ' + verb)}) "
+             "-Trigger $main -User 'SYSTEM' -RunLevel Highest -Force | Out-Null"]
+    if cfg.get("allow_remediation"):
+        lines += ["$poll = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(2) -RepetitionInterval (New-TimeSpan -Minutes 15)",
+                  "Register-ScheduledTask -TaskName 'Nimstead jobs' -Action (New-ScheduledTaskAction -Execute $py -Argument "
+                  f"{_ps_quote(base + ' remediate --if-jobs')}) -Trigger $poll -User 'SYSTEM' -RunLevel Highest -Force | Out-Null"]
+    else:
+        lines.append("Unregister-ScheduledTask -TaskName 'Nimstead jobs' -Confirm:$false -ErrorAction SilentlyContinue")
+    return "\n".join(lines)
+
+
+def schedule(cfg, run=sh, unit_dir=SYSTEMD_DIR, systemd=None):
+    """Install (or update) this host's schedule and return what was done. Records SCHEDULE_VERSION in the config."""
+    remediation = bool(cfg.get("allow_remediation"))
+    poll = ", approved fixes checked every 15 minutes" if remediation else ""
+    if os.name == "nt":
+        trusted = [os.environ.get(v) for v in ("ProgramFiles", "ProgramFiles(x86)") if os.environ.get(v)]
+        if not any(os.path.normcase(sys.executable).startswith(os.path.normcase(t.rstrip("\\") + "\\")) for t in trusted):
+            raise AgentError(f"{sys.executable} is not an all-users Python under Program Files; the SYSTEM task must not run "
+                             "an interpreter other users can modify (winget install Python.Python.3.13 --scope machine)")
+        rc, out = ps(run, schedule_windows_script(cfg))
+        if rc != 0:
+            raise AgentError(f"could not register the scheduled tasks: {out.strip()[-300:]}")
+        msg = "scheduled: every 6 hours and at startup" + poll
+    else:
+        if systemd is None:
+            systemd = bool(shutil.which("systemctl")) and os.path.isdir("/run/systemd/system")
+        cmd = _join(_agent_cmd(cfg))
+        if not systemd:
+            return (f"no systemd: schedule '{cmd} {'remediate' if remediation else 'report'}' every 6 hours with cron"
+                    + (f", and '{cmd} remediate --if-jobs' every 15 minutes" if remediation else ""))
+        units = schedule_units(cfg)
+        if not remediation:  # host not (or no longer) opted in: no job poll
+            run(["systemctl", "disable", "--now", "nimstead-agent-jobs.timer"])
+            for name in JOB_UNITS:
+                try:
+                    os.remove(os.path.join(unit_dir, name))
+                except FileNotFoundError:
+                    pass
+        for name, text in units.items():
+            with open(os.path.join(unit_dir, name), "w") as f:
+                f.write(text)
+        for c in (["systemctl", "daemon-reload"], *(["systemctl", "enable", "--now", n] for n in units if n.endswith(".timer"))):
+            rc, out = run(c)
+            if rc != 0:
+                raise AgentError(f"{' '.join(c)} failed: {out.strip()[-300:]}")
+        msg = "scheduled: inventory every 6 hours" + poll
+    save_config({**cfg, "schedule_version": SCHEDULE_VERSION})
+    return msg
+
+
+def uninstall(run=sh, unit_dir=SYSTEMD_DIR, state_dirs=None, agent_path=None):
+    """Remove the schedule, config, key, saved outcomes and rollback copies, and the agent itself. Returns what was removed."""
+    if os.name == "nt" and os.path.exists(WIN_STATE):
+        raise AgentError("a Windows update is waiting for its restart; uninstall after it has finished and reported")
+    if os.name == "nt":
+        ps(run, "foreach ($t in 'Nimstead agent', 'Nimstead jobs') { Unregister-ScheduledTask -TaskName $t -Confirm:$false -ErrorAction SilentlyContinue }")
+        state_dirs = state_dirs or [os.path.dirname(config_path())]
+    else:
+        run(["systemctl", "disable", "--now", "nimstead-agent.timer", "nimstead-agent-jobs.timer"])
+        units = [os.path.join(unit_dir, f"nimstead-agent{j}.{k}") for j in ("", "-jobs") for k in ("service", "timer")]
+        state_dirs = state_dirs or [os.path.dirname(config_path()), "/var/lib/nimstead"]
+        if any(os.path.exists(u) for u in units):
+            for u in units:
+                if os.path.exists(u):
+                    os.remove(u)
+            run(["systemctl", "daemon-reload"])
+    agent_path = agent_path or os.path.abspath(__file__)
+    removed = []
+    try:
+        for d in state_dirs:
+            if os.path.isdir(d) and not is_link(d):
+                shutil.rmtree(d)  # removes links inside without following them
+                removed.append(d)
+        for f in (agent_path, agent_path + ".prev", agent_path + ".new"):
+            if os.path.exists(f):
+                os.remove(f)
+                removed.append(f)
+        try:
+            os.rmdir(os.path.dirname(agent_path))  # only if nothing else is in it
+        except OSError:
+            pass
+    except OSError as e:
+        raise AgentError(f"uninstall stopped: {e} (removed so far: {', '.join(removed) or 'nothing'})")
+    return removed
+
+
+_update_error = None  # this run's self-update failure, reported with the inventory so admins see it
+
+
+def inventory(cfg):
+    # auto_update None = can't (no pinned keys), so the server asks for a reinstall rather than blaming an opt-out
+    return {**collect(), "auto_update": bool(cfg.get("auto_update", True)) if RELEASE_KEYS else None, "update_error": _update_error}
+
+
+def _update_then_rerun(a, argv):
+    """Self-update before a report/remediate run. After an update, run the same command with the new agent and return
+    its exit code; otherwise None and this agent carries on."""
+    global _update_error
+    cfg = load_config()
+    try:
+        with run_lock():
+            new, _update_error = self_update(cfg, a.insecure_http)
+    except AgentError:  # another run (e.g. the 15-minute job poll) holds the lock: update next time
+        return None
+    if _update_error:
+        print(f"nimstead-agent: warning: {_update_error}", file=sys.stderr)
+    if not new:
+        return None
+    print(f"updated nimstead-agent {AGENT_VERSION} -> {new}", flush=True)  # before the new agent's own output
+    args = list(sys.argv[1:] if argv is None else argv)
+    new_agent = [sys.executable, *(["-I"] if sys.flags.isolated else []), os.path.abspath(__file__), "--no-self-update"]
+    if "schedule_version" in cfg:  # installed with a schedule: the new agent re-applies it if its units changed
+        subprocess.call([*new_agent, "schedule", "--if-changed"])
+    return subprocess.call([*new_agent, *args])
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="nimstead-agent")
     ap.add_argument("--insecure-http", action="store_true", help="allow plain http (local dev only)")
+    ap.add_argument("--no-self-update", action="store_true", help="skip the signed self-update check for this run")
     sub = ap.add_subparsers(dest="cmd", required=True)
     en = sub.add_parser("enroll")
     en.add_argument("--server", required=True)
@@ -1221,16 +1569,26 @@ def main(argv=None):
                     help="enrolment token (or set NIMSTEAD_TOKEN, which keeps it out of the process list)")
     en.add_argument("--allow-remediation", action="store_true",
                     help="let this host run approved package upgrades (local opt-in; the server cannot enable it)")
+    en.add_argument("--no-auto-update", action="store_true",
+                    help="never replace this agent with newer signed releases (default: update automatically)")
     sub.add_parser("report")
     sub.add_parser("collect")
-    sub.add_parser("remediate", help="run approved remediation jobs, then re-report inventory")
+    rm = sub.add_parser("remediate", help="run approved remediation jobs, then re-report inventory")
+    rm.add_argument("--if-jobs", action="store_true", help="re-report inventory only if a job ran (the 15-minute poll)")
+    un = sub.add_parser("uninstall", help="remove the agent, its schedule, key and saved state from this host")
+    un.add_argument("--yes", action="store_true", help="confirm")
+    sc = sub.add_parser("schedule", help="install or update this host's systemd timers / scheduled tasks")
+    sc.add_argument("--if-changed", action="store_true", help="only if this agent's schedule differs from the installed one")
     rj = sub.add_parser("run-job", help="run one job read as JSON from stdin, print the result JSON (no network; sandbox testing)")
     rj.add_argument("--yes", action="store_true", help="confirm: this changes installed packages on this host")
     sub.add_parser("resume-job", help="Windows: continue the pending job after its reboot (no network)")
+    vr = sub.add_parser("verify-release", help="check a release manifest's signature against the pinned keys; print it if valid")
+    vr.add_argument("manifest")
+    vr.add_argument("sig")
     rj.add_argument("--fail-after-apply", action="store_true", help="sandbox testing: force a failure after the change to exercise rollback")
     a = ap.parse_args(argv)
     try:
-        if os.name == "nt" and a.cmd in ("report", "remediate", "resume-job"):  # before reading anything from the folder
+        if os.name == "nt" and a.cmd in ("report", "remediate", "resume-job", "schedule", "uninstall"):  # before reading anything from the folder
             secure_windows_dir()
         if a.cmd == "collect":
             print(json.dumps(collect(), indent=2))
@@ -1242,7 +1600,23 @@ def main(argv=None):
             res = post(a.server, "/api/agent/enroll", body, a.insecure_http)
             if "agent_key" not in res:
                 raise AgentError("enroll response missing agent_key")
-            print("enrolled as asset {}; config saved to {}".format(res.get("asset_id"), save_config({"server": a.server, "allow_remediation": a.allow_remediation, **res})))
+            # only the fields we expect from the server, and local choices last: the server can't opt a host in
+            cfg = {"asset_id": res.get("asset_id"), "agent_key": res["agent_key"], "server": a.server,
+                   "allow_remediation": a.allow_remediation, "auto_update": not a.no_auto_update}
+            print("enrolled as asset {}; config saved to {}".format(res.get("asset_id"), save_config(cfg)))
+        elif a.cmd == "uninstall":
+            if not a.yes:
+                raise AgentError("uninstall removes the agent and its key from this host; pass --yes to confirm")
+            for r in uninstall():
+                print(f"removed {r}")
+            print("Nimstead agent uninstalled. Delete this host on the Assets page to remove its findings and history.")
+        elif a.cmd == "schedule":
+            cfg = load_config()
+            if not (a.if_changed and cfg.get("schedule_version") == SCHEDULE_VERSION):
+                print(schedule(cfg))
+        elif a.cmd == "verify-release":
+            with open(a.manifest, "rb") as f, open(a.sig) as g:
+                print(json.dumps(verify_release(f.read(), g.read().strip())))
         elif a.cmd == "run-job":
             if not a.yes:
                 raise AgentError("run-job changes installed packages; pass --yes to confirm")
@@ -1261,24 +1635,28 @@ def main(argv=None):
             res = WinJob().advance()
             print(json.dumps(res))
             return 0 if res["outcome"] in ("applied", "pending_reboot", "rolled_back") else 2
+        elif a.cmd in ("report", "remediate") and not a.no_self_update and (new := _update_then_rerun(a, argv)) is not None:
+            return new
         elif a.cmd == "remediate":
             cfg = load_config()
             if not cfg.get("allow_remediation"):
                 raise AgentError("remediation is not enabled on this host (re-enroll with --allow-remediation)")
             with run_lock():
-                problems, reboot = run_jobs(cfg["server"], cfg["agent_key"], a.insecure_http)
+                ran = []
+                problems, reboot = run_jobs(cfg["server"], cfg["agent_key"], a.insecure_http, ran=ran)
                 if reboot:  # Windows update needs a restart; the startup run resumes the job and reports it
                     print("restarting to finish the update")
                     rc, out = sh(["shutdown", "/r", "/t", "60", "/c", "Nimstead: finishing a security update"])
                     if rc != 0:
                         raise AgentError(f"could not schedule the restart the update needs: {out.strip()}")
                     return 0
-                post(cfg["server"], "/api/agent/inventory", collect(), a.insecure_http, cfg["agent_key"])  # server verifies the fix
+                if ran or not a.if_jobs:  # server verifies the fix
+                    post(cfg["server"], "/api/agent/inventory", inventory(cfg), a.insecure_http, cfg["agent_key"])
             if problems:
                 return 2
         else:
             cfg = load_config()
-            inv = collect()
+            inv = inventory(cfg)
             post(cfg["server"], "/api/agent/inventory", inv, a.insecure_http, cfg["agent_key"])
             print(f"reported {len(inv['packages'])} packages")
     except AgentError as e:

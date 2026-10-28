@@ -4,6 +4,23 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-28
+
+Agents and the server now update themselves from signed releases, approved fixes start within minutes, and machines that stop reporting are flagged. **Agents older than 0.2.0 can't update themselves: rerun the install command on each machine once** (the enrolment is kept). After that, updates are automatic.
+
+### Added
+- **Agent 0.2.0 updates itself.** At each run it installs a newer release only if it's signed by the Nimstead release key built into the agent. That key is held by the release workflow, never by your server, so a compromised server can't push code to your machines. Older versions are never installed, and the new version must run its inventory on the machine before it replaces the old one. Pause updates for your organisation in **Settings → Agent updates**, or turn them off on one machine with `--no-auto-update`. The Assets page shows each agent's state (updating, failed and why, paused, off, or reinstall needed).
+- **Approved fixes start within 15 minutes:** machines that allow remediation check for approved jobs every 15 minutes, and only report inventory when a job ran. The agent now writes its own timers and scheduled tasks (`schedule`), so changes like this reach existing machines without a reinstall.
+- **Not reporting:** a machine silent for 14 hours is flagged on Assets and Home, and alert targets hear about it once per outage.
+- **`uninstall`** removes the agent, its schedule, key and state from a machine.
+- **Server updates:** **Settings → This server** shows the running version and any newer release, and alert targets hear about each new release once. `deploy/update.sh` installs a release only if it's signed and its tag points at the signed commit. It backs up the database, waits for the new version to be healthy and otherwise restores the previous version and the database. `--install-timer` runs it nightly (opt-in).
+- **`/api/health`** (database reachable, schema at the release's migration head), used by the Docker healthcheck.
+- Releases are signed in a protected GitHub Actions environment and published with a build attestation.
+
+### Changed
+- `install.sh` and `install.ps1` let the agent create its schedule (same 6-hour timer or task, plus the 15-minute job check where remediation is allowed).
+- The "Agent outdated" badge now says what happens next: most agents update themselves at their next run.
+
 ## [0.2.0] - 2026-10-28
 
 A security release: a Claude Security scan of the whole repository found 21 issues (12 medium, 9 low), all fixed here with a test each and, for anything that touches real systems, a run on real services (see [STATUS.md](STATUS.md) and decision 30 in [DECISIONS.md](DECISIONS.md)). **Upgrade, and read "Changed" first: three behaviours change.**
@@ -62,7 +79,8 @@ The first early-access release. Everything listed is proven by tests and, for an
 
 Licensed under FSL-1.1-ALv2: this release becomes available under Apache 2.0 on 2028-10-27.
 
-[Unreleased]: https://github.com/Nimstead/assure/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Nimstead/assure/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Nimstead/assure/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Nimstead/assure/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/Nimstead/assure/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Nimstead/assure/releases/tag/v0.1.0

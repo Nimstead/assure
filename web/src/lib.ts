@@ -11,9 +11,18 @@ export interface Asset {
   id: string; hostname: string; os_name: string; ecosystem: string; kind: "host" | "application" | "external";
   criticality: Criticality; internet_facing: boolean; sandbox: boolean; ring: 0 | 1; health_units: string[];
   first_seen: string; last_seen: string; open_by_priority: Partial<Record<Priority, number>>;
-  agent_version?: string; agent_outdated?: boolean; // hosts only
+  agent_version?: string; agent_outdated?: boolean; agent_update?: AgentUpdate; agent_update_error?: string | null; not_reporting?: boolean; // hosts only
   verified?: boolean; verified_at?: string | null; txt_name?: string; txt_value?: string; proof_path?: string; // external targets only
 }
+// What happens to a host's agent next (app.py agent_update_status)
+export type AgentUpdate = "current" | "updating" | "failed" | "paused" | "off" | "reinstall";
+export const AGENT_UPDATE: Record<Exclude<AgentUpdate, "current">, { label: string; why: (a: Asset) => string }> = {
+  updating: { label: "Agent updating", why: (a) => `Agent ${a.agent_version} will replace itself with this server's signed release at its next run.` },
+  failed: { label: "Agent update failed", why: (a) => `${a.agent_update_error ?? "The last self-update failed."} The agent kept running ${a.agent_version} and will try again at its next run.` },
+  paused: { label: "Agent update paused", why: () => "Agent updates are paused for your organisation (Settings)." },
+  off: { label: "Agent outdated", why: () => "Automatic updates are switched off on this host. Rerun the install command to update it; the enrolment is kept." },
+  reinstall: { label: "Agent outdated", why: (a) => `${a.agent_version ? `Agent ${a.agent_version}` : "This agent"} can't update itself. Rerun the install command on this host once; the enrolment is kept, and later versions update automatically.` },
+};
 export interface SbomResult { components: number; mapped: number; unique_packages: number; skipped: Record<string, number>; open: number; resolved: number }
 export const sbomSummary = (r: SbomResult) =>
   `${r.mapped} of ${r.components} components recognised (${r.unique_packages} unique packages), ${r.components - r.mapped} skipped. ${r.open} open finding${r.open === 1 ? "" : "s"}, ${r.resolved} resolved.`;
@@ -28,7 +37,10 @@ export interface Action {
   ecosystem: string; package: string; fixed_version: string; hosts: string[]; vulns: string[];
   kev: boolean; max_score: number;
 }
-export interface Summary { assets: number; open_by_priority: Partial<Record<Priority, number>>; top_actions: Action[]; attention: Job[] }
+export interface Summary {
+  assets: number; open_by_priority: Partial<Record<Priority, number>>; top_actions: Action[]; attention: Job[];
+  hosts_not_reporting: number; agents_need_attention: number;
+}
 
 // ---- remediation -----------------------------------------------------------------
 export type JobStatus = "planned" | "approved" | "dispatched" | "verifying" | "succeeded" | "failed" | "rolled_back" | "rollback_failed" | "not_fixed" | "aborted" | "cancelled";
@@ -66,7 +78,15 @@ export interface EvidenceReport {
   ledger: { head_hash: string; entries: number };
 }
 export interface EnrollToken { id: string; created: string; expires: string; revoked: boolean; sandbox: boolean }
-export interface Settings { remediation_mode: "suggest" | "approve" | "auto"; canary_soak_hours: number; production_remediation_allowed: boolean }
+export interface Settings {
+  remediation_mode: "suggest" | "approve" | "auto"; canary_soak_hours: number; production_remediation_allowed: boolean;
+  agent_updates_paused: boolean; signed_agent_release: boolean; platform: Platform;
+}
+// updates.status(): last_update is what deploy/update.sh last did on the Docker host
+export interface Platform {
+  version: string; latest: string | null; latest_url: string | null; update_available: boolean; checked: string | null;
+  last_update: { outcome: "updated" | "rolled_back" | "rollback_failed" | "refused"; from?: string; to?: string; error?: string; at?: string } | null;
+}
 export interface SsoSettings {
   issuer: string; client_id: string; client_secret_set: boolean; domains: string[]; required: boolean; redirect_uri: string;
   domain_checks: { domain: string; verified: boolean; txt_name: string; txt_value: string }[];

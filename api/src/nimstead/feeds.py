@@ -16,7 +16,7 @@ import httpx
 from sqlalchemy import delete, insert, select, update
 from sqlalchemy.orm import Session
 
-from nimstead import evidence, external, notify, winapps
+from nimstead import evidence, external, notify, updates, winapps
 from nimstead.db import Advisory, Asset, Cvss, Epss, InstalledPackage, Kev, Org, make_sessionmaker, now
 from nimstead.match import normalize_ecosystem
 from nimstead.scan import rescan
@@ -294,6 +294,13 @@ def update_all(session: Session, client=None) -> dict:
         evidence.checkpoint(session, org_id)
     out["webhooks_sealed"] = notify.seal_legacy(session)
     out["alerts_retried"] = notify.retry_failed(session)
+    out["hosts_not_reporting_alerted"] = notify.alert_silent_hosts(session)
+    try:  # a release-check problem must never stop the feed update
+        out["platform"] = updates.check(session)
+    except Exception as e:
+        session.rollback()
+        log.warning("release check failed: %s", e)
+        out["platform"] = {"error": f"{type(e).__name__}: {e}"[:200]}
     return out
 
 

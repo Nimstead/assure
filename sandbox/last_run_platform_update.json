@@ -1,0 +1,92 @@
+{
+  "result": "PASS",
+  "steps": [
+    {
+      "step": "release history built: test key pinned, releases signed",
+      "running": "0.3.0",
+      "forged": "0.3.1",
+      "broken": "0.3.2",
+      "good": "0.3.3",
+      "agents": [
+        "0.2.0",
+        "0.2.1"
+      ]
+    },
+    {
+      "step": "running release installed with Docker Compose",
+      "version": "0.3.0",
+      "health": {
+        "status": "ok",
+        "version": "0.3.0",
+        "db": "ok",
+        "migrations": "head"
+      },
+      "seconds": 36
+    },
+    {
+      "step": "real agent installed and reporting",
+      "agent": "0.2.0",
+      "agent_update": "current"
+    },
+    {
+      "step": "dry run picks the newest release and verifies it",
+      "output": [
+        "Update 0.3.0 -> 0.3.3: signature, commit 2834681c30c6d1605306a5fbe6d58ad39483df30 and agent verified.",
+        "Dry run: would back up the database, check out v0.3.3, rebuild, and roll back to 0.3.0 if it isn't healthy."
+      ]
+    },
+    {
+      "step": "forged release refused, nothing changed",
+      "output": "update refused: release signature check failed: nimstead-agent: error: release signature doesn't match any pinned release key",
+      "still": "0.3.0"
+    },
+    {
+      "step": "broken release rolled back: old version healthy, database restored from the backup",
+      "outcome": "rolled_back",
+      "error": "version 0.3.2 didn't become healthy within 120 s: NFO  [alembic.runtime.migration] Will assume transactional DDL. \u001b[2Kapp-1  | deliberately broken release \u001b[2Kapp-1  | INFO  [alembic.runtime.migration",
+      "health": {
+        "status": "ok",
+        "version": "0.3.0",
+        "db": "ok",
+        "migrations": "head"
+      },
+      "broken_table": "absent",
+      "assets": 1,
+      "backups": [
+        "nimstead-0.3.0-20261028T114936Z.dump"
+      ]
+    },
+    {
+      "step": "good release installed and healthy",
+      "health": {
+        "status": "ok",
+        "version": "0.3.3",
+        "db": "ok",
+        "migrations": "head"
+      },
+      "settings_shows": {
+        "outcome": "updated",
+        "from": "0.3.0",
+        "to": "0.3.3",
+        "error": null,
+        "at": "2026-10-28T11:52:40"
+      }
+    },
+    {
+      "step": "agent replaced itself with the new release's agent through the server",
+      "output": [
+        "updated nimstead-agent 0.2.0 -> 0.2.1",
+        "reported 241 packages"
+      ],
+      "agent": "0.2.1",
+      "agent_update": "current",
+      "kept_previous": "0.2.0"
+    },
+    {
+      "step": "next run: already current, no update",
+      "output": [
+        "reported 241 packages"
+      ]
+    }
+  ]
+}

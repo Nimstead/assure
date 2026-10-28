@@ -15,3 +15,7 @@ checkpoints/
 *.tsbuildinfo
 api/demo/
 .claude/
+release/
+backups/
+deploy/last-update.json
+deploy/.update.lock

@@ -32,7 +32,8 @@ def fresh_db_url(tmp_path) -> str:
 @pytest.fixture
 def env(tmp_path, monkeypatch):
     monkeypatch.setenv("NIMSTEAD_SECURE_COOKIES", "0")
-    monkeypatch.setenv("NIMSTEAD_OPEN_SIGNUP", "1")  # most tests create several orgs; the default sign-up is tested in test_api
+    monkeypatch.setenv("NIMSTEAD_OPEN_SIGNUP", "1")
+    monkeypatch.setenv("NIMSTEAD_UPDATE_CHECK", "0")  # no calls to GitHub from tests; test_updates turns it on with a fake client  # most tests create several orgs; the default sign-up is tested in test_api
     from nimstead import evidence
     monkeypatch.setattr(evidence, "CHECKPOINT_DIR", tmp_path / "checkpoints")
     monkeypatch.setattr(evidence, "KEY_FILE", tmp_path / "signing.pem")

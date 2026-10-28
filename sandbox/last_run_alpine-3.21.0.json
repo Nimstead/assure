@@ -1,7 +1,7 @@
 [
   {
     "step": "creating sandbox distro",
-    "name": "nimstead-sbx-f5b17995",
+    "name": "nimstead-sbx-974dfc70",
     "distro": "alpine-3.21.0"
   },
   {
@@ -147,6 +147,6 @@
   },
   {
     "step": "sandbox destroyed",
-    "name": "nimstead-sbx-f5b17995"
+    "name": "nimstead-sbx-974dfc70"
   }
 ]

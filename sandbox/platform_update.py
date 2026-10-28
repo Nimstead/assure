@@ -197,6 +197,13 @@ def main() -> int:
         assert wsl("cd /app && git describe --tags").strip() == f"v{a}"
         step("forged release refused, nothing changed", output=out.strip().splitlines()[-1], still=health()["version"])
 
+        # round 4: Compose would silently merge an untracked override file into the release; update.sh refuses the checkout
+        wsl("cd /app && printf 'services:\\n  app:\\n    environment:\\n      EVIL: \"1\"\\n' > compose.override.yaml")
+        rc, out = wsl(f"{upd} --dry-run", check=False)
+        assert rc == 1 and "untracked files" in out, out
+        wsl("rm /app/compose.override.yaml")
+        step("untracked compose.override.yaml refused", output=out.strip().splitlines()[-1])
+
         rc, out = wsl(f"{upd} --to v{d}", check=False, timeout=3600)
         probe = wsl("cd /app && docker-compose exec -T db psql -U nimstead -d nimstead -tAc \"select to_regclass('broken_probe')\"").strip()
         status = json.loads(wsl("cat /app/deploy/last-update.json"))
@@ -207,9 +214,14 @@ def main() -> int:
              error=status["error"][:200], health=health(), broken_table=probe or "absent", assets=n,
              backups=wsl("ls /app/backups").split())
 
+        # a local branch named like the good tag, pointing at the broken commit: `git checkout v{b}` would build it
+        wsl(f"cd /app && git branch v{b} v{d}^{{commit}}")
         rc, out = wsl(upd, check=False, timeout=3600)
         status = json.loads(wsl("cat /app/deploy/last-update.json"))
         assert rc == 0 and status["outcome"] == "updated" and health()["version"] == b, (out, status)
+        head, tag = wsl("cd /app && git rev-parse HEAD").strip(), wsl(f"cd /app && git rev-parse refs/tags/v{b}^{{commit}}").strip()
+        assert head == tag, (head, tag)
+        step("a branch named like the tag was ignored: the verified commit was built", head=head)
         platform = api("GET", "/api/settings", jar="/root/jar2")["platform"]
         assert platform["version"] == b and platform["last_update"]["outcome"] == "updated", platform
         step("good release installed and healthy", health=health(), settings_shows=platform["last_update"])

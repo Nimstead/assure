@@ -21,7 +21,7 @@
         "db": "ok",
         "migrations": "head"
       },
-      "seconds": 34
+      "seconds": 32
     },
     {
       "step": "real agent installed and reporting",
@@ -41,7 +41,7 @@
     {
       "step": "beta channel: dry run picks the newest beta release and verifies it",
       "output": [
-        "Update 0.4.0 -> 0.4.3 (beta release, beta channel): signature, commit c6e6dbe3126ea3ba901851f72382339be8d2c3a1 and agent verified.",
+        "Update 0.4.0 -> 0.4.3 (beta release, beta channel): signature, commit 118c466b6ad2a99e83b6dbd52cda409376b0ed4f and agent verified.",
         "Dry run: would back up the database, check out v0.4.3, rebuild, and roll back to 0.4.0 if it isn't healthy."
       ]
     },
@@ -49,6 +49,10 @@
       "step": "forged release refused, nothing changed",
       "output": "update refused: release signature check failed: nimstead-agent: error: release signature doesn't match any pinned release key",
       "still": "0.4.0"
+    },
+    {
+      "step": "untracked compose.override.yaml refused",
+      "output": "update refused: this checkout has local changes or untracked files (they'd be built into the image); update.sh only updates unmodified release checkouts"
     },
     {
       "step": "broken release rolled back: old version healthy, database restored from the backup",
@@ -63,8 +67,12 @@
       "broken_table": "absent",
       "assets": 1,
       "backups": [
-        "nimstead-0.4.0-20261028T163337Z.dump"
+        "nimstead-0.4.0-20261028T165329Z.dump"
       ]
+    },
+    {
+      "step": "a branch named like the tag was ignored: the verified commit was built",
+      "head": "118c466b6ad2a99e83b6dbd52cda409376b0ed4f"
     },
     {
       "step": "good release installed and healthy",
@@ -79,7 +87,7 @@
         "from": "0.4.0",
         "to": "0.4.3",
         "error": null,
-        "at": "2026-10-28T16:36:39"
+        "at": "2026-10-28T16:56:31"
       }
     },
     {

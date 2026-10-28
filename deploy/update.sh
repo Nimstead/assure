@@ -74,7 +74,6 @@ fi
 
 version() { sed -n 's/^version = "\(.*\)"$/\1/p' api/pyproject.toml; }
 CUR=$(version)
-FROM_TAG="v$CUR"
 
 # status OUTCOME TO ERROR: recorded on the host and in the data volume, whether or not the app is running
 status() {
@@ -104,6 +103,7 @@ git fetch --quiet --tags origin || refuse "${TO:-?}" "git fetch failed (a releas
 field() { python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1])).get(sys.argv[2], ""))' "$WORK/verified.json" "$1"; }
 verified() {
   WHY=""
+  # shellcheck disable=SC2015  # intended: either download failing is the same refusal
   curl -fsSL "$REPO_URL/releases/download/$1/release.json" -o "$WORK/release.json" 2>/dev/null \
     && curl -fsSL "$REPO_URL/releases/download/$1/release.json.sig" -o "$WORK/release.json.sig" 2>/dev/null \
     || { WHY="couldn't download the signed release manifest for $1 (not signed yet?)"; return 1; }

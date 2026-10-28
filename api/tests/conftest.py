@@ -50,6 +50,7 @@ def env(tmp_path, monkeypatch):
     import nimstead.app as appmod
     monkeypatch.setattr(appmod, "SECURE_COOKIES", False)
     monkeypatch.setattr(appmod, "INVENTORY_MIN_SECONDS", 0)
+    monkeypatch.setattr(appmod, "RELEASE_DIR", tmp_path / "release")  # release files and monitor state, never the repo's
     yield url
     if PG:  # drop it (closing its connections) so a long suite stays within Postgres limits
         with create_engine(PG, isolation_level="AUTOCOMMIT").connect() as c:

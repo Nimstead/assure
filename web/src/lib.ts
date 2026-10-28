@@ -85,6 +85,7 @@ export interface Settings {
 // updates.status(): last_update is what deploy/update.sh last did on the Docker host
 export interface Platform {
   version: string; latest: string | null; latest_url: string | null; update_available: boolean; checked: string | null;
+  channel: "preview" | "beta" | "stable"; running_channel: "preview" | "beta" | "stable" | null; latest_channel: string | null;
   last_update: { outcome: "updated" | "rolled_back" | "rollback_failed" | "refused"; from?: string; to?: string; error?: string; at?: string } | null;
 }
 export interface SsoSettings {

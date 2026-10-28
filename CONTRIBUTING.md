@@ -32,7 +32,14 @@ CI runs the same checks, plus the API suite on PostgreSQL 17. Pull requests are 
 2. Move the changelog's Unreleased entries under the new version with today's date, and update the compare links at the bottom.
 3. Push to `main` and wait for CI to pass.
 4. Tag (`git tag -a vX.Y.Z -m "Nimstead Assure X.Y.Z"`) and push the tag.
-5. Approve the **Release** workflow's `release` environment. It signs `release.json` (version, agent SHA-256, commit) with the release key, checks it with the agent's own verifier, adds a build attestation and publishes the GitHub release with `release.json`, `release.json.sig` and the agent. Servers fetch those files, agents update themselves from them, and `deploy/update.sh` installs the release. **Don't mark it a pre-release:** servers ignore pre-releases.
+5. Approve the **Release** workflow's `release` environment. It signs `release.json` (version, agent SHA-256, commit and **channel**) with the release key, checks it with the agent's own verifier, adds a build attestation and publishes the GitHub release with `release.json`, `release.json.sig` and the agent. A pushed tag is always signed for the **preview** channel and published as a GitHub pre-release.
+6. **Promote** it when it has earned it: run the Release workflow *from the tag* (Actions → Release → Run workflow → "Use workflow from" → **Tags** → `vX.Y.Z`, channel **beta** or **stable**), or `gh workflow run release.yml --ref vX.Y.Z -f channel=beta`, and approve it. The same commit is re-signed for that channel, and GitHub's pre-release and Latest labels follow it (only stable is Latest). Servers decide by the signed channel, never by GitHub's labels (DECISIONS 33).
+
+| Channel | For | A server on it takes |
+|---|---|---|
+| preview | early builds for trial installs; may break | preview, beta and stable |
+| beta | feature-complete, being proven on real installs | beta and stable |
+| stable | public releases | stable only (the default) |
 
 ### Release keys (once)
 

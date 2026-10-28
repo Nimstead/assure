@@ -1,0 +1,49 @@
+{
+  "result": "PASS",
+  "vm": "nimstead-sbx-win-60d2f6",
+  "steps": [
+    {
+      "step": "VM ready",
+      "os": "Microsoft Windows 11 Pro"
+    },
+    {
+      "step": "install.ps1: enrolled and reported, both SYSTEM tasks registered",
+      "agent": "0.2.0",
+      "agent_update": "current",
+      "tasks": [
+        "#< CLIXML",
+        "<Objs Version=\"1.1.0.1\" xmlns=\"http://schemas.microsoft.com/powershell/2004/04\"><S S=\"warning\">Plain HTTP server (dev only)</S><Obj S=\"information\" RefId=\"0\"><TN RefId=\"0\"><T>System.Management.Automation.InformationRecord</T><T>System.Object</T></TN><ToString>Nimstead agent installed.</ToString><Props><Obj N=\"MessageData\" RefId=\"1\"><TN RefId=\"1\"><T>System.Management.Automation.HostInformationMessage</T><T>System.Object</T></TN><ToString>Nimstead agent installed.</ToString><Props><S N=\"Message\">Nimstead agent installed.</S><B N=\"NoNewLine\">false</B><S N=\"ForegroundColor\">Gray</S><S N=\"BackgroundColor\">Black</S></Props></Obj><S N=\"Source\">Write-Host</S><DT N=\"TimeGenerated\">2026-10-28T06:38:11.035642-07:00</DT><Obj N=\"Tags\" RefId=\"2\"><TN RefId=\"2\"><T>System.Collections.Generic.List`1[[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]]</T><T>System.Object</T></TN><LST><S>PSHOST</S></LST></Obj><S N=\"User\">NIMSTEAD-SBX\\Administrator</S><S N=\"Computer\">nimstead-sbx</S><U32 N=\"ProcessId\">1592</U32><U32 N=\"NativeThreadId\">2732</U32><U32 N=\"ManagedThreadId\">9</U32></Props></Obj></Objs>"
+      ]
+    },
+    {
+      "step": "server now relays a newer signed agent",
+      "new": "0.2.1",
+      "schedule_version": 2
+    },
+    {
+      "step": "the SYSTEM task updated the agent, re-registered its tasks mid-run, and reported on the new version",
+      "task_result": 0,
+      "agent_on_disk": "0.2.1",
+      "reported": "0.2.1",
+      "kept_prev": "True",
+      "schedule_version": 2,
+      "tasks": [
+        "Nimstead agent SYSTEM Ready triggers=MSFT_TaskTimeTrigger/PT6H,MSFT_TaskBootTrigger/",
+        "Nimstead jobs SYSTEM Ready triggers=MSFT_TaskTimeTrigger/PT15M"
+      ]
+    },
+    {
+      "step": "second run of the re-registered task: succeeded, no update, still current",
+      "task_result": 0,
+      "agent": "0.2.1"
+    },
+    {
+      "step": "15-minute job poll task (re-registered too) runs as SYSTEM",
+      "task_result": 0
+    },
+    {
+      "step": "VM destroyed",
+      "name": "nimstead-sbx-win-60d2f6"
+    }
+  ]
+}

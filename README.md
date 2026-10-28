@@ -10,7 +10,7 @@
   <img alt="PostgreSQL 17" src="https://img.shields.io/badge/postgresql-17-111111">
 </p>
 
-<p align="center"><img src="docs/images/home-1440.png" alt="Fix first: 1,178 open findings across five real Linux machines and an application, two fixes that need a look, and the upgrades that clear the most risk" width="900"></p>
+<p align="center"><img src="docs/images/home-1440.png" alt="Fix first: 1,183 open findings across five real Linux machines and an application, two fixes that need a look, and the upgrades that clear the most risk" width="900"></p>
 
 Nimstead Assure scans your Linux and Windows machines and your applications' dependencies for known vulnerabilities, tells you which few upgrades clear the most real risk, can apply them for you with automatic rollback, and keeps a tamper-evident record your auditor can check without asking us.
 
@@ -36,7 +36,7 @@ Every screenshot here is from a real run ([`sandbox/demo.py`](sandbox/demo.py)):
 
 | Every machine, its ring and its health checks | Controls an auditor can check | Light and dark, down to phone width |
 |---|---|---|
-| ![Assets: five Linux machines and an application, with criticality, canary and broad rings, health units and agent versions](docs/images/assets-1440.png) | ![Evidence: Cyber Essentials, ISO 27001, NIST, PCI DSS and CIS control status](docs/images/evidence-1440.png) | ![Fix first in dark mode at 375px](docs/images/home-375-dark.png) |
+| ![Assets: five Linux machines running agent 0.2.0 and an application, with criticality, canary and broad rings and health units](docs/images/assets-1440.png) | ![Evidence: Cyber Essentials, ISO 27001, NIST, PCI DSS and CIS control status](docs/images/evidence-1440.png) | ![Fix first in dark mode at 375px](docs/images/home-375-dark.png) |
 
 ## Get started
 

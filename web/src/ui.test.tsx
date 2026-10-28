@@ -113,9 +113,11 @@ it("asset row says why an agent is outdated and what happens next", () => {
 });
 
 it("settings say when a platform update is available and when one failed", () => {
-  const base = { version: "0.3.0", latest: "0.3.1", latest_url: "https://github.com/Nimstead/assure/releases/tag/v0.3.1", update_available: true, checked: null, last_update: null };
+  const base = { version: "0.3.0", latest: "0.3.1", latest_url: "https://github.com/Nimstead/assure/releases/tag/v0.3.1", update_available: true,
+    checked: "2026-10-28T12:00:00", last_update: null, channel: "beta" as const, running_channel: "preview" as const, latest_channel: "beta" };
   const r = render(<PlatformSection p={base} />);
-  expect(screen.getByRole("link", { name: "0.3.1 is available" })).toHaveAttribute("href", base.latest_url);
+  expect(screen.getByRole("link", { name: "0.3.1 (beta) is available" })).toHaveAttribute("href", base.latest_url);
+  expect(screen.getByText(/beta and stable releases/)).toBeInTheDocument();
   r.unmount();
   render(<PlatformSection p={{ ...base, update_available: false, latest: "0.3.0", last_update: { outcome: "rolled_back", from: "0.3.0", to: "0.3.1", error: "health check failed" } }} />);
   expect(screen.getByRole("alert")).toHaveTextContent("Update failed and was rolled back (0.3.0 → 0.3.1): health check failed");

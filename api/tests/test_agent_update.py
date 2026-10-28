@@ -44,7 +44,11 @@ def signed(k, agent_bytes, agent_version=None, version="0.3.0"):
 def test_manifest_binds_version_agent_hash_and_commit():
     body = (ROOT / "agent" / "nimstead_agent.py").read_bytes()
     rel = json.loads(sign_release.release_manifest("v0.3.0", COMMIT, body, "0.3.0"))
-    assert rel == {"version": "0.3.0", "agent_version": agent.AGENT_VERSION, "agent_sha256": hashlib.sha256(body).hexdigest(), "commit": COMMIT}
+    assert rel == {"version": "0.3.0", "agent_version": agent.AGENT_VERSION, "agent_sha256": hashlib.sha256(body).hexdigest(), "commit": COMMIT,
+                   "channel": "preview"}  # a tag push is preview until promoted
+    assert json.loads(sign_release.release_manifest("v0.3.0", COMMIT, body, "0.3.0", "stable"))["channel"] == "stable"
+    with pytest.raises(SystemExit, match="channel"):
+        sign_release.release_manifest("v0.3.0", COMMIT, body, "0.3.0", "nightly")
     for tag, commit, version in [("v0.3.1", COMMIT, "0.3.0"), ("0.3.0", COMMIT, "0.3.0"), ("v0.3.0", "abc", "0.3.0")]:
         with pytest.raises(SystemExit):
             sign_release.release_manifest(tag, commit, body, version)
@@ -272,7 +276,7 @@ def test_assets_say_what_happens_to_each_agent(env, release):
 
 # --- hosts that stop reporting ----------------------------------------------------------------------------------------
 
-def test_silent_host_flagged_and_alerted_once_per_outage(env, monkeypatch):
+def test_silent_host_flagged_and_alerted_once_per_outage(env, monkeypatch, tmp_path):
     from datetime import timedelta
 
     from sqlalchemy.orm import sessionmaker
@@ -285,17 +289,18 @@ def test_silent_host_flagged_and_alerted_once_per_outage(env, monkeypatch):
     sent = []
     monkeypatch.setattr(notify, "notify", lambda s, org_id, kind, text, urgent=False: sent.append((kind, text)))
     s = sessionmaker(make_engine(env))()
-    assert notify.alert_silent_hosts(s) == 0 and not c.get("/api/assets").json()[0]["not_reporting"]
+    state = tmp_path / "monitor.json"
+    assert notify.alert_silent_hosts(s, state) == 0 and not c.get("/api/assets").json()[0]["not_reporting"]
     s.query(Asset).update({Asset.last_seen: now() - timedelta(hours=15)})
     s.commit()
-    assert notify.alert_silent_hosts(s) == 1 and notify.alert_silent_hosts(s) == 0  # once, not every hour
+    assert notify.alert_silent_hosts(s, state) == 1 and notify.alert_silent_hosts(s, state) == 0  # once, not every hour
     assert sent[0][0] == "host_not_reporting" and "1 machine stopped reporting: web-1 (15 h)" in sent[0][1]
     assert c.get("/api/assets").json()[0]["not_reporting"] and c.get("/api/summary").json()["hosts_not_reporting"] == 1
     c.post("/api/agent/inventory", json=INV, headers=h)  # back: flag and marker cleared
     assert not c.get("/api/assets").json()[0]["not_reporting"] and c.get("/api/summary").json()["hosts_not_reporting"] == 0
     s.query(Asset).update({Asset.last_seen: now() - timedelta(hours=15)})
     s.commit()
-    assert notify.alert_silent_hosts(s) == 1  # a new outage alerts again
+    assert notify.alert_silent_hosts(s, state) == 1  # a new outage alerts again
     s.close()
 
 
@@ -373,3 +378,28 @@ def test_enrol_keeps_local_choices_whatever_the_server_answers(monkeypatch, tmp_
     monkeypatch.setattr(agent, "save_config", lambda cfg: saved.update(cfg) or "cfg")
     assert agent.main(["enroll", "--server", "https://nimstead.example", "--token", "t", "--no-auto-update"]) == 0
     assert saved == {"asset_id": "a1", "agent_key": "nma_k", "server": "https://nimstead.example", "allow_remediation": False, "auto_update": False}
+
+
+def test_no_not_reporting_storm_after_the_server_itself_was_down(env, monkeypatch, tmp_path):
+    import json as _json
+    from datetime import timedelta
+
+    from sqlalchemy.orm import sessionmaker
+
+    from nimstead import notify
+    from nimstead.db import Asset, make_engine, now
+    c = user(env)
+    enrol(c)
+    sent = []
+    monkeypatch.setattr(notify, "notify", lambda s, org_id, kind, text, urgent=False: sent.append(kind))
+    s = sessionmaker(make_engine(env))()
+    s.query(Asset).update({Asset.last_seen: now() - timedelta(hours=20)})
+    s.commit()
+    state = tmp_path / "monitor.json"
+    state.write_text(_json.dumps({"last_check": (now() - timedelta(hours=20)).isoformat(), "grace_until": None}))  # server down 20 h
+    assert notify.alert_silent_hosts(s, state) == 0 and sent == []  # hosts get a report cycle to catch up
+    assert notify.alert_silent_hosts(s, state) == 0  # hourly runs inside the grace stay quiet
+    st = _json.loads(state.read_text())
+    state.write_text(_json.dumps({**st, "grace_until": (now() - timedelta(minutes=1)).isoformat()}))  # grace over
+    assert notify.alert_silent_hosts(s, state) == 1 and sent == ["host_not_reporting"]  # still silent: now it alerts
+    s.close()

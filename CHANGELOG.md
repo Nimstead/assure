@@ -4,7 +4,15 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
-## [0.3.0] - 2026-10-28
+### Added
+- **Release channels:** preview, beta and stable. Each release's signed manifest says its channel, and a server follows one (`NIMSTEAD_UPDATE_CHANNEL`, default `stable`), taking its channel and anything more stable. Settings shows the channel, and `deploy/update.sh` installs the newest release the channel allows. A tag is released as preview; promoting it re-signs the same commit for beta or stable with your approval. 0.3.0 is a preview release.
+- Docker base images and the PostgreSQL image are pinned by digest, and Dependabot proposes updates to them and to the pinned GitHub Actions.
+- `web/scripts/readme-shots.mjs` regenerates the README screenshots from the real-hosts demo.
+
+### Changed
+- "Not reporting" alerts wait one report cycle after the server itself was down, so an outage doesn't page about every machine.
+
+## [0.3.0] - 2026-10-28 (preview)
 
 Agents and the server now update themselves from signed releases, approved fixes start within minutes, and machines that stop reporting are flagged. **Agents older than 0.2.0 can't update themselves: rerun the install command on each machine once** (the enrolment is kept). After that, updates are automatic.
 

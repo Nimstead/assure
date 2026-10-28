@@ -109,24 +109,33 @@ def agent_update_status(a: Asset, paused: bool, release: bool) -> str:
     return "failed" if a.agent_update_error else "updating"
 
 
+def verify_manifest(manifest: bytes, sig: str) -> dict | None:
+    """The manifest's fields if a key pinned in the served agent signed these exact bytes, else None."""
+    try:
+        raw_sig, rel = base64.b64decode(sig.strip(), validate=True), json.loads(manifest)
+    except ValueError:
+        return None
+    if not isinstance(rel, dict):
+        return None
+    for k in release_keys():
+        try:
+            Ed25519PublicKey.from_public_bytes(bytes.fromhex(k)).verify(raw_sig, manifest)
+            return rel
+        except InvalidSignature:
+            continue
+    return None
+
+
 def signed_release() -> dict | None:
     """{release, sig} when RELEASE_DIR holds a manifest signed by a pinned key for exactly the agent served here, else None.
     Agents verify it themselves; checking here only keeps the Assets page honest about who will update."""
     try:
         manifest, sig = (RELEASE_DIR / "release.json").read_bytes(), (RELEASE_DIR / "release.json.sig").read_text().strip()
-        raw_sig, rel = base64.b64decode(sig, validate=True), json.loads(manifest)
         agent_sha = hashlib.sha256(AGENT_FILE.read_bytes()).hexdigest()
-    except (OSError, ValueError):
+    except OSError:
         return None
-    if not isinstance(rel, dict) or rel.get("agent_sha256") != agent_sha:
-        return None
-    for k in release_keys():
-        try:
-            Ed25519PublicKey.from_public_bytes(bytes.fromhex(k)).verify(raw_sig, manifest)
-            return {"release": manifest.decode(), "sig": sig}
-        except InvalidSignature:
-            continue
-    return None
+    rel = verify_manifest(manifest, sig)
+    return {"release": manifest.decode(), "sig": sig} if rel and rel.get("agent_sha256") == agent_sha else None
 
 
 SECURE_COOKIES = os.environ.get("NIMSTEAD_SECURE_COOKIES", "1") != "0"

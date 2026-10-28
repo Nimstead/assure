@@ -34,28 +34,28 @@
     "kev": 1760,
     "epss": 396257,
     "osv": {
-      "inserted": 611267,
+      "inserted": 610602,
       "updated": 0,
       "skipped": 0
     },
-    "seconds": 94
+    "seconds": 176
   },
   {
     "step": "enrolled and reported",
     "host": "web-prod-01",
-    "open": 377,
+    "open": 379,
     "resolved": 0
   },
   {
     "step": "enrolled and reported",
     "host": "web-prod-02",
-    "open": 377,
+    "open": 379,
     "resolved": 0
   },
   {
     "step": "enrolled and reported",
     "host": "db-prod-01",
-    "open": 274,
+    "open": 275,
     "resolved": 0
   },
   {
@@ -109,9 +109,9 @@
   {
     "step": "open by priority",
     "fix-now": 6,
-    "low": 590,
+    "low": 593,
     "next": 25,
-    "planned": 557
+    "planned": 559
   },
   {
     "step": "RESULT: PASS"

@@ -1153,11 +1153,15 @@ _opener = urllib.request.build_opener(_NoRedirect)
 
 class run_lock:
     """Single remediation run at a time (cron/timer overlap)."""
+    dir = None  # default: the agent's state folder
 
     def __enter__(self):
-        d = os.path.dirname(WIN_STATE) if os.name == "nt" else "/var/lib/nimstead"
-        os.makedirs(d, exist_ok=True)
-        self.f = open(os.path.join(d, "agent.lock"), "w")
+        d = self.dir or (os.path.dirname(WIN_STATE) if os.name == "nt" else "/var/lib/nimstead")
+        try:
+            os.makedirs(d, exist_ok=True)
+            self.f = open(os.path.join(d, "agent.lock"), "w")
+        except OSError as e:  # e.g. `report` run as a non-root user: callers decide whether that matters
+            raise AgentError(f"cannot take the run lock in {d}: {e}") from None
         try:
             if os.name == "nt":
                 import msvcrt

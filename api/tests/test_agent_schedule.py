@@ -178,3 +178,17 @@ def test_windows_schedule_refuses_an_interpreter_users_can_modify(cfgfile, monke
     monkeypatch.setattr(agent.sys, "executable", r"C:\Program Files\Python313\python.exe")
     monkeypatch.setattr(agent, "ps", lambda run, script: (0, ""))
     assert "every 6 hours" in agent.schedule(CFG)
+
+
+def test_unwritable_lock_folder_skips_the_update_but_still_reports(cfgfile, monkeypatch, tmp_path):
+    """Regression (CI, non-root): the self-update step's lock folder can't be created; the run must still report."""
+    cfgfile.parent.mkdir(parents=True)
+    cfgfile.write_text(json.dumps(CFG))
+    blocker = tmp_path / "not-a-dir"
+    blocker.write_text("x")
+    monkeypatch.setattr(agent.run_lock, "dir", str(blocker / "lock"))
+    monkeypatch.setattr(agent, "self_update", lambda *a: pytest.fail("updated without the lock"))
+    monkeypatch.setattr(agent, "collect", lambda: {"packages": [{"name": "x"}]})
+    posted = []
+    monkeypatch.setattr(agent, "post", lambda server, path, *a, **k: posted.append(path) or {})
+    assert agent.main(["report"]) == 0 and posted == ["/api/agent/inventory"]

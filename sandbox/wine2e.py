@@ -137,6 +137,9 @@ def main(keep=False) -> int:
         note("install.ps1 ran elevated: enrolled, reported, task registered", triggers=out.strip().splitlines()[-2:],
              os=a["os_name"], open_by_priority=summ["open_by_priority"], fix=f"{top['package']} -> {top['fixed_version']}")
         product = top["package"]
+        import winoracle
+        table = winoracle.run(as_system, guest, api.get("/api/findings").json())
+        note("oracle: Windows Update vs Nimstead", **{k: v for k, v in table.items()})
         guest("Disable-ScheduledTask -TaskName 'Nimstead agent' | Out-Null")  # keep it out of the way for the rollback test
 
         def plan_and_get_job():

@@ -35,7 +35,7 @@ def rows():
     s = make_sessionmaker("sqlite://")()
     sync_msrc(s, 60, client())
     return {(a.package, a.record["aliases"][0]): a.record["affected"][0]["ranges"][0]["events"][1]["fixed"]
-            for a in s.scalars(select(Advisory).where(Advisory.ecosystem == "Microsoft"))}
+            for a in s.scalars(select(Advisory).where(Advisory.ecosystem == "Microsoft", Advisory.package != "Office CVE"))}
 
 
 def test_only_allowlisted_products_are_kept_with_normalised_builds(rows):

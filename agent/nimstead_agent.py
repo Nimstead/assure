@@ -308,6 +308,9 @@ def windows_microsoft(reg, run=None, dotnet_dirs=None):
                         newest[mm] = v
             for v in newest.values():
                 add(name, v, arch)
+    c2r = dict(_reg_values(reg, r"SOFTWARE\Microsoft\Office\ClickToRun\Configuration", reg.KEY_WOW64_64KEY))
+    if c2r.get("VersionToReport"):  # Microsoft 365 Apps / Office LTSC; a policy-set UpdateChannel wins over the CDN it came from
+        add("Microsoft 365 Apps", c2r["VersionToReport"], str(c2r.get("UpdateChannel") or c2r.get("CDNBaseUrl") or "")[:200] or None)
     for inst, iid in _reg_values(reg, r"SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL", reg.KEY_WOW64_64KEY):
         for n, v in _reg_values(reg, rf"SOFTWARE\Microsoft\Microsoft SQL Server\{iid}\Setup", reg.KEY_WOW64_64KEY):
             if n == "PatchLevel":

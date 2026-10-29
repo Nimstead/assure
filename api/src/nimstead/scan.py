@@ -68,7 +68,7 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
             elif ms := msproducts.from_winapp(p.name, p.source, p.version):
                 targets.append((p, msproducts.ECOSYSTEM, (ms[0],), ms[1]))
         elif eco == msproducts.ECOSYSTEM:
-            if ms := msproducts.targets(p.name, p.version, os_product):
+            if ms := msproducts.targets(p.name, p.version, os_product, p.source):
                 targets.append((p, eco, *ms))
         else:
             targets.append((p, eco, p.source or p.name, p.version))

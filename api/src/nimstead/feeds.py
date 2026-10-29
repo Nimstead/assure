@@ -16,7 +16,7 @@ import httpx
 from sqlalchemy import delete, insert, select, update
 from sqlalchemy.orm import Session
 
-from nimstead import evidence, external, msproducts, notify, updates, winapps
+from nimstead import evidence, external, msproducts, notify, office, updates, winapps
 from nimstead.db import Advisory, Asset, Cvss, Epss, InstalledPackage, Kev, Org, make_sessionmaker, now
 from nimstead.match import normalize_ecosystem
 from nimstead.scan import HOTPATCH, rescan
@@ -185,6 +185,21 @@ def sync_epss(session: Session, client=None) -> int:
     return len(rows)
 
 
+def sync_office(session: Session, client=None) -> dict:
+    """Click-to-Run Office fixes per channel and version line (office.py), from the Office CVEs sync_msrc kept and
+    Microsoft's OfficeReleases feed. A feed that fails or changes shape keeps the rows already stored."""
+    try:
+        r = _client(client).get(office.URL, headers={"Accept": "application/json"})
+        r.raise_for_status()
+        n = office.sync(session, r.json(), office.stored_cves(session))
+    except (httpx.HTTPError, ValueError) as e:
+        session.rollback()
+        log.warning("Office channel sync skipped, kept the stored rows: %s", e)
+        return {"error": str(e)[:200]}
+    session.commit()
+    return {"rows": n}
+
+
 def sync_msrc(session: Session, months: int = 12, client=None) -> dict:
     """Windows OS advisories from the MSRC CVRF API, stored as OSV-shaped rows (ecosystem Windows, package =
     MSRC product name, fixed = FixedBuild) so the normal matcher works. Windows 10/11/Server products with a dotted
@@ -232,6 +247,17 @@ def sync_msrc(session: Session, months: int = 12, client=None) -> dict:
                         if pid not in track or windows_cmp(b, track[pid][0]) < 0:
                             track[pid] = (b, kb if kb.isdigit() else None)
             scores = {pid: s for s in v.get("CVSSScoreSets", []) for pid in s["ProductID"]}
+            # Office Click-to-Run: no build in MSRC, so the CVE is kept for office.sync to pair with the channel feed
+            office_ch = sorted({ch for r in v.get("Remediations", []) if str(r.get("FixedBuild", "")).startswith("https://")
+                                for pid in r.get("ProductID", []) for ch in office.channels_for(names.get(pid, ""))})
+            if office_ch:
+                vec = next((s.get("Vector", "") for s in v.get("CVSSScoreSets", []) if s.get("Vector", "").startswith("CVSS:3")), "")
+                rec = {"id": f"OFFICE-{cve}", "aliases": [cve], "modified": mod, "summary": v["Title"]["Value"][:500],
+                       "database_specific": {"released": d["InitialReleaseDate"][:10], "channels": office_ch}, "affected": [],
+                       **({"severity": [{"type": "CVSS_V3", "score": vec}]} if vec else {})}
+                row = {"id": rec["id"], "ecosystem": msproducts.ECOSYSTEM, "package": "Office CVE", "modified": mod, "record": rec}
+                (ins if (rec["id"], "Office CVE") not in have else upd).append(row)
+                have[(rec["id"], "Office CVE")] = mod
             for pid, (build, kb), suffix in [*((p, f, "") for p, f in fixes.items()), *((p, f, HOTPATCH) for p, f in hot.items())]:
                 # some entries say "Windows 11 version 26H1" (lowercase v); make the names uniform
                 name = re.sub(r"^(Windows 11) version", r"\1 Version", names.get(pid, ""))
@@ -286,6 +312,7 @@ def update_all(session: Session, client=None) -> dict:
             out["osv"][eco] = {"error": f"{type(e).__name__}: {e}"[:200]}
     if in_use & {"Windows", msproducts.ECOSYSTEM}:
         out["msrc"] = sync_msrc(session, client=client)
+        out["office"] = sync_office(session, client=client)
     out["rescanned"] = 0
     cache: dict = {}  # advisories decoded once per pass: hosts on one release share most packages
     out["external"] = {"scanned": 0, "refused": 0}

@@ -1,0 +1,104 @@
+"""Microsoft 365 Apps and Office LTSC (Click-to-Run) by channel (plan T9, decision 3).
+
+MSRC lists Office CVEs with `FixedBuild` = "https://aka.ms/OfficeSecurityReleases", so the fix build comes from
+Microsoft's own release feed (`OfficeReleases`: per channel, each supported version line and its builds with dates).
+For a CVE published in a month's security release, the fixed build on a channel's version line is the first build of
+that line made available on or after that release date. A host is compared only with its own channel and line:
+key "Microsoft 365 Apps <channelId> <line>", line = the build's third part (16.0.<20430>.20180).
+A line with no build since the release isn't judged (never guessed); a changed feed schema fails the sync loudly and
+keeps the rows already stored.
+"""
+
+import re
+from datetime import date
+
+from sqlalchemy import delete, select
+from sqlalchemy.orm import Session
+
+from nimstead.db import Advisory
+from nimstead.msproducts import ECOSYSTEM
+
+URL = "https://clients.config.office.net/releases/v1.0/OfficeReleases"
+PREFIX = "Microsoft 365 Apps "
+# Click-to-Run channel GUIDs (CDNBaseUrl / UpdateChannel on the host) -> channelId; checked against the feed every sync
+CHANNELS = {"492350f6-3a01-4f97-b9c0-c7c6ddf67d60": "Current", "55336b82-a18d-4dd6-b5f6-9e5095c314a6": "MonthlyEnterprise",
+            "7ffbc6bf-bc32-4f92-8982-f9dd17fd3114": "SemiAnnual", "b8f9b850-328d-4355-9145-c59439a0c4cf": "SemiAnnualPreview",
+            "64256afe-f5d9-4f86-8936-8840a6a4f5be": "CurrentPreview", "5440fd1f-7ecb-4221-8110-145efaa6372f": "BetaChannel",
+            "7983bac0-e531-40cf-be00-fd24fe66619c": "PerpetualVL2024", "5030841d-c919-4594-8d2d-84ae4f96e58e": "PerpetualVL2021",
+            "f2e724c1-748f-4b47-8fb8-8e0d210e9208": "PerpetualVL2019"}
+# MSRC product family -> the channels whose builds fix it
+FAMILIES = [(re.compile(r"Microsoft 365 Apps for Enterprise for (32|64)-bit Systems"),
+             ("Current", "MonthlyEnterprise", "SemiAnnual", "SemiAnnualPreview", "CurrentPreview", "BetaChannel")),
+            (re.compile(r"Microsoft Office LTSC 2024 for (32|64)-bit editions"), ("PerpetualVL2024",)),
+            (re.compile(r"Microsoft Office LTSC 2021 for (32|64)-bit editions"), ("PerpetualVL2021",)),
+            (re.compile(r"Microsoft Office 2019 for (32|64)-bit editions"), ("PerpetualVL2019",))]
+
+
+def channels_for(msrc_name: str) -> tuple[str, ...]:
+    return next((ch for pat, ch in FAMILIES if pat.fullmatch(msrc_name)), ())
+
+
+def host_key(build: str, channel: str) -> str | None:
+    """Advisory key for a host: its channel (GUID or a CDN URL ending in it) and the build's version line."""
+    guid = (channel or "").rstrip("/").rsplit("/", 1)[-1].lower()
+    m = re.fullmatch(r"16\.0\.(\d+)\.\d+", build or "")
+    return f"{PREFIX}{CHANNELS[guid]} {m[1]}" if guid in CHANNELS and m else None
+
+
+def lines(feed) -> dict[str, list[tuple[date, str]]]:
+    """{channelId line: [(available, build)] sorted}; ValueError on any schema change."""
+    if not isinstance(feed, list) or not feed:
+        raise ValueError("OfficeReleases: expected a non-empty list of channels")
+    out: dict[str, list[tuple[date, str]]] = {}
+    seen = set()
+    for c in feed:
+        if not (isinstance(c, dict) and isinstance(c.get("channelId"), str) and isinstance(c.get("officeVersions"), list)):
+            raise ValueError("OfficeReleases: a channel lacks channelId/officeVersions")
+        for v in c["officeVersions"]:
+            b, when, cdn = v.get("legacyVersion"), str(v.get("availabilityDate", ""))[:10], str(v.get("cdnBaseUrl", ""))
+            if not (isinstance(b, str) and re.fullmatch(r"16\.0\.\d+\.\d+", b) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", when)):
+                raise ValueError(f"OfficeReleases: unexpected version entry {str(v)[:200]}")
+            guid = cdn.rstrip("/").rsplit("/", 1)[-1].lower()
+            if guid in CHANNELS and CHANNELS[guid] != c["channelId"]:
+                raise ValueError(f"OfficeReleases: channel {c['channelId']} now has GUID {guid}")
+            seen.add(c["channelId"])
+            out.setdefault(f"{c['channelId']} {b.split('.')[2]}", []).append((date.fromisoformat(when), b))
+    if missing := {"Current", "MonthlyEnterprise", "SemiAnnual"} - seen:
+        raise ValueError(f"OfficeReleases: channels missing: {sorted(missing)}")
+    return {k: sorted(v) for k, v in out.items()}
+
+
+def sync(s: Session, feed, cves: list[dict]) -> int:
+    """Rebuild every Office row from the feed and the Office CVEs MSRC published: cves = [{cve, released (date),
+    channels, title, severity}]. Returns the number of rows."""
+    by_line = lines(feed)
+    s.execute(delete(Advisory).where(Advisory.ecosystem == ECOSYSTEM, Advisory.package.like(PREFIX + "%")))
+    rows = []
+    for c in cves:
+        for line, builds in by_line.items():
+            if line.split(" ")[0] not in c["channels"]:
+                continue
+            fixed = next((b for when, b in builds if when >= c["released"]), None)
+            if not fixed:  # nothing released on this line since: not judged
+                continue
+            pkg = PREFIX + line
+            rec = {"id": f"M365-{c['cve']}-{line.replace(' ', '-')}", "aliases": [c["cve"]], "modified": c["modified"],
+                   "summary": c["title"][:500], "database_specific": {"released": c["released"].isoformat()},
+                   "affected": [{"package": {"ecosystem": ECOSYSTEM, "name": pkg},
+                                 "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "16.0." + line.split(" ")[1] + ".0"}, {"fixed": fixed}]}]}]}
+            if c.get("severity"):
+                rec["severity"] = c["severity"]
+            rows.append(Advisory(id=rec["id"], ecosystem=ECOSYSTEM, package=pkg, modified=c["modified"], record=rec))
+    s.add_all(rows)
+    s.flush()
+    return len(rows)
+
+
+def stored_cves(s: Session) -> list[dict]:
+    """The Office CVEs sync_msrc kept (package "Office CVE", one row per CVE and MSRC product family)."""
+    out = []
+    for rec in s.scalars(select(Advisory.record).where(Advisory.ecosystem == ECOSYSTEM, Advisory.package == "Office CVE")):
+        d = rec["database_specific"]
+        out.append({"cve": rec["aliases"][0], "released": date.fromisoformat(d["released"]), "channels": tuple(d["channels"]),
+                    "title": rec["summary"], "severity": rec.get("severity"), "modified": rec["modified"]})
+    return out

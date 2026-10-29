@@ -104,11 +104,14 @@ def from_winapp(name: str, publisher: str | None, version: str) -> tuple[str, st
     return None
 
 
-def targets(name: str, version: str, os_product: str | None) -> tuple[tuple[str, ...], str] | None:
+def targets(name: str, version: str, os_product: str | None, source: str | None = None) -> tuple[tuple[str, ...], str] | None:
     """An agent-reported Microsoft fact -> (candidate keys, first with advisories wins; normalised version)."""
     v = norm(version)
     if not v:
         return None
+    if name == "Microsoft 365 Apps":  # Click-to-Run: its channel (source) and version line (office.py)
+        from nimstead.office import host_key
+        return ((k,), v) if (k := host_key(v, source or "")) else None
     if name == ".NET runtime":
         return (_minor(".NET", v) + " runtime",), v
     if name == "ASP.NET Core":

@@ -43,7 +43,8 @@ test("sign up, enrol a sandbox host, plan and approve a fix, see evidence", asyn
   await page.getByRole("button", { name: "Create account" }).click();
 
   // An admin's first session comes from signing in, which sets up two-step sign-in
-  await expect(page.getByText(/Account created\. Sign in to set up two-step sign-in/)).toBeVisible();
+  // the visible note, not its copy in the screen-reader live region
+  await expect(page.locator("main p").filter({ hasText: /Account created\. Sign in to set up two-step sign-in/ })).toBeVisible();
   await page.getByLabel("Email", { exact: true }).fill("e2e@example.com");
   await page.getByLabel("Password").fill("correct horse battery staple");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();

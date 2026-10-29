@@ -70,6 +70,7 @@ def test_cancel_only_before_a_machine_picks_the_fix_up(env):
     r = c.post(f"/api/remediation/jobs/{jid}/cancel")
     assert r.status_code == 200 and r.json()["status"] == "cancelled" and "a@example.com" in r.json()["error"]
     assert "remediation_cancelled" in ledger_kinds(c)
+    assert c.get("/api/summary").json()["attention"] == []  # a deliberate cancel isn't something that "needs a look"
     assert c.post(f"/api/remediation/jobs/{jid}/approve").status_code == 409  # cancelled stays cancelled
     jid = plan(c, aid).json()["id"]  # and no longer blocks planning again
     c.post(f"/api/remediation/jobs/{jid}/approve")
@@ -94,6 +95,23 @@ def test_summary_actions_carry_asset_ids_and_the_fix_in_flight(env):
     assert action["job"] == {"id": jid, "status": "approved"}
     c.post(f"/api/remediation/jobs/{jid}/cancel")
     assert next(a for a in c.get("/api/summary").json()["top_actions"] if a["package"] == "openssl")["job"] is None
+
+
+def test_summary_says_which_hosts_are_busy_and_what_failed_last(env):
+    c = setup(env)
+    a1, h1 = add_host(c, "sbx-1")
+    a2, _ = add_host(c, "sbx-2")
+    openssl = lambda: next(a for a in c.get("/api/summary").json()["top_actions"] if a["package"] == "openssl")  # noqa: E731
+    assert openssl()["busy_asset_ids"] == [] and openssl()["last_attempt"] is None
+    jid = plan(c, a1).json()["id"]
+    act = openssl()
+    assert act["busy_asset_ids"] == [a1] and sorted(act["asset_ids"]) == sorted([a1, a2])  # sbx-2 can still be planned
+    c.post(f"/api/remediation/jobs/{jid}/approve")
+    c.get("/api/agent/jobs", headers=h1)
+    c.post(f"/api/agent/jobs/{jid}/report", json={"outcome": "aborted", "error": "would also change: libcrypto3"}, headers=h1)
+    act = openssl()
+    assert act["busy_asset_ids"] == [] and act["job"] is None
+    assert act["last_attempt"]["id"] == jid and act["last_attempt"]["status"] == "aborted" and "libcrypto3" in act["last_attempt"]["error"]
 
 
 def test_agent_claim_is_not_trusted_without_inventory_proof(env):

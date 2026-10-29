@@ -103,6 +103,24 @@ def test_sla_metrics(env):
     assert statuses[("NIST SP 800-53 Rev. 5", "RA-5")] == "met"
 
 
+def test_overdue_filter_matches_the_evidence_count(env):
+    c, _ = setup_flow(env)
+    s = sessionmaker(make_engine(env))()
+    org_id = s.scalar(select(Finding.org_id))
+    rows = c.get("/api/findings").json()
+    assert rows and all(r["due"] for r in rows)  # every open finding has a deadline
+    assert c.get("/api/findings", params={"overdue": "true"}).json() == []  # just detected: nothing is late yet
+    # Age every open finding by 200 days: the filter and the evidence pack must agree on which are late.
+    for f in s.scalars(select(Finding).where(Finding.status == "open")):
+        f.first_seen -= timedelta(days=200)
+    s.commit()
+    pack = evidence.build_pack(s, org_id, now() - timedelta(days=365), now() + timedelta(days=200))  # the ledger's clock, moved the other way
+    late = c.get("/api/findings", params={"overdue": "true"}).json()
+    assert len(late) == pack["metrics"]["overdue_open"] > 0
+    assert c.get(f"/api/findings/{late[0]['id']}").json()["due"] == late[0]["due"]
+    assert c.get("/api/findings.csv", params={"overdue": "true"}).text.count("\n") == len(late) + 1  # header + rows
+
+
 def test_no_activity_is_not_reported_as_met(env, tmp_path, monkeypatch):
     monkeypatch.setattr(evidence, "KEY_FILE", tmp_path / "k.pem")
     c, _ = setup_flow(env)
@@ -252,7 +270,7 @@ def test_org_sla_and_new_framework_mappings_are_in_the_pack(env):
     controls = {(x["framework"], x["control"]): x for x in pack["controls"]}
     assert {("SOC 2 (TSC 2017)", "CC7.1"), ("SOC 2 (TSC 2017)", "CC8.1"), ("NIS2 Directive", "Art. 21(2)(e)")} <= set(controls)
     si2 = controls[("NIST SP 800-53 Rev. 5", "SI-2")]["evidence"]
-    assert "in force when each was detected" in si2 and "fix-now 365 days" in si2 and "changed 2 times" in si2
+    assert "in force when each was detected" in si2 and "fix now 365 days" in si2 and "changed 2 times" in si2
     assert "not the vendor's release date" in controls[("PCI DSS v4.0.1", "6.3.3")]["evidence"]
     for bad in ({"fix-now": 0}, {"fix-now": 400}, {"urgent": 5}):
         assert c.patch("/api/settings", json={"sla_days": bad}).status_code == 422

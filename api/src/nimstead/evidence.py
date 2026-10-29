@@ -22,10 +22,23 @@ from nimstead.verify_pack import canonical, entry_hash
 GENESIS = "0" * 64
 # Remediation deadlines by priority (days from detection). fix-now = Cyber Essentials 14 days.
 SLA_DAYS = {"fix-now": 14, "next": 30, "planned": 90, "low": 180}  # defaults; each org can set its own (Org.sla_days)
+SLA_LABEL = {"fix-now": "fix now", "next": "next", "planned": "routine", "low": "low"}  # as the UI names them (DECISIONS 50)
 
 
 def sla_days(org: Org) -> dict:
     return {**SLA_DAYS, **{k: int(v) for k, v in (org.sla_days or {}).items() if k in SLA_DAYS}}
+
+
+def sla_history(s: Session, org_id: str):
+    """sla_at(t): the deadlines in force at time t, from the ledger (tamper-evident), so relaxing a deadline later
+    can't turn an old miss into a pass. Shared by evidence packs and the findings list's due dates."""
+    history = [(datetime.fromisoformat(ts).replace(tzinfo=None), {**SLA_DAYS, **d["sla_days"]}) for ts, d in s.execute(
+        select(LedgerEntry.ts, LedgerEntry.data).where(LedgerEntry.org_id == org_id, LedgerEntry.kind == "policy_changed")
+        .order_by(LedgerEntry.seq)) if "sla_days" in d]
+
+    def sla_at(t: datetime) -> dict:
+        return next((d for ts, d in reversed(history) if ts <= t), SLA_DAYS)
+    return sla_at
 
 
 def append(s: Session, org_id: str, kind: str, subject: str, data: dict) -> LedgerEntry:
@@ -175,7 +188,7 @@ def _controls(m: dict, sla: dict) -> list[dict]:
         {"framework": "NIST SP 800-53 Rev. 5", "control": "RA-5", "requirement": "Vulnerability monitoring and scanning",
          "status": st(scanned), "evidence": f"{m['assets_reporting']}/{m['assets']} assets reported inventory in period"},
         {"framework": "NIST SP 800-53 Rev. 5", "control": "SI-2", "requirement": "Flaw remediation within organisation-defined time periods",
-         "status": timely(sla_ok, m["resolved"]), "evidence": f"{m['resolved_within_sla']}/{m['resolved']} fixes within the organisation's SLA in force when each was detected (now: {', '.join(f'{p} {d} days' for p, d in sla.items())})"
+         "status": timely(sla_ok, m["resolved"]), "evidence": f"{m['resolved_within_sla']}/{m['resolved']} fixes within the organisation's SLA in force when each was detected (now: {', '.join(f'{SLA_LABEL.get(p, p)} {d} days' for p, d in sla.items())})"
                      + (f"; deadlines changed {m['sla_changes']} times in the period (sla_changes)" if m.get("sla_changes") else "")},
         {"framework": "PCI DSS v4.0.1", "control": "6.3.3", "requirement": "Critical security patches installed within one month of release",
          "status": st(m["critical_overdue_30d"] == 0),
@@ -213,14 +226,8 @@ def build_pack(s: Session, org_id: str, start: datetime, end: datetime) -> dict:
             opened.setdefault(e.subject, ts)
             if e.kind == "finding_reopened":
                 closed_at.pop(e.subject, None)
-    # Each finding is held to the deadline in force when it was detected, from the ledger (tamper-evident), so relaxing
-    # a deadline later can't turn an old miss into a pass.
-    history = [(datetime.fromisoformat(ts).replace(tzinfo=None), {**SLA_DAYS, **d["sla_days"]}) for ts, d in s.execute(
-        select(LedgerEntry.ts, LedgerEntry.data).where(LedgerEntry.org_id == org_id, LedgerEntry.kind == "policy_changed")
-        .order_by(LedgerEntry.seq)) if "sla_days" in d]
-
-    def sla_at(t: datetime) -> dict:
-        return next((d for ts, d in reversed(history) if ts <= t), SLA_DAYS)
+    # Each finding is held to the deadline in force when it was detected.
+    sla_at = sla_history(s, org_id)
     rows, ttr = [], []
     m = dict.fromkeys(["resolved", "resolved_within_sla", "overdue_open", "ce_in_scope_resolved",
                        "ce_in_scope_resolved_in_14d", "ce_in_scope_overdue", "critical_overdue_30d"], 0)

@@ -1,6 +1,6 @@
 # Implementation Plan (Windows round 1): exact Windows Server and Windows 10/11 detection and remediation
 
-Status: **decisions made, ready to build** (2026-10-29; target: detection parity with Nessus/Qualys on Windows, remediation they don't have). Tasks: `tasks/todo.md`. Previous plans: `plan-0.3-agent.md`, `plan-0.4-security.md`, `plan-0.5-ux.md`, `plan-0.6-ux.md`.
+Status: **built on branch `windows-round-1`** (2026-10-29; see STATUS.md for proof and gaps; target: detection parity with Nessus/Qualys on Windows, remediation they don't have). Tasks: `tasks/todo.md`. Previous plans: `plan-0.3-agent.md`, `plan-0.4-security.md`, `plan-0.5-ux.md`, `plan-0.6-ux.md`.
 
 ## Overview
 Today Windows coverage is: the OS build against MSRC FixedBuild (exact), ~18 third-party apps against a curated NVD CPE
@@ -179,79 +179,79 @@ T43 AD discovery (independent)              T44 proxy + fleet scheduling (before
 ## Task list (details and acceptance criteria in `tasks/todo.md`)
 
 ### Phase 0: Ground truth (highest risk first)
-- [ ] T0: CVRF data spike: real fixtures for hotpatch, Edge, .NET, SQL Server, Exchange, Store apps, Defender, Office
-- [ ] T1: WUA oracle harness: our open OS findings vs Windows Update's missing security KBs, per VM
+- [x] T0: CVRF data spike: real fixtures for hotpatch, Edge, .NET, SQL Server, Exchange, Store apps, Defender, Office
+- [x] T1: WUA oracle harness: our open OS findings vs Windows Update's missing security KBs, per VM
 
 ### Checkpoint A: the numbers we are trying to improve are written down
 
 ### Phase 1: OS detection correctness
-- [ ] T2: Hotpatch and cumulative fixes as separate tracks (detection + KB choice)
-- [ ] T3: OS lifecycle findings (end of support, ESU, ending within 90 days)
-- [ ] T4: An unmapped OS still reports apps and says why the OS isn't matched (Server 2012/R2, 23H2 names added)
+- [x] T2: Hotpatch and cumulative fixes as separate tracks (detection + KB choice)
+- [x] T3: OS lifecycle findings (end of support, ESU, ending within 90 days)
+- [x] T4: An unmapped OS still reports apps and says why the OS isn't matched (Server 2012/R2, 23H2 names added)
 
 ### Checkpoint B: oracle agreement on Server 2025 + Windows 11; no regressions in the full suite
 
 ### Phase 2: Microsoft components from MSRC
-- [ ] T5: MSRC product allowlist, first slice Microsoft Edge (and Edge out of the NVD map)
-- [ ] T6: .NET (runtimes and Framework)
-- [ ] T7: SQL Server with GDR/CU tracks
-- [ ] T8: Inbox Store (MSIX) apps
-- [ ] T9: Microsoft 365 Apps (Click-to-Run) by channel
-- [ ] T19: Exchange Server and SharePoint Server
-- [ ] T20: Microsoft Defender engine and platform
+- [x] T5: MSRC product allowlist, first slice Microsoft Edge (and Edge out of the NVD map)
+- [x] T6: .NET (runtimes and Framework) (runtimes; .NET Framework dropped: compound MSRC builds, DECISIONS 51)
+- [x] T7: SQL Server with GDR/CU tracks
+- [x] T8: Inbox Store (MSIX) apps
+- [x] T9: Microsoft 365 Apps (Click-to-Run) by channel
+- [x] T19: Exchange Server and SharePoint Server
+- [x] T20: Microsoft Defender engine and platform
 
 ### Checkpoint C: each product proven on a real install in a VM; noise review of a real fleet export
 
 ### Phase 3: "Patched but not protected" and exposure
-- [ ] T10: Config checks: Secure Boot 2023 certificates, BlackLotus mitigations, opt-in CVE mitigations
-- [ ] T11: Role/feature-aware priority (Server roles, client optional features)
-- [ ] T12: Update-management context on the asset (WSUS/WUfB, ESU, pending reboot, last WU success)
+- [x] T10: Config checks: Secure Boot 2023 certificates, BlackLotus mitigations, opt-in CVE mitigations
+- [x] T11: Role/feature-aware priority (Server roles, client optional features)
+- [x] T12: Update-management context on the asset (WSUS/WUfB, ESU, pending reboot, last WU success)
 
 ### Checkpoint D: UI shows each new fact; axe clean; self-review notes written (decision 7)
 
 ### Phase 4: Remediation
-- [ ] T13: Windows health parity: crash and restart events since the change
-- [ ] T14: Say why Windows Update didn't offer the KB (WSUS approval, deferral, ESU), opt-in direct Microsoft Update search
-- [ ] T15: Hotpatch remediation (no reboot) on an enrolled VM
-- [ ] T16: .NET cumulative update through `WinJob` with DISM rollback
-- [ ] T17: Microsoft 365 Apps update to a pinned build, rollback to the previous build
-- [ ] T21: winget fix for curated apps and Edge, IDs pinned in the agent
-- [ ] T22: Forward-only plans: manual approval only, labelled, never automated
-- [ ] T18: Real-VM proof on Windows 10 (LTSC 2021 eval), Server 2016, 2019, 2022 (detection + one fix + one rollback each)
+- [x] T13: Windows health parity: crash and restart events since the change
+- [x] T14: Say why Windows Update didn't offer the KB (WSUS approval, deferral, ESU), opt-in direct Microsoft Update search
+- [ ] T15: Hotpatch remediation (no reboot) on an enrolled VM — BLOCKED on the owner (Azure subscription); the two-KB job ships (T2)
+- [ ] T16: .NET cumulative update through `WinJob` with DISM rollback — DROPPED: .NET Framework isn't detected (DECISIONS 51, 57)
+- [x] T17: Microsoft 365 Apps update to a pinned build, rollback to the previous build
+- [x] T21: winget fix for curated apps and Edge, IDs pinned in the agent
+- [x] T22: Forward-only plans: manual approval only, labelled, never automated
+- [ ] T18: Real-VM proof on Windows 10 (LTSC 2021 eval), Server 2016, 2019, 2022 (detection + one fix + one rollback each) — partly: Windows 11 re-proven on the new code; Windows 10 / Server 2016–2022 need evaluation ISOs (not on this machine)
 
 ### Phase 6: Third-party and on-disk breadth
-- [ ] T28: End-of-life findings beyond the OS (Microsoft products and curated apps)
-- [ ] T29: Remaining Microsoft products with numeric MSRC builds
-- [ ] T30: Second advisory source for curated apps: CVE List v5 (CNA) and CISA Vulnrichment
-- [ ] T31: App batch 1 (runtimes and browsers) and the real-install harness
-- [ ] T32: App batch 2 (remote access, VPN and file transfer)
-- [ ] T33: App batch 3 (virtualisation, backup, vendor tools, drivers, servers)
-- [ ] T34: Per-user apps of users who aren't signed in (offline hives)
-- [ ] T35: Opt-in Java library scan feeding the Maven matcher
+- [x] T28: End-of-life findings beyond the OS (Microsoft products and curated apps)
+- [x] T29: Remaining Microsoft products with numeric MSRC builds
+- [x] T30: Second advisory source for curated apps: CVE List v5 (CNA) and CISA Vulnrichment
+- [x] T31: App batch 1 (runtimes and browsers) and the real-install harness (code + real-install harness; products proven in a VM listed in STATUS)
+- [x] T32: App batch 2 (remote access, VPN and file transfer)
+- [x] T33: App batch 3 (virtualisation, backup, vendor tools, drivers, servers)
+- [x] T34: Per-user apps of users who aren't signed in (offline hives)
+- [x] T35: Opt-in Java library scan feeding the Maven matcher
 
 ### Checkpoint G: ~80 curated products, each proven by a real install; noise review repeated
 
 ### Phase 7: Hardening and threat context
-- [ ] T36: Hardening findings: network and authentication
-- [ ] T37: Hardening findings: privilege escalation and host protection
-- [ ] T38: Reversible configuration fixes for a closed subset
-- [ ] T39: Threat context: Microsoft's exploitability index, KEV ransomware use, public exploits
+- [x] T36: Hardening findings: network and authentication
+- [x] T37: Hardening findings: privilege escalation and host protection
+- [x] T38: Reversible configuration fixes for a closed subset
+- [x] T39: Threat context: Microsoft's exploitability index, KEV ransomware use, public exploits
 
 ### Phase 8: Fleet-grade remediation operations
-- [ ] T40: Maintenance windows (dispatch gate, early download)
-- [ ] T41: Reboot policy (servers in window only; workstations notified and deferred; never on battery)
-- [ ] T42: Cluster and domain-controller serialisation groups
-- [ ] T43: Windows hosts with no agent, from Active Directory
-- [ ] T44: Proxy support and fleet-scale scheduling (jitter, low priority, resource budget)
+- [x] T40: Maintenance windows (dispatch gate, early download)
+- [x] T41: Reboot policy (servers in window only; workstations notified and deferred; never on battery)
+- [x] T42: Cluster and domain-controller serialisation groups
+- [x] T43: Windows hosts with no agent, from Active Directory
+- [x] T44: Proxy support and fleet-scale scheduling (jitter, low priority, resource budget)
 
 ### Checkpoint H: a 2-node failover cluster and a DC pair patched in a window, one node at a time, in VMs
 
 ### Phase 5: Python-free Windows agent (runs after Phase 1, see the rules above)
-- [ ] T23: Pinned embeddable runtimes, carried in the signed `release.json`
-- [ ] T24: The server fetches the release's runtimes and serves them to agents
-- [ ] T25: `install.ps1` installs without Python (runtime checked by hash and PSF signature)
-- [ ] T26: The agent keeps its runtime current and moves hosts off a system Python
-- [ ] T27: VM proof: Windows 11 + Server 2025 with no Python, update of agent and runtime by the task alone, clean uninstall
+- [x] T23: Pinned embeddable runtimes, carried in the signed `release.json`
+- [x] T24: The server fetches the release's runtimes and serves them to agents
+- [x] T25: `install.ps1` installs without Python (runtime checked by hash and PSF signature)
+- [x] T26: The agent keeps its runtime current and moves hosts off a system Python
+- [x] T27: VM proof: Windows 11 + Server 2025 with no Python, update of agent and runtime by the task alone, clean uninstall
 
 ### Checkpoint F: Python-free install proven; docs and out-of-band verification steps updated
 

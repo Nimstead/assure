@@ -1242,13 +1242,15 @@ TRUSTED_OWNERS = {"S-1-5-18", "S-1-5-32-544"}  # SYSTEM, Administrators
 
 PS_FIND = r"""
 $s = New-Object -ComObject Microsoft.Update.Session
-$r = $s.CreateUpdateSearcher().Search("IsInstalled=0 and Type='Software'")
+$q = $s.CreateUpdateSearcher(); %WU_SOURCE%
+$r = $q.Search("IsInstalled=0 and Type='Software'")
 ConvertTo-Json -Compress -InputObject @($r.Updates | Where-Object { $_.KBArticleIDs -contains '%KB%' } | ForEach-Object {
   [pscustomobject]@{ title = $_.Title; uninstallable = $_.IsUninstallable; reboot = $_.InstallationBehavior.RebootBehavior } })
 """
 PS_DOWNLOAD = r"""
 $s = New-Object -ComObject Microsoft.Update.Session
-$r = $s.CreateUpdateSearcher().Search("IsInstalled=0 and Type='Software'")
+$q = $s.CreateUpdateSearcher(); %WU_SOURCE%
+$r = $q.Search("IsInstalled=0 and Type='Software'")
 $c = New-Object -ComObject Microsoft.Update.UpdateColl
 $r.Updates | Where-Object { $_.KBArticleIDs -contains '%KB%' } | ForEach-Object { [void]$c.Add($_) }
 if ($c.Count -ne 1) { throw "expected exactly one update for KB%KB%, found $($c.Count)" }
@@ -1324,7 +1326,8 @@ def removable(pkgs):
                   + (f"; also installed, stays after rollback: {stays}" if stays else ""))
 PS_INSTALL = r"""
 $s = New-Object -ComObject Microsoft.Update.Session
-$r = $s.CreateUpdateSearcher().Search("IsInstalled=0 and Type='Software'")
+$q = $s.CreateUpdateSearcher(); %WU_SOURCE%
+$r = $q.Search("IsInstalled=0 and Type='Software'")
 $c = New-Object -ComObject Microsoft.Update.UpdateColl
 $r.Updates | Where-Object { $_.KBArticleIDs -contains '%KB%' } | ForEach-Object { if (-not $_.EulaAccepted) { $_.AcceptEula() }; [void]$c.Add($_) }
 if ($c.Count -ne 1) { throw "expected exactly one update for KB%KB%, found $($c.Count)" }
@@ -1368,6 +1371,14 @@ PS_CLUSTER_DRAIN = r"""Suspend-ClusterNode -Name $env:COMPUTERNAME -Drain -Wait 
 PS_CLUSTER_RESUME = r"""Resume-ClusterNode -Name $env:COMPUTERNAME -Failback Immediate -ErrorAction Stop | Out-Null; (Get-ClusterNode -Name $env:COMPUTERNAME).State"""
 # Someone signed in at the console or over RDP: their restart can be put off until the job's deadline (plan T41)
 PS_SIGNED_IN = r"""@(Get-CimInstance Win32_Process -Filter "Name='explorer.exe'" -ErrorAction SilentlyContinue).Count"""
+
+
+WU_SOURCE = None  # "microsoft": search Microsoft Update directly, not WSUS (enroll --windows-update-source; local only)
+
+
+def wu(script):
+    """A Windows Update script searching this host's configured source, or Microsoft Update when the host opted in."""
+    return script.replace("%WU_SOURCE%", "$q.ServerSelection = 2" if WU_SOURCE == "microsoft" else "")
 
 
 def ps(run, script):
@@ -1504,7 +1515,7 @@ class WinJob:
         self.step("on mains power or battery above half", rc == 0 and not out.strip(), out.strip() or "ok")
         found = {}  # KB -> (target build, how many updates Windows Update offers for it)
         for kb, to in [(s["kb"], s["to"]), *([(s["alt"]["kb"], s["alt"]["to"])] if s.get("alt") else [])]:
-            rc, out = ps(self.run, PS_FIND.replace("%KB%", kb))
+            rc, out = ps(self.run, wu(PS_FIND).replace("%KB%", kb))
             found[kb] = (to, len(json.loads(out)) if rc == 0 and out.strip().startswith("[") else 0, out)
         offered = [kb for kb, (_, n, _) in found.items() if n == 1]
         if not offered:  # say why, from this machine's own update settings (plan T14)
@@ -1521,7 +1532,7 @@ class WinJob:
         s["baseline"] = self.rollups()
         self.step("rollback baseline recorded", any(v.strip() == "Installed" for v in s["baseline"].values()),
                   "installed cumulative packages: " + ", ".join(k for k, v in s["baseline"].items() if v.strip() == "Installed"))
-        rc, out = ps(self.run, PS_DOWNLOAD.replace("%KB%", s["kb"]))
+        rc, out = ps(self.run, wu(PS_DOWNLOAD).replace("%KB%", s["kb"]))
         self.step(f"KB{s['kb']} downloaded", rc == 0 and out.strip().splitlines()[-1:] in (["2"], ["3"]), out)
         rc, out = ps(self.run, PS_PERMANENCE.replace("%KB%", s["kb"]))
         # permanent sub-packages (Features on Demand) stay behind on removal; rollback is judged by the build returning
@@ -1535,7 +1546,7 @@ class WinJob:
                 self._resume_cluster()
             self.step("cluster node drained", rc == 0 and out.strip().splitlines()[-1:] == ["Paused"], out)
         s["changed_at"] = int(time.time())  # health checks look for crashes after this
-        rc, out = ps(self.run, PS_INSTALL.replace("%KB%", s["kb"]))
+        rc, out = ps(self.run, wu(PS_INSTALL).replace("%KB%", s["kb"]))
         res = json.loads(out) if rc == 0 and out.strip().startswith("{") else {}
         s["phase"] = "verify"  # from here on, failures roll back
         self.step(f"KB{s['kb']} downloaded and installed", res.get("install") in (2, 3), out)
@@ -2005,6 +2016,8 @@ def load_config():
     except (OSError, ValueError) as e:
         raise AgentError(f"cannot read {config_path()} (run enroll first): {e}")
     use_proxy(cfg.get("proxy"))  # every command that talks to the server loads the config first
+    global WU_SOURCE
+    WU_SOURCE = cfg.get("windows_update_source")  # set at enrol on this host; the server never sends it
     return cfg
 
 
@@ -2364,6 +2377,8 @@ def main(argv=None):
                     help="enrolment token (or set NIMSTEAD_TOKEN, which keeps it out of the process list)")
     en.add_argument("--allow-remediation", action="store_true",
                     help="let this host run approved package upgrades (local opt-in; the server cannot enable it)")
+    en.add_argument("--windows-update-source", choices=("default", "microsoft"), default="default",
+                    help="Windows: where fixes are searched for; 'microsoft' bypasses WSUS for Nimstead's jobs (local choice)")
     en.add_argument("--ad-discovery", action="store_true",
                     help="Windows, domain member: also report the domain's enabled computers, to list those with no agent")
     en.add_argument("--scan-jars", action="store_true",
@@ -2408,6 +2423,7 @@ def main(argv=None):
             cfg = {"asset_id": res.get("asset_id"), "agent_key": res["agent_key"], "server": a.server,
                    "allow_remediation": a.allow_remediation, "auto_update": not a.no_auto_update, "channel": a.channel,
                    "scan_jars": a.scan_jars, "ad_discovery": a.ad_discovery,
+                   **({"windows_update_source": "microsoft"} if a.windows_update_source == "microsoft" else {}),
                    **({"proxy": a.proxy} if a.proxy else {})}
             print("enrolled as asset {}; config saved to {}".format(res.get("asset_id"), save_config(cfg)))
         elif a.cmd == "uninstall":

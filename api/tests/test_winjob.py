@@ -378,3 +378,16 @@ def test_a_job_whose_restart_was_put_off_is_not_judged_early(tmp_path):
     problems, reboot = agent.run_jobs("https://s", "k", False, run=run, outcome_dir=str(tmp_path / "out"),
                                       win_state=str(tmp_path / "state.json"))
     assert reboot and json.loads((tmp_path / "state.json").read_text())["phase"] == "verify"
+
+
+def test_microsoft_update_source_is_local_only(tmp_path, monkeypatch):
+    h = FakeWin()
+    make(tmp_path, h).advance()
+    assert not any("ServerSelection = 2" in c[-1] for c in h.log if c[0] == "powershell")  # default: the host's own source
+    monkeypatch.setattr(agent, "WU_SOURCE", "microsoft")
+    h2 = FakeWin()
+    (tmp_path / "b").mkdir()
+    make(tmp_path / "b", h2).advance()
+    searches = [c[-1] for c in h2.log if c[0] == "powershell" and "CreateUpdateSearcher" in c[-1]]
+    assert searches and all("$q.ServerSelection = 2" in s for s in searches)
+    assert "windows_update_source" not in json.dumps(JOB)  # never part of a job

@@ -33,11 +33,26 @@ def compare(wua: list[dict], findings: list[dict]) -> dict:
         if m := KB.search(f.get("summary") or ""):
             ours.setdefault(m.group(1), set()).add(f["vuln_id"])
     both = sorted(set(theirs) & set(ours))
+    # (product, highest fixed build) per KB: a cumulative update both sides agree on supersedes any older month's KB
+    # for the same product whose fixes it reaches (each finding names the month its fix first shipped)
+    top: dict[str, tuple[str, tuple[int, ...]]] = {}
+    for f in findings:
+        if (m := KB.search(f.get("summary") or "")) and re.fullmatch(r"[\d.]+", f.get("fixed_version") or ""):
+            b = tuple(int(x) for x in f["fixed_version"].split("."))
+            top[m.group(1)] = max(top.get(m.group(1), (f["package"], b)), (f["package"], b), key=lambda t: t[1])
+
+    def why_ours(k):
+        p, b = top.get(k, (None, ()))
+        sup = [a for a in both if a in top and top[a][0] == p and top[a][1] >= b]
+        return f"superseded by KB{sup[0]} (cumulative, includes these fixes)" if sup else "not explained"
+
+    def why_theirs(u):
+        return ".NET Framework isn't detected (DECISIONS 51)" if ".NET Framework" in u["title"] else "not explained"
     return {
         "agree": [{"kb": k, "title": theirs[k]["title"], "cves": sorted(ours[k])} for k in both],
-        "only_windows_update": [{"kb": k, "title": theirs[k]["title"], "cves": sorted(theirs[k].get("cves") or [])}
-                                for k in sorted(set(theirs) - set(ours))],
-        "only_nimstead": [{"kb": k, "cves": sorted(ours[k])} for k in sorted(set(ours) - set(theirs))],
+        "only_windows_update": [{"kb": k, "title": theirs[k]["title"], "cves": sorted(theirs[k].get("cves") or []),
+                                 "why": why_theirs(theirs[k])} for k in sorted(set(theirs) - set(ours))],
+        "only_nimstead": [{"kb": k, "cves": sorted(ours[k]), "why": why_ours(k)} for k in sorted(set(ours) - set(theirs))],
     }
 
 

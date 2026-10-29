@@ -268,6 +268,12 @@ def build_pack(s: Session, org_id: str, start: datetime, end: datetime) -> dict:
                                                              RemediationJob.updated <= end,
                                                              RemediationJob.status.not_in(("planned", "cancelled")))).scalars().all()
     m["changes"], m["changes_authorised"] = len(ran), sum(1 for by in ran if by)
+    # fixes approved as forward-only (no automatic rollback, plan T22), listed apart so an auditor sees each one
+    forward_only = [{"job": j.id, "host": host.get(j.asset_id, "?"), "summary": j.summary, "approved_by": j.approved_by,
+                     "status": j.status, "updated": j.updated.isoformat()} for j in s.scalars(select(RemediationJob).where(
+        RemediationJob.org_id == org_id, RemediationJob.manager == "winget", RemediationJob.updated >= start,
+        RemediationJob.updated <= end, RemediationJob.status.not_in(("planned", "cancelled"))))]
+    m["forward_only_changes"] = len(forward_only)
 
     s_iso, e_iso = start.replace(tzinfo=UTC).isoformat(), end.replace(tzinfo=UTC).isoformat()
     # deadline changes made in the period, listed (and counted in SI-2) so an auditor sees them
@@ -298,6 +304,7 @@ def build_pack(s: Session, org_id: str, start: datetime, end: datetime) -> dict:
         "sla_changes": sla_changes,
         "metrics": m,
         "controls": _controls(m, sla_by_priority),
+        "forward_only_changes": forward_only,
         "assets": [{"hostname": a.hostname, "os": a.os_name, "last_seen": a.last_seen.isoformat()} for a in assets],
         "findings": rows,
         # chain_head pins the whole chain at signing time; compare across successive packs to detect rewritten history

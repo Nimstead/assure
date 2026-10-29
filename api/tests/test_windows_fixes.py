@@ -159,3 +159,16 @@ def test_setting_fix_planned_from_a_config_finding(env):
     assert r.json()["manager"] == "winconfig" and not r.json()["forward_only"]
     r = c.post("/api/remediation/jobs", json={"asset_id": a["asset_id"], "ecosystem": "WinConfig", "package": "lsa-protection"})
     assert r.status_code >= 400 and "reported, not changed" in r.text
+
+
+def test_evidence_pack_lists_forward_only_changes_apart(env):
+    test_forward_only_needs_a_persons_explicit_approval_and_never_the_ladder(env)
+    from datetime import timedelta
+
+    from nimstead.db import Org, now
+    from nimstead.evidence import build_pack
+    with make_sessionmaker(env)() as s:
+        org = s.query(Org).first()
+        pack = build_pack(s, org.id, now() - timedelta(days=1), now() + timedelta(minutes=1))
+    [fo] = pack["forward_only_changes"]
+    assert fo["summary"].endswith("(forward-only: can't be undone)") and fo["approved_by"] and pack["metrics"]["forward_only_changes"] == 1

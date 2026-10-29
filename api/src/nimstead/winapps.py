@@ -5,7 +5,8 @@ No fuzzy matching (DECISIONS 4, 22): an installed app is matched only if its Dis
 generic, its Publisher) fully matches a pattern below. Everything else is inventory and is never compared.
 Products whose registry version can't be mapped exactly to NVD's convention are left out on purpose:
 - Oracle Java 8: registry "8.0.4310.10" vs NVD "1.8.0 update431".
-- Eclipse Temurin: no CPE exists (its CVEs are filed under oracle:jdk/openjdk); equating them would be a guess.
+- Eclipse Temurin / Microsoft OpenJDK 11+: matched to oracle:openjdk only (plan decision 13: their versions are
+  OpenJDK update releases); Oracle-only Java SE CVEs aren't projected onto them. Their Java 8 builds stay out.
 Microsoft's own apps (Edge, VS Code, PowerShell, Visual Studio) are matched from MSRC instead: msproducts.py.
 """
 
@@ -55,6 +56,41 @@ PRODUCTS: tuple[Product, ...] = (
     Product("putty:putty", _p(rf"PuTTY release \d+\.\d+(?: \({_ARCH}\))?")),
     Product("rarlab:winrar", _p(rf"WinRAR \d+\.\d+(?: \({_ARCH}\))?")),
     Product("wireshark:wireshark", _p(rf"Wireshark \d+\.\d+\.\d+(?: (?:x64|x86|arm64|{_ARCH}))?")),
+    # ---- batch 1: runtimes, browsers, documents (plan T31). OpenJDK builds match oracle:openjdk only (plan decision 13)
+    Product("oracle:openjdk", _p(r"(?:Eclipse Temurin (?:JDK|JRE)|Microsoft Build of OpenJDK) with Hotspot (?P<v>(?:1[1-9]|[2-9]\d)\.\d+\.\d+)\+\d+ \((?:x64|x86|aarch64)\)"),
+            publisher=_p(r"Eclipse Adoptium|Microsoft"), version=lambda m, v: m["v"], branch=True),
+    Product("opera:opera_browser", _p(r"Opera Stable [\d.]+"), publisher=_p(r"Opera Software")),
+    Product("vivaldi:vivaldi", _p(r"Vivaldi"), publisher=_p(r"Vivaldi Technologies AS\.?")),
+    Product("mozilla:thunderbird", _p(r"Mozilla Thunderbird(?: [\d.]+)? \((?:x64|x86|arm64) [A-Za-z-]+\)"),
+            version=lambda m, v: re.sub(r"(?i)\s*esr$", "", v), branch=True),
+    Product("libreoffice:libreoffice", _p(r"LibreOffice \d+\.\d+(?:\.\d+)*"), publisher=_p(r"The Document Foundation"),
+            version=lambda m, v: ".".join(v.split(".")[:3]), branch=True),  # 24.8.3.2 = release 24.8.3, build 2
+    Product("foxit:pdf_reader", _p(r"Foxit PDF Reader"), publisher=_p(r"Foxit Software Inc\.")),
+    Product("keepass:keepass", _p(r"KeePass Password Safe 2\.\d+(?:\.\d+)?"), version=lambda m, v: ".".join(v.split(".")[:3])),
+    # ---- batch 2: remote access, VPN, file transfer (plan T32)
+    Product("teamviewer:teamviewer", _p(r"TeamViewer(?: \d+)?"), publisher=_p(r"TeamViewer(?: Germany GmbH)?")),
+    Product("anydesk:anydesk", _p(r"AnyDesk"), publisher=_p(r"AnyDesk Software GmbH"), version=lambda m, v: re.sub(r"^ad ", "", v)),
+    Product("cisco:secure_client", _p(r"Cisco Secure Client - AnyConnect VPN|Cisco AnyConnect Secure Mobility Client"),
+            ("cisco:secure_client", "cisco:anyconnect_secure_mobility_client"), publisher=_p(r"Cisco Systems, Inc\.")),
+    Product("fortinet:forticlient", _p(r"FortiClient(?: VPN)?"), publisher=_p(r"Fortinet Technologies Inc")),
+    Product("paloaltonetworks:globalprotect", _p(r"GlobalProtect"), publisher=_p(r"Palo Alto Networks")),
+    Product("ivanti:secure_access_client", _p(r"Ivanti Secure Access Client"), publisher=_p(r"Ivanti, Inc\.")),
+    Product("openvpn:openvpn", _p(r"OpenVPN (?P<v>2\.\d+\.\d+)-I\d+ (?:amd64|x86|arm64)"), publisher=_p(r"OpenVPN, Inc\."),
+            version=lambda m, v: m["v"], branch=True),  # DisplayVersion 2.6.1201 encodes the installer build
+    Product("winscp:winscp", _p(r"WinSCP \d+\.\d+(?:\.\d+)?"), publisher=_p(r"Martin Prikryl")),
+    Product("filezilla-project:filezilla_client", _p(r"FileZilla(?: Client)? \d+\.\d+\.\d+"), publisher=_p(r"Tim Kosse")),
+    Product("mremoteng:mremoteng", _p(r"mRemoteNG"), publisher=_p(r"Next Generation Software")),
+    # ---- batch 3: virtualisation, vendor tools, servers (plan T33)
+    Product("vmware:tools", _p(r"VMware Tools"), publisher=_p(r"VMware, Inc\.|Broadcom Inc\."), version=lambda m, v: ".".join(v.split(".")[:3])),
+    Product("vmware:workstation", _p(r"VMware Workstation"), ("vmware:workstation", "vmware:workstation_pro"),
+            publisher=_p(r"VMware, Inc\.|Broadcom Inc\."), version=lambda m, v: ".".join(v.split(".")[:3])),
+    Product("oracle:vm_virtualbox", _p(r"Oracle VirtualBox \d+\.\d+\.\d+|Oracle VM VirtualBox \d+\.\d+\.\d+"),
+            publisher=_p(r"Oracle Corporation"), branch=True),
+    Product("docker:desktop", _p(r"Docker Desktop"), publisher=_p(r"Docker Inc\.")),
+    Product("dell:command_update", _p(r"Dell Command \| Update(?: for Windows(?: Universal| 10)?)?"), publisher=_p(r"Dell Inc\.")),
+    Product("apache:tomcat", _p(r"Apache Tomcat \d+\.\d+ Tomcat\d+(?: \(remove only\))?"),
+            publisher=_p(r"The Apache Software Foundation"), branch=True),
+    Product("splunk:universal_forwarder", _p(r"UniversalForwarder"), publisher=_p(r"Splunk, Inc\.")),
 )
 
 _BY_CPE = {c: p for p in PRODUCTS for c in (p.cpes or (p.key,))}

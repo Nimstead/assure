@@ -76,7 +76,6 @@ def test_identify_positive(name, pub, ver, want):
     ("Python 3.14.0rc2 (64-bit)", "Python Software Foundation", "3.14.150.0"),
     ("Java 8 Update 431 (64-bit)", "Oracle Corporation", "8.0.4310.10"),  # NVD says 1.8.0 update431: excluded, not guessed
     ("Java(TM) SE Development Kit 8 Update 431 (64-bit)", "Oracle Corporation", "8.0.4310.10"),
-    ("Eclipse Temurin JRE with Hotspot 17.0.20+8 (x64)", "Eclipse Adoptium", "17.0.20.8"),  # no NVD CPE exists
     ("Adobe Acrobat (64-bit)", "Adobe", "24.003.20112"),
     ("Adobe Acrobat Reader 2020", "Adobe", "20.005.30500"),
     ("PuTTY release 0.81 (64-bit) beta", "Simon Tatham", "0.81"),
@@ -366,3 +365,45 @@ def test_cvelist_rows_only_where_nvd_has_none_and_nvd_replaces_them(env):
     sync_winapps(s, [nvd])
     assert [a.id for a in s.scalars(select(Advisory).where(Advisory.ecosystem == "WinApp"))] == ["CVE-2025-6554"]
     assert cvelist_records(s, [V5]) == 0  # NVD has it now: v5 isn't added back
+
+
+# ---- batches 1-3 (plan T31-T33): registry names as each installer writes them, and the near misses beside them
+
+@pytest.mark.parametrize("name,pub,ver,want", [
+    ("Eclipse Temurin JDK with Hotspot 21.0.5+11 (x64)", "Eclipse Adoptium", "21.0.5.11", ("oracle:openjdk", "21.0.5")),
+    ("Microsoft Build of OpenJDK with Hotspot 17.0.13+11 (x64)", "Microsoft", "17.0.13.11", ("oracle:openjdk", "17.0.13")),
+    ("Opera Stable 115.0.5322.68", "Opera Software", "115.0.5322.68", ("opera:opera_browser", "115.0.5322.68")),
+    ("Vivaldi", "Vivaldi Technologies AS.", "7.0.3495.18", ("vivaldi:vivaldi", "7.0.3495.18")),
+    ("Mozilla Thunderbird (x64 en-US)", "Mozilla", "128.4.2esr", ("mozilla:thunderbird", "128.4.2")),
+    ("LibreOffice 24.8.3.2", "The Document Foundation", "24.8.3.2", ("libreoffice:libreoffice", "24.8.3")),
+    ("Foxit PDF Reader", "Foxit Software Inc.", "2024.3.0.26795", ("foxit:pdf_reader", "2024.3.0.26795")),
+    ("KeePass Password Safe 2.57.1", "Dominik Reichl", "2.57.1", ("keepass:keepass", "2.57.1")),
+    ("TeamViewer", "TeamViewer", "15.59.5", ("teamviewer:teamviewer", "15.59.5")),
+    ("AnyDesk", "AnyDesk Software GmbH", "ad 9.0.0", ("anydesk:anydesk", "9.0.0")),
+    ("Cisco Secure Client - AnyConnect VPN", "Cisco Systems, Inc.", "5.1.6.103", ("cisco:secure_client", "5.1.6.103")),
+    ("FortiClient VPN", "Fortinet Technologies Inc", "7.4.0.1658", ("fortinet:forticlient", "7.4.0.1658")),
+    ("GlobalProtect", "Palo Alto Networks", "6.2.4", ("paloaltonetworks:globalprotect", "6.2.4")),
+    ("OpenVPN 2.6.12-I001 amd64", "OpenVPN, Inc.", "2.6.1201", ("openvpn:openvpn", "2.6.12")),
+    ("WinSCP 6.3.5", "Martin Prikryl", "6.3.5", ("winscp:winscp", "6.3.5")),
+    ("FileZilla 3.68.1", "Tim Kosse", "3.68.1", ("filezilla-project:filezilla_client", "3.68.1")),
+    ("VMware Tools", "Broadcom Inc.", "12.4.5.23787635", ("vmware:tools", "12.4.5")),
+    ("Oracle VirtualBox 7.1.4", "Oracle Corporation", "7.1.4", ("oracle:vm_virtualbox", "7.1.4")),
+    ("Docker Desktop", "Docker Inc.", "4.36.0", ("docker:desktop", "4.36.0")),
+    ("Dell Command | Update for Windows Universal", "Dell Inc.", "5.4.0", ("dell:command_update", "5.4.0")),
+    ("Apache Tomcat 10.1 Tomcat10", "The Apache Software Foundation", "10.1.33", ("apache:tomcat", "10.1.33")),
+    ("UniversalForwarder", "Splunk, Inc.", "9.3.1.0", ("splunk:universal_forwarder", "9.3.1.0")),
+])
+def test_identify_batches(name, pub, ver, want):
+    assert winapps.identify(name, pub, ver) == want
+
+
+@pytest.mark.parametrize("name,pub,ver", [
+    ("Eclipse Temurin JDK with Hotspot 8u432-b06 (x64)", "Eclipse Adoptium", "8.0.432.6"),  # Java 8 numbering: left out
+    ("TeamViewer QuickSupport", "TeamViewer", "15.59.5"),
+    ("Vivaldi", "Someone Else", "7.0"),
+    ("OpenVPN Connect", "OpenVPN Inc.", "3.5.1"),
+    ("Docker Desktop", "Not Docker", "4.36.0"),
+    ("VMware Horizon Client", "VMware, Inc.", "8.13.0"),
+])
+def test_identify_batch_near_misses(name, pub, ver):
+    assert winapps.identify(name, pub, ver) is None

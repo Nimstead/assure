@@ -1,4 +1,4 @@
-import { aiFilterToPatch, dependenciesNeeded, looksLikeQuestion, filtersToApi, filtersToSearch, groupJobs, humaniseKind, installCommands, isActiveJob, parseFilters, priorityOf, relativeTime, whyMatched, type Job } from "./lib";
+import { aiFilterToPatch, dependenciesNeeded, looksLikeQuestion, filtersToApi, filtersToSearch, groupJobs, humaniseKind, installCommands, isActiveJob, parseFilters, priorityOf, relativeTime, updateSource, whyMatched, type Job } from "./lib";
 
 describe("priorityOf", () => {
   it("mirrors the server thresholds and lets KEV override", () => {
@@ -88,4 +88,13 @@ it("reads the dependencies a refused dry run needs", () => {
   expect(dependenciesNeeded("No changes made: change limited to planned packages failed: would also change: musl, libcrypto3")).toEqual(["musl", "libcrypto3"]);
   expect(dependenciesNeeded("No changes made: drifted: openssl")).toEqual([]);
   expect(dependenciesNeeded(null)).toEqual([]);
+});
+
+describe("updateSource (plan T12)", () => {
+  it("says where updates come from, any deferral, and the last install", () => {
+    expect(updateSource({ wsus: "http://wsus.corp:8530", wufb_quality_deferral_days: 7 })).toBe("Updates from WSUS (http://wsus.corp:8530), deferred 7 days by policy");
+    expect(updateSource({ wsus: null })).toBe("Updates from Windows Update");
+    expect(updateSource({})).toBe("");
+    expect(updateSource(undefined)).toBe("");
+  });
 });

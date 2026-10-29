@@ -9,7 +9,17 @@ export type Criticality = "low" | "medium" | "high" | "critical";
 
 export interface HostFacts {
   edition_id?: string; esu?: boolean | null; os_unmatched?: string;
+  wsus?: string | null; wufb_quality_deferral_days?: number | null; pending_reboot?: boolean; last_update_success?: string | null;
   [k: string]: unknown;
+}
+
+/** Where a Windows host gets its updates from, in one line, or "" when the agent hasn't said (plan T12). */
+export function updateSource(f?: HostFacts): string {
+  if (!f || (f.wsus === undefined && !f.last_update_success)) return "";
+  const from = f.wsus ? `Updates from WSUS (${f.wsus})` : "Updates from Windows Update";
+  const defer = f.wufb_quality_deferral_days ? `, deferred ${f.wufb_quality_deferral_days} days by policy` : "";
+  const last = f.last_update_success ? ` · last installed ${relativeTime(f.last_update_success)}` : "";
+  return from + defer + last;
 }
 
 export interface Asset {

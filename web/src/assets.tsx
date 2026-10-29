@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Dialog, Switch } from "radix-ui";
 import { AppWindow, ArrowRight, Plus, Trash2, Upload } from "lucide-react";
-import { adminGate, AGENT_UPDATE, api, refresh, assetsQ, filtersToSearch, parseFilters, parseUtc, PRIORITIES, relativeTime, sbomSummary, useIsAdmin, useTitle, type Asset, type Criticality, type SbomResult } from "./lib";
+import { adminGate, AGENT_UPDATE, api, refresh, assetsQ, filtersToSearch, parseFilters, parseUtc, PRIORITIES, relativeTime, sbomSummary, updateSource, useIsAdmin, useTitle, type Asset, type Criticality, type SbomResult } from "./lib";
 import { Alert, btnPrimary, btnQuiet, ConfirmDialog, CopyBlock, dialogBox, Done, EmptyState, ErrorState, Field, input, Loading, PriorityPill, switchRoot, switchThumb, Tag } from "./ui";
 import clsx from "clsx";
 import { ExternalTargets } from "./targets";
@@ -124,6 +124,8 @@ export function AssetRow({ a, onPatch, onDelete, saved, error }: { a: Asset; onP
         </p>
         {a.not_reporting && <p className="mt-1 text-xs text-now-fg">No report for over 14 hours, so findings may be out of date.</p>}
         {a.facts?.os_unmatched && <p className="mt-1 text-xs text-muted">OS not matched to Microsoft's fixes: {a.facts.os_unmatched}. Apps and end of support are still checked.</p>}
+        {a.facts?.pending_reboot && <p className="mt-1 text-xs text-next-fg">Updates are installed and waiting for a restart: findings close after it.</p>}
+        {updateSource(a.facts) && <p className="mt-1 text-xs text-muted">{updateSource(a.facts)}</p>}
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
         {open.length === 0 ? <span className="text-sm text-muted">No open findings</span> : open.map((p) => (

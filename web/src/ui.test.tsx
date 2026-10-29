@@ -134,3 +134,10 @@ it("settings say when a platform update is available and when one failed", () =>
   expect(screen.getByText(/Update failed and was rolled back \(0\.3\.0 → 0\.3\.1\): health check failed/)).toBeInTheDocument();
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 });
+
+test("a forward-only fix says it can't be undone before approval (plan T22)", () => {
+  render(<ApproveDialog job={{ summary: "Update 7-zip:7-zip to 24.09 on pc-1 (forward-only: can't be undone)", hostname: "pc-1", forward_only: true }} onOpenChange={() => {}} onConfirm={() => {}} />);
+  expect(screen.getByRole("alertdialog", { name: "Approve a fix that can't be undone?" })).toBeTruthy();
+  expect(screen.getByText(/no automatic rollback/)).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Approve: it can't be undone" })).toBeTruthy();
+});

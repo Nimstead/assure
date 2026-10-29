@@ -16,7 +16,7 @@ export function RemediationPage() {
   const [target, setTarget] = useState<Job | null>(null);
   const [cancelling, setCancelling] = useState<Job | null>(null);
   const approve = useMutation({
-    mutationFn: (id: string) => api<Job>(`/api/remediation/jobs/${id}/approve`, { method: "POST" }),
+    mutationFn: (j: Pick<Job, "id" | "forward_only">) => api<Job>(`/api/remediation/jobs/${j.id}/approve`, { method: "POST", body: { forward_only: !!j.forward_only } }),
     onSuccess: () => { setTarget(null); void refresh(qc, "jobs"); },
   });
   const cancel = useMutation({
@@ -44,7 +44,7 @@ export function RemediationPage() {
           </section>
         ))}
       <ApproveDialog job={target} onOpenChange={(o) => !o && setTarget(null)} pending={approve.isPending}
-        error={approve.error?.message} onConfirm={() => target && approve.mutate(target.id)} />
+        error={approve.error?.message} onConfirm={() => target && approve.mutate(target)} />
       <ConfirmDialog open={!!cancelling} onOpenChange={(o) => !o && setCancelling(null)} title="Cancel this fix?"
         description={<><strong className="font-semibold">{cancelling?.summary}</strong>. No machine has picked it up yet, so nothing has changed on {cancelling?.hostname}. You can plan it again later.</>}
         confirmLabel="Cancel fix" cancelLabel="Keep it" pendingLabel="Cancelling…" pending={cancel.isPending} error={cancel.error} onConfirm={() => cancelling && cancel.mutate(cancelling.id)} />
@@ -76,6 +76,8 @@ export function JobCard({ job: j, onApprove, onCancel }: { job: Job; onApprove?:
             <li className="min-w-0 break-all">on <Link to="/findings" search={filtersToSearch({ ...parseFilters({}), asset: j.asset_id, fixable: false })} className="font-semibold text-ink underline decoration-line-strong hover:decoration-ink">{j.hostname}</Link></li>
             <li className="break-all">planned by {j.created_by}</li>
             {j.approved_by && <li className="break-all">approved by {j.approved_by}</li>}
+            {j.forward_only && <li className="text-now-fg">forward-only: no automatic rollback</li>}
+            {j.waits_for_window && <li>waits for the maintenance window ({parseUtc(j.waits_for_window).toLocaleString()})</li>}
             {/* shown, not blocked: auditors look for this under SOC 2 CC8.1 */}
             {j.approved_by && j.approved_by === j.created_by && <li className="text-ink">planned and approved by the same person</li>}
             <li><time dateTime={parseUtc(j.updated).toISOString()} title={parseUtc(j.updated).toLocaleString()}>{relativeTime(j.updated)}</time></li>
@@ -124,12 +126,14 @@ export function JobCard({ job: j, onApprove, onCancel }: { job: Job; onApprove?:
 
 /** Pure view (no network) so the copy can be tested. */
 export function ApproveDialog({ job, onOpenChange, onConfirm, pending, error }: {
-  job: Pick<Job, "summary" | "hostname"> | null; onOpenChange: (o: boolean) => void; onConfirm: () => void; pending?: boolean; error?: string;
+  job: (Pick<Job, "summary" | "hostname"> & { forward_only?: boolean }) | null; onOpenChange: (o: boolean) => void; onConfirm: () => void; pending?: boolean; error?: string;
 }) {
+  const fwd = !!job?.forward_only;
   return (
-    <ConfirmDialog open={!!job} onOpenChange={onOpenChange} title="Approve this fix?" description={<><strong className="font-semibold">{job?.summary}</strong>.</>}
-      confirmLabel="Approve and run" pendingLabel="Approving…" pending={pending} error={error} onConfirm={onConfirm}>
-      <p className="mt-3 border border-line p-3 text-sm">{APPROVE_COPY}</p>
+    <ConfirmDialog open={!!job} onOpenChange={onOpenChange} title={fwd ? "Approve a fix that can't be undone?" : "Approve this fix?"} description={<><strong className="font-semibold">{job?.summary}</strong>.</>}
+      confirmLabel={fwd ? "Approve: it can't be undone" : "Approve and run"} pendingLabel="Approving…" destructive={fwd} pending={pending} error={error} onConfirm={onConfirm}>
+      {fwd ? <p className="mt-3 border border-now-fg p-3 text-sm">This app's installer can't go back to the version it replaces, so if the new version breaks something there is no automatic rollback. The machine's health checks still run and a failure is reported. Approving records that you accepted this.</p>
+        : <p className="mt-3 border border-line p-3 text-sm">{APPROVE_COPY}</p>}
     </ConfirmDialog>
   );
 }

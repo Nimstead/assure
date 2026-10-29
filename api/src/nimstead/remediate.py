@@ -30,7 +30,18 @@ from nimstead.versions import comparator_for, sort_key, windows_cmp
 # apt: rollback = old .deb; apk/dnf: rollback = file + package-database snapshot (DECISIONS 16)
 MANAGERS = {"Debian": "apt", "Ubuntu": "apt", "Alpine": "apk", "Rocky Linux": "dnf", "AlmaLinux": "dnf",
             "openSUSE": "zypper", "SUSE": "zypper",
-            "Windows": "windows"}  # windows: one cumulative update by KB, rollback = DISM removal (DECISIONS 22)
+            "Windows": "windows",  # windows: one cumulative update by KB, rollback = DISM removal (DECISIONS 22)
+            "WinApp": "winget", "Microsoft": "winget", "WinConfig": "winconfig"}  # plan_windows_app picks winget/office/winconfig
+# Mirrors of the agent's closed maps (agent WINGET_IDS, CONFIG_FIXES; tests keep them equal): the server only names keys.
+WINGET_KEYS = frozenset({
+    "google:chrome", "mozilla:firefox", "mozilla:firefox_esr", "7-zip:7-zip", "notepad-plus-plus:notepad++", "videolan:vlc_media_player",
+    "zoom:workplace_desktop", "adobe:acrobat_reader", "git-scm:git", "putty:putty", "rarlab:winrar", "wireshark:wireshark",
+    "winscp:winscp", "filezilla-project:filezilla_client", "keepass:keepass", "vivaldi:vivaldi", "opera:opera_browser",
+    "mozilla:thunderbird", "libreoffice:libreoffice", "foxit:pdf_reader", "teamviewer:teamviewer", "anydesk:anydesk",
+    "oracle:vm_virtualbox", "docker:desktop", "Microsoft Edge", "Visual Studio Code"})
+CONFIG_FIXES = frozenset({"wdigest", "ntlmv1", "llmnr", "smb-signing", "smb1", "cert-padding-check"})
+FORWARD_ONLY = ("winget",)  # can't be undone: a person approves it as such, never the trust ladder (plan T22)
+MANUAL_ONLY = ("winget", "winconfig")  # setting changes can break old clients: a person decides (plan decision 11)
 SAFE_PRODUCT = re.compile(r"^Windows [A-Za-z0-9 .()-]{1,120}$")
 SAFE_KB = re.compile(r"^[0-9]{6,8}$")
 SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9+._-]{0,200}$")
@@ -92,14 +103,16 @@ def plan(s: Session, asset: Asset, ecosystem: str, package: str, created_by: str
     if not manager:
         raise RemediationError(f"Automatic remediation is not supported for {ecosystem} packages")
     findings = s.scalars(select(Finding).where(
-        Finding.asset_id == asset.id, Finding.ecosystem == ecosystem, Finding.package == package,
-        Finding.status == "open", Finding.fixed_version.is_not(None))).all()
+        Finding.asset_id == asset.id, Finding.ecosystem == ecosystem, Finding.package == package, Finding.status == "open",
+        *([] if manager == "winconfig" else [Finding.fixed_version.is_not(None)]))).all()  # a setting has no fixed version
     if not findings:
         raise RemediationError("No open, fixable findings for this package on this asset")
     key = f"{ecosystem}|{package}"
     if s.scalar(select(RemediationJob).where(RemediationJob.asset_id == asset.id, RemediationJob.action_key == key,
                                              RemediationJob.status.in_(ACTIVE))):
         raise RemediationError("A remediation for this package is already in progress on this asset")
+    if manager in ("winget", "winconfig"):
+        return plan_windows_app(s, asset, ecosystem, package, findings, created_by)
     installed = [b for b in s.scalars(select(InstalledPackage).where(InstalledPackage.asset_id == asset.id))
                  if normalize_ecosystem(b.ecosystem) == ecosystem]
     extra = set(include or [])
@@ -146,11 +159,15 @@ def canary_ok(s: Session, org: Org, job: RemediationJob) -> tuple[bool, str]:
     return False, f"Waiting for a canary to succeed and soak for {org.canary_soak_hours}h"
 
 
-def approve(s: Session, job: RemediationJob, by: str, policy: bool = False) -> RemediationJob:
+def approve(s: Session, job: RemediationJob, by: str, policy: bool = False, forward_only_ack: bool = False) -> RemediationJob:
     asset = s.get(Asset, job.asset_id)
     org = s.get(Org, job.org_id)
     if job.status != "planned":
         raise RemediationError(f"Job is {job.status}, not awaiting approval")
+    if job.manager in MANUAL_ONLY and policy:  # never automated, whatever the trust ladder says (plan T22, T38)
+        raise RemediationError("This kind of fix is only ever approved by a person")
+    if job.manager in FORWARD_ONLY and not forward_only_ack:
+        raise RemediationError("This fix can't be undone: confirm that you accept a forward-only change")
     if org.remediation_mode == "suggest":
         raise RemediationError("Remediation is in suggest-only mode for this organisation")
     if not asset.sandbox and not production_allowed():
@@ -160,7 +177,36 @@ def approve(s: Session, job: RemediationJob, by: str, policy: bool = False) -> R
         if not ok:
             raise RemediationError(why)
     job.status, job.approved_by = "approved", by
-    _log(s, job, "remediation_approved", by=by)
+    _log(s, job, "remediation_approved", by=by, **({"forward_only": True} if job.manager in FORWARD_ONLY else {}))
+    return job
+
+
+def plan_windows_app(s: Session, asset: Asset, ecosystem: str, package: str, findings: list, created_by: str) -> RemediationJob:
+    """winget (curated apps, Edge, VS Code: forward-only), office (Click-to-Run, rolls back to the build it found) or
+    winconfig (one setting from the agent's closed list, rolled back to the value it found). Plan T17, T21, T22, T38."""
+    from nimstead.office import PREFIX as OFFICE
+    if ecosystem == "WinConfig":
+        check = package
+        if check not in CONFIG_FIXES:
+            raise RemediationError("This setting is reported, not changed automatically: change it by policy")
+        pkgs, manager, summary = [{"name": check, "from": "current", "to": "fixed"}], "winconfig", f"Change setting {check} on {asset.hostname}"
+    else:
+        manager = "office" if package.startswith(OFFICE) else "winget"
+        if manager == "winget" and package not in WINGET_KEYS:
+            raise RemediationError("No pinned winget package for this product; update it with its own updater")
+        cur = findings[0].installed_version
+        target = max((f.fixed_version for f in findings), key=sort_key(comparator_for(ecosystem)))
+        if not (SAFE_VERSION.match(str(cur)) and SAFE_VERSION.match(str(target))):
+            raise RemediationError("Installed or fixed version failed validation; refusing to plan")
+        name = "Microsoft 365 Apps" if manager == "office" else package
+        pkgs = [{"name": name, "from": cur, "to": target}]
+        summary = (f"Update {package} to {target} on {asset.hostname}"
+                   + (" (forward-only: can't be undone)" if manager in FORWARD_ONLY else ""))
+    job = RemediationJob(org_id=asset.org_id, asset_id=asset.id, manager=manager, action_key=f"{ecosystem}|{package}", packages=pkgs,
+                         finding_ids=[f.id for f in findings], created_by=created_by, summary=summary[:500])
+    s.add(job)
+    s.flush()
+    _log(s, job, "remediation_planned", by=created_by, packages=pkgs, **({"forward_only": True} if manager in FORWARD_ONLY else {}))
     return job
 
 
@@ -183,6 +229,8 @@ def auto_remediate(s: Session, asset: Asset) -> None:
     for eco, pkg in sorted(actions):
         job = s.scalar(select(RemediationJob).where(RemediationJob.asset_id == asset.id,
                                                     RemediationJob.action_key == f"{eco}|{pkg}", RemediationJob.status == "planned"))
+        if MANAGERS.get(eco.split(":", 1)[0]) in MANUAL_ONLY:  # never planned or approved by policy (plan T22, T38)
+            continue
         try:
             job = job or plan(s, asset, eco, pkg, "policy")
             approve(s, job, "policy", policy=True)

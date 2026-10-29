@@ -972,6 +972,146 @@ class Job:
             return "rollback_failed", self.steps, f"ROLLBACK FAILED, host needs attention. Change error: {err}; rollback error: {e}"
 
 
+# ---- Windows apps and settings (plan T17, T21, T38) ---------------------------------------------------------------
+# Closed maps held here, never sent by the server: a job names only a key from them and versions (strict regexes), so a
+# compromised server can only move a curated app to a newer published build, or apply one of these exact settings.
+WINGET_IDS = {  # curated product key (server: winapps.py / msproducts.py) -> winget package id
+    "google:chrome": "Google.Chrome", "mozilla:firefox": "Mozilla.Firefox", "mozilla:firefox_esr": "Mozilla.Firefox.ESR",
+    "7-zip:7-zip": "7zip.7zip", "notepad-plus-plus:notepad++": "Notepad++.Notepad++", "videolan:vlc_media_player": "VideoLAN.VLC",
+    "zoom:workplace_desktop": "Zoom.Zoom", "adobe:acrobat_reader": "Adobe.Acrobat.Reader.64-bit", "git-scm:git": "Git.Git",
+    "putty:putty": "PuTTY.PuTTY", "rarlab:winrar": "RARLab.WinRAR", "wireshark:wireshark": "WiresharkFoundation.Wireshark",
+    "winscp:winscp": "WinSCP.WinSCP", "filezilla-project:filezilla_client": "TimKosse.FileZilla.Client",
+    "keepass:keepass": "DominikReichl.KeePass", "vivaldi:vivaldi": "VivaldiTechnologies.Vivaldi", "opera:opera_browser": "Opera.Opera",
+    "mozilla:thunderbird": "Mozilla.Thunderbird", "libreoffice:libreoffice": "TheDocumentFoundation.LibreOffice",
+    "foxit:pdf_reader": "Foxit.FoxitReader", "teamviewer:teamviewer": "TeamViewer.TeamViewer", "anydesk:anydesk": "AnyDesk.AnyDesk",
+    "oracle:vm_virtualbox": "Oracle.VirtualBox", "docker:desktop": "Docker.DockerDesktop",
+    "Microsoft Edge": "Microsoft.Edge", "Visual Studio Code": "Microsoft.VisualStudioCode"}
+# check id (server: winconfig.py) -> (registry key, value name, type, secure value); rollback restores what was there
+CONFIG_FIXES = {
+    "wdigest": (r"HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\WDigest", "UseLogonCredential", "REG_DWORD", "0"),
+    "ntlmv1": (r"HKLM\SYSTEM\CurrentControlSet\Control\Lsa", "LmCompatibilityLevel", "REG_DWORD", "5"),
+    "llmnr": (r"HKLM\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient", "EnableMulticast", "REG_DWORD", "0"),
+    "smb-signing": (r"HKLM\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters", "RequireSecuritySignature", "REG_DWORD", "1"),
+    "smb1": (r"HKLM\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters", "SMB1", "REG_DWORD", "0"),
+    "cert-padding-check": (r"HKLM\SOFTWARE\Microsoft\Cryptography\Wintrust\Config", "EnableCertPaddingCheck", "REG_SZ", "1"),
+}
+WIN_APP_MANAGERS = ("winget", "office", "winconfig")
+SAFE_BUILD = re.compile(r"^\d{1,6}(\.\d{1,8}){1,4}\Z")
+C2R = r"C:\Program Files\Common Files\microsoft shared\ClickToRun\OfficeC2RClient.exe"
+OFFICE_APPS = ("WINWORD", "EXCEL", "POWERPNT", "OUTLOOK", "MSACCESS", "ONENOTE", "MSPUB", "VISIO", "WINPROJ")
+PS_WINGET = r"""(Get-ChildItem "$env:ProgramFiles\WindowsApps" -Directory -Filter 'Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe' -ErrorAction SilentlyContinue |
+  Where-Object { (Get-Acl -LiteralPath $_.FullName).Owner -eq 'NT SERVICE\TrustedInstaller' -and (Test-Path -LiteralPath (Join-Path $_.FullName 'winget.exe')) } |
+  Sort-Object Name -Descending | Select-Object -First 1 | ForEach-Object { Join-Path $_.FullName 'winget.exe' })"""
+
+
+class WinAppJob:
+    """manager winget | office | winconfig. Same contract as Job.execute: (outcome, steps, error).
+    winget is forward-only (most installers can't go back): the server only hands it out after a person approved that.
+    office rolls back to the build it found; winconfig restores the value it found."""
+
+    def __init__(self, job, run=sh, fail_after_apply=False):
+        self.run, self.steps, self.mgr = run, [], job.get("manager")
+        self.pkgs, self.units = job.get("packages") or [], job.get("health_units") or []
+        self.inject, self.result_versions = fail_after_apply, None
+
+    def step(self, name, cmd=None, ok=None, output=""):
+        if cmd is not None:
+            rc, output = self.run(cmd)
+            ok = rc == 0 if ok is None else ok
+        self.steps.append({"step": name, "ok": bool(ok), "output": str(output)[-1500:]})
+        if not ok:
+            raise StepFailed(f"{name} failed: {str(output)[-300:].strip()}")
+        return output
+
+    def health(self, when):
+        for u in self.units:
+            rc, out = ps(self.run, f"(Get-Service -Name '{u}' -ErrorAction Stop).Status")
+            self.step(f"{u} running {when}", ok=rc == 0 and out.strip() == "Running", output=out)
+
+    def valid(self):
+        p = self.pkgs[0] if len(self.pkgs) == 1 and isinstance(self.pkgs[0], dict) else {}
+        keys = {"winget": WINGET_IDS, "office": {"Microsoft 365 Apps": 1}, "winconfig": CONFIG_FIXES}.get(self.mgr, {})
+        return (p.get("name") in keys and all(SAFE_NAME.match(str(u)) for u in self.units)
+                and (self.mgr == "winconfig" or (SAFE_BUILD.match(str(p.get("from", ""))) and SAFE_BUILD.match(str(p.get("to", ""))))))
+
+    def execute(self):
+        try:
+            self.step("job validated", ok=self.valid(), output="" if self.valid() else "unknown product or setting, or invalid version")
+            p = self.pkgs[0]
+            if self.mgr != "winconfig":
+                self.step("fix is newer than installed", ok=windows_version_key(p["to"]) > windows_version_key(p["from"]),
+                          output=f"{p['from']} -> {p['to']}")
+            self.health("before change")
+            undo = getattr(self, f"_{self.mgr}")(p)
+        except Exception as e:
+            return "aborted", self.steps, f"No changes made: {e}"
+        try:
+            self.health("after change")
+            if self.inject:
+                self.step("injected failure (sandbox test)", ok=False, output="--fail-after-apply")
+            return "applied", self.steps, None
+        except Exception as e:
+            err = str(e)
+        if undo is None:
+            return "rollback_failed", self.steps, f"Change failed and can't be undone (forward-only, approved as such): {err}"
+        try:
+            undo()
+            return "rolled_back", self.steps, f"Change failed and was rolled back: {err}"
+        except Exception as e:
+            return "rollback_failed", self.steps, f"ROLLBACK FAILED, host needs attention. Change error: {err}; rollback error: {e}"
+
+    def _winget(self, p):
+        wid = WINGET_IDS[p["name"]]
+        rc, exe = ps(self.run, PS_WINGET)
+        exe = exe.strip().splitlines()[-1] if rc == 0 and exe.strip() else ""
+        self.step("winget found (App Installer, owned by TrustedInstaller)", ok=bool(exe), output=exe or "winget unavailable")
+        common = ["--id", wid, "--exact", "--source", "winget", "--version", p["to"], "--accept-source-agreements", "--disable-interactivity"]
+        out = self.step(f"winget lists {wid} {p['to']} with an installer hash", [exe, "show", *common])
+        self.step("installer SHA-256 published", ok=bool(re.search(r"(?im)^\s*Installer SHA256:\s*[0-9a-f]{64}\s*$", out)), output=out)
+        self.step(f"{wid} upgraded to {p['to']}", [exe, "install", *common, "--silent", "--force", "--accept-package-agreements",
+                                                    "--scope", "machine"])
+        self.result_versions = {p["name"]: p["to"]}
+        return None  # forward-only
+
+    def _office(self, p):
+        rc, out = ps(self.run, "(Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Office\\ClickToRun\\Configuration').VersionToReport")
+        self.step("installed build matches plan", ok=rc == 0 and out.strip() == p["from"], output=out)
+        rc, out = ps(self.run, "@(Get-Process -Name " + ",".join(OFFICE_APPS) + " -ErrorAction SilentlyContinue).Count")
+        self.step("no Office app open (never force-closed)", ok=rc == 0 and out.strip() == "0", output=f"{out.strip()} Office app(s) open")
+
+        def go(build):
+            self.step(f"Office updated to {build}", [C2R, "/update", "user", f"updatetoversion={build}", "displaylevel=false",
+                                                       "forceappshutdown=false"])
+            for _ in range(60):  # the client returns at once; the update finishes in the background
+                rc, cur = ps(self.run, "(Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Office\\ClickToRun\\Configuration').VersionToReport")
+                if cur.strip() == build:
+                    return
+                time.sleep(30)
+            self.step(f"Office reports {build}", ok=False, output=f"still {cur.strip()}")
+        go(p["to"])
+        self.result_versions = {p["name"]: p["to"]}
+        return lambda: go(p["from"])
+
+    def _winconfig(self, p):
+        key, name, typ, value = CONFIG_FIXES[p["name"]]
+        rc, out = self.run(["reg", "query", key, "/v", name])
+        m = re.search(rf"{re.escape(name)}\s+(REG_\w+)\s+(\S*)", out) if rc == 0 else None
+        before = (m[1], m[2]) if m else None  # None: absent, restored by deleting it again
+        self.step(f"recorded {name} before the change", ok=True, output=f"{before or 'not set'}")
+        self.step(f"{name} set to {value}", ["reg", "add", key, "/v", name, "/t", typ, "/d", value, "/f"])
+        self.result_versions = {p["name"]: "fixed"}
+
+        def undo():
+            if before:
+                self.step(f"{name} restored to {before[1]}", ["reg", "add", key, "/v", name, "/t", before[0], "/d", before[1], "/f"])
+            else:
+                self.step(f"{name} removed again", ["reg", "delete", key, "/v", name, "/f"])
+        return undo
+
+    def discard_rollback(self, outcome):
+        pass
+
+
 def free_bytes(path):
     """Free space on the filesystem that holds path (or would, once created)."""
     while not os.path.isdir(path) and os.path.dirname(path) != path:
@@ -1064,7 +1204,9 @@ def run_jobs(server, key, insecure_http, run=sh, outcome_dir=None, win_state=Non
             record(w.s["job"]["id"], res)
     for job in post(server, "/api/agent/jobs", None, insecure_http, key):
         try:
-            runner = WinJob(job, run=run, state_path=win_state) if job.get("manager") == "windows" else Job(job, run=run, **job_kw)
+            mgr = job.get("manager")
+            runner = (WinJob(job, run=run, state_path=win_state) if mgr == "windows" else WinAppJob(job, run=run)
+                      if mgr in WIN_APP_MANAGERS else Job(job, run=run, **job_kw))
         except Exception as e:  # malformed job from the server: report it, keep going
             record(job.get("id"), {"outcome": "aborted", "steps": [], "error": f"No changes made: malformed job: {e}"[:500],
                                    "versions": None})
@@ -2289,7 +2431,7 @@ def main(argv=None):
                 res = WinJob(job, fail_after_apply=a.fail_after_apply).advance()
                 print(json.dumps(res))
                 return 0 if res["outcome"] in ("applied", "pending_reboot") else 2
-            j = Job(job, fail_after_apply=a.fail_after_apply)
+            j = (WinAppJob if job.get("manager") in WIN_APP_MANAGERS else Job)(job, fail_after_apply=a.fail_after_apply)
             outcome, steps, error = j.execute()
             print(json.dumps({"outcome": outcome, "steps": steps, "error": error, "versions": getattr(j, "result_versions", None)}))
             j.discard_rollback(outcome)

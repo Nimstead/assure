@@ -73,6 +73,7 @@ export interface Job {
   id: string; asset_id: string; hostname: string; status: JobStatus; manager: string; action_key: string;
   packages: unknown; finding_ids: string[]; summary: string; created_by: string; approved_by: string | null;
   created: string; updated: string; steps: JobStep[] | null; error: string | null;
+  forward_only?: boolean; waits_for_window?: string | null; // plan T22, T40
 }
 export const JOB_GROUPS = [
   { key: "approval", title: "Needs approval", statuses: ["planned"] },

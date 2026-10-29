@@ -1248,6 +1248,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             "action_key": j.action_key, "packages": j.packages, "finding_ids": j.finding_ids, "summary": j.summary,
             "created_by": j.created_by, "approved_by": j.approved_by, "created": j.created, "updated": j.updated,
             "steps": j.steps, "error": j.error, "result_versions": j.result_versions,
+            "forward_only": j.manager in remediate.FORWARD_ONLY,
         }
 
     class PlanReq(BaseModel):
@@ -1283,13 +1284,16 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             out.append(d)
         return out
 
+    class ApproveReq(BaseModel):
+        forward_only: bool = False  # the approver accepts a fix that can't be undone (winget, plan T22)
+
     @app.post("/api/remediation/jobs/{job_id}/approve")
-    def approve_job(job_id: str, user: Admin, s: DB):
+    def approve_job(job_id: str, user: Admin, s: DB, body: ApproveReq | None = None):
         job = s.get(RemediationJob, job_id)
         if not job or job.org_id != user.org_id:
             raise HTTPException(404, "Job not found")
         try:
-            remediate.approve(s, job, user.email)
+            remediate.approve(s, job, user.email, forward_only_ack=bool(body and body.forward_only))
         except remediate.RemediationError as e:
             raise HTTPException(409, str(e)) from None
         s.commit()

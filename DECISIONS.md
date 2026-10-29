@@ -149,3 +149,16 @@ Short log; newest last. Why, not what.
     its own computer account (`[adsisearcher]`), and Assets lists those signed in within 30 days with no agent, with end
     of support from their AD OS string. Not built: downloading updates before the window opens (installs still happen
     only inside it) and detecting metered connections.
+57. **App, Office and setting fixes: closed maps in the agent, forward-only fixes only by a person (plan T16, T17, T21,
+    T22, T38).** Three managers beside `windows`: `winget` (curated apps, Edge, VS Code), `office` (Click-to-Run) and
+    `winconfig` (six settings). The agent holds the maps (`WINGET_IDS`: product key -> winget id; `CONFIG_FIXES`:
+    check id -> registry value); a job names only a key and versions, so a compromised server can at most move a curated
+    app to a newer published build or apply one of those exact settings. winget runs only from the App Installer folder
+    owned by TrustedInstaller, with `--source winget --exact --id`, a version newer than installed, and only when
+    `winget show` lists an installer SHA-256 for it; it is **forward-only**: the job says so, approving needs the
+    approver's explicit acknowledgement (recorded in the ledger), and neither the trust ladder nor auto mode ever plans or
+    approves it. Office updates to the planned build with `OfficeC2RClient.exe updatetoversion=`, refuses while any Office
+    app is open (never force-closes), and rolls back to the build it found. A setting change records the value (or its
+    absence) first and puts exactly that back on failure; setting fixes are manual-only too, because SMB signing or
+    NTLMv1 changes can break old clients. Dropped: .NET Framework updates (T16), because .NET Framework isn't detected
+    (DECISIONS 51). Blocked on the owner: the hotpatch VM proof (T15, needs an Azure subscription).

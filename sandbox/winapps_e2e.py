@@ -68,8 +68,9 @@ def main(keep=False) -> int:
     py = py.strip()
     agent = r"C:\nimtest\nimstead_agent.py"
     guest(r"New-Item -ItemType Directory -Force C:\nimtest | Out-Null")
-    src = (ROOT / "agent" / "nimstead_agent.py").read_text(encoding="utf-8")
-    guest(f"Set-Content -Path {agent} -Encoding utf8 -Value @'\n{src}\n'@")
+    c = winvm.creds(NAME)  # copyto: the agent source is too long for a command line (WinError 206)
+    winvm.vbox("guestcontrol", NAME, "copyto", "--username", c["user"], "--password", c["password"],
+               "--target-directory", "C:\\nimtest\\", str(ROOT / "agent" / "nimstead_agent.py"))
     rc, out = guest("winget --version")
     note("VM ready", python=py, winget=out.strip()[-40:])
     results = {}

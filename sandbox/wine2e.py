@@ -148,7 +148,16 @@ def main(keep=False) -> int:
                   r"Import-Certificate -FilePath C:\nimtest\sandbox-cert.pem -CertStoreLocation Cert:\LocalMachine\Root | Out-Null")
             # only the proxy port is open, so whatever reached the server or the internet went through the proxy
             guest(r"""New-NetFirewallRule -DisplayName 'Nimstead sandbox: proxy only' -Direction Outbound -RemoteAddress 10.0.2.2 -Protocol TCP -RemotePort 3128 -Action Allow | Out-Null
-                Set-NetFirewallProfile -All -DefaultOutboundAction Block; netsh winhttp set proxy 10.0.2.2:3128 | Out-Null""")
+                Set-NetFirewallProfile -All -DefaultOutboundAction Block; netsh winhttp set proxy 10.0.2.2:3128 | Out-Null
+                # what an admin sets for Windows Update behind a proxy (docs/install.md): a device-wide proxy, and Delivery
+                # Optimization in bypass mode, since on Windows 11 26H2 it went straight to CDN IPs and every download stalled
+                $p = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CurrentVersion\Internet Settings'
+                New-Item $p -Force | Out-Null; Set-ItemProperty $p ProxySettingsPerUser 0 -Type DWord
+                $i = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Internet Settings'
+                Set-ItemProperty $i ProxyEnable 1 -Type DWord; Set-ItemProperty $i ProxyServer '10.0.2.2:3128'
+                $d = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization'
+                New-Item $d -Force | Out-Null; Set-ItemProperty $d DODownloadMode 100 -Type DWord
+                Restart-Service DoSvc, wuauserv -Force -ErrorAction SilentlyContinue""")
             direct = {f"{h}:{p}": guest(f"(Test-NetConnection {h} -Port {p} -WarningAction SilentlyContinue).TcpTestSucceeded", check=False).strip()
                       for h, p in (("13.107.4.50", 443), ("10.0.2.2", PORT))}
             note("direct egress blocked, WinHTTP proxy set", direct_tcp=direct)

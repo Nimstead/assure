@@ -103,6 +103,12 @@ show proxy`), the same one Windows Update uses. TLS to your server stays end to 
 through a proxy. Scheduled runs start at a random point within 30 minutes (job checks within 2), at below-normal
 priority, so a large fleet doesn't report all at once.
 
+Windows Update fixes behind a proxy with no direct internet access: Windows downloads updates with Delivery
+Optimization, which on Windows 11 26H2 ignored the proxy and stalled every download (seen in our VM test). Set the
+**Download Mode** policy to **Bypass** (Computer Configuration > Administrative Templates > Windows Components >
+Delivery Optimization; registry `DODownloadMode` = 100) and a device-wide proxy, or allow direct HTTP to
+`*.delivery.mp.microsoft.com`. Without either, the fix's download step times out and the job stops with nothing changed.
+
 ### The agent updates itself
 
 At each run the agent asks your server for a newer release. It installs one only if the release is signed by the Nimstead release key built into the agent, and only if it's newer than the version already running. Your server passes the release along but can't sign one, so even a compromised server can't push code to your machines. The agent then runs the new version's inventory on the machine before switching. If that fails, it keeps the old version and the reason shows on the **Assets** page. The previous version is kept beside it as `nimstead_agent.py.prev`.

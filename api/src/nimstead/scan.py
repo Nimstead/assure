@@ -23,10 +23,10 @@ def hotpatch_track(hot: list[dict], version: str) -> tuple[set[str], list[dict]]
     return {a for r in hot for a in r["aliases"]}, hot
 
 
-def host_checks(pkgs: list, facts: dict, today) -> list[dict]:
+def host_checks(pkgs: list, facts: dict, today, eol: dict | None = None) -> list[dict]:
     """Findings from the host's own state rather than an advisory: end of support (lifecycle.py)."""
     out = []
-    for x in lifecycle.findings(pkgs, facts, today):
+    for x in lifecycle.findings(pkgs, facts, today, eol):
         out.append({**x, "ecosystem": lifecycle.ECOSYSTEM, "score": 90 if x["ended"] else 40,
                     "priority": "fix-now" if x["ended"] else "planned",
                     "reasons": [x["summary"], "Upgrade, or enrol in Extended Security Updates" if x["ended"] else "Plan the upgrade"]})
@@ -108,7 +108,10 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
             seen.add(key)
             matches.append((key, eco, name, version, m))
     # findings that aren't advisory matches (end of support, configuration) carry their own score and reasons
-    for x in host_checks(pkgs, asset.facts or {}, t.date()):
+    if ("eol",) not in advisories:  # endoflife.date cycles, once per feed-update pass
+        advisories[("eol",)] = {pkg: rec["cycles"] for pkg, rec in s.execute(
+            select(Advisory.package, Advisory.record).where(Advisory.ecosystem == "EOL"))}
+    for x in host_checks(pkgs, asset.facts or {}, t.date(), advisories[("eol",)]):
         key = (x["ecosystem"], x["package"], x["vuln_id"])
         seen.add(key)
         rec = {"_risk": (x["score"], x["priority"], x["reasons"])}

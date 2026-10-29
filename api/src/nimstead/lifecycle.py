@@ -50,7 +50,33 @@ ROWS = [Row(*r) for r in [
     ("ws2022", "Windows Server 2022", date(2031, 10, 14), LC + "windows-server-2022"),
     ("ws2025", "Windows Server 2025", date(2034, 10, 10), LC + "windows-server-2025"),
     ("ws-23h2", "Windows Server 23H2 (Annual Channel)", date(2025, 10, 24), LC + "windows-server-annual-channel"),
+    # Microsoft products beyond the OS (plan T28)
+    ("dotnet-core-3.1", ".NET Core 3.1", date(2022, 12, 13), LC + "microsoft-net-and-net-core"),
+    ("dotnet-5", ".NET 5", date(2022, 5, 10), LC + "microsoft-net-and-net-core"),
+    ("dotnet-6", ".NET 6", date(2024, 11, 12), LC + "microsoft-net-and-net-core"),
+    ("dotnet-7", ".NET 7", date(2024, 5, 14), LC + "microsoft-net-and-net-core"),
+    ("dotnet-8", ".NET 8", date(2026, 11, 10), LC + "microsoft-net-and-net-core"),
+    ("dotnet-9", ".NET 9", date(2026, 11, 10), LC + "microsoft-net-and-net-core"),
+    ("dotnet-10", ".NET 10", date(2028, 11, 14), LC + "microsoft-net-and-net-core"),
+    ("sql-2012", "SQL Server 2012", date(2022, 7, 12), LC + "sql-server-2012", date(2025, 7, 8)),
+    ("sql-2014", "SQL Server 2014", date(2024, 7, 9), LC + "sql-server-2014", date(2027, 7, 13)),
+    ("sql-2016", "SQL Server 2016", date(2026, 7, 14), LC + "sql-server-2016"),
+    ("sql-2017", "SQL Server 2017", date(2027, 10, 12), LC + "sql-server-2017"),
+    ("sql-2019", "SQL Server 2019", date(2030, 1, 8), LC + "sql-server-2019"),
+    ("sql-2022", "SQL Server 2022", date(2033, 1, 11), LC + "sql-server-2022"),
+    ("exchange-2016", "Exchange Server 2016", date(2025, 10, 14), LC + "exchange-server-2016"),
+    ("exchange-2019", "Exchange Server 2019", date(2025, 10, 14), LC + "exchange-server-2019"),
+    ("sharepoint-2016", "SharePoint Server 2016", date(2026, 7, 14), LC + "sharepoint-server-2016"),
+    ("sharepoint-2019", "SharePoint Server 2019", date(2026, 7, 14), LC + "sharepoint-server-2019"),
+    ("office-2016", "Office 2016", date(2025, 10, 14), LC + "office-2016"),
+    ("office-2019", "Office 2019", date(2025, 10, 14), LC + "office-2019"),
+    ("office-ltsc-2021", "Office LTSC 2021", date(2026, 10, 13), LC + "office-ltsc-2021"),
+    ("office-ltsc-2024", "Office LTSC 2024", date(2029, 10, 9), LC + "office-ltsc-2024"),
 ]]
+# third-party apps: the curated WinApp key -> (endoflife.date product, the release cycle from our normalised version)
+APP_EOL = {"nodejs:node.js": ("nodejs", lambda v: v.split(".")[0]), "python:python": ("python", lambda v: ".".join(v.split(".")[:2])),
+           "oracle:jdk": ("oracle-jdk", lambda v: v.split(".")[0])}
+EOL_URL = "https://endoflife.date/api/{}.json"
 BY_KEY = {r.key: r for r in ROWS}
 
 HOME_PRO = re.compile(r"^(Core|CoreN|CoreSingleLanguage|CoreCountrySpecific|Professional|ProfessionalN|ProfessionalWorkstation|"
@@ -100,15 +126,79 @@ def verdict(row: Row, esu: bool | None, today: date) -> tuple[str, str] | None:
     return None
 
 
-def findings(packages: list, facts: dict, today: date) -> list[dict]:
-    """Lifecycle findings for one host: [{package, version, vuln_id, summary, ended}]."""
+def microsoft_row(p) -> Row | None:
+    """Lifecycle row for an agent-reported Microsoft fact or a Microsoft Uninstall entry (msproducts.py's inputs)."""
+    v = p.version or ""
+    parts = v.split(".")
+    if p.ecosystem == "Microsoft" and p.name in (".NET runtime", "ASP.NET Core") and len(parts) >= 2 and parts[0].isdigit():
+        return BY_KEY.get(f"dotnet-{parts[0]}" if int(parts[0]) >= 5 else f"dotnet-core-{parts[0]}.{parts[1]}")
+    if p.ecosystem == "Microsoft" and p.name == "SQL Server":
+        return BY_KEY.get("sql-" + {"11": "2012", "12": "2014", "13": "2016", "14": "2017", "15": "2019", "16": "2022"}.get(parts[0], "?"))
+    if p.ecosystem == "Microsoft" and p.name == "Exchange Server" and len(parts) >= 3 and parts[2].isdigit():
+        return BY_KEY["exchange-2016"] if parts[:2] == ["15", "1"] else BY_KEY["exchange-2019"] if parts[:2] == ["15", "2"] and int(parts[2]) < 2562 else None
+    if p.ecosystem == "Microsoft" and p.name == "SharePoint Server" and len(parts) >= 3 and parts[2].isdigit():
+        return BY_KEY["sharepoint-2016"] if int(parts[2]) < 10000 else BY_KEY["sharepoint-2019"] if int(parts[2]) < 14000 else None
+    if p.ecosystem == "Microsoft" and p.name == "Microsoft 365 Apps":
+        ch = (p.source or "").rstrip("/").rsplit("/", 1)[-1].lower()
+        return BY_KEY.get({"f2e724c1-748f-4b47-8fb8-8e0d210e9208": "office-2019", "5030841d-c919-4594-8d2d-84ae4f96e58e": "office-ltsc-2021",
+                           "7983bac0-e531-40cf-be00-fd24fe66619c": "office-ltsc-2024"}.get(ch, "?"))
+    if p.ecosystem == "WinApp" and (p.source or "") == "Microsoft Corporation" and (m := re.fullmatch(r"Microsoft Office .*\b(2016|2019)\b.*", p.name)):
+        return BY_KEY[f"office-{m[1]}"]  # Office 2016/2019 installed from MSI
+    return None
+
+
+def app_verdict(key: str, version: str, eol: dict, today: date) -> tuple[str, str] | None:
+    """A curated third-party app on a release cycle endoflife.date says has ended: (severity, text)."""
+    product, cycle_of = APP_EOL.get(key, (None, None))
+    if not product or not (cycles := eol.get(product)):
+        return None
+    cycle = cycle_of(version)
+    end = cycles.get(cycle)
+    if end is True or (isinstance(end, str) and date.fromisoformat(end) < today):
+        return "ended", f"{product} {cycle}: no more security fixes" + (f" since {end}" if isinstance(end, str) else "")
+    return None
+
+
+def parse_eol(cycles) -> dict:
+    """endoflife.date's cycles -> {cycle: ISO date | True | False}; ValueError on an unexpected shape."""
+    if not isinstance(cycles, list) or not cycles:
+        raise ValueError("endoflife.date: expected a non-empty list of cycles")
+    out = {}
+    for c in cycles:
+        eol = c.get("eol") if isinstance(c, dict) else None
+        if not isinstance(c.get("cycle"), str) or not (isinstance(eol, bool) or (isinstance(eol, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", eol))):
+            raise ValueError(f"endoflife.date: unexpected cycle {str(c)[:200]}")
+        out[c["cycle"]] = eol
+    return out
+
+
+def findings(packages: list, facts: dict, today: date, eol: dict | None = None) -> list[dict]:
+    """Lifecycle findings for one host: [{package, version, vuln_id, summary, ended}]. `eol`: endoflife.date cycles
+    by product for curated third-party apps (feeds.sync_eol)."""
     out = []
     products = [(p.name, p.version) for p in packages if p.ecosystem == "Windows"]
     if facts.get("os_product"):  # an OS named but not CVE-matchable (Server 2012/R2)
         products.append((str(facts["os_product"]), ""))
+    seen = set()
+
+    def add(row, version, v):
+        if row.key not in seen:
+            seen.add(row.key)
+            out.append({"package": row.label, "version": version, "vuln_id": f"EOL:{row.key}", "summary": v[1],
+                        "ended": v[0] == "ended", "source": row.source})
     for name, version in products:
         row = windows_row(name, str(facts.get("edition_id") or ""))
         if row and (v := verdict(row, facts.get("esu"), today)):
-            out.append({"package": name, "version": version, "vuln_id": f"EOL:{row.key}", "summary": v[1],
-                        "ended": v[0] == "ended", "source": row.source})
+            add(row, version, v)
+    for p in packages:
+        if (row := microsoft_row(p)) and (v := verdict(row, None, today)):
+            add(row, p.version, v)
+        if p.ecosystem == "WinApp" and eol:
+            from nimstead.winapps import identify
+            if (hit := identify(p.name, p.source, p.version)) and (v := app_verdict(hit[0], hit[1], eol, today)):
+                key = f"app-{hit[0]}-{APP_EOL[hit[0]][1](hit[1])}"
+                if key not in seen:
+                    seen.add(key)
+                    out.append({"package": hit[0], "version": hit[1], "vuln_id": f"EOL:{key}", "summary": v[1], "ended": True,
+                                "source": "https://endoflife.date/" + APP_EOL[hit[0]][0]})
     return out

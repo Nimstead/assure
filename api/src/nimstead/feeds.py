@@ -16,7 +16,7 @@ import httpx
 from sqlalchemy import delete, insert, select, update
 from sqlalchemy.orm import Session
 
-from nimstead import evidence, external, msproducts, notify, office, updates, winapps
+from nimstead import evidence, external, lifecycle, msproducts, notify, office, updates, winapps
 from nimstead.db import Advisory, Asset, Cvss, Epss, InstalledPackage, Kev, Org, make_sessionmaker, now
 from nimstead.match import normalize_ecosystem
 from nimstead.scan import HOTPATCH, rescan
@@ -185,6 +185,26 @@ def sync_epss(session: Session, client=None) -> int:
     return len(rows)
 
 
+def sync_eol(session: Session, client=None) -> dict:
+    """endoflife.date release cycles for the curated third-party apps lifecycle.APP_EOL names (ecosystem "EOL").
+    A product whose fetch fails or changes shape keeps its stored cycles."""
+    out = {}
+    for product in sorted({p for p, _ in lifecycle.APP_EOL.values()}):
+        try:
+            r = _client(client).get(lifecycle.EOL_URL.format(product), headers={"Accept": "application/json"})
+            r.raise_for_status()
+            cycles = lifecycle.parse_eol(r.json())
+        except (httpx.HTTPError, ValueError) as e:
+            log.warning("endoflife.date %s skipped, kept stored cycles: %s", product, e)
+            out[product] = {"error": str(e)[:200]}
+            continue
+        session.merge(Advisory(id=f"EOL-{product}", ecosystem="EOL", package=product, modified=now().isoformat(),
+                               record={"id": f"EOL-{product}", "cycles": cycles}))
+        out[product] = len(cycles)
+    session.commit()
+    return out
+
+
 def sync_office(session: Session, client=None) -> dict:
     """Click-to-Run Office fixes per channel and version line (office.py), from the Office CVEs sync_msrc kept and
     Microsoft's OfficeReleases feed. A feed that fails or changes shape keeps the rows already stored."""
@@ -313,6 +333,8 @@ def update_all(session: Session, client=None) -> dict:
     if in_use & {"Windows", msproducts.ECOSYSTEM}:
         out["msrc"] = sync_msrc(session, client=client)
         out["office"] = sync_office(session, client=client)
+    if "WinApp" in in_use:
+        out["eol"] = sync_eol(session, client=client)
     out["rescanned"] = 0
     cache: dict = {}  # advisories decoded once per pass: hosts on one release share most packages
     out["external"] = {"scanned": 0, "refused": 0}

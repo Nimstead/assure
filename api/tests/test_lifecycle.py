@@ -84,3 +84,55 @@ def test_facts_are_bounded(env):
     body = {"ecosystem": "Windows", "packages": [{"ecosystem": "Windows", "name": W10, "version": "10.0.19045.1", "source": None}]}
     assert c.post("/api/agent/inventory", headers=h, json={**body, "facts": {"x": "y" * 501}}).status_code == 422
     assert c.post("/api/agent/inventory", headers=h, json={**body, "facts": {"a": {"b": {"c": {"d": 1}}}}}).status_code == 422
+
+
+# ---- beyond the OS (plan T28)
+
+class P:
+    def __init__(self, ecosystem, name, version, source=None):
+        self.ecosystem, self.name, self.version, self.source = ecosystem, name, version, source
+
+
+@pytest.mark.parametrize("pkg,key", [
+    (P("Microsoft", ".NET runtime", "6.0.36"), "dotnet-6"),
+    (P("Microsoft", "ASP.NET Core", "3.1.32"), "dotnet-core-3.1"),
+    (P("Microsoft", "SQL Server", "12.0.6449.1"), "sql-2014"),
+    (P("Microsoft", "Exchange Server", "15.2.1748.50"), "exchange-2019"),
+    (P("Microsoft", "Exchange Server", "15.2.2562.50"), None),  # Subscription Edition
+    (P("Microsoft", "SharePoint Server", "16.0.5561.1000"), "sharepoint-2016"),
+    (P("Microsoft", "Microsoft 365 Apps", "16.0.14334.20974", "http://officecdn.microsoft.com/pr/5030841d-c919-4594-8d2d-84ae4f96e58e"), "office-ltsc-2021"),
+    (P("Microsoft", "Microsoft 365 Apps", "16.0.20430.20180", "http://officecdn.microsoft.com/pr/55336b82-a18d-4dd6-b5f6-9e5095c314a6"), None),
+    (P("WinApp", "Microsoft Office Professional Plus 2016", "16.0.4266.1001", "Microsoft Corporation"), "office-2016"),
+    (P("WinApp", "Microsoft Office Professional Plus 2016", "16.0.4266.1001", "Contoso"), None),
+])
+def test_microsoft_row(pkg, key):
+    row = lifecycle.microsoft_row(pkg)
+    assert (row.key if row else None) == key
+
+
+def test_findings_beyond_the_os():
+    pkgs = [P("Microsoft", ".NET runtime", "6.0.36"), P("Microsoft", ".NET runtime", "6.0.36"),  # one finding per product
+            P("Microsoft", ".NET runtime", "10.0.14"), P("WinApp", "Node.js", "18.20.4", "OpenJS Foundation")]
+    eol = {"nodejs": lifecycle.parse_eol([{"cycle": "18", "eol": "2025-04-30"}, {"cycle": "24", "eol": "2028-04-30"}])}
+    got = {(x["vuln_id"], x["ended"]) for x in lifecycle.findings(pkgs, {}, date(2026, 10, 29), eol)}
+    assert got == {("EOL:dotnet-6", True), ("EOL:app-nodejs:node.js-18", True)}
+    assert lifecycle.findings(pkgs, {}, date(2026, 10, 29), {}) and len(lifecycle.findings(pkgs, {}, date(2026, 10, 29), None)) == 1
+
+
+@pytest.mark.parametrize("bad", [[], [{"cycle": 18, "eol": "2025-04-30"}], [{"cycle": "18", "eol": "soon"}], {"cycle": "18"}])
+def test_parse_eol_refuses_unexpected_shapes(bad):
+    with pytest.raises(ValueError):
+        lifecycle.parse_eol(bad)
+
+
+def test_sync_eol_keeps_stored_cycles_on_failure(env):
+    import httpx
+
+    from nimstead.db import Advisory, make_sessionmaker
+    from nimstead.feeds import sync_eol
+    good = [{"cycle": "18", "eol": "2025-04-30"}]
+    s = make_sessionmaker(env)()
+    sync_eol(s, httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200, json=good))))
+    assert s.get(Advisory, ("EOL-nodejs", "EOL", "nodejs")).record["cycles"] == {"18": "2025-04-30"}
+    out = sync_eol(s, httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200, json=[{"cycle": "x"}]))))
+    assert "error" in out["nodejs"] and s.get(Advisory, ("EOL-nodejs", "EOL", "nodejs")).record["cycles"] == {"18": "2025-04-30"}

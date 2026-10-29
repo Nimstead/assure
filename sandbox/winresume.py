@@ -30,7 +30,7 @@ def main() -> int:
         h.note(f"resume {i}", outcome=r["outcome"], error=r.get("error"), steps=[s["step"] for s in r["steps"]][-6:])
         if r["outcome"] != "pending_reboot":
             h.note("final", outcome=r["outcome"], build=h.build())
-            return 0 if r["outcome"] == "rolled_back" else 1
+            return 0 if r["outcome"] in ("rolled_back", "applied") else 1
         h.reboot_and_wait()
         h.note("rebooted", build=h.build())
     return 1

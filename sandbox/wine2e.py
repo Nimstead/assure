@@ -37,7 +37,7 @@ def note(step, **kw):
 def guest(cmd, timeout=3600, check=True):
     for _ in range(4):  # VirtualBox guest control flakes right after boot (VERR_* from VBoxManage itself)
         rc, out = winvm.run(NAME, cmd, timeout=timeout)
-        if rc == 0 or not any(s in out for s in ("VERR_", "not ready", "timed out")) and out.strip():
+        if rc == 0 or not any(s in out for s in ("VERR_", "not ready", "timed out", "Error starting guest session")) and out.strip():
             break
         # Windows 11 finishes a cumulative update with a second restart, which can land between two commands (seen
         # for real: empty output, then "Guest Additions are not ready"); wait it out, cold-booting a firmware hang

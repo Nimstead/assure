@@ -1385,6 +1385,15 @@ def ps(run, script):
     return run(["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script])
 
 
+def boot_time():
+    """When this machine last booted (epoch seconds), from the tick counter; 0 where unknown."""
+    if os.name != "nt":
+        return 0
+    import ctypes
+    ctypes.windll.kernel32.GetTickCount64.restype = ctypes.c_ulonglong
+    return time.time() - ctypes.windll.kernel32.GetTickCount64() / 1000
+
+
 def windows_build():
     import winreg
     with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion", 0,
@@ -1396,8 +1405,9 @@ class WinJob:
     """Phases: start -> (reboot) -> verify -> done | rollback -> (reboot) -> rolled_back. State lives in WIN_STATE."""
 
     def __init__(self, job=None, run=sh, state_path=WIN_STATE, build=windows_build, settle=None, fail_after_apply=False,
-                 retry_wait=60):
+                 retry_wait=60, booted=None):
         self.run, self.state_path, self.build, self.retry_wait = run, state_path, build, retry_wait
+        self.booted = booted or boot_time
         if job is not None:
             p = (job.get("packages") or [{}])[0]
             alt = p.get("alt") if isinstance(p.get("alt"), dict) else None  # the same fix as a hotpatch (DECISIONS 52)
@@ -1425,6 +1435,7 @@ class WinJob:
                 and (s.get("reboot_by") is None or re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", str(s["reboot_by"])))
                 and (s.get("changed_at") is None or (isinstance(s["changed_at"], int) and not isinstance(s["changed_at"], bool)))
                 and isinstance(s.get("cluster", False), bool) and isinstance(s.get("notified_at", 0), (int, float))
+                and isinstance(s.get("boot", 0), int) and not isinstance(s.get("boot", 0), bool)
                 and isinstance(s.get("units"), list) and all(SAFE_NAME.match(str(u)) for u in s["units"])
                 and isinstance(s.get("settle"), int) and 0 <= s["settle"] <= 900
                 and all(ROLLUP_NAME.match(str(x)) for x in [*s.get("new_packages", []), *s.get("baseline", {})]))
@@ -1460,8 +1471,15 @@ class WinJob:
                 "versions": {self.s["product"]: self.build()} if outcome == "applied" else None}
 
     def pending(self):
+        self.s["boot"] = int(self.booted())  # the restart it waits for is a new boot, not just time passing
         self.save()
         return {"outcome": "pending_reboot", "steps": self.s["steps"], "error": None, "versions": None}
+
+    def restarted(self):
+        """Whether the machine has booted since the job started waiting. Seen for real (Windows 11 VM): after a DISM
+        removal with /norestart no reboot-pending flag is set, and a job poll that judged the rollback before the restart
+        found the new build still running and reported ROLLBACK FAILED."""
+        return self.s.get("boot") is None or abs(self.booted() - self.s["boot"]) > 120
 
     def rollups(self):
         rc, out = self.run(["dism", "/online", "/get-packages", "/format:list", "/english"])
@@ -1486,6 +1504,8 @@ class WinJob:
     def advance(self):
         """Run until finished or until a reboot is needed. Returns a report dict (outcome may be pending_reboot)."""
         phase = self.s["phase"]
+        if phase in ("verify", "rolled_back_pending") and not self.restarted():
+            return {"outcome": "pending_reboot", "steps": self.s["steps"], "error": None, "versions": None}  # judge nothing yet
         try:
             if phase == "start":
                 return self._start()

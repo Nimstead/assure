@@ -24,6 +24,7 @@ class FakeWin:
         self.offered, self.breaks, self.removal_works = list(offered), service_breaks_on_new, removal_works
         self.pending_remove, self.log, self.busy = [], [], busy_removals
         self.battery, self.cluster, self.drain, self.crashes, self.why = battery, cluster, drain, crashes, why
+        self.boot = 1_700_000_000
 
     def __call__(self, cmd, cwd=None):
         self.log.append(cmd)
@@ -74,6 +75,7 @@ class FakeWin:
         raise AssertionError(cmd)
 
     def reboot(self):
+        self.boot += 3600
         if self.pkgs.get(NEW_PKG) == "Install Pending":
             self.pkgs[NEW_PKG], self.build = "Installed", NEW
         for p in self.pending_remove:
@@ -87,11 +89,13 @@ JOB = {"id": "w1", "manager": "windows", "health_units": ["W3SVC"], "settle_seco
 
 
 def make(tmp_path, host, job=JOB):
-    return agent.WinJob(job, run=host, state_path=str(tmp_path / "state.json"), build=lambda: host.build, retry_wait=0)
+    return agent.WinJob(job, run=host, state_path=str(tmp_path / "state.json"), build=lambda: host.build, retry_wait=0,
+                        booted=lambda: host.boot)
 
 
 def resume(tmp_path, host):
-    return agent.WinJob(run=host, state_path=str(tmp_path / "state.json"), build=lambda: host.build, retry_wait=0).advance()
+    return agent.WinJob(run=host, state_path=str(tmp_path / "state.json"), build=lambda: host.build, retry_wait=0,
+                        booted=lambda: host.boot).advance()
 
 
 def test_update_survives_reboot_and_is_verified(tmp_path):
@@ -391,3 +395,17 @@ def test_microsoft_update_source_is_local_only(tmp_path, monkeypatch):
     searches = [c[-1] for c in h2.log if c[0] == "powershell" and "CreateUpdateSearcher" in c[-1]]
     assert searches and all("$q.ServerSelection = 2" in s for s in searches)
     assert "windows_update_source" not in json.dumps(JOB)  # never part of a job
+
+
+def test_a_rollback_is_never_judged_before_its_restart(tmp_path):
+    """Seen for real on Windows 11: DISM /norestart sets no reboot-pending flag, a job poll resumed the job before the
+    restart, saw the new build still running and reported ROLLBACK FAILED."""
+    h = FakeWin(service_breaks_on_new=True)
+    make(tmp_path, h).advance()
+    h.reboot()
+    assert resume(tmp_path, h)["outcome"] == "pending_reboot"  # rollback started, waits for its own restart
+    for _ in range(3):  # polls before that restart change and judge nothing
+        assert resume(tmp_path, h)["outcome"] == "pending_reboot" and h.build == NEW
+    h.reboot()
+    r = resume(tmp_path, h)
+    assert r["outcome"] == "rolled_back" and h.build == OLD

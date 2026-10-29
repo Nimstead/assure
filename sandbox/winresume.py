@@ -20,7 +20,8 @@ def main() -> int:
     global OUT
     if "Client" in h.guest(r"(gp 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').InstallationType"):
         OUT = "last_run_windows11_resume.json"
-    agent = r'"C:\Program Files\Python313\python.exe" "C:\Program Files\Nimstead\nimstead_agent.py"'
+    py = h.guest(r"(Resolve-Path 'C:\Program Files\Nimstead\runtime\*\python.exe', 'C:\Program Files\Python3*\python.exe' -ErrorAction SilentlyContinue)[0].Path").strip()
+    agent = f'"{py}" -I "C:\\Program Files\\Nimstead\\nimstead_agent.py"'  # the bundled runtime since agent 0.4.0
     h.note("resume start", build=h.build(), pending=h.guest(r"Test-Path C:\ProgramData\Nimstead\pending-job.json").strip())
     for i in range(1, 5):
         out = rf"C:\nimtest\resume{i}.json"

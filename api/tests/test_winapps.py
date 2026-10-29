@@ -407,3 +407,56 @@ def test_identify_batches(name, pub, ver, want):
 ])
 def test_identify_batch_near_misses(name, pub, ver):
     assert winapps.identify(name, pub, ver) is None
+
+
+# ---- users who aren't signed in (plan T34) ----------------------------------------------------------------------
+
+class OfflineReg(FakeReg):
+    """Two profiles: S-...-1001 signed in (hive loaded), S-...-1002 signed out (NTUSER.DAT on disk only)."""
+
+    def __init__(self, tmp_path, fail_load=False):
+        self.home = tmp_path / "bob"
+        self.home.mkdir()
+        (self.home / "NTUSER.DAT").write_bytes(b"regf")
+        self.offline = {"zoom": {"DisplayName": "Zoom Workplace (64-bit)", "DisplayVersion": "6.2.5", "Publisher": "Zoom Communications, Inc."}}
+        super().__init__({})
+        self.log, self.fail_load = [], fail_load
+
+    def OpenKey(self, parent, path, reserved=0, access=0):  # noqa: N802
+        if parent == self.HKEY_LOCAL_MACHINE and path == agent.PROFILES:
+            return FakeKey(subs={"S-1-5-21-1-2-3-1001": {}, "S-1-5-21-1-2-3-1002": {}, "S-1-5-18": {}})
+        if parent == self.HKEY_LOCAL_MACHINE and path.startswith(agent.PROFILES + "\\"):
+            return FakeKey(values={"ProfileImagePath": str(self.home)})
+        return super().OpenKey(parent, path, reserved, access)
+
+    def run(self, cmd):
+        self.log.append(cmd[:3])
+        if cmd[1] == "load":
+            if self.fail_load:
+                return 1, "ERROR: The process cannot access the file because it is being used by another process."
+            self.tree[(("HKU", cmd[2].split("\\")[1]), 0)] = self.offline
+        elif cmd[1] == "unload":
+            self.tree.pop((("HKU", cmd[2].split("\\")[1]), 0), None)
+        return 0, ""
+
+
+def test_offline_profiles_are_loaded_read_and_always_unloaded(tmp_path):
+    reg = OfflineReg(tmp_path)
+    apps = agent.offline_user_apps(reg, reg.run, loaded=["S-1-5-21-1-2-3-1001"])
+    assert [a["name"] for a in apps] == ["Zoom Workplace (64-bit)"]
+    tmp = r"HKU\NimsteadOffline_S_1_5_21_1_2_3_1002"
+    assert reg.log == [["reg", "load", tmp], ["reg", "unload", tmp]]  # only the signed-out user's hive, then unloaded
+    assert not reg.tree  # nothing left loaded
+
+
+def test_offline_hive_unloaded_even_when_reading_fails(tmp_path, monkeypatch):
+    reg = OfflineReg(tmp_path)
+    monkeypatch.setattr(agent, "windows_apps", lambda r, users=None: (_ for _ in ()).throw(OSError("corrupt hive")))
+    with pytest.raises(OSError):
+        agent.offline_user_apps(reg, reg.run, loaded=[])
+    assert reg.log[-1][:2] == ["reg", "unload"]
+
+
+def test_a_hive_in_use_is_skipped(tmp_path):
+    reg = OfflineReg(tmp_path, fail_load=True)
+    assert agent.offline_user_apps(reg, reg.run, loaded=["S-1-5-21-1-2-3-1001"]) == [] and [c[1] for c in reg.log] == ["load"]

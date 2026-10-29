@@ -159,24 +159,19 @@ UNINSTALL = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
 USER_SID = re.compile(r"^S-1-5-21-[0-9-]+\Z")
 
 
-def windows_apps(reg):
+def windows_apps(reg, users=None):
     """Installed apps from the registry Uninstall keys: HKLM 64-bit and 32-bit views, then every loaded user hive
     (per-user installs such as VS Code (User); the agent runs as SYSTEM, whose own HKCU has none), then HKCU.
-    Profiles of users who aren't logged on aren't loaded and so aren't seen.
+    Profiles of users who aren't signed in are read by offline_user_apps. `users`: only these HKU keys.
     `reg` is the winreg module (or a fake). Skips SystemComponent=1 and entries without a name or version.
     The publisher travels in `source`; the server decides which apps it can match (curated map only)."""
     seen, out = set(), []
-    places = [(reg.HKEY_LOCAL_MACHINE, UNINSTALL, reg.KEY_WOW64_64KEY), (reg.HKEY_LOCAL_MACHINE, UNINSTALL, reg.KEY_WOW64_32KEY)]
-    i = 0
-    while True:
-        try:
-            sid = reg.EnumKey(reg.HKEY_USERS, i)
-        except OSError:
-            break
-        i += 1
-        if USER_SID.match(sid):
-            places.append((reg.HKEY_USERS, sid + "\\" + UNINSTALL, 0))
-    places.append((reg.HKEY_CURRENT_USER, UNINSTALL, 0))
+    if users is not None:
+        places = [(reg.HKEY_USERS, u + "\\" + UNINSTALL, 0) for u in users]
+    else:
+        places = [(reg.HKEY_LOCAL_MACHINE, UNINSTALL, reg.KEY_WOW64_64KEY), (reg.HKEY_LOCAL_MACHINE, UNINSTALL, reg.KEY_WOW64_32KEY)]
+        places += [(reg.HKEY_USERS, sid + "\\" + UNINSTALL, 0) for sid in _subkeys(reg, reg.HKEY_USERS, "") if USER_SID.match(sid)]
+        places.append((reg.HKEY_CURRENT_USER, UNINSTALL, 0))
     for hive, path, view in places:
         try:
             root = reg.OpenKey(hive, path, 0, reg.KEY_READ | view)
@@ -210,6 +205,52 @@ def windows_apps(reg):
     return sorted(out, key=lambda p: (p["name"], p["version"]))
 
 
+PROFILES = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList"
+
+
+def offline_user_apps(reg, run=None, loaded=None):
+    """Per-user apps of profiles whose hive isn't loaded (users not signed in): each NTUSER.DAT is loaded under a
+    temporary HKU key, its Uninstall key read with windows_apps, and unloaded at once, also on error, so a user signing
+    in a moment later still gets their own profile. Needs SYSTEM or an elevated admin; otherwise nothing is read."""
+    run = run or sh
+    loaded = set(loaded if loaded is not None else _subkeys(reg, reg.HKEY_USERS, ""))
+    out = []
+    for sid in _subkeys(reg, reg.HKEY_LOCAL_MACHINE, PROFILES):
+        if not USER_SID.match(sid) or sid in loaded:
+            continue
+        try:
+            with reg.OpenKey(reg.HKEY_LOCAL_MACHINE, PROFILES + "\\" + sid) as k:
+                home = os.path.expandvars(str(reg.QueryValueEx(k, "ProfileImagePath")[0]))
+        except OSError:
+            continue
+        hive = os.path.join(home, "NTUSER.DAT")
+        if not os.path.isfile(hive) or is_link(home):
+            continue
+        tmp = "NimsteadOffline_" + sid.replace("-", "_")
+        rc, _ = run(["reg", "load", "HKU\\" + tmp, hive])
+        if rc != 0:  # in use (signed in after all) or no privilege: skip it
+            continue
+        try:
+            out += windows_apps(reg, users=[tmp])
+        finally:
+            run(["reg", "unload", "HKU\\" + tmp])
+    return out
+
+
+def _subkeys(reg, root, path):
+    try:
+        k = reg.OpenKey(root, path) if path else root
+    except OSError:
+        return []
+    names, i = [], 0
+    while True:
+        try:
+            names.append(reg.EnumKey(k, i))
+        except OSError:
+            return names
+        i += 1
+
+
 def collect_windows():
     import winreg
     with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion", 0,
@@ -240,7 +281,7 @@ def collect_windows():
     if problem:
         facts["microsoft_check"] = problem
     return {"os_name": f"{product} {dv} ({machine}) build {version}", "ecosystem": "Windows", "agent_version": AGENT_VERSION,
-            "facts": facts, "packages": [*os_pkg, *windows_apps(winreg), *ms]}
+            "facts": facts, "packages": [*os_pkg, *windows_apps(winreg), *offline_user_apps(winreg), *ms]}
 
 
 # Microsoft products MSRC publishes exact builds for (server: msproducts.py). Facts only, from fixed places; the server

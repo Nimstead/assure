@@ -1281,7 +1281,7 @@ class run_lock:
         self.f.close()
 
 
-def post(server, path, body, insecure_http, key=None, raw=False):
+def post(server, path, body, insecure_http, key=None, raw=False, limit=MAX_AGENT_BYTES):
     """POST JSON, or GET when body is None; raw=True returns the response bytes (capped) instead of parsed JSON."""
     if not server.startswith("https://") and not (insecure_http and server.startswith("http://")):
         raise AgentError(f"refusing non-HTTPS server {server!r} (use --insecure-http for local dev)")
@@ -1294,9 +1294,9 @@ def post(server, path, body, insecure_http, key=None, raw=False):
     req = urllib.request.Request(server.rstrip("/") + path, data, headers, method="GET" if body is None else "POST")
     try:
         with _opener.open(req, timeout=60) as r:
-            data = r.read(MAX_AGENT_BYTES + 1)  # JSON too: a server can't exhaust a root process's memory
-            if len(data) > MAX_AGENT_BYTES:
-                raise AgentError(f"response from {path} is larger than {MAX_AGENT_BYTES} bytes")
+            data = r.read(limit + 1)  # JSON too: a server can't exhaust a root process's memory
+            if len(data) > limit:
+                raise AgentError(f"response from {path} is larger than {limit} bytes")
             return data if raw else json.loads(data or b"{}")
     except urllib.error.HTTPError as e:
         raise AgentError("server returned {}: {}".format(e.code, e.read(300).decode(errors="replace")))
@@ -1385,8 +1385,9 @@ def self_update(cfg, insecure_http, path=None, keys=None, smoke=None, memo=None)
         if m.get("paused") or not m.get("release") or not m.get("sig"):
             return None, None
         rel = verify_release(str(m["release"]).encode(), m["sig"], keys)
+        runtime_problem = runtime_update(cfg, rel, insecure_http) if channel_ok(rel, cfg) else None
         if version_tuple(rel["agent_version"]) <= version_tuple(AGENT_VERSION):  # anti-rollback: only strictly newer
-            return None, None
+            return None, runtime_problem
         if not channel_ok(rel, cfg):  # the channel is signed: a server can't hand a stable host a preview build
             return None, f"skipping agent {rel['agent_version']}: signed for {release_channel(rel)}, this host takes {cfg.get('channel', 'preview')}"
         failed = _failed_releases(memo)
@@ -1414,10 +1415,78 @@ def self_update(cfg, insecure_http, path=None, keys=None, smoke=None, memo=None)
         return None, f"self-update failed: {e}"[:500]
 
 
-def _smoke_test(path):
+# ---- the Windows agent's bundled Python (plan decision 9) ---------------------------------------------------------
+RUNTIME_ROOT = os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "Nimstead", "runtime")
+RUNTIME_ARCH = {"AMD64": "amd64", "ARM64": "arm64", "X86": "win32"}
+MAX_RUNTIME_BYTES = 40 * 1024 * 1024
+PS_PSF_SIGNED = ("@(Get-ChildItem -LiteralPath %DIR% -Recurse -File -Include *.exe, *.dll, *.pyd | Where-Object { "
+                 "$s = Get-AuthenticodeSignature -LiteralPath $_.FullName; $s.Status -ne 'Valid' -or "
+                 "$s.SignerCertificate.Subject -notmatch '^CN=Python Software Foundation,' }).Count")
+
+
+def _runtime_dirs(root):
+    try:
+        return [os.path.join(root, n) for n in os.listdir(root) if re.fullmatch(r"[0-9a-f]{12}", n)]
+    except OSError:
+        return []
+
+
+def runtime_update(cfg, rel, insecure_http, run=None, root=None, executable=None, smoke=None, machine=None):
+    """Windows: move to the signed release's runtime when it isn't the one running (also off a system Python), the way
+    the agent replaces itself: hash from the signed manifest, Python Software Foundation signature on every program file,
+    the agent's own `collect` on it, then the scheduled tasks re-registered on it. Never while a Windows job waits for its
+    reboot; never to an older Python. Returns a problem (the host keeps what it had) or None."""
+    arch = RUNTIME_ARCH.get((machine or platform.machine()).upper())
+    want = (rel.get("runtimes") or {}).get(arch)
+    if (os.name != "nt" and machine is None) or not want or os.path.exists(WIN_STATE):
+        return None
+    run, root, exe = run or sh, root or RUNTIME_ROOT, executable or sys.executable
+    target = os.path.join(root, want["sha256"][:12])
+    keep = {os.path.normcase(os.path.dirname(exe)), os.path.normcase(target)}
+    for d in _runtime_dirs(root):  # what an earlier switch left behind; never the one running
+        if os.path.normcase(d) not in keep:
+            shutil.rmtree(d, ignore_errors=True)
+    if os.path.normcase(os.path.dirname(exe)) == os.path.normcase(target):
+        return None
+    bundled = os.path.normcase(os.path.dirname(os.path.dirname(exe))) == os.path.normcase(root)
+    if bundled and version_tuple(want["version"]) < version_tuple(platform.python_version()):
+        return f"skipping runtime {want['version']}: older than the Python {platform.python_version()} this agent runs on"
+    tmp = target + ".new"
+    try:
+        body = post(cfg["server"], f"/agent/runtime/{arch}.zip", None, insecure_http, raw=True, limit=MAX_RUNTIME_BYTES)
+        if hashlib.sha256(body).hexdigest() != want["sha256"]:
+            raise AgentError("downloaded runtime doesn't match the signed release")
+        shutil.rmtree(tmp, ignore_errors=True)
+        import io
+        import zipfile
+        with zipfile.ZipFile(io.BytesIO(body)) as z:
+            if any(n.startswith(("/", "\\")) or ":" in n or ".." in n.replace("\\", "/").split("/") for n in z.namelist()):
+                raise AgentError("runtime archive has unsafe paths")
+            z.extractall(tmp)  # noqa: S202 - every member name checked just above, and the bytes match the signed hash
+        rc, out = ps(run, PS_PSF_SIGNED.replace("%DIR%", _ps_quote(tmp)))
+        if rc != 0 or out.strip() != "0" or not os.path.exists(os.path.join(tmp, "python.exe")):
+            raise AgentError(f"runtime isn't signed by the Python Software Foundation: {out.strip()[-200:]}")
+        shutil.rmtree(target, ignore_errors=True)
+        os.replace(tmp, target)
+        new_exe = os.path.join(target, "python.exe")
+        problem = (smoke or _smoke_test)(os.path.abspath(__file__), new_exe)
+        if problem:
+            raise AgentError(f"agent failed on runtime {want['version']}: {problem}")
+        new_cfg = {**cfg, "python": new_exe}
+        schedule(new_cfg, run=run)  # the tasks now start the new runtime; the old folder goes on the next run
+        cfg.update(python=new_exe)
+        return None
+    except Exception as e:  # the host keeps its runtime and tasks exactly as they were
+        shutil.rmtree(tmp, ignore_errors=True)
+        if cfg.get("python") != os.path.join(target, "python.exe"):
+            shutil.rmtree(target, ignore_errors=True)
+        return f"runtime update failed: {e}"[:500]
+
+
+def _smoke_test(path, python=None):
     """The new agent must run on this host and collect a real inventory (no network). Returns a problem or None."""
     try:
-        p = subprocess.run([sys.executable, "-I", path, "collect"], capture_output=True, text=True, errors="replace", timeout=600)
+        p = subprocess.run([python or sys.executable, "-I", path, "collect"], capture_output=True, text=True, errors="replace", timeout=600)
     except (OSError, subprocess.TimeoutExpired) as e:
         return str(e)
     if p.returncode != 0:
@@ -1537,7 +1606,7 @@ JOB_UNITS = ("nimstead-agent-jobs.service", "nimstead-agent-jobs.timer")
 
 
 def _agent_cmd(cfg):
-    return [sys.executable, "-I", os.path.abspath(__file__), *(["--insecure-http"] if cfg["server"].startswith("http://") else [])]
+    return [cfg.get("python") or sys.executable, "-I", os.path.abspath(__file__), *(["--insecure-http"] if cfg["server"].startswith("http://") else [])]
 
 
 def _join(args):
@@ -1594,10 +1663,11 @@ def schedule(cfg, run=sh, unit_dir=SYSTEMD_DIR, systemd=None):
     remediation = bool(cfg.get("allow_remediation"))
     poll = ", approved fixes checked every 15 minutes" if remediation else ""
     if os.name == "nt":
+        exe = _agent_cmd(cfg)[0]
         trusted = [os.environ.get(v) for v in ("ProgramFiles", "ProgramFiles(x86)") if os.environ.get(v)]
-        if not any(os.path.normcase(sys.executable).startswith(os.path.normcase(t.rstrip("\\") + "\\")) for t in trusted):
-            raise AgentError(f"{sys.executable} is not an all-users Python under Program Files; the SYSTEM task must not run "
-                             "an interpreter other users can modify (winget install Python.Python.3.13 --scope machine)")
+        if not any(os.path.normcase(exe).startswith(os.path.normcase(t.rstrip("\\") + "\\")) for t in trusted):
+            raise AgentError(f"{exe} is not a Python under Program Files; the SYSTEM task must not run an interpreter "
+                             "other users can modify (rerun the install command: it brings its own)")
         rc, out = ps(run, schedule_windows_script(cfg))
         if rc != 0:
             raise AgentError(f"could not register the scheduled tasks (PowerShell exit {rc}): {out.strip()[-300:]}")
@@ -1656,6 +1726,22 @@ def uninstall(run=sh, unit_dir=SYSTEMD_DIR, state_dirs=None, agent_path=None):
             if os.path.exists(f):
                 os.remove(f)
                 removed.append(f)
+        if os.name == "nt":  # bundled runtimes; the running one is removed by a detached cmd once this process exits
+            root = os.path.join(os.path.dirname(agent_path), "runtime")
+            mine = os.path.normcase(os.path.dirname(sys.executable))
+            for d in _runtime_dirs(root):
+                if os.path.normcase(d) != mine:
+                    shutil.rmtree(d)
+                    removed.append(d)
+            if any(os.path.normcase(d) == mine for d in _runtime_dirs(root)):
+                later = f'ping -n 6 127.0.0.1 >nul & rmdir /s /q "{mine}" & rmdir "{root}" & rmdir "{os.path.dirname(agent_path)}"'
+                subprocess.Popen(["cmd", "/c", later], creationflags=getattr(subprocess, "DETACHED_PROCESS", 0), close_fds=True)
+                removed.append(mine + " (once this process exits)")
+            else:
+                try:
+                    os.rmdir(root)
+                except OSError:
+                    pass
         try:
             os.rmdir(os.path.dirname(agent_path))  # only if nothing else is in it
         except OSError:

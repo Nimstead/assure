@@ -30,14 +30,14 @@ full month) and record what the plan assumes. Write the findings into DECISIONS 
 updates, and compares KBs with the KBs of the host's open OS findings. Writes `sandbox/last_run_win_oracle_<vm>.json`.
 **Acceptance criteria:**
 - [x] Table per VM: KBs both agree on, KBs only Windows Update reports, KBs only we report, each with the CVEs involved
-- [ ] Runs unchanged against Server 2025 and Windows 11 26H2 VMs and records today's baseline — **partly: Windows 11 26H2 baseline recorded (`last_run_win_oracle_*`); Server 2025 not rerun this round**
+- [x] Runs unchanged against Server 2025 and Windows 11 26H2 VMs and records today's baseline — **2026-10-29: Windows 11 26H2 and Server 2025 baselines recorded (`last_run_windows11_040.json`, `last_run_windows_server2025.json`, `last_run_windows_nopython_server2025.json`)**
 - [x] A mismatch is explained in the run file (e.g. "hotpatch KB", "not offered: superseded"), never silently dropped
 - [x] The VM opts in to Microsoft Update (`AddService2` for the Microsoft Update service), so the oracle also covers .NET, SQL Server and Office MSI updates for Phase 2
 **Verification:** baseline run files committed; ruff clean.
 **Dependencies:** none · **Files:** `sandbox/winoracle.py` (new), `sandbox/winvm.py` (reuse only)
 
 ## Checkpoint A
-- [ ] Baseline oracle tables for Server 2025 and Windows 11 26H2 committed — **partly: Windows 11 only; Server 2025 not run**
+- [x] Baseline oracle tables for Server 2025 and Windows 11 26H2 committed — **2026-10-29: both, in the run files above**
 - [x] T0 shapes match the plan; a product whose MSRC data has no numeric build is dropped from T6–T9/T19/T20 and the reason recorded
 
 ---
@@ -81,7 +81,7 @@ package with an empty name and the reason. Add the names T0 confirms (Server 201
 
 ## Checkpoint B
 - [x] Full suite green on SQLite and PostgreSQL
-- [ ] T1 oracle rerun on Server 2025 and Windows 11: agreement equal or better than baseline, every gap explained — **partly: Windows 11 agrees on the OS KB (only gap: .NET Framework KB5127694, not detected, DECISIONS 51); Server 2025 not rerun**
+- [x] T1 oracle rerun on Server 2025 and Windows 11: agreement equal or better than baseline, every gap explained — **2026-10-29: both agree on the OS KB (Server 2025: KB5126646). Every gap explained in the run file: .NET Framework KBs not detected (DECISIONS 51); Server 2025 older-month KB5122871 superseded by the agreed cumulative update**
 - [x] Self-review notes for Phases 0–1 added to STATUS "Review notes" (plan decision 7)
 
 ---
@@ -264,7 +264,7 @@ rings, a ConfirmDialog that says "can't be undone", and the evidence ledger reco
 **Description:** Evaluation Center ISOs (plan decision 4). For each: install.ps1, T1 oracle table, one cumulative fix
 through the scheduled task alone, one forced-failure rollback, evidence pack verified.
 **Acceptance criteria:**
-- [ ] `sandbox/last_run_windows_<version>.json` for each, PASS — **partly: Windows 11 re-proven on agent 0.4.0 (`last_run_windows11_040*.json`); Windows 10 / Server 2016–2022 BLOCKED (evaluation ISOs need Microsoft's registration form)**
+- [ ] `sandbox/last_run_windows_<version>.json` for each, PASS — **partly: Windows 11 re-proven on agent 0.4.0 (`last_run_windows11_040*.json`); Server 2025 PASS (`last_run_windows_server2025.json`: rollback to the exact build over two restarts, then applied by the agent's own task); Windows 10 / Server 2016–2022 BLOCKED (evaluation ISOs need Microsoft's registration form)**
 - [x] Any gap found is fixed with a test, then rerun
 - [x] No Windows 10 image available: STATUS says Windows 10 remediation is unproven
 **Dependencies:** T2, T12, T13, T27 (VMs are installed without Python), T40, T41 · **Files:** `sandbox/wine2e.py`, `sandbox/winvm.py`, run files
@@ -332,7 +332,7 @@ way. Never while a Windows job waits for its reboot (`WIN_STATE`), same as agent
 **Dependencies:** T25, T26, T44 · **Files:** `sandbox/winupdate.py`, `sandbox/winlocal.py`, run files
 
 ## Checkpoint F
-- [ ] T27 PASS on both VMs; full suite; ruff; docs/install.md and the README install line say "no Python needed" — **partly: Windows 11 PASS; Server 2025 Core not run**
+- [x] T27 PASS on both VMs; full suite; ruff; docs/install.md and the README install line say "no Python needed" — **2026-10-29: Windows 11 and Server 2025 Core PASS (`last_run_windows_nopython*.json`)**
 - [x] DECISIONS entry for architecture decision 9, with the rejected options
 
 ---
@@ -524,7 +524,7 @@ Scheduled tasks get a random delay (6-hourly: up to 30 min; job poll: up to 2 mi
 ---
 
 ## Checkpoint E (release gate)
-- [ ] Oracle table for every VM in the matrix, agreement and every disagreement explained — **partly: Windows 11 only (see T1)**
+- [ ] Oracle table for every VM in the matrix, agreement and every disagreement explained — **partly: Windows 11 and Server 2025, every gap explained (see T1); the rest of the matrix is blocked (ISOs, cluster, domain)**
 - [x] Every row of the plan's coverage matrix marked done with its evidence, or blocked with the reason — **done: Status column in tasks/plan.md's coverage matrix**
 - [x] Full suite SQLite + PostgreSQL, web unit + e2e, perf rerun, pip-audit and npm audit 0 — **978 on SQLite and on PostgreSQL 17, web 46 unit + 10 e2e, perf as above, pip-audit 0, npm audit 0 (2026-10-29)**
 - [x] Independent security review of the agent diff (new collection, new managers, closed schemas; T21 winget path and T26 runtime swap first)

@@ -117,3 +117,21 @@ Short log; newest last. Why, not what.
     sync deletes them when it configures the CVE. The first run takes only the newest delta: history stays NVD's.
     End of life for curated apps comes from endoflife.date cycles (Node.js, Python, Oracle JDK), schema-checked, last
     good cycles kept; Microsoft's own dates stay in the dated table (plan decision 5).
+55. **Configuration and threat context from closed lists (plan T10, T11, T36, T37, T39).** One agent script
+    (`PS_HOST`) reads fixed settings (Secure Boot state, the 2023 certificate status and TPM-WMI events 1801/1808, the
+    PCA 2011 DBX revocation, EnableCertPaddingCheck in both views, Server speculative-execution overrides, SMBv1 and SMB
+    signing, LLMNR, NetBIOS, LmCompatibilityLevel, WDigest, RDP NLA, SChannel TLS 1.0/1.1, DC LDAP signing and channel
+    binding, AlwaysInstallElevated, the Spooler on DCs, unquoted or user-writable service paths, PowerShell 2.0,
+    RunAsPPL, Defender real-time and signature age, firewall profiles, BitLocker) plus installed roles, domain role,
+    cluster, WSUS/WUfB and pending reboot. `winconfig.py` turns them into `WinConfig` findings; CVE-tied ones
+    (CVE-2013-3900, CVE-2017-5715, CVE-2023-24932) are scored as their CVE. A value the agent couldn't read is "can't
+    tell": no finding. Defaults that changed are encoded (TLS 1.0/1.1 and LDAP signing on Server 2025, SMB signing
+    defaults, client vs server Spectre defaults). Dropped on purpose: strong certificate mapping (KB5014754) — full
+    enforcement is the default since the September 2025 updates, which the OS CVE check already demands.
+    Threat context (`risk.context`): MSRC "Exploited:Yes" counts like KEV before CISA lists it; "Exploitation More
+    Likely/Detected" and a public Metasploit module each add 10; KEV ransomware use and public disclosure are reasons. A
+    CVE whose CVRF component tag maps to a role or feature the host reports as not installed (DNS, DHCP, RRAS, Hyper-V,
+    MSMQ, RD Gateway, NPS, AD FS, AD DS, WebDAV, WSL) is lowered to 60 % but stays open; KEV or MSRC-exploited CVEs are
+    never lowered, and an unmapped tag or unknown roles change nothing. The real VM proof found that PowerShell 5.1
+    ignores `-Include` beside `-LiteralPath` (the runtime signature check also read build-details.json) and that the
+    embeddable zip's `vcruntime140*.dll` are signed by Microsoft, not the PSF; both are handled explicitly.

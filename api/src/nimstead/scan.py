@@ -7,7 +7,7 @@ from collections import defaultdict
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from nimstead import evidence, lifecycle, msproducts, risk, winapps
+from nimstead import evidence, lifecycle, msproducts, risk, winapps, winconfig
 from nimstead.db import Advisory, Asset, Cvss, Epss, Finding, InstalledPackage, Kev, now
 from nimstead.match import Match, Package, match_package, normalize_ecosystem
 from nimstead.notify import notify
@@ -24,12 +24,15 @@ def hotpatch_track(hot: list[dict], version: str) -> tuple[set[str], list[dict]]
 
 
 def host_checks(pkgs: list, facts: dict, today, eol: dict | None = None) -> list[dict]:
-    """Findings from the host's own state rather than an advisory: end of support (lifecycle.py)."""
+    """Findings from the host's own state rather than an advisory: end of support (lifecycle.py) and Windows
+    configuration (winconfig.py). `risk` None = score it as the CVE it names (KEV, EPSS, CVSS)."""
     out = []
     for x in lifecycle.findings(pkgs, facts, today, eol):
-        out.append({**x, "ecosystem": lifecycle.ECOSYSTEM, "score": 90 if x["ended"] else 40,
-                    "priority": "fix-now" if x["ended"] else "planned",
-                    "reasons": [x["summary"], "Upgrade, or enrol in Extended Security Updates" if x["ended"] else "Plan the upgrade"]})
+        out.append({**x, "ecosystem": lifecycle.ECOSYSTEM, "risk": risk.Risk(
+            90 if x["ended"] else 40, "fix-now" if x["ended"] else "planned",
+            [x["summary"], "Upgrade, or enrol in Extended Security Updates" if x["ended"] else "Plan the upgrade"])})
+    os_version = next((p.version for p in pkgs if p.ecosystem == "Windows"), "")
+    out += [{**x, "ecosystem": winconfig.ECOSYSTEM} for x in winconfig.evaluate(facts, os_version)]
     return out
 
 
@@ -114,17 +117,24 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
     for x in host_checks(pkgs, asset.facts or {}, t.date(), advisories[("eol",)]):
         key = (x["ecosystem"], x["package"], x["vuln_id"])
         seen.add(key)
-        rec = {"_risk": (x["score"], x["priority"], x["reasons"])}
+        rec = {"_risk": (x["risk"].score, x["risk"].priority, x["risk"].reasons)} if x.get("risk") else {}
         matches.append((key, x["ecosystem"], x["package"], x["version"],
                         Match(Package(x["package"], x["version"]), x["vuln_id"], [x["vuln_id"]], x.get("fixed"), x["summary"], rec)))
     # exploitation and severity context in three queries, not three lookups per CVE
     cves = sorted({m.vuln_id for *_, m in matches if m.vuln_id.startswith("CVE-")})
-    kevs, epss, nvd = set(), {}, {}
+    kevs, ransomware, epss, nvd = set(), set(), {}, {}
     for i in range(0, len(cves), 500):
         part = cves[i:i + 500]
-        kevs |= set(s.scalars(select(Kev.cve).where(Kev.cve.in_(part))))
+        for cve, ransom in s.execute(select(Kev.cve, Kev.ransomware).where(Kev.cve.in_(part))):
+            kevs.add(cve)
+            if ransom:
+                ransomware.add(cve)
         epss |= dict(s.execute(select(Epss.cve, Epss.score).where(Epss.cve.in_(part))).all())
         nvd |= dict(s.execute(select(Cvss.cve, Cvss.score).where(Cvss.cve.in_(part))).all())
+    if ("exploits",) not in advisories:  # CVEs with a public Metasploit module, once per pass
+        stored = s.scalar(select(Advisory.record).where(Advisory.ecosystem == "Exploit")) or {}
+        advisories[("exploits",)] = set(stored.get("cves", []))
+    roles = (asset.facts or {}).get("roles")
 
     for key, eco, name, version, m in matches:
         kev = m.vuln_id in kevs
@@ -140,6 +150,9 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
             internet_facing=asset.internet_facing,
             fix_available=m.fixed is not None,
         )
+        if "_risk" not in m.record:
+            r = risk.context(r, kev=kev, ransomware=m.vuln_id in ransomware, public_exploit=m.vuln_id in advisories[("exploits",)],
+                             msrc=(m.record.get("database_specific") or {}), roles=roles)
         f = existing.get(key)
         was_fix_now = f is not None and f.status == "open" and f.priority == "fix-now"
         if f is None:

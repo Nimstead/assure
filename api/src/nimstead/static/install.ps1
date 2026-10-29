@@ -38,10 +38,13 @@ $rt = Join-Path $runtimes $sha.Substring(0, 12)
 if (Test-Path -LiteralPath $rt) { Remove-Item -LiteralPath $rt -Recurse -Force }
 Expand-Archive -LiteralPath $zip -DestinationPath $rt
 Remove-Item -LiteralPath $zip
-# Every executable file in the runtime must carry a valid Python Software Foundation signature, checked before any runs
-$bad = @(Get-ChildItem -LiteralPath $rt -Recurse -File -Include *.exe, *.dll, *.pyd | Where-Object {
+# Every executable file in the runtime must carry a valid Python Software Foundation signature, checked before any runs;
+# the Visual C++ runtime DLLs Python ships are Microsoft's own, signed by Microsoft (seen in the 3.15.2 zip).
+# (filtered by extension: PowerShell 5.1 ignores -Include next to -LiteralPath, seen for real in the VM proof)
+$bad = @(Get-ChildItem -LiteralPath $rt -Recurse -File | Where-Object { @('.exe', '.dll', '.pyd') -contains $_.Extension.ToLower() } | Where-Object {
     $s = Get-AuthenticodeSignature -LiteralPath $_.FullName
-    $s.Status -ne "Valid" -or $s.SignerCertificate.Subject -notmatch '^CN=Python Software Foundation,' })
+    $s.Status -ne "Valid" -or -not ($s.SignerCertificate.Subject -match '^CN=Python Software Foundation,' -or
+      ($_.Name -match '^vcruntime140(_1)?\.dll$' -and $s.SignerCertificate.Subject -match ', O=Microsoft Corporation,')) })
 if ($bad.Count -or -not (Test-Path -LiteralPath (Join-Path $rt "python.exe"))) {
   Remove-Item -LiteralPath $rt -Recurse -Force
   throw "The downloaded runtime isn't signed by the Python Software Foundation ($($bad[0].Name)); nothing was installed."

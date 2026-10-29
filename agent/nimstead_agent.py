@@ -282,6 +282,10 @@ def collect_windows():
     ms, problem = windows_microsoft(winreg)
     if problem:
         facts["microsoft_check"] = problem
+    host, problem = windows_host_facts()
+    facts.update(host)
+    if problem:
+        facts["host_check"] = problem
     return {"os_name": f"{product} {dv} ({machine}) build {version}", "ecosystem": "Windows", "agent_version": AGENT_VERSION,
             "facts": facts, "packages": [*os_pkg, *windows_apps(winreg), *offline_user_apps(winreg), *ms]}
 
@@ -377,6 +381,96 @@ def windows_microsoft(reg, run=None, dotnet_dirs=None):
         if df.get(part):
             add(f"Defender {part}", df[part], df.get("mode") or None)
     return out, None
+
+
+# Host state the server evaluates (winconfig.py, plan T10-T12, T36, T37, T42): a closed list read from fixed places.
+# The server never names a registry path or setting; it only reads what this script reports. Unreadable = null.
+PS_HOST = r"""
+$ErrorActionPreference = 'SilentlyContinue'
+function Reg($path, $name) { $v = (Get-ItemProperty -LiteralPath "Registry::$path" -Name $name -ErrorAction SilentlyContinue).$name; if ($null -eq $v) { $null } else { $v } }
+function UserWritable($p) {
+  if (-not $p -or -not (Test-Path -LiteralPath $p)) { return $false }
+  $acl = Get-Acl -LiteralPath $p
+  foreach ($r in $acl.Access) {
+    if ($r.AccessControlType -ne 'Allow') { continue }
+    $id = $r.IdentityReference.Value
+    if ($id -notmatch '^(BUILTIN\\Users|NT AUTHORITY\\Authenticated Users|Everyone|NT AUTHORITY\\INTERACTIVE)$') { continue }
+    if ($r.FileSystemRights -band 0x40116) { return $true }  # write data/add file, append, write attributes/EA, write DAC, owner
+  }
+  return $false
+}
+$c = [ordered]@{}
+$sb = $null; try { $sb = Confirm-SecureBootUEFI } catch { }
+$c.secure_boot = $sb
+$svc = 'HKLM\SYSTEM\CurrentControlSet\Control\SecureBoot\Servicing'
+$c.uefica2023_status = Reg $svc 'UEFICA2023Status'; $c.uefica2023_error = Reg $svc 'UEFICA2023Error'
+$ev = Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = 'Microsoft-Windows-TPM-WMI'; Id = 1801, 1808 } -MaxEvents 1
+$c.secure_boot_last_event = if ($ev) { $ev.Id } else { $null }
+$c.dbx_pca2011_revoked = $null
+if ($sb) { try { $c.dbx_pca2011_revoked = [Text.Encoding]::ASCII.GetString((Get-SecureBootUEFI -Name dbx).Bytes) -match 'Microsoft Windows Production PCA 2011' } catch { } }
+$c.cert_padding_check = @((Reg 'HKLM\SOFTWARE\Microsoft\Cryptography\Wintrust\Config' 'EnableCertPaddingCheck'), (Reg 'HKLM\SOFTWARE\WOW6432Node\Microsoft\Cryptography\Wintrust\Config' 'EnableCertPaddingCheck'))
+$mm = 'HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management'
+$c.spectre_override = Reg $mm 'FeatureSettingsOverride'; $c.spectre_mask = Reg $mm 'FeatureSettingsOverrideMask'
+$smb = Get-SmbServerConfiguration
+$c.smb1_server = if ($smb) { $smb.EnableSMB1Protocol } else { $null }
+$c.smb_signing_required = if ($smb) { $smb.RequireSecuritySignature } else { $null }
+$c.llmnr = Reg 'HKLM\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient' 'EnableMulticast'
+$c.netbios_adapters = @(Get-ChildItem 'Registry::HKLM\SYSTEM\CurrentControlSet\Services\NetBT\Parameters\Interfaces' | ForEach-Object { (Get-ItemProperty $_.PSPath).NetbiosOptions } | Where-Object { $_ -ne 2 }).Count
+$lsa = 'HKLM\SYSTEM\CurrentControlSet\Control\Lsa'
+$c.lm_compat = Reg $lsa 'LmCompatibilityLevel'; $c.run_as_ppl = Reg $lsa 'RunAsPPL'
+$c.wdigest = Reg 'HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\WDigest' 'UseLogonCredential'
+$c.rdp_enabled = (Reg 'HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server' 'fDenyTSConnections') -eq 0
+$c.rdp_nla = Reg 'HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' 'UserAuthentication'
+foreach ($t in 'TLS 1.0', 'TLS 1.1') { $c["$($t.Replace(' ','').ToLower())_server"] = Reg "HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\$t\Server" 'Enabled' }
+$ntds = 'HKLM\SYSTEM\CurrentControlSet\Services\NTDS\Parameters'
+$c.ldap_signing = Reg $ntds 'LDAPServerIntegrity'; $c.ldap_channel_binding = Reg $ntds 'LdapEnforceChannelBinding'
+$c.always_install_elevated = Reg 'HKLM\SOFTWARE\Policies\Microsoft\Windows\Installer' 'AlwaysInstallElevated'
+$c.spooler_running = (Get-Service Spooler).Status -eq 'Running'
+$unq = @(); $wsvc = @()
+foreach ($s in Get-CimInstance Win32_Service) {
+  $p = "$($s.PathName)".Trim()
+  if (-not $p -or $p.StartsWith('"')) { $exe = ($p -split '"')[1] } else {
+    $exe = if ($p -match '^(.+?\.exe)') { $Matches[1] } else { $p }
+    if ($exe -match ' ' -and $exe -notmatch '^[A-Za-z]:\\Windows\\') {
+      $parts = $exe -split ' '; $cand = ''
+      for ($i = 0; $i -lt $parts.Count - 1; $i++) { $cand = ($cand + ' ' + $parts[$i]).Trim(); if (UserWritable (Split-Path $cand -Parent)) { $unq += $s.Name; break } }
+    }
+  }
+  if ($exe -and $exe -notmatch '^[A-Za-z]:\\Windows\\' -and ((UserWritable $exe) -or (UserWritable (Split-Path $exe -Parent)))) { $wsvc += $s.Name }
+}
+$c.unquoted_service_paths = @($unq | Select-Object -Unique -First 20); $c.writable_service_binaries = @($wsvc | Select-Object -Unique -First 20)
+$ps2 = Get-WindowsOptionalFeature -Online -FeatureName MicrosoftWindowsPowerShellV2Root
+$c.powershell2 = if ($ps2) { "$($ps2.State)" -eq 'Enabled' } else { $null }
+$mp = Get-MpComputerStatus
+$c.defender = if ($mp) { @{ mode = "$($mp.AMRunningMode)"; realtime = $mp.RealTimeProtectionEnabled; signature_age = $mp.AntivirusSignatureAge } } else { $null }
+$c.firewall_off = @(Get-NetFirewallProfile | Where-Object { -not $_.Enabled } | ForEach-Object { "$($_.Name)" })
+$bl = Get-BitLockerVolume -MountPoint $env:SystemDrive
+$c.bitlocker_os = if ($bl) { "$($bl.ProtectionStatus)" } else { $null }
+$cs = Get-CimInstance Win32_ComputerSystem
+$wu = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate'
+$roles = if (Get-Command Get-WindowsFeature) { @(Get-WindowsFeature | Where-Object Installed | ForEach-Object Name) } else {
+  @(Get-WindowsOptionalFeature -Online | Where-Object State -eq 'Enabled' | ForEach-Object FeatureName) }
+$last = $null; try { $last = (New-Object -ComObject Microsoft.Update.AutoUpdate).Results.LastInstallationSuccessDate.ToString('o') } catch { }
+$pending = (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending') -or (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired')
+ConvertTo-Json -Compress -Depth 4 -InputObject ([ordered]@{ config = $c; roles = @($roles | Select-Object -First 400);
+  domain_role = [int]$cs.DomainRole; domain = "$($cs.Domain)"; cluster = Reg 'HKLM\Cluster' 'ClusterName';
+  wsus = if ((Reg "$wu\AU" 'UseWUServer') -eq 1) { Reg $wu 'WUServer' } else { $null };
+  wufb_quality_deferral_days = Reg $wu 'DeferQualityUpdatesPeriodInDays'; pending_reboot = $pending; last_update_success = $last })
+"""
+HOST_FACTS = ("config", "roles", "domain_role", "domain", "cluster", "wsus", "wufb_quality_deferral_days", "pending_reboot",
+              "last_update_success")
+
+
+def windows_host_facts(run=None):
+    """Facts from PS_HOST, or ({}, problem). Only the keys in HOST_FACTS are kept."""
+    rc, out = ps(run or sh, PS_HOST)
+    try:
+        d = json.loads(out.strip().splitlines()[-1]) if rc == 0 else None
+    except (ValueError, IndexError):
+        d = None
+    if not isinstance(d, dict):
+        return {}, f"host check failed: {out.strip()[-200:]}"
+    return {k: d.get(k) for k in HOST_FACTS}, None
 
 
 ESU_PRODUCTS = re.compile(r"^Windows (10 Version 22H2|Server 2012)")
@@ -1558,9 +1652,11 @@ def self_update(cfg, insecure_http, path=None, keys=None, smoke=None, memo=None)
 RUNTIME_ROOT = os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "Nimstead", "runtime")
 RUNTIME_ARCH = {"AMD64": "amd64", "ARM64": "arm64", "X86": "win32"}
 MAX_RUNTIME_BYTES = 40 * 1024 * 1024
-PS_PSF_SIGNED = ("@(Get-ChildItem -LiteralPath %DIR% -Recurse -File -Include *.exe, *.dll, *.pyd | Where-Object { "
-                 "$s = Get-AuthenticodeSignature -LiteralPath $_.FullName; $s.Status -ne 'Valid' -or "
-                 "$s.SignerCertificate.Subject -notmatch '^CN=Python Software Foundation,' }).Count")
+PS_PSF_SIGNED = ("@(Get-ChildItem -LiteralPath %DIR% -Recurse -File | Where-Object { @('.exe', '.dll', '.pyd') -contains "
+                 "$_.Extension.ToLower() } | Where-Object { "
+                 "$s = Get-AuthenticodeSignature -LiteralPath $_.FullName; $s.Status -ne 'Valid' -or -not "
+                 "($s.SignerCertificate.Subject -match '^CN=Python Software Foundation,' -or ($_.Name -match "
+                 "'^vcruntime140(_1)?\\.dll$' -and $s.SignerCertificate.Subject -match ', O=Microsoft Corporation,')) }).Count")
 
 
 def _runtime_dirs(root):

@@ -1,3 +1,5 @@
+from nimstead import risk
+from nimstead.feeds import msrc_context
 from nimstead.risk import cvss_base, score
 
 
@@ -37,3 +39,43 @@ def test_cvss_base_from_osv_severity():
     assert cvss_base(sev) == 9.8
     assert cvss_base([{"type": "CVSS_V3", "score": "garbage"}]) is None
     assert cvss_base(None) is None
+
+
+# ---- threat and exposure context (plan T11, T39)
+
+
+
+def base(**kw):
+    return risk.score(kev=False, epss=0.02, cvss=8.1, **kw)
+
+
+def test_microsoft_exploited_counts_like_kev():
+    r = risk.context(base(), kev=False, msrc={"exploited": True})
+    assert r.priority == "fix-now" and r.score >= 90 and r.reasons[0] == "Exploited in the wild (Microsoft)"
+
+
+def test_ransomware_public_exploit_and_exploitability_are_reasons():
+    r = risk.context(base(), kev=False, public_exploit=True, msrc={"exploitability": "Exploitation More Likely", "disclosed": True})
+    assert r.score == base().score + 20
+    assert {"Public exploit (Metasploit module)", "Microsoft rates it: Exploitation More Likely", "Publicly disclosed before the fix"} <= set(r.reasons)
+    k = risk.context(risk.score(kev=True, epss=None, cvss=9.8), kev=True, ransomware=True)
+    assert "Used in ransomware campaigns (CISA KEV)" in k.reasons and k.priority == "fix-now"
+
+
+def test_role_not_installed_lowers_but_never_below_kev():
+    msrc = {"tag": "Windows Message Queuing Queue Manager"}
+    hi = risk.score(kev=False, epss=0.6, cvss=9.8)
+    low = risk.context(hi, kev=False, msrc=msrc, roles=["Web-Server", "DNS"])
+    assert low.score < hi.score and "Windows Message Queuing Queue Manager isn't installed here" in low.reasons[-1]
+    assert risk.context(hi, kev=False, msrc=msrc, roles=["MSMQ"]).score == hi.score  # installed: unchanged
+    assert risk.context(hi, kev=False, msrc=msrc, roles=None) is hi  # roles unknown: unchanged
+    kev = risk.score(kev=True, epss=None, cvss=9.8)
+    assert risk.context(kev, kev=True, msrc=msrc, roles=["Web-Server"]).priority == "fix-now"
+    assert risk.context(hi, kev=False, msrc={"tag": "Windows Kernel"}, roles=["Web-Server"]) is hi  # unmapped tag
+
+
+def test_msrc_context_reads_the_real_cvrf_shape():
+    v = {"Notes": [{"Type": 7, "Value": "Role: DNS Server"}],
+         "Threats": [{"Type": 1, "Description": {"Value": "Publicly Disclosed:No;Exploited:Yes;Latest Software Release:Exploitation Detected"}}]}
+    assert msrc_context(v) == {"tag": "Role: DNS Server", "exploited": True, "disclosed": False, "exploitability": "Exploitation Detected"}
+    assert msrc_context({}) == {}

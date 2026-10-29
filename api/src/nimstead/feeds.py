@@ -28,6 +28,7 @@ OSV_URL = "https://osv-vulnerabilities.storage.googleapis.com/{}/all.zip"  # dir
 KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
 EPSS_URL = "https://epss.empiricalsecurity.com/epss_scores-current.csv.gz"  # old cyentia.com URL 301s here
 NVD_URL = "https://nvd.nist.gov/feeds/json/cve/2.0/nvdcve-2.0-{}.json.gz"  # {year} or "modified"
+METASPLOIT_URL = "https://raw.githubusercontent.com/rapid7/metasploit-framework/master/db/modules_metadata_base.json"
 MSRC_URL = "https://api.msrc.microsoft.com/cvrf/v3.0/"  # "updates" lists months; "cvrf/{ID}" is one month
 KEEP = ("id", "aliases", "upstream", "withdrawn", "summary", "severity", "modified")
 
@@ -260,6 +261,36 @@ def sync_office(session: Session, client=None) -> dict:
     return {"rows": n}
 
 
+def msrc_context(v: dict) -> dict:
+    """The CVRF component tag (role-aware priority, plan T11) and Microsoft's own exploitation data (T39):
+    "Publicly Disclosed:Yes;Exploited:No;Latest Software Release:Exploitation More Likely"."""
+    out = {}
+    if tag := next((n.get("Value") for n in v.get("Notes", []) if n.get("Type") == 7 and n.get("Value")), None):
+        out["tag"] = str(tag)[:200]
+    for t in v.get("Threats", []):
+        if t.get("Type") == 1 and "Exploited:" in (d := (t.get("Description") or {}).get("Value", "")):
+            kv = dict(p.split(":", 1) for p in d.split(";") if ":" in p)
+            out["exploited"] = kv.get("Exploited") == "Yes"
+            out["disclosed"] = kv.get("Publicly Disclosed") == "Yes"
+            out["exploitability"] = kv.get("Latest Software Release", "")[:60]
+            break
+    return out
+
+
+def sync_metasploit(session: Session, client=None) -> int:
+    """CVEs with a public Metasploit module (plan T39, decision 15), from Rapid7's module metadata. Stored as one row
+    (ecosystem "Exploit"); a fetch or shape problem keeps the stored list."""
+    data = json.loads(_get(client, METASPLOIT_URL))
+    if not isinstance(data, dict) or len(data) < 1000:
+        raise ValueError("Metasploit metadata: unexpected shape")
+    cves = sorted({r for m in data.values() if isinstance(m, dict) for r in m.get("references") or []
+                   if isinstance(r, str) and re.fullmatch(r"CVE-\d{4}-\d{4,}", r)})
+    session.merge(Advisory(id="EXPLOIT-metasploit", ecosystem="Exploit", package="metasploit", modified=now().isoformat(),
+                           record={"id": "EXPLOIT-metasploit", "cves": cves}))
+    session.commit()
+    return len(cves)
+
+
 def sync_msrc(session: Session, months: int = 12, client=None) -> dict:
     """Windows OS advisories from the MSRC CVRF API, stored as OSV-shaped rows (ecosystem Windows, package =
     MSRC product name, fixed = FixedBuild) so the normal matcher works. Windows 10/11/Server products with a dotted
@@ -307,6 +338,7 @@ def sync_msrc(session: Session, months: int = 12, client=None) -> dict:
                         if pid not in track or windows_cmp(b, track[pid][0]) < 0:
                             track[pid] = (b, kb if kb.isdigit() else None)
             scores = {pid: s for s in v.get("CVSSScoreSets", []) for pid in s["ProductID"]}
+            context = msrc_context(v)
             # Office Click-to-Run: no build in MSRC, so the CVE is kept for office.sync to pair with the channel feed
             office_ch = sorted({ch for r in v.get("Remediations", []) if str(r.get("FixedBuild", "")).startswith("https://")
                                 for pid in r.get("ProductID", []) for ch in office.channels_for(names.get(pid, ""))})
@@ -332,7 +364,7 @@ def sync_msrc(session: Session, months: int = 12, client=None) -> dict:
                 # merge both tracks for a host that is on a hotpatch build and keep one finding per CVE
                 rec = {"id": f"MSRC-{cve}-{pid}{'-hotpatch' if suffix else ''}", "aliases": [cve], "modified": mod,
                        "summary": (v["Title"]["Value"] + (f" (KB{kb})" if kb else ""))[:500],
-                       "database_specific": {"kb": kb, "hotpatch": bool(suffix)},
+                       "database_specific": {"kb": kb, "hotpatch": bool(suffix), **context},
                        "affected": [{"package": {"ecosystem": eco, "name": name},
                                      "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": build}]}]}]}
                 name += suffix
@@ -363,6 +395,11 @@ def update_all(session: Session, client=None) -> dict:
     in_use = {normalize_ecosystem(e) for e in session.scalars(select(InstalledPackage.ecosystem).distinct())}
     used = sorted({e.split(":", 1)[0] for e in in_use} - {"Windows", "WinApp", msproducts.ECOSYSTEM})  # MSRC and NVD, not OSV
     out = {"kev": sync_kev(session, client), "epss": sync_epss(session, client), "nvd": sync_nvd(session, ["modified"], client), "osv": {}}
+    try:
+        out["metasploit"] = sync_metasploit(session, client)
+    except (httpx.HTTPError, ValueError) as e:
+        session.rollback()
+        log.warning("Metasploit metadata skipped, kept the stored list: %s", e)
     for eco in used:  # one at a time: ecosystem names come from agents, and an unknown one must not stop every tenant's update
         try:
             out["osv"][eco] = sync_osv(session, [eco], client, only=in_use)

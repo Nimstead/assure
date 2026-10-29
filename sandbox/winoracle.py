@@ -43,7 +43,8 @@ def compare(wua: list[dict], findings: list[dict]) -> dict:
 
 def run(as_system, guest, findings: list[dict]) -> dict:
     """as_system/guest: wine2e's helpers. Returns the comparison table."""
-    guest("Set-Content -Path C:\\nimtest\\oracle.ps1 -Encoding utf8 -Value @'\r\n" + PS_MISSING + "\r\n'@")
+    guest("New-Item -ItemType Directory -Force C:\\nimtest | Out-Null; Set-Content -Path C:\\nimtest\\oracle.ps1 -Encoding utf8 -Value @'\r\n"
+          + PS_MISSING + "\r\n'@")
     as_system(r"powershell -NoProfile -ExecutionPolicy Bypass -File C:\nimtest\oracle.ps1 > C:\nimtest\oracle.json 2>&1",
               name="NimsteadOracle", wait_minutes=60)
     out = guest(r"Get-Content C:\nimtest\oracle.json -Raw").strip()

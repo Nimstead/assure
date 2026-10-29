@@ -194,9 +194,9 @@ def test_sync_msrc_keeps_hotpatch_fixes_apart():
     rows = {(a.package, a.record["aliases"][0]): a.record for a in s.scalars(select(Advisory))}
     cum, hot = rows[(WS25, "CVE-2025-49734")], rows[(WS25 + " (Hotpatch)", "CVE-2025-49734")]
     assert cum["affected"][0]["ranges"][0]["events"][1] == {"fixed": "10.0.26100.6584"}
-    assert cum["database_specific"] == {"kb": "5065426", "hotpatch": False}
+    assert cum["database_specific"].items() >= {"kb": "5065426", "hotpatch": False}.items()
     assert hot["affected"][0]["ranges"][0]["events"][1] == {"fixed": "10.0.26100.6508"}
-    assert hot["affected"][0]["package"]["name"] == WS25 and hot["database_specific"] == {"kb": "5065474", "hotpatch": True}
+    assert hot["affected"][0]["package"]["name"] == WS25 and hot["database_specific"].items() >= {"kb": "5065474", "hotpatch": True}.items()
 
 
 def _ws25_host(env, build):

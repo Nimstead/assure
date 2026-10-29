@@ -107,3 +107,13 @@ Short log; newest last. Why, not what.
     machine). Edge and VS Code left the NVD map (DECISIONS 24): MSRC lists Microsoft-only CVEs NVD's Chrome data misses.
     Out, with the reason in DECISIONS 51: .NET Framework, Microsoft 365 Apps / Office (T9 handles Click-to-Run by
     channel), Configuration Manager and Skype for Business Server (server roles we don't detect yet).
+54. **CVE List v5 is the second source for curated apps; NVD wins once it has a configuration.** NVD's enrichment
+    backlog leaves recent CVEs with no CPE configuration, so the hourly update also reads the CVE List v5 delta files
+    (`CVEProject/cvelistV5` releases): the vendor CNA's `affected` entries (exact vendor/product names in
+    `winapps.CNA_NAMES`) and CISA's ADP "Vulnrichment" CPEs (through the same curated CPE map), with the same version
+    rules as NVD (status `affected`, numeric versions, `versionType` custom/semver/dotted only; unbounded or `*` ends,
+    `git` versions and unknown status are refused). Google's CNA writes `version == lessThan` to mean "below X"; that is
+    read as a range from the beginning. Rows are `<CVE>-v5` (CVE as alias), only for CVEs with no NVD row, and NVD's
+    sync deletes them when it configures the CVE. The first run takes only the newest delta: history stays NVD's.
+    End of life for curated apps comes from endoflife.date cycles (Node.js, Python, Oracle JDK), schema-checked, last
+    good cycles kept; Microsoft's own dates stay in the dated table (plan decision 5).

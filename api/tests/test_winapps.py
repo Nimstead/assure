@@ -1,5 +1,6 @@
 """Third-party Windows apps: curated map, registry parsing, version comparator, NVD translation, end to end."""
 
+import copy
 import gzip
 import json
 from pathlib import Path
@@ -317,3 +318,51 @@ def test_windows_apps_reads_per_user_installs_from_every_loaded_profile():
     })
     names = [a["name"] for a in agent.windows_apps(reg)]
     assert names == ["Microsoft Visual Studio Code (User)", "Zoom Workplace (64-bit)"]
+
+
+# ---- CVE List v5 as a second source (plan T30) -----------------------------------------------------------------
+
+V5 = json.loads((Path(__file__).parent / "fixtures" / "cvelist" / "CVE-2025-6554.json").read_text())  # real record
+
+
+def test_v5_chrome_record_from_googles_cna():
+    [(key, rec)] = winapps.advisories_v5(V5)
+    assert key == "google:chrome" and rec["id"] == "CVE-2025-6554-v5" and rec["aliases"] == ["CVE-2025-6554"]
+    assert rec["affected"][0]["ranges"][0]["events"] == [{"introduced": "0"}, {"fixed": "138.0.7204.96"}]
+    assert rec["severity"][0]["score"].startswith("CVSS:3.1/")  # from CISA's ADP container
+
+
+@pytest.mark.parametrize("edit,want", [
+    (lambda r: r["cveMetadata"].update(state="REJECTED"), []),
+    (lambda r: r["containers"]["cna"]["affected"][0].update(platforms=["Linux", "Mac"]), []),
+    (lambda r: r["containers"]["cna"]["affected"][0].update(product="Chrome Remote Desktop"), []),
+    (lambda r: r["containers"]["cna"]["affected"][0]["versions"][0].update(versionType="git"), []),
+    (lambda r: r["containers"]["cna"]["affected"][0]["versions"][0].update(status="unknown"), []),
+    (lambda r: r["containers"]["cna"]["affected"][0]["versions"][0].update(lessThan="*"), []),
+])
+def test_v5_refuses_what_it_cant_state_exactly(edit, want):
+    r = copy.deepcopy(V5)
+    edit(r)
+    assert winapps.advisories_v5(r) == want
+
+
+def test_v5_cpes_from_cisa_adp_map_through_the_curated_cpes():
+    r = copy.deepcopy(V5)
+    r["containers"]["cna"]["affected"] = []
+    r["containers"]["adp"][0]["affected"] = [{"vendor": "7-zip", "product": "7-zip", "cpes": ["cpe:2.3:a:7-zip:7-zip:*:*:*:*:*:*:*:*"],
+                                               "versions": [{"version": "0", "status": "affected", "lessThan": "25.01", "versionType": "custom"}]}]
+    [(key, rec)] = winapps.advisories_v5(r)
+    assert key == "7-zip:7-zip" and rec["affected"][0]["ranges"][0]["events"] == [{"introduced": "0"}, {"fixed": "25.01"}]
+
+
+def test_cvelist_rows_only_where_nvd_has_none_and_nvd_replaces_them(env):
+    from nimstead.feeds import cvelist_records, sync_winapps
+    s = make_sessionmaker(env)()
+    assert cvelist_records(s, [V5]) == 1
+    assert [a.id for a in s.scalars(select(Advisory).where(Advisory.ecosystem == "WinApp"))] == ["CVE-2025-6554-v5"]
+    nvd = {"id": "CVE-2025-6554", "lastModified": "2025-07-01", "descriptions": [{"lang": "en", "value": "V8"}],
+           "configurations": [{"nodes": [{"cpeMatch": [{"vulnerable": True, "criteria": "cpe:2.3:a:google:chrome:*:*:*:*:*:*:*:*",
+                                                         "versionEndExcluding": "138.0.7204.96"}]}]}]}
+    sync_winapps(s, [nvd])
+    assert [a.id for a in s.scalars(select(Advisory).where(Advisory.ecosystem == "WinApp"))] == ["CVE-2025-6554"]
+    assert cvelist_records(s, [V5]) == 0  # NVD has it now: v5 isn't added back

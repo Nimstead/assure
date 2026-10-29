@@ -117,6 +117,66 @@ def _windows_possible(cfg: dict) -> bool:
     return not oses or any(":microsoft:windows" in o for o in oses)
 
 
+# ---- CVE List v5 (CNA and CISA ADP "Vulnrichment" data): second source when NVD has no configuration (plan T30) ---
+# CNA vendor/product names -> curated key, exact (case-insensitive). CPEs in `affected[].cpes` go through _BY_CPE.
+CNA_NAMES = {("google", "chrome"): "google:chrome", ("mozilla", "firefox"): "mozilla:firefox",
+             ("mozilla", "firefox esr"): "mozilla:firefox_esr", ("7-zip", "7-zip"): "7-zip:7-zip",
+             ("videolan", "vlc media player"): "videolan:vlc_media_player", ("wireshark", "wireshark"): "wireshark:wireshark",
+             ("zoom communications, inc", "zoom workplace"): "zoom:workplace_desktop", ("rarlab", "winrar"): "rarlab:winrar",
+             ("python software foundation", "cpython"): "python:python", ("nodejs", "node"): "nodejs:node.js",
+             ("git", "git"): "git-scm:git", ("adobe", "acrobat reader"): "adobe:acrobat_reader"}
+_PLATFORM_OK = re.compile(r"(?i)windows|all|x64|x86|arm64")
+
+
+def _v5_events(p: Product, v: dict) -> list[dict] | None:
+    """OSV events for one CVE v5 `versions` entry, or None when it can't be stated exactly."""
+    if v.get("status") != "affected" or v.get("versionType") not in (None, "custom", "semver", "dotted"):
+        return None
+    lo, lt, le = str(v.get("version", "")), v.get("lessThan"), v.get("lessThanOrEqual")
+    lo = "0" if lo in ("0", "*", "") else lo
+    if lt or le:
+        hi = str(lt or le)
+        if hi == "*" or not _version_ok(hi) or (lo != "0" and not _version_ok(lo)):
+            return None
+        if lo != "0" and appver_parts(lo) >= appver_parts(hi):  # Google's CNA writes version == lessThan for "below X"
+            lo = "0"
+        if p.branch and lo == "0":
+            lo = f"{appver_parts(hi)[0]}.0"
+        return [{"introduced": lo}, {"fixed": hi} if lt else {"last_affected": hi}]
+    return [{"introduced": lo}, {"last_affected": lo}] if lo != "0" and _version_ok(lo) else None
+
+
+def advisories_v5(rec: dict) -> list[tuple[str, dict]]:
+    """[(product key, OSV-shaped record)] from a CVE JSON 5 record's CNA and ADP `affected` entries for curated products.
+    Record ids are "<CVE>-v5" (the CVE is the alias), so NVD's rows for the same CVE replace them (feeds.sync_winapps)."""
+    meta = rec.get("cveMetadata") or {}
+    if meta.get("state") != "PUBLISHED":
+        return []
+    cve, conts = meta["cveId"], rec.get("containers") or {}
+    ranges: dict[str, list[list[dict]]] = {}
+    for c in [conts.get("cna") or {}, *(conts.get("adp") or [])]:
+        for a in c.get("affected") or []:
+            if a.get("platforms") and not any(_PLATFORM_OK.search(str(x)) for x in a["platforms"]):
+                continue
+            keys = {_BY_CPE[f[3] + ":" + f[4]].key for cpe in a.get("cpes") or [] if (f := _fields(cpe))[2:3] == ["a"]
+                    and len(f) > 4 and f[3] + ":" + f[4] in _BY_CPE}
+            if k := CNA_NAMES.get((str(a.get("vendor", "")).lower(), str(a.get("product", "")).lower())):
+                keys.add(k)
+            for key in keys:
+                p = next(x for x in PRODUCTS if x.key == key)
+                for v in a.get("versions") or []:
+                    if (ev := _v5_events(p, v)) and ev not in ranges.setdefault(key, []):
+                        ranges[key].append(ev)
+    desc = next((d["value"] for d in (conts.get("cna") or {}).get("descriptions", []) if d.get("lang", "").startswith("en")), "")
+    sev = [{"type": "CVSS_V3", "score": m[k]["vectorString"]} for c in [conts.get("cna") or {}, *(conts.get("adp") or [])]
+           for m in c.get("metrics") or [] for k in ("cvssV3_1", "cvssV3_0") if k in m][:1]
+    return [(key, {"id": f"{cve}-v5", "aliases": [cve], "modified": meta.get("dateUpdated", ""), "summary": desc[:500],
+                   **({"severity": sev} if sev else {}),
+                   "affected": [{"package": {"ecosystem": ECOSYSTEM, "name": key},
+                                 "ranges": [{"type": "ECOSYSTEM", "events": ev} for ev in evs]}]})
+            for key, evs in ranges.items() if evs]
+
+
 def advisories(cve: dict) -> list[tuple[str, dict]]:
     """[(product key, OSV-shaped record)] for the curated products this CVE's configurations list as vulnerable.
     Matches where the app is only the non-vulnerable half of an AND, other platforms, pre-releases, classic-track

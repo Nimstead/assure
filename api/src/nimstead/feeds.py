@@ -162,6 +162,9 @@ def sync_winapps(session: Session, cves: list[dict]) -> int:
                 for c in batch if c.get("vulnStatus") != "Rejected" for key, rec in winapps.advisories(c)]
         if rows:
             session.execute(insert(Advisory), rows)
+            # NVD wins over CVE List v5 data once it has a configuration for the CVE (sync_cvelist)
+            session.execute(delete(Advisory).where(Advisory.ecosystem == winapps.ECOSYSTEM,
+                                                   Advisory.id.in_(sorted({r["id"] + "-v5" for r in rows}))))
         session.commit()
         n += len(rows)
     return n
@@ -183,6 +186,43 @@ def sync_epss(session: Session, client=None) -> int:
         session.rollback()
         raise
     return len(rows)
+
+
+CVELIST_RELEASES = "https://api.github.com/repos/CVEProject/cvelistV5/releases?per_page=10"
+
+
+def cvelist_records(session: Session, records: list[dict]) -> int:
+    """Curated-app rows from CVE List v5 records (winapps.advisories_v5), only for CVEs NVD hasn't configured yet."""
+    n = 0
+    for rec in records:
+        cve = (rec.get("cveMetadata") or {}).get("cveId", "")
+        if not cve.startswith("CVE-") or session.scalar(select(Advisory.id).where(Advisory.ecosystem == winapps.ECOSYSTEM, Advisory.id == cve).limit(1)):
+            continue
+        session.execute(delete(Advisory).where(Advisory.ecosystem == winapps.ECOSYSTEM, Advisory.id == cve + "-v5"))
+        for key, r in winapps.advisories_v5(rec):
+            session.add(Advisory(id=r["id"], ecosystem=winapps.ECOSYSTEM, package=key, modified=r["modified"], record=r))
+            n += 1
+    session.commit()
+    return n
+
+
+def sync_cvelist(session: Session, client=None) -> dict:
+    """CVE List v5 hourly delta files (CNA + CISA ADP data) newer than the last one processed; the first run takes
+    only the newest delta (history is NVD's job). State: Advisory row ("CVELIST-STATE", "State")."""
+    http = _client(client)
+    state = session.get(Advisory, ("CVELIST-STATE", "State", "cvelist"))
+    last = (state.record if state else {}).get("last", "")
+    rels = http.get(CVELIST_RELEASES, headers={"Accept": "application/vnd.github+json"}).raise_for_status().json()
+    assets = sorted((a["name"], a["browser_download_url"]) for r in rels for a in r.get("assets", [])
+                    if re.fullmatch(r"\d{4}-\d{2}-\d{2}_delta_CVEs_at_\d{4}Z\.zip", a.get("name", "")))
+    todo = [a for a in assets if a[0] > last] if last else assets[-1:]
+    n = 0
+    for name, url in todo:
+        z = zipfile.ZipFile(io.BytesIO(_get(http, url)))
+        n += cvelist_records(session, [json.loads(z.read(f)) for f in z.namelist() if f.endswith(".json")])
+        session.merge(Advisory(id="CVELIST-STATE", ecosystem="State", package="cvelist", modified=name, record={"last": name}))
+        session.commit()
+    return {"deltas": len(todo), "rows": n}
 
 
 def sync_eol(session: Session, client=None) -> dict:
@@ -335,6 +375,12 @@ def update_all(session: Session, client=None) -> dict:
         out["office"] = sync_office(session, client=client)
     if "WinApp" in in_use:
         out["eol"] = sync_eol(session, client=client)
+        try:
+            out["cvelist"] = sync_cvelist(session, client=client)
+        except (httpx.HTTPError, ValueError, zipfile.BadZipFile) as e:
+            session.rollback()
+            log.warning("CVE List v5 sync skipped: %s", e)
+            out["cvelist"] = {"error": str(e)[:200]}
     out["rescanned"] = 0
     cache: dict = {}  # advisories decoded once per pass: hosts on one release share most packages
     out["external"] = {"scanned": 0, "refused": 0}

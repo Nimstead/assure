@@ -61,3 +61,25 @@ Short log; newest last. Why, not what.
 48. **Every dialog returns focus to what opened it (UI round 2).** Radix restores focus only to a `Dialog.Trigger`; ours open from state, so `useReturnFocus()` records the opener and refocuses it on close, for every confirmation, the palette and the drawer. The `:focus-visible` rule lives in `@layer base` so a deliberate utility wins, and headings, sections and job cards that the app focuses by script (`tabindex=-1`) show no ring. The focus colour is ink in both themes: crimson stays reserved for "fix now", KEV and errors.
 49. **Feedback is announced from one place.** The shell (and the signed-out pages) hold one polite and one assertive live region; `Done` and `Notice` speak through them, because a node that appears already holding its text is often not read. `Alert` keeps `role="alert"`, which is announced as it appears. Stored states (last update failed, ledger problems, last delivery failed) are plain text, so they aren't announced on every visit.
 50. **The priority tier "planned" reads as "Routine".** "559 Planned" on Home looked like 559 planned fixes, and "Planned" was also a job state and the "Plan fix" verb. Only labels change: stored values, API keys and evidence keys stay `planned`; the evidence pack's deadline text uses the label.
+51. **What MSRC's CVRF data actually holds (Windows round 1, T0; real months 2025-Sep and 2026-Oct, trimmed fixtures in `tests/fixtures/msrc/`).**
+    - **Hotpatch:** same product name as the cumulative update, told apart only by the remediation `SubType`
+      (`SecurityHotpatchUpdate` / `Security Hotpatch Update`). CVE-2025-49734 on Windows Server 2025: cumulative
+      KB5065426 → 10.0.26100.6584, hotpatch KB5065474 → 10.0.26100.6508. Keeping the lowest build per product (what
+      `sync_msrc` did) picked the hotpatch KB, which Windows Update won't offer a host that isn't enrolled. Fixed by
+      separate tracks (decision 52).
+    - **In, numeric `FixedBuild`, readable on the host:** Edge (`140.0.3485.54`), .NET runtimes (`.NET 8.0 runtime
+      installed on Windows`: fixes mix runtime `8.0.32` with SDK bands `8.0.132`/`8.0.426`; only patch < 100 is a runtime
+      version), SQL Server (GDR and CU are already **separate product names**, e.g. `... (CU27)` / `... (GDR)`), Exchange
+      (`15.02.1748.053`, zero-padded), SharePoint 2016/2019/Subscription (`16.0.x`), Microsoft Paint and other Store apps
+      (`11.2605.91.0`, SubType `Store App`), Defender for Endpoint platform (`4.18.26060.3008`), PowerShell 7.x,
+      Visual Studio 2019/2022/2026, Visual Studio Code, Azure Connected Machine Agent.
+    - **Out:** Microsoft 365 Apps and Office 2019/LTSC (`FixedBuild` is the URL `https://aka.ms/OfficeSecurityReleases`:
+      needs the channel feed, T9); .NET Framework (`2.0.50727.9188 AND 3.0.30729.9171 AND 4.8.9363.0`: three file
+      versions in one string with no stated file to compare: dropped, plan decision 9); Office 2016 MSI (one DLL's file
+      version per KB: lifecycle only, it left support on 2025-10-14); Mac/Android/Linux/Mariner products.
+    - **Exposure tags** (CVRF note `Type 7`): `Role: DNS Server`, `Windows DHCP Server`, `Windows Routing and Remote Access
+      Service (RRAS)`, `Windows Hyper-V`, `Windows Message Queuing Queue Manager`, `Remote Desktop Gateway Service`,
+      `Network Policy Server (NPS)`, `Active Directory Federation Services (AD FS)`, `Active Directory Domain Services`,
+      `WebDAV`, `Windows Print Spooler Components`, `OpenSSH for Windows`, `Windows Subsystem for Linux`.
+    - **Threat context** (`Threats` Type 1): `Publicly Disclosed:Yes|No;Exploited:Yes|No;Latest Software Release:
+      Exploitation Detected|More Likely|Less Likely|Unlikely|N/A`.

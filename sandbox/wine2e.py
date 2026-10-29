@@ -119,9 +119,19 @@ def main(keep=False) -> int:
         start_build = build()
         note("VM ready", build=start_build)
         guest(r"New-Item -ItemType Directory -Force C:\nimtest | Out-Null")
+        px = None
+        if "--proxy" in sys.argv:  # plan T44: the only way out is a proxy on this host; everything else is blocked
+            from hostproxy import Proxy
+            px = Proxy(3128)
+            guest(r"""New-NetFirewallRule -DisplayName 'Nimstead sandbox: host only' -Direction Outbound -RemoteAddress 10.0.2.2 -Action Allow | Out-Null
+                Set-NetFirewallProfile -All -DefaultOutboundAction Block; netsh winhttp set proxy 10.0.2.2:3128 | Out-Null""")
+            direct = guest("(Test-NetConnection 13.107.4.50 -Port 443 -WarningAction SilentlyContinue).TcpTestSucceeded", check=False).strip()
+            note("direct egress blocked, WinHTTP proxy set", direct_tcp_443=direct)
+            assert direct == "False", direct
 
         # 1) the real installer, elevated, with the remediation opt-in (no Python needed: plan T25)
         out = guest(rf"""$env:NIMSTEAD_TOKEN = '{token}'; $env:NIMSTEAD_ALLOW_REMEDIATION = '1'
+            {"$env:NIMSTEAD_PROXY = 'http://10.0.2.2:3128'" if px else ""}
             try {{ irm http://10.0.2.2:{PORT}/install.ps1 | iex }} catch {{ "INSTALL FAILED: $_"; exit 1 }}
             (Get-ScheduledTask -TaskName 'Nimstead agent').Triggers | ForEach-Object {{ $_.CimClass.CimClassName }}""", timeout=1800, check=False)
         note("install.ps1 output", output=out[-3000:])
@@ -180,12 +190,42 @@ def main(keep=False) -> int:
             api.post(f"/api/agent/jobs/{jid}/report", json=r3, headers=h)
 
         # 3) success, driven only by the installed scheduled task: install -> reboot -> startup run resumes -> report
+        signed_in = "--signed-in" in sys.argv  # plan T41: a workstation user is told and the restart waits for the deadline
+        if signed_in:
+            assert api.patch("/api/settings", json={"reboot_deadline_hours": 1}).status_code == 200
+            guest(r"""$p = 'Nim-user-' + (Get-Random); net user nimuser $p /add | Out-Null
+                $k = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
+                Set-ItemProperty $k AutoAdminLogon '1'; Set-ItemProperty $k DefaultUserName 'nimuser'; Set-ItemProperty $k DefaultPassword $p""")
+            reboot_and_wait()
+            for _ in range(30):
+                if guest(r"""@(Get-CimInstance Win32_Process -Filter "Name='explorer.exe'").Count""").strip() not in ("", "0"):
+                    break
+                time.sleep(20)
+            note("standard user signed in", explorer=guest(r"""@(Get-CimInstance Win32_Process -Filter "Name='explorer.exe'").Count""").strip())
+        if px:  # a newer signed agent: the task's self-update has to come through the proxy too
+            new_agent, new_version = rel.newer()
+            rel.publish(new_agent, "3.15.2", "v9.9.9")
         jid = plan_and_get_job()
+        dispatched = time.time()
         guest("Enable-ScheduledTask -TaskName 'Nimstead agent' | Out-Null; Start-ScheduledTask -TaskName 'Nimstead agent'")
         note("scheduled task started for the real fix")
         end = time.time() + 180 * 60
-        status = None
+        status, deferred, restarted_at = None, None, None
+        boot0 = guest("(Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('s')").strip()
         while time.time() < end:
+            if signed_in and deferred is None:  # installed and waiting: the notice is on screen, no restart yet
+                if '"phase": "verify"' in guest(r"Get-Content C:\ProgramData\Nimstead\pending-job.json -Raw -ErrorAction SilentlyContinue", check=False):
+                    time.sleep(120)
+                    shot = ROOT / "sandbox" / "last_run_windows11_restart_notice.png"
+                    winvm.vbox("controlvm", NAME, "screenshotpng", str(shot))
+                    deferred = {"minutes_after_dispatch": round((time.time() - dispatched) / 60), "screenshot": shot.name,
+                                "boot_unchanged": guest("(Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('s')",
+                                                        check=False).strip() == boot0}
+                    note("restart deferred for the signed-in user", **deferred)
+            if signed_in and restarted_at is None and deferred and guest(
+                    "(Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('s')", check=False).strip() not in ("", boot0):
+                restarted_at = round((time.time() - dispatched) / 60)
+                note("restarted", minutes_after_dispatch=restarted_at)
             try:
                 status = next(j for j in api.get("/api/remediation/jobs").json() if j["id"] == jid)["status"]
             except httpx.HTTPError:
@@ -202,6 +242,18 @@ def main(keep=False) -> int:
             j = next(j for j in api.get("/api/remediation/jobs").json() if j["id"] == jid)
             note("job steps", error=j.get("error"), steps=[f"{'ok ' if s['ok'] else 'FAIL'} {s['step']}: {s['output'][-200:]}" for s in j.get("steps", [])])
         assert status == "succeeded", status
+        if px:  # enrol, report, self-update and the fix's Windows Update traffic all went through the proxy
+            seen = {"enrol": any(t.endswith("/api/agent/enroll") for _, t in px.log),
+                    "report": any(t.endswith("/api/agent/inventory") for _, t in px.log),
+                    "self-update": any(t.endswith("/agent/nimstead_agent.py") for _, t in px.log),
+                    "windows update": any(m == "CONNECT" and ("windowsupdate" in t or "microsoft.com" in t or "delivery.mp" in t)
+                                          for m, t in px.log)}
+            version = guest(r"(Select-String -Path 'C:\Program Files\Nimstead\nimstead_agent.py' -Pattern '^AGENT_VERSION = ').Line").strip()
+            note("through the proxy", **seen, agent=version, requests=len(px.log),
+                 hosts=sorted({t.split("/")[2] if "://" in t else t for _, t in px.log})[:40])
+            assert all(seen.values()) and new_version in version, (seen, version)
+        if signed_in:  # deferred while someone was signed in, restarted only once the 1-hour deadline had passed
+            assert deferred and deferred["boot_unchanged"] and restarted_at and restarted_at >= 60, (deferred, restarted_at)
 
         z = zipfile.ZipFile(io.BytesIO(api.get("/api/evidence/pack", params={"days": 1}).content))
         from nimstead.verify_pack import verify
@@ -222,7 +274,8 @@ def main(keep=False) -> int:
             note("VM destroyed", name=NAME)
         elif not passed:
             note("VM kept for inspection", name=NAME, destroy=f"uv run python ../sandbox/winvm.py destroy {NAME}")
-        (ROOT / "sandbox" / OUT).write_text(json.dumps(log, indent=2, default=str))
+        mode = "".join(f"_{m}" for m in ("proxy", "signed-in") if f"--{m}" in sys.argv)
+        (ROOT / "sandbox" / OUT.replace(".json", mode.replace("-", "_") + ".json")).write_text(json.dumps(log, indent=2, default=str))
 
 
 if __name__ == "__main__":

@@ -25,7 +25,6 @@ NAME = sys.argv[1]
 assert NAME.startswith(winvm.PREFIX)
 TMP = Path(tempfile.mkdtemp(prefix="nimstead-wine2e-"))
 PORT = 8766
-PY = "3.13.17"
 log: list[dict] = []
 OUT = "last_run_windows.json"  # last_run_windows11.json once the VM reports Windows 11
 
@@ -83,7 +82,11 @@ def main(keep=False) -> int:
     env = {**os.environ, "NIMSTEAD_DB": f"sqlite:///{(TMP / 'n.db').as_posix()}", "NIMSTEAD_SECURE_COOKIES": "0",
            "NIMSTEAD_INVENTORY_MIN_SECONDS": "0", "NIMSTEAD_PUBLIC_URL": f"http://10.0.2.2:{PORT}",
            "NIMSTEAD_SIGNING_KEY_FILE": str(TMP / "sign.pem"), "NIMSTEAD_CHECKPOINT_DIR": str(TMP / "cp"),
-           "NIMSTEAD_SECRET_KEY_FILE": str(TMP / "secret.key")}
+           "NIMSTEAD_SECRET_KEY_FILE": str(TMP / "secret.key"), "NIMSTEAD_OPEN_SIGNUP": "1"}
+    from testrelease import TestRelease  # install.ps1 brings the signed embeddable runtime (plan T25)
+    rel = TestRelease(TMP)
+    rel.publish(rel.agent, "3.15.2", "v9.9.8")
+    env.update(rel.env())
     os.environ.update(env)
     import httpx
 
@@ -115,14 +118,10 @@ def main(keep=False) -> int:
         winvm.wait_ready(NAME, minutes=90)
         start_build = build()
         note("VM ready", build=start_build)
-        guest(rf"""$ErrorActionPreference='Stop'; New-Item -ItemType Directory -Force C:\nimtest | Out-Null
-            Invoke-WebRequest -UseBasicParsing https://www.python.org/ftp/python/{PY}/python-{PY}-amd64.exe -OutFile C:\nimtest\py.exe
-            Start-Process C:\nimtest\py.exe -ArgumentList '/quiet InstallAllUsers=1 PrependPath=1 Include_launcher=1' -Wait""", timeout=1800)
-        note("Python installed in VM", version=guest(r"& 'C:\Program Files\Python313\python.exe' --version").strip())
+        guest(r"New-Item -ItemType Directory -Force C:\nimtest | Out-Null")
 
-        # 1) the real installer, elevated, with the remediation opt-in
-        out = guest(rf"""$env:Path = 'C:\Program Files\Python313;C:\Program Files\Python313\Scripts;' + $env:Path
-            $env:NIMSTEAD_TOKEN = '{token}'; $env:NIMSTEAD_ALLOW_REMEDIATION = '1'
+        # 1) the real installer, elevated, with the remediation opt-in (no Python needed: plan T25)
+        out = guest(rf"""$env:NIMSTEAD_TOKEN = '{token}'; $env:NIMSTEAD_ALLOW_REMEDIATION = '1'
             try {{ irm http://10.0.2.2:{PORT}/install.ps1 | iex }} catch {{ "INSTALL FAILED: $_"; exit 1 }}
             (Get-ScheduledTask -TaskName 'Nimstead agent').Triggers | ForEach-Object {{ $_.CimClass.CimClassName }}""", timeout=1800, check=False)
         note("install.ps1 output", output=out[-3000:])
@@ -133,10 +132,12 @@ def main(keep=False) -> int:
             global OUT
             OUT = "last_run_windows11.json"
         summ = api.get("/api/summary").json()
-        top = summ["top_actions"][0]
+        top = next(x for x in summ["top_actions"] if x["ecosystem"] == "Windows")  # the OS update, not app or setting findings
         note("install.ps1 ran elevated: enrolled, reported, task registered", triggers=out.strip().splitlines()[-2:],
              os=a["os_name"], open_by_priority=summ["open_by_priority"], fix=f"{top['package']} -> {top['fixed_version']}")
         product = top["package"]
+        # a health unit, so the crash-event check (plan T13) runs for real
+        assert api.patch(f"/api/assets/{a['id']}", json={"health_units": ["Spooler"]}).status_code == 200
         import winoracle
         table = winoracle.run(as_system, guest, api.get("/api/findings").json())
         note("oracle: Windows Update vs Nimstead", **{k: v for k, v in table.items()})
@@ -153,7 +154,8 @@ def main(keep=False) -> int:
         h = {"Authorization": f"Bearer {cfg['agent_key']}"}
 
         # 2) rollback: real install of the KB, forced failure after the reboot, DISM removal, reboot, original build back
-        agent = r'"C:\Program Files\Python313\python.exe" "C:\Program Files\Nimstead\nimstead_agent.py"'
+        py = guest(r"(Resolve-Path 'C:\Program Files\Nimstead\runtime\*\python.exe')[0].Path").strip()
+        agent = f'"{py}" -I "C:\\Program Files\\Nimstead\\nimstead_agent.py"'
         if "--success-only" not in sys.argv:  # --success-only: rollback already proven on this VM
             jid = plan_and_get_job()
             [job] = api.get("/api/agent/jobs", headers=h).json()

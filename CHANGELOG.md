@@ -4,6 +4,58 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-29
+
+Windows round 1 (tasks/plan.md; DECISIONS 51–57): Windows detection that covers what Nessus and Qualys report, fixes
+they don't make, and an agent that needs no Python. **Agent 0.4.0.**
+
+**Upgrade from 0.5.x:** run `deploy/update.sh`. Two database migrations (`9a61c0e4d2b7` host facts, `c3e8f1a92d45`
+maintenance windows and Active Directory computers), applied on start. Things to know:
+- **Windows installs no longer need Python.** `install.ps1` brings Python's official embeddable runtime (3.15.2,
+  pinned by hash in the signed release, every program file signed by the Python Software Foundation). Machines enrolled
+  with a system Python move to the bundled runtime on their own at their next agent update. Your server fetches the
+  runtime zips with the release files; offline installs copy `python-embed-*.zip` into `NIMSTEAD_RELEASE_DIR` too.
+- **More findings on Windows.** Expect new open findings after the first reports: end of support (OS, .NET, SQL
+  Server, Exchange, SharePoint, Office, curated apps), Microsoft products (Edge, .NET runtimes, SQL Server, Exchange,
+  SharePoint, Defender, Store apps, PowerShell, Visual Studio, Microsoft 365 Apps), 22 more third-party apps, and
+  configuration findings (ecosystem `WinConfig`). Edge and VS Code findings move from `WinApp` (NVD) to `Microsoft`
+  (MSRC): the old ones close and new ones open once.
+- **Approved fixes wait for a maintenance window** once you set one (Settings → Remediation); none set = any time, as
+  before. Workstation restarts can now be put off by a signed-in user until a deadline (default 24 hours).
+- **API additions:** `facts` on inventories and host assets; `maintenance_window` / `reboot_deadline_hours` on
+  `/api/settings` and `maintenance_window` on assets; `waits_for_window` and `forward_only` on jobs; approving a
+  forward-only fix needs `{"forward_only": true}`; `POST /api/agent/directory`; `GET /api/directory/unmanaged`
+  (`?format=csv`); `forward_only_changes` in evidence packs.
+
+### Added
+- **Hotpatch-aware Windows matching:** hotpatch and cumulative fixes are separate tracks; a job carries both KBs and the
+  agent installs whichever Windows Update offers (before, a non-hotpatch Server 2025 host could be planned the hotpatch KB).
+- **End-of-support findings** from a dated Microsoft Lifecycle table (Windows 10/11 by edition and ESU, Server
+  2012–2025 and 23H2, .NET, SQL Server, Exchange, SharePoint, Office) and endoflife.date for curated apps.
+- **Microsoft products from MSRC's own fixed builds** by an allowlist, with SQL Server GDR/CU and each Exchange CU as
+  separate tracks, and Microsoft 365 Apps / Office LTSC by channel and version line (Microsoft's release feed).
+- **CVE List v5 (vendor CNAs + CISA Vulnrichment)** as a second source for curated apps where NVD hasn't configured a
+  CVE yet; **22 more curated apps** (OpenJDK builds, browsers, VPN and remote-access clients, file transfer,
+  virtualisation, Docker Desktop, Tomcat and more).
+- Per-user apps of users who aren't signed in; an opt-in **Java library scan** (`--scan-jars`) whose findings name the jar.
+- **Configuration findings:** Secure Boot 2023 certificates (the 2011 CA expired 2026-10-19), BlackLotus revocation,
+  CVE-2013-3900, Spectre/Meltdown on Server, SMBv1, SMB signing, LLMNR, NetBIOS, NTLMv1, WDigest, RDP NLA, TLS 1.0/1.1,
+  DC LDAP signing and channel binding, AlwaysInstallElevated, Spooler on DCs, unquoted or writable service paths,
+  PowerShell 2.0, LSA protection, Defender, firewall, BitLocker.
+- **Threat context:** Microsoft "exploited" counts like KEV; Microsoft's exploitability index, public Metasploit modules
+  and KEV ransomware use are reasons; CVEs in roles that aren't installed (DNS, DHCP, Hyper-V, MSMQ…) rank lower but stay open.
+- **Fix paths:** winget for curated apps (forward-only: a person approves it as such, never the trust ladder), Microsoft
+  365 Apps with rollback to the previous build, and six reversible settings.
+- **Fleet operations:** maintenance windows, restart deferral with a deadline, no install on battery, one Windows job
+  at a time per failover cluster (node drained and resumed) or per domain's controllers, crash events in health checks,
+  and why Windows Update didn't offer a KB (WSUS, deferral, ESU). Proxy support (`--proxy` / WinHTTP), jittered
+  below-normal scheduled tasks, and a list of Active Directory computers with no agent (opt-in `--ad-discovery`).
+- Windows Update accuracy oracle in the VM harnesses (`sandbox/winoracle.py`).
+
+### Fixed
+- The runtime signature check in `install.ps1` now filters by extension: PowerShell 5.1 ignores `-Include` beside
+  `-LiteralPath` (found in the real VM run).
+
 ## [0.5.0] - 2026-10-29
 
 A safer, clearer interface, from two rounds of UI and accessibility review (tasks/plan-0.5-ux.md, tasks/plan-0.6-ux.md; DECISIONS 41–50). Agent unchanged (0.3.0).

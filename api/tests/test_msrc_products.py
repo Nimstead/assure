@@ -130,7 +130,7 @@ def test_microsoft_products_end_to_end(env, rows):
     pkgs = {p for p, _ in f}
     assert {"Microsoft Edge", ".NET 8.0 runtime", "SQL Server 2022 CU", "Microsoft Paint"} <= pkgs
     assert "SQL Server 2022 GDR" not in pkgs  # a GDR host above the GDR fix isn't judged by the CU build
-    assert all(x["ecosystem"] == "Microsoft" for x in f.values())
+    assert all(x["ecosystem"] in ("Microsoft", "Lifecycle") for x in f.values())  # .NET 8 also gets its end-of-support notice
     assert {x["fixed_version"] for (p, _), x in f.items() if p == "SQL Server 2022 CU"} == {sql_cu}
     # Edge left the NVD map: no WinApp finding for it any more
     assert not [k for k in f if k[0] == "microsoft:edge_chromium"]

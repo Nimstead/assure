@@ -28,7 +28,6 @@ def ident(name, version, publisher=None):
 
 @pytest.mark.parametrize("name,pub,ver,want", [
     ("Google Chrome", "Google LLC", "156.0.8078.48", ("google:chrome", "156.0.8078.48")),
-    ("Microsoft Edge", "Microsoft Corporation", "156.0.4314.42", ("microsoft:edge_chromium", "156.0.4314.42")),
     ("Mozilla Firefox (x64 en-US)", "Mozilla", "128.0.3", ("mozilla:firefox", "128.0.3")),
     ("Mozilla Firefox 115.3.0 (x86 de)", "Mozilla", "115.3.0", ("mozilla:firefox", "115.3.0")),
     ("Mozilla Firefox ESR (x64 en-US)", "Mozilla", "115.10.0esr", ("mozilla:firefox_esr", "115.10.0")),
@@ -46,8 +45,6 @@ def ident(name, version, publisher=None):
     ("PuTTY release 0.81 (64-bit)", "Simon Tatham", "0.81.0.0", ("putty:putty", "0.81.0.0")),
     ("WinRAR 7.01 (64-bit)", "win.rar GmbH", "7.01.0", ("rarlab:winrar", "7.01.0")),
     ("Wireshark 4.2.5 x64", "The Wireshark developers", "4.2.5", ("wireshark:wireshark", "4.2.5")),
-    ("Microsoft Visual Studio Code (User)", "Microsoft Corporation", "1.141.2", ("microsoft:visual_studio_code", "1.141.2")),
-    ("Microsoft Visual Studio Code", "Microsoft Corporation", "1.90.0", ("microsoft:visual_studio_code", "1.90.0")),
 ])
 def test_identify_positive(name, pub, ver, want):
     assert ident(name, ver, pub) == want
@@ -58,6 +55,8 @@ def test_identify_positive(name, pub, ver, want):
     ("Chrome Remote Desktop", "Google LLC", "1.0"),
     ("Google Chrome Beta", "Google LLC", "130.0.1"),
     ("Microsoft Edge WebView2 Runtime", "Microsoft Corporation", "130.0.1"),
+    ("Microsoft Edge", "Microsoft Corporation", "156.0.4314.42"),  # matched from MSRC now (msproducts.py)
+    ("Microsoft Visual Studio Code (User)", "Microsoft Corporation", "1.141.2"),
     ("Firefox Developer Edition (x64 en-US)", "Mozilla", "130.0b1"),
     ("Mozilla Firefox Beta (x64 en-US)", "Mozilla", "130.0b1"),
     ("Mozilla Maintenance Service", "Mozilla", "130.0"),

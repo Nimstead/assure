@@ -7,7 +7,7 @@ from collections import defaultdict
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from nimstead import evidence, lifecycle, risk, winapps
+from nimstead import evidence, lifecycle, msproducts, risk, winapps
 from nimstead.db import Advisory, Asset, Cvss, Epss, Finding, InstalledPackage, Kev, now
 from nimstead.match import Match, Package, match_package, normalize_ecosystem
 from nimstead.notify import notify
@@ -56,18 +56,27 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
 
     # (package, advisory ecosystem, advisory package name, version to compare). Installed Windows apps are looked up by
     # the curated product key only; an app the map doesn't know is inventory and never matched.
+    # Microsoft products (msproducts.py) come from Uninstall entries or the agent's own facts; their name is a tuple of
+    # candidate keys, the first with advisories wins (Store apps MSRC lists per OS).
+    os_product = next((p.name for p in pkgs if p.ecosystem == "Windows"), None)
     targets = []
     for p in pkgs:
         eco = normalize_ecosystem(p.ecosystem)
         if eco == winapps.ECOSYSTEM:
             if hit := winapps.identify(p.name, p.source, p.version):
                 targets.append((p, eco, hit[0], hit[1]))
+            elif ms := msproducts.from_winapp(p.name, p.source, p.version):
+                targets.append((p, msproducts.ECOSYSTEM, (ms[0],), ms[1]))
+        elif eco == msproducts.ECOSYSTEM:
+            if ms := msproducts.targets(p.name, p.version, os_product):
+                targets.append((p, eco, *ms))
         else:
             targets.append((p, eco, p.source or p.name, p.version))
-    targets.sort(key=lambda t: winapps.appver_parts(t[3]) if t[1] == winapps.ECOSYSTEM else [])  # stable: oldest install of an app is reported
+    # stable sort: the oldest install of an app is the one reported
+    targets.sort(key=lambda t: winapps.appver_parts(t[3]) if t[1] in (winapps.ECOSYSTEM, msproducts.ECOSYSTEM) else [])
     wanted: dict[str, set[str]] = defaultdict(set)
     for _, eco, name, _ in targets:
-        wanted[eco].add(name)
+        wanted[eco].update(name if isinstance(name, tuple) else [name])
         if eco == "Windows":
             wanted[eco].add(name + HOTPATCH)
     advisories = cache if cache is not None else {}
@@ -82,14 +91,16 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
 
     matches = []
     for p, eco, name, version in targets:
+        if isinstance(name, tuple):
+            name = next((n for n in name if advisories.get((eco, n))), name[-1])
         records = advisories.get((eco, name))
         if eco == "Windows" and (hot := hotpatch_track(advisories.get((eco, name + HOTPATCH)) or [], version)):
             records = [r for r in records or [] if not set(r["aliases"]) & hot[0]] + hot[1]
         if not records:
             continue
-        mkey = ("match", p.ecosystem, p.name, version, name)  # pure function of these: same answer on every host
+        mkey = ("match", eco, p.name, version, name)  # pure function of these: same answer on every host
         if (found := advisories.get(mkey)) is None:
-            found = advisories[mkey] = match_package(Package(p.name, version, name), p.ecosystem, records)
+            found = advisories[mkey] = match_package(Package(p.name, version, name), eco, records)
         for m in found:
             key = (eco, name, m.vuln_id)
             if key in seen:  # several binaries from one source package -> one finding

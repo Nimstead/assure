@@ -92,3 +92,18 @@ Short log; newest last. Why, not what.
     because none is documented. The plan sends the cumulative KB and, when every finding also has a hotpatch fix, the
     hotpatch KB as `alt`; the agent asks Windows Update for both and installs the one it offers (exactly one; both or
     neither = "No changes made"), then verifies against that KB's own target build.
+53. **Microsoft products from MSRC by an explicit allowlist (`msproducts.py`), facts from the host, keys on the server.**
+    Edge, .NET and ASP.NET Core runtimes, SQL Server, Exchange, SharePoint, Defender (platform and engine), Store apps
+    (Paint, Windows Security, media extensions, Gaming Services), PowerShell 7, Visual Studio, VS Code, the Azure
+    Connected Machine agent and PowerToys are matched against MSRC's own fixed builds (ecosystem `Microsoft`). The agent
+    reports raw facts from fixed places (Uninstall entries, the `dotnet\shared` runtime folders, SQL Server's
+    `PatchLevel`, ExSetup.exe and Microsoft.SharePoint.dll file versions, a fixed list of Store packages,
+    `Get-MpComputerStatus`); only the server maps them to product keys, so a new MSRC product is ignored until it is
+    added with a test. Tracks MSRC lists side by side become separate keys computed from the build on both sides: SQL
+    Server GDR vs CU from the build's third part, each Exchange cumulative update from `major.minor.build`, SharePoint
+    2016/2019/Subscription Edition from the build band. Store apps MSRC lists per OS are compared with the host's own OS
+    entry first. Only the newest .NET patch per major.minor is reported, because .NET runs apps on the latest patch
+    installed (the registry's `InstalledVersions` keeps long-uninstalled versions: 13 listed, 7 on disk on the dev
+    machine). Edge and VS Code left the NVD map (DECISIONS 24): MSRC lists Microsoft-only CVEs NVD's Chrome data misses.
+    Out, with the reason in DECISIONS 51: .NET Framework, Microsoft 365 Apps / Office (T9 handles Click-to-Run by
+    channel), Configuration Manager and Skype for Business Server (server roles we don't detect yet).

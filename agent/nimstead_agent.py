@@ -236,8 +236,101 @@ def collect_windows():
         facts["os_product"], facts["os_unmatched"] = name, f"{name} has no update build revision to compare with MSRC fixes"
     else:
         os_pkg = [{"ecosystem": "Windows", "name": name, "version": version, "source": None}]
+    ms, problem = windows_microsoft(winreg)
+    if problem:
+        facts["microsoft_check"] = problem
     return {"os_name": f"{product} {dv} ({machine}) build {version}", "ecosystem": "Windows", "agent_version": AGENT_VERSION,
-            "facts": facts, "packages": [*os_pkg, *windows_apps(winreg)]}
+            "facts": facts, "packages": [*os_pkg, *windows_apps(winreg), *ms]}
+
+
+# Microsoft products MSRC publishes exact builds for (server: msproducts.py). Facts only, from fixed places; the server
+# decides what they are compared with. Store packages: exactly these families (kept equal to msproducts.STORE_PACKAGES).
+STORE_PACKAGES = ("Microsoft.Paint", "Microsoft.SecHealthUI", "Microsoft.HEVCVideoExtension", "Microsoft.MPEG2VideoExtension",
+                  "Microsoft.RawImageExtension", "Microsoft.GamingServices")
+PS_MICROSOFT = r"""
+$o = [ordered]@{}
+$ex = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\ExchangeServer\v15\Setup' -ErrorAction SilentlyContinue).MsiInstallPath
+if ($ex -and (Test-Path -LiteralPath (Join-Path $ex 'Bin\ExSetup.exe'))) { $o.exchange = (Get-Item -LiteralPath (Join-Path $ex 'Bin\ExSetup.exe')).VersionInfo.FileVersionRaw.ToString() }
+$sp = Join-Path $env:CommonProgramFiles 'microsoft shared\Web Server Extensions\16\ISAPI\Microsoft.SharePoint.dll'
+if (Test-Path -LiteralPath $sp) { $o.sharepoint = (Get-Item -LiteralPath $sp).VersionInfo.FileVersionRaw.ToString() }
+$apps = try { Get-AppxPackage -AllUsers -ErrorAction Stop } catch { Get-AppxPackage -ErrorAction SilentlyContinue }  # -AllUsers needs elevation; SYSTEM has it
+$o.store = @($apps | Where-Object { @(%STORE%) -contains $_.Name } | ForEach-Object { @{ name = $_.Name; version = $_.Version.ToString() } })
+$mp = Get-MpComputerStatus -ErrorAction SilentlyContinue
+if ($mp) { $o.defender = @{ platform = $mp.AMProductVersion; engine = $mp.AMEngineVersion; mode = "$($mp.AMRunningMode)" } }
+ConvertTo-Json -Compress -Depth 4 -InputObject $o
+""".replace("%STORE%", ", ".join(f"'{n}'" for n in STORE_PACKAGES))
+
+
+def _reg_values(reg, path, view):
+    """Value names and data under HKLM\\path in one registry view; [] if missing."""
+    try:
+        k = reg.OpenKey(reg.HKEY_LOCAL_MACHINE, path, 0, reg.KEY_READ | view)
+    except OSError:
+        return []
+    out, i = [], 0
+    with k:
+        while True:
+            try:
+                name, data, _ = reg.EnumValue(k, i)
+            except OSError:
+                return out
+            out.append((name, data))
+            i += 1
+
+
+def _dirs(path):
+    try:
+        return [e.name for e in os.scandir(path) if e.is_dir(follow_symlinks=False)]
+    except OSError:
+        return []
+
+
+def windows_microsoft(reg, run=None, dotnet_dirs=None):
+    """(packages, problem): .NET and ASP.NET Core runtimes, SQL Server instances, Exchange, SharePoint, Store apps and
+    Defender, as ecosystem "Microsoft" facts. A PowerShell failure costs only those facts, never the inventory."""
+    out, seen = [], set()
+
+    def add(name, version, source=None):
+        item = (name, str(version).strip()[:100], source)
+        if item[1] and item not in seen:
+            seen.add(item)
+            out.append({"ecosystem": "Microsoft", "name": name, "version": item[1], "source": source})
+    # .NET from the runtime folders themselves (the registry keeps versions long uninstalled). Only the newest patch
+    # of each major.minor: by default .NET runs every app on the latest patch installed, so older ones don't run.
+    pf, pf86 = os.environ.get("ProgramFiles", r"C:\Program Files"), os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
+    for root, arch in ((os.path.join(pf, "dotnet"), "native"), (os.path.join(pf, "dotnet", "x64"), "x64"), (os.path.join(pf86, "dotnet"), "x86")):
+        for fx, name in (("Microsoft.NETCore.App", ".NET runtime"), ("Microsoft.AspNetCore.App", "ASP.NET Core")):
+            newest = {}
+            for v in (dotnet_dirs or _dirs)(os.path.join(root, "shared", fx)):
+                if re.fullmatch(r"\d+\.\d+\.\d+", v):
+                    mm = tuple(v.split(".")[:2])
+                    if mm not in newest or version_tuple(v) > version_tuple(newest[mm]):
+                        newest[mm] = v
+            for v in newest.values():
+                add(name, v, arch)
+    for inst, iid in _reg_values(reg, r"SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL", reg.KEY_WOW64_64KEY):
+        for n, v in _reg_values(reg, rf"SOFTWARE\Microsoft\Microsoft SQL Server\{iid}\Setup", reg.KEY_WOW64_64KEY):
+            if n == "PatchLevel":
+                add("SQL Server", v, str(inst)[:100])
+    rc, text = ps(run or sh, PS_MICROSOFT)
+    try:
+        d = json.loads(text.strip().splitlines()[-1]) if rc == 0 else None
+    except (ValueError, IndexError):
+        d = None
+    if not isinstance(d, dict):
+        return out, f"Microsoft product check failed: {text.strip()[-200:]}"
+    if d.get("exchange"):
+        add("Exchange Server", d["exchange"])
+    if d.get("sharepoint"):
+        add("SharePoint Server", d["sharepoint"])
+    for s in d.get("store") or []:
+        if isinstance(s, dict) and s.get("name") in STORE_PACKAGES:
+            add(s["name"], s.get("version", ""))
+    df = d.get("defender") if isinstance(d.get("defender"), dict) else {}
+    for part in ("platform", "engine"):
+        if df.get(part):
+            add(f"Defender {part}", df[part], df.get("mode") or None)
+    return out, None
 
 
 ESU_PRODUCTS = re.compile(r"^Windows (10 Version 22H2|Server 2012)")

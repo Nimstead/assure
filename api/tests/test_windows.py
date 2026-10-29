@@ -63,8 +63,9 @@ def test_sync_msrc_shapes_osv_records_and_is_incremental():
     assert fetched == ["/cvrf/v3.0/updates", "/cvrf/v3.0/cvrf/2026-Oct"]
     rows = s.scalars(select(Advisory)).all()
     assert n["inserted"] == len(rows) and n["documents"] == 1
-    assert {r.ecosystem for r in rows} == {"Windows"}
-    assert not {r.package for r in rows if not r.package.startswith("Windows")}  # VS Code etc. dropped
+    assert {r.ecosystem for r in rows} == {"Windows", "Microsoft"}
+    assert {r.package for r in rows if r.ecosystem == "Microsoft"} == {"Visual Studio Code"}  # allowlisted (DECISIONS 53)
+    assert all(r.package.startswith("Windows") for r in rows if r.ecosystem == "Windows")
     assert "Windows 11 Version 26H1 for x64-based Systems" in {r.package for r in rows}  # lowercase "version" normalised
     assert not [r for r in rows if "ADV" in r.id]
 
@@ -276,6 +277,7 @@ def test_collect_windows_reports_facts_and_never_refuses_an_unmapped_os(monkeypa
     monkeypatch.setitem(sys.modules, "winreg", FakeReg(values))
     monkeypatch.setattr(agent.platform, "machine", lambda: machine)
     monkeypatch.setattr(agent, "esu_active", lambda product, run=None: None)
+    monkeypatch.setattr(agent, "windows_microsoft", lambda reg, run=None: ([], None))
     inv = agent.collect_windows()
     assert [p["name"] for p in inv["packages"] if p["ecosystem"] == "Windows"] == ([os_pkg] if os_pkg else [])
     assert inv["facts"]["edition_id"] == values["EditionID"] and bool(inv["facts"].get("os_unmatched")) == unmatched

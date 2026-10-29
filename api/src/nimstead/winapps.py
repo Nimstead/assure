@@ -6,6 +6,7 @@ generic, its Publisher) fully matches a pattern below. Everything else is invent
 Products whose registry version can't be mapped exactly to NVD's convention are left out on purpose:
 - Oracle Java 8: registry "8.0.4310.10" vs NVD "1.8.0 update431".
 - Eclipse Temurin: no CPE exists (its CVEs are filed under oracle:jdk/openjdk); equating them would be a guess.
+Microsoft's own apps (Edge, VS Code, PowerShell, Visual Studio) are matched from MSRC instead: msproducts.py.
 """
 
 import re
@@ -34,7 +35,6 @@ def _p(pattern: str) -> re.Pattern:
 
 PRODUCTS: tuple[Product, ...] = (
     Product("google:chrome", _p(r"Google Chrome")),
-    Product("microsoft:edge_chromium", _p(r"Microsoft Edge")),  # not "Microsoft Edge WebView2 Runtime"
     Product("mozilla:firefox", _p(r"Mozilla Firefox(?: [\d.]+)? \((?:x64|x86|arm64) [A-Za-z-]+\)")),
     Product("mozilla:firefox_esr", _p(r"Mozilla Firefox ESR(?: [\d.]+)? \((?:x64|x86|arm64) [A-Za-z-]+\)"),
             version=lambda m, v: re.sub(r"(?i)\s*esr$", "", v), branch=True),
@@ -55,7 +55,6 @@ PRODUCTS: tuple[Product, ...] = (
     Product("putty:putty", _p(rf"PuTTY release \d+\.\d+(?: \({_ARCH}\))?")),
     Product("rarlab:winrar", _p(rf"WinRAR \d+\.\d+(?: \({_ARCH}\))?")),
     Product("wireshark:wireshark", _p(rf"Wireshark \d+\.\d+\.\d+(?: (?:x64|x86|arm64|{_ARCH}))?")),
-    Product("microsoft:visual_studio_code", _p(r"Microsoft Visual Studio Code(?: \((?:User|System)\))?")),
 )
 
 _BY_CPE = {c: p for p in PRODUCTS for c in (p.cpes or (p.key,))}

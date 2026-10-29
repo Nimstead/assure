@@ -16,7 +16,7 @@ import httpx
 from sqlalchemy import delete, insert, select, update
 from sqlalchemy.orm import Session
 
-from nimstead import evidence, external, notify, updates, winapps
+from nimstead import evidence, external, msproducts, notify, updates, winapps
 from nimstead.db import Advisory, Asset, Cvss, Epss, InstalledPackage, Kev, Org, make_sessionmaker, now
 from nimstead.match import normalize_ecosystem
 from nimstead.scan import HOTPATCH, rescan
@@ -187,8 +187,8 @@ def sync_epss(session: Session, client=None) -> int:
 
 def sync_msrc(session: Session, months: int = 12, client=None) -> dict:
     """Windows OS advisories from the MSRC CVRF API, stored as OSV-shaped rows (ecosystem Windows, package =
-    MSRC product name, fixed = FixedBuild) so the normal matcher works. Only Windows 10/11/Server products
-    with a dotted FixedBuild are kept; Office, .NET, Edge etc. are not covered.
+    MSRC product name, fixed = FixedBuild) so the normal matcher works. Windows 10/11/Server products with a dotted
+    FixedBuild, plus the Microsoft products msproducts.py allowlists (ecosystem Microsoft, package = its key).
     # ponytail: a month is skipped when its CurrentReleaseDate is already stored on some row; a CVE re-released
     # in a later month overwrites the older row, which makes that older month re-download. Fine at this scale."""
     http = _client(client)
@@ -203,7 +203,7 @@ def sync_msrc(session: Session, months: int = 12, client=None) -> dict:
                    if re.fullmatch(r"\d{4}-[A-Z][a-z]{2}", d["ID"]) and "Mariner" not in (d["DocumentTitle"] or "")
                    and d["InitialReleaseDate"] >= cutoff), key=lambda d: d["InitialReleaseDate"])
     have = {(i, p): m for i, p, m in session.execute(
-        select(Advisory.id, Advisory.package, Advisory.modified).where(Advisory.ecosystem == "Windows"))}
+        select(Advisory.id, Advisory.package, Advisory.modified).where(Advisory.ecosystem.in_(("Windows", msproducts.ECOSYSTEM))))}
     stored = set(have.values())
     n = {"documents": 0, "skipped_documents": 0, "inserted": 0, "updated": 0, "skipped": 0}
     for d in docs:
@@ -235,8 +235,11 @@ def sync_msrc(session: Session, months: int = 12, client=None) -> dict:
             for pid, (build, kb), suffix in [*((p, f, "") for p, f in fixes.items()), *((p, f, HOTPATCH) for p, f in hot.items())]:
                 # some entries say "Windows 11 version 26H1" (lowercase v); make the names uniform
                 name = re.sub(r"^(Windows 11) version", r"\1 Version", names.get(pid, ""))
+                eco = "Windows"
                 if not re.match(r"Windows (10|11|Server)\b", name):
-                    continue
+                    if suffix or not (mk := msproducts.key_for(names.get(pid, ""), build)):
+                        continue  # not an allowlisted Microsoft product (DECISIONS 53)
+                    eco, (name, build) = msproducts.ECOSYSTEM, mk
                 sc = scores.get(pid)
                 vec = (sc or {}).get("Vector", "")
                 # a hotpatch row is stored under "<product> (Hotpatch)" but names the product itself, so scan.rescan can
@@ -244,14 +247,14 @@ def sync_msrc(session: Session, months: int = 12, client=None) -> dict:
                 rec = {"id": f"MSRC-{cve}-{pid}{'-hotpatch' if suffix else ''}", "aliases": [cve], "modified": mod,
                        "summary": (v["Title"]["Value"] + (f" (KB{kb})" if kb else ""))[:500],
                        "database_specific": {"kb": kb, "hotpatch": bool(suffix)},
-                       "affected": [{"package": {"ecosystem": "Windows", "name": name},
+                       "affected": [{"package": {"ecosystem": eco, "name": name},
                                      "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": build}]}]}]}
                 name += suffix
                 if vec.startswith("CVSS:3"):
                     rec["severity"] = [{"type": "CVSS_V3", "score": vec}]
                 elif sc:  # no vector: risk.cvss_base can't read it, so keep the score in the Cvss table
                     session.merge(Cvss(cve=cve, score=float(sc["BaseScore"]), vector=""))
-                row = {"id": rec["id"], "ecosystem": "Windows", "package": name, "modified": mod, "record": rec}
+                row = {"id": rec["id"], "ecosystem": eco, "package": name, "modified": mod, "record": rec}
                 if (rec["id"], name) not in have:
                     ins.append(row)
                     n["inserted"] += 1
@@ -272,7 +275,7 @@ def update_all(session: Session, client=None) -> dict:
     New advisories or exploitation data change findings without waiting for the next
     agent report. Run from cron/systemd timer (e.g. hourly)."""
     in_use = {normalize_ecosystem(e) for e in session.scalars(select(InstalledPackage.ecosystem).distinct())}
-    used = sorted({e.split(":", 1)[0] for e in in_use} - {"Windows", "WinApp"})  # Windows comes from MSRC, WinApp from NVD; neither is in OSV
+    used = sorted({e.split(":", 1)[0] for e in in_use} - {"Windows", "WinApp", msproducts.ECOSYSTEM})  # MSRC and NVD, not OSV
     out = {"kev": sync_kev(session, client), "epss": sync_epss(session, client), "nvd": sync_nvd(session, ["modified"], client), "osv": {}}
     for eco in used:  # one at a time: ecosystem names come from agents, and an unknown one must not stop every tenant's update
         try:
@@ -281,7 +284,7 @@ def update_all(session: Session, client=None) -> dict:
             session.rollback()
             log.warning("OSV sync skipped for %r: %s", eco, e)
             out["osv"][eco] = {"error": f"{type(e).__name__}: {e}"[:200]}
-    if "Windows" in in_use:
+    if in_use & {"Windows", msproducts.ECOSYSTEM}:
         out["msrc"] = sync_msrc(session, client=client)
     out["rescanned"] = 0
     cache: dict = {}  # advisories decoded once per pass: hosts on one release share most packages

@@ -490,6 +490,7 @@ def composer_cmp(a: str, b: str) -> int:
 
 _BY_PREFIX: dict[str, Cmp] = {
     "Windows": windows_cmp,
+    "Microsoft": windows_cmp,  # MSRC fixed builds, normalised to plain dotted numbers (msproducts.norm)
     "WinApp": appver_cmp,
     "Debian": dpkg_cmp,
     "Ubuntu": dpkg_cmp,

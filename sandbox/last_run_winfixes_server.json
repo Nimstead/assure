@@ -1,0 +1,129 @@
+[
+  {
+    "step": "winget-unknown",
+    "outcome": "aborted",
+    "error": "No changes made: job validated failed: unknown product or setting, or invalid version",
+    "steps": [
+      [
+        "job validated",
+        false
+      ]
+    ]
+  },
+  {
+    "step": "winget-downgrade",
+    "outcome": "aborted",
+    "error": "No changes made: fix is newer than installed failed: 26.05 -> 23.01",
+    "steps": [
+      [
+        "job validated",
+        true
+      ],
+      [
+        "fix is newer than installed",
+        false
+      ]
+    ]
+  },
+  {
+    "step": "winget-missing",
+    "outcome": "aborted",
+    "error": "No changes made: winget found (App Installer, owned by TrustedInstaller) failed: winget unavailable",
+    "steps": [
+      [
+        "job validated",
+        true
+      ],
+      [
+        "fix is newer than installed",
+        true
+      ],
+      [
+        "winget found (App Installer, owned by TrustedInstaller)",
+        false
+      ]
+    ]
+  },
+  {
+    "step": "winconfig-rollback",
+    "outcome": "rolled_back",
+    "error": "Change failed and was rolled back: injected failure (sandbox test) failed: --fail-after-apply",
+    "steps": [
+      [
+        "job validated",
+        true
+      ],
+      [
+        "LanmanServer running before change",
+        true
+      ],
+      [
+        "recorded RequireSecuritySignature before the change",
+        true
+      ],
+      [
+        "RequireSecuritySignature set to 1",
+        true
+      ],
+      [
+        "LanmanServer running after change",
+        true
+      ],
+      [
+        "injected failure (sandbox test)",
+        false
+      ],
+      [
+        "RequireSecuritySignature removed again",
+        true
+      ]
+    ]
+  },
+  {
+    "step": "SMB signing after rollback",
+    "found": null,
+    "now": null
+  },
+  {
+    "step": "winconfig-apply",
+    "outcome": "applied",
+    "error": null,
+    "steps": [
+      [
+        "job validated",
+        true
+      ],
+      [
+        "LanmanServer running before change",
+        true
+      ],
+      [
+        "recorded RequireSecuritySignature before the change",
+        true
+      ],
+      [
+        "RequireSecuritySignature set to 1",
+        true
+      ],
+      [
+        "LanmanServer running after change",
+        true
+      ]
+    ]
+  },
+  {
+    "step": "SMB signing after apply",
+    "now": "1"
+  },
+  {
+    "step": "RESULT: PASS",
+    "checks": {
+      "unknown product refused": true,
+      "older version refused": true,
+      "no winget: refused with 'winget unavailable'": true,
+      "winconfig rollback restored the value found": true,
+      "winconfig applied, LanmanServer running": true
+    },
+    "kind": "server"
+  }
+]

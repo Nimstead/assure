@@ -7,10 +7,12 @@ more stable, DECISIONS 33), judged by the channel in the release's signed manife
 hears once per new version. Every run it also fetches release.json + its signature for the running version if they're missing, so agents
 can update themselves (the server only relays them; agents check the signature against the keys they pin). Applying an
 update is deploy/update.sh's job on the Docker host, never the server's: the server can't rebuild itself.
-NIMSTEAD_UPDATE_CHECK=0 turns all of this off (offline installs: copy the two files from the release page into
-NIMSTEAD_RELEASE_DIR instead).
+It also fetches the Windows agent's bundled Python zips the signed manifest names (`python-embed-<arch>.zip`, kept only
+on a SHA-256 match). NIMSTEAD_UPDATE_CHECK=0 turns all of this off (offline installs: copy release.json, its .sig and
+the python-embed-*.zip files from the release page into NIMSTEAD_RELEASE_DIR instead).
 """
 
+import hashlib
 import json
 import logging
 import os
@@ -30,6 +32,7 @@ log = logging.getLogger(__name__)
 REPO = "Nimstead/assure"
 CHECK_EVERY = timedelta(hours=24)
 MAX_FILE = 64 * 1024
+MAX_RUNTIME = 40 * 1024 * 1024  # one embeddable Python zip is ~14 MB
 MAX_LIST = 2 * 1024 * 1024  # the releases API page, with release notes
 CHANNELS = ("preview", "beta", "stable")  # least to most proven (scripts/sign_release.py)
 CANDIDATES = 5  # newest releases above ours whose manifests are checked per daily run
@@ -137,6 +140,37 @@ def fetch_release_files(client: httpx.Client) -> bool:
     return True
 
 
+def runtime_file(arch: str) -> Path:
+    return release_dir() / f"python-embed-{arch}.zip"
+
+
+def fetch_runtimes(client: httpx.Client) -> list[str]:
+    """The Windows agent's bundled Python zips named by the running release's verified manifest (plan decision 9).
+    A zip is kept only if its SHA-256 is the signed one; agents check it again. Returns the arches fetched now."""
+    from nimstead.app import verify_manifest
+    try:
+        manifest, sig = (release_dir() / "release.json").read_bytes(), (release_dir() / "release.json.sig").read_text().strip()
+    except OSError:
+        return []
+    rel = verify_manifest(manifest, sig) or {}
+    got = []
+    for arch, r in (rel.get("runtimes") or {}).items():
+        f = runtime_file(arch)
+        if f.exists() and hashlib.sha256(f.read_bytes()).hexdigest() == r["sha256"]:
+            continue
+        try:
+            body = _get(client, f"https://github.com/{REPO}/releases/download/v{rel['version']}/{f.name}", MAX_RUNTIME).content
+        except (httpx.HTTPError, ValueError) as e:
+            log.info("runtime %s for v%s not fetched: %s", arch, rel.get("version"), e)
+            continue
+        if hashlib.sha256(body).hexdigest() != r["sha256"]:
+            log.warning("runtime %s for v%s doesn't match its signed SHA-256; not stored", arch, rel.get("version"))
+            continue
+        _write(f.name, body)
+        got.append(arch)
+    return got
+
+
 def check(s: Session, client: httpx.Client | None = None) -> dict:
     if os.environ.get("NIMSTEAD_UPDATE_CHECK", "1") == "0":
         return {"skipped": "NIMSTEAD_UPDATE_CHECK=0"}
@@ -145,6 +179,7 @@ def check(s: Session, client: httpx.Client | None = None) -> dict:
     out: dict = {}
     try:
         out["release_files_fetched"] = fetch_release_files(client)
+        out["runtimes_fetched"] = fetch_runtimes(client)
         latest = _read("latest.json")
         checked = latest.get("checked")
         if checked and latest.get("for_channel") == channel() and now() - datetime.fromisoformat(checked) < CHECK_EVERY:

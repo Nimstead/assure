@@ -336,6 +336,20 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def agent_file():
         return Response(AGENT_FILE.read_bytes(), media_type="text/x-python")
 
+    @app.get("/agent/runtime/{arch}.zip")
+    def agent_runtime(arch: str):
+        """The Windows agent's bundled Python, only as the signed release names it (plan decision 9)."""
+        rt = (json.loads(rel["release"]).get("runtimes") or {}) if (rel := signed_release()) else {}
+        if arch not in rt or arch not in ("amd64", "arm64", "win32"):
+            raise HTTPException(404, "No signed runtime for this architecture on this server")
+        try:
+            body = updates.runtime_file(arch).read_bytes()
+        except OSError:
+            raise HTTPException(404, "Runtime not fetched yet; the hourly feed update fetches it") from None
+        if hashlib.sha256(body).hexdigest() != rt[arch]["sha256"]:
+            raise HTTPException(404, "Stored runtime doesn't match the signed release")
+        return Response(body, media_type="application/zip")
+
     # --- auth --------------------------------------------------------------
 
     class Signup(BaseModel):

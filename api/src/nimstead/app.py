@@ -156,6 +156,7 @@ TEST_ALERT_MAX_PER_HOUR = 5
 RATE_WINDOW = 3600
 SIGNUP_LINK_HOURS = 24
 RESET_LINK_HOURS = 1
+FAILED_JOB = ("failed", "rolled_back", "rollback_failed", "not_fixed", "aborted")  # finished, and not fixed
 SESSION_DAYS, SESSION_IDLE = 14, timedelta(hours=12)
 MFA_SETUP_SECONDS = 600
 INVITE_MAX_PER_HOUR = 20  # per org
@@ -1009,8 +1010,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     # --- findings ----------------------------------------------------------
 
-    def finding_json(f: Finding, hostname: str) -> dict:
+    def due_of(f: Finding, sla_at) -> datetime | None:
+        """Deadline for an open finding: first seen + the deadline for its priority in force then (as evidence packs count it)."""
+        return f.first_seen + timedelta(days=sla_at(f.first_seen).get(f.priority, 180)) if f.status == "open" else None
+
+    def finding_json(f: Finding, hostname: str, due: datetime | None = None) -> dict:
         return {
+            "due": due.isoformat() if due else None,
             "id": f.id, "asset_id": f.asset_id, "hostname": hostname, "ecosystem": f.ecosystem,
             "package": f.package, "installed_version": f.installed_version, "fixed_version": f.fixed_version,
             "vuln_id": f.vuln_id, "advisory_ids": f.advisory_ids, "summary": f.summary, "cvss": f.cvss,
@@ -1025,10 +1031,23 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         q: str | None = Field(None, max_length=200)
         fixable: bool | None = None
         kev: bool | None = None
+        overdue: bool | None = None  # open and past its deadline
+
+    def with_due(s: Session, org_id: str, f: FindingFilter, limit: int | None = None):
+        """find() plus each finding's deadline; the overdue filter needs the SLA history, so it's applied here."""
+        sla_at, t, n = evidence.sla_history(s, org_id), now(), 0
+        for x, h in find(s, org_id, f, None if f.overdue else limit):
+            due = due_of(x, sla_at)
+            if f.overdue and not (due and due < t):
+                continue
+            yield x, h, due
+            n += 1
+            if limit and n >= limit:
+                return
 
     @app.get("/api/findings")
     def list_findings(user: CurrentUser, s: DB, f: Annotated[FindingFilter, Query()], limit: int = Query(500, ge=1, le=5000)):
-        return [finding_json(x, h) for x, h in find(s, user.org_id, f, limit)]
+        return [finding_json(x, h, due) for x, h, due in with_due(s, user.org_id, f, limit)]
 
     CSV_COLUMNS = ["hostname", "package", "installed_version", "fixed_version", "vuln_id", "priority", "score", "cvss", "epss",
                    "kev", "status", "first_seen", "last_seen", "resolved_at", "summary"]
@@ -1050,8 +1069,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                 return buf.getvalue()
             yield line(CSV_COLUMNS)
             with Sessions() as s2:
-                for x, h in find(s2, org_id, f):
-                    d = finding_json(x, h)
+                for x, h, due in with_due(s2, org_id, f):
+                    d = finding_json(x, h, due)
                     # cells a spreadsheet would run as a formula (package names and summaries come from hosts and advisories)
                     yield line(["'" + v if isinstance(v, str) and v[:1] in ("=", "+", "-", "@", "\t", "\r") else v
                                 for v in (d[c] for c in CSV_COLUMNS)])
@@ -1083,7 +1102,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         f = s.get(Finding, finding_id)
         if not f or f.org_id != user.org_id:
             raise HTTPException(404, "Finding not found")
-        return finding_json(f, s.get(Asset, f.asset_id).hostname)
+        return finding_json(f, s.get(Asset, f.asset_id).hostname, due_of(f, evidence.sla_history(s, user.org_id)))
 
     class Accept(BaseModel):
         reason: str = Field(min_length=10, max_length=2000)
@@ -1177,6 +1196,18 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             raise HTTPException(404, "Job not found")
         try:
             remediate.approve(s, job, user.email)
+        except remediate.RemediationError as e:
+            raise HTTPException(409, str(e)) from None
+        s.commit()
+        return job_json(job, s.get(Asset, job.asset_id).hostname)
+
+    @app.post("/api/remediation/jobs/{job_id}/cancel")
+    def cancel_job(job_id: str, user: Admin, s: DB):
+        job = s.get(RemediationJob, job_id)
+        if not job or job.org_id != user.org_id:
+            raise HTTPException(404, "Job not found")
+        try:
+            remediate.cancel(s, job, user.email)
         except remediate.RemediationError as e:
             raise HTTPException(409, str(e)) from None
         s.commit()
@@ -1615,12 +1646,24 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         ).all()
         top = []
         for eco, pkg, kev, max_score, _ in sorted(ranked, key=lambda r: (bool(r[2]), r[3], r[4]), reverse=True)[:10]:
-            rows = s.execute(select(Finding.fixed_version, Finding.vuln_id, Asset.hostname).join(Asset, Asset.id == Finding.asset_id)
+            rows = s.execute(select(Finding.fixed_version, Finding.vuln_id, Asset.hostname, Asset.id).join(Asset, Asset.id == Finding.asset_id)
                              .where(*is_open, Finding.ecosystem == eco, Finding.package == pkg, Finding.fixed_version.is_not(None))).all()
             cmp = comparator_for(eco)
             fixes = {r[0] for r in rows}
             fixed = max(fixes, key=functools.cmp_to_key(cmp)) if cmp else sorted(fixes)[-1]  # highest fix clears them all
+            asset_ids = sorted({r[3] for r in rows})
+            # A fix already in flight for this package: Home links to it instead of offering "Plan fix", which the API refuses
+            # while one is active. Failed ones are listed under "needs a look" and can be planned again.
+            jobs = s.scalars(select(RemediationJob).where(
+                RemediationJob.org_id == user.org_id, RemediationJob.action_key == f"{eco}|{pkg}", RemediationJob.asset_id.in_(asset_ids),
+            ).order_by(RemediationJob.updated.desc()).limit(50)).all()
+            active = [j for j in jobs if j.status in remediate.ACTIVE]
+            # The newest finished attempt, if it failed: Home says so rather than offering the same plan blind.
+            last = next((j for j in jobs if j.status not in remediate.ACTIVE), None)
             top.append({"ecosystem": eco, "package": pkg, "fixed_version": fixed, "hosts": sorted({r[2] for r in rows}),
+                        "asset_ids": asset_ids, "busy_asset_ids": sorted({j.asset_id for j in active}),
+                        "job": {"id": active[0].id, "status": active[0].status} if active else None,
+                        "last_attempt": {"id": last.id, "status": last.status, "error": last.error} if last and last.status in FAILED_JOB else None,
                         "vulns": sorted({r[1] for r in rows}), "kev": bool(kev), "max_score": max_score})
         hosts = s.scalars(select(Asset).where(Asset.org_id == user.org_id, Asset.kind == "host")).all()
         paused, release = s.get(Org, user.org_id).agent_updates_paused, signed_release() is not None
@@ -1632,8 +1675,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             "top_actions": top,
             "attention": [job_json(j, h) for j, h in s.execute(
                 select(RemediationJob, Asset.hostname).join(Asset, Asset.id == RemediationJob.asset_id)
-                .where(RemediationJob.org_id == user.org_id,
-                       RemediationJob.status.in_(("failed", "rolled_back", "rollback_failed", "not_fixed", "aborted", "cancelled")))
+                .where(RemediationJob.org_id == user.org_id, RemediationJob.status.in_(FAILED_JOB))  # a cancel is deliberate, not a problem
                 .order_by(RemediationJob.updated.desc()).limit(20))],
         }
 

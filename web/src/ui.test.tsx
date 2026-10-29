@@ -3,9 +3,9 @@ import { NotificationsSection } from "./integrations";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
-import { AssetRow, SbomUpload } from "./assets";
+import { AgentUpdateSummary, AssetRow, SbomUpload } from "./assets";
 import { ApproveDialog, PlanFixButton } from "./remediation";
-import { APPROVE_COPY, meQ, type Asset } from "./lib";
+import { ADMIN_ONLY_ID, APPROVE_COPY, meQ, type Asset } from "./lib";
 import { InstallCommands } from "./onboarding";
 import { PlatformSection } from "./settings";
 import { TargetRow } from "./targets";
@@ -26,7 +26,7 @@ it("onboarding shows the Linux, Windows and Python commands", () => {
 
 it("approve dialog states exactly what will happen", () => {
   render(<ApproveDialog job={{ summary: "Upgrade openssl", hostname: "web-1" }} onOpenChange={() => {}} onConfirm={() => {}} error="Production remediation is disabled" />);
-  expect(screen.getByRole("dialog", { name: "Approve this fix?" })).toBeInTheDocument();
+  expect(screen.getByRole("alertdialog", { name: "Approve this fix?" })).toBeInTheDocument();
   expect(screen.getByText(APPROVE_COPY)).toBeInTheDocument();
   expect(screen.getByText(/Saves a rollback copy of each package, upgrades, checks health, rolls back automatically on failure\. Success is confirmed by the next inventory\./)).toBeInTheDocument();
   expect(screen.getByRole("alert")).toHaveTextContent("Production remediation is disabled");
@@ -52,7 +52,7 @@ const signedIn = (admin: boolean) => {
 
 it("SBOM upload is for admins only: replacing an SBOM resolves findings", () => {
   render(<QueryClientProvider client={signedIn(false)}><SbomUpload a={{ id: "a1", hostname: "billing" } as Asset} /></QueryClientProvider>);
-  expect(screen.getByRole("button", { name: "Upload SBOM for billing" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Upload SBOM for billing" })).toHaveAttribute("aria-disabled", "true");
 });
 
 it("SBOM upload posts the raw file and announces the counts", async () => {
@@ -87,26 +87,36 @@ it("unverified target shows the TXT record and a Verify button", () => {
   vi.unstubAllGlobals();
 });
 
-it("admin-only buttons are disabled with an explanation while /api/me loads and for non-admins", async () => {
-  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ email: "a@b.c", org: "o", admin: false }), { status: 200 })));
-  render(<QueryClientProvider client={new QueryClient()}><PlanFixButton ecosystem="deb" pkg="openssl" hosts={["web-1"]} /></QueryClientProvider>);
+it("admin-only buttons stay focusable, explain themselves and do nothing for non-admins", async () => {
+  const fetchMock = vi.fn(async (_url: string) => new Response(JSON.stringify({ email: "a@b.c", org: "o", admin: false }), { status: 200 }));
+  vi.stubGlobal("fetch", fetchMock);
+  render(<QueryClientProvider client={new QueryClient()}><p id={ADMIN_ONLY_ID}>Read-only.</p><PlanFixButton ecosystem="deb" pkg="openssl" assetIds={["a1"]} /></QueryClientProvider>);
   const btn = screen.getByRole("button", { name: /Plan fix/ });
-  expect(btn).toBeDisabled();
-  expect(btn).toHaveAttribute("title", "Only organisation admins can do this");
+  expect(btn).toBeEnabled();  // reachable by keyboard and screen reader, unlike a disabled button
+  expect(btn).toHaveAttribute("aria-disabled", "true");
+  expect(btn).toHaveAccessibleDescription("Read-only.");
+  await userEvent.click(btn);
+  expect(fetchMock.mock.calls.filter(([url]) => String(url).includes("/remediation/jobs"))).toHaveLength(0);
   vi.unstubAllGlobals();
 });
 
-it("asset row says why an agent is outdated and what happens next", () => {
+it("assets say once why agents are outdated and what happens next; each row keeps its tag", () => {
   vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ email: "a@b.c", org: "o", admin: true }), { status: 200 })));
   const base = { id: "a1", hostname: "web-1", kind: "host", os_name: "Debian 13", criticality: "medium", internet_facing: false, sandbox: false, ring: 1, health_units: [], open_by_priority: {}, last_seen: "2026-01-01T00:00:00", agent_version: "0.2.0" } as unknown as Asset;
   const row = (a: Partial<Asset>) => render(<QueryClientProvider client={new QueryClient()}><ul><AssetRow a={{ ...base, ...a }} onPatch={() => {}} onDelete={() => {}} /></ul></QueryClientProvider>);
   const failed = row({ agent_update: "failed", agent_update_error: "self-update failed: new agent 0.3.0 failed its self-test" });
   expect(screen.getByText("Agent update failed")).toBeInTheDocument();
-  expect(screen.getByText(/failed its self-test/)).toBeInTheDocument();
   failed.unmount();
-  const reinstall = row({ agent_update: "reinstall", agent_version: "0.1.3" });
-  expect(screen.getByText(/can't update itself. Rerun the install command/)).toBeInTheDocument();
-  reinstall.unmount();
+  const summary = render(<AgentUpdateSummary assets={[
+    { ...base, agent_update: "failed", agent_update_error: "self-update failed: new agent 0.3.0 failed its self-test" },
+    { ...base, id: "a2", hostname: "web-2", agent_update: "reinstall", agent_version: "0.1.3" },
+    { ...base, id: "a3", hostname: "web-3", agent_update: "reinstall", agent_version: "0.1.3" },
+  ] as Asset[]} />);
+  expect(screen.getByText(/failed its self-test/)).toBeInTheDocument();
+  // the same reason is said once, naming every machine it applies to
+  expect(screen.getAllByText(/can't update itself. Rerun the install command/)).toHaveLength(1);
+  expect(screen.getByText("web-2, web-3:")).toBeInTheDocument();
+  summary.unmount();
   row({ agent_update: "current" });
   expect(screen.queryByText(/Agent (outdated|update)/)).not.toBeInTheDocument();
   vi.unstubAllGlobals();
@@ -120,5 +130,7 @@ it("settings say when a platform update is available and when one failed", () =>
   expect(screen.getByText(/beta and stable releases/)).toBeInTheDocument();
   r.unmount();
   render(<PlatformSection p={{ ...base, update_available: false, latest: "0.3.0", last_update: { outcome: "rolled_back", from: "0.3.0", to: "0.3.1", error: "health check failed" } }} />);
-  expect(screen.getByRole("alert")).toHaveTextContent("Update failed and was rolled back (0.3.0 → 0.3.1): health check failed");
+  // past news, so plain text rather than an alert announced on every visit
+  expect(screen.getByText(/Update failed and was rolled back \(0\.3\.0 → 0\.3\.1\): health check failed/)).toBeInTheDocument();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 });

@@ -234,7 +234,8 @@ def test_non_admins_can_read_but_not_change_remediation_or_assets(env):
                                ("delete", "/api/assets/x", None), ("patch", "/api/assets/x", {"ring": 0}),
                                ("post", "/api/assets", {"name": "app"}), ("post", "/api/findings/x/accept", {"reason": "r", "days": 30}),
                                ("post", "/api/remediation/jobs", {"asset_id": "x", "ecosystem": "Debian:12", "package": "p"}),
-                               ("post", "/api/remediation/jobs/x/approve", None), ("patch", "/api/settings", {"remediation_mode": "auto"}),
+                               ("post", "/api/remediation/jobs/x/approve", None), ("post", "/api/remediation/jobs/x/cancel", None),
+                               ("patch", "/api/settings", {"remediation_mode": "auto"}),
                                ("post", "/api/assets/x/sbom", {})):  # replacing an SBOM resolves findings and writes evidence
         r = getattr(staff, method)(path, **({"json": body} if body is not None else {}))
         assert r.status_code == 403, (method, path, r.status_code)

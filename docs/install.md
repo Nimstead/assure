@@ -117,7 +117,7 @@ On Windows, in an elevated PowerShell: `py -3 -I "$env:ProgramFiles\Nimstead\nim
 Remediation is off until you turn it on in three places:
 
 1. **The host opts in** at install with `--allow-remediation` (on Windows, `$env:NIMSTEAD_ALLOW_REMEDIATION = "1"` before the install command). The server can never turn this on.
-2. **Start with sandbox hosts.** Tick *sandbox* when you create the enrolment token, for disposable test machines. Until you set `NIMSTEAD_ALLOW_PRODUCTION_REMEDIATION=1`, fixes only ever target those.
+2. **Start with test machines.** When you add a machine, choose **Test machines** (sandbox) for disposable or staging hosts; the choice is fixed for every machine enrolled with that command. Until you set `NIMSTEAD_ALLOW_PRODUCTION_REMEDIATION=1` in `.env` and restart, fixes only ever target test machines.
 3. **You approve each fix,** or move up the **trust ladder** in **Settings** to let some fixes run on their own. Fixes go to canary hosts first, then the rest.
 
 Every fix takes a rollback copy first, refuses to touch anything outside the plan, checks your services afterwards and rolls back on its own if they fail. It only counts as fixed when the next inventory shows it.

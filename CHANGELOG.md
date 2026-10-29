@@ -4,6 +4,51 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-29
+
+A safer, clearer interface, from two rounds of UI and accessibility review (tasks/plan-0.5-ux.md, tasks/plan-0.6-ux.md; DECISIONS 41–50). Agent unchanged (0.3.0).
+
+**Upgrade from 0.4.x:** run `deploy/update.sh` on the Docker host. No database migration. Things to know:
+- **Switching the trust ladder now takes Save**, and switching to Auto asks you to confirm.
+- **Evidence packs can report `no_activity`** for timeliness controls with nothing fixed and nothing overdue in the period (Cyber Essentials update management, NIST SI-2, CIS 7.3/7.4, SOC 2 CC8.1), where 0.4.0 said `met`. The pack format and verifier are unchanged; if you parse control statuses, expect a third value. The deadline text in packs now says "routine" for the tier the UI used to call "Planned".
+- **API additions:** `POST /api/remediation/jobs/{id}/cancel`; `GET /api/findings?overdue=true` (and on the CSV export) with a `due` date on each finding; `asset_ids`, `job`, `busy_asset_ids` and `last_attempt` on `/api/summary` actions. Cancelled fixes no longer appear in `/api/summary`'s `attention` list.
+- Adding a machine now asks whether it's a test or production machine; there's no default.
+
+### Changed
+- **The trust ladder no longer switches itself to Auto.** Before, choosing a mode (one click, or one arrow key) saved it at once. Now choosing only selects; Save applies it, and Auto asks first, naming how many machines it covers and the canary-first order.
+- **Destructive actions ask first, the same way everywhere:** revoking an API token, removing someone, changing someone's role and signing out everywhere now use the same confirmation as deleting an asset. You can't demote or remove yourself from the People list.
+- **Fixes can be cancelled before a machine picks them up** (planned or approved), and cancelling one lets you plan it again. `POST /api/remediation/jobs/{id}/cancel`, admin only, recorded in the ledger.
+- **Home links to a fix already in flight** ("View fix") instead of offering "Plan fix" again. The finding drawer shows "Fix in progress" the same way. A job's summary and host link to that machine's findings. `/api/summary` actions carry `asset_ids` and `job`.
+- **Evidence says "No activity in period"** for timeliness controls (Cyber Essentials update management, NIST SI-2, CIS 7.3/7.4, SOC 2 CC8.1) when nothing was fixed or changed in the period and nothing is overdue, instead of "Met". Overdue findings still fail. **Signed packs can carry the new status `no_activity`**; the pack format and verifier are unchanged. The period's dates, an "as of" time and each control's counts are shown, and the period is kept in the URL (`?period=30`).
+- **Onboarding asks "test or production machines?"** with nothing preselected (it can't be changed after enrolment). It shows troubleshooting after two minutes without a report, and waits for you instead of redirecting on its own.
+- **Two-step sign-in shows a QR code** to scan, drawn in the page; the typed key stays as a fallback.
+- Settings is grouped into Remediation, Access, Alerts, Your account and This server, with a section bar. Saves say "Saved"; asset changes say the findings were re-ranked.
+- Theme follows your system until you pick light or dark, and can go back to following it.
+- On phones, Evidence is in the tab bar (Assets moved under More, with Sign out), and buttons, links and form controls are at least 44px tall.
+- **Read-only members see an asset's settings as text,** not controls the API would refuse.
+- **Every dialog hands focus back to what opened it,** not just the findings drawer. Focus rings are ink in both themes (crimson now only means "fix now", KEV or an error), and headings focused by the app no longer show a ring. After moving to another page, focus goes to its heading and the page title is announced.
+- **"Saved" and similar messages are announced** through one live region; form errors sit under, and are tied to, the field they're about. A failed save shows next to the section that failed, not at the top of the page.
+- **Overdue is a filter.** `GET /api/findings?overdue=true` (and the CSV export) returns open findings past the deadline in force when they were first detected, the same rule evidence packs use; each finding carries `due`. Findings gets an "Overdue" chip, the drawer says "Due 3 Nov" or "12 days overdue", and Evidence's "Overdue and still open" links to the list.
+- **Fixes have an address** (`/remediation#job-<id>`). Home, the finding drawer and Plan fix land on the fix itself. A fix planned and approved by the same person says so.
+- **Home doesn't re-plan blind.** `/api/summary` actions carry `busy_asset_ids` and `last_attempt`. When the last attempt failed it links to that job ("Last attempt aborted: review"), and when one host is busy you can still plan the others. Cancelled fixes no longer appear under "needs a look".
+- **Production remediation says how to turn it on:** Settings, onboarding and the refusal note name `NIMSTEAD_ALLOW_PRODUCTION_REMEDIATION=1`.
+- **The priority tier "Planned" is now labelled "Routine"** in the UI and in the evidence pack's deadline text (the stored value and API stay `planned`), so it can't be mistaken for a planned fix.
+- Command palette finds hosts too, keeps the highlighted command while results arrive, and never offers an invalid empty list.
+- Assets: the agent-update explanation is said once for the list, grouped by reason; Ring and Health units are explained in place; long host names wrap.
+- Findings: package names show the part that differs first (`log4j-core`, then the group, muted), truncated cells carry their full text, rarer filters fold away on phones, the list dims while new filters load, and a capped list (5,000) says so.
+- Settings: editing one section no longer loses what you typed in another; the section bar marks where you are and fits phones; trust-ladder options have visible borders and a radio mark. The SSO and alert forms keep your edits when other data refreshes, and "Send test alert" reports success or failure.
+- Evidence: the ledger says how many entries it shows of how many and names what each entry is about; mean time to remediate under a day says so.
+- Sign-in and onboarding: fields focus where you'd expect, onboarding polls only once there's a command to run.
+
+### Fixed
+- "Verified" next to an SSO domain was the same colour as the page in both themes.
+- Admin-only buttons could not be focused, so keyboard and touch users never saw why they were off; they now stay focusable and point to a visible "Read-only" note.
+- Focus returns to the finding you opened when its drawer closes.
+- Keyboard focus on menus, the command palette and filters is visible (not just a faint tint); loading states are announced; the findings table names its columns on phones; reduced motion also stops transitions.
+- Plan fix no longer downloads up to 5,000 findings to look up machine ids.
+- The web bundle loads Settings, Evidence, sign-in and onboarding on demand (entry chunk 587 kB to 392 kB).
+- Settings would crash on an API token without an expiry (none are created that way, but the column allows it).
+
 ## [0.4.0] - 2026-10-28
 
 Security round 4 and what a first team needs: people management, two-step sign-in, API tokens and CSV export. Agent 0.3.0.
@@ -132,7 +177,9 @@ The first early-access release. Everything listed is proven by tests and, for an
 
 Licensed under FSL-1.1-ALv2: this release becomes available under Apache 2.0 on 2028-10-27.
 
-[Unreleased]: https://github.com/Nimstead/assure/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/Nimstead/assure/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/Nimstead/assure/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/Nimstead/assure/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/Nimstead/assure/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Nimstead/assure/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Nimstead/assure/compare/v0.1.1...v0.2.0

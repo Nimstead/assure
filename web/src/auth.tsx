@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, useTitle } from "./lib";
-import { btnPrimary, btnQuiet, input } from "./ui";
+import { Alert, btnPrimary, btnQuiet, Field, input, LiveRegions, Notice } from "./ui";
 import { MfaEnrol, RecoveryCodes } from "./people";
 import type { MfaSetup } from "./lib";
 import { Logo } from "./shell";
@@ -15,6 +15,9 @@ const SSO_ERRORS: Record<string, string> = {
   email_unverified: "Your identity provider hasn't verified your email address.",
 };
 const ssoError = (code: string | null) => code && (SSO_ERRORS[code] ?? "Single sign-on failed. Try again or ask your administrator.");
+
+export const SignInPage = () => <AuthPage mode="signin" />;
+export const SignUpPage = () => <AuthPage mode="signup" />;
 
 export function AuthPage({ mode }: { mode: "signin" | "signup" }) {
   const signup = mode === "signup";
@@ -55,6 +58,7 @@ export function AuthPage({ mode }: { mode: "signin" | "signup" }) {
   };
   if (codes.length) return (
     <main className="mx-auto flex min-h-dvh w-full max-w-sm flex-col justify-center gap-6 px-4 py-10">
+      <LiveRegions />
       <Logo />
       <RecoveryCodes codes={codes} />
       <button className={btnPrimary} onClick={enter}>I've saved them, continue</button>
@@ -62,6 +66,7 @@ export function AuthPage({ mode }: { mode: "signin" | "signup" }) {
   );
   if (mfa) return (
     <main className="mx-auto flex min-h-dvh w-full max-w-sm flex-col justify-center gap-6 px-4 py-10">
+      <LiveRegions />
       <Logo />
       <h1 className="text-2xl font-semibold">{mfa.mfa === "setup" ? "Set up two-step sign-in" : "Enter your code"}</h1>
       {mfa.mfa === "setup" ? <>
@@ -69,19 +74,20 @@ export function AuthPage({ mode }: { mode: "signin" | "signup" }) {
         <MfaEnrol setup={mfa} pending={go.isPending} onCode={(code) => go.mutate({ ...creds, code, setup: mfa.setup })} />
       </> : (
         <form className="flex flex-col gap-4" onSubmit={(e) => { e.preventDefault(); go.mutate({ ...creds, code: String(new FormData(e.currentTarget).get("code")) }); }}>
-          <label className="flex flex-col gap-1.5 text-sm font-medium">Code from your authenticator app, or a recovery code
+          <Field label="Code from your authenticator app, or a recovery code">
             <input className={input} name="code" required autoFocus autoComplete="one-time-code" />
-          </label>
+          </Field>
           <button className={btnPrimary} disabled={go.isPending}>{go.isPending ? "Checking…" : "Sign in"}</button>
         </form>
       )}
-      {go.error && <p role="alert" className="rounded-md bg-now-bg px-3 py-2 text-sm text-now-fg">{go.error.message}</p>}
+      <Alert error={go.error} />
       <button className={btnQuiet} onClick={() => { setMfa(null); go.reset(); }}>Back</button>
     </main>
   );
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-sm flex-col justify-center gap-8 px-4 py-10">
+      <LiveRegions />
       <Logo />
       <div>
         <h1 className="text-2xl font-semibold">{signup ? "Create your account" : "Welcome back"}</h1>
@@ -91,50 +97,46 @@ export function AuthPage({ mode }: { mode: "signin" | "signup" }) {
       </div>
       <form onSubmit={submit} className="flex flex-col gap-4">
         {signup && (
-          <label className="flex flex-col gap-1.5 text-sm font-medium">
-            Organisation
+          <Field label="Organisation">
             <input className={input} value={org} onChange={(e) => setOrg(e.target.value)} required maxLength={200} autoComplete="organization" placeholder="Acme Ltd" />
-          </label>
+          </Field>
         )}
-        <label className="flex flex-col gap-1.5 text-sm font-medium">
-          Email
+        <Field label="Email">
           <input className={input} name="email" type="email" required autoComplete="email" placeholder="you@company.com" />
-        </label>
-        <label className="flex flex-col gap-1.5 text-sm font-medium">
-          Password
-          <input className={input} name="password" type="password" required minLength={signup ? 12 : undefined} autoComplete={signup ? "new-password" : "current-password"} aria-describedby="pw-hint" />
-          {signup && <span id="pw-hint" className="text-xs font-normal text-muted">At least 12 characters. A few random words works well.</span>}
-        </label>
-        {go.error && <p role="alert" className="rounded-md bg-now-bg px-3 py-2 text-sm text-now-fg">{go.error.message}</p>}
-        {sentTo && <p role="status" className="rounded-md bg-surface px-3 py-2 text-sm">Check {sentTo} for a link to finish creating your account and choose your password.</p>}
-        {!signup && params.get("reset") && <p role="status" className="rounded-md bg-surface px-3 py-2 text-sm">Password changed. Sign in with your new password.</p>}
-        {!signup && params.get("created") && <p role="status" className="rounded-md bg-surface px-3 py-2 text-sm">Account created. Sign in to set up two-step sign-in and get started.</p>}
+        </Field>
+        <Field label="Password" hint={signup ? "At least 12 characters. A few random words works well." : undefined}>
+          <input className={input} name="password" type="password" required minLength={signup ? 12 : undefined} autoComplete={signup ? "new-password" : "current-password"} />
+        </Field>
+        <Alert error={go.error} />
+        {sentTo && <Notice>{`Check ${sentTo} for a link to finish creating your account and choose your password.`}</Notice>}
+        {!signup && params.get("reset") && <Notice>Password changed. Sign in with your new password.</Notice>}
+        {!signup && params.get("created") && <Notice>Account created. Sign in to set up two-step sign-in and get started.</Notice>}
         <button className={btnPrimary} disabled={go.isPending}>{go.isPending ? "One moment…" : signup ? "Create account" : "Sign in"}</button>
       </form>
       {!signup && (forgot ? (
         <form className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); reset.mutate(String(new FormData(e.currentTarget).get("email"))); }}>
-          <label className="flex flex-col gap-1.5 text-sm font-medium">Email for the reset link
-            <input className={input} name="email" type="email" required autoComplete="email" />
-          </label>
+          {/* the "Forgot password?" button this replaces is gone, so focus moves here rather than to the page */}
+          <Field label="Email for the reset link">
+            <input className={input} name="email" type="email" required autoComplete="email" autoFocus />
+          </Field>
           <button className={btnQuiet} disabled={reset.isPending}>Send reset link</button>
-          {reset.error && <p role="alert" className="rounded-md bg-now-bg px-3 py-2 text-sm text-now-fg">{reset.error.message}</p>}
-          {reset.data && <p role="status" className="rounded-md bg-surface px-3 py-2 text-sm">If {reset.data.email} has a password account, a link to reset it is on its way (valid 1 hour).</p>}
+          <Alert error={reset.error} />
+          {reset.data && <Notice>{`If ${reset.data.email} has a password account, a link to reset it is on its way (valid 1 hour).`}</Notice>}
         </form>
-      ) : <button className="self-start text-sm text-accent underline" onClick={() => setForgot(true)}>Forgot password?</button>)}
+      ) : <button className="-ml-2 inline-flex min-h-[44px] cursor-pointer items-center self-start px-2 text-sm text-accent underline" onClick={() => setForgot(true)}>Forgot password?</button>)}
       {!signup && (
         <form method="post" action="/api/auth/sso/start" className="flex flex-col gap-3 border-t border-line pt-6" aria-labelledby="sso-h">
           <h2 id="sso-h" className="text-sm font-semibold">Single sign-on</h2>
-          {ssoMsg && <p role="alert" className="rounded-md bg-now-bg px-3 py-2 text-sm text-now-fg">{ssoMsg}</p>}
-          <label className="flex flex-col gap-1.5 text-sm font-medium">
-            Work email
+          <Alert error={ssoMsg || null} />
+          <Field label="Work email">
             <input className={input} name="email" type="email" required autoComplete="email" placeholder="you@company.com" />
-          </label>
+          </Field>
           <button className={btnQuiet}>Continue with SSO</button>
         </form>
       )}
       <p className="text-sm text-muted">
         {signup ? "Already have an account? " : "New to Nimstead? "}
-        <Link to={signup ? "/signin" : "/signup"} className="font-medium text-accent underline">{signup ? "Sign in" : "Create an account"}</Link>
+        <Link to={signup ? "/signin" : "/signup"} className="inline-flex min-h-[44px] items-center font-medium text-accent underline">{signup ? "Sign in" : "Create an account"}</Link>
       </p>
     </main>
   );

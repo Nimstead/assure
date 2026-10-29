@@ -72,6 +72,20 @@ def reboot_and_wait():
     guest("shutdown /r /t 5", check=False)
     time.sleep(90)
     winvm.wait_ready(NAME, minutes=90)
+    # servicing can restart once more on its own right after (seen on Server 2025: TrustedInstaller 30 s after boot);
+    # ready means the boot time held still for 3 minutes
+    boot, stable = None, 0
+    while stable < 3:
+        time.sleep(60)
+        try:
+            now = guest("(Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToString('o')", check=False).strip()
+        except Exception:
+            now = None
+        if not now or now != boot:
+            winvm.wait_ready(NAME, minutes=90)
+            boot, stable = now, 0
+        else:
+            stable += 1
 
 
 def build():
@@ -146,8 +160,8 @@ def main(keep=False) -> int:
         note("install.ps1 ran elevated: enrolled, reported, task registered", triggers=out.strip().splitlines()[-2:],
              os=a["os_name"], open_by_priority=summ["open_by_priority"], fix=f"{top['package']} -> {top['fixed_version']}")
         product = top["package"]
-        # a health unit, so the crash-event check (plan T13) runs for real
-        assert api.patch(f"/api/assets/{a['id']}", json={"health_units": ["Spooler"]}).status_code == 200
+        # a health unit present on Server Core and Windows 11 alike, so the crash-event check (plan T13) runs for real
+        assert api.patch(f"/api/assets/{a['id']}", json={"health_units": ["LanmanServer"]}).status_code == 200
         import winoracle
         table = winoracle.run(as_system, guest, api.get("/api/findings").json())
         note("oracle: Windows Update vs Nimstead", **{k: v for k, v in table.items()})
@@ -167,6 +181,8 @@ def main(keep=False) -> int:
         py = guest(r"(Resolve-Path 'C:\Program Files\Nimstead\runtime\*\python.exe')[0].Path").strip()
         agent = f'"{py}" -I "C:\\Program Files\\Nimstead\\nimstead_agent.py"'
         if "--success-only" not in sys.argv:  # --success-only: rollback already proven on this VM
+            # this part drives the job by hand; the agent's own startup run would race it for the same pending job
+            guest("Disable-ScheduledTask -TaskName 'Nimstead jobs' | Out-Null")
             jid = plan_and_get_job()
             [job] = api.get("/api/agent/jobs", headers=h).json()
             note("job dispatched", kb=job["packages"][0]["kb"], target=job["packages"][0]["to"])
@@ -188,6 +204,7 @@ def main(keep=False) -> int:
             note("rollback finished", outcome=r3["outcome"], build_now=after, build_before=start_build)
             assert r3["outcome"] == "rolled_back" and after == start_build, r3
             api.post(f"/api/agent/jobs/{jid}/report", json=r3, headers=h)
+            guest("Enable-ScheduledTask -TaskName 'Nimstead jobs' | Out-Null")
 
         # 3) success, driven only by the installed scheduled task: install -> reboot -> startup run resumes -> report
         signed_in = "--signed-in" in sys.argv  # plan T41: a workstation user is told and the restart waits for the deadline

@@ -2477,7 +2477,8 @@ def main(argv=None):
         elif a.cmd == "resume-job":  # Windows: continue a job after the reboot it asked for
             if not os.path.exists(WIN_STATE):
                 raise AgentError("no pending job")
-            res = WinJob().advance()
+            with run_lock():  # the startup run may be advancing the same job
+                res = WinJob().advance()
             print(json.dumps(res))
             return 0 if res["outcome"] in ("applied", "pending_reboot", "rolled_back") else 2
         elif a.cmd in ("report", "remediate") and not a.no_self_update and (new := _update_then_rerun(a, argv)) is not None:

@@ -57,6 +57,7 @@ maintenance windows and Active Directory computers), applied on start. Things to
   "Notepad++ (x64)"); both were inventory only before (found on a real Windows 11 install).
 - A Windows job's 15-minute check no longer judges a DISM rollback before the restart it waits for.
 - The hourly re-match scores each CVSS vector once per pass.
+- `resume-job` takes the run lock, so it can't advance a pending Windows job while the startup run is advancing it.
 - The runtime signature check in `install.ps1` now filters by extension: PowerShell 5.1 ignores `-Include` beside
   `-LiteralPath` (found in the real VM run).
 

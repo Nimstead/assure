@@ -219,3 +219,20 @@ def test_windows_task_objects_build_in_powershell():
     build = "\n".join(ln for ln in s.splitlines() if not ln.startswith(("Register-", "Get-ScheduledTask")))
     rc, out = agent.ps(agent.sh, build + "\n'{0} {1} {2}' -f $set.Priority, $main[0].RandomDelay, $poll.RandomDelay")
     assert rc == 0 and out.strip().splitlines()[-1] == "7 PT30M PT2M", out
+
+
+def test_resume_job_waits_its_turn_for_the_run_lock(tmp_path, monkeypatch):
+    state = tmp_path / "pending-job.json"
+    state.write_text("{}")
+    monkeypatch.setattr(agent, "WIN_STATE", str(state))
+    monkeypatch.setattr(agent, "secure_windows_dir", lambda: None)
+
+    class Busy:
+        def __enter__(self):
+            raise agent.AgentError("another nimstead-agent run is in progress")
+
+        def __exit__(self, *a):
+            pass
+    monkeypatch.setattr(agent, "run_lock", Busy)
+    monkeypatch.setattr(agent, "WinJob", lambda *a, **k: pytest.fail("advanced the job while the startup run held the lock"))
+    assert agent.main(["resume-job"]) != 0

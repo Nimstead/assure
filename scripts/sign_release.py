@@ -3,7 +3,7 @@
   sign_release.py keygen OUT_DIR             # once: writes OUT_DIR/release-<id>.key (keep offline), prints the public key to pin
   sign_release.py sign --tag vX.Y.Z --commit SHA --channel preview|beta|stable --out DIR   # key from $NIMSTEAD_RELEASE_KEY
 
-`sign` writes DIR/release.json {version, agent_version, agent_sha256, commit, channel} and DIR/release.json.sig (base64
+`sign` writes DIR/release.json {version, agent_version, agent_sha256, commit, channel, runtimes} and DIR/release.json.sig (base64
 Ed25519 over the exact bytes of release.json). Agents and deploy/update.sh verify it with the keys pinned in the agent.
 The channel is signed so nobody can relabel a preview build as stable; promoting a release re-signs it (DECISIONS 33).
 """
@@ -23,6 +23,24 @@ from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption,
 
 ROOT = Path(__file__).resolve().parents[1]
 AGENT = ROOT / "agent" / "nimstead_agent.py"
+RUNTIME = ROOT / "agent" / "windows-runtime.json"  # the Windows agent's bundled Python (plan decision 9)
+ARCHES = ("amd64", "arm64", "win32")
+
+
+def load_runtimes(text: str) -> dict:
+    """{arch: {version, sha256}} for release.json from the pinned runtime file; refuses anything malformed."""
+    d = json.loads(text)
+    v = d.get("version") if isinstance(d, dict) else None
+    rt = d.get("runtimes") if isinstance(d, dict) else None
+    if not (isinstance(v, str) and re.fullmatch(r"\d+\.\d+\.\d+", v) and isinstance(rt, dict) and set(rt) == set(ARCHES)):
+        raise SystemExit("agent/windows-runtime.json: needs a version x.y.z and exactly the arches " + ", ".join(ARCHES))
+    out = {}
+    for arch, r in rt.items():
+        if not (isinstance(r, dict) and re.fullmatch(r"[0-9a-f]{64}", str(r.get("sha256")))
+                and r.get("url") == f"https://www.python.org/ftp/python/{v}/python-{v}-embed-{arch}.zip"):
+            raise SystemExit(f"agent/windows-runtime.json: bad entry for {arch}")
+        out[arch] = {"version": v, "sha256": r["sha256"]}
+    return out
 
 
 def public_hex(k: Ed25519PrivateKey) -> str:
@@ -32,7 +50,8 @@ def public_hex(k: Ed25519PrivateKey) -> str:
 CHANNELS = ("preview", "beta", "stable")  # least to most proven; a server takes its channel and anything more stable
 
 
-def release_manifest(tag: str, commit: str, agent_bytes: bytes, platform_version: str, channel: str = "preview") -> bytes:
+def release_manifest(tag: str, commit: str, agent_bytes: bytes, platform_version: str, channel: str = "preview",
+                     runtimes: dict | None = None) -> bytes:
     if channel not in CHANNELS:
         raise SystemExit(f"channel must be one of {', '.join(CHANNELS)}, not {channel!r}")
     if not re.fullmatch(r"v\d+\.\d+\.\d+", tag):
@@ -46,6 +65,8 @@ def release_manifest(tag: str, commit: str, agent_bytes: bytes, platform_version
         raise SystemExit("AGENT_VERSION not found in the agent")
     body = {"version": platform_version, "agent_version": m.group(1).decode(),
             "agent_sha256": hashlib.sha256(agent_bytes).hexdigest(), "commit": commit, "channel": channel}
+    if runtimes:
+        body["runtimes"] = runtimes
     return json.dumps(body, sort_keys=True, separators=(",", ":")).encode()
 
 
@@ -80,7 +101,7 @@ def main(argv=None) -> int:
         raise SystemExit("NIMSTEAD_RELEASE_KEY is not set")
     k = Ed25519PrivateKey.from_private_bytes(base64.b64decode(key_b64, validate=True))
     version = tomllib.loads((ROOT / "api" / "pyproject.toml").read_text())["project"]["version"]
-    manifest = release_manifest(a.tag, a.commit, AGENT.read_bytes(), version, a.channel)
+    manifest = release_manifest(a.tag, a.commit, AGENT.read_bytes(), version, a.channel, load_runtimes(RUNTIME.read_text()))
     if public_hex(k) not in AGENT.read_text(encoding="utf-8"):
         raise SystemExit("this key isn't pinned in the agent's RELEASE_KEYS: agents would reject the release")
     out = Path(a.out)

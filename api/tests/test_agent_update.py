@@ -404,3 +404,42 @@ def test_no_not_reporting_storm_after_the_server_itself_was_down(env, monkeypatc
     state.write_text(_json.dumps({**st, "grace_until": (now() - timedelta(minutes=1)).isoformat()}))  # grace over
     assert notify.alert_silent_hosts(s, state) == 1 and sent == ["host_not_reporting"]  # still silent: now it alerts
     s.close()
+
+
+def test_signed_release_carries_the_pinned_runtimes():
+    rts = sign_release.load_runtimes((ROOT / "agent" / "windows-runtime.json").read_text())
+    assert set(rts) == {"amd64", "arm64", "win32"} and all(len(r["sha256"]) == 64 for r in rts.values())
+    m = sign_release.release_manifest("v0.6.0", COMMIT, b'AGENT_VERSION = "0.4.0"\n', "0.6.0", "preview", rts)
+    assert json.loads(m)["runtimes"] == rts
+    k = Ed25519PrivateKey.generate()
+    pub = k.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw).hex()
+    assert agent.verify_release(m, base64.b64encode(k.sign(m)).decode(), [pub])["runtimes"] == rts
+
+
+@pytest.mark.parametrize("bad", [
+    {"amd64": {"version": "3.15.2", "sha256": "x" * 64}},
+    {"riscv": {"version": "3.15.2", "sha256": "a" * 64}},
+    {"amd64": {"version": "3.15", "sha256": "a" * 64}},
+    {},
+    ["amd64"],
+])
+def test_agent_refuses_a_malformed_runtimes_entry(bad):
+    body = json.loads(sign_release.release_manifest("v0.6.0", COMMIT, b'AGENT_VERSION = "0.4.0"\n', "0.6.0"))
+    m = json.dumps({**body, "runtimes": bad}).encode()
+    k = Ed25519PrivateKey.generate()
+    pub = k.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw).hex()
+    with pytest.raises(agent.AgentError, match="runtimes"):
+        agent.verify_release(m, base64.b64encode(k.sign(m)).decode(), [pub])
+
+
+@pytest.mark.parametrize("edit", [
+    lambda d: d.pop("version"),
+    lambda d: d["runtimes"].pop("arm64"),
+    lambda d: d["runtimes"]["amd64"].update(url="https://example.com/python-3.15.2-embed-amd64.zip"),
+    lambda d: d["runtimes"]["win32"].update(sha256="nope"),
+])
+def test_signing_refuses_a_malformed_runtime_pin(edit):
+    d = json.loads((ROOT / "agent" / "windows-runtime.json").read_text())
+    edit(d)
+    with pytest.raises(SystemExit):
+        sign_release.load_runtimes(json.dumps(d))

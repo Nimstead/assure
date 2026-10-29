@@ -71,6 +71,23 @@ jobs:
           gh release edit "$TAG" $labels
           echo "$TAG signed for the $CHANNEL channel"
 
+  runtimes:
+    # The Windows agent's bundled Python (plan decision 9), in a job that never sees the signing key: each embeddable
+    # zip is downloaded from python.org and must match the SHA-256 pinned in agent/windows-runtime.json, which the
+    # signed release.json also carries, before it is attached to the release for servers to relay.
+    needs: sign
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - name: Download and check
+        run: python3 -I scripts/fetch_runtimes.py rt
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release upload "$TAG" rt/*.zip --clobber
+
   sbom:
     # Nimstead's own SBOMs (CycloneDX), in a job that never sees the signing key: upload them to an application asset
     # in Assure to scan Assure itself.

@@ -1,6 +1,6 @@
 # Nimstead — status
 
-Read this first each session. Decisions and their reasons: DECISIONS.md (items 1–50; 27 is the threat model, 31–33 are signed updates and release channels, 34–40 are security round 4). Install: docs/install.md. Current plan: tasks/plan-0.6-ux.md (UI/UX round 2, done; unreleased; round 1 was tasks/plan-0.5-ux.md).
+Read this first each session. Decisions and their reasons: DECISIONS.md (items 1–50; 27 is the threat model, 31–33 are signed updates and release channels, 34–40 are security round 4). Install: docs/install.md. Current plan: tasks/plan.md + tasks/todo.md (Windows round 1: detection, remediation, Python-free agent; not started). Earlier: tasks/plan-0.6-ux.md, plan-0.5-ux.md (UI/UX rounds, released in 0.5.0).
 
 ## Done (with evidence)
 | Area | Where | Evidence |

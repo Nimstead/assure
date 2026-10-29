@@ -123,6 +123,7 @@ export function AssetRow({ a, onPatch, onDelete, saved, error }: { a: Asset; onP
           {a.kind === "application" ? "Application (SBOM)" : a.os_name || "Unknown OS"}{a.agent_version && ` · agent ${a.agent_version}`} · seen <time dateTime={parseUtc(a.last_seen).toISOString()} title={parseUtc(a.last_seen).toLocaleString()}>{relativeTime(a.last_seen)}</time>
         </p>
         {a.not_reporting && <p className="mt-1 text-xs text-now-fg">No report for over 14 hours, so findings may be out of date.</p>}
+        {a.facts?.os_unmatched && <p className="mt-1 text-xs text-muted">OS not matched to Microsoft's fixes: {a.facts.os_unmatched}. Apps and end of support are still checked.</p>}
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
         {open.length === 0 ? <span className="text-sm text-muted">No open findings</span> : open.map((p) => (

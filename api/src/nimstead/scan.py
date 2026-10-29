@@ -7,9 +7,9 @@ from collections import defaultdict
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from nimstead import evidence, risk, winapps
+from nimstead import evidence, lifecycle, risk, winapps
 from nimstead.db import Advisory, Asset, Cvss, Epss, Finding, InstalledPackage, Kev, now
-from nimstead.match import Package, match_package, normalize_ecosystem
+from nimstead.match import Match, Package, match_package, normalize_ecosystem
 from nimstead.notify import notify
 
 HOTPATCH = " (Hotpatch)"  # advisory package suffix for MSRC hotpatch fixes (DECISIONS 52)
@@ -21,6 +21,16 @@ def hotpatch_track(hot: list[dict], version: str) -> tuple[set[str], list[dict]]
     if not any(r["affected"][0]["ranges"][0]["events"][-1].get("fixed") == version for r in hot):
         return None
     return {a for r in hot for a in r["aliases"]}, hot
+
+
+def host_checks(pkgs: list, facts: dict, today) -> list[dict]:
+    """Findings from the host's own state rather than an advisory: end of support (lifecycle.py)."""
+    out = []
+    for x in lifecycle.findings(pkgs, facts, today):
+        out.append({**x, "ecosystem": lifecycle.ECOSYSTEM, "score": 90 if x["ended"] else 40,
+                    "priority": "fix-now" if x["ended"] else "planned",
+                    "reasons": [x["summary"], "Upgrade, or enrol in Extended Security Updates" if x["ended"] else "Plan the upgrade"]})
+    return out
 
 
 def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dict | None = None) -> dict:
@@ -86,6 +96,13 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
                 continue
             seen.add(key)
             matches.append((key, eco, name, version, m))
+    # findings that aren't advisory matches (end of support, configuration) carry their own score and reasons
+    for x in host_checks(pkgs, asset.facts or {}, t.date()):
+        key = (x["ecosystem"], x["package"], x["vuln_id"])
+        seen.add(key)
+        rec = {"_risk": (x["score"], x["priority"], x["reasons"])}
+        matches.append((key, x["ecosystem"], x["package"], x["version"],
+                        Match(Package(x["package"], x["version"]), x["vuln_id"], [x["vuln_id"]], x.get("fixed"), x["summary"], rec)))
     # exploitation and severity context in three queries, not three lookups per CVE
     cves = sorted({m.vuln_id for *_, m in matches if m.vuln_id.startswith("CVE-")})
     kevs, epss, nvd = set(), {}, {}
@@ -101,7 +118,7 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
         cvss = risk.cvss_base(m.record.get("severity"))
         if cvss is None:
             cvss = nvd.get(m.vuln_id)
-        r = risk.score(
+        r = risk.Risk(*m.record["_risk"]) if "_risk" in m.record else risk.score(
             kev=kev,
             epss=ep,
             cvss=cvss,

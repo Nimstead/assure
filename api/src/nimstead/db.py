@@ -114,6 +114,7 @@ class Asset(Base):
     auto_update: Mapped[bool | None]  # agent can replace itself with signed releases; None = agent too old to say
     agent_update_error: Mapped[str | None] = mapped_column(String(500))  # last self-update failure the agent reported
     silent_alerted_at: Mapped[datetime | None]  # "not reporting" alert sent for the current outage; cleared by the next report
+    facts: Mapped[dict | None]  # agent-reported host facts (edition, ESU, update management, roles); None = none sent
     enrolled_by: Mapped[str | None] = mapped_column(String(12))  # enrolment token id, so a leaked token's hosts can be found
 
 

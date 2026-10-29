@@ -779,6 +779,20 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         agent_version: str = Field("", max_length=50)
         auto_update: bool | None = None  # None: agent older than 0.2.0, can't update itself
         update_error: str | None = Field(None, max_length=500)
+        facts: dict | None = None  # checked by facts_ok: small, flat, plain values
+
+    def facts_ok(f: dict) -> bool:
+        def plain(v, depth=0):
+            if v is None or isinstance(v, (bool, int, float)):
+                return True
+            if isinstance(v, str):
+                return len(v) <= 500
+            if isinstance(v, list):
+                return depth < 2 and len(v) <= 500 and all(plain(x, depth + 1) for x in v)
+            if isinstance(v, dict):
+                return depth < 2 and len(v) <= 200 and all(isinstance(k, str) and len(k) <= 100 and plain(x, depth + 1) for k, x in v.items())
+            return False
+        return len(f) <= 64 and all(isinstance(k, str) and len(k) <= 64 for k in f) and plain(f) and len(json.dumps(f)) <= 64_000
 
     def current_agent(s: DB, authorization: Annotated[str | None, Header()] = None) -> Asset:
         if not authorization or not authorization.startswith("Bearer "):
@@ -798,6 +812,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         asset.os_name, asset.ecosystem, asset.last_seen = body.os_name or asset.os_name, body.ecosystem or asset.ecosystem, now()
         asset.agent_version, asset.auto_update, asset.agent_update_error = body.agent_version, body.auto_update, body.update_error
         asset.silent_alerted_at = None
+        if body.facts is not None:
+            if not facts_ok(body.facts):
+                raise HTTPException(422, "facts must be at most 64 keys of short plain values")
+            asset.facts = body.facts
         s.execute(delete(InstalledPackage).where(InstalledPackage.asset_id == asset.id, InstalledPackage.origin == "agent"))
         s.add_all(InstalledPackage(asset_id=asset.id, origin="agent", **p.model_dump()) for p in body.packages)
         s.flush()
@@ -846,7 +864,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             "first_seen": a.first_seen, "last_seen": a.last_seen, "open_by_priority": counts,
             **({"agent_version": a.agent_version, "agent_outdated": a.agent_version != latest_agent_version(),
                 "agent_update": agent_update_status(a, paused, release), "agent_update_error": a.agent_update_error,
-                "not_reporting": a.last_seen < now() - notify.SILENT_AFTER}
+                "not_reporting": a.last_seen < now() - notify.SILENT_AFTER, "facts": a.facts or {}}
                if a.kind == "host" else {}),
             **({"verified": a.verified_at is not None, "verified_at": a.verified_at, "txt_name": external.txt_name(a.hostname),
                 "txt_value": external.txt_value(a.org_id, a.hostname), "proof_path": external.PROOF_PATH} if a.kind == "external" else {}),

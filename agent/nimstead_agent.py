@@ -130,14 +130,16 @@ def _run(cmd):
 
 
 # MSRC names Windows Server by build; client names come from the feature-update version.
-_SERVER_BY_BUILD = {14393: "Windows Server 2016", 17763: "Windows Server 2019", 20348: "Windows Server 2022", 26100: "Windows Server 2025"}
+_SERVER_BY_BUILD = {9200: "Windows Server 2012", 9600: "Windows Server 2012 R2", 14393: "Windows Server 2016",
+                    17763: "Windows Server 2019", 20348: "Windows Server 2022", 26100: "Windows Server 2025",
+                    25398: "Windows Server 2022, 23H2 Edition"}  # 23H2: the Annual Channel, Server Core only
 _MSRC_ARCH = {"AMD64": "x64-based", "X86": "32-bit", "ARM64": "ARM64-based"}
 
 
 def msrc_product_name(build, display_version, installation_type, machine):
     """MSRC product name for this OS, or '' if we cannot name it exactly (refuse to guess).
 
-    ponytail: OS only. Server 2012/R2 (6.x builds), Server 23H2 and Insider builds are unmapped."""
+    Insider and other unlisted builds are unmapped: the host still reports apps and says why (collect_windows)."""
     if installation_type.startswith("Server"):
         name = _SERVER_BY_BUILD.get(build)
         return name + (" (Server Core installation)" if installation_type == "Server Core" else "") if name else ""
@@ -220,15 +222,35 @@ def collect_windows():
         build, ubr = int(val("CurrentBuild", 0) or 0), int(val("UBR", 0))
         dv = val("DisplayVersion") or val("ReleaseId")
         product, itype = val("ProductName"), val("InstallationType")
+        edition = val("EditionID")
     machine = platform.machine()
     name = msrc_product_name(build, dv, itype, machine)
-    if not name or not build:
-        raise AgentError(f"unsupported Windows release: {product} {dv} build {build} {itype} {machine}")
     version = f"10.0.{build}.{ubr}"
     if build >= 22000:
         product = product.replace("Windows 10", "Windows 11")
+    facts = {"edition_id": edition, "installation_type": itype, "esu": esu_active(name)}
+    os_pkg = []
+    if not name or not build:  # still report apps; the server shows why the OS isn't matched
+        facts["os_unmatched"] = f"no exact MSRC product for {product} {dv} build {build} {itype} {machine}"
+    elif build < 10240:  # 2012/R2 keep no update build revision: matched by end of support only, never by CVE
+        facts["os_product"], facts["os_unmatched"] = name, f"{name} has no update build revision to compare with MSRC fixes"
+    else:
+        os_pkg = [{"ecosystem": "Windows", "name": name, "version": version, "source": None}]
     return {"os_name": f"{product} {dv} ({machine}) build {version}", "ecosystem": "Windows", "agent_version": AGENT_VERSION,
-            "packages": [{"ecosystem": "Windows", "name": name, "version": version, "source": None}, *windows_apps(winreg)]}
+            "facts": facts, "packages": [*os_pkg, *windows_apps(winreg)]}
+
+
+ESU_PRODUCTS = re.compile(r"^Windows (10 Version 22H2|Server 2012)")
+PS_ESU = ("@(Get-CimInstance SoftwareLicensingProduct -Filter \"LicenseStatus=1 and PartialProductKey is not null\" | "
+          "Where-Object { $_.Name -match 'ESU' }).Count")
+
+
+def esu_active(product, run=None):
+    """True/False whether an Extended Security Updates licence is active, None where ESU doesn't apply or can't be read."""
+    if not product or not ESU_PRODUCTS.match(product):
+        return None
+    rc, out = ps(run or sh, PS_ESU)
+    return int(out.strip()) > 0 if rc == 0 and out.strip().isdigit() else None
 
 
 def collect():
@@ -1256,6 +1278,9 @@ def version_tuple(v):
     return tuple(int(x) for x in m.groups()) if m else None
 
 
+RUNTIME_ARCHES = {"AMD64": "amd64", "ARM64": "arm64", "X86": "win32"}.values()
+
+
 def verify_release(manifest, sig_b64, keys=None):
     """The fields of a release manifest signed by a pinned key over these exact bytes; AgentError otherwise."""
     keys = RELEASE_KEYS if keys is None else keys
@@ -1271,6 +1296,11 @@ def verify_release(manifest, sig_b64, keys=None):
     if not (isinstance(rel, dict) and version_tuple(rel.get("version")) and version_tuple(rel.get("agent_version"))
             and re.fullmatch(r"[0-9a-f]{64}", str(rel.get("agent_sha256"))) and re.fullmatch(r"[0-9a-f]{40}", str(rel.get("commit")))):
         raise AgentError("signed release manifest is malformed")
+    rt = rel.get("runtimes")  # the Windows agent's bundled Python (absent before 0.6.0)
+    if rt is not None and not (isinstance(rt, dict) and rt and all(
+            a in RUNTIME_ARCHES and isinstance(r, dict) and version_tuple(r.get("version"))
+            and re.fullmatch(r"[0-9a-f]{64}", str(r.get("sha256"))) for a, r in rt.items())):
+        raise AgentError("signed release manifest has a malformed runtimes entry")
     return rel
 
 
@@ -1365,7 +1395,8 @@ def _smoke_test(path):
         inv = json.loads(p.stdout)
     except ValueError:
         return "collect printed no JSON"
-    if not (isinstance(inv, dict) and isinstance(inv.get("packages"), list) and inv["packages"]):
+    if not (isinstance(inv, dict) and isinstance(inv.get("packages"), list)
+            and (inv["packages"] or (inv.get("facts") or {}).get("os_unmatched"))):
         return "collect returned no packages"
     return None
 

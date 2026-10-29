@@ -7,11 +7,17 @@ export type Priority = (typeof PRIORITIES)[number];
 export type Status = "open" | "resolved" | "accepted";
 export type Criticality = "low" | "medium" | "high" | "critical";
 
+export interface HostFacts {
+  edition_id?: string; esu?: boolean | null; os_unmatched?: string;
+  [k: string]: unknown;
+}
+
 export interface Asset {
   id: string; hostname: string; os_name: string; ecosystem: string; kind: "host" | "application" | "external";
   criticality: Criticality; internet_facing: boolean; sandbox: boolean; ring: 0 | 1; health_units: string[];
   first_seen: string; last_seen: string; open_by_priority: Partial<Record<Priority, number>>;
   agent_version?: string; agent_outdated?: boolean; agent_update?: AgentUpdate; agent_update_error?: string | null; not_reporting?: boolean; // hosts only
+  facts?: HostFacts; // hosts only: what the agent reports about the host itself
   verified?: boolean; verified_at?: string | null; txt_name?: string; txt_value?: string; proof_path?: string; // external targets only
 }
 // What happens to a host's agent next (app.py agent_update_status)

@@ -29,8 +29,9 @@ W11 = "Windows 11 Version 25H2 for x64-based Systems"
     (26100, "24H2", "Server Core", "AMD64", "Windows Server 2025 (Server Core installation)"),
     (20348, "21H2", "Server", "AMD64", "Windows Server 2022"),
     (17763, "1809", "Server", "AMD64", "Windows Server 2019"),
-    (9600, "", "Server", "AMD64", ""),  # Server 2012 R2: unmapped, never guessed
-    (25398, "23H2", "Server Core", "AMD64", ""),
+    (9600, "", "Server", "AMD64", "Windows Server 2012 R2"),  # named for end of support; no UBR, so never CVE-matched
+    (25398, "23H2", "Server Core", "AMD64", "Windows Server 2022, 23H2 Edition (Server Core installation)"),
+    (99999, "", "Server", "AMD64", ""),  # unknown server build: never guessed
     (26200, "", "Client", "AMD64", ""),  # no DisplayVersion
     (26200, "25H2", "Client", "riscv64", ""),
 ])
@@ -132,7 +133,8 @@ def test_windows_asset_end_to_end(env):
     # a product MSRC doesn't list for this CVE (e.g. Windows 10) is never matched
     other = {"ecosystem": "Windows", "packages": [{"ecosystem": "Windows", "name": "Windows 11 Version 21H2 for x64-based Systems",
                                                    "version": "10.0.22000.1", "source": None}]}
-    assert c.post("/api/agent/inventory", json=other, headers=h).json()["open"] == 0
+    assert c.post("/api/agent/inventory", json=other, headers=h).json()["open"] == 1  # only its end-of-support finding
+    assert [x["vuln_id"] for x in c.get("/api/findings").json()] == ["EOL:win11-21h2"]
 
 
 def test_windows_fix_is_planned_as_one_kb_with_target_build(env):
@@ -233,3 +235,71 @@ def test_windows_plan_carries_the_hotpatch_kb_as_the_alternative(env):
     assert r.status_code == 201, r.text
     assert r.json()["packages"] == [{"name": WS25, "from": "10.0.26100.4946", "kb": "5065426", "to": "10.0.26100.6584",
                                      "alt": {"kb": "5065474", "to": "10.0.26100.6508"}}]
+
+
+class FakeReg:
+    HKEY_LOCAL_MACHINE, HKEY_USERS, HKEY_CURRENT_USER, KEY_READ, KEY_WOW64_64KEY, KEY_WOW64_32KEY = 1, 2, 3, 0, 0, 0
+
+    def EnumKey(self, k, i):  # noqa: N802 - no apps, no user hives
+        raise OSError("none")
+
+    def __init__(self, values):
+        self.values = values
+
+    def OpenKey(self, root, path, *a):  # noqa: N802 - winreg's names
+        if "Uninstall" in path or root == self.HKEY_USERS:
+            raise OSError("none")
+        return self
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def QueryValueEx(self, k, name):  # noqa: N802
+        if name not in self.values:
+            raise OSError(name)
+        return self.values[name], 1
+
+
+@pytest.mark.parametrize("values,machine,os_pkg,unmatched", [
+    ({"CurrentBuild": "26100", "UBR": 4946, "DisplayVersion": "24H2", "ProductName": "Windows Server 2025 Datacenter",
+      "InstallationType": "Server", "EditionID": "ServerDatacenter"}, "AMD64", "Windows Server 2025", False),
+    ({"CurrentBuild": "9600", "ProductName": "Windows Server 2012 R2 Standard", "InstallationType": "Server",
+      "EditionID": "ServerStandard"}, "AMD64", None, True),
+    ({"CurrentBuild": "27900", "UBR": 1, "DisplayVersion": "", "ProductName": "Windows 10 Pro", "InstallationType": "Client",
+      "EditionID": "Professional"}, "AMD64", None, True),  # Insider: apps still reported
+])
+def test_collect_windows_reports_facts_and_never_refuses_an_unmapped_os(monkeypatch, values, machine, os_pkg, unmatched):
+    import sys
+    monkeypatch.setitem(sys.modules, "winreg", FakeReg(values))
+    monkeypatch.setattr(agent.platform, "machine", lambda: machine)
+    monkeypatch.setattr(agent, "esu_active", lambda product, run=None: None)
+    inv = agent.collect_windows()
+    assert [p["name"] for p in inv["packages"] if p["ecosystem"] == "Windows"] == ([os_pkg] if os_pkg else [])
+    assert inv["facts"]["edition_id"] == values["EditionID"] and bool(inv["facts"].get("os_unmatched")) == unmatched
+
+
+def test_esu_is_only_asked_where_it_applies():
+    calls = []
+
+    def run(cmd):
+        calls.append(cmd)
+        return 0, "1\r\n"
+    assert agent.esu_active("Windows 11 Version 24H2 for x64-based Systems", run) is None and not calls
+    assert agent.esu_active("Windows 10 Version 22H2 for x64-based Systems", run) is True
+    assert agent.esu_active("Windows Server 2012 R2", lambda c: (1, "error")) is None
+
+
+def test_server_2012_r2_gets_its_end_of_support_finding(env):
+    c = user(env)
+    token = c.post("/api/enroll-tokens").json()["token"]
+    a = c.post("/api/agent/enroll", json={"token": token, "hostname": "old-srv", "ecosystem": "Windows"}).json()
+    h = {"Authorization": f"Bearer {a['agent_key']}"}
+    r = c.post("/api/agent/inventory", headers=h, json={"ecosystem": "Windows", "packages": [], "facts": {
+        "edition_id": "ServerStandard", "esu": False, "os_product": "Windows Server 2012 R2", "os_unmatched": "no UBR"}})
+    assert r.status_code == 200, r.text
+    [f] = c.get("/api/findings").json()
+    assert f["vuln_id"] == "EOL:ws2012r2" and f["priority"] == "fix-now"
+    assert c.get("/api/assets").json()[0]["facts"]["os_unmatched"] == "no UBR"

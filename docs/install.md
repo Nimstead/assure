@@ -78,12 +78,25 @@ $env:NIMSTEAD_TOKEN = "nme_…"; irm https://assure.example.com/install.ps1 | ie
 
 | | Linux | Windows |
 |---|---|---|
-| **Supported** | Debian, Ubuntu, RHEL family (AlmaLinux, Rocky), Alpine, SUSE | Windows Server 2025 and Windows 11 (proven); Windows 10 detection |
-| **Needs** | Python 3.9+ and curl | Python for all users (`winget install Python.Python.3.13 --scope machine`) |
+| **Supported** | Debian, Ubuntu, RHEL family (AlmaLinux, Rocky), Alpine, SUSE | Windows 10 / Server 2016 and newer (fixes proven on Server 2025 and Windows 11) |
+| **Needs** | Python 3.9+ and curl | nothing: the installer brings Python's official embeddable runtime (see below) |
 | **Runs** | a systemd timer every 6 hours | a SYSTEM scheduled task every 6 hours and at startup |
 | **With remediation** | plus a 15-minute check for approved fixes | plus a 15-minute check for approved fixes |
 
 The agent is one readable file, [`agent/nimstead_agent.py`](../agent/nimstead_agent.py), using only Python's standard library.
+
+**On Windows nothing needs to be installed first.** The installer downloads Python's official embeddable runtime (the
+version pinned in [`agent/windows-runtime.json`](../agent/windows-runtime.json)) from your server, checks that every
+program file in it is signed by the Python Software Foundation, and keeps it under `Program Files\Nimstead\runtime\`,
+which only administrators can change. It prints the runtime's `sha256` next to the agent's. The agent keeps the runtime
+current from signed releases, as it does itself. Windows 8.1 / Server 2012 R2 and older are refused: current Python
+doesn't run there, and those systems no longer get security updates.
+
+**Behind a proxy:** set `$env:NIMSTEAD_PROXY = "http://proxy.example:8080"` before the install command (on Linux, pass
+`--proxy` to `enroll`). Without it, Windows machines use the machine-wide WinHTTP proxy if one is set (`netsh winhttp
+show proxy`), the same one Windows Update uses. TLS to your server stays end to end; a plain-HTTP server is refused
+through a proxy. Scheduled runs start at a random point within 30 minutes (job checks within 2), at below-normal
+priority, so a large fleet doesn't report all at once.
 
 ### The agent updates itself
 
@@ -100,7 +113,7 @@ Updates have to be signed, but the first copy of the agent comes from your serve
 
 1. From the [GitHub release](https://github.com/Nimstead/assure/releases) your server runs, download `release.json`, `release.json.sig` and `nimstead_agent.py`.
 2. Check the signature with an agent you already trust: `python3 nimstead_agent.py verify-release release.json release.json.sig` prints the manifest only if a pinned Nimstead release key signed it (key fingerprints `a91fa653…` and backup `2438f2cc…`, also in `RELEASE_KEYS` at the top of the agent).
-3. The manifest's `agent_sha256` must equal `sha256sum nimstead_agent.py` and the `agent sha256` the installer printed. Or skip the installer: copy this verified file to `/usr/local/lib/nimstead/` yourself, then run its `enroll --server https://… --channel stable`, `report` and `schedule` as root, with `NIMSTEAD_TOKEN` set.
+3. The manifest's `agent_sha256` must equal `sha256sum nimstead_agent.py` and the `agent sha256` the installer printed. On Windows, the `runtime sha256` it printed must equal the manifest's `runtimes.amd64.sha256` (or `arm64` / `win32`). Or skip the installer: copy this verified file to `/usr/local/lib/nimstead/` yourself, then run its `enroll --server https://… --channel stable`, `report` and `schedule` as root, with `NIMSTEAD_TOKEN` set.
 
 A machine that hasn't reported for 14 hours shows **Not reporting** and sends one alert, so a stopped agent doesn't quietly leave stale findings.
 
@@ -110,7 +123,7 @@ A machine that hasn't reported for 14 hours shows **Not reporting** and sends on
 sudo python3 /usr/local/lib/nimstead/nimstead_agent.py uninstall --yes
 ```
 
-On Windows, in an elevated PowerShell: `py -3 -I "$env:ProgramFiles\Nimstead\nimstead_agent.py" uninstall --yes`. This removes the timers or scheduled tasks, the agent key, saved state and the agent itself, then tells you to delete the machine on the **Assets** page. It's refused while a Windows update is waiting for its restart.
+On Windows, in an elevated PowerShell: `& (Resolve-Path "$env:ProgramFiles\Nimstead\runtime\*\python.exe")[0] -I "$env:ProgramFiles\Nimstead\nimstead_agent.py" uninstall --yes`. This removes the timers or scheduled tasks, the agent key, saved state and the agent itself, then tells you to delete the machine on the **Assets** page. It's refused while a Windows update is waiting for its restart.
 
 ### Fixing things automatically
 

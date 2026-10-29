@@ -1224,6 +1224,35 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 _opener = urllib.request.build_opener(_NoRedirect)
+_proxy = None
+SAFE_PROXY = re.compile(r"^https?://[A-Za-z0-9.\-\[\]:]{1,255}\Z")
+
+
+def winhttp_proxy(run=None):
+    """The machine-wide WinHTTP proxy (what Windows Update uses as SYSTEM), or None. `netsh` prints either one
+    host:port or per-scheme entries; only an https= entry or a single host:port is used."""
+    rc, out = (run or sh)(["netsh", "winhttp", "show", "proxy"])
+    m = re.search(r"Proxy Server\(s\)\s*:\s*(\S+)", out) if rc == 0 else None
+    if not m:
+        return None
+    v = m.group(1)
+    if "=" in v:
+        v = next((p.split("=", 1)[1] for p in v.split(";") if p.startswith("https=")), "")
+    return f"http://{v}" if v and "://" not in v else v or None
+
+
+def use_proxy(url, run=None):
+    """Send every server call through `url` (the enrol --proxy), else the WinHTTP proxy on Windows. TLS stays end to
+    end (CONNECT); plain-http servers are refused through a proxy, so the agent key never crosses it in clear."""
+    global _opener, _proxy
+    url = url or (winhttp_proxy(run) if os.name == "nt" else None)
+    if not url:
+        return None
+    if not SAFE_PROXY.match(url):
+        raise AgentError(f"proxy must be http://host:port or https://host:port, not {url!r}")
+    _proxy = url
+    _opener = urllib.request.build_opener(_NoRedirect, urllib.request.ProxyHandler({"https": url, "http": url}))
+    return url
 
 
 class run_lock:
@@ -1256,6 +1285,8 @@ def post(server, path, body, insecure_http, key=None, raw=False):
     """POST JSON, or GET when body is None; raw=True returns the response bytes (capped) instead of parsed JSON."""
     if not server.startswith("https://") and not (insecure_http and server.startswith("http://")):
         raise AgentError(f"refusing non-HTTPS server {server!r} (use --insecure-http for local dev)")
+    if _proxy and not server.startswith("https://"):
+        raise AgentError("refusing to send the agent key to a plain-http server through a proxy")
     headers = {"Content-Type": "application/json"}
     if key:
         headers["Authorization"] = "Bearer " + key
@@ -1404,9 +1435,11 @@ def _smoke_test(path):
 def load_config():
     try:
         with open(config_path()) as f:
-            return json.load(f)
+            cfg = json.load(f)
     except (OSError, ValueError) as e:
         raise AgentError(f"cannot read {config_path()} (run enroll first): {e}")
+    use_proxy(cfg.get("proxy"))  # every command that talks to the server loads the config first
+    return cfg
 
 
 def save_config(cfg):
@@ -1496,7 +1529,7 @@ def secure_windows_dir(run=sh, d=None):
 # ---- schedule -----------------------------------------------------------------
 # The agent owns its schedule, so an updated agent can change it without a reinstall. Bump SCHEDULE_VERSION whenever
 # the units or tasks below change; an updated agent re-applies them once.
-SCHEDULE_VERSION = 1
+SCHEDULE_VERSION = 2  # 2: random delay and below-normal priority on Windows (plan T44)
 SYSTEMD_DIR = "/etc/systemd/system"
 _SERVICE = "[Unit]\nDescription={desc}\nAfter=network-online.target\n[Service]\nType=oneshot\nExecStart={cmd}\n"
 _TIMER = "[Unit]\nDescription={desc}\n[Timer]\n{when}\n[Install]\nWantedBy=timers.target\n"
@@ -1536,16 +1569,20 @@ def schedule_windows_script(cfg):
     py, *args = _agent_cmd(cfg)
     base = _join(args)
     verb = "remediate" if cfg.get("allow_remediation") else "report"
+    # a random delay spreads a fleet's reports over half an hour (polls over 2 minutes), and below-normal priority keeps
+    # the agent out of the way of the host's own work (plan T44); the startup run stays immediate to finish a fix
     lines = ["$ErrorActionPreference = 'Stop'",
              f"$py = {_ps_quote(py)}",
-             "$main = @((New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(5) -RepetitionInterval (New-TimeSpan -Hours 6)), "
-             "(New-ScheduledTaskTrigger -AtStartup))",
+             "$set = New-ScheduledTaskSettingsSet -Priority 7 -StartWhenAvailable -MultipleInstances IgnoreNew",
+             "$main = @((New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(5) -RepetitionInterval (New-TimeSpan -Hours 6) "
+             "-RandomDelay (New-TimeSpan -Minutes 30)), (New-ScheduledTaskTrigger -AtStartup))",
              f"Register-ScheduledTask -TaskName 'Nimstead agent' -Action (New-ScheduledTaskAction -Execute $py -Argument {_ps_quote(base + ' ' + verb)}) "
-             "-Trigger $main -User 'SYSTEM' -RunLevel Highest -Force | Out-Null"]
+             "-Trigger $main -Settings $set -User 'SYSTEM' -RunLevel Highest -Force | Out-Null"]
     if cfg.get("allow_remediation"):
-        lines += ["$poll = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(2) -RepetitionInterval (New-TimeSpan -Minutes 15)",
+        lines += ["$poll = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(2) -RepetitionInterval (New-TimeSpan -Minutes 15) "
+                  "-RandomDelay (New-TimeSpan -Minutes 2)",
                   "Register-ScheduledTask -TaskName 'Nimstead jobs' -Action (New-ScheduledTaskAction -Execute $py -Argument "
-                  f"{_ps_quote(base + ' remediate --if-jobs')}) -Trigger $poll -User 'SYSTEM' -RunLevel Highest -Force | Out-Null"]
+                  f"{_ps_quote(base + ' remediate --if-jobs')}) -Trigger $poll -Settings $set -User 'SYSTEM' -RunLevel Highest -Force | Out-Null"]
     else:
         # only if it's there: a silenced "not found" still sets $?, and powershell -Command exits 1 on the last statement's $?
         lines.append("Get-ScheduledTask | Where-Object TaskName -eq 'Nimstead jobs' | Unregister-ScheduledTask -Confirm:$false")
@@ -1671,6 +1708,8 @@ def main(argv=None):
                     help="let this host run approved package upgrades (local opt-in; the server cannot enable it)")
     en.add_argument("--no-auto-update", action="store_true",
                     help="never replace this agent with newer signed releases (default: update automatically)")
+    en.add_argument("--proxy", help="send all traffic to the server through this proxy (http://host:port); "
+                    "default: the machine's WinHTTP proxy on Windows, if set")
     en.add_argument("--channel", choices=CHANNELS, default="stable",
                     help="least proven signed releases this agent takes (the installer passes its server's channel)")
     sub.add_parser("report")
@@ -1697,6 +1736,7 @@ def main(argv=None):
         elif a.cmd == "enroll":
             if not a.token:
                 raise AgentError("an enrolment token is required (--token or NIMSTEAD_TOKEN)")
+            use_proxy(a.proxy)
             inv = collect()
             body = {"token": a.token, "hostname": socket.gethostname(), "os_name": inv["os_name"], "ecosystem": inv["ecosystem"]}
             res = post(a.server, "/api/agent/enroll", body, a.insecure_http)
@@ -1704,7 +1744,8 @@ def main(argv=None):
                 raise AgentError("enroll response missing agent_key")
             # only the fields we expect from the server, and local choices last: the server can't opt a host in
             cfg = {"asset_id": res.get("asset_id"), "agent_key": res["agent_key"], "server": a.server,
-                   "allow_remediation": a.allow_remediation, "auto_update": not a.no_auto_update, "channel": a.channel}
+                   "allow_remediation": a.allow_remediation, "auto_update": not a.no_auto_update, "channel": a.channel,
+                   **({"proxy": a.proxy} if a.proxy else {})}
             print("enrolled as asset {}; config saved to {}".format(res.get("asset_id"), save_config(cfg)))
         elif a.cmd == "uninstall":
             if not a.yes:

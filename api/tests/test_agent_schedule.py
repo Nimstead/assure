@@ -203,3 +203,19 @@ def test_unwritable_lock_folder_skips_the_update_but_still_reports(cfgfile, monk
     posted = []
     monkeypatch.setattr(agent, "post", lambda server, path, *a, **k: posted.append(path) or {})
     assert agent.main(["report"]) == 0 and posted == ["/api/agent/inventory"]
+
+
+def test_windows_tasks_are_jittered_and_below_normal_priority():
+    s = agent.schedule_windows_script({**CFG, "allow_remediation": True})
+    assert "-RandomDelay (New-TimeSpan -Minutes 30)" in s and "-RandomDelay (New-TimeSpan -Minutes 2)" in s
+    assert "-Priority 7" in s and s.count("-Settings $set") == 2
+    assert "(New-ScheduledTaskTrigger -AtStartup))" in s  # no delay at startup: a fix waiting for its restart resumes at once
+
+
+@pytest.mark.skipif(agent.os.name != "nt", reason="needs Windows PowerShell's ScheduledTasks module")
+def test_windows_task_objects_build_in_powershell():
+    """Builds the triggers and settings exactly as scripted, without registering anything."""
+    s = agent.schedule_windows_script({**CFG, "allow_remediation": True})
+    build = "\n".join(ln for ln in s.splitlines() if not ln.startswith(("Register-", "Get-ScheduledTask")))
+    rc, out = agent.ps(agent.sh, build + "\n'{0} {1} {2}' -f $set.Priority, $main[0].RandomDelay, $poll.RandomDelay")
+    assert rc == 0 and out.strip().splitlines()[-1] == "7 PT30M PT2M", out

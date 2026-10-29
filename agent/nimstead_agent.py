@@ -1893,7 +1893,8 @@ def self_update(cfg, insecure_http, path=None, keys=None, smoke=None, memo=None)
         if m.get("paused") or not m.get("release") or not m.get("sig"):
             return None, None
         rel = verify_release(str(m["release"]).encode(), m["sig"], keys)
-        runtime_problem = runtime_update(cfg, rel, insecure_http) if channel_ok(rel, cfg) else None
+        # never from a release older than this agent: a replayed old manifest can't move a host to an older runtime
+        runtime_problem = runtime_update(cfg, rel, insecure_http)             if channel_ok(rel, cfg) and version_tuple(rel["agent_version"]) >= version_tuple(AGENT_VERSION) else None
         if version_tuple(rel["agent_version"]) <= version_tuple(AGENT_VERSION):  # anti-rollback: only strictly newer
             return None, runtime_problem
         if not channel_ok(rel, cfg):  # the channel is signed: a server can't hand a stable host a preview build
@@ -2292,13 +2293,14 @@ def local_roots():
 
 def _poms(z, where, out):
     for n in z.namelist():
-        if m := POM.search(n):
+        if (m := POM.search(n)) and z.getinfo(n).file_size <= 64 * 1024:  # no zip bomb in a properties file
             try:
                 props = dict(ln.split("=", 1) for ln in z.read(n).decode("utf-8", "replace").splitlines() if "=" in ln and not ln.startswith("#"))
             except (OSError, zipfile.BadZipFile, KeyError):
                 continue
             g, a, v = props.get("groupId", m[1]).strip(), props.get("artifactId", m[2]).strip(), props.get("version", "").strip()
-            if v and SAFE_VERSION.match(v) and re.fullmatch(r"[A-Za-z0-9._-]{1,200}", g) and re.fullmatch(r"[A-Za-z0-9._-]{1,200}", a):
+            # bounded so one planted jar can't make the server refuse the whole inventory (names <= 255)
+            if v and len(v) <= 100 and SAFE_VERSION.match(v) and re.fullmatch(r"[A-Za-z0-9._-]{1,120}", g) and re.fullmatch(r"[A-Za-z0-9._-]{1,120}", a):
                 out.setdefault((f"{g}:{a}", v), where)
 
 
@@ -2341,7 +2343,7 @@ def scan_jars(roots, max_seconds=300, max_files=500_000, mounts=None):
             break
     pkgs = [{"ecosystem": "Maven", "name": k[0], "version": k[1], "source": None} for k in sorted(found)]
     return pkgs, {"files": min(files, max_files), "complete": partial is None, **({"partial": partial} if partial else {}),
-                  "locations": {f"{k[0]}@{k[1]}": w[-300:] for k, w in list(sorted(found.items()))[:100]}}
+                  "locations": [[k[0], k[1], w[-300:]] for k, w in list(sorted(found.items()))[:100]]}
 
 
 def _update_then_rerun(a, argv):

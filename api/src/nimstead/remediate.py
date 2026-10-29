@@ -322,7 +322,8 @@ def dispatch(s: Session, asset: Asset) -> list[dict]:
         peers = [a.id for a in s.scalars(select(Asset).where(Asset.org_id == asset.org_id, Asset.id != asset.id)) if serial_group(a) == group]
         win_busy = bool(peers) and s.scalar(select(RemediationJob.id).where(
             RemediationJob.asset_id.in_(peers), RemediationJob.manager == "windows",
-            RemediationJob.status.in_(("dispatched", "verifying"))).limit(1)) is not None
+            RemediationJob.status.in_(("dispatched", "verifying")),
+            RemediationJob.updated >= now() - DISPATCH_TIMEOUT).limit(1)) is not None  # a silent peer can't hold the group forever
     for job in s.scalars(select(RemediationJob).where(RemediationJob.asset_id == asset.id, RemediationJob.status == "approved")):
         if job.manager == "windows":
             if win_busy:

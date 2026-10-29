@@ -82,8 +82,9 @@ def test_facts_are_bounded(env):
     a = c.post("/api/agent/enroll", json={"token": token, "hostname": "pc-11", "ecosystem": "Windows"}).json()
     h = {"Authorization": f"Bearer {a['agent_key']}"}
     body = {"ecosystem": "Windows", "packages": [{"ecosystem": "Windows", "name": W10, "version": "10.0.19045.1", "source": None}]}
-    assert c.post("/api/agent/inventory", headers=h, json={**body, "facts": {"x": "y" * 501}}).status_code == 422
-    assert c.post("/api/agent/inventory", headers=h, json={**body, "facts": {"a": {"b": {"c": {"d": 1}}}}}).status_code == 422
+    for bad in ({"x": "y" * 501}, {"a": {"b": {"c": {"d": {"e": 1}}}}}):  # dropped; the packages still count
+        assert c.post("/api/agent/inventory", headers=h, json={**body, "facts": bad}).status_code == 200
+        assert c.get("/api/assets").json()[0]["facts"] == {}
 
 
 # ---- beyond the OS (plan T28)

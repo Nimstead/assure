@@ -803,7 +803,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             if isinstance(v, str):
                 return len(v) <= 500
             if isinstance(v, list):
-                return depth < 3 and len(v) <= 500 and all(plain(x, depth + 1) for x in v)
+                return depth < 4 and len(v) <= 500 and all(plain(x, depth + 1) for x in v)  # lists of rows (jar locations)
             if isinstance(v, dict):
                 return depth < 3 and len(v) <= 200 and all(isinstance(k, str) and len(k) <= 100 and plain(x, depth + 1) for k, x in v.items())
             return False
@@ -828,9 +828,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         asset.agent_version, asset.auto_update, asset.agent_update_error = body.agent_version, body.auto_update, body.update_error
         asset.silent_alerted_at = None
         if body.facts is not None:
-            if not facts_ok(body.facts):
-                raise HTTPException(422, "facts must be at most 64 keys of short plain values")
-            asset.facts = body.facts
+            if facts_ok(body.facts):  # facts that don't fit are dropped, never the packages with them
+                asset.facts = body.facts
         s.execute(delete(InstalledPackage).where(InstalledPackage.asset_id == asset.id, InstalledPackage.origin == "agent"))
         s.add_all(InstalledPackage(asset_id=asset.id, origin="agent", **p.model_dump()) for p in body.packages)
         s.flush()
@@ -859,7 +858,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         if over_limit(s, "directory:" + asset.org_id, 24):
             raise HTTPException(429, "Directory already received recently")
         domain = body.domain.strip().lower()
-        s.execute(delete(DirectoryComputer).where(DirectoryComputer.org_id == asset.org_id, DirectoryComputer.domain == domain))
+        # one directory per org, replaced whole: a fake host inventing domains can't grow the shared database
+        s.execute(delete(DirectoryComputer).where(DirectoryComputer.org_id == asset.org_id))
         seen = set()
         for c in body.computers:
             name = c.name.strip().lower()

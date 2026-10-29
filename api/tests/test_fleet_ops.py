@@ -119,3 +119,15 @@ def test_agent_reads_the_directory_with_one_closed_query():
     assert "adsisearcher" in agent.PS_AD_COMPUTERS and "userAccountControl:1.2.840.113556.1.4.803:=2" in agent.PS_AD_COMPUTERS
     with pytest.raises(agent.AgentError):
         agent.ad_computers(lambda cmd: (1, "The specified domain either does not exist or could not be contacted."))
+
+
+def test_one_directory_per_org_so_invented_domains_cant_pile_up(env):
+    from nimstead.db import DirectoryComputer
+    c = user(env)
+    token = c.post("/api/enroll-tokens").json()["token"]
+    a = c.post("/api/agent/enroll", json={"token": token, "hostname": "x", "ecosystem": "Windows"}).json()
+    h = {"Authorization": f"Bearer {a['agent_key']}"}
+    for d in ("a.example", "b.example", "c.example"):
+        c.post("/api/agent/directory", headers=h, json={"domain": d, "computers": [{"name": f"pc-{i}"} for i in range(50)]})
+    with make_sessionmaker(env)() as s:
+        assert s.query(DirectoryComputer).count() == 50

@@ -86,3 +86,15 @@ def test_nothing_while_a_windows_job_waits_for_its_restart(host, tmp_path):
     go, state, *_ = host
     (tmp_path / "pending-job.json").write_text("{}")
     assert go() is None and state["fetched"] == 0
+
+
+def test_a_replayed_older_release_never_changes_the_runtime(monkeypatch):
+    """Security review: runtime_update ran before the agent anti-rollback check."""
+    calls = []
+    monkeypatch.setattr(agent, "runtime_update", lambda *a, **k: calls.append(1))
+    old = {"agent_version": "0.0.1", "agent_sha256": "a" * 64, "version": "0.0.1", "commit": "f" * 40, "channel": "stable",
+           "runtimes": {"amd64": {"version": "3.14.0", "sha256": "b" * 64}}}
+    monkeypatch.setattr(agent, "post", lambda *a, **k: {"release": "x", "sig": "y"})
+    monkeypatch.setattr(agent, "verify_release", lambda m, s, keys=None: old)
+    assert agent.self_update({"server": "https://s", "agent_key": "k", "channel": "stable"}, False) == (None, None)
+    assert not calls

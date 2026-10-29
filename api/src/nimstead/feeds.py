@@ -38,9 +38,11 @@ def _client(client):
     return client or httpx.Client(follow_redirects=True, timeout=httpx.Timeout(60, read=300))
 
 
-def _get(client, url: str) -> bytes:
+def _get(client, url: str, limit: int | None = None) -> bytes:
     r = _client(client).get(url)
     r.raise_for_status()
+    if limit and len(r.content) > limit:  # a compromised upstream can't exhaust the server's memory
+        raise ValueError(f"{url}: larger than {limit} bytes")
     return r.content
 
 
@@ -219,7 +221,9 @@ def sync_cvelist(session: Session, client=None) -> dict:
     todo = [a for a in assets if a[0] > last] if last else assets[-1:]
     n = 0
     for name, url in todo:
-        z = zipfile.ZipFile(io.BytesIO(_get(http, url)))
+        if not url.startswith("https://github.com/CVEProject/cvelistV5/releases/download/"):
+            raise ValueError(f"unexpected CVE List asset URL {url[:120]}")
+        z = zipfile.ZipFile(io.BytesIO(_get(http, url, 200 * 2**20)))
         n += cvelist_records(session, [json.loads(z.read(f)) for f in z.namelist() if f.endswith(".json")])
         session.merge(Advisory(id="CVELIST-STATE", ecosystem="State", package="cvelist", modified=name, record={"last": name}))
         session.commit()
@@ -280,7 +284,7 @@ def msrc_context(v: dict) -> dict:
 def sync_metasploit(session: Session, client=None) -> int:
     """CVEs with a public Metasploit module (plan T39, decision 15), from Rapid7's module metadata. Stored as one row
     (ecosystem "Exploit"); a fetch or shape problem keeps the stored list."""
-    data = json.loads(_get(client, METASPLOIT_URL))
+    data = json.loads(_get(client, METASPLOIT_URL, 100 * 2**20))
     if not isinstance(data, dict) or len(data) < 1000:
         raise ValueError("Metasploit metadata: unexpected shape")
     cves = sorted({r for m in data.values() if isinstance(m, dict) for r in m.get("references") or []

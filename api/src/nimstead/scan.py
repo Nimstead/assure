@@ -168,7 +168,8 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
         f.installed_version = version  # normalised for WinApp (Python: 3.14-64 -> 3.14.5)
         f.advisory_ids = sorted(m.advisory_ids)
         f.fixed_version = m.fixed
-        loc = ((asset.facts or {}).get("jar_scan") or {}).get("locations", {}).get(f"{name}@{version}") if eco == "Maven" else None
+        locs = (((asset.facts or {}).get("jar_scan") or {}).get("locations") or []) if eco == "Maven" else []
+        loc = next((x[2] for x in locs if isinstance(x, list) and len(x) == 3 and x[:2] == [name, version]), None)
         f.summary = ((m.summary or "") + (f" (in {loc})" if loc else ""))[:1000]  # a jar the agent found on disk
         f.cvss, f.epss, f.kev = cvss, ep, kev
         f.score, f.priority, f.reasons = r.score, r.priority, r.reasons

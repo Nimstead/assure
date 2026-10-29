@@ -25,8 +25,9 @@ def test_finds_log4j_inside_a_fat_jar_and_names_the_file(tmp_path):
     (tmp_path / "srv" / "broken.jar").write_bytes(b"not a zip")
     pkgs, summary = agent.scan_jars([str(tmp_path)], mounts=[])
     assert pkgs == [{"ecosystem": "Maven", "name": "org.apache.logging.log4j:log4j-core", "version": "2.14.1", "source": None}]
-    assert summary["complete"] and summary["locations"]["org.apache.logging.log4j:log4j-core@2.14.1"].endswith(
-        "billing.jar!/BOOT-INF/lib/log4j-core-2.14.1.jar")
+    [[name, ver, where]] = summary["locations"]
+    assert summary["complete"] and (name, ver) == ("org.apache.logging.log4j:log4j-core", "2.14.1")
+    assert where.endswith("billing.jar!/BOOT-INF/lib/log4j-core-2.14.1.jar")
 
 
 def test_budget_reports_a_partial_scan(tmp_path):
@@ -58,7 +59,25 @@ def test_jar_finding_names_the_file(maven_env):  # noqa: F811
     where = r"D:\apps\billing.jar!/BOOT-INF/lib/log4j-core-2.14.1.jar"
     r = c.post("/api/agent/inventory", headers=h, json={"ecosystem": "Windows", "packages": [
         {"ecosystem": "Maven", "name": "org.apache.logging.log4j:log4j-core", "version": "2.14.1", "source": None}],
-        "facts": {"jar_scan": {"complete": True, "files": 9, "locations": {"org.apache.logging.log4j:log4j-core@2.14.1": where}}}})
+        "facts": {"jar_scan": {"complete": True, "files": 9, "locations": [["org.apache.logging.log4j:log4j-core", "2.14.1", where]]}}})
     assert r.status_code == 200, r.text
     f = {x["vuln_id"]: x for x in c.get("/api/findings").json()}
     assert where in f["CVE-2021-44228"]["summary"]
+
+
+def test_a_planted_jar_cant_break_the_report(tmp_path):
+    """Security review: an over-long groupId made the server refuse the whole inventory; a huge properties entry
+    could exhaust memory. Both are skipped."""
+    (tmp_path / "long.jar").write_bytes(jar({f"META-INF/maven/{'A' * 200}/b/pom.properties": "version=1"}))
+    (tmp_path / "bomb.jar").write_bytes(jar({POM: "version=2.14.1\n" + "x" * 70_000}))
+    assert agent.scan_jars([str(tmp_path)], mounts=[])[0] == []
+
+
+def test_facts_that_dont_fit_are_dropped_not_the_report(env):
+    from test_api import user
+    c = user(env)
+    token = c.post("/api/enroll-tokens").json()["token"]
+    a = c.post("/api/agent/enroll", json={"token": token, "hostname": "h", "ecosystem": "Windows"}).json()
+    h = {"Authorization": f"Bearer {a['agent_key']}"}
+    r = c.post("/api/agent/inventory", headers=h, json={"ecosystem": "Windows", "packages": [], "facts": {"x" * 200: 1}})
+    assert r.status_code == 200 and c.get("/api/assets").json()[0]["facts"] == {}

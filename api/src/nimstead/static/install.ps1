@@ -4,8 +4,9 @@
 # $env:NIMSTEAD_PROXY = "http://proxy:8080" sends the agent's traffic through that proxy (TLS stays end to end;
 # without it the machine's WinHTTP proxy is used, if one is set).
 # No Python needed: the agent runs on Python's official embeddable runtime, which this script downloads from your
-# server, checks against the release's SHA-256 and the Python Software Foundation's code signature, and keeps under
-# Program Files (plan decision 9). Adds SYSTEM scheduled tasks: every 6 hours and at startup, and with remediation a
+# server, checks against the Python Software Foundation's code signature (program files) and keeps under Program
+# Files (plan decision 9). It prints the runtime's SHA-256 for the out-of-band check against the signed release
+# (docs/install.md); the agent's first update replaces anything that isn't the signed runtime. Adds SYSTEM scheduled tasks: every 6 hours and at startup, and with remediation a
 # 15-minute check for approved fixes. The agent updates itself (and its runtime) from signed releases.
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"

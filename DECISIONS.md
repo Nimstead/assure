@@ -162,3 +162,15 @@ Short log; newest last. Why, not what.
     absence) first and puts exactly that back on failure; setting fixes are manual-only too, because SMB signing or
     NTLMv1 changes can break old clients. Dropped: .NET Framework updates (T16), because .NET Framework isn't detected
     (DECISIONS 51). Blocked on the owner: the hotpatch VM proof (T15, needs an Azure subscription).
+58. **Independent security review of Windows round 1 (2026-10-29): 0 high, 2 medium, 3 low, 2 info; all addressed.**
+    No path found for a compromised server or another tenant to run code or write arbitrary files/registry on a host.
+    Fixed: a planted jar with over-long Maven coordinates made the server refuse the host's whole inventory (names are
+    now bounded, jar locations are rows, and facts that don't fit are dropped rather than failing the report); a
+    `pom.properties` zip bomb (entries over 64 KiB skipped); unbounded `directory_computer` rows from invented domains
+    (one directory per org, replaced whole); a peer stuck in `verifying` holding a cluster/DC group forever (only jobs
+    updated within the dispatch timeout count); a replayed older signed release moving a system-Python host to an older
+    runtime (runtime updates only from releases at least as new as the agent); the installer comment overstating its
+    runtime check; uncapped feed downloads (CVE List v5 assets must come from the cvelistV5 releases, 200 MiB cap;
+    Metasploit 100 MiB). Open, not verified: whether winget as SYSTEM unpacks installers in a folder standard users can
+    write between its hash check and running them (winget internals); to test in a VM before winget fixes are used
+    on shared machines.

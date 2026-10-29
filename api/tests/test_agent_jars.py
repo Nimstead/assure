@@ -1,0 +1,64 @@
+"""Opt-in Java library scan (plan T35): jar files on disk -> Maven packages for the existing OSV matcher."""
+
+import io
+import zipfile
+
+from test_agent_remediate import agent
+from test_sbom import maven_env  # noqa: F401 - fixture: the real log4j-core OSV records
+
+POM = "META-INF/maven/org.apache.logging.log4j/log4j-core/pom.properties"
+
+
+def jar(entries: dict) -> bytes:
+    b = io.BytesIO()
+    with zipfile.ZipFile(b, "w") as z:
+        for n, data in entries.items():
+            z.writestr(n, data)
+    return b.getvalue()
+
+
+def test_finds_log4j_inside_a_fat_jar_and_names_the_file(tmp_path):
+    inner = jar({POM: "#generated\ngroupId=org.apache.logging.log4j\nartifactId=log4j-core\nversion=2.14.1\n"})
+    app = tmp_path / "srv" / "billing.jar"
+    app.parent.mkdir()
+    app.write_bytes(jar({"BOOT-INF/lib/log4j-core-2.14.1.jar": inner, "META-INF/MANIFEST.MF": "x"}))
+    (tmp_path / "srv" / "broken.jar").write_bytes(b"not a zip")
+    pkgs, summary = agent.scan_jars([str(tmp_path)], mounts=[])
+    assert pkgs == [{"ecosystem": "Maven", "name": "org.apache.logging.log4j:log4j-core", "version": "2.14.1", "source": None}]
+    assert summary["complete"] and summary["locations"]["org.apache.logging.log4j:log4j-core@2.14.1"].endswith(
+        "billing.jar!/BOOT-INF/lib/log4j-core-2.14.1.jar")
+
+
+def test_budget_reports_a_partial_scan(tmp_path):
+    for i in range(5):
+        (tmp_path / f"f{i}.txt").write_text("x")
+    _, summary = agent.scan_jars([str(tmp_path)], max_files=2, mounts=[])
+    assert not summary["complete"] and "budget" in summary["partial"]
+
+
+def test_unsafe_coordinates_are_ignored(tmp_path):
+    (tmp_path / "a.jar").write_bytes(jar({POM: "groupId=org.evil;rm -rf\nartifactId=x\nversion=1.0\n"}))
+    assert agent.scan_jars([str(tmp_path)], mounts=[])[0] == []
+
+
+def test_only_when_the_host_opted_in(monkeypatch):
+    monkeypatch.setattr(agent, "collect", lambda: {"packages": [], "facts": {}})
+    monkeypatch.setattr(agent, "scan_jars", lambda roots: ([{"ecosystem": "Maven", "name": "g:a", "version": "1", "source": None}], {"complete": True}))
+    assert agent.inventory({})["packages"] == []
+    inv = agent.inventory({"scan_jars": True})
+    assert inv["packages"][0]["name"] == "g:a" and inv["facts"]["jar_scan"] == {"complete": True}
+
+
+def test_jar_finding_names_the_file(maven_env):  # noqa: F811
+    from test_api import user
+    c = user(maven_env)
+    token = c.post("/api/enroll-tokens").json()["token"]
+    a = c.post("/api/agent/enroll", json={"token": token, "hostname": "app-1", "ecosystem": "Windows"}).json()
+    h = {"Authorization": f"Bearer {a['agent_key']}"}
+    where = r"D:\apps\billing.jar!/BOOT-INF/lib/log4j-core-2.14.1.jar"
+    r = c.post("/api/agent/inventory", headers=h, json={"ecosystem": "Windows", "packages": [
+        {"ecosystem": "Maven", "name": "org.apache.logging.log4j:log4j-core", "version": "2.14.1", "source": None}],
+        "facts": {"jar_scan": {"complete": True, "files": 9, "locations": {"org.apache.logging.log4j:log4j-core@2.14.1": where}}}})
+    assert r.status_code == 200, r.text
+    f = {x["vuln_id"]: x for x in c.get("/api/findings").json()}
+    assert where in f["CVE-2021-44228"]["summary"]

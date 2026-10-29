@@ -57,6 +57,7 @@ if ($Server.StartsWith("http://")) { $insecure = @("--insecure-http"); Write-War
 
 $remediate = @()
 if ($env:NIMSTEAD_ALLOW_REMEDIATION -eq "1") { $remediate = @("--allow-remediation") }
+if ($env:NIMSTEAD_SCAN_JARS -eq "1") { $remediate += @("--scan-jars") }  # local opt-in: Java libraries on disk
 & $py @pyArgs $agent @insecure enroll --server $Server --channel $Channel @remediate @proxyArgs
 if ($LASTEXITCODE -ne 0) { throw "Enrolment failed." }
 & $py @pyArgs $agent @insecure report

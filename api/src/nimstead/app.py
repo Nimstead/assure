@@ -802,9 +802,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             if isinstance(v, str):
                 return len(v) <= 500
             if isinstance(v, list):
-                return depth < 2 and len(v) <= 500 and all(plain(x, depth + 1) for x in v)
+                return depth < 3 and len(v) <= 500 and all(plain(x, depth + 1) for x in v)
             if isinstance(v, dict):
-                return depth < 2 and len(v) <= 200 and all(isinstance(k, str) and len(k) <= 100 and plain(x, depth + 1) for k, x in v.items())
+                return depth < 3 and len(v) <= 200 and all(isinstance(k, str) and len(k) <= 100 and plain(x, depth + 1) for k, x in v.items())
             return False
         return len(f) <= 64 and all(isinstance(k, str) and len(k) <= 64 for k in f) and plain(f) and len(json.dumps(f)) <= 64_000
 

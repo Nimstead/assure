@@ -92,6 +92,11 @@ which only administrators can change. It prints the runtime's `sha256` next to t
 current from signed releases, as it does itself. Windows 8.1 / Server 2012 R2 and older are refused: current Python
 doesn't run there, and those systems no longer get security updates.
 
+**Java libraries on disk (opt-in):** enrol with `--scan-jars` (on Windows, `$env:NIMSTEAD_SCAN_JARS = "1"` before
+the install command) and each report also looks through local disks for `.jar`, `.war` and `.ear` files, including
+jars nested one level inside them, and reports the libraries they contain (log4j-style findings name the file). It
+never follows links or enters network shares, and stops after 5 minutes or 500,000 files, saying the scan was partial.
+
 **Behind a proxy:** set `$env:NIMSTEAD_PROXY = "http://proxy.example:8080"` before the install command (on Linux, pass
 `--proxy` to `enroll`). Without it, Windows machines use the machine-wide WinHTTP proxy if one is set (`netsh winhttp
 show proxy`), the same one Windows Update uses. TLS to your server stays end to end; a plain-HTTP server is refused

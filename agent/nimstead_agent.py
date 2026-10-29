@@ -11,6 +11,7 @@ import argparse
 import base64
 import glob
 import hashlib
+import io
 import json
 import os
 import platform
@@ -25,6 +26,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+import zipfile
 
 AGENT_VERSION = "0.3.0"  # the server reads this line to flag outdated agents; bump on every agent change
 # Ed25519 public keys (hex) allowed to sign releases (DECISIONS 31): primary (GitHub Actions) and offline backup.
@@ -1594,8 +1596,6 @@ def runtime_update(cfg, rel, insecure_http, run=None, root=None, executable=None
         if hashlib.sha256(body).hexdigest() != want["sha256"]:
             raise AgentError("downloaded runtime doesn't match the signed release")
         shutil.rmtree(tmp, ignore_errors=True)
-        import io
-        import zipfile
         with zipfile.ZipFile(io.BytesIO(body)) as z:
             if any(n.startswith(("/", "\\")) or ":" in n or ".." in n.replace("\\", "/").split("/") for n in z.namelist()):
                 raise AgentError("runtime archive has unsafe paths")
@@ -1893,7 +1893,81 @@ _update_error = None  # this run's self-update failure, reported with the invent
 
 def inventory(cfg):
     # auto_update None = can't (no pinned keys), so the server asks for a reinstall rather than blaming an opt-out
-    return {**collect(), "auto_update": bool(cfg.get("auto_update", True)) if RELEASE_KEYS else None, "update_error": _update_error}
+    inv = {**collect(), "auto_update": bool(cfg.get("auto_update", True)) if RELEASE_KEYS else None, "update_error": _update_error}
+    if cfg.get("scan_jars"):  # local opt-in only (enroll --scan-jars); the server can't turn it on
+        jars, summary = scan_jars(local_roots())
+        inv["packages"] = [*inv["packages"], *jars]
+        inv["facts"] = {**(inv.get("facts") or {}), "jar_scan": summary}
+    return inv
+
+
+# ---- Java libraries on disk (plan T35): jar/war/ear files and one level of nested jars -> Maven packages ----------
+JAR_SKIP = re.compile(r"(?i)^(?:[a-z]:\\(?:windows|\$recycle\.bin|system volume information)|/(?:proc|sys|dev|run|snap))(?:[\\/]|$)")
+NET_FS = {"nfs", "nfs4", "cifs", "smb3", "smbfs", "fuse.sshfs", "9p", "afs"}
+POM = re.compile(r"(?:^|/)META-INF/maven/([^/]+)/([^/]+)/pom\.properties$")
+MAX_NESTED = 50 * 1024 * 1024
+
+
+def local_roots():
+    """Fixed local drives on Windows, / elsewhere (network mounts are skipped while walking)."""
+    if os.name != "nt":
+        return ["/"]
+    import ctypes
+    return [f"{d}:\\" for d in "CDEFGHIJKLMNOPQRSTUVWXYZ" if ctypes.windll.kernel32.GetDriveTypeW(f"{d}:\\") == 3]  # DRIVE_FIXED
+
+
+def _poms(z, where, out):
+    for n in z.namelist():
+        if m := POM.search(n):
+            try:
+                props = dict(ln.split("=", 1) for ln in z.read(n).decode("utf-8", "replace").splitlines() if "=" in ln and not ln.startswith("#"))
+            except (OSError, zipfile.BadZipFile, KeyError):
+                continue
+            g, a, v = props.get("groupId", m[1]).strip(), props.get("artifactId", m[2]).strip(), props.get("version", "").strip()
+            if v and SAFE_VERSION.match(v) and re.fullmatch(r"[A-Za-z0-9._-]{1,200}", g) and re.fullmatch(r"[A-Za-z0-9._-]{1,200}", a):
+                out.setdefault((f"{g}:{a}", v), where)
+
+
+def scan_jars(roots, max_seconds=300, max_files=500_000, mounts=None):
+    """([Maven packages], summary). Stops at the time or file budget and says so; never follows links or enters
+    network mounts. Each finding's file is in the summary's `locations`."""
+    if mounts is None:
+        try:
+            with open("/proc/mounts") as f:
+                mounts = [ln.split()[1] for ln in f if len(ln.split()) > 2 and ln.split()[2] in NET_FS]
+        except OSError:
+            mounts = []
+    start, files, found, partial = time.time(), 0, {}, None
+    for root in roots:
+        for d, dirs, names in os.walk(root, followlinks=False):
+            if JAR_SKIP.match(d) or d in mounts:
+                dirs[:] = []
+                continue
+            dirs[:] = [x for x in dirs if not is_link(os.path.join(d, x))]
+            for n in names:
+                files += 1
+                if files > max_files or time.time() - start > max_seconds:
+                    partial = f"stopped after {files - 1} files / {int(time.time() - start)} s (budget)"
+                    break
+                if not n.lower().endswith((".jar", ".war", ".ear")):
+                    continue
+                p = os.path.join(d, n)
+                try:
+                    with zipfile.ZipFile(p) as z:
+                        _poms(z, p, found)
+                        for inner in z.infolist():
+                            if inner.filename.lower().endswith(".jar") and inner.file_size <= MAX_NESTED:
+                                with zipfile.ZipFile(io.BytesIO(z.read(inner))) as zz:
+                                    _poms(zz, f"{p}!/{inner.filename}", found)
+                except (OSError, zipfile.BadZipFile, RuntimeError, NotImplementedError):
+                    continue
+            if partial:
+                break
+        if partial:
+            break
+    pkgs = [{"ecosystem": "Maven", "name": k[0], "version": k[1], "source": None} for k in sorted(found)]
+    return pkgs, {"files": min(files, max_files), "complete": partial is None, **({"partial": partial} if partial else {}),
+                  "locations": {f"{k[0]}@{k[1]}": w[-300:] for k, w in list(sorted(found.items()))[:100]}}
 
 
 def _update_then_rerun(a, argv):
@@ -1929,6 +2003,8 @@ def main(argv=None):
                     help="enrolment token (or set NIMSTEAD_TOKEN, which keeps it out of the process list)")
     en.add_argument("--allow-remediation", action="store_true",
                     help="let this host run approved package upgrades (local opt-in; the server cannot enable it)")
+    en.add_argument("--scan-jars", action="store_true",
+                    help="also look for Java libraries (jar/war/ear) on local disks at each report, within a 5-minute budget")
     en.add_argument("--no-auto-update", action="store_true",
                     help="never replace this agent with newer signed releases (default: update automatically)")
     en.add_argument("--proxy", help="send all traffic to the server through this proxy (http://host:port); "
@@ -1968,6 +2044,7 @@ def main(argv=None):
             # only the fields we expect from the server, and local choices last: the server can't opt a host in
             cfg = {"asset_id": res.get("asset_id"), "agent_key": res["agent_key"], "server": a.server,
                    "allow_remediation": a.allow_remediation, "auto_update": not a.no_auto_update, "channel": a.channel,
+                   "scan_jars": a.scan_jars,
                    **({"proxy": a.proxy} if a.proxy else {})}
             print("enrolled as asset {}; config saved to {}".format(res.get("asset_id"), save_config(cfg)))
         elif a.cmd == "uninstall":

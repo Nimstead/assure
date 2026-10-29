@@ -35,15 +35,15 @@ Two of round 1's claims were wrong, and this plan corrects them:
 **No visual redesign.** The "Plain Sight" identity and DECISIONS 41–47 stand.
 
 ## Goal: done when
-- [ ] Every task T1–T16 below is checked off with its "Done when" met.
-- [ ] `cd web && npm run lint && npx vitest run && npm run build`: clean, with the new tests passing.
-- [ ] `cd web && NIMSTEAD_API_PORT=8010 npm run e2e` passes. Port 8000 may be held by another dev server, and any free port works. Axe must report 0 serious or critical at **1440 and 375, light and dark**, now also:
+- [x] Every task T1–T16 below is checked off with its "Done when" met.
+- [x] `cd web && npm run lint && npx vitest run && npm run build`: clean, with the new tests passing.
+- [x] `cd web && NIMSTEAD_API_PORT=8010 npm run e2e` passes. Port 8000 may be held by another dev server, and any free port works. Axe must report 0 serious or critical at **1440 and 375, light and dark**, now also:
   - with a **non-admin** signed in,
   - on `/add`,
   - with the palette showing "Nothing matches".
-- [ ] `cd api && uv run pytest -q` passes and `uv run ruff check src tests` is clean (T3, T5 and T9 touch the API).
-- [ ] `~/.claude/skills/impeccable/scripts/impeccable detect --json web/src` still reports `[]`.
-- [ ] CHANGELOG "Unreleased" is extended; STATUS has a row for round 2 with honest numbers; DECISIONS 48–50 are added. No version bump or release.
+- [x] `cd api && uv run pytest -q` passes and `uv run ruff check src tests` is clean (T3, T5 and T9 touch the API).
+- [x] `~/.claude/skills/impeccable/scripts/impeccable detect --json web/src` still reports `[]`.
+- [x] CHANGELOG "Unreleased" is extended; STATUS has a row for round 2 with honest numbers; DECISIONS 48–50 are added. No version bump or release.
 
 ## What exists (reuse, don't rebuild)
 - **Shared primitives in `ui.tsx`:** `ConfirmDialog`, `Alert`, `Done`, `Field`, `Loading`, `Tag`, `StatusPill`, `chip`, `switchRoot`/`switchThumb` and `dialogBox`.
@@ -299,3 +299,27 @@ Commit in a few groups on `ux-round-1` (or a new `ux-round-2` branch cut from it
   - Findings filters fill a third of the first phone screen (T14).
   - The Settings section bar shows a scrollbar (T14).
   - The agent-update sentence is repeated on five machines (T12).
+
+## Done (2026-10-29, branch `ux-round-1`)
+Every task's "Done when" is met. The evidence is in STATUS.md (row "UI/UX round 2").
+
+- **Checks:**
+  - API 738 passed and ruff is clean.
+  - Web: lint, 44 unit tests and the build all pass.
+  - 10 Playwright e2e tests pass. Axe runs at 1440 and 375, light and dark, including `/add`, open dialogs, the palette with and without matches, the sign-in pages and a read-only member. The suite also covers focus return, job deep links, cancel, `?period` on reload, the theme cycle, `#access` on a cold load, truncated-cell titles, 44px targets in dialogs, the drawer and sign-in, and a 63-character hostname.
+  - The Impeccable detector reports `[]` and `npm audit` reports 0.
+- **Bundle:** the critical path is 536 KiB (174 KB gzip): the entry chunk plus its two preloaded chunks, `ui` and `link`. Both preloads are needed on every page, so there was no one-line split. The number is reported, as the task allowed.
+
+### Where the work differed from the plan
+- **T6, live regions:**
+  - `Alert` keeps `role="alert"` instead of also announcing through the shared region. An alert is read as it appears, and doing both would read it twice.
+  - `Done` and a new `Notice` (for "check your email" and similar notes) announce through the regions.
+  - The signed-out pages render their own `LiveRegions`.
+- **T11, the palette's empty state:** once you type, the palette always offers "Search findings for …", so a typed query can't reach "Nothing matches". The test asserts that the palette never dead-ends and that its list is valid. The empty branch is still rendered outside the listbox, for completeness.
+- **T13, the SSO and alerts forms:** these rebuild after their *own* save, keyed by a counter, so the saved values and the cleared secret field show. Other refreshes, such as "Verify domains", leave unsaved edits alone.
+- **T5, failed last attempts:** after a failure that didn't name extra packages, Home offers "Plan fix again" next to "Last attempt …: review". After one that did name extra packages, it only links to the job, whose card has "Plan again including …".
+- **T8, guarding late callbacks:** `PlanFixButton` compares `location.pathname` at click and at success rather than reading router state. That keeps it usable outside a router (and in tests).
+- **T12, package names:** the artifact comes first, then the muted group (`log4j-core org.apache.logging.log4j`), rather than the group first. With the group first, the artifact was what got truncated, the opposite of the intent. The CVE column stays at 11.5rem, because narrowing it truncated IDs that have a KEV badge.
+- **T9, due dates:** the findings API computes `due` from the findings table's `first_seen`. Packs use the ledger's opening time. They are written in the same transaction, and a test asserts that the overdue filter and the pack's `overdue_open` agree.
+- **Phone touch targets:** the widened check also caught the phone header's logo link (23px), which now has a 44px tap area. It caught `/add` overflowing on the unbroken setting name too, which now wraps.
+- **Docs:** `docs/install.md` still said to "tick sandbox" from the round-1 onboarding; it now describes the test/production choice.

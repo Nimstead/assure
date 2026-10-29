@@ -4,6 +4,28 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+UI/UX round 2 (tasks/plan-0.6-ux.md): what round 1 left half-done, and the journeys that still dead-ended.
+
+### Changed
+- **Read-only members see an asset's settings as text,** not controls the API would refuse.
+- **Every dialog hands focus back to what opened it,** not just the findings drawer. Focus rings are ink in both themes (crimson now only means "fix now", KEV or an error), and headings focused by the app no longer show a ring. After moving to another page, focus goes to its heading and the page title is announced.
+- **"Saved" and similar messages are announced** through one live region; form errors sit under, and are tied to, the field they're about. A failed save shows next to the section that failed, not at the top of the page.
+- **Overdue is a filter.** `GET /api/findings?overdue=true` (and the CSV export) returns open findings past the deadline in force when they were first detected, the same rule evidence packs use; each finding carries `due`. Findings gets an "Overdue" chip, the drawer says "Due 3 Nov" or "12 days overdue", and Evidence's "Overdue and still open" links to the list.
+- **Fixes have an address** (`/remediation#job-<id>`). Home, the finding drawer and Plan fix land on the fix itself. A fix planned and approved by the same person says so.
+- **Home doesn't re-plan blind.** `/api/summary` actions carry `busy_asset_ids` and `last_attempt`. When the last attempt failed it links to that job ("Last attempt aborted: review"), and when one host is busy you can still plan the others. Cancelled fixes no longer appear under "needs a look".
+- **Production remediation says how to turn it on:** Settings, onboarding and the refusal note name `NIMSTEAD_ALLOW_PRODUCTION_REMEDIATION=1`.
+- **The priority tier "Planned" is now labelled "Routine"** in the UI and in the evidence pack's deadline text (the stored value and API stay `planned`), so it can't be mistaken for a planned fix.
+- Command palette finds hosts too, keeps the highlighted command while results arrive, and never offers an invalid empty list.
+- Assets: the agent-update explanation is said once for the list, grouped by reason; Ring and Health units are explained in place; long host names wrap.
+- Findings: package names show the part that differs first (`log4j-core`, then the group, muted), truncated cells carry their full text, rarer filters fold away on phones, the list dims while new filters load, and a capped list (5,000) says so.
+- Settings: editing one section no longer loses what you typed in another; the section bar marks where you are and fits phones; trust-ladder options have visible borders and a radio mark. The SSO and alert forms keep your edits when other data refreshes, and "Send test alert" reports success or failure.
+- Evidence: the ledger says how many entries it shows of how many and names what each entry is about; mean time to remediate under a day says so.
+- Sign-in and onboarding: fields focus where you'd expect, onboarding polls only once there's a command to run.
+
+### Fixed
+- Settings would crash on an API token without an expiry (none are created that way, but the column allows it).
+- Round 1's notes overstated two things: the findings list still fetched up to 5,000 rows (it still does, now saying when the cap is hit), and the JS a page needs before it runs is 536 KiB with its preloaded chunks, not the 392 kB entry chunk alone.
+
 UI/UX round 1 (tasks/plan-0.5-ux.md): safer controls, connected pages, one set of shared components. The look stays the same.
 
 ### Changed

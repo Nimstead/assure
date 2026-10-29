@@ -15,7 +15,7 @@ export function InstallCommands({ origin, token }: { origin: string; token: stri
       <CopyBlock label="Linux, one line" text={c.curl} />
       <div className="flex flex-col gap-1.5">
         <CopyBlock label="Windows, in an Administrator PowerShell" text={c.windows} />
-        <p className="text-xs text-muted">Needs Python 3 installed for all users first: <code className="font-mono">winget install Python.Python.3.13 --scope machine</code></p>
+        <p className="text-xs text-muted [overflow-wrap:anywhere]">Needs Python 3 installed for all users first: <code className="font-mono">winget install Python.Python.3.13 --scope machine</code></p>
       </div>
       <CopyBlock label="Or with Python directly" text={c.python} />
     </div>
@@ -24,7 +24,7 @@ export function InstallCommands({ origin, token }: { origin: string; token: stri
 
 const KINDS = [
   { value: "test", title: "Test machines", body: "Automated fixes may change these machines. Use for disposable or staging hosts." },
-  { value: "production", title: "Production machines", body: "Nimstead finds vulnerabilities here. Fixes stay off until production remediation is turned on for this server." },
+  { value: "production", title: "Production machines", body: "Nimstead finds vulnerabilities here. Fixes stay off until production remediation is turned on for this server (NIMSTEAD_ALLOW_PRODUCTION_REMEDIATION=1 in its .env)." },
 ] as const;
 type Kind = (typeof KINDS)[number]["value"];
 
@@ -42,7 +42,8 @@ export function Onboarding() {
   const [slow, setSlow] = useState(false);
   const baseline = useRef<number | null>(null);
 
-  const assets = useQuery({ ...assetsQ, refetchInterval: connected ? false : 3000 });
+  // Poll for the first report only once there's a command to run, and not from a hidden tab.
+  const assets = useQuery({ ...assetsQ, refetchInterval: token.data && !connected ? 3000 : false, refetchIntervalInBackground: false });
   const count = assets.data?.length;
   useEffect(() => {
     if (count === undefined) return;
@@ -113,7 +114,7 @@ export function Onboarding() {
                       <span aria-hidden className="grid size-4 place-items-center border border-ink"><span className="size-2 bg-ink group-data-[state=unchecked]:hidden" /></span>
                       {k.title}
                     </span>
-                    <span className="text-sm text-muted group-data-[state=checked]:text-ink">{k.body}</span>
+                    <span className="text-sm text-muted [overflow-wrap:anywhere] group-data-[state=checked]:text-ink">{k.body}</span>
                   </RadioGroup.Item>
                 ))}
               </RadioGroup.Root>

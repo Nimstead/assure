@@ -1,10 +1,10 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Dialog, Switch } from "radix-ui";
 import { AppWindow, ArrowRight, Plus, Trash2, Upload } from "lucide-react";
-import { adminGate, AGENT_UPDATE, api, assetsQ, filtersToSearch, parseFilters, parseUtc, PRIORITIES, relativeTime, sbomSummary, useIsAdmin, useTitle, type Asset, type Criticality, type SbomResult } from "./lib";
-import { Alert, btnPrimary, btnQuiet, ConfirmDialog, CopyBlock, dialogBox, Done, EmptyState, ErrorState, input, Loading, PriorityPill, switchRoot, switchThumb, Tag } from "./ui";
+import { adminGate, AGENT_UPDATE, api, refresh, assetsQ, filtersToSearch, parseFilters, parseUtc, PRIORITIES, relativeTime, sbomSummary, useIsAdmin, useTitle, type Asset, type Criticality, type SbomResult } from "./lib";
+import { Alert, btnPrimary, btnQuiet, ConfirmDialog, CopyBlock, dialogBox, Done, EmptyState, ErrorState, Field, input, Loading, PriorityPill, switchRoot, switchThumb, Tag } from "./ui";
 import clsx from "clsx";
 import { ExternalTargets } from "./targets";
 
@@ -21,21 +21,27 @@ export function AssetsPage() {
       api(`/api/assets/${id}`, { method: "PATCH", body }),
     onMutate: async ({ id, ...body }) => {
       await qc.cancelQueries({ queryKey: assetsQ.queryKey });
-      const prev = qc.getQueryData<Asset[]>(assetsQ.queryKey);
+      const prev = qc.getQueryData<Asset[]>(assetsQ.queryKey)?.find((x) => x.id === id);
       qc.setQueryData<Asset[]>(assetsQ.queryKey, (a) => a?.map((x) => (x.id === id ? { ...x, ...body } : x)));
       return { prev };
     },
-    onError: (_e, _v, ctx) => qc.setQueryData(assetsQ.queryKey, ctx?.prev),
+    // Roll back only the asset that failed, so a concurrent edit to another row isn't undone with it.
+    onError: (e, { id }, ctx) => {
+      if (ctx?.prev) qc.setQueryData<Asset[]>(assetsQ.queryKey, (a) => a?.map((x) => (x.id === id ? ctx.prev! : x)));
+      setFailed({ id, message: e.message });
+    },
     onSuccess: (_d, { id }) => setSaved(id),
     // Context changes re-score findings, so everything derived from them is stale.
-    onSettled: () => Promise.all(["assets", "findings", "summary", "finding"].map((k) => qc.invalidateQueries({ queryKey: [k] }))),
+    onSettled: () => refresh(qc, "assets"),
   });
 
   const [target, setTarget] = useState<Asset | null>(null);
   const [saved, setSaved] = useState("");  // the asset whose last change saved: it says so, and that findings were re-ranked
+  const [failed, setFailed] = useState<{ id: string; message: string } | null>(null);  // shown on that row, not the page top
+  const admin = useIsAdmin();
   const del = useMutation({
     mutationFn: (id: string) => api(`/api/assets/${id}`, { method: "DELETE" }),
-    onSuccess: () => { setTarget(null); void Promise.all(["assets", "findings", "summary", "finding", "ledger", "jobs"].map((k) => qc.invalidateQueries({ queryKey: [k] }))); },
+    onSuccess: () => { setTarget(null); void refresh(qc, "assets"); },
   });
 
   return (
@@ -47,7 +53,6 @@ export function AssetsPage() {
           <Link to="/add" className={clsx(btnPrimary, "no-underline")}><Plus className="size-4" aria-hidden />Add machine</Link>
         </div>
       </header>
-      <Alert error={patch.error} prefix="Couldn't save that change: " />
 
       {q.isPending ? <Loading className="h-20" rows={3} label="Loading assets…" />
         : q.error ? <ErrorState error={q.error} retry={() => q.refetch()} />
@@ -58,28 +63,59 @@ export function AssetsPage() {
         ) : (
           <section aria-labelledby="machines-h" className="flex flex-col gap-3">
             <h2 id="machines-h" className="text-lg font-semibold">Machines and applications</h2>
+            {admin && (
+              <p className="max-w-prose text-sm text-muted">
+                <strong className="font-medium text-ink">Ring:</strong> canary machines get a fix first; broad machines wait until a canary has stayed healthy.{" "}
+                <strong className="font-medium text-ink">Health units:</strong> systemd units checked before and after a fix, saved when you leave the field.
+              </p>
+            )}
+            <AgentUpdateSummary assets={q.data.filter((a) => a.kind === "host")} />
             <ul className="flex flex-col divide-y divide-line overflow-hidden border border-line bg-surface">
               {q.data.filter((a) => a.kind !== "external").map((a) => <AssetRow key={a.id} a={a} saved={saved === a.id && !patch.isPending}
-                onPatch={(p) => { setSaved(""); patch.mutate({ id: a.id, ...p }); }} onDelete={() => { del.reset(); setTarget(a); }} />)}
+                error={failed?.id === a.id ? failed.message : undefined}
+                onPatch={(p) => { setSaved(""); setFailed(null); patch.mutate({ id: a.id, ...p }); }} onDelete={() => { del.reset(); setTarget(a); }} />)}
             </ul>
           </section>
         )}
       {q.data && <ExternalTargets targets={q.data.filter((a) => a.kind === "external")} onDelete={(a) => { del.reset(); setTarget(a); }} />}
       <ConfirmDialog open={!!target} onOpenChange={(o) => !o && setTarget(null)} title={`Delete ${target?.hostname}?`}
         description="Its findings and installed-software list are removed. The evidence ledger keeps the history of what was detected and fixed, so audit records stay intact. This can't be undone."
-        confirmLabel="Delete asset" pendingLabel="Deleting…" pending={del.isPending} error={del.error} onConfirm={() => target && del.mutate(target.id)} />
+        confirmLabel="Delete asset" pendingLabel="Deleting…" destructive pending={del.isPending} error={del.error} onConfirm={() => target && del.mutate(target.id)} />
     </div>
   );
 }
 
-export function AssetRow({ a, onPatch, onDelete, saved }: { a: Asset; onPatch: (p: AssetPatch) => void; onDelete: () => void; saved?: boolean }) {
+/** Agents that can't update themselves, said once for the list, grouped by reason, instead of on every row. */
+export function AgentUpdateSummary({ assets }: { assets: Asset[] }) {
+  const groups = new Map<string, { failed: boolean; hosts: string[] }>();
+  for (const a of assets) {
+    if (!a.agent_update || ["current", "updating"].includes(a.agent_update)) continue;
+    const why = AGENT_UPDATE[a.agent_update as Exclude<typeof a.agent_update, "current">].why(a);
+    const g = groups.get(why) ?? { failed: a.agent_update === "failed", hosts: [] };
+    g.hosts.push(a.hostname);
+    groups.set(why, g);
+  }
+  if (!groups.size) return null;
+  return (
+    <ul className="flex flex-col gap-1.5 border border-line-strong bg-surface px-3 py-2 text-sm">
+      {[...groups].map(([why, g]) => (
+        <li key={why} className={clsx("break-words", g.failed && "text-now-fg")}>
+          <strong className="font-semibold">{g.hosts.join(", ")}:</strong> {why}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export function AssetRow({ a, onPatch, onDelete, saved, error }: { a: Asset; onPatch: (p: AssetPatch) => void; onDelete: () => void; saved?: boolean; error?: string }) {
   const admin = useIsAdmin();
   const open = PRIORITIES.filter((p) => a.open_by_priority[p]);
+  const host = a.kind === "host";
   return (
     <li className="flex flex-col gap-3 p-4">
       <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
       <div className="min-w-0 flex-1 basis-60">
-        <h3 className="flex flex-wrap items-center gap-2 text-base font-semibold"><span className="truncate">{a.hostname}</span>
+        <h3 className="flex flex-wrap items-center gap-2 text-base font-semibold"><span className="min-w-0 break-all" title={a.hostname}>{a.hostname}</span>
           {a.sandbox && <Tag why="Test machine: the only kind automated fixes may change until production remediation is turned on">Test machine</Tag>}
           {a.not_reporting && <Tag tone="now" why="No report for over 14 hours, so findings may be out of date. Check the host is running and the agent's timer or scheduled task.">Not reporting</Tag>}
           {a.agent_update && a.agent_update !== "current" && <Tag tone={a.agent_update === "failed" ? "now" : "muted"}>{AGENT_UPDATE[a.agent_update].label}</Tag>}</h3>
@@ -87,9 +123,6 @@ export function AssetRow({ a, onPatch, onDelete, saved }: { a: Asset; onPatch: (
           {a.kind === "application" ? "Application (SBOM)" : a.os_name || "Unknown OS"}{a.agent_version && ` · agent ${a.agent_version}`} · seen <time dateTime={parseUtc(a.last_seen).toISOString()} title={parseUtc(a.last_seen).toLocaleString()}>{relativeTime(a.last_seen)}</time>
         </p>
         {a.not_reporting && <p className="mt-1 text-xs text-now-fg">No report for over 14 hours, so findings may be out of date.</p>}
-        {a.agent_update && !["current", "updating"].includes(a.agent_update) && (
-          <p className={clsx("mt-1 text-xs", a.agent_update === "failed" ? "text-now-fg" : "text-muted")}>{AGENT_UPDATE[a.agent_update as Exclude<typeof a.agent_update, "current">].why(a)}</p>
-        )}
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
         {open.length === 0 ? <span className="text-sm text-muted">No open findings</span> : open.map((p) => (
@@ -103,6 +136,13 @@ export function AssetRow({ a, onPatch, onDelete, saved }: { a: Asset; onPatch: (
       </div>
       </div>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        {/* The API only lets admins change these; everyone else reads them (as in Settings). */}
+        {!admin ? (
+          <p className="text-sm text-muted">
+            Criticality: <span className="capitalize text-ink">{a.criticality}</span> · {a.internet_facing ? "Internet-facing" : "Not internet-facing"}
+            {host && <> · Ring: <span className="text-ink">{a.ring === 0 ? "Canary" : "Broad"}</span> · Health units: <span className="text-ink">{a.health_units.join(", ") || "none"}</span></>}
+          </p>
+        ) : <>
         <label className="flex items-center gap-2 text-sm">
           <span className="whitespace-nowrap text-muted">Criticality</span>
           <select className={clsx(input, "w-auto capitalize md:min-h-9")} value={a.criticality} onChange={(e) => onPatch({ criticality: e.target.value as Criticality })}>
@@ -122,10 +162,14 @@ export function AssetRow({ a, onPatch, onDelete, saved }: { a: Asset; onPatch: (
           </select>
         </label>
         <HealthUnits a={a} onPatch={onPatch} /></>}
+        </>}
         <SbomUpload a={a} />
         {saved && <Done className="text-muted">Saved. Findings re-ranked.</Done>}
-        <button className={clsx(btnQuiet, "ml-auto px-2.5")} onClick={onDelete} title={`Delete ${a.hostname}`} {...adminGate(admin)}><Trash2 className="size-4" aria-hidden /><span className="sr-only">Delete {a.hostname}</span></button>
+        <button className={clsx(btnQuiet, "ml-auto px-3 md:px-2.5")} onClick={onDelete} title={`Delete ${a.hostname}`} {...adminGate(admin)}>
+          <Trash2 className="size-4" aria-hidden /><span className="md:sr-only">Delete</span><span className="sr-only"> {a.hostname}</span>
+        </button>
       </div>
+      <Alert error={error} prefix="Couldn't save that change: " />
     </li>
   );
 }
@@ -134,6 +178,7 @@ export function AssetRow({ a, onPatch, onDelete, saved }: { a: Asset; onPatch: (
 function HealthUnits({ a, onPatch }: { a: Asset; onPatch: (p: AssetPatch) => void }) {
   const saved = a.health_units.join(", ");
   const [text, setText] = useState(saved);
+  useEffect(() => setText(saved), [saved]);  // re-sync after a save or a rollback
   const commit = () => {
     const units = text.split(",").map((u) => u.trim()).filter(Boolean);
     if (units.join(", ") !== saved) onPatch({ health_units: units });
@@ -142,7 +187,8 @@ function HealthUnits({ a, onPatch }: { a: Asset; onPatch: (p: AssetPatch) => voi
     <label className="flex items-center gap-2 text-sm">
       <span className="whitespace-nowrap text-muted">Health units</span>
       <input className={clsx(input, "w-40 md:min-h-9")} value={text} placeholder="nginx, sshd" onChange={(e) => setText(e.target.value)} onBlur={commit}
-        onKeyDown={(e) => e.key === "Enter" && commit()} title="systemd units that must be active before and after a fix" />
+        onKeyDown={(e) => e.key === "Enter" && commit()} aria-describedby="health-units-hint" />
+      <span id="health-units-hint" className="sr-only">systemd units checked before and after a fix; saved when you leave the field</span>
     </label>
   );
 }
@@ -180,10 +226,9 @@ function AddApplication() {
           ) : (
             <form className="mt-3 flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); if (name.trim()) create.mutate(name.trim()); }}>
               <Dialog.Description className="text-sm text-muted">Software without an agent: findings come from the CycloneDX SBOM you upload.</Dialog.Description>
-              <label className="flex flex-col gap-1 text-sm font-medium">Name
+              <Field label="Name" error={create.error?.message}>
                 <input className={input} value={name} onChange={(e) => setName(e.target.value)} maxLength={255} required autoComplete="off" placeholder="billing-service" />
-              </label>
-              <Alert error={create.error} />
+              </Field>
               <div className="flex justify-end gap-2">
                 <Dialog.Close className={btnQuiet}>Cancel</Dialog.Close>
                 <button className={btnPrimary} disabled={create.isPending || !name.trim()}>{create.isPending ? "Adding…" : "Add application"}</button>
@@ -203,7 +248,7 @@ export function SbomUpload({ a }: { a: Asset }) {
   const file = useRef<HTMLInputElement>(null);
   const up = useMutation({
     mutationFn: async (f: File) => api<SbomResult>(`/api/assets/${a.id}/sbom`, { method: "POST", body: await f.text() }),
-    onSuccess: () => Promise.all(["assets", "findings", "summary", "finding", "ledger"].map((k) => qc.invalidateQueries({ queryKey: [k] }))),
+    onSuccess: () => refresh(qc, "assets"),
   });
   return (
     <div className="flex flex-col gap-1">
@@ -214,8 +259,8 @@ export function SbomUpload({ a }: { a: Asset }) {
         onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) up.mutate(f); }} />
       <div aria-live="polite" className="max-w-sm text-xs text-muted">
         {up.data && <span role="status">{sbomSummary(up.data)}</span>}
-        {up.error && <span role="alert" className="text-now-fg">SBOM rejected: {up.error.message}</span>}
       </div>
+      <Alert error={up.error} prefix="SBOM rejected: " />
     </div>
   );
 }

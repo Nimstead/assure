@@ -1,11 +1,10 @@
 import { useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Dialog } from "radix-ui";
 import { Check, Wrench, X } from "lucide-react";
 import clsx from "clsx";
-import { adminGate, api, APPROVE_COPY, dependenciesNeeded, filtersToSearch, groupJobs, isActiveJob, parseFilters, parseUtc, relativeTime, useIsAdmin, useTitle, type Job } from "./lib";
-import { Alert, btnPrimary, btnQuiet, ConfirmDialog, dialogBox, EmptyState, ErrorState, Loading, StatusPill } from "./ui";
+import { adminGate, api, APPROVE_COPY, dependenciesNeeded, filtersToSearch, groupJobs, isActiveJob, jobAnchor, jobsQ, parseFilters, parseUtc, refresh, relativeTime, useHashScroll, useIsAdmin, useTitle, type Job } from "./lib";
+import { Alert, btnPrimary, btnQuiet, ConfirmDialog, EmptyState, ErrorState, Loading, StatusPill } from "./ui";
 
 const CANCELLABLE: Job["status"][] = ["planned", "approved"];
 
@@ -13,21 +12,18 @@ export function RemediationPage() {
   useTitle("Remediation");
   const qc = useQueryClient();
   // Poll while anything is approved/dispatched/verifying.
-  const q = useQuery({
-    queryKey: ["jobs"], queryFn: () => api<Job[]>("/api/remediation/jobs"),
-    refetchInterval: (query) => (query.state.data?.some(isActiveJob) ? 3000 : false),
-  });
+  const q = useQuery({ ...jobsQ, refetchInterval: (query) => (query.state.data?.some(isActiveJob) ? 3000 : false) });
   const [target, setTarget] = useState<Job | null>(null);
   const [cancelling, setCancelling] = useState<Job | null>(null);
-  const refresh = () => Promise.all(["jobs", "summary", "ledger"].map((k) => qc.invalidateQueries({ queryKey: [k] })));
   const approve = useMutation({
     mutationFn: (id: string) => api<Job>(`/api/remediation/jobs/${id}/approve`, { method: "POST" }),
-    onSuccess: () => { setTarget(null); void refresh(); },
+    onSuccess: () => { setTarget(null); void refresh(qc, "jobs"); },
   });
   const cancel = useMutation({
     mutationFn: (id: string) => api<Job>(`/api/remediation/jobs/${id}/cancel`, { method: "POST" }),
-    onSuccess: () => { setCancelling(null); void refresh(); },
+    onSuccess: () => { setCancelling(null); void refresh(qc, "jobs"); },
   });
+  useHashScroll(!!q.data);  // #job-<id> from Home, the finding drawer or Plan fix
   const groups = q.data ? groupJobs(q.data).filter((g) => g.jobs.length) : [];
 
   return (
@@ -51,7 +47,7 @@ export function RemediationPage() {
         error={approve.error?.message} onConfirm={() => target && approve.mutate(target.id)} />
       <ConfirmDialog open={!!cancelling} onOpenChange={(o) => !o && setCancelling(null)} title="Cancel this fix?"
         description={<><strong className="font-semibold">{cancelling?.summary}</strong>. No machine has picked it up yet, so nothing has changed on {cancelling?.hostname}. You can plan it again later.</>}
-        confirmLabel="Cancel fix" pendingLabel="Cancelling…" pending={cancel.isPending} error={cancel.error} onConfirm={() => cancelling && cancel.mutate(cancelling.id)} />
+        confirmLabel="Cancel fix" cancelLabel="Keep it" pendingLabel="Cancelling…" pending={cancel.isPending} error={cancel.error} onConfirm={() => cancelling && cancel.mutate(cancelling.id)} />
     </div>
   );
 }
@@ -64,10 +60,11 @@ export function JobCard({ job: j, onApprove, onCancel }: { job: Job; onApprove?:
   const [ecosystem, pkg] = j.action_key.split("|");
   const replan = useMutation({
     mutationFn: () => api<Job>("/api/remediation/jobs", { method: "POST", body: { asset_id: j.asset_id, ecosystem, package: pkg, include: deps } }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["jobs"] }),
+    onSuccess: () => void refresh(qc, "jobs"),
   });
   return (
-    <li className="border border-line bg-surface p-4">
+    // the job's address: Home, the drawer and Plan fix link here (#job-<id>)
+    <li id={jobAnchor(j.id)} tabIndex={-1} className="scroll-mt-24 border border-line bg-surface p-4 target:border-ink target:shadow-[inset_0_0_0_1px_var(--ink)]">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <p className="font-medium">
@@ -76,9 +73,11 @@ export function JobCard({ job: j, onApprove, onCancel }: { job: Job; onApprove?:
           {/* no dot separators: on a phone they'd start wrapped lines; spacing alone separates the facts */}
           <ul className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm text-muted">
             <li><StatusPill status={j.status} /></li>
-            <li>on <Link to="/findings" search={filtersToSearch({ ...parseFilters({}), asset: j.asset_id, fixable: false })} className="font-semibold text-ink underline decoration-line-strong hover:decoration-ink">{j.hostname}</Link></li>
-            <li>planned by {j.created_by}</li>
-            {j.approved_by && <li>approved by {j.approved_by}</li>}
+            <li className="min-w-0 break-all">on <Link to="/findings" search={filtersToSearch({ ...parseFilters({}), asset: j.asset_id, fixable: false })} className="font-semibold text-ink underline decoration-line-strong hover:decoration-ink">{j.hostname}</Link></li>
+            <li className="break-all">planned by {j.created_by}</li>
+            {j.approved_by && <li className="break-all">approved by {j.approved_by}</li>}
+            {/* shown, not blocked: auditors look for this under SOC 2 CC8.1 */}
+            {j.approved_by && j.approved_by === j.created_by && <li className="text-ink">planned and approved by the same person</li>}
             <li><time dateTime={parseUtc(j.updated).toISOString()} title={parseUtc(j.updated).toLocaleString()}>{relativeTime(j.updated)}</time></li>
           </ul>
         </div>
@@ -128,23 +127,10 @@ export function ApproveDialog({ job, onOpenChange, onConfirm, pending, error }: 
   job: Pick<Job, "summary" | "hostname"> | null; onOpenChange: (o: boolean) => void; onConfirm: () => void; pending?: boolean; error?: string;
 }) {
   return (
-    <Dialog.Root open={!!job} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="overlay" />
-        <Dialog.Content className={dialogBox}>
-          <Dialog.Title className="text-lg font-semibold">Approve this fix?</Dialog.Title>
-          <Dialog.Description className="mt-2 text-sm">
-            <strong className="font-semibold">{job?.summary}</strong>.
-          </Dialog.Description>
-          <p className="mt-3 border border-line p-3 text-sm">{APPROVE_COPY}</p>
-          <Alert error={error} className="mt-3" />
-          <div className="mt-5 flex justify-end gap-2">
-            <Dialog.Close className={btnQuiet}>Cancel</Dialog.Close>
-            <button className={btnPrimary} onClick={onConfirm} disabled={pending}>{pending ? "Approving…" : "Approve and run"}</button>
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+    <ConfirmDialog open={!!job} onOpenChange={onOpenChange} title="Approve this fix?" description={<><strong className="font-semibold">{job?.summary}</strong>.</>}
+      confirmLabel="Approve and run" pendingLabel="Approving…" pending={pending} error={error} onConfirm={onConfirm}>
+      <p className="mt-3 border border-line p-3 text-sm">{APPROVE_COPY}</p>
+    </ConfirmDialog>
   );
 }
 
@@ -153,32 +139,36 @@ function RefusalNote({ error }: { error: string }) {
   return (
     <p className="mt-3 bg-now-bg px-3 py-2 text-sm text-now-fg">
       {error}
-      {/sandbox/i.test(error) && <> <Link to="/settings" hash="remediation" className="font-medium text-now-fg underline">Why, and how to allow it</Link></>}
+      {/sandbox/i.test(error) && <> Only test machines can be fixed until production remediation is turned on for this server. <Link to="/settings" hash="remediation" className="font-medium text-now-fg underline">How to turn it on</Link></>}
     </p>
   );
 }
 
 /** Plans a fix for one package on the given machines (one job each). */
-export function PlanFixButton({ ecosystem, pkg, assetIds, hosts = assetIds.length, className }: { ecosystem: string; pkg: string; assetIds: string[]; hosts?: number; className?: string }) {
+export function PlanFixButton({ ecosystem, pkg, assetIds, hosts = assetIds.length, label = "Plan fix", className }: { ecosystem: string; pkg: string; assetIds: string[]; hosts?: number; label?: string; className?: string }) {
   const admin = useIsAdmin();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const plan = useMutation({
-    mutationFn: async () => {
-      const errors: string[] = [];
+    mutationFn: async (_from: string) => {
+      const errors: string[] = [], made: Job[] = [];
       for (const asset_id of assetIds) {
-        try { await api("/api/remediation/jobs", { method: "POST", body: { asset_id, ecosystem, package: pkg } }); }
+        try { made.push(await api<Job>("/api/remediation/jobs", { method: "POST", body: { asset_id, ecosystem, package: pkg } })); }
         catch (e) { errors.push((e as Error).message); }
       }
       if (errors.length) throw new Error([...new Set(errors)].join(" "));
+      return made;
     },
-    onSettled: () => Promise.all(["jobs", "summary"].map((k) => qc.invalidateQueries({ queryKey: [k] }))), // partial failures still created some jobs
-    onSuccess: () => navigate({ to: "/remediation" }),
+    onSettled: () => refresh(qc, "jobs"), // partial failures still created some jobs
+    // Land on the new fix, but only if the user is still where they pressed the button.
+    onSuccess: (made, from) => {
+      if (location.pathname === from) void navigate({ to: "/remediation", hash: made[0] ? jobAnchor(made[0].id) : undefined });
+    },
   });
   return (
     <div className={clsx("flex flex-col items-start gap-1.5", className)}>
-      <button className={btnQuiet} disabled={plan.isPending} onClick={() => plan.mutate()} {...adminGate(admin)}>
-        <Wrench className="size-4" aria-hidden />{plan.isPending ? "Planning…" : "Plan fix"}
+      <button className={btnQuiet} disabled={plan.isPending} onClick={() => plan.mutate(location.pathname)} {...adminGate(admin)}>
+        <Wrench className="size-4" aria-hidden />{plan.isPending ? "Planning…" : label}
         <span className="sr-only"> for {pkg}{hosts > 1 ? ` on ${hosts} hosts` : ""}</span>
       </button>
       <Alert error={plan.error} className="max-w-sm" />

@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, Navigate, Outlet, useNavigate } from "@tanstack/react-router";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, Navigate, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DropdownMenu } from "radix-ui";
 import { FileCheck2, ListChecks, LogOut, Monitor, MoreHorizontal, Moon, Plus, Search, Server, Settings, ShieldAlert, Sun, Wrench, type LucideIcon } from "lucide-react";
 import clsx from "clsx";
-import { ADMIN_ONLY_ID, api, ApiError, filtersToSearch, meQ, NEXT_THEME, parseFilters, setTheme, THEME_LABEL, themeChoice, type Finding, type ThemeChoice } from "./lib";
-import { Loading } from "./ui";
+import { ADMIN_ONLY_ID, announce, api, ApiError, assetsQ, filtersToSearch, meQ, NEXT_THEME, parseFilters, setTheme, THEME_LABEL, themeChoice, type Finding, type ThemeChoice } from "./lib";
+import { ErrorState, LiveRegions, Loading, useReturnFocus } from "./ui";
 
 export const Logo = () => (
   // product lockup: company in ExtraBold, product word in Regular; the seal belongs to the company mark only
@@ -39,6 +39,31 @@ function useSignOut() {
   });
 }
 
+/**
+ * After a route change, move focus to the new page's h1 and say its title, so keyboard and screen-reader users don't
+ * stay on a link that's gone (WCAG 2.4.3). Pages load lazily and their h1 can follow their data, so wait for it briefly.
+ */
+function useFocusOnNavigate() {
+  const path = useRouterState({ select: (r) => r.location.pathname });
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) { first.current = false; return; }
+    if (location.hash) return;  // a #target (a job, a settings section) takes focus itself (useHashScroll)
+    let tries = 0, raf = 0;
+    const go = () => {
+      const h1 = document.querySelector<HTMLElement>("main h1");
+      if (!h1 && tries++ < 120) { raf = requestAnimationFrame(go); return; }
+      if (h1 && !h1.closest("[role=dialog],[role=alertdialog]") && !document.querySelector("[role=dialog],[role=alertdialog]")) {
+        h1.tabIndex = -1;
+        h1.focus({ preventScroll: true });
+      }
+      announce(document.title.replace(/ · Nimstead Assure$/, ""));
+    };
+    raf = requestAnimationFrame(go);
+    return () => cancelAnimationFrame(raf);
+  }, [path]);
+}
+
 function useTheme() {
   const [theme, set] = useState<ThemeChoice>(themeChoice);
   return { theme, next: () => { const t = NEXT_THEME[theme]; setTheme(t); set(t); } };
@@ -53,6 +78,7 @@ export function Shell() {
   const signOut = useSignOut();
   const { theme, next } = useTheme();
   const themeLabel = `Theme: ${THEME_LABEL[theme]}. Switch to ${THEME_LABEL[NEXT_THEME[theme]]}`;
+  useFocusOnNavigate();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -64,12 +90,14 @@ export function Shell() {
 
   if (me.error instanceof ApiError && me.error.status === 401) return <Navigate to="/signin" />;
   if (me.isPending) return <div className="p-8"><Loading className="h-8 w-48" /></div>;
-  if (me.error) return <p role="alert" className="p-8">{me.error.message} <button className="underline" onClick={() => me.refetch()}>Try again</button></p>;
+  if (me.error) return <div className="p-8"><ErrorState error={me.error} retry={() => me.refetch()} /></div>;
 
   const iconBtn = "inline-flex size-[44px] cursor-pointer items-center justify-center text-muted hover:bg-sunken hover:text-ink";
   return (
     <div className="min-h-dvh md:grid md:grid-cols-[15rem_1fr]">
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-50 focus:bg-surface focus:px-3 focus:py-2">Skip to content</a>
+      {/* One place that says things (DECISIONS 49): polite for "Saved" and page changes, assertive for failures. */}
+      <LiveRegions />
 
       <aside className="sticky top-0 hidden h-dvh flex-col gap-6 border-r border-line bg-surface p-4 md:flex">
         <Link to="/" className="px-2 no-underline"><Logo /></Link>
@@ -78,7 +106,7 @@ export function Shell() {
         </button>
         <nav aria-label="Main" className="flex flex-col gap-0.5">
           {NAV.map((n) => <NavLink key={n.to} {...n} />)}
-          <Link to="/add" className="mt-3 flex min-h-9 items-center gap-3 px-3 text-sm text-muted no-underline hover:bg-sunken hover:text-ink" activeProps={{ className: "bg-accent-soft !text-ink" }}>
+          <Link to="/add" className="mt-3 flex min-h-9 items-center gap-3 px-3 text-sm text-muted no-underline hover:bg-sunken hover:text-ink" activeProps={{ "aria-current": "page", className: "bg-accent-soft !text-ink font-medium shadow-[inset_2px_0_0_var(--ink)]" }}>
             <Plus className="size-4" aria-hidden />Add machine
           </Link>
         </nav>
@@ -93,7 +121,7 @@ export function Shell() {
       </aside>
 
       <header className="sticky top-0 z-10 flex items-center justify-between border-b border-line bg-surface px-4 py-1 md:hidden">
-        <Link to="/" className="no-underline"><Logo /></Link>
+        <Link to="/" className="inline-flex min-h-[44px] items-center no-underline"><Logo /></Link>
         <div className="flex">
           <button className={iconBtn} onClick={() => setPaletteOpen(true)} aria-label="Search"><Search className="size-5" aria-hidden /></button>
           <button className={iconBtn} onClick={next} aria-label={themeLabel}><ThemeIcon theme={theme} className="size-5" /></button>
@@ -130,11 +158,15 @@ function NavLink({ to, label, icon: Icon, tab }: (typeof NAV)[number] & { tab?: 
 
 function MoreMenu({ signOut }: { signOut: () => void }) {
   const navigate = useNavigate();
+  const path = useRouterState({ select: (r) => r.location.pathname });
+  // On a page that lives under More, the tab says so, like the others do for theirs.
+  const here = [...MORE.map((m) => m.to as string), "/add"].includes(path);
   const item = clsx("flex min-h-[44px] cursor-pointer items-center gap-3 px-3 text-sm", highlight);
   return (
     <DropdownMenu.Root>
-      <DropdownMenu.Trigger className="flex min-h-14 cursor-pointer flex-col items-center justify-center gap-0.5 text-xs text-muted data-[state=open]:text-ink">
-        <MoreHorizontal className="size-4" aria-hidden />More
+      <DropdownMenu.Trigger className={clsx("flex min-h-14 cursor-pointer flex-col items-center justify-center gap-0.5 text-xs text-muted data-[state=open]:text-ink",
+        here && "!text-ink font-semibold shadow-[inset_0_2px_0_var(--ink)]")}>
+        <MoreHorizontal className="size-4" aria-hidden />More{here && <span className="sr-only"> (current page is in here)</span>}
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content side="top" align="end" sideOffset={8} className="z-[51] min-w-48 border border-line bg-surface p-1.5 shadow-2xl">
@@ -165,11 +197,14 @@ function useDebounced<T>(value: T, ms: number) {
   return v;
 }
 
-function Palette({ open, onOpenChange, signOut, nextTheme }: { open: boolean; onOpenChange: (o: boolean) => void; signOut: () => void; nextTheme: () => void }) {
+export function Palette({ open, onOpenChange, signOut, nextTheme }: { open: boolean; onOpenChange: (o: boolean) => void; signOut: () => void; nextTheme: () => void }) {
   const navigate = useNavigate();
   const [text, setText] = useState("");
-  const [active, setActive] = useState(0);
+  // The highlight follows a command, not a position: results that arrive late can't change what Enter runs.
+  const [activeId, setActiveId] = useState("");
   const term = text.trim();
+  const assets = useQuery({ ...assetsQ, enabled: open });
+  const focus = useReturnFocus();
   const query = useDebounced(term, 150);
   const found = useQuery({
     queryKey: ["palette", query],
@@ -194,16 +229,21 @@ function Palette({ open, onOpenChange, signOut, nextTheme }: { open: boolean; on
       id: f.id, label: `${f.vuln_id}  ${f.package}`, hint: f.hostname,
       run: done(() => navigate({ to: "/findings", search: filtersToSearch({ ...parseFilters({}), fixable: false, q: term, open: f.id }) })),
     }));
+    // Hosts come from the already-cached asset list: no extra request, and a host is one jump from its findings.
+    const hosts: Cmd[] = term.length > 1 ? (assets.data ?? []).filter((a) => a.kind !== "external" && a.hostname.toLowerCase().includes(term.toLowerCase())).slice(0, 5)
+      .map((a) => ({ id: `host-${a.id}`, label: `Host: ${a.hostname}`, hint: "findings", run: done(() => navigate({ to: "/findings", search: filtersToSearch({ ...parseFilters({}), asset: a.id, fixable: false }) })) })) : [];
     const all: Cmd[] = term ? [{ id: "search", label: `Search findings for "${term}"`, run: done(() => navigate({ to: "/findings", search: filtersToSearch({ ...parseFilters({}), q: term }) })) }] : [];
-    return [...hits, ...all, ...pages];
-  }, [found.data, term, query, navigate, onOpenChange, signOut, nextTheme]);
+    return [...hosts, ...hits, ...all, ...pages];
+  }, [found.data, assets.data, term, query, navigate, onOpenChange, signOut, nextTheme]);
 
-  useEffect(() => setActive(0), [term]);
+  useEffect(() => setActiveId(""), [term]);
   useEffect(() => { if (!open) setText(""); }, [open]);
+  const active = Math.max(0, cmds.findIndex((c) => c.id === activeId));
+  const move = (by: number) => setActiveId(cmds[Math.min(Math.max(active + by, 0), cmds.length - 1)]?.id ?? "");
 
   const onKey = (e: React.KeyboardEvent) => {
-    if (e.key === "ArrowDown") { e.preventDefault(); setActive((a) => Math.min(a + 1, cmds.length - 1)); }
-    else if (e.key === "ArrowUp") { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)); }
+    if (e.key === "ArrowDown") { e.preventDefault(); move(1); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); move(-1); }
     else if (e.key === "Enter") { e.preventDefault(); cmds[active]?.run(); }
   };
 
@@ -211,22 +251,23 @@ function Palette({ open, onOpenChange, signOut, nextTheme }: { open: boolean; on
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="overlay" />
-        <Dialog.Content aria-describedby={undefined} className="fixed z-[51] left-1/2 top-[12vh] w-[min(36rem,calc(100%-2rem))] -translate-x-1/2 overflow-hidden border border-line bg-surface shadow-2xl">
+        <Dialog.Content aria-describedby={undefined} {...focus} className="fixed z-[51] left-1/2 top-[12vh] w-[min(36rem,calc(100%-2rem))] -translate-x-1/2 overflow-hidden border border-line bg-surface shadow-2xl">
           <Dialog.Title className="sr-only">Command palette</Dialog.Title>
           <input
             autoFocus role="combobox" aria-expanded={cmds.length > 0} aria-controls="palette-list" aria-activedescendant={cmds[active] ? `cmd-${cmds[active].id}` : undefined}
             aria-label="Jump to a page or search findings" placeholder="Jump to a page or search findings…"
-            className="min-h-12 w-full border-b border-line bg-transparent px-4 text-base outline-none placeholder:text-muted" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={onKey}
+            className="min-h-12 w-full border-b border-line bg-transparent px-4 text-base outline-none placeholder:text-muted focus:border-ink focus:shadow-[inset_0_-1px_0_var(--ink)]" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={onKey}
           />
-          <ul id="palette-list" role="listbox" aria-label="Results" className="max-h-80 overflow-y-auto p-1.5">
-            {cmds.map((c, i) => (
-              <li key={c.id} id={`cmd-${c.id}`} role="option" aria-selected={i === active} data-highlighted={i === active ? "" : undefined} onMouseMove={() => setActive(i)} onClick={c.run}
-                className={clsx("flex min-h-[44px] cursor-pointer items-center justify-between gap-3 px-3 text-sm", highlight, i === active && "bg-accent-soft")}>
-                <span className="truncate">{c.label}</span>{c.hint && <span className="shrink-0 text-xs text-muted">{c.hint}</span>}
-              </li>
-            ))}
-            {cmds.length === 0 && <li className="px-3 py-6 text-center text-sm text-muted">Nothing matches.</li>}
-          </ul>
+          {cmds.length > 0 ? (
+            <ul id="palette-list" role="listbox" aria-label="Results" className="max-h-80 overflow-y-auto p-1.5">
+              {cmds.map((c, i) => (
+                <li key={c.id} id={`cmd-${c.id}`} role="option" aria-selected={i === active} data-highlighted={i === active ? "" : undefined} onMouseMove={() => setActiveId(c.id)} onClick={c.run}
+                  className={clsx("flex min-h-[44px] cursor-pointer items-center justify-between gap-3 px-3 text-sm", highlight, i === active && "bg-accent-soft")}>
+                  <span className="truncate">{c.label}</span>{c.hint && <span className="shrink-0 text-xs text-muted">{c.hint}</span>}
+                </li>
+              ))}
+            </ul>
+          ) : <p id="palette-list" className="px-3 py-6 text-center text-sm text-muted">Nothing matches.</p>}
           <p role="status" className="sr-only">{term ? `${cmds.length} result${cmds.length === 1 ? "" : "s"}` : ""}</p>
         </Dialog.Content>
       </Dialog.Portal>

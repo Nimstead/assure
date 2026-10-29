@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, CheckCircle2, TriangleAlert } from "lucide-react";
-import { filtersToSearch, parseFilters, plural, PRIORITIES, PRIORITY_LABEL, priorityOf, summaryQ, useTitle, type Action } from "./lib";
+import { dependenciesNeeded, filtersToSearch, jobAnchor, JOB_STATUS_LABEL, parseFilters, plural, PRIORITIES, PRIORITY_LABEL, priorityOf, summaryQ, useTitle, type Action } from "./lib";
 import { PlanFixButton } from "./remediation";
 import { ErrorState, KevBadge, Loading, PriorityPill, StatusPill } from "./ui";
 import clsx from "clsx";
@@ -9,8 +9,8 @@ import { lazy, Suspense } from "react";
 
 const Onboarding = lazy(() => import("./onboarding").then((m) => ({ default: m.Onboarding })));
 
-// Only "fix now" carries colour; the rest are ink so a count never reads as disabled.
-const TILE: Record<string, string> = { "fix-now": "text-now-fg", next: "text-ink", planned: "text-ink", low: "text-ink" };
+// Only a non-zero "fix now" carries colour; the rest are ink so a count never reads as disabled.
+const tile = (p: string, n: number) => (p === "fix-now" && n > 0 ? "text-now-fg" : "text-ink");
 
 export function Home() {
   const q = useQuery(summaryQ);
@@ -38,7 +38,8 @@ export function Home() {
           <h2 id="attention" className="flex items-center gap-2 font-semibold"><TriangleAlert className="size-4" aria-hidden />{plural(s.attention.length, "fix", "fixes")} need{s.attention.length === 1 ? "s" : ""} a look</h2>
           <ul className="mt-2 flex flex-col gap-1.5 text-sm">
             {s.attention.slice(0, 5).map((j) => (
-              <li key={j.id} className="flex flex-wrap items-center gap-x-2 gap-y-1"><StatusPill status={j.status} /><span>{j.summary}</span></li>
+              <li key={j.id} className="flex flex-wrap items-center gap-x-2 gap-y-1"><StatusPill status={j.status} />
+                <Link to="/remediation" hash={jobAnchor(j.id)} className="min-w-0 break-words text-ink underline decoration-line-strong hover:decoration-ink">{j.summary}</Link></li>
             ))}
           </ul>
           <Link to="/remediation" className="mt-1 inline-flex min-h-[44px] items-center gap-1.5 text-sm font-medium text-accent underline md:min-h-0">Review in Remediation <ArrowRight className="size-4" aria-hidden /></Link>
@@ -50,7 +51,7 @@ export function Home() {
           <h2 id="fleet" className="flex items-center gap-2 font-semibold"><TriangleAlert className="size-4" aria-hidden />Machines need a look</h2>
           <ul className="mt-2 flex flex-col gap-1 text-sm">
             {s.hosts_not_reporting > 0 && <li>{plural(s.hosts_not_reporting, "machine")} stopped reporting, so {s.hosts_not_reporting === 1 ? "its" : "their"} findings may be out of date.</li>}
-            {s.agents_need_attention > 0 && <li>{plural(s.agents_need_attention, "agent")} can't update {s.agents_need_attention === 1 ? "itself" : "themselves"}; each machine says why.</li>}
+            {s.agents_need_attention > 0 && <li>{plural(s.agents_need_attention, "agent")} can't update {s.agents_need_attention === 1 ? "itself" : "themselves"}; Assets says why and what to do.</li>}
           </ul>
           <Link to="/assets" className="mt-1 inline-flex min-h-[44px] items-center gap-1.5 text-sm font-medium text-accent underline md:min-h-0">Review in Assets <ArrowRight className="size-4" aria-hidden /></Link>
         </section>
@@ -64,7 +65,7 @@ export function Home() {
               search={filtersToSearch({ ...parseFilters({}), priority: [p], fixable: false })}
               className="flex flex-col border border-line bg-surface px-3.5 py-2.5 no-underline hover:border-line-strong"
             >
-              <span className={clsx("num text-2xl font-semibold", TILE[p])}>{s.open_by_priority[p] ?? 0}</span>
+              <span className={clsx("num text-2xl font-semibold", tile(p, s.open_by_priority[p] ?? 0))}>{s.open_by_priority[p] ?? 0}</span>
               <span className="text-sm text-muted">{PRIORITY_LABEL[p]}</span>
             </Link>
           </li>
@@ -90,12 +91,16 @@ export function Home() {
   );
 }
 
-function ActionCard({ a }: { a: Action }) {
+export function ActionCard({ a }: { a: Action }) {
+  const free = a.asset_ids.filter((id) => !a.busy_asset_ids.includes(id));
+  const failed = a.last_attempt && !a.job ? a.last_attempt : null;
+  // A failure that named extra packages is re-planned from its job card ("Plan again including …"), never blind from here.
+  const needsMore = failed ? dependenciesNeeded(failed.error).length > 0 : false;
   return (
     <li className="flex flex-col gap-3 border border-line bg-surface p-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
         <p className="text-base">
-          Upgrade <strong className="font-semibold">{a.package}</strong> to{" "}
+          Upgrade <strong className="break-all font-semibold">{a.package}</strong> to{" "}
           <code className="break-all bg-sunken px-1.5 py-0.5 font-mono text-[13px]">{a.fixed_version}</code>
         </p>
         <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm text-muted">
@@ -107,13 +112,20 @@ function ActionCard({ a }: { a: Action }) {
           </span>
         </p>
       </div>
-      <div className="flex shrink-0 flex-wrap items-start gap-x-4 gap-y-2">
-        {a.job ? (
-          <span className="flex flex-col items-start gap-1.5">
-            <StatusPill status={a.job.status} />
-            <Link to="/remediation" className="inline-flex min-h-[44px] items-center gap-1.5 text-sm font-medium text-accent underline md:min-h-9">View fix<span className="sr-only"> for {a.package}</span> <ArrowRight className="size-4" aria-hidden /></Link>
+      <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">
+        {(a.job || failed) && (
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <StatusPill status={(a.job ?? failed)!.status} />
+            <Link to="/remediation" hash={jobAnchor((a.job ?? failed)!.id)} className="inline-flex min-h-[44px] items-center gap-1.5 text-sm font-medium text-accent underline md:min-h-9">
+              {a.job ? "View fix" : `Last attempt ${JOB_STATUS_LABEL[failed!.status].toLowerCase()}: review`}<span className="sr-only"> for {a.package}</span> <ArrowRight className="size-4" aria-hidden />
+            </Link>
           </span>
-        ) : <PlanFixButton ecosystem={a.ecosystem} pkg={a.package} assetIds={a.asset_ids} hosts={a.hosts.length} />}
+        )}
+        <span className="flex flex-wrap items-start gap-x-4 gap-y-2">
+        {free.length > 0 && !needsMore && (
+          <PlanFixButton ecosystem={a.ecosystem} pkg={a.package} assetIds={free}
+            label={a.job ? `Plan fix for ${plural(free.length, "more host")}` : failed ? "Plan fix again" : "Plan fix"} />
+        )}
         <Link
           to="/findings"
           search={filtersToSearch({ ...parseFilters({}), q: a.package })}
@@ -121,6 +133,7 @@ function ActionCard({ a }: { a: Action }) {
         >
           View findings <ArrowRight className="size-4" aria-hidden />
         </Link>
+        </span>
       </div>
     </li>
   );
@@ -129,8 +142,7 @@ function ActionCard({ a }: { a: Action }) {
 function HomeSkeleton() {
   return (
     <div className="flex flex-col gap-8">
-      <Loading className="h-16 w-72" label="Loading Fix first…" />
-      <Loading className="h-20" rows={3} label="" />
+      <Loading className="h-20" rows={4} label="Loading Fix first…" />
     </div>
   );
 }

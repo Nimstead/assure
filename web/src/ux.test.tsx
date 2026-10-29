@@ -1,20 +1,29 @@
-// UX round 1 (tasks/plan-0.5-ux.md): behaviour that keeps the review's fixes fixed.
+// UX rounds 1 and 2 (tasks/plan-0.5-ux.md, plan-0.6-ux.md): behaviour that keeps the reviews' fixes fixed.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { afterEach, vi } from "vitest";
 import { SsoSection } from "./integrations";
-import { meQ, type Asset, type Job, type Settings } from "./lib";
+import { ApiError, meQ, type Action, type Asset, type Job, type Settings } from "./lib";
+import { ActionCard } from "./home";
+import { AssetRow } from "./assets";
+import { Palette } from "./shell";
+import { Done, errorLead } from "./ui";
 import { Onboarding, TROUBLESHOOT_AFTER_MS } from "./onboarding";
 import { ApiTokensSection, QrCode, UsersSection } from "./people";
 import { JobCard } from "./remediation";
 import { SettingsPage } from "./settings";
 
+// Link keeps its search and hash in the href, so tests can check where a link really goes.
 vi.mock("@tanstack/react-router", () => ({
-  Link: ({ children, to }: { children: ReactNode; to: string }) => <a href={to}>{children}</a>,
+  Link: ({ children, to, search, hash, className }: { children: ReactNode; to: string; search?: Record<string, string | undefined>; hash?: string; className?: string }) => {
+    const qs = new URLSearchParams(Object.entries(search ?? {}).filter((e): e is [string, string] => e[1] !== undefined)).toString();
+    return <a href={`${to}${qs ? `?${qs}` : ""}${hash ? `#${hash}` : ""}`} className={className}>{children}</a>;
+  },
   useNavigate: () => vi.fn(),
   useSearch: () => ({}),
+  useRouterState: ({ select }: { select: (r: { location: { pathname: string } }) => unknown }) => select({ location: { pathname: "/" } }),
 }));
 
 /** fetch mock answering by "METHOD /path" (query string ignored); records every call. */
@@ -74,7 +83,7 @@ it("trust ladder: Suggest saves without a dialog", async () => {
   await userEvent.click(within(ladder.parentElement!).getByRole("button", { name: "Save" }));
   expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   await waitFor(() => expect(calls.find((c) => c.method === "PATCH")?.body).toEqual({ remediation_mode: "suggest" }));
-  expect(await within(ladder.parentElement!).findByRole("status")).toHaveTextContent("Saved");
+  expect(await within(ladder.parentElement!).findByText("Saved")).toBeInTheDocument();
 });
 
 it("revoking an API token asks first, then revokes", async () => {
@@ -125,11 +134,17 @@ it("only fixes no machine has picked up can be cancelled", () => {
   }
 });
 
-it("a job card links its summary and host to that machine's findings", () => {
+it("a job card links its summary and host to that machine's findings, and has an address", () => {
   serve({});
-  wrap(<ul><JobCard job={job("planned")} /></ul>);
-  expect(screen.getByRole("link", { name: "Upgrade openssl" })).toHaveAttribute("href", "/findings");
-  expect(screen.getByRole("link", { name: "web-1" })).toHaveAttribute("href", "/findings");
+  const { container } = wrap(<ul><JobCard job={job("planned")} /></ul>);
+  const summary = new URL(screen.getByRole("link", { name: "Upgrade openssl" }).getAttribute("href")!, "http://x");
+  expect(summary.pathname).toBe("/findings");
+  expect(summary.searchParams.get("asset")).toBe("a1");
+  expect(summary.searchParams.get("q")).toBe("openssl");
+  const host = new URL(screen.getByRole("link", { name: "web-1" }).getAttribute("href")!, "http://x");
+  expect(host.pathname).toBe("/findings");
+  expect(host.searchParams.get("asset")).toBe("a1");
+  expect(container.querySelector("li#job-j1")).not.toBeNull();
 });
 
 it("onboarding asks test or production with no default, then posts that choice", async () => {
@@ -165,4 +180,123 @@ it("TOTP setup draws a QR code of the otpauth URI, dark on white in any theme", 
   expect(path).toHaveAttribute("fill", "#111");
   expect(img.getAttribute("viewBox")).toMatch(/^0 0 \d+ \d+$/);
   expect(path.getAttribute("d")).toMatchSnapshot();
+});
+
+// ---- round 2 ---------------------------------------------------------------------------------------------------------
+const HOST = { id: "a1", hostname: "web-1", kind: "host", os_name: "Debian 13", criticality: "high", internet_facing: true, sandbox: false, ring: 0,
+  health_units: ["nginx"], open_by_priority: {}, last_seen: "2026-01-01T00:00:00", agent_version: "0.3.0", agent_update: "current" } as unknown as Asset;
+const SETTINGS_API = {
+  "GET /api/settings": SETTINGS, "GET /api/assets": HOSTS, "GET /api/enroll-tokens": [], "GET /api/users": [], "GET /api/tokens": [],
+  "GET /api/settings/notifications": { recent: [], emails: [], emails_confirmed: [] }, "GET /api/settings/sso": { domains: [], domain_checks: [] },
+};
+
+it("non-admins read an asset's settings instead of getting controls the API refuses", () => {
+  serve({});
+  wrap(<ul><AssetRow a={HOST} onPatch={() => {}} onDelete={() => {}} /></ul>, { ...ME, admin: false });
+  expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+  expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+  expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+  expect(screen.getByText(/Ring:/)).toHaveTextContent("Ring: Canary");
+  expect(screen.getByText(/Health units:/)).toHaveTextContent("nginx");
+});
+
+it("Settings and onboarding name the setting that turns production remediation on", async () => {
+  serve(SETTINGS_API);
+  const r = wrap(<SettingsPage />);
+  expect(await screen.findByText(/NIMSTEAD_ALLOW_PRODUCTION_REMEDIATION=1/)).toBeInTheDocument();
+  r.unmount();
+  serve({ "GET /api/assets": [] });
+  wrap(<Onboarding />);
+  expect(screen.getByRole("radio", { name: /Production machines/ })).toHaveTextContent("NIMSTEAD_ALLOW_PRODUCTION_REMEDIATION=1");
+});
+
+const ACTION: Action = { ecosystem: "Debian:12", package: "openssl", fixed_version: "3.0.19", hosts: ["web-1", "web-2"], asset_ids: ["a1", "a2"],
+  busy_asset_ids: [], vulns: ["CVE-1"], kev: false, max_score: 80, job: null, last_attempt: null };
+
+it("Home: a fix in flight on one host still lets you plan the others", () => {
+  serve({});
+  wrap(<ol><ActionCard a={{ ...ACTION, busy_asset_ids: ["a1"], job: { id: "j1", status: "approved" } }} /></ol>);
+  expect(screen.getByRole("link", { name: /View fix/ })).toHaveAttribute("href", "/remediation#job-j1");
+  expect(screen.getByRole("button", { name: /Plan fix for 1 more host/ })).toBeInTheDocument();
+});
+
+it("Home: after an aborted attempt that needs more packages, it points to the job instead of re-planning blind", () => {
+  serve({});
+  const aborted = { id: "j9", status: "aborted" as const, error: "No changes made: would also change: musl" };
+  const r = wrap(<ol><ActionCard a={{ ...ACTION, last_attempt: aborted }} /></ol>);
+  expect(screen.getByRole("link", { name: /Last attempt aborted: review/ })).toHaveAttribute("href", "/remediation#job-j9");
+  expect(screen.queryByRole("button", { name: /Plan fix/ })).not.toBeInTheDocument();
+  r.unmount();
+  wrap(<ol><ActionCard a={{ ...ACTION, last_attempt: { ...aborted, status: "rolled_back", error: "health check failed" } }} /></ol>);
+  expect(screen.getByRole("button", { name: /Plan fix again/ })).toBeInTheDocument();  // nothing extra needed: trying again is fine
+});
+
+it("Done is announced through the shell's live region", async () => {
+  const live = document.createElement("div");
+  live.id = "live";
+  document.body.append(live);
+  render(<Done>Saved</Done>);
+  await waitFor(() => expect(live).toHaveTextContent("Saved"));
+  live.remove();
+});
+
+it("an out-of-range deadline is marked invalid and says why, on that field", async () => {
+  serve(SETTINGS_API);
+  wrap(<SettingsPage />);
+  const next = await screen.findByRole("spinbutton", { name: "Next" });
+  await userEvent.clear(next);
+  await userEvent.type(next, "900");
+  expect(next).toHaveAttribute("aria-invalid", "true");
+  expect(next).toHaveAccessibleDescription("1 to 365 days");
+});
+
+it("saving one Settings section keeps what you typed in another", async () => {
+  const calls = serve({ ...SETTINGS_API, "PATCH /api/settings": { ...SETTINGS, agent_updates_paused: true } });
+  wrap(<SettingsPage />);
+  const next = await screen.findByRole("spinbutton", { name: "Next" });
+  await userEvent.clear(next);
+  await userEvent.type(next, "21");
+  await userEvent.click(screen.getByRole("switch"));
+  await waitFor(() => expect(calls.find((c) => c.method === "PATCH")?.body).toEqual({ agent_updates_paused: true }));
+  await screen.findByText("Saved");
+  expect(screen.getByRole("spinbutton", { name: "Next" })).toHaveValue(21);
+});
+
+it("the palette keeps the highlighted command when late results arrive, and finds hosts", async () => {
+  let release: ((v: Response) => void) | null = null;
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => String(url).startsWith("/api/assets")
+    ? new Response(JSON.stringify([{ ...HOST, hostname: "go-web-1" }]), { status: 200 })
+    : new Promise<Response>((r) => { release = r; })));
+  wrap(<Palette open onOpenChange={() => {}} signOut={() => {}} nextTheme={() => {}} />);
+  const box = screen.getByRole("combobox");
+  await userEvent.type(box, "go");
+  await screen.findByRole("option", { name: /Host: go-web-1/ });
+  await userEvent.keyboard("{ArrowDown}{ArrowDown}");
+  const chosen = box.getAttribute("aria-activedescendant");
+  expect(chosen).toBeTruthy();
+  await waitFor(() => expect(release).not.toBeNull());  // the debounced findings search has been sent
+  await act(async () => { release!(new Response(JSON.stringify([{ id: "f1", vuln_id: "CVE-1", package: "go", hostname: "h" }]), { status: 200 })); });
+  await screen.findByRole("option", { name: /CVE-1/ });
+  expect(box.getAttribute("aria-activedescendant")).toBe(chosen);  // a new row arriving above didn't move the highlight
+});
+
+it("the palette never dead-ends: any text offers a findings search, and the list is a valid listbox", async () => {
+  serve({ "GET /api/assets": [], "GET /api/findings": [] });
+  wrap(<Palette open onOpenChange={() => {}} signOut={() => {}} nextTheme={() => {}} />);
+  await userEvent.type(screen.getByRole("combobox"), "zzzzzz");
+  expect(await screen.findByRole("option", { name: 'Search findings for "zzzzzz"' })).toBeInTheDocument();
+  expect(screen.getByRole("combobox")).toHaveAttribute("aria-expanded", "true");
+  expect(within(screen.getByRole("listbox")).getAllByRole("option").length).toBeGreaterThan(0);
+});
+
+it("error states say what kind of problem it is", () => {
+  expect(errorLead(new ApiError(0, "x"))).toMatch(/Can't reach the server/);
+  expect(errorLead(new ApiError(403, "x"))).toMatch(/don't have access/);
+  expect(errorLead(new ApiError(502, "x"))).toMatch(/server had a problem/);
+});
+
+it("a token without an expiry says so instead of crashing Settings", async () => {
+  serve({ "GET /api/tokens": [{ id: "t1", name: "old", created_by: "a@b.c", created: "2026-01-01T00:00:00", expires: null, last_used: null }] });
+  wrap(<ApiTokensSection />);
+  expect(await screen.findByText(/never expires/)).toBeInTheDocument();
 });

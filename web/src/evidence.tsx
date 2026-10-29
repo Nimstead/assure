@@ -1,9 +1,22 @@
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { CircleCheck, CircleMinus, CircleX, Download, ShieldAlert, ShieldCheck } from "lucide-react";
 import clsx from "clsx";
-import { api, humaniseKind, parseUtc, relativeTime, useTitle, type ControlStatus, type EvidenceReport, type LedgerEntry } from "./lib";
+import { api, filtersToSearch, humaniseKind, parseFilters, parseUtc, plural, relativeTime, useTitle, type ControlStatus, type EvidenceReport, type LedgerEntry } from "./lib";
 import { btnPrimary, CopyBlock, ErrorState, input, Loading } from "./ui";
+
+const LEDGER_SHOWN = 50;
+
+/** What a ledger entry is about, from its own data: "CVE-2024-1234 · openssl · web-1" rather than an 8-character id. */
+export function ledgerSubject(e: LedgerEntry): string {
+  const d = e.data ?? {};
+  const str = (k: string) => (typeof d[k] === "string" ? (d[k] as string) : "");
+  const parts = [str("vuln_id"), str("package") || str("action").split("|")[1] || "", str("host") || str("hostname") || str("name") || str("email")].filter(Boolean);
+  return parts.length ? [...new Set(parts)].join(" · ") : e.subject.slice(0, 8);
+}
+
+/** "0.0 days" reads as a bug; under a day is what it means. */
+const mttr = (days: number | null) => (days === null ? "n/a" : days < 1 ? "under a day" : `${days} days`);
 
 const PERIODS = [30, 90, 365];
 const STATUS: Record<ControlStatus, { label: string; className: string; Icon: typeof CircleCheck }> = {
@@ -22,7 +35,7 @@ export function EvidencePage() {
   const days = PERIODS.includes(Number(period)) ? Number(period) : 90;
   const setDays = (d: number) => navigate({ to: "/evidence", search: d === 90 ? {} : { period: String(d) }, replace: true });
   const report = useQuery({ queryKey: ["evidence-report", days], queryFn: () => api<EvidenceReport>(`/api/evidence/report?days=${days}`) });
-  const ledger = useQuery({ queryKey: ["ledger"], queryFn: () => api<{ problems: string[]; entries: LedgerEntry[] }>("/api/evidence/ledger?limit=50") });
+  const ledger = useQuery({ queryKey: ["ledger"], queryFn: () => api<{ problems: string[]; entries: LedgerEntry[] }>(`/api/evidence/ledger?limit=${LEDGER_SHOWN}`) });
 
   return (
     <div className="flex flex-col gap-8">
@@ -44,7 +57,13 @@ export function EvidencePage() {
         : <ReportView r={report.data} days={days} />}
 
       <section aria-labelledby="ledger">
-        <h2 id="ledger" className="mb-3 text-lg font-semibold">Ledger</h2>
+        <h2 id="ledger" className="text-lg font-semibold">Ledger</h2>
+        {/* say what's shown: the page promises every decision, and the full chain is in the signed pack */}
+        <p className="mb-3 mt-1 text-sm text-muted">
+          {report.data && report.data.ledger.entries > LEDGER_SHOWN
+            ? `Latest ${LEDGER_SHOWN} of ${report.data.ledger.entries.toLocaleString()} entries. The signed pack holds the full ledger.`
+            : "Newest first. The signed pack holds the same entries."}
+        </p>
         {ledger.isPending ? <Loading className="h-40" label="Loading ledger…" /> : ledger.error ? <ErrorState error={ledger.error} retry={() => ledger.refetch()} /> : <LedgerView problems={ledger.data.problems} entries={ledger.data.entries} />}
       </section>
     </div>
@@ -54,9 +73,8 @@ export function EvidencePage() {
 function ReportView({ r, days }: { r: EvidenceReport; days: number }) {
   const m = r.metrics;
   const stats: [string, string][] = [
-    ["Mean time to remediate", m.mttr_days === null ? "n/a" : `${m.mttr_days} days`],
+    ["Mean time to remediate", mttr(m.mttr_days)],
     ["Resolved within SLA", `${m.resolved_within_sla} of ${m.resolved}`],
-    ["Overdue and still open", String(m.overdue_open)],
   ];
   const counts = r.controls.reduce((n, c) => ({ ...n, [c.status]: (n[c.status] ?? 0) + 1 }), {} as Partial<Record<ControlStatus, number>>);
   return (
@@ -70,6 +88,19 @@ function ReportView({ r, days }: { r: EvidenceReport; days: number }) {
             <dt className="text-sm text-muted">{k}</dt><dd className="num mt-0.5 text-2xl font-semibold">{v}</dd>
           </div>
         ))}
+        {/* the number an auditor asks about leads to the findings behind it */}
+        <div className="border border-line bg-surface px-4 py-3">
+          <dt className="text-sm text-muted">Overdue and still open</dt>
+          <dd className="num mt-0.5 flex items-baseline justify-between gap-2 text-2xl font-semibold">
+            <span className={m.overdue_open > 0 ? "text-now-fg" : undefined}>{m.overdue_open}</span>
+            {m.overdue_open > 0 && (
+              <Link to="/findings" search={filtersToSearch({ ...parseFilters({}), overdue: true, fixable: false })}
+                className="inline-flex min-h-[44px] items-center text-sm font-medium text-accent underline md:min-h-0">
+                View {plural(m.overdue_open, "finding")}
+              </Link>
+            )}
+          </dd>
+        </div>
       </dl>
 
       <section aria-labelledby="controls">
@@ -107,7 +138,8 @@ function ReportView({ r, days }: { r: EvidenceReport; days: number }) {
 
 function SigningKey() {
   const q = useQuery({ queryKey: ["public-key"], queryFn: () => api<{ pem: string; fingerprint_sha256: string; verifier_sha256: string }>("/api/evidence/public-key"), staleTime: Infinity });
-  if (!q.data) return null;
+  if (q.isPending) return <div className="mt-2 w-full max-w-2xl"><Loading className="h-12" rows={2} label="Loading the signing key fingerprint…" /></div>;
+  if (q.error) return <div className="mt-2 w-full max-w-2xl"><ErrorState error={q.error} retry={() => q.refetch()} /></div>;
   return (
     <div className="mt-2 w-full max-w-2xl">
       <CopyBlock label="Signing key fingerprint (SHA-256)" text={q.data.fingerprint_sha256} />
@@ -126,7 +158,8 @@ export function LedgerView({ problems, entries }: { problems: string[]; entries:
       {problems.length === 0 ? (
         <p role="status" className="flex items-center gap-2 border border-line-strong bg-surface px-3 py-2 text-sm font-medium"><ShieldCheck className="size-4" aria-hidden />Chain verified. Every entry links unbroken back to the first.</p>
       ) : (
-        <div role="alert" className="bg-now-bg px-3 py-2 text-sm text-now-fg">
+        // stored state, shown plainly rather than announced on every visit (as settings' last update is)
+        <div className="bg-now-bg px-3 py-2 text-sm text-now-fg">
           <p className="flex items-center gap-2 font-medium"><ShieldAlert className="size-4" aria-hidden />Ledger problems found. Evidence packs won't be signed until this is resolved.</p>
           <ul className="mt-1 list-disc pl-6">{problems.slice(0, 5).map((p) => <li key={p}>{p}</li>)}</ul>
         </div>
@@ -136,7 +169,7 @@ export function LedgerView({ problems, entries }: { problems: string[]; entries:
           {entries.map((e) => (
             <li key={e.seq} className="flex flex-wrap items-baseline gap-x-4 gap-y-0.5 px-4 py-2.5 text-sm">
               <span className="min-w-0 flex-1 basis-48 font-medium">{humaniseKind(e.kind)}</span>
-              <span className="font-mono text-xs text-muted" title={e.subject}><span className="sr-only">Subject </span>{e.subject.slice(0, 8)}</span>
+              <span className="min-w-0 break-all text-xs text-muted" title={e.subject}><span className="sr-only">About </span>{ledgerSubject(e)}</span>
               <code className="font-mono text-xs text-muted" title={e.hash}><span className="sr-only">Hash </span>{e.hash.slice(0, 10)}</code>
               <time className="w-24 text-right text-muted" dateTime={parseUtc(e.ts).toISOString()} title={parseUtc(e.ts).toLocaleString()}>{relativeTime(e.ts)}</time>
             </li>

@@ -3,7 +3,7 @@ import { NotificationsSection } from "./integrations";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
-import { AssetRow, SbomUpload } from "./assets";
+import { AgentUpdateSummary, AssetRow, SbomUpload } from "./assets";
 import { ApproveDialog, PlanFixButton } from "./remediation";
 import { ADMIN_ONLY_ID, APPROVE_COPY, meQ, type Asset } from "./lib";
 import { InstallCommands } from "./onboarding";
@@ -26,7 +26,7 @@ it("onboarding shows the Linux, Windows and Python commands", () => {
 
 it("approve dialog states exactly what will happen", () => {
   render(<ApproveDialog job={{ summary: "Upgrade openssl", hostname: "web-1" }} onOpenChange={() => {}} onConfirm={() => {}} error="Production remediation is disabled" />);
-  expect(screen.getByRole("dialog", { name: "Approve this fix?" })).toBeInTheDocument();
+  expect(screen.getByRole("alertdialog", { name: "Approve this fix?" })).toBeInTheDocument();
   expect(screen.getByText(APPROVE_COPY)).toBeInTheDocument();
   expect(screen.getByText(/Saves a rollback copy of each package, upgrades, checks health, rolls back automatically on failure\. Success is confirmed by the next inventory\./)).toBeInTheDocument();
   expect(screen.getByRole("alert")).toHaveTextContent("Production remediation is disabled");
@@ -100,17 +100,23 @@ it("admin-only buttons stay focusable, explain themselves and do nothing for non
   vi.unstubAllGlobals();
 });
 
-it("asset row says why an agent is outdated and what happens next", () => {
+it("assets say once why agents are outdated and what happens next; each row keeps its tag", () => {
   vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ email: "a@b.c", org: "o", admin: true }), { status: 200 })));
   const base = { id: "a1", hostname: "web-1", kind: "host", os_name: "Debian 13", criticality: "medium", internet_facing: false, sandbox: false, ring: 1, health_units: [], open_by_priority: {}, last_seen: "2026-01-01T00:00:00", agent_version: "0.2.0" } as unknown as Asset;
   const row = (a: Partial<Asset>) => render(<QueryClientProvider client={new QueryClient()}><ul><AssetRow a={{ ...base, ...a }} onPatch={() => {}} onDelete={() => {}} /></ul></QueryClientProvider>);
   const failed = row({ agent_update: "failed", agent_update_error: "self-update failed: new agent 0.3.0 failed its self-test" });
   expect(screen.getByText("Agent update failed")).toBeInTheDocument();
-  expect(screen.getByText(/failed its self-test/)).toBeInTheDocument();
   failed.unmount();
-  const reinstall = row({ agent_update: "reinstall", agent_version: "0.1.3" });
-  expect(screen.getByText(/can't update itself. Rerun the install command/)).toBeInTheDocument();
-  reinstall.unmount();
+  const summary = render(<AgentUpdateSummary assets={[
+    { ...base, agent_update: "failed", agent_update_error: "self-update failed: new agent 0.3.0 failed its self-test" },
+    { ...base, id: "a2", hostname: "web-2", agent_update: "reinstall", agent_version: "0.1.3" },
+    { ...base, id: "a3", hostname: "web-3", agent_update: "reinstall", agent_version: "0.1.3" },
+  ] as Asset[]} />);
+  expect(screen.getByText(/failed its self-test/)).toBeInTheDocument();
+  // the same reason is said once, naming every machine it applies to
+  expect(screen.getAllByText(/can't update itself. Rerun the install command/)).toHaveLength(1);
+  expect(screen.getByText("web-2, web-3:")).toBeInTheDocument();
+  summary.unmount();
   row({ agent_update: "current" });
   expect(screen.queryByText(/Agent (outdated|update)/)).not.toBeInTheDocument();
   vi.unstubAllGlobals();

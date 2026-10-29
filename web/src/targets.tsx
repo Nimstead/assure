@@ -1,9 +1,8 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Radar, ShieldCheck, Trash2 } from "lucide-react";
-import clsx from "clsx";
-import { adminGate, api, parseUtc, plural, relativeTime, useIsAdmin, type Asset } from "./lib";
-import { Alert, btnPrimary, btnQuiet, CopyBlock, input, Tag } from "./ui";
+import { adminGate, api, parseUtc, plural, refresh, relativeTime, useIsAdmin, type Asset } from "./lib";
+import { Alert, btnPrimary, btnQuiet, CopyBlock, Field, input, Tag } from "./ui";
 
 interface ScanResult { address: string; open: number; resolved: number; skipped: string[] }
 
@@ -23,13 +22,12 @@ export function ExternalTargets({ targets, onDelete }: { targets: Asset[]; onDel
         Checks exposed risky services (RDP, SMB, Telnet, databases, Docker API…) and TLS (expired, expiring or untrusted certificates, TLS 1.0/1.1).
         TCP connects and TLS handshakes only; nothing is logged into or exploited. We only scan hosts you prove you own.
       </p>
-      <form className="flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); if (hostname.trim()) add.mutate(hostname.trim()); }}>
-        <label className="flex flex-col gap-1 text-sm font-medium">Hostname to scan
-          <input className={clsx(input, "w-full sm:w-72")} value={hostname} onChange={(e) => setHostname(e.target.value)} placeholder="www.example.com" autoComplete="off" maxLength={255} required />
-        </label>
-        <button className={btnPrimary} disabled={add.isPending || !hostname.trim()} {...adminGate(admin)}><Plus className="size-4" aria-hidden />{add.isPending ? "Adding…" : "Add target"}</button>
+      <form className="flex flex-wrap items-start gap-2" onSubmit={(e) => { e.preventDefault(); if (hostname.trim()) add.mutate(hostname.trim()); }}>
+        <Field label="Hostname to scan" error={add.error?.message} className="w-full sm:w-72">
+          <input className={input} value={hostname} onChange={(e) => { add.reset(); setHostname(e.target.value); }} placeholder="www.example.com" autoComplete="off" maxLength={255} required />
+        </Field>
+        <button className={`${btnPrimary} sm:mt-[26px]`} disabled={add.isPending || !hostname.trim()} {...adminGate(admin)}><Plus className="size-4" aria-hidden />{add.isPending ? "Adding…" : "Add target"}</button>
       </form>
-      <Alert error={add.error} />
       {targets.length === 0 ? <p className="text-sm text-muted">No external targets yet.</p> : (
         <ul className="flex flex-col divide-y divide-line overflow-hidden border border-line bg-surface">
           {targets.map((t) => <TargetRow key={t.id} t={t} onDelete={() => onDelete(t)} />)}
@@ -49,13 +47,13 @@ export function TargetRow({ t, onDelete }: { t: Asset; onDelete: () => void }) {
   });
   const scan = useMutation({
     mutationFn: () => api<ScanResult>(`/api/targets/${t.id}/scan`, { method: "POST" }),
-    onSuccess: () => Promise.all(["assets", "findings", "summary"].map((k) => qc.invalidateQueries({ queryKey: [k] }))),
+    onSuccess: () => refresh(qc, "assets"),
   });
   return (
     <li className="flex flex-col gap-3 p-4">
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
         <div className="min-w-0">
-          <h3 className="flex items-center gap-2 text-base font-semibold"><span className="truncate">{t.hostname}</span>
+          <h3 className="flex flex-wrap items-center gap-2 text-base font-semibold"><span className="min-w-0 break-all">{t.hostname}</span>
             <Tag tone={t.verified ? "ink" : "muted"}>{t.verified && <ShieldCheck className="size-3" aria-hidden />}{t.verified ? "Verified" : "Unverified"}</Tag></h3>
           <p className="text-sm text-muted">
             {plural(open, "open finding")} · {t.verified && t.last_seen !== t.first_seen ? <>last scanned <time dateTime={parseUtc(t.last_seen).toISOString()}>{relativeTime(t.last_seen)}</time></> : "not scanned"}

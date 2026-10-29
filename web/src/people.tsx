@@ -3,8 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import clsx from "clsx";
 import { encode } from "uqr";
-import { api, meQ, relativeTime, type ApiTokenRow, type MfaSetup, type OrgUser } from "./lib";
-import { Alert, btnPrimary, btnQuiet, ConfirmDialog, CopyBlock, Done, ErrorState, input, Loading } from "./ui";
+import { api, meQ, refresh, relativeTime, type ApiTokenRow, type MfaSetup, type OrgUser } from "./lib";
+import { Alert, btnPrimary, btnQuiet, ConfirmDialog, CopyBlock, Done, ErrorState, Field, input, Loading } from "./ui";
 
 const fd = (e: FormEvent<HTMLFormElement>) => { e.preventDefault(); return new FormData(e.currentTarget); };
 
@@ -30,13 +30,13 @@ export function MfaEnrol({ setup, onCode, pending, extra }: { setup: MfaSetup; o
       <CopyBlock label="Setup key" text={setup.secret} />
       <p className="text-xs text-muted break-all">Or open: <a className="underline" href={setup.uri}>{setup.uri}</a></p>
       {extra && (
-        <label className="flex flex-col gap-1.5 text-sm font-medium">Code from your current authenticator (or a recovery code)
+        <Field label="Code from your current authenticator (or a recovery code)">
           <input className={input} name="current" required autoComplete="one-time-code" />
-        </label>
+        </Field>
       )}
-      <label className="flex flex-col gap-1.5 text-sm font-medium">Code from the app
-        <input className={input} name="code" required inputMode="numeric" pattern="[0-9 ]{6,7}" autoComplete="one-time-code" />
-      </label>
+      <Field label="Code from the app" hint="6 digits">
+        <input className={input} name="code" required inputMode="numeric" pattern="[0-9 ]{6,7}" autoComplete="one-time-code" autoFocus={!extra} />
+      </Field>
       <button className={clsx(btnPrimary, "self-start")} disabled={pending}>{pending ? "Checking…" : "Turn on"}</button>
     </form>
   );
@@ -86,9 +86,11 @@ export function AccountSection() {
       {password && (
         <form className="flex w-full max-w-md flex-col gap-3" onSubmit={(e) => { const f = fd(e); pw.mutate(f, { onSuccess: () => (e.target as HTMLFormElement).reset() }); }}>
           <h4 className="text-sm font-semibold">Change password</h4>
-          <label className="flex flex-col gap-1.5 text-sm font-medium">Current password<input className={input} name="current" type="password" required autoComplete="current-password" /></label>
-          <label className="flex flex-col gap-1.5 text-sm font-medium">New password<input className={input} name="new" type="password" required minLength={12} autoComplete="new-password" /></label>
-          {me.mfa && <label className="flex flex-col gap-1.5 text-sm font-medium">Authenticator code<input className={input} name="code" required autoComplete="one-time-code" /></label>}
+          {/* said before, not only after: it has consequences beyond this device */}
+          <p className="text-sm text-muted">Changing it signs out your other devices and revokes the API tokens you created.</p>
+          <Field label="Current password"><input className={input} name="current" type="password" required autoComplete="current-password" /></Field>
+          <Field label="New password" hint="At least 12 characters."><input className={input} name="new" type="password" required minLength={12} autoComplete="new-password" /></Field>
+          {me.mfa && <Field label="Authenticator code"><input className={input} name="code" required autoComplete="one-time-code" /></Field>}
           <Alert error={pw.error} />
           {pw.isSuccess && <Done>Password changed. Other devices were signed out and your API tokens revoked.</Done>}
           <button className={clsx(btnPrimary, "self-start")} disabled={pw.isPending}>{pw.isPending ? "Saving…" : "Change password"}</button>
@@ -97,7 +99,7 @@ export function AccountSection() {
       <button className={btnQuiet} onClick={() => { everywhere.reset(); setAskEverywhere(true); }}>Sign out everywhere</button>
       <ConfirmDialog open={askEverywhere} onOpenChange={setAskEverywhere} title="Sign out everywhere?"
         description="Every session of yours ends, including this one, and every API token you created stops working. Use this if a device or token may have been stolen."
-        confirmLabel="Sign out everywhere" pendingLabel="Signing out…" pending={everywhere.isPending} error={everywhere.error} onConfirm={() => everywhere.mutate()} />
+        confirmLabel="Sign out everywhere" pendingLabel="Signing out…" destructive pending={everywhere.isPending} error={everywhere.error} onConfirm={() => everywhere.mutate()} />
     </section>
   );
 }
@@ -106,7 +108,7 @@ export function UsersSection() {
   const qc = useQueryClient();
   const me = useQuery(meQ).data;
   const q = useQuery({ queryKey: ["users"], queryFn: () => api<OrgUser[]>("/api/users") });
-  const done = () => Promise.all(["users", "ledger"].map((k) => qc.invalidateQueries({ queryKey: [k] })));
+  const done = () => refresh(qc, "people");
   const invite = useMutation({ mutationFn: (email: string) => api("/api/users/invite", { method: "POST", body: { email } }), onSuccess: done });
   const role = useMutation({ mutationFn: (u: OrgUser) => api(`/api/users/${u.id}`, { method: "PATCH", body: { admin: !u.admin } }), onSuccess: () => { setAsk(null); return done(); } });
   const remove = useMutation({ mutationFn: (u: OrgUser) => api(`/api/users/${u.id}`, { method: "DELETE" }), onSuccess: () => { setAsk(null); return done(); } });
@@ -122,7 +124,7 @@ export function UsersSection() {
             const self = u.email === me?.email;
             return (
               <li key={u.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 text-sm">
-                <span className="min-w-0 flex-1 truncate">{u.email}{self && <span className="text-muted"> (you)</span>}</span>
+                <span className="min-w-0 flex-1 break-all">{u.email}{self && <span className="text-muted"> (you)</span>}</span>
                 <span className="text-muted">{u.admin ? "Admin" : "Member"} · {u.origin === "sso" ? "SSO" : u.mfa ? "password + code" : "password"}</span>
                 {/* No self-demotion or self-removal from here: another admin does that. */}
                 {!self && <>
@@ -139,9 +141,9 @@ export function UsersSection() {
         description={ask?.kind === "remove" ? "They're signed out at once and their API tokens stop working. The evidence ledger keeps what they did."
           : ask?.u.admin ? "They'll keep read access but can't change policy, approve fixes or manage people. API tokens they created stop working."
           : "They'll be able to change policy, approve fixes and manage people. Admins must use two-step sign-in."}
-        confirmLabel={ask?.kind === "remove" ? "Remove" : ask?.u.admin ? "Make member" : "Make admin"} pendingLabel="Saving…" />
+        confirmLabel={ask?.kind === "remove" ? "Remove" : ask?.u.admin ? "Make member" : "Make admin"} destructive={ask?.kind === "remove"} pendingLabel="Saving…" />
       <form className="flex flex-wrap items-end gap-3" onSubmit={(e) => { const f = fd(e); invite.mutate(String(f.get("email")), { onSuccess: () => (e.target as HTMLFormElement).reset() }); }}>
-        <label className="flex flex-col gap-1.5 text-sm font-medium">Invite by email<input className={clsx(input, "w-72")} name="email" type="email" required autoComplete="off" placeholder="colleague@company.com" /></label>
+        <Field label="Invite by email" className="w-full sm:w-72"><input className={input} name="email" type="email" required autoComplete="off" placeholder="colleague@company.com" /></Field>
         <button className={btnPrimary} disabled={invite.isPending}>{invite.isPending ? "Sending…" : "Send invitation"}</button>
       </form>
       <Alert error={invite.error} />
@@ -155,7 +157,7 @@ export function ApiTokensSection() {
   const me = useQuery(meQ).data;
   const q = useQuery({ queryKey: ["api-tokens"], queryFn: () => api<ApiTokenRow[]>("/api/tokens") });
   const [made, setMade] = useState("");
-  const done = () => Promise.all(["api-tokens", "ledger"].map((k) => qc.invalidateQueries({ queryKey: [k] })));
+  const done = () => refresh(qc, "people");
   const create = useMutation({
     mutationFn: (f: FormData) => api<{ token: string }>("/api/tokens", { method: "POST", body: { name: f.get("name"), days: Number(f.get("days")), code: f.get("code") || null } }),
     onSuccess: (r) => { setMade(r.token); void done(); },
@@ -165,13 +167,13 @@ export function ApiTokensSection() {
   return (
     <section aria-labelledby="api-tokens" className="flex flex-col gap-3">
       <h3 id="api-tokens" className="text-lg font-semibold">API tokens</h3>
-      <p className="max-w-prose text-sm text-muted">Read-only access for scripts and other tools: findings (also as CSV), assets, the summary and evidence. Send it as <code className="rounded bg-sunken px-1">Authorization: Bearer …</code>. A token stops working if its creator stops being an admin.</p>
+      <p className="max-w-prose text-sm text-muted">Read-only access for scripts and other tools: findings (also as CSV), assets, the summary and evidence. Send it as <code className="bg-sunken px-1">Authorization: Bearer …</code>. A token stops working if its creator stops being an admin.</p>
       {q.isPending ? <Loading className="h-16" /> : q.error ? <ErrorState error={q.error} retry={() => q.refetch()} /> : q.data.length > 0 && (
         <ul className="flex flex-col divide-y divide-line overflow-hidden border border-line bg-surface">
           {q.data.map((t) => (
             <li key={t.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 text-sm">
-              <span className="font-medium">{t.name}</span>
-              <span className="min-w-0 flex-1 text-muted">by {t.created_by} · expires {relativeTime(t.expires ?? "")} · {t.last_used ? `used ${relativeTime(t.last_used)}` : "never used"}</span>
+              <span className="break-all font-medium">{t.name}</span>
+              <span className="min-w-0 flex-1 break-words text-muted">by {t.created_by} · {t.expires ? `expires ${relativeTime(t.expires)}` : "never expires"} · {t.last_used ? `used ${relativeTime(t.last_used)}` : "never used"}</span>
               <button className={btnQuiet} onClick={() => { revoke.reset(); setTarget(t); }}>Revoke<span className="sr-only"> {t.name}</span></button>
             </li>
           ))}
@@ -179,16 +181,16 @@ export function ApiTokensSection() {
       )}
       <ConfirmDialog open={!!target} onOpenChange={(o) => !o && setTarget(null)} title={`Revoke “${target?.name}”?`}
         description={`Anything using this token (${target?.last_used ? `last used ${relativeTime(target.last_used)}` : "it has never been used"}) stops working at once. This can't be undone.`}
-        confirmLabel="Revoke token" pendingLabel="Revoking…" pending={revoke.isPending} error={revoke.error} onConfirm={() => target && revoke.mutate(target.id)} />
+        confirmLabel="Revoke token" pendingLabel="Revoking…" destructive pending={revoke.isPending} error={revoke.error} onConfirm={() => target && revoke.mutate(target.id)} />
       {made && <CopyBlock label="New token (shown once)" text={made} />}
       <form className="flex flex-wrap items-end gap-3" onSubmit={(e) => { const f = fd(e); setMade(""); create.mutate(f, { onSuccess: () => (e.target as HTMLFormElement).reset() }); }}>
-        <label className="flex flex-col gap-1.5 text-sm font-medium">Name<input className={clsx(input, "w-56")} name="name" required maxLength={100} placeholder="Jira sync" /></label>
-        <label className="flex flex-col gap-1.5 text-sm font-medium">Expires
-          <select className={clsx(input, "w-36")} name="days" defaultValue="90">
+        <Field label="Name" className="w-full sm:w-56"><input className={input} name="name" required maxLength={100} placeholder="Jira sync" /></Field>
+        <Field label="Expires" className="w-36">
+          <select className={input} name="days" defaultValue="90">
             <option value="30">in 30 days</option><option value="90">in 90 days</option><option value="365">in a year</option>
           </select>
-        </label>
-        {me?.mfa && <label className="flex flex-col gap-1.5 text-sm font-medium">Authenticator code<input className={clsx(input, "w-36")} name="code" required autoComplete="one-time-code" /></label>}
+        </Field>
+        {me?.mfa && <Field label="Authenticator code" className="w-36"><input className={input} name="code" required autoComplete="one-time-code" /></Field>}
         <button className={btnPrimary} disabled={create.isPending}>{create.isPending ? "Creating…" : "Create token"}</button>
       </form>
       <Alert error={create.error} />

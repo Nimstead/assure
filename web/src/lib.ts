@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { queryOptions, useQuery } from "@tanstack/react-query";
+import { queryOptions, useQuery, type QueryClient } from "@tanstack/react-query";
 
 // ---- types (mirror api/src/nimstead/app.py) ---------------------------------
 export const PRIORITIES = ["fix-now", "next", "planned", "low"] as const;
@@ -32,12 +32,18 @@ export interface Finding {
   summary: string | null; cvss: number | null; epss: number | null; kev: boolean; score: number;
   priority: Priority; reasons: string[]; status: Status; first_seen: string; last_seen: string;
   resolved_at: string | null;
+  /** Deadline from the SLA in force when it was first detected (ISO date); null once resolved or accepted. */
+  due: string | null;
 }
 export interface Action {
   ecosystem: string; package: string; fixed_version: string; hosts: string[]; asset_ids: string[]; vulns: string[];
   kev: boolean; max_score: number;
   /** A fix already in flight for this package, if any: link to it rather than planning another. */
   job: { id: string; status: JobStatus } | null;
+  /** Machines with that fix in flight; the rest can still be planned. */
+  busy_asset_ids: string[];
+  /** The newest failed attempt for this package, so Home doesn't offer the same plan blind. */
+  last_attempt: { id: string; status: JobStatus; error: string | null } | null;
 }
 export interface Summary {
   assets: number; open_by_priority: Partial<Record<Priority, number>>; top_actions: Action[]; attention: Job[];
@@ -65,7 +71,13 @@ export const JOB_STATUS_LABEL: Record<JobStatus, string> = {
 };
 export const groupJobs = (jobs: Job[]) =>
   JOB_GROUPS.map((g) => ({ ...g, jobs: jobs.filter((j) => (g.statuses as readonly string[]).includes(j.status)) }));
-export const isActiveJob = (j: Pick<Job, "status">) => ["approved", "dispatched", "verifying"].includes(j.status);
+/** A job no one has finished with yet (remediate.py ACTIVE): one per package per machine. */
+export const ACTIVE_JOB_STATUSES: readonly JobStatus[] = ["planned", "approved", "dispatched", "verifying"];
+/** Running somewhere, so worth polling. */
+export const isActiveJob = (j: Pick<Job, "status">) => j.status !== "planned" && ACTIVE_JOB_STATUSES.includes(j.status);
+export const jobsQ = queryOptions({ queryKey: ["jobs"], queryFn: () => api<Job[]>("/api/remediation/jobs") });
+/** Address of a job card on the Remediation page. */
+export const jobAnchor = (id: string) => `job-${id}`;
 
 export const APPROVE_COPY = "Saves a rollback copy of each package, upgrades, checks health, rolls back automatically on failure. Success is confirmed by the next inventory.";
 
@@ -137,7 +149,8 @@ async function errorMessage(res: Response): Promise<string> {
 }
 
 // ---- priority ----------------------------------------------------------------
-export const PRIORITY_LABEL: Record<Priority, string> = { "fix-now": "Fix now", next: "Next", planned: "Planned", low: "Low" };
+// "planned" stays the stored value; it reads as "Routine" so it can't be mistaken for a planned fix (DECISIONS 50).
+export const PRIORITY_LABEL: Record<Priority, string> = { "fix-now": "Fix now", next: "Next", planned: "Routine", low: "Low" };
 export const PRIORITY_CLASS: Record<Priority, string> = {
   "fix-now": "bg-now-bg text-now-fg", next: "bg-next-bg text-next-fg",
   planned: "bg-planned-bg text-planned-fg shadow-[inset_0_0_0_1px_var(--line-strong)]", low: "bg-low-bg text-low-fg",  // planned sits on the surface colour, so it gets an outline
@@ -186,6 +199,8 @@ export function installCommands(origin: string, token: string) {
 // ---- findings filters <-> URL ----------------------------------------------------
 export interface FindingsFilters {
   q: string; priority: Priority[]; fixable: boolean; kev: boolean; status: Status; asset: string; open: string;
+  /** Open and past its deadline (as evidence packs count it). */
+  overdue: boolean;
 }
 export type RawSearch = Record<string, string | undefined>;
 
@@ -193,7 +208,7 @@ export type RawSearch = Record<string, string | undefined>;
 export function parseFilters(raw: RawSearch): FindingsFilters {
   const status = (["open", "resolved", "accepted"] as const).find((s) => s === raw.status) ?? "open";
   const priority = (raw.priority ?? "").split(",").filter((p): p is Priority => (PRIORITIES as readonly string[]).includes(p));
-  return { q: raw.q ?? "", priority, fixable: raw.fixable !== "0", kev: raw.kev === "1", status, asset: raw.asset ?? "", open: raw.f ?? "" };
+  return { q: raw.q ?? "", priority, fixable: raw.fixable !== "0", kev: raw.kev === "1", status, asset: raw.asset ?? "", open: raw.f ?? "", overdue: raw.overdue === "1" };
 }
 
 /** Inverse of parseFilters: only non-default values reach the URL. */
@@ -206,17 +221,21 @@ export function filtersToSearch(f: FindingsFilters): RawSearch {
     status: f.status === "open" ? undefined : f.status,
     asset: f.asset || undefined,
     f: f.open || undefined,
+    overdue: f.overdue ? "1" : undefined,
   };
 }
 
 /** Query string sent to /api/findings. */
+// shortcut: the list is capped rather than paged; the page says when it's hit and CSV export has everything.
+export const FINDINGS_CAP = 5000;
 export function filtersToApi(f: FindingsFilters): string {
-  const p = new URLSearchParams({ status: f.status, limit: "5000" });
+  const p = new URLSearchParams({ status: f.status, limit: String(FINDINGS_CAP) });
   if (f.q) p.set("q", f.q);
   if (f.priority.length) p.set("priority", f.priority.join(","));
   if (f.asset) p.set("asset_id", f.asset);
   if (f.fixable) p.set("fixable", "true");
   if (f.kev) p.set("kev", "true");
+  if (f.overdue) p.set("overdue", "true");
   return p.toString();
 }
 
@@ -235,8 +254,37 @@ export function aiFilterToPatch(a: AiFilter): Partial<FindingsFilters> {
 }
 
 // ---- misc ----------------------------------------------------------------------
+/** Everything derived from these changes together; one place decides what a change makes stale. */
+const STALE = {
+  jobs: ["jobs", "summary", "ledger"],
+  findings: ["findings", "finding", "summary", "ledger"],
+  assets: ["assets", "findings", "finding", "summary", "ledger", "jobs"],
+  people: ["users", "api-tokens", "enroll-tokens", "ledger"],
+} as const;
+export const refresh = (qc: QueryClient, what: keyof typeof STALE) =>
+  Promise.all(STALE[what].map((k) => qc.invalidateQueries({ queryKey: [k] })));
+
+/** Says something through the shell's live regions (DECISIONS 49). Cleared first so the same words are read again. */
+export function announce(text: string, assertive = false) {
+  const el = typeof document === "undefined" ? null : document.getElementById(assertive ? "live-alert" : "live");
+  if (!el) return;
+  el.textContent = "";
+  setTimeout(() => { el.textContent = text; }, 30);
+}
+
 export function useTitle(title: string) {
   useEffect(() => { document.title = `${title} · Nimstead Assure`; }, [title]);
+}
+
+/** Lazy pages render their anchors only after their data loads, so the browser's own #hash jump finds nothing: do it then. */
+export function useHashScroll(ready: boolean) {
+  useEffect(() => {
+    if (!ready || !location.hash) return;
+    const el = document.getElementById(decodeURIComponent(location.hash.slice(1)));
+    if (!el) return;
+    el.scrollIntoView({ block: "start" });
+    el.focus({ preventScroll: true });  // targets carry tabIndex=-1, so keyboard and screen-reader users land there too
+  }, [ready]);
 }
 
 export type ThemeChoice = "system" | "light" | "dark";

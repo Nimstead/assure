@@ -17,7 +17,7 @@
   --accent-ink: light-dark(#FFFFFF, #111111);
   --accent-soft: light-dark(#EDEDEB, #2A2A2A);
   --seal: #B0122C; /* fill only: fails as text on dark (2.67:1) */
-  --focus: light-dark(#B0122C, #F2F2F0);
+  --focus: light-dark(#111111, #F2F2F0);  /* ink: crimson means danger here, never focus (DECISIONS 48) */
   /* priority: foreground / tinted background. Always paired with a text label; only "now" carries colour. */
   --now-fg: light-dark(#8E0E23, #F4A3AE);
   --now-bg: light-dark(#F8E3E6, #3A1016);
@@ -31,10 +31,6 @@
 :root[data-theme="light"] { color-scheme: light; }
 :root[data-theme="dark"] { color-scheme: dark; }
 
-@custom-variant dark {
-  &:where([data-theme="dark"] *) { @slot; }
-  @media (prefers-color-scheme: dark) { &:where(:root:not([data-theme="light"]) *) { @slot; } }
-}
 
 @theme inline {
   --font-sans: "Archivo Variable", ui-sans-serif, system-ui, sans-serif;
@@ -67,7 +63,12 @@ body { margin: 0; min-height: 100dvh; line-height: 1.5; text-rendering: optimize
 h1, h2, h3 { text-wrap: balance; letter-spacing: -0.015em; }
 a { text-underline-offset: 3px; }
 ::selection { background: var(--accent-soft); color: var(--ink); }
-:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+/* Layered, so a deliberate utility (outline-none) wins; targets focused only by script (tabindex=-1: page headings,
+   the drawer title, anchored sections and job cards) get no ring: the user didn't move focus there. */
+@layer base {
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  :is(h1, h2, section, li)[tabindex="-1"]:focus { outline: none; }
+}
 .num { font-variant-numeric: tabular-nums; }
 * { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
 input::placeholder { color: var(--muted); }
@@ -103,10 +104,10 @@ input::placeholder { color: var(--muted); }
 .frow > [data-c="score"] { grid-area: score; }
 .frow > [data-c="reason"] { grid-area: reason; }
 @media (min-width: 768px) {
-  .frow { grid-template-columns: 6.75rem 11.5rem minmax(0, 0.9fr) minmax(0, 1.9fr) minmax(0, 1fr) 2.5rem; grid-template-areas: "prio vuln pkg ver host score"; gap: 0 12px; }
+  .frow { grid-template-columns: 6.75rem 11.5rem minmax(0, 1.5fr) minmax(0, 1.2fr) minmax(0, 1fr) 2.5rem; grid-template-areas: "prio vuln pkg ver host score"; gap: 0 12px; }
 }
 @media (min-width: 1100px) {
-  .frow { grid-template-columns: 6.75rem 11.5rem minmax(0, 0.9fr) minmax(0, 1.6fr) minmax(0, 0.9fr) 2.5rem minmax(0, 1.6fr); grid-template-areas: "prio vuln pkg ver host score reason"; }
+  .frow { grid-template-columns: 6.75rem 11.5rem minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 0.9fr) 2.5rem minmax(0, 1.4fr); grid-template-areas: "prio vuln pkg ver host score reason"; }
   .frow > [data-c="reason"] { display: block; }
 }
 }

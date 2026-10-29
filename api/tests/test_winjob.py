@@ -239,3 +239,34 @@ def test_persistent_dism_failure_still_fails_loudly(tmp_path):
     h.reboot()
     r = resume(tmp_path, h)
     assert r["outcome"] == "rollback_failed" and "0x80010108" in r["error"]
+
+
+HOT_JOB = {**JOB, "packages": [{**JOB["packages"][0], "alt": {"kb": "5126999", "to": "10.0.26100.33001"}}]}
+
+
+@pytest.mark.parametrize("offered,kb", [(("5126646",), "5126646"), (("5126999",), "5126999")])
+def test_installs_whichever_of_cumulative_or_hotpatch_windows_update_offers(tmp_path, offered, kb):
+    host = FakeWin(offered=offered)
+    r = make(tmp_path, host, HOT_JOB).advance()
+    assert r["outcome"] == "pending_reboot", r
+    assert any("one of KB5126646 / KB5126999" in s["step"] and s["ok"] for s in r["steps"])
+    st = json.loads((tmp_path / "state.json").read_text())
+    assert st["kb"] == kb and any(f"'{kb}'" in c[-1] for c in host.log if c[0] == "powershell" and "CreateUpdateInstaller" in c[-1])
+
+
+@pytest.mark.parametrize("offered", [(), ("5126646", "5126999")])
+def test_neither_or_both_offered_changes_nothing(tmp_path, offered):
+    host = FakeWin(offered=offered)
+    r = make(tmp_path, host, HOT_JOB).advance()
+    assert r["outcome"] == "aborted" and r["error"].startswith("No changes made")
+    assert not any("CreateUpdateInstaller" in c[-1] for c in host.log if c[0] == "powershell")
+
+
+def test_state_with_a_bad_alternative_kb_is_not_resumed(tmp_path):
+    host = FakeWin()
+    make(tmp_path, host, HOT_JOB).advance()
+    st = json.loads((tmp_path / "state.json").read_text())
+    st["alt"] = {"kb": "5126999; calc", "to": "10.0.1.1"}
+    (tmp_path / "state.json").write_text(json.dumps(st))
+    with pytest.raises(agent.AgentError):
+        agent.WinJob(run=host, state_path=str(tmp_path / "state.json"), build=lambda: host.build)

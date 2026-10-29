@@ -175,3 +175,61 @@ def test_only_one_windows_job_in_flight_per_host(env):
     assert c.get("/api/agent/jobs", headers=h).json() == []  # still in flight: the second waits
     c.post(f"/api/agent/jobs/{j['id']}/report", json={"outcome": "applied", "versions": {W11: "10.0.26200.9711"}}, headers=h)
     assert len(c.get("/api/agent/jobs", headers=h).json()) == 1  # now the second goes out
+
+
+# ---- hotpatch (DECISIONS 52): real September 2025 CVRF, cumulative KB5065426 -> .6584, hotpatch KB5065474 -> .6508
+WS25 = "Windows Server 2025"
+
+
+def hotpatch_doc():
+    return json.loads((FIX / "2025-Sep-hotpatch.json").read_text())
+
+
+def test_sync_msrc_keeps_hotpatch_fixes_apart():
+    s = make_sessionmaker("sqlite://")()
+    sync_msrc(s, 60, msrc_client(hotpatch_doc()))
+    rows = {(a.package, a.record["aliases"][0]): a.record for a in s.scalars(select(Advisory))}
+    cum, hot = rows[(WS25, "CVE-2025-49734")], rows[(WS25 + " (Hotpatch)", "CVE-2025-49734")]
+    assert cum["affected"][0]["ranges"][0]["events"][1] == {"fixed": "10.0.26100.6584"}
+    assert cum["database_specific"] == {"kb": "5065426", "hotpatch": False}
+    assert hot["affected"][0]["ranges"][0]["events"][1] == {"fixed": "10.0.26100.6508"}
+    assert hot["affected"][0]["package"]["name"] == WS25 and hot["database_specific"] == {"kb": "5065474", "hotpatch": True}
+
+
+def _ws25_host(env, build):
+    with make_sessionmaker(env)() as s:
+        sync_msrc(s, 60, msrc_client(hotpatch_doc()))
+    c = user(env)
+    token = c.post("/api/enroll-tokens", json={"sandbox": True}).json()["token"]
+    a = c.post("/api/agent/enroll", json={"token": token, "hostname": "srv-1", "ecosystem": "Windows"}).json()
+    h = {"Authorization": f"Bearer {a['agent_key']}"}
+
+    def inv(b):
+        return c.post("/api/agent/inventory", json={"ecosystem": "Windows", "packages": [
+            {"ecosystem": "Windows", "name": WS25, "version": b, "source": None}]}, headers=h).json()
+    inv(build)
+    return c, a, inv
+
+
+def test_non_hotpatch_host_is_compared_with_cumulative_builds_only(env):
+    c, _, inv = _ws25_host(env, "10.0.26100.4946")
+    f = {x["vuln_id"]: x for x in c.get("/api/findings").json()}
+    assert set(f) == {"CVE-2025-49734", "CVE-2025-53796"} and {x["fixed_version"] for x in f.values()} == {"10.0.26100.6584"}
+    # a non-hotpatch build above the hotpatch build but below the cumulative one is still vulnerable
+    assert inv("10.0.26100.6510")["open"] == 2
+    assert inv("10.0.26100.6584")["open"] == 0
+
+
+def test_host_on_a_hotpatch_build_is_compared_with_hotpatch_builds(env):
+    c, _, inv = _ws25_host(env, "10.0.26100.6508")
+    assert not c.get("/api/findings").json()  # the hotpatch fixed it; no second finding under another name
+    assert inv("10.0.26100.4946")["open"] == 2
+    assert {x["package"] for x in c.get("/api/findings").json()} == {WS25}
+
+
+def test_windows_plan_carries_the_hotpatch_kb_as_the_alternative(env):
+    c, a, _ = _ws25_host(env, "10.0.26100.4946")
+    r = c.post("/api/remediation/jobs", json={"asset_id": a["asset_id"], "ecosystem": "Windows", "package": WS25})
+    assert r.status_code == 201, r.text
+    assert r.json()["packages"] == [{"name": WS25, "from": "10.0.26100.4946", "kb": "5065426", "to": "10.0.26100.6584",
+                                     "alt": {"kb": "5065474", "to": "10.0.26100.6508"}}]

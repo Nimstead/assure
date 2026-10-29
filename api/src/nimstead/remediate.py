@@ -23,7 +23,8 @@ from nimstead import evidence
 from nimstead.db import Advisory, Asset, Finding, InstalledPackage, Org, RemediationJob, now
 from nimstead.match import normalize_ecosystem
 from nimstead.notify import notify
-from nimstead.versions import comparator_for, sort_key
+from nimstead.scan import HOTPATCH
+from nimstead.versions import comparator_for, sort_key, windows_cmp
 
 # apt: rollback = old .deb; apk/dnf: rollback = file + package-database snapshot (DECISIONS 16)
 MANAGERS = {"Debian": "apt", "Ubuntu": "apt", "Alpine": "apk", "Rocky Linux": "dnf", "AlmaLinux": "dnf",
@@ -53,6 +54,34 @@ def _log(s: Session, job: RemediationJob, kind: str, **data) -> None:
     evidence.append(s, job.org_id, kind, job.id, {"asset_id": job.asset_id, "action": job.action_key, "status": job.status, **data})
     if job.status in ALERT_STATUSES:
         notify(s, job.org_id, f"remediation_{job.status}", f"Remediation {job.status}: {job.summary}" + (f" ({job.error})" if job.error else ""), urgent=job.status == "rollback_failed")
+
+
+def windows_kbs(s: Session, product: str, cves: list[str]) -> dict:
+    """The cumulative update that reaches the highest fixed build fixes them all: {"kb", "to"}, plus "alt" (the
+    hotpatch KB and build) when every CVE also has a hotpatch fix. The agent installs whichever one Windows Update
+    offers this host, so the plan doesn't need to know whether it is hotpatch-enrolled (DECISIONS 52)."""
+    def best(package):
+        out = {}
+        for rec in s.scalars(select(Advisory.record).where(Advisory.ecosystem == "Windows", Advisory.package == package)):
+            kb, fixed = str((rec.get("database_specific") or {}).get("kb") or ""), rec["affected"][0]["ranges"][0]["events"][-1].get("fixed")
+            for cve in rec["aliases"]:
+                if cve in cves and fixed and SAFE_KB.match(kb) and (cve not in out or windows_cmp(fixed, out[cve][0]) < 0):
+                    out[cve] = (fixed, kb)
+        return out
+
+    def top(fixes):
+        return max(fixes.values(), key=lambda x: sort_key(windows_cmp)(x[0]))
+
+    cum = best(product)
+    if not cum or set(cves) - set(cum):
+        raise RemediationError("No Windows update (KB) is known for the fixing build; refusing to plan")
+    to, kb = top(cum)
+    out = {"kb": kb, "to": to}
+    if not set(cves) - set(hot := best(product + HOTPATCH)):
+        alt_to, alt_kb = top(hot)
+        if alt_kb != kb:
+            out["alt"] = {"kb": alt_kb, "to": alt_to}
+    return out
 
 
 def plan(s: Session, asset: Asset, ecosystem: str, package: str, created_by: str, include: list[str] | None = None) -> RemediationJob:
@@ -86,13 +115,9 @@ def plan(s: Session, asset: Asset, ecosystem: str, package: str, created_by: str
     if not pkgs or not all(name_ok(p["name"]) and SAFE_VERSION.match(p["from"]) for p in pkgs):
         raise RemediationError("Installed package names or versions failed validation; refusing to plan")
     target = max((f.fixed_version for f in findings), key=sort_key(comparator_for(ecosystem)))  # agent upgrades to repo candidate
-    if manager == "windows":  # the cumulative update that reaches the highest fixed build fixes them all
-        top = next(f for f in findings if f.fixed_version == target)
-        rec = s.get(Advisory, (top.advisory_ids[0], ecosystem, package)) if top.advisory_ids else None
-        kb = str(((rec.record if rec else {}).get("database_specific") or {}).get("kb", ""))
-        if not SAFE_KB.match(kb):
-            raise RemediationError("No Windows update (KB) is known for the fixing build; refusing to plan")
-        pkgs = [{**pkgs[0], "kb": kb, "to": target}]
+    if manager == "windows":
+        pkgs = [{**pkgs[0], **windows_kbs(s, package, [f.vuln_id for f in findings])}]
+        target = pkgs[0]["to"]
     job = RemediationJob(
         org_id=asset.org_id, asset_id=asset.id, manager=manager, action_key=key, packages=pkgs,
         finding_ids=[f.id for f in findings], created_by=created_by,

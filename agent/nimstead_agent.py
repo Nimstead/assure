@@ -957,8 +957,10 @@ class WinJob:
         self.run, self.state_path, self.build, self.retry_wait = run, state_path, build, retry_wait
         if job is not None:
             p = (job.get("packages") or [{}])[0]
+            alt = p.get("alt") if isinstance(p.get("alt"), dict) else None  # the same fix as a hotpatch (DECISIONS 52)
             self.s = {"job": job, "phase": "start", "steps": [], "kb": str(p.get("kb", "")), "from": p.get("from"),
                       "to": p.get("to"), "product": p.get("name"), "units": job.get("health_units") or [],
+                      "alt": {"kb": str(alt.get("kb", "")), "to": alt.get("to")} if alt else None,
                       "settle": min(max(int(job.get("settle_seconds", 60) or 0), 0), 900) if settle is None else int(settle),
                       "inject": bool(fail_after_apply)}  # sandbox fault injection (run-job only; never from the server)
         else:
@@ -974,6 +976,8 @@ class WinJob:
                 s.get("phase") in ("start", "verify", "rolled_back_pending") and isinstance(s.get("steps"), list)
                 and SAFE_KB.match(str(s.get("kb", ""))) and SAFE_PRODUCT.match(str(s.get("product")))
                 and SAFE_VERSION.match(str(s.get("from") or "")) and (s.get("to") is None or SAFE_VERSION.match(str(s["to"])))
+                and (s.get("alt") is None or (isinstance(s["alt"], dict) and SAFE_KB.match(str(s["alt"].get("kb", "")))
+                                              and SAFE_VERSION.match(str(s["alt"].get("to") or ""))))
                 and isinstance(s.get("units"), list) and all(SAFE_NAME.match(str(u)) for u in s["units"])
                 and isinstance(s.get("settle"), int) and 0 <= s["settle"] <= 900
                 and all(ROLLUP_NAME.match(str(x)) for x in [*s.get("new_packages", []), *s.get("baseline", {})]))
@@ -1044,9 +1048,17 @@ class WinJob:
         rc, out = ps(self.run, PS_REBOOT_PENDING)
         self.step("no reboot already pending", rc == 0 and out.strip().lower() == "false", out)
         self.health("before change")
-        rc, out = ps(self.run, PS_FIND.replace("%KB%", s["kb"]))
-        offered = json.loads(out) if rc == 0 and out.strip().startswith("[") else []
-        self.step(f"Windows Update offers exactly KB{s['kb']}", len(offered) == 1, out)
+        found = {}  # KB -> (target build, how many updates Windows Update offers for it)
+        for kb, to in [(s["kb"], s["to"]), *([(s["alt"]["kb"], s["alt"]["to"])] if s.get("alt") else [])]:
+            rc, out = ps(self.run, PS_FIND.replace("%KB%", kb))
+            found[kb] = (to, len(json.loads(out)) if rc == 0 and out.strip().startswith("[") else 0, out)
+        offered = [kb for kb, (_, n, _) in found.items() if n == 1]
+        if len(found) == 1:
+            self.step(f"Windows Update offers exactly KB{s['kb']}", offered, found[s["kb"]][2])
+        else:  # cumulative or hotpatch: whichever this host is offered, never both
+            self.step(f"Windows Update offers exactly one of KB{' / KB'.join(found)}", len(offered) == 1,
+                      "; ".join(f"KB{kb}: {n} offered" for kb, (_, n, _) in found.items()))
+            s["kb"], s["to"] = offered[0], found[offered[0]][0]
         s["baseline"] = self.rollups()
         self.step("rollback baseline recorded", any(v.strip() == "Installed" for v in s["baseline"].values()),
                   "installed cumulative packages: " + ", ".join(k for k, v in s["baseline"].items() if v.strip() == "Installed"))

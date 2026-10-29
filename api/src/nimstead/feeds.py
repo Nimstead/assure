@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from nimstead import evidence, external, notify, updates, winapps
 from nimstead.db import Advisory, Asset, Cvss, Epss, InstalledPackage, Kev, Org, make_sessionmaker, now
 from nimstead.match import normalize_ecosystem
-from nimstead.scan import rescan
+from nimstead.scan import HOTPATCH, rescan
 from nimstead.versions import windows_cmp
 
 log = logging.getLogger(__name__)
@@ -219,27 +219,34 @@ def sync_msrc(session: Session, months: int = 12, client=None) -> dict:
             cve = v["CVE"]
             if not cve.startswith("CVE-"):
                 continue
-            fixes: dict[str, tuple[str, str | None]] = {}  # product id -> lowest (FixedBuild, KB): any listed fix suffices
+            # product id -> lowest (FixedBuild, KB), cumulative updates and hotpatches apart (DECISIONS 51-52): a host is
+            # only compared with fixes it can install, so its plan never names a KB Windows Update won't offer it
+            fixes: dict[str, tuple[str, str | None]] = {}
+            hot: dict[str, tuple[str, str | None]] = {}
             for r in v.get("Remediations", []):
                 b = r.get("FixedBuild")
                 if b and re.fullmatch(r"\d+(\.\d+){2,3}", b):
                     kb = (r.get("Description") or {}).get("Value", "")
+                    track = hot if "hotpatch" in (r.get("SubType") or "").replace(" ", "").lower() else fixes
                     for pid in r["ProductID"]:
-                        if pid not in fixes or windows_cmp(b, fixes[pid][0]) < 0:
-                            fixes[pid] = (b, kb if kb.isdigit() else None)
+                        if pid not in track or windows_cmp(b, track[pid][0]) < 0:
+                            track[pid] = (b, kb if kb.isdigit() else None)
             scores = {pid: s for s in v.get("CVSSScoreSets", []) for pid in s["ProductID"]}
-            for pid, (build, kb) in fixes.items():
+            for pid, (build, kb), suffix in [*((p, f, "") for p, f in fixes.items()), *((p, f, HOTPATCH) for p, f in hot.items())]:
                 # some entries say "Windows 11 version 26H1" (lowercase v); make the names uniform
                 name = re.sub(r"^(Windows 11) version", r"\1 Version", names.get(pid, ""))
                 if not re.match(r"Windows (10|11|Server)\b", name):
                     continue
                 sc = scores.get(pid)
                 vec = (sc or {}).get("Vector", "")
-                rec = {"id": f"MSRC-{cve}-{pid}", "aliases": [cve], "modified": mod,
+                # a hotpatch row is stored under "<product> (Hotpatch)" but names the product itself, so scan.rescan can
+                # merge both tracks for a host that is on a hotpatch build and keep one finding per CVE
+                rec = {"id": f"MSRC-{cve}-{pid}{'-hotpatch' if suffix else ''}", "aliases": [cve], "modified": mod,
                        "summary": (v["Title"]["Value"] + (f" (KB{kb})" if kb else ""))[:500],
-                       "database_specific": {"kb": kb},
+                       "database_specific": {"kb": kb, "hotpatch": bool(suffix)},
                        "affected": [{"package": {"ecosystem": "Windows", "name": name},
                                      "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": build}]}]}]}
+                name += suffix
                 if vec.startswith("CVSS:3"):
                     rec["severity"] = [{"type": "CVSS_V3", "score": vec}]
                 elif sc:  # no vector: risk.cvss_base can't read it, so keep the score in the Cvss table

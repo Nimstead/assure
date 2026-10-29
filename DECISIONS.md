@@ -83,3 +83,12 @@ Short log; newest last. Why, not what.
       `WebDAV`, `Windows Print Spooler Components`, `OpenSSH for Windows`, `Windows Subsystem for Linux`.
     - **Threat context** (`Threats` Type 1): `Publicly Disclosed:Yes|No;Exploited:Yes|No;Latest Software Release:
       Exploitation Detected|More Likely|Less Likely|Unlikely|N/A`.
+52. **Hotpatch and cumulative fixes are separate tracks, and a Windows job may carry both KBs.** `sync_msrc` keeps the
+    lowest cumulative build under the product name and the hotpatch build under `<product> (Hotpatch)` (the record still
+    names the product). A host is on the hotpatch track only when its installed build *is* a known hotpatch build; then
+    its CVEs with a hotpatch fix are judged by that build and the rest by cumulative builds, under one finding per CVE.
+    Every other host is compared with cumulative builds, the stricter answer: a hotpatch-enrolled host on a baseline
+    build looks vulnerable until it takes the month's fix, which is true. No enrolment signal is needed, which matters
+    because none is documented. The plan sends the cumulative KB and, when every finding also has a hotpatch fix, the
+    hotpatch KB as `alt`; the agent asks Windows Update for both and installs the one it offers (exactly one; both or
+    neither = "No changes made"), then verifies against that KB's own target build.

@@ -12,6 +12,16 @@ from nimstead.db import Advisory, Asset, Cvss, Epss, Finding, InstalledPackage, 
 from nimstead.match import Package, match_package, normalize_ecosystem
 from nimstead.notify import notify
 
+HOTPATCH = " (Hotpatch)"  # advisory package suffix for MSRC hotpatch fixes (DECISIONS 52)
+
+
+def hotpatch_track(hot: list[dict], version: str) -> tuple[set[str], list[dict]] | None:
+    """A host whose build is a hotpatch build is on the hotpatch track: (CVEs with a hotpatch fix, those records).
+    Every other host is compared with cumulative builds only, the stricter answer (DECISIONS 52)."""
+    if not any(r["affected"][0]["ranges"][0]["events"][-1].get("fixed") == version for r in hot):
+        return None
+    return {a for r in hot for a in r["aliases"]}, hot
+
 
 def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dict | None = None) -> dict:
     """`cache`: decoded advisory records by (ecosystem, package), shared across hosts within one feed-update pass."""
@@ -48,6 +58,8 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
     wanted: dict[str, set[str]] = defaultdict(set)
     for _, eco, name, _ in targets:
         wanted[eco].add(name)
+        if eco == "Windows":
+            wanted[eco].add(name + HOTPATCH)
     advisories = cache if cache is not None else {}
     for eco, names in wanted.items():
         names_l = sorted(n for n in names if (eco, n) not in advisories)
@@ -61,6 +73,8 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
     matches = []
     for p, eco, name, version in targets:
         records = advisories.get((eco, name))
+        if eco == "Windows" and (hot := hotpatch_track(advisories.get((eco, name + HOTPATCH)) or [], version)):
+            records = [r for r in records or [] if not set(r["aliases"]) & hot[0]] + hot[1]
         if not records:
             continue
         mkey = ("match", p.ecosystem, p.name, version, name)  # pure function of these: same answer on every host

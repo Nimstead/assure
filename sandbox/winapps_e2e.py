@@ -9,6 +9,7 @@ Run from api/:  uv run python ../sandbox/winapps_e2e.py VM_NAME [--keep]   (the 
 """
 
 import json
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -43,7 +44,10 @@ def note(step, **kw):
 
 
 def guest(cmd, timeout=1800):
-    rc, out = winvm.run(NAME, cmd, timeout=timeout)
+    try:
+        rc, out = winvm.run(NAME, cmd, timeout=timeout)
+    except subprocess.TimeoutExpired:  # a hung installer fails that app, not the run
+        rc, out = 1, f"timed out after {timeout} s"
     return rc, out
 
 
@@ -53,13 +57,30 @@ def collect(py, agent):
 
 
 def found(inv, want):
+    """Every install identified as `want` (some products, e.g. JDKs, install a newer version beside the old one)."""
+    hits = []
     for p in inv["packages"]:
         if p["ecosystem"] != "WinApp":
             continue
         hit = winapps.identify(p["name"], p["source"], p["version"]) or msproducts.from_winapp(p["name"], p["source"], p["version"])
         if hit and hit[0] == want:
-            return {"display_name": p["name"], "registry_version": p["version"], "identified": list(hit)}
-    return None
+            hits.append({"display_name": p["name"], "registry_version": p["version"], "identified": list(hit)})
+    return hits
+
+
+def older_version(wid):
+    """The version just below winget's newest: winget drops old versions, and the one below still has an upgrade."""
+    rc, out = guest(f"winget show --id {wid} --exact --versions --accept-source-agreements --disable-interactivity")
+    lines = out.splitlines()
+    vs = [v.strip() for v in lines[next((i for i, x in enumerate(lines) if x.startswith("---")), len(lines)) + 1:] if v.strip()]
+    return vs[1] if rc == 0 and len(vs) > 1 else None
+
+
+def save(results):
+    proven = sorted(w for w, r in results.items() if r["proven"])
+    OUT.write_text(json.dumps({"result": "PASS" if proven else "FAIL", "vm": NAME, "proven": proven, "apps": results, "steps": log},
+                              indent=2, default=str) + "\n", encoding="utf-8")
+    return proven
 
 
 def main(keep=False) -> int:
@@ -75,8 +96,16 @@ def main(keep=False) -> int:
     note("VM ready", python=py, winget=out.strip()[-40:])
     results = {}
     for wid, (old, key) in APPS.items():
-        rc, out = guest(f"winget install --id {wid} --exact --version {old} --silent --accept-package-agreements "
-                        "--accept-source-agreements --disable-interactivity --scope machine", timeout=1800)
+        if found(collect(py, agent), key):
+            results[wid] = {"proven": False, "why": "already installed before the test (an earlier run): uninstall it to retest"}
+            note("already installed", app=wid)
+            continue
+        install = ("winget install --id {} --exact --version {} --silent --accept-package-agreements "
+                   "--accept-source-agreements --disable-interactivity --scope machine")
+        rc, out = guest(install.format(wid, old), timeout=1800)
+        if rc != 0 and "No version found" in out and (alt := older_version(wid)):
+            old = alt  # the pinned old version left winget's repository
+            rc, out = guest(install.format(wid, old), timeout=1800)
         if rc != 0:
             results[wid] = {"proven": False, "why": f"winget couldn't install {old}: {out.strip()[-200:]}"}
             note("not installable", app=wid)
@@ -84,12 +113,12 @@ def main(keep=False) -> int:
         before = found(collect(py, agent), key)
         guest(f"winget upgrade --id {wid} --exact --silent --accept-package-agreements --disable-interactivity", timeout=1800)
         after = found(collect(py, agent), key)
-        ok = bool(before and after and before["identified"][1] != after["identified"][1])
-        results[wid] = {"proven": ok, "old": before, "new": after}
+        old_vs = {h["identified"][1] for h in before}
+        ok = bool(before and any(h["identified"][1] not in old_vs for h in after))
+        results[wid] = {"proven": ok, "installed": old, "old": before, "new": after}
         note("identified on a real install" if ok else "NOT identified as expected", app=wid, old=before, new=after)
-    proven = sorted(w for w, r in results.items() if r["proven"])
-    OUT.write_text(json.dumps({"result": "PASS" if proven else "FAIL", "vm": NAME, "proven": proven, "apps": results, "steps": log},
-                              indent=2, default=str) + "\n", encoding="utf-8")
+        save(results)  # kept if a later installer hangs the run
+    proven = save(results)
     if not keep:
         winvm.destroy(NAME)
     return 0 if proven else 1

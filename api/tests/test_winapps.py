@@ -378,6 +378,8 @@ def test_cvelist_rows_only_where_nvd_has_none_and_nvd_replaces_them(env):
     ("LibreOffice 24.8.3.2", "The Document Foundation", "24.8.3.2", ("libreoffice:libreoffice", "24.8.3")),
     ("Foxit PDF Reader", "Foxit Software Inc.", "2024.3.0.26795", ("foxit:pdf_reader", "2024.3.0.26795")),
     ("KeePass Password Safe 2.57.1", "Dominik Reichl", "2.57.1", ("keepass:keepass", "2.57.1")),
+    ("KeePass 2.61.1", "Dominik Reichl", "2.61.1", ("keepass:keepass", "2.61.1")),  # current installers (real VM, 2026-10-29)
+    ("KeePassXC", "KeePassXC Team", "2.7.9", None),
     ("TeamViewer", "TeamViewer", "15.59.5", ("teamviewer:teamviewer", "15.59.5")),
     ("AnyDesk", "AnyDesk Software GmbH", "ad 9.0.0", ("anydesk:anydesk", "9.0.0")),
     ("Cisco Secure Client - AnyConnect VPN", "Cisco Systems, Inc.", "5.1.6.103", ("cisco:secure_client", "5.1.6.103")),

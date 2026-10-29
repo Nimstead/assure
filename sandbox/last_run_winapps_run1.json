@@ -1,0 +1,249 @@
+{
+  "result": "PASS",
+  "vm": "nimstead-sbx-win-464975",
+  "proven": [
+    "VideoLAN.VLC",
+    "WinSCP.WinSCP"
+  ],
+  "apps": {
+    "7zip.7zip": {
+      "proven": false,
+      "why": "winget couldn't install 23.01: Found an existing package already installed. Trying to upgrade the installed package...\nNo available upgrade found.\nNo newer package versions are available from the configured sources."
+    },
+    "WinSCP.WinSCP": {
+      "proven": true,
+      "old": {
+        "display_name": "WinSCP 6.1.2",
+        "registry_version": "6.1.2",
+        "identified": [
+          "winscp:winscp",
+          "6.1.2"
+        ]
+      },
+      "new": {
+        "display_name": "WinSCP 6.7",
+        "registry_version": "6.7",
+        "identified": [
+          "winscp:winscp",
+          "6.7"
+        ]
+      }
+    },
+    "TimKosse.FileZilla.Client": {
+      "proven": false,
+      "why": "winget couldn't install 3.65.0: No package found matching input criteria."
+    },
+    "DominikReichl.KeePass": {
+      "proven": false,
+      "old": null,
+      "new": null
+    },
+    "Notepad++.Notepad++": {
+      "proven": false,
+      "why": "winget couldn't install 8.6.2: No version found matching: 8.6.2"
+    },
+    "VideoLAN.VLC": {
+      "proven": true,
+      "old": {
+        "display_name": "VLC media player",
+        "registry_version": "3.0.18.0",
+        "identified": [
+          "videolan:vlc_media_player",
+          "3.0.18.0"
+        ]
+      },
+      "new": {
+        "display_name": "VLC media player",
+        "registry_version": "3.0.24.0",
+        "identified": [
+          "videolan:vlc_media_player",
+          "3.0.24.0"
+        ]
+      }
+    },
+    "EclipseAdoptium.Temurin.21.JDK": {
+      "proven": false,
+      "old": {
+        "display_name": "Eclipse Temurin JDK with Hotspot 21.0.2+13 (x64)",
+        "registry_version": "21.0.2.13",
+        "identified": [
+          "oracle:openjdk",
+          "21.0.2"
+        ]
+      },
+      "new": {
+        "display_name": "Eclipse Temurin JDK with Hotspot 21.0.2+13 (x64)",
+        "registry_version": "21.0.2.13",
+        "identified": [
+          "oracle:openjdk",
+          "21.0.2"
+        ]
+      }
+    },
+    "Microsoft.OpenJDK.17": {
+      "proven": false,
+      "why": "winget couldn't install 17.0.10.7: 3\nInstaller log is available at: C:\\Users\\Administrator\\AppData\\Local\\Packages\\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\\LocalState\\DiagOutputDir\\Microsoft.OpenJDK.17.17.0.10.7-26-10-29-04-01-32.log"
+    },
+    "Mozilla.Thunderbird": {
+      "proven": false,
+      "why": "winget couldn't install 115.6.0: No applicable installer found; see logs for more details."
+    },
+    "TheDocumentFoundation.LibreOffice": {
+      "proven": false,
+      "why": "winget couldn't install 7.6.4.1: No version found matching: 7.6.4.1"
+    },
+    "Opera.Opera": {
+      "proven": false,
+      "why": "winget couldn't install 106.0.4998.70: ng https://get.geo.opera.com/pub/opera/desktop/106.0.4998.70/win/Opera_106.0.4998.70_Setup_x64.exe\nSuccessfully verified installer hash\nStarting package install...\nInstaller failed with exit code: 104"
+    },
+    "VivaldiTechnologies.Vivaldi": {
+      "proven": false,
+      "why": "winget couldn't install 6.5.3206.53: No package found matching input criteria."
+    },
+    "Foxit.FoxitReader": {
+      "proven": false,
+      "why": "winget couldn't install 2023.3.0.23028: Installer log is available at: C:\\Users\\Administrator\\AppData\\Local\\Packages\\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\\LocalState\\DiagOutputDir\\Foxit.FoxitReader.2023.3.0.23028-26-10-29-04-03-56.log"
+    },
+    "OpenVPNTechnologies.OpenVPN": {
+      "proven": false,
+      "why": "winget couldn't install 2.6.8.1: No version found matching: 2.6.8.1"
+    },
+    "Oracle.VirtualBox": {
+      "proven": false,
+      "why": "winget couldn't install 7.0.12: lled\n\nDownloading https://download.virtualbox.org/virtualbox/7.0.12/VirtualBox-7.0.12-159484-Win.exe\nSuccessfully verified installer hash\nStarting package install...\nInstaller failed with exit code: 1"
+    },
+    "Microsoft.PowerShell": {
+      "proven": false,
+      "why": "winget couldn't install 7.4.1.0: 603\nInstaller log is available at: C:\\Users\\Administrator\\AppData\\Local\\Packages\\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\\LocalState\\DiagOutputDir\\Microsoft.PowerShell.7.4.1.0-26-10-29-04-04-56.log"
+    },
+    "Microsoft.VisualStudioCode": {
+      "proven": false,
+      "why": "winget couldn't install 1.85.0: nstaller log is available at: C:\\Users\\Administrator\\AppData\\Local\\Packages\\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\\LocalState\\DiagOutputDir\\Microsoft.VisualStudioCode.1.85.0-26-10-29-04-05-10.log"
+    }
+  },
+  "steps": [
+    {
+      "step": "VM ready",
+      "python": "C:\\Program Files\\Nimstead\\runtime\\d012f3aa29cf\\python.exe",
+      "winget": "v1.29.380"
+    },
+    {
+      "step": "not installable",
+      "app": "7zip.7zip"
+    },
+    {
+      "step": "identified on a real install",
+      "app": "WinSCP.WinSCP",
+      "old": {
+        "display_name": "WinSCP 6.1.2",
+        "registry_version": "6.1.2",
+        "identified": [
+          "winscp:winscp",
+          "6.1.2"
+        ]
+      },
+      "new": {
+        "display_name": "WinSCP 6.7",
+        "registry_version": "6.7",
+        "identified": [
+          "winscp:winscp",
+          "6.7"
+        ]
+      }
+    },
+    {
+      "step": "not installable",
+      "app": "TimKosse.FileZilla.Client"
+    },
+    {
+      "step": "NOT identified as expected",
+      "app": "DominikReichl.KeePass",
+      "old": null,
+      "new": null
+    },
+    {
+      "step": "not installable",
+      "app": "Notepad++.Notepad++"
+    },
+    {
+      "step": "identified on a real install",
+      "app": "VideoLAN.VLC",
+      "old": {
+        "display_name": "VLC media player",
+        "registry_version": "3.0.18.0",
+        "identified": [
+          "videolan:vlc_media_player",
+          "3.0.18.0"
+        ]
+      },
+      "new": {
+        "display_name": "VLC media player",
+        "registry_version": "3.0.24.0",
+        "identified": [
+          "videolan:vlc_media_player",
+          "3.0.24.0"
+        ]
+      }
+    },
+    {
+      "step": "NOT identified as expected",
+      "app": "EclipseAdoptium.Temurin.21.JDK",
+      "old": {
+        "display_name": "Eclipse Temurin JDK with Hotspot 21.0.2+13 (x64)",
+        "registry_version": "21.0.2.13",
+        "identified": [
+          "oracle:openjdk",
+          "21.0.2"
+        ]
+      },
+      "new": {
+        "display_name": "Eclipse Temurin JDK with Hotspot 21.0.2+13 (x64)",
+        "registry_version": "21.0.2.13",
+        "identified": [
+          "oracle:openjdk",
+          "21.0.2"
+        ]
+      }
+    },
+    {
+      "step": "not installable",
+      "app": "Microsoft.OpenJDK.17"
+    },
+    {
+      "step": "not installable",
+      "app": "Mozilla.Thunderbird"
+    },
+    {
+      "step": "not installable",
+      "app": "TheDocumentFoundation.LibreOffice"
+    },
+    {
+      "step": "not installable",
+      "app": "Opera.Opera"
+    },
+    {
+      "step": "not installable",
+      "app": "VivaldiTechnologies.Vivaldi"
+    },
+    {
+      "step": "not installable",
+      "app": "Foxit.FoxitReader"
+    },
+    {
+      "step": "not installable",
+      "app": "OpenVPNTechnologies.OpenVPN"
+    },
+    {
+      "step": "not installable",
+      "app": "Oracle.VirtualBox"
+    },
+    {
+      "step": "not installable",
+      "app": "Microsoft.PowerShell"
+    },
+    {
+      "step": "not installable",
+      "app": "Microsoft.VisualStudioCode"
+    }
+  ]
+}

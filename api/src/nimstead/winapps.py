@@ -66,7 +66,7 @@ PRODUCTS: tuple[Product, ...] = (
     Product("libreoffice:libreoffice", _p(r"LibreOffice \d+\.\d+(?:\.\d+)*"), publisher=_p(r"The Document Foundation"),
             version=lambda m, v: ".".join(v.split(".")[:3]), branch=True),  # 24.8.3.2 = release 24.8.3, build 2
     Product("foxit:pdf_reader", _p(r"Foxit PDF Reader"), publisher=_p(r"Foxit Software Inc\.")),
-    Product("keepass:keepass", _p(r"KeePass Password Safe 2\.\d+(?:\.\d+)?"), version=lambda m, v: ".".join(v.split(".")[:3])),
+    Product("keepass:keepass", _p(r"KeePass(?: Password Safe)? 2\.\d+(?:\.\d+)?"), version=lambda m, v: ".".join(v.split(".")[:3])),
     # ---- batch 2: remote access, VPN, file transfer (plan T32)
     Product("teamviewer:teamviewer", _p(r"TeamViewer(?: \d+)?"), publisher=_p(r"TeamViewer(?: Germany GmbH)?")),
     Product("anydesk:anydesk", _p(r"AnyDesk"), publisher=_p(r"AnyDesk Software GmbH"), version=lambda m, v: re.sub(r"^ad ", "", v)),

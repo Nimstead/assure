@@ -1,0 +1,130 @@
+{
+  "result": "partial",
+  "proven": [
+    "DominikReichl.KeePass"
+  ],
+  "steps": [
+    {
+      "time": "2026-10-29T11:07:36",
+      "step": "VM ready",
+      "python": "C:\\Program Files\\Nimstead\\runtime\\d012f3aa29cf\\python.exe",
+      "winget": "v1.29.380"
+    },
+    {
+      "time": "2026-10-29T11:07:52",
+      "step": "already installed",
+      "app": "7zip.7zip"
+    },
+    {
+      "time": "2026-10-29T11:08:08",
+      "step": "already installed",
+      "app": "WinSCP.WinSCP"
+    },
+    {
+      "time": "2026-10-29T11:08:28",
+      "step": "not installable",
+      "app": "TimKosse.FileZilla.Client"
+    },
+    {
+      "time": "2026-10-29T11:09:37",
+      "step": "identified on a real install",
+      "app": "DominikReichl.KeePass",
+      "old": [
+        {
+          "display_name": "KeePass 2.55",
+          "registry_version": "2.55.0",
+          "identified": [
+            "keepass:keepass",
+            "2.55.0"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "KeePass 2.61.1",
+          "registry_version": "2.61.1",
+          "identified": [
+            "keepass:keepass",
+            "2.61.1"
+          ]
+        }
+      ]
+    },
+    {
+      "time": "2026-10-29T11:10:49",
+      "step": "NOT identified as expected",
+      "app": "Notepad++.Notepad++",
+      "old": [],
+      "new": []
+    },
+    {
+      "time": "2026-10-29T11:11:05",
+      "step": "already installed",
+      "app": "VideoLAN.VLC"
+    },
+    {
+      "time": "2026-10-29T11:12:09",
+      "step": "not installable",
+      "app": "EclipseAdoptium.Temurin.21.JDK"
+    },
+    {
+      "time": "2026-10-29T11:14:21",
+      "step": "NOT identified as expected",
+      "app": "Microsoft.OpenJDK.17",
+      "old": [
+        {
+          "display_name": "Microsoft Build of OpenJDK with Hotspot 17.0.10+7 (x64)",
+          "registry_version": "17.0.10.7",
+          "identified": [
+            "oracle:openjdk",
+            "17.0.10"
+          ]
+        }
+      ],
+      "new": []
+    },
+    {
+      "time": "2026-10-29T11:14:41",
+      "step": "not installable",
+      "app": "Mozilla.Thunderbird"
+    },
+    {
+      "time": "2026-10-29T11:16:37",
+      "step": "not installable",
+      "app": "TheDocumentFoundation.LibreOffice"
+    },
+    {
+      "time": "2026-10-29T11:17:00",
+      "step": "not installable",
+      "app": "Opera.Opera"
+    },
+    {
+      "time": "2026-10-29T11:17:20",
+      "step": "not installable",
+      "app": "VivaldiTechnologies.Vivaldi"
+    },
+    {
+      "time": "2026-10-29T11:17:40",
+      "step": "not installable",
+      "app": "Foxit.FoxitReader"
+    },
+    {
+      "time": "2026-10-29T11:18:09",
+      "step": "not installable",
+      "app": "OpenVPNTechnologies.OpenVPN"
+    },
+    {
+      "time": "2026-10-29T11:18:30",
+      "step": "not installable",
+      "app": "Oracle.VirtualBox"
+    },
+    {
+      "time": "2026-10-29T11:18:51",
+      "step": "not installable",
+      "app": "Microsoft.PowerShell"
+    },
+    {
+      "step": "run stopped: Microsoft.VisualStudioCode's installer hung past the 30-minute guest timeout (harness now records that as a failed app)"
+    }
+  ]
+}

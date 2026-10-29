@@ -18,15 +18,29 @@ NEW_PKG = "Package_for_RollupFix~31bf3856ad364e35~amd64~~26100.33650.1.3"
 
 
 class FakeWin:
-    def __init__(self, offered=("5126646",), service_breaks_on_new=False, removal_works=True, busy_removals=0, manifest="removable"):
+    def __init__(self, offered=("5126646",), service_breaks_on_new=False, removal_works=True, busy_removals=0, manifest="removable",
+                 battery="", cluster=False, drain="Paused", crashes="", why=""):
         self.build, self.pkgs, self.manifest = OLD, {BASE_PKG: "Installed"}, manifest
         self.offered, self.breaks, self.removal_works = list(offered), service_breaks_on_new, removal_works
         self.pending_remove, self.log, self.busy = [], [], busy_removals
+        self.battery, self.cluster, self.drain, self.crashes, self.why = battery, cluster, drain, crashes, why
 
     def __call__(self, cmd, cwd=None):
         self.log.append(cmd)
         if cmd[0] == "powershell":
             script = cmd[-1]
+            if "Win32_Battery" in script:
+                return 0, self.battery
+            if "HKLM:\\Cluster" in script:
+                return 0, "NODE1" if self.cluster else ""
+            if "Suspend-ClusterNode" in script:
+                return (0, self.drain) if self.drain else (1, "drain failed: roles couldn't move")
+            if "Resume-ClusterNode" in script:
+                return 0, "Up"
+            if "Service Control Manager" in script:
+                return 0, self.crashes if self.build == NEW else ""
+            if "UseWUServer" in script:
+                return 0, self.why
             if "RebootPending" in script:
                 return 0, "False"
             if "Get-Service" in script:
@@ -270,3 +284,97 @@ def test_state_with_a_bad_alternative_kb_is_not_resumed(tmp_path):
     (tmp_path / "state.json").write_text(json.dumps(st))
     with pytest.raises(agent.AgentError):
         agent.WinJob(run=host, state_path=str(tmp_path / "state.json"), build=lambda: host.build)
+
+
+# ---- fleet operations on the host (plan T13, T14, T41, T42)
+
+def test_never_starts_on_battery(tmp_path):
+    h = FakeWin(battery="battery 31%")
+    r = make(tmp_path, h).advance()
+    assert r["outcome"] == "aborted" and "battery 31%" in r["error"]
+    assert not any("CreateUpdateDownloader" in c[-1] for c in h.log if c[0] == "powershell")
+
+
+def test_not_offered_says_why_from_the_machines_update_settings(tmp_path):
+    h = FakeWin(offered=(), why="this machine gets updates from WSUS (http://wsus:8530); WSUS hasn't approved KB5126646 for it")
+    r = make(tmp_path, h).advance()
+    assert r["outcome"] == "aborted" and "WSUS hasn't approved KB5126646" in r["steps"][-1]["output"]
+    r = make(tmp_path, FakeWin(offered=())).advance()
+    assert "not needed, superseded, or not released" in r["steps"][-1]["output"]
+
+
+def test_a_service_that_crashed_since_the_change_fails_health_even_if_running(tmp_path):
+    h = FakeWin(crashes="event 7031 at 2026-10-29T03:01:00")
+    make(tmp_path, h).advance()
+    h.reboot()
+    r = resume(tmp_path, h)
+    assert r["outcome"] == "pending_reboot"  # rolled back
+    st = json.loads((tmp_path / "state.json").read_text())
+    assert "event 7031" in st["error"] and st["phase"] == "rolled_back_pending"
+
+
+def test_cluster_node_is_drained_first_and_resumed_after(tmp_path):
+    h = FakeWin(cluster=True)
+    make(tmp_path, h).advance()
+    scripts = [c[-1] for c in h.log if c[0] == "powershell"]
+    assert next(i for i, s in enumerate(scripts) if "Suspend-ClusterNode" in s) < next(i for i, s in enumerate(scripts) if "CreateUpdateInstaller" in s)
+    h.reboot()
+    r = resume(tmp_path, h)
+    assert r["outcome"] == "applied" and r["steps"][-1]["step"] == "cluster node resumed"
+
+
+def test_failed_drain_changes_nothing_and_resumes_the_node(tmp_path):
+    h = FakeWin(cluster=True, drain="")
+    r = make(tmp_path, h).advance()
+    assert r["outcome"] == "aborted" and r["error"].startswith("No changes made")
+    assert any("Resume-ClusterNode" in c[-1] for c in h.log if c[0] == "powershell")
+    assert not any("CreateUpdateInstaller" in c[-1] for c in h.log if c[0] == "powershell")
+
+
+def restart_host(tmp_path, signed_in):
+    h = FakeWin()
+    make(tmp_path, h, {**JOB, "reboot_by": "2026-10-30T12:00:00Z"}).advance()
+    calls = []
+
+    def run(cmd, cwd=None):
+        calls.append(cmd)
+        if cmd[0] == "powershell" and "explorer.exe" in cmd[-1]:
+            return 0, "1" if signed_in else "0"
+        return h(cmd) if cmd[0] != "msg" and cmd[0] != "shutdown" else (0, "")
+    return run, calls
+
+
+def test_workstation_restart_is_put_off_until_the_deadline_then_forced(tmp_path):
+    run, calls = restart_host(tmp_path, signed_in=True)
+    deadline = 1793361600  # 2026-10-30T12:00:00Z
+    before = deadline - 3600 * 5
+    assert agent.restart_for_update(run, str(tmp_path / "state.json"), client=True, now=before)[0] == "later"
+    assert [c[0] for c in calls if c[0] in ("msg", "shutdown")] == ["msg"]
+    agent.restart_for_update(run, str(tmp_path / "state.json"), client=True, now=before + 600)
+    assert [c[0] for c in calls if c[0] == "msg"] == ["msg"]  # reminded at most hourly
+    assert agent.restart_for_update(run, str(tmp_path / "state.json"), client=True, now=deadline + 1)[0] == "now"
+    assert [c for c in calls if c[0] == "shutdown"][0][:4] == ["shutdown", "/r", "/t", "900"]  # 15-minute warning
+
+
+def test_servers_and_empty_workstations_restart_now(tmp_path):
+    run, calls = restart_host(tmp_path, signed_in=False)
+    assert agent.restart_for_update(run, str(tmp_path / "state.json"), client=True, now=0)[0] == "now"
+    assert [c for c in calls if c[0] == "shutdown"][0][:4] == ["shutdown", "/r", "/t", "60"]
+    run, calls = restart_host(tmp_path, signed_in=True)
+    assert agent.restart_for_update(run, str(tmp_path / "state.json"), client=False, now=0)[0] == "now"
+
+
+def test_a_job_whose_restart_was_put_off_is_not_judged_early(tmp_path):
+    h = FakeWin()
+    make(tmp_path, h).advance()
+
+    def run(cmd, cwd=None):
+        if cmd[0] == "powershell" and "RebootPending" in cmd[-1]:
+            return 0, "True"
+        return h(cmd)
+    import os
+    if os.name != "nt":
+        pytest.skip("Windows resume path")
+    problems, reboot = agent.run_jobs("https://s", "k", False, run=run, outcome_dir=str(tmp_path / "out"),
+                                      win_state=str(tmp_path / "state.json"))
+    assert reboot and json.loads((tmp_path / "state.json").read_text())["phase"] == "verify"

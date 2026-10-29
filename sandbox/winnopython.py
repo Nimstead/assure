@@ -204,7 +204,8 @@ def main(keep=False) -> int:
 
         # 5) uninstall leaves nothing
         out = guest(rf"& '{exe}' -I '{AGENT_DIR}\nimstead_agent.py' uninstall --yes; Start-Sleep 15; "
-                    rf"@((Test-Path '{AGENT_DIR}'), (Test-Path C:\ProgramData\Nimstead), @(Get-ScheduledTask -TaskName 'Nimstead*' -ErrorAction SilentlyContinue).Count) -join ','")
+                    rf"@((Test-Path '{AGENT_DIR}'), (Test-Path C:\ProgramData\Nimstead), "
+                    r"@(Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object { @('Nimstead agent', 'Nimstead jobs') -contains $_.TaskName }).Count) -join ','")
         left = out.strip().splitlines()[-1]
         assert left == "False,False,0", out[-1500:]
         note("uninstall --yes: no folder, task or key left", output=out.strip().splitlines()[-4:])

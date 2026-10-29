@@ -31,11 +31,12 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import Integer, delete, func, select
 from sqlalchemy.orm import Session
 
-from nimstead import ai, evidence, external, mfa, notify, remediate, sbom, sso, updates
+from nimstead import ai, evidence, external, lifecycle, mfa, notify, remediate, sbom, sso, updates
 from nimstead.db import (
     ApiToken,
     Asset,
     AuthFailure,
+    DirectoryComputer,
     EnrollToken,
     Finding,
     InstalledPackage,
@@ -839,6 +840,55 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         s.commit()
         return result
 
+    class DirectoryEntry(BaseModel):
+        name: str = Field(min_length=1, max_length=255)
+        os: str = Field("", max_length=255)
+        os_version: str = Field("", max_length=100)
+        last_logon: datetime | None = None
+
+    class Directory(BaseModel):
+        domain: str = Field(min_length=1, max_length=255)
+        computers: list[DirectoryEntry] = Field(max_length=20_000)
+
+    def csv_safe(v: str) -> str:  # same rule as the findings export: no formula injection into spreadsheets
+        return "'" + v if v[:1] in ("=", "+", "-", "@", "\t", "\r") else v
+
+    @app.post("/api/agent/directory")
+    def agent_directory(body: Directory, s: DB, asset: Annotated[Asset, Depends(current_agent)]):
+        """Computer objects an opted-in agent read from its domain (plan T43); replaces that domain's list for the org."""
+        if over_limit(s, "directory:" + asset.org_id, 24):
+            raise HTTPException(429, "Directory already received recently")
+        domain = body.domain.strip().lower()
+        s.execute(delete(DirectoryComputer).where(DirectoryComputer.org_id == asset.org_id, DirectoryComputer.domain == domain))
+        seen = set()
+        for c in body.computers:
+            name = c.name.strip().lower()
+            if name and name not in seen:
+                seen.add(name)
+                s.add(DirectoryComputer(org_id=asset.org_id, domain=domain, name=name, os=c.os, os_version=c.os_version,
+                                        last_logon=c.last_logon.replace(tzinfo=None) if c.last_logon else None))
+        s.commit()
+        return {"computers": len(seen)}
+
+    @app.get("/api/directory/unmanaged")
+    def unmanaged_computers(user: CurrentUser, s: DB, format: str | None = None):
+        """Enabled computers seen in their domain in the last 30 days that have no enrolled agent (plan T43)."""
+        hosts = {h.lower().split(".")[0] for h in s.scalars(select(Asset.hostname).where(Asset.org_id == user.org_id, Asset.kind == "host"))}
+        cutoff = now() - timedelta(days=30)
+        rows = [c for c in s.scalars(select(DirectoryComputer).where(DirectoryComputer.org_id == user.org_id).order_by(DirectoryComputer.name))
+                if c.name.split(".")[0] not in hosts and c.last_logon and c.last_logon >= cutoff]
+        out = [{"domain": c.domain, "name": c.name, "os": c.os, "os_version": c.os_version, "last_logon": c.last_logon,
+                "end_of_support": (lambda r: r.label if r and lifecycle.verdict(r, None, now().date()) else None)(
+                    lifecycle.directory_row(c.os, c.os_version))} for c in rows]
+        if format == "csv":
+            buf = io.StringIO()
+            w = csv.writer(buf)
+            w.writerow(["domain", "name", "os", "os_version", "last_logon", "end_of_support"])
+            for r in out:
+                w.writerow([csv_safe(str(r[k] or "")) for k in ("domain", "name", "os", "os_version", "last_logon", "end_of_support")])
+            return Response(buf.getvalue(), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=unmanaged-windows.csv"})
+        return out
+
     @app.get("/api/agent/manifest")
     def agent_manifest(s: DB, asset: Annotated[Asset, Depends(current_agent)]):
         # paused is unsigned on purpose: it can only withhold an update, which the server could do anyway
@@ -878,7 +928,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             "first_seen": a.first_seen, "last_seen": a.last_seen, "open_by_priority": counts,
             **({"agent_version": a.agent_version, "agent_outdated": a.agent_version != latest_agent_version(),
                 "agent_update": agent_update_status(a, paused, release), "agent_update_error": a.agent_update_error,
-                "not_reporting": a.last_seen < now() - notify.SILENT_AFTER, "facts": a.facts or {}}
+                "not_reporting": a.last_seen < now() - notify.SILENT_AFTER, "facts": a.facts or {},
+                "maintenance_window": a.maintenance_window}
                if a.kind == "host" else {}),
             **({"verified": a.verified_at is not None, "verified_at": a.verified_at, "txt_name": external.txt_name(a.hostname),
                 "txt_value": external.txt_value(a.org_id, a.hostname), "proof_path": external.PROOF_PATH} if a.kind == "external" else {}),
@@ -918,14 +969,17 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         internet_facing: bool | None = None
         ring: Literal[0, 1] | None = None
         health_units: list[str] | None = Field(None, max_length=20)
+        maintenance_window: dict | None = None  # {} = use the organisation's
 
     @app.patch("/api/assets/{asset_id}")
     def update_asset(asset_id: str, body: AssetPatch, user: Admin, s: DB):
         a = owned_asset(s, user, asset_id)
         if body.health_units and not all(remediate.SAFE_NAME.match(u) for u in body.health_units):
             raise HTTPException(422, "Invalid systemd unit name")
+        if body.maintenance_window and not remediate.valid_window(body.maintenance_window):
+            raise HTTPException(422, "Maintenance window needs days (0-6, Monday=0), start HH:MM, hours 1-24 and a time zone")
         for k, v in body.model_dump(exclude_none=True).items():
-            setattr(a, k, v)
+            setattr(a, k, v or None if k == "maintenance_window" else v)
         s.flush()
         evidence.append(s, a.org_id, "asset_context_changed", a.id, {"by": user.email, **body.model_dump(exclude_none=True)})
         rescan(s, a, inventory_received=False)  # context changed -> scores change
@@ -1219,7 +1273,15 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                 .where(RemediationJob.org_id == user.org_id))
         if status:
             stmt = stmt.where(RemediationJob.status.in_(status.split(",")))
-        return [job_json(j, h) for j, h in s.execute(stmt.order_by(RemediationJob.updated.desc()).limit(500))]
+        org_window = s.get(Org, user.org_id).maintenance_window
+        out = []
+        for j, h in s.execute(stmt.order_by(RemediationJob.updated.desc()).limit(500)):
+            d = job_json(j, h)
+            if j.status == "approved":  # approved but outside its window: say when it can start (plan T40)
+                inside, nxt = remediate.window_state(s.get(Asset, j.asset_id).maintenance_window or org_window)
+                d["waits_for_window"] = None if inside or nxt is None else nxt.strftime("%Y-%m-%dT%H:%M:%SZ")
+            out.append(d)
+        return out
 
     @app.post("/api/remediation/jobs/{job_id}/approve")
     def approve_job(job_id: str, user: Admin, s: DB):
@@ -1248,6 +1310,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     class Policy(BaseModel):
         remediation_mode: Literal["suggest", "approve", "auto"] | None = None
         canary_soak_hours: int | None = Field(None, ge=1, le=720)
+        maintenance_window: dict | None = None  # {} clears it (any time); see remediate.valid_window
+        reboot_deadline_hours: int | None = Field(None, ge=1, le=168)
         agent_updates_paused: bool | None = None
         sla_days: dict[Literal["fix-now", "next", "planned", "low"], Annotated[int, Field(ge=1, le=365)]] | None = None
 
@@ -1255,6 +1319,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def get_settings(user: CurrentUser, s: DB):
         o = s.get(Org, user.org_id)
         return {"remediation_mode": o.remediation_mode, "canary_soak_hours": o.canary_soak_hours, "sla_days": evidence.sla_days(o),
+                "maintenance_window": o.maintenance_window, "reboot_deadline_hours": o.reboot_deadline_hours,
                 "agent_updates_paused": o.agent_updates_paused, "signed_agent_release": signed_release() is not None,
                 "platform": updates.status(),
                 "production_remediation_allowed": remediate.production_allowed()}
@@ -1265,6 +1330,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         changes = body.model_dump(exclude_none=True)
         if "sla_days" in changes:  # organisation-defined periods (NIST SI-2): given priorities change, the rest stay
             changes["sla_days"] = {**o.sla_days, **changes["sla_days"]}
+        if "maintenance_window" in changes:
+            if changes["maintenance_window"] and not remediate.valid_window(changes["maintenance_window"]):
+                raise HTTPException(422, "Maintenance window needs days (0-6, Monday=0), start HH:MM, hours 1-24 and a time zone")
+            changes["maintenance_window"] = changes["maintenance_window"] or None
         for k, v in changes.items():
             setattr(o, k, v)
         evidence.append(s, o.id, "policy_changed", o.id, {"by": user.email, **changes})

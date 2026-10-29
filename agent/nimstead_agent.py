@@ -1055,6 +1055,9 @@ def run_jobs(server, key, insecure_http, run=sh, outcome_dir=None, win_state=Non
             print(f"pending Windows job not resumed: {e}; set aside, host needs attention", file=sys.stderr)
             problems += 1
         else:
+            rc, pending = ps(run, PS_REBOOT_PENDING)
+            if w.s["phase"] in ("verify", "rolled_back_pending") and rc == 0 and pending.strip().lower() == "true":
+                return problems, True  # its restart hasn't happened yet (a user put it off): judge nothing until it has
             res = w.advance()
             if res["outcome"] == "pending_reboot":
                 return problems, True
@@ -1193,6 +1196,38 @@ PS_REBOOT_PENDING = r"""
 """
 
 
+# Service Control Manager crash/stop events (7031, 7034, 7024) for one service since a moment, as "id time" lines
+PS_CRASHES = r"""
+$dn = (Get-Service -Name '%SVC%' -ErrorAction Stop).DisplayName
+$t = [DateTimeOffset]::FromUnixTimeSeconds(%SINCE%).LocalDateTime
+@(Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = 'Service Control Manager'; Id = 7031, 7034, 7024; StartTime = $t } -ErrorAction SilentlyContinue |
+  Where-Object { $_.Properties[0].Value -eq $dn } | ForEach-Object { "event $($_.Id) at $($_.TimeCreated.ToString('s'))" }) -join "; "
+"""
+# Battery below half and not on mains power: an update must not start (plan T41); no battery = fine
+PS_ON_BATTERY = r"""
+$b = @(Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue)
+if ($b.Count -and ($b | Where-Object { $_.BatteryStatus -ne 2 -and $_.EstimatedChargeRemaining -lt 50 })) { "battery $($b[0].EstimatedChargeRemaining)%" }
+"""
+# Why Windows Update offered nothing for a KB (plan T14): its source, deferrals, ESU
+PS_WHY_NOT_OFFERED = r"""
+$wu = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate'
+$p = Get-ItemProperty $wu -ErrorAction SilentlyContinue; $au = Get-ItemProperty "$wu\AU" -ErrorAction SilentlyContinue
+$why = @()
+if ($au.UseWUServer -eq 1) { $why += "this machine gets updates from WSUS ($($p.WUServer)); WSUS hasn't approved KB%KB% for it" }
+if ($p.DeferQualityUpdates -eq 1 -or $p.DeferQualityUpdatesPeriodInDays) { $why += "quality updates are deferred $($p.DeferQualityUpdatesPeriodInDays) days by policy" }
+if ($p.PauseQualityUpdatesStartTime) { $why += "quality updates are paused by policy since $($p.PauseQualityUpdatesStartTime)" }
+$esu = @(Get-CimInstance SoftwareLicensingProduct -Filter "LicenseStatus=1 and PartialProductKey is not null" -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'ESU' }).Count
+if ((Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').CurrentBuild -lt 22000 -and -not $esu) { $why += "no Extended Security Updates licence is active" }
+$why -join "; "
+"""
+# Failover cluster node: drain its roles before the update, bring it back after (plan T42)
+PS_CLUSTER_NODE = r"""if (Get-ItemProperty 'HKLM:\Cluster' -ErrorAction SilentlyContinue) { $env:COMPUTERNAME }"""
+PS_CLUSTER_DRAIN = r"""Suspend-ClusterNode -Name $env:COMPUTERNAME -Drain -Wait -ErrorAction Stop | Out-Null; (Get-ClusterNode -Name $env:COMPUTERNAME).State"""
+PS_CLUSTER_RESUME = r"""Resume-ClusterNode -Name $env:COMPUTERNAME -Failback Immediate -ErrorAction Stop | Out-Null; (Get-ClusterNode -Name $env:COMPUTERNAME).State"""
+# Someone signed in at the console or over RDP: their restart can be put off until the job's deadline (plan T41)
+PS_SIGNED_IN = r"""@(Get-CimInstance Win32_Process -Filter "Name='explorer.exe'" -ErrorAction SilentlyContinue).Count"""
+
+
 def ps(run, script):
     return run(["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script])
 
@@ -1213,9 +1248,10 @@ class WinJob:
         if job is not None:
             p = (job.get("packages") or [{}])[0]
             alt = p.get("alt") if isinstance(p.get("alt"), dict) else None  # the same fix as a hotpatch (DECISIONS 52)
+            reboot_by = job.get("reboot_by") if re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", str(job.get("reboot_by", ""))) else None
             self.s = {"job": job, "phase": "start", "steps": [], "kb": str(p.get("kb", "")), "from": p.get("from"),
                       "to": p.get("to"), "product": p.get("name"), "units": job.get("health_units") or [],
-                      "alt": {"kb": str(alt.get("kb", "")), "to": alt.get("to")} if alt else None,
+                      "alt": {"kb": str(alt.get("kb", "")), "to": alt.get("to")} if alt else None, "reboot_by": reboot_by,
                       "settle": min(max(int(job.get("settle_seconds", 60) or 0), 0), 900) if settle is None else int(settle),
                       "inject": bool(fail_after_apply)}  # sandbox fault injection (run-job only; never from the server)
         else:
@@ -1233,6 +1269,9 @@ class WinJob:
                 and SAFE_VERSION.match(str(s.get("from") or "")) and (s.get("to") is None or SAFE_VERSION.match(str(s["to"])))
                 and (s.get("alt") is None or (isinstance(s["alt"], dict) and SAFE_KB.match(str(s["alt"].get("kb", "")))
                                               and SAFE_VERSION.match(str(s["alt"].get("to") or ""))))
+                and (s.get("reboot_by") is None or re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", str(s["reboot_by"])))
+                and (s.get("changed_at") is None or (isinstance(s["changed_at"], int) and not isinstance(s["changed_at"], bool)))
+                and isinstance(s.get("cluster", False), bool) and isinstance(s.get("notified_at", 0), (int, float))
                 and isinstance(s.get("units"), list) and all(SAFE_NAME.match(str(u)) for u in s["units"])
                 and isinstance(s.get("settle"), int) and 0 <= s["settle"] <= 900
                 and all(ROLLUP_NAME.match(str(x)) for x in [*s.get("new_packages", []), *s.get("baseline", {})]))
@@ -1254,7 +1293,15 @@ class WinJob:
         if not ok:
             raise StepFailed(f"{name} failed: {str(output)[-300:].strip()}")
 
+    def _resume_cluster(self):
+        """Bring a drained cluster node back (after success, rollback or a failed start); recorded, never raises."""
+        if self.s.get("cluster") and not self.s.get("resumed"):
+            rc, out = ps(self.run, PS_CLUSTER_RESUME)
+            self.s["resumed"] = rc == 0
+            self.s["steps"].append({"step": "cluster node resumed", "ok": rc == 0, "output": str(out)[-1500:]})
+
     def result(self, outcome, error=None):
+        self._resume_cluster()
         self.clear()
         return {"outcome": outcome, "steps": self.s["steps"], "error": error,
                 "versions": {self.s["product"]: self.build()} if outcome == "applied" else None}
@@ -1270,9 +1317,17 @@ class WinJob:
         return dict(ROLLUP.findall(out.replace("\r", "")))
 
     def health(self, when):
+        """Running now, and no crash or unexpected stop logged for it since the change (DECISIONS 29 for Windows,
+        plan T13): a service that dies and is restarted by its recovery actions can read "Running" when sampled."""
+        since = self.s.get("changed_at")
         for u in self.s["units"]:
             rc, out = ps(self.run, f"(Get-Service -Name '{u}' -ErrorAction Stop).Status")
-            self.step(f"{u} running {when}", rc == 0 and out.strip() == "Running", out)
+            ok = rc == 0 and out.strip() == "Running"
+            if ok and since:
+                rc2, crashes = ps(self.run, PS_CRASHES.replace("%SVC%", u).replace("%SINCE%", str(int(since))))
+                ok = rc2 == 0 and not crashes.strip()
+                out = out.strip() + (f"; since the change: {crashes.strip()[-300:]}" if crashes.strip() else "")
+            self.step(f"{u} running {when}", ok, out)
 
     # -- phases
     def advance(self):
@@ -1303,11 +1358,18 @@ class WinJob:
         rc, out = ps(self.run, PS_REBOOT_PENDING)
         self.step("no reboot already pending", rc == 0 and out.strip().lower() == "false", out)
         self.health("before change")
+        rc, out = ps(self.run, PS_ON_BATTERY)
+        self.step("on mains power or battery above half", rc == 0 and not out.strip(), out.strip() or "ok")
         found = {}  # KB -> (target build, how many updates Windows Update offers for it)
         for kb, to in [(s["kb"], s["to"]), *([(s["alt"]["kb"], s["alt"]["to"])] if s.get("alt") else [])]:
             rc, out = ps(self.run, PS_FIND.replace("%KB%", kb))
             found[kb] = (to, len(json.loads(out)) if rc == 0 and out.strip().startswith("[") else 0, out)
         offered = [kb for kb, (_, n, _) in found.items() if n == 1]
+        if not offered:  # say why, from this machine's own update settings (plan T14)
+            rc, why = ps(self.run, PS_WHY_NOT_OFFERED.replace("%KB%", s["kb"]))
+            for kb in found:
+                found[kb] = (found[kb][0], found[kb][1], (found[kb][2].strip() + "; " if found[kb][2].strip() else "")
+                             + (why.strip() or "Windows Update didn't offer it (not needed, superseded, or not released for this build)"))
         if len(found) == 1:
             self.step(f"Windows Update offers exactly KB{s['kb']}", offered, found[s["kb"]][2])
         else:  # cumulative or hotpatch: whichever this host is offered, never both
@@ -1323,6 +1385,14 @@ class WinJob:
         # permanent sub-packages (Features on Demand) stay behind on removal; rollback is judged by the build returning
         ok, detail = removable(json.loads(out)) if rc == 0 and out.strip().startswith("[") else (False, out)
         self.step("update is removable (manifest checked before install)", ok, detail)
+        rc, node = ps(self.run, PS_CLUSTER_NODE)
+        if rc == 0 and node.strip():  # a failover cluster node: move its roles off first; a failed drain changes nothing
+            rc, out = ps(self.run, PS_CLUSTER_DRAIN)
+            s["cluster"] = True
+            if rc != 0 or out.strip().splitlines()[-1:] != ["Paused"]:
+                self._resume_cluster()
+            self.step("cluster node drained", rc == 0 and out.strip().splitlines()[-1:] == ["Paused"], out)
+        s["changed_at"] = int(time.time())  # health checks look for crashes after this
         rc, out = ps(self.run, PS_INSTALL.replace("%KB%", s["kb"]))
         res = json.loads(out) if rc == 0 and out.strip().startswith("{") else {}
         s["phase"] = "verify"  # from here on, failures roll back
@@ -1378,6 +1448,58 @@ class WinJob:
         except StepFailed as e:
             return self.result("rollback_failed", f"ROLLBACK FAILED: {e}")
         return self.result("rolled_back", f"Change failed and was rolled back: {s.get('error')}")
+
+
+def restart_for_update(run=None, state_path=None, client=None, now=None):
+    """The restart a Windows job needs (plan T41). Servers restart now: the job was only handed out inside the
+    maintenance window. A workstation with someone signed in is told and may put it off until the job's deadline
+    (reboot_by), reminded at most hourly; then it restarts with a 15-minute warning. Returns ("now"|"later", message)."""
+    run, state_path = run or sh, state_path or WIN_STATE
+    w = WinJob(run=run, state_path=state_path)
+    if client is None:
+        rc, it = ps(run, "(Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion').InstallationType")
+        client = rc == 0 and it.strip() == "Client"
+    rc, users = ps(run, PS_SIGNED_IN)
+    signed_in = rc == 0 and users.strip().isdigit() and int(users.strip()) > 0
+    t = now or time.time()
+    import calendar
+    deadline = calendar.timegm(time.strptime(w.s["reboot_by"], "%Y-%m-%dT%H:%M:%SZ")) if w.s.get("reboot_by") else t
+    if client and signed_in and t < deadline:
+        if t - w.s.get("notified_at", 0) >= 3600:
+            run(["msg", "*", "/TIME:3600", "A security update needs a restart. Please restart when convenient; it will restart "
+                 f"automatically after {time.strftime('%Y-%m-%d %H:%M', time.localtime(deadline))}."])
+            w.s["notified_at"] = t
+            w.save()
+        return "later", f"restart put off until {w.s['reboot_by']}: someone is signed in"
+    warn = 900 if signed_in else 60
+    rc, out = run(["shutdown", "/r", "/t", str(warn), "/c", "Nimstead: restarting to finish a security update"])
+    if rc != 0:
+        raise AgentError(f"could not schedule the restart the update needs: {out.strip()}")
+    return "now", f"restarting in {warn} s to finish the update"
+
+
+# Enabled computer objects in this machine's own domain, read with the machine's identity (plan T43): no credentials,
+# no network probing, names and OS strings only.
+PS_AD_COMPUTERS = r"""
+$s = [adsisearcher]'(&(objectCategory=computer)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))'
+$s.PageSize = 1000; $s.SizeLimit = 20000
+[void]$s.PropertiesToLoad.AddRange(@('name', 'operatingsystem', 'operatingsystemversion', 'lastlogontimestamp'))
+ConvertTo-Json -Compress -InputObject ([ordered]@{ domain = "$((Get-CimInstance Win32_ComputerSystem).Domain)"; computers = @($s.FindAll() | ForEach-Object {
+  $p = $_.Properties
+  [ordered]@{ name = "$($p['name'])"; os = "$($p['operatingsystem'])"; os_version = "$($p['operatingsystemversion'])";
+    last_logon = if ($p['lastlogontimestamp'].Count) { [DateTime]::FromFileTimeUtc([int64]"$($p['lastlogontimestamp'])").ToString('s') + 'Z' } else { $null } } }) })
+"""
+
+
+def ad_computers(run=None):
+    rc, out = ps(run or sh, PS_AD_COMPUTERS)
+    try:
+        d = json.loads(out.strip().splitlines()[-1]) if rc == 0 else None
+    except (ValueError, IndexError):
+        d = None
+    if not (isinstance(d, dict) and isinstance(d.get("computers"), list) and d.get("domain")):
+        raise AgentError(f"Active Directory read failed: {out.strip()[-200:]}")
+    return d
 
 
 def windows_version_key(v):
@@ -1968,7 +2090,8 @@ def uninstall(run=sh, unit_dir=SYSTEMD_DIR, state_dirs=None, agent_path=None):
                     removed.append(d)
             if any(os.path.normcase(d) == mine for d in _runtime_dirs(root)):
                 later = f'ping -n 6 127.0.0.1 >nul & rmdir /s /q "{mine}" & rmdir "{root}" & rmdir "{os.path.dirname(agent_path)}"'
-                subprocess.Popen(["cmd", "/c", later], creationflags=getattr(subprocess, "DETACHED_PROCESS", 0), close_fds=True)
+                # one string, not a list: list2cmdline would escape the inner quotes as \" which cmd doesn't read (VM proof)
+                subprocess.Popen(f'cmd /c "{later}"', creationflags=getattr(subprocess, "DETACHED_PROCESS", 0), close_fds=True)
                 removed.append(mine + " (once this process exits)")
             else:
                 try:
@@ -2099,6 +2222,8 @@ def main(argv=None):
                     help="enrolment token (or set NIMSTEAD_TOKEN, which keeps it out of the process list)")
     en.add_argument("--allow-remediation", action="store_true",
                     help="let this host run approved package upgrades (local opt-in; the server cannot enable it)")
+    en.add_argument("--ad-discovery", action="store_true",
+                    help="Windows, domain member: also report the domain's enabled computers, to list those with no agent")
     en.add_argument("--scan-jars", action="store_true",
                     help="also look for Java libraries (jar/war/ear) on local disks at each report, within a 5-minute budget")
     en.add_argument("--no-auto-update", action="store_true",
@@ -2140,7 +2265,7 @@ def main(argv=None):
             # only the fields we expect from the server, and local choices last: the server can't opt a host in
             cfg = {"asset_id": res.get("asset_id"), "agent_key": res["agent_key"], "server": a.server,
                    "allow_remediation": a.allow_remediation, "auto_update": not a.no_auto_update, "channel": a.channel,
-                   "scan_jars": a.scan_jars,
+                   "scan_jars": a.scan_jars, "ad_discovery": a.ad_discovery,
                    **({"proxy": a.proxy} if a.proxy else {})}
             print("enrolled as asset {}; config saved to {}".format(res.get("asset_id"), save_config(cfg)))
         elif a.cmd == "uninstall":
@@ -2185,10 +2310,8 @@ def main(argv=None):
                 ran = []
                 problems, reboot = run_jobs(cfg["server"], cfg["agent_key"], a.insecure_http, ran=ran)
                 if reboot:  # Windows update needs a restart; the startup run resumes the job and reports it
-                    print("restarting to finish the update")
-                    rc, out = sh(["shutdown", "/r", "/t", "60", "/c", "Nimstead: finishing a security update"])
-                    if rc != 0:
-                        raise AgentError(f"could not schedule the restart the update needs: {out.strip()}")
+                    when, msg = restart_for_update()
+                    print(msg)
                     return 0
                 if ran or not a.if_jobs:  # server verifies the fix
                     post(cfg["server"], "/api/agent/inventory", inventory(cfg), a.insecure_http, cfg["agent_key"])
@@ -2199,6 +2322,10 @@ def main(argv=None):
             inv = inventory(cfg)
             post(cfg["server"], "/api/agent/inventory", inv, a.insecure_http, cfg["agent_key"])
             print(f"reported {len(inv['packages'])} packages")
+            if cfg.get("ad_discovery") and os.name == "nt":  # local opt-in only: which domain computers have no agent
+                d = ad_computers()
+                post(cfg["server"], "/api/agent/directory", d, a.insecure_http, cfg["agent_key"])
+                print(f"reported {len(d['computers'])} computers from {d['domain']}")
     except AgentError as e:
         print(f"nimstead-agent: error: {e}", file=sys.stderr)
         return 1

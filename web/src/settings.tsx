@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { RadioGroup, Switch } from "radix-ui";
 import { Info } from "lucide-react";
 import clsx from "clsx";
-import { adminGate, api, assetsQ, meQ, refresh, parseUtc, PRIORITIES, PRIORITY_LABEL, relativeTime, settingsQ, useHashScroll, useIsAdmin, useTitle, type EnrollToken, type Priority, type Settings } from "./lib";
+import { adminGate, api, assetsQ, meQ, refresh, parseUtc, PRIORITIES, PRIORITY_LABEL, relativeTime, settingsQ, useHashScroll, useIsAdmin, useTitle, type EnrollToken, type MaintenanceWindow, type Priority, type Settings } from "./lib";
 import { NotificationsSection, SsoSection } from "./integrations";
 import { AccountSection, ApiTokensSection, UsersSection } from "./people";
 import { Alert, btnPrimary, btnQuiet, ConfirmDialog, Done, ErrorState, Field, input, Loading, switchRoot, switchThumb, Tag } from "./ui";
@@ -14,7 +14,8 @@ const MODES: { value: Settings["remediation_mode"]; title: string; body: string 
   { value: "auto", title: "Auto", body: "Fixes are applied without asking, canary machines first. Broad machines wait until a canary has stayed healthy for the soak period; any failure halts the rollout." },
 ];
 
-type SettingsPatch = Partial<Pick<Settings, "remediation_mode" | "canary_soak_hours" | "agent_updates_paused" | "sla_days">>;
+type SettingsPatch = Partial<Pick<Settings, "remediation_mode" | "canary_soak_hours" | "agent_updates_paused" | "sla_days" | "reboot_deadline_hours">> & { maintenance_window?: MaintenanceWindow | Record<string, never> };
+const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 const GROUPS = [
   { id: "remediation", title: "Remediation" },
@@ -178,6 +179,9 @@ export function SettingsPage() {
           </form>}
         </section>
 
+        <MaintenanceSection s={s} admin={admin} pending={save.isPending} onSave={(b) => save.mutate(b)} saved={savedHere("maintenance_window") ?? savedHere("reboot_deadline_hours")}
+          error={errorHere("maintenance_window") ?? errorHere("reboot_deadline_hours")} />
+
         <section aria-labelledby="sla" className="flex flex-col items-start gap-3">
           <h3 id="sla" className="text-lg font-semibold">Remediation deadlines</h3>
           <p className="max-w-prose text-sm text-muted">Days from first detection to fix, by priority (1 to 365). Evidence packs measure your SLA against these and show them to auditors; Cyber Essentials' 14 days is checked separately.</p>
@@ -244,6 +248,42 @@ export function SettingsPage() {
 }
 
 const UPDATE_OUTCOME = { updated: "Updated", rolled_back: "Update failed and was rolled back", rollback_failed: "Update failed and the rollback failed too", refused: "Update refused" } as const;
+
+function MaintenanceSection({ s, admin, pending, onSave, saved, error }: { s: Settings; admin: boolean; pending: boolean; onSave: (b: SettingsPatch) => void; saved: React.ReactNode; error: React.ReactNode }) {
+  const w = s.maintenance_window;
+  const [on, setOn] = useState(!!w);
+  const [days, setDays] = useState<number[]>(w?.days ?? [5]);
+  const [start, setStart] = useState(w?.start ?? "22:00");
+  const [hours, setHours] = useState(String(w?.hours ?? 4));
+  const [deadline, setDeadline] = useState(String(s.reboot_deadline_hours));
+  const tz = w?.tz ?? Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
+  const h = Number(hours), d = Number(deadline);
+  const ok = !on || (days.length > 0 && /^([01]\d|2[0-3]):[0-5]\d$/.test(start) && Number.isInteger(h) && h >= 1 && h <= 24);
+  const dOk = Number.isInteger(d) && d >= 1 && d <= 168;
+  const describe = (x: MaintenanceWindow | null) => x ? `${x.days.map((i) => DAYS[i]).join(", ")} from ${x.start} for ${x.hours} h (${x.tz})` : "any time";
+  return (
+    <section aria-labelledby="window" className="flex flex-col items-start gap-3">
+      <h3 id="window" className="text-lg font-semibold">Maintenance window</h3>
+      <p className="max-w-prose text-sm text-muted">Approved fixes start only inside this window, and servers restart only inside it; a machine's own window on the Assets page overrides it. Someone signed in to a workstation is told and can put the restart off for up to the deadline below. Nodes of one failover cluster, and one domain's controllers, are always fixed one at a time.</p>
+      {!admin ? <p className="text-sm">Fixes run <strong className="font-semibold">{describe(w)}</strong>; restarts can be put off for {s.reboot_deadline_hours} hours. <span className="text-muted">Only organisation admins can change this.</span></p> : (
+        <form className="flex flex-col items-start gap-3" onSubmit={(e) => { e.preventDefault(); if (ok && dOk) onSave({ maintenance_window: on ? { days, start, hours: h, tz } : {}, reboot_deadline_hours: d }); }}>
+          <label className="flex min-h-[44px] items-center gap-2 text-sm md:min-h-0"><input type="checkbox" checked={on} onChange={(e) => setOn(e.target.checked)} /> Only run fixes inside a window</label>
+          {on && <fieldset className="flex flex-wrap gap-2" aria-label="Days">{DAYS.map((name, i) => (
+            <label key={name} className="flex min-h-[44px] items-center gap-1 text-sm md:min-h-0"><input type="checkbox" checked={days.includes(i)} onChange={(e) => setDays(e.target.checked ? [...days, i].sort() : days.filter((x) => x !== i))} /> {name}</label>))}
+          </fieldset>}
+          {on && <div className="flex flex-wrap gap-3">
+            <Field label={`Starts (${tz})`} className="w-40"><input className={input} type="time" value={start} onChange={(e) => setStart(e.target.value)} /></Field>
+            <Field label="Length (hours)" hint="1 to 24." error={Number.isInteger(h) && h >= 1 && h <= 24 ? null : "Enter whole hours from 1 to 24."} className="w-40"><input className={input} type="number" min={1} max={24} value={hours} onChange={(e) => setHours(e.target.value)} /></Field>
+          </div>}
+          <Field label="Restart deadline (hours)" hint="How long a signed-in user can put off a restart, 1 to 168." error={dOk ? null : "Enter whole hours from 1 to 168."} className="w-56">
+            <input className={input} type="number" min={1} max={168} value={deadline} onChange={(e) => setDeadline(e.target.value)} />
+          </Field>
+          <button className={btnPrimary} disabled={!ok || !dOk || pending}>{pending ? "Saving…" : "Save"}</button>
+          {saved}{error}
+        </form>)}
+    </section>
+  );
+}
 
 export function PlatformSection({ p }: { p: Settings["platform"] }) {
   const last = p.last_update;

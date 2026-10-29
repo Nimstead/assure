@@ -14,7 +14,8 @@ Safety model:
 
 import os
 import re
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -216,18 +217,68 @@ def sweep(s: Session, org_id: str) -> None:
     s.commit()
 
 
+def valid_window(w) -> bool:
+    """A maintenance window: {days: [0-6] (Monday=0), start: "HH:MM", hours: 1-24, tz: IANA name}."""
+    if not (isinstance(w, dict) and set(w) == {"days", "start", "hours", "tz"} and isinstance(w["days"], list) and w["days"]
+            and all(isinstance(d, int) and not isinstance(d, bool) and 0 <= d <= 6 for d in w["days"])
+            and isinstance(w["start"], str) and re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", w["start"])
+            and isinstance(w["hours"], int) and 1 <= w["hours"] <= 24 and isinstance(w["tz"], str)):
+        return False
+    try:
+        ZoneInfo(w["tz"])
+    except (ZoneInfoNotFoundError, ValueError):
+        return False
+    return True
+
+
+def window_state(w: dict | None, when: datetime | None = None) -> tuple[bool, datetime | None]:
+    """(inside the window now, when the current one ends or else the next one starts, UTC). None = any time."""
+    if not w:
+        return True, None
+    tz = ZoneInfo(w["tz"])
+    t = when or now()
+    local = t.replace(tzinfo=UTC).astimezone(tz)
+    hh, mm = map(int, w["start"].split(":"))
+    # starts in local wall time, then UTC: a window lasts its hours of real time, also across a clock change
+    starts = [datetime(d.year, d.month, d.day, hh, mm, tzinfo=tz).astimezone(UTC).replace(tzinfo=None)
+              for d in (local.date() + timedelta(days=k) for k in range(-7, 8)) if d.weekday() in w["days"]]
+    for st in starts:  # a window that began before today may still be open (long windows across midnight)
+        if st <= t < st + timedelta(hours=w["hours"]):
+            return True, st + timedelta(hours=w["hours"])
+    return False, next((st for st in starts if st > t), None)
+
+
+def serial_group(asset: Asset) -> str | None:
+    """Hosts that must not restart together (plan T42): one failover cluster, or one domain's controllers."""
+    f = asset.facts or {}
+    if f.get("cluster"):
+        return f"cluster:{str(f['cluster']).lower()}"
+    if isinstance(f.get("domain_role"), int) and f["domain_role"] >= 4 and f.get("domain"):
+        return f"dc:{str(f['domain']).lower()}"
+    return None
+
+
 def dispatch(s: Session, asset: Asset) -> list[dict]:
     """Hand approved jobs to the agent, re-checking every gate at the last moment."""
     sweep(s, asset.org_id)
     org = s.get(Org, asset.org_id)
     out = []
-    # one Windows job in flight per host: it may reboot the machine, and anything handed out alongside it would be stranded
+    inside, _ = window_state(asset.maintenance_window or org.maintenance_window)
+    if not inside:  # approved jobs wait for the window (plan T40); nothing is handed out early
+        return out
+    # one Windows job in flight per host: it may reboot the machine, and anything handed out alongside it would be stranded;
+    # and one per cluster or domain-controller group, so they never restart together (plan T42)
     win_busy = s.scalar(select(RemediationJob.id).where(RemediationJob.asset_id == asset.id, RemediationJob.manager == "windows",
                                                         RemediationJob.status == "dispatched").limit(1)) is not None
+    if not win_busy and (group := serial_group(asset)):
+        peers = [a.id for a in s.scalars(select(Asset).where(Asset.org_id == asset.org_id, Asset.id != asset.id)) if serial_group(a) == group]
+        win_busy = bool(peers) and s.scalar(select(RemediationJob.id).where(
+            RemediationJob.asset_id.in_(peers), RemediationJob.manager == "windows",
+            RemediationJob.status.in_(("dispatched", "verifying"))).limit(1)) is not None
     for job in s.scalars(select(RemediationJob).where(RemediationJob.asset_id == asset.id, RemediationJob.status == "approved")):
         if job.manager == "windows":
             if win_busy:
-                continue  # stays approved; handed out once the current one reports
+                continue  # stays approved; handed out once the current one (here or in its group) reports
             win_busy = True
         if not asset.sandbox and not production_allowed():  # flags may have changed since approval
             job.status, job.error = "failed", "Blocked: asset is not a sandbox"
@@ -245,7 +296,9 @@ def dispatch(s: Session, asset: Asset) -> list[dict]:
                 continue
         job.status = "dispatched"
         _log(s, job, "remediation_dispatched")
-        out.append({"id": job.id, "manager": job.manager, "packages": job.packages, "health_units": asset.health_units})
+        extra = {"reboot_by": (now() + timedelta(hours=org.reboot_deadline_hours or 24)).strftime("%Y-%m-%dT%H:%M:%SZ")} \
+            if job.manager == "windows" else {}  # a signed-in user may put the restart off until then (plan T41)
+        out.append({"id": job.id, "manager": job.manager, "packages": job.packages, "health_units": asset.health_units, **extra})
     s.commit()
     return out
 

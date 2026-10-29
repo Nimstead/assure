@@ -50,6 +50,10 @@ ROWS = [Row(*r) for r in [
     ("ws2022", "Windows Server 2022", date(2031, 10, 14), LC + "windows-server-2022"),
     ("ws2025", "Windows Server 2025", date(2034, 10, 10), LC + "windows-server-2025"),
     ("ws-23h2", "Windows Server 23H2 (Annual Channel)", date(2025, 10, 24), LC + "windows-server-annual-channel"),
+    # only seen in Active Directory (the agent doesn't run there): plan T43
+    ("win7", "Windows 7", date(2020, 1, 14), LC + "windows-7", date(2023, 1, 10)),
+    ("win81", "Windows 8.1", date(2023, 1, 10), LC + "windows-81"),
+    ("ws2008", "Windows Server 2008 / 2008 R2", date(2020, 1, 14), LC + "windows-server-2008-r2", date(2023, 1, 10)),
     # Microsoft products beyond the OS (plan T28)
     ("dotnet-core-3.1", ".NET Core 3.1", date(2022, 12, 13), LC + "microsoft-net-and-net-core"),
     ("dotnet-5", ".NET 5", date(2022, 5, 10), LC + "microsoft-net-and-net-core"),
@@ -110,6 +114,27 @@ def windows_row(product: str, edition: str) -> Row | None:
     m = re.match(r"Windows Server (2012 R2|2012|2016|2019|2022|2025)\b", product)
     if m:
         return BY_KEY["ws" + m.group(1).replace(" ", "").lower()]
+    return None
+
+
+WIN10_BUILDS = {"19045": "22H2", "19044": "21H2", "17763": "1809", "14393": "1607"}
+WIN11_BUILDS = {"22631": "23H2", "26100": "24H2", "26200": "25H2"}
+
+
+def directory_row(os_name: str, os_version: str) -> Row | None:
+    """Lifecycle row from Active Directory's operatingSystem / operatingSystemVersion ("10.0 (19045)"), or None."""
+    m = re.search(r"\((\d+)\)", os_version or "")
+    build = m[1] if m else ""
+    for prefix, key in (("Windows 7", "win7"), ("Windows 8.1", "win81"), ("Windows Server 2008", "ws2008")):
+        if os_name.startswith(prefix):
+            return BY_KEY[key]
+    if (m := re.match(r"Windows Server (2012 R2|2012|2016|2019|2022|2025)\b", os_name)):
+        return BY_KEY["ws" + m[1].replace(" ", "").lower()]
+    edition = "Enterprise" if "Enterprise" in os_name or "Education" in os_name else "Professional"
+    if os_name.startswith("Windows 10") and (v := WIN10_BUILDS.get(build)):
+        return windows_row(f"Windows 10 Version {v} for x64-based Systems", "EnterpriseS" if "LTSC" in os_name else edition)
+    if os_name.startswith("Windows 11") and (v := WIN11_BUILDS.get(build)):
+        return windows_row(f"Windows 11 Version {v} for x64-based Systems", "EnterpriseS" if "LTSC" in os_name else edition)
     return None
 
 

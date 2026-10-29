@@ -135,3 +135,17 @@ Short log; newest last. Why, not what.
     never lowered, and an unmapped tag or unknown roles change nothing. The real VM proof found that PowerShell 5.1
     ignores `-Include` beside `-LiteralPath` (the runtime signature check also read build-details.json) and that the
     embeddable zip's `vcruntime140*.dll` are signed by Microsoft, not the PSF; both are handled explicitly.
+56. **Fixes obey time and topology (plan T13, T14, T40–T43, decision 12).** An approved job is handed out only inside
+    its machine's maintenance window, or the org's (none = any time, as before); a window lasts its hours of real time,
+    also across a clock change. Hosts in one failover cluster (`HKLM\Cluster`), or one domain's controllers, form a
+    group with one Windows job in flight; a cluster node is drained (`Suspend-ClusterNode -Drain`) before the install,
+    a failed drain changes nothing, and the node is resumed after success, rollback or a failed start. Restarts:
+    servers restart at once (they're inside their window); a workstation with someone signed in is told and may put it
+    off until the job's `reboot_by` (dispatch + the org's deadline, default 24 h), reminded at most hourly, then gets a
+    15-minute warning; a job whose restart was put off isn't judged until it has happened. No install starts on battery
+    below half. Health checks also fail on Service Control Manager crash/stop events for the unit since the change.
+    When Windows Update offers nothing, the step says why from the machine's own settings (WSUS approval, deferral or
+    pause policy, no ESU licence). Unmanaged hosts: an opted-in domain member reads enabled computer objects using only
+    its own computer account (`[adsisearcher]`), and Assets lists those signed in within 30 days with no agent, with end
+    of support from their AD OS string. Not built: downloading updates before the window opens (installs still happen
+    only inside it) and detecting metered connections.

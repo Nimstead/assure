@@ -113,7 +113,10 @@ export interface EnrollToken { id: string; created: string; expires: string; rev
 export interface Settings {
   remediation_mode: "suggest" | "approve" | "auto"; canary_soak_hours: number; production_remediation_allowed: boolean;
   agent_updates_paused: boolean; signed_agent_release: boolean; platform: Platform; sla_days: Record<Priority, number>;
+  maintenance_window: MaintenanceWindow | null; reboot_deadline_hours: number;
 }
+/** When fixes may run (plan T40): days 0-6 = Monday-Sunday, start "HH:MM" local to tz, length in hours. */
+export interface MaintenanceWindow { days: number[]; start: string; hours: number; tz: string }
 // updates.status(): last_update is what deploy/update.sh last did on the Docker host
 export interface Platform {
   version: string; latest: string | null; latest_url: string | null; update_available: boolean; checked: string | null;

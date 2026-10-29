@@ -45,6 +45,10 @@ class Org(Base):
     notify_emails_confirmed: Mapped[list] = mapped_column(default=list)  # subset that clicked the confirmation link; only these get mail
     agent_updates_paused: Mapped[bool] = mapped_column(Boolean, default=False)  # org-wide hold on agent self-updates
     sla_days: Mapped[dict] = mapped_column(default=dict)  # priority -> days to remediate; {} = evidence.SLA_DAYS defaults
+    # plan T40-T41: when fixes may run ({days: [0-6, Monday=0], start: "HH:MM", hours, tz}; None = any time) and how long a
+    # signed-in user may put off a restart
+    maintenance_window: Mapped[dict | None]
+    reboot_deadline_hours: Mapped[int] = mapped_column(Integer, default=24, server_default="24")
 
 
 class User(Base):
@@ -115,6 +119,7 @@ class Asset(Base):
     agent_update_error: Mapped[str | None] = mapped_column(String(500))  # last self-update failure the agent reported
     silent_alerted_at: Mapped[datetime | None]  # "not reporting" alert sent for the current outage; cleared by the next report
     facts: Mapped[dict | None]  # agent-reported host facts (edition, ESU, update management, roles); None = none sent
+    maintenance_window: Mapped[dict | None]  # overrides the org's (plan T40); None = the org's
     enrolled_by: Mapped[str | None] = mapped_column(String(12))  # enrolment token id, so a leaked token's hosts can be found
 
 
@@ -139,6 +144,18 @@ class Advisory(Base):
     modified: Mapped[str] = mapped_column(String(40), default="")
     record: Mapped[dict]
     __table_args__ = (Index("ix_advisory_lookup", "ecosystem", "package"),)
+
+
+class DirectoryComputer(Base):
+    """Computer objects an opted-in agent read from Active Directory (plan T43): which Windows hosts have no agent."""
+    __tablename__ = "directory_computer"
+    org_id: Mapped[str] = mapped_column(ForeignKey("org.id"), primary_key=True)
+    domain: Mapped[str] = mapped_column(String(255), primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), primary_key=True)  # lower-case host name
+    os: Mapped[str] = mapped_column(String(255), default="")
+    os_version: Mapped[str] = mapped_column(String(100), default="")
+    last_logon: Mapped[datetime | None]
+    seen_at: Mapped[datetime] = mapped_column(default=now)
 
 
 class Kev(Base):

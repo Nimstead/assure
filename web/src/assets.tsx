@@ -54,6 +54,8 @@ export function AssetsPage() {
         </div>
       </header>
 
+      <Unmanaged />
+
       {q.isPending ? <Loading className="h-20" rows={3} label="Loading assets…" />
         : q.error ? <ErrorState error={q.error} retry={() => q.refetch()} />
         : q.data.every((a) => a.kind === "external") ? (
@@ -86,6 +88,30 @@ export function AssetsPage() {
 }
 
 /** Agents that can't update themselves, said once for the list, grouped by reason, instead of on every row. */
+interface UnmanagedComputer { domain: string; name: string; os: string; os_version: string; last_logon: string; end_of_support: string | null }
+
+/** Windows computers in Active Directory that have no agent (plan T43); nothing shows until an agent reports a domain. */
+function Unmanaged() {
+  const q = useQuery({ queryKey: ["directory-unmanaged"], queryFn: () => api<UnmanagedComputer[]>("/api/directory/unmanaged") });
+  const rows = q.data ?? [];
+  if (!rows.length) return null;
+  const domains = [...new Set(rows.map((r) => r.domain))].join(", ");
+  const eos = rows.filter((r) => r.end_of_support).length;
+  return (
+    <section aria-labelledby="unmanaged" className="flex flex-col gap-2 border border-line bg-sunken p-4">
+      <h2 id="unmanaged" className="text-base font-semibold">{rows.length} Windows computer{rows.length === 1 ? "" : "s"} in {domains} {rows.length === 1 ? "has" : "have"} no agent</h2>
+      <p className="text-sm text-muted">Enabled in Active Directory and signed in within 30 days, but not reporting here, so nothing about them is checked.{eos ? ` ${eos} run Windows that no longer gets security updates.` : ""}</p>
+      <details className="text-sm">
+        <summary className="min-h-[44px] cursor-pointer py-2 md:min-h-0">Show them</summary>
+        <ul className="mt-2 flex flex-col gap-1">
+          {rows.slice(0, 200).map((r) => <li key={r.domain + r.name} className="break-all"><span className="font-medium">{r.name}</span> · {r.os || "unknown OS"}{r.end_of_support && <span className="text-now-fg"> · {r.end_of_support}: out of support</span>}</li>)}
+        </ul>
+      </details>
+      <a href="/api/directory/unmanaged?format=csv" className="text-sm">Download as CSV</a>
+    </section>
+  );
+}
+
 export function AgentUpdateSummary({ assets }: { assets: Asset[] }) {
   const groups = new Map<string, { failed: boolean; hosts: string[] }>();
   for (const a of assets) {

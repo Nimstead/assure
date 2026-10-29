@@ -6,6 +6,7 @@ what the asset is (criticality, internet exposure) and whether a fix exists.
 """
 
 from dataclasses import dataclass, field
+from functools import lru_cache
 
 from cvss import CVSS3, CVSS4
 
@@ -24,21 +25,23 @@ class Risk:
         return "; ".join(self.reasons)
 
 
+@lru_cache(maxsize=65536)  # a rescan pass scores the same few thousand vectors once per finding
+def _vector_score(kind: str, vector: str):
+    try:
+        if kind == "CVSS_V3":
+            return CVSS3(vector).scores()[0]
+        if kind == "CVSS_V4":
+            return CVSS4(vector).base_score
+    except Exception:  # noqa: S110 — malformed vector in feed: ignore that vector only
+        pass
+    return None
+
+
 def cvss_base(severity: list[dict] | None) -> float | None:
     """Highest base score from OSV `severity` vectors."""
-    best = None
-    for s in severity or []:
-        try:
-            if s.get("type") == "CVSS_V3":
-                v = CVSS3(s["score"]).scores()[0]
-            elif s.get("type") == "CVSS_V4":
-                v = CVSS4(s["score"]).base_score
-            else:
-                continue
-        except Exception:  # noqa: S112 — malformed vector in feed: ignore that vector only
-            continue
-        best = v if best is None else max(best, v)
-    return float(best) if best is not None else None
+    scores = [v for s in severity or [] if isinstance(s.get("score"), str)
+              and (v := _vector_score(s.get("type"), s["score"])) is not None]
+    return float(max(scores)) if scores else None
 
 
 # CVRF component tags (DECISIONS 51) -> the Windows Server roles or client optional features that expose them. A tag

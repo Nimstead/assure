@@ -35,6 +35,8 @@ def ident(name, version, publisher=None):
     ("7-Zip 24.08 (x64)", "Igor Pavlov", "24.08", ("7-zip:7-zip", "24.08")),
     ("7-Zip 9.20 (x64 edition)", "Igor Pavlov", "9.20.00.0", ("7-zip:7-zip", "9.20.00.0")),
     ("Notepad++ (64-bit x64)", "Notepad++ Team", "8.9.8.1", ("notepad-plus-plus:notepad++", "8.9.8.1")),
+    # the MSI installer's name (real VM, 2026-10-29)
+    ("Notepad++ (x64)", "Notepad++ team (MSI installer)", "8.9.8.1", ("notepad-plus-plus:notepad++", "8.9.8.1")),
     ("VLC media player", "VideoLAN", "3.0.24", ("videolan:vlc_media_player", "3.0.24")),
     ("Zoom Workplace (64-bit)", "Zoom Video Communications, Inc.", "6.2.5 (47209)", ("zoom:workplace_desktop", "6.2.5 (47209)")),
     ("Adobe Acrobat Reader (64-bit)", "Adobe", "24.003.20112", ("adobe:acrobat_reader", "24.003.20112")),

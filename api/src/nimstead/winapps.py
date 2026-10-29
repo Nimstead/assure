@@ -40,7 +40,7 @@ PRODUCTS: tuple[Product, ...] = (
     Product("mozilla:firefox_esr", _p(r"Mozilla Firefox ESR(?: [\d.]+)? \((?:x64|x86|arm64) [A-Za-z-]+\)"),
             version=lambda m, v: re.sub(r"(?i)\s*esr$", "", v), branch=True),
     Product("7-zip:7-zip", _p(r"7-Zip \d+\.\d+(?: \((?:x64|x86|arm64)(?: edition)?\))?")),
-    Product("notepad-plus-plus:notepad++", _p(r"Notepad\+\+ \((?:64-bit x64|32-bit x86|ARM 64-bit)\)")),
+    Product("notepad-plus-plus:notepad++", _p(r"Notepad\+\+ \((?:64-bit x64|32-bit x86|ARM 64-bit|x64|x86|arm64)\)")),
     Product("videolan:vlc_media_player", _p(r"VLC media player")),
     Product("zoom:workplace_desktop", _p(rf"Zoom(?: Workplace| Meetings)?(?: \({_ARCH}\))?"), ("zoom:workplace_desktop", "zoom:zoom", "zoom:meetings"),
             publisher=_p(r"Zoom(?: Video Communications, Inc\.)?")),

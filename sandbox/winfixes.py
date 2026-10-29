@@ -74,7 +74,9 @@ ODT = "https://officecdn.microsoft.com/pr/wsus/setup.exe"  # Microsoft's Office 
 def office(checks):
     """Microsoft 365 Apps (Word only) installed at an older Current-channel build, then the agent's office job:
     injected failure -> back to the build found; then the real update to the newest build."""
-    with urllib.request.urlopen("https://clients.config.office.net/releases/v1.0/OfficeReleases", timeout=60) as r:  # noqa: S310
+    req = urllib.request.Request("https://clients.config.office.net/releases/v1.0/OfficeReleases",
+                                 headers={"User-Agent": "nimstead-sandbox"})  # urllib's default agent gets 403
+    with urllib.request.urlopen(req, timeout=60) as r:  # noqa: S310
         feed = json.load(r)
     cur = next(c for c in feed if c["channelId"] == "Current")["officeVersions"]
     new, old = cur[0]["legacyVersion"], cur[2]["legacyVersion"]
@@ -113,9 +115,10 @@ def main(keep=False) -> int:
     checks["older version refused"] = r["outcome"] == "aborted" and r["error"].startswith("No changes made")
     has_winget = h.winvm.run(h.NAME, "winget --version")[0] == 0
     if has_winget:
-        vs = [v.strip() for v in h.guest("winget show --id 7zip.7zip --exact --versions --accept-source-agreements "
-                                         "--disable-interactivity").split("----")[-1].splitlines() if v.strip()]
+        lines = h.guest("winget show --id 7zip.7zip --exact --versions --accept-source-agreements --disable-interactivity").splitlines()
+        vs = [v.strip() for v in lines[next(i for i, x in enumerate(lines) if x.startswith("---")) + 1:] if v.strip()]
         newest, old = vs[0], vs[1]
+        h.guest("winget uninstall --id 7zip.7zip --exact --silent --disable-interactivity", check=False)  # a rerun finds the newest
         h.guest(f"winget install --id 7zip.7zip --exact --version {old} --silent --accept-package-agreements "
                 "--accept-source-agreements --disable-interactivity --scope machine")
         before = sevenzip()

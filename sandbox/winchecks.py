@@ -65,7 +65,8 @@ def main(keep=False) -> int:
     checks["T13 crash seen although Running"] = r["status"] == "Running" and "event 7031" in r["crashes"]
 
     # T34: a signed-out user's per-user app
-    h.guest(r"""$p = 'Nim-off-' + (Get-Random); net user nimoff $p /add | Out-Null
+    # New-LocalUser: `net user` stops to ask about passwords over 14 characters
+    h.guest(r"""$p = 'Nim-off-' + (Get-Random); New-LocalUser nimoff -Password (ConvertTo-SecureString $p -AsPlainText -Force) | Out-Null; Add-LocalGroupMember Users nimoff
         $c = New-Object PSCredential('nimoff', (ConvertTo-SecureString $p -AsPlainText -Force))
         Set-Content C:\nimtest\nimoff.txt $p
         Start-Process cmd.exe -ArgumentList '/c echo %USERPROFILE% > C:\Users\Public\nimoff-profile.txt' -Credential $c -LoadUserProfile -Wait

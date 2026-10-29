@@ -28,7 +28,7 @@ class _Handler(socketserver.BaseRequestHandler):
         self.server.log.append((method, target))
         if method == "CONNECT":
             host, port = target.rsplit(":", 1)
-            up = socket.create_connection((host, int(port)), timeout=30)
+            up = socket.create_connection(("127.0.0.1" if host == GUEST_HOST else host, int(port)), timeout=30)
             c.sendall(b"HTTP/1.1 200 Connection established\r\n\r\n")
             rest = head.split(b"\r\n\r\n", 1)[1]
             if rest:
@@ -61,6 +61,32 @@ class _Handler(socketserver.BaseRequestHandler):
             b.close()
 
 
+def server_cert(folder):
+    """A throwaway self-signed certificate for the sandbox server at 10.0.2.2 (the agent never sends its key to a
+    plain-http server through a proxy). Returns (cert path, key path); the guest trusts the cert as a root."""
+    import datetime
+    import ipaddress
+
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.x509.oid import NameOID
+    key = ec.generate_private_key(ec.SECP256R1())
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Nimstead sandbox (disposable)")])
+    now = datetime.datetime.now(datetime.UTC)
+    cert = (x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(key.public_key())
+            .serial_number(x509.random_serial_number()).not_valid_before(now - datetime.timedelta(hours=1))
+            .not_valid_after(now + datetime.timedelta(days=2))
+            .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+            .add_extension(x509.SubjectAlternativeName([x509.IPAddress(ipaddress.ip_address(GUEST_HOST)),
+                                                        x509.IPAddress(ipaddress.ip_address("127.0.0.1"))]), critical=False)
+            .sign(key, hashes.SHA256()))
+    c, k = folder / "sandbox-cert.pem", folder / "sandbox-key.pem"
+    c.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
+    k.write_bytes(key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
+    return c, k
+
+
 class Proxy(socketserver.ThreadingTCPServer):
     daemon_threads = allow_reuse_address = True
 
@@ -86,4 +112,17 @@ if __name__ == "__main__":  # self-check: a plain-HTTP request and a CONNECT tun
     s.sendall(b"GET / HTTP/1.0\r\n\r\n")
     assert s.recv(100).startswith(b"HTTP/1.0 200")
     assert [m for m, _ in p.log] == ["GET", "CONNECT"], p.log
+    import ssl
+    import tempfile
+    from pathlib import Path
+    c, k = server_cert(Path(tempfile.mkdtemp()))
+    tls = http.server.ThreadingHTTPServer(("127.0.0.1", 0), http.server.SimpleHTTPRequestHandler)
+    sc = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    sc.load_cert_chain(c, k)
+    tls.socket = sc.wrap_socket(tls.socket, server_side=True)
+    threading.Thread(target=tls.serve_forever, daemon=True).start()
+    https = urllib.request.build_opener(urllib.request.ProxyHandler({"https": f"http://127.0.0.1:{pp}"}),
+                                        urllib.request.HTTPSHandler(context=ssl.create_default_context(cafile=c)))
+    assert https.open(f"https://{GUEST_HOST}:{tls.server_address[1]}/", timeout=10).status == 200  # CONNECT to the guest's name
+    assert p.log[-1] == ("CONNECT", f"{GUEST_HOST}:{tls.server_address[1]}"), p.log
     print("ok", p.log)

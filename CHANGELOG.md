@@ -58,6 +58,7 @@ maintenance windows and Active Directory computers), applied on start. Things to
 - A Windows job's 15-minute check no longer judges a DISM rollback before the restart it waits for.
 - The hourly re-match scores each CVSS vector once per pass.
 - `resume-job` takes the run lock, so it can't advance a pending Windows job while the startup run is advancing it.
+- A Windows cumulative update gets up to 2 hours to install (a reinstall on Windows 11 with a user signed in ran past 30 minutes), and a rollback also removes an update that finished installing after the agent stopped waiting for it; before, that ended in "ROLLBACK FAILED" (found on a real Windows 11 VM).
 - The runtime signature check in `install.ps1` now filters by extension: PowerShell 5.1 ignores `-Include` beside
   `-LiteralPath` (found in the real VM run).
 

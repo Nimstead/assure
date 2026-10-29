@@ -93,8 +93,14 @@ def build():
 
 
 def main(keep=False) -> int:
+    # --proxy: the server is HTTPS (the agent never sends its key to a plain-http server through a proxy)
+    tls = None
+    if "--proxy" in sys.argv:
+        from hostproxy import server_cert
+        tls = server_cert(TMP)
+    scheme = "https" if tls else "http"
     env = {**os.environ, "NIMSTEAD_DB": f"sqlite:///{(TMP / 'n.db').as_posix()}", "NIMSTEAD_SECURE_COOKIES": "0",
-           "NIMSTEAD_INVENTORY_MIN_SECONDS": "0", "NIMSTEAD_PUBLIC_URL": f"http://10.0.2.2:{PORT}",
+           "NIMSTEAD_INVENTORY_MIN_SECONDS": "0", "NIMSTEAD_PUBLIC_URL": f"{scheme}://10.0.2.2:{PORT}",
            "NIMSTEAD_SIGNING_KEY_FILE": str(TMP / "sign.pem"), "NIMSTEAD_CHECKPOINT_DIR": str(TMP / "cp"),
            "NIMSTEAD_SECRET_KEY_FILE": str(TMP / "secret.key"), "NIMSTEAD_OPEN_SIGNUP": "1"}
     from testrelease import TestRelease  # install.ps1 brings the signed embeddable runtime (plan T25)
@@ -117,8 +123,9 @@ def main(keep=False) -> int:
                 time.sleep(120)
         note("feeds", msrc=msrc, kev=feeds.sync_kev(s), epss=feeds.sync_epss(s))
     server = subprocess.Popen([sys.executable, "-m", "uvicorn", "--factory", "nimstead.app:create_app", "--host", "127.0.0.1",
-                               "--port", str(PORT)], env=env, cwd=ROOT / "api", stdout=open(TMP / "api.log", "wb"), stderr=subprocess.STDOUT)
-    api = httpx.Client(base_url=f"http://127.0.0.1:{PORT}", timeout=60)
+                               "--port", str(PORT), *(["--ssl-certfile", str(tls[0]), "--ssl-keyfile", str(tls[1])] if tls else [])],
+                              env=env, cwd=ROOT / "api", stdout=open(TMP / "api.log", "wb"), stderr=subprocess.STDOUT)
+    api = httpx.Client(base_url=f"{scheme}://127.0.0.1:{PORT}", timeout=60, verify=str(tls[0]) if tls else True)
     try:
         for _ in range(60):
             try:
@@ -137,16 +144,20 @@ def main(keep=False) -> int:
         if "--proxy" in sys.argv:  # plan T44: the only way out is a proxy on this host; everything else is blocked
             from hostproxy import Proxy
             px = Proxy(3128)
-            guest(r"""New-NetFirewallRule -DisplayName 'Nimstead sandbox: host only' -Direction Outbound -RemoteAddress 10.0.2.2 -Action Allow | Out-Null
+            guest("Set-Content -Path C:\\nimtest\\sandbox-cert.pem -Encoding ascii -Value @'\r\n" + tls[0].read_text() + "\r\n'@\r\n"
+                  r"Import-Certificate -FilePath C:\nimtest\sandbox-cert.pem -CertStoreLocation Cert:\LocalMachine\Root | Out-Null")
+            # only the proxy port is open, so whatever reached the server or the internet went through the proxy
+            guest(r"""New-NetFirewallRule -DisplayName 'Nimstead sandbox: proxy only' -Direction Outbound -RemoteAddress 10.0.2.2 -Protocol TCP -RemotePort 3128 -Action Allow | Out-Null
                 Set-NetFirewallProfile -All -DefaultOutboundAction Block; netsh winhttp set proxy 10.0.2.2:3128 | Out-Null""")
-            direct = guest("(Test-NetConnection 13.107.4.50 -Port 443 -WarningAction SilentlyContinue).TcpTestSucceeded", check=False).strip()
-            note("direct egress blocked, WinHTTP proxy set", direct_tcp_443=direct)
-            assert direct == "False", direct
+            direct = {f"{h}:{p}": guest(f"(Test-NetConnection {h} -Port {p} -WarningAction SilentlyContinue).TcpTestSucceeded", check=False).strip()
+                      for h, p in (("13.107.4.50", 443), ("10.0.2.2", PORT))}
+            note("direct egress blocked, WinHTTP proxy set", direct_tcp=direct)
+            assert set(direct.values()) == {"False"}, direct
 
         # 1) the real installer, elevated, with the remediation opt-in (no Python needed: plan T25)
         out = guest(rf"""$env:NIMSTEAD_TOKEN = '{token}'; $env:NIMSTEAD_ALLOW_REMEDIATION = '1'
             {"$env:NIMSTEAD_PROXY = 'http://10.0.2.2:3128'" if px else ""}
-            try {{ irm http://10.0.2.2:{PORT}/install.ps1 | iex }} catch {{ "INSTALL FAILED: $_"; exit 1 }}
+            try {{ irm {"-Proxy http://10.0.2.2:3128 " if px else ""}{scheme}://10.0.2.2:{PORT}/install.ps1 | iex }} catch {{ "INSTALL FAILED: $_"; exit 1 }}
             (Get-ScheduledTask -TaskName 'Nimstead agent').Triggers | ForEach-Object {{ $_.CimClass.CimClassName }}""", timeout=1800, check=False)
         note("install.ps1 output", output=out[-3000:])
         assets = api.get("/api/assets").json()
@@ -210,7 +221,8 @@ def main(keep=False) -> int:
         signed_in = "--signed-in" in sys.argv  # plan T41: a workstation user is told and the restart waits for the deadline
         if signed_in:
             assert api.patch("/api/settings", json={"reboot_deadline_hours": 1}).status_code == 200
-            guest(r"""$p = 'Nim-user-' + (Get-Random); net user nimuser $p /add | Out-Null
+            guest(r"""$p = 'Nim-user-' + (Get-Random); New-LocalUser nimuser -Password (ConvertTo-SecureString $p -AsPlainText -Force) | Out-Null
+                Add-LocalGroupMember Users nimuser  # `net user` stops to ask about passwords over 14 characters
                 $k = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
                 Set-ItemProperty $k AutoAdminLogon '1'; Set-ItemProperty $k DefaultUserName 'nimuser'; Set-ItemProperty $k DefaultPassword $p""")
             reboot_and_wait()
@@ -218,7 +230,9 @@ def main(keep=False) -> int:
                 if guest(r"""@(Get-CimInstance Win32_Process -Filter "Name='explorer.exe'").Count""").strip() not in ("", "0"):
                     break
                 time.sleep(20)
-            note("standard user signed in", explorer=guest(r"""@(Get-CimInstance Win32_Process -Filter "Name='explorer.exe'").Count""").strip())
+            explorer = guest(r"""@(Get-CimInstance Win32_Process -Filter "Name='explorer.exe'").Count""").strip()
+            note("standard user signed in", explorer=explorer)
+            assert explorer not in ("", "0"), "nobody signed in"
         if px:  # a newer signed agent: the task's self-update has to come through the proxy too
             new_agent, new_version = rel.newer()
             rel.publish(new_agent, "3.15.2", "v9.9.9")
@@ -260,9 +274,8 @@ def main(keep=False) -> int:
             note("job steps", error=j.get("error"), steps=[f"{'ok ' if s['ok'] else 'FAIL'} {s['step']}: {s['output'][-200:]}" for s in j.get("steps", [])])
         assert status == "succeeded", status
         if px:  # enrol, report, self-update and the fix's Windows Update traffic all went through the proxy
-            seen = {"enrol": any(t.endswith("/api/agent/enroll") for _, t in px.log),
-                    "report": any(t.endswith("/api/agent/inventory") for _, t in px.log),
-                    "self-update": any(t.endswith("/agent/nimstead_agent.py") for _, t in px.log),
+            # TLS end to end, so the proxy sees CONNECTs only; enrol, report and self-update worked with only its port open
+            seen = {"server over TLS": any(m == "CONNECT" and t == f"10.0.2.2:{PORT}" for m, t in px.log),
                     "windows update": any(m == "CONNECT" and ("windowsupdate" in t or "microsoft.com" in t or "delivery.mp" in t)
                                           for m, t in px.log)}
             version = guest(r"(Select-String -Path 'C:\Program Files\Nimstead\nimstead_agent.py' -Pattern '^AGENT_VERSION = ').Line").strip()

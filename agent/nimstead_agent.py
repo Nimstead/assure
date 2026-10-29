@@ -526,15 +526,18 @@ MIN_FREE_BYTES = 1 << 30  # refuse a change rather than fill the disk with its r
 APT_CACHE = "/var/cache/apt/archives"
 
 
-def sh(cmd, cwd=None):
+def sh(cmd, cwd=None, timeout=1800):
     """Default runner: (returncode, full output). Never raises for a failing command. Steps keep only the tail;
     parsers (zypper's XML dry run runs to tens of KB with package descriptions) need all of it."""
     env = dict(os.environ, DEBIAN_FRONTEND="noninteractive", LC_ALL="C")
     try:
-        p = subprocess.run(cmd, cwd=cwd, env=env, capture_output=True, text=True, errors="replace", timeout=1800)
+        p = subprocess.run(cmd, cwd=cwd, env=env, capture_output=True, text=True, errors="replace", timeout=timeout)
         return p.returncode, p.stdout + p.stderr
     except (OSError, subprocess.TimeoutExpired) as e:
         return 127, str(e)
+
+
+INSTALL_TIMEOUT = 7200  # a Windows cumulative update install, in seconds
 
 
 class StepFailed(Exception):
@@ -1381,8 +1384,8 @@ def wu(script):
     return script.replace("%WU_SOURCE%", "$q.ServerSelection = 2" if WU_SOURCE == "microsoft" else "")
 
 
-def ps(run, script):
-    return run(["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script])
+def ps(run, script, **kw):
+    return run(["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script], **kw)
 
 
 def boot_time():
@@ -1435,6 +1438,7 @@ class WinJob:
                 and (s.get("reboot_by") is None or re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", str(s["reboot_by"])))
                 and (s.get("changed_at") is None or (isinstance(s["changed_at"], int) and not isinstance(s["changed_at"], bool)))
                 and isinstance(s.get("cluster", False), bool) and isinstance(s.get("notified_at", 0), (int, float))
+                and isinstance(s.get("late_removal", False), bool)
                 and isinstance(s.get("boot", 0), int) and not isinstance(s.get("boot", 0), bool)
                 and isinstance(s.get("units"), list) and all(SAFE_NAME.match(str(u)) for u in s["units"])
                 and isinstance(s.get("settle"), int) and 0 <= s["settle"] <= 900
@@ -1566,7 +1570,8 @@ class WinJob:
                 self._resume_cluster()
             self.step("cluster node drained", rc == 0 and out.strip().splitlines()[-1:] == ["Paused"], out)
         s["changed_at"] = int(time.time())  # health checks look for crashes after this
-        rc, out = ps(self.run, wu(PS_INSTALL).replace("%KB%", s["kb"]))
+        # seen for real (Windows 11, user signed in): a reinstall of the cumulative update ran past 30 minutes
+        rc, out = ps(self.run, wu(PS_INSTALL).replace("%KB%", s["kb"]), timeout=INSTALL_TIMEOUT)
         res = json.loads(out) if rc == 0 and out.strip().startswith("{") else {}
         s["phase"] = "verify"  # from here on, failures roll back
         self.step(f"KB{s['kb']} downloaded and installed", res.get("install") in (2, 3), out)
@@ -1594,6 +1599,8 @@ class WinJob:
         s = self.s
         s["error"] = err
         try:
+            if not s.get("new_packages") and "baseline" in s:  # the install step failed before it listed them
+                s["new_packages"] = sorted(set(self.rollups()) - set(s["baseline"]))
             for pkg in s.get("new_packages", []):
                 # Right after the reboot Windows is still finalising the update and DISM fails with transient
                 # errors (seen for real: 0x80010108 at +30 s, success 13 min later). Retry those; fail on anything else.
@@ -1613,6 +1620,13 @@ class WinJob:
     def _after_rollback(self):
         s = self.s
         cur = self.build()
+        # Windows Update keeps installing after the agent stops waiting for it (seen for real: the install call timed
+        # out, the update landed during the rollback restart); remove what arrived late, once
+        late = sorted(set(self.rollups()) - set(s.get("baseline", {})) - set(s.get("new_packages", []))) if cur != s["from"] else []
+        if late and not s.get("late_removal"):
+            s["late_removal"], s["new_packages"] = True, late
+            self.s["steps"].append({"step": "update finished installing after the agent stopped waiting", "ok": True, "output": ", ".join(late)})
+            return self._rollback(s.get("error") or "")
         if cur != s["from"]:
             return self.result("rollback_failed", f"ROLLBACK FAILED: build is {cur}, expected {s['from']}. Change error: {s.get('error')}")
         self.s["steps"].append({"step": "original build restored", "ok": True, "output": cur})

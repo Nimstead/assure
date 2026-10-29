@@ -19,14 +19,14 @@ NEW_PKG = "Package_for_RollupFix~31bf3856ad364e35~amd64~~26100.33650.1.3"
 
 class FakeWin:
     def __init__(self, offered=("5126646",), service_breaks_on_new=False, removal_works=True, busy_removals=0, manifest="removable",
-                 battery="", cluster=False, drain="Paused", crashes="", why=""):
+                 battery="", cluster=False, drain="Paused", crashes="", why="", install_times_out=False):
         self.build, self.pkgs, self.manifest = OLD, {BASE_PKG: "Installed"}, manifest
         self.offered, self.breaks, self.removal_works = list(offered), service_breaks_on_new, removal_works
         self.pending_remove, self.log, self.busy = [], [], busy_removals
         self.battery, self.cluster, self.drain, self.crashes, self.why = battery, cluster, drain, crashes, why
-        self.boot = 1_700_000_000
+        self.boot, self.install_times_out = 1_700_000_000, install_times_out
 
-    def __call__(self, cmd, cwd=None):
+    def __call__(self, cmd, cwd=None, timeout=None):
         self.log.append(cmd)
         if cmd[0] == "powershell":
             script = cmd[-1]
@@ -47,6 +47,10 @@ class FakeWin:
             if "Get-Service" in script:
                 return 0, "Stopped" if self.breaks and self.build == NEW else "Running"
             if "CreateUpdateInstaller" in script:
+                assert timeout == agent.INSTALL_TIMEOUT
+                if self.install_times_out:  # Windows Update carries on installing; dism doesn't list it yet
+                    self.late = True
+                    return 127, "Command '[...]' timed out after 7200 seconds"
                 self.pkgs[NEW_PKG] = "Install Pending"
                 return 0, json.dumps({"download": 2, "install": 2, "reboot": True})
             if "CreateUpdateDownloader" in script:
@@ -76,6 +80,8 @@ class FakeWin:
 
     def reboot(self):
         self.boot += 3600
+        if getattr(self, "late", False):
+            self.late, self.pkgs[NEW_PKG] = False, "Install Pending"
         if self.pkgs.get(NEW_PKG) == "Install Pending":
             self.pkgs[NEW_PKG], self.build = "Installed", NEW
         for p in self.pending_remove:
@@ -238,6 +244,20 @@ def test_rollback_that_does_not_restore_the_build_is_a_failure(tmp_path):
     h.reboot()
     r = resume(tmp_path, h)
     assert r["outcome"] == "rollback_failed" and "expected" in r["error"]
+
+
+def test_an_update_that_lands_after_the_install_timed_out_is_still_rolled_back(tmp_path):
+    h = FakeWin(install_times_out=True)  # what the real Windows 11 VM did with a user signed in
+    r = make(tmp_path, h).advance()
+    assert r["outcome"] == "pending_reboot" and h.pending_remove == []  # nothing listed yet to remove
+    h.reboot()  # the update finishes installing during this restart
+    assert h.build == NEW
+    r = resume(tmp_path, h)
+    assert r["outcome"] == "pending_reboot" and h.pending_remove == [NEW_PKG]
+    assert any("after the agent stopped waiting" in s["step"] for s in r["steps"])
+    h.reboot()
+    r = resume(tmp_path, h)
+    assert r["outcome"] == "rolled_back" and h.build == OLD
 
 
 def test_transient_dism_errors_right_after_reboot_are_retried(tmp_path):

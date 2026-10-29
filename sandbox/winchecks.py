@@ -14,6 +14,7 @@ Run from api/:  uv run python ../sandbox/winchecks.py VM_NAME [--keep]   Writes 
 
 import io
 import json
+import secrets
 import sys
 import zipfile
 from pathlib import Path
@@ -64,14 +65,13 @@ def main(keep=False) -> int:
     h.note("T13 Spooler killed, restarted by recovery", **r)
     checks["T13 crash seen although Running"] = r["status"] == "Running" and "event 7031" in r["crashes"]
 
-    # T34: a signed-out user's per-user app
-    # New-LocalUser: `net user` stops to ask about passwords over 14 characters
-    h.guest(r"""$p = 'Nim-off-' + (Get-Random); New-LocalUser nimoff -Password (ConvertTo-SecureString $p -AsPlainText -Force) | Out-Null; Add-LocalGroupMember Users nimoff
-        $c = New-Object PSCredential('nimoff', (ConvertTo-SecureString $p -AsPlainText -Force))
-        Set-Content C:\nimtest\nimoff.txt $p
-        Start-Process cmd.exe -ArgumentList '/c echo %USERPROFILE% > C:\Users\Public\nimoff-profile.txt' -Credential $c -LoadUserProfile -Wait
-        Start-Sleep 20
-        reg load HKU\nimtest C:\Users\nimoff\NTUSER.DAT | Out-Null
+    # T34: a signed-out user's per-user app. The profile comes from a guest-control logon as that user (Start-Process
+    # -Credential from the guest-control session hung for an hour); New-LocalUser: `net user` stops to ask about long passwords
+    pw = "Nim-off-" + secrets.token_hex(6)
+    user = {"user": "nimoff", "password": pw}
+    h.guest(f"New-LocalUser nimoff -Password (ConvertTo-SecureString '{pw}' -AsPlainText -Force) | Out-Null; Add-LocalGroupMember Users nimoff")
+    h.winvm.run(h.NAME, "$env:USERPROFILE", user=user)  # first logon creates the profile; the session ends with the command
+    h.guest(r"""Start-Sleep 20; reg load HKU\nimtest C:\Users\nimoff\NTUSER.DAT | Out-Null
         reg add 'HKU\nimtest\Software\Microsoft\Windows\CurrentVersion\Uninstall\NimTestApp' /v DisplayName /d 'WinSCP 6.1.2' /f | Out-Null
         reg add 'HKU\nimtest\Software\Microsoft\Windows\CurrentVersion\Uninstall\NimTestApp' /v DisplayVersion /d '6.1.2' /f | Out-Null
         reg add 'HKU\nimtest\Software\Microsoft\Windows\CurrentVersion\Uninstall\NimTestApp' /v Publisher /d 'Martin Prikryl' /f | Out-Null
@@ -79,12 +79,11 @@ def main(keep=False) -> int:
     r = agent_py("import winreg\r\napps = [p for p in a.offline_user_apps(winreg) if p['name'] == 'WinSCP 6.1.2']\r\n"
                  "print(json.dumps({'apps': apps}))", "hive")
     left = h.guest(r"@(Get-ChildItem Registry::HKEY_USERS | Where-Object { $_.PSChildName -like 'nimstead*' }).Count", check=False).strip()
-    h.guest(r"""$p = Get-Content C:\nimtest\nimoff.txt; $c = New-Object PSCredential('nimoff', (ConvertTo-SecureString $p -AsPlainText -Force))
-        Start-Process cmd.exe -ArgumentList '/c echo %USERPROFILE% > C:\Users\Public\nimoff-profile.txt' -Credential $c -LoadUserProfile -Wait""")
-    profile = h.guest(r"Get-Content C:\Users\Public\nimoff-profile.txt", check=False).strip()
+    rc, profile = h.winvm.run(h.NAME, "$env:USERPROFILE", user=user)  # signs in again after the scan
+    profile = profile.strip()
     h.note("T34 signed-out user's app", apps=r["apps"], temporary_hives_left=left, profile_after=profile)
     checks["T34 offline hive read and unloaded, own profile after"] = (
-        len(r["apps"]) == 1 and left == "0" and profile.lower().rstrip() == r"c:\users\nimoff")
+        len(r["apps"]) == 1 and left == "0" and profile.lower() == r"c:\users\nimoff")
 
     # T35: log4j nested in a fat jar
     h.guest(r"New-Item -ItemType Directory -Force 'C:\nimtest\jars\deep dir' | Out-Null")

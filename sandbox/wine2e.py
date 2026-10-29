@@ -248,8 +248,13 @@ def main(keep=False) -> int:
                 if '"phase": "verify"' in guest(r"Get-Content C:\ProgramData\Nimstead\pending-job.json -Raw -ErrorAction SilentlyContinue", check=False):
                     time.sleep(120)
                     shot = ROOT / "sandbox" / "last_run_windows11_restart_notice.png"
-                    winvm.vbox("controlvm", NAME, "screenshotpng", str(shot))
-                    deferred = {"minutes_after_dispatch": round((time.time() - dispatched) / 60), "screenshot": shot.name,
+                    try:
+                        winvm.vbox("controlvm", NAME, "screenshotpng", str(shot))
+                    except RuntimeError:  # a headless VM can refuse it (E_FAIL); the agent's notified_at shows the notice went out
+                        shot = None
+                    state = guest(r"Get-Content C:\ProgramData\Nimstead\pending-job.json -Raw", check=False)
+                    deferred = {"minutes_after_dispatch": round((time.time() - dispatched) / 60), "screenshot": shot and shot.name,
+                                "notice_sent": '"notified_at"' in state,
                                 "boot_unchanged": guest("(Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('s')",
                                                         check=False).strip() == boot0}
                     note("restart deferred for the signed-in user", **deferred)
@@ -283,7 +288,7 @@ def main(keep=False) -> int:
                  hosts=sorted({t.split("/")[2] if "://" in t else t for _, t in px.log})[:40])
             assert all(seen.values()) and new_version in version, (seen, version)
         if signed_in:  # deferred while someone was signed in, restarted only once the 1-hour deadline had passed
-            assert deferred and deferred["boot_unchanged"] and restarted_at and restarted_at >= 60, (deferred, restarted_at)
+            assert deferred and deferred["boot_unchanged"] and deferred["notice_sent"] and restarted_at and restarted_at >= 60, (deferred, restarted_at)
 
         z = zipfile.ZipFile(io.BytesIO(api.get("/api/evidence/pack", params={"days": 1}).content))
         from nimstead.verify_pack import verify

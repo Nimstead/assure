@@ -79,7 +79,7 @@ def office(checks):
     with urllib.request.urlopen(req, timeout=60) as r:  # noqa: S310
         feed = json.load(r)
     cur = next(c for c in feed if c["channelId"] == "Current")["officeVersions"]
-    new, old = cur[0]["legacyVersion"], cur[2]["legacyVersion"]
+    new, old = cur[0]["legacyVersion"], cur[-1]["legacyVersion"]  # the feed lists only the last few builds (2 at times)
     xml = (f'<Configuration><Add OfficeClientEdition="64" Channel="Current" Version="{old}"><Product ID="O365ProPlusRetail">'
            '<Language ID="en-us"/>' + "".join(f'<ExcludeApp ID="{a}"/>' for a in
            ("Access", "Excel", "Groove", "Lync", "OneDrive", "OneNote", "Outlook", "PowerPoint", "Publisher", "Teams"))

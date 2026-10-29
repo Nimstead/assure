@@ -1002,9 +1002,14 @@ WIN_APP_MANAGERS = ("winget", "office", "winconfig")
 SAFE_BUILD = re.compile(r"^\d{1,6}(\.\d{1,8}){1,4}\Z")
 C2R = r"C:\Program Files\Common Files\microsoft shared\ClickToRun\OfficeC2RClient.exe"
 OFFICE_APPS = ("WINWORD", "EXCEL", "POWERPNT", "OUTLOOK", "MSACCESS", "ONENOTE", "MSPUB", "VISIO", "WINPROJ")
-PS_WINGET = r"""(Get-ChildItem "$env:ProgramFiles\WindowsApps" -Directory -Filter 'Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe' -ErrorAction SilentlyContinue |
-  Where-Object { (Get-Acl -LiteralPath $_.FullName).Owner -eq 'NT SERVICE\TrustedInstaller' -and (Test-Path -LiteralPath (Join-Path $_.FullName 'winget.exe')) } |
-  Sort-Object Name -Descending | Select-Object -First 1 | ForEach-Object { Join-Path $_.FullName 'winget.exe' })"""
+# Only admins can write under WindowsApps: its root is TrustedInstaller's; package folders belong to an admin-equivalent
+# owner (seen for real on Windows 11 26H2: BUILTIN\Administrators). Owners compared by SID: group names are localised.
+PS_WINGET = r"""$sid = { (Get-Acl -LiteralPath $args[0]).GetOwner([Security.Principal.SecurityIdentifier]).Value }
+$ti = 'S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464'; $root = "$env:ProgramFiles\WindowsApps"
+if ((Test-Path -LiteralPath $root) -and (& $sid $root) -eq $ti) {
+ (Get-ChildItem -LiteralPath $root -Directory -Filter 'Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe' -ErrorAction SilentlyContinue |
+  Where-Object { (& $sid $_.FullName) -in @($ti, 'S-1-5-18', 'S-1-5-32-544') -and (Test-Path -LiteralPath (Join-Path $_.FullName 'winget.exe')) } |
+  Sort-Object Name -Descending | Select-Object -First 1 | ForEach-Object { Join-Path $_.FullName 'winget.exe' }) }"""
 
 
 class WinAppJob:
@@ -1067,7 +1072,7 @@ class WinAppJob:
         wid = WINGET_IDS[p["name"]]
         rc, exe = ps(self.run, PS_WINGET)
         exe = exe.strip().splitlines()[-1] if rc == 0 and exe.strip() else ""
-        self.step("winget found (App Installer, owned by TrustedInstaller)", ok=bool(exe), output=exe or "winget unavailable")
+        self.step("winget found (App Installer under WindowsApps, admin-owned)", ok=bool(exe), output=exe or "winget unavailable")
         common = ["--id", wid, "--exact", "--source", "winget", "--version", p["to"], "--accept-source-agreements", "--disable-interactivity"]
         out = self.step(f"winget lists {wid} {p['to']} with an installer hash", [exe, "show", *common])
         self.step("installer SHA-256 published", ok=bool(re.search(r"(?im)^\s*Installer SHA256:\s*[0-9a-f]{64}\s*$", out)), output=out)

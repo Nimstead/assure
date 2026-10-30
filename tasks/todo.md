@@ -152,7 +152,7 @@ allowlist the MSRC Defender products.
 **Dependencies:** T5 · **Files:** `agent/nimstead_agent.py`, `feeds.py`, `api/tests/test_msrc_products.py`
 
 ## Checkpoint C
-- [ ] Each product from T5–T9, T19, T20 proven on a real install in a VM (run file committed) — **partly: Edge, .NET, SQL, Exchange, Office, Defender not installed in a VM; the curated-app run covered third-party apps only (see T31)**
+- [ ] Each product from T5–T9, T19, T20 proven on a real install in a VM (run file committed) — **partly: Office installed in a VM and its fix proven (`last_run_winfixes_client.json`); Edge, .NET, SQL, Exchange, Defender not installed in a VM; the curated-app run covered third-party apps only (see T31)**
 - [ ] Noise review: on the demo fleet + one real Windows VM, every new finding opened was checked by hand against Microsoft's KB/release notes; zero unexplained — **NOT done: needs a VM with the products installed**
 - [x] Performance: `sandbox/perf.py` re-run, hourly re-match within 10 % of the last numbers — **22.5 s vs 20.8 s (+8 %), `last_run_perf_sqlite.json`**
 
@@ -203,7 +203,7 @@ reboot, ESU, last successful WU install. Asset page shows them; the remediation 
 **Description:** Like DECISIONS 29 for systemd: a health unit fails if the Service Control Manager logged a crash or
 unexpected stop for it (7031/7034/7024) since the change, or the host logged an unexpected shutdown (41) / bugcheck (1001).
 **Acceptance criteria:**
-- [ ] A service that crashes and is restarted by recovery actions fails health even if "Running" when sampled (VM) — **NOT proven in a VM (fakes only)**
+- [x] A service that crashes and is restarted by recovery actions fails health even if "Running" when sampled (VM) — proven on Windows 11 (`last_run_winchecks.json`: Spooler killed, seen Running, crash event 7031 caught)
 - [x] Failure output names the event and time
 **Dependencies:** none · **Files:** `agent/nimstead_agent.py`, `api/tests/test_winjob.py`
 
@@ -236,7 +236,7 @@ verify by the .NET Framework version from T6 instead of the OS build.
 **Description:** New manager `office`: `OfficeC2RClient.exe /update user updatetoversion=<build>` to the planned build;
 rollback = the same to the recorded previous build. Build matched by a strict regex.
 **Acceptance criteria:**
-- [ ] VM: update verified by inventory; forced failure rolls back to the exact previous build — **NOT proven in a VM (fakes only)**
+- [x] VM: update verified by inventory; forced failure rolls back to the exact previous build — proven on Windows 11 (`last_run_winfixes_client.json`: Microsoft 365 Apps 16.0.20527.20088 → .20112, forced failure back to .20088, then applied)
 - [x] Office apps never force-closed: workstation waits through T41's notice/deferral; server or session host refused with "Office in use" and retried next poll in the window (plan decision 12)
 **Dependencies:** T9 · **Files:** `agent/nimstead_agent.py`, `remediate.py`, tests, `sandbox/wine2e.py`
 
@@ -248,7 +248,7 @@ TrustedInstaller-owned App Installer folder, runs `winget upgrade --source winge
 **Acceptance criteria:**
 - [x] A job naming an unknown product key, a winget ID, or a version not newer than installed is refused before anything runs (tests)
 - [x] Dry run: `winget show --exact --id --version` must list the version with an installer SHA-256, else refuse
-- [ ] VM: Notepad++ and 7-Zip upgraded as SYSTEM, findings closed by inventory; winget missing = refused with "winget unavailable" — **NOT proven in a VM (fakes only)**
+- [ ] VM: Notepad++ and 7-Zip upgraded as SYSTEM, findings closed by inventory; winget missing = refused with "winget unavailable" — **partly: 7-Zip upgraded as SYSTEM and confirmed by inventory on Windows 11 (`last_run_winfixes_client.json`); "winget unavailable" refusal proven on Server 2025 (`last_run_winfixes_server.json`); Notepad++ not upgraded (winget offered no older version to start from)**
 **Dependencies:** T40, T41 (windows and reboots); starts with the existing 18 products, T31–T33 add IDs as they add products · **Files:** `agent/nimstead_agent.py`, `api/tests/test_agent_winget.py` (new), `sandbox/wine2e.py`
 
 ### T22: Forward-only plans  (M)
@@ -400,8 +400,8 @@ standalone MSI is an app), Splunk Universal Forwarder.
 temporary key, read its Uninstall key with the existing `windows_apps` code, `reg unload` at once. Removes the
 DECISIONS 27 residual.
 **Acceptance criteria:**
-- [ ] A signed-out user's per-user app is inventoried (VM) — **NOT proven in a VM (fakes only)**
-- [ ] The hive is always unloaded, also on error (test with a fake `reg`); a user signing in right after a scan gets their normal profile (VM) — **partly: unload-on-error tested with a fake `reg`; the sign-in VM check not run**
+- [x] A signed-out user's per-user app is inventoried (VM) — proven on Windows 11 (`last_run_winchecks.json`: WinSCP 6.1.2 from a signed-out user)
+- [x] The hive is always unloaded, also on error (test with a fake `reg`); a user signing in right after a scan gets their normal profile (VM) — fake `reg` test; on Windows 11 no temporary hive left and the user's own profile after (`last_run_winchecks.json`)
 **Dependencies:** none · **Files:** `agent/nimstead_agent.py`, `api/tests/test_winapps.py`, `sandbox/winlocal.py`
 
 ### T35: Opt-in Java library scan  (M)
@@ -410,7 +410,7 @@ and file budget at low I/O priority, reads `META-INF/maven/**/pom.properties` (a
 reports `Maven` packages with the jar path as source. The existing OSV Maven matcher does the rest (log4j-core 2.14.1
 → CVE-2021-44228, as SBOM ingest already proves).
 **Acceptance criteria:**
-- [ ] A planted log4j-core 2.14.1 jar inside a fat jar is found; the finding names the path (test + VM) — **partly: test passes (fat jar, path named); VM check not run**
+- [x] A planted log4j-core 2.14.1 jar inside a fat jar is found; the finding names the path (test + VM) — test, and on Windows 11 with the nested path named (`last_run_winchecks.json`)
 - [x] Budget exceeded: partial result reported as partial, with what was skipped
 - [x] Works on Linux too (same code, `/` instead of drive letters)
 **Dependencies:** none · **Files:** `agent/nimstead_agent.py`, `api/tests/test_agent.py`, `scan.py` (source shown), `docs/install.md`
@@ -439,7 +439,7 @@ writable by non-admins, `AlwaysInstallElevated`, Print Spooler running on a DC, 
 protection off, Defender real-time protection off or signatures older than 7 days, a firewall profile off, BitLocker
 off on the OS drive (workstations).
 **Acceptance criteria:**
-- [ ] ACL checks use the same owner/ACE parsing as `secure_windows_dir`, tested with planted ACLs in a VM — **partly: same ACE parsing, tested with fakes; planted ACLs in a VM not run**
+- [x] ACL checks use the same owner/ACE parsing as `secure_windows_dir`, tested with planted ACLs in a VM — fakes, and planted services on Windows 11: unquoted path and writable binary reported (`last_run_winchecks.json`)
 - [x] Each check tested as in T36
 **Dependencies:** T10 · **Files:** `agent/nimstead_agent.py`, `winconfig.py`, `api/tests/test_winconfig.py`
 
@@ -450,7 +450,7 @@ check ID only; the agent holds the change. It records the old value, applies, ru
 old value back on failure. Canary-gated; manual tier by default.
 **Acceptance criteria:**
 - [x] A job with an unknown check ID or any path/value is refused (schema test)
-- [ ] VM: SMB signing required → health check fails (a legacy test client can't connect) → old value restored, verified by inventory — **NOT proven in a VM (fakes only)**
+- [ ] VM: SMB signing required → health check fails (a legacy test client can't connect) → old value restored, verified by inventory — **partly: on Windows 11 an injected failure restored the old value and a real apply kept LanmanServer running (`last_run_winfixes_client.json`); no legacy client tried, so a health check failing on its own is not proven**
 - [x] Changes that need a reboot follow T41's policy
 **Dependencies:** T36, T13, T41 · **Files:** `agent/nimstead_agent.py`, `remediate.py`, `api/tests/test_winconfig.py`, `api/tests/test_remediate.py`
 
@@ -483,7 +483,7 @@ only inside its asset's window (none = any time, as today). The agent may downlo
 signed-in user: a notice (`msg *` / `shutdown /c` text) and deferral up to the org's deadline (default 24 h), then
 reboot with a 15-minute warning. Never start an install on battery below 50 % or on a metered connection.
 **Acceptance criteria:**
-- [ ] Each branch tested with fakes; VM: signed-in user sees the notice, reboot happens at the deadline, job resumes and reports — **partly: every branch tested with fakes; VM not run**
+- [ ] Each branch tested with fakes; VM: signed-in user sees the notice, reboot happens at the deadline, job resumes and reports — **partly: every branch tested with fakes. Windows 11 run (`last_run_windows11_signed_in.json`): deferred, notice sent, agent restarted at about 67 min against a 1-hour deadline, job verified. Open: the notice was sent but no screenshot shows it on screen, and an earlier run restarted at 45 min, before the deadline; cause not found (that run didn't log who asked)**
 - [x] The pending state survives the deferral (job state validated on every load, as today)
 **Dependencies:** T40 · **Files:** `agent/nimstead_agent.py`, `remediate.py`, `api/tests/test_winjob.py`
 
@@ -513,13 +513,13 @@ every server call with the server's TLS checks unchanged and the agent key never
 Scheduled tasks get a random delay (6-hourly: up to 30 min; job poll: up to 2 min), run at below-normal priority, and
 `collect` stays under 60 s and 150 MB on the T27 VMs.
 **Acceptance criteria:**
-- [ ] VM behind a squid proxy with direct egress blocked: enrol, report, self-update and a fix all work — **NOT proven: no squid VM run**
+- [x] VM behind a squid proxy with direct egress blocked: enrol, report, self-update and a fix all work — proven on Windows 11 with the harness's logging proxy, not squid (`last_run_windows11_proxy.json`)
 - [x] Task XML has `RandomDelay` and priority set (test of `schedule_windows_script`)
 **Dependencies:** none (run before T27) · **Files:** `agent/nimstead_agent.py`, `api/src/nimstead/static/install.ps1`, `api/tests/test_agent_schedule.py`, `docs/install.md`
 
 ## Checkpoint H
 - [ ] 2-node failover cluster and a DC pair patched inside a window, one node at a time (VM run files) — **NOT proven: no cluster or domain VMs**
-- [ ] A workstation VM with a signed-in user: notice, deferral, reboot at the deadline, job verified — **NOT proven in a VM**
+- [ ] A workstation VM with a signed-in user: notice, deferral, reboot at the deadline, job verified — **partly: see T41: passed once on Windows 11, but an earlier run's restart at 45 min is unexplained**
 
 ---
 

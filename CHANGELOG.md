@@ -59,6 +59,7 @@ maintenance windows and Active Directory computers), applied on start. Things to
 - The hourly re-match scores each CVSS vector once per pass.
 - `resume-job` takes the run lock, so it can't advance a pending Windows job while the startup run is advancing it.
 - A Windows cumulative update gets up to 2 hours to install (a reinstall on Windows 11 with a user signed in ran past 30 minutes), and a rollback also removes an update that finished installing after the agent stopped waiting for it; before, that ended in "ROLLBACK FAILED" (found on a real Windows 11 VM).
+- Proven on real Windows 11 VMs: winget, Office and Windows-setting fixes with rollback, proxy-only operation, restart deferral (one early restart in an earlier run remains unexplained), crash events in health checks, offline user hives, the jar scan and service ACL checks.
 - A Windows job whose restart a signed-in user put off is no longer marked failed after 2 hours; the server waits until 4 hours after the restart deadline (found on a real Windows 11 VM).
 - winget fixes run as SYSTEM on real Windows 11: winget exited with a missing-DLL error because its C++ runtime wasn't on the path. Office updates and rollbacks repeat a request the Click-to-Run client dropped; before, a dropped rollback ended in "ROLLBACK FAILED" (both found on a real Windows 11 VM).
 - A Windows update job stops before downloading when the system drive has under 10 GB free, saying how much is free; before, a full disk ended in "downloaded failed: 4" (found on a real Windows 11 VM).

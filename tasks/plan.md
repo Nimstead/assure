@@ -86,9 +86,9 @@ and where this plan delivers it. "Out" rows are deliberate and say why.
 | OS patch deployment with rollback | Qualys PM (rollback limited); Tenable via Patch Management (Adaptiva) | LCU + DISM rollback | T13, T15, T16, T18 | Proven on Windows 11 26H2 (agent 0.4.0) and Server 2025 (agent 0.4.0, 2026-10-29); hotpatch BLOCKED (Azure); .NET DROPPED; Windows 10 / Server 2016–2022 BLOCKED (ISOs) |
 | Third-party and Microsoft app patching | Qualys PM | none | T17, T21, T22 | Built, fakes only (no VM run) |
 | Reversible configuration fixes | Qualys (partial) | none | T38 | Built, fakes only (no VM run) |
-| Maintenance windows, reboot control, user deferral, no install on battery | Qualys PM | immediate, 60 s reboot warning | T40, T41 | Built, fakes only (no VM run) |
+| Maintenance windows, reboot control, user deferral, no install on battery | Qualys PM | immediate, 60 s reboot warning | T40, T41 | Deferral, notice sent, restart after the deadline and job verified on Windows 11 once; an earlier run's restart at 45 min is unexplained; window dispatch fakes only |
 | Cluster/DC-safe patching (one node at a time) | Qualys PM (partial), ConfigMgr CAU | one job per host only | T42 | Built, fakes only (no cluster or domain) |
-| Fleet operation: proxies, jittered schedules, low agent footprint, no runtime to install | both | no proxy, no jitter, Python required | T25–T27, T44 | No-Python install and runtime update proven on Windows 11 and Server 2025 Core; proxy not VM-proven |
+| Fleet operation: proxies, jittered schedules, low agent footprint, no runtime to install | both | no proxy, no jitter, Python required | T25–T27, T44 | No-Python install and runtime update proven on Windows 11 and Server 2025 Core; proxy-only enrol, report, self-update and fix proven on Windows 11 |
 | Proof of accuracy | vendor claims | Linux: OSV agreement | T1 oracle on every Windows version, Checkpoint C noise review | Windows 11 and Server 2025 oracles; noise review NOT done |
 | Agentless credentialed network scanning (SMB/WinRM) | Nessus core | none | **Out:** the agent covers the same data with no stored domain credentials; its own plan if buyers ask | Out |
 | Full CIS/STIG benchmarks | separate compliance SKUs | none | **Out:** its own plan; T36/T37 cover the exploitable subset | Out |

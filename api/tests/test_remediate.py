@@ -183,6 +183,22 @@ def test_silent_agent_times_out(env):
     assert j["status"] == "failed" and "did not report" in j["error"]
 
 
+def test_windows_job_waiting_for_its_restart_isnt_timed_out_before_the_deadline(env):
+    c = setup(env)
+    aid, h = add_host(c)
+    jid = plan(c, aid).json()["id"]
+    c.post(f"/api/remediation/jobs/{jid}/approve")
+    c.get("/api/agent/jobs", headers=h)
+    s = sessionmaker(make_engine(env))()
+    s.execute(update(RemediationJob).values(manager="windows", updated=now() - timedelta(hours=3)))  # default deadline: 24 h
+    s.commit()
+    assert c.get("/api/remediation/jobs").json()[0]["status"] == "dispatched"
+    s.execute(update(RemediationJob).values(updated=now() - timedelta(hours=29)))
+    s.commit()
+    j = c.get("/api/remediation/jobs").json()[0]
+    assert j["status"] == "failed" and "after the restart deadline" in j["error"]
+
+
 def test_auto_mode_canary_first_then_broad(env):
     c = setup(env)
     c.patch("/api/settings", json={"remediation_mode": "auto", "canary_soak_hours": 1})

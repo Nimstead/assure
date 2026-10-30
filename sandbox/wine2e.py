@@ -231,8 +231,9 @@ def main(keep=False) -> int:
 
         # 3) success, driven only by the installed scheduled task: install -> reboot -> startup run resumes -> report
         signed_in = "--signed-in" in sys.argv  # plan T41: a workstation user is told and the restart waits for the deadline
+        # the install's autologon counts as someone signed in, so every run waits for this deadline, not the default 24 h
+        assert api.patch("/api/settings", json={"reboot_deadline_hours": 1}).status_code == 200
         if signed_in:
-            assert api.patch("/api/settings", json={"reboot_deadline_hours": 1}).status_code == 200
             guest(r"""$p = 'Nim-user-' + (Get-Random); New-LocalUser nimuser -Password (ConvertTo-SecureString $p -AsPlainText -Force) | Out-Null
                 Add-LocalGroupMember Users nimuser  # `net user` stops to ask about passwords over 14 characters
                 $k = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
@@ -273,7 +274,8 @@ def main(keep=False) -> int:
             if signed_in and restarted_at is None and deferred and guest(
                     "(Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('s')", check=False).strip() not in ("", boot0):
                 restarted_at = round((time.time() - dispatched) / 60)
-                note("restarted", minutes_after_dispatch=restarted_at)
+                note("restarted", minutes_after_dispatch=restarted_at, who=guest(  # the agent, or Windows on its own?
+                    "Get-WinEvent -FilterHashtable @{LogName='System'; Id=1074} -MaxEvents 3 | ForEach-Object { \"$($_.TimeCreated.ToUniversalTime().ToString('s')) $($_.Message)\" }", check=False)[-900:])
             try:
                 status = next(j for j in api.get("/api/remediation/jobs").json() if j["id"] == jid)["status"]
             except httpx.HTTPError:

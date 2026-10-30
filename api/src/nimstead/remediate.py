@@ -51,6 +51,9 @@ AGENT_OUTCOMES = ("applied", "rolled_back", "rollback_failed", "aborted")
 ALERT_STATUSES = ("rolled_back", "rollback_failed", "failed", "not_fixed", "aborted")
 DISPATCH_TIMEOUT = timedelta(hours=2)
 TIMEOUT_ERROR = "Agent did not report a result within 2 hours; check the host"
+# A Windows job can wait for its restart until reboot_by (a signed-in user may put it off), then needs time to install and verify
+WIN_TIMEOUT_MARGIN = timedelta(hours=4)
+WIN_TIMEOUT_ERROR = "Agent did not report a result by 4 hours after the restart deadline; check the host"
 
 
 class RemediationError(Exception):
@@ -260,7 +263,10 @@ def sweep(s: Session, org_id: str) -> None:
     stale = now() - DISPATCH_TIMEOUT
     for job in s.scalars(select(RemediationJob).where(RemediationJob.org_id == org_id, RemediationJob.status == "dispatched",
                                                       RemediationJob.updated < stale)):
-        job.status, job.error = "failed", TIMEOUT_ERROR
+        windows = job.manager == "windows"
+        if windows and job.updated >= now() - timedelta(hours=s.get(Org, org_id).reboot_deadline_hours or 24) - WIN_TIMEOUT_MARGIN:
+            continue
+        job.status, job.error = "failed", WIN_TIMEOUT_ERROR if windows else TIMEOUT_ERROR
         _log(s, job, "remediation_failed", error=job.error)
     s.commit()
 
@@ -356,7 +362,7 @@ def report(s: Session, job: RemediationJob, outcome: str, steps: list[dict], err
            versions: dict | None = None) -> RemediationJob:
     if outcome not in AGENT_OUTCOMES:
         raise RemediationError(f"Unknown outcome {outcome!r}")
-    late = job.status == "failed" and job.error == TIMEOUT_ERROR  # agent came back after the timeout: keep the truth
+    late = job.status == "failed" and job.error in (TIMEOUT_ERROR, WIN_TIMEOUT_ERROR)  # agent came back after the timeout: keep the truth
     if job.status != "dispatched" and not late:
         raise RemediationError(f"Job is {job.status}, not awaiting a report")
     job.steps = [{"step": str(st.get("step", ""))[:200], "ok": bool(st.get("ok")), "output": str(st.get("output", ""))[:2000]}

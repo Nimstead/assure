@@ -1,0 +1,72 @@
+[
+  {
+    "step": "T13 Spooler killed, restarted by recovery",
+    "status": "Running",
+    "crashes": "event 7031 at 2026-10-29T20:48:59"
+  },
+  {
+    "step": "T34 signed-out user's app",
+    "apps": [
+      {
+        "ecosystem": "WinApp",
+        "name": "WinSCP 6.1.2",
+        "version": "6.1.2",
+        "source": "Martin Prikryl"
+      }
+    ],
+    "temporary_hives_left": "0",
+    "profile_after": "C:\\Users\\nimoff"
+  },
+  {
+    "step": "T35 jar scan",
+    "packages": [
+      {
+        "ecosystem": "Maven",
+        "name": "org.apache.logging.log4j:log4j-core",
+        "version": "2.14.1",
+        "source": null
+      }
+    ],
+    "summary": {
+      "files": 1,
+      "complete": true,
+      "locations": [
+        [
+          "org.apache.logging.log4j:log4j-core",
+          "2.14.1",
+          "C:\\nimtest\\jars\\deep dir\\app-fat.jar!/BOOT-INF/lib/log4j-core-2.14.1.jar"
+        ]
+      ]
+    }
+  },
+  {
+    "step": "T37 service ACL checks",
+    "problem": null,
+    "unquoted": [
+      "NimUnq"
+    ],
+    "writable": [
+      "NimUnq",
+      "NimWsvc"
+    ],
+    "findings": [
+      "CFG:bitlocker",
+      "CFG:defender-signatures",
+      "CFG:llmnr",
+      "CFG:netbios",
+      "CFG:unquoted-service-paths",
+      "CFG:writable-service-binaries",
+      "CVE-2013-3900",
+      "CVE-2023-24932"
+    ]
+  },
+  {
+    "step": "RESULT: PASS",
+    "checks": {
+      "T13 crash seen although Running": true,
+      "T34 offline hive read and unloaded, own profile after": true,
+      "T35 log4j-core 2.14.1 found with its path": true,
+      "T37 unquoted path and writable binary reported": true
+    }
+  }
+]

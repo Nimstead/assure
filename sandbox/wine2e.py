@@ -36,7 +36,10 @@ def note(step, **kw):
 
 def guest(cmd, timeout=3600, check=True):
     for _ in range(4):  # VirtualBox guest control flakes right after boot (VERR_* from VBoxManage itself)
-        rc, out = winvm.run(NAME, cmd, timeout=timeout)
+        try:
+            rc, out = winvm.run(NAME, cmd, timeout=timeout)
+        except subprocess.TimeoutExpired:  # guest control itself can hang (seen: an hour on Test-Path during the Office install)
+            rc, out = 1, "timed out"
         if rc == 0 or not any(s in out for s in ("VERR_", "not ready", "timed out", "Error starting guest session")) and out.strip():
             break
         # Windows 11 finishes a cumulative update with a second restart, which can land between two commands (seen
@@ -59,10 +62,10 @@ def as_system(cmd, name="NimsteadTest", wait_minutes=120, result=None):
         Start-ScheduledTask -TaskName NAME""".replace("NAME", name))
     end = time.time() + wait_minutes * 60
     while time.time() < end:
-        if "True" in guest(r"Test-Path C:\nimtest\done.txt", check=False):
+        if "True" in guest(r"Test-Path C:\nimtest\done.txt", timeout=120, check=False):
             return
         # the agent's own result file is authoritative (the task's cmd can be torn down by servicing right after it)
-        if result and '"outcome"' in guest(f"Get-Content {result} -Raw -ErrorAction SilentlyContinue", check=False):
+        if result and '"outcome"' in guest(f"Get-Content {result} -Raw -ErrorAction SilentlyContinue", timeout=120, check=False):
             return
         time.sleep(20)
     raise RuntimeError(f"SYSTEM task did not finish in {wait_minutes} min: {cmd}")

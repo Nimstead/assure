@@ -19,12 +19,12 @@ NEW_PKG = "Package_for_RollupFix~31bf3856ad364e35~amd64~~26100.33650.1.3"
 
 class FakeWin:
     def __init__(self, offered=("5126646",), service_breaks_on_new=False, removal_works=True, busy_removals=0, manifest="removable",
-                 battery="", cluster=False, drain="Paused", crashes="", why="", install_times_out=False):
+                 battery="", cluster=False, drain="Paused", crashes="", why="", install_times_out=False, free_gb="50"):
         self.build, self.pkgs, self.manifest = OLD, {BASE_PKG: "Installed"}, manifest
         self.offered, self.breaks, self.removal_works = list(offered), service_breaks_on_new, removal_works
         self.pending_remove, self.log, self.busy = [], [], busy_removals
         self.battery, self.cluster, self.drain, self.crashes, self.why = battery, cluster, drain, crashes, why
-        self.boot, self.install_times_out = 1_700_000_000, install_times_out
+        self.boot, self.install_times_out, self.free_gb = 1_700_000_000, install_times_out, free_gb
 
     def __call__(self, cmd, cwd=None, timeout=None):
         self.log.append(cmd)
@@ -32,6 +32,8 @@ class FakeWin:
             script = cmd[-1]
             if "Win32_Battery" in script:
                 return 0, self.battery
+            if "Get-PSDrive" in script:
+                return 0, self.free_gb
             if "HKLM:\\Cluster" in script:
                 return 0, "NODE1" if self.cluster else ""
             if "Suspend-ClusterNode" in script:
@@ -316,6 +318,13 @@ def test_never_starts_on_battery(tmp_path):
     h = FakeWin(battery="battery 31%")
     r = make(tmp_path, h).advance()
     assert r["outcome"] == "aborted" and "battery 31%" in r["error"]
+    assert not any("CreateUpdateDownloader" in c[-1] for c in h.log if c[0] == "powershell")
+
+
+def test_never_downloads_onto_a_nearly_full_system_drive(tmp_path):
+    h = FakeWin(free_gb="3")
+    r = make(tmp_path, h).advance()
+    assert r["outcome"] == "aborted" and "3 GB free" in r["error"]
     assert not any("CreateUpdateDownloader" in c[-1] for c in h.log if c[0] == "powershell")
 
 

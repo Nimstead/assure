@@ -143,7 +143,9 @@ Short log; newest last. Why, not what.
     servers restart at once (they're inside their window); a workstation with someone signed in is told and may put it
     off until the job's `reboot_by` (dispatch + the org's deadline, default 24 h), reminded at most hourly, then gets a
     15-minute warning; a job whose restart was put off isn't judged until it has happened. No install starts on battery
-    below half. Health checks also fail on Service Control Manager crash/stop events for the unit since the change.
+    below half, or with under 10 GB free on the system drive (a 40 GB Windows 11 VM filled up after one install and
+    rollback, WinSxS 19.6 GB, and the next download failed with a bare code 4; refusing first says why and changes
+    nothing). Health checks also fail on Service Control Manager crash/stop events for the unit since the change.
     When Windows Update offers nothing, the step says why from the machine's own settings (WSUS approval, deferral or
     pause policy, no ESU licence). Unmanaged hosts: an opted-in domain member reads enabled computer objects using only
     its own computer account (`[adsisearcher]`), and Assets lists those signed in within 30 days with no agent, with end

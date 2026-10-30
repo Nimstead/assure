@@ -1361,6 +1361,10 @@ PS_ON_BATTERY = r"""
 $b = @(Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue)
 if ($b.Count -and ($b | Where-Object { $_.BatteryStatus -ne 2 -and $_.EstimatedChargeRemaining -lt 50 })) { "battery $($b[0].EstimatedChargeRemaining)%" }
 """
+# Whole GB free on the system drive. A Windows 11 VM with 40 GB filled up after one install + rollback (WinSxS 19.6 GB)
+# and the next download failed with a bare code 4; refuse before downloading instead
+PS_FREE_GB = "[math]::Floor((Get-PSDrive $env:SystemDrive.TrimEnd(':')).Free / 1GB)"
+WIN_MIN_FREE_GB = 10
 # Why Windows Update offered nothing for a KB (plan T14): its source, deferrals, ESU
 PS_WHY_NOT_OFFERED = r"""
 $wu = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate'
@@ -1542,6 +1546,9 @@ class WinJob:
         self.health("before change")
         rc, out = ps(self.run, PS_ON_BATTERY)
         self.step("on mains power or battery above half", rc == 0 and not out.strip(), out.strip() or "ok")
+        rc, out = ps(self.run, PS_FREE_GB)
+        self.step(f"at least {WIN_MIN_FREE_GB} GB free on the system drive", rc == 0 and out.strip().isdigit()
+                  and int(out) >= WIN_MIN_FREE_GB, f"{out.strip()} GB free")
         found = {}  # KB -> (target build, how many updates Windows Update offers for it)
         for kb, to in [(s["kb"], s["to"]), *([(s["alt"]["kb"], s["alt"]["to"])] if s.get("alt") else [])]:
             rc, out = ps(self.run, wu(PS_FIND).replace("%KB%", kb))

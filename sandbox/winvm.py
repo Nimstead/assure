@@ -48,7 +48,8 @@ def create(iso: str) -> str:
         for step in (["inituefivarstore"], ["enrollmssignatures"], ["enrollorclpk"], ["secureboot", "--enable"]):
             vbox("modifynvram", name, *step)
     disk = folder / f"{name}.vdi"
-    vbox("createmedium", "disk", "--filename", str(disk), "--size", "40960")
+    # dynamic, 80 GB: 40 GB filled up on Windows 11 after one update install + rollback (WinSxS 19.6 GB)
+    vbox("createmedium", "disk", "--filename", str(disk), "--size", "81920")
     vbox("storagectl", name, "--name", "SATA", "--add", "sata", "--controller", "IntelAhci")
     vbox("storageattach", name, "--storagectl", "SATA", "--port", "0", "--device", "0", "--type", "hdd", "--medium", str(disk))
     additions = str(Path(VBOX).parent / "VBoxGuestAdditions.iso")

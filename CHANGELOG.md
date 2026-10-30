@@ -59,6 +59,7 @@ maintenance windows and Active Directory computers), applied on start. Things to
 - The hourly re-match scores each CVSS vector once per pass.
 - `resume-job` takes the run lock, so it can't advance a pending Windows job while the startup run is advancing it.
 - A Windows cumulative update gets up to 2 hours to install (a reinstall on Windows 11 with a user signed in ran past 30 minutes), and a rollback also removes an update that finished installing after the agent stopped waiting for it; before, that ended in "ROLLBACK FAILED" (found on a real Windows 11 VM).
+- A Windows update job stops before downloading when the system drive has under 10 GB free, saying how much is free; before, a full disk ended in "downloaded failed: 4" (found on a real Windows 11 VM).
 - winget fixes find winget on real Windows 11: the App Installer folder is owned by Administrators there, not TrustedInstaller (only the WindowsApps root is), so every winget job was refused as "winget unavailable". Owners are now compared by SID (found on a real Windows 11 26H2 VM).
 - The runtime signature check in `install.ps1` now filters by extension: PowerShell 5.1 ignores `-Include` beside
   `-LiteralPath` (found in the real VM run).

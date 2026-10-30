@@ -1004,12 +1004,16 @@ C2R = r"C:\Program Files\Common Files\microsoft shared\ClickToRun\OfficeC2RClien
 OFFICE_APPS = ("WINWORD", "EXCEL", "POWERPNT", "OUTLOOK", "MSACCESS", "ONENOTE", "MSPUB", "VISIO", "WINPROJ")
 # Only admins can write under WindowsApps: its root is TrustedInstaller's; package folders belong to an admin-equivalent
 # owner (seen for real on Windows 11 26H2: BUILTIN\Administrators). Owners compared by SID: group names are localised.
-PS_WINGET = r"""$sid = { (Get-Acl -LiteralPath $args[0]).GetOwner([Security.Principal.SecurityIdentifier]).Value }
+PS_WINDOWSAPP_FILE = r"""$sid = { (Get-Acl -LiteralPath $args[0]).GetOwner([Security.Principal.SecurityIdentifier]).Value }
 $ti = 'S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464'; $root = "$env:ProgramFiles\WindowsApps"
 if ((Test-Path -LiteralPath $root) -and (& $sid $root) -eq $ti) {
- (Get-ChildItem -LiteralPath $root -Directory -Filter 'Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe' -ErrorAction SilentlyContinue |
-  Where-Object { (& $sid $_.FullName) -in @($ti, 'S-1-5-18', 'S-1-5-32-544') -and (Test-Path -LiteralPath (Join-Path $_.FullName 'winget.exe')) } |
-  Sort-Object Name -Descending | Select-Object -First 1 | ForEach-Object { Join-Path $_.FullName 'winget.exe' }) }"""
+ (Get-ChildItem -LiteralPath $root -Directory -Filter '%PKG%_*_x64__8wekyb3d8bbwe' -ErrorAction SilentlyContinue |
+  Where-Object { (& $sid $_.FullName) -in @($ti, 'S-1-5-18', 'S-1-5-32-544') -and (Test-Path -LiteralPath (Join-Path $_.FullName '%FILE%')) } |
+  Sort-Object Name -Descending | Select-Object -First 1 | ForEach-Object { Join-Path $_.FullName '%FILE%' }) }"""
+PS_WINGET = PS_WINDOWSAPP_FILE.replace("%PKG%", "Microsoft.DesktopAppInstaller").replace("%FILE%", "winget.exe")
+# As SYSTEM nothing puts winget's C++ runtime on the DLL path, so it exits with C0000135 before doing anything (real Windows 11 26H2);
+# the folder is run from, under the same ownership check
+PS_VCLIBS = PS_WINDOWSAPP_FILE.replace("%PKG%", "Microsoft.VCLibs.140.00.UWPDesktop").replace("%FILE%", "msvcp140.dll")
 
 
 class WinAppJob:
@@ -1022,9 +1026,9 @@ class WinAppJob:
         self.pkgs, self.units = job.get("packages") or [], job.get("health_units") or []
         self.inject, self.result_versions = fail_after_apply, None
 
-    def step(self, name, cmd=None, ok=None, output=""):
+    def step(self, name, cmd=None, ok=None, output="", cwd=None):
         if cmd is not None:
-            rc, output = self.run(cmd)
+            rc, output = self.run(cmd, cwd=cwd)
             ok = rc == 0 if ok is None else ok
         self.steps.append({"step": name, "ok": bool(ok), "output": str(output)[-1500:]})
         if not ok:
@@ -1073,11 +1077,13 @@ class WinAppJob:
         rc, exe = ps(self.run, PS_WINGET)
         exe = exe.strip().splitlines()[-1] if rc == 0 and exe.strip() else ""
         self.step("winget found (App Installer under WindowsApps, admin-owned)", ok=bool(exe), output=exe or "winget unavailable")
+        rc, vc = ps(self.run, PS_VCLIBS)
+        cwd = os.path.dirname(vc.strip().splitlines()[-1]) if rc == 0 and vc.strip() else None
         common = ["--id", wid, "--exact", "--source", "winget", "--version", p["to"], "--accept-source-agreements", "--disable-interactivity"]
-        out = self.step(f"winget lists {wid} {p['to']} with an installer hash", [exe, "show", *common])
+        out = self.step(f"winget lists {wid} {p['to']} with an installer hash", [exe, "show", *common], cwd=cwd)
         self.step("installer SHA-256 published", ok=bool(re.search(r"(?im)^\s*Installer SHA256:\s*[0-9a-f]{64}\s*$", out)), output=out)
         self.step(f"{wid} upgraded to {p['to']}", [exe, "install", *common, "--silent", "--force", "--accept-package-agreements",
-                                                    "--scope", "machine"])
+                                                    "--scope", "machine"], cwd=cwd)
         self.result_versions = {p["name"]: p["to"]}
         return None  # forward-only
 
@@ -1088,9 +1094,11 @@ class WinAppJob:
         self.step("no Office app open (never force-closed)", ok=rc == 0 and out.strip() == "0", output=f"{out.strip()} Office app(s) open")
 
         def go(build):
-            self.step(f"Office updated to {build}", [C2R, "/update", "user", f"updatetoversion={build}", "displaylevel=false",
-                                                       "forceappshutdown=false"])
-            for _ in range(60):  # the client returns at once; the update finishes in the background
+            cmd = [C2R, "/update", "user", f"updatetoversion={build}", "displaylevel=false", "forceappshutdown=false"]
+            self.step(f"Office updated to {build}", cmd)
+            for i in range(60):  # the client returns at once; the update finishes in the background
+                if i and i % 4 == 0:  # it can drop a request with exit 0 (real VM: nothing for 10 min, a repeat worked in under 3)
+                    self.run(cmd)
                 rc, cur = ps(self.run, "(Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Office\\ClickToRun\\Configuration').VersionToReport")
                 if cur.strip() == build:
                     return

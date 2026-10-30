@@ -24,6 +24,7 @@ class Host:
     def __init__(self, show_hash=True, office_open="0", reg=None):
         self.log, self.show_hash, self.office_open = [], show_hash, office_open
         self.reg, self.office = dict(reg or {}), "16.0.20430.20100"
+        self.winget_cwds, self.c2r_drops = [], 0
 
     def __call__(self, cmd, cwd=None):
         self.log.append(cmd)
@@ -31,6 +32,8 @@ class Host:
             s = cmd[-1]
             if "DesktopAppInstaller" in s:
                 return 0, "C:\\Program Files\\WindowsApps\\Microsoft.DesktopAppInstaller_1.25_x64__8wekyb3d8bbwe\\winget.exe"
+            if "VCLibs" in s:
+                return 0, "C:\\Program Files\\WindowsApps\\Microsoft.VCLibs.140.00.UWPDesktop_14_x64__8wekyb3d8bbwe\\msvcp140.dll"
             if "VersionToReport" in s:
                 return 0, self.office
             if "Get-Process" in s:
@@ -38,10 +41,14 @@ class Host:
             if "Get-Service" in s:
                 return 0, "Running"
         if cmd[0].endswith("winget.exe"):
+            self.winget_cwds.append(cwd)
             if cmd[1] == "show":
                 return 0, "Found 7-Zip [7zip.7zip]\nInstaller:\n  Installer Type: msi\n" + ("  Installer SHA256: " + "a" * 64 + "\n" if self.show_hash else "")
             return 0, "Successfully installed"
         if cmd[0].endswith("OfficeC2RClient.exe"):
+            if self.c2r_drops:  # exit 0, nothing happens
+                self.c2r_drops -= 1
+                return 0, ""
             self.office = cmd[3].split("=", 1)[1]
             return 0, ""
         if cmd[:2] == ["reg", "query"]:
@@ -67,6 +74,7 @@ def test_winget_upgrades_only_a_pinned_id_with_a_published_hash():
     inst = next(c for c in h.log if c[0].endswith("winget.exe") and c[1] == "install")
     assert inst[inst.index("--id") + 1] == "7zip.7zip" and "--exact" in inst and inst[inst.index("--source") + 1] == "winget"
     assert inst[inst.index("--version") + 1] == "24.09"
+    assert len(h.winget_cwds) == 2 and all("Microsoft.VCLibs" in c for c in h.winget_cwds)  # as SYSTEM its DLLs are found from there
 
 
 @pytest.mark.parametrize("j,why", [
@@ -95,6 +103,15 @@ def test_office_rolls_back_to_the_build_it_found(monkeypatch):
     assert outcome == "rolled_back" and h.office == "16.0.20430.20100"
     assert [s["step"] for s in steps if s["step"].startswith("Office updated to")] == [
         "Office updated to 16.0.20430.20180", "Office updated to 16.0.20430.20100"]
+
+
+def test_office_request_the_client_dropped_is_sent_again(monkeypatch):
+    monkeypatch.setattr(agent.time, "sleep", lambda s: None)
+    h = Host()
+    h.c2r_drops = 1
+    outcome, steps, err = agent.WinAppJob(job("office", "Microsoft 365 Apps", frm="16.0.20430.20100", to="16.0.20430.20200"), run=h).execute()
+    assert outcome == "applied", (steps, err)
+    assert h.office == "16.0.20430.20200"
 
 
 def test_office_never_force_closes_open_apps():

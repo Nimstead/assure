@@ -158,7 +158,7 @@ Short log; newest last. Why, not what.
     check id -> registry value); a job names only a key and versions, so a compromised server can at most move a curated
     app to a newer published build or apply one of those exact settings. winget runs only from the App Installer folder
     under the TrustedInstaller-owned WindowsApps root, itself owned by TrustedInstaller, SYSTEM or Administrators (by SID;
-    a real Windows 11 26H2 has it owned by Administrators, so "TrustedInstaller only" never found winget), with `--source winget --exact --id`, a version newer than installed, and only when
+    a real Windows 11 26H2 has it owned by Administrators, so "TrustedInstaller only" never found winget; as SYSTEM it is run from the VCLibs folder, under the same ownership rule, or it exits with a missing-DLL error), with `--source winget --exact --id`, a version newer than installed, and only when
     `winget show` lists an installer SHA-256 for it; it is **forward-only**: the job says so, approving needs the
     approver's explicit acknowledgement (recorded in the ledger), and neither the trust ladder nor auto mode ever plans or
     approves it. Office updates to the planned build with `OfficeC2RClient.exe updatetoversion=`, refuses while any Office

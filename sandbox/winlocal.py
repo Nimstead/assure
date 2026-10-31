@@ -42,7 +42,11 @@ def standard_user(name):
 def main() -> int:
     env = {**os.environ, "NIMSTEAD_DB": f"sqlite:///{(h.TMP / 'n.db').as_posix()}", "NIMSTEAD_SECURE_COOKIES": "0",
            "NIMSTEAD_PUBLIC_URL": f"http://10.0.2.2:{h.PORT}", "NIMSTEAD_SIGNING_KEY_FILE": str(h.TMP / "sign.pem"),
-           "NIMSTEAD_CHECKPOINT_DIR": str(h.TMP / "cp"), "NIMSTEAD_SECRET_KEY_FILE": str(h.TMP / "secret.key")}
+           "NIMSTEAD_CHECKPOINT_DIR": str(h.TMP / "cp"), "NIMSTEAD_SECRET_KEY_FILE": str(h.TMP / "secret.key"), "NIMSTEAD_OPEN_SIGNUP": "1"}
+    from testrelease import TestRelease  # install.ps1 brings the signed embeddable runtime (plan T25)
+    rel = TestRelease(h.TMP)
+    rel.publish(rel.agent, "3.15.2", "v9.9.8")
+    env.update(rel.env())
     import httpx
     server = subprocess.Popen([sys.executable, "-m", "uvicorn", "--factory", "nimstead.app:create_app", "--host", "127.0.0.1",
                                "--port", str(h.PORT)], env=env, cwd=ROOT / "api", stdout=open(h.TMP / "api.log", "wb"), stderr=subprocess.STDOUT)
@@ -71,11 +75,7 @@ def main() -> int:
                owner=h.guest(f"(Get-Acl -LiteralPath '{DIR}').Owner").strip())
         assert "PLANTED" in out and "nimuser" in planted_acl.lower(), (out[-400:], planted_acl)
 
-        h.guest(rf"""$ErrorActionPreference='Stop'; New-Item -ItemType Directory -Force C:\nimtest | Out-Null
-            Invoke-WebRequest -UseBasicParsing https://www.python.org/ftp/python/{h.PY}/python-{h.PY}-amd64.exe -OutFile C:\nimtest\py.exe
-            Start-Process C:\nimtest\py.exe -ArgumentList '/quiet InstallAllUsers=1 PrependPath=1 Include_launcher=1' -Wait""", timeout=1800)
-        out = h.guest(rf"""$env:Path = 'C:\Program Files\Python313;C:\Program Files\Python313\Scripts;' + $env:Path
-            $env:NIMSTEAD_TOKEN = '{token}'
+        out = h.guest(rf"""$env:NIMSTEAD_TOKEN = '{token}'
             try {{ irm http://10.0.2.2:{h.PORT}/install.ps1 | iex }} catch {{ "INSTALL FAILED: $_"; exit 1 }}""", timeout=1800, check=False)
         assets = api.get("/api/assets").json()
         h.note("install.ps1 ran elevated", output=out.strip()[-1500:], assets=[(a["hostname"], a["agent_version"]) for a in assets])
@@ -96,6 +96,13 @@ def main() -> int:
         assert "READ" not in read and "WROTE" not in write, (read[-400:], write[-400:])
         assert "nimuser" not in acl.lower() and "Users:" not in acl and owner == "BUILTIN\\Administrators", (acl, owner)
         assert link_left == "False" and kept == "not yours"
+        # the no-Python layout (plan T25): nothing the SYSTEM task runs may be writable by a standard user
+        rt = h.guest(r"(Resolve-Path 'C:\Program Files\Nimstead\runtime\*\python.exe')[0].Path").strip()
+        targets = {"agent": r"C:\Program Files\Nimstead\nimstead_agent.py", "python": rt, "python folder": rt.rsplit("\\", 1)[0] + r"\nim.txt",
+                   "runtime folder": r"C:\Program Files\Nimstead\runtime\nim.txt", "install folder": r"C:\Program Files\Nimstead\nim.txt"}
+        wrote = {k: "WROTE" in as_user(attacker, f"Add-Content -LiteralPath '{t}' -Value x; 'WROTE'") for k, t in targets.items()}
+        h.note("standard user against the runtime", wrote=wrote)
+        assert not any(wrote.values()), wrote
         h.note("RESULT: PASS")
         return 0
     finally:

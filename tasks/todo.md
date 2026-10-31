@@ -327,7 +327,7 @@ way. Never while a Windows job waits for its reboot (`WIN_STATE`), same as agent
 - [x] The documented one-line install enrols, reports and registers SYSTEM tasks; `where python` finds nothing
 - [x] The scheduled task alone moves agent X → X+1 and runtime patch A → B from locally signed test releases, then the next run changes nothing
 - [x] A host on a system Python moves to the bundled runtime by the task alone
-- [ ] `winlocal.py` attack rerun passes against the new layout (a standard user can't write any runtime folder) — **NOT rerun on the new layout (last `winlocal.py` run: 2026-10-28, agent 0.3.0)**
+- [x] `winlocal.py` attack rerun passes against the new layout (a standard user can't write any runtime folder) — **PASS on a fresh Windows 11 VM, 2026-10-31 (`last_run_windows_local.json`): no write to the agent, python.exe, the python, runtime or install folder**
 - [x] `uninstall --yes` leaves no Nimstead folder, task or key; `last_run_windows_nopython.json` committed
 **Dependencies:** T25, T26, T44 · **Files:** `sandbox/winupdate.py`, `sandbox/winlocal.py`, run files
 

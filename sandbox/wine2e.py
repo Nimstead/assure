@@ -274,8 +274,9 @@ def main(keep=False) -> int:
             if signed_in and restarted_at is None and deferred and guest(
                     "(Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('s')", check=False).strip() not in ("", boot0):
                 restarted_at = round((time.time() - dispatched) / 60)
-                note("restarted", minutes_after_dispatch=restarted_at, who=guest(  # the agent, or Windows on its own?
-                    "Get-WinEvent -FilterHashtable @{LogName='System'; Id=1074} -MaxEvents 3 | ForEach-Object { \"$($_.TimeCreated.ToUniversalTime().ToString('s')) $($_.Message)\" }", check=False)[-900:])
+                who = guest(  # the agent, or Windows on its own?
+                    "Get-WinEvent -FilterHashtable @{LogName='System'; Id=1074} -MaxEvents 3 | ForEach-Object { \"$($_.TimeCreated.ToUniversalTime().ToString('s')) $($_.Message)\" }", check=False)
+                note("restarted", minutes_after_dispatch=restarted_at, who=who[-900:])
             try:
                 status = next(j for j in api.get("/api/remediation/jobs").json() if j["id"] == jid)["status"]
             except httpx.HTTPError:
@@ -301,8 +302,8 @@ def main(keep=False) -> int:
             note("through the proxy", **seen, agent=version, requests=len(px.log),
                  hosts=sorted({t.split("/")[2] if "://" in t else t for _, t in px.log})[:40])
             assert all(seen.values()) and new_version in version, (seen, version)
-        if signed_in:  # deferred while someone was signed in, restarted only once the 1-hour deadline had passed
-            assert deferred and deferred["boot_unchanged"] and deferred["notice_sent"] and restarted_at and restarted_at >= 60, (deferred, restarted_at)
+        if signed_in:  # deferred while someone was signed in; the agent restarts only past the 1-hour deadline, Windows' own restart isn't ours to hold
+            assert deferred and deferred["boot_unchanged"] and deferred["notice_sent"] and restarted_at and (restarted_at >= 60 or "Nimstead:" not in who), (deferred, restarted_at, who)
 
         z = zipfile.ZipFile(io.BytesIO(api.get("/api/evidence/pack", params={"days": 1}).content))
         from nimstead.verify_pack import verify

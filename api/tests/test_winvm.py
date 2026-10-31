@@ -29,3 +29,35 @@ def test_wait_ready_restarts_a_booted_windows_cleanly_and_never_hard_resets(monk
     monkeypatch.setattr(winvm, "vbox", lambda *a, **k: calls.append("reset"))
     winvm.wait_ready("nimstead-sbx-win-x")
     assert calls == ["restart"] and clock[0] > 20 * 60
+
+
+def _clock(monkeypatch, winvm):
+    clock = [0.0]
+    monkeypatch.setattr(winvm.time, "time", lambda: clock[0])
+    monkeypatch.setattr(winvm.time, "sleep", lambda s: clock.__setitem__(0, clock[0] + s))
+    monkeypatch.setattr(winvm, "run", lambda *a, **k: (1, ""))
+    monkeypatch.setattr(winvm, "unstick", lambda n: False)
+    monkeypatch.setattr(winvm, "os_up", lambda n: False)
+    return clock
+
+
+def test_wait_ready_never_resets_a_setup_whose_disk_is_busy(monkeypatch):
+    import pytest
+    import winvm
+    clock, calls = _clock(monkeypatch, winvm), []
+    monkeypatch.setattr(winvm, "disk_activity", lambda n: str(clock[0]))
+    monkeypatch.setattr(winvm, "vbox", lambda *a, **k: calls.append(a))
+    with pytest.raises(RuntimeError):
+        winvm.wait_ready("nimstead-sbx-win-x", minutes=60)
+    assert calls == []
+
+
+def test_wait_ready_resets_a_setup_whose_disk_went_idle(monkeypatch):
+    import pytest
+    import winvm
+    clock, calls = _clock(monkeypatch, winvm), []
+    monkeypatch.setattr(winvm, "disk_activity", lambda n: "same")
+    monkeypatch.setattr(winvm, "vbox", lambda *a, **k: calls.append((a, clock[0])))
+    with pytest.raises(RuntimeError):
+        winvm.wait_ready("nimstead-sbx-win-x", minutes=30)
+    assert calls and calls[0][0][2] == "reset" and calls[0][1] > 12 * 60

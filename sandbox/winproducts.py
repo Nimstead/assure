@@ -100,7 +100,7 @@ def main(keep=False) -> int:
     def findings(inv):
         r = api.post("/api/agent/inventory", headers=auth, json=inv)
         assert r.status_code == 200, r.text
-        return [x for x in api.get("/api/findings").json() if x["ecosystem"] == "Microsoft"]
+        return [x for x in api.get("/api/findings", params={"limit": 5000}).json() if x["ecosystem"] == "Microsoft"]  # a default page of 500 hid some of them
 
     dotnet = "Microsoft.DotNet.Runtime.8"
     dn = versions(dotnet)

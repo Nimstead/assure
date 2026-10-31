@@ -185,3 +185,20 @@ def test_agent_collects_microsoft_facts():
     # PowerShell failing costs only its own facts
     pkgs, problem = agent.windows_microsoft(reg, lambda cmd: (1, "Get-AppxPackage : Access denied"), dotnet)
     assert problem.startswith("Microsoft product check failed") and len(pkgs) == 4
+
+
+def test_sync_msrc_retries_a_dropped_connection_then_gives_up():
+    s, calls = make_sessionmaker("sqlite://")(), []
+
+    def flaky(fails):
+        def handler(request):
+            calls.append(request.url)
+            if len(calls) <= fails:
+                raise httpx.RemoteProtocolError("peer closed connection", request=request)
+            return httpx.Response(200, json={"value": []})
+        return httpx.Client(transport=httpx.MockTransport(handler))
+
+    assert sync_msrc(s, 60, flaky(2))["documents"] == 0 and len(calls) == 3
+    calls.clear()
+    with pytest.raises(httpx.RemoteProtocolError):
+        sync_msrc(s, 60, flaky(3))

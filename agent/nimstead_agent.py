@@ -1674,7 +1674,7 @@ def restart_for_update(run=None, state_path=None, client=None, now=None):
     if client and signed_in and t < deadline:
         if t - w.s.get("notified_at", 0) >= 3600:
             run(["msg", "*", "/TIME:3600", "A security update needs a restart. Please restart when convenient; it will restart "
-                 f"automatically after {time.strftime('%Y-%m-%d %H:%M', time.localtime(deadline))}."])
+                 f"automatically after {time.strftime('%Y-%m-%d %H:%M', time.localtime(deadline))}. Windows may restart it sooner, outside active hours."])
             w.s["notified_at"] = t
             w.save()
         return "later", f"restart put off until {w.s['reboot_by']}: someone is signed in"

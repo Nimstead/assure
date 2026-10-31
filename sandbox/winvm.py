@@ -80,9 +80,11 @@ def run(name: str, command: str, timeout=3600, user: dict | None = None) -> tupl
 
 
 def wait_ready(name: str, minutes=90, reset_after=12, restart_after=20, max_resets=3) -> None:
-    """Until guest additions answer and PowerShell runs. Under Hyper-V's NEM backend the reboots during unattended
-    setup hang (seen every time on this host: idle, no guest activity); a hard reset recovers each one."""
-    last, end, resets = time.time(), time.time() + minutes * 60, 0
+    """Until guest additions answer and PowerShell runs. Under Hyper-V's NEM backend the reboots during unattended setup
+    can hang (idle, no guest activity); a hard reset recovers those. Only those: a reset while setup is still working ends
+    it for good ("The computer restarted unexpectedly", real VMs), so the clock runs from the last disk activity."""
+    idle = up = time.time()
+    end, resets, seen = time.time() + minutes * 60, 0, None
     while time.time() < end:
         try:
             rc, out = run(name, "'ready'", timeout=60)
@@ -91,12 +93,24 @@ def wait_ready(name: str, minutes=90, reset_after=12, restart_after=20, max_rese
         except (subprocess.TimeoutExpired, FileNotFoundError):
             pass
         if unstick(name):
-            last = time.time()
-        elif resets < max_resets and time.time() - last > (restart_after if os_up(name) else reset_after) * 60:
-            clean_restart(name) if os_up(name) else vbox("controlvm", name, "reset", check=False)
-            last, resets = time.time(), resets + 1
+            idle = up = time.time()
+        elif os_up(name):
+            if resets < max_resets and time.time() - up > restart_after * 60:
+                clean_restart(name)
+                idle, up, resets = time.time(), time.time(), resets + 1
+        else:
+            up, disk = time.time(), disk_activity(name)
+            if disk != seen:
+                seen, idle = disk, time.time()
+            elif resets < max_resets and time.time() - idle > reset_after * 60:
+                vbox("controlvm", name, "reset", check=False)
+                idle, resets = time.time(), resets + 1
         time.sleep(20)
     raise RuntimeError(f"{name} not ready after {minutes} min")
+
+
+def disk_activity(name: str) -> str:
+    return vbox("debugvm", name, "statistics", "--pattern", "/Public/Storage/AHCI0/Port0/Bytes*", check=False)
 
 
 def clean_restart(name: str, wait=300) -> None:

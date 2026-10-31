@@ -304,7 +304,13 @@ def sync_msrc(session: Session, months: int = 12, client=None) -> dict:
     http = _client(client)
 
     def get(url):
-        r = http.get(url, headers={"Accept": "application/json"})
+        for attempt in range(3):  # MSRC dropped a connection mid-document on a real run (2026-10-31)
+            try:
+                r = http.get(url, headers={"Accept": "application/json"})
+                break
+            except httpx.TransportError:
+                if attempt == 2:
+                    raise
         r.raise_for_status()
         return r.json()
 

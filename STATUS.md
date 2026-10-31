@@ -92,6 +92,7 @@ All four evidence packs verified, with 6/6 controls met. On Alpine, the dry run 
 - **PostgreSQL suite:** `cd api && uv run python ../sandbox/pg.py`
 
 ## Review notes (Windows round 1: calls made without the owner, plan decision 7)
+- How settings and end-of-support findings read: screenshots at 1440 and 375 in `sandbox/ui-review/` (seeded fleet, after the fixes in DECISIONS 59). Exposure findings weren't in the seed. Fix first still lists version upgrades only, so setting fixes start from the finding.
 - Bundled Python is **3.15.2** (newest minor with two bugfix releases); its `vcruntime140*.dll` are accepted only with a valid Microsoft signature, everything else must be PSF-signed.
 - Hotpatch enrolment is inferred from the build (on a hotpatch build = hotpatch track); hosts on a baseline build are judged by cumulative builds (stricter). No documented enrolment signal exists.
 - .NET: only the newest patch per major.minor is reported (runtime roll-forward); the registry's stale `InstalledVersions` entries are ignored in favour of the runtime folders.

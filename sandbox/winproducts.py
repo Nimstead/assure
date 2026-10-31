@@ -21,7 +21,6 @@ from fastapi.testclient import TestClient
 from signin import signup
 
 from nimstead import feeds, winapps  # noqa: E402
-from nimstead.app import create_app  # noqa: E402
 from nimstead.db import make_sessionmaker  # noqa: E402
 
 WATCH = r"""while ($true) {
@@ -89,6 +88,7 @@ def main(keep=False) -> int:
            "NIMSTEAD_INVENTORY_MIN_SECONDS": "0", "NIMSTEAD_SIGNING_KEY_FILE": str(h.TMP / "sign.pem"),
            "NIMSTEAD_CHECKPOINT_DIR": str(h.TMP / "cp"), "NIMSTEAD_SECRET_KEY_FILE": str(h.TMP / "secret.key")}
     os.environ.update(env)
+    from nimstead.app import create_app  # reads the cookie setting on import, so only once it's set
     with make_sessionmaker(env["NIMSTEAD_DB"])() as s:
         h.note("feeds", msrc=feeds.sync_msrc(s, 2))
     api = TestClient(create_app(env["NIMSTEAD_DB"]))
@@ -104,32 +104,46 @@ def main(keep=False) -> int:
 
     dotnet = "Microsoft.DotNet.Runtime.8"
     dn = versions(dotnet)
-    install(dotnet, dn[-1])
-    h.note("SQL Server Express install", output=install("Microsoft.SQLServer.2022.Express")[-500:])
+    h.guest(f"winget uninstall --id {dotnet} --exact --silent --disable-interactivity", check=False)  # a rerun finds the newest
+    tried = []
+    for v in dn[2:8]:  # winget's oldest installers are gone from Microsoft's CDN; a recent old one is still behind the newest fix
+        tried.append((v, install(dotnet, v)[-200:]))
+        if found(collect(), ".NET runtime"):
+            break
+    h.note(".NET install", tried=tried)
+    # judged now: a newer runtime appeared by itself before the findings were read (real VM), and only the newest patch is reported
+    old_net = [x for x in findings(collect()) if ".NET" in x["package"]]
+    h.note("old .NET judged", reported=found(collect(), ".NET runtime"), findings=len(old_net))
+    sql = "Microsoft.SQLServer.2022.Express"  # its manifest has no machine-scope installer: winget says "No applicable installer"
+    h.note("SQL Server Express install", output=h.guest(f"winget install --id {sql} --exact --silent --accept-package-agreements "
+                                                        "--accept-source-agreements --disable-interactivity", timeout=2400, check=False)[-500:])
     f.office(checks)
 
     inv = collect()
     open1 = findings(inv)
+    # for the noise review: everything this host opened, each checked against the vendor's data
+    (f.ROOT / "sandbox" / "last_run_winproducts_findings.json").write_text(json.dumps(
+        sorted(([x["ecosystem"], x["package"], x["vuln_id"], x.get("installed_version"), x.get("fixed_version"), x.get("priority")]
+                for x in api.get("/api/findings", params={"limit": 5000}).json()), key=str), indent=0))
     runtimes = h.guest(r"& 'C:\Program Files\dotnet\dotnet.exe' --list-runtimes", check=False)
     edge = h.guest(r"(Get-Item 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe').VersionInfo.ProductVersion", check=False).strip()
-    sql = h.guest(r"(Get-Item (Get-ChildItem 'C:\Program Files\Microsoft SQL Server' -Recurse -Filter sqlservr.exe)[0].FullName).VersionInfo.ProductVersion", check=False).strip()
+    sqlv = h.guest(r"(Get-Item (Get-ChildItem 'C:\Program Files\Microsoft SQL Server' -Recurse -Filter sqlservr.exe)[0].FullName).VersionInfo.ProductVersion", check=False).strip()
     mp = h.guest("Get-MpComputerStatus | Select-Object AMProductVersion, AMEngineVersion | ConvertTo-Json", check=False)
     mp = json.loads(mp) if mp.strip().startswith("{") else {}
     c2r = h.guest(f"(Get-ItemProperty '{f.C2R_CFG}').VersionToReport", check=False).strip()
     reported = {n: found(inv, n) for n in (".NET runtime", "SQL Server", "Defender platform", "Defender engine", "Microsoft 365 Apps")}
     reported["Microsoft Edge"] = [p["version"] for p in inv["packages"] if p["name"] == "Microsoft Edge"]
-    h.note("collected vs the host", reported=reported, dotnet_cli=runtimes, edge=edge, sql=sql, defender=mp, office=c2r)
+    h.note("collected vs the host", reported=reported, dotnet_cli=runtimes, edge=edge, sql=sqlv, defender=mp, office=c2r)
     h.note("Microsoft findings with old .NET", count=len(open1), by_package=sorted({x["package"] for x in open1}))
     net = reported[".NET runtime"]
     checks[".NET version matches dotnet --list-runtimes"] = bool(net) and all(v in runtimes for v in net)
     checks["Edge version matches msedge.exe"] = reported["Microsoft Edge"] == [edge]
     # shortcut: compares build and revision only, sqlservr.exe writes 2022.160.x.y where the registry has 16.0.x.y
     checks["SQL Server version matches sqlservr.exe"] = bool(reported["SQL Server"]) and all(
-        v.split(".")[-2:] == sql.split(".")[-2:] for v in reported["SQL Server"])
+        v.split(".")[-2:] == sqlv.split(".")[-2:] for v in reported["SQL Server"])
     checks["Defender versions match Get-MpComputerStatus"] = (
         reported["Defender platform"] == [mp.get("AMProductVersion")] and reported["Defender engine"] == [mp.get("AMEngineVersion")])
     checks["Microsoft 365 Apps version matches Click-to-Run"] = reported["Microsoft 365 Apps"] == [c2r]
-    old_net = [x for x in open1 if ".NET" in x["package"]]
     checks["old .NET opens findings"] = bool(old_net)
 
     install(dotnet, dn[0])

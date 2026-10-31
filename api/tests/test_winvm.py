@@ -15,3 +15,17 @@ def test_booted_only_if_the_additions_reported_after_the_last_reset():
     assert additions_since_reset([REPORT])
     assert not additions_since_reset([REPORT, RESET])
     assert additions_since_reset([REPORT, RESET, REPORT])
+
+
+def test_wait_ready_restarts_a_booted_windows_cleanly_and_never_hard_resets(monkeypatch):
+    import winvm
+    calls, clock = [], [0.0]
+    monkeypatch.setattr(winvm.time, "time", lambda: clock[0])
+    monkeypatch.setattr(winvm.time, "sleep", lambda s: clock.__setitem__(0, clock[0] + s))
+    monkeypatch.setattr(winvm, "run", lambda *a, **k: (1, "not ready") if not calls else (0, "ready"))
+    monkeypatch.setattr(winvm, "unstick", lambda n: False)
+    monkeypatch.setattr(winvm, "os_up", lambda n: True)
+    monkeypatch.setattr(winvm, "clean_restart", lambda n: calls.append("restart"))
+    monkeypatch.setattr(winvm, "vbox", lambda *a, **k: calls.append("reset"))
+    winvm.wait_ready("nimstead-sbx-win-x")
+    assert calls == ["restart"] and clock[0] > 20 * 60

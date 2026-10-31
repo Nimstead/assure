@@ -1,0 +1,253 @@
+[
+  {
+    "step": "winget-notepad",
+    "outcome": "applied",
+    "error": null,
+    "steps": [
+      [
+        "job validated",
+        true
+      ],
+      [
+        "fix is newer than installed",
+        true
+      ],
+      [
+        "winget found (App Installer under WindowsApps, admin-owned)",
+        true
+      ],
+      [
+        "winget lists Notepad++.Notepad++ 8.9.8.1 with an installer hash",
+        true
+      ],
+      [
+        "installer SHA-256 published",
+        true
+      ],
+      [
+        "Notepad++.Notepad++ upgraded to 8.9.8.1",
+        true
+      ]
+    ]
+  },
+  {
+    "step": "Notepad++ by inventory",
+    "before": [
+      "8.9.8"
+    ],
+    "after": [
+      "8.9.8.1"
+    ],
+    "planned": [
+      "8.9.8",
+      "8.9.8.1"
+    ]
+  },
+  {
+    "step": "winconfig-health",
+    "outcome": "rolled_back",
+    "error": "Change failed and was rolled back: Spooler running after change failed: Stopped",
+    "steps": [
+      [
+        "job validated",
+        true
+      ],
+      [
+        "Spooler running before change",
+        true
+      ],
+      [
+        "recorded RequireSecuritySignature before the change",
+        true
+      ],
+      [
+        "RequireSecuritySignature set to 1",
+        true
+      ],
+      [
+        "Spooler running after change",
+        false
+      ],
+      [
+        "RequireSecuritySignature removed again",
+        true
+      ]
+    ]
+  },
+  {
+    "step": "SMB signing after the failed health check",
+    "found": null,
+    "now": null
+  },
+  {
+    "step": "feeds",
+    "msrc": {
+      "documents": 2,
+      "skipped_documents": 0,
+      "inserted": 47730,
+      "updated": 0,
+      "skipped": 0
+    }
+  },
+  {
+    "step": ".NET install",
+    "tried": [
+      [
+        "8.0.31",
+        " \n   | \n   / \n   - \n   \\ \n   | \n   / \n   - \n   \\ \n   | \n                                                                                                                        \nSuccessfully installed\n"
+      ]
+    ]
+  },
+  {
+    "step": "old .NET judged",
+    "reported": [
+      "8.0.31"
+    ],
+    "findings": 14
+  },
+  {
+    "step": "SQL Server Express install",
+    "output": " \n   / \n   - \n   \\ \n   | \n   / \n   - \n   \\ \n   | \n   / \n   - \n   \\ \n   | \n   / \n   - \n   \\ \n   | \n   / \n   - \n   \\ \n   | \n   / \n   - \n   \\ \n   | \n   / \n   - \n   \\ \n   | \n   / \n   - \n   \\ \n   | \n   / \n   - \n   \\ \n   | \n   / \n   - \n   \\ \n   | \n   / \n   - \n   \\ \n   | \n   / \n   - \n   \\ \n   | \n   / \n   - \n   \\ \n   | \n   / \n   - \n   \\ \n   | \n   / \n   - \n   \\ \n                                                                                                                        \nSuccessfully installed\n"
+  },
+  {
+    "step": "Microsoft 365 Apps installed",
+    "build": "16.0.20527.20088",
+    "planned_from": "16.0.20527.20088",
+    "to": "16.0.20527.20112"
+  },
+  {
+    "step": "office-rollback",
+    "outcome": "rolled_back",
+    "error": "Change failed and was rolled back: injected failure (sandbox test) failed: --fail-after-apply",
+    "steps": [
+      [
+        "job validated",
+        true
+      ],
+      [
+        "fix is newer than installed",
+        true
+      ],
+      [
+        "installed build matches plan",
+        true
+      ],
+      [
+        "no Office app open (never force-closed)",
+        true
+      ],
+      [
+        "Office updated to 16.0.20527.20112",
+        true
+      ],
+      [
+        "injected failure (sandbox test)",
+        false
+      ],
+      [
+        "Office updated to 16.0.20527.20088",
+        true
+      ]
+    ]
+  },
+  {
+    "step": "office-apply",
+    "outcome": "applied",
+    "error": null,
+    "steps": [
+      [
+        "job validated",
+        true
+      ],
+      [
+        "fix is newer than installed",
+        true
+      ],
+      [
+        "installed build matches plan",
+        true
+      ],
+      [
+        "no Office app open (never force-closed)",
+        true
+      ],
+      [
+        "Office updated to 16.0.20527.20112",
+        true
+      ]
+    ]
+  },
+  {
+    "step": "Office build after apply",
+    "now": "16.0.20527.20112"
+  },
+  {
+    "step": "collected vs the host",
+    "reported": {
+      ".NET runtime": [
+        "8.0.31"
+      ],
+      "SQL Server": [
+        "16.0.1000.6"
+      ],
+      "Defender platform": [
+        "4.18.25080.5"
+      ],
+      "Defender engine": [
+        "1.1.26100.4"
+      ],
+      "Microsoft 365 Apps": [
+        "16.0.20527.20112"
+      ],
+      "Microsoft Edge": [
+        "156.0.4314.50"
+      ]
+    },
+    "dotnet_cli": "Microsoft.NETCore.App 8.0.31 [C:\\Program Files\\dotnet\\shared\\Microsoft.NETCore.App]\n",
+    "edge": "156.0.4314.50",
+    "sql": "16.0.1000.6",
+    "defender": {
+      "AMProductVersion": "4.18.25080.5",
+      "AMEngineVersion": "1.1.26100.4"
+    },
+    "office": "16.0.20527.20112"
+  },
+  {
+    "step": "Microsoft findings with old .NET",
+    "count": 66,
+    "by_package": [
+      ".NET 8.0 runtime",
+      "HEVC Video Extensions",
+      "MPEG-2 Video Extension",
+      "Microsoft Paint",
+      "Raw Image Extension on Windows 11 Version 26H2 for x64-based Systems",
+      "SQL Server 2022 GDR",
+      "Windows Security App"
+    ]
+  },
+  {
+    "step": ".NET updated",
+    "before": 14,
+    "after": 0,
+    "now": [
+      "8.0.33"
+    ],
+    "newest": "8.0.33"
+  },
+  {
+    "step": "RESULT: PASS",
+    "checks": {
+      "Notepad++ upgraded as SYSTEM, verified by inventory": true,
+      "winconfig health check failed by itself, value restored": true,
+      "office rollback back to the build found": true,
+      "office updated to the planned build": true,
+      ".NET version matches dotnet --list-runtimes": true,
+      "Edge version matches msedge.exe": true,
+      "SQL Server version matches sqlservr.exe": true,
+      "Defender versions match Get-MpComputerStatus": true,
+      "Microsoft 365 Apps version matches Click-to-Run": true,
+      "old .NET opens findings": true,
+      ".NET findings closed by the update": true
+    }
+  }
+]

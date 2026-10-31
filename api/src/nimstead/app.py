@@ -1105,6 +1105,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             "due": due.isoformat() if due else None,
             "id": f.id, "asset_id": f.asset_id, "hostname": hostname, "ecosystem": f.ecosystem,
             "package": f.package, "installed_version": f.installed_version, "fixed_version": f.fixed_version,
+            "setting_fix": f.ecosystem == "WinConfig" and f.package in remediate.CONFIG_FIXES,
             "vuln_id": f.vuln_id, "advisory_ids": f.advisory_ids, "summary": f.summary, "cvss": f.cvss,
             "epss": f.epss, "kev": f.kev, "score": f.score, "priority": f.priority, "reasons": f.reasons,
             "status": f.status, "first_seen": f.first_seen, "last_seen": f.last_seen, "resolved_at": f.resolved_at,
@@ -1176,7 +1177,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         if kev is not None:
             stmt = stmt.where(Finding.kev == kev)
         if fixable is not None:
-            stmt = stmt.where(Finding.fixed_version.is_not(None) if fixable else Finding.fixed_version.is_(None))
+            # a setting, an end of support or an exposure never has a fixed version, but there is always something to do
+            has_fix = Finding.fixed_version.is_not(None) | Finding.ecosystem.in_(("WinConfig", lifecycle.ECOSYSTEM, external.ECOSYSTEM))
+            stmt = stmt.where(has_fix if fixable else ~has_fix)
         if q:
             like = f"%{q.lower()}%"
             stmt = stmt.where(func.lower(Finding.package).like(like) | func.lower(Finding.vuln_id).like(like) | func.lower(Asset.hostname).like(like))

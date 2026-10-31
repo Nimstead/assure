@@ -44,7 +44,7 @@ export const sbomSummary = (r: SbomResult) =>
   `${r.mapped} of ${r.components} components recognised (${r.unique_packages} unique packages), ${r.components - r.mapped} skipped. ${r.open} open finding${r.open === 1 ? "" : "s"}, ${r.resolved} resolved.`;
 export interface Finding {
   id: string; asset_id: string; hostname: string; ecosystem: string; package: string;
-  installed_version: string; fixed_version: string | null; vuln_id: string; advisory_ids: string[];
+  installed_version: string; fixed_version: string | null; setting_fix: boolean; vuln_id: string; advisory_ids: string[];
   summary: string | null; cvss: number | null; epss: number | null; kev: boolean; score: number;
   priority: Priority; reasons: string[]; status: Status; first_seen: string; last_seen: string;
   resolved_at: string | null;
@@ -200,8 +200,16 @@ export function relativeTime(s: string, now = Date.now()): string {
 export const plural = (n: number, one: string, many = one + "s") => `${n.toLocaleString("en")} ${n === 1 ? one : many}`;
 export const pct = (x: number) => (x < 0.01 ? "<1%" : `${Math.round(x * 100)}%`);
 
+/** What to move to. Settings, end of support and exposures never have a fixed version, and "no fix yet" would be untrue. */
+export function fixLabel(f: Pick<Finding, "fixed_version" | "ecosystem">): string {
+  return f.fixed_version ?? ({ WinConfig: "change the setting", Lifecycle: "move to a supported version", External: "close or restrict it" } as Record<string, string>)[f.ecosystem] ?? "no fix yet";
+}
+
 /** "Installed A < fixed B per DSA-1" sentence parts. */
-export function whyMatched(f: Pick<Finding, "installed_version" | "fixed_version" | "advisory_ids" | "vuln_id">): string {
+export function whyMatched(f: Pick<Finding, "installed_version" | "fixed_version" | "advisory_ids" | "vuln_id"> & { ecosystem?: string }): string {
+  if (f.ecosystem === "WinConfig") return `Found ${f.installed_version} on this host.`;
+  if (f.ecosystem === "Lifecycle") return `Installed ${f.installed_version}, which is past its end of support.`;
+  if (f.ecosystem === "External") return "Seen from outside by an external scan.";
   if (!f.fixed_version) return `Installed ${f.installed_version}. No fixed version has been published yet.`;
   const src = f.advisory_ids.length ? f.advisory_ids.slice(0, 3).join(", ") : f.vuln_id;
   return `Installed ${f.installed_version} < fixed ${f.fixed_version} per ${src}`;

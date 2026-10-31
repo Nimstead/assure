@@ -148,7 +148,7 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
             cvss=cvss,
             criticality=asset.criticality,
             internet_facing=asset.internet_facing,
-            fix_available=m.fixed is not None,
+            fix_available=m.fixed is not None or eco == "WinConfig",  # a setting is fixed by changing it
         )
         if "_risk" not in m.record:
             r = risk.context(r, kev=kev, ransomware=m.vuln_id in ransomware, public_exploit=m.vuln_id in advisories[("exploits",)],

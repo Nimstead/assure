@@ -49,7 +49,7 @@ def job(name, j, fail=False):
     h.guest(f"Set-Content -Path C:\\nimtest\\{name}.json -Encoding ascii -Value '{json.dumps(j)}'")
     out = rf"C:\nimtest\{name}.out"
     h.as_system(rf'"{PY}" -I "{AGENT}" run-job --yes{" --fail-after-apply" if fail else ""} < C:\nimtest\{name}.json > {out} 2>&1',
-                wait_minutes=40, result=out)
+                wait_minutes=70, result=out)  # above the agent's worst case: an Office job waits up to 30 min each way
     r = json.loads(h.guest(f"Get-Content {out} -Raw").strip().splitlines()[-1])
     h.note(name, outcome=r["outcome"], error=r.get("error"), steps=[(s["step"], s["ok"]) for s in r["steps"]])
     return r

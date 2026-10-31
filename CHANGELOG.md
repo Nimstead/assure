@@ -53,6 +53,7 @@ maintenance windows and Active Directory computers), applied on start. Things to
 - Windows Update accuracy oracle in the VM harnesses (`sandbox/winoracle.py`).
 
 ### Fixed
+- Findings hid every Windows setting, end-of-support and exposure finding by default, and called them "no fix yet"; they now show, with what to do. Plan fix is offered on settings the agent can change. Links to advisory pages that can't exist are gone, and an unset registry value no longer reads `[None, None]`.
 - KeePass and Notepad++ (MSI) are identified by the names their current installers register ("KeePass 2.x",
   "Notepad++ (x64)"); both were inventory only before (found on a real Windows 11 install).
 - A Windows job's 15-minute check no longer judges a DISM rollback before the restart it waits for.

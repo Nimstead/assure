@@ -93,5 +93,11 @@ def test_config_findings_end_to_end(env):
     f = {x["vuln_id"]: x for x in c.get("/api/findings").json()}
     assert {"CFG:wdigest", "CVE-2013-3900"} <= set(f) and f["CFG:wdigest"]["ecosystem"] == "WinConfig"
     assert "UseLogonCredential=0" in f["CFG:wdigest"]["summary"]
+    assert f["CVE-2013-3900"]["installed_version"] == "not set / not set"
+    assert "No fix yet" not in " ".join(f["CVE-2013-3900"]["reasons"])
+    # a setting has no fixed version, but it isn't "no fix": the default view must show it, and the UI offers the agent's fix
+    assert {"CFG:wdigest", "CVE-2013-3900"} <= {x["vuln_id"] for x in c.get("/api/findings", params={"fixable": True}).json()}
+    assert not c.get("/api/findings", params={"fixable": False}).json()
+    assert f["CFG:wdigest"]["setting_fix"] is True
     inv({})
     assert not [x for x in c.get("/api/findings").json() if x["ecosystem"] == "WinConfig"]

@@ -7,7 +7,7 @@ import { ArrowRight, ExternalLink, Search, SlidersHorizontal, Sparkles, X } from
 import clsx from "clsx";
 import {
   ACTIVE_JOB_STATUSES, adminGate, aiFilterToPatch, aiStatusQ, api, assetsQ, FINDINGS_CAP, filtersToApi, filtersToSearch, jobAnchor, jobsQ, looksLikeQuestion, parseFilters, pct, plural,
-  PRIORITIES, PRIORITY_LABEL, refresh, relativeTime, parseUtc, useIsAdmin, useTitle, whyMatched, type AiFilter, type Finding, type FindingsFilters, type Job, type RawSearch, type Status,
+  PRIORITIES, PRIORITY_LABEL, refresh, relativeTime, parseUtc, useIsAdmin, useTitle, whyMatched, fixLabel, type AiFilter, type Finding, type FindingsFilters, type Job, type RawSearch, type Status,
 } from "./lib";
 import { PlanFixButton } from "./remediation";
 import { Alert, btnPrimary, btnQuiet, chip, EmptyState, ErrorState, Field, input, KevBadge, Loading, PriorityPill, StatusPill, switchRoot, switchThumb, useReturnFocus } from "./ui";
@@ -194,8 +194,8 @@ function Table({ rows, onPick }: { rows: Finding[]; onPick: (id: string) => void
               </div>
               {/* every cell that can be cut off carries its full text as a title */}
               <div role="cell" data-c="pkg" className="truncate font-medium" title={r.package}><CellLabel i={2} /><PackageName name={r.package} /></div>
-              <div role="cell" data-c="ver" className="truncate font-mono text-xs text-muted" title={`${r.installed_version} → ${r.fixed_version ?? "no fix yet"}`}>
-                <CellLabel i={3} />{r.installed_version} → {r.fixed_version ? <span className="text-ink">{r.fixed_version}</span> : "no fix yet"}
+              <div role="cell" data-c="ver" className="truncate font-mono text-xs text-muted" title={`${r.installed_version} → ${fixLabel(r)}`}>
+                <CellLabel i={3} />{r.installed_version} → {r.fixed_version ? <span className="text-ink">{r.fixed_version}</span> : fixLabel(r)}
               </div>
               <div role="cell" data-c="host" className="truncate text-muted" title={r.hostname}><CellLabel i={4} />{r.hostname}</div>
               <div role="cell" data-c="score" className="num text-right text-muted"><span className="sr-only">Score </span>{r.score}</div>
@@ -237,7 +237,7 @@ function FindingDrawer({ id, onClose }: { id: string; onClose: () => void }) {
 function FindingDetail({ f }: { f: Finding }) {
   const ai = useQuery(aiStatusQ).data?.enabled === true;
   const job = useJobFor(f);
-  const ids = [...new Set([f.vuln_id, ...f.advisory_ids])];
+  const ids = [...new Set([f.vuln_id, ...f.advisory_ids])].filter((i) => !/^(CFG:|EOL:|NIM-)/.test(i)); // our own ids: OSV has no page for them
   const when = (s: string) => <time dateTime={parseUtc(s).toISOString()} title={parseUtc(s).toLocaleString()}>{relativeTime(s)}</time>;
   return (
     <div>
@@ -261,7 +261,7 @@ function FindingDetail({ f }: { f: Finding }) {
         <div><dt className="text-muted">Known exploited</dt><dd className="font-medium">{f.kev ? "Yes (KEV)" : "No"}</dd></div>
       </dl>
 
-      <H>Advisories</H>
+      {ids.length > 0 && <H>Advisories</H>}
       <ul className="flex flex-wrap gap-2">
         {ids.map((i) => (
           <li key={i}>
@@ -277,7 +277,7 @@ function FindingDetail({ f }: { f: Finding }) {
           <H>Act on it</H>
           {job && <FixInProgress job={job} />}
           <div className="flex flex-wrap items-start gap-2">
-            {f.fixed_version && !job && <PlanFixButton ecosystem={f.ecosystem} pkg={f.package} assetIds={[f.asset_id]} />}
+            {(f.fixed_version || f.setting_fix) && !job && <PlanFixButton ecosystem={f.ecosystem} pkg={f.package} assetIds={[f.asset_id]} />}
             <AcceptRisk f={f} />
           </div>
         </>

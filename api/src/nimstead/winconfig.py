@@ -49,7 +49,7 @@ def evaluate(facts: dict, os_version: str = "") -> list[dict]:
             "isn't applied", "planned", 40, cve="CVE-2023-24932", fix="Follow Microsoft KB5025885 to apply the revocations")
     cpc = c.get("cert_padding_check")
     if isinstance(cpc, list) and cpc and not all(str(v) == "1" for v in cpc):  # HKLM is readable by anyone: null = not set
-        add("cert-padding-check", cpc, "WinVerifyTrust signature padding check (EnableCertPaddingCheck) isn't enabled in both registry views",
+        add("cert-padding-check", " / ".join("not set" if v is None else str(v) for v in cpc), "WinVerifyTrust signature padding check (EnableCertPaddingCheck) isn't enabled in both registry views",
             cve="CVE-2013-3900", fix="Set EnableCertPaddingCheck=1 under Cryptography\\Wintrust\\Config (64- and 32-bit)")
     if server and not (c.get("spectre_mask") == 3 and isinstance(c.get("spectre_override"), int) and c["spectre_override"] & 3 == 0):
         add("speculative-execution", f"override={c.get('spectre_override')} mask={c.get('spectre_mask')}",

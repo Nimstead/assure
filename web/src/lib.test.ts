@@ -1,4 +1,4 @@
-import { aiFilterToPatch, dependenciesNeeded, looksLikeQuestion, filtersToApi, filtersToSearch, groupJobs, humaniseKind, installCommands, isActiveJob, parseFilters, priorityOf, relativeTime, updateSource, whyMatched, type Job } from "./lib";
+import { aiFilterToPatch, dependenciesNeeded, looksLikeQuestion, filtersToApi, filtersToSearch, groupJobs, humaniseKind, installCommands, isActiveJob, parseFilters, priorityOf, relativeTime, updateSource, whyMatched, fixLabel, type Job } from "./lib";
 
 describe("priorityOf", () => {
   it("mirrors the server thresholds and lets KEV override", () => {
@@ -22,6 +22,13 @@ describe("formatting", () => {
 });
 
 describe("findings filters <-> URL", () => {
+  it("never says no fix yet for a setting, an end of support or an exposure", () => {
+    expect(fixLabel({ fixed_version: null, ecosystem: "WinConfig" })).toBe("change the setting");
+    expect(fixLabel({ fixed_version: null, ecosystem: "Lifecycle" })).toBe("move to a supported version");
+    expect(fixLabel({ fixed_version: null, ecosystem: "External" })).toBe("close or restrict it");
+    expect(fixLabel({ fixed_version: null, ecosystem: "Debian:12" })).toBe("no fix yet");
+    expect(fixLabel({ fixed_version: "1.2", ecosystem: "Debian:12" })).toBe("1.2");
+  });
   it("defaults to open + fixable only with a clean URL", () => {
     const f = parseFilters({});
     expect(f).toMatchObject({ status: "open", fixable: true, priority: [], q: "" });

@@ -71,6 +71,7 @@ def test_lifecycle_finding_opens_and_closes_with_esu(env):
     [f] = c.get("/api/findings").json()
     assert f["vuln_id"] == "EOL:win10-22h2" and f["ecosystem"] == lifecycle.ECOSYSTEM and f["priority"] == "fix-now"
     assert "no security updates since 2025-10-14" in f["summary"]
+    assert [x["vuln_id"] for x in c.get("/api/findings", params={"fixable": True}).json()] == ["EOL:win10-22h2"]  # the default view
     inv({"edition_id": "Professional", "esu": True})
     assert not c.get("/api/findings").json()
     assert c.get("/api/findings", params={"status": "resolved"}).json()[0]["vuln_id"] == "EOL:win10-22h2"

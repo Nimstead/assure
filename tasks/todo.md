@@ -193,7 +193,7 @@ reboot, ESU, last successful WU install. Asset page shows them; the remediation 
 
 ## Checkpoint D
 - [x] Full suite on SQLite + PostgreSQL; web unit + e2e, axe 0 serious/critical at 1440 and 375, light and dark
-- [ ] Self-review of how config, lifecycle and exposure findings read in the UI (screenshots at 1440 and 375 in STATUS "Review notes") — **NOT done: no screenshots of config/lifecycle findings taken**
+- [x] Self-review of how config, lifecycle and exposure findings read in the UI (screenshots at 1440 and 375 in STATUS "Review notes") — **done 2026-10-31 (`sandbox/ui-review/`); it found four bugs, fixed (DECISIONS 59). Exposure findings weren't seeded: wording unit-tested only**
 
 ---
 

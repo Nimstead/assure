@@ -90,13 +90,27 @@ def wait_ready(name: str, minutes=90, reset_after=12, max_resets=3) -> None:
                 return
         except (subprocess.TimeoutExpired, FileNotFoundError):
             pass
-        if unstick(name):
+        if unstick(name) or os_up(name):
             last = time.time()
         elif resets < max_resets and time.time() - last > reset_after * 60:
             vbox("controlvm", name, "reset", check=False)
             last, resets = time.time(), resets + 1
         time.sleep(20)
     raise RuntimeError(f"{name} not ready after {minutes} min")
+
+
+def additions_since_reset(lines: list[str]) -> bool:
+    reset = max((i for i, s in enumerate(lines) if "to 'RESETTING'" in s), default=-1)
+    return any("Guest Additions information report" in s for s in lines[reset + 1:])
+
+
+def os_up(name: str) -> bool:
+    """Windows booted since the last reset, so it isn't hung, only still setting up: a hard reset then loses its unflushed
+    writes (real VM: three resets, 12 minutes apart, left VBoxService.exe all zeros, error 1392, and guest control dead for good)."""
+    try:
+        return additions_since_reset((STATE / name / name / "Logs" / "VBox.log").read_text(errors="replace").splitlines())
+    except OSError:
+        return False
 
 
 def unstick(name: str) -> bool:

@@ -84,7 +84,7 @@
     "msrc": {
       "documents": 2,
       "skipped_documents": 0,
-      "inserted": 47730,
+      "inserted": 47786,
       "updated": 0,
       "skipped": 0
     }
@@ -103,11 +103,11 @@
     "reported": [
       "8.0.31"
     ],
-    "findings": 14
+    "findings": 17
   },
   {
     "step": "SQL Server Express install",
-    "output": " \n   / \n   - \n   \\ \n   | \n   / \n   - \n   \\ \n   | \n   / \n   - \n   \\ \n   | \n   / \n   - \n   \\ \n   | \n   / \n   - \n   \\ \n   | \n   / \n   - \n   \\ \n   | \n   / \n   - \n   \\ \n   | \n   / \n   - \n   \\ \n   | \n   / \n   - \n   \\ \n   | \n   / \n   - \n   \\ \n   | \n   / \n   - \n   \\ \n   | \n   / \n   - \n   \\ \n   | \n   / \n   - \n   \\ \n   | \n   / \n   - \n   \\ \n   | \n   / \n   - \n   \\ \n                                                                                                                        \nSuccessfully installed\n"
+    "output": " \n   | \n   / \n   - \n   \\ \n   | \n   / \n   - \n   \\ \n   | \n   / \n   - \n   \\ \n   | \n   / \n   - \n   \\ \n   | \n   / \n   - \n   \\ \n   | \n   / \n   - \n   \\ \n   | \n   / \n   - \n   \\ \n   | \n   / \n   - \n   \\ \n   | \n   / \n   - \n   \\ \n   | \n   / \n   - \n   \\ \n   | \n   / \n   - \n   \\ \n   | \n   / \n   - \n   \\ \n   | \n   / \n   - \n   \\ \n   | \n   / \n   - \n   \\ \n   | \n   / \n   - \n                                                                                                                        \nSuccessfully installed\n"
   },
   {
     "step": "Microsoft 365 Apps installed",
@@ -194,7 +194,7 @@
         "4.18.25080.5"
       ],
       "Defender engine": [
-        "1.1.26100.4"
+        "1.1.25080.5"
       ],
       "Microsoft 365 Apps": [
         "16.0.20527.20112"
@@ -208,17 +208,20 @@
     "sql": "16.0.1000.6",
     "defender": {
       "AMProductVersion": "4.18.25080.5",
-      "AMEngineVersion": "1.1.26100.4"
+      "AMEngineVersion": "1.1.25080.5"
     },
     "office": "16.0.20527.20112"
   },
   {
     "step": "Microsoft findings with old .NET",
-    "count": 66,
+    "count": 150,
     "by_package": [
       ".NET 8.0 runtime",
+      "Defender engine",
+      "Defender platform",
       "HEVC Video Extensions",
       "MPEG-2 Video Extension",
+      "Microsoft Edge",
       "Microsoft Paint",
       "Raw Image Extension on Windows 11 Version 26H2 for x64-based Systems",
       "SQL Server 2022 GDR",
@@ -227,7 +230,7 @@
   },
   {
     "step": ".NET updated",
-    "before": 14,
+    "before": 17,
     "after": 0,
     "now": [
       "8.0.33"

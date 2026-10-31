@@ -145,6 +145,14 @@ null,
 ],
 [
 "Microsoft",
+"Defender engine",
+"CVE-2026-70264",
+"1.1.25080.5",
+"1.1.26090.9",
+"low"
+],
+[
+"Microsoft",
 "Defender platform",
 "CVE-2026-105726",
 "4.18.25080.5",
@@ -182,6 +190,398 @@ null,
 "1.2.13.0",
 "1.2.32.0",
 "planned"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118304",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118305",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118306",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118307",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118308",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118310",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118311",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118312",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118313",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118315",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118316",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118317",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118318",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118319",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118320",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118322",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118327",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118328",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118329",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118330",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118331",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118332",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118333",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118334",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118335",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118336",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118337",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118338",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118339",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118340",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118341",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118342",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118343",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118344",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118345",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118346",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118347",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118348",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118349",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118350",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118351",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118352",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118353",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118354",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118355",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118356",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118357",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118358",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
+],
+[
+"Microsoft",
+"Microsoft Edge",
+"CVE-2026-118359",
+"156.0.4314.50",
+"156.0.4314.56",
+"low"
 ],
 [
 "Microsoft",
@@ -830,6 +1230,14 @@ null,
 "not set / not set",
 null,
 "low"
+],
+[
+"WinConfig",
+"defender-signatures",
+"CFG:defender-signatures",
+"409 days",
+null,
+"next"
 ],
 [
 "WinConfig",

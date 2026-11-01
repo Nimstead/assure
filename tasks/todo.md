@@ -152,8 +152,8 @@ allowlist the MSRC Defender products.
 **Dependencies:** T5 · **Files:** `agent/nimstead_agent.py`, `feeds.py`, `api/tests/test_msrc_products.py`
 
 ## Checkpoint C
-- [ ] Each product from T5–T9, T19, T20 proven on a real install in a VM (run file committed) — **partly: Office installed in a VM and its fix proven (`last_run_winfixes_client.json`); Edge, .NET, SQL, Exchange, Defender not installed in a VM; the curated-app run covered third-party apps only (see T31)**
-- [ ] Noise review: on the demo fleet + one real Windows VM, every new finding opened was checked by hand against Microsoft's KB/release notes; zero unexplained — **NOT done: needs a VM with the products installed**
+- [ ] Each product from T5–T9, T19, T20 proven on a real install in a VM (run file committed) — **partly: Edge, .NET runtime, SQL Server, Defender and Microsoft 365 Apps report the version the host itself reports, and old .NET opens 17 findings the update closes (`last_run_winproducts.json`, Windows 11). Not run: Exchange and SharePoint (need a domain); the .NET SDK collector added afterwards is unit-tested only**
+- [ ] Noise review: on the demo fleet + one real Windows VM, every new finding opened was checked by hand against Microsoft's KB/release notes; zero unexplained — **partly, one real Windows VM (`last_run_winproducts_findings.json`, 1,164 findings): .NET 17 of 17 agree CVE by CVE with Microsoft's .NET release data; Windows, Edge and SQL Server fix versions exist in Microsoft's release notes, checked by fix build, not CVE by CVE. One unverified: Windows Security App (see STATUS). Demo fleet not reviewed**
 - [x] Performance: `sandbox/perf.py` re-run, hourly re-match within 10 % of the last numbers — **22.5 s vs 20.8 s (+8 %), `last_run_perf_sqlite.json`**
 
 ---
@@ -248,7 +248,7 @@ TrustedInstaller-owned App Installer folder, runs `winget upgrade --source winge
 **Acceptance criteria:**
 - [x] A job naming an unknown product key, a winget ID, or a version not newer than installed is refused before anything runs (tests)
 - [x] Dry run: `winget show --exact --id --version` must list the version with an installer SHA-256, else refuse
-- [ ] VM: Notepad++ and 7-Zip upgraded as SYSTEM, findings closed by inventory; winget missing = refused with "winget unavailable" — **partly: 7-Zip upgraded as SYSTEM and confirmed by inventory on Windows 11 (`last_run_winfixes_client.json`); "winget unavailable" refusal proven on Server 2025 (`last_run_winfixes_server.json`); Notepad++ not upgraded (winget offered no older version to start from)**
+- [ ] VM: Notepad++ and 7-Zip upgraded as SYSTEM, findings closed by inventory; winget missing = refused with "winget unavailable" — **partly: 7-Zip upgraded as SYSTEM and confirmed by inventory on Windows 11 (`last_run_winfixes_client.json`); "winget unavailable" refusal proven on Server 2025 (`last_run_winfixes_server.json`); Notepad++ 8.9.8 → 8.9.8.1 as SYSTEM, confirmed by inventory (`last_run_winproducts.json`)**
 **Dependencies:** T40, T41 (windows and reboots); starts with the existing 18 products, T31–T33 add IDs as they add products · **Files:** `agent/nimstead_agent.py`, `api/tests/test_agent_winget.py` (new), `sandbox/wine2e.py`
 
 ### T22: Forward-only plans  (M)
@@ -450,7 +450,7 @@ check ID only; the agent holds the change. It records the old value, applies, ru
 old value back on failure. Canary-gated; manual tier by default.
 **Acceptance criteria:**
 - [x] A job with an unknown check ID or any path/value is refused (schema test)
-- [ ] VM: SMB signing required → health check fails (a legacy test client can't connect) → old value restored, verified by inventory — **partly: on Windows 11 an injected failure restored the old value and a real apply kept LanmanServer running (`last_run_winfixes_client.json`); no legacy client tried, so a health check failing on its own is not proven**
+- [ ] VM: SMB signing required → health check fails (a legacy test client can't connect) → old value restored, verified by inventory — **partly: on Windows 11 an injected failure restored the old value and a real apply kept LanmanServer running (`last_run_winfixes_client.json`); a health check failing on its own is proven too: a watcher stopped the health unit when the value changed, the agent's own check failed and the value found was restored (`last_run_winproducts.json`). No legacy client tried, a stopped service stands in for it**
 - [x] Changes that need a reboot follow T41's policy
 **Dependencies:** T36, T13, T41 · **Files:** `agent/nimstead_agent.py`, `remediate.py`, `api/tests/test_winconfig.py`, `api/tests/test_remediate.py`
 
@@ -483,7 +483,7 @@ only inside its asset's window (none = any time, as today). The agent may downlo
 signed-in user: a notice (`msg *` / `shutdown /c` text) and deferral up to the org's deadline (default 24 h), then
 reboot with a 15-minute warning. Never start an install on battery below 50 % or on a metered connection.
 **Acceptance criteria:**
-- [ ] Each branch tested with fakes; VM: signed-in user sees the notice, reboot happens at the deadline, job resumes and reports — **partly: every branch tested with fakes. Windows 11 run (`last_run_windows11_signed_in.json`): deferred, notice sent, agent restarted at about 67 min against a 1-hour deadline, job verified. Open: the notice was sent but no screenshot shows it on screen, and an earlier run restarted at 45 min, before the deadline; cause not found (that run didn't log who asked)**
+- [ ] Each branch tested with fakes; VM: signed-in user sees the notice, reboot happens at the deadline, job resumes and reports — **partly: every branch tested with fakes. Windows 11 run (`last_run_windows11_signed_in.json`, 2026-10-31): deferred, notice sent, the agent's own restart at about 73 min against a 1-hour deadline, job verified. Windows can restart sooner on its own (DECISIONS 60). Open: the notice is proven sent, but no screenshot shows it on screen**
 - [x] The pending state survives the deferral (job state validated on every load, as today)
 **Dependencies:** T40 · **Files:** `agent/nimstead_agent.py`, `remediate.py`, `api/tests/test_winjob.py`
 
@@ -519,7 +519,7 @@ Scheduled tasks get a random delay (6-hourly: up to 30 min; job poll: up to 2 mi
 
 ## Checkpoint H
 - [ ] 2-node failover cluster and a DC pair patched inside a window, one node at a time (VM run files) — **NOT proven: no cluster or domain VMs**
-- [ ] A workstation VM with a signed-in user: notice, deferral, reboot at the deadline, job verified — **partly: see T41: passed once on Windows 11, but an earlier run's restart at 45 min is unexplained**
+- [ ] A workstation VM with a signed-in user: notice, deferral, reboot at the deadline, job verified — **partly: see T41: passes on Windows 11; the notice is proven sent, not seen on screen**
 
 ---
 

@@ -416,7 +416,7 @@ reports `Maven` packages with the jar path as source. The existing OSV Maven mat
 **Dependencies:** none · **Files:** `agent/nimstead_agent.py`, `api/tests/test_agent.py`, `scan.py` (source shown), `docs/install.md`
 
 ## Checkpoint G
-- [ ] ~80 curated products, each with a run file proving open → close on a real install — **NOT met: 64 curated products; 25 proven old → new on a real install, 7 more identified at one version (`last_run_winapps_batch5.json`, `last_run_winapps_batch4.json`, `last_run_winapps_run1-3.json`). Identified means the map named the right product and version; the finding opening and closing is proven for .NET, not per app**
+- [ ] ~80 curated products, each with a run file proving open → close on a real install — **Count met, proof partly: 82 curated products; 41 proven old → new on a real install, up to 9 more identified at one version (`last_run_winapps_batch6.json`, `last_run_winapps_batch5.json`, `last_run_winapps_batch4.json`, `last_run_winapps_run1-3.json`). Identified means the map named the right product and version; the finding opening and closing is proven for .NET, not per app**
 - [ ] Noise review repeated on a VM with every batch installed: zero unexplained findings — **NOT done**
 
 ---

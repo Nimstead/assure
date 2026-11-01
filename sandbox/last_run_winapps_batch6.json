@@ -1,0 +1,911 @@
+{
+  "result": "PASS",
+  "vm": "nimstead-sbx-win-880062",
+  "proven": [
+    "Apache.OpenOffice",
+    "Inkscape.Inkscape",
+    "JetBrains.CLion",
+    "JetBrains.DataGrip",
+    "JetBrains.GoLand",
+    "JetBrains.PhpStorm",
+    "JetBrains.PyCharm.Community",
+    "JetBrains.Rider",
+    "JetBrains.WebStorm",
+    "Mobatek.MobaXterm",
+    "Neovim.Neovim",
+    "Postman.Postman",
+    "RubyInstallerTeam.Ruby.3.3",
+    "TortoiseGit.TortoiseGit",
+    "TortoiseSVN.TortoiseSVN",
+    "vim.vim"
+  ],
+  "apps": {
+    "vim.vim": {
+      "proven": true,
+      "installed": "9.2.1176",
+      "old": [
+        {
+          "display_name": "Vim 9.2 (x64)",
+          "registry_version": "9.2.1176",
+          "identified": [
+            "vim:vim",
+            "9.2.1176"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Vim 9.2 (x64)",
+          "registry_version": "9.2.1186",
+          "identified": [
+            "vim:vim",
+            "9.2.1186"
+          ]
+        }
+      ]
+    },
+    "Apache.OpenOffice": {
+      "proven": true,
+      "installed": "4.116.9816",
+      "old": [
+        {
+          "display_name": "OpenOffice 4.1.16",
+          "registry_version": "4.116.9816",
+          "identified": [
+            "apache:openoffice",
+            "4.1.16"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "OpenOffice 4.1.17",
+          "registry_version": "4.117.9818",
+          "identified": [
+            "apache:openoffice",
+            "4.1.17"
+          ]
+        }
+      ]
+    },
+    "JetBrains.Rider": {
+      "proven": true,
+      "installed": "2026.2.3",
+      "old": [
+        {
+          "display_name": "JetBrains Rider 2026.2.3",
+          "registry_version": "262.10968.135",
+          "identified": [
+            "jetbrains:rider",
+            "2026.2.3"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "JetBrains Rider 2026.2.3.1",
+          "registry_version": "262.10968.170",
+          "identified": [
+            "jetbrains:rider",
+            "2026.2.3.1"
+          ]
+        }
+      ]
+    },
+    "JetBrains.PyCharm.Community": {
+      "proven": true,
+      "installed": "2025.2.6",
+      "old": [
+        {
+          "display_name": "PyCharm Community Edition 2025.2.6",
+          "registry_version": "252.28539.27",
+          "identified": [
+            "jetbrains:pycharm",
+            "2025.2.6"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "PyCharm Community Edition 2025.2.6",
+          "registry_version": "252.28539.27",
+          "identified": [
+            "jetbrains:pycharm",
+            "2025.2.6"
+          ]
+        },
+        {
+          "display_name": "PyCharm Community Edition 2025.2.6.1",
+          "registry_version": "252.28539.58",
+          "identified": [
+            "jetbrains:pycharm",
+            "2025.2.6.1"
+          ]
+        }
+      ]
+    },
+    "JetBrains.WebStorm": {
+      "proven": true,
+      "installed": "2026.2.3",
+      "old": [
+        {
+          "display_name": "WebStorm 2026.2.3",
+          "registry_version": "262.10968.77",
+          "identified": [
+            "jetbrains:webstorm",
+            "2026.2.3"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "WebStorm 2026.2.4",
+          "registry_version": "262.11879.105",
+          "identified": [
+            "jetbrains:webstorm",
+            "2026.2.4"
+          ]
+        }
+      ]
+    },
+    "JetBrains.GoLand": {
+      "proven": true,
+      "installed": "2026.2.3",
+      "old": [
+        {
+          "display_name": "GoLand 2026.2.3",
+          "registry_version": "262.10968.67",
+          "identified": [
+            "jetbrains:goland",
+            "2026.2.3"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "GoLand 2026.2.4",
+          "registry_version": "262.11879.101",
+          "identified": [
+            "jetbrains:goland",
+            "2026.2.4"
+          ]
+        }
+      ]
+    },
+    "JetBrains.PhpStorm": {
+      "proven": true,
+      "installed": "2026.2.3",
+      "old": [
+        {
+          "display_name": "PhpStorm 2026.2.3",
+          "registry_version": "262.10968.76",
+          "identified": [
+            "jetbrains:phpstorm",
+            "2026.2.3"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "PhpStorm 2026.2.4",
+          "registry_version": "262.11879.104",
+          "identified": [
+            "jetbrains:phpstorm",
+            "2026.2.4"
+          ]
+        }
+      ]
+    },
+    "JetBrains.CLion": {
+      "proven": true,
+      "installed": "2026.2.3.1",
+      "old": [
+        {
+          "display_name": "CLion 2026.2.3.1",
+          "registry_version": "262.10968.176",
+          "identified": [
+            "jetbrains:clion",
+            "2026.2.3.1"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "CLion 2026.2.4",
+          "registry_version": "262.11879.74",
+          "identified": [
+            "jetbrains:clion",
+            "2026.2.4"
+          ]
+        }
+      ]
+    },
+    "JetBrains.DataGrip": {
+      "proven": true,
+      "installed": "2026.2.6",
+      "old": [
+        {
+          "display_name": "DataGrip 2026.2.6",
+          "registry_version": "262.10968.148",
+          "identified": [
+            "jetbrains:datagrip",
+            "2026.2.6"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "DataGrip 2026.2.6.1",
+          "registry_version": "262.11879.103",
+          "identified": [
+            "jetbrains:datagrip",
+            "2026.2.6.1"
+          ]
+        }
+      ]
+    },
+    "Neovim.Neovim": {
+      "proven": true,
+      "installed": "0.12.5",
+      "old": [
+        {
+          "display_name": "Neovim",
+          "registry_version": "0.12.5",
+          "identified": [
+            "neovim:neovim",
+            "0.12.5"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Neovim",
+          "registry_version": "0.12.6",
+          "identified": [
+            "neovim:neovim",
+            "0.12.6"
+          ]
+        }
+      ]
+    },
+    "StrawberryPerl.StrawberryPerl": {
+      "proven": false,
+      "installed": "5.42.2.1",
+      "old": [
+        {
+          "display_name": "Strawberry Perl (64-bit)",
+          "registry_version": "5.42.2001",
+          "identified": [
+            "perl:perl",
+            "5.42.2"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Strawberry Perl (64-bit)",
+          "registry_version": "5.42.2001",
+          "identified": [
+            "perl:perl",
+            "5.42.2"
+          ]
+        }
+      ]
+    },
+    "TortoiseGit.TortoiseGit": {
+      "proven": true,
+      "installed": "2.19.0",
+      "old": [
+        {
+          "display_name": "TortoiseGit 2.19.0.0 (64 bit)",
+          "registry_version": "2.19.0.0",
+          "identified": [
+            "tortoisegit:tortoisegit",
+            "2.19.0.0"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "TortoiseGit 2.19.1.0 (64 bit)",
+          "registry_version": "2.19.1.0",
+          "identified": [
+            "tortoisegit:tortoisegit",
+            "2.19.1.0"
+          ]
+        }
+      ]
+    },
+    "TortoiseSVN.TortoiseSVN": {
+      "proven": true,
+      "installed": "1.14.9.29743",
+      "old": [
+        {
+          "display_name": "TortoiseSVN 1.14.9.29743 (64 bit)",
+          "registry_version": "1.14.29743",
+          "identified": [
+            "tigris:tortoisesvn",
+            "1.14.9"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "TortoiseSVN 1.15.0.29830 (64 bit)",
+          "registry_version": "1.15.29830",
+          "identified": [
+            "tigris:tortoisesvn",
+            "1.15.0"
+          ]
+        }
+      ]
+    },
+    "Mobatek.MobaXterm": {
+      "proven": true,
+      "installed": "26.5.0.5542",
+      "old": [
+        {
+          "display_name": "MobaXterm",
+          "registry_version": "26.5.0.5542",
+          "identified": [
+            "mobatek:mobaxterm",
+            "26.5.0.5542"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "MobaXterm",
+          "registry_version": "26.6.0.5560",
+          "identified": [
+            "mobatek:mobaxterm",
+            "26.6.0.5560"
+          ]
+        }
+      ]
+    },
+    "Inkscape.Inkscape": {
+      "proven": true,
+      "installed": "1.4.3",
+      "old": [
+        {
+          "display_name": "Inkscape",
+          "registry_version": "1.4.3",
+          "identified": [
+            "inkscape:inkscape",
+            "1.4.3"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Inkscape",
+          "registry_version": "1.4.4",
+          "identified": [
+            "inkscape:inkscape",
+            "1.4.4"
+          ]
+        }
+      ]
+    },
+    "Insecure.Nmap": {
+      "proven": false,
+      "installed": "7.60",
+      "old": [
+        {
+          "display_name": "Nmap 7.60",
+          "registry_version": "7.60",
+          "identified": [
+            "nmap:nmap",
+            "7.60"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Nmap 7.60",
+          "registry_version": "7.60",
+          "identified": [
+            "nmap:nmap",
+            "7.60"
+          ]
+        }
+      ]
+    },
+    "RubyInstallerTeam.Ruby.3.3": {
+      "proven": true,
+      "installed": "3.3.12-2",
+      "old": [
+        {
+          "display_name": "Ruby 3.3",
+          "registry_version": "3.3.12-2-x64",
+          "identified": [
+            "ruby-lang:ruby",
+            "3.3.12"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Ruby 3.3",
+          "registry_version": "3.3.13-1-x64",
+          "identified": [
+            "ruby-lang:ruby",
+            "3.3.13"
+          ]
+        }
+      ]
+    },
+    "Postman.Postman": {
+      "proven": true,
+      "installed": "12.34.3",
+      "old": [
+        {
+          "display_name": "Postman x64 12.34.3",
+          "registry_version": "12.34.3",
+          "identified": [
+            "postman:postman",
+            "12.34.3"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Postman x64 12.34.4",
+          "registry_version": "12.34.4",
+          "identified": [
+            "postman:postman",
+            "12.34.4"
+          ]
+        }
+      ]
+    }
+  },
+  "steps": [
+    {
+      "step": "VM ready",
+      "python": "C:\\nimtest\\rt\\python.exe",
+      "winget": "v1.11.510"
+    },
+    {
+      "step": "identified on a real install",
+      "app": "vim.vim",
+      "old": [
+        {
+          "display_name": "Vim 9.2 (x64)",
+          "registry_version": "9.2.1176",
+          "identified": [
+            "vim:vim",
+            "9.2.1176"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Vim 9.2 (x64)",
+          "registry_version": "9.2.1186",
+          "identified": [
+            "vim:vim",
+            "9.2.1186"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "identified on a real install",
+      "app": "Apache.OpenOffice",
+      "old": [
+        {
+          "display_name": "OpenOffice 4.1.16",
+          "registry_version": "4.116.9816",
+          "identified": [
+            "apache:openoffice",
+            "4.1.16"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "OpenOffice 4.1.17",
+          "registry_version": "4.117.9818",
+          "identified": [
+            "apache:openoffice",
+            "4.1.17"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "identified on a real install",
+      "app": "JetBrains.Rider",
+      "old": [
+        {
+          "display_name": "JetBrains Rider 2026.2.3",
+          "registry_version": "262.10968.135",
+          "identified": [
+            "jetbrains:rider",
+            "2026.2.3"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "JetBrains Rider 2026.2.3.1",
+          "registry_version": "262.10968.170",
+          "identified": [
+            "jetbrains:rider",
+            "2026.2.3.1"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "identified on a real install",
+      "app": "JetBrains.PyCharm.Community",
+      "old": [
+        {
+          "display_name": "PyCharm Community Edition 2025.2.6",
+          "registry_version": "252.28539.27",
+          "identified": [
+            "jetbrains:pycharm",
+            "2025.2.6"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "PyCharm Community Edition 2025.2.6",
+          "registry_version": "252.28539.27",
+          "identified": [
+            "jetbrains:pycharm",
+            "2025.2.6"
+          ]
+        },
+        {
+          "display_name": "PyCharm Community Edition 2025.2.6.1",
+          "registry_version": "252.28539.58",
+          "identified": [
+            "jetbrains:pycharm",
+            "2025.2.6.1"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "identified on a real install",
+      "app": "JetBrains.WebStorm",
+      "old": [
+        {
+          "display_name": "WebStorm 2026.2.3",
+          "registry_version": "262.10968.77",
+          "identified": [
+            "jetbrains:webstorm",
+            "2026.2.3"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "WebStorm 2026.2.4",
+          "registry_version": "262.11879.105",
+          "identified": [
+            "jetbrains:webstorm",
+            "2026.2.4"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "identified on a real install",
+      "app": "JetBrains.GoLand",
+      "old": [
+        {
+          "display_name": "GoLand 2026.2.3",
+          "registry_version": "262.10968.67",
+          "identified": [
+            "jetbrains:goland",
+            "2026.2.3"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "GoLand 2026.2.4",
+          "registry_version": "262.11879.101",
+          "identified": [
+            "jetbrains:goland",
+            "2026.2.4"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "identified on a real install",
+      "app": "JetBrains.PhpStorm",
+      "old": [
+        {
+          "display_name": "PhpStorm 2026.2.3",
+          "registry_version": "262.10968.76",
+          "identified": [
+            "jetbrains:phpstorm",
+            "2026.2.3"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "PhpStorm 2026.2.4",
+          "registry_version": "262.11879.104",
+          "identified": [
+            "jetbrains:phpstorm",
+            "2026.2.4"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "identified on a real install",
+      "app": "JetBrains.CLion",
+      "old": [
+        {
+          "display_name": "CLion 2026.2.3.1",
+          "registry_version": "262.10968.176",
+          "identified": [
+            "jetbrains:clion",
+            "2026.2.3.1"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "CLion 2026.2.4",
+          "registry_version": "262.11879.74",
+          "identified": [
+            "jetbrains:clion",
+            "2026.2.4"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "identified on a real install",
+      "app": "JetBrains.DataGrip",
+      "old": [
+        {
+          "display_name": "DataGrip 2026.2.6",
+          "registry_version": "262.10968.148",
+          "identified": [
+            "jetbrains:datagrip",
+            "2026.2.6"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "DataGrip 2026.2.6.1",
+          "registry_version": "262.11879.103",
+          "identified": [
+            "jetbrains:datagrip",
+            "2026.2.6.1"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "identified on a real install",
+      "app": "Neovim.Neovim",
+      "old": [
+        {
+          "display_name": "Neovim",
+          "registry_version": "0.12.5",
+          "identified": [
+            "neovim:neovim",
+            "0.12.5"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Neovim",
+          "registry_version": "0.12.6",
+          "identified": [
+            "neovim:neovim",
+            "0.12.6"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "NOT identified as expected",
+      "app": "StrawberryPerl.StrawberryPerl",
+      "old": [
+        {
+          "display_name": "Strawberry Perl (64-bit)",
+          "registry_version": "5.42.2001",
+          "identified": [
+            "perl:perl",
+            "5.42.2"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Strawberry Perl (64-bit)",
+          "registry_version": "5.42.2001",
+          "identified": [
+            "perl:perl",
+            "5.42.2"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "identified on a real install",
+      "app": "TortoiseGit.TortoiseGit",
+      "old": [
+        {
+          "display_name": "TortoiseGit 2.19.0.0 (64 bit)",
+          "registry_version": "2.19.0.0",
+          "identified": [
+            "tortoisegit:tortoisegit",
+            "2.19.0.0"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "TortoiseGit 2.19.1.0 (64 bit)",
+          "registry_version": "2.19.1.0",
+          "identified": [
+            "tortoisegit:tortoisegit",
+            "2.19.1.0"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "identified on a real install",
+      "app": "TortoiseSVN.TortoiseSVN",
+      "old": [
+        {
+          "display_name": "TortoiseSVN 1.14.9.29743 (64 bit)",
+          "registry_version": "1.14.29743",
+          "identified": [
+            "tigris:tortoisesvn",
+            "1.14.9"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "TortoiseSVN 1.15.0.29830 (64 bit)",
+          "registry_version": "1.15.29830",
+          "identified": [
+            "tigris:tortoisesvn",
+            "1.15.0"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "identified on a real install",
+      "app": "Mobatek.MobaXterm",
+      "old": [
+        {
+          "display_name": "MobaXterm",
+          "registry_version": "26.5.0.5542",
+          "identified": [
+            "mobatek:mobaxterm",
+            "26.5.0.5542"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "MobaXterm",
+          "registry_version": "26.6.0.5560",
+          "identified": [
+            "mobatek:mobaxterm",
+            "26.6.0.5560"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "identified on a real install",
+      "app": "Inkscape.Inkscape",
+      "old": [
+        {
+          "display_name": "Inkscape",
+          "registry_version": "1.4.3",
+          "identified": [
+            "inkscape:inkscape",
+            "1.4.3"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Inkscape",
+          "registry_version": "1.4.4",
+          "identified": [
+            "inkscape:inkscape",
+            "1.4.4"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "NOT identified as expected",
+      "app": "Insecure.Nmap",
+      "old": [
+        {
+          "display_name": "Nmap 7.60",
+          "registry_version": "7.60",
+          "identified": [
+            "nmap:nmap",
+            "7.60"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Nmap 7.60",
+          "registry_version": "7.60",
+          "identified": [
+            "nmap:nmap",
+            "7.60"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "identified on a real install",
+      "app": "RubyInstallerTeam.Ruby.3.3",
+      "old": [
+        {
+          "display_name": "Ruby 3.3",
+          "registry_version": "3.3.12-2-x64",
+          "identified": [
+            "ruby-lang:ruby",
+            "3.3.12"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Ruby 3.3",
+          "registry_version": "3.3.13-1-x64",
+          "identified": [
+            "ruby-lang:ruby",
+            "3.3.13"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "identified on a real install",
+      "app": "Postman.Postman",
+      "old": [
+        {
+          "display_name": "Postman x64 12.34.3",
+          "registry_version": "12.34.3",
+          "identified": [
+            "postman:postman",
+            "12.34.3"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Postman x64 12.34.4",
+          "registry_version": "12.34.4",
+          "identified": [
+            "postman:postman",
+            "12.34.4"
+          ]
+        }
+      ]
+    }
+  ]
+}

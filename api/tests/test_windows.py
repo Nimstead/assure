@@ -277,7 +277,7 @@ def test_collect_windows_reports_facts_and_never_refuses_an_unmapped_os(monkeypa
     monkeypatch.setitem(sys.modules, "winreg", FakeReg(values))
     monkeypatch.setattr(agent.platform, "machine", lambda: machine)
     monkeypatch.setattr(agent, "esu_active", lambda product, run=None: None)
-    monkeypatch.setattr(agent, "windows_microsoft", lambda reg, run=None: ([], None))
+    monkeypatch.setattr(agent, "windows_microsoft", lambda reg, run=None, dotnet_dirs=None: ([], None))
     inv = agent.collect_windows()
     assert [p["name"] for p in inv["packages"] if p["ecosystem"] == "Windows"] == ([os_pkg] if os_pkg else [])
     assert inv["facts"]["edition_id"] == values["EditionID"] and bool(inv["facts"].get("os_unmatched")) == unmatched

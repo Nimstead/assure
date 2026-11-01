@@ -189,3 +189,17 @@ def test_evidence_pack_lists_forward_only_changes_apart(env):
         pack = build_pack(s, org.id, now() - timedelta(days=1), now() + timedelta(minutes=1))
     [fo] = pack["forward_only_changes"]
     assert fo["summary"].endswith("(forward-only: can't be undone)") and fo["approved_by"] and pack["metrics"]["forward_only_changes"] == 1
+
+
+def test_cert_padding_fix_sets_both_registry_views_and_restores_both():
+    calls = []
+
+    def run(cmd, **k):
+        calls.append(cmd)
+        if cmd[:2] == ["reg", "query"]:
+            return 1, ""
+        return 0, "Running"
+    out = agent.WinAppJob(job("winconfig", "cert-padding-check", "current", "fixed"), run=run, fail_after_apply=True).execute()
+    added = [c[2] for c in calls if c[:2] == ["reg", "add"]]
+    removed = [c[2] for c in calls if c[:2] == ["reg", "delete"]]
+    assert out[0] == "rolled_back" and len(added) == 2 and any("WOW6432Node" in k for k in added) and sorted(removed) == sorted(added)

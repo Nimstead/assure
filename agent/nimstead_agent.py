@@ -1050,6 +1050,8 @@ CONFIG_FIXES = {
     "winrm-unencrypted": (r"HKLM\SOFTWARE\Policies\Microsoft\Windows\WinRM\Service", "AllowUnencryptedTraffic", "REG_DWORD", "0"),
     "script-block-logging": (r"HKLM\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging", "EnableScriptBlockLogging", "REG_DWORD", "1"),
 }
+# Microsoft's fix is both registry views, and the finding reads both
+CONFIG_ALSO = {"cert-padding-check": (r"HKLM\SOFTWARE\WOW6432Node\Microsoft\Cryptography\Wintrust\Config", "EnableCertPaddingCheck", "REG_SZ", "1")}
 WIN_APP_MANAGERS = ("winget", "office", "winconfig")
 SAFE_BUILD = re.compile(r"^\d{1,6}(\.\d{1,8}){1,4}\Z")
 C2R = r"C:\Program Files\Common Files\microsoft shared\ClickToRun\OfficeC2RClient.exe"
@@ -1161,13 +1163,22 @@ class WinAppJob:
         return lambda: go(p["from"])
 
     def _winconfig(self, p):
-        key, name, typ, value = CONFIG_FIXES[p["name"]]
+        undos = [self._set_value(*CONFIG_FIXES[p["name"]])]
+        if p["name"] in CONFIG_ALSO:
+            undos.append(self._set_value(*CONFIG_ALSO[p["name"]]))
+        self.result_versions = {p["name"]: "fixed"}
+
+        def undo():
+            for u in reversed(undos):
+                u()
+        return undo
+
+    def _set_value(self, key, name, typ, value):
         rc, out = self.run(["reg", "query", key, "/v", name])
         m = re.search(rf"{re.escape(name)}\s+(REG_\w+)\s+(\S*)", out) if rc == 0 else None
         before = (m[1], m[2]) if m else None  # None: absent, restored by deleting it again
         self.step(f"recorded {name} before the change", ok=True, output=f"{before or 'not set'}")
         self.step(f"{name} set to {value}", ["reg", "add", key, "/v", name, "/t", typ, "/d", value, "/f"])
-        self.result_versions = {p["name"]: "fixed"}
 
         def undo():
             if before:

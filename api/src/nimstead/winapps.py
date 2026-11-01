@@ -28,6 +28,7 @@ class Product:
     publisher: re.Pattern | None = None  # fullmatch on Publisher; required when set (use where the name is generic)
     version: Callable[[re.Match, str], str] = lambda m, v: v  # registry (match, DisplayVersion) -> NVD-style version
     branch: bool = False  # parallel release branches (ESR, Node): a start-less range applies to the fix's own branch only
+    nvd_dashes: bool = False  # NVD writes 7.1.2-34 where the registry has 7.1.2.34 (ImageMagick): the same patch number
 
 
 def _p(pattern: str) -> re.Pattern:
@@ -112,6 +113,17 @@ PRODUCTS: tuple[Product, ...] = (
     Product("gpg4win:gpg4win", _p(r"Gpg4win \(\d+\.\d+\.\d+\)"), publisher=_p(r"The Gpg4win Project")),
     Product("qbittorrent:qbittorrent", _p(r"qBittorrent"), publisher=_p(r"The qBittorrent project")),
     Product("discord:discord", _p(r"Discord"), publisher=_p(r"Discord Inc\.")),
+    # ---- batch 5, the same way (2026-11-01). Out: Foxit PDF Editor (two build tracks, 14.0.7.33751 and 14.0.7.69441, one version line),
+    # pgAdmin (NVD files it under target PostgreSQL, not Windows), XAMPP (its version isn't PHP's or Apache's)
+    Product("oracle:mysql_server", _p(r"MySQL Server \d+\.\d+"), ("oracle:mysql_server", "oracle:mysql"), publisher=_p(r"Oracle Corporation"), branch=True),
+    Product("imagemagick:imagemagick", _p(rf"ImageMagick \d+\.\d+\.\d+-\d+ Q\d+(?:-HDRI)? \({_ARCH}\) \(\d{{4}}-\d\d-\d\d\)"),
+            publisher=_p(r"ImageMagick Studio LLC"), branch=True, nvd_dashes=True),
+    Product("mongodb:mongodb", _p(r"MongoDB \d+\.\d+\.\d+ 2008R2Plus SSL \(64 bit\)"), publisher=_p(r"MongoDB Inc\."), branch=True),
+    Product("pdf-xchange:pdf-xchange_editor", _p(r"PDF-XChange Editor"), publisher=_p(r"PDF-XChange Co Ltd\.")),
+    Product("elastic:elasticsearch", _p(r"Elasticsearch \d+\.\d+\.\d+"), publisher=_p(r"Elastic"), branch=True),
+    Product("devolutions:remote_desktop_manager", _p(r"Remote Desktop Manager"), publisher=_p(r"Devolutions inc\.")),
+    Product("uvnc:ultravnc", _p(r"UltraVNC"), publisher=_p(r"uvnc")),
+    Product("atlassian:sourcetree", _p(r"SourceTree|Sourcetree Enterprise"), publisher=_p(r"Atlassian")),
 )
 
 _BY_CPE = {c: p for p in PRODUCTS for c in (p.cpes or (p.key,))}
@@ -152,6 +164,8 @@ def _events(p: Product, f: list[str], m: dict) -> list[dict] | None:
     ver = f[5]
     if ver == "-":
         return None
+    if p.nvd_dashes:
+        ver, m = ver.replace("-", "."), {k: v.replace("-", ".") if k.startswith("version") else v for k, v in m.items()}
     if ver != "*":  # one exact version
         return [{"introduced": ver}, {"last_affected": ver}] if _version_ok(ver) else None
     vsi, vse, vei, vex = (m.get(k) for k in ("versionStartIncluding", "versionStartExcluding", "versionEndIncluding", "versionEndExcluding"))

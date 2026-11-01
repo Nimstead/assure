@@ -40,7 +40,8 @@ WINGET_KEYS = frozenset({
     "mozilla:thunderbird", "libreoffice:libreoffice", "foxit:pdf_reader", "teamviewer:teamviewer", "anydesk:anydesk",
     "oracle:vm_virtualbox", "docker:desktop", "Microsoft Edge", "Visual Studio Code", "irfanview:irfanview", "gimp:gimp", "golang:go",
     "grafana:grafana", "calibre-ebook:calibre", "tigervnc:tigervnc", "sumatrapdfreader:sumatrapdf", "nextcloud:desktop", "nomachine:nomachine",
-    "gpg4win:gpg4win", "qbittorrent:qbittorrent"})
+    "gpg4win:gpg4win", "qbittorrent:qbittorrent", "imagemagick:imagemagick", "pdf-xchange:pdf-xchange_editor",
+    "devolutions:remote_desktop_manager", "uvnc:ultravnc", "anysphere:cursor"})
 CONFIG_FIXES = frozenset({"wdigest", "ntlmv1", "llmnr", "smb-signing", "smb1", "cert-padding-check", "anonymous-sam", "lm-hash", "autorun",
                           "insecure-guest-auth", "winrm-basic", "winrm-unencrypted", "script-block-logging"})
 FORWARD_ONLY = ("winget",)  # can't be undone: a person approves it as such, never the trust ladder (plan T22)

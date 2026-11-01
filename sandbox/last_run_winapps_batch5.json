@@ -1,0 +1,392 @@
+{
+  "result": "PASS",
+  "vm": "nimstead-sbx-win-99914f",
+  "proven": [
+    "Anysphere.Cursor",
+    "Devolutions.RemoteDesktopManager",
+    "Elastic.Elasticsearch",
+    "ImageMagick.ImageMagick",
+    "MongoDB.Server",
+    "TrackerSoftware.PDF-XChangeEditor",
+    "uvncbvba.UltraVNC"
+  ],
+  "apps": {
+    "ImageMagick.ImageMagick": {
+      "proven": true,
+      "installed": "7.1.2.33",
+      "old": [
+        {
+          "display_name": "ImageMagick 7.1.2-33 Q16-HDRI (64-bit) (2026-10-10)",
+          "registry_version": "7.1.2.33",
+          "identified": [
+            "imagemagick:imagemagick",
+            "7.1.2.33"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "ImageMagick 7.1.2-34 Q16-HDRI (64-bit) (2026-10-14)",
+          "registry_version": "7.1.2.34",
+          "identified": [
+            "imagemagick:imagemagick",
+            "7.1.2.34"
+          ]
+        }
+      ]
+    },
+    "TrackerSoftware.PDF-XChangeEditor": {
+      "proven": true,
+      "installed": "11.1.0.0",
+      "old": [
+        {
+          "display_name": "PDF-XChange Editor",
+          "registry_version": "11.1.0.0",
+          "identified": [
+            "pdf-xchange:pdf-xchange_editor",
+            "11.1.0.0"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "PDF-XChange Editor",
+          "registry_version": "11.1.1.0",
+          "identified": [
+            "pdf-xchange:pdf-xchange_editor",
+            "11.1.1.0"
+          ]
+        }
+      ]
+    },
+    "Elastic.Elasticsearch": {
+      "proven": true,
+      "installed": "7.16.2",
+      "old": [
+        {
+          "display_name": "Elasticsearch 7.16.2",
+          "registry_version": "7.16.2",
+          "identified": [
+            "elastic:elasticsearch",
+            "7.16.2"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Elasticsearch 7.16.3",
+          "registry_version": "7.16.3",
+          "identified": [
+            "elastic:elasticsearch",
+            "7.16.3"
+          ]
+        }
+      ]
+    },
+    "Devolutions.RemoteDesktopManager": {
+      "proven": true,
+      "installed": "2026.3.10.0",
+      "old": [
+        {
+          "display_name": "Remote Desktop Manager",
+          "registry_version": "2026.3.10.0",
+          "identified": [
+            "devolutions:remote_desktop_manager",
+            "2026.3.10.0"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Remote Desktop Manager",
+          "registry_version": "2026.3.12.0",
+          "identified": [
+            "devolutions:remote_desktop_manager",
+            "2026.3.12.0"
+          ]
+        }
+      ]
+    },
+    "uvncbvba.UltraVNC": {
+      "proven": true,
+      "installed": "1.8.3.0",
+      "old": [
+        {
+          "display_name": "UltraVNC",
+          "registry_version": "1.8.3.0",
+          "identified": [
+            "uvnc:ultravnc",
+            "1.8.3.0"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "UltraVNC",
+          "registry_version": "1.8.3.1",
+          "identified": [
+            "uvnc:ultravnc",
+            "1.8.3.1"
+          ]
+        }
+      ]
+    },
+    "Atlassian.Sourcetree": {
+      "proven": false,
+      "installed": "3.4.32",
+      "old": [],
+      "new": []
+    },
+    "Anysphere.Cursor": {
+      "proven": true,
+      "installed": "3.19.7",
+      "old": [
+        {
+          "display_name": "Cursor",
+          "registry_version": "3.19.7",
+          "identified": [
+            "anysphere:cursor",
+            "3.19.7"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Cursor",
+          "registry_version": "3.27.12",
+          "identified": [
+            "anysphere:cursor",
+            "3.27.12"
+          ]
+        }
+      ]
+    },
+    "MongoDB.Server": {
+      "proven": true,
+      "installed": "9.0.2",
+      "old": [
+        {
+          "display_name": "MongoDB 9.0.2 2008R2Plus SSL (64 bit)",
+          "registry_version": "9.0.2",
+          "identified": [
+            "mongodb:mongodb",
+            "9.0.2"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "MongoDB 9.0.4 2008R2Plus SSL (64 bit)",
+          "registry_version": "9.0.4",
+          "identified": [
+            "mongodb:mongodb",
+            "9.0.4"
+          ]
+        }
+      ]
+    },
+    "Oracle.MySQL": {
+      "proven": false,
+      "why": "winget couldn't install 8.4.6:                                                                        \nAn unexpected error occurred while executing the command: \nDownload request status is not success.\n0x80190194 : Not found (404)."
+    }
+  },
+  "steps": [
+    {
+      "step": "VM ready",
+      "python": "C:\\nimtest\\rt\\python.exe",
+      "winget": "v1.11.510"
+    },
+    {
+      "step": "not installable",
+      "app": "Oracle.MySQL"
+    },
+    {
+      "step": "identified on a real install",
+      "app": "ImageMagick.ImageMagick",
+      "old": [
+        {
+          "display_name": "ImageMagick 7.1.2-33 Q16-HDRI (64-bit) (2026-10-10)",
+          "registry_version": "7.1.2.33",
+          "identified": [
+            "imagemagick:imagemagick",
+            "7.1.2.33"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "ImageMagick 7.1.2-34 Q16-HDRI (64-bit) (2026-10-14)",
+          "registry_version": "7.1.2.34",
+          "identified": [
+            "imagemagick:imagemagick",
+            "7.1.2.34"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "VM ready",
+      "python": "C:\\nimtest\\rt\\python.exe",
+      "winget": "v1.11.510"
+    },
+    {
+      "step": "already installed",
+      "app": "ImageMagick.ImageMagick"
+    },
+    {
+      "step": "identified on a real install",
+      "app": "TrackerSoftware.PDF-XChangeEditor",
+      "old": [
+        {
+          "display_name": "PDF-XChange Editor",
+          "registry_version": "11.1.0.0",
+          "identified": [
+            "pdf-xchange:pdf-xchange_editor",
+            "11.1.0.0"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "PDF-XChange Editor",
+          "registry_version": "11.1.1.0",
+          "identified": [
+            "pdf-xchange:pdf-xchange_editor",
+            "11.1.1.0"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "identified on a real install",
+      "app": "Elastic.Elasticsearch",
+      "old": [
+        {
+          "display_name": "Elasticsearch 7.16.2",
+          "registry_version": "7.16.2",
+          "identified": [
+            "elastic:elasticsearch",
+            "7.16.2"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Elasticsearch 7.16.3",
+          "registry_version": "7.16.3",
+          "identified": [
+            "elastic:elasticsearch",
+            "7.16.3"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "identified on a real install",
+      "app": "Devolutions.RemoteDesktopManager",
+      "old": [
+        {
+          "display_name": "Remote Desktop Manager",
+          "registry_version": "2026.3.10.0",
+          "identified": [
+            "devolutions:remote_desktop_manager",
+            "2026.3.10.0"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Remote Desktop Manager",
+          "registry_version": "2026.3.12.0",
+          "identified": [
+            "devolutions:remote_desktop_manager",
+            "2026.3.12.0"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "identified on a real install",
+      "app": "uvncbvba.UltraVNC",
+      "old": [
+        {
+          "display_name": "UltraVNC",
+          "registry_version": "1.8.3.0",
+          "identified": [
+            "uvnc:ultravnc",
+            "1.8.3.0"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "UltraVNC",
+          "registry_version": "1.8.3.1",
+          "identified": [
+            "uvnc:ultravnc",
+            "1.8.3.1"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "NOT identified as expected",
+      "app": "Atlassian.Sourcetree",
+      "old": [],
+      "new": []
+    },
+    {
+      "step": "identified on a real install",
+      "app": "Anysphere.Cursor",
+      "old": [
+        {
+          "display_name": "Cursor",
+          "registry_version": "3.19.7",
+          "identified": [
+            "anysphere:cursor",
+            "3.19.7"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Cursor",
+          "registry_version": "3.27.12",
+          "identified": [
+            "anysphere:cursor",
+            "3.27.12"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "identified on a real install",
+      "app": "MongoDB.Server",
+      "old": [
+        {
+          "display_name": "MongoDB 9.0.2 2008R2Plus SSL (64 bit)",
+          "registry_version": "9.0.2",
+          "identified": [
+            "mongodb:mongodb",
+            "9.0.2"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "MongoDB 9.0.4 2008R2Plus SSL (64 bit)",
+          "registry_version": "9.0.4",
+          "identified": [
+            "mongodb:mongodb",
+            "9.0.4"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "not installable",
+      "app": "Oracle.MySQL"
+    }
+  ],
+  "note": "ImageMagick from the first run on this VM, the rest from a clean restart after a hung MongoDB installer; first run kept in run history"
+}

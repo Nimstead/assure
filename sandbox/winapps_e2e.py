@@ -45,8 +45,17 @@ NEW = {  # batch 4 alone with --new: versions below winget's newest on 2026-10-3
     "Greenshot.Greenshot": ("1.3.323", "getgreenshot:greenshot"), "GnuPG.Gpg4win": ("5.1.0", "gpg4win:gpg4win"),
     "qBittorrent.qBittorrent": ("5.2.4", "qbittorrent:qbittorrent"), "Discord.Discord": ("1.0.9265", "discord:discord"),
 }
+NEW5 = {  # batch 5 alone with --new5
+    "ImageMagick.ImageMagick": ("7.1.2.33", "imagemagick:imagemagick"),
+    "TrackerSoftware.PDF-XChangeEditor": ("11.1.0.0", "pdf-xchange:pdf-xchange_editor"), "Elastic.Elasticsearch": ("7.16.2", "elastic:elasticsearch"),
+    "Devolutions.RemoteDesktopManager": ("2026.3.10.0", "devolutions:remote_desktop_manager"), "uvncbvba.UltraVNC": ("1.8.3.0", "uvnc:ultravnc"),
+    "Atlassian.Sourcetree": ("3.4.32", "atlassian:sourcetree"), "Anysphere.Cursor": ("3.19.7", "anysphere:cursor"),
+    "MongoDB.Server": ("9.0.2", "mongodb:mongodb"), "Oracle.MySQL": ("8.4.6", "oracle:mysql_server"),  # last: this MongoDB installer hung a VM
+}
 if "--new" in sys.argv:
     APPS, OUT = NEW, OUT.with_name("last_run_winapps_batch4.json")
+if "--new5" in sys.argv:
+    APPS, OUT = NEW5, OUT.with_name("last_run_winapps_batch5.json")
 log: list[dict] = []
 
 
@@ -60,6 +69,9 @@ def guest(cmd, timeout=1800):
         rc, out = winvm.run(NAME, cmd, timeout=timeout)
     except subprocess.TimeoutExpired:  # a hung installer fails that app, not the run
         rc, out = 1, f"timed out after {timeout} s"
+    if "Error starting guest session" in out:  # a hung installer left guest control down: not this app's failure (real VM, 2026-11-01)
+        winvm.wait_ready(NAME, minutes=45)
+        rc, out = winvm.run(NAME, cmd, timeout=timeout)
     return rc, out
 
 

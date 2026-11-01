@@ -48,6 +48,7 @@ def runtime():
 def job(name, j, fail=False):
     h.guest(f"Set-Content -Path C:\\nimtest\\{name}.json -Encoding ascii -Value '{json.dumps(j)}'")
     out = rf"C:\nimtest\{name}.out"
+    h.guest(f"Remove-Item {out} -ErrorAction SilentlyContinue", check=False)  # on a reused VM, as_system would take the last run's result for this one
     h.as_system(rf'"{PY}" -I "{AGENT}" run-job --yes{" --fail-after-apply" if fail else ""} < C:\nimtest\{name}.json > {out} 2>&1',
                 wait_minutes=70, result=out)  # above the agent's worst case: an Office job waits up to 30 min each way
     r = json.loads(h.guest(f"Get-Content {out} -Raw").strip().splitlines()[-1])

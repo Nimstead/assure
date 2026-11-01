@@ -1033,7 +1033,9 @@ WINGET_IDS = {  # curated product key (server: winapps.py / msproducts.py) -> wi
     "irfanview:irfanview": "IrfanSkiljan.IrfanView", "gimp:gimp": "GIMP.GIMP.3", "golang:go": "GoLang.Go", "grafana:grafana": "GrafanaLabs.Grafana.OSS",
     "calibre-ebook:calibre": "calibre.calibre", "tigervnc:tigervnc": "TigerVNC.TigerVNC", "sumatrapdfreader:sumatrapdf": "SumatraPDF.SumatraPDF",
     "nextcloud:desktop": "Nextcloud.NextcloudDesktop", "nomachine:nomachine": "NoMachine.NoMachine", "gpg4win:gpg4win": "GnuPG.Gpg4win",
-    "qbittorrent:qbittorrent": "qBittorrent.qBittorrent"}
+    "qbittorrent:qbittorrent": "qBittorrent.qBittorrent", "imagemagick:imagemagick": "ImageMagick.ImageMagick",
+    "pdf-xchange:pdf-xchange_editor": "TrackerSoftware.PDF-XChangeEditor", "devolutions:remote_desktop_manager": "Devolutions.RemoteDesktopManager",
+    "uvnc:ultravnc": "uvncbvba.UltraVNC", "anysphere:cursor": "Anysphere.Cursor"}
 # check id (server: winconfig.py) -> (registry key, value name, type, secure value); rollback restores what was there
 CONFIG_FIXES = {
     "wdigest": (r"HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\WDigest", "UseLogonCredential", "REG_DWORD", "0"),

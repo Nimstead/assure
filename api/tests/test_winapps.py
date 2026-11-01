@@ -415,6 +415,16 @@ def test_cvelist_rows_only_where_nvd_has_none_and_nvd_replaces_them(env):
     ("Gpg4win (5.1.0)", "The Gpg4win Project", "5.1.0", ("gpg4win:gpg4win", "5.1.0")),
     ("qBittorrent", "The qBittorrent project", "5.2.4", ("qbittorrent:qbittorrent", "5.2.4")),
     ("Discord", "Discord Inc.", "1.0.9265", ("discord:discord", "1.0.9265")),
+    # batch 5, the same way (2026-11-01)
+    ("MySQL Server 8.4", "Oracle Corporation", "8.4.9", ("oracle:mysql_server", "8.4.9")),
+    ("ImageMagick 7.1.2-33 Q16-HDRI (64-bit) (2026-10-10)", "ImageMagick Studio LLC", "7.1.2.33", ("imagemagick:imagemagick", "7.1.2.33")),
+    ("MongoDB 9.0.2 2008R2Plus SSL (64 bit)", "MongoDB Inc.", "9.0.2", ("mongodb:mongodb", "9.0.2")),
+    ("PDF-XChange Editor", "PDF-XChange Co Ltd.", "11.1.0.0", ("pdf-xchange:pdf-xchange_editor", "11.1.0.0")),
+    ("Elasticsearch 7.16.2", "Elastic", "7.16.2", ("elastic:elasticsearch", "7.16.2")),
+    ("Remote Desktop Manager", "Devolutions inc.", "2026.3.10.0", ("devolutions:remote_desktop_manager", "2026.3.10.0")),
+    ("UltraVNC", "uvnc", "1.8.3.0", ("uvnc:ultravnc", "1.8.3.0")),
+    ("SourceTree", "Atlassian", "3.4.32", ("atlassian:sourcetree", "3.4.32")),
+    ("Sourcetree Enterprise", "Atlassian", "3.4.33.0", ("atlassian:sourcetree", "3.4.33.0")),  # machine-wide install
 ])
 def test_identify_batches(name, pub, ver, want):
     assert winapps.identify(name, pub, ver) == want
@@ -433,6 +443,11 @@ def test_identify_batches(name, pub, ver, want):
     ("PostgreSQL ODBC Driver", "PostgreSQL Global Development Group", "16.0"),
     ("GNU Privacy Guard", "The GnuPG Project", "2.5.21"),
     ("XAMPP", "Apache Friends", "8.2.4-0"),
+    ("Foxit PDF Editor", "Foxit Software Inc.", "14.0.8.33807"),
+    ("pgAdmin 4 version 9.18", "The pgAdmin Development Team", "9.18"),
+    ("MySQL Workbench 8.0 CE", "Oracle Corporation", "8.0.40"),
+    ("MySQL Server 8.4", "Someone Else", "8.4.9"),
+    ("SourceTree", "Someone Else", "3.4.32"),
 ])
 def test_identify_batch_near_misses(name, pub, ver):
     assert winapps.identify(name, pub, ver) is None
@@ -489,3 +504,11 @@ def test_offline_hive_unloaded_even_when_reading_fails(tmp_path, monkeypatch):
 def test_a_hive_in_use_is_skipped(tmp_path):
     reg = OfflineReg(tmp_path, fail_load=True)
     assert agent.offline_user_apps(reg, reg.run, loaded=["S-1-5-21-1-2-3-1001"]) == [] and [c[1] for c in reg.log] == ["load"]
+
+
+def test_imagemagick_dashed_versions_compare_with_the_registry_number():
+    cve = {"id": "CVE-2026-1", "configurations": [{"nodes": [{"cpeMatch": [
+        {"vulnerable": True, "criteria": "cpe:2.3:a:imagemagick:imagemagick:*:*:*:*:*:*:*:*", "versionStartIncluding": "7.0.0-0", "versionEndExcluding": "7.1.2-34"}]}]}]}
+    [(key, rec)] = winapps.advisories(cve)
+    assert key == "imagemagick:imagemagick"
+    assert rec["affected"][0]["ranges"][0]["events"] == [{"introduced": "7.0.0.0"}, {"fixed": "7.1.2.34"}]

@@ -129,3 +129,69 @@ def test_windows_enroll_locks_the_folder_before_the_key_is_written(tmp_path, mon
 def test_lockdown_failure_is_loud(tmp_path):
     with pytest.raises(agent.AgentError):
         agent.secure_windows_dir(lambda cmd, cwd=None: (5, "Access is denied."), str(tmp_path))
+
+
+UN = "hkey_local_machine\\software\\microsoft\\windows\\currentversion\\uninstall"
+REMOTE_DUMP = {"host": "SRV1", "machine": "AMD64", "dirs": {r"c:\program files\dotnet\sdk": ["8.0.425"]}, "keys": {
+    "hkey_local_machine\\software\\microsoft\\windows nt\\currentversion": {"values": {
+        "CurrentBuild": "26100", "UBR": 100, "DisplayVersion": "24H2", "ProductName": "Windows Server 2025", "InstallationType": "Server", "EditionID": "ServerStandard"}, "subkeys": []},
+    UN: {"values": {}, "subkeys": ["7-Zip"]},
+    UN + "\\7-zip": {"values": {"DisplayName": "7-Zip 23.01 (x64)", "DisplayVersion": "23.01", "Publisher": "Igor Pavlov"}, "subkeys": []},
+    "hkey_local_machine\\software\\microsoft\\net framework setup\\ndp\\v4\\full": {"values": {"Release": 533509}, "subkeys": []}}}
+
+
+def fake_remote(calls, dump=REMOTE_DUMP):
+    def run(cmd, **kw):
+        calls.append(cmd[-1])
+        path = cmd[-1].split("-FilePath '")[1].split("'")[0]
+        script = open(path, encoding="utf-8-sig").read()
+        if "ValidCommunities" in script or "$c.secure_boot" in script:
+            return 0, json.dumps({"config": {"uac_lua": 1}})
+        if "GetValueNames" in script:
+            return 0, json.dumps(dump)
+        if "netfx" in script:
+            return 0, json.dumps({"netfx": "4.8.9363.0 built by: x", "store": []})
+        return 0, "0"
+    return run
+
+
+def test_remote_scan_reads_another_host_with_the_agents_own_collectors():
+    calls = []
+    name, inv = agent.collect_remote("srv1.corp.example", fake_remote(calls))
+    got = {(p["ecosystem"], p["name"], p["version"]) for p in inv["packages"]}
+    assert name == "SRV1" and inv["ecosystem"] == "Windows"
+    assert ("WinApp", "7-Zip 23.01 (x64)", "23.01") in got and ("Microsoft", ".NET SDK", "8.0.425") in got and ("Microsoft", ".NET Framework", "4.8.9363.0") in got
+    assert any(n.startswith("Windows Server 2025") and e == "Windows" and v == "10.0.26100.100" for e, n, v in got)
+    assert inv["facts"]["config"] == {"uac_lua": 1}
+    assert all("Invoke-Command -ComputerName srv1.corp.example" in c for c in calls)
+
+
+@pytest.mark.parametrize("bad", ["a b", "x;Remove-Item c:\\", "$(calc)", "-ComputerName", "a'b"])
+def test_remote_scan_refuses_what_isnt_a_host_name(bad):
+    with pytest.raises(agent.AgentError, match="not a host name"):
+        agent.collect_remote(bad, lambda *a, **k: pytest.fail("ran something"))
+
+
+def test_remote_scan_says_when_a_host_cant_be_reached():
+    with pytest.raises(agent.AgentError, match="remoting"):
+        agent.collect_remote("srv1", lambda cmd, **k: (1, "WinRM cannot complete the operation"))
+
+
+def test_scan_remote_enrols_once_keeps_going_past_a_failure_and_sends_no_credentials(tmp_path):
+    calls, sent = [], []
+
+    def run(cmd, **kw):
+        if "-ComputerName down " in cmd[-1]:
+            return 1, "unreachable"
+        return fake_remote(calls)(cmd, **kw)
+
+    def post_fn(server, path, body, insecure, key=None):
+        sent.append((path, body, key))
+        return {"agent_key": "k1", "asset_id": "a1"} if path.endswith("enroll") else {}
+    keys = str(tmp_path / "keys.json")
+    failed = agent.scan_remote("https://n", ["down", "srv1"], "tok", keys_path=keys, run=run, post_fn=post_fn)
+    assert list(failed) == ["down"] and [p for p, _, _ in sent] == ["/api/agent/enroll", "/api/agent/inventory"] and sent[1][2] == "k1"
+    sent.clear()
+    assert not agent.scan_remote("https://n", ["srv1"], None, keys_path=keys, run=run, post_fn=post_fn)
+    assert [p for p, _, _ in sent] == ["/api/agent/inventory"]  # the second scan needs no token
+    assert agent.scan_remote("https://other", ["srv1"], None, keys_path=keys, run=run, post_fn=post_fn)  # another server's key isn't reused

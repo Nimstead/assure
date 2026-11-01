@@ -253,8 +253,11 @@ def _subkeys(reg, root, path):
         i += 1
 
 
-def collect_windows():
-    import winreg
+def collect_windows(winreg=None, run=None, machine=None, dotnet_dirs=None):
+    """This host, or with the arguments another one over PowerShell remoting (collect_remote)."""
+    remote = winreg is not None
+    if not remote:
+        import winreg
     with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion", 0,
                         winreg.KEY_READ | winreg.KEY_WOW64_64KEY) as k:
         def val(name, default=""):
@@ -266,12 +269,12 @@ def collect_windows():
         dv = val("DisplayVersion") or val("ReleaseId")
         product, itype = val("ProductName"), val("InstallationType")
         edition = val("EditionID")
-    machine = platform.machine()
+    machine = machine or platform.machine()
     name = msrc_product_name(build, dv, itype, machine)
     version = f"10.0.{build}.{ubr}"
     if build >= 22000:
         product = product.replace("Windows 10", "Windows 11")
-    facts = {"edition_id": edition, "installation_type": itype, "esu": esu_active(name)}
+    facts = {"edition_id": edition, "installation_type": itype, "esu": esu_active(name, run)}
     os_pkg = []
     if not name or not build:  # still report apps; the server shows why the OS isn't matched
         facts["os_unmatched"] = f"no exact MSRC product for {product} {dv} build {build} {itype} {machine}"
@@ -279,15 +282,153 @@ def collect_windows():
         facts["os_product"], facts["os_unmatched"] = name, f"{name} has no update build revision to compare with MSRC fixes"
     else:
         os_pkg = [{"ecosystem": "Windows", "name": name, "version": version, "source": None}]
-    ms, problem = windows_microsoft(winreg)
+    ms, problem = windows_microsoft(winreg, run, dotnet_dirs)
     if problem:
         facts["microsoft_check"] = problem
-    host, problem = windows_host_facts()
+    host, problem = windows_host_facts(run)
     facts.update(host)
     if problem:
         facts["host_check"] = problem
     return {"os_name": f"{product} {dv} ({machine}) build {version}", "ecosystem": "Windows", "agent_version": AGENT_VERSION,
-            "facts": facts, "packages": [*os_pkg, *windows_apps(winreg), *offline_user_apps(winreg), *ms]}
+            "facts": facts, "packages": [*os_pkg, *windows_apps(winreg), *([] if remote else offline_user_apps(winreg)), *ms]}
+
+
+# ---- agentless: an admin scans hosts from their own machine, as themselves. PowerShell remoting carries their identity,
+# so no credential is typed, stored or sent to the server (DECISIONS 65). What comes back is treated like any agent's report.
+PS_REMOTE_DUMP = r"""
+$ErrorActionPreference = 'SilentlyContinue'
+$keys = [ordered]@{}
+function Dump($p) {
+  $k = Get-Item -LiteralPath "Registry::$p"
+  if (-not $k) { return @() }
+  $v = @{}
+  foreach ($n in $k.GetValueNames()) { $d = $k.GetValue($n); if ($d -is [string] -or $d -is [int] -or $d -is [long]) { $v[$n] = $d } }
+  $subs = @($k.GetSubKeyNames())
+  $keys[$p.ToLower()] = @{ values = $v; subkeys = $subs }
+  return $subs
+}
+$un = 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
+$roots = @("HKEY_LOCAL_MACHINE\$un", "HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall")
+foreach ($sid in (Get-ChildItem 'Registry::HKEY_USERS').PSChildName) { if ($sid -match '^S-1-5-21-[0-9-]+$') { $roots += "HKEY_USERS\$sid\$un" } }
+foreach ($r in $roots) { foreach ($s in Dump $r) { Dump "$r\$s" | Out-Null } }
+$lm = 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft'
+foreach ($p in "$lm\Windows NT\CurrentVersion", "$lm\Office\ClickToRun\Configuration", "$lm\NET Framework Setup\NDP\v4\Full", "$lm\Microsoft SQL Server\Instance Names\SQL") { Dump $p | Out-Null }
+$sql = $keys["$lm\Microsoft SQL Server\Instance Names\SQL".ToLower()]
+if ($sql) { foreach ($id in $sql.values.Values) { Dump "$lm\Microsoft SQL Server\$id\Setup" | Out-Null } }
+$dirs = @{}
+foreach ($r in "$env:ProgramFiles\dotnet", "$env:ProgramFiles\dotnet\x64", "${env:ProgramFiles(x86)}\dotnet") {
+  foreach ($s in 'shared\Microsoft.NETCore.App', 'shared\Microsoft.AspNetCore.App', 'sdk') { $dirs[("$r\$s").ToLower()] = @(Get-ChildItem -LiteralPath "$r\$s" -Directory | ForEach-Object Name) }
+}
+ConvertTo-Json -Compress -Depth 6 -InputObject @{ host = $env:COMPUTERNAME; machine = $env:PROCESSOR_ARCHITECTURE; keys = $keys; dirs = $dirs }
+"""
+SAFE_HOSTNAME = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,252})\Z")
+
+
+class RemoteReg:
+    """The part of winreg the collectors use, over a dump of another host's registry."""
+    HKEY_LOCAL_MACHINE, HKEY_USERS, HKEY_CURRENT_USER = "hkey_local_machine", "hkey_users", "hkey_current_user"
+    KEY_READ, KEY_WOW64_64KEY, KEY_WOW64_32KEY = 0, 0x100, 0x200
+
+    class Key:
+        def __init__(self, path, d):
+            self.path, self.values, self.subkeys = path, d.get("values") or {}, d.get("subkeys") or []
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def __init__(self, keys):
+        self.keys = keys
+
+    def OpenKey(self, root, path, reserved=0, access=0):
+        base = root.path if isinstance(root, self.Key) else root
+        path = path.lower()
+        if access & self.KEY_WOW64_32KEY and path.startswith("software\\"):
+            path = "software\\wow6432node\\" + path[len("software\\"):]
+        full = f"{base}\\{path}".rstrip("\\")
+        if full not in self.keys:
+            raise OSError(full)
+        return self.Key(full, self.keys[full])
+
+    def EnumKey(self, k, i):
+        subs = k.subkeys if isinstance(k, self.Key) else sorted({x[len(k) + 1:].split("\\")[0].upper() for x in self.keys if x.startswith(k + "\\")})  # a hive
+        if i >= len(subs):
+            raise OSError("no more")
+        return subs[i]
+
+    def EnumValue(self, k, i):
+        items = list(k.values.items())
+        if i >= len(items):
+            raise OSError("no more")
+        return (*items[i], 1)
+
+    def QueryValueEx(self, k, name):
+        if name not in k.values:
+            raise OSError(name)
+        return k.values[name], 1
+
+
+def collect_remote(host, run=None):
+    """(hostname, inventory) of another Windows host, read with the same collectors as an agent."""
+    if not SAFE_HOSTNAME.match(host):
+        raise AgentError(f"not a host name: {host!r}")
+    run = run or sh
+
+    def remote(cmd, **kw):  # a file, because a script as an argument hits the command line limit
+        fd, path = tempfile.mkstemp(suffix=".ps1")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8-sig") as f:
+                f.write(cmd[-1])
+            return run(["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
+                        f"Invoke-Command -ComputerName {host} -FilePath '{path}' -ErrorAction Stop"], **kw)
+        finally:
+            os.unlink(path)
+    rc, out = ps(remote, PS_REMOTE_DUMP, timeout=600)
+    try:
+        d = json.loads(out.strip().splitlines()[-1]) if rc == 0 else None
+    except (ValueError, IndexError):
+        d = None
+    if not isinstance(d, dict) or not isinstance(d.get("keys"), dict) or not isinstance(d.get("dirs"), dict):
+        raise AgentError(f"{host}: couldn't read it over PowerShell remoting: {out.strip()[-300:]}")
+    dirs = {str(k).lower(): v for k, v in d["dirs"].items()}
+
+    def dotnet_dirs(path):
+        got = dirs.get(path.lower()) or []
+        return [str(x) for x in got] if isinstance(got, list) else [str(got)]
+    machine = {"AMD64": "AMD64", "ARM64": "ARM64"}.get(str(d.get("machine")), "AMD64")
+    return str(d.get("host") or host)[:255], collect_windows(RemoteReg(d["keys"]), remote, machine, dotnet_dirs)
+
+
+def scan_remote(server, hosts, token, insecure_http=False, keys_path=None, run=None, post_fn=None):
+    """Enrol each host once as an asset with no agent, then report its inventory. One host failing doesn't stop the rest.
+    Keys go in the admin's own profile: each can only report that one host's inventory."""
+    keys_path = keys_path or os.path.join(os.path.expanduser("~"), ".nimstead-remote-scan.json")
+    send = post_fn or post
+    try:
+        with open(keys_path) as f:
+            keys = json.load(f)
+    except (OSError, ValueError):
+        keys = {}
+    failed = {}
+    for host in hosts:
+        try:
+            name, inv = collect_remote(host, run)
+            if server not in keys.get(name.lower(), {}):
+                if not token:
+                    raise AgentError("not enrolled yet: an enrolment token is required (NIMSTEAD_TOKEN)")
+                res = send(server, "/api/agent/enroll", {"token": token, "hostname": name, "os_name": inv["os_name"], "ecosystem": inv["ecosystem"]}, insecure_http)
+                keys.setdefault(name.lower(), {})[server] = res["agent_key"]
+                fd = os.open(keys_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+                with os.fdopen(fd, "w") as f:
+                    json.dump(keys, f)
+            send(server, "/api/agent/inventory", inv, insecure_http, key=keys[name.lower()][server])
+            print(f"{name}: reported {len(inv['packages'])} packages")
+        except (AgentError, OSError, KeyError, subprocess.SubprocessError) as e:
+            failed[host] = str(e)
+            print(f"{host}: {e}", file=sys.stderr)
+    return failed
 
 
 # Microsoft products MSRC publishes exact builds for (server: msproducts.py). Facts only, from fixed places; the server
@@ -2523,6 +2664,10 @@ def main(argv=None):
                     help="least proven signed releases this agent takes (the installer passes its server's channel)")
     sub.add_parser("report")
     sub.add_parser("collect")
+    sr = sub.add_parser("scan-remote", help="Windows: scan other hosts with no agent, over PowerShell remoting, as you (no stored credentials)")
+    sr.add_argument("--server", help="report here; NIMSTEAD_TOKEN enrols hosts the first time")
+    sr.add_argument("--print", action="store_true", dest="print_only", help="print each host's inventory instead of reporting it")
+    sr.add_argument("hosts", nargs="+")
     rm = sub.add_parser("remediate", help="run approved remediation jobs, then re-report inventory")
     rm.add_argument("--if-jobs", action="store_true", help="re-report inventory only if a job ran (the 15-minute poll)")
     un = sub.add_parser("uninstall", help="remove the agent, its schedule, key and saved state from this host")
@@ -2542,6 +2687,14 @@ def main(argv=None):
             secure_windows_dir()
         if a.cmd == "collect":
             print(json.dumps(collect(), indent=2))
+        elif a.cmd == "scan-remote":
+            if a.print_only:
+                for h in a.hosts:
+                    print(json.dumps(collect_remote(h)[1]))
+                return 0
+            if not a.server:
+                raise AgentError("--server is required, or --print")
+            return 2 if scan_remote(a.server, a.hosts, os.environ.get("NIMSTEAD_TOKEN"), a.insecure_http) else 0
         elif a.cmd == "enroll":
             if not a.token:
                 raise AgentError("an enrolment token is required (--token or NIMSTEAD_TOKEN)")

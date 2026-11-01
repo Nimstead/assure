@@ -105,8 +105,8 @@ the NVD map in `winapps.py`.
 .NET Framework is dropped and only runtimes ship, plan decision 9). Allowlist entries added.
 **Acceptance criteria:**
 - [x] Side-by-side runtimes each matched against their own major's fix
-- [ ] .NET Framework matched only against the MSRC product for this OS version (name built like the OS name) — **DROPPED: .NET Framework not detected (DECISIONS 51)**
-- [ ] An unreadable .NET Framework version is inventory only, never "fixed" — **DROPPED with .NET Framework (DECISIONS 51)**
+- [x] .NET Framework matched only against the MSRC product for this OS version (name built like the OS name) — **done after all (DECISIONS 63, `last_run_winnetfx.json`)**
+- [x] An unreadable .NET Framework version is inventory only, never "fixed" — **done (DECISIONS 63): no version or Release, no comparison**
 **Dependencies:** T5 · **Files:** `agent/nimstead_agent.py`, `feeds.py`, `api/tests/test_msrc_products.py`, `api/tests/test_agent.py`
 
 ### T7: SQL Server with GDR and CU tracks  (M)
@@ -229,7 +229,7 @@ Datacenter: Azure Edition" VM (plan decision 1).
 verify by the .NET Framework version from T6 instead of the OS build.
 **Acceptance criteria:**
 - [ ] Job schema still closed (family is an enum); state-file validation updated — **DROPPED with T16 (DECISIONS 51, 57)**
-- [ ] VM: .NET KB installed, verified; forced failure: DISM removed, original version back — **DROPPED with T16**
+- [x] VM: .NET KB installed, verified; forced failure: DISM removed, original version back — **done on Windows 11 26H2 (`last_run_winnetfx.json`)**
 **Dependencies:** T6, T40, T41 · **Files:** `agent/nimstead_agent.py`, `remediate.py`, `api/tests/test_winjob.py`, `sandbox/wine2e.py`
 
 ### T17: Microsoft 365 Apps update with rollback  (M; only with T9)

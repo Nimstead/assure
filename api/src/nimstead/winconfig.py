@@ -160,7 +160,7 @@ def evaluate(facts: dict, os_version: str = "") -> list[dict]:
     if c.get("winrm_unencrypted") == 1:
         add("winrm-unencrypted", 1, "WinRM accepts unencrypted traffic", "next", 60, fix="Set AllowUnencryptedTraffic=0")
     if c.get("rdp_enabled") is True and isinstance(c.get("rdp_encryption"), int) and c["rdp_encryption"] < 3:
-        add("rdp-encryption", c["rdp_encryption"], "Remote Desktop allows weak encryption", "planned", 35, fix="Set MinEncryptionLevel to 3 (high)")
+        add("rdp-encryption", c["rdp_encryption"], "Remote Desktop allows weak encryption", "low", 20, fix="Set MinEncryptionLevel to 3 (high)")
     if c.get("safe_dll_search") == 0:
         add("safe-dll-search", 0, "Safe DLL search is off, so a planted DLL in the working folder loads first", "next", 55, fix="Set SafeDllSearchMode=1")
     if c.get("auto_update_off") == 1:

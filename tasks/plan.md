@@ -74,8 +74,8 @@ and where this plan delivers it. "Out" rows are deliberate and say why.
 |---|---|---|---|---|
 | Missing OS security updates, all supported Windows 10/11/Server | both | MSRC build match | T2 hotpatch, T4 unmapped releases, T1 oracle proves it | Built. Windows 11 and Server 2025 oracles agree on the OS KB, every gap explained |
 | End-of-life / unsupported OS and software | both (large "unsupported software" family) | none | T3 OS, T28 Microsoft + third-party apps | Built, unit-tested (OS, Microsoft products, endoflife.date) |
-| Microsoft products: Edge, .NET, Office/M365, SQL, Exchange, SharePoint, Defender, Store apps, others | both | none | T5–T9, T19, T20, T29 | Built, fixture-tested; .NET Framework dropped (DECISIONS 51); no product proven on a real install yet |
-| Third-party apps at breadth (hundreds of products) | both (thousands of plugins / QIDs) | 18 curated | T30 second data source, T31–T33 expand to ~80 curated products, each proven by a real install | Partly: 39 curated products (not ~80) + CVE List v5; none proven by a real install yet |
+| Microsoft products: Edge, .NET, Office/M365, SQL, Exchange, SharePoint, Defender, Store apps, others | both | none | T5–T9, T19, T20, T29 | Proven on Windows 11 for Edge, .NET, .NET Framework, SQL, Defender, Office (`last_run_winproducts.json`, `last_run_winnetfx.json`); Exchange and SharePoint need a domain |
+| Third-party apps at breadth (hundreds of products) | both (thousands of plugins / QIDs) | 18 curated | T30 second data source, T31–T33 expand to ~80 curated products, each proven by a real install | Partly: 56 curated products (not ~80) + CVE List v5; 18 proven old to new on a real install |
 | Per-user apps of every profile, not just logged-on users | both (credentialed) | logged-on only | T34 | Built, fakes only |
 | Vulnerable libraries on disk (log4j-style jar scan) | both | SBOM upload only | T35, reusing the Maven matcher | Built, unit-tested (fat jar) |
 | Fix needs a config step (Secure Boot certs, BlackLotus, opt-in mitigations) | both | none | T10 | Built, unit-tested |
@@ -89,9 +89,9 @@ and where this plan delivers it. "Out" rows are deliberate and say why.
 | Maintenance windows, reboot control, user deferral, no install on battery | Qualys PM | immediate, 60 s reboot warning | T40, T41 | Deferral, notice sent, restart after the deadline and job verified on Windows 11 once; an earlier run's restart at 45 min is unexplained; window dispatch fakes only |
 | Cluster/DC-safe patching (one node at a time) | Qualys PM (partial), ConfigMgr CAU | one job per host only | T42 | Built, fakes only (no cluster or domain) |
 | Fleet operation: proxies, jittered schedules, low agent footprint, no runtime to install | both | no proxy, no jitter, Python required | T25–T27, T44 | No-Python install and runtime update proven on Windows 11 and Server 2025 Core; proxy-only enrol, report, self-update and fix proven on Windows 11 |
-| Proof of accuracy | vendor claims | Linux: OSV agreement | T1 oracle on every Windows version, Checkpoint C noise review | Windows 11 and Server 2025 oracles; noise review NOT done |
+| Proof of accuracy | vendor claims | Linux: OSV agreement | T1 oracle on every Windows version, Checkpoint C noise review | Windows 11 oracle agrees exactly with Windows Update, OS and .NET Framework (`last_run_winnetfx.json`); Server 2025 before .NET Framework; noise review on one VM, partly |
 | Agentless credentialed network scanning (SMB/WinRM) | Nessus core | none | **Out:** the agent covers the same data with no stored domain credentials; its own plan if buyers ask | Out |
-| Full CIS/STIG benchmarks | separate compliance SKUs | none | **Out:** its own plan; T36/T37 cover the exploitable subset | Out |
+| Full CIS/STIG benchmarks | separate compliance SKUs | none | **Out:** its own plan; T36/T37 and a free hardening audit (DECISIONS 64) cover what's directly exploitable, with no conformance claim | Out |
 | Unauthenticated internal network scanning (e.g. MS17-010 from the wire) | Nessus | external (internet) only | **Out:** the agent sees the build directly; internal scanning is its own plan | Out |
 
 ## Architecture decisions (become DECISIONS 51+ as each lands)

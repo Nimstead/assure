@@ -1,0 +1,20 @@
+{
+  "result": "PASS for this check only",
+  "what": "Second run on the VM of last_run_winhardening.json, with the two-view certificate padding fix. Stopped after the setting checks: the SDK part needs a VM without the newest SDK, and passed on the first run.",
+  "steps": [
+    "[09:30:01] setting wdigest {\"found\": \"0\", \"after_failure\": \"0\", \"after_apply\": \"0\", \"secure\": \"0\"}",
+    "[09:32:25] setting ntlmv1 {\"found\": \"5\", \"after_failure\": \"5\", \"after_apply\": \"5\", \"secure\": \"5\"}",
+    "[09:34:48] setting llmnr {\"found\": \"0\", \"after_failure\": \"0\", \"after_apply\": \"0\", \"secure\": \"0\"}",
+    "[09:37:18] setting smb-signing {\"found\": \"1\", \"after_failure\": \"1\", \"after_apply\": \"1\", \"secure\": \"1\"}",
+    "[09:39:41] setting smb1 {\"found\": \"0\", \"after_failure\": \"0\", \"after_apply\": \"0\", \"secure\": \"0\"}",
+    "[09:42:06] setting cert-padding-check {\"found\": \"1\", \"after_failure\": \"1\", \"after_apply\": \"1\", \"secure\": \"1\"}",
+    "[09:44:30] setting anonymous-sam {\"found\": \"1\", \"after_failure\": \"1\", \"after_apply\": \"1\", \"secure\": \"1\"}",
+    "[09:47:12] setting lm-hash {\"found\": \"1\", \"after_failure\": \"1\", \"after_apply\": \"1\", \"secure\": \"1\"}",
+    "[09:49:11] setting autorun {\"found\": \"255\", \"after_failure\": \"255\", \"after_apply\": \"255\", \"secure\": \"255\"}",
+    "[09:51:40] setting insecure-guest-auth {\"found\": \"0\", \"after_failure\": \"0\", \"after_apply\": \"0\", \"secure\": \"0\"}",
+    "[09:54:03] setting winrm-basic {\"found\": \"0\", \"after_failure\": \"0\", \"after_apply\": \"0\", \"secure\": \"0\"}",
+    "[09:56:32] setting winrm-unencrypted {\"found\": \"0\", \"after_failure\": \"0\", \"after_apply\": \"0\", \"secure\": \"0\"}",
+    "[09:58:57] setting script-block-logging {\"found\": \"1\", \"after_failure\": \"1\", \"after_apply\": \"1\", \"secure\": \"1\"}",
+    "[09:59:39] settings the audit still reports after their job {\"still\": []}"
+  ]
+}

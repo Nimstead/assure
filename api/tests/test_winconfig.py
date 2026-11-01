@@ -101,3 +101,39 @@ def test_config_findings_end_to_end(env):
     assert f["CFG:wdigest"]["setting_fix"] is True
     inv({})
     assert not [x for x in c.get("/api/findings").json() if x["ecosystem"] == "WinConfig"]
+
+
+@pytest.mark.parametrize("config,vuln", [
+    ({"uac_lua": 0}, "CFG:uac"), ({"uac_lua": 1, "uac_admin_prompt": 0}, "CFG:uac-prompt"), ({"remote_uac_off": 1}, "CFG:remote-uac"),
+    ({"autologon_stored": True}, "CFG:autologon-password"), ({"guest_enabled": True}, "CFG:guest-account"),
+    ({"password_policy": {"ClearTextPassword": 1}}, "CFG:reversible-passwords"), ({"password_policy": {"MinimumPasswordLength": 0}}, "CFG:password-length"),
+    ({"password_policy": {"LockoutBadCount": 0}}, "CFG:account-lockout"), ({"password_policy": {"PasswordComplexity": 0}}, "CFG:password-complexity"),
+    ({"restrict_anonymous_sam": 0}, "CFG:anonymous-sam"), ({"everyone_includes_anonymous": 1}, "CFG:anonymous-everyone"), ({"no_lm_hash": 0}, "CFG:lm-hash"),
+    ({"autorun": 145}, "CFG:autorun"), ({"insecure_guest_auth": 1}, "CFG:insecure-guest-auth"), ({"winrm_basic": 1}, "CFG:winrm-basic"),
+    ({"winrm_unencrypted": 1}, "CFG:winrm-unencrypted"), ({"rdp_encryption": 2}, "CFG:rdp-encryption"), ({"safe_dll_search": 0}, "CFG:safe-dll-search"),
+    ({"auto_update_off": 1}, "CFG:windows-update-off"), ({"script_block_logging": None}, "CFG:script-block-logging"),
+    ({"ssl3_server": 1}, "CVE-2014-3566"), ({"snmp_default_community": True}, "CFG:snmp-default-community"),
+])
+def test_hardening_audit_findings(config, vuln):
+    assert vuln in checks(config)
+
+
+def test_hardening_audit_good_and_unread_values_stay_quiet():
+    good = {"uac_lua": 1, "uac_admin_prompt": 2, "remote_uac_off": 0, "autologon_stored": False, "guest_enabled": False, "restrict_anonymous_sam": 1,
+            "password_policy": {"ClearTextPassword": 0, "MinimumPasswordLength": 14, "LockoutBadCount": 5, "PasswordComplexity": 1}, "autorun": 255,
+            "everyone_includes_anonymous": 0, "no_lm_hash": 1, "insecure_guest_auth": 0, "winrm_basic": 0, "winrm_unencrypted": 0, "rdp_encryption": 3,
+            "safe_dll_search": 1, "auto_update_off": 0, "script_block_logging": 1, "ssl3_server": 0, "snmp_default_community": False}
+    assert checks(good) == {}
+    unread = {"uac_lua": None, "remote_uac_off": None, "password_policy": None, "restrict_anonymous_sam": None, "no_lm_hash": None, "autorun": None,
+              "rdp_encryption": None, "safe_dll_search": None, "ssl3_server": None}
+    assert checks(unread) == {}
+
+
+def test_remote_registry_is_a_workstation_finding_only():
+    assert "CFG:remote-registry" in checks({"remote_registry_running": True}, server=False)
+    assert "CFG:remote-registry" not in checks({"remote_registry_running": True})
+
+
+def test_smb_client_signing_is_for_domain_controllers():
+    assert "CFG:smb-client-signing" in checks({"smb_client_signing": 0}, dc=True)
+    assert "CFG:smb-client-signing" not in checks({"smb_client_signing": 0})

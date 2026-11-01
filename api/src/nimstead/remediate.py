@@ -39,7 +39,8 @@ WINGET_KEYS = frozenset({
     "winscp:winscp", "filezilla-project:filezilla_client", "keepass:keepass", "vivaldi:vivaldi", "opera:opera_browser",
     "mozilla:thunderbird", "libreoffice:libreoffice", "foxit:pdf_reader", "teamviewer:teamviewer", "anydesk:anydesk",
     "oracle:vm_virtualbox", "docker:desktop", "Microsoft Edge", "Visual Studio Code"})
-CONFIG_FIXES = frozenset({"wdigest", "ntlmv1", "llmnr", "smb-signing", "smb1", "cert-padding-check"})
+CONFIG_FIXES = frozenset({"wdigest", "ntlmv1", "llmnr", "smb-signing", "smb1", "cert-padding-check", "anonymous-sam", "lm-hash", "autorun",
+                          "insecure-guest-auth", "winrm-basic", "winrm-unencrypted", "script-block-logging"})
 FORWARD_ONLY = ("winget",)  # can't be undone: a person approves it as such, never the trust ladder (plan T22)
 MANUAL_ONLY = ("winget", "winconfig")  # setting changes can break old clients: a person decides (plan decision 11)
 SAFE_PRODUCT = re.compile(r"^(?:\.NET Framework 4[0-9.]* on )?Windows [A-Za-z0-9 .()-]{1,120}$")

@@ -117,6 +117,64 @@ def evaluate(facts: dict, os_version: str = "") -> list[dict]:
     if isinstance(c.get("firewall_off"), list) and c["firewall_off"]:
         add("firewall", ", ".join(c["firewall_off"]), f"Windows Firewall is off for the {', '.join(c['firewall_off'])} profile(s)", "planned", 40,
             fix="Turn the firewall on for every profile")
+
+    # ---- hardening audit: settings the Microsoft security baselines fix, each exploitable or hiding an attack (DECISIONS 64)
+    if c.get("uac_lua") == 0:
+        add("uac", "off", "User Account Control is off, so every admin program runs fully elevated", "next", 65, fix="Set EnableLUA=1, then restart")
+    elif c.get("uac_admin_prompt") == 0:
+        add("uac-prompt", "never prompts", "UAC elevates administrators without asking", "planned", 40, fix="Set ConsentPromptBehaviorAdmin to 2 (ask on the secure desktop)")
+    if c.get("remote_uac_off") == 1:
+        add("remote-uac", "off", "Local accounts get full admin rights over the network (LocalAccountTokenFilterPolicy=1), which is what pass-the-hash needs",
+            "next", 60, fix="Remove LocalAccountTokenFilterPolicy or set it to 0")
+    if c.get("autologon_stored") is True:
+        add("autologon-password", "stored", "Automatic sign-in keeps a clear-text password in the registry", "next", 70,
+            fix="Turn off AutoAdminLogon and delete DefaultPassword under Winlogon")
+    if c.get("guest_enabled") is True:
+        add("guest-account", "enabled", "The built-in Guest account is enabled", "next", 55, fix="Disable the Guest account")
+    pp = c.get("password_policy") if isinstance(c.get("password_policy"), dict) else {}
+    if pp.get("ClearTextPassword") == 1:
+        add("reversible-passwords", "on", "Passwords are stored with reversible encryption", "next", 70, fix="Turn off 'Store passwords using reversible encryption'")
+    if isinstance(pp.get("MinimumPasswordLength"), int) and pp["MinimumPasswordLength"] < 8:
+        add("password-length", pp["MinimumPasswordLength"], f"Local passwords may be as short as {pp['MinimumPasswordLength']} characters", "planned", 40,
+            fix="Set the minimum password length to at least 14 (or 8 with multi-factor sign-in)")
+    if pp.get("LockoutBadCount") == 0:
+        add("account-lockout", "never", "Local accounts never lock after failed sign-ins, so passwords can be guessed without limit", "planned", 35,
+            fix="Set the account lockout threshold (10 or fewer attempts)")
+    if pp.get("PasswordComplexity") == 0:
+        add("password-complexity", "off", "Local passwords needn't be complex", "low", 20, fix="Turn on 'Password must meet complexity requirements'")
+    if c.get("restrict_anonymous_sam") == 0:
+        add("anonymous-sam", 0, "Anonymous users can list local accounts", "next", 55, fix="Set RestrictAnonymousSAM=1")
+    if c.get("everyone_includes_anonymous") == 1:
+        add("anonymous-everyone", 1, "Anonymous users get everything granted to Everyone", "next", 55, fix="Set EveryoneIncludesAnonymous=0")
+    if c.get("no_lm_hash") == 0:
+        add("lm-hash", 0, "Windows stores LM password hashes, which crack in minutes", "next", 60, fix="Set NoLMHash=1, then change passwords")
+    if c.get("autorun") not in (None, 255):  # no policy: supported Windows only prompts
+        add("autorun", c["autorun"], "AutoRun isn't turned off for every drive type by policy", "low", 20, fix="Set NoDriveTypeAutoRun=255")
+    if c.get("smb_client_signing") == 0 and dc:
+        add("smb-client-signing", 0, "This domain controller doesn't require signing on outgoing SMB", "planned", 40, fix="Set RequireSecuritySignature=1 under LanmanWorkstation")
+    if c.get("insecure_guest_auth") == 1:
+        add("insecure-guest-auth", 1, "This host connects to SMB shares without authentication, so a rogue server can feed it files", "planned", 40,
+            fix="Set AllowInsecureGuestAuth=0")
+    if c.get("winrm_basic") == 1:
+        add("winrm-basic", 1, "WinRM accepts Basic authentication", "next", 55, fix="Set AllowBasic=0")
+    if c.get("winrm_unencrypted") == 1:
+        add("winrm-unencrypted", 1, "WinRM accepts unencrypted traffic", "next", 60, fix="Set AllowUnencryptedTraffic=0")
+    if c.get("rdp_enabled") is True and isinstance(c.get("rdp_encryption"), int) and c["rdp_encryption"] < 3:
+        add("rdp-encryption", c["rdp_encryption"], "Remote Desktop allows weak encryption", "planned", 35, fix="Set MinEncryptionLevel to 3 (high)")
+    if c.get("safe_dll_search") == 0:
+        add("safe-dll-search", 0, "Safe DLL search is off, so a planted DLL in the working folder loads first", "next", 55, fix="Set SafeDllSearchMode=1")
+    if c.get("auto_update_off") == 1:
+        add("windows-update-off", 1, "Automatic updates are turned off by policy", "planned", 40, fix="Remove NoAutoUpdate, or make sure another tool deploys updates")
+    if "script_block_logging" in c and c["script_block_logging"] != 1:
+        add("script-block-logging", "off", "PowerShell script block logging is off, so attacks in PowerShell leave little trace", "low", 15,
+            fix="Turn on script block logging by policy")
+    if c.get("ssl3_server") not in (None, 0):
+        add("ssl3-server", "enabled", "SSL 3.0 is explicitly enabled on this server's SChannel (POODLE)", "next", 55, cve="CVE-2014-3566", fix="Set SSL 3.0\\Server Enabled=0")
+    if c.get("remote_registry_running") is True and not server:
+        add("remote-registry", "running", "The Remote Registry service runs on a workstation", "low", 20, fix="Stop and disable it unless a tool needs it")
+    if c.get("snmp_default_community") is True:
+        add("snmp-default-community", "public/private", "SNMP accepts a default community name, which gives away system details", "next", 60,
+            fix="Replace the community names, or remove SNMP")
     if not server and c.get("bitlocker_os") == "Off":
         add("bitlocker", "off", "The system drive isn't encrypted (BitLocker off)", "planned", 30, fix="Turn on BitLocker for the system drive")
     return out

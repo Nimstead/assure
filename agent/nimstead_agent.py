@@ -438,6 +438,33 @@ foreach ($t in 'TLS 1.0', 'TLS 1.1') { $c["$($t.Replace(' ','').ToLower())_serve
 $ntds = 'HKLM\SYSTEM\CurrentControlSet\Services\NTDS\Parameters'
 $c.ldap_signing = Reg $ntds 'LDAPServerIntegrity'; $c.ldap_channel_binding = Reg $ntds 'LdapEnforceChannelBinding'
 $c.always_install_elevated = Reg 'HKLM\SOFTWARE\Policies\Microsoft\Windows\Installer' 'AlwaysInstallElevated'
+$pol = 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
+$c.uac_lua = Reg $pol 'EnableLUA'; $c.uac_admin_prompt = Reg $pol 'ConsentPromptBehaviorAdmin'; $c.remote_uac_off = Reg $pol 'LocalAccountTokenFilterPolicy'
+$c.restrict_anonymous_sam = Reg $lsa 'RestrictAnonymousSAM'; $c.restrict_anonymous = Reg $lsa 'RestrictAnonymous'
+$c.everyone_includes_anonymous = Reg $lsa 'EveryoneIncludesAnonymous'; $c.no_lm_hash = Reg $lsa 'NoLMHash'
+$c.autorun = Reg 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer' 'NoDriveTypeAutoRun'
+$c.smb_client_signing = Reg 'HKLM\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters' 'RequireSecuritySignature'
+$c.insecure_guest_auth = Reg 'HKLM\SOFTWARE\Policies\Microsoft\Windows\LanmanWorkstation' 'AllowInsecureGuestAuth'
+$wr = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\WinRM\Service'
+$c.winrm_basic = Reg $wr 'AllowBasic'; $c.winrm_unencrypted = Reg $wr 'AllowUnencryptedTraffic'
+$c.rdp_encryption = Reg 'HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' 'MinEncryptionLevel'
+$c.safe_dll_search = Reg 'HKLM\SYSTEM\CurrentControlSet\Control\Session Manager' 'SafeDllSearchMode'
+$c.auto_update_off = Reg 'HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU' 'NoAutoUpdate'
+$wl = 'HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
+$c.autologon_stored = ("$(Reg $wl 'AutoAdminLogon')" -eq '1') -and ("$(Reg $wl 'DefaultPassword')" -ne '')  # only whether one is stored, never the value
+$c.script_block_logging = Reg 'HKLM\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging' 'EnableScriptBlockLogging'
+$c.ssl3_server = Reg 'HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\SSL 3.0\Server' 'Enabled'
+$c.remote_registry_running = (Get-Service RemoteRegistry).Status -eq 'Running'
+$snmp = 'Registry::HKLM\SYSTEM\CurrentControlSet\Services\SNMP\Parameters\ValidCommunities'
+$c.snmp_default_community = if (Test-Path -LiteralPath $snmp) { $null -ne (Get-ItemProperty -LiteralPath $snmp).public -or $null -ne (Get-ItemProperty -LiteralPath $snmp).private } else { $false }
+$c.guest_enabled = @(Get-LocalUser | Where-Object { $_.SID.Value -like '*-501' -and $_.Enabled }).Count -gt 0
+$c.password_policy = $null
+$sp = Join-Path $env:ProgramData ('Nimstead\sec-' + [guid]::NewGuid() + '.inf')  # the agent's own locked folder; holds settings only, no secrets
+secedit /export /areas SECURITYPOLICY /cfg $sp /quiet | Out-Null
+if (Test-Path -LiteralPath $sp) {
+  $pp = [ordered]@{}; foreach ($l in Get-Content -LiteralPath $sp) { if ($l -match '^(MinimumPasswordLength|PasswordComplexity|LockoutBadCount|ClearTextPassword)\s*=\s*(\d+)') { $pp[$Matches[1]] = [int]$Matches[2] } }
+  Remove-Item -LiteralPath $sp -Force; if ($pp.Count) { $c.password_policy = $pp }
+}
 $c.spooler_running = (Get-Service Spooler).Status -eq 'Running'
 $unq = @(); $wsvc = @()
 foreach ($s in Get-CimInstance Win32_Service) {
@@ -1010,6 +1037,13 @@ CONFIG_FIXES = {
     "smb-signing": (r"HKLM\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters", "RequireSecuritySignature", "REG_DWORD", "1"),
     "smb1": (r"HKLM\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters", "SMB1", "REG_DWORD", "0"),
     "cert-padding-check": (r"HKLM\SOFTWARE\Microsoft\Cryptography\Wintrust\Config", "EnableCertPaddingCheck", "REG_SZ", "1"),
+    "anonymous-sam": (r"HKLM\SYSTEM\CurrentControlSet\Control\Lsa", "RestrictAnonymousSAM", "REG_DWORD", "1"),
+    "lm-hash": (r"HKLM\SYSTEM\CurrentControlSet\Control\Lsa", "NoLMHash", "REG_DWORD", "1"),
+    "autorun": (r"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer", "NoDriveTypeAutoRun", "REG_DWORD", "255"),
+    "insecure-guest-auth": (r"HKLM\SOFTWARE\Policies\Microsoft\Windows\LanmanWorkstation", "AllowInsecureGuestAuth", "REG_DWORD", "0"),
+    "winrm-basic": (r"HKLM\SOFTWARE\Policies\Microsoft\Windows\WinRM\Service", "AllowBasic", "REG_DWORD", "0"),
+    "winrm-unencrypted": (r"HKLM\SOFTWARE\Policies\Microsoft\Windows\WinRM\Service", "AllowUnencryptedTraffic", "REG_DWORD", "0"),
+    "script-block-logging": (r"HKLM\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging", "EnableScriptBlockLogging", "REG_DWORD", "1"),
 }
 WIN_APP_MANAGERS = ("winget", "office", "winconfig")
 SAFE_BUILD = re.compile(r"^\d{1,6}(\.\d{1,8}){1,4}\Z")

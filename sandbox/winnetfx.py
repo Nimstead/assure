@@ -49,7 +49,7 @@ def finish(r, name):
 
 def main(keep=False) -> int:
     h.winvm.wait_ready(h.NAME, minutes=90)
-    h.guest(r"New-Item -ItemType Directory -Force C:\nimtest | Out-Null")
+    h.guest(r"New-Item -ItemType Directory -Force C:\nimtest, C:\ProgramData\Nimstead | Out-Null")
     f.runtime()
     f.copy_in(f.ROOT / "agent" / "nimstead_agent.py")
     env = {"NIMSTEAD_DB": f"sqlite:///{(h.TMP / 'nf.db').as_posix()}", "NIMSTEAD_SECURE_COOKIES": "0", "NIMSTEAD_OPEN_SIGNUP": "1",
@@ -84,6 +84,10 @@ def main(keep=False) -> int:
     table = winoracle.run(h.as_system, h.guest, all_f)
     h.note("oracle: Windows Update vs Nimstead", **table)
     checks["Windows Update names no .NET Framework KB we miss"] = not [u for u in table["only_windows_update"] if ".NET Framework" in u["title"]]
+    # the hardening audit (DECISIONS 64) on a real host: everything read, and the findings it opens
+    cfg = (inv.get("facts") or {}).get("config") or {}
+    h.note("hardening audit", config=cfg, findings=sorted(x["package"] for x in all_f if x["ecosystem"] == "WinConfig"))
+    checks["hardening audit read its values"] = isinstance(cfg.get("password_policy"), dict) and cfg.get("uac_lua") == 1 and cfg.get("guest_enabled") is False
     assert nf, "nothing to fix"
 
     package = nf[0]["package"]

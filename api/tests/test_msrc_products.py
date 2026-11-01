@@ -294,3 +294,14 @@ def test_netfx_opens_on_its_own_line_plans_its_kb_and_closes_when_mscorlib_reach
     j = c.post("/api/remediation/jobs", json={"asset_id": a["asset_id"], "ecosystem": "Microsoft", "package": name}).json()
     assert j["manager"] == "windows" and j["packages"][0]["kb"] == "5127694" and j["packages"][0]["to"] == "4.8.10008.0"
     assert not report("4.8.10008.0")
+
+
+def test_winjob_touches_only_its_own_kind_of_package(tmp_path):
+    out = ("Package Identity : Package_for_RollupFix~31bf3856ad364e35~amd64~~26100.9711.1.30\nState : Installed\n\n"
+           "Package Identity : Package_for_DotNetRollup_481~31bf3856ad364e35~amd64~~10.0.9363.1\nState : Installed\n")
+    run = lambda cmd, **k: (0, out)  # noqa: E731
+
+    def job(name):
+        return agent.WinJob({"packages": [{"name": name, "kb": "5127694", "from": "1.0.0", "to": "2.0.0"}]}, run=run, state_path=str(tmp_path / "s.json"))
+    assert list(job(".NET Framework 4.8.1 on Windows 11 version 25H2").rollups()) == ["Package_for_DotNetRollup_481~31bf3856ad364e35~amd64~~10.0.9363.1"]
+    assert list(job("Windows 11 Version 25H2 for x64-based Systems").rollups()) == ["Package_for_RollupFix~31bf3856ad364e35~amd64~~26100.9711.1.30"]

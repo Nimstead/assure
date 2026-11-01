@@ -1265,8 +1265,8 @@ SAFE_KB = re.compile(r"^[0-9]{6,8}\Z")
 DISM_TRANSIENT = ("0x80010108", "0x800f0816", "0x800f082f", "0x80070020", "0x800f0805", "0x80004005")
 DISM_RETRIES = 15
 SAFE_PRODUCT = re.compile(r"^(?:\.NET Framework 4[0-9.]* on )?Windows [A-Za-z0-9 .()-]{1,120}\Z")
-ROLLUP = re.compile(r"Package Identity : (Package_for_RollupFix~[^\s]+)\s+State : ([A-Za-z ]+)")
-ROLLUP_NAME = re.compile(r"^Package_for_RollupFix~[A-Za-z0-9._~-]{1,200}\Z")
+ROLLUP = re.compile(r"Package Identity : (Package_for_(?:RollupFix|DotNetRollup_\d+)~[^\s]+)\s+State : ([A-Za-z ]+)")
+ROLLUP_NAME = re.compile(r"^Package_for_(?:RollupFix|DotNetRollup_\d+)~[A-Za-z0-9._~-]{1,200}\Z")
 TRUSTED_OWNERS = {"S-1-5-18", "S-1-5-32-544"}  # SYSTEM, Administrators
 
 PS_FIND = r"""
@@ -1529,7 +1529,8 @@ class WinJob:
         rc, out = self.run(["dism", "/online", "/get-packages", "/format:list", "/english"])
         if rc != 0:
             raise StepFailed("dism /get-packages failed: " + out[-300:])
-        return dict(ROLLUP.findall(out.replace("\r", "")))
+        netfx = str(self.s.get("product")).startswith(".NET Framework")  # each job removes only its own kind of package
+        return {k: v for k, v in ROLLUP.findall(out.replace("\r", "")) if ("DotNetRollup" in k) == netfx}
 
     def health(self, when):
         """Running now, and no crash or unexpected stop logged for it since the change (DECISIONS 29 for Windows,

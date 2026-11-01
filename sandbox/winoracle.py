@@ -47,7 +47,7 @@ def compare(wua: list[dict], findings: list[dict]) -> dict:
         return f"superseded by KB{sup[0]} (cumulative, includes these fixes)" if sup else "not explained"
 
     def why_theirs(u):
-        return ".NET Framework isn't detected (DECISIONS 51)" if ".NET Framework" in u["title"] else "not explained"
+        return "not explained"
     return {
         "agree": [{"kb": k, "title": theirs[k]["title"], "cves": sorted(ours[k])} for k in both],
         "only_windows_update": [{"kb": k, "title": theirs[k]["title"], "cves": sorted(theirs[k].get("cves") or []),

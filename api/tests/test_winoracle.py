@@ -32,4 +32,4 @@ def test_older_months_kb_is_explained_as_superseded():
         "5120233": "superseded by KB5126646 (cumulative, includes these fixes)",
         "5199999": "not explained",  # a newer build than the agreed update: never hidden
         "5120234": "not explained"}  # another product
-    assert t["only_windows_update"][0]["why"] == ".NET Framework isn't detected (DECISIONS 51)"
+    assert t["only_windows_update"][0]["why"] == "not explained"  # .NET Framework is detected now (DECISIONS 63)

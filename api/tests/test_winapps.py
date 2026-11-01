@@ -535,3 +535,29 @@ def test_imagemagick_dashed_versions_compare_with_the_registry_number():
     [(key, rec)] = winapps.advisories(cve)
     assert key == "imagemagick:imagemagick"
     assert rec["affected"][0]["ranges"][0]["events"] == [{"introduced": "7.0.0.0"}, {"fixed": "7.1.2.34"}]
+
+
+def test_a_configuration_without_nodes_is_skipped_not_fatal():
+    # real NVD feed, 2026-11-01: this stopped the whole sync
+    cve = {"id": "CVE-2026-1", "configurations": [{"operator": "AND"}, {"nodes": [{"cpeMatch": [
+        {"vulnerable": True, "criteria": "cpe:2.3:a:7-zip:7-zip:*:*:*:*:*:*:*:*", "versionEndExcluding": "24.09"}]}]}]}
+    assert [k for k, _ in winapps.advisories(cve)] == ["7-zip:7-zip"]
+
+
+def test_a_cve_tied_to_apple_hardware_never_reaches_windows():
+    cve = {"id": "CVE-2024-11691", "configurations": [{"operator": "AND", "nodes": [
+        {"cpeMatch": [{"vulnerable": True, "criteria": "cpe:2.3:a:mozilla:thunderbird:*:*:*:*:*:*:*:*", "versionEndExcluding": "128.5"}]},
+        {"cpeMatch": [{"vulnerable": False, "criteria": "cpe:2.3:h:apple:m1:-:*:*:*:*:*:*:*"}]}]}]}
+    assert winapps.advisories(cve) == []
+
+
+def test_a_dead_thunderbird_branch_is_reported_ended():
+    from datetime import date
+
+    from nimstead import lifecycle
+    cycles = lifecycle.parse_thunderbird({"LATEST_THUNDERBIRD_VERSION": "159.0", "THUNDERBIRD_ESR": "153.6.0esr"})
+    verdict = lambda v: lifecycle.app_verdict("mozilla:thunderbird", v, {"thunderbird": cycles}, date(2026, 11, 1))  # noqa: E731
+    assert verdict("115.6.0")[0] == "ended" and verdict("158.0")[0] == "ended"
+    assert verdict("153.6.0") is None and verdict("159.0") is None
+    with pytest.raises(ValueError):
+        lifecycle.parse_thunderbird({"LATEST_THUNDERBIRD_VERSION": "54.0", "THUNDERBIRD_ESR": "153.0"})

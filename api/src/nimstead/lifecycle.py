@@ -78,9 +78,17 @@ ROWS = [Row(*r) for r in [
     ("office-ltsc-2024", "Office LTSC 2024", date(2029, 10, 9), LC + "office-ltsc-2024"),
 ]]
 # third-party apps: the curated WinApp key -> (endoflife.date product, the release cycle from our normalised version)
-APP_EOL = {"nodejs:node.js": ("nodejs", lambda v: v.split(".")[0]), "python:python": ("python", lambda v: ".".join(v.split(".")[:2])),
-           "oracle:jdk": ("oracle-jdk", lambda v: v.split(".")[0])}
+# A branch-tracked product's CVEs count only on the branch that got the fix (winapps.Product.branch), so a dead branch stops
+# gaining findings: this is what says so. Not oracle:openjdk: one key for several vendors' builds, whose dates differ.
+_MAJOR, _MINOR = (lambda v: v.split(".")[0]), (lambda v: ".".join(v.split(".")[:2]))
+APP_EOL = {"nodejs:node.js": ("nodejs", _MAJOR), "python:python": ("python", _MINOR), "oracle:jdk": ("oracle-jdk", _MAJOR),
+           "mozilla:firefox_esr": ("firefox", _MAJOR), "mozilla:thunderbird": ("thunderbird", _MAJOR),
+           "libreoffice:libreoffice": ("libreoffice", _MINOR), "apache:tomcat": ("tomcat", _MINOR), "golang:go": ("go", _MINOR),
+           "postgresql:postgresql": ("postgresql", _MAJOR), "mariadb:mariadb": ("mariadb", _MINOR), "grafana:grafana": ("grafana", _MINOR),
+           "oracle:mysql_server": ("mysql", _MINOR), "mongodb:mongodb": ("mongodb", _MINOR), "elastic:elasticsearch": ("elasticsearch", _MINOR),
+           "perl:perl": ("perl", _MINOR), "ruby-lang:ruby": ("ruby", _MINOR)}
 EOL_URL = "https://endoflife.date/api/{}.json"
+THUNDERBIRD_URL = "https://product-details.mozilla.org/1.0/thunderbird_versions.json"  # endoflife.date has no Thunderbird
 BY_KEY = {r.key: r for r in ROWS}
 
 HOME_PRO = re.compile(r"^(Core|CoreN|CoreSingleLanguage|CoreCountrySpecific|Professional|ProfessionalN|ProfessionalWorkstation|"
@@ -178,10 +186,20 @@ def app_verdict(key: str, version: str, eol: dict, today: date) -> tuple[str, st
     if not product or not (cycles := eol.get(product)):
         return None
     cycle = cycle_of(version)
+    if cycle not in cycles:  # endoflife.date lists some old branches by major alone (Elasticsearch 6, Grafana 6)
+        cycle = version.split(".")[0]
     end = cycles.get(cycle)
     if end is True or (isinstance(end, str) and date.fromisoformat(end) < today):
         return "ended", f"{product} {cycle}: no more security fixes" + (f" since {end}" if isinstance(end, str) else "")
     return None
+
+
+def parse_thunderbird(versions: dict) -> dict:
+    """Mozilla patches only the newest release and the newest ESR, so every other major below the release has ended."""
+    latest, esr = (int(str(versions[k]).split(".")[0]) for k in ("LATEST_THUNDERBIRD_VERSION", "THUNDERBIRD_ESR"))
+    if not 1 < esr <= latest:
+        raise ValueError(f"Thunderbird versions: unexpected {latest}, {esr}")
+    return {str(m): True for m in range(1, latest) if m != esr}
 
 
 def parse_eol(cycles) -> dict:

@@ -417,7 +417,7 @@ reports `Maven` packages with the jar path as source. The existing OSV Maven mat
 
 ## Checkpoint G
 - [ ] ~80 curated products, each with a run file proving open → close on a real install — **Count met, proof partly: 82 curated products; 41 proven old → new on a real install, up to 9 more identified at one version (`last_run_winapps_batch6.json`, `last_run_winapps_batch5.json`, `last_run_winapps_batch4.json`, `last_run_winapps_run1-3.json`). Identified means the map named the right product and version; the finding opening and closing is proven for .NET, not per app**
-- [ ] Noise review repeated on a VM with every batch installed: zero unexplained findings — **NOT done**
+- [ ] Noise review repeated on a VM with every batch installed: zero unexplained findings — **partly, app findings only, checked by machine against raw NVD, not by hand against vendors (`last_run_winnoise.json`, 2026-11-01): 50 of the 82 products at old versions, 344 findings; 48 after updates, 93 findings; none unexplained. 32 products weren't on the VM: not all batches' apps installed together, and the earlier runs prove those separately. Found and fixed: a NVD record with no `nodes` stopped the whole feed sync; an Apple-silicon-only CVE reported on Windows; 638 Thunderbird CVEs silent on a dead branch (DECISIONS 66). The JetBrains IDEs got no latest-version check: removed for disk room. Demo fleet not reviewed**
 
 ---
 

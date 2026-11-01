@@ -236,10 +236,11 @@ def sync_eol(session: Session, client=None) -> dict:
     out = {}
     for product in sorted({p for p, _ in lifecycle.APP_EOL.values()}):
         try:
-            r = _client(client).get(lifecycle.EOL_URL.format(product), headers={"Accept": "application/json"})
+            url = lifecycle.THUNDERBIRD_URL if product == "thunderbird" else lifecycle.EOL_URL.format(product)
+            r = _client(client).get(url, headers={"Accept": "application/json"})
             r.raise_for_status()
-            cycles = lifecycle.parse_eol(r.json())
-        except (httpx.HTTPError, ValueError) as e:
+            cycles = lifecycle.parse_thunderbird(r.json()) if product == "thunderbird" else lifecycle.parse_eol(r.json())
+        except (httpx.HTTPError, ValueError, KeyError, TypeError) as e:
             log.warning("endoflife.date %s skipped, kept stored cycles: %s", product, e)
             out[product] = {"error": str(e)[:200]}
             continue

@@ -201,10 +201,12 @@ def _events(p: Product, f: list[str], m: dict) -> list[dict] | None:
 
 def _windows_possible(cfg: dict) -> bool:
     """False when an AND configuration pins the app to operating systems that don't include Windows."""
-    nodes = [n for n in cfg["nodes"] if not n.get("negate")]
+    nodes = [n for n in cfg.get("nodes", []) if not n.get("negate")]
     if cfg.get("operator") != "AND" and not any(n.get("operator") == "AND" for n in nodes):
         return True
     oses = [m["criteria"] for n in nodes for m in n["cpeMatch"] if m["criteria"].startswith("cpe:2.3:o:")]
+    if any(m["criteria"].startswith("cpe:2.3:h:apple:") for n in nodes for m in n["cpeMatch"]):  # Apple silicon only (CVE-2024-11691)
+        return False
     return not oses or any(":microsoft:windows" in o for o in oses)
 
 
@@ -276,7 +278,7 @@ def advisories(cve: dict) -> list[tuple[str, dict]]:
     for cfg in cve.get("configurations") or []:
         if cfg.get("negate") or not _windows_possible(cfg):
             continue
-        for node in cfg["nodes"]:
+        for node in cfg.get("nodes", []):  # NVD has published a configuration with none
             if node.get("negate"):
                 continue
             for m in node["cpeMatch"]:

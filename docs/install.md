@@ -240,3 +240,14 @@ Run `cd api && uv run python -m nimstead.feeds update` hourly with cron or a sys
 - [ ] Single sign-on tested before turning on **Require SSO**
 
 Every setting is in [configuration.md](configuration.md).
+
+## Scan Windows hosts with no agent
+
+From a Windows machine with the agent's files, signed in as an admin of the hosts:
+
+```powershell
+$env:NIMSTEAD_TOKEN = '<enrolment token>'   # only the first time a host is seen
+python nimstead_agent.py scan-remote --server https://your-server host1 host2
+```
+
+It uses PowerShell remoting as you: no credential is typed, stored or sent to the server. Each host needs remoting on. Note that `Enable-PSRemoting` on a machine outside a domain sets `LocalAccountTokenFilterPolicy=1`, which Nimstead then reports as `remote-uac`. Hosts scanned this way get findings but not fixes: fixes need the agent. Each host's report key is saved in `.nimstead-remote-scan.json` in your profile, so keep that file private.

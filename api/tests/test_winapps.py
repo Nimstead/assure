@@ -425,6 +425,25 @@ def test_cvelist_rows_only_where_nvd_has_none_and_nvd_replaces_them(env):
     ("UltraVNC", "uvnc", "1.8.3.0", ("uvnc:ultravnc", "1.8.3.0")),
     ("SourceTree", "Atlassian", "3.4.32", ("atlassian:sourcetree", "3.4.32")),
     ("Sourcetree Enterprise", "Atlassian", "3.4.33.0", ("atlassian:sourcetree", "3.4.33.0")),  # machine-wide install
+    # batch 6, the same way (2026-11-01)
+    ("Vim 9.2 (x64) (current user)", "The Vim Project", "9.2.1176", ("vim:vim", "9.2.1176")),
+    ("OpenOffice 4.1.16", "Apache Software Foundation", "4.116.9816", ("apache:openoffice", "4.1.16")),
+    ("JetBrains Rider 2026.2.3", "JetBrains s.r.o.", "262.10968.135", ("jetbrains:rider", "2026.2.3")),
+    ("PyCharm Community Edition 2025.2.6", "JetBrains s.r.o.", "252.28539.27", ("jetbrains:pycharm", "2025.2.6")),
+    ("WebStorm 2026.2.3", "JetBrains s.r.o.", "262.10968.77", ("jetbrains:webstorm", "2026.2.3")),
+    ("GoLand 2026.2.3", "JetBrains s.r.o.", "262.10968.67", ("jetbrains:goland", "2026.2.3")),
+    ("PhpStorm 2026.2.3", "JetBrains s.r.o.", "262.10968.76", ("jetbrains:phpstorm", "2026.2.3")),
+    ("CLion 2026.2.3.1", "JetBrains s.r.o.", "262.10968.176", ("jetbrains:clion", "2026.2.3.1")),
+    ("DataGrip 2026.2.6", "JetBrains s.r.o.", "262.10968.148", ("jetbrains:datagrip", "2026.2.6")),
+    ("Neovim", "neovim.io", "0.12.5", ("neovim:neovim", "0.12.5")),
+    ("Strawberry Perl (64-bit)", "strawberryperl.com project", "5.42.2001", ("perl:perl", "5.42.2")),
+    ("TortoiseGit 2.19.0.0 (64 bit)", "TortoiseGit", "2.19.0.0", ("tortoisegit:tortoisegit", "2.19.0.0")),
+    ("TortoiseSVN 1.14.9.29743 (64 bit)", "TortoiseSVN", "1.14.29743", ("tigris:tortoisesvn", "1.14.9")),
+    ("MobaXterm", "Mobatek", "26.5.0.5542", ("mobatek:mobaxterm", "26.5.0.5542")),
+    ("Inkscape", "Inkscape", "1.4.3", ("inkscape:inkscape", "1.4.3")),
+    ("Nmap 7.60", None, "7.60", ("nmap:nmap", "7.60")),
+    ("Ruby 3.3", "RubyInstaller Team", "3.3.12-2-x64", ("ruby-lang:ruby", "3.3.12")),
+    ("Postman x64 12.34.3", "Postman", "12.34.3", ("postman:postman", "12.34.3")),
 ])
 def test_identify_batches(name, pub, ver, want):
     assert winapps.identify(name, pub, ver) == want
@@ -444,6 +463,10 @@ def test_identify_batches(name, pub, ver, want):
     ("GNU Privacy Guard", "The GnuPG Project", "2.5.21"),
     ("XAMPP", "Apache Friends", "8.2.4-0"),
     ("Foxit PDF Editor", "Foxit Software Inc.", "14.0.8.33807"),
+    ("Redis on Windows", "MSOpenTech", "3.0.504"),
+    ("Ruby 3.3", "Someone Else", "3.3.12"),
+    ("Npcap 0.93", "Nmap Project", "0.93"),
+    ("Strawberry Perl (64-bit)", "strawberryperl.com project", "not-a-version"),
     ("pgAdmin 4 version 9.18", "The pgAdmin Development Team", "9.18"),
     ("MySQL Workbench 8.0 CE", "Oracle Corporation", "8.0.40"),
     ("MySQL Server 8.4", "Someone Else", "8.4.9"),

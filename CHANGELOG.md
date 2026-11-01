@@ -5,6 +5,7 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 ## [Unreleased]
 
 Detection and fixes that close the gap with Nessus and Qualys on Windows. **Expect new open findings after the first reports.**
+- **Agentless scan:** `scan-remote` reads hosts with no agent over PowerShell remoting, as you, with no stored credential. It finds; fixes still need the agent.
 - **.NET Framework findings:** read from mscorlib, on the host's own line and OS, with a fix through Windows Update that can be rolled back.
 - **.NET SDKs:** the newest of each feature band, against MSRC's SDK fixes.
 - **Hardening audit:** 24 more settings (UAC, stored sign-in passwords, password and lockout policy, anonymous access, LM hashes, WinRM, SNMP and more), free; 7 more settings can be fixed by a reversible job. This is not a CIS or STIG conformance check.

@@ -124,6 +124,26 @@ PRODUCTS: tuple[Product, ...] = (
     Product("devolutions:remote_desktop_manager", _p(r"Remote Desktop Manager"), publisher=_p(r"Devolutions inc\.")),
     Product("uvnc:ultravnc", _p(r"UltraVNC"), publisher=_p(r"uvnc")),
     Product("atlassian:sourcetree", _p(r"SourceTree|Sourcetree Enterprise"), publisher=_p(r"Atlassian")),
+    # ---- batch 6, the same way (2026-11-01). Out: Redis on Windows (Microsoft's old port, its numbers aren't upstream's)
+    Product("vim:vim", _p(r"Vim \d+\.\d+ \((?:x64|x86)\)(?: \(current user\))?"), publisher=_p(r"The Vim Project")),
+    Product("apache:openoffice", _p(r"OpenOffice (?P<v>\d+\.\d+\.\d+)"), publisher=_p(r"Apache Software Foundation"), version=lambda m, v: m["v"]),  # DisplayVersion is 4.116.9816
+    Product("jetbrains:rider", _p(r"JetBrains Rider (?P<v>\d{4}\.\d+(?:\.\d+)*)"), publisher=_p(r"JetBrains s\.r\.o\."), version=lambda m, v: m["v"]),
+    Product("jetbrains:pycharm", _p(r"PyCharm Community Edition (?P<v>\d{4}\.\d+(?:\.\d+)*)"), publisher=_p(r"JetBrains s\.r\.o\."), version=lambda m, v: m["v"]),
+    Product("jetbrains:webstorm", _p(r"WebStorm (?P<v>\d{4}\.\d+(?:\.\d+)*)"), publisher=_p(r"JetBrains s\.r\.o\."), version=lambda m, v: m["v"]),
+    Product("jetbrains:goland", _p(r"GoLand (?P<v>\d{4}\.\d+(?:\.\d+)*)"), publisher=_p(r"JetBrains s\.r\.o\."), version=lambda m, v: m["v"]),
+    Product("jetbrains:phpstorm", _p(r"PhpStorm (?P<v>\d{4}\.\d+(?:\.\d+)*)"), publisher=_p(r"JetBrains s\.r\.o\."), version=lambda m, v: m["v"]),
+    Product("jetbrains:clion", _p(r"CLion (?P<v>\d{4}\.\d+(?:\.\d+)*)"), publisher=_p(r"JetBrains s\.r\.o\."), version=lambda m, v: m["v"]),
+    Product("jetbrains:datagrip", _p(r"DataGrip (?P<v>\d{4}\.\d+(?:\.\d+)*)"), publisher=_p(r"JetBrains s\.r\.o\."), version=lambda m, v: m["v"]),
+    Product("neovim:neovim", _p(r"Neovim"), publisher=_p(r"neovim\.io")),
+    Product("perl:perl", _p(rf"Strawberry Perl \({_ARCH}\)"), publisher=_p(r"strawberryperl\.com project"), branch=True,
+            version=lambda m, v: ".".join([*v.split(".")[:2], str(int(v.split(".")[2]) // 1000)]) if v.count(".") == 2 and v.split(".")[2].isdigit() else ""),  # 5.42.2001 = Perl 5.42.2, 1st build
+    Product("tortoisegit:tortoisegit", _p(r"TortoiseGit \d+\.\d+\.\d+\.\d+ \(64 bit\)"), publisher=_p(r"TortoiseGit")),
+    Product("tigris:tortoisesvn", _p(r"TortoiseSVN (?P<v>\d+\.\d+\.\d+)\.\d+ \(64 bit\)"), publisher=_p(r"TortoiseSVN"), version=lambda m, v: m["v"]),  # DisplayVersion drops the patch
+    Product("mobatek:mobaxterm", _p(r"MobaXterm"), publisher=_p(r"Mobatek")),
+    Product("inkscape:inkscape", _p(r"Inkscape"), publisher=_p(r"Inkscape")),
+    Product("nmap:nmap", _p(r"Nmap \d+\.\d+")),  # its installer writes no publisher
+    Product("ruby-lang:ruby", _p(r"Ruby \d+\.\d+"), publisher=_p(r"RubyInstaller Team"), version=lambda m, v: v.split("-")[0], branch=True),  # 3.3.12-2-x64
+    Product("postman:postman", _p(r"Postman x64 \d+\.\d+\.\d+"), publisher=_p(r"Postman")),
 )
 
 _BY_CPE = {c: p for p in PRODUCTS for c in (p.cpes or (p.key,))}

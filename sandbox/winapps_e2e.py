@@ -52,6 +52,16 @@ NEW5 = {  # batch 5 alone with --new5
     "Atlassian.Sourcetree": ("3.4.32", "atlassian:sourcetree"), "Anysphere.Cursor": ("3.19.7", "anysphere:cursor"),
     "MongoDB.Server": ("9.0.2", "mongodb:mongodb"), "Oracle.MySQL": ("8.4.6", "oracle:mysql_server"),  # last: this MongoDB installer hung a VM
 }
+NEW6 = {  # batch 6 alone with --new6
+    "vim.vim": ("9.2.1176", "vim:vim"), "Apache.OpenOffice": ("4.116.9816", "apache:openoffice"), "JetBrains.Rider": ("2026.2.3", "jetbrains:rider"),
+    "JetBrains.PyCharm.Community": ("2025.2.6", "jetbrains:pycharm"), "JetBrains.WebStorm": ("2026.2.3", "jetbrains:webstorm"), "JetBrains.GoLand": ("2026.2.3", "jetbrains:goland"),
+    "JetBrains.PhpStorm": ("2026.2.3", "jetbrains:phpstorm"), "JetBrains.CLion": ("2026.2.3.1", "jetbrains:clion"), "JetBrains.DataGrip": ("2026.2.6", "jetbrains:datagrip"),
+    "Neovim.Neovim": ("0.12.5", "neovim:neovim"), "StrawberryPerl.StrawberryPerl": ("5.42.2.1", "perl:perl"), "TortoiseGit.TortoiseGit": ("2.19.0", "tortoisegit:tortoisegit"),
+    "TortoiseSVN.TortoiseSVN": ("1.14.9.29743", "tigris:tortoisesvn"), "Mobatek.MobaXterm": ("26.5.0.5542", "mobatek:mobaxterm"), "Inkscape.Inkscape": ("1.4.3", "inkscape:inkscape"),
+    "Insecure.Nmap": ("7.60", "nmap:nmap"), "RubyInstallerTeam.Ruby.3.3": ("3.3.12-2", "ruby-lang:ruby"), "Postman.Postman": ("12.34.3", "postman:postman"),
+}
+if "--new6" in sys.argv:
+    APPS, OUT = NEW6, OUT.with_name("last_run_winapps_batch6.json")
 if "--new" in sys.argv:
     APPS, OUT = NEW, OUT.with_name("last_run_winapps_batch4.json")
 if "--new5" in sys.argv:

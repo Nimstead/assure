@@ -46,13 +46,16 @@ def test_only_allowlisted_products_are_kept_with_normalised_builds(rows):
             "Microsoft Paint", "Defender platform", "PowerShell 7.4", "Visual Studio 2022 version 17.14"} <= keys
     assert not [k for k in keys if "Office" in k or "365" in k or "Framework" in k]  # URL / compound FixedBuild: out (DECISIONS 51)
     assert all(not any(p.startswith("0") and len(p) > 1 for p in b.split(".")) for b in rows.values())  # 15.02.1748.053 -> 15.2.1748.53
-    # .NET runtime products also list SDK bands (8.0.426): only runtime versions are kept
-    assert all(int(b.split(".")[2]) < 100 for (k, _), b in rows.items() if k.startswith(".NET"))
+    # .NET runtime products also list SDK bands (8.0.426): those go to the SDK's own keys, never compared with a runtime
+    assert all((int(b.split(".")[2]) < 100) == k.endswith("runtime") for (k, _), b in rows.items() if k.startswith(".NET"))
 
 
 @pytest.mark.parametrize("name,fixed,want", [
     ("Microsoft Edge (Chromium-based)", "152.0.4191.135", ("Microsoft Edge", "152.0.4191.135")),
-    (".NET 8.0 runtime installed on Windows", "8.0.426", None),  # SDK band
+    (".NET 8.0 runtime installed on Windows", "8.0.426", (".NET 8.0 SDK 4xx", "8.0.426")),  # SDK band
+    (".NET 8.0 installed on Windows", "8.0.427", (".NET 8.0 SDK 4xx", "8.0.427")),
+    (".NET 8.0 installed on Windows", "8.0.32", None),
+    (".NET 8.0 installed on Linux", "8.0.427", None),
     (".NET 8.0 runtime installed on Linux", "8.0.32", None),
     (".NET 11.0 runtime installed on Windows", "11.0.0-rc.2", None),  # pre-release: never compared
     ("Microsoft SQL Server 2017 for x64-based Systems (CU 31)", "14.0.3505.1", ("SQL Server 2017 CU", "14.0.3505.1")),
@@ -84,6 +87,8 @@ def test_from_winapp(name, pub, ver, want):
 
 @pytest.mark.parametrize("name,ver,want", [
     (".NET runtime", "8.0.31", ((".NET 8.0 runtime",), "8.0.31")),
+    (".NET SDK", "8.0.426", ((".NET 8.0 SDK 4xx",), "8.0.426")),
+    (".NET SDK", "8.0.32", None),
     ("SQL Server", "16.0.4300.1", (("SQL Server 2022 CU",), "16.0.4300.1")),
     ("SQL Server", "16.0.1200.1", (("SQL Server 2022 GDR",), "16.0.1200.1")),
     ("SQL Server", "11.0.7001.0", None),  # SQL Server 2012: not in MSRC any more (lifecycle covers it)
@@ -202,3 +207,18 @@ def test_sync_msrc_retries_a_dropped_connection_then_gives_up():
     calls.clear()
     with pytest.raises(httpx.RemoteProtocolError):
         sync_msrc(s, 60, flaky(3))
+
+
+def test_agent_reports_the_newest_sdk_of_each_band():
+    sdks = ["8.0.124", "8.0.132", "8.0.420", "8.0.426", "10.0.100-rc.1.25451.107"]
+
+    class Reg:  # no registry keys at all: only the folders count here
+        KEY_WOW64_64KEY = KEY_WOW64_32KEY = KEY_READ = HKEY_LOCAL_MACHINE = 0
+
+        def OpenKey(self, *a):
+            raise OSError
+
+    def dotnet(path):
+        return sdks if path.endswith(r"Program Files\dotnet\sdk") else []
+    pkgs, _ = agent.windows_microsoft(Reg(), lambda cmd: (1, "no"), dotnet)
+    assert sorted(p["version"] for p in pkgs if p["name"] == ".NET SDK") == ["8.0.132", "8.0.426"]

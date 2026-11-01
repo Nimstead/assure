@@ -355,6 +355,14 @@ def windows_microsoft(reg, run=None, dotnet_dirs=None):
                         newest[mm] = v
             for v in newest.values():
                 add(name, v, arch)
+        newest = {}  # SDKs: newest of each feature band (8.0.1xx, 8.0.4xx), which Microsoft patches separately
+        for v in (dotnet_dirs or _dirs)(os.path.join(root, "sdk")):
+            if re.fullmatch(r"\d+\.\d+\.\d{3,}", v):
+                band = (*v.split(".")[:2], v.split(".")[2][:-2])
+                if band not in newest or version_tuple(v) > version_tuple(newest[band]):
+                    newest[band] = v
+        for v in newest.values():
+            add(".NET SDK", v, arch)
     c2r = dict(_reg_values(reg, r"SOFTWARE\Microsoft\Office\ClickToRun\Configuration", reg.KEY_WOW64_64KEY))
     if c2r.get("VersionToReport"):  # Microsoft 365 Apps / Office LTSC; a policy-set UpdateChannel wins over the CDN it came from
         add("Microsoft 365 Apps", c2r["VersionToReport"], str(c2r.get("UpdateChannel") or c2r.get("CDNBaseUrl") or "")[:200] or None)

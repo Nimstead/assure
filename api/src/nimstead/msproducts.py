@@ -4,7 +4,7 @@ DECISIONS 51, 53). An explicit allowlist on both sides, never a pattern that adm
 - feed side, `key_for`: an MSRC product name (+ one fixed build) -> a stable product key, or None;
 - host side, `targets`: what the agent reports -> the product keys to compare with, or [].
 
-The agent reports raw facts (ecosystem `Microsoft`: ".NET runtime", "ASP.NET Core", "SQL Server", "Exchange Server",
+The agent reports raw facts (ecosystem `Microsoft`: ".NET runtime", ".NET SDK", "ASP.NET Core", "SQL Server", "Exchange Server",
 "SharePoint Server", "Defender platform", "Defender engine", or a Store package family), and Uninstall-key entries
 arrive as `WinApp` packages; the mapping to keys lives only here, so the server decides what is compared.
 Tracks MSRC lists side by side (SQL Server GDR / CU, each Exchange cumulative update) become separate keys derived
@@ -46,9 +46,16 @@ def _minor(prefix: str, v: str, parts: int = 2) -> str:
     return f"{prefix} {'.'.join(v.split('.')[:parts])}"
 
 
+def _sdk(v: str) -> str | None:
+    """'8.0.426' -> '.NET 8.0 SDK 4xx': each feature band gets its own fixes. A third part below 100 is a runtime."""
+    band = int(v.split(".")[2]) // 100
+    return f"{_minor('.NET', v)} SDK {band}xx" if band else None
+
+
 FEED = [  # (MSRC product name, key from (match, normalised build)); fullmatch, first wins
     (r"Microsoft Edge \(Chromium-based\)", lambda m, b: "Microsoft Edge"),
-    (r"\.NET (\d+\.\d+) runtime installed on Windows", lambda m, b: f".NET {m[1]} runtime" if int(b.split(".")[2]) < 100 else None),
+    (r"\.NET (\d+\.\d+) runtime installed on Windows", lambda m, b: _sdk(b) or f".NET {m[1]} runtime"),
+    (r"\.NET \d+\.\d+ installed on Windows", lambda m, b: _sdk(b)),  # MSRC files SDK fixes under both names
     (r"ASP\.NET Core (\d+\.\d+)", lambda m, b: f"ASP.NET Core {m[1]}"),  # MSRC doesn't split ASP.NET Core by OS
     (r"Microsoft SQL Server (20\d\d) for x64-based Systems .*\((?:GDR|CU ?\d+)\)", lambda m, b: _sql(b)),
     (r"Microsoft Exchange Server (?:2016|2019) Cumulative Update \d+|Microsoft Exchange Server Subscription Edition RTM",
@@ -114,6 +121,8 @@ def targets(name: str, version: str, os_product: str | None, source: str | None 
         return ((k,), v) if (k := host_key(v, source or "")) else None
     if name == ".NET runtime":
         return (_minor(".NET", v) + " runtime",), v
+    if name == ".NET SDK":
+        return ((k,), v) if (k := _sdk(v)) else None
     if name == "ASP.NET Core":
         return (_minor("ASP.NET Core", v),), v
     if name == "SQL Server":

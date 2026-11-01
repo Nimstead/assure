@@ -4,7 +4,7 @@ DECISIONS 51, 53). An explicit allowlist on both sides, never a pattern that adm
 - feed side, `key_for`: an MSRC product name (+ one fixed build) -> a stable product key, or None;
 - host side, `targets`: what the agent reports -> the product keys to compare with, or [].
 
-The agent reports raw facts (ecosystem `Microsoft`: ".NET runtime", ".NET SDK", "ASP.NET Core", "SQL Server", "Exchange Server",
+The agent reports raw facts (ecosystem `Microsoft`: ".NET runtime", ".NET SDK", ".NET Framework", "ASP.NET Core", "SQL Server", "Exchange Server",
 "SharePoint Server", "Defender platform", "Defender engine", or a Store package family), and Uninstall-key entries
 arrive as `WinApp` packages; the mapping to keys lives only here, so the server decides what is compared.
 Tracks MSRC lists side by side (SQL Server GDR / CU, each Exchange cumulative update) become separate keys derived
@@ -46,6 +46,19 @@ def _minor(prefix: str, v: str, parts: int = 2) -> str:
     return f"{prefix} {'.'.join(v.split('.')[:parts])}"
 
 
+def _netfx_line(release: str | None) -> str | None:
+    """The line MSRC lists a host under, from the registry's Release number (Microsoft's published minimums)."""
+    r = int(release) if release and release.isdigit() else 0
+    return "4.8.1" if r >= 533320 else "4.8" if r >= 528040 else "4.7" if r >= 394802 else None
+
+
+def _netfx_os(os_product: str | None) -> str | None:
+    """'Windows 11 Version 26H2 for x64-based Systems' -> 'Windows 11 version 26H2', as MSRC names its .NET Framework products."""
+    if m := re.match(r"(Windows 1[01]) Version (\w+)", os_product or ""):
+        return f"{m[1]} version {m[2]}"
+    return m[0] if (m := re.match(r"Windows Server \d{4}", os_product or "")) else None
+
+
 def _sdk(v: str) -> str | None:
     """'8.0.426' -> '.NET 8.0 SDK 4xx': each feature band gets its own fixes. A third part below 100 is a runtime."""
     band = int(v.split(".")[2]) // 100
@@ -56,6 +69,8 @@ FEED = [  # (MSRC product name, key from (match, normalised build)); fullmatch, 
     (r"Microsoft Edge \(Chromium-based\)", lambda m, b: "Microsoft Edge"),
     (r"\.NET (\d+\.\d+) runtime installed on Windows", lambda m, b: _sdk(b) or f".NET {m[1]} runtime"),
     (r"\.NET \d+\.\d+ installed on Windows", lambda m, b: _sdk(b)),  # MSRC files SDK fixes under both names
+    (r"Microsoft \.NET Framework (?:3\.5 AND )?(4\.[\d./]+) on (Windows .+)",
+     lambda m, b: f".NET Framework {m[1] if m[1] in ('4.8', '4.8.1') else '4.7'} on {m[2]}"),  # 4.6.2/4.7/4.7.1/4.7.2 share a fix
     (r"ASP\.NET Core (\d+\.\d+)", lambda m, b: f"ASP.NET Core {m[1]}"),  # MSRC doesn't split ASP.NET Core by OS
     (r"Microsoft SQL Server (20\d\d) for x64-based Systems .*\((?:GDR|CU ?\d+)\)", lambda m, b: _sql(b)),
     (r"Microsoft Exchange Server (?:2016|2019) Cumulative Update \d+|Microsoft Exchange Server Subscription Edition RTM",
@@ -121,6 +136,9 @@ def targets(name: str, version: str, os_product: str | None, source: str | None 
         return ((k,), v) if (k := host_key(v, source or "")) else None
     if name == ".NET runtime":
         return (_minor(".NET", v) + " runtime",), v
+    if name == ".NET Framework":
+        line, on = _netfx_line(source), _netfx_os(os_product)
+        return ((f".NET Framework {line} on {on}",), v) if line and on else None
     if name == ".NET SDK":
         return ((k,), v) if (k := _sdk(v)) else None
     if name == "ASP.NET Core":

@@ -42,7 +42,7 @@ WINGET_KEYS = frozenset({
 CONFIG_FIXES = frozenset({"wdigest", "ntlmv1", "llmnr", "smb-signing", "smb1", "cert-padding-check"})
 FORWARD_ONLY = ("winget",)  # can't be undone: a person approves it as such, never the trust ladder (plan T22)
 MANUAL_ONLY = ("winget", "winconfig")  # setting changes can break old clients: a person decides (plan decision 11)
-SAFE_PRODUCT = re.compile(r"^Windows [A-Za-z0-9 .()-]{1,120}$")
+SAFE_PRODUCT = re.compile(r"^(?:\.NET Framework 4[0-9.]* on )?Windows [A-Za-z0-9 .()-]{1,120}$")
 SAFE_KB = re.compile(r"^[0-9]{6,8}$")
 SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9+._-]{0,200}$")
 SAFE_VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+~:_^-]{0,200}$")
@@ -71,13 +71,13 @@ def _log(s: Session, job: RemediationJob, kind: str, **data) -> None:
         notify(s, job.org_id, f"remediation_{job.status}", f"Remediation {job.status}: {job.summary}" + (f" ({job.error})" if job.error else ""), urgent=job.status == "rollback_failed")
 
 
-def windows_kbs(s: Session, product: str, cves: list[str]) -> dict:
+def windows_kbs(s: Session, product: str, cves: list[str], ecosystem: str = "Windows") -> dict:
     """The cumulative update that reaches the highest fixed build fixes them all: {"kb", "to"}, plus "alt" (the
     hotpatch KB and build) when every CVE also has a hotpatch fix. The agent installs whichever one Windows Update
     offers this host, so the plan doesn't need to know whether it is hotpatch-enrolled (DECISIONS 52)."""
     def best(package):
         out = {}
-        for rec in s.scalars(select(Advisory.record).where(Advisory.ecosystem == "Windows", Advisory.package == package)):
+        for rec in s.scalars(select(Advisory.record).where(Advisory.ecosystem == ecosystem, Advisory.package == package)):
             kb, fixed = str((rec.get("database_specific") or {}).get("kb") or ""), rec["affected"][0]["ranges"][0]["events"][-1].get("fixed")
             for cve in rec["aliases"]:
                 if cve in cves and fixed and SAFE_KB.match(kb) and (cve not in out or windows_cmp(fixed, out[cve][0]) < 0):
@@ -193,6 +193,10 @@ def plan_windows_app(s: Session, asset: Asset, ecosystem: str, package: str, fin
         if check not in CONFIG_FIXES:
             raise RemediationError("This setting is reported, not changed automatically: change it by policy")
         pkgs, manager, summary = [{"name": check, "from": "current", "to": "fixed"}], "winconfig", f"Change setting {check} on {asset.hostname}"
+    elif package.startswith(".NET Framework"):  # a KB through Windows Update like the OS, compared with mscorlib (DECISIONS 63)
+        manager = "windows"
+        kbs = windows_kbs(s, package, [f.vuln_id for f in findings], ecosystem)
+        pkgs, summary = [{"name": package, "from": findings[0].installed_version, **kbs}], f"Install KB{kbs['kb']} for {package} on {asset.hostname}"
     else:
         manager = "office" if package.startswith(OFFICE) else "winget"
         if manager == "winget" and package not in WINGET_KEYS:

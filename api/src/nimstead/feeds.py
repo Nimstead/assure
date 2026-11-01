@@ -340,7 +340,8 @@ def sync_msrc(session: Session, months: int = 12, client=None) -> dict:
             fixes: dict[str, tuple[str, str | None]] = {}
             hot: dict[str, tuple[str, str | None]] = {}
             for r in v.get("Remediations", []):
-                b = r.get("FixedBuild")
+                # .NET Framework names three file versions; the last is the 4.x line's, which mscorlib carries (DECISIONS 63)
+                b = re.sub(r"^2\.0\.50727\.\d+ AND 3\.0\.30729\.\d+ AND ", "", r.get("FixedBuild") or "")
                 if b and re.fullmatch(r"\d+(\.\d+){2,3}", b):
                     kb = (r.get("Description") or {}).get("Value", "")
                     track = hot if "hotpatch" in (r.get("SubType") or "").replace(" ", "").lower() else fixes

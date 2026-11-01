@@ -300,6 +300,8 @@ $ex = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\ExchangeServer\v15\Setup' -Err
 if ($ex -and (Test-Path -LiteralPath (Join-Path $ex 'Bin\ExSetup.exe'))) { $o.exchange = (Get-Item -LiteralPath (Join-Path $ex 'Bin\ExSetup.exe')).VersionInfo.FileVersionRaw.ToString() }
 $sp = Join-Path $env:CommonProgramFiles 'microsoft shared\Web Server Extensions\16\ISAPI\Microsoft.SharePoint.dll'
 if (Test-Path -LiteralPath $sp) { $o.sharepoint = (Get-Item -LiteralPath $sp).VersionInfo.FileVersionRaw.ToString() }
+$fx = Join-Path $env:windir $(if ([Environment]::Is64BitOperatingSystem) { 'Microsoft.NET\Framework64\v4.0.30319\mscorlib.dll' } else { 'Microsoft.NET\Framework\v4.0.30319\mscorlib.dll' })
+if (Test-Path -LiteralPath $fx) { $o.netfx = (Get-Item -LiteralPath $fx).VersionInfo.FileVersion }
 $apps = try { Get-AppxPackage -AllUsers -ErrorAction Stop } catch { Get-AppxPackage -ErrorAction SilentlyContinue }  # -AllUsers needs elevation; SYSTEM has it
 $o.store = @($apps | Where-Object { @(%STORE%) -contains $_.Name } | ForEach-Object { @{ name = $_.Name; version = $_.Version.ToString() } })
 $mp = Get-MpComputerStatus -ErrorAction SilentlyContinue
@@ -381,6 +383,9 @@ def windows_microsoft(reg, run=None, dotnet_dirs=None):
         add("Exchange Server", d["exchange"])
     if d.get("sharepoint"):
         add("SharePoint Server", d["sharepoint"])
+    release = dict(_reg_values(reg, r"SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full", reg.KEY_WOW64_64KEY)).get("Release")
+    if d.get("netfx") and release:  # "4.8.9363.0 built by: NET481REL1": mscorlib carries the build MSRC names as the fix
+        add(".NET Framework", str(d["netfx"]).split()[0], str(release))
     for s in d.get("store") or []:
         if isinstance(s, dict) and s.get("name") in STORE_PACKAGES:
             add(s["name"], s.get("version", ""))
@@ -1259,7 +1264,7 @@ SAFE_KB = re.compile(r"^[0-9]{6,8}\Z")
 # DISM/CBS "busy" results: servicing still running (RPC disconnected, CBS busy/pending, file in use)
 DISM_TRANSIENT = ("0x80010108", "0x800f0816", "0x800f082f", "0x80070020", "0x800f0805", "0x80004005")
 DISM_RETRIES = 15
-SAFE_PRODUCT = re.compile(r"^Windows [A-Za-z0-9 .()-]{1,120}\Z")
+SAFE_PRODUCT = re.compile(r"^(?:\.NET Framework 4[0-9.]* on )?Windows [A-Za-z0-9 .()-]{1,120}\Z")
 ROLLUP = re.compile(r"Package Identity : (Package_for_RollupFix~[^\s]+)\s+State : ([A-Za-z ]+)")
 ROLLUP_NAME = re.compile(r"^Package_for_RollupFix~[A-Za-z0-9._~-]{1,200}\Z")
 TRUSTED_OWNERS = {"S-1-5-18", "S-1-5-32-544"}  # SYSTEM, Administrators
@@ -1429,6 +1434,14 @@ def windows_build():
         return "10.0.{}.{}".format(int(winreg.QueryValueEx(k, "CurrentBuild")[0]), int(winreg.QueryValueEx(k, "UBR")[0]))
 
 
+def netfx_build(run=sh):
+    """The file version MSRC's .NET Framework fixes are stated in; a .NET update doesn't change the Windows build."""
+    rc, out = ps(run, r"(Get-Item (Join-Path $env:windir 'Microsoft.NET\Framework64\v4.0.30319\mscorlib.dll')).VersionInfo.FileVersion")
+    if rc != 0 or not re.match(r"\d+\.\d+\.\d+\.\d+", out.strip()):
+        raise AgentError(f"couldn't read the .NET Framework version: {out.strip()[-200:]}")
+    return out.split()[0]
+
+
 class WinJob:
     """Phases: start -> (reboot) -> verify -> done | rollback -> (reboot) -> rolled_back. State lives in WIN_STATE."""
 
@@ -1450,6 +1463,8 @@ class WinJob:
                 self.s = json.load(f)
             if not self.valid():  # never trust the file: it decides what runs as SYSTEM after the reboot
                 raise AgentError(f"{state_path} failed validation; not resumed")
+        if str(self.s.get("product")).startswith(".NET Framework"):
+            self.build = lambda: netfx_build(self.run)
 
     def valid(self):
         s = self.s

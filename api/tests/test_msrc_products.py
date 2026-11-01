@@ -44,7 +44,7 @@ def test_only_allowlisted_products_are_kept_with_normalised_builds(rows):
             "SQL Server 2025 CU", "SQL Server 2025 GDR", "Exchange Server 15.2.1544", "Exchange Server 15.2.1748",
             "Exchange Server 15.2.2562", "SharePoint Server 2016", "SharePoint Server 2019", "SharePoint Server Subscription Edition",
             "Microsoft Paint", "Defender platform", "PowerShell 7.4", "Visual Studio 2022 version 17.14"} <= keys
-    assert not [k for k in keys if "Office" in k or "365" in k or "Framework" in k]  # URL / compound FixedBuild: out (DECISIONS 51)
+    assert not [k for k in keys if "Office" in k or "365" in k]  # URL FixedBuild: out (DECISIONS 51)
     assert all(not any(p.startswith("0") and len(p) > 1 for p in b.split(".")) for b in rows.values())  # 15.02.1748.053 -> 15.2.1748.53
     # .NET runtime products also list SDK bands (8.0.426): those go to the SDK's own keys, never compared with a runtime
     assert all((int(b.split(".")[2]) < 100) == k.endswith("runtime") for (k, _), b in rows.items() if k.startswith(".NET"))
@@ -55,6 +55,10 @@ def test_only_allowlisted_products_are_kept_with_normalised_builds(rows):
     (".NET 8.0 runtime installed on Windows", "8.0.426", (".NET 8.0 SDK 4xx", "8.0.426")),  # SDK band
     (".NET 8.0 installed on Windows", "8.0.427", (".NET 8.0 SDK 4xx", "8.0.427")),
     (".NET 8.0 installed on Windows", "8.0.32", None),
+    ("Microsoft .NET Framework 3.5 AND 4.8.1 on Windows 11 version 26H2", "4.8.10008.0", (".NET Framework 4.8.1 on Windows 11 version 26H2", "4.8.10008.0")),
+    ("Microsoft .NET Framework 3.5 AND 4.6.2/4.7/4.7.1/4.7.2 on Windows Server 2016", "4.7.4150.0", (".NET Framework 4.7 on Windows Server 2016", "4.7.4150.0")),
+    ("Microsoft .NET Framework 4.8 on Windows Server 2016", "4.8.4811.0", (".NET Framework 4.8 on Windows Server 2016", "4.8.4811.0")),
+    ("Microsoft .NET Framework 3.5 on Windows Server 2016", "2.0.50727.8987", None),
     (".NET 8.0 installed on Linux", "8.0.427", None),
     (".NET 8.0 runtime installed on Linux", "8.0.32", None),
     (".NET 11.0 runtime installed on Windows", "11.0.0-rc.2", None),  # pre-release: never compared
@@ -222,3 +226,71 @@ def test_agent_reports_the_newest_sdk_of_each_band():
         return sdks if path.endswith(r"Program Files\dotnet\sdk") else []
     pkgs, _ = agent.windows_microsoft(Reg(), lambda cmd: (1, "no"), dotnet)
     assert sorted(p["version"] for p in pkgs if p["name"] == ".NET SDK") == ["8.0.132", "8.0.426"]
+
+
+@pytest.mark.parametrize("version,release,on,want", [
+    ("4.8.9363.0", "533509", "Windows 11 Version 25H2 for x64-based Systems", ".NET Framework 4.8.1 on Windows 11 version 25H2"),
+    ("4.8.4800.0", "528049", "Windows Server 2019", ".NET Framework 4.8 on Windows Server 2019"),
+    ("4.7.4100.0", "461814", "Windows Server 2016", ".NET Framework 4.7 on Windows Server 2016"),
+    ("4.8.9363.0", "533509", "Windows Server, version 23H2", None),  # MSRC has no such product name to compare with
+    ("4.8.9363.0", "378389", "Windows Server 2016", None),  # below every line MSRC still lists
+    ("4.8.9363.0", None, "Windows Server 2016", None),
+])
+def test_netfx_target_is_the_line_and_os_msrc_lists(version, release, on, want):
+    got = targets(".NET Framework", version, on, release)
+    assert got == (((want,), version) if want else None)
+
+
+def test_netfx_rows_keep_the_4x_build_of_the_three_msrc_names():
+    tree = {"FullProductName": [{"ProductID": "1", "Value": "Microsoft .NET Framework 3.5 AND 4.8.1 on Windows 11 version 26H2"}]}
+    cvrf = {"ProductTree": tree, "Vulnerability": [{"CVE": "CVE-2026-1", "Title": {"Value": "x"}, "Remediations": [
+        {"ProductID": ["1"], "FixedBuild": "2.0.50727.9188 AND 3.0.30729.9171 AND 4.8.10008.0", "Description": {"Value": "5127694"}}]}]}
+
+    def handler(req):
+        if req.url.path.endswith("/updates"):
+            return httpx.Response(200, json={"value": [{"ID": "2026-Oct", "DocumentTitle": "Oct", "InitialReleaseDate": "2099-01-01", "CurrentReleaseDate": "2099-01-01"}]})
+        return httpx.Response(200, json=cvrf)
+    s = make_sessionmaker("sqlite://")()
+    sync_msrc(s, 60, httpx.Client(transport=httpx.MockTransport(handler)))
+    a = s.scalars(select(Advisory).where(Advisory.package == ".NET Framework 4.8.1 on Windows 11 version 26H2")).one()
+    assert a.record["affected"][0]["ranges"][0]["events"][1]["fixed"] == "4.8.10008.0" and a.record["database_specific"]["kb"] == "5127694"
+
+
+def test_winjob_compares_a_netfx_fix_with_mscorlib_not_the_windows_build(tmp_path):
+    job = {"packages": [{"name": ".NET Framework 4.8.1 on Windows 11 version 26H2", "kb": "5127694", "from": "4.8.9999.0", "to": "4.8.10008.0"}]}
+    run = lambda cmd, **k: (0, "4.8.10008.0 built by: NET481REL1\n")  # noqa: E731
+    assert agent.WinJob(job, run=run, state_path=str(tmp_path / "s.json"), build=lambda: "10.0.26300.9711").build() == "4.8.10008.0"
+    os_job = {"packages": [{"name": "Windows 11 Version 26H2 for x64-based Systems", "kb": "5127694", "from": "10.0.26300.1", "to": "10.0.26300.2"}]}
+    assert agent.WinJob(os_job, run=run, state_path=str(tmp_path / "s.json"), build=lambda: "10.0.26300.9711").build() == "10.0.26300.9711"
+
+
+def test_netfx_opens_on_its_own_line_plans_its_kb_and_closes_when_mscorlib_reaches_the_fix(env):
+    name = ".NET Framework 4.8.1 on Windows 11 version 26H2"
+    tree = {"FullProductName": [{"ProductID": "1", "Value": "Microsoft .NET Framework 3.5 AND 4.8.1 on Windows 11 version 26H2"}]}
+    cvrf = {"ProductTree": tree, "Vulnerability": [{"CVE": "CVE-2026-1", "Title": {"Value": "x"}, "Remediations": [
+        {"ProductID": ["1"], "FixedBuild": "2.0.50727.9188 AND 3.0.30729.9171 AND 4.8.10008.0", "Description": {"Value": "5127694"}}]}]}
+
+    def handler(req):
+        if req.url.path.endswith("/updates"):
+            return httpx.Response(200, json={"value": [{"ID": "2026-Oct", "DocumentTitle": "Oct", "InitialReleaseDate": "2099-01-01", "CurrentReleaseDate": "2099-01-01"}]})
+        return httpx.Response(200, json=cvrf)
+    with make_sessionmaker(env)() as s:
+        sync_msrc(s, 60, httpx.Client(transport=httpx.MockTransport(handler)))
+        s.commit()
+    c = user(env)
+    token = c.post("/api/enroll-tokens", json={"sandbox": True}).json()["token"]
+    a = c.post("/api/agent/enroll", json={"token": token, "hostname": "w", "ecosystem": "Windows"}).json()
+    h = {"Authorization": f"Bearer {a['agent_key']}"}
+
+    def report(v, release="533509", os_name="Windows 11 Version 26H2 for x64-based Systems"):
+        assert c.post("/api/agent/inventory", headers=h, json={"ecosystem": "Windows", "packages": [
+            {"ecosystem": "Windows", "name": os_name, "version": "10.0.26300.9711", "source": None},
+            {"ecosystem": "Microsoft", "name": ".NET Framework", "version": v, "source": release}]}).status_code == 200
+        return [f for f in c.get("/api/findings").json() if f["package"].startswith(".NET Framework")]
+
+    assert not report("4.8.9999.0", "528449")  # the 4.8 line isn't judged by a 4.8.1 fix
+    [f] = report("4.8.9999.0")
+    assert f["package"] == name and f["fixed_version"] == "4.8.10008.0"
+    j = c.post("/api/remediation/jobs", json={"asset_id": a["asset_id"], "ecosystem": "Microsoft", "package": name}).json()
+    assert j["manager"] == "windows" and j["packages"][0]["kb"] == "5127694" and j["packages"][0]["to"] == "4.8.10008.0"
+    assert not report("4.8.10008.0")

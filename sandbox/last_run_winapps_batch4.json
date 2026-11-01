@@ -1,0 +1,841 @@
+{
+  "result": "PASS",
+  "vm": "nimstead-sbx-win-1ee096",
+  "proven": [
+    "GIMP.GIMP.3",
+    "GnuPG.Gpg4win",
+    "GoLang.Go",
+    "GrafanaLabs.Grafana.OSS",
+    "IrfanSkiljan.IrfanView",
+    "JetBrains.IntelliJIDEA.Community",
+    "MariaDB.Server",
+    "Nextcloud.NextcloudDesktop",
+    "NoMachine.NoMachine",
+    "PostgreSQL.PostgreSQL.17",
+    "SumatraPDF.SumatraPDF",
+    "TigerVNC.TigerVNC",
+    "calibre.calibre",
+    "qBittorrent.qBittorrent"
+  ],
+  "apps": {
+    "IrfanSkiljan.IrfanView": {
+      "proven": true,
+      "installed": "4.75",
+      "old": [
+        {
+          "display_name": "IrfanView 4.75 (64-bit)",
+          "registry_version": "4.75",
+          "identified": [
+            "irfanview:irfanview",
+            "4.75"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "IrfanView 4.76 (64-bit)",
+          "registry_version": "4.76",
+          "identified": [
+            "irfanview:irfanview",
+            "4.76"
+          ]
+        }
+      ]
+    },
+    "GIMP.GIMP.3": {
+      "proven": true,
+      "installed": "3.2.4.0",
+      "old": [
+        {
+          "display_name": "GIMP 3.2.4",
+          "registry_version": "3.2.4.0",
+          "identified": [
+            "gimp:gimp",
+            "3.2.4"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "GIMP 3.2.6",
+          "registry_version": "3.2.6.0",
+          "identified": [
+            "gimp:gimp",
+            "3.2.6"
+          ]
+        }
+      ]
+    },
+    "GoLang.Go": {
+      "proven": true,
+      "installed": "1.26.7",
+      "old": [
+        {
+          "display_name": "Go Programming Language amd64 go1.26.7",
+          "registry_version": "1.26.7",
+          "identified": [
+            "golang:go",
+            "1.26.7"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Go Programming Language amd64 go1.27.0",
+          "registry_version": "1.27.0",
+          "identified": [
+            "golang:go",
+            "1.27.0"
+          ]
+        }
+      ]
+    },
+    "PostgreSQL.PostgreSQL.17": {
+      "proven": true,
+      "installed": "17.9-1",
+      "old": [
+        {
+          "display_name": "PostgreSQL 17",
+          "registry_version": "17.9-1",
+          "identified": [
+            "postgresql:postgresql",
+            "17.9"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "PostgreSQL 17",
+          "registry_version": "17.11-5",
+          "identified": [
+            "postgresql:postgresql",
+            "17.11"
+          ]
+        }
+      ]
+    },
+    "MariaDB.Server": {
+      "proven": true,
+      "installed": "12.3.3.0",
+      "old": [
+        {
+          "display_name": "MariaDB 12.3 (x64)",
+          "registry_version": "12.3.3.0",
+          "identified": [
+            "mariadb:mariadb",
+            "12.3.3"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "MariaDB 12.3 (x64)",
+          "registry_version": "12.3.3.0",
+          "identified": [
+            "mariadb:mariadb",
+            "12.3.3"
+          ]
+        },
+        {
+          "display_name": "MariaDB 13.0 (x64)",
+          "registry_version": "13.0.2.0",
+          "identified": [
+            "mariadb:mariadb",
+            "13.0.2"
+          ]
+        }
+      ]
+    },
+    "GrafanaLabs.Grafana.OSS": {
+      "proven": true,
+      "installed": "13.2.4",
+      "old": [
+        {
+          "display_name": "GrafanaOSS",
+          "registry_version": "13.2.4.0",
+          "identified": [
+            "grafana:grafana",
+            "13.2.4"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "GrafanaOSS",
+          "registry_version": "13.3.0.0",
+          "identified": [
+            "grafana:grafana",
+            "13.3.0"
+          ]
+        }
+      ]
+    },
+    "JetBrains.IntelliJIDEA.Community": {
+      "proven": true,
+      "installed": "2025.2.6.1",
+      "old": [
+        {
+          "display_name": "IntelliJ IDEA Community Edition 2025.2.6.1",
+          "registry_version": "252.28539.33",
+          "identified": [
+            "jetbrains:intellij_idea",
+            "2025.2.6.1"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "IntelliJ IDEA Community Edition 2025.2.6.1",
+          "registry_version": "252.28539.33",
+          "identified": [
+            "jetbrains:intellij_idea",
+            "2025.2.6.1"
+          ]
+        },
+        {
+          "display_name": "IntelliJ IDEA Community Edition 2025.2.6.2",
+          "registry_version": "252.28539.54",
+          "identified": [
+            "jetbrains:intellij_idea",
+            "2025.2.6.2"
+          ]
+        }
+      ]
+    },
+    "Anysphere.Cursor": {
+      "proven": false,
+      "installed": "3.19.7",
+      "old": [],
+      "new": []
+    },
+    "calibre.calibre": {
+      "proven": true,
+      "installed": "9.16.0",
+      "old": [
+        {
+          "display_name": "calibre 64bit",
+          "registry_version": "9.16.0",
+          "identified": [
+            "calibre-ebook:calibre",
+            "9.16.0"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "calibre 64bit",
+          "registry_version": "9.17.0",
+          "identified": [
+            "calibre-ebook:calibre",
+            "9.17.0"
+          ]
+        }
+      ]
+    },
+    "TigerVNC.TigerVNC": {
+      "proven": true,
+      "installed": "1.16.1",
+      "old": [
+        {
+          "display_name": "TigerVNC 1.16.1 ()",
+          "registry_version": "1.16.1",
+          "identified": [
+            "tigervnc:tigervnc",
+            "1.16.1"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "TigerVNC 1.16.2 ()",
+          "registry_version": "1.16.2",
+          "identified": [
+            "tigervnc:tigervnc",
+            "1.16.2"
+          ]
+        }
+      ]
+    },
+    "SumatraPDF.SumatraPDF": {
+      "proven": true,
+      "installed": "3.6",
+      "old": [
+        {
+          "display_name": "SumatraPDF",
+          "registry_version": "3.6",
+          "identified": [
+            "sumatrapdfreader:sumatrapdf",
+            "3.6"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "SumatraPDF",
+          "registry_version": "3.6.1",
+          "identified": [
+            "sumatrapdfreader:sumatrapdf",
+            "3.6.1"
+          ]
+        }
+      ]
+    },
+    "Nextcloud.NextcloudDesktop": {
+      "proven": true,
+      "installed": "35.0.0",
+      "old": [
+        {
+          "display_name": "Nextcloud",
+          "registry_version": "35.0.0.20261012",
+          "identified": [
+            "nextcloud:desktop",
+            "35.0.0"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Nextcloud",
+          "registry_version": "35.0.1.20261029",
+          "identified": [
+            "nextcloud:desktop",
+            "35.0.1"
+          ]
+        }
+      ]
+    },
+    "NoMachine.NoMachine": {
+      "proven": true,
+      "installed": "10.1.7",
+      "old": [
+        {
+          "display_name": "NoMachine",
+          "registry_version": "10.1.7",
+          "identified": [
+            "nomachine:nomachine",
+            "10.1.7"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "NoMachine",
+          "registry_version": "10.2.3",
+          "identified": [
+            "nomachine:nomachine",
+            "10.2.3"
+          ]
+        }
+      ]
+    },
+    "Greenshot.Greenshot": {
+      "proven": false,
+      "installed": "1.3.323",
+      "old": [
+        {
+          "display_name": "Greenshot 1.3.323",
+          "registry_version": "1.3.323",
+          "identified": [
+            "getgreenshot:greenshot",
+            "1.3.323"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Greenshot 1.3.323",
+          "registry_version": "1.3.323",
+          "identified": [
+            "getgreenshot:greenshot",
+            "1.3.323"
+          ]
+        }
+      ]
+    },
+    "GnuPG.Gpg4win": {
+      "proven": true,
+      "installed": "5.1.0",
+      "old": [
+        {
+          "display_name": "Gpg4win (5.1.0)",
+          "registry_version": "5.1.0",
+          "identified": [
+            "gpg4win:gpg4win",
+            "5.1.0"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Gpg4win (5.1.1)",
+          "registry_version": "5.1.1",
+          "identified": [
+            "gpg4win:gpg4win",
+            "5.1.1"
+          ]
+        }
+      ]
+    },
+    "qBittorrent.qBittorrent": {
+      "proven": true,
+      "installed": "5.2.4",
+      "old": [
+        {
+          "display_name": "qBittorrent",
+          "registry_version": "5.2.4",
+          "identified": [
+            "qbittorrent:qbittorrent",
+            "5.2.4"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "qBittorrent",
+          "registry_version": "5.3.0",
+          "identified": [
+            "qbittorrent:qbittorrent",
+            "5.3.0"
+          ]
+        }
+      ]
+    },
+    "Discord.Discord": {
+      "proven": false,
+      "installed": "1.0.9265",
+      "old": [
+        {
+          "display_name": "Discord",
+          "registry_version": "1.0.9266",
+          "identified": [
+            "discord:discord",
+            "1.0.9266"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Discord",
+          "registry_version": "1.0.9266",
+          "identified": [
+            "discord:discord",
+            "1.0.9266"
+          ]
+        }
+      ]
+    }
+  },
+  "steps": [
+    {
+      "step": "VM ready",
+      "python": "C:\\nimtest\\rt\\python.exe",
+      "winget": "v1.11.510"
+    },
+    {
+      "step": "identified on a real install",
+      "app": "IrfanSkiljan.IrfanView",
+      "old": [
+        {
+          "display_name": "IrfanView 4.75 (64-bit)",
+          "registry_version": "4.75",
+          "identified": [
+            "irfanview:irfanview",
+            "4.75"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "IrfanView 4.76 (64-bit)",
+          "registry_version": "4.76",
+          "identified": [
+            "irfanview:irfanview",
+            "4.76"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "identified on a real install",
+      "app": "GIMP.GIMP.3",
+      "old": [
+        {
+          "display_name": "GIMP 3.2.4",
+          "registry_version": "3.2.4.0",
+          "identified": [
+            "gimp:gimp",
+            "3.2.4"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "GIMP 3.2.6",
+          "registry_version": "3.2.6.0",
+          "identified": [
+            "gimp:gimp",
+            "3.2.6"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "identified on a real install",
+      "app": "GoLang.Go",
+      "old": [
+        {
+          "display_name": "Go Programming Language amd64 go1.26.7",
+          "registry_version": "1.26.7",
+          "identified": [
+            "golang:go",
+            "1.26.7"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Go Programming Language amd64 go1.27.0",
+          "registry_version": "1.27.0",
+          "identified": [
+            "golang:go",
+            "1.27.0"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "identified on a real install",
+      "app": "PostgreSQL.PostgreSQL.17",
+      "old": [
+        {
+          "display_name": "PostgreSQL 17",
+          "registry_version": "17.9-1",
+          "identified": [
+            "postgresql:postgresql",
+            "17.9"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "PostgreSQL 17",
+          "registry_version": "17.11-5",
+          "identified": [
+            "postgresql:postgresql",
+            "17.11"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "identified on a real install",
+      "app": "MariaDB.Server",
+      "old": [
+        {
+          "display_name": "MariaDB 12.3 (x64)",
+          "registry_version": "12.3.3.0",
+          "identified": [
+            "mariadb:mariadb",
+            "12.3.3"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "MariaDB 12.3 (x64)",
+          "registry_version": "12.3.3.0",
+          "identified": [
+            "mariadb:mariadb",
+            "12.3.3"
+          ]
+        },
+        {
+          "display_name": "MariaDB 13.0 (x64)",
+          "registry_version": "13.0.2.0",
+          "identified": [
+            "mariadb:mariadb",
+            "13.0.2"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "identified on a real install",
+      "app": "GrafanaLabs.Grafana.OSS",
+      "old": [
+        {
+          "display_name": "GrafanaOSS",
+          "registry_version": "13.2.4.0",
+          "identified": [
+            "grafana:grafana",
+            "13.2.4"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "GrafanaOSS",
+          "registry_version": "13.3.0.0",
+          "identified": [
+            "grafana:grafana",
+            "13.3.0"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "identified on a real install",
+      "app": "JetBrains.IntelliJIDEA.Community",
+      "old": [
+        {
+          "display_name": "IntelliJ IDEA Community Edition 2025.2.6.1",
+          "registry_version": "252.28539.33",
+          "identified": [
+            "jetbrains:intellij_idea",
+            "2025.2.6.1"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "IntelliJ IDEA Community Edition 2025.2.6.1",
+          "registry_version": "252.28539.33",
+          "identified": [
+            "jetbrains:intellij_idea",
+            "2025.2.6.1"
+          ]
+        },
+        {
+          "display_name": "IntelliJ IDEA Community Edition 2025.2.6.2",
+          "registry_version": "252.28539.54",
+          "identified": [
+            "jetbrains:intellij_idea",
+            "2025.2.6.2"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "NOT identified as expected",
+      "app": "Anysphere.Cursor",
+      "old": [],
+      "new": []
+    },
+    {
+      "step": "identified on a real install",
+      "app": "calibre.calibre",
+      "old": [
+        {
+          "display_name": "calibre 64bit",
+          "registry_version": "9.16.0",
+          "identified": [
+            "calibre-ebook:calibre",
+            "9.16.0"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "calibre 64bit",
+          "registry_version": "9.17.0",
+          "identified": [
+            "calibre-ebook:calibre",
+            "9.17.0"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "identified on a real install",
+      "app": "TigerVNC.TigerVNC",
+      "old": [
+        {
+          "display_name": "TigerVNC 1.16.1 ()",
+          "registry_version": "1.16.1",
+          "identified": [
+            "tigervnc:tigervnc",
+            "1.16.1"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "TigerVNC 1.16.2 ()",
+          "registry_version": "1.16.2",
+          "identified": [
+            "tigervnc:tigervnc",
+            "1.16.2"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "identified on a real install",
+      "app": "SumatraPDF.SumatraPDF",
+      "old": [
+        {
+          "display_name": "SumatraPDF",
+          "registry_version": "3.6",
+          "identified": [
+            "sumatrapdfreader:sumatrapdf",
+            "3.6"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "SumatraPDF",
+          "registry_version": "3.6.1",
+          "identified": [
+            "sumatrapdfreader:sumatrapdf",
+            "3.6.1"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "identified on a real install",
+      "app": "Nextcloud.NextcloudDesktop",
+      "old": [
+        {
+          "display_name": "Nextcloud",
+          "registry_version": "35.0.0.20261012",
+          "identified": [
+            "nextcloud:desktop",
+            "35.0.0"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Nextcloud",
+          "registry_version": "35.0.1.20261029",
+          "identified": [
+            "nextcloud:desktop",
+            "35.0.1"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "identified on a real install",
+      "app": "NoMachine.NoMachine",
+      "old": [
+        {
+          "display_name": "NoMachine",
+          "registry_version": "10.1.7",
+          "identified": [
+            "nomachine:nomachine",
+            "10.1.7"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "NoMachine",
+          "registry_version": "10.2.3",
+          "identified": [
+            "nomachine:nomachine",
+            "10.2.3"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "NOT identified as expected",
+      "app": "Greenshot.Greenshot",
+      "old": [
+        {
+          "display_name": "Greenshot 1.3.323",
+          "registry_version": "1.3.323",
+          "identified": [
+            "getgreenshot:greenshot",
+            "1.3.323"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Greenshot 1.3.323",
+          "registry_version": "1.3.323",
+          "identified": [
+            "getgreenshot:greenshot",
+            "1.3.323"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "identified on a real install",
+      "app": "GnuPG.Gpg4win",
+      "old": [
+        {
+          "display_name": "Gpg4win (5.1.0)",
+          "registry_version": "5.1.0",
+          "identified": [
+            "gpg4win:gpg4win",
+            "5.1.0"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Gpg4win (5.1.1)",
+          "registry_version": "5.1.1",
+          "identified": [
+            "gpg4win:gpg4win",
+            "5.1.1"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "identified on a real install",
+      "app": "qBittorrent.qBittorrent",
+      "old": [
+        {
+          "display_name": "qBittorrent",
+          "registry_version": "5.2.4",
+          "identified": [
+            "qbittorrent:qbittorrent",
+            "5.2.4"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "qBittorrent",
+          "registry_version": "5.3.0",
+          "identified": [
+            "qbittorrent:qbittorrent",
+            "5.3.0"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "NOT identified as expected",
+      "app": "Discord.Discord",
+      "old": [
+        {
+          "display_name": "Discord",
+          "registry_version": "1.0.9266",
+          "identified": [
+            "discord:discord",
+            "1.0.9266"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Discord",
+          "registry_version": "1.0.9266",
+          "identified": [
+            "discord:discord",
+            "1.0.9266"
+          ]
+        }
+      ]
+    }
+  ]
+}

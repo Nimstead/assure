@@ -91,6 +91,27 @@ PRODUCTS: tuple[Product, ...] = (
     Product("apache:tomcat", _p(r"Apache Tomcat \d+\.\d+ Tomcat\d+(?: \(remove only\))?"),
             publisher=_p(r"The Apache Software Foundation"), branch=True),
     Product("splunk:universal_forwarder", _p(r"UniversalForwarder"), publisher=_p(r"Splunk, Inc\.")),
+    # ---- batch 4: names as the installers wrote them on a real VM (2026-10-31); winget ids in sandbox/winapps_e2e.py
+    Product("irfanview:irfanview", _p(rf"IrfanView \d+\.\d+ \({_ARCH}\)"), publisher=_p(r"Irfan Skiljan")),
+    Product("gimp:gimp", _p(r"GIMP \d+\.\d+\.\d+"), publisher=_p(r"The GIMP Team"), version=lambda m, v: ".".join(v.split(".")[:3])),
+    Product("golang:go", _p(r"Go Programming Language (?:amd64|386|arm64) go\d+\.\d+(?:\.\d+)?"), branch=True),
+    Product("postgresql:postgresql", _p(r"PostgreSQL \d+ ?"), publisher=_p(r"PostgreSQL Global Development Group"),
+            version=lambda m, v: v.split("-")[0], branch=True),  # 17.11-4 = upstream 17.11, 4th installer build
+    Product("mariadb:mariadb", _p(r"MariaDB \d+\.\d+ \((?:x64|x86)\)"), publisher=_p(r"MariaDB Corporation Ab"),
+            version=lambda m, v: ".".join(v.split(".")[:3]), branch=True),
+    Product("grafana:grafana", _p(r"GrafanaOSS"), publisher=_p(r"Grafana Labs"), version=lambda m, v: ".".join(v.split(".")[:3]), branch=True),
+    Product("jetbrains:intellij_idea", _p(r"IntelliJ IDEA Community Edition (?P<v>\d{4}\.\d+(?:\.\d+)*)"), publisher=_p(r"JetBrains s\.r\.o\."),
+            version=lambda m, v: m["v"]),  # DisplayVersion is the build, 252.28539.33; NVD uses the release in the name
+    Product("anysphere:cursor", _p(r"Cursor(?: \(User\))?"), publisher=_p(r"Anysphere")),
+    Product("calibre-ebook:calibre", _p(r"calibre (?:32|64)bit"), publisher=_p(r"Kovid Goyal")),
+    Product("tigervnc:tigervnc", _p(r"TigerVNC \d+\.\d+\.\d+ \(\)"), publisher=_p(r"TigerVNC team")),
+    Product("sumatrapdfreader:sumatrapdf", _p(r"SumatraPDF"), publisher=_p(r"Krzysztof Kowalczyk")),
+    Product("nextcloud:desktop", _p(r"Nextcloud"), publisher=_p(r"Nextcloud GmbH"), version=lambda m, v: ".".join(v.split(".")[:3])),  # 35.0.0.20261012
+    Product("nomachine:nomachine", _p(r"NoMachine"), publisher=_p(r"NoMachine S\.a\.r\.l\.")),
+    Product("getgreenshot:greenshot", _p(r"Greenshot \d+\.\d+\.\d+"), publisher=_p(r"Greenshot")),
+    Product("gpg4win:gpg4win", _p(r"Gpg4win \(\d+\.\d+\.\d+\)"), publisher=_p(r"The Gpg4win Project")),
+    Product("qbittorrent:qbittorrent", _p(r"qBittorrent"), publisher=_p(r"The qBittorrent project")),
+    Product("discord:discord", _p(r"Discord"), publisher=_p(r"Discord Inc\.")),
 )
 
 _BY_CPE = {c: p for p in PRODUCTS for c in (p.cpes or (p.key,))}

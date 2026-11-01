@@ -35,6 +35,18 @@ APPS = {
     "OpenVPNTechnologies.OpenVPN": ("2.6.8.1", "openvpn:openvpn"), "Oracle.VirtualBox": ("7.0.12", "oracle:vm_virtualbox"),
     "Microsoft.PowerShell": ("7.4.1.0", "PowerShell 7.4"), "Microsoft.VisualStudioCode": ("1.85.0", "Visual Studio Code"),
 }
+NEW = {  # batch 4 alone with --new: versions below winget's newest on 2026-10-31
+    "IrfanSkiljan.IrfanView": ("4.75", "irfanview:irfanview"), "GIMP.GIMP.3": ("3.2.4.0", "gimp:gimp"), "GoLang.Go": ("1.26.7", "golang:go"),
+    "PostgreSQL.PostgreSQL.17": ("17.9-1", "postgresql:postgresql"), "MariaDB.Server": ("12.3.3.0", "mariadb:mariadb"),
+    "GrafanaLabs.Grafana.OSS": ("13.2.4", "grafana:grafana"), "JetBrains.IntelliJIDEA.Community": ("2025.2.6.1", "jetbrains:intellij_idea"),
+    "Anysphere.Cursor": ("3.19.7", "anysphere:cursor"), "calibre.calibre": ("9.16.0", "calibre-ebook:calibre"),
+    "TigerVNC.TigerVNC": ("1.16.1", "tigervnc:tigervnc"), "SumatraPDF.SumatraPDF": ("3.6", "sumatrapdfreader:sumatrapdf"),
+    "Nextcloud.NextcloudDesktop": ("35.0.0", "nextcloud:desktop"), "NoMachine.NoMachine": ("10.1.7", "nomachine:nomachine"),
+    "Greenshot.Greenshot": ("1.3.323", "getgreenshot:greenshot"), "GnuPG.Gpg4win": ("5.1.0", "gpg4win:gpg4win"),
+    "qBittorrent.qBittorrent": ("5.2.4", "qbittorrent:qbittorrent"), "Discord.Discord": ("1.0.9265", "discord:discord"),
+}
+if "--new" in sys.argv:
+    APPS, OUT = NEW, OUT.with_name("last_run_winapps_batch4.json")
 log: list[dict] = []
 
 
@@ -84,9 +96,14 @@ def save(results):
 
 
 def main(keep=False) -> int:
-    winvm.wait_ready(NAME, minutes=60)
+    winvm.wait_ready(NAME, minutes=90)
     rc, py = guest(r"(Resolve-Path 'C:\Program Files\Nimstead\runtime\*\python.exe', 'C:\Program Files\Python3*\python.exe' -ErrorAction SilentlyContinue)[0].Path")
     py = py.strip()
+    if rc != 0 or not py.endswith("python.exe"):  # a fresh VM has no Python: the pinned runtime the agent ships with
+        import winfixes
+        guest(r"New-Item -ItemType Directory -Force C:\nimtest | Out-Null")
+        winfixes.runtime()
+        py = winfixes.PY
     agent = r"C:\nimtest\nimstead_agent.py"
     guest(r"New-Item -ItemType Directory -Force C:\nimtest | Out-Null")
     c = winvm.creds(NAME)  # copyto: the agent source is too long for a command line (WinError 206)
@@ -94,6 +111,7 @@ def main(keep=False) -> int:
                "--target-directory", "C:\\nimtest\\", str(ROOT / "agent" / "nimstead_agent.py"))
     rc, out = guest("winget --version")
     note("VM ready", python=py, winget=out.strip()[-40:])
+    assert collect(py, agent)["packages"], "the agent can't read inventory here"  # or every app reads as not identified
     results = {}
     for wid, (old, key) in APPS.items():
         if found(collect(py, agent), key):
@@ -106,6 +124,8 @@ def main(keep=False) -> int:
         if rc != 0 and "No version found" in out and (alt := older_version(wid)):
             old = alt  # the pinned old version left winget's repository
             rc, out = guest(install.format(wid, old), timeout=1800)
+        if rc != 0 and "No applicable installer" in out:  # per-user only (Cursor, Discord): the agent reads every profile
+            rc, out = guest(install.format(wid, old).replace(" --scope machine", ""), timeout=1800)
         if rc != 0:
             results[wid] = {"proven": False, "why": f"winget couldn't install {old}: {out.strip()[-200:]}"}
             note("not installable", app=wid)

@@ -4,6 +4,13 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+Detection and fixes that close the gap with Nessus and Qualys on Windows. **Expect new open findings after the first reports.**
+- **.NET Framework findings:** read from mscorlib, on the host's own line and OS, with a fix through Windows Update that can be rolled back.
+- **.NET SDKs:** the newest of each feature band, against MSRC's SDK fixes.
+- **Hardening audit:** 24 more settings (UAC, stored sign-in passwords, password and lockout policy, anonymous access, LM hashes, WinRM, SNMP and more), free; 7 can be fixed by a reversible job. This is not a CIS or STIG conformance check.
+- **17 more Windows apps,** including PostgreSQL, MariaDB, Go, Grafana, IntelliJ IDEA, GIMP and calibre; 11 can be updated by a job.
+- **Fixed:** MSRC sync retries a dropped connection. The restart notice says Windows may restart sooner than the agent would.
+
 ## [0.6.0] - 2026-10-29
 
 Windows round 1 (tasks/plan.md; DECISIONS 51–57): Windows detection that covers what Nessus and Qualys report, fixes

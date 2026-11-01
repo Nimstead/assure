@@ -396,6 +396,25 @@ def test_cvelist_rows_only_where_nvd_has_none_and_nvd_replaces_them(env):
     ("Dell Command | Update for Windows Universal", "Dell Inc.", "5.4.0", ("dell:command_update", "5.4.0")),
     ("Apache Tomcat 10.1 Tomcat10", "The Apache Software Foundation", "10.1.33", ("apache:tomcat", "10.1.33")),
     ("UniversalForwarder", "Splunk, Inc.", "9.3.1.0", ("splunk:universal_forwarder", "9.3.1.0")),
+    # batch 4: exactly as a real VM's registry had them (2026-10-31)
+    ("IrfanView 4.75 (64-bit)", "Irfan Skiljan", "4.75", ("irfanview:irfanview", "4.75")),
+    ("GIMP 3.2.4", "The GIMP Team", "3.2.4.0", ("gimp:gimp", "3.2.4")),
+    ("Go Programming Language amd64 go1.26.7", "https://go.dev", "1.26.7", ("golang:go", "1.26.7")),
+    ("PostgreSQL 17 ", "PostgreSQL Global Development Group", "17.11-4", ("postgresql:postgresql", "17.11")),
+    ("MariaDB 12.3 (x64)", "MariaDB Corporation Ab", "12.3.3.0", ("mariadb:mariadb", "12.3.3")),
+    ("GrafanaOSS", "Grafana Labs", "13.2.4.0", ("grafana:grafana", "13.2.4")),
+    ("IntelliJ IDEA Community Edition 2025.2.6.1", "JetBrains s.r.o.", "252.28539.33", ("jetbrains:intellij_idea", "2025.2.6.1")),
+    ("Cursor (User)", "Anysphere", "3.19.7", ("anysphere:cursor", "3.19.7")),
+    ("Cursor", "Anysphere", "3.20.14", ("anysphere:cursor", "3.20.14")),  # machine-wide install
+    ("calibre 64bit", "Kovid Goyal", "9.16.0", ("calibre-ebook:calibre", "9.16.0")),
+    ("TigerVNC 1.16.1 ()", "TigerVNC team", "1.16.1", ("tigervnc:tigervnc", "1.16.1")),
+    ("SumatraPDF", "Krzysztof Kowalczyk", "3.6", ("sumatrapdfreader:sumatrapdf", "3.6")),
+    ("Nextcloud", "Nextcloud GmbH", "35.0.0.20261012", ("nextcloud:desktop", "35.0.0")),
+    ("NoMachine", "NoMachine S.a.r.l.", "10.1.7", ("nomachine:nomachine", "10.1.7")),
+    ("Greenshot 1.3.323", "Greenshot", "1.3.323", ("getgreenshot:greenshot", "1.3.323")),
+    ("Gpg4win (5.1.0)", "The Gpg4win Project", "5.1.0", ("gpg4win:gpg4win", "5.1.0")),
+    ("qBittorrent", "The qBittorrent project", "5.2.4", ("qbittorrent:qbittorrent", "5.2.4")),
+    ("Discord", "Discord Inc.", "1.0.9265", ("discord:discord", "1.0.9265")),
 ])
 def test_identify_batches(name, pub, ver, want):
     assert winapps.identify(name, pub, ver) == want
@@ -408,6 +427,12 @@ def test_identify_batches(name, pub, ver, want):
     ("OpenVPN Connect", "OpenVPN Inc.", "3.5.1"),
     ("Docker Desktop", "Not Docker", "4.36.0"),
     ("VMware Horizon Client", "VMware, Inc.", "8.13.0"),
+    ("Cursor (User)", "Someone Else", "3.19.7"),
+    ("Discord", "Discord Fan Tools", "1.0"),
+    ("Nextcloud Talk", "Nextcloud GmbH", "22.0.0"),
+    ("PostgreSQL ODBC Driver", "PostgreSQL Global Development Group", "16.0"),
+    ("GNU Privacy Guard", "The GnuPG Project", "2.5.21"),
+    ("XAMPP", "Apache Friends", "8.2.4-0"),
 ])
 def test_identify_batch_near_misses(name, pub, ver):
     assert winapps.identify(name, pub, ver) is None

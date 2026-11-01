@@ -1028,7 +1028,12 @@ WINGET_IDS = {  # curated product key (server: winapps.py / msproducts.py) -> wi
     "mozilla:thunderbird": "Mozilla.Thunderbird", "libreoffice:libreoffice": "TheDocumentFoundation.LibreOffice",
     "foxit:pdf_reader": "Foxit.FoxitReader", "teamviewer:teamviewer": "TeamViewer.TeamViewer", "anydesk:anydesk": "AnyDesk.AnyDesk",
     "oracle:vm_virtualbox": "Oracle.VirtualBox", "docker:desktop": "Docker.DockerDesktop",
-    "Microsoft Edge": "Microsoft.Edge", "Visual Studio Code": "Microsoft.VisualStudioCode"}
+    "Microsoft Edge": "Microsoft.Edge", "Visual Studio Code": "Microsoft.VisualStudioCode",
+    # batch 4, winget's upgrade replaced the old version on a real VM. Not PostgreSQL, MariaDB or IntelliJ: side by side or one id per major
+    "irfanview:irfanview": "IrfanSkiljan.IrfanView", "gimp:gimp": "GIMP.GIMP.3", "golang:go": "GoLang.Go", "grafana:grafana": "GrafanaLabs.Grafana.OSS",
+    "calibre-ebook:calibre": "calibre.calibre", "tigervnc:tigervnc": "TigerVNC.TigerVNC", "sumatrapdfreader:sumatrapdf": "SumatraPDF.SumatraPDF",
+    "nextcloud:desktop": "Nextcloud.NextcloudDesktop", "nomachine:nomachine": "NoMachine.NoMachine", "gpg4win:gpg4win": "GnuPG.Gpg4win",
+    "qbittorrent:qbittorrent": "qBittorrent.qBittorrent"}
 # check id (server: winconfig.py) -> (registry key, value name, type, secure value); rollback restores what was there
 CONFIG_FIXES = {
     "wdigest": (r"HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\WDigest", "UseLogonCredential", "REG_DWORD", "0"),

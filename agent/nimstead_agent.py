@@ -5,10 +5,12 @@
   nimstead_agent.py report
   nimstead_agent.py collect          # print inventory JSON, no network
   nimstead_agent.py remediate        # run approved jobs (host must opt in at enroll)
+  nimstead_agent.py doctor           # check this host's setup and say how to fix it; changes nothing
 """
 
 import argparse
 import base64
+import email.utils
 import glob
 import hashlib
 import io
@@ -25,6 +27,7 @@ import tarfile
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 
@@ -1361,6 +1364,36 @@ def _sha256(path):
     return h.hexdigest()
 
 
+# ---- local log (DECISIONS 69) ------------------------------------------------------
+LOG_PATH = (os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "Nimstead", "agent.log") if os.name == "nt"
+            else "/var/lib/nimstead/agent.log")
+LOG_MAX_BYTES = 1 << 20  # the log and one rotated copy, agent.log.1
+LOGGED_COMMANDS = ("report", "remediate", "resume-job")  # each locks the folder first; `collect` must never write here
+LOG_SECRET = re.compile(r"\bnm[a-z]_[A-Za-z0-9_-]+")  # the server's agent keys and tokens, whatever text echoes one
+_log_on = False  # set once this run's command has locked the folder; a planted link there must never be written through
+_agent_key = None
+
+
+def log_event(text):
+    """Add one line to the local log. Never raises and never prints: a logging failure must not stop a run."""
+    if not _log_on:
+        return
+    try:
+        text = str(text)
+        for secret in (_agent_key, os.environ.get("NIMSTEAD_TOKEN")):
+            if secret:
+                text = text.replace(secret, "[secret]")
+        line = " ".join(LOG_SECRET.sub("[secret]", text).split())[:2000]  # server text: one line, bounded
+        os.makedirs(os.path.dirname(LOG_PATH), mode=0o700, exist_ok=True)
+        if os.path.exists(LOG_PATH) and os.path.getsize(LOG_PATH) >= LOG_MAX_BYTES:
+            os.replace(LOG_PATH, LOG_PATH + ".1")
+        fd = os.open(LOG_PATH, os.O_WRONLY | os.O_CREAT | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        with os.fdopen(fd, "a", encoding="utf-8", errors="replace") as f:
+            f.write(time.strftime("%Y-%m-%dT%H:%M:%SZ ", time.gmtime()) + line + "\n")
+    except (OSError, ValueError, TypeError):
+        pass
+
+
 OUTCOME_DIR = (os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "Nimstead", "outcomes") if os.name == "nt"
                else "/var/lib/nimstead/outcomes")
 
@@ -1393,6 +1426,7 @@ def run_jobs(server, key, insecure_http, run=sh, outcome_dir=None, win_state=Non
             if " 409:" in str(e) or " 404:" in str(e):  # server no longer accepts it; keep a local copy, stop retrying
                 os.replace(path, path + ".rejected")
             print("job {}: report failed: {}".format(rec["id"], e), file=sys.stderr)
+            log_event("job {}: report failed: {}".format(rec["id"], e))
             problems += 1
 
     def record(job_id, report):
@@ -1401,6 +1435,7 @@ def run_jobs(server, key, insecure_http, run=sh, outcome_dir=None, win_state=Non
         with open(path, "w") as f:
             json.dump({"id": job_id, "report": report}, f)
         print("job {}: {}{}".format(job_id, report["outcome"], f" ({report['error']})" if report.get("error") else ""))
+        log_event("job {}: {}{}".format(job_id, report["outcome"], f" ({report['error']})" if report.get("error") else ""))
         if ran is not None:
             ran.append(job_id)
         problems += report["outcome"] != "applied"
@@ -1414,6 +1449,7 @@ def run_jobs(server, key, insecure_http, run=sh, outcome_dir=None, win_state=Non
         except (AgentError, OSError, ValueError) as e:
             os.replace(win_state, win_state + ".invalid")
             print(f"pending Windows job not resumed: {e}; set aside, host needs attention", file=sys.stderr)
+            log_event(f"pending Windows job not resumed: {e}")
             problems += 1
         else:
             rc, pending = ps(run, PS_REBOOT_PENDING)
@@ -2287,8 +2323,9 @@ def load_config():
     except (OSError, ValueError) as e:
         raise AgentError(f"cannot read {config_path()} (run enroll first): {e}")
     use_proxy(cfg.get("proxy"))  # every command that talks to the server loads the config first
-    global WU_SOURCE
+    global WU_SOURCE, _agent_key
     WU_SOURCE = cfg.get("windows_update_source")  # set at enrol on this host; the server never sends it
+    _agent_key = cfg.get("agent_key")  # so the log can leave it out
     return cfg
 
 
@@ -2439,14 +2476,18 @@ def schedule_windows_script(cfg):
     return "\n".join(lines)
 
 
+def _in_program_files(exe):
+    trusted = [os.environ.get(v) for v in ("ProgramFiles", "ProgramFiles(x86)") if os.environ.get(v)]
+    return any(os.path.normcase(exe).startswith(os.path.normcase(t.rstrip("\\") + "\\")) for t in trusted)
+
+
 def schedule(cfg, run=sh, unit_dir=SYSTEMD_DIR, systemd=None):
     """Install (or update) this host's schedule and return what was done. Records SCHEDULE_VERSION in the config."""
     remediation = bool(cfg.get("allow_remediation"))
     poll = ", approved fixes checked every 15 minutes" if remediation else ""
     if os.name == "nt":
         exe = _agent_cmd(cfg)[0]
-        trusted = [os.environ.get(v) for v in ("ProgramFiles", "ProgramFiles(x86)") if os.environ.get(v)]
-        if not any(os.path.normcase(exe).startswith(os.path.normcase(t.rstrip("\\") + "\\")) for t in trusted):
+        if not _in_program_files(exe):
             raise AgentError(f"{exe} is not a Python under Program Files; the SYSTEM task must not run an interpreter "
                              "other users can modify (rerun the install command: it brings its own)")
         rc, out = ps(run, schedule_windows_script(cfg))
@@ -2616,6 +2657,180 @@ def scan_jars(roots, max_seconds=300, max_files=500_000, mounts=None):
                   "locations": [[k[0], k[1], w[-300:]] for k, w in list(sorted(found.items()))[:100]]}
 
 
+# ---- doctor: reads this host and changes nothing (DECISIONS 69) ---------------------
+MAX_CLOCK_SKEW = 300  # seconds
+PS_DOCTOR_TASKS = "Get-ScheduledTask | Where-Object TaskName -like 'Nimstead *' | ForEach-Object { $_.TaskName + '|' + $_.State }"
+PS_DOCTOR_WU = "$s = Get-Service -Name wuauserv -ErrorAction Stop; $s.Status.ToString() + '|' + $s.StartType"
+# SIDs only: names like Administratoren are translated (DECISIONS 68). Owner, whether inheritance is off, then who is allowed
+PS_DOCTOR_ACL = r"""
+$a = Get-Acl -LiteralPath %DIR% -ErrorAction Stop
+$a.GetOwner([Security.Principal.SecurityIdentifier]).Value
+$a.AreAccessRulesProtected
+$a.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]) | Where-Object AccessControlType -eq 'Allow' | ForEach-Object { $_.IdentityReference.Value }
+"""
+
+
+class _DoctorFail(Exception):
+    def __init__(self, problem, fix):
+        super().__init__(problem)
+        self.fix = fix
+
+
+def _read_config():
+    with open(config_path()) as f:
+        return json.load(f)
+
+
+def _server_reply(url):
+    """(HTTP status, Date header) from a GET that carries no key. Any answer proves the server is there."""
+    try:
+        with _opener.open(urllib.request.Request(url), timeout=15) as r:
+            return r.status, r.headers.get("Date")
+    except urllib.error.HTTPError as e:
+        return e.code, e.headers.get("Date")
+
+
+def doctor(insecure_http=False, run=sh, read=_read_config, fetch=_server_reply, connect=socket.create_connection, now=time.time,
+           disk=free_bytes, exists=os.path.exists, windows=None, state_dir=None, systemd=None, version=None):
+    """Print ok or FAIL (with one line on how to fix it) for each check; returns the exit code. Only reads: no lockdown,
+    no agent key sent, no log written."""
+    windows = os.name == "nt" if windows is None else windows
+    state = state_dir or (os.path.dirname(WIN_STATE) if windows else "/var/lib/nimstead")
+    as_admin = "Administrator" if windows else "root"
+    cfg, date = None, None
+
+    def need_config():
+        if cfg is None:
+            raise _DoctorFail("not checked: no readable config", "Fix the config check first.")
+
+    def config():
+        nonlocal cfg
+        try:
+            cfg = read()
+        except (OSError, ValueError) as e:
+            raise _DoctorFail(f"cannot read {config_path()}: {e}",
+                              f"Run this as {as_admin}; if it still fails, rerun the install command from Add a machine.") from None
+        return config_path()
+
+    def proxy():
+        need_config()
+        try:
+            url = use_proxy(cfg.get("proxy"), run)
+        except AgentError as e:
+            raise _DoctorFail(str(e), "Rerun enroll with --proxy http://host:port.") from None
+        if not url:
+            return "none: connects directly"
+        u = urllib.parse.urlsplit(url)
+        try:
+            connect((u.hostname, u.port or (443 if u.scheme == "https" else 80)), 10).close()
+        except (OSError, ValueError) as e:
+            raise _DoctorFail(f"cannot connect to {url}: {e}", "Check the proxy is running and this machine's firewall allows it.") from None
+        return url
+
+    def server():
+        nonlocal date
+        need_config()
+        s = str(cfg.get("server"))
+        if not s.startswith("https://") and not (insecure_http and s.startswith("http://")):
+            raise _DoctorFail(f"{s} is not HTTPS", "Put the server behind HTTPS (docs/install.md), or add --insecure-http for local dev only.")
+        if _proxy and not s.startswith("https://"):
+            raise _DoctorFail("a plain-http server is refused through a proxy", "Put the server behind HTTPS (docs/install.md).")
+        try:
+            status, date = fetch(s.rstrip("/") + "/api/health")
+        except (urllib.error.URLError, OSError, ValueError) as e:
+            raise _DoctorFail(f"cannot reach {s}: {e}", "Check DNS, the firewall, the proxy and the server's certificate from this machine.") from None
+        if status != 200:
+            raise _DoctorFail(f"{s} answered HTTP {status}", "Check the server address and that the server is healthy; agents don't follow redirects.")
+        return s
+
+    def clock():
+        parsed = email.utils.parsedate_tz(date) if date else None
+        if not parsed:
+            raise _DoctorFail("not checked: no usable Date header from the server", "Fix the server check first; a reverse proxy must not remove Date.")
+        skew = now() - email.utils.mktime_tz(parsed)
+        if abs(skew) > MAX_CLOCK_SKEW:
+            sync = "w32tm /resync" if windows else "timedatectl set-ntp true"
+            raise _DoctorFail(f"this machine is {int(abs(skew))} seconds {'ahead of' if skew > 0 else 'behind'} the server", f"Set the time: {sync}.")
+        return f"within {int(abs(skew))} seconds of the server"
+
+    def tasks():
+        jobs = bool(cfg and cfg.get("allow_remediation"))
+        if windows:
+            rc, out = ps(run, PS_DOCTOR_TASKS)
+            if rc != 0:
+                raise _DoctorFail(f"cannot list scheduled tasks: {out.strip()[-200:]}", f"Run this as {as_admin}.")
+            found = dict(line.strip().rsplit("|", 1) for line in out.splitlines() if "|" in line)
+            names = ["Nimstead agent", *(["Nimstead jobs"] if jobs else [])]
+            bad = [n for n in names if found.get(n, "Disabled") == "Disabled"]  # State's names aren't translated
+        else:
+            on_systemd = (bool(shutil.which("systemctl")) and os.path.isdir("/run/systemd/system")) if systemd is None else systemd
+            if not on_systemd:
+                return "no systemd here: a cron schedule isn't checked"
+            names = ["nimstead-agent.timer", *(["nimstead-agent-jobs.timer"] if jobs else [])]
+            bad = [n for n in names if run(["systemctl", "is-enabled", n])[0] != 0]
+        if bad:
+            raise _DoctorFail(f"missing or disabled: {', '.join(bad)}", f"Run `nimstead_agent.py schedule` as {as_admin}.")
+        return ", ".join(names)
+
+    def folder_acl():
+        fix = "Run `nimstead_agent.py report` as Administrator: every run locks the folder again."
+        if is_link(state):
+            raise _DoctorFail(f"{state} is a link", fix)
+        rc, out = ps(run, PS_DOCTOR_ACL.replace("%DIR%", _ps_quote(state)))
+        lines = [line.strip() for line in out.splitlines() if line.strip()]
+        if rc != 0 or len(lines) < 2:
+            raise _DoctorFail(f"cannot read {state}: {out.strip()[-200:]}", f"Run this as Administrator; if {state} is missing, rerun the install command.")
+        owner, protected, *allowed = lines
+        others = sorted(set(allowed) - TRUSTED_OWNERS)
+        if owner not in TRUSTED_OWNERS or protected != "True" or others:
+            raise _DoctorFail(f"{state} is open: owner {owner}, inheritance off: {protected}, also allowed: {', '.join(others) or 'nobody'}", fix)
+        return f"{state}: only SYSTEM and Administrators"
+
+    def windows_update():
+        rc, out = ps(run, PS_DOCTOR_WU)
+        parts = out.strip().rsplit("|", 1)
+        if rc != 0 or len(parts) != 2:
+            raise _DoctorFail(f"cannot read the service: {out.strip()[-200:]}", "Run this as Administrator; Windows fixes need the service wuauserv.")
+        if parts[1] == "Disabled":  # stopped is normal: it starts on demand and stops itself when idle
+            raise _DoctorFail("the service wuauserv is disabled", "Run: Set-Service wuauserv -StartupType Manual (and check no policy disables it).")
+        return f"{parts[0]}, start type {parts[1]}"
+
+    def free_disk():
+        free = disk(state)
+        if free < MIN_FREE_BYTES:
+            raise _DoctorFail(f"{free // 2**20} MiB free for {state}; fixes need {MIN_FREE_BYTES // 2**20} MiB", "Free up space on that disk.")
+        return f"{free // 2**20} MiB free"
+
+    def runtime():
+        exe = (cfg or {}).get("python") or sys.executable
+        have = version or sys.version_info[:2]
+        reinstall = "Rerun the install command: on Windows it brings its own Python."
+        if tuple(have) < (3, 9):
+            raise _DoctorFail(f"Python {have[0]}.{have[1]} is older than 3.9", reinstall)
+        if not exists(exe):
+            raise _DoctorFail(f"{exe} doesn't exist", reinstall)
+        if windows and not _in_program_files(exe):
+            raise _DoctorFail(f"{exe} isn't under Program Files, so other users may be able to change what SYSTEM runs", reinstall)
+        return f"agent {AGENT_VERSION} on Python {have[0]}.{have[1]}: {exe}"
+
+    checks = [("config", config), ("proxy", proxy), ("server", server), ("clock", clock), ("schedule", tasks),
+              *([("state folder", folder_acl), ("Windows Update", windows_update)] if windows else []),
+              ("disk", free_disk), ("runtime", runtime)]
+    failed = 0
+    for name, check in checks:
+        try:
+            print(f"ok    {name}: {check()}")
+        except _DoctorFail as e:
+            failed += 1
+            print(f"FAIL  {name}: {e}. Fix: {e.fix}")
+        except Exception as e:  # a check that can't run is a failure, and the others still run
+            failed += 1
+            print(f"FAIL  {name}: could not check: {e!r}. Fix: Run this as {as_admin}; if it persists, report it with this line.")
+    print(f"{failed} of {len(checks)} checks failed" if failed else f"all {len(checks)} checks passed")
+    print(f"log: {LOG_PATH}")
+    return 1 if failed else 0
+
+
 def _update_then_rerun(a, argv):
     """Self-update before a report/remediate run. After an update, run the same command with the new agent and return
     its exit code; otherwise None and this agent carries on."""
@@ -2628,9 +2843,11 @@ def _update_then_rerun(a, argv):
         return None
     if _update_error:
         print(f"nimstead-agent: warning: {_update_error}", file=sys.stderr)
+        log_event(f"warning: {_update_error}")
     if not new:
         return None
     print(f"updated nimstead-agent {AGENT_VERSION} -> {new}", flush=True)  # before the new agent's own output
+    log_event(f"updated {AGENT_VERSION} -> {new}")
     args = list(sys.argv[1:] if argv is None else argv)
     new_agent = [sys.executable, *(["-I"] if sys.flags.isolated else []), os.path.abspath(__file__), "--no-self-update"]
     if "schedule_version" in cfg:  # installed with a schedule: the new agent re-applies it if its units changed
@@ -2639,6 +2856,20 @@ def _update_then_rerun(a, argv):
 
 
 def main(argv=None):
+    global _log_on
+    try:
+        rc = _main(argv)
+        log_event(f"run end: exit {rc}")
+        return rc
+    except Exception as e:  # leave a trace of what stopped the run, then fail as before
+        log_event(f"run crashed: {e!r}")
+        raise
+    finally:
+        _log_on = False
+
+
+def _main(argv):
+    global _log_on
     ap = argparse.ArgumentParser(prog="nimstead-agent")
     ap.add_argument("--insecure-http", action="store_true", help="allow plain http (local dev only)")
     ap.add_argument("--no-self-update", action="store_true", help="skip the signed self-update check for this run")
@@ -2663,6 +2894,7 @@ def main(argv=None):
                     help="least proven signed releases this agent takes (the installer passes its server's channel)")
     sub.add_parser("report")
     sub.add_parser("collect")
+    sub.add_parser("doctor", help="check this host's setup and print how to fix each failure; changes nothing")
     sr = sub.add_parser("scan-remote", help="Windows: scan other hosts with no agent, over PowerShell remoting, as you (no stored credentials)")
     sr.add_argument("--server", help="report here; NIMSTEAD_TOKEN enrols hosts the first time")
     sr.add_argument("--print", action="store_true", dest="print_only", help="print each host's inventory instead of reporting it")
@@ -2684,8 +2916,13 @@ def main(argv=None):
     try:
         if os.name == "nt" and a.cmd in ("report", "remediate", "resume-job", "schedule", "uninstall"):  # before reading anything from the folder
             secure_windows_dir()
+        if a.cmd in LOGGED_COMMANDS:
+            _log_on = True
+            log_event(f"run start: {a.cmd}, agent {AGENT_VERSION}")
         if a.cmd == "collect":
             print(json.dumps(collect(), indent=2))
+        elif a.cmd == "doctor":
+            return doctor(a.insecure_http)
         elif a.cmd == "scan-remote":
             if a.print_only:
                 for h in a.hosts:
@@ -2755,6 +2992,7 @@ def main(argv=None):
                 if reboot:  # Windows update needs a restart; the startup run resumes the job and reports it
                     when, msg = restart_for_update()
                     print(msg)
+                    log_event(msg)
                     return 0
                 if ran or not a.if_jobs:  # server verifies the fix
                     post(cfg["server"], "/api/agent/inventory", inventory(cfg), a.insecure_http, cfg["agent_key"])
@@ -2765,12 +3003,14 @@ def main(argv=None):
             inv = inventory(cfg)
             post(cfg["server"], "/api/agent/inventory", inv, a.insecure_http, cfg["agent_key"])
             print(f"reported {len(inv['packages'])} packages")
+            log_event(f"reported {len(inv['packages'])} packages")
             if cfg.get("ad_discovery") and os.name == "nt":  # local opt-in only: which domain computers have no agent
                 d = ad_computers()
                 post(cfg["server"], "/api/agent/directory", d, a.insecure_http, cfg["agent_key"])
                 print(f"reported {len(d['computers'])} computers from {d['domain']}")
     except AgentError as e:
         print(f"nimstead-agent: error: {e}", file=sys.stderr)
+        log_event(f"error: {e}")
         return 1
     return 0
 

@@ -58,10 +58,12 @@ def env(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def _agent_never_touches_this_host(monkeypatch, request):
+def _agent_never_touches_this_host(monkeypatch, request, tmp_path):
     """agent.main() locks down the agent's ProgramData folder on Windows: never on the developer's machine. Tests of the
     lockdown itself opt in with @pytest.mark.real_lockdown and pass a fake command runner."""
     mod = getattr(request.module, "agent", None)
+    if mod is not None and hasattr(mod, "LOG_PATH"):  # and its log stays out of the real state folder
+        monkeypatch.setattr(mod, "LOG_PATH", str(tmp_path / "nimstead-test-log" / "agent.log"))
     if mod is not None and hasattr(mod, "secure_windows_dir") and not request.node.get_closest_marker("real_lockdown"):
         monkeypatch.setattr(mod, "secure_windows_dir", lambda *a, **k: [])
 

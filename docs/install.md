@@ -128,13 +128,25 @@ Updates have to be signed, but the first copy of the agent comes from your serve
 
 A machine that hasn't reported for 14 hours shows **Not reporting** and sends one alert, so a stopped agent doesn't quietly leave stale findings.
 
+### Troubleshooting
+
+Run `doctor` on the machine. It checks the server, proxy, clock, schedule, disk and Python, and on Windows also the state folder's permissions and the Windows Update service. Each check prints `ok` or `FAIL` with one line on how to fix it, and the command exits non-zero if any failed. It changes nothing on the machine and doesn't send the agent key.
+
+```bash
+sudo python3 /usr/local/lib/nimstead/nimstead_agent.py doctor
+```
+
+On Windows, in an elevated PowerShell: `& (Resolve-Path "$env:ProgramFiles\Nimstead\runtime\*\python.exe")[0] -I "$env:ProgramFiles\Nimstead\nimstead_agent.py" doctor`. A stopped Windows Update service is normal, because it starts when needed; only a disabled one fails.
+
+The agent logs each run's start and end, job outcomes and errors to `/var/lib/nimstead/agent.log` on Linux and `C:\ProgramData\Nimstead\agent.log` on Windows. Only root or Administrators can read it. It keeps at most about 2 MB (`agent.log` and `agent.log.1`), and leaves out the agent key and enrolment token.
+
 ### Remove the agent
 
 ```bash
 sudo python3 /usr/local/lib/nimstead/nimstead_agent.py uninstall --yes
 ```
 
-On Windows, in an elevated PowerShell: `& (Resolve-Path "$env:ProgramFiles\Nimstead\runtime\*\python.exe")[0] -I "$env:ProgramFiles\Nimstead\nimstead_agent.py" uninstall --yes`. This removes the timers or scheduled tasks, the agent key, saved state and the agent itself, then tells you to delete the machine on the **Assets** page. It's refused while a Windows update is waiting for its restart.
+On Windows, in an elevated PowerShell: `& (Resolve-Path "$env:ProgramFiles\Nimstead\runtime\*\python.exe")[0] -I "$env:ProgramFiles\Nimstead\nimstead_agent.py" uninstall --yes`. This removes the timers or scheduled tasks, the agent key, saved state, the local log and the agent itself, then tells you to delete the machine on the **Assets** page. It's refused while a Windows update is waiting for its restart.
 
 ### Fixing things automatically
 

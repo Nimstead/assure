@@ -171,6 +171,9 @@ it("onboarding shows troubleshooting when no report arrives", async () => {
   expect(screen.queryByText("Nothing yet? Check these:")).not.toBeInTheDocument();
   await act(async () => { vi.advanceTimersByTime(TROUBLESHOOT_AFTER_MS + 100); });
   expect(screen.getByText("Nothing yet? Check these:")).toBeInTheDocument();
+  expect(screen.getAllByText("doctor").length).toBeGreaterThan(0);
+  expect(screen.getByText("/var/lib/nimstead/agent.log")).toBeInTheDocument();
+  expect(screen.getByText("C:\\ProgramData\\Nimstead\\agent.log")).toBeInTheDocument();
 });
 
 it("TOTP setup draws a QR code of the otpauth URI, dark on white in any theme", () => {

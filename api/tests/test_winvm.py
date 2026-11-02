@@ -27,8 +27,15 @@ def test_wait_ready_restarts_a_booted_windows_cleanly_and_never_hard_resets(monk
     monkeypatch.setattr(winvm, "os_up", lambda n: True)
     monkeypatch.setattr(winvm, "clean_restart", lambda n: calls.append("restart"))
     monkeypatch.setattr(winvm, "vbox", lambda *a, **k: calls.append("reset"))
+    monkeypatch.setattr(winvm, "disk_activity", lambda n: "idle")
     winvm.wait_ready("nimstead-sbx-win-x")
     assert calls == ["restart"] and clock[0] > 20 * 60
+    # still applying an update at "Restarting": a busy disk holds the restart back (real Server 2025)
+    calls.clear()
+    clock[0] = 0.0
+    monkeypatch.setattr(winvm, "disk_activity", lambda n: str(clock[0]) if clock[0] < 40 * 60 else "idle")
+    winvm.wait_ready("nimstead-sbx-win-x")
+    assert calls == ["restart"] and clock[0] > 60 * 60
 
 
 def _clock(monkeypatch, winvm):

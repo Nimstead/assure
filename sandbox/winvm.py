@@ -95,6 +95,9 @@ def wait_ready(name: str, minutes=90, reset_after=12, restart_after=20, max_rese
         if unstick(name):
             idle = up = time.time()
         elif os_up(name):
+            disk = disk_activity(name)
+            if disk != seen:  # still applying an update at "Restarting" (real Server 2025): powering off now could end it
+                seen, up = disk, time.time()
             if resets < max_resets and time.time() - up > restart_after * 60:
                 clean_restart(name)
                 idle, up, resets = time.time(), time.time(), resets + 1

@@ -305,3 +305,32 @@ def test_server_2012_r2_gets_its_end_of_support_finding(env):
     [f] = c.get("/api/findings").json()
     assert f["vuln_id"] == "EOL:ws2012r2" and f["priority"] == "fix-now"
     assert c.get("/api/assets").json()[0]["facts"]["os_unmatched"] == "no UBR"
+
+
+def test_a_job_can_step_through_the_earlier_cumulative_but_a_hotpatch_comes_first():
+    from nimstead.remediate import HOTPATCH, windows_kbs
+    s = make_sessionmaker("sqlite://")()
+
+    def row(cve, package, kb, build):
+        s.add(Advisory(id=f"{cve}-{kb}", ecosystem="Windows", package=package, modified="", record={
+            "aliases": [cve], "database_specific": {"kb": kb}, "affected": [{"ranges": [{"events": [{"introduced": "0"}, {"fixed": build}]}]}]}))
+    row("CVE-1", WS25, "5122871", "10.0.26100.33438")
+    row("CVE-2", WS25, "5126646", "10.0.26100.33650")
+    s.commit()
+    assert windows_kbs(s, WS25, ["CVE-1", "CVE-2"]) == {"kb": "5126646", "to": "10.0.26100.33650", "alt": {"kb": "5122871", "to": "10.0.26100.33438"}}
+    assert windows_kbs(s, WS25, ["CVE-2"]) == {"kb": "5126646", "to": "10.0.26100.33650"}
+    row("CVE-1", WS25 + HOTPATCH, "5000001", "10.0.26100.33000")
+    row("CVE-2", WS25 + HOTPATCH, "5000002", "10.0.26100.33100")
+    s.commit()
+    assert windows_kbs(s, WS25, ["CVE-1", "CVE-2"])["alt"]["kb"] == "5000002"
+
+
+def test_a_job_that_reached_its_step_build_succeeded_and_a_short_one_did_not():
+    from types import SimpleNamespace
+
+    from nimstead.remediate import _stepped
+    job = lambda manager, build: SimpleNamespace(manager=manager, result_versions={WS25: build}, packages=[  # noqa: E731
+        {"kb": "5126646", "to": "10.0.26100.33650", "alt": {"kb": "5122871", "to": "10.0.26100.33438"}}])
+    assert _stepped(job("windows", "10.0.26100.33438")) == "10.0.26100.33438"
+    assert _stepped(job("windows", "10.0.26100.1742")) is None
+    assert _stepped(job("winget", "10.0.26100.33438")) is None

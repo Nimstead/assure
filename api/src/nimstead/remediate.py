@@ -100,6 +100,10 @@ def windows_kbs(s: Session, product: str, cves: list[str], ecosystem: str = "Win
         alt_to, alt_kb = top(hot)
         if alt_kb != kb:
             out["alt"] = {"kb": alt_kb, "to": alt_to}
+    elif older := {x for x in cum.values() if x[1] != kb}:
+        # a host far behind is offered an earlier cumulative first (real Server 2025 26100.1742: 2026-09 before 2026-10)
+        step_to, step_kb = max(older, key=lambda x: sort_key(windows_cmp)(x[0]))
+        out["alt"] = {"kb": step_kb, "to": step_to}
     return out
 
 
@@ -382,11 +386,20 @@ def report(s: Session, job: RemediationJob, outcome: str, steps: list[dict], err
     return job
 
 
+def _stepped(job: RemediationJob) -> str | None:
+    """The earlier build a Windows job stopped at because Windows Update offered that one first."""
+    alt = (job.packages[0].get("alt") or {}) if job.manager == "windows" and job.packages else {}
+    return alt.get("to") if alt.get("to") in (job.result_versions or {}).values() else None
+
+
 def verify(s: Session, asset: Asset) -> None:
     """After a fresh inventory: a job succeeded only if its findings are now resolved."""
     for job in s.scalars(select(RemediationJob).where(RemediationJob.asset_id == asset.id, RemediationJob.status == "verifying")):
         still_open = [f.vuln_id for f in s.scalars(select(Finding).where(Finding.id.in_(job.finding_ids), Finding.status == "open"))]
-        if still_open:
+        if still_open and (step := _stepped(job)):  # what's left needs the next job; those findings stay open (DECISIONS 67)
+            job.status = "succeeded"
+            _log(s, job, "remediation_stepped", to=step, still_open=still_open)
+        elif still_open:
             job.status, job.error = "not_fixed", f"Upgrade applied but still vulnerable: {', '.join(still_open[:10])}"
             _log(s, job, "remediation_not_fixed", still_open=still_open)
         else:

@@ -1,6 +1,7 @@
 """Disposable Windows Server 2025 or Windows 11 VM (VirtualBox) for testing Windows install + remediation.
 
-  uv run python ../sandbox/winvm.py create  ISO   # unattended install (Server Core, or Windows 11 Pro), headless; prints the VM name
+  uv run python ../sandbox/winvm.py create  ISO [--memory=MB] [--lab] [--image=N]   # unattended install (Server Core, or Windows 11 Pro), headless;
+      # prints the VM name. --lab: a second NIC on a private network (static IPs are set inside the guest). --image: a Server edition's image index
   uv run python ../sandbox/winvm.py destroy NAME  # power off + delete VM and disks (only nimstead-sbx-win-* names)
   uv run python ../sandbox/winvm.py run NAME 'powershell...'   # run as the VM's Administrator via guest control
 
@@ -20,6 +21,7 @@ from pathlib import Path
 
 VBOX = r"C:\Program Files\Oracle\VirtualBox\VBoxManage.exe"
 PREFIX = "nimstead-sbx-win-"
+LAB_NET = "nimstead-sbx-lab"  # VirtualBox internal network: lab VMs reach each other on it, and nothing else does
 STATE = Path(tempfile.gettempdir()) / "nimstead-sbx-win"
 
 
@@ -43,18 +45,22 @@ def locale_args(detected: str) -> list[str]:
     return [f"--locale={lang.replace('-', '_')}", f"--country={lang[-2:]}", f"--language={lang}"]
 
 
-def create(iso: str) -> str:
+def create(iso: str, memory: int = 4096, lab: bool = False, image: int = 1, computer: str = "nimstead-sbx", password: str | None = None) -> str:
+    """`image`: Server image index (1 = Server Core Standard). `computer`, `password`: a lab's machines need their own names and one
+    Administrator secret, because a promoted machine's Administrator becomes the domain's."""
     name = PREFIX + secrets.token_hex(3)
     folder = STATE / name
     folder.mkdir(parents=True)
-    password = "Nim!" + secrets.token_hex(8)
+    password = password or "Nim!" + secrets.token_hex(8)
     (folder / "creds.json").write_text(json.dumps({"user": "Administrator", "password": password}))
     detected = vbox("unattended", "detect", f"--iso={iso}")
     win11, win10 = "Windows11" in detected, "Windows10" in detected
     vbox("createvm", "--name", name, "--ostype", "Windows11_64" if win11 else "Windows10_64" if win10 else "Windows2025_64",
          "--basefolder", str(folder), "--register")
-    vbox("modifyvm", name, "--memory", "4096", "--cpus", "2", "--firmware", "efi", "--nic1", "nat", "--graphicscontroller", "vboxsvga",
+    vbox("modifyvm", name, "--memory", str(memory), "--cpus", "2", "--firmware", "efi", "--nic1", "nat", "--graphicscontroller", "vboxsvga",
          "--nat-localhostreachable1", "on")  # VirtualBox 7 blocks guest -> host 127.0.0.1 (10.0.2.2) by default
+    if lab:
+        vbox("modifyvm", name, "--nic2", "intnet", "--intnet2", LAB_NET)
     if win10:  # setup hung at "Getting ready", disk idle, with the default Hyper-V paravirtual interface (real VM)
         vbox("modifyvm", name, "--paravirt-provider", "none")
     if win11:  # Windows 11 setup refuses hardware without TPM 2.0 and Secure Boot
@@ -68,10 +74,10 @@ def create(iso: str) -> str:
     vbox("storageattach", name, "--storagectl", "SATA", "--port", "0", "--device", "0", "--type", "hdd", "--medium", str(disk))
     additions = str(Path(VBOX).parent / "VBoxGuestAdditions.iso")
     # Windows 11 consumer ISO: Pro with Microsoft's public generic install key (unactivated; the VM is disposable)
-    edition = ["--image-index=6", "--key=VK7JG-NPHTM-C97JM-9MPGT-3V66T"] if win11 else ["--image-index=1"]
+    edition = ["--image-index=6", "--key=VK7JG-NPHTM-C97JM-9MPGT-3V66T"] if win11 else [f"--image-index={image}"]
     args = ["unattended", "install", name, f"--iso={iso}", *edition, "--user=Administrator",
             f"--admin-password={password}", f"--password={password}", "--full-user-name=Administrator",
-            *locale_args(detected), "--time-zone=UTC", "--hostname=nimstead-sbx.local",
+            *locale_args(detected), "--time-zone=UTC", f"--hostname={computer}.local",
             "--install-additions", "--start-vm=headless"]
     if Path(additions).exists():
         args.append(f"--additions-iso={additions}")
@@ -188,7 +194,8 @@ def destroy(name: str) -> None:
 if __name__ == "__main__":
     cmd = sys.argv[1]
     if cmd == "create":
-        create(sys.argv[2])
+        opts = dict(a[2:].split("=", 1) for a in sys.argv[3:] if "=" in a)
+        create(sys.argv[2], memory=int(opts.get("memory", 4096)), lab="--lab" in sys.argv, image=int(opts.get("image", 1)))
     elif cmd == "destroy":
         destroy(sys.argv[2])
     elif cmd == "wait":

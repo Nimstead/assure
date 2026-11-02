@@ -21,8 +21,8 @@ import winvm  # noqa: E402
 from signin import signup  # noqa: E402  first account + its admin's TOTP sign-in
 
 ROOT = Path(__file__).resolve().parents[1]
-NAME = sys.argv[1]
-assert NAME.startswith(winvm.PREFIX)
+# a lab harness has no VM on its command line and points this at each VM in turn; winvm.run refuses anything else
+NAME = next((a for a in sys.argv[1:] if a.startswith(winvm.PREFIX)), "")
 TMP = Path(tempfile.mkdtemp(prefix="nimstead-wine2e-"))
 PORT = 8766
 log: list[dict] = []
@@ -52,8 +52,8 @@ def guest(cmd, timeout=3600, check=True):
     return out
 
 
-def as_system(cmd, name="NimsteadTest", wait_minutes=120, result=None):
-    """Run cmd as SYSTEM through a one-off scheduled task (Windows Update refuses remote/network logons)."""
+def start_system(cmd, name="NimsteadTest"):
+    """Start cmd as SYSTEM through a one-off scheduled task (Windows Update refuses remote/network logons)."""
     # the command goes in a .cmd file: cmd /c inside a task argument mangles quoted "C:\Program Files\..." paths
     guest("Set-Content -Path C:\\nimtest\\task.cmd -Encoding ascii -Value @'\r\n" + cmd + "\r\necho done > C:\\nimtest\\done.txt\r\n'@")
     guest(r"""$ErrorActionPreference='Stop'
@@ -61,6 +61,11 @@ def as_system(cmd, name="NimsteadTest", wait_minutes=120, result=None):
         $a = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument '/c C:\nimtest\task.cmd'
         Register-ScheduledTask -TaskName NAME -Action $a -User SYSTEM -RunLevel Highest -Force | Out-Null
         Start-ScheduledTask -TaskName NAME""".replace("NAME", name))
+
+
+def as_system(cmd, name="NimsteadTest", wait_minutes=120, result=None):
+    """Run cmd as SYSTEM and wait for it."""
+    start_system(cmd, name)
     end = time.time() + wait_minutes * 60
     while time.time() < end:
         if "True" in guest(r"Test-Path C:\nimtest\done.txt", timeout=120, check=False):
@@ -78,8 +83,10 @@ def reboot_and_wait():
     winvm.wait_ready(NAME, minutes=90)
     # servicing can restart once more on its own right after (seen on Server 2025: TrustedInstaller 30 s after boot);
     # ready means the boot time held still for 3 minutes
-    boot, stable = None, 0
+    boot, stable, end = None, 0, time.time() + 2 * 3600
     while stable < 3:
+        if time.time() > end:
+            raise RuntimeError(f"{NAME} kept restarting for 2 hours")
         time.sleep(60)
         try:
             now = guest("(Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToString('o')", check=False).strip()
@@ -97,6 +104,7 @@ def build():
 
 
 def main(keep=False) -> int:
+    assert NAME.startswith(winvm.PREFIX)
     # --proxy: the server is HTTPS (the agent never sends its key to a plain-http server through a proxy)
     tls = None
     if "--proxy" in sys.argv:

@@ -674,6 +674,155 @@ HOST_FACTS = ("config", "roles", "domain_role", "domain", "cluster", "wsus", "wu
               "last_update_success", "machine_certs", "listening")
 
 
+# Benchmark settings the server judges (winbaseline.py, DECISIONS 75): a closed list in the signed agent, generated once from
+# the STIGs by scripts/xccdf_rules.py and reviewed. The server can't add to it or choose from it (DECISIONS 7, 27); a rule whose
+# value isn't here simply reads "not assessed". Each entry is "HKLM path|value name".
+BASELINE_REG = (
+    r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon|CachedLogonsCount",
+    r"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\CredUI|EnumerateAdministrators",
+    r"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer|NoAutorun",
+    r"SOFTWARE\Microsoft\Windows\CurrentVersion\policies\Explorer|NoDriveTypeAutoRun",
+    r"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer|NoWebServices",
+    r"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer|PreXPSP2ShellProtocolBehavior",
+    r"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit|ProcessCreationIncludeCmdLine_Enabled",
+    r"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Kerberos\Parameters|DevicePKInitEnabled",
+    r"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Kerberos\Parameters|SupportedEncryptionTypes",
+    r"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System|ConsentPromptBehaviorAdmin",
+    r"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System|ConsentPromptBehaviorUser",
+    r"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System|DisableAutomaticRestartSignOn",
+    r"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System|EnableInstallerDetection",
+    r"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System|EnableLUA",
+    r"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System|EnableSecureUIAPaths",
+    r"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System|EnableUIADesktopToggle",
+    r"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System|EnableVirtualization",
+    r"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System|FilterAdministratorToken",
+    r"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System|InactivityTimeoutSecs",
+    r"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System|LocalAccountTokenFilterPolicy",
+    r"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System|MSAOptional",
+    r"SOFTWARE\Policies\Microsoft\Cryptography|ForceKeyProtection",
+    r"SOFTWARE\Policies\Microsoft\Internet Explorer\Feeds|AllowBasicAuthInClear",
+    r"SOFTWARE\Policies\Microsoft\Internet Explorer\Feeds|DisableEnclosureDownload",
+    r"SOFTWARE\Policies\Microsoft\Power\PowerSettings\0e796bdb-100d-47d6-a2d5-f7d2daa51f51|ACSettingIndex",
+    r"SOFTWARE\Policies\Microsoft\Power\PowerSettings\0e796bdb-100d-47d6-a2d5-f7d2daa51f51|DCSettingIndex",
+    r"SOFTWARE\Policies\Microsoft\Windows NT\Printers|DisableHTTPPrinting",
+    r"SOFTWARE\Policies\Microsoft\Windows NT\Printers|DisableWebPnPDownload",
+    r"SOFTWARE\Policies\Microsoft\Windows NT\Rpc|RestrictRemoteClients",
+    r"SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services|DisablePasswordSaving",
+    r"SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services|fAllowToGetHelp",
+    r"SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services|fDisableCdm",
+    r"SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services|fEncryptRPCTraffic",
+    r"SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services|fPromptForPassword",
+    r"SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services|MinEncryptionLevel",
+    r"SOFTWARE\Policies\Microsoft\Windows\AppCompat|DisableInventory",
+    r"SOFTWARE\Policies\Microsoft\Windows\AppPrivacy|LetAppsActivateWithVoice",
+    r"SOFTWARE\Policies\Microsoft\Windows\AppPrivacy|LetAppsActivateWithVoiceAboveLock",
+    r"SOFTWARE\Policies\Microsoft\Windows\CredentialsDelegation|AllowProtectedCreds",
+    r"SOFTWARE\Policies\Microsoft\Windows\DataCollection|AllowTelemetry",
+    r"SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization|DODownloadMode",
+    r"SOFTWARE\Policies\Microsoft\Windows\Explorer|NoAutoplayfornonVolume",
+    r"SOFTWARE\Policies\Microsoft\Windows\Explorer|NoDataExecutionPrevention",
+    r"SOFTWARE\Policies\Microsoft\Windows\Explorer|NoHeapTerminationOnCorruption",
+    r"SOFTWARE\Policies\Microsoft\Windows\Group Policy\{35378EAC-683F-11D2-A89A-00C04FBBCFA2}|NoGPOListChanges",
+    r"SOFTWARE\Policies\Microsoft\Windows\Installer|AlwaysInstallElevated",
+    r"SOFTWARE\Policies\Microsoft\Windows\Installer|EnableUserControl",
+    r"SOFTWARE\Policies\Microsoft\Windows\Installer|SafeForScripting",
+    r"Software\Policies\Microsoft\Windows\Kernel DMA Protection|DeviceEnumerationPolicy",
+    r"SOFTWARE\Policies\Microsoft\Windows\LanmanWorkstation|AllowInsecureGuestAuth",
+    r"SOFTWARE\Policies\Microsoft\Windows\Network Connections|NC_ShowSharedAccessUI",
+    r"SOFTWARE\Policies\Microsoft\Windows\Personalization|NoLockScreenSlideshow",
+    r"SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging|EnableScriptBlockLogging",
+    r"SOFTWARE\Policies\Microsoft\Windows\System|DontDisplayNetworkSelectionUI",
+    r"SOFTWARE\Policies\Microsoft\Windows\System|EnumerateLocalUsers",
+    r"SOFTWARE\Policies\Microsoft\Windows\WcmSvc\GroupPolicy|fBlockNonDomain",
+    r"SOFTWARE\Policies\Microsoft\Windows\WcmSvc\GroupPolicy|fMinimizeConnections",
+    r"SOFTWARE\Policies\Microsoft\Windows\Windows Search|AllowIndexingEncryptedStoresOrItems",
+    r"SOFTWARE\Policies\Microsoft\Windows\WinRM\Client|AllowBasic",
+    r"SOFTWARE\Policies\Microsoft\Windows\WinRM\Client|AllowDigest",
+    r"SOFTWARE\Policies\Microsoft\Windows\WinRM\Client|AllowUnencryptedTraffic",
+    r"SOFTWARE\Policies\Microsoft\Windows\WinRM\Service|AllowBasic",
+    r"SOFTWARE\Policies\Microsoft\Windows\WinRM\Service|AllowUnencryptedTraffic",
+    r"SOFTWARE\Policies\Microsoft\Windows\WinRM\Service|DisableRunAs",
+    r"SYSTEM\CurrentControlSet\Control\Lsa\FIPSAlgorithmPolicy|Enabled",
+    r"SYSTEM\CurrentControlSet\Control\LSA\MSV1_0|allownullsessionfallback",
+    r"SYSTEM\CurrentControlSet\Control\Lsa\MSV1_0|NTLMMinClientSec",
+    r"SYSTEM\CurrentControlSet\Control\Lsa\MSV1_0|NTLMMinServerSec",
+    r"SYSTEM\CurrentControlSet\Control\LSA\pku2u|AllowOnlineID",
+    r"SYSTEM\CurrentControlSet\Control\Lsa|EveryoneIncludesAnonymous",
+    r"SYSTEM\CurrentControlSet\Control\Lsa|LimitBlankPasswordUse",
+    r"SYSTEM\CurrentControlSet\Control\Lsa|LmCompatibilityLevel",
+    r"SYSTEM\CurrentControlSet\Control\Lsa|NoLMHash",
+    r"SYSTEM\CurrentControlSet\Control\Lsa|RestrictAnonymous",
+    r"SYSTEM\CurrentControlSet\Control\Lsa|RestrictAnonymousSAM",
+    r"SYSTEM\CurrentControlSet\Control\Lsa|RestrictRemoteSAM",
+    r"SYSTEM\CurrentControlSet\Control\Lsa|SCENoApplyLegacyAuditPolicy",
+    r"SYSTEM\CurrentControlSet\Control\LSA|UseMachineId",
+    r"SYSTEM\CurrentControlSet\Control\SecurityProviders\Wdigest|UseLogonCredential",
+    r"SYSTEM\CurrentControlSet\Control\Session Manager\kernel|DisableExceptionChainValidation",
+    r"SYSTEM\CurrentControlSet\Control\Session Manager|ProtectionMode",
+    r"SYSTEM\CurrentControlSet\Services\LanManServer\Parameters|EnableSecuritySignature",
+    r"SYSTEM\CurrentControlSet\Services\LanManServer\Parameters|RequireSecuritySignature",
+    r"SYSTEM\CurrentControlSet\Services\LanManServer\Parameters|RestrictNullSessAccess",
+    r"SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters|EnablePlainTextPassword",
+    r"SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters|EnableSecuritySignature",
+    r"SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters|RequireSecuritySignature",
+    r"SYSTEM\CurrentControlSet\Services\LDAP|LDAPClientIntegrity",
+    r"SYSTEM\CurrentControlSet\Services\Netbt\Parameters|NoNameReleaseOnDemand",
+    r"SYSTEM\CurrentControlSet\Services\Netlogon\Parameters|DisablePasswordChange",
+    r"SYSTEM\CurrentControlSet\Services\Netlogon\Parameters|MaximumPasswordAge",
+    r"SYSTEM\CurrentControlSet\Services\Netlogon\Parameters|RefusePasswordChange",
+    r"SYSTEM\CurrentControlSet\Services\Netlogon\Parameters|RequireSignOrSeal",
+    r"SYSTEM\CurrentControlSet\Services\Netlogon\Parameters|RequireStrongKey",
+    r"SYSTEM\CurrentControlSet\Services\Netlogon\Parameters|SealSecureChannel",
+    r"SYSTEM\CurrentControlSet\Services\Netlogon\Parameters|SignSecureChannel",
+    r"SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters|DisableIpSourceRouting",
+    r"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters|DisableIPSourceRouting",
+    r"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters|EnableICMPRedirect",
+)
+# A value that isn't there is null; one that can't be read, or has a type no rule expects, is left out: "not assessed", not a fail.
+PS_BASELINE = r"""
+$ErrorActionPreference = 'SilentlyContinue'
+$reg = [ordered]@{}
+$lm = [Microsoft.Win32.RegistryKey]::OpenBaseKey('LocalMachine', 'Registry64')
+foreach ($e in '__REG__' -split ';') {
+  $p, $n = $e -split '\|', 2
+  try {
+    $k = $lm.OpenSubKey($p)
+    if ($null -eq $k -or $k.GetValueNames() -notcontains $n) { $reg[$e] = $null; continue }
+    $v = $k.GetValue($n, $null, 'DoNotExpandEnvironmentNames')
+    if ($v -is [int]) { $v = [BitConverter]::ToUInt32([BitConverter]::GetBytes($v), 0) }  # a DWORD reads back signed
+    if ($v -is [uint32] -or $v -is [string]) { $reg[$e] = $v }
+  } catch { }
+}
+ConvertTo-Json -Compress -Depth 3 -InputObject ([ordered]@{ reg = $reg })
+""".replace("__REG__", ";".join(BASELINE_REG))
+BASELINE_MAX_BYTES = 20_000  # the server drops a whole report's facts over 64 KB (app.py, facts_ok); these must never cost the rest
+
+
+def baseline_id(entry):
+    """Short and stable, so the report stays small and old agents keep matching newer rule tables."""
+    return hashlib.sha256(entry.lower().encode()).hexdigest()[:8]
+
+
+def windows_baseline_facts(run=None):
+    """{"reg": {id: value or null}} for the closed lists above, or None. Only what's on those lists is kept."""
+    rc, out = ps(run or sh, PS_BASELINE)
+    try:
+        d = json.loads(out.strip().splitlines()[-1]) if rc == 0 else None
+    except (ValueError, IndexError):
+        d = None
+    if not isinstance(d, dict) or not isinstance(d.get("reg"), dict):
+        return None
+    reg = {}
+    for e in BASELINE_REG:
+        v = d["reg"].get(e, reg)  # reg itself is just "not in the answer"
+        if v is None or (isinstance(v, int) and not isinstance(v, bool)):
+            reg[baseline_id(e)] = v
+        elif isinstance(v, str):
+            reg[baseline_id(e)] = v[:100]
+    facts = {"reg": reg}
+    return facts if len(json.dumps(facts)) <= BASELINE_MAX_BYTES else None
+
+
 def windows_host_facts(run=None):
     """Facts from PS_HOST, or ({}, problem). Only the keys in HOST_FACTS are kept."""
     rc, out = ps(run or sh, PS_HOST)
@@ -683,7 +832,10 @@ def windows_host_facts(run=None):
         d = None
     if not isinstance(d, dict):
         return {}, f"host check failed: {out.strip()[-200:]}"
-    return {k: d.get(k) for k in HOST_FACTS}, None
+    facts = {k: d.get(k) for k in HOST_FACTS}
+    if (baseline := windows_baseline_facts(run)) is not None:  # its own script: a failure here costs only these rules
+        facts["baseline"] = baseline
+    return facts, None
 
 
 # Driver files' SHA-256 (DECISIONS 71): loaded drivers first, then *.sys directly in System32\drivers, which is also how a

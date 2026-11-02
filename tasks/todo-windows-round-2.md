@@ -28,6 +28,7 @@ so on a localised Windows the service permission check would silently find nothi
 - Verify: `sandbox/last_run_windows_de.json`. Files: agent, `test_agent_*`, `winvm.py` (locale option). Deps: none.
 
 ### W3: Side-by-side with Greenbone (M)
+- [ ] Clean room (DECISIONS 79, owner's call 2026-11-02): Greenbone is a black box. Compare what its reports say, never read or copy its feed scripts (NASL) or code. A gap is fixed from vendor advisories and NVD, with those named as the source
 - [ ] Short look first: does the free feed's credentialed Windows scan cover patches and apps? If not, stop and report
 - [ ] Same VM, old OS and old apps, both scanners; every CVE on only one side classified: ours missed, theirs wrong, or out of scope
 - [ ] Each "ours missed" becomes a test or a W-task; the result lives in a private run file, no public claim

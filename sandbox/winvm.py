@@ -176,7 +176,8 @@ def unstick(name: str) -> bool:
     except (OSError, ValueError):
         return False
     reset = max((i for i, s in enumerate(lines) if "to 'RESETTING'" in s), default=-1)
-    if reset < 0 or any("Guest OS reported" in s for s in lines[reset:]) or stamps[-1][1] - dict(stamps)[reset] < 120:
+    # Windows 10 logs no "Guest OS reported": a healthy VM read as hung and was power-cycled mid-job (real VM, DECISIONS 78)
+    if reset < 0 or additions_since_reset(lines) or any("Guest OS reported" in s for s in lines[reset:]) or stamps[-1][1] - dict(stamps)[reset] < 120:
         return False
     vbox("controlvm", name, "poweroff", check=False)
     time.sleep(5)

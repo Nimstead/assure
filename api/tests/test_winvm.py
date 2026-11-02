@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "sandbox"))
+import winvm  # noqa: E402
 from winvm import additions_since_reset, locale_args  # noqa: E402
 
 REPORT = "00:14:09 VMMDev: Guest Additions information report: Version 7.2.22"
@@ -68,6 +69,15 @@ def test_wait_ready_resets_a_setup_whose_disk_went_idle(monkeypatch):
     with pytest.raises(RuntimeError):
         winvm.wait_ready("nimstead-sbx-win-x", minutes=30)
     assert calls and calls[0][0][2] == "reset" and calls[0][1] > 12 * 60
+
+
+def test_a_healthy_vm_that_logs_no_guest_os_line_is_not_power_cycled(tmp_path, monkeypatch):
+    log = tmp_path / "n" / "n" / "Logs" / "VBox.log"
+    log.parent.mkdir(parents=True)
+    log.write_text("\n".join(["00:00:01.000000 " + RESET[9:], "00:10:00.000000 " + REPORT[9:]]))
+    monkeypatch.setattr(winvm, "STATE", tmp_path)
+    monkeypatch.setattr(winvm, "vbox", lambda *a, **k: (_ for _ in ()).throw(AssertionError("power-cycled a healthy VM")))
+    assert winvm.unstick("n") is False
 
 
 def test_a_localised_iso_installs_in_its_own_language():

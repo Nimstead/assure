@@ -227,6 +227,17 @@ def _cut_power_during_install(tmp_path, host, leaves):
     return agent.WinJob(run=host, state_path=w.state_path, build=lambda: host.build, retry_wait=0, booted=lambda: host.boot)
 
 
+def test_power_cut_before_the_install_starts_the_job_over(tmp_path):
+    host = FakeWin()
+    w = make(tmp_path, host)
+    w.build = lambda: (_ for _ in ()).throw(KeyboardInterrupt())  # the machine stops during the first check
+    with pytest.raises(KeyboardInterrupt):
+        w.advance()
+    res = resume(tmp_path, host)
+    assert res["outcome"] == "pending_reboot" and NEW_PKG in host.pkgs
+    assert sum(s["step"] == "job validated" for s in res["steps"]) == 1
+
+
 def test_power_cut_during_install_with_nothing_new_says_so_and_clears(tmp_path):
     host = FakeWin()
     resumed = _cut_power_during_install(tmp_path, host, None)

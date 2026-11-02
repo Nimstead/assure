@@ -2138,6 +2138,8 @@ class WinJob:
             return self._interrupted()
         ok = self.valid()
         self.step("job validated", ok, "" if ok else "invalid KB, product, version or service name")
+        s["steps"] = s["steps"][-1:]  # a resume after a power cut starts its checks again
+        self.save()  # nothing has changed yet: a machine that stops here starts the job over at its next run
         cur = self.build()
         self.step("installed build matches plan", cur == s["from"], f"installed {cur}, planned {s['from']}")
         rc, out = ps(self.run, PS_REBOOT_PENDING)

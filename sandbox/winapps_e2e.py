@@ -60,6 +60,21 @@ NEW6 = {  # batch 6 alone with --new6
     "TortoiseSVN.TortoiseSVN": ("1.14.9.29743", "tigris:tortoisesvn"), "Mobatek.MobaXterm": ("26.5.0.5542", "mobatek:mobaxterm"), "Inkscape.Inkscape": ("1.4.3", "inkscape:inkscape"),
     "Insecure.Nmap": ("7.60", "nmap:nmap"), "RubyInstallerTeam.Ruby.3.3": ("3.3.12-2", "ruby-lang:ruby"), "Postman.Postman": ("12.34.3", "postman:postman"),
 }
+NEW7 = {  # batch 7 alone with --new7: (old, key, winget's newest on 2026-11-02), versions checked against winget-pkgs manifests. None: winget has one version, so the
+    # run shows whether the name is identified but can't prove an upgrade. Liberica shares oracle:openjdk with Corretto and would read "already installed": run it alone
+    "Adobe.Acrobat.Reader.64-bit": ("26.002.21996", "adobe:acrobat_dc", "26.002.22031"), "Ollama.Ollama": ("0.40.12", "ollama:ollama", "0.40.13"),
+    "ShiningLight.OpenSSL.Light": ("4.0.3", "openssl:openssl", "4.1.0"), "Cisco.ClamAV": ("1.5.3", "clamav:clamav", "1.5.4"),
+    "Sandboxie.Plus": ("1.18.5", "sandboxie-plus:sandboxie", "1.18.6"), "Joplin.Joplin": ("3.7.21", "joplin_project:joplin", "3.7.22"),
+    "Mattermost.MattermostDesktop": ("6.3.0", "mattermost:mattermost_desktop", "6.3.1"), "SonicWall.NetExtender": ("10.3.4", "sonicwall:netextender", "10.3.5"),
+    "Splashtop.SplashtopStreamer": ("3.8.6.1", "splashtop:streamer", "3.8.6.3"), "OpenSC.OpenSC": ("0.26.1", "opensc_project:opensc", "0.27.1"),
+    "Amazon.Corretto.21.JDK": ("21.0.12.12", "oracle:openjdk", "21.0.13.0"), "JetBrains.IntelliJIDEA": ("2026.2.3", "jetbrains:intellij_idea", "2026.2.4"),
+    "JetBrains.PyCharm": ("2026.2.3", "jetbrains:pycharm", "2026.2.4"), "Plex.PlexMediaServer": ("1.43.5.11029", "plex:media_server", "1.43.5.11079"),
+    "Tenable.Nessus": ("10.12.6.20073", "tenable:nessus", None), "Tenable.NessusAgent": ("11.2.3.20022", "tenable:nessus_agent", None),
+    "JetBrains.TeamCity": ("2026.2", "jetbrains:teamcity", "2026.2.1"), "OctopusDeploy.Server": ("2025.3.14320", "octopus:octopus_server", "2025.3.14327"),
+    "PaperCutSoftware.NG": ("21.0.3.57216", "papercut:papercut_ng", None), "Atlassian.Confluence": ("10.2.18", "atlassian:confluence_data_center", "10.2.19"),  # servers last
+}
+if "--new7" in sys.argv:
+    APPS, OUT = NEW7, OUT.with_name("last_run_winapps_batch7.json")
 if "--new6" in sys.argv:
     APPS, OUT = NEW6, OUT.with_name("last_run_winapps_batch6.json")
 if "--new" in sys.argv:
@@ -135,7 +150,7 @@ def main(keep=False) -> int:
     note("VM ready", python=py, winget=out.strip()[-40:])
     assert collect(py, agent)["packages"], "the agent can't read inventory here"  # or every app reads as not identified
     results = {}
-    for wid, (old, key) in APPS.items():
+    for wid, (old, key, *_) in APPS.items():
         if found(collect(py, agent), key):
             results[wid] = {"proven": False, "why": "already installed before the test (an earlier run): uninstall it to retest"}
             note("already installed", app=wid)

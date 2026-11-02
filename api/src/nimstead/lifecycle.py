@@ -86,7 +86,8 @@ APP_EOL = {"nodejs:node.js": ("nodejs", _MAJOR), "python:python": ("python", _MI
            "libreoffice:libreoffice": ("libreoffice", _MINOR), "apache:tomcat": ("tomcat", _MINOR), "golang:go": ("go", _MINOR),
            "postgresql:postgresql": ("postgresql", _MAJOR), "mariadb:mariadb": ("mariadb", _MINOR), "grafana:grafana": ("grafana", _MINOR),
            "oracle:mysql_server": ("mysql", _MINOR), "mongodb:mongodb": ("mongodb", _MINOR), "elastic:elasticsearch": ("elasticsearch", _MINOR),
-           "perl:perl": ("perl", _MINOR), "ruby-lang:ruby": ("ruby", _MINOR)}
+           "perl:perl": ("perl", _MINOR), "ruby-lang:ruby": ("ruby", _MINOR), "openssl:openssl": ("openssl", _MINOR), "clamav:clamav": ("clamav", _MINOR),
+           "atlassian:confluence_data_center": ("confluence", _MINOR)}
 EOL_URL = "https://endoflife.date/api/{}.json"
 THUNDERBIRD_URL = "https://product-details.mozilla.org/1.0/thunderbird_versions.json"  # endoflife.date has no Thunderbird
 BY_KEY = {r.key: r for r in ROWS}

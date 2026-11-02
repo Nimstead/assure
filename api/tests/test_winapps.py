@@ -3,6 +3,7 @@
 import copy
 import gzip
 import json
+import sys
 from pathlib import Path
 
 import httpx
@@ -78,7 +79,6 @@ def test_identify_positive(name, pub, ver, want):
     ("Python 3.14.0rc2 (64-bit)", "Python Software Foundation", "3.14.150.0"),
     ("Java 8 Update 431 (64-bit)", "Oracle Corporation", "8.0.4310.10"),  # NVD says 1.8.0 update431: excluded, not guessed
     ("Java(TM) SE Development Kit 8 Update 431 (64-bit)", "Oracle Corporation", "8.0.4310.10"),
-    ("Adobe Acrobat (64-bit)", "Adobe", "24.003.20112"),
     ("Adobe Acrobat Reader 2020", "Adobe", "20.005.30500"),
     ("PuTTY release 0.81 (64-bit) beta", "Simon Tatham", "0.81"),
     ("WinRAR 7.10 beta 1 (64-bit)", "win.rar GmbH", "7.10.1"),
@@ -465,6 +465,29 @@ def test_cvelist_rows_only_where_nvd_has_none_and_nvd_replaces_them(env):
     ("Nmap 7.60", None, "7.60", ("nmap:nmap", "7.60")),
     ("Ruby 3.3", "RubyInstaller Team", "3.3.12-2-x64", ("ruby-lang:ruby", "3.3.12")),
     ("Postman x64 12.34.3", "Postman", "12.34.3", ("postman:postman", "12.34.3")),
+    # batch 7, from winget manifests or known installers: not yet on a VM
+    ("Adobe Acrobat (64-bit)", "Adobe", "26.002.22031", ("adobe:acrobat_dc", "26.002.22031")),
+    ("JetBrains TeamCity 2026.2.1", "JetBrains s.r.o.", "Build 239120", ("jetbrains:teamcity", "2026.2.1")),
+    ("Atlassian Confluence 10.2.19", "Atlassian", "10.2.19", ("atlassian:confluence_data_center", "10.2.19")),
+    ("Octopus Deploy Server", "Octopus Deploy Pty. Ltd.", "2025.3.14327", ("octopus:octopus_server", "2025.3.14327")),
+    ("Ollama version 0.40.13", "Ollama", "0.40.13", ("ollama:ollama", "0.40.13")),
+    ("OpenSSL 3.5.6 Light LTS (64-bit)", "OpenSSL Win64 Installer Team", "3.5.6", ("openssl:openssl", "3.5.6")),
+    ("OpenSSL Light 4.1.0 for ARM (64-bit)", "OpenSSL Win64 ARM Installer Team", "4.1.0.0", ("openssl:openssl", "4.1.0")),
+    ("ClamAV 1.5.4", "Cisco Systems, Inc.", "1.5.4.0", ("clamav:clamav", "1.5.4")),
+    ("Sandboxie-Plus v1.18.6", "http://xanasoft.com/", "1.18.6", ("sandboxie-plus:sandboxie", "1.18.6")),
+    ("Tenable Nessus (x64)", "Tenable, Inc.", "10.12.6.20073", ("tenable:nessus", "10.12.6")),
+    ("Nessus Agent (x64)", "Tenable, Inc.", "11.2.3.20022", ("tenable:nessus_agent", "11.2.3")),
+    ("Joplin 3.7.22", "Laurent Cozic", "3.7.22", ("joplin_project:joplin", "3.7.22")),
+    ("Mattermost", "Mattermost, Inc.", "6.3.1.0", ("mattermost:mattermost_desktop", "6.3.1.0")),
+    ("Plex Media Server", "Plex, Inc.", "1.43.5.11079", ("plex:media_server", "1.43.5.11079")),
+    ("SonicWall NetExtender", "SonicWall Inc.", "10.3.5.1", ("sonicwall:netextender", "10.3.5")),
+    ("Splashtop Streamer", "Splashtop Inc.", "3.8.6.3", ("splashtop:streamer", "3.8.6.3")),
+    ("PaperCut NG", "PaperCut Software International Pty Ltd", "21.0.3.57216", ("papercut:papercut_ng", "21.0.3")),
+    ("OpenSC smartcard framework (64bit)", "OpenSC Project", "0.27.1.0", ("opensc_project:opensc", "0.27.1")),
+    ("Amazon Corretto JDK 21 (x64)", "Amazon", "21.0.13.11", ("oracle:openjdk", "21.0.13")),
+    ("Liberica JDK 21 (64-bit)", "BellSoft", "21.0.13.305", ("oracle:openjdk", "21.0.13")),
+    ("IntelliJ IDEA 2026.2.4", "JetBrains s.r.o.", "262.11879.100", ("jetbrains:intellij_idea", "2026.2.4")),
+    ("PyCharm 2026.2.4", "JetBrains s.r.o.", "262.11879.98", ("jetbrains:pycharm", "2026.2.4")),
 ])
 def test_identify_batches(name, pub, ver, want):
     assert winapps.identify(name, pub, ver) == want
@@ -492,6 +515,38 @@ def test_identify_batches(name, pub, ver, want):
     ("MySQL Workbench 8.0 CE", "Oracle Corporation", "8.0.40"),
     ("MySQL Server 8.4", "Someone Else", "8.4.9"),
     ("SourceTree", "Someone Else", "3.4.32"),
+    ("Adobe Acrobat (64-bit)", "Adobe", "24.001.30356"),  # the classic track, which NVD keeps apart from continuous
+    ("Adobe Acrobat 2020", "Adobe", "20.001.30002"),
+    ("Adobe Acrobat (64-bit)", "Someone Else", "26.002.22031"),
+    ("JetBrains TeamCity", "JetBrains s.r.o.", "Build 239120"),  # a build number isn't a release
+    ("TeamCity Agent", "JetBrains s.r.o.", "2026.2"),
+    ("Atlassian Confluence 10.2.19", "Someone Else", "10.2.19"),
+    ("Atlassian Companion", "Atlassian", "2.0"),
+    ("Octopus Deploy Tentacle", "Octopus Deploy Pty. Ltd.", "8.3.3164"),
+    ("Ollama", "Someone Else", "0.40.13"),
+    ("OpenSSL 1.1.1w Light (64-bit)", "OpenSSL Win64 Installer Team", "1.1.1w"),  # NVD letters: left out
+    ("FireDaemon OpenSSL 3", "FireDaemon", "3.5.6"),
+    ("OpenSSL 3.5.6 Light (64-bit)", "Someone Else", "3.5.6"),
+    ("ClamWin Free Antivirus", "alch", "0.103"),
+    ("Sandboxie 5.73.8 (64-bit)", "Sandboxie Holdings, LLC", "5.73.8"),  # Classic
+    ("Nessus Network Monitor", "Tenable, Inc.", "6.5.1"),
+    ("Joplin", "Someone Else", "3.7.22"),
+    ("Mattermost", "Someone Else", "6.3.1"),
+    ("Plex", "Plex, Inc.", "1.115.0"),
+    ("Plex HTPC", "Plex, Inc.", "1.71.1"),
+    ("Connect Tunnel", "SonicWall Inc.", "12.5.0.1108"),
+    ("Splashtop Business", "Splashtop Inc.", "3.8.601.0"),
+    ("PaperCut Mobility Print", "PaperCut Software International Pty Ltd", "2026.09.28.1448"),
+    ("PaperCut MF", "PaperCut Software International Pty Ltd", "25.0.10"),
+    ("OpenSC smartcard framework (64bit)", "Someone Else", "0.27.1"),
+    ("Liberica JDK 8 (64-bit)", "BellSoft", "8.0.432.7"),  # Java 8 numbering: left out
+    ("Azul Zulu JDK 21", "Azul Systems, Inc.", "21.54.109"),  # its own numbers
+    ("Amazon Corretto JDK 8 (x64)", "Amazon", "8.462.8.1"),
+    ("IntelliJ IDEA 2026.3 EAP", "JetBrains s.r.o.", "263.1.1"),
+    ("PyCharm 2026.2.4", "Someone Else", "262.11879.98"),
+    ("Erlang OTP 27 (15.2)", "Ericsson AB", "15.2"),  # the ERTS version, not OTP
+    ("Wazuh Agent", "Wazuh, Inc", "4.14.3"),
+    ("Zabbix Agent 2 (64-bit)", "Zabbix SIA", "7.4.2"),
 ])
 def test_identify_batch_near_misses(name, pub, ver):
     assert winapps.identify(name, pub, ver) is None
@@ -570,6 +625,29 @@ def test_a_cve_tied_to_apple_hardware_never_reaches_windows():
         {"cpeMatch": [{"vulnerable": True, "criteria": "cpe:2.3:a:mozilla:thunderbird:*:*:*:*:*:*:*:*", "versionEndExcluding": "128.5"}]},
         {"cpeMatch": [{"vulnerable": False, "criteria": "cpe:2.3:h:apple:m1:-:*:*:*:*:*:*:*"}]}]}]}
     assert winapps.advisories(cve) == []
+
+
+def test_rule_proposer_self_check():
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "sandbox"))
+    import winapps_propose
+    winapps_propose.self_check()
+
+
+def test_a_second_nvd_name_for_docker_desktop_feeds_the_same_key():
+    assert winapps._BY_CPE["docker:docker_desktop"].key == "docker:desktop"
+
+
+def test_batch_7_dead_branches_are_reported_ended():
+    from datetime import date
+
+    from nimstead import lifecycle
+    eol = {"openssl": lifecycle.parse_eol([{"cycle": "3.0", "eol": "2026-09-07"}, {"cycle": "3.5", "eol": "2030-04-08"}]),
+           "clamav": lifecycle.parse_eol([{"cycle": "1.5", "eol": False}, {"cycle": "1.0", "eol": "2025-08-14"}]),
+           "confluence": lifecycle.parse_eol([{"cycle": "10.2", "eol": "2027-12-02"}, {"cycle": "8.5", "eol": "2025-11-30"}])}
+    verdict = lambda k, v: lifecycle.app_verdict(k, v, eol, date(2026, 11, 2))  # noqa: E731
+    assert verdict("openssl:openssl", "3.0.15")[0] == "ended" and verdict("openssl:openssl", "3.5.6") is None
+    assert verdict("clamav:clamav", "1.0.7")[0] == "ended" and verdict("clamav:clamav", "1.5.4") is None
+    assert verdict("atlassian:confluence_data_center", "8.5.20")[0] == "ended" and verdict("atlassian:confluence_data_center", "10.2.19") is None
 
 
 def test_a_dead_thunderbird_branch_is_reported_ended():

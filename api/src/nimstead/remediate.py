@@ -300,6 +300,21 @@ def plan(s: Session, asset: Asset, ecosystem: str, package: str, created_by: str
     return job
 
 
+def _proven_upgrade(p: dict, proven: dict, cmp) -> bool:
+    """The canary's report is input from a host: never let it pin the fleet to an older version."""
+    to = str(proven.get(p["name"], ""))
+    return bool(cmp and SAFE_VERSION.match(to) and p.get("from") and cmp(to, str(p["from"])) > 0)
+
+
+def proves(canary: RemediationJob, job: RemediationJob) -> bool:
+    """Did this canary run what the job would install? A job naming a KB installs that KB whatever it's pinned to, so the
+    canary must have reached its build. Any other job is pinned to what the canary reached, or to none (DECISIONS 74)."""
+    proven = canary.result_versions or {}
+    cmp = comparator_for(job.action_key.split("|", 1)[0])
+    return all(not p.get("kb") or (_proven_upgrade(p, proven, cmp) and cmp(str(proven[p["name"]]), str(p["to"])) >= 0)
+               for p in job.packages)
+
+
 def canary_ok(s: Session, org: Org, job: RemediationJob) -> tuple[bool, str]:
     """Broad-ring auto changes need the same action to have succeeded on a canary and soaked, with no failures anywhere."""
     same = s.scalars(select(RemediationJob).where(RemediationJob.org_id == org.id, RemediationJob.action_key == job.action_key)).all()
@@ -309,8 +324,11 @@ def canary_ok(s: Session, org: Org, job: RemediationJob) -> tuple[bool, str]:
     if not canary_ids:
         return False, "No canary assets: mark at least one asset as ring 0 to enable automatic rollout"
     soak = now() - timedelta(hours=org.canary_soak_hours)
-    if any(j.asset_id in canary_ids and j.status == "succeeded" and j.updated <= soak for j in same):
+    soaked = [j for j in same if j.asset_id in canary_ids and j.status == "succeeded" and j.updated <= soak]
+    if any(proves(j, job) for j in soaked):
         return True, "Canary succeeded and soaked"
+    if soaked:  # one action key spans every release: last month's canary says nothing about this month's update
+        return False, f"Waiting for a canary to succeed on this version and soak for {org.canary_soak_hours}h"
     return False, f"Waiting for a canary to succeed and soak for {org.canary_soak_hours}h"
 
 
@@ -407,11 +425,7 @@ def pin_to_canary(s: Session, job: RemediationJob) -> None:
     ).order_by(RemediationJob.updated.desc()).limit(1))
     proven = (canary.result_versions or {}) if canary else {}
     cmp = comparator_for(job.action_key.split("|", 1)[0])
-
-    def upgrade(p):  # the canary's report is input from a host: never let it pin the fleet to an older version
-        to = str(proven.get(p["name"], ""))
-        return bool(cmp and SAFE_VERSION.match(to) and p.get("from") and cmp(to, str(p["from"])) > 0)
-    job.packages = [{**p, "to": proven[p["name"]]} if upgrade(p) else p for p in job.packages]
+    job.packages = [{**p, "to": proven[p["name"]]} if not p.get("kb") and _proven_upgrade(p, proven, cmp) else p for p in job.packages]
 
 
 def sweep(s: Session, org_id: str) -> None:

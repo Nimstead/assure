@@ -8,6 +8,7 @@ from test_windows import W11, msrc_client
 
 from nimstead.db import Advisory, Asset, InstalledPackage, Org, RemediationJob, make_sessionmaker, now
 from nimstead.feeds import sync_msrc
+from nimstead.remediate import proves
 from nimstead.scan import HOTPATCH
 
 OLD, OCT = "10.0.26200.6899", "10.0.26200.9711"
@@ -216,3 +217,20 @@ def test_newest_updates_per_product_no_month_is_guessed_and_an_unreadable_build_
         s.scalar(select(InstalledPackage).where(InstalledPackage.asset_id == host)).version = "not a build"
         s.commit()
     assert not [r for r in c.get("/api/windows-updates").json() if r["product"] == p]
+
+
+def _job(key, status="succeeded", result=None, **pkg):
+    return RemediationJob(org_id="o", asset_id="a", manager="windows", action_key=key, packages=[{"name": "W", "from": "10.0.1.1", **pkg}],
+                          finding_ids=[], summary="", created_by="t", status=status, result_versions=result)
+
+
+def test_last_months_canary_doesnt_prove_this_months_update():
+    key, oct_ = "Windows|W", {"to": "10.0.1.300", "kb": "2"}
+    assert not proves(_job(key, result={"W": "10.0.1.200"}, to="10.0.1.200", kb="1"), _job(key, "planned", **oct_))  # September's build
+    assert proves(_job(key, result={"W": "10.0.1.300"}, **oct_), _job(key, "planned", **oct_))
+    assert not proves(_job(key, result=None, **oct_), _job(key, "planned", **oct_))  # reported nothing
+
+
+def test_a_job_with_no_kb_is_still_judged_by_pinning():
+    key = "Debian:12|openssl"
+    assert proves(_job(key, to="3.0.2-1", **{"from": "3.0.1-1"}), _job(key, "planned", to="3.0.3-1", **{"from": "3.0.1-1"}))

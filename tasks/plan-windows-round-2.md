@@ -35,8 +35,12 @@ compared ourselves with a competing scanner. This round closes those first, then
   redistributing it needs a CIS licence. W18 checks the terms of both sources before any content lands; this amends 64 and
   needs a new DECISIONS entry.
 - **App breadth stays curated, the curating gets cheaper.** A tool proposes rows, a person and a VM run accept them.
-- **Default comparison is Greenbone Community,** which needs no account. Nessus Essentials (5 hosts, registration) is your
-  call after reading Tenable's licence, which I couldn't confirm allows this use. Results stay private until checked.
+- **Three benchmarks.** Nessus and Qualys are the commercial references for capability, coverage, accuracy and usability.
+  Greenbone is also an executable benchmark and, being open source, something to study (DECISIONS 79). Nessus Essentials
+  (5 hosts) and any Qualys trial need your registration and a read of their terms, which may restrict competitive use; not
+  confirmed either way. Results stay private until checked.
+- **A real engine, not lookups.** Owner's direction, 2026-11-02: an independently engineered, modular detection engine
+  (Engine track in the todo), first on Windows, then Linux, network services, applications and attack-path correlation.
 - **The lab is a fail-fast gate.** `winremote.py` records "the host fits one VM at a time". W7 tests that with Server Core
   VMs at about 2.5 GB. If it fails, Phase 2 stops and goes to "Needs the owner" as a bigger machine.
 
@@ -104,7 +108,8 @@ longest (each batch of 25 is a day). The whole round: 6–8 weeks of elapsed tim
 ## Not doing
 - **Feature upgrades** of end-of-life Windows: they can't be undone the way DECISIONS 8 needs. Reported, not fixed.
 - **ARM64 proof:** VirtualBox can't run it here, so unit tests only until someone has the hardware.
-- **Network vulnerability scanning of unmanaged devices,** macOS, ticketing connectors. They aren't the Windows agent.
+- **In this round:** macOS, ticketing connectors, and network scanning of unmanaged devices. Network services come after the
+  first Windows engine milestone, in the Engine track.
 - **Thousands of apps.** 200 well-chosen curated apps won't match Nessus's plugin count, and W1 says so on screen.
 
 ## Needs the owner (no task can replace these)

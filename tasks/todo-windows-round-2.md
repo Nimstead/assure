@@ -27,12 +27,28 @@ so on a localised Windows the service permission check would silently find nothi
 - [ ] German evaluation install: enrol, report, settings audit and one update with rollback match the English results
 - Verify: `sandbox/last_run_windows_de.json`. Files: agent, `test_agent_*`, `winvm.py` (locale option). Deps: none.
 
-### W3: Side-by-side with Greenbone (M)
-- [ ] Clean room (DECISIONS 79, owner's call 2026-11-02): Greenbone is a black box. Compare what its reports say, never read or copy its feed scripts (NASL) or code. A gap is fixed from vendor advisories and NVD, with those named as the source
+### W3: Side-by-side with Greenbone, then Nessus and Qualys (M)
+- [ ] Runs as an executable benchmark. Studying its source is the separate research track (E1, DECISIONS 79); whoever runs this comparison and fixes its gaps works from reports and vendor data
 - [ ] Short look first: does the free feed's credentialed Windows scan cover patches and apps? If not, stop and report
 - [ ] Same VM, old OS and old apps, both scanners; every CVE on only one side classified: ours missed, theirs wrong, or out of scope
 - [ ] Each "ours missed" becomes a test or a W-task; the result lives in a private run file, no public claim
 - Verify: `sandbox/last_run_compare.json`. Files: `sandbox/wincompare.py` (new), one report. Deps: none. Nessus only if you decide so.
+
+## Engine track: a real scanning engine (owner's priority, 2026-11-02; runs beside the OS matrix)
+
+Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens Greenbone.
+
+### E1: Research and licences (research side, outside this repo)
+- [ ] Greenbone's architecture, knowledge base, dependencies, authenticated checks, patch and version logic, confidence and false positives studied; notes stay outside the repo
+- [ ] `docs/engine/spec-detection.md`: concepts and requirements in our own words; `docs/engine/greenbone-licences.md`: each component's licence, quoted
+- [ ] Separate reviewer with source access passes the spec: nothing copied or closely paraphrased
+
+### E2: First end-to-end Windows scan (L, split on starting)
+- [ ] Facts with provenance, detection rules with declared dependencies, a verdict of vulnerable, not vulnerable or can't tell, confidence and an evidence chain for each
+- [ ] Demonstrable: one command scans a real Windows VM and prints a report saying why each finding exists and what stopped any check from concluding
+- [ ] Existing OS, Microsoft and curated app detection runs through it with no finding lost or added unexplained, measured against the current pipeline
+
+### E3 onward: rule breadth; then Linux, network services, applications and attack-path correlation, in that order, each with a benchmark run
 
 ## Phase 1: the OS matrix
 

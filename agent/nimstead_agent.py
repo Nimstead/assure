@@ -556,6 +556,13 @@ function UserWritable($p) {
   }
   return $false
 }
+function FwAllows($rules, $port, $path) {  # an inbound allow rule covers this port for this program
+  foreach ($r in $rules) {
+    if ($r.prog -ne 'Any' -and [Environment]::ExpandEnvironmentVariables($r.prog) -ine $path) { continue }
+    foreach ($lp in $r.ports) { if ("$lp" -eq 'Any' -or "$lp" -eq "$port" -or ("$lp" -match '^(\d+)-(\d+)$' -and [int]$Matches[1] -le $port -and $port -le [int]$Matches[2])) { return $true } }
+  }
+  return $false
+}
 $c = [ordered]@{}
 $sb = $null; try { $sb = Confirm-SecureBootUEFI } catch { }
 $c.secure_boot = $sb
@@ -630,6 +637,27 @@ $c.defender = if ($mp) { @{ mode = "$($mp.AMRunningMode)"; realtime = $mp.RealTi
 $c.firewall_off = @(Get-NetFirewallProfile | Where-Object { -not $_.Enabled } | ForEach-Object { "$($_.Name)" })
 $bl = Get-BitLockerVolume -MountPoint $env:SystemDrive
 $c.bitlocker_os = if ($bl) { "$($bl.ProtectionStatus)" } else { $null }
+$certs = @()
+foreach ($x in @(Get-ChildItem Cert:\LocalMachine\My, Cert:\LocalMachine\WebHosting | Select-Object -First 30)) {
+  $bits = $null; try { $bits = $x.PublicKey.Key.KeySize } catch { }  # .NET Framework can't read every key type: null = can't tell
+  $sub = "$($x.Subject)"
+  $certs += [ordered]@{ subject = $sub.Substring(0, [Math]::Min(120, $sub.Length)); self_signed = $x.Subject -eq $x.Issuer; private_key = $x.HasPrivateKey
+    not_after = $x.NotAfter.ToUniversalTime().ToString('o'); signature_oid = $x.SignatureAlgorithm.Value; key_oid = $x.PublicKey.Oid.Value; key_bits = $bits }
+}
+$fwr = $null
+try {
+  $on = @{}; Get-NetFirewallRule -PolicyStore ActiveStore -Enabled True -Direction Inbound -Action Allow -ErrorAction Stop | ForEach-Object { $on[$_.InstanceID] = 1 }
+  $apps = @{}; Get-NetFirewallApplicationFilter -PolicyStore ActiveStore -ErrorAction Stop | ForEach-Object { $apps[$_.InstanceID] = "$($_.Program)" }
+  $fwr = @(Get-NetFirewallPortFilter -PolicyStore ActiveStore -ErrorAction Stop | Where-Object { $on[$_.InstanceID] -and "$($_.Protocol)" -in 'TCP', '6', 'Any' } | ForEach-Object { @{ ports = @($_.LocalPort); prog = $apps[$_.InstanceID] } })
+} catch { }
+$lis = [ordered]@{}
+foreach ($t in Get-NetTCPConnection -State Listen) {
+  $k = "$($t.LocalPort)/$($t.OwningProcess)"
+  if ($t.LocalAddress -match '^(127\.|::1$)' -or $lis.Contains($k) -or $lis.Count -ge 60) { continue }
+  $pr = Get-Process -Id $t.OwningProcess
+  $fw = if (@($c.firewall_off).Count) { 'off' } elseif ($null -eq $fwr) { $null } elseif (FwAllows $fwr ([int]$t.LocalPort) "$($pr.Path)") { 'allowed' } else { 'blocked' }
+  $lis[$k] = [ordered]@{ port = [int]$t.LocalPort; process = "$($pr.ProcessName)"; firewall = $fw }
+}
 $cs = Get-CimInstance Win32_ComputerSystem
 $wu = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate'
 $roles = if (Get-Command Get-WindowsFeature) { @(Get-WindowsFeature | Where-Object Installed | ForEach-Object Name) } else {
@@ -637,12 +665,13 @@ $roles = if (Get-Command Get-WindowsFeature) { @(Get-WindowsFeature | Where-Obje
 $last = $null; try { $last = (New-Object -ComObject Microsoft.Update.AutoUpdate).Results.LastInstallationSuccessDate.ToString('o') } catch { }
 $pending = (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending') -or (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired')
 ConvertTo-Json -Compress -Depth 4 -InputObject ([ordered]@{ config = $c; roles = @($roles | Select-Object -First 400);
+  machine_certs = @($certs); listening = @($lis.Values);
   domain_role = [int]$cs.DomainRole; domain = "$($cs.Domain)"; cluster = Reg 'HKLM\Cluster' 'ClusterName';
   wsus = if ((Reg "$wu\AU" 'UseWUServer') -eq 1) { Reg $wu 'WUServer' } else { $null };
   wufb_quality_deferral_days = Reg $wu 'DeferQualityUpdatesPeriodInDays'; pending_reboot = $pending; last_update_success = $last })
 """
 HOST_FACTS = ("config", "roles", "domain_role", "domain", "cluster", "wsus", "wufb_quality_deferral_days", "pending_reboot",
-              "last_update_success")
+              "last_update_success", "machine_certs", "listening")
 
 
 def windows_host_facts(run=None):

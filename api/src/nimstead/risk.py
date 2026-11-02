@@ -63,7 +63,7 @@ def _tier(s: int) -> str:
 
 
 def context(r: Risk, *, kev: bool, ransomware: bool = False, public_exploit: bool = False, msrc: dict | None = None,
-            roles: list | None = None) -> Risk:
+            roles: list | None = None, listening: str | None = None) -> Risk:
     """Threat and exposure context on top of score() (plan T11, T39). KEV still overrides everything: a known-exploited
     CVE is never lowered. Microsoft saying "exploited" counts like KEV before CISA lists it."""
     msrc = msrc or {}
@@ -85,6 +85,9 @@ def context(r: Risk, *, kev: bool, ransomware: bool = False, public_exploit: boo
     if feats and isinstance(roles, list) and roles and not kev and not msrc.get("exploited") and not set(feats) & set(roles):
         s = round(s * 0.6)
         reasons.append(f"{msrc['tag'].removeprefix('Role: ')} isn't installed here: lower priority until it is")
+    if listening:  # this host's copy of the product is reachable over the network, as read by the agent (DECISIONS 72)
+        s = min(100, s + 15) if not kev else s
+        reasons.append(listening)
     if s == r.score and reasons == r.reasons:
         return r
     return Risk(s, "fix-now" if kev or msrc.get("exploited") else _tier(s), reasons)

@@ -7,12 +7,45 @@ Findings tied to a CVE carry the CVE id and are scored like any other CVE (KEV, 
 score and reason. Each says what was read and what to change.
 """
 
+from datetime import UTC, datetime
+
 from nimstead.risk import Risk
 
 ECOSYSTEM = "WinConfig"
+# signature algorithms no CA should use now, by OID: MD2, MD4, MD5, SHA-1 with RSA, DSA, ECDSA (DECISIONS 72)
+WEAK_SIGNATURES = {"1.2.840.113549.1.1.2": "MD2", "1.2.840.113549.1.1.3": "MD4", "1.2.840.113549.1.1.4": "MD5", "1.2.840.113549.1.1.5": "SHA-1",
+                   "1.2.840.10040.4.3": "SHA-1", "1.2.840.10045.4.1": "SHA-1"}
+MIN_KEY_BITS = {"1.2.840.113549.1.1.1": 2048, "1.2.840.10040.4.1": 2048}  # RSA, DSA. An elliptic curve key's size can't be read on .NET Framework
+# server process names -> curated product keys (winapps.py, msproducts.py; a prefix, since SQL Server's key has a year and track).
+# Only names that say which product they are: java, node and python could be anything, so they raise nothing. Written from each
+# product's documentation and not yet seen on a VM (DECISIONS 72).
+LISTENERS = {"postgres": ("postgresql:postgresql",), "mysqld": ("oracle:mysql_server", "mariadb:mariadb"), "mariadbd": ("mariadb:mariadb",),
+             "mongod": ("mongodb:mongodb",), "grafana": ("grafana:grafana",), "grafana-server": ("grafana:grafana",),
+             "tomcat9": ("apache:tomcat",), "tomcat10": ("apache:tomcat",), "tomcat11": ("apache:tomcat",),
+             "splunkd": ("splunk:universal_forwarder",), "winvnc": ("uvnc:ultravnc",), "winvnc4": ("tigervnc:tigervnc",),
+             "teamviewer_service": ("teamviewer:teamviewer",), "anydesk": ("anydesk:anydesk",), "sqlservr": ("SQL Server ",)}
+FIREWALL_SAYS = {"off": "with the firewall off on at least one profile", "allowed": "and a firewall rule allows it"}
 
 
-def evaluate(facts: dict, os_version: str = "") -> list[dict]:
+def reachable_listeners(facts: dict) -> list[tuple[tuple[str, ...], str]]:
+    """(curated product key prefixes, the reason to show) for each listener a matching product's priority can rest on. A port
+    the firewall blocks, or whose state couldn't be read, raises nothing."""
+    rows = facts.get("listening")
+    out = []
+    for r in rows if isinstance(rows, list) else []:
+        if isinstance(r, dict) and isinstance(r.get("port"), int) and (keys := LISTENERS.get(str(r.get("process")).lower())) and r.get("firewall") in FIREWALL_SAYS:
+            out.append((keys, f"Listening on the network: {r['process']} on TCP port {r['port']}, {FIREWALL_SAYS[r['firewall']]}"))
+    return out
+
+
+def _expired(cert: dict, today) -> bool:
+    try:
+        return datetime.fromisoformat(str(cert.get("not_after"))[:10]).date() < today
+    except ValueError:  # can't tell: no finding
+        return False
+
+
+def evaluate(facts: dict, os_version: str = "", today=None) -> list[dict]:
     """[{package, version, vuln_id, summary, score/priority/reasons (own risk) or None (score as a CVE)}]."""
     c = facts.get("config")
     if not isinstance(c, dict):
@@ -177,4 +210,21 @@ def evaluate(facts: dict, os_version: str = "") -> list[dict]:
             fix="Replace the community names, or remove SNMP")
     if not server and c.get("bitlocker_os") == "Off":
         add("bitlocker", "off", "The system drive isn't encrypted (BitLocker off)", "planned", 30, fix="Turn on BitLocker for the system drive")
+
+    # ---- certificates this machine can present (DECISIONS 72). Without a private key it can't serve one
+    today = today or datetime.now(UTC).date()
+    rows = facts.get("machine_certs")
+    certs = [x for x in rows if isinstance(x, dict) and x.get("private_key") is True] if isinstance(rows, list) else []
+
+    def certs_finding(check, bad, what, priority, score, fix):
+        if bad:
+            names = ", ".join(str(x.get("subject"))[:120] or "(no subject)" for x in bad[:5])
+            add(check, names[:100], f"{len(bad)} machine certificate(s) {what}: {names}", priority, score, fix=fix)
+    certs_finding("machine-cert-expired", [x for x in certs if _expired(x, today)], "have expired", "planned", 30,
+                  "Renew them, or remove them from the machine store if nothing uses them")
+    certs_finding("machine-cert-weak-key", [x for x in certs if isinstance(x.get("key_bits"), int) and x["key_bits"] < MIN_KEY_BITS.get(x.get("key_oid"), 0)],
+                  "have an RSA or DSA key under 2048 bits", "planned", 40, "Replace them with a certificate on a new key of at least 2048 bits")
+    # a self-signed certificate's own signature isn't what anyone relies on
+    certs_finding("machine-cert-weak-signature", [x for x in certs if x.get("signature_oid") in WEAK_SIGNATURES and x.get("self_signed") is False],
+                  "are signed with MD5 or SHA-1, which can be forged or rejected", "planned", 35, "Reissue them with SHA-256 or better")
     return out

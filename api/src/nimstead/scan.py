@@ -54,7 +54,7 @@ def host_checks(pkgs: list, facts: dict, today, eol: dict | None = None, drivers
             90 if x["ended"] else 40, "fix-now" if x["ended"] else "planned",
             [x["summary"], "Upgrade, or enrol in Extended Security Updates" if x["ended"] else "Plan the upgrade"])})
     os_version = next((p.version for p in pkgs if p.ecosystem == "Windows"), "")
-    out += [{**x, "ecosystem": winconfig.ECOSYSTEM} for x in winconfig.evaluate(facts, os_version)]
+    out += [{**x, "ecosystem": winconfig.ECOSYSTEM} for x in winconfig.evaluate(facts, os_version, today)]
     out += [{**x, "ecosystem": windrivers.ECOSYSTEM} for x in windrivers.findings(pkgs, drivers or {})]
     return out
 
@@ -163,6 +163,7 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
         stored = s.scalar(select(Advisory.record).where(Advisory.ecosystem == "Exploit")) or {}
         advisories[("exploits",)] = set(stored.get("cves", []))
     roles = (asset.facts or {}).get("roles")
+    listeners = winconfig.reachable_listeners(asset.facts or {})
 
     for key, eco, name, version, m in matches:
         kev = m.vuln_id in kevs
@@ -180,7 +181,8 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
         )
         if "_risk" not in m.record:
             r = risk.context(r, kev=kev, ransomware=m.vuln_id in ransomware, public_exploit=m.vuln_id in advisories[("exploits",)],
-                             msrc=(m.record.get("database_specific") or {}), roles=roles)
+                             msrc=(m.record.get("database_specific") or {}), roles=roles,
+                             listening=next((why for keys, why in listeners if eco in (winapps.ECOSYSTEM, msproducts.ECOSYSTEM) and name.startswith(keys)), None))
         f = existing.get(key)
         was_fix_now = f is not None and f.status == "open" and f.priority == "fix-now"
         if f is None:

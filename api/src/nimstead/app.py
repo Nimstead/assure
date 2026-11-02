@@ -28,7 +28,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import Integer, delete, func, select
+from sqlalchemy import Integer, and_, delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from nimstead import ai, evidence, external, lifecycle, mfa, notify, remediate, sbom, sso, updates
@@ -1756,20 +1756,22 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def summary(user: CurrentUser, s: DB):
         remediate.sweep(s, user.org_id)
         is_open = (Finding.org_id == user.org_id, Finding.status == "open")
+        # A setting has no fixed version, but one the agent can change is a fix like any other
+        fixable = or_(Finding.fixed_version.is_not(None), and_(Finding.ecosystem == "WinConfig", Finding.package.in_(remediate.CONFIG_FIXES)))
         by_priority = dict(s.execute(select(Finding.priority, func.count()).where(*is_open).group_by(Finding.priority)).all())
         # Group fixes into actions: "upgrade openssl to X" clears N findings on M hosts. Rank in SQL, detail only the top 10.
         ranked = s.execute(
             select(Finding.ecosystem, Finding.package, func.max(Finding.kev.cast(Integer)), func.max(Finding.score),
                    func.count(Finding.vuln_id.distinct()))
-            .where(*is_open, Finding.fixed_version.is_not(None)).group_by(Finding.ecosystem, Finding.package)
+            .where(*is_open, fixable).group_by(Finding.ecosystem, Finding.package)
         ).all()
         top = []
         for eco, pkg, kev, max_score, _ in sorted(ranked, key=lambda r: (bool(r[2]), r[3], r[4]), reverse=True)[:10]:
-            rows = s.execute(select(Finding.fixed_version, Finding.vuln_id, Asset.hostname, Asset.id).join(Asset, Asset.id == Finding.asset_id)
-                             .where(*is_open, Finding.ecosystem == eco, Finding.package == pkg, Finding.fixed_version.is_not(None))).all()
+            rows = s.execute(select(Finding.fixed_version, Finding.vuln_id, Asset.hostname, Asset.id, Finding.summary).join(Asset, Asset.id == Finding.asset_id)
+                             .where(*is_open, Finding.ecosystem == eco, Finding.package == pkg, fixable)).all()
             cmp = comparator_for(eco)
-            fixes = {r[0] for r in rows}
-            fixed = max(fixes, key=functools.cmp_to_key(cmp)) if cmp else sorted(fixes)[-1]  # highest fix clears them all
+            fixes = {r[0] for r in rows if r[0]}
+            fixed = None if not fixes else max(fixes, key=functools.cmp_to_key(cmp)) if cmp else sorted(fixes)[-1]  # highest fix clears them all
             asset_ids = sorted({r[3] for r in rows})
             # A fix already in flight for this package: Home links to it instead of offering "Plan fix", which the API refuses
             # while one is active. Failed ones are listed under "needs a look" and can be planned again.
@@ -1783,7 +1785,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                         "asset_ids": asset_ids, "busy_asset_ids": sorted({j.asset_id for j in active}),
                         "job": {"id": active[0].id, "status": active[0].status} if active else None,
                         "last_attempt": {"id": last.id, "status": last.status, "error": last.error} if last and last.status in FAILED_JOB else None,
-                        "vulns": sorted({r[1] for r in rows}), "kev": bool(kev), "max_score": max_score})
+                        "vulns": sorted({r[1] for r in rows}), "kev": bool(kev), "max_score": max_score,
+                        "summary": rows[0][4] if eco == "WinConfig" else None, **remediate.fix_path(eco, pkg)})
         hosts = s.scalars(select(Asset).where(Asset.org_id == user.org_id, Asset.kind == "host")).all()
         paused, release = s.get(Org, user.org_id).agent_updates_paused, signed_release() is not None
         return {

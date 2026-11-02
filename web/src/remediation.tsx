@@ -34,7 +34,7 @@ export function RemediationPage() {
       </header>
       {q.isPending ? <Loading className="h-24" rows={3} label="Loading fixes…" />
         : q.error ? <ErrorState error={q.error} retry={() => q.refetch()} />
-        : groups.length === 0 ? <EmptyState title="No fixes planned yet">Use “Plan fix” on a recommended upgrade or a finding. Nothing changes on a machine until you approve it.</EmptyState>
+        : groups.length === 0 ? <EmptyState title="No fixes planned yet">Use “Plan fix” on a recommended fix or a finding. Nothing changes on a machine until you approve it.</EmptyState>
         : groups.map((g) => (
           <section key={g.key} aria-labelledby={`g-${g.key}`}>
             <h2 id={`g-${g.key}`} className="mb-3 flex items-center gap-2 text-lg font-semibold">{g.title}<span className="num border border-line px-2 text-sm font-medium text-muted">{g.jobs.length}</span></h2>

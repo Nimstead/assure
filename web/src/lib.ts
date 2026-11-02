@@ -55,8 +55,11 @@ export interface Finding {
   due: string | null;
 }
 export interface Action {
-  ecosystem: string; package: string; fixed_version: string; hosts: string[]; asset_ids: string[]; vulns: string[];
-  kev: boolean; max_score: number;
+  /** fixed_version is null for a setting, which `summary` then describes. */
+  ecosystem: string; package: string; fixed_version: string | null; hosts: string[]; asset_ids: string[]; vulns: string[];
+  kev: boolean; max_score: number; summary: string | null;
+  /** How it gets fixed: the same rules plan and approve apply. person_only is never approved by the trust ladder. */
+  fix: string | null; plannable: boolean; person_only: boolean; forward_only: boolean;
   /** A fix already in flight for this package, if any: link to it rather than planning another. */
   job: { id: string; status: JobStatus } | null;
   /** Machines with that fix in flight; the rest can still be planned. */

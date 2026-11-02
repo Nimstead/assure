@@ -214,7 +214,30 @@ it("Settings and onboarding name the setting that turns production remediation o
 });
 
 const ACTION: Action = { ecosystem: "Debian:12", package: "openssl", fixed_version: "3.0.19", hosts: ["web-1", "web-2"], asset_ids: ["a1", "a2"],
-  busy_asset_ids: [], vulns: ["CVE-1"], kev: false, max_score: 80, job: null, last_attempt: null };
+  busy_asset_ids: [], vulns: ["CVE-1"], kev: false, max_score: 80, job: null, last_attempt: null,
+  summary: null, fix: "apt", plannable: true, person_only: false, forward_only: false };
+
+it("Home: a setting fix reads as a setting, says a person approves it, and plans like any other", async () => {
+  const calls = serve({ "POST /api/remediation/jobs": { id: "j2" } });
+  wrap(<ol><ActionCard a={{ ...ACTION, ecosystem: "WinConfig", package: "wdigest", fixed_version: null, vulns: ["CFG:wdigest"], summary: "WDigest keeps passwords in memory.", fix: "winconfig", person_only: true }} /></ol>);
+  expect(screen.getByText(/Change setting/)).toHaveTextContent("Change setting wdigest");
+  expect(screen.getByText("WDigest keeps passwords in memory.")).toBeInTheDocument();
+  expect(screen.getByText(/Fixes 1 finding on 2 hosts/)).toBeInTheDocument();
+  expect(screen.getByText(/A person approves this one/)).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: /Plan fix/ }));
+  await waitFor(() => expect(calls.filter((c) => c.method === "POST")).toHaveLength(2));
+  expect(calls.find((c) => c.method === "POST")?.body).toEqual({ asset_id: "a1", ecosystem: "WinConfig", package: "wdigest" });
+});
+
+it("Home: a winget fix says it can't be undone; a product with no fix path offers no plan", () => {
+  serve({});
+  const r = wrap(<ol><ActionCard a={{ ...ACTION, ecosystem: "WinApp", package: "7-zip:7-zip", fix: "winget", person_only: true, forward_only: true }} /></ol>);
+  expect(screen.getByText(/A person approves this one.*can't be undone/)).toBeInTheDocument();
+  r.unmount();
+  wrap(<ol><ActionCard a={{ ...ACTION, ecosystem: "Microsoft", package: "SQL Server", fix: "winget", plannable: false, person_only: true }} /></ol>);
+  expect(screen.queryByRole("button", { name: /Plan fix/ })).not.toBeInTheDocument();
+  expect(screen.getByText(/update it with its own updater/)).toBeInTheDocument();
+});
 
 it("Home: a fix in flight on one host still lets you plan the others", () => {
   serve({});

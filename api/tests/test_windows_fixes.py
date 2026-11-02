@@ -8,7 +8,7 @@ from test_agent_remediate import agent
 from test_api import user
 
 from nimstead import remediate
-from nimstead.db import Advisory, Asset, make_sessionmaker
+from nimstead.db import Advisory, Asset, RemediationJob, make_sessionmaker
 
 
 def test_agent_and_server_maps_are_the_same():
@@ -186,6 +186,47 @@ def test_setting_fix_planned_from_a_config_finding(env):
     assert r.json()["manager"] == "winconfig" and not r.json()["forward_only"]
     r = c.post("/api/remediation/jobs", json={"asset_id": a["asset_id"], "ecosystem": "WinConfig", "package": "lsa-protection"})
     assert r.status_code >= 400 and "reported, not changed" in r.text
+
+
+def test_fix_first_lists_settings_with_the_same_rules_and_never_auto(env):
+    c = user(env)
+    a, _ = _winapp_host(c, [{"ecosystem": "Windows", "name": "Windows Server 2025", "version": "10.0.26100.4946", "source": None}],
+                        {"installation_type": "Server", "config": {"wdigest": 1, "run_as_ppl": 0}})
+    findings = {f["package"]: f for f in c.get("/api/findings", params={"limit": 500}).json()}
+    assert "lsa-protection" in findings and not findings["lsa-protection"]["setting_fix"]
+    actions = {x["package"]: x for x in c.get("/api/summary").json()["top_actions"]}
+    assert "lsa-protection" not in actions  # reported, not changed: nothing on Home could fix it
+    w = actions["wdigest"]
+    assert w["fixed_version"] is None and w["summary"] and w["asset_ids"] == [a["asset_id"]]
+    assert (w["fix"], w["plannable"], w["person_only"], w["forward_only"]) == ("winconfig", True, True, False)
+    c.patch("/api/settings", json={"remediation_mode": "auto"})  # the ladder neither plans nor approves it
+    with make_sessionmaker(env)() as s:
+        remediate.auto_remediate(s, s.get(Asset, a["asset_id"]))
+        s.commit()
+    assert not c.get("/api/remediation/jobs").json()
+    j = c.post("/api/remediation/jobs", json={"asset_id": a["asset_id"], "ecosystem": "WinConfig", "package": "wdigest"}).json()
+    w = next(x for x in c.get("/api/summary").json()["top_actions"] if x["package"] == "wdigest")
+    assert w["job"]["id"] == j["id"] and w["busy_asset_ids"] == [a["asset_id"]]
+    with make_sessionmaker(env)() as s:
+        job = s.get(RemediationJob, j["id"])
+        with pytest.raises(remediate.RemediationError, match="only ever approved by a person"):
+            remediate.approve(s, job, "policy", policy=True)
+    assert c.post(f"/api/remediation/jobs/{j['id']}/approve").json()["status"] == "approved"  # a person can
+
+
+@pytest.mark.parametrize("eco,pkg,fix,plannable,person,forward", [
+    ("WinConfig", "wdigest", "winconfig", True, True, False),
+    ("WinConfig", "lsa-protection", "winconfig", False, True, False),
+    ("WinApp", "7-zip:7-zip", "winget", True, True, True),
+    ("WinApp", "python:python", "winget", False, True, True),  # no pinned winget package
+    ("Microsoft", "Microsoft 365 Apps Current", "office", True, True, False),
+    ("Microsoft", ".NET Framework 4.8 on Windows 11", "windows", True, True, False),
+    ("Windows", "Windows Server 2025", "windows", True, False, False),
+    ("Debian:12", "openssl", "apt", True, False, False),
+    ("PyPI", "requests", None, False, False, False),
+])
+def test_fix_path_agrees_with_plan_and_the_ladder(eco, pkg, fix, plannable, person, forward):
+    assert remediate.fix_path(eco, pkg) == {"fix": fix, "plannable": plannable, "person_only": person, "forward_only": forward}
 
 
 def test_evidence_pack_lists_forward_only_changes_apart(env):

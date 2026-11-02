@@ -107,6 +107,20 @@ def windows_kbs(s: Session, product: str, cves: list[str], ecosystem: str = "Win
     return out
 
 
+def fix_path(ecosystem: str, package: str) -> dict:
+    """What fixing this action means, as plan and approve treat it: which path, whether plan() would take it, and whether
+    a person must approve it (auto_remediate skips these) or accept that it can't be undone."""
+    from nimstead.office import PREFIX as OFFICE
+    base = MANAGERS.get(ecosystem.split(":", 1)[0])
+    fix, plannable = base, base is not None
+    if base == "winconfig":
+        plannable = package in CONFIG_FIXES
+    elif base == "winget":
+        fix = "office" if package.startswith(OFFICE) else "windows" if package.startswith(".NET Framework") else "winget"
+        plannable = fix != "winget" or package in WINGET_KEYS
+    return {"fix": fix, "plannable": plannable, "person_only": base in MANUAL_ONLY, "forward_only": fix in FORWARD_ONLY}
+
+
 def plan(s: Session, asset: Asset, ecosystem: str, package: str, created_by: str, include: list[str] | None = None) -> RemediationJob:
     """include: extra installed packages the dry run said the fix also needs (e.g. musl for openssl).
     They join the plan, so they are snapshotted and rolled back with it."""

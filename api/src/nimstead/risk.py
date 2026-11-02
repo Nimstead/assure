@@ -62,7 +62,7 @@ def _tier(s: int) -> str:
     return next(p for t, p in PRIORITY if s >= t)
 
 
-def context(r: Risk, *, kev: bool, ransomware: bool = False, public_exploit: bool = False, msrc: dict | None = None,
+def context(r: Risk, *, kev: bool, ransomware: bool = False, public_exploit: bool = False, exploit_db: bool = False, msrc: dict | None = None,
             roles: list | None = None, listening: str | None = None) -> Risk:
     """Threat and exposure context on top of score() (plan T11, T39). KEV still overrides everything: a known-exploited
     CVE is never lowered. Microsoft saying "exploited" counts like KEV before CISA lists it."""
@@ -79,6 +79,9 @@ def context(r: Risk, *, kev: bool, ransomware: bool = False, public_exploit: boo
     if public_exploit and not kev:
         s = min(100, s + 10)
         reasons.append("Public exploit (Metasploit module)")
+    if exploit_db and not kev:
+        s = s if public_exploit else min(100, s + 10)  # a second source is another reason, not more points
+        reasons.append("Public exploit (Exploit-DB)")
     if msrc.get("disclosed"):
         reasons.append("Publicly disclosed before the fix")
     feats = ROLE_TAGS.get(msrc.get("tag", ""))

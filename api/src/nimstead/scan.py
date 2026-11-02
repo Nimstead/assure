@@ -100,7 +100,8 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
                 targets.append((p, eco, *ms))
         else:
             targets.append((p, eco, p.source or p.name, p.version))
-    # stable sort: the oldest install of an app is the one reported
+    # stable sort: the oldest vulnerable install of an app is the finding's row (one per asset, package and vulnerability), and a
+    # later install still affected is named in its summary. Each is judged, so fixing one of two leaves the finding open (DECISIONS 73)
     targets.sort(key=lambda t: winapps.appver_parts(t[3]) if t[1] in (winapps.ECOSYSTEM, msproducts.ECOSYSTEM) else [])
     wanted: dict[str, set[str]] = defaultdict(set)
     for _, eco, name, _ in targets:
@@ -118,6 +119,7 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
                 advisories[(eco, pkg)].append(rec)
 
     matches = []
+    also: dict[tuple, dict[str, str | None]] = defaultdict(dict)  # finding key -> other affected installs of the app, and their fixes
     for p, eco, name, version in targets:
         if isinstance(name, tuple):
             name = next((n for n in name if advisories.get((eco, n))), name[-1])
@@ -132,6 +134,8 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
         for m in found:
             key = (eco, name, m.vuln_id)
             if key in seen:  # several binaries from one source package -> one finding
+                if eco in (winapps.ECOSYSTEM, msproducts.ECOSYSTEM):
+                    also[key][version] = m.fixed
                 continue
             seen.add(key)
             matches.append((key, eco, name, version, m))
@@ -159,9 +163,10 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
                 ransomware.add(cve)
         epss |= dict(s.execute(select(Epss.cve, Epss.score).where(Epss.cve.in_(part))).all())
         nvd |= dict(s.execute(select(Cvss.cve, Cvss.score).where(Cvss.cve.in_(part))).all())
-    if ("exploits",) not in advisories:  # CVEs with a public Metasploit module, once per pass
-        stored = s.scalar(select(Advisory.record).where(Advisory.ecosystem == "Exploit")) or {}
-        advisories[("exploits",)] = set(stored.get("cves", []))
+    if ("exploits",) not in advisories:  # CVEs with a public exploit by source (Metasploit, Exploit-DB), once per pass
+        advisories[("exploits",)] = {pkg: set(rec.get("cves", [])) for pkg, rec in s.execute(
+            select(Advisory.package, Advisory.record).where(Advisory.ecosystem == "Exploit"))}
+    exploits = advisories[("exploits",)]
     roles = (asset.facts or {}).get("roles")
     listeners = winconfig.reachable_listeners(asset.facts or {})
 
@@ -180,7 +185,8 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
             fix_available=m.fixed is not None or eco == "WinConfig",  # a setting is fixed by changing it
         )
         if "_risk" not in m.record:
-            r = risk.context(r, kev=kev, ransomware=m.vuln_id in ransomware, public_exploit=m.vuln_id in advisories[("exploits",)],
+            r = risk.context(r, kev=kev, ransomware=m.vuln_id in ransomware, public_exploit=m.vuln_id in exploits.get("metasploit", ()),
+                             exploit_db=m.vuln_id in exploits.get("exploitdb", ()),
                              msrc=(m.record.get("database_specific") or {}), roles=roles,
                              listening=next((why for keys, why in listeners if eco in (winapps.ECOSYSTEM, msproducts.ECOSYSTEM) and name.startswith(keys)), None))
         f = existing.get(key)
@@ -200,7 +206,9 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
         f.fixed_version = m.fixed
         locs = (((asset.facts or {}).get("jar_scan") or {}).get("locations") or []) if eco == "Maven" else []
         loc = next((x[2] for x in locs if isinstance(x, list) and len(x) == 3 and x[:2] == [name, version]), None)
-        f.summary = ((m.summary or "") + (f" (in {loc})" if loc else ""))[:1000]  # a jar the agent found on disk
+        others = [f"{v} (fixed in {fix})" if fix else v for v, fix in also.get(key, {}).items() if v != version]
+        f.summary = ((m.summary or "") + (f" (in {loc})" if loc else "")  # a jar the agent found on disk
+                     + (f" Also affected on this host: {', '.join(others[:5])}." if others else ""))[:1000]
         f.cvss, f.epss, f.kev = cvss, ep, kev
         f.score, f.priority, f.reasons = r.score, r.priority, r.reasons
         f.last_seen = t

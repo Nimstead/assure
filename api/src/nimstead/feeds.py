@@ -29,6 +29,7 @@ KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulner
 EPSS_URL = "https://epss.empiricalsecurity.com/epss_scores-current.csv.gz"  # old cyentia.com URL 301s here
 NVD_URL = "https://nvd.nist.gov/feeds/json/cve/2.0/nvdcve-2.0-{}.json.gz"  # {year} or "modified"
 METASPLOIT_URL = "https://raw.githubusercontent.com/rapid7/metasploit-framework/master/db/modules_metadata_base.json"
+EXPLOITDB_URL = "https://gitlab.com/exploit-database/exploitdb/-/raw/main/files_exploits.csv"
 MSRC_URL = "https://api.msrc.microsoft.com/cvrf/v3.0/"  # "updates" lists months; "cvrf/{ID}" is one month
 KEEP = ("id", "aliases", "upstream", "withdrawn", "summary", "severity", "modified")
 
@@ -296,6 +297,21 @@ def sync_metasploit(session: Session, client=None) -> int:
     return len(cves)
 
 
+def sync_exploitdb(session: Session, client=None) -> int:
+    """CVEs with a public exploit on Exploit-DB (DECISIONS 73). Only the CVE ids are kept, as one row (ecosystem "Exploit");
+    denial-of-service proofs don't count. A fetch or format problem raises and keeps the stored list."""
+    rows = csv.DictReader(io.StringIO(_get(client, EXPLOITDB_URL, 100 * 2**20).decode("utf-8", "replace"), newline=""))
+    if not {"codes", "type"} <= set(rows.fieldnames or ()):
+        raise ValueError("Exploit-DB: unexpected columns")
+    cves = sorted({c for r in rows if r["type"] != "dos" for c in (r["codes"] or "").split(";") if re.fullmatch(r"CVE-\d{4}-\d{4,}", c)})
+    if len(cves) < 1000:  # 21,278 on 2026-11-02
+        raise ValueError(f"Exploit-DB: only {len(cves)} CVEs")
+    session.merge(Advisory(id="EXPLOIT-exploitdb", ecosystem="Exploit", package="exploitdb", modified=now().isoformat(),
+                           record={"id": "EXPLOIT-exploitdb", "cves": cves}))
+    session.commit()
+    return len(cves)
+
+
 def sync_loldrivers(session: Session, client=None) -> int:
     """File hashes of vulnerable and malicious drivers (DECISIONS 71), one row (ecosystem "WinDriver"). Raises on a fetch
     or format problem and leaves the stored row alone."""
@@ -422,6 +438,11 @@ def update_all(session: Session, client=None) -> dict:
     except (httpx.HTTPError, ValueError) as e:
         session.rollback()
         log.warning("Metasploit metadata skipped, kept the stored list: %s", e)
+    try:
+        out["exploitdb"] = sync_exploitdb(session, client)
+    except (httpx.HTTPError, ValueError, csv.Error) as e:
+        session.rollback()
+        log.warning("Exploit-DB skipped, kept the stored list: %s", e)
     for eco in used:  # one at a time: ecosystem names come from agents, and an unknown one must not stop every tenant's update
         try:
             out["osv"][eco] = sync_osv(session, [eco], client, only=in_use)

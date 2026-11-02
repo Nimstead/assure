@@ -34,6 +34,15 @@ def creds(name: str) -> dict:
     return json.loads((STATE / name / "creds.json").read_text())
 
 
+def locale_args(detected: str) -> list[str]:
+    """A localised ISO installs in its own language: a localised Windows is what the agent's language checks need (DECISIONS 68)."""
+    m = re.search(r"OS Languages\s*=\s*([a-z]{2}-[A-Z]{2})", detected)
+    lang = m.group(1) if m else "en-US"
+    if lang == "en-US":
+        return ["--locale=en_US", "--country=GB"]
+    return [f"--locale={lang.replace('-', '_')}", f"--country={lang[-2:]}", f"--language={lang}"]
+
+
 def create(iso: str) -> str:
     name = PREFIX + secrets.token_hex(3)
     folder = STATE / name
@@ -62,7 +71,7 @@ def create(iso: str) -> str:
     edition = ["--image-index=6", "--key=VK7JG-NPHTM-C97JM-9MPGT-3V66T"] if win11 else ["--image-index=1"]
     args = ["unattended", "install", name, f"--iso={iso}", *edition, "--user=Administrator",
             f"--admin-password={password}", f"--password={password}", "--full-user-name=Administrator",
-            "--locale=en_US", "--country=GB", "--time-zone=UTC", "--hostname=nimstead-sbx.local",
+            *locale_args(detected), "--time-zone=UTC", "--hostname=nimstead-sbx.local",
             "--install-additions", "--start-vm=headless"]
     if Path(additions).exists():
         args.append(f"--additions-iso={additions}")

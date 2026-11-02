@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "sandbox"))
-from winvm import additions_since_reset  # noqa: E402
+from winvm import additions_since_reset, locale_args  # noqa: E402
 
 REPORT = "00:14:09 VMMDev: Guest Additions information report: Version 7.2.22"
 RESET = "00:24:24 Changing the VM state from 'RUNNING' to 'RESETTING'"
@@ -68,3 +68,9 @@ def test_wait_ready_resets_a_setup_whose_disk_went_idle(monkeypatch):
     with pytest.raises(RuntimeError):
         winvm.wait_ready("nimstead-sbx-win-x", minutes=30)
     assert calls and calls[0][0][2] == "reset" and calls[0][1] > 12 * 60
+
+
+def test_a_localised_iso_installs_in_its_own_language():
+    assert locale_args("OS Languages = en-US") == ["--locale=en_US", "--country=GB"]
+    assert locale_args("  OS Languages = de-DE") == ["--locale=de_DE", "--country=DE", "--language=de-DE"]
+    assert locale_args("no language line") == ["--locale=en_US", "--country=GB"]

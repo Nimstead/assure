@@ -2029,7 +2029,7 @@ class WinJob:
                 and (s.get("reboot_by") is None or re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", str(s["reboot_by"])))
                 and (s.get("changed_at") is None or (isinstance(s["changed_at"], int) and not isinstance(s["changed_at"], bool)))
                 and isinstance(s.get("cluster", False), bool) and isinstance(s.get("notified_at", 0), (int, float))
-                and isinstance(s.get("late_removal", False), bool)
+                and isinstance(s.get("late_removal", False), bool) and isinstance(s.get("installing", False), bool)
                 and isinstance(s.get("boot", 0), int) and not isinstance(s.get("boot", 0), bool)
                 and isinstance(s.get("units"), list) and all(SAFE_NAME.match(str(u)) for u in s["units"])
                 and isinstance(s.get("settle"), int) and 0 <= s["settle"] <= 900
@@ -2118,8 +2118,24 @@ class WinJob:
                 return self._rollback(str(e))
             return self.result("rollback_failed", f"ROLLBACK FAILED, host needs attention: {e}")
 
+    def _interrupted(self):
+        """The machine stopped during the install (seen for real, Windows 10). Anything new goes the way of a failed update;
+        nothing new means nothing changed, and a drained cluster node comes back either way (DECISIONS 78)."""
+        s = self.s
+        try:
+            new = sorted(set(self.rollups()) - set(s["baseline"]))
+        except StepFailed:  # servicing still busy: look again at the next poll, never guess
+            return {"outcome": "pending_reboot", "steps": s["steps"], "error": None, "versions": None}
+        s["steps"].append({"step": "stopped during the install, checked what it left", "ok": True, "output": ", ".join(new) or "nothing new"})
+        if new:
+            s["phase"], s["new_packages"] = "verify", new
+            return self._verify()
+        return self.result("aborted", "No changes made: the machine stopped during the install and nothing new is installed. Plan the fix again.")
+
     def _start(self):
         s = self.s
+        if s.get("installing"):
+            return self._interrupted()
         ok = self.valid()
         self.step("job validated", ok, "" if ok else "invalid KB, product, version or service name")
         cur = self.build()
@@ -2165,10 +2181,12 @@ class WinJob:
                 self._resume_cluster()
             self.step("cluster node drained", rc == 0 and out.strip().splitlines()[-1:] == ["Paused"], out)
         s["changed_at"] = int(time.time())  # health checks look for crashes after this
+        s["installing"] = True
+        self.save()  # a power cut from here on must leave something to resume from
         # seen for real (Windows 11, user signed in): a reinstall of the cumulative update ran past 30 minutes
         rc, out = ps(self.run, wu(PS_INSTALL).replace("%KB%", s["kb"]), timeout=INSTALL_TIMEOUT)
         res = json.loads(out) if rc == 0 and out.strip().startswith("{") else {}
-        s["phase"] = "verify"  # from here on, failures roll back
+        s["phase"], s["installing"] = "verify", False  # from here on, failures roll back
         self.step(f"KB{s['kb']} downloaded and installed", res.get("install") in (2, 3), out)
         new = sorted(set(self.rollups()) - set(s["baseline"]))
         s["new_packages"] = new

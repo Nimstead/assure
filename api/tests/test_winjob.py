@@ -207,6 +207,49 @@ def test_real_windows11_action_list_matches_what_the_check_reads():
     assert [p["file"] for p in WIN11] == [(a.get("ExpressPackagePath") or a.get("FilePath")).split("\\")[-1] for a in acts]
 
 
+def _cut_power_during_install(tmp_path, host, leaves):
+    """Run a job up to the install, then lose everything but the state file it saved."""
+    w = make(tmp_path, host)
+    real = host.__call__
+
+    class PowerCut(Exception):
+        pass
+
+    def run(cmd, cwd=None, timeout=None):
+        if cmd[0] == "powershell" and "CreateUpdateInstaller" in cmd[-1]:
+            if leaves:
+                host.pkgs[NEW_PKG] = leaves
+            raise PowerCut
+        return real(cmd, cwd=cwd, timeout=timeout)
+    w.run = run
+    with pytest.raises(PowerCut):
+        w._start()
+    return agent.WinJob(run=host, state_path=w.state_path, build=lambda: host.build, retry_wait=0, booted=lambda: host.boot)
+
+
+def test_power_cut_during_install_with_nothing_new_says_so_and_clears(tmp_path):
+    host = FakeWin()
+    resumed = _cut_power_during_install(tmp_path, host, None)
+    res = resumed.advance()
+    assert res["outcome"] == "aborted" and "nothing new is installed" in res["error"]
+    assert not Path(resumed.state_path).exists()
+    assert not any("CreateUpdateInstaller" in c[-1] for c in host.log)  # never retried blindly
+
+
+def test_power_cut_during_install_leaving_a_package_is_rolled_back(tmp_path):
+    host = FakeWin()
+    resumed = _cut_power_during_install(tmp_path, host, "Install Pending")
+    res = resumed.advance()  # the build never moved, so verification fails and the package is removed
+    assert res["outcome"] == "pending_reboot" and resumed.s["phase"] == "rolled_back_pending"
+    assert any("/remove-package" in c and f"/packagename:{NEW_PKG}" in c for c in host.log)
+
+
+def test_power_cut_on_a_drained_cluster_node_brings_it_back(tmp_path):
+    host = FakeWin(cluster=True)
+    res = _cut_power_during_install(tmp_path, host, None).advance()
+    assert res["outcome"] == "aborted" and any(s["step"] == "cluster node resumed" and s["ok"] for s in res["steps"])
+
+
 def test_tampered_state_is_never_resumed(tmp_path):
     for field, value in (("units", ["x' -EA Stop).Status; Start-Process calc; (Get-Service -Name 'y"]),
                          ("new_packages", ["Package_for_ServicingStack~31bf3856ad364e35~amd64~~26100.1"]),

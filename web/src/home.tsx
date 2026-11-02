@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, CheckCircle2, TriangleAlert } from "lucide-react";
-import { dependenciesNeeded, filtersToSearch, jobAnchor, JOB_STATUS_LABEL, parseFilters, plural, PRIORITIES, PRIORITY_LABEL, priorityOf, summaryQ, useTitle, type Action } from "./lib";
+import { dependenciesNeeded, coverageQ, filtersToSearch, jobAnchor, JOB_STATUS_LABEL, parseFilters, plural, PRIORITIES, PRIORITY_LABEL, priorityOf, summaryQ, useTitle, type Action } from "./lib";
 import { PlanFixButton } from "./remediation";
 import { ErrorState, KevBadge, Loading, PriorityPill, StatusPill } from "./ui";
 import clsx from "clsx";
@@ -14,6 +14,7 @@ const tile = (p: string, n: number) => (p === "fix-now" && n > 0 ? "text-now-fg"
 
 export function Home() {
   const q = useQuery(summaryQ);
+  const coverage = useQuery(coverageQ);
   useTitle(q.data?.assets === 0 ? "Add a machine" : "Fix first");
 
   if (q.isPending) return <HomeSkeleton />;
@@ -22,13 +23,14 @@ export function Home() {
   if (s.assets === 0) return <Suspense fallback={<Loading className="h-64" />}><Onboarding /></Suspense>;
 
   const total = PRIORITIES.reduce((n, p) => n + (s.open_by_priority[p] ?? 0), 0);
+  const unchecked = coverage.data?.inventory_only ?? 0;
   return (
     <div className="flex flex-col gap-8">
       <header>
         <h1 className="text-3xl font-semibold">Fix first</h1>
         <p className="mt-1 text-muted">
           {total === 0
-            ? `No open findings across ${plural(s.assets, "machine")}.`
+            ? `No open findings across ${plural(s.assets, "machine")}.${unchecked ? ` Installed apps not checked: ${unchecked}, listed on Assets.` : ""}`
             : `${plural(total, "open finding")} across ${plural(s.assets, "machine")}. These upgrades clear the most risk.`}
         </p>
       </header>

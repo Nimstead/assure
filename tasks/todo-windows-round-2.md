@@ -13,9 +13,10 @@ Sizes: S = 1–2 files, M = 3–5 files.
 
 ### W1: Coverage: assessed vs inventory-only (M)
 Today an app outside the curated map is silently inventory, so "0 findings" can mean "not looked at".
-- [ ] `GET` asset and summary responses give assessed and inventory-only app counts, and the names of those not assessed
-- [ ] Host page and Home show it in plain words; a host with nothing assessed never reads as clean
-- [ ] Fleet list of unassessed apps, most common first, which feeds W12
+- [x] `GET /api/assets` gives assessed and inventory-only counts per host; `GET /api/coverage` gives fleet totals and names
+- [x] Assets and Home say it in plain words; a host with nothing assessed says so. Home's sentence has no test of its own
+- [x] Fleet list of unassessed apps, most common first (top 200), which feeds W12
+- [ ] Not done: screenshot from the VM with 50 apps, axe on the new section (the e2e seed has no Windows apps), `perf.py` at 1,000 hosts for the extra query on `/api/assets`. An app assessed through the agent's own Microsoft facts can read as "listed only" if it also has an Uninstall entry: errs towards under-claiming, to be measured on the VM
 - Verify: tests with a seeded mixed host; screenshot from the VM with 50 apps. Files: `app.py`, `winapps.py`, `web/src/`. Deps: none.
 
 ### W2: Locale bug, proven on a German install (M)

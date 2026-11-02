@@ -52,7 +52,7 @@ from nimstead.db import (
     now,
 )
 from nimstead.netguard import check_public_url
-from nimstead.scan import rescan
+from nimstead.scan import app_coverage, rescan
 from nimstead.versions import comparator_for
 
 SESSION_COOKIE = "nimstead_session"
@@ -918,7 +918,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     # --- assets ------------------------------------------------------------
 
-    def asset_json(a: Asset, counts: dict, paused: bool = False, release: bool | None = None) -> dict:
+    def asset_json(a: Asset, counts: dict, paused: bool = False, release: bool | None = None, apps: dict | None = None) -> dict:
         if release is None and a.kind == "host":
             release = signed_release() is not None
         return {
@@ -926,6 +926,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             "kind": a.kind, "criticality": a.criticality, "internet_facing": a.internet_facing, "sandbox": a.sandbox,
             "ring": a.ring, "health_units": a.health_units,
             "first_seen": a.first_seen, "last_seen": a.last_seen, "open_by_priority": counts,
+            **({"apps": apps} if apps else {}),
             **({"agent_version": a.agent_version, "agent_outdated": a.agent_version != latest_agent_version(),
                 "agent_update": agent_update_status(a, paused, release), "agent_update_error": a.agent_update_error,
                 "not_reporting": a.last_seen < now() - notify.SILENT_AFTER, "facts": a.facts or {},
@@ -947,7 +948,17 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             counts[aid][prio] = n
         assets = s.scalars(select(Asset).where(Asset.org_id == user.org_id).order_by(Asset.hostname)).all()
         paused, release = s.get(Org, user.org_id).agent_updates_paused, signed_release() is not None
-        return [asset_json(a, counts[a.id], paused, release) for a in assets]
+        apps = app_coverage(s, user.org_id)[0]
+        return [asset_json(a, counts[a.id], paused, release, apps.get(a.id)) for a in assets]
+
+    @app.get("/api/coverage")
+    def coverage(user: CurrentUser, s: DB):
+        """How much of the fleet's Windows software is checked at all, so a clean result can't be misread."""
+        per_asset, missed = app_coverage(s, user.org_id)
+        top = sorted(missed.items(), key=lambda m: (-len(m[1]), m[0][0]))[:200]
+        return {"assessed": sum(a["assessed"] for a in per_asset.values()),
+                "inventory_only": sum(a["inventory_only"] for a in per_asset.values()),
+                "not_assessed": [{"name": n, "publisher": p, "hosts": len(ids)} for (n, p), ids in top]}
 
     def owned_asset(s: Session, user: User, asset_id: str) -> Asset:
         a = s.get(Asset, asset_id)

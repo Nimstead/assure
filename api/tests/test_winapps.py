@@ -278,6 +278,27 @@ def test_windows_apps_survives_missing_hives():
 
 # ---- end to end -----------------------------------------------------------------------------------------------
 
+def _windows_host(c, name, apps):
+    token = c.post("/api/enroll-tokens").json()["token"]
+    a = c.post("/api/agent/enroll", json={"token": token, "hostname": name, "ecosystem": "Windows"}).json()
+    r = c.post("/api/agent/inventory", headers={"Authorization": f"Bearer {a['agent_key']}"}, json={"ecosystem": "Windows", "packages": [
+        {"ecosystem": "WinApp", "name": n, "version": v, "source": p} for n, v, p in apps]})
+    assert r.status_code == 200, r.text
+
+
+def test_coverage_says_what_was_only_listed(env):
+    c = user(env)
+    chrome, other = ("Google Chrome", "156.0.8078.48", "Google LLC"), ("Acme Widget", "1.0", "Acme")
+    _windows_host(c, "pc-1", [chrome, other, ("Rare Tool", "2.0", None)])
+    _windows_host(c, "pc-2", [other])
+    by_host = {a["hostname"]: a["apps"] for a in c.get("/api/assets").json()}
+    assert by_host == {"pc-1": {"assessed": 1, "inventory_only": 2}, "pc-2": {"assessed": 0, "inventory_only": 1}}
+    assert c.get("/api/coverage").json() == {"assessed": 1, "inventory_only": 3, "not_assessed": [
+        {"name": "Acme Widget", "publisher": "Acme", "hosts": 2}, {"name": "Rare Tool", "publisher": None, "hosts": 1}]}
+    other_org = user(env, "b@example.com")
+    assert other_org.get("/api/coverage").json() == {"assessed": 0, "inventory_only": 0, "not_assessed": []}
+
+
 def test_winapp_asset_end_to_end(env):
     with make_sessionmaker(env)() as s:
         sync_fixture(s)

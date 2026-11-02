@@ -1,5 +1,6 @@
 """Turn an asset's inventory into findings, and close findings the inventory proves fixed."""
 
+import functools
 import hashlib
 import json
 from collections import defaultdict
@@ -13,6 +14,27 @@ from nimstead.match import Match, Package, match_package, normalize_ecosystem
 from nimstead.notify import notify
 
 HOTPATCH = " (Hotpatch)"  # advisory package suffix for MSRC hotpatch fixes (DECISIONS 52)
+
+
+@functools.lru_cache(maxsize=50_000)  # a fleet repeats the same few names, and each lookup tries every curated rule
+def app_assessed(name: str, source: str | None, version: str) -> bool:
+    return bool(winapps.identify(name, source, version) or msproducts.from_winapp(name, source, version))
+
+
+def app_coverage(s: Session, org_id: str) -> tuple[dict[str, dict], dict[tuple[str, str | None], set[str]]]:
+    """Windows apps we check against those we only list: counts per asset, and the assets holding each unchecked app."""
+    per_asset: dict[str, dict] = defaultdict(lambda: {"assessed": 0, "inventory_only": 0})
+    missed: dict[tuple[str, str | None], set[str]] = defaultdict(set)
+    rows = s.execute(select(InstalledPackage.asset_id, InstalledPackage.name, InstalledPackage.source, InstalledPackage.version)
+                     .join(Asset, Asset.id == InstalledPackage.asset_id)
+                     .where(Asset.org_id == org_id, InstalledPackage.ecosystem == winapps.ECOSYSTEM))
+    for asset_id, name, source, version in rows:
+        if app_assessed(name, source, version):
+            per_asset[asset_id]["assessed"] += 1
+        else:
+            per_asset[asset_id]["inventory_only"] += 1
+            missed[name, source].add(asset_id)
+    return per_asset, missed
 
 
 def hotpatch_track(hot: list[dict], version: str) -> tuple[set[str], list[dict]] | None:

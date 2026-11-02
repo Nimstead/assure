@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Dialog, Switch } from "radix-ui";
 import { AppWindow, ArrowRight, Plus, Trash2, Upload } from "lucide-react";
-import { adminGate, AGENT_UPDATE, api, refresh, assetsQ, filtersToSearch, parseFilters, parseUtc, PRIORITIES, relativeTime, sbomSummary, updateSource, useIsAdmin, useTitle, type Asset, type Criticality, type SbomResult } from "./lib";
+import { adminGate, AGENT_UPDATE, api, refresh, assetsQ, coverageQ, filtersToSearch, parseFilters, parseUtc, plural, PRIORITIES, relativeTime, sbomSummary, updateSource, useIsAdmin, useTitle, type Asset, type Criticality, type SbomResult } from "./lib";
 import { Alert, btnPrimary, btnQuiet, ConfirmDialog, CopyBlock, dialogBox, Done, EmptyState, ErrorState, Field, input, Loading, PriorityPill, switchRoot, switchThumb, Tag } from "./ui";
 import clsx from "clsx";
 import { ExternalTargets } from "./targets";
@@ -55,6 +55,7 @@ export function AssetsPage() {
       </header>
 
       <Unmanaged />
+      <NotAssessed />
 
       {q.isPending ? <Loading className="h-20" rows={3} label="Loading assets…" />
         : q.error ? <ErrorState error={q.error} retry={() => q.refetch()} />
@@ -112,6 +113,25 @@ function Unmanaged() {
   );
 }
 
+/** Software the curated rules don't cover (DECISIONS 24): listed, never matched, so saying so is part of every clean result. */
+export function NotAssessed() {
+  const q = useQuery(coverageQ);
+  if (!q.data?.inventory_only) return null;
+  const { assessed, inventory_only: only, not_assessed: rows } = q.data;
+  return (
+    <section aria-labelledby="not-assessed" className="flex flex-col gap-2 border border-line bg-sunken p-4">
+      <h2 id="not-assessed" className="text-base font-semibold">{plural(only, "installed app")} {only === 1 ? "isn't" : "aren't"} checked for vulnerabilities</h2>
+      <p className="max-w-prose text-sm text-muted">{plural(assessed, "install")} of known apps {assessed === 1 ? "is" : "are"} checked. The rest are listed but never matched, because a wrong guess is worse than saying so. Many are runtimes and drivers, but no finding for them doesn't mean they're safe.</p>
+      <details className="text-sm">
+        <summary className="min-h-[44px] cursor-pointer py-2 md:min-h-0">Show them, most common first</summary>
+        <ul className="mt-2 flex flex-col gap-1">
+          {rows.map((r) => <li key={`${r.name}|${r.publisher}`} className="break-words"><span className="font-medium">{r.name}</span>{r.publisher && ` · ${r.publisher}`} · {plural(r.hosts, "machine")}</li>)}
+        </ul>
+      </details>
+    </section>
+  );
+}
+
 export function AgentUpdateSummary({ assets }: { assets: Asset[] }) {
   const groups = new Map<string, { failed: boolean; hosts: string[] }>();
   for (const a of assets) {
@@ -149,6 +169,7 @@ export function AssetRow({ a, onPatch, onDelete, saved, error }: { a: Asset; onP
           {a.kind === "application" ? "Application (SBOM)" : a.os_name || "Unknown OS"}{a.agent_version && ` · agent ${a.agent_version}`} · seen <time dateTime={parseUtc(a.last_seen).toISOString()} title={parseUtc(a.last_seen).toLocaleString()}>{relativeTime(a.last_seen)}</time>
         </p>
         {a.not_reporting && <p className="mt-1 text-xs text-now-fg">No report for over 14 hours, so findings may be out of date.</p>}
+        {a.apps && a.apps.inventory_only > 0 && <p className="mt-1 text-xs text-muted">{a.apps.assessed === 0 ? `None of its ${plural(a.apps.inventory_only, "installed app")} could be checked.` : `${a.apps.assessed} of ${a.apps.assessed + a.apps.inventory_only} installed apps checked; the rest are listed only.`}</p>}
         {a.facts?.os_unmatched && <p className="mt-1 text-xs text-muted">OS not matched to Microsoft's fixes: {a.facts.os_unmatched}. Apps and end of support are still checked.</p>}
         {a.facts?.pending_reboot && <p className="mt-1 text-xs text-next-fg">Updates are installed and waiting for a restart: findings close after it.</p>}
         {updateSource(a.facts) && <p className="mt-1 text-xs text-muted">{updateSource(a.facts)}</p>}

@@ -7,7 +7,7 @@ import { afterEach, vi } from "vitest";
 import { SsoSection } from "./integrations";
 import { ApiError, meQ, type Action, type Asset, type Job, type Settings } from "./lib";
 import { ActionCard } from "./home";
-import { AssetRow } from "./assets";
+import { AssetRow, NotAssessed } from "./assets";
 import { Palette } from "./shell";
 import { Done, errorLead } from "./ui";
 import { Onboarding, TROUBLESHOOT_AFTER_MS } from "./onboarding";
@@ -299,4 +299,20 @@ it("a token without an expiry says so instead of crashing Settings", async () =>
   serve({ "GET /api/tokens": [{ id: "t1", name: "old", created_by: "a@b.c", created: "2026-01-01T00:00:00", expires: null, last_used: null }] });
   wrap(<ApiTokensSection />);
   expect(await screen.findByText(/never expires/)).toBeInTheDocument();
+});
+
+it("Assets: says which installed apps weren't checked, and a host with none checked says so", async () => {
+  serve({ "GET /api/coverage": { assessed: 1, inventory_only: 3, not_assessed: [{ name: "Acme Widget", publisher: "Acme", hosts: 2 }] } });
+  wrap(<NotAssessed />);
+  expect(await screen.findByRole("heading", { name: "3 installed apps aren't checked for vulnerabilities" })).toBeInTheDocument();
+  expect(screen.getByText("Acme Widget")).toBeInTheDocument();
+  wrap(<ul><AssetRow a={{ ...HOST, apps: { assessed: 0, inventory_only: 2 } }} onPatch={() => {}} onDelete={() => {}} /></ul>);
+  expect(screen.getByText("None of its 2 installed apps could be checked.")).toBeInTheDocument();
+});
+
+it("Assets: nothing shows when every installed app was checked", async () => {
+  const calls = serve({ "GET /api/coverage": { assessed: 4, inventory_only: 0, not_assessed: [] } });
+  wrap(<NotAssessed />);
+  await waitFor(() => expect(calls.some((c) => c.path === "/api/coverage")).toBe(true));
+  expect(screen.queryByRole("heading")).toBeNull();
 });

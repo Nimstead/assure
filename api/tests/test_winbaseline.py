@@ -3,6 +3,8 @@ agent reads only its closed list, and "can't tell" never reads as a fail."""
 
 import importlib.util
 import json
+import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -88,7 +90,7 @@ def test_build_reads_ids_and_version(tmp_path):
 
 # ---- the shipped tables
 
-RULE_KEYS = {"id", "v", "sev", "scope", "reg", "want", "no_core", "audit", "bit", "right", "only", "require", "require_domain", "exception"}
+RULE_KEYS = {"id", "v", "sev", "scope", "reg", "want", "no_core", "audit", "label", "bit", "right", "only", "require", "require_domain", "exception"}
 
 
 def test_tables_hold_facts_and_no_benchmark_text():
@@ -106,6 +108,9 @@ def test_every_registry_rule_is_on_the_agents_closed_list():
     assert len(closed) == len(agent.BASELINE_REG) <= 200  # facts_ok: at most 200 keys in a dict
     used = {reg_id(*r["reg"]) for b in winbaseline.baselines() for r in b["rules"] if "reg" in r}
     assert used <= closed  # nothing missing
+    for b in winbaseline.baselines():
+        assert {r["audit"] for r in b["rules"] if "audit" in r} <= set(agent.BASELINE_AUDIT)
+        assert {r["right"] for r in b["rules"] if "right" in r} <= set(agent.BASELINE_RIGHTS)
     assert not any("'" in e or ";" in e for e in agent.BASELINE_REG)  # how PS_BASELINE carries them
     assert len(agent.PS_BASELINE) < 30_000  # a command line tops out at 32,767 characters
 
@@ -184,6 +189,95 @@ def test_uac_rules_need_to_know_the_install_type():
     assert statuses({rid_of(r): 0}, installation_type=None)[1][r["id"]] == NOT_ASSESSED
 
 
+# ---- audit policy and user rights (by GUID and SID: DECISIONS 68, 76)
+
+GUID_LOGON = "{0CCE9215-69AE-11D9-BED3-505054503030}"
+
+
+def test_audit_rules_read_the_numeric_setting():
+    ok, fail = rule_of("windows-server-2025", "WN25-AU-000190"), rule_of("windows-server-2025", "WN25-AU-000200")  # logon success, failure
+    assert ok["audit"] == fail["audit"] == GUID_LOGON and (ok["bit"], fail["bit"]) == (1, 2)
+    def audit(v):
+        return winbaseline.evaluate(SERVER, {"baseline": {"audit": {GUID_LOGON: v}}, "domain_role": 3})
+    def status(v, rid):
+        return next(r["status"] for r in audit(v)["rules"] if r["id"] == rid)
+    assert (status(3, ok["id"]), status(3, fail["id"])) == (PASS, PASS)
+    assert (status(1, ok["id"]), status(1, fail["id"])) == (PASS, FAIL)
+    assert (status(2, ok["id"]), status(2, fail["id"])) == (FAIL, PASS)
+    assert (status(0, ok["id"]), status(0, fail["id"])) == (FAIL, FAIL)
+    for junk in (None, 7, True, "3"):
+        assert status(junk, ok["id"]) == NOT_ASSESSED
+
+
+def rights(rid, held, baseline="windows-server-2025", role=3):
+    r = rule_of(baseline, rid)
+    os_name = SERVER if baseline == "windows-server-2025" else "Windows 11 Pro"
+    facts = {"baseline": {"rights": {r["right"]: held}}, "domain_role": role, "installation_type": "Server"}
+    return next(x for x in winbaseline.evaluate(os_name, facts)["rules"] if x["id"] == rid)
+
+
+DOMAIN = "S-1-5-21-1-2-3"
+
+
+@pytest.mark.parametrize(("rid", "held", "want"), [
+    ("WN25-UR-000020", [], PASS),  # nobody may hold it
+    ("WN25-UR-000020", ["S-1-5-32-544"], FAIL),
+    ("WN25-UR-000100", ["S-1-5-32-544"], PASS),  # held only by Administrators
+    ("WN25-UR-000100", [], PASS),
+    ("WN25-UR-000100", ["S-1-5-32-544", f"{DOMAIN}-1105"], FAIL),
+    ("WN25-UR-000100", ["S-1-5-32-544", "?"], NOT_ASSESSED),  # a holder we couldn't name by SID
+    ("WN25-UR-000100", None, NOT_ASSESSED),
+    ("WN25-MS-000110", ["S-1-5-32-546", f"{DOMAIN}-512", f"{DOMAIN}-519"], PASS),  # deny right: must include
+    ("WN25-MS-000110", ["S-1-5-32-546", f"{DOMAIN}-512", f"{DOMAIN}-519", "S-1-5-32-555"], PASS),  # more is fine
+    ("WN25-MS-000110", ["S-1-5-32-546", f"{DOMAIN}-512"], FAIL),
+    ("WN25-MS-000110", ["S-1-5-32-546", "S-1-5-21-1-2-3-1512"], FAIL),  # a RID that merely ends in 512
+])
+def test_rights_are_judged_by_sid(rid, held, want):
+    assert rights(rid, held)["status"] == want
+
+
+def test_domain_only_holders_need_a_domain():
+    assert rights("WN25-MS-000110", ["S-1-5-32-546"], role=2)["status"] == PASS  # standalone: Guests is enough
+    assert rights("WN25-MS-000110", ["S-1-5-32-546"], role=3)["status"] == FAIL
+    assert rights("WN25-MS-000110", ["S-1-5-32-546"], role=None)["status"] == NOT_ASSESSED
+
+
+def test_a_fail_on_a_right_with_exceptions_says_so():
+    assert "exception" in rights("WN25-UR-000020", ["S-1-5-32-544"])["note"]
+    assert rights("WN25-UR-000020", [])["note"] == ""
+
+
+def test_no_translated_words_are_read():
+    """DECISIONS 68: nothing in the collector compares against a name Windows translates."""
+    assert not re.search(r"Success|Failure|Erfolg|BUILTIN|NT AUTHORITY|\bAdministrators\b", agent.PS_BASELINE)
+    assert "/get" not in agent.PS_BASELINE  # that table has only translated settings, no number
+
+
+def run_collector_regex(line):
+    return re.search(r"(\{[0-9A-Fa-f-]{36}\}),.*,([0-3])\s*$", line)
+
+
+@pytest.mark.parametrize("line", [
+    r"HOST,System,Logon,{0CCE9215-69AE-11D9-BED3-505054503030},Success and Failure,,3",
+    r"HOST,System,Anmelden,{0CCE9215-69AE-11D9-BED3-505054503030},Erfolg und Fehler,,3",
+    r'HOST,System,"Abmelden, lokal",{0CCE9215-69AE-11D9-BED3-505054503030},"Erfolg, Fehler",,3',
+])
+def test_audit_table_rows_read_alike_in_any_language(line):
+    m = run_collector_regex(line)
+    assert m.group(1) == GUID_LOGON and m.group(2) == "3"
+    assert re.search(re.escape(m.re.pattern), agent.PS_BASELINE.replace("\\", "\\"))
+
+
+@pytest.mark.skipif(agent.os.name != "nt", reason="needs PowerShell")
+def test_collector_script_parses(tmp_path):
+    """Parsed, not run: PowerShell only checks the syntax here."""
+    f = tmp_path / "s.ps1"
+    f.write_text(agent.PS_BASELINE, encoding="utf-8-sig")
+    check = f"$e = $null; [void][Management.Automation.Language.Parser]::ParseFile('{f}', [ref]$null, [ref]$e); $e.Count"
+    out = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", check], capture_output=True, text=True, check=True).stdout
+    assert out.strip() == "0"
+
+
 # ---- the agent's collector
 
 KEY = agent.BASELINE_REG[0]
@@ -200,6 +294,15 @@ def test_collector_keeps_only_its_closed_list():
     assert got["reg"] == {agent.baseline_id(KEY): 1, agent.baseline_id(other): None}  # a list is a type no rule expects: not assessed
 
 
+def test_collector_checks_audit_and_rights():
+    g, r = agent.BASELINE_AUDIT[0], agent.BASELINE_RIGHTS[0]
+    other = agent.BASELINE_RIGHTS[1]
+    third = agent.BASELINE_RIGHTS[2]
+    got = agent.windows_baseline_facts(fake({"reg": {}, "audit": {g: 3, "{planted}": 1, agent.BASELINE_AUDIT[1]: 9},
+                                             "rights": {r: ["S-1-5-32-544", "?"], other: ["Administrators"], third: "S-1-5-32-544", "SePlanted": []}}))
+    assert got["audit"] == {g: 3} and got["rights"] == {r: ["S-1-5-32-544", "?"]}  # names and other shapes aren't kept
+
+
 def test_collector_failures_cost_only_these_rules():
     assert agent.windows_baseline_facts(lambda cmd, **kw: (1, "boom")) is None
     assert agent.windows_baseline_facts(lambda cmd, **kw: (0, "not json")) is None
@@ -208,7 +311,11 @@ def test_collector_failures_cost_only_these_rules():
 
 
 def test_collector_caps_its_size():
-    assert len(json.dumps(agent.windows_baseline_facts(fake({"reg": dict.fromkeys(agent.BASELINE_REG, "x" * 5000)})))) < agent.BASELINE_MAX_BYTES
+    long = ["S-1-5-21-1111111111-2222222222-3333333333-1234"] * 30
+    answer = {"reg": dict.fromkeys(agent.BASELINE_REG, "x" * 5000), "audit": dict.fromkeys(agent.BASELINE_AUDIT, 3), "rights": dict.fromkeys(agent.BASELINE_RIGHTS, long)}
+    got = agent.windows_baseline_facts(fake(answer))
+    assert len(json.dumps(got)) < agent.BASELINE_MAX_BYTES  # the longest rights lists are what gives way, not the rest of the report
+    assert got["rights"] == {} and len(got["reg"]) == len(agent.BASELINE_REG) and len(got["audit"]) == len(agent.BASELINE_AUDIT)
 
 
 def test_results_are_not_findings_and_the_report_fits(env):
@@ -217,7 +324,8 @@ def test_results_are_not_findings_and_the_report_fits(env):
     a = c.post("/api/agent/enroll", json={"token": token, "hostname": "srv", "ecosystem": "Windows"}).json()
     h = {"Authorization": f"Bearer {a['agent_key']}"}
     # the most the agent can send, beside a large but plausible report: the server keeps facts whole or drops them all
-    baseline = {"reg": {agent.baseline_id(e): "x" * 100 for e in agent.BASELINE_REG}}
+    baseline = {"reg": {agent.baseline_id(e): "x" * 100 for e in agent.BASELINE_REG}, "audit": dict.fromkeys(agent.BASELINE_AUDIT, 3),
+                "rights": {r: ["S-1-5-21-1-2-3-500"] * 8 for r in agent.BASELINE_RIGHTS}}
     assert len(json.dumps(baseline)) < agent.BASELINE_MAX_BYTES
     facts = {"baseline": baseline, "domain_role": 3, "installation_type": "Server", "roles": ["R" * 30] * 400,
              "config": {f"k{i}": 1 for i in range(100)}}

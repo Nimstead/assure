@@ -29,6 +29,7 @@ INFO = [re.compile(p, re.I) for p in (
     r"\.?\s*If it does not exist or is not configured as specified, this is a finding\.?",
     r"If the registry value is not \"\w+\", this is a finding\.?",
     r"Verify SEHOP is turned on\.",
+    r"Verify the \"block all consumer Microsoft account user authentication\" is enabled\.",
     r"The default behaviou?r (is|for) .*",
     r"If the registry value name below does not exist, this is not a finding\.",
     r"If it exists and is configured with a value of \"[^\"]+\", this is (not )?a finding\.",
@@ -45,6 +46,10 @@ INFO = [re.compile(p, re.I) for p in (
 # Applicability we can tell from facts the agent already reports. Longest first, so "member servers and ..." isn't cut short.
 SCOPES = [
     (r"This applies to domain controllers\. It is not applicable for other systems\.?", "dc"),
+    (r"This applies to domain controllers, it is not applicable for other systems\.?", "dc"),
+    (r"This applies to domain controllers\. A separate version applies to other systems\.?", "dc"),
+    (r"This applies to member servers and stand-alone or nondomain-joined systems\. A separate version applies to domain controllers\.?", "not_dc"),
+    (r"This applies to member servers and stand-alone or nondomain-joined systems\. It is not applicable for domain controllers\.?", "not_dc"),
     (r"This applies to member servers\. For domain controllers and stand-alone or nondomain-joined systems, this is not applicable\.?", "member"),
     (r"This applies to member servers and stand-alone or nondomain-joined systems[,;] it is not applicable for domain controllers\.?", "not_dc"),
     (r"This is not applicable for Domain Controllers\.?", "not_dc"),
@@ -53,6 +58,70 @@ SCOPES = [
     (r"For stand-alone or nondomain-joined systems, this is not applicable\.?", "domain"),
 ]
 SERVER_CORE = r"UAC requirements are not applicable for Server Core installations \(this is the default installation option for Windows Server 2025 versus Server with Desktop Experience\)\.?"
+
+GUID = "{{0CCE{}-69AE-11D9-BED3-505054503030}}"
+# Audit subcategories (Microsoft's MS-GPAC list). Windows translates the names, so everything after this table uses the GUID.
+AUDIT = {name: GUID.format(code) for name, code in {
+    "Credential Validation": "923F", "Computer Account Management": "9236", "Other Account Management Events": "923A",
+    "Security Group Management": "9237", "User Account Management": "9235", "Plug and Play Events": "9248", "PNP Activity": "9248",
+    "Process Creation": "922B", "Directory Service Access": "923B", "Directory Service Changes": "923C", "Account Lockout": "9217",
+    "Group Membership": "9249", "Logoff": "9216", "Logon": "9215", "Other Logon/Logoff Events": "921C", "Special Logon": "921B",
+    "Detailed File Share": "9244", "File Share": "9224", "Other Object Access Events": "9227", "Removable Storage": "9245",
+    "Audit Policy Change": "922F", "Audit Audit Policy Change": "922F", "Authentication Policy Change": "9230",
+    "Authorization Policy Change": "9231", "MPSSVC Rule-Level Policy Change": "9232", "Other Policy Change Events": "9234",
+    "Sensitive Privilege Use": "9228", "IPsec Driver": "9213", "IPSec Driver": "9213", "Other System Events": "9214",
+    "Security State Change": "9210", "Security System Extension": "9211", "System Integrity": "9212",
+}.items()}
+AUDIT_INFO = [re.compile(p, re.I) for p in (
+    r"Security Option \"Audit: Force audit policy subcategory settings .*",
+    r"Use the \"?AuditPol\"? tool to review the current Audit Policy configuration[.:]?",
+    r"-?Open (PowerShell|a Command Prompt)( or a command prompt)? with elevated privileges \(\"?Run as administrator\"?\)\.",
+    r"-?Enter \"AuditPol /get /category:\*\"\.?",
+    r"-?Compare the \"?AuditPol\"? settings with the following[.:]?",
+    r"If the system does not audit the (following|above), this is a finding[.:]?",
+)]
+# The names the STIGs use for rights and groups, only to reach the constant and the SID. "*-512" is any domain's Domain Admins.
+RIGHT_NAMES = {
+    "Access Credential Manager as a trusted caller": "SeTrustedCredManAccessPrivilege", "Access this computer from the network": "SeNetworkLogonRight",
+    "Act as part of the operating system": "SeTcbPrivilege", "Add workstations to domain": "SeMachineAccountPrivilege", "Allow log on locally": "SeInteractiveLogonRight",
+    "Allow log on through Remote Desktop Services": "SeRemoteInteractiveLogonRight", "Back up files and directories": "SeBackupPrivilege",
+    "Change the system time": "SeSystemtimePrivilege", "Create a pagefile": "SeCreatePagefilePrivilege", "Create a token object": "SeCreateTokenPrivilege",
+    "Create global objects": "SeCreateGlobalPrivilege", "Create permanent shared objects": "SeCreatePermanentPrivilege", "Create symbolic links": "SeCreateSymbolicLinkPrivilege",
+    "Debug programs": "SeDebugPrivilege", "Deny access to this computer from the network": "SeDenyNetworkLogonRight", "Deny log on as a batch job": "SeDenyBatchLogonRight",
+    "Deny log on as a service": "SeDenyServiceLogonRight", "Deny log on locally": "SeDenyInteractiveLogonRight", "Deny log on through Remote Desktop Services": "SeDenyRemoteInteractiveLogonRight",
+    "Enable computer and user accounts to be trusted for delegation": "SeEnableDelegationPrivilege", "Force shutdown from a remote system": "SeRemoteShutdownPrivilege",
+    "Generate security audits": "SeAuditPrivilege", "Impersonate a client after authentication": "SeImpersonatePrivilege", "Increase scheduling priority": "SeIncreaseBasePriorityPrivilege",
+    "Load and unload device drivers": "SeLoadDriverPrivilege", "Lock pages in memory": "SeLockMemoryPrivilege", "Manage auditing and security log": "SeSecurityPrivilege",
+    "Modify firmware environment values": "SeSystemEnvironmentPrivilege", "Perform volume maintenance tasks": "SeManageVolumePrivilege", "Profile single process": "SeProfileSingleProcessPrivilege",
+    "Restore files and directories": "SeRestorePrivilege", "Take ownership of files or other objects": "SeTakeOwnershipPrivilege",
+}
+GROUPS = {
+    "Administrators": "S-1-5-32-544", "Users": "S-1-5-32-545", "Guests": "S-1-5-32-546", "Remote Desktop Users": "S-1-5-32-555", "Authenticated Users": "S-1-5-11",
+    "Enterprise Domain Controllers": "S-1-5-9", "Service": "S-1-5-6", "Local Service": "S-1-5-19", "Network Service": "S-1-5-20", "Local account": "S-1-5-113",
+    "Local account and member of Administrators group": "S-1-5-114", "Enterprise Admins Group": "*-519", "Enterprise Admin Group": "*-519",
+    "Enterprise Admins": "*-519", "Domain Admins Group": "*-512", "Domain Admins": "*-512",
+}
+GROUPS = {k.lower().removesuffix(" group"): v for k, v in GROUPS.items()} | {"domain admin": "*-512"}
+RIGHT_NAMES = {k.lower(): v for k, v in RIGHT_NAMES.items()}
+RIGHT_INFO = [re.compile(p, re.I) for p in (
+    r"(Review|Verify) the effective (User Rights )?setting in Local Group Policy Editor\.",
+    r"Run \"?gpedit\.msc\"?\.",
+    r"Navigate to Local Computer Policy >> .* >> User Rights Assignment\.",
+    r"For server core installations, run the following command:",
+    r"Secedit /Export /Areas User_Rights /cfg c:\\path\\filename\.txt",
+    r"Review the text file\.",
+    r"\"Local account\" refers to the Windows built-in security group\.",
+    r"These are built-in security groups\. \"Local account\" is more restrictive but may cause issues on servers such as systems that provide failover clustering\.",
+)]
+# A documented need for the right is accepted: we can't see that, so a fail carries a note saying so.
+RIGHT_EXCEPTION = [re.compile(p, re.I) for p in (
+    r"If (an application|a domain application account such as for a management tool) requires this user right, this (is|would) not (be )?a finding\.",
+    r"Vendor documentation must support the requirement for having the user right\.",
+    r"The requirement must be documented with the (information system security officer \(ISSO\)|ISSO)\.",
+    r"The application account, managed at the domain level, must meet requirements for application account passwords, such as length and frequency of changes as defined in the Windows Server STIGs\.",
+    r"The application account must meet requirements for application account passwords, such as length \(\S+\) and required frequency of changes \(\S+\)\.",
+    r"Passwords for (application )?accounts with this user right must be protected as highly privileged accounts\.",
+)]
 
 
 def field(line: str, label: str) -> str | None:
@@ -147,9 +216,99 @@ def registry_rule(text: str) -> tuple[dict | None, str]:
     rule = {"scope": scope, "reg": [path.strip("\\ "), name], "want": want}
     return ({**rule, "no_core": True} if no_core else rule), ""
 
+def audit_rule(text: str) -> tuple[dict | None, str]:
+    hits = re.findall(r"^\s*(.+?) >> (.+?) - (Success|Failure)\s*$", text, re.M)
+    if len(hits) != 1 or (guid := AUDIT.get(hits[0][1])) is None:
+        return None, "audit requirement not understood"
+    rest = re.sub(r"^.* >> .* - (Success|Failure)\s*$", " ", text, flags=re.M)
+    scope = "all"
+    for pat, sc in SCOPES:
+        if re.search(pat, rest, re.I):
+            scope, rest = sc, re.sub(pat, " ", rest, flags=re.I)
+    parts = [p.strip() for p in re.split(r"(?<=\.)\s+|\n+", rest) if p.strip(" .")]
+    # the option other rules check: it makes these settings count, and has its own rule
+    if unknown := [p for p in parts if not any(i.fullmatch(p) for i in AUDIT_INFO)
+                   and not p.startswith(("must be set to \"Enabled\"", "(Windows 7 or later)"))]:
+        return None, "condition in the text: " + unknown[0][:90]
+    return {"scope": scope, "audit": guid, "label": hits[0][1].removeprefix("Audit "), "bit": 1 if hits[0][2] == "Success" else 2}, ""
+
+
+def entry_sids(line: str) -> list[str] | None:
+    """One accepted holder: "S-1-5-32-544 (Administrators)", "Administrators", "Domain Admins Group", or "A or B" (either will do)."""
+    out = []
+    for part in re.split(r"\s+or\s+", re.sub(r"\s*\(see Note below\)", "", line).strip(" -.\t")):
+        part = part.strip(' "')
+        if (m := re.fullmatch(r"(S-1-[\w -]+?)(?: \(.*\))?", part)):
+            sid = m.group(1).strip()
+            sid = {"S-1-5-root domain-519": "*-519", "S-1-5-domain-512": "*-512"}.get(sid, sid)
+            if not re.fullmatch(r"S-1-[\d-]+|\*-\d+", sid):
+                return None
+            out.append(sid)
+        elif part.lower().removesuffix(" group") in GROUPS:
+            out.append(GROUPS[part.lower().removesuffix(" group")])
+        else:
+            return None
+    return out
+
+
+def rights_rule(text: str) -> tuple[dict | None, str]:
+    """Both ways a STIG words it (names for the console, SIDs for the file) must agree, or a person reads it."""
+    right, scope, exception = None, "all", False
+    sections: list[dict] = []
+    current = target = None
+    for pat, sc in SCOPES:
+        if re.search(pat, text, re.I):
+            scope, text = sc, re.sub(pat, " ", text, flags=re.I)
+    for raw in re.sub(r"(?<=\.) +(?=[A-Z\"])", "\n", text).splitlines():
+        line = re.sub(r"^(Note|Warning):\s*", "", raw.strip())
+        if not line:
+            continue
+        m = re.fullmatch(r"If any (?:SIDs|groups or accounts|accounts or groups)(?: \(to include administrators\),?)?( other than the following)? (?:are|is) (?:granted|defined for) the \"(.+?)\"(?: user)? right(?:, this is a finding|, this is a finding)[.:]?", line, re.I)
+        n = re.fullmatch(r"If the following (?:SIDs?|SID\(s\)|groups or accounts|accounts or groups) (?:are|is) not defined for the \"(.+?)\"(?: user)? right, this is a finding[.:]?", line, re.I)
+        if m or n:
+            name = (m.group(2) if m else n.group(1))
+            se = name if name.startswith("Se") else RIGHT_NAMES.get(name.lower())
+            if not se or (right and right != se):
+                return None, f"right not understood: {name[:60]}"
+            right = se
+            current = {"kind": ("only" if m.group(1) else "none") if m else "require", "all": [], "domain": []}
+            sections.append(current)
+            target = current["all"]
+        elif re.fullmatch(r"Domain Systems Only:", line, re.I) and current:
+            target = current["domain"]
+        elif re.fullmatch(r"All Systems:", line, re.I) and current:
+            target = current["all"]
+        elif any(i.fullmatch(line) for i in RIGHT_EXCEPTION):
+            exception = True
+            current = target = None
+        elif any(i.fullmatch(line) for i in RIGHT_INFO):
+            current = target = None
+        elif target is not None and (sids := entry_sids(line)) is not None:
+            target.append(sids)
+        else:
+            return None, "condition in the text: " + line[:90]
+    if not sections:
+        return None, "rights requirement not understood"
+    kinds = {x["kind"] for x in sections}
+    # as sets of sorted alternatives, so the console's and the file's lists compare whatever their order
+    shape = {(x["kind"], tuple(sorted(map(tuple, x["all"]))), tuple(sorted(map(tuple, x["domain"])))) for x in sections}
+    if len(shape) != 1 or len(kinds) != 1:
+        return None, "the rule's two wordings disagree"
+    first = sections[0]
+    rule = {"scope": scope, "right": right}
+    if first["kind"] == "require":
+        rule["require"] = first["all"]
+        if first["domain"]:
+            rule["require_domain"] = first["domain"]
+    else:
+        if first["domain"] or any(len(a) > 1 for a in first["all"]):
+            return None, "allowed list has alternatives"
+        rule["only"] = [] if first["kind"] == "none" else [a[0] for a in first["all"]]
+    return ({**rule, "exception": True} if exception else rule), ""
+
 
 def unknown_sentences(text: str) -> list[str]:
-    parts = [p.strip() for p in re.split(r"(?<=[.:])\s+", re.sub(r"(Note|Warning):\s*|\s+", " ", text)) if p.strip(" .")]
+    parts = [p.strip() for p in re.split(r"(?<=[.:])\s+", re.sub(r"\b(Note|Warning):\s*|\s+", " ", text)) if p.strip(" .")]
     return [p for p in parts if not any(i.fullmatch(p) for i in INFO)]
 
 
@@ -166,8 +325,12 @@ def apply_id_scope(rule: dict, stig_id: str) -> dict | None:
 def classify(text: str, stig_id: str) -> tuple[dict | None, str]:
     if re.search(r"Registry Hive", text):
         rule, why = registry_rule(text)
+    elif re.search(r"AuditPol", text):
+        rule, why = audit_rule(text)
+    elif re.search(r"User Rights Assignment", text):
+        rule, why = rights_rule(text)
     else:
-        return None, "not a registry value"
+        return None, "not a setting the agent can read"
     if rule and not (rule := apply_id_scope(rule, stig_id)):
         return None, "applicability in the text and the ID disagree"
     return rule, why
@@ -205,13 +368,15 @@ def build(root: ET.Element, ident: str, name: str, os_re: str, source: str, sour
 
 def agent_list(paths: list[str]) -> dict:
     """The union every baseline reads: the agent ships this, reviewed, and the server can't change it (DECISIONS 7, 27)."""
-    reg = {}  # Windows doesn't care about case in a path, and the STIGs spell the same key several ways
+    reg, audit, rights = {}, set(), set()  # Windows doesn't care about case in a path, and the STIGs spell the same key several ways
     for p in paths:
         with open(p, encoding="utf-8") as f:
             for r in json.load(f)["rules"]:
                 if "reg" in r:
                     reg.setdefault("|".join(r["reg"]).lower(), "|".join(r["reg"]))
-    return {"reg": [reg[k] for k in sorted(reg)]}
+                audit |= {r["audit"]} if "audit" in r else set()
+                rights |= {r["right"]} if "right" in r else set()
+    return {"reg": [reg[k] for k in sorted(reg)], "audit": sorted(audit), "rights": sorted(rights)}
 
 
 def main() -> int:

@@ -16,6 +16,11 @@ from pathlib import Path
 
 DIR = Path(__file__).parent / "baselines"
 PASS, FAIL, NOT_ASSESSED, NOT_APPLICABLE = "pass", "fail", "not assessed", "not applicable"
+EXCEPTION_NOTE = "A documented need for this right can be an accepted exception, which we can't see"
+SID_NAMES = {"S-1-5-32-544": "Administrators", "S-1-5-32-545": "Users", "S-1-5-32-546": "Guests", "S-1-5-32-555": "Remote Desktop Users",
+             "S-1-5-11": "Authenticated Users", "S-1-5-9": "Enterprise Domain Controllers", "S-1-5-6": "Service", "S-1-5-19": "Local Service",
+             "S-1-5-20": "Network Service", "S-1-5-113": "Local account", "S-1-5-114": "Local account and member of Administrators",
+             "*-512": "Domain Admins", "*-519": "Enterprise Admins"}
 
 
 @lru_cache(maxsize=1)
@@ -80,8 +85,22 @@ def _meets(want: dict, value) -> bool:
     return want.get("min", 0) <= value <= want["le"]
 
 
-def _judge(rule: dict, values: dict) -> tuple[str, str, str, str]:
+def _holders(sids) -> str:
+    return ", ".join(SID_NAMES.get(x, x) for x in sids) or "nobody"
+
+
+def _holds(pattern: str, held: list) -> bool:
+    if pattern.startswith("*"):  # any domain's Domain Admins, Enterprise Admins
+        return any(h.startswith("S-1-5-21-") and h.endswith(pattern[1:]) for h in held)
+    return pattern in held
+
+
+def _judge(rule: dict, values: dict, facts: dict) -> tuple[str, str, str, str]:
     """(status, setting, expected, what was read)."""
+    if "audit" in rule:
+        return _judge_audit(rule, values)
+    if "right" in rule:
+        return _judge_right(rule, values, facts)
     key, name = rule["reg"]
     setting, want = f"HKLM\\{key}\\{name}", rule["want"]
     expected, rid = _expected(want), reg_id(key, name)
@@ -94,6 +113,37 @@ def _judge(rule: dict, values: dict) -> tuple[str, str, str, str]:
     return PASS if _meets(want, value) else FAIL, setting, expected, str(value)[:100]
 
 
+def _judge_audit(rule: dict, values: dict) -> tuple[str, str, str, str]:
+    setting, expected = f"Audit policy: {rule['label']}", "audits " + ("success" if rule["bit"] == 1 else "failure")
+    audit = values.get("audit") if isinstance(values.get("audit"), dict) else {}
+    value = audit.get(rule["audit"])
+    if not isinstance(value, int) or isinstance(value, bool) or not 0 <= value <= 3:
+        return NOT_ASSESSED, setting, expected, "not read"
+    found = ("no auditing", "success", "failure", "success and failure")[value]
+    return PASS if value & rule["bit"] else FAIL, setting, expected, found
+
+
+def _judge_right(rule: dict, values: dict, facts: dict) -> tuple[str, str, str, str]:
+    setting = f"User right: {rule['right']}"
+    domain = rule.get("require_domain", [])
+    if "only" in rule:
+        expected = "held only by " + _holders(rule["only"]) if rule["only"] else "held by nobody"
+    else:
+        expected = "includes " + _holders(" or ".join(SID_NAMES.get(x, x) for x in alt) for alt in [*rule["require"], *domain])
+    rights = values.get("rights") if isinstance(values.get("rights"), dict) else {}
+    held = rights.get(rule["right"])
+    if not isinstance(held, list) or not all(isinstance(h, str) and h.startswith("S-1-") for h in held):  # "?": a name that wouldn't resolve
+        return NOT_ASSESSED, setting, expected, "not read"
+    found = _holders(held)[:100]
+    if "only" in rule:
+        return PASS if all(any(_holds(p, [h]) for p in rule["only"]) for h in held) else FAIL, setting, expected, found
+    role = facts.get("domain_role")
+    if domain and (not isinstance(role, int) or isinstance(role, bool)):
+        return NOT_ASSESSED, setting, expected, found  # some holders are only needed on a domain
+    needed = [*rule["require"], *(domain if role not in (0, 2) else [])]
+    return PASS if all(any(_holds(p, held) for p in alt) for alt in needed) else FAIL, setting, expected, found
+
+
 def evaluate(os_name: str | None, facts: dict | None) -> dict | None:
     """{baseline fields, pass, fail, not_assessed, not_applicable, manual, rules}, or None when this OS has no baseline."""
     b = for_host(os_name)
@@ -103,13 +153,14 @@ def evaluate(os_name: str | None, facts: dict | None) -> dict | None:
     values = facts.get("baseline") if isinstance(facts.get("baseline"), dict) else {}
     rows = []
     for r in b["rules"]:
-        status, setting, expected, found = _judge(r, values)
+        status, setting, expected, found = _judge(r, values, facts)
         fit = applies(r, facts)
         if fit is False:
             status = NOT_APPLICABLE
         elif fit is None:
             status = NOT_ASSESSED
-        rows.append({"id": r["id"], "v": r["v"], "severity": r["sev"], "status": status, "setting": setting, "expected": expected, "found": found})
+        rows.append({"id": r["id"], "v": r["v"], "severity": r["sev"], "status": status, "setting": setting, "expected": expected, "found": found,
+                     "note": EXCEPTION_NOTE if r.get("exception") and status == FAIL else ""})
     count = lambda s: sum(x["status"] == s for x in rows)  # noqa: E731
     return {"baseline_id": b["id"], "name": b["name"], "version": b["version"], "date": b["date"], "automated": len(rows),
             "manual": len(b["not_automated"]), "pass": count(PASS), "fail": count(FAIL), "not_assessed": count(NOT_ASSESSED),

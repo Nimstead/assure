@@ -702,6 +702,7 @@ BASELINE_REG = (
     r"SOFTWARE\Policies\Microsoft\Cryptography|ForceKeyProtection",
     r"SOFTWARE\Policies\Microsoft\Internet Explorer\Feeds|AllowBasicAuthInClear",
     r"SOFTWARE\Policies\Microsoft\Internet Explorer\Feeds|DisableEnclosureDownload",
+    r"SOFTWARE\Policies\Microsoft\MicrosoftAccount|DisableUserAuth",
     r"SOFTWARE\Policies\Microsoft\Power\PowerSettings\0e796bdb-100d-47d6-a2d5-f7d2daa51f51|ACSettingIndex",
     r"SOFTWARE\Policies\Microsoft\Power\PowerSettings\0e796bdb-100d-47d6-a2d5-f7d2daa51f51|DCSettingIndex",
     r"SOFTWARE\Policies\Microsoft\Windows NT\Printers|DisableHTTPPrinting",
@@ -774,9 +775,51 @@ BASELINE_REG = (
     r"SYSTEM\CurrentControlSet\Services\Netlogon\Parameters|RequireStrongKey",
     r"SYSTEM\CurrentControlSet\Services\Netlogon\Parameters|SealSecureChannel",
     r"SYSTEM\CurrentControlSet\Services\Netlogon\Parameters|SignSecureChannel",
-    r"SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters|DisableIpSourceRouting",
+    r"SYSTEM\CurrentControlSet\Services\NTDS\Parameters|LDAPServerEnforceIntegrity",
+    r"SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters|DisableIPSourceRouting",
     r"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters|DisableIPSourceRouting",
     r"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters|EnableICMPRedirect",
+)
+BASELINE_AUDIT = (  # audit subcategories, by GUID: Windows translates their names
+    "{0CCE9210-69AE-11D9-BED3-505054503030}",
+    "{0CCE9211-69AE-11D9-BED3-505054503030}",
+    "{0CCE9212-69AE-11D9-BED3-505054503030}",
+    "{0CCE9213-69AE-11D9-BED3-505054503030}",
+    "{0CCE9214-69AE-11D9-BED3-505054503030}",
+    "{0CCE9215-69AE-11D9-BED3-505054503030}",
+    "{0CCE9216-69AE-11D9-BED3-505054503030}",
+    "{0CCE9217-69AE-11D9-BED3-505054503030}",
+    "{0CCE921B-69AE-11D9-BED3-505054503030}",
+    "{0CCE921C-69AE-11D9-BED3-505054503030}",
+    "{0CCE9224-69AE-11D9-BED3-505054503030}",
+    "{0CCE9227-69AE-11D9-BED3-505054503030}",
+    "{0CCE9228-69AE-11D9-BED3-505054503030}",
+    "{0CCE922B-69AE-11D9-BED3-505054503030}",
+    "{0CCE922F-69AE-11D9-BED3-505054503030}",
+    "{0CCE9230-69AE-11D9-BED3-505054503030}",
+    "{0CCE9231-69AE-11D9-BED3-505054503030}",
+    "{0CCE9232-69AE-11D9-BED3-505054503030}",
+    "{0CCE9234-69AE-11D9-BED3-505054503030}",
+    "{0CCE9235-69AE-11D9-BED3-505054503030}",
+    "{0CCE9236-69AE-11D9-BED3-505054503030}",
+    "{0CCE9237-69AE-11D9-BED3-505054503030}",
+    "{0CCE923A-69AE-11D9-BED3-505054503030}",
+    "{0CCE923B-69AE-11D9-BED3-505054503030}",
+    "{0CCE923C-69AE-11D9-BED3-505054503030}",
+    "{0CCE923F-69AE-11D9-BED3-505054503030}",
+    "{0CCE9244-69AE-11D9-BED3-505054503030}",
+    "{0CCE9248-69AE-11D9-BED3-505054503030}",
+    "{0CCE9249-69AE-11D9-BED3-505054503030}",
+)
+BASELINE_RIGHTS = (  # user rights, by constant: Windows translates their names too
+    "SeAuditPrivilege", "SeBackupPrivilege", "SeCreateGlobalPrivilege", "SeCreatePagefilePrivilege",
+    "SeCreatePermanentPrivilege", "SeCreateTokenPrivilege", "SeDebugPrivilege", "SeDenyBatchLogonRight",
+    "SeDenyInteractiveLogonRight", "SeDenyNetworkLogonRight", "SeDenyRemoteInteractiveLogonRight", "SeDenyServiceLogonRight",
+    "SeEnableDelegationPrivilege", "SeImpersonatePrivilege", "SeIncreaseBasePriorityPrivilege", "SeInteractiveLogonRight",
+    "SeLoadDriverPrivilege", "SeLockMemoryPrivilege", "SeMachineAccountPrivilege", "SeManageVolumePrivilege",
+    "SeNetworkLogonRight", "SeProfileSingleProcessPrivilege", "SeRemoteInteractiveLogonRight", "SeRemoteShutdownPrivilege",
+    "SeRestorePrivilege", "SeSystemEnvironmentPrivilege", "SeSystemtimePrivilege", "SeTakeOwnershipPrivilege",
+    "SeTcbPrivilege", "SeTrustedCredManAccessPrivilege",
 )
 # A value that isn't there is null; one that can't be read, or has a type no rule expects, is left out: "not assessed", not a fail.
 PS_BASELINE = r"""
@@ -793,8 +836,41 @@ foreach ($e in '__REG__' -split ';') {
     if ($v -is [uint32] -or $v -is [string]) { $reg[$e] = $v }
   } catch { }
 }
-ConvertTo-Json -Compress -Depth 3 -InputObject ([ordered]@{ reg = $reg })
-""".replace("__REG__", ";".join(BASELINE_REG))
+# No translated word is read (DECISIONS 68, 76). auditpol's table: its numeric last column, found from the GUID, whatever the other
+# columns say. secedit's file: rights by constant and holders by SID. A name secedit couldn't turn into a SID is resolved here;
+# one that won't resolve is "?", which reads "not assessed". Both files go in the agent's own locked folder and hold settings only.
+$dir = Join-Path $env:ProgramData 'Nimstead'
+$audit = [ordered]@{}
+$f = Join-Path $dir ('audit-' + [guid]::NewGuid() + '.csv')
+auditpol /backup /file:$f | Out-Null
+if (Test-Path -LiteralPath $f) {
+  foreach ($l in Get-Content -LiteralPath $f) { if ($l -match '(\{[0-9A-Fa-f-]{36}\}),.*,([0-3])\s*$') { $audit[$Matches[1].ToUpper()] = [int]$Matches[2] } }
+  Remove-Item -LiteralPath $f -Force
+}
+$rights = [ordered]@{}
+$f = Join-Path $dir ('rights-' + [guid]::NewGuid() + '.inf')
+secedit /export /areas USER_RIGHTS /cfg $f /quiet | Out-Null
+if (Test-Path -LiteralPath $f) {
+  $held = @{}; $found = $false; $in = $false
+  foreach ($l in Get-Content -LiteralPath $f) {
+    if ($l -match '^\[') { $in = $l -match '^\[Privilege Rights\]'; if ($in) { $found = $true }; continue }
+    if ($in -and $l -match '^(Se\w+)\s*=\s*(.*)$') {
+      $right = $Matches[1]; $sids = @()
+      foreach ($h in ($Matches[2] -split ',')) {
+        $h = $h.Trim(); if (-not $h) { continue }
+        if ($h.StartsWith('*')) { $sids += $h.Substring(1) } else {
+          try { $sids += (New-Object Security.Principal.NTAccount($h)).Translate([Security.Principal.SecurityIdentifier]).Value } catch { $sids += '?' }
+        }
+      }
+      $held[$right] = $sids
+    }
+  }
+  Remove-Item -LiteralPath $f -Force
+  if ($found) { foreach ($r in '__RIGHTS__' -split ';') { if ($held.ContainsKey($r)) { $rights[$r] = [object[]]$held[$r] } else { $rights[$r] = [object[]]@() } } }
+}
+ConvertTo-Json -Compress -Depth 4 -InputObject ([ordered]@{ reg = $reg; audit = $audit; rights = $rights })
+""".replace("__REG__", ";".join(BASELINE_REG)).replace("__RIGHTS__", ";".join(BASELINE_RIGHTS))
+BASELINE_HOLDER = re.compile(r"^(S-1-[0-9-]{1,180}|\?)\Z")
 BASELINE_MAX_BYTES = 20_000  # the server drops a whole report's facts over 64 KB (app.py, facts_ok); these must never cost the rest
 
 
@@ -804,7 +880,8 @@ def baseline_id(entry):
 
 
 def windows_baseline_facts(run=None):
-    """{"reg": {id: value or null}} for the closed lists above, or None. Only what's on those lists is kept."""
+    """{"reg": {id: value or null}, "audit": {guid: 0-3}, "rights": {constant: [SID]}} for the closed lists above, or None.
+    Only what's on those lists is kept. Whatever isn't in the answer reads "not assessed" on the server."""
     rc, out = ps(run or sh, PS_BASELINE)
     try:
         d = json.loads(out.strip().splitlines()[-1]) if rc == 0 else None
@@ -819,7 +896,13 @@ def windows_baseline_facts(run=None):
             reg[baseline_id(e)] = v
         elif isinstance(v, str):
             reg[baseline_id(e)] = v[:100]
-    facts = {"reg": reg}
+    audit = d.get("audit") if isinstance(d.get("audit"), dict) else {}
+    rights = d.get("rights") if isinstance(d.get("rights"), dict) else {}
+    facts = {"reg": reg, "audit": {g: audit[g] for g in BASELINE_AUDIT if audit.get(g) in (0, 1, 2, 3)},
+             "rights": {r: rights[r] for r in BASELINE_RIGHTS if isinstance(rights.get(r), list) and len(rights[r]) <= 30
+                        and all(isinstance(s, str) and BASELINE_HOLDER.match(s) for s in rights[r])}}
+    if len(json.dumps(facts)) > BASELINE_MAX_BYTES:  # only a host with very long rights lists gets here
+        facts["rights"] = {}
     return facts if len(json.dumps(facts)) <= BASELINE_MAX_BYTES else None
 
 

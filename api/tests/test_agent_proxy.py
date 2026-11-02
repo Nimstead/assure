@@ -15,6 +15,8 @@ def reset(monkeypatch):
     ("Current WinHTTP proxy settings:\r\n\r\n    Proxy Server(s) :  proxy.corp:8080\r\n    Bypass List     :  (none)\r\n", "http://proxy.corp:8080"),
     ("    Proxy Server(s) :  http=p1:80;https=p2:8443\r\n", "http://p2:8443"),
     ("    Proxy Server(s) :  http=p1:80\r\n", None),
+    ("Aktuelle WinHTTP-Proxyeinstellungen:\r\n\r\n    Proxyserver:  proxy.corp:8080\r\n    Umgehungsliste:  (keine)\r\n", "http://proxy.corp:8080"),
+    ("Aktuelle WinHTTP-Proxyeinstellungen:\r\n\r\n    Direktzugriff (kein Proxyserver).\r\n", None),
 ])
 def test_winhttp_proxy(out, want):
     assert agent.winhttp_proxy(lambda cmd: (0, out)) == want

@@ -545,10 +545,9 @@ function Reg($path, $name) { $v = (Get-ItemProperty -LiteralPath "Registry::$pat
 function UserWritable($p) {
   if (-not $p -or -not (Test-Path -LiteralPath $p)) { return $false }
   $acl = Get-Acl -LiteralPath $p
-  foreach ($r in $acl.Access) {
+  foreach ($r in $acl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier])) {
     if ($r.AccessControlType -ne 'Allow') { continue }
-    $id = $r.IdentityReference.Value
-    if ($id -notmatch '^(BUILTIN\\Users|NT AUTHORITY\\Authenticated Users|Everyone|NT AUTHORITY\\INTERACTIVE)$') { continue }
+    if ($r.IdentityReference.Value -notin 'S-1-5-32-545', 'S-1-5-11', 'S-1-1-0', 'S-1-5-4') { continue }  # Users, Authenticated Users, Everyone, INTERACTIVE: by SID, names are localised
     if ($r.FileSystemRights -band 0x40116) { return $true }  # write data/add file, append, write attributes/EA, write DAC, owner
   }
   return $false
@@ -1278,7 +1277,7 @@ class WinAppJob:
         cwd = os.path.dirname(vc.strip().splitlines()[-1]) if rc == 0 and vc.strip() else None
         common = ["--id", wid, "--exact", "--source", "winget", "--version", p["to"], "--accept-source-agreements", "--disable-interactivity"]
         out = self.step(f"winget lists {wid} {p['to']} with an installer hash", [exe, "show", *common], cwd=cwd)
-        self.step("installer SHA-256 published", ok=bool(re.search(r"(?im)^\s*Installer SHA256:\s*[0-9a-f]{64}\s*$", out)), output=out)
+        self.step("installer SHA-256 published", ok=bool(re.search(r"(?im):\s*[0-9a-f]{64}\s*$", out)), output=out)  # by the value: winget's labels are localised
         self.step(f"{wid} upgraded to {p['to']}", [exe, "install", *common, "--silent", "--force", "--accept-package-agreements",
                                                     "--scope", "machine"], cwd=cwd)
         self.result_versions = {p["name"]: p["to"]}
@@ -2011,7 +2010,7 @@ def winhttp_proxy(run=None):
     """The machine-wide WinHTTP proxy (what Windows Update uses as SYSTEM), or None. `netsh` prints either one
     host:port or per-scheme entries; only an https= entry or a single host:port is used."""
     rc, out = (run or sh)(["netsh", "winhttp", "show", "proxy"])
-    m = re.search(r"Proxy Server\(s\)\s*:\s*(\S+)", out) if rc == 0 else None
+    m = re.search(r"(?m)^[ \t]*[^:\r\n]+:[ \t]*(\S+)", out) if rc == 0 else None  # first "label: value" line: labels are localised
     if not m:
         return None
     v = m.group(1)

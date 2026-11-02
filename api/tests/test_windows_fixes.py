@@ -77,6 +77,16 @@ def test_winget_upgrades_only_a_pinned_id_with_a_published_hash():
     assert len(h.winget_cwds) == 2 and all("Microsoft.VCLibs" in c for c in h.winget_cwds)  # as SYSTEM its DLLs are found from there
 
 
+@pytest.mark.parametrize(("line", "want"), [("  Installer-SHA256: " + "a" * 64, "applied"),  # winget's labels follow Windows' language
+                                            ("  Installer-SHA256: ", "aborted")])
+def test_winget_finds_the_hash_by_its_value_not_its_label(line, want):
+    class German(Host):
+        def __call__(self, cmd, **kw):
+            return (0, f"Installer:\n{line}\n") if cmd[0].endswith("winget.exe") and cmd[1] == "show" else super().__call__(cmd, **kw)
+    outcome, steps, err = agent.WinAppJob(job("winget", "7-zip:7-zip"), run=German()).execute()
+    assert outcome == want, (steps, err)
+
+
 @pytest.mark.parametrize("j,why", [
     (job("winget", "Contoso.Evil"), "unknown product"),
     (job("winget", "7-zip:7-zip", to="24.09; calc"), "invalid version"),

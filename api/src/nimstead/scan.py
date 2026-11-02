@@ -8,7 +8,7 @@ from collections import defaultdict
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from nimstead import evidence, lifecycle, msproducts, risk, winapps, winconfig
+from nimstead import evidence, lifecycle, msproducts, risk, winapps, winconfig, windrivers
 from nimstead.db import Advisory, Asset, Cvss, Epss, Finding, InstalledPackage, Kev, now
 from nimstead.match import Match, Package, match_package, normalize_ecosystem
 from nimstead.notify import notify
@@ -45,9 +45,9 @@ def hotpatch_track(hot: list[dict], version: str) -> tuple[set[str], list[dict]]
     return {a for r in hot for a in r["aliases"]}, hot
 
 
-def host_checks(pkgs: list, facts: dict, today, eol: dict | None = None) -> list[dict]:
-    """Findings from the host's own state rather than an advisory: end of support (lifecycle.py) and Windows
-    configuration (winconfig.py). `risk` None = score it as the CVE it names (KEV, EPSS, CVSS)."""
+def host_checks(pkgs: list, facts: dict, today, eol: dict | None = None, drivers: dict | None = None) -> list[dict]:
+    """Findings from the host's own state rather than an advisory: end of support (lifecycle.py), Windows
+    configuration (winconfig.py) and listed driver files (windrivers.py). `risk` None = score it as the CVE it names (KEV, EPSS, CVSS)."""
     out = []
     for x in lifecycle.findings(pkgs, facts, today, eol):
         out.append({**x, "ecosystem": lifecycle.ECOSYSTEM, "risk": risk.Risk(
@@ -55,6 +55,7 @@ def host_checks(pkgs: list, facts: dict, today, eol: dict | None = None) -> list
             [x["summary"], "Upgrade, or enrol in Extended Security Updates" if x["ended"] else "Plan the upgrade"])})
     os_version = next((p.version for p in pkgs if p.ecosystem == "Windows"), "")
     out += [{**x, "ecosystem": winconfig.ECOSYSTEM} for x in winconfig.evaluate(facts, os_version)]
+    out += [{**x, "ecosystem": windrivers.ECOSYSTEM} for x in windrivers.findings(pkgs, drivers or {})]
     return out
 
 
@@ -87,6 +88,8 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
     targets = []
     for p in pkgs:
         eco = normalize_ecosystem(p.ecosystem)
+        if eco == windrivers.ECOSYSTEM:  # judged by exact hash in host_checks, never by name and version
+            continue
         if eco == winapps.ECOSYSTEM:
             if hit := winapps.identify(p.name, p.source, p.version):
                 targets.append((p, eco, hit[0], hit[1]))
@@ -136,7 +139,10 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
     if ("eol",) not in advisories:  # endoflife.date cycles, once per feed-update pass
         advisories[("eol",)] = {pkg: rec["cycles"] for pkg, rec in s.execute(
             select(Advisory.package, Advisory.record).where(Advisory.ecosystem == "EOL"))}
-    for x in host_checks(pkgs, asset.facts or {}, t.date(), advisories[("eol",)]):
+    if ("drivers",) not in advisories:  # LOLDrivers' hashes, once per pass
+        stored = s.scalar(select(Advisory.record).where(Advisory.ecosystem == windrivers.ECOSYSTEM)) or {}
+        advisories[("drivers",)] = stored.get("drivers", {})
+    for x in host_checks(pkgs, asset.facts or {}, t.date(), advisories[("eol",)], advisories[("drivers",)]):
         key = (x["ecosystem"], x["package"], x["vuln_id"])
         seen.add(key)
         rec = {"_risk": (x["risk"].score, x["risk"].priority, x["risk"].reasons)} if x.get("risk") else {}
@@ -200,7 +206,11 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
             fix_now.append(m.vuln_id)
 
     resolved = 0
+    scan = (asset.facts or {}).get("driver_scan")
+    drivers_complete = isinstance(scan, dict) and scan.get("complete") is True
     for key, f in existing.items():
+        if key[0] == windrivers.ECOSYSTEM and not drivers_complete:  # a scan that failed or stopped early proves nothing is gone
+            continue
         if key not in seen and f.status in ("open", "accepted"):
             f.status, f.resolved_at = "resolved", t  # inventory proves the vulnerable version is gone
             resolved += 1

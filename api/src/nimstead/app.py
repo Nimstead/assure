@@ -31,7 +31,7 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import Integer, and_, delete, func, or_, select
 from sqlalchemy.orm import Session
 
-from nimstead import ai, evidence, external, lifecycle, mfa, notify, remediate, sbom, sso, updates
+from nimstead import ai, evidence, external, lifecycle, mfa, notify, remediate, sbom, sso, updates, windrivers
 from nimstead.db import (
     ApiToken,
     Asset,
@@ -1189,7 +1189,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             stmt = stmt.where(Finding.kev == kev)
         if fixable is not None:
             # a setting, an end of support or an exposure never has a fixed version, but there is always something to do
-            has_fix = Finding.fixed_version.is_not(None) | Finding.ecosystem.in_(("WinConfig", lifecycle.ECOSYSTEM, external.ECOSYSTEM))
+            has_fix = Finding.fixed_version.is_not(None) | Finding.ecosystem.in_(("WinConfig", lifecycle.ECOSYSTEM, external.ECOSYSTEM, windrivers.ECOSYSTEM))
             stmt = stmt.where(has_fix if fixable else ~has_fix)
         if q:
             like = f"%{q.lower()}%"

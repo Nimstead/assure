@@ -292,8 +292,9 @@ def collect_windows(winreg=None, run=None, machine=None, dotnet_dirs=None):
     facts.update(host)
     if problem:
         facts["host_check"] = problem
+    drivers, facts["driver_scan"] = windows_drivers(run)
     return {"os_name": f"{product} {dv} ({machine}) build {version}", "ecosystem": "Windows", "agent_version": AGENT_VERSION,
-            "facts": facts, "packages": [*os_pkg, *windows_apps(winreg), *([] if remote else offline_user_apps(winreg)), *ms]}
+            "facts": facts, "packages": [*os_pkg, *windows_apps(winreg), *([] if remote else offline_user_apps(winreg)), *ms, *drivers]}
 
 
 # ---- agentless: an admin scans hosts from their own machine, as themselves. PowerShell remoting carries their identity,
@@ -654,6 +655,58 @@ def windows_host_facts(run=None):
     if not isinstance(d, dict):
         return {}, f"host check failed: {out.strip()[-200:]}"
     return {k: d.get(k) for k in HOST_FACTS}, None
+
+
+# Driver files' SHA-256 (DECISIONS 71): loaded drivers first, then *.sys directly in System32\drivers, which is also how a
+# planted driver that isn't loaded yet is seen. Read only, fixed places, no driver is opened as anything but a file.
+# Hash values and CIM's Started flag don't change with Windows' language (DECISIONS 68). The file and time caps keep it bounded.
+PS_DRIVERS = r"""
+$ErrorActionPreference = 'SilentlyContinue'
+$native = Join-Path $env:SystemRoot 'Sysnative'  # a 32-bit process asking for System32 gets SysWOW64
+$sys = if (Test-Path -LiteralPath $native) { $native } else { Join-Path $env:SystemRoot 'System32' }
+$found = [ordered]@{}; $bad = 0; $big = 0; $stopped = $false
+$loaded = @(Get-CimInstance Win32_SystemDriver -Filter 'Started = TRUE')
+if (-not $loaded.Count) { $bad++ }
+foreach ($d in $loaded) {
+  $p = "$($d.PathName)".Trim().Trim('"') -replace '^\\\?\?\\', ''
+  if ($p -imatch '^\\SystemRoot\\(.*)$') { $p = $Matches[1] }
+  if ($p -notmatch '^[A-Za-z]:\\') { $p = Join-Path $env:SystemRoot $p }
+  $found[($p -ireplace '\\system32\\', ('\' + (Split-Path $sys -Leaf) + '\')).ToLowerInvariant()] = $true
+}
+foreach ($f in Get-ChildItem -LiteralPath (Join-Path $sys 'drivers') -Filter '*.sys' -File -Force) {
+  $k = $f.FullName.ToLowerInvariant(); if (-not $found.Contains($k)) { $found[$k] = $false }
+}
+$rows = New-Object Collections.ArrayList
+$clock = [Diagnostics.Stopwatch]::StartNew()
+foreach ($k in $found.Keys) {
+  if ($rows.Count -ge 3000 -or $clock.Elapsed.TotalSeconds -gt 180) { $stopped = $true; break }
+  $i = Get-Item -LiteralPath $k -Force
+  if (-not $i) { $bad++; continue }
+  if ($i.Length -gt 134217728) { $big++; continue }  # 128 MiB
+  $h = Get-FileHash -LiteralPath $k -Algorithm SHA256
+  if ($h) { [void]$rows.Add(@($i.Name, $h.Hash.ToLowerInvariant(), [bool]$found[$k])) } else { $bad++ }
+}
+ConvertTo-Json -Compress -Depth 3 -InputObject ([ordered]@{ drivers = @($rows); unreadable = $bad; too_large = $big; stopped = $stopped })
+"""
+SAFE_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
+
+
+def windows_drivers(run=None):
+    """([driver rows as packages], summary). `complete` false: not everything was read, so a driver missing from the rows
+    proves nothing and the server keeps its findings open. A file over the size cap can't break that: a listed hash means
+    a listed size, so one seen before would still be under it."""
+    rc, out = ps(run or sh, PS_DRIVERS)
+    try:
+        d = json.loads(out.strip().splitlines()[-1]) if rc == 0 else None
+    except (ValueError, IndexError):
+        d = None
+    if not isinstance(d, dict) or not isinstance(d.get("drivers"), list) or not d["drivers"]:
+        return [], {"complete": False, "problem": f"driver check failed: {out.strip()[-200:]}"}
+    pkgs = [{"ecosystem": "WinDriver", "name": r[0].lower(), "version": r[1], "source": "loaded" if r[2] is True else "on disk"}
+            for r in d["drivers"] if isinstance(r, list) and len(r) == 3 and isinstance(r[0], str) and 0 < len(r[0]) <= 255
+            and isinstance(r[1], str) and SAFE_SHA256.match(r[1])]
+    return pkgs, {"hashed": len(pkgs), "too_large": d.get("too_large"), "unreadable": d.get("unreadable"), "stopped": d.get("stopped"),
+                  "complete": d.get("unreadable") == 0 and d.get("stopped") is False}
 
 
 ESU_PRODUCTS = re.compile(r"^Windows (10 Version 22H2|Server 2012)")

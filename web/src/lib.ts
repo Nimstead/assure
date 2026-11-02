@@ -216,7 +216,7 @@ export const pct = (x: number) => (x < 0.01 ? "<1%" : `${Math.round(x * 100)}%`)
 
 /** What to move to. Settings, end of support and exposures never have a fixed version, and "no fix yet" would be untrue. */
 export function fixLabel(f: Pick<Finding, "fixed_version" | "ecosystem">): string {
-  return f.fixed_version ?? ({ WinConfig: "change the setting", Lifecycle: "move to a supported version", External: "close or restrict it" } as Record<string, string>)[f.ecosystem] ?? "no fix yet";
+  return f.fixed_version ?? ({ WinConfig: "change the setting", Lifecycle: "move to a supported version", External: "close or restrict it", WinDriver: "update or remove the driver" } as Record<string, string>)[f.ecosystem] ?? "no fix yet";
 }
 
 /** "Installed A < fixed B per DSA-1" sentence parts. */
@@ -224,6 +224,7 @@ export function whyMatched(f: Pick<Finding, "installed_version" | "fixed_version
   if (f.ecosystem === "WinConfig") return `Found ${f.installed_version} on this host.`;
   if (f.ecosystem === "Lifecycle") return `Installed ${f.installed_version}, which is past its end of support.`;
   if (f.ecosystem === "External") return "Seen from outside by an external scan.";
+  if (f.ecosystem === "WinDriver") return `This exact file (SHA-256 ${f.installed_version}) is listed by LOLDrivers.`;
   if (!f.fixed_version) return `Installed ${f.installed_version}. No fixed version has been published yet.`;
   const src = f.advisory_ids.length ? f.advisory_ids.slice(0, 3).join(", ") : f.vuln_id;
   return `Installed ${f.installed_version} < fixed ${f.fixed_version} per ${src}`;

@@ -16,7 +16,7 @@ import httpx
 from sqlalchemy import delete, insert, select, update
 from sqlalchemy.orm import Session
 
-from nimstead import evidence, external, lifecycle, msproducts, notify, office, updates, winapps
+from nimstead import evidence, external, lifecycle, msproducts, notify, office, updates, winapps, windrivers
 from nimstead.db import Advisory, Asset, Cvss, Epss, InstalledPackage, Kev, Org, make_sessionmaker, now
 from nimstead.match import normalize_ecosystem
 from nimstead.scan import HOTPATCH, rescan
@@ -296,6 +296,16 @@ def sync_metasploit(session: Session, client=None) -> int:
     return len(cves)
 
 
+def sync_loldrivers(session: Session, client=None) -> int:
+    """File hashes of vulnerable and malicious drivers (DECISIONS 71), one row (ecosystem "WinDriver"). Raises on a fetch
+    or format problem and leaves the stored row alone."""
+    drivers = windrivers.parse(json.loads(_get(client, windrivers.URL, 200 * 2**20)))
+    session.merge(Advisory(id="DRIVERS-loldrivers", ecosystem=windrivers.ECOSYSTEM, package="loldrivers", modified=now().isoformat(),
+                           record={"id": "DRIVERS-loldrivers", "drivers": drivers}))
+    session.commit()
+    return len(drivers)
+
+
 def sync_msrc(session: Session, months: int = 12, client=None) -> dict:
     """Windows OS advisories from the MSRC CVRF API, stored as OSV-shaped rows (ecosystem Windows, package =
     MSRC product name, fixed = FixedBuild) so the normal matcher works. Windows 10/11/Server products with a dotted
@@ -405,7 +415,7 @@ def update_all(session: Session, client=None) -> dict:
     New advisories or exploitation data change findings without waiting for the next
     agent report. Run from cron/systemd timer (e.g. hourly)."""
     in_use = {normalize_ecosystem(e) for e in session.scalars(select(InstalledPackage.ecosystem).distinct())}
-    used = sorted({e.split(":", 1)[0] for e in in_use} - {"Windows", "WinApp", msproducts.ECOSYSTEM})  # MSRC and NVD, not OSV
+    used = sorted({e.split(":", 1)[0] for e in in_use} - {"Windows", "WinApp", msproducts.ECOSYSTEM, windrivers.ECOSYSTEM})  # MSRC and NVD, not OSV
     out = {"kev": sync_kev(session, client), "epss": sync_epss(session, client), "nvd": sync_nvd(session, ["modified"], client), "osv": {}}
     try:
         out["metasploit"] = sync_metasploit(session, client)
@@ -422,6 +432,12 @@ def update_all(session: Session, client=None) -> dict:
     if in_use & {"Windows", msproducts.ECOSYSTEM}:
         out["msrc"] = sync_msrc(session, client=client)
         out["office"] = sync_office(session, client=client)
+        try:
+            out["loldrivers"] = sync_loldrivers(session, client)
+        except (httpx.HTTPError, ValueError) as e:  # JSONDecodeError is a ValueError
+            session.rollback()
+            log.error("LOLDrivers skipped, kept the stored hashes: %s", e)
+            out["loldrivers"] = {"error": str(e)[:200]}
     if "WinApp" in in_use:
         out["eol"] = sync_eol(session, client=client)
         try:

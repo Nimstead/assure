@@ -1788,7 +1788,7 @@ class WinJob:
             self.step(f"Windows Update offers exactly KB{s['kb']}", offered, found[s["kb"]][2])
         else:  # cumulative or hotpatch: whichever this host is offered, never both
             self.step(f"Windows Update offers exactly one of KB{' / KB'.join(found)}", len(offered) == 1,
-                      "; ".join(f"KB{kb}: {n} offered" for kb, (_, n, _) in found.items()))
+                      "; ".join(f"KB{kb}: {n} offered" for kb, (_, n, _) in found.items()) + ("" if offered else f"; {found[s['kb']][2]}"))
             s["kb"], s["to"] = offered[0], found[offered[0]][0]
         s["baseline"] = self.rollups()
         self.step("rollback baseline recorded", any(v.strip() == "Installed" for v in s["baseline"].values()),

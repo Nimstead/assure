@@ -10,6 +10,7 @@ the VM's own folder (it is disposable).
 
 import base64
 import json
+import re
 import secrets
 import subprocess
 import sys
@@ -39,10 +40,14 @@ def create(iso: str) -> str:
     folder.mkdir(parents=True)
     password = "Nim!" + secrets.token_hex(8)
     (folder / "creds.json").write_text(json.dumps({"user": "Administrator", "password": password}))
-    win11 = "Windows11" in vbox("unattended", "detect", f"--iso={iso}")
-    vbox("createvm", "--name", name, "--ostype", "Windows11_64" if win11 else "Windows2025_64", "--basefolder", str(folder), "--register")
+    detected = vbox("unattended", "detect", f"--iso={iso}")
+    win11, win10 = "Windows11" in detected, "Windows10" in detected
+    vbox("createvm", "--name", name, "--ostype", "Windows11_64" if win11 else "Windows10_64" if win10 else "Windows2025_64",
+         "--basefolder", str(folder), "--register")
     vbox("modifyvm", name, "--memory", "4096", "--cpus", "2", "--firmware", "efi", "--nic1", "nat", "--graphicscontroller", "vboxsvga",
          "--nat-localhostreachable1", "on")  # VirtualBox 7 blocks guest -> host 127.0.0.1 (10.0.2.2) by default
+    if win10:  # setup hung at "Getting ready", disk idle, with the default Hyper-V paravirtual interface (real VM)
+        vbox("modifyvm", name, "--paravirt-provider", "none")
     if win11:  # Windows 11 setup refuses hardware without TPM 2.0 and Secure Boot
         vbox("modifyvm", name, "--tpm-type", "2.0")
         for step in (["inituefivarstore"], ["enrollmssignatures"], ["enrollorclpk"], ["secureboot", "--enable"]):
@@ -61,6 +66,10 @@ def create(iso: str) -> str:
             "--install-additions", "--start-vm=headless"]
     if Path(additions).exists():
         args.append(f"--additions-iso={additions}")
+    if win10:  # an empty <Key> stops Enterprise Evaluation at "cannot find the Microsoft Software License Terms" (real VM); it needs none
+        template = (Path(VBOX).parent / "UnattendedTemplates" / "win_nt6_unattended.xml").read_text(encoding="utf-8")
+        (folder / "win10.xml").write_text(re.sub(r"\s*<ProductKey>.*?</ProductKey>", "", template, flags=re.S), encoding="utf-8")
+        args.append(f"--script-template={folder / 'win10.xml'}")
     vbox(*args)
     print(name)
     return name

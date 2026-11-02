@@ -6,6 +6,7 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 Detection and fixes that close the gap with Nessus and Qualys on Windows. **Expect new open findings after the first reports.**
 - **Windows hosts far behind can be fixed:** a job installs the earlier cumulative update when that's what Windows Update offers, and the next job finishes the way.
+- **Clearer refusal:** a Windows job with two possible updates now says why neither was offered, such as no Extended Security Updates licence.
 - **Ended release branches:** Thunderbird, Firefox ESR, PostgreSQL, MySQL, MariaDB, MongoDB, Elasticsearch, Go, Grafana, LibreOffice, Tomcat, Ruby and Perl now report when their branch gets no more fixes.
 - **Fixed:** one NVD record with no configuration nodes stopped the app feed sync; a CVE only for Apple silicon was reported on Windows.
 - **Agentless scan:** `scan-remote` reads hosts with no agent over PowerShell remoting, as you, with no stored credential. It finds; fixes still need the agent.

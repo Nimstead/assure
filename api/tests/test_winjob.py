@@ -334,6 +334,8 @@ def test_not_offered_says_why_from_the_machines_update_settings(tmp_path):
     assert r["outcome"] == "aborted" and "WSUS hasn't approved KB5126646" in r["steps"][-1]["output"]
     r = make(tmp_path, FakeWin(offered=())).advance()
     assert "not needed, superseded, or not released" in r["steps"][-1]["output"]
+    r = make(tmp_path, FakeWin(offered=(), why="no Extended Security Updates licence is active"), HOT_JOB).advance()  # real Windows 10
+    assert r["outcome"] == "aborted" and "0 offered" in r["steps"][-1]["output"] and "Extended Security Updates" in r["steps"][-1]["output"]
 
 
 def test_a_service_that_crashed_since_the_change_fails_health_even_if_running(tmp_path):

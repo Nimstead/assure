@@ -34,7 +34,7 @@ def test_wait_ready_restarts_a_booted_windows_cleanly_and_never_hard_resets(monk
     # still applying an update at "Restarting": a busy disk holds the restart back (real Server 2025)
     calls.clear()
     clock[0] = 0.0
-    monkeypatch.setattr(winvm, "disk_activity", lambda n: str(clock[0]) if clock[0] < 40 * 60 else "idle")
+    monkeypatch.setattr(winvm, "disk_activity", lambda n: f'c="{int(clock[0]) << 20}"' if clock[0] < 40 * 60 else "idle")
     winvm.wait_ready("nimstead-sbx-win-x")
     assert calls == ["restart"] and clock[0] > 60 * 60
 
@@ -78,6 +78,13 @@ def test_a_healthy_vm_that_logs_no_guest_os_line_is_not_power_cycled(tmp_path, m
     monkeypatch.setattr(winvm, "STATE", tmp_path)
     monkeypatch.setattr(winvm, "vbox", lambda *a, **k: (_ for _ in ()).throw(AssertionError("power-cycled a healthy VM")))
     assert winvm.unstick("n") is False
+
+
+def test_only_real_disk_work_counts_as_busy():
+    one = 'Counter c="1000" x\nCounter c="%d" y'
+    assert winvm.disk_busy(None, one % 0)
+    assert not winvm.disk_busy(one % 0, one % (1 << 20))  # idle chatter
+    assert winvm.disk_busy(one % 0, one % (64 << 20))  # applying an update
 
 
 def test_a_localised_iso_installs_in_its_own_language():

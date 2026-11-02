@@ -120,8 +120,9 @@ def wait_ready(name: str, minutes=90, reset_after=12, restart_after=20, max_rese
             idle = up = time.time()
         elif os_up(name):
             disk = disk_activity(name)
-            if disk != seen:  # still applying an update at "Restarting" (real Server 2025): powering off now could end it
-                seen, up = disk, time.time()
+            if disk_busy(seen, disk):  # still applying an update at "Restarting" (real Server 2025): powering off now could end it
+                up = time.time()
+            seen = disk
             if resets < max_resets and time.time() - up > restart_after * 60:
                 clean_restart(name)
                 idle, up, resets = time.time(), time.time(), resets + 1
@@ -134,6 +135,13 @@ def wait_ready(name: str, minutes=90, reset_after=12, restart_after=20, max_rese
                 idle, resets = time.time(), resets + 1
         time.sleep(20)
     raise RuntimeError(f"{name} not ready after {minutes} min")
+
+
+def disk_busy(before: str | None, now: str, floor=16 << 20) -> bool:
+    """More than idle chatter since the last look: an idle Windows always writes a little, and counting that as work
+    kept a VM whose guest control had hung from ever being restarted (real Windows 10, DECISIONS 78)."""
+    total = lambda s: sum(int(x) for x in re.findall(r'c="(\d+)"', s or ""))  # noqa: E731
+    return before is None or total(now) - total(before) > floor
 
 
 def disk_activity(name: str) -> str:

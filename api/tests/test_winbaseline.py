@@ -1,7 +1,9 @@
 """Benchmark references (DECISIONS 75): the XCCDF script stays out on any doubt, the tables hold facts and no benchmark text, the
 agent reads only its closed list, and "can't tell" never reads as a fail."""
 
+import csv
 import importlib.util
+import io
 import json
 import re
 import subprocess
@@ -94,7 +96,7 @@ RULE_KEYS = {"id", "v", "sev", "scope", "reg", "want", "no_core", "audit", "labe
 
 
 def test_tables_hold_facts_and_no_benchmark_text():
-    assert {b["id"] for b in winbaseline.baselines()} >= {"windows-server-2025"}
+    assert {b["id"] for b in winbaseline.baselines()} == {"windows-server-2025", "windows-11"}
     for b in winbaseline.baselines():
         assert b["total"] == len(b["rules"]) + len(b["not_automated"])
         for r in b["rules"]:
@@ -107,7 +109,7 @@ def test_every_registry_rule_is_on_the_agents_closed_list():
     closed = {agent.baseline_id(e) for e in agent.BASELINE_REG}
     assert len(closed) == len(agent.BASELINE_REG) <= 200  # facts_ok: at most 200 keys in a dict
     used = {reg_id(*r["reg"]) for b in winbaseline.baselines() for r in b["rules"] if "reg" in r}
-    assert used <= closed  # nothing missing
+    assert used == closed  # nothing missing, and the agent reads nothing no rule needs
     for b in winbaseline.baselines():
         assert {r["audit"] for r in b["rules"] if "audit" in r} <= set(agent.BASELINE_AUDIT)
         assert {r["right"] for r in b["rules"] if "right" in r} <= set(agent.BASELINE_RIGHTS)
@@ -135,6 +137,7 @@ def rid_of(rule):
 
 def test_baseline_is_chosen_by_os():
     assert winbaseline.for_host(SERVER)["id"] == "windows-server-2025"
+    assert winbaseline.for_host("Windows 11 Pro 24H2 (AMD64) build 10.0.26100.1")["id"] == "windows-11"
     for other in ("Windows Server 2022 Standard", "Windows 10 Pro", "Debian GNU/Linux 12", "", None):
         assert winbaseline.evaluate(other, {}) is None
 
@@ -334,3 +337,60 @@ def test_results_are_not_findings_and_the_report_fits(env):
     asset = next(x for x in c.get("/api/assets").json() if x["hostname"] == "srv")
     assert asset["facts"].get("baseline") == baseline
     assert not [x for x in c.get("/api/findings").json() if x["ecosystem"] != "WinConfig"]  # the host's own config checks may fire
+
+
+# ---- the view and the export (W20)
+
+
+def enrol_host(c, name, os_name=SERVER, facts=None, ecosystem="Windows"):
+    token = c.post("/api/enroll-tokens").json()["token"]
+    a = c.post("/api/agent/enroll", json={"token": token, "hostname": name, "ecosystem": ecosystem}).json()
+    r = c.post("/api/agent/inventory", headers={"Authorization": f"Bearer {a['agent_key']}"},
+               json={"os_name": os_name, "ecosystem": ecosystem, "packages": [], "facts": facts or {}})
+    assert r.status_code == 200
+    return a["asset_id"]
+
+
+def test_host_and_fleet_views(env):
+    c = user(env)
+    r = rule_of("windows-server-2025", "WN25-CC-000430")
+    good = enrol_host(c, "srv-good", facts={"domain_role": 3, "installation_type": "Server", "baseline": {"reg": {rid_of(r): 0}}})
+    enrol_host(c, "srv-bad", facts={"domain_role": 3, "installation_type": "Server", "baseline": {"reg": {rid_of(r): 1}}})
+    enrol_host(c, "win11", os_name="Windows 11 Pro 25H2 (AMD64) build 10.0.26200.1", facts={"domain_role": 1})
+    enrol_host(c, "old", os_name="Windows Server 2019 Standard")
+    enrol_host(c, "linux", os_name="Debian 12", ecosystem="Debian:12")
+    got = c.get("/api/baselines").json()
+    assert got["no_baseline"] == 1  # the 2019 host; Linux isn't a Windows host at all
+    assert {h["hostname"] for h in got["hosts"]} == {"srv-good", "srv-bad", "win11"} and not any("rules" in h for h in got["hosts"])
+    server = next(b for b in got["baselines"] if b["baseline_id"] == "windows-server-2025")
+    assert (server["version"], server["hosts"], server["pass"], server["fail"]) == ("V1R4", 2, 1, 1)
+    assert server["manual"] == 291 - server["automated"]
+    assert next(b for b in got["baselines"] if b["baseline_id"] == "windows-11")["hosts"] == 1
+    one = c.get(f"/api/baselines/{good}").json()
+    row = next(x for x in one["rules"] if x["id"] == "WN25-CC-000430")
+    assert row["status"] == PASS and row["found"] == "0" and "AlwaysInstallElevated" in row["setting"]
+
+
+def test_views_are_per_tenant_and_a_host_without_a_baseline_says_so(env):
+    a, b = user(env), user(env, "b@example.com")
+    host = enrol_host(a, "srv")
+    assert b.get(f"/api/baselines/{host}").status_code == 404
+    assert b.get("/api/baselines").json()["hosts"] == []
+    old = enrol_host(a, "old", os_name="Windows Server 2019 Standard")
+    assert a.get(f"/api/baselines/{old}").status_code == 404
+
+
+def test_export_is_csv_injection_safe_and_lists_manual_rules(env):
+    c = user(env)
+    r = rule_of("windows-server-2025", "WN25-CC-000430")
+    enrol_host(c, "=cmd|calc", facts={"domain_role": 3, "installation_type": "Server", "baseline": {"reg": {rid_of(r): "=2+2"}}})
+    res = c.get("/api/baselines.csv")
+    assert res.status_code == 200 and res.headers["content-type"].startswith("text/csv")
+    rows = list(csv.reader(io.StringIO(res.text)))
+    assert rows[0][:3] == ["hostname", "baseline", "version"]
+    body = rows[1:]
+    assert len(body) == 291
+    assert all(x[0] == "'=cmd|calc" for x in body)
+    assert next(x for x in body if x[3] == "WN25-CC-000430")[9] == "'=2+2"
+    assert sum(x[6] == "not assessed (manual)" for x in body) == 291 - len(next(b for b in winbaseline.baselines() if b["id"] == "windows-server-2025")["rules"])
+    assert "conform" not in res.text.lower()

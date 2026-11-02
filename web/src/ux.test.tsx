@@ -7,7 +7,7 @@ import { afterEach, vi } from "vitest";
 import { SsoSection } from "./integrations";
 import { ApiError, meQ, type Action, type Asset, type Job, type Settings } from "./lib";
 import { ActionCard } from "./home";
-import { AssetRow, NotAssessed } from "./assets";
+import { AssetRow, Baselines, baselineSummary, NotAssessed } from "./assets";
 import { Palette } from "./shell";
 import { Done, errorLead } from "./ui";
 import { Onboarding, TROUBLESHOOT_AFTER_MS } from "./onboarding";
@@ -374,4 +374,17 @@ it("Assets: nothing shows when every installed app was checked", async () => {
   wrap(<NotAssessed />);
   await waitFor(() => expect(calls.some((c) => c.path === "/api/coverage")).toBe(true));
   expect(screen.queryByRole("heading")).toBeNull();
+});
+
+const BASE = { name: "DISA STIG for Windows Server 2025", version: "V1R4", automated: 156, manual: 135, pass: 100, fail: 20, not_assessed: 16, not_applicable: 20 };
+
+it("Assets: a baseline reads as a share of the checks we can automate, never as conformance", async () => {
+  expect(baselineSummary(BASE)).toBe("100 of 136 checks we can automate pass, 20 fail, 16 not assessed");
+  serve({ "GET /api/baselines": { no_baseline: 1, baselines: [{ ...BASE, baseline_id: "x", hosts: 1 }], hosts: [{ ...BASE, asset_id: "a", hostname: "srv-1" }] } });
+  wrap(<Baselines />);
+  expect(await screen.findByText(/A reference, not a conformance result/)).toBeInTheDocument();
+  expect(screen.getByText(/manual checks are not assessed/)).toBeInTheDocument();
+  expect(screen.getByText(/135 manual checks not assessed/)).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Download as CSV" })).toHaveAttribute("href", "/api/baselines.csv");
+  expect(document.body.textContent).not.toMatch(/compliant/i);
 });

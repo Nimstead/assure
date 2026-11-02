@@ -31,7 +31,7 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import Integer, and_, delete, func, or_, select
 from sqlalchemy.orm import Session
 
-from nimstead import ai, evidence, external, lifecycle, mfa, notify, remediate, sbom, sso, updates, windrivers
+from nimstead import ai, evidence, external, lifecycle, mfa, notify, remediate, sbom, sso, updates, winbaseline, windrivers
 from nimstead.db import (
     ApiToken,
     Asset,
@@ -888,6 +888,66 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                 w.writerow([csv_safe(str(r[k] or "")) for k in ("domain", "name", "os", "os_version", "last_logon", "end_of_support")])
             return Response(buf.getvalue(), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=unmanaged-windows.csv"})
         return out
+
+    BASELINE_COLUMNS = ["hostname", "baseline", "version", "rule_id", "vuln_id", "severity", "status", "setting", "expected", "found", "note"]
+
+    def windows_hosts(s: Session, org_id: str):
+        return s.scalars(select(Asset).where(Asset.org_id == org_id, Asset.kind == "host", Asset.ecosystem == "Windows").order_by(Asset.hostname))
+
+    @app.get("/api/baselines")
+    def baseline_fleet(user: CurrentUser, s: DB):
+        """How Windows hosts compare with the automated part of a baseline (DECISIONS 75). A reference, never a conformance result."""
+        hosts, fleet, none = [], {}, 0
+        for a in windows_hosts(s, user.org_id):
+            r = winbaseline.evaluate(a.os_name, a.facts)
+            if not r:
+                none += 1
+                continue
+            r.pop("rules")
+            hosts.append({"asset_id": a.id, "hostname": a.hostname, "last_seen": a.last_seen, **r})
+            f = fleet.setdefault(r["baseline_id"], {**{k: r[k] for k in ("baseline_id", "name", "version", "automated", "manual")},
+                                                    "hosts": 0, "pass": 0, "fail": 0, "not_assessed": 0, "not_applicable": 0})
+            f["hosts"] += 1
+            for k in ("pass", "fail", "not_assessed", "not_applicable"):
+                f[k] += r[k]
+        return {"baselines": list(fleet.values()), "hosts": hosts, "no_baseline": none}
+
+    @app.get("/api/baselines.csv")
+    def export_baselines(user: CurrentUser, s: DB):
+        if over_limit(s, "export:" + user.org_id, EXPORT_MAX_PER_HOUR):  # hosts times rules: each one reads every Windows host's facts
+            raise HTTPException(429, f"At most {EXPORT_MAX_PER_HOUR} exports an hour")
+        org_id = user.org_id
+
+        def rows():  # streamed from its own session, like the findings export
+            buf = io.StringIO()
+            w = csv.writer(buf)
+
+            def line(cells):
+                buf.seek(0)
+                buf.truncate()
+                w.writerow([csv_safe(str(c)) for c in cells])
+                return buf.getvalue()
+            yield line(BASELINE_COLUMNS)
+            with Sessions() as s2:
+                for a in windows_hosts(s2, org_id):
+                    r = winbaseline.evaluate(a.os_name, a.facts)
+                    if not r:
+                        continue
+                    for x in r["rules"]:
+                        yield line([a.hostname, r["name"], r["version"], x["id"], x["v"], x["severity"], x["status"], x["setting"], x["expected"], x["found"], x["note"]])
+                    for x in winbaseline.for_host(a.os_name)["not_automated"]:
+                        yield line([a.hostname, r["name"], r["version"], x["id"], x["v"], x["sev"], "not assessed (manual)", "", "", "", ""])
+        return StreamingResponse(rows(), media_type="text/csv", headers={"Content-Disposition": 'attachment; filename="nimstead-baselines.csv"'})
+
+    @app.get("/api/baselines/{asset_id}")
+    def baseline_host(asset_id: str, user: CurrentUser, s: DB):
+        a = s.get(Asset, asset_id)
+        if not a or a.org_id != user.org_id or a.kind != "host":
+            raise HTTPException(404, "No such host")
+        r = winbaseline.evaluate(a.os_name, a.facts)
+        if not r:
+            raise HTTPException(404, "No baseline for this host's operating system")
+        return {"asset_id": a.id, "hostname": a.hostname, **r}
 
     @app.get("/api/agent/manifest")
     def agent_manifest(s: DB, asset: Annotated[Asset, Depends(current_agent)]):

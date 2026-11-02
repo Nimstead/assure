@@ -321,6 +321,26 @@ test("Windows updates: who has a KB, why the others don't, and planning the rest
   await context.close();
 });
 
+test("Baseline view: per host counts, wording that claims no conformance, rules on demand, CSV", async ({ browser }) => {
+  const context = await browser.newContext({ storageState: STATE });
+  const page = await context.newPage();
+  const tok = await (await page.request.post("/api/enroll-tokens", { data: { sandbox: true } })).json();
+  const a = await (await page.request.post("/api/agent/enroll", { data: { token: tok.token, hostname: "stig-srv", ecosystem: "Windows" } })).json();
+  const r = await page.request.post("/api/agent/inventory", { data: { os_name: "Windows Server 2025 Standard 24H2 (AMD64) build 10.0.26100.1", ecosystem: "Windows", packages: [], facts: { domain_role: 3, installation_type: "Server", baseline: { audit: { "{0CCE9215-69AE-11D9-BED3-505054503030}": 1 } } } }, headers: { Authorization: `Bearer ${a.agent_key}` } });
+  expect(r.ok()).toBe(true);
+  await page.goto("/assets");
+  const section = page.getByRole("region", { name: "Windows settings compared with published baselines" });
+  await expect(section.getByText(/not a conformance result/)).toBeVisible();
+  await expect(section.getByText(/manual checks not assessed/)).toBeVisible();
+  await section.getByText(/stig-srv/).click();
+  await expect(section.getByText(/WN25-AU-000200/)).toBeVisible();
+  await axe(page, "baseline rules open");
+  const csv = await page.request.get("/api/baselines.csv");
+  expect(csv.headers()["content-type"]).toContain("text/csv");
+  expect(await csv.text()).toContain("stig-srv,DISA STIG for Windows Server 2025,V1R4");
+  await context.close();
+});
+
 test("a member (read-only) sees no controls the API would refuse, and every page passes axe", async ({ browser }) => {
   // a member with a password, as an invitation would add (no SMTP in this test)
   const db = join(process.cwd(), "e2e-data", "e2e.db").replaceAll("\\", "/");

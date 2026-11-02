@@ -55,6 +55,7 @@ export function AssetsPage() {
       </header>
 
       <Unmanaged />
+      <Baselines />
       <NotAssessed />
 
       {q.isPending ? <Loading className="h-20" rows={3} label="Loading assets…" />
@@ -109,6 +110,63 @@ function Unmanaged() {
         </ul>
       </details>
       <a href="/api/directory/unmanaged?format=csv" className="text-sm">Download as CSV</a>
+    </section>
+  );
+}
+
+interface BaselineCounts { name: string; version: string; automated: number; manual: number; pass: number; fail: number; not_assessed: number; not_applicable: number }
+interface BaselineHost extends BaselineCounts { asset_id: string; hostname: string }
+interface BaselineRule { id: string; severity: string; status: string; setting: string; expected: string; found: string; note: string }
+
+/** "12 of 31 automated checks pass": rules that don't apply to this host aren't counted, and nothing here claims conformance. */
+export function baselineSummary(c: BaselineCounts) {
+  return `${c.pass} of ${c.automated - c.not_applicable} checks we can automate pass, ${c.fail} fail, ${c.not_assessed} not assessed`;
+}
+
+const RULE_ORDER = ["fail", "not assessed", "pass", "not applicable"];
+
+function BaselineHostRow({ h }: { h: BaselineHost }) {
+  const [open, setOpen] = useState(false);
+  const q = useQuery({ queryKey: ["baseline", h.asset_id], enabled: open, queryFn: () => api<{ rules: BaselineRule[] }>(`/api/baselines/${h.asset_id}`) });
+  const rules = [...(q.data?.rules ?? [])].sort((a, b) => RULE_ORDER.indexOf(a.status) - RULE_ORDER.indexOf(b.status));
+  return (
+    <li>
+      <details className="text-sm" onToggle={(e) => setOpen(e.currentTarget.open)}>
+        <summary className="min-h-[44px] cursor-pointer break-words py-2 md:min-h-0"><span className="font-medium">{h.hostname}</span>: {baselineSummary(h)}</summary>
+        {q.isLoading && <Loading />}
+        <Alert error={q.error} />
+        <ul className="mt-2 flex flex-col gap-2">
+          {rules.map((r) => (
+            <li key={r.id} className="break-words border-t border-line pt-2">
+              <span className={clsx("font-medium", r.status === "fail" && "text-now-fg")}>{r.status}</span> · {r.id} · {r.severity}
+              <div className="text-muted">{r.setting}: expected {r.expected}, read {r.found}{r.note && `. ${r.note}`}</div>
+            </li>
+          ))}
+        </ul>
+      </details>
+    </li>
+  );
+}
+
+/** Settings compared with published baselines (DECISIONS 75): a reference. Manual checks are never assessed, and it says so. */
+export function Baselines() {
+  const q = useQuery({ queryKey: ["baselines"], queryFn: () => api<{ baselines: (BaselineCounts & { baseline_id: string; hosts: number })[]; hosts: BaselineHost[]; no_baseline: number }>("/api/baselines") });
+  const d = q.data;
+  if (!d?.hosts.length) return null;
+  return (
+    <section aria-labelledby="baselines" className="flex flex-col gap-2 border border-line bg-sunken p-4">
+      <h2 id="baselines" className="text-base font-semibold">Windows settings compared with published baselines</h2>
+      <p className="max-w-prose text-sm text-muted">A reference, not a conformance result: a pass means the setting read as the baseline expects. Only the checks we can automate are counted, and manual checks are not assessed.{d.no_baseline ? ` ${plural(d.no_baseline, "Windows host")} on other versions ${d.no_baseline === 1 ? "has" : "have"} no baseline here.` : ""}</p>
+      {d.baselines.map((b) => (
+        <div key={b.baseline_id} className="flex flex-col gap-1">
+          <h3 className="text-sm font-semibold">{b.name} {b.version}</h3>
+          <p className="text-sm">{plural(b.hosts, "host")}, {b.automated} checks we can automate and {b.manual} manual checks not assessed. Across these hosts: {b.pass} pass, {b.fail} fail, {b.not_assessed} not assessed.</p>
+          <ul className="flex flex-col">
+            {d.hosts.filter((h) => h.name === b.name && h.version === b.version).map((h) => <BaselineHostRow key={h.asset_id} h={h} />)}
+          </ul>
+        </div>
+      ))}
+      <a href="/api/baselines.csv" className="flex min-h-[44px] items-center text-sm md:min-h-0">Download as CSV</a>
     </section>
   );
 }

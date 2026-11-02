@@ -1546,13 +1546,19 @@ $al = Get-ChildItem $dl -Directory | ForEach-Object { Get-Item -LiteralPath (Joi
   Sort-Object LastWriteTime -Descending | Select-Object -First 1
 if ($al) {
   $root = $al.DirectoryName
-  $acts = @(([xml](Get-Content -LiteralPath $al.FullName -Raw)).ActionList.Actions.InstallPackage)
+  $plan = ([xml](Get-Content -LiteralPath $al.FullName -Raw)).ActionList
+  $acts = @($plan.Actions.InstallPackage)
   if (-not $acts) { throw "no packages in $($al.FullName)" }
-  $out = foreach ($a in $acts) {
-    $rel = if ($a.PayloadType -eq 'Express') { $a.ExpressPackagePath } else { $a.FilePath }
+  function Inside($rel) {
     $p = [IO.Path]::GetFullPath((Join-Path $root $rel))
     if (-not $p.StartsWith($root + '\', [StringComparison]::OrdinalIgnoreCase)) { throw "package path outside the download folder: $rel" }
-    Read-Manifest $p $a.Reason $a.Partition
+    $p
+  }
+  $out = @(foreach ($a in $acts) {
+    Read-Manifest (Inside $(if ($a.PayloadType -eq 'Express') { $a.ExpressPackagePath } else { $a.FilePath })) $a.Reason $a.Partition
+  })
+  if (-not @($out | Where-Object reason -eq 'CumulativeUpdate')) {  # Windows 10: the plan's actions are the servicing stack; the update is only a download
+    $out += @($plan.Downloads.Package | Where-Object FeatureId -eq 'CumulativeUpdate_KB%KB%' | ForEach-Object { Read-Manifest (Inside $_.Payload.SourceName) $_.Reason 'MainOS' })
   }
 } else {
   $f = Get-ChildItem $dl -Recurse -Depth 1 -File -Include '*KB%KB%*.wim','*KB%KB%*.cab' |

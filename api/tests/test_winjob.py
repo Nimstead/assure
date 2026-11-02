@@ -440,3 +440,12 @@ def test_a_rollback_is_never_judged_before_its_restart(tmp_path):
     h.reboot()
     r = resume(tmp_path, h)
     assert r["outcome"] == "rolled_back" and h.build == OLD
+
+
+def test_windows_10_plan_is_the_servicing_stack_with_the_update_only_a_download():
+    # real ActionList.xml, Windows 10 LTSC 2021: its actions name the servicing stack alone, the cumulative update is a <Downloads> cab
+    assert "$plan.Downloads.Package" in agent.PS_PERMANENCE and "FeatureId -eq 'CumulativeUpdate_KB%KB%'" in agent.PS_PERMANENCE
+    ok, detail = agent.removable([
+        {"file": "SSU-19041.7714-x64-express", "reason": "ServicingStackUpdate", "partition": "MainOS", "permanent": True, "permanent_parts": ["update.mum"]},
+        {"file": "Windows10.0-KB5122878-x64.cab", "reason": "CumulativeUpdate", "partition": "MainOS", "permanent": False, "permanent_parts": []}])
+    assert ok and "Windows10.0-KB5122878-x64.cab" in detail and "stays after rollback" in detail

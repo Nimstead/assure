@@ -3,7 +3,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Wrench, X } from "lucide-react";
 import clsx from "clsx";
-import { adminGate, api, APPROVE_COPY, dependenciesNeeded, filtersToSearch, groupJobs, isActiveJob, jobAnchor, jobsQ, parseFilters, parseUtc, refresh, relativeTime, useHashScroll, useIsAdmin, useTitle, type Job } from "./lib";
+import { adminGate, api, APPROVE_COPY, dependenciesNeeded, filtersToSearch, groupJobs, isActiveJob, jobAnchor, jobsQ, kbFleetQ, kbHostsQ, parseFilters, parseUtc, plural, refresh, relativeTime, useHashScroll, useIsAdmin, useTitle, type Job, type KbRow } from "./lib";
 import { Alert, btnPrimary, btnQuiet, ConfirmDialog, EmptyState, ErrorState, Loading, StatusPill } from "./ui";
 
 const CANCELLABLE: Job["status"][] = ["planned", "approved"];
@@ -43,12 +43,71 @@ export function RemediationPage() {
             </ul>
           </section>
         ))}
+      <KbFleet />
       <ApproveDialog job={target} onOpenChange={(o) => !o && setTarget(null)} pending={approve.isPending}
         error={approve.error?.message} onConfirm={() => target && approve.mutate(target)} />
       <ConfirmDialog open={!!cancelling} onOpenChange={(o) => !o && setCancelling(null)} title="Cancel this fix?"
         description={<><strong className="font-semibold">{cancelling?.summary}</strong>. No machine has picked it up yet, so nothing has changed on {cancelling?.hostname}. You can plan it again later.</>}
         confirmLabel="Cancel fix" cancelLabel="Keep it" pendingLabel="Cancelling…" pending={cancel.isPending} error={cancel.error} onConfirm={() => cancelling && cancel.mutate(cancelling.id)} />
     </div>
+  );
+}
+
+/** "October 2026 cumulative KB…: 41 of 50 hosts", opening to the rest and why each hasn't got it. Nothing to show on a fleet with no Windows. */
+export function KbFleet() {
+  const q = useQuery(kbFleetQ);
+  if (q.error) return <ErrorState error={q.error} retry={() => q.refetch()} />;
+  if (!q.data?.length) return null;
+  return (
+    <section aria-labelledby="kb-fleet">
+      <h2 id="kb-fleet" className="text-lg font-semibold">Windows updates across the fleet</h2>
+      <p className="mb-3 mt-1 max-w-prose text-sm text-muted">Judged by the build each machine last reported. A newer cumulative update includes the older ones.</p>
+      <ul className="flex flex-col gap-2">{q.data.map((r) => <KbFleetRow key={r.product + r.kb} row={r} />)}</ul>
+    </section>
+  );
+}
+
+function KbFleetRow({ row: r }: { row: KbRow }) {
+  const [open, setOpen] = useState(false);
+  const q = useQuery({ ...kbHostsQ(r), enabled: open });
+  const left = r.hosts - r.fixed;
+  return (
+    <li className="border border-line bg-surface p-4">
+      <p className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <span className="min-w-0 break-words font-medium">{r.title}</span>
+        <span className="num text-sm">{r.fixed} of {plural(r.hosts, "host")}</span>
+      </p>
+      <p className="mt-1 break-words text-sm text-muted">{r.product}, build {r.build}</p>
+      {left > 0 && (
+        <details className="group mt-2" onToggle={(e) => setOpen(e.currentTarget.open)}>
+          <summary className="flex min-h-[44px] w-fit cursor-pointer items-center text-sm font-medium text-accent underline md:min-h-9">
+            <span className="group-open:hidden">Show {plural(left, "machine")} without it</span><span className="hidden group-open:inline">Hide machines</span>
+          </summary>
+          {q.isPending ? <Loading className="h-16" label="Loading machines…" />
+            : q.error ? <ErrorState error={q.error} retry={() => q.refetch()} />
+            : (
+              <div className="mt-2 flex flex-col gap-3">
+                {q.data.plan_asset_ids.length > 0 && (
+                  <PlanFixButton ecosystem="Windows" pkg={r.product} assetIds={q.data.plan_asset_ids}
+                    label={q.data.plan_asset_ids.length === left ? `Plan the rest (${left})` : `Plan ${plural(q.data.plan_asset_ids.length, "machine")} now`} />
+                )}
+                {q.data.plan_note && <p className="text-sm text-muted">{q.data.plan_note}</p>}
+                <ul className="flex flex-col gap-2">
+                  {q.data.missing.map((h) => (
+                    <li key={h.asset_id} className="border-t border-line pt-2 text-sm">
+                      <p className="break-words"><span className="font-medium">{h.hostname}</span>{h.ring === 0 && " (canary)"} <span className="text-muted">on build {h.build}</span></p>
+                      <p className="mt-0.5 break-words">{h.job
+                        ? <Link to="/remediation" hash={jobAnchor(h.job.id)} className="text-ink underline decoration-line-strong hover:decoration-ink">{h.why}</Link>
+                        : h.why}</p>
+                      {h.notes.map((n) => <p key={n} className="mt-0.5 break-words text-muted">{n}</p>)}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+        </details>
+      )}
+    </li>
   );
 }
 

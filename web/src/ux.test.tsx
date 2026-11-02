@@ -12,7 +12,7 @@ import { Palette } from "./shell";
 import { Done, errorLead } from "./ui";
 import { Onboarding, TROUBLESHOOT_AFTER_MS } from "./onboarding";
 import { ApiTokensSection, QrCode, UsersSection } from "./people";
-import { JobCard } from "./remediation";
+import { JobCard, KbFleet } from "./remediation";
 import { SettingsPage } from "./settings";
 
 // Link keeps its search and hash in the href, so tests can check where a link really goes.
@@ -255,6 +255,39 @@ it("Home: after an aborted attempt that needs more packages, it points to the jo
   r.unmount();
   wrap(<ol><ActionCard a={{ ...ACTION, last_attempt: { ...aborted, status: "rolled_back", error: "health check failed" } }} /></ol>);
   expect(screen.getByRole("button", { name: /Plan fix again/ })).toBeInTheDocument();  // nothing extra needed: trying again is fine
+});
+
+it("Windows updates: a count per KB opens to why each machine hasn't got it, and plans only who the rollout allows", async () => {
+  const row = { kb: "5127648", product: "Windows 11", title: "October 2026 cumulative KB5127648", released: "2026-10-14", build: "10.0.26200.9711", hosts: 50, fixed: 48, plan_note: "Canary machines first." };
+  const calls = serve({
+    "GET /api/windows-updates": [row, { ...row, kb: "5120000", title: "September 2026 cumulative KB5120000", fixed: 50 }],
+    "GET /api/windows-updates/5127648": { ...row, plan_asset_ids: ["c1"], missing: [
+      { asset_id: "c1", hostname: "canary-1", build: "10.0.26200.6899", ring: 0, why: "No job yet", notes: ["A restart is pending, which can change its build"], job: null },
+      { asset_id: "h2", hostname: "pc-2", build: "10.0.26200.6899", ring: 1, why: "Last attempt rolled back: health check failed", notes: [], job: { id: "j7", status: "rolled_back" } },
+    ] },
+    "POST /api/remediation/jobs": { id: "j8" },
+  });
+  wrap(<KbFleet />);
+  expect(await screen.findByText("48 of 50 hosts")).toBeInTheDocument();
+  expect(screen.getByText("50 of 50 hosts")).toBeInTheDocument();
+  expect(screen.getAllByText(/machines? without it/)).toHaveLength(1);  // a fully patched update has nothing to open
+  expect(calls.some((c) => c.path.endsWith("/5127648"))).toBe(false);  // the hosts load when asked for
+  await userEvent.click(screen.getByText(/Show 2 machines without it/));
+  expect(await screen.findByText("No job yet")).toBeInTheDocument();
+  expect(screen.getByText("(canary)", { exact: false })).toBeInTheDocument();
+  expect(screen.getByText(/restart is pending/)).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: /rolled back: health check failed/ })).toHaveAttribute("href", "/remediation#job-j7");
+  expect(screen.getByText("Canary machines first.")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: /Plan 1 machine now/ }));
+  await waitFor(() => expect(calls.find((c) => c.method === "POST")?.body).toEqual({ asset_id: "c1", ecosystem: "Windows", package: "Windows 11" }));
+  expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
+});
+
+it("Windows updates: nothing shows on a fleet with no Windows", async () => {
+  const calls = serve({ "GET /api/windows-updates": [] });
+  const r = wrap(<KbFleet />);
+  await waitFor(() => expect(calls).toHaveLength(1));
+  expect(r.container).toBeEmptyDOMElement();
 });
 
 it("Done is announced through the shell's live region", async () => {

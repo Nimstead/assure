@@ -376,7 +376,7 @@ def sync_msrc(session: Session, months: int = 12, client=None) -> dict:
                 # merge both tracks for a host that is on a hotpatch build and keep one finding per CVE
                 rec = {"id": f"MSRC-{cve}-{pid}{'-hotpatch' if suffix else ''}", "aliases": [cve], "modified": mod,
                        "summary": (v["Title"]["Value"] + (f" (KB{kb})" if kb else ""))[:500],
-                       "database_specific": {"kb": kb, "hotpatch": bool(suffix), **context},
+                       "database_specific": {"kb": kb, "hotpatch": bool(suffix), "released": d["InitialReleaseDate"][:10], **context},
                        "affected": [{"package": {"ecosystem": eco, "name": name},
                                      "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": build}]}]}]}
                 name += suffix

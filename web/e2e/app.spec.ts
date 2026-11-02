@@ -296,6 +296,31 @@ for (const width of [1440, 375] as const) {
   }
 }
 
+test("Windows updates: who has a KB, why the others don't, and planning the rest", async ({ browser }) => {
+  const context = await browser.newContext({ storageState: STATE });
+  const page = await context.newPage();
+  const W11 = "Windows 11 Version 25H2 for x64-based Systems";
+  const tok = await (await page.request.post("/api/enroll-tokens", { data: { sandbox: true } })).json();
+  for (const [hostname, build] of [["win-patched", "10.0.26200.9711"], ["win-old", "10.0.26200.6899"]] as const) {
+    const a = await (await page.request.post("/api/agent/enroll", { data: { token: tok.token, hostname, ecosystem: "Windows" } })).json();
+    const r = await page.request.post("/api/agent/inventory", { data: { ecosystem: "Windows", packages: [{ ecosystem: "Windows", name: W11, version: build, source: null }] }, headers: { Authorization: `Bearer ${a.agent_key}` } });
+    expect(r.ok()).toBe(true);
+  }
+  await page.goto("/remediation");
+  const row = page.getByRole("listitem").filter({ hasText: "October 2026 cumulative KB5127648" });
+  await expect(row.getByText("1 of 2 hosts")).toBeVisible();
+  await row.getByText("Show 1 machine without it").click();
+  await expect(row.getByText("win-old")).toBeVisible();
+  await expect(row.getByText("No job yet")).toBeVisible();
+  await expect(row.getByText(/No canary machine has proven this update/)).toBeVisible();
+  await axe(page, "Windows updates open");
+  await row.getByRole("button", { name: /Plan the rest \(1\)/ }).click();
+  await expect(page).toHaveURL(/\/remediation#job-/);
+  await expect(row.getByText("Planned, waiting for approval")).toBeVisible();
+  await expect(row.getByRole("button", { name: /Plan the rest/ })).toHaveCount(0);  // it's in flight now
+  await context.close();
+});
+
 test("a member (read-only) sees no controls the API would refuse, and every page passes axe", async ({ browser }) => {
   // a member with a password, as an invitation would add (no SMTP in this test)
   const db = join(process.cwd(), "e2e-data", "e2e.db").replaceAll("\\", "/");

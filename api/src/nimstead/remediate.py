@@ -14,7 +14,8 @@ Safety model:
 
 import os
 import re
-from datetime import UTC, datetime, timedelta
+from collections import defaultdict
+from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import select
@@ -23,7 +24,7 @@ from sqlalchemy.orm import Session
 from nimstead import evidence
 from nimstead.db import Advisory, Asset, Finding, InstalledPackage, Org, RemediationJob, now
 from nimstead.match import normalize_ecosystem
-from nimstead.notify import notify
+from nimstead.notify import SILENT_AFTER, notify
 from nimstead.scan import HOTPATCH
 from nimstead.versions import comparator_for, sort_key, windows_cmp
 
@@ -105,6 +106,135 @@ def windows_kbs(s: Session, product: str, cves: list[str], ecosystem: str = "Win
         step_to, step_kb = max(older, key=lambda x: sort_key(windows_cmp)(x[0]))
         out["alt"] = {"kb": step_kb, "to": step_to}
     return out
+
+
+KB_ROWS_PER_PRODUCT = 3  # updates are cumulative: older months only repeat who is behind (DECISIONS 70)
+JOB_WHY = {"planned": "Planned, waiting for approval", "approved": "Approved, waiting for the machine to pick it up",
+           "dispatched": "Sent to the machine, no result yet", "verifying": "Applied, waiting for the machine's next report",
+           "succeeded": "A fix succeeded, but the machine's last report still shows an older build"}
+HALTS = ("rolled_back", "rollback_failed", "failed", "not_fixed")  # as canary_ok
+
+
+def _reaches(version, build: str) -> bool:
+    try:
+        return windows_cmp(str(version), build) >= 0
+    except ValueError:  # a version a host reported, or a job pinned from one
+        return False
+
+
+def _job_why(job: RemediationJob | None) -> str:
+    if job is None:
+        return "No job yet"
+    if job.status in ALERT_STATUSES:
+        step = next((x for x in reversed(job.steps or []) if not x.get("ok")), {})
+        return f"Last attempt {job.status.replace('_', ' ')}: {job.error or step.get('output') or 'no reason reported'}"
+    return JOB_WHY.get(job.status) or job.error or "Cancelled"
+
+
+def _host_notes(a: Asset, statuses: set) -> list[str]:
+    """What the host's own facts add to the reason. None of these is claimed as the cause."""
+    f, notes = a.facts or {}, []
+    if a.last_seen < now() - SILENT_AFTER:
+        notes.append(f"Not reporting since {a.last_seen:%Y-%m-%d}, so it may have this update already")
+    if f.get("pending_reboot"):
+        notes.append("A restart is pending, which can change its build")
+    if f.get("wsus"):
+        notes.append(f"Gets updates from WSUS ({f['wsus']}), which has to approve this one")
+    if f.get("wufb_quality_deferral_days"):
+        notes.append(f"Policy defers quality updates by {f['wufb_quality_deferral_days']} days")
+    if f.get("esu") is False:
+        notes.append("No Extended Security Updates licence is active")
+    if not a.sandbox and not production_allowed():
+        notes.append("This server only fixes test machines, so a job here wouldn't be approved")
+    if "open" not in statuses and "accepted" in statuses:
+        notes.append("Its findings are risk-accepted, so there's nothing to plan")
+    return notes
+
+
+def _rollout(plannable: list[Asset], jobs: list[RemediationJob], ring0: set[str], soak_hours: int) -> tuple[list[str], str | None]:
+    """Who "plan the rest" may plan now, canaries before everyone else. jobs: this update's only, because one action key
+    spans every month and September's canary proves nothing about October (DECISIONS 70). Approval rules stay in approve()."""
+    if not plannable:
+        return [], None
+    if canaries := [a.id for a in plannable if a.ring == 0]:
+        return canaries, f"Canary machines first. The rest can be planned once one has succeeded and soaked for {soak_hours}h."
+    if any(j.status in HALTS for j in jobs):
+        return [], "This update failed on a machine: review that before planning the rest."
+    proving = [j for j in jobs if j.asset_id in ring0 and (j.status in ACTIVE or j.status == "succeeded")]
+    if any(j.status == "succeeded" and j.updated <= now() - timedelta(hours=soak_hours) for j in proving):
+        return [a.id for a in plannable], None
+    if proving:
+        return [], f"Waiting for a canary to succeed and soak for {soak_hours}h."
+    return [a.id for a in plannable], "No canary machine has proven this update, so each fix waits for a person's approval."
+
+
+def kb_fleet(s: Session, org_id: str) -> list[dict]:
+    """Per product, its newest cumulative updates: how many of the org's hosts have each, judged by the build they last
+    reported, and for the rest why not, from their jobs and facts. A host on the hotpatch track has an update when none of
+    its CVEs is still on the host (DECISIONS 52)."""
+    hosts: dict[str, list[tuple[Asset, str]]] = defaultdict(list)
+    for a, product, version in s.execute(select(Asset, InstalledPackage.name, InstalledPackage.version)
+                                         .join(InstalledPackage, InstalledPackage.asset_id == Asset.id)
+                                         .where(Asset.org_id == org_id, Asset.kind == "host", Asset.ecosystem == "Windows",
+                                                InstalledPackage.ecosystem == "Windows")):
+        if re.fullmatch(r"\d+(\.\d+)*", version):  # any other build can't be compared, so the host isn't counted either way
+            hosts[product].append((a, version))
+    if not hosts:
+        return []
+    kbs: dict[str, dict[str, dict]] = defaultdict(dict)
+    hot_builds: dict[str, set] = defaultdict(set)
+    for pkg, rec in s.execute(select(Advisory.package, Advisory.record).where(
+            Advisory.ecosystem == "Windows", Advisory.package.in_([*hosts, *(p + HOTPATCH for p in hosts)]))):
+        fixed = rec["affected"][0]["ranges"][0]["events"][-1].get("fixed")
+        info = rec.get("database_specific") or {}
+        if pkg.endswith(HOTPATCH):
+            hot_builds[pkg.removesuffix(HOTPATCH)].add(fixed)
+        elif fixed and SAFE_KB.match(kb := str(info.get("kb") or "")):
+            row = kbs[pkg].setdefault(kb, {"build": fixed, "released": None, "cves": set()})
+            row["build"] = max(row["build"], fixed, key=sort_key(windows_cmp))
+            row["released"] = row["released"] or info.get("released")
+            row["cves"].update(rec["aliases"])
+    statuses: dict[tuple[str, str], set] = defaultdict(set)
+    for asset_id, product, status in s.execute(select(Finding.asset_id, Finding.package, Finding.status).distinct().where(
+            Finding.org_id == org_id, Finding.ecosystem == "Windows", Finding.status.in_(("open", "accepted")), Finding.package.in_(list(hosts)))):
+        statuses[asset_id, product].add(status)
+    on_hotpatch = {a.id for p, members in hosts.items() for a, v in members if v in hot_builds[p]}
+    hot_cves: dict[str, set] = defaultdict(set)
+    if on_hotpatch:
+        for asset_id, cve in s.execute(select(Finding.asset_id, Finding.vuln_id).where(
+                Finding.org_id == org_id, Finding.ecosystem == "Windows", Finding.status.in_(("open", "accepted")), Finding.asset_id.in_(list(on_hotpatch)))):
+            hot_cves[asset_id].add(cve)
+    jobs: dict[str, list[RemediationJob]] = defaultdict(list)
+    for j in s.scalars(select(RemediationJob).where(RemediationJob.org_id == org_id, RemediationJob.action_key.in_([f"Windows|{p}" for p in hosts]))
+                       .order_by(RemediationJob.updated.desc())):
+        jobs[j.action_key].append(j)
+    soak_hours = s.get(Org, org_id).canary_soak_hours
+
+    out = []
+    for product, members in hosts.items():
+        key = f"Windows|{product}"
+        by_host: dict[str, list[RemediationJob]] = defaultdict(list)
+        for j in jobs[key]:
+            by_host[j.asset_id].append(j)
+        ring0 = {a.id for a, _ in members if a.ring == 0}
+        for kb, row in sorted(kbs[product].items(), key=lambda x: sort_key(windows_cmp)(x[1]["build"]), reverse=True)[:KB_ROWS_PER_PRODUCT]:
+            missing, plannable = [], []
+            for a, version in members:
+                if _reaches(version, row["build"]) or (a.id in on_hotpatch and not row["cves"] & hot_cves[a.id]):
+                    continue
+                # a job reaching this build or beyond counts for it (cumulative); any active one is what plan() would refuse on
+                job = next((j for j in by_host[a.id] if j.status in ACTIVE or _reaches(j.packages[0].get("to"), row["build"])), None)
+                st = statuses[a.id, product]
+                missing.append({"asset_id": a.id, "hostname": a.hostname, "build": version, "ring": a.ring, "why": _job_why(job),
+                                "notes": _host_notes(a, st), "job": {"id": job.id, "status": job.status} if job else None})
+                if "open" in st and not (job and (job.status in ACTIVE or job.status in ALERT_STATUSES)):  # failures get a look first, as on Home
+                    plannable.append(a)
+            this_kb = [j for j in jobs[key] if _reaches(j.packages[0].get("to"), row["build"])]
+            ids, note = _rollout(plannable, this_kb, ring0, soak_hours)
+            month = date.fromisoformat(row["released"]).strftime("%B %Y") + " cumulative" if row["released"] else "Cumulative"
+            out.append({"kb": kb, "product": product, "title": f"{month} KB{kb}", "released": row["released"], "build": row["build"],
+                        "hosts": len(members), "fixed": len(members) - len(missing), "missing": missing, "plan_asset_ids": ids, "plan_note": note})
+    return sorted(out, key=lambda r: (r["released"] or "", len(r["missing"])), reverse=True)
 
 
 def fix_path(ecosystem: str, package: str) -> dict:

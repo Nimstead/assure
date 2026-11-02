@@ -1298,6 +1298,19 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             out.append(d)
         return out
 
+    @app.get("/api/windows-updates")
+    def windows_updates(user: CurrentUser, s: DB):
+        remediate.sweep(s, user.org_id)
+        return [{k: v for k, v in r.items() if k not in ("missing", "plan_asset_ids")} for r in remediate.kb_fleet(s, user.org_id)]
+
+    @app.get("/api/windows-updates/{kb}")
+    def windows_update_hosts(kb: str, user: CurrentUser, s: DB, product: str = Query(max_length=255)):
+        remediate.sweep(s, user.org_id)
+        row = next((r for r in remediate.kb_fleet(s, user.org_id) if r["kb"] == kb and r["product"] == product), None)
+        if not row:
+            raise HTTPException(404, "Update not found")
+        return row
+
     class ApproveReq(BaseModel):
         forward_only: bool = False  # the approver accepts a fix that can't be undone (winget, plan T22)
 

@@ -109,6 +109,27 @@ def main():
         s.commit()
         result["rematch_all_s"] = round(time.perf_counter() - t, 1)
         print(f"re-match all {len(assets)} hosts (hourly feed update): {result['rematch_all_s']}s", flush=True)
+    # Windows fleet view (W22): the same number of Windows hosts, three months of updates, most hosts behind. Last, so the numbers above stay comparable.
+    product = "Windows Server 2025"
+    with make_sessionmaker(DB)() as s:
+        for m, build in enumerate(("10.0.26100.1000", "10.0.26100.2000", "10.0.26100.3000")):
+            s.execute(insert(Advisory), [{"id": f"MSRC-CVE-2026-{m}{k:04d}", "ecosystem": "Windows", "package": product, "record": {
+                "id": f"MSRC-CVE-2026-{m}{k:04d}", "aliases": [f"CVE-2026-{m}{k:04d}"], "modified": "2026-10-14", "summary": "s",
+                "database_specific": {"kb": f"512700{m}", "hotpatch": False, "released": f"2026-{8 + m:02d}-14"},
+                "affected": [{"package": {"ecosystem": "Windows", "name": product},
+                              "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": build}]}]}]}} for k in range(100)])
+        s.commit()
+    for n in range(ASSETS):
+        a = c.post("/api/agent/enroll", json={"token": token, "hostname": f"win{n}", "ecosystem": "Windows"}).json()
+        build = "10.0.26100.3000" if n % 5 == 0 else "10.0.26100.500"
+        r = c.post("/api/agent/inventory", json={"ecosystem": "Windows", "packages": [{"ecosystem": "Windows", "name": product, "version": build, "source": None}]},
+                   headers={"Authorization": f"Bearer {a['agent_key']}"})
+        assert r.status_code == 200, r.text
+    rows = timed("GET /api/windows-updates", lambda: c.get("/api/windows-updates").json(), 3)
+    assert rows[0]["hosts"] == ASSETS and rows[0]["fixed"] == (ASSETS + 4) // 5
+    hosts = timed("GET /api/windows-updates/{kb} (drill down)", lambda: c.get(f"/api/windows-updates/{rows[0]['kb']}", params={"product": product}), 3)
+    result["windows_updates_drilldown_kib"] = round(len(hosts.content) / 1024)
+    timed("GET /api/summary (with Windows hosts)", lambda: c.get("/api/summary").json(), 3)
     (ROOT / "sandbox" / f"last_run_perf_{result['db'].split('+')[0]}.json").write_text(json.dumps(result, indent=2))
 
 

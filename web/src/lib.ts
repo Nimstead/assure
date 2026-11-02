@@ -98,6 +98,14 @@ export const groupJobs = (jobs: Job[]) =>
 export const ACTIVE_JOB_STATUSES: readonly JobStatus[] = ["planned", "approved", "dispatched", "verifying"];
 /** Running somewhere, so worth polling. */
 export const isActiveJob = (j: Pick<Job, "status">) => j.status !== "planned" && ACTIVE_JOB_STATUSES.includes(j.status);
+/** One cumulative update across the fleet (remediate.kb_fleet). The hosts and the plan come from kbHostsQ. */
+export interface KbRow { kb: string; product: string; title: string; released: string | null; build: string; hosts: number; fixed: number; plan_note: string | null }
+export interface KbHost { asset_id: string; hostname: string; build: string; ring: number; why: string; notes: string[]; job: { id: string; status: JobStatus } | null }
+export const kbFleetQ = queryOptions({ queryKey: ["kb-fleet"], queryFn: () => api<KbRow[]>("/api/windows-updates") });
+export const kbHostsQ = (r: Pick<KbRow, "kb" | "product">) => queryOptions({
+  queryKey: ["kb-fleet", r.kb, r.product],
+  queryFn: () => api<KbRow & { missing: KbHost[]; plan_asset_ids: string[] }>(`/api/windows-updates/${r.kb}?product=${encodeURIComponent(r.product)}`),
+});
 export const jobsQ = queryOptions({ queryKey: ["jobs"], queryFn: () => api<Job[]>("/api/remediation/jobs") });
 /** Address of a job card on the Remediation page. */
 export const jobAnchor = (id: string) => `job-${id}`;
@@ -290,9 +298,9 @@ export function aiFilterToPatch(a: AiFilter): Partial<FindingsFilters> {
 // ---- misc ----------------------------------------------------------------------
 /** Everything derived from these changes together; one place decides what a change makes stale. */
 const STALE = {
-  jobs: ["jobs", "summary", "ledger"],
+  jobs: ["jobs", "summary", "ledger", "kb-fleet"],
   findings: ["findings", "finding", "summary", "ledger"],
-  assets: ["assets", "findings", "finding", "summary", "ledger", "jobs"],
+  assets: ["assets", "findings", "finding", "summary", "ledger", "jobs", "kb-fleet"],
   people: ["users", "api-tokens", "enroll-tokens", "ledger"],
 } as const;
 export const refresh = (qc: QueryClient, what: keyof typeof STALE) =>

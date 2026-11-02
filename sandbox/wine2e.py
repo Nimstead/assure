@@ -26,7 +26,8 @@ assert NAME.startswith(winvm.PREFIX)
 TMP = Path(tempfile.mkdtemp(prefix="nimstead-wine2e-"))
 PORT = 8766
 log: list[dict] = []
-OUT = "last_run_windows.json"  # last_run_windows11.json once the VM reports Windows 11
+OUT_ARG = next((a[6:] for a in sys.argv if a.startswith("--out=")), None)  # each OS version keeps its own run file
+OUT = OUT_ARG or "last_run_windows.json"  # last_run_windows11.json once the VM reports Windows 11
 
 
 def note(step, **kw):
@@ -175,7 +176,7 @@ def main(keep=False) -> int:
         assets = api.get("/api/assets").json()
         assert len(assets) == 1 and assets[0]["ecosystem"] == "Windows", (assets, out[-2000:])
         a = assets[0]
-        if "Windows 11" in a["os_name"]:
+        if "Windows 11" in a["os_name"] and not OUT_ARG:
             global OUT
             OUT = "last_run_windows11.json"
         summ = api.get("/api/summary").json()

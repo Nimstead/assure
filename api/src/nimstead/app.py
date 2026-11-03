@@ -788,6 +788,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         name: str = Field(max_length=255)
         version: str = Field(max_length=255)
         source: str | None = Field(None, max_length=255)
+        source_version: str | None = Field(None, max_length=255)  # None from agents older than this, and where it equals version
 
     class Inventory(BaseModel):
         os_name: str = Field("", max_length=255)

@@ -31,8 +31,8 @@ def alsa(cve, src, fixed):
             "affected": [{"package": {"ecosystem": ALMA, "name": src}, "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": fixed}]}]}]}
 
 
-def pkg(name, version, source=None):
-    return {"name": name, "version": version, "source": source or name}
+def pkg(name, version, source=None, source_version=None):
+    return {"name": name, "version": version, "source": source or name, **({"source_version": source_version} if source_version else {})}
 
 
 def ldoc(*pkgs, eco=DEB, db=None, facts=None, read="2026-11-03T10:00:00Z"):
@@ -79,6 +79,29 @@ def test_t11_rpm_backport_and_t19_a_half_finished_upgrade_is_two_installs():
                                                                                   ("openssl 1:3.0.7-28.el9", Outcome.NOT_VULNERABLE)}
     assert all(v.outcome == Outcome.NOT_VULNERABLE for v in vs if v.vuln_id == "CVE-2026-2")
     assert one(vs, vuln_id="CVE-2026-1", outcome=Outcome.VULNERABLE).source == "AlmaLinux"
+
+
+# Debian 13, from the first real run: util-linux 2.41-5 builds bsdutils as 1:2.41-5 and login as 1:4.16.0-2+really2.41-5
+UTIL = (pkg("fdisk", "2.41-5", "util-linux"), pkg("bsdutils", "1:2.41-5", "util-linux", "2.41-5"),
+        pkg("login", "1:4.16.0-2+really2.41-5", "util-linux", "2.41-5"))
+UTIL_FIX = deb("CVE-2026-9", "util-linux", "2.41.5-0+deb13u1")
+
+
+def test_decision_84_a_binary_versioned_unlike_its_source_is_judged_by_the_source_version():
+    vs = run(ldoc(*UTIL), lcontent(UTIL_FIX))
+    [v] = [v for v in vs if v.vuln_id == "CVE-2026-9"]  # one install: the epoch no longer splits it off past the fix
+    assert (v.outcome, v.instance, v.fixed) == (Outcome.VULNERABLE, "util-linux 2.41-5", "2.41.5-0+deb13u1")
+    assert "bsdutils 1:2.41-5" in v.observed and "login 1:4.16.0-2+really2.41-5" in v.observed and "fdisk" in v.observed
+    bsd = run(ldoc(UTIL[1]), lcontent(UTIL_FIX))  # bsdutils alone, which compared by its own version read not-vulnerable
+    assert one(bsd, vuln_id="CVE-2026-9").outcome == Outcome.VULNERABLE
+
+
+def test_decision_84_an_old_agent_without_source_versions_is_judged_as_before():
+    old = [{k: v for k, v in p.items() if k != "source_version"} for p in UTIL]
+    vs = run(ldoc(*old), lcontent(UTIL_FIX))
+    assert {(v.instance, v.outcome) for v in vs if v.vuln_id == "CVE-2026-9"} == {
+        ("util-linux 2.41-5", Outcome.VULNERABLE), ("util-linux 1:2.41-5", Outcome.NOT_VULNERABLE),
+        ("util-linux 1:4.16.0-2+really2.41-5", Outcome.NOT_VULNERABLE)}
 
 
 def test_t12_another_release_or_module_stream_never_matches():
@@ -231,3 +254,26 @@ def test_linux_report_and_parity_through_the_api_and_a_failed_read_keeps_the_las
     body = c.get(f"/api/assets/{aid}/scan-report").json()
     assert body["headline"]["status"] == "not-assessed"
     assert any(g["reason"] == "precondition-unknown" and g["blocked_by"] == "package_db" for g in body["undetermined"])
+
+
+def test_decision_84_rescan_stores_and_compares_the_source_version_and_an_old_agent_still_works(env):
+    s = make_sessionmaker(env)()
+    s.merge(Advisory(id=UTIL_FIX["id"], ecosystem=DEB, package="util-linux", modified=UTIL_FIX["modified"], record=UTIL_FIX))
+    s.commit()
+    c = user(env)
+
+    def host(name, packages):
+        a = c.post("/api/agent/enroll", json={"token": c.post("/api/enroll-tokens").json()["token"], "hostname": name, "ecosystem": DEB}).json()
+        assert c.post("/api/agent/inventory", headers={"Authorization": f"Bearer {a['agent_key']}"}, json=ldoc(*packages)).status_code == 200
+        s.expire_all()
+        asset = s.get(Asset, a["asset_id"])
+        held = s.scalars(select(InstalledPackage).where(InstalledPackage.asset_id == asset.id)).all()
+        found = s.scalars(select(Finding).where(Finding.asset_id == asset.id, Finding.status == "open")).all()
+        verdicts, _ = engine.scan_inventory(s, Inventory.from_asset(asset, held), engine.prior_findings(s, asset))
+        return found, verdicts, held
+    found, verdicts, held = host("deb-new", [UTIL[1]])
+    assert [(f.package, f.vuln_id, f.installed_version, f.fixed_version) for f in found] == [("util-linux", "CVE-2026-9", "2.41-5", "2.41.5-0+deb13u1")]
+    assert [(p.version, p.source_version) for p in held] == [("1:2.41-5", "2.41-5")]  # the binary's own version is still what's upgraded
+    assert parity.compare(verdicts, [(f.ecosystem, f.package, f.vuln_id) for f in found])["agree"] == 1
+    found, verdicts, held = host("deb-old", [{k: v for k, v in UTIL[1].items() if k != "source_version"}])  # an agent older than this
+    assert not found and [p.source_version for p in held] == [None] and one(verdicts, vuln_id="CVE-2026-9").outcome == Outcome.NOT_VULNERABLE

@@ -24,13 +24,15 @@ def test_ecosystem(text, eco):
 
 
 def test_dpkg_installed_only_and_source_fallback():
-    out = ("libssl3\t3.0.11-1~deb12u2\topenssl\tii \n"
-           "bash\t5.2.15-2+b2\t\tii \n"
-           "oldpkg\t1.0\t\trc \n"
-           "wanted\t2.0\t\tin \n")
+    out = ("libssl3\t3.0.11-1~deb12u2\topenssl\t3.0.11-1~deb12u2\tii \n"
+           "bash\t5.2.15-2+b2\t\t5.2.15-2\tii \n"  # a binNMU: the source's version, without +b2
+           "bsdutils\t1:2.41-5\tutil-linux\t2.41-5\tii \n"  # Debian 13, real: the binary's epoch isn't the source's
+           "oldpkg\t1.0\t\t1.0\trc \n"
+           "wanted\t2.0\t\t2.0\tin \n")
     assert agent.parse_dpkg(out) == [
         {"name": "libssl3", "version": "3.0.11-1~deb12u2", "source": "openssl"},
-        {"name": "bash", "version": "5.2.15-2+b2", "source": "bash"}]
+        {"name": "bash", "version": "5.2.15-2+b2", "source": "bash", "source_version": "5.2.15-2"},
+        {"name": "bsdutils", "version": "1:2.41-5", "source": "util-linux", "source_version": "2.41-5"}]
 
 
 def test_rpm_source_name_and_gpg_pubkey():
@@ -65,7 +67,7 @@ def _linux(tmp_path, os_release, answer, tool="dpkg-query"):
 
 def test_linux_collect_reports_what_it_read_with_the_command_status(tmp_path):
     from nimstead.engine.collection import valid_document
-    inv, ran = _linux(tmp_path, 'ID=debian\nVERSION_ID="13"\nPRETTY_NAME="Debian GNU/Linux 13 (trixie)"\n', (0, "libssl3t64\t3.5.1-1\topenssl\tii \nbash\t5.2-1\t\tii \n", ""))
+    inv, ran = _linux(tmp_path, 'ID=debian\nVERSION_ID="13"\nPRETTY_NAME="Debian GNU/Linux 13 (trixie)"\n', (0, "libssl3t64\t3.5.1-1\topenssl\t3.5.1-1\tii \nbash\t5.2-1\t\t5.2-1\tii \n", ""))
     assert ran == [agent.DPKG_QUERY]  # read-only, fixed argv
     assert inv["ecosystem"] == "Debian:13" and inv["collection"]["sources"] == {"os_release": {"state": "ok", "count": 1}, "package_db": {"state": "ok", "count": 2, "exit": 0}}
     assert inv["facts"] == {"os_id": "debian", "os_version_id": "13", "kernel_release": "6.12.48+deb13-amd64", "pending_reboot": None}
@@ -87,9 +89,9 @@ def test_linux_collect_tells_a_failed_read_a_cut_short_one_and_an_empty_one_apar
 
 
 def test_linux_collect_reports_an_unknown_platform_instead_of_failing(tmp_path):
-    inv, _ = _linux(tmp_path, "ID=linuxmint\nVERSION_ID=22\n", (0, "bash\t5.2-1\t\tii \n", ""))
+    inv, _ = _linux(tmp_path, "ID=linuxmint\nVERSION_ID=22\n", (0, "bash\t5.2-1\t\t5.2-1\tii \n", ""))
     assert inv["ecosystem"] == "" and "ID=linuxmint VERSION_ID=22" in inv["facts"]["os_unmatched"] and inv["packages"]
-    gone = agent.collect_linux(lambda cmd, timeout=600: (0, "bash\t5.2-1\t\tii \n", ""), files=(str(tmp_path / "x"),), apk_db=str(tmp_path / "y"),
+    gone = agent.collect_linux(lambda cmd, timeout=600: (0, "bash\t5.2-1\t\t5.2-1\tii \n", ""), files=(str(tmp_path / "x"),), apk_db=str(tmp_path / "y"),
                                which=lambda n: "/usr/bin/dpkg-query" if n == "dpkg-query" else None, kernel="6.1")
     assert gone["collection"]["sources"]["os_release"] == {"state": "failed", "count": 0, "error": "no os-release file"}
 

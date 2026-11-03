@@ -71,7 +71,7 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
         for f in s.scalars(select(Finding).where(Finding.asset_id == asset.id))
     }
     seen: set[tuple[str, str, str]] = set()
-    inv = sorted((p.ecosystem, p.name, p.version, p.source or "") for p in pkgs)
+    inv = sorted((p.ecosystem, p.name, p.version, p.source or "", *([p.source_version] if p.source_version else [])) for p in pkgs)
     if inventory_received:
         evidence.append(s, asset.org_id, "inventory_received", asset.id, {
             "hostname": asset.hostname, "packages": len(inv),
@@ -99,7 +99,7 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
             if ms := msproducts.targets(p.name, p.version, os_product, p.source):
                 targets.append((p, eco, *ms))
         else:
-            targets.append((p, eco, p.source or p.name, p.version))
+            targets.append((p, eco, p.source or p.name, p.source_version or p.version))  # advisories name source versions (DECISIONS 84)
     # stable sort: the oldest vulnerable install of an app is the finding's row (one per asset, package and vulnerability), and a
     # later install still affected is named in its summary. Each is judged, so fixing one of two leaves the finding open (DECISIONS 73)
     targets.sort(key=lambda t: winapps.appver_parts(t[3]) if t[1] in (winapps.ECOSYSTEM, msproducts.ECOSYSTEM) else [])

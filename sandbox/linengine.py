@@ -80,6 +80,11 @@ def main(keep=False) -> int:
                 found = [(x.ecosystem, x.package, x.vuln_id) for x in s.scalars(select(Finding).where(Finding.asset_id == aid, Finding.status.in_(("open", "accepted"))))]
             return verdicts, again, found, len(held)
         verdicts, again, found, held = judged()
+        split = [x for x in inv["packages"] if x.get("source_version")]  # DECISIONS 84: bsdutils 1:2.41-5 from util-linux 2.41-5
+        h.note("binaries versioned unlike their source", count=len(split), examples=[
+            {**{k: x[k] for k in ("name", "version", "source", "source_version")},
+             "verdicts": sorted({v.outcome.value for v in verdicts if v.instance == f"{x['source']} {x['source_version']}" and f"{x['name']} {x['version']}" in (v.observed or "")})}
+            for x in split[:20]])
         p = parity.compare(verdicts, found)
         h.note("parity with rescan", findings=len(found), agree=p["agree"], outside_this_slice=p["outside_this_slice"], explained=len(p["explained"]),
                explained_by=sorted({x["engine"] for x in p["explained"]}), explained_examples=p["explained"][:20], unexplained=p["unexplained"][:50])
@@ -104,6 +109,8 @@ def main(keep=False) -> int:
                   "end of support judged": any(v.vuln_id and v.vuln_id.startswith("EOL:") and v.outcome.value in ("not-vulnerable", "vulnerable") for v in verdicts),
                   "the running WSL kernel isn't called clean": any(v.check == "product:running-kernel" and v.reason == "kernel-unpackaged" for v in verdicts),
                   "every finding rescan opened is a verdict or explained": p["ok"] and bool(found),
+                  "a binary versioned unlike its source is judged by the source version, never its own":
+                  mgr != "dpkg" or (bool(split) and not any(v.instance == f"{x['source']} {x['version']}" for x in split for v in verdicts)),
                   "same inventory and content, same verdicts": again["verdicts_sha256"] == rep["verdicts_sha256"] and again["content_version"] == rep["content_version"],
                   "a failed package database read is reported as one": broken["collection"]["sources"]["package_db"]["state"] != "ok"
                   or broken["collection"]["sources"]["package_db"]["count"] == 0,

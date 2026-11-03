@@ -102,7 +102,8 @@ class Inventory:
     def from_asset(cls, asset: Asset, pkgs: list[InstalledPackage]) -> Inventory:
         return cls(asset.hostname, asset.os_name, asset.ecosystem, asset.agent_version,
                    asset.last_inventory_at.isoformat() + "Z" if asset.last_inventory_at else None, asset.facts or {},
-                   [{"ecosystem": p.ecosystem, "name": p.name, "version": p.version, "source": p.source}
+                   [{"ecosystem": p.ecosystem, "name": p.name, "version": p.version, "source": p.source,
+                     **({"source_version": p.source_version} if p.source_version else {})}  # absent for old rows: their hash doesn't move
                     for p in sorted(pkgs, key=lambda p: (p.ecosystem, p.name, p.version, p.source or ""))],
                    asset.collection, asset.last_inventory_at is not None)
 
@@ -197,15 +198,16 @@ def _runs(mgr: str, name: str, version: str, release: str) -> bool:
 
 def linux_installs(inv: Inventory) -> list[Install]:
     """One install per source package and version: binaries built together are judged once, a half-finished upgrade twice (T19).
-    Matched by source name, as distro advisories are (DECISIONS 3)."""
+    Matched by source name and version, as distro advisories are (DECISIONS 3, 84); without a source version, the binary's own."""
     eco, mgr, running = normalize_ecosystem(inv.ecosystem), manager(inv.ecosystem), inv.facts.get("kernel_release")
     groups: dict[tuple[str, str], list[str]] = {}
     kernels, live = set(), set()
     for p in inv.packages:
         if p.get("ecosystem") != inv.ecosystem:  # jars found on disk are another ecosystem, judged by rescan
             continue
-        key = (p.get("source") or p["name"], p["version"])
-        groups.setdefault(key, []).append(p["name"])
+        sv = p.get("source_version")
+        key = (p.get("source") or p["name"], sv or p["version"])
+        groups.setdefault(key, []).append(f"{p['name']} {p['version']}" if sv else p["name"])  # the binary's own version, shown
         if _KERNEL[mgr].fullmatch(p["name"]):
             kernels.add(key)
             if isinstance(running, str) and _runs(mgr, p["name"], p["version"], running):

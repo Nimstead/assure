@@ -93,9 +93,10 @@ def parse_dpkg(text):
     pkgs = []
     for line in text.splitlines():
         f = line.split("\t")
-        if len(f) < 4 or not f[3].startswith("ii"):
+        if len(f) < 5 or not f[4].startswith("ii"):
             continue
-        pkgs.append({"name": f[0], "version": f[1], "source": f[2] or f[0]})
+        # advisories are keyed by source version, which a binary can differ from (bsdutils 1:2.41-5 from util-linux 2.41-5)
+        pkgs.append({"name": f[0], "version": f[1], "source": f[2] or f[0], **({"source_version": f[3]} if f[3] and f[3] != f[1] else {})})
     return pkgs
 
 
@@ -110,7 +111,8 @@ def parse_rpm(text):
             src = src[: -len(".src.rpm")].rsplit("-", 2)[0]  # strip -version-release
         else:
             src = f[0]
-        # Epoch always kept ("0:1.2-3"): OSV Rocky records use "E:V-R" and the comparator treats absent == 0
+        # Epoch always kept ("0:1.2-3"): OSV Rocky records use "E:V-R" and the comparator treats absent == 0.
+        # No source_version: SOURCERPM has no epoch, and subpackages inherit the parent's E:V-R (DECISIONS 84)
         pkgs.append({"name": f[0], "version": f[1], "source": src})
     return pkgs
 
@@ -138,7 +140,7 @@ def _query(cmd, timeout=600):
 
 OS_RELEASE = ("/etc/os-release", "/usr/lib/os-release")  # os-release(5): the first that exists, and only it
 APK_DB = "/lib/apk/db/installed"
-DPKG_QUERY = ["dpkg-query", "-W", "-f", "${Package}\t${Version}\t${source:Package}\t${db:Status-Abbrev}\n"]
+DPKG_QUERY = ["dpkg-query", "-W", "-f", "${Package}\t${Version}\t${source:Package}\t${source:Version}\t${db:Status-Abbrev}\n"]
 RPM_QUERY = ["rpm", "-qa", "--qf", "%{NAME}\t%{EPOCHNUM}:%{VERSION}-%{RELEASE}\t%{SOURCERPM}\n"]
 NOTIFY_REBOOT = "/usr/share/update-notifier/notify-reboot-required"  # Debian/Ubuntu: what writes the flag below, when installed
 REBOOT_FLAG = "/run/reboot-required"
@@ -157,7 +159,7 @@ def package_db(query=_query, apk_db=APK_DB, which=shutil.which):
         bad = sum(1 for b in text.split("\n\n") if b.strip() and not ("\nP:" in "\n" + b and "\nV:" in "\n" + b))
         return pkgs, {**_source(len(pkgs), f"{bad} entries couldn't be read" if bad else None), "exit": 0}
     if which("dpkg-query"):
-        cmd, parse, tabs = DPKG_QUERY, parse_dpkg, 3
+        cmd, parse, tabs = DPKG_QUERY, parse_dpkg, 4
     elif which("rpm"):
         cmd, parse, tabs = RPM_QUERY, parse_rpm, 2
     else:

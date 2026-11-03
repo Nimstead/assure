@@ -132,6 +132,7 @@ class InstalledPackage(Base):
     name: Mapped[str] = mapped_column(String(255))
     version: Mapped[str] = mapped_column(String(255))
     source: Mapped[str | None] = mapped_column(String(255))
+    source_version: Mapped[str | None] = mapped_column(String(255))  # dpkg, only where it differs: None compares `version` (DECISIONS 84)
     origin: Mapped[str] = mapped_column(String(10), default="agent", server_default="agent")  # agent | sbom: each replaces only its own rows
 
 

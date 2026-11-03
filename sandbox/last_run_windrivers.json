@@ -1,0 +1,70 @@
+[
+  {
+    "step": "feed",
+    "hashes": 2202,
+    "sample": [
+      "rtcore64.sys",
+      "vulnerable driver",
+      "e32bc3da-4db1-4858-a62c-6fbe4db6afbd"
+    ]
+  },
+  {
+    "step": "sample downloaded in the guest",
+    "sha256": "01aa278b07b58dc46c84bd0b1b5c8e9ee4e62ea0bf7a695862444af32e87f1fd"
+  },
+  {
+    "step": "collector",
+    "scan": {
+      "hashed": 439,
+      "too_large": 0,
+      "unreadable": 0,
+      "stopped": false,
+      "complete": true
+    },
+    "drivers": 439,
+    "loaded": 118,
+    "listed": {
+      "ecosystem": "WinDriver",
+      "name": "nimtest-listed.sys",
+      "version": "01aa278b07b58dc46c84bd0b1b5c8e9ee4e62ea0bf7a695862444af32e87f1fd",
+      "source": "on disk"
+    },
+    "control": {
+      "ecosystem": "WinDriver",
+      "name": "nimtest-control.sys",
+      "version": "97ac98b1a92c286054cce55239cfccdfc23a5517bd07fe693072c9ca96c7dabb",
+      "source": "on disk"
+    }
+  },
+  {
+    "step": "findings",
+    "hits": [
+      "nimtest-listed.sys"
+    ]
+  },
+  {
+    "step": "after removal",
+    "scan": {
+      "hashed": 437,
+      "too_large": 0,
+      "unreadable": 0,
+      "stopped": false,
+      "complete": true
+    },
+    "hits": []
+  },
+  {
+    "step": "RESULT: PASS",
+    "checks": {
+      "sample is in today's feed": true,
+      "no service points at the file before the scan": true,
+      "listed file hashed, on disk and not loaded": true,
+      "listed file flagged": true,
+      "control file hashed and not flagged": true,
+      "some real drivers reported as loaded": true,
+      "scan complete": true,
+      "no service points at the file after the scan": true,
+      "gone after removal": true
+    }
+  }
+]

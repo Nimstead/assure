@@ -136,7 +136,7 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens Greenbo
 ### W15: Vulnerable drivers by exact hash (M)
 - [ ] LOLDrivers' licence and format checked; a feed syncs its hashes and fails loudly on a changed schema
 - [ ] Agent reports the SHA-256 of loaded drivers within a size cap; only exact matches open findings
-- [ ] Real VM: a known vulnerable driver file present is flagged, an unrelated driver isn't. File hashed, not loaded
+- [x] Real VM: a known vulnerable driver file present is flagged, an unrelated driver isn't. File hashed, not loaded (`last_run_windrivers.json`, Windows 11: 439 drivers hashed, only RTCore64.sys flagged, never loaded)
 - Verify: `last_run_windrivers.json`. Files: agent, `feeds.py`, `scan.py`. Deps: none.
 
 ### W16: Certificates and listening services (M)

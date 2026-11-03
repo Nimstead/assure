@@ -6,16 +6,16 @@ import json
 import re
 from dataclasses import dataclass, field
 
-from nimstead import msproducts, winapps
+from nimstead import msproducts, sbom, winapps
 from nimstead.db import Asset, InstalledPackage
 from nimstead.match import normalize_ecosystem
 
 DOC_VERSION = 1
 MAX_DOC_BYTES = 4_000
-STATES = ("ok", "partial", "failed")
+STATES = ("ok", "partial", "failed", "off")  # off: a local opt-in scan this host's agent doesn't run, so nothing was looked for
 NOT_REPORTED = "not-reported"
 _NAME = re.compile(r"[a-z_]{1,40}")
-_RANK = {"ok": 0, "partial": 1, "failed": 2, NOT_REPORTED: 3}
+_RANK = {"ok": 0, "partial": 1, "failed": 2, "off": 3, NOT_REPORTED: 3}
 
 MS_FACTS = (".NET runtime", ".NET SDK", ".NET Framework", "ASP.NET Core", "SQL Server", "Exchange Server", "SharePoint Server",
             "Defender platform", "Defender engine", "Microsoft 365 Apps", *msproducts.STORE_PACKAGES)
@@ -27,6 +27,9 @@ WINDOWS_SOURCES = ("windows_build", "uninstall", "user_hives", "microsoft_produc
 LINUX_SOURCES = ("os_release", "package_db")
 LINUX = ("Debian", "Ubuntu", "Alpine", "Rocky Linux", "AlmaLinux", "Red Hat", "SUSE", "openSUSE")  # the distros' own advisory feeds
 _MANAGER = {"Debian": "dpkg", "Ubuntu": "dpkg", "Alpine": "apk"}  # the rest are rpm
+# what the agent's opt-in scans read outside the OS package manager: (source, ecosystem, label)
+AGENT_APPS = (("python_packages", "PyPI", "Python packages"), ("npm_packages", "npm", "npm packages"), ("java_archives", "Maven", "Java archives"))
+_APP_SOURCE = {eco: (src, label) for src, eco, label in AGENT_APPS}
 
 
 def linux(ecosystem: str) -> bool:
@@ -89,6 +92,8 @@ class Inventory:
     packages: list[dict] = field(default_factory=list)
     document: dict | None = None
     received: bool = True
+    kind: str = "host"  # or "application": an SBOM, no agent
+    sbom: dict | None = None  # the latest SBOM upload's counts and when it arrived, from the evidence ledger
 
     @classmethod
     def from_doc(cls, doc: dict) -> Inventory:
@@ -99,17 +104,19 @@ class Inventory:
                    sent if valid_document(sent) else None, "packages" in doc)
 
     @classmethod
-    def from_asset(cls, asset: Asset, pkgs: list[InstalledPackage]) -> Inventory:
+    def from_asset(cls, asset: Asset, pkgs: list[InstalledPackage], sbom: dict | None = None) -> Inventory:
         return cls(asset.hostname, asset.os_name, asset.ecosystem, asset.agent_version,
                    asset.last_inventory_at.isoformat() + "Z" if asset.last_inventory_at else None, asset.facts or {},
                    [{"ecosystem": p.ecosystem, "name": p.name, "version": p.version, "source": p.source,
-                     **({"source_version": p.source_version} if p.source_version else {})}  # absent for old rows: their hash doesn't move
-                    for p in sorted(pkgs, key=lambda p: (p.ecosystem, p.name, p.version, p.source or ""))],
-                   asset.collection, asset.last_inventory_at is not None)
+                     **({"source_version": p.source_version} if p.source_version else {}),  # absent for old rows: their hash doesn't move
+                     **({"origin": "sbom"} if p.origin == "sbom" else {})}
+                    for p in sorted(pkgs, key=lambda p: (p.ecosystem, p.name, p.version, p.source or "", p.origin or ""))],
+                   asset.collection, asset.last_inventory_at is not None, asset.kind or "host", sbom)
 
     def to_doc(self) -> dict:
         return {"hostname": self.hostname, "os_name": self.os_name, "ecosystem": self.ecosystem, "agent_version": self.agent_version,
-                "collected_at": self.collected_at, "facts": self.facts, "collection": self.document, "packages": self.packages}
+                "collected_at": self.collected_at, "facts": self.facts, "collection": self.document, "packages": self.packages,
+                **({"kind": self.kind} if self.kind != "host" else {}), **({"sbom": self.sbom} if self.sbom else {})}
 
     def sha256(self) -> str:
         return hashlib.sha256(json.dumps(self.to_doc(), sort_keys=True, default=str).encode()).hexdigest()
@@ -120,10 +127,19 @@ class Inventory:
         return linux(self.ecosystem) or "os_id" in self.facts
 
     def _count(self, *ecosystems: str) -> int:
-        return sum(p.get("ecosystem") in ecosystems for p in self.packages)
+        """What the agent sent: an SBOM's rows are another upload's."""
+        return sum(p.get("ecosystem") in ecosystems and p.get("origin") != "sbom" for p in self.packages)
+
+    @property
+    def sbom_rows(self) -> int:
+        return sum(p.get("origin") == "sbom" for p in self.packages)
 
     def source(self, name: str) -> Source:
         """Known with a value, known absent, or unknown (R3.2): a source nobody reported is unknown, never empty."""
+        if name == "sbom":  # an upload is read whole or refused whole (sbom.parse); what it couldn't name is counted in `self.sbom`
+            if self.sbom is None and not self.sbom_rows:
+                return Source(name, NOT_REPORTED, reason="no-sbom", error="no SBOM has been uploaded")
+            return Source(name, "ok", self.sbom_rows)
         s = (self.document or {}).get("sources", {}).get(name)
         if s is None:
             return Source(name, NOT_REPORTED, reason="no-collection-document" if self.document is None else "precondition-unknown",
@@ -133,11 +149,13 @@ class Inventory:
             return _with(got, reason="access-denied" if got.code == "access-denied" else "precondition-unknown")
         if got.state == "partial":
             return _with(got, reason="source-partial")
+        if got.state == "off":
+            return _with(got, reason="policy-excluded")
         if name in ("uninstall", "package_db") and got.count == 0:  # R4.3: every Windows and every Linux install lists something
             return _with(got, state="failed", reason="empty-list", error="read to its end, with nothing in it")
         # T3: the list that arrived is shorter than the one collected
         held = {"uninstall": self._count("WinApp"), "microsoft_products": self._count("Microsoft"), "windows_build": self._count("Windows"),
-                "package_db": self._count(self.ecosystem)}.get(name)
+                "package_db": self._count(self.ecosystem), **{src: self._count(eco) for src, eco, _ in AGENT_APPS}}.get(name)
         declared = got.count + (self.source_count("user_hives") if name == "uninstall" else 0)
         if held is not None and held < declared:
             return _with(got, state="partial", reason="source-partial", error=f"the agent read {declared}, the inventory holds {held}")
@@ -150,8 +168,9 @@ class Inventory:
         return max((self.source(n) for n in names), key=lambda s: _RANK[s.state])
 
     def sources(self) -> list[Source]:
-        names = sorted((self.document or {}).get("sources", {})) or (LINUX_SOURCES if linux(self.ecosystem) else WINDOWS_SOURCES)
-        return [self.source(n) for n in names]
+        names = [] if self.kind == "application" else (sorted((self.document or {}).get("sources", {}))
+                                                         or (LINUX_SOURCES if linux(self.ecosystem) else WINDOWS_SOURCES))
+        return [self.source(n) for n in names] + ([self.source("sbom")] if self.kind == "application" or self.sbom_rows else [])
 
 
 def _with(s: Source, **kw) -> Source:
@@ -220,6 +239,26 @@ def linux_installs(inv: Inventory) -> list[Install]:
         shown = ", ".join(sorted(names)[:5]) + (f" and {len(names) - 5} more" if len(names) > 5 else "")
         out.append(Install("distro", eco, (src,), ver, f"{src} {ver}", f"{mgr} database: {shown}", "package_db", True, kernel=state))
     return out
+
+
+def app_installs(inv: Inventory) -> list[Install]:
+    """Software outside the OS package manager, one install per place it was found (T19): an SBOM's components, and what the agent's
+    opt-in scans read from each install's own metadata. Files the package manager owns don't arrive: the agent leaves them to it (R7.9)."""
+    out = {}
+    for p in inv.packages:
+        eco, name, ver = p.get("ecosystem"), p["name"], p["version"]
+        if p.get("origin") == "sbom" and eco in sbom.ECOSYSTEMS:
+            when = f", received {inv.sbom['received'][:10]}" if inv.sbom and inv.sbom.get("received") else ""
+            i = Install("application", eco, (name,), ver, f"{name} {ver}", f"SBOM component{when}", "sbom")
+        elif eco in _APP_SOURCE and p.get("origin") != "sbom":
+            src, label = _APP_SOURCE[eco]
+            where = p.get("source")  # the agent sends where the install is; an older agent's jars say nowhere
+            i = Install("application", eco, (name,), ver, f"{name} {ver}" + (f" at {where}" if where else ""),
+                        f"{label[:-1]} metadata" + (f" in {where}" if where else ""), src)
+        else:
+            continue
+        out[(i.ecosystem, i.instance, i.source)] = i
+    return sorted(out.values(), key=lambda i: (i.ecosystem, i.keys, i.instance, i.source))
 
 
 def installs(inv: Inventory) -> list[Install]:

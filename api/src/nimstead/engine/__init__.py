@@ -7,7 +7,7 @@
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
-from nimstead.db import Asset, Finding, InstalledPackage, ScanRecord, now
+from nimstead.db import Asset, Finding, InstalledPackage, LedgerEntry, ScanRecord, now
 from nimstead.engine import content, report
 from nimstead.engine.collection import Inventory
 from nimstead.engine.evaluate import ENGINE_VERSION, evaluate
@@ -31,9 +31,16 @@ def prior_findings(s: Session, asset: Asset) -> list[tuple[str, str, str]]:
                           .where(Finding.asset_id == asset.id, or_(Finding.status.in_(("open", "accepted")), closed_now))).all()]
 
 
+def sbom_received(s: Session, asset: Asset) -> dict | None:
+    """The latest SBOM upload's counts, from the ledger it was written to (the rows hold only what it mapped)."""
+    e = s.scalar(select(LedgerEntry).where(LedgerEntry.org_id == asset.org_id, LedgerEntry.kind == "sbom_received", LedgerEntry.subject == asset.id)
+                 .order_by(LedgerEntry.seq.desc()).limit(1))
+    return {"received": e.ts[:19], **{k: e.data.get(k) for k in ("components", "mapped", "skipped")}} if e else None
+
+
 def asset_report(s: Session, asset: Asset) -> dict:
     """The report from the host's stored inventory, and its record: inventory, content version and verdicts, so it can be explained later (T34)."""
-    inv = Inventory.from_asset(asset, s.scalars(select(InstalledPackage).where(InstalledPackage.asset_id == asset.id)).all())
+    inv = Inventory.from_asset(asset, s.scalars(select(InstalledPackage).where(InstalledPackage.asset_id == asset.id)).all(), sbom_received(s, asset))
     _, out = scan_inventory(s, inv, prior_findings(s, asset))
     same = select(ScanRecord.id).where(ScanRecord.asset_id == asset.id, ScanRecord.inventory_sha256 == out["inventory_sha256"],
                                        ScanRecord.content_version == out["content_version"], ScanRecord.verdicts_sha256 == out["verdicts_sha256"]).limit(1)

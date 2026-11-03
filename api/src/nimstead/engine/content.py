@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from nimstead import lifecycle, msproducts, updates, winapps
 from nimstead.db import Advisory, Cvss, Kev
-from nimstead.engine.collection import Inventory, installs, linux
+from nimstead.engine.collection import Inventory, app_installs, installs, linux
 from nimstead.match import normalize_ecosystem
 from nimstead.scan import HOTPATCH
 
@@ -44,9 +44,12 @@ class Content:
 def load(s: Session, inv: Inventory) -> Content:
     wanted = {(i.ecosystem, k) for i in installs(inv) for k in i.keys}
     wanted |= {(e, k + HOTPATCH) for e, k in wanted if e == "Windows"}
+    apps = {(i.ecosystem, i.keys[0]) for i in app_installs(inv)}
+    wanted |= apps
     records: dict[tuple[str, str], list[dict]] = {k: [] for k in wanted}
     distro = normalize_ecosystem(inv.ecosystem) if linux(inv.ecosystem) else None
-    for eco in (*ECOSYSTEMS, *([distro] if distro else [])):
+    app_ecos = sorted({e for e, _ in apps})
+    for eco in (*ECOSYSTEMS, *app_ecos, *([distro] if distro else [])):
         names = sorted(k for e, k in wanted if e == eco)
         for i in range(0, len(names), 500):  # stay under SQL parameter limits
             for pkg, rec in s.execute(select(Advisory.package, Advisory.record).where(Advisory.ecosystem == eco, Advisory.package.in_(names[i:i + 500]))):
@@ -57,10 +60,10 @@ def load(s: Session, inv: Inventory) -> Content:
         part = cves[i:i + 500]
         kev.update(s.scalars(select(Kev.cve).where(Kev.cve.in_(part))))
         cvss |= dict(s.execute(select(Cvss.cve, Cvss.score).where(Cvss.cve.in_(part))).all())
+    loaded = {e for e in (*app_ecos, *([] if distro else ECOSYSTEMS)) if s.scalar(select(Advisory.id).where(Advisory.ecosystem == e).limit(1))}
     if not distro:
-        feeds = {e for e in ECOSYSTEMS if s.scalar(select(Advisory.id).where(Advisory.ecosystem == e).limit(1))}
-        return Content.make(records, kev, cvss, feeds)
+        return Content.make(records, kev, cvss, loaded)
     universe = set(s.scalars(select(Advisory.package).where(Advisory.ecosystem == distro).distinct()))
     cycle = lifecycle.distro_cycle(distro)
     eol = s.scalar(select(Advisory.record).where(Advisory.ecosystem == "EOL", Advisory.package == cycle[0])) if cycle else None
-    return Content.make(records, kev, cvss, {distro} if universe else set(), universe, (eol or {}).get("cycles"))
+    return Content.make(records, kev, cvss, loaded | ({distro} if universe else set()), universe, (eol or {}).get("cycles"))

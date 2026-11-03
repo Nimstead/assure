@@ -3,14 +3,14 @@ every difference is listed with its reason. Anything left in `unexplained` is a 
 
 from collections import defaultdict
 
-from nimstead import lifecycle
+from nimstead import lifecycle, sbom
 from nimstead.engine.collection import linux
 from nimstead.engine.content import ECOSYSTEMS as WINDOWS
 from nimstead.engine.model import REASONS, Outcome, Verdict
 
 
 def in_slice(ecosystem: str) -> bool:
-    return ecosystem in WINDOWS or linux(ecosystem)
+    return ecosystem in WINDOWS or linux(ecosystem) or ecosystem in sbom.ECOSYSTEMS
 
 
 def compare(verdicts: list[Verdict], findings: list[tuple[str, str, str]]) -> dict:

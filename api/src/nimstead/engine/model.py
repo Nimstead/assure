@@ -42,6 +42,12 @@ REASONS = {
     "eol-unknown": ("when this release's support ends isn't known here", "Run the feed update on the server; if it persists, check the distribution's release page"),
     "kernel-unpackaged": ("the running kernel wasn't installed by the package manager, so the distribution's advisories don't describe it",
                           "Patch it where it comes from: the container or WSL host, the cloud image, or whoever built it"),
+    # applications outside the package manager
+    "no-sbom": ("no SBOM has been uploaded for this application", "Upload a CycloneDX or SPDX JSON SBOM from its build"),
+    "policy-excluded": ("this host's agent doesn't run that opt-in scan, so nothing was looked for",
+                        "Enrol the agent with --scan-apps (Python and npm) or --scan-jars (Java archives); the server can't turn them on"),
+    "sbom-unmapped": ("these SBOM components can't be named in an ecosystem the advisories use, so they weren't assessed",
+                      "Generate the SBOM with a package URL (purl) for every component"),
     "not-reassessed": ("a finding was open on this, and this scan has no evidence either way", "It stays open. Fix what stopped the scan, then scan again"),
     # network slice (remote prober)
     "port-filtered": ("the port didn't answer in time, so whether this service is exposed couldn't be determined; a drop is not a closed port",
@@ -62,7 +68,7 @@ REASONS = {
 @dataclass(frozen=True)
 class Verdict:
     check: str  # stable: "<vulnerability>/<product>", or "product:<product>" for a whole product
-    family: str  # os | microsoft | app (Windows), distro (Linux)
+    family: str  # os | microsoft | app (Windows), distro (Linux), application (outside the package manager: language packages, SBOMs)
     ecosystem: str  # advisory ecosystem, as on a Finding
     product: str  # advisory package, as on a Finding
     outcome: Outcome

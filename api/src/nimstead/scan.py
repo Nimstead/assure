@@ -8,7 +8,7 @@ from collections import defaultdict
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from nimstead import evidence, lifecycle, msproducts, risk, winapps, winconfig, windrivers
+from nimstead import evidence, lifecycle, msproducts, risk, sbom, winapps, winconfig, windrivers
 from nimstead.db import Advisory, Asset, Cvss, Epss, Finding, InstalledPackage, Kev, now
 from nimstead.match import Match, Package, match_package, normalize_ecosystem
 from nimstead.notify import notify
@@ -98,6 +98,8 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
         elif eco == msproducts.ECOSYSTEM:
             if ms := msproducts.targets(p.name, p.version, os_product, p.source):
                 targets.append((p, eco, *ms))
+        elif eco in sbom.ECOSYSTEMS:  # a language package's `source` is where it was found, never another name (DECISIONS 91)
+            targets.append((p, eco, p.name, p.version))
         else:
             targets.append((p, eco, p.source or p.name, p.source_version or p.version))  # advisories name source versions (DECISIONS 84)
     # stable sort: the oldest vulnerable install of an app is the finding's row (one per asset, package and vulnerability), and a

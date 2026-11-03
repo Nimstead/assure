@@ -7,15 +7,26 @@ import re
 from collections import defaultdict
 from dataclasses import replace
 
-from nimstead import lifecycle, msproducts, risk, winapps
-from nimstead.engine.collection import MS_FACTS, MS_UNINSTALL, Install, Inventory, Source, installs, linux, manager
+from nimstead import lifecycle, msproducts, risk, sbom, winapps
+from nimstead.engine.collection import (
+    AGENT_APPS,
+    MS_FACTS,
+    MS_UNINSTALL,
+    Install,
+    Inventory,
+    Source,
+    app_installs,
+    installs,
+    linux,
+    manager,
+)
 from nimstead.engine.content import Content
 from nimstead.engine.model import Grade, Outcome, Verdict
 from nimstead.match import Package, canonical_id, match_package, normalize_ecosystem
 from nimstead.scan import HOTPATCH, hotpatch_track
 from nimstead.versions import comparator_for
 
-ENGINE_VERSION = "2"  # 2: Linux
+ENGINE_VERSION = "3"  # 2: Linux, 3: applications outside the package manager
 # what each package manager would install (Debian policy 5.6.12, RPM's EVR as the agent sends it, apk-tools' own rule)
 _DISTRO_VERSION = {"dpkg": re.compile(r"(\d+:)?\d[A-Za-z0-9.+~-]*(?<!-)"), "rpm": re.compile(r"(\d+:)?[A-Za-z0-9._+~^]+-[A-Za-z0-9._+~^]+"),
                    "apk": re.compile(r"\d.*")}
@@ -23,10 +34,15 @@ _MODULE = re.compile(r"\.module[+_]")  # a modular RPM's release: el9 module bui
 APP_SOURCES = ("uninstall", "user_hives")  # where an app's installs can be listed: a product is only absent if both were read
 _RAISE = {"unread": "A source it depends on wasn't fully read: fix that and scan again to raise this",
           "self-reported": "The version is what the product says of itself, and the range is NVD's: not a file reading against the vendor's own statement",
-          "self-reported-vendor": "The version is what the product says of itself, not read from its files; the fix is the vendor's own statement"}
+          "self-reported-vendor": "The version is what the product says of itself, not read from its files; the fix is the vendor's own statement",
+          "app": "The version is the install's own metadata, read from its files; the fix is an advisory database's, not the maintainer's own statement",
+          "sbom": "An SBOM states what was built, not what's running: an agent reading the deployed files would raise this"}
+_ADVISORY_DB = {"GHSA": "GitHub Advisory Database", "PYSEC": "PyPA Advisory Database", "MAL": "OpenSSF Malicious Packages"}
 
 
 def _ceiling(i: Install) -> Grade:
+    if i.source == "sbom":  # a document about a build, not a reading of anything installed (design-e2.md)
+        return Grade.UNVERIFIED
     return Grade.CONFIRMED if i.read_directly else Grade.REASONABLE
 
 
@@ -56,6 +72,8 @@ def _fix_source(rec: dict, eco: str) -> str:
     if linux(eco):  # OSV carries each distro's own feed: Debian's tracker, Ubuntu's notices, AlmaLinux's errata, ...
         return eco.split(":")[0]
     rid = rec["id"]
+    if eco in sbom.ECOSYSTEMS:
+        return _ADVISORY_DB.get(rid.split("-")[0], "OSV")
     if rid.startswith("OFFICE-") or rid.startswith("MSRC-") or eco in ("Windows", msproducts.ECOSYSTEM):
         return "MSRC"
     return "CVE List" if rid.endswith("-v5") else "NVD"
@@ -105,8 +123,8 @@ def _judge(inv: Inventory, i: Install, c: Content) -> list[Verdict]:
     recs = _records(i, key, c)
     base = {"family": i.family, "ecosystem": i.ecosystem, "product": key, "instance": i.instance, "observed": f"{i.version} ({i.observed})", "version": i.version,
             "kernel": i.kernel}
-    if not recs and i.family == "distro":  # the distro's tracker covers its whole archive: nothing to check against
-        return []
+    if not recs and (i.family == "distro" or (i.family == "application" and i.ecosystem in c.feeds)):
+        return []  # the feed covers the whole ecosystem: nothing to check against. Counted in coverage, never called clean
     if not recs:
         missing = i.ecosystem not in c.feeds
         return [Verdict(f"product:{key}", outcome=Outcome.NOT_RUN if missing else Outcome.UNDETERMINED, reason="feed-missing" if missing else "no-advisories", **base)]
@@ -114,6 +132,8 @@ def _judge(inv: Inventory, i: Install, c: Content) -> list[Verdict]:
     grade = _ceiling(i)
     if read.state != "ok" or (i.family == "os" and pending is None):  # R6.1: the method actually used lowers the ceiling
         grade, why = Grade.UNVERIFIED, _RAISE["unread"]
+    elif i.family == "application":
+        why = _RAISE["sbom" if i.source == "sbom" else "app"]
     else:
         why = None if grade == Grade.CONFIRMED else _RAISE["self-reported" if _fix_source(recs[0], i.ecosystem) in ("NVD", "CVE List") else "self-reported-vendor"]
     cmp = comparator_for(i.ecosystem)
@@ -179,8 +199,8 @@ def _carry_forward(verdicts: list[Verdict], prior) -> list[Verdict]:
     gone = {(v.ecosystem, v.product) for v in verdicts if v.outcome == Outcome.NOT_APPLICABLE}
     out = []
     for eco, product, vuln in sorted(set(prior)):
-        if (eco in ("Windows", msproducts.ECOSYSTEM, winapps.ECOSYSTEM) or linux(eco)) and (eco, product, vuln) not in answered and (eco, product) not in gone:
-            family = {"Windows": "os", msproducts.ECOSYSTEM: "microsoft", winapps.ECOSYSTEM: "app"}.get(eco, "distro")
+        if (eco in ("Windows", msproducts.ECOSYSTEM, winapps.ECOSYSTEM, *sbom.ECOSYSTEMS) or linux(eco)) and (eco, product, vuln) not in answered and (eco, product) not in gone:
+            family = {"Windows": "os", msproducts.ECOSYSTEM: "microsoft", winapps.ECOSYSTEM: "app"}.get(eco, "application" if eco in sbom.ECOSYSTEMS else "distro")
             out.append(Verdict(f"{vuln}/{product}", family, eco, product, Outcome.UNDETERMINED, vuln_id=vuln, grade=Grade.UNVERIFIED, reason="not-reassessed"))
     return out
 
@@ -226,6 +246,27 @@ def _end_of_life(inv: Inventory, c: Content, eco: str) -> Verdict | None:
                    summary=f"{product} {release}: supported" + (f" until {end}" if isinstance(end, str) else ", no end date announced"), **base)
 
 
+def _applications(inv: Inventory, c: Content, agent_read: bool = True) -> list[Verdict]:
+    """Software outside the OS package manager: each install against its ecosystem's advisories (R7.9, T19). `agent_read` False: the
+    agent's rows aren't this read's (DECISIONS 83), so only an SBOM's are judged. A scan that's off says so in coverage, not as a check."""
+    out = []
+    for i in app_installs(inv):
+        if i.source == "sbom" or agent_read:
+            out += _judge(inv, i, c)
+    for src, eco, label in AGENT_APPS if agent_read else ():
+        if inv.source(src).state in ("partial", "failed"):  # an install could be missing from it (R4.2)
+            out.append(_absent_or_blocked(src, "application", eco, label, True, inv.source(src)))
+    for why, n in sorted(((inv.sbom or {}).get("skipped") or {}).items()):  # R4.4: what no advisory can name is counted, never clean
+        if isinstance(n, int) and n > 0:
+            out.append(Verdict(f"product:sbom-{why}", "application", "SBOM", "SBOM components", Outcome.NOT_RUN, instance=f"{n:,} components",
+                               reason="sbom-unmapped", detail={"no_purl": f"{n:,} have no package URL"}.get(why, f"{n:,} have a package URL no advisory feed covers")))
+    return out
+
+
+def _sorted(verdicts: list[Verdict]) -> list[Verdict]:
+    return sorted(verdicts, key=lambda v: (v.family, v.product, v.check, v.instance or ""))
+
+
 def _evaluate_linux(inv: Inventory, c: Content, prior) -> list[Verdict]:
     """R7.4: not installed is not-applicable, at or above the distro's fix not-vulnerable, below it vulnerable, incomparable undetermined.
     Only a package list read in full is judged: one that isn't may not be this read's at all (the server keeps the last one)."""
@@ -247,12 +288,17 @@ def _evaluate_linux(inv: Inventory, c: Content, prior) -> list[Verdict]:
         if eol.outcome == Outcome.VULNERABLE:
             out = [replace(v, outcome=Outcome.UNDETERMINED, reason="end-of-life", grade=None) if v.outcome == Outcome.NOT_VULNERABLE else v for v in out]
         out.append(eol)
+    out += _applications(inv, c, db.state == "ok")  # after end of support: a distro's lifecycle says nothing of PyPI's advisories
     out += _carry_forward(out, prior)
-    return sorted(out, key=lambda v: (v.family, v.product, v.check, v.instance or ""))
+    return _sorted(out)
 
 
 def evaluate(inv: Inventory, content: Content, prior: tuple | list = ()) -> list[Verdict]:
     """`prior`: (ecosystem, package, vuln_id) of findings already open on this host."""
+    if inv.kind == "application":  # an SBOM and nothing else
+        out = (_applications(inv, content) if inv.source("sbom").state == "ok"
+               else [Verdict("product:sbom", "application", "SBOM", "SBOM", Outcome.NOT_RUN, reason="no-sbom")])
+        return _sorted(out + _carry_forward(out, prior))
     if not inv.received:
         if linux(inv.ecosystem):
             return [Verdict("product:platform", "distro", inv.ecosystem, inv.ecosystem, Outcome.NOT_RUN, reason="no-inventory")]
@@ -279,5 +325,6 @@ def evaluate(inv: Inventory, content: Content, prior: tuple | list = ()) -> list
     for name in MS_FACTS:
         out.append(_absent_or_blocked(name, "microsoft", msproducts.ECOSYSTEM, name, name in held, ms))
     out = [v for v in out if v]
+    out += _applications(inv, content)
     out += _carry_forward(out, prior)
-    return sorted(out, key=lambda v: (v.family, v.product, v.check, v.instance or ""))
+    return _sorted(out)

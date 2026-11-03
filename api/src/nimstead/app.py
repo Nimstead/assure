@@ -838,8 +838,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             elif asset.collection:  # the stored facts are the last report's, and the engine must know
                 asset.collection = {**asset.collection, "sources": {**asset.collection["sources"], "host_facts": {
                     "state": "failed", "count": 0, "error": "these facts were too large for the server, so older ones are stored"}}}
-        s.execute(delete(InstalledPackage).where(InstalledPackage.asset_id == asset.id, InstalledPackage.origin == "agent"))
-        s.add_all(InstalledPackage(asset_id=asset.id, origin="agent", **p.model_dump()) for p in body.packages)
+        db_read = ((asset.collection or {}).get("sources") or {}).get("package_db")
+        if not (db_read and (db_read["state"] != "ok" or not db_read.get("count"))):  # DECISIONS 83: a Linux list not read in full doesn't replace the last
+            s.execute(delete(InstalledPackage).where(InstalledPackage.asset_id == asset.id, InstalledPackage.origin == "agent"))
+            s.add_all(InstalledPackage(asset_id=asset.id, origin="agent", **p.model_dump()) for p in body.packages)
         s.flush()
         result = rescan(s, asset)
         remediate.verify(s, asset)

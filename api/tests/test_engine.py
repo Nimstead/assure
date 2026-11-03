@@ -460,7 +460,7 @@ def test_a_scan_is_recorded_once_with_what_explains_it_and_can_be_replayed(env):
     assert c.get(f"/api/assets/{aid}/scan-report").json() == first
     s.expire_all()
     [rec] = s.scalars(select(ScanRecord).where(ScanRecord.asset_id == aid)).all()
-    assert rec.content_version == first["content_version"] and rec.verdicts_sha256 == first["verdicts_sha256"] and rec.engine_version == "1"
+    assert rec.content_version == first["content_version"] and rec.verdicts_sha256 == first["verdicts_sha256"] and rec.engine_version == "2"
     inv = Inventory.from_doc(rec.inventory)
     assert inv.sha256() == rec.inventory_sha256
     replay = evaluate(inv, engine.content.load(s, inv), engine.prior_findings(s, s.get(Asset, aid)))
@@ -502,7 +502,7 @@ def test_a_host_with_no_inventory_and_a_linux_host_say_so(env):
     body = c.get(f"/api/assets/{aid}/scan-report").json()
     assert body["headline"]["status"] == "not-assessed" and body["undetermined"][0]["reason"] == "no-inventory"
     vs = evaluate(Inventory.from_doc({"ecosystem": "Debian:12", "packages": []}), Content.make({}))
-    assert (vs[0].outcome, vs[0].reason) == (Outcome.NOT_RUN, "unsupported-platform")
+    assert (vs[0].outcome, vs[0].reason) == (Outcome.NOT_RUN, "feed-missing")  # Linux is judged now (test_engine_linux.py)
 
 
 def test_the_cli_prints_the_report_and_json(env, tmp_path, capsys):

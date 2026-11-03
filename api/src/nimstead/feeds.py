@@ -235,7 +235,7 @@ def sync_eol(session: Session, client=None) -> dict:
     """endoflife.date release cycles for the curated third-party apps lifecycle.APP_EOL names (ecosystem "EOL").
     A product whose fetch fails or changes shape keeps its stored cycles."""
     out = {}
-    for product in sorted({p for p, _ in lifecycle.APP_EOL.values()}):
+    for product in sorted({p for p, _ in lifecycle.APP_EOL.values()} | set(lifecycle.DISTRO_EOL.values())):
         try:
             url = lifecycle.THUNDERBIRD_URL if product == "thunderbird" else lifecycle.EOL_URL.format(product)
             r = _client(client).get(url, headers={"Accept": "application/json"})

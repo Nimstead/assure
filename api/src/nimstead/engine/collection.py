@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 
 from nimstead import msproducts, winapps
 from nimstead.db import Asset, InstalledPackage
+from nimstead.match import normalize_ecosystem
 
 DOC_VERSION = 1
 MAX_DOC_BYTES = 4_000
@@ -22,6 +23,18 @@ MS_UNINSTALL = ("Microsoft Edge", "Visual Studio Code", "PowerShell 7", "Visual 
 # read from the file or folder itself, or Windows' own package list. The others are what the product says about itself (design-e2.md)
 MS_READ_DIRECTLY = frozenset((".NET runtime", ".NET SDK", ".NET Framework", "ASP.NET Core", "Exchange Server", "SharePoint Server", *msproducts.STORE_PACKAGES))
 _ONE_PER_SOURCE = (".NET runtime", ".NET SDK", "ASP.NET Core", "SQL Server")  # architecture or instance: each is its own install
+WINDOWS_SOURCES = ("windows_build", "uninstall", "user_hives", "microsoft_products", "host_facts", "drivers")
+LINUX_SOURCES = ("os_release", "package_db")
+LINUX = ("Debian", "Ubuntu", "Alpine", "Rocky Linux", "AlmaLinux", "Red Hat", "SUSE", "openSUSE")  # the distros' own advisory feeds
+_MANAGER = {"Debian": "dpkg", "Ubuntu": "dpkg", "Alpine": "apk"}  # the rest are rpm
+
+
+def linux(ecosystem: str) -> bool:
+    return (ecosystem or "").split(":")[0] in LINUX
+
+
+def manager(ecosystem: str) -> str:
+    return _MANAGER.get(ecosystem.split(":")[0], "rpm")
 
 
 def valid_document(doc) -> bool:
@@ -29,7 +42,9 @@ def valid_document(doc) -> bool:
     if not (isinstance(doc, dict) and doc.get("v") == DOC_VERSION and isinstance(doc.get("sources"), dict) and 0 < len(doc["sources"]) <= 16):
         return False
     for name, s in doc["sources"].items():
-        if not (isinstance(name, str) and _NAME.fullmatch(name) and isinstance(s, dict) and set(s) <= {"state", "count", "error", "code"}):
+        if not (isinstance(name, str) and _NAME.fullmatch(name) and isinstance(s, dict) and set(s) <= {"state", "count", "error", "code", "exit"}):
+            return False
+        if "exit" in s and not (isinstance(s["exit"], int) and not isinstance(s["exit"], bool) and -1024 <= s["exit"] <= 1024):
             return False
         n, err = s.get("count", 0), s.get("error")
         if s.get("state") not in STATES or not isinstance(n, int) or isinstance(n, bool) or not 0 <= n <= 10_000_000:
@@ -60,6 +75,7 @@ class Install:
     source: str  # the collection source it came from
     read_directly: bool = False
     comparable: bool = True  # False: recognised, with a version or track we refuse to compare
+    kernel: str | None = None  # a kernel install: "running" or "not-running"; "" when the running kernel isn't known (R7.7)
 
 
 @dataclass
@@ -97,6 +113,11 @@ class Inventory:
     def sha256(self) -> str:
         return hashlib.sha256(json.dumps(self.to_doc(), sort_keys=True, default=str).encode()).hexdigest()
 
+    @property
+    def is_linux(self) -> bool:
+        """A Linux agent's report, even one whose distribution no feed maps (it still says what it read)."""
+        return linux(self.ecosystem) or "os_id" in self.facts
+
     def _count(self, *ecosystems: str) -> int:
         return sum(p.get("ecosystem") in ecosystems for p in self.packages)
 
@@ -111,10 +132,11 @@ class Inventory:
             return _with(got, reason="access-denied" if got.code == "access-denied" else "precondition-unknown")
         if got.state == "partial":
             return _with(got, reason="source-partial")
-        if name == "uninstall" and got.count == 0:  # R4.3: every Windows install lists something
+        if name in ("uninstall", "package_db") and got.count == 0:  # R4.3: every Windows and every Linux install lists something
             return _with(got, state="failed", reason="empty-list", error="read to its end, with nothing in it")
         # T3: the list that arrived is shorter than the one collected
-        held = {"uninstall": self._count("WinApp"), "microsoft_products": self._count("Microsoft"), "windows_build": self._count("Windows")}.get(name)
+        held = {"uninstall": self._count("WinApp"), "microsoft_products": self._count("Microsoft"), "windows_build": self._count("Windows"),
+                "package_db": self._count(self.ecosystem)}.get(name)
         declared = got.count + (self.source_count("user_hives") if name == "uninstall" else 0)
         if held is not None and held < declared:
             return _with(got, state="partial", reason="source-partial", error=f"the agent read {declared}, the inventory holds {held}")
@@ -127,7 +149,7 @@ class Inventory:
         return max((self.source(n) for n in names), key=lambda s: _RANK[s.state])
 
     def sources(self) -> list[Source]:
-        names = sorted((self.document or {}).get("sources", {})) or ["windows_build", "uninstall", "user_hives", "microsoft_products", "host_facts", "drivers"]
+        names = sorted((self.document or {}).get("sources", {})) or (LINUX_SOURCES if linux(self.ecosystem) else WINDOWS_SOURCES)
         return [self.source(n) for n in names]
 
 
@@ -160,8 +182,48 @@ def _microsoft_install(p: dict, os_product: str | None) -> Install | None:
                    "microsoft_products", name in MS_READ_DIRECTLY, comparable=bool(hit))
 
 
+_KERNEL = {"dpkg": re.compile(r"linux-image-.+"), "rpm": re.compile(r"kernel(-core)?"), "apk": re.compile(r"linux-(lts|virt|edge|rpi\d*)")}
+
+
+def _runs(mgr: str, name: str, version: str, release: str) -> bool:
+    """Is this kernel package the running one? Each distro names the kernel after its package (uname -r)."""
+    if mgr == "dpkg":
+        return name in (f"linux-image-{release}", f"linux-image-unsigned-{release}")
+    if mgr == "rpm":  # uname -r is VERSION-RELEASE.ARCH
+        return version.split(":", 1)[-1] in (release, release.rsplit(".", 1)[0])
+    m = re.fullmatch(r"(.+)-(\d+)-(\w+)", release)  # Alpine: 6.6.31-0-lts is linux-lts 6.6.31-r0
+    return bool(m) and name == f"linux-{m[3]}" and version == f"{m[1]}-r{m[2]}"
+
+
+def linux_installs(inv: Inventory) -> list[Install]:
+    """One install per source package and version: binaries built together are judged once, a half-finished upgrade twice (T19).
+    Matched by source name, as distro advisories are (DECISIONS 3)."""
+    eco, mgr, running = normalize_ecosystem(inv.ecosystem), manager(inv.ecosystem), inv.facts.get("kernel_release")
+    groups: dict[tuple[str, str], list[str]] = {}
+    kernels, live = set(), set()
+    for p in inv.packages:
+        if p.get("ecosystem") != inv.ecosystem:  # jars found on disk are another ecosystem, judged by rescan
+            continue
+        key = (p.get("source") or p["name"], p["version"])
+        groups.setdefault(key, []).append(p["name"])
+        if _KERNEL[mgr].fullmatch(p["name"]):
+            kernels.add(key)
+            if isinstance(running, str) and _runs(mgr, p["name"], p["version"], running):
+                live.add(key)
+    out = []
+    for (src, ver), names in sorted(groups.items()):
+        state = None
+        if (src, ver) in kernels:
+            state = "running" if (src, ver) in live else "not-running" if isinstance(running, str) else ""
+        shown = ", ".join(sorted(names)[:5]) + (f" and {len(names) - 5} more" if len(names) > 5 else "")
+        out.append(Install("distro", eco, (src,), ver, f"{src} {ver}", f"{mgr} database: {shown}", "package_db", True, kernel=state))
+    return out
+
+
 def installs(inv: Inventory) -> list[Install]:
     """Every install the engine judges, one per instance (R3.5, T19). What neither curated map knows is inventory and is never compared."""
+    if linux(inv.ecosystem):
+        return linux_installs(inv)
     os_product = next((p["name"] for p in inv.packages if p.get("ecosystem") == "Windows"), None)
     out = {}
     for p in inv.packages:

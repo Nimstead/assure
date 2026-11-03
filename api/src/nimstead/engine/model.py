@@ -22,19 +22,26 @@ class Grade(StrEnum):
 # reason code -> (what stopped it, what to do about it)
 REASONS = {
     "no-inventory": ("this host hasn't sent an inventory yet", "Check the agent is running, or run a scan"),
-    "unsupported-platform": ("this engine only judges Windows so far, or this Windows has no exact MSRC product", "Nothing to do here: its findings still come from the normal pipeline"),
+    "unsupported-platform": ("no advisory feed maps this platform: a distribution or release the engine doesn't know, or a Windows with no exact MSRC product",
+                             "Nothing to do on the host: its packages are listed, but nothing can be judged against them"),
     "no-collection-document": ("the agent doesn't say what it managed to read, so nothing it left out can be told from a failed read",
                                "Update the agent; it reports this from the version that has this engine"),
     "precondition-unknown": ("what these checks depend on couldn't be read", "Fix that source on the host, then scan again"),
     "access-denied": ("the agent was refused access to what these checks depend on", "Run the agent as SYSTEM or an elevated administrator, then scan again"),
     "source-partial": ("the list these checks depend on was only partly read, so another install could be missing from it", "Fix that source on the host, then scan again"),
-    "empty-list": ("the installed-programs list came back empty, which isn't plausible on Windows", "Treat it as a failed read: run the agent's `collect` on the host and look at it"),
+    "empty-list": ("the list of what's installed came back empty, which isn't plausible on a working system", "Treat it as a failed read: run the agent's `collect` on the host and look at it"),
     "pending-reboot": ("the host is waiting for a restart, so what's on disk may not be what's running", "Restart it, then scan again"),
     "release-line": ("the fix is stated for another release line, so comparing the numbers means nothing", "Check MSRC for this release by hand; this is a data problem, not your host's"),
     "incomparable": ("the installed version and the fix can't be compared", "Check the vendor's advisory by hand"),
     "unreadable-version": ("this product was recognised, but its version isn't one we can compare", "Check the version by hand"),
     "feed-missing": ("no advisories have been loaded for this kind of product", "Run the feed update on the server"),
     "no-advisories": ("no advisories are loaded for this product, which doesn't show it's safe", "Run the feed update; if it persists, check the vendor by hand"),
+    "other-stream": ("the fix is for another module stream than the one installed, so comparing the versions means nothing",
+                     "Check the distribution's advisory for the installed stream by hand"),
+    "end-of-life": ("this release is past its end of support, so having no advisory doesn't show a package is safe", "Upgrade to a supported release"),
+    "eol-unknown": ("when this release's support ends isn't known here", "Run the feed update on the server; if it persists, check the distribution's release page"),
+    "kernel-unpackaged": ("the running kernel wasn't installed by the package manager, so the distribution's advisories don't describe it",
+                          "Patch it where it comes from: the container or WSL host, the cloud image, or whoever built it"),
     "not-reassessed": ("a finding was open on this, and this scan has no evidence either way", "It stays open. Fix what stopped the scan, then scan again"),
 }
 
@@ -42,7 +49,7 @@ REASONS = {
 @dataclass(frozen=True)
 class Verdict:
     check: str  # stable: "<vulnerability>/<product>", or "product:<product>" for a whole product
-    family: str  # os | microsoft | app
+    family: str  # os | microsoft | app (Windows), distro (Linux)
     ecosystem: str  # advisory ecosystem, as on a Finding
     product: str  # advisory package, as on a Finding
     outcome: Outcome
@@ -60,7 +67,9 @@ class Verdict:
     cvss: float | None = None
     cvss_source: str | None = None
     kev: bool = False
-    pending_reboot: bool = False  # vulnerable as read, and a restart is waiting (R8.5)
+    pending_reboot: bool = False  # vulnerable as read, and a restart is waiting (R8.5); on Linux, a fixed kernel is installed (R7.7)
+    kernel: str | None = None  # a kernel install: "running", "not-running", or "" when what's running isn't known (R7.7)
+    vendor_status: str | None = None  # no fix: "no-fix-yet", or "no-fix-planned" when the vendor says it won't fix it (R7.5)
     summary: str | None = None
 
     def as_dict(self) -> dict:

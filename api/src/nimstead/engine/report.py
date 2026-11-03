@@ -6,16 +6,20 @@ import json
 import re
 from collections import Counter, defaultdict
 
+from nimstead import lifecycle
 from nimstead.engine.collection import Inventory
 from nimstead.engine.content import Content
 from nimstead.engine.evaluate import ENGINE_VERSION
 from nimstead.engine.model import REASONS, Outcome, Verdict
 from nimstead.versions import comparator_for, sort_key
 
-FAMILIES = {"os": "Windows itself", "microsoft": "Microsoft products", "app": "Third-party apps"}
+FAMILIES = {"os": "Windows itself", "microsoft": "Microsoft products", "app": "Third-party apps", "distro": "Distribution packages"}
 SOURCE_NAMES = {"windows_build": "Windows build", "uninstall": "Uninstall entries", "user_hives": "Signed-out users' apps",
-                "microsoft_products": "Microsoft products", "host_facts": "Host facts", "drivers": "Drivers"}
+                "microsoft_products": "Microsoft products", "host_facts": "Host facts", "drivers": "Drivers",
+                "os_release": "Platform (os-release)", "package_db": "Package database"}
 NOT_YET = "End of support, Windows settings, drivers and Java archives aren't judged by this report yet: they stay findings in the normal view."
+NOT_YET_LINUX = ("Livepatch, services still running replaced libraries, and software outside the package manager (Java archives included) "
+                 "aren't judged by this report yet. Kernels installed but not running are judged, and marked so.")
 DETERMINED = (Outcome.VULNERABLE, Outcome.NOT_VULNERABLE, Outcome.NOT_APPLICABLE)
 _SHOWN = 5
 
@@ -43,11 +47,17 @@ def _vulnerable(verdicts: list[Verdict]) -> list[dict]:
         fix = _highest({v.fixed for v in vs if v.fixed}, vs[0].ecosystem)
         kb = next((v.kb for v in vs if v.fixed == fix and v.kb), None)
         action = ((f"Install KB{kb}, then restart" if kb else f"Update Windows to build {fix} or later") if family == "os" else f"Update to {fix} or later") if fix else "No fix is published yet"
+        expected = f"at least {fix}" if fix else "no fixed version published"
+        if vs[0].ecosystem == lifecycle.ECOSYSTEM:
+            action, expected = "Upgrade to a supported release", "a release that still gets security updates"
         groups.append({"family": family, "product": product, "instance": instance, "grade": vs[0].grade, "version": vs[0].version, "observed": vs[0].observed,
-                       "expected": f"at least {fix}" if fix else "no fixed version published", "source": vs[0].source, "action": action,
-                       "pending_reboot": vs[0].pending_reboot, "raise_confidence": vs[0].detail, "count": len(vs), "no_fix": sum(not v.fixed for v in vs),
+                       "expected": expected, "source": vs[0].source, "action": action, "kernel": vs[0].kernel,
+                       "pending_reboot": any(v.pending_reboot for v in vs), "fixed_after_restart": sum(v.pending_reboot for v in vs),
+                       "raise_confidence": vs[0].detail, "count": len(vs), "no_fix": sum(not v.fixed for v in vs),
+                       "no_fix_planned": sum(v.vendor_status == "no-fix-planned" for v in vs),
                        "known_exploited": sum(v.kev for v in vs), "worst_cvss": max((v.cvss or 0 for v in vs), default=0) or None,
-                       "vulnerabilities": [{"id": v.vuln_id, "kev": v.kev, "cvss": v.cvss, "cvss_source": v.cvss_source, "fixed": v.fixed, "kb": v.kb, "summary": v.summary} for v in vs]})
+                       "vulnerabilities": [{"id": v.vuln_id, "kev": v.kev, "cvss": v.cvss, "cvss_source": v.cvss_source, "fixed": v.fixed, "kb": v.kb, "summary": v.summary,
+                                            "vendor_status": v.vendor_status} for v in vs]})
     return sorted(groups, key=lambda g: (-g["known_exploited"], -(g["worst_cvss"] or 0), g["product"], g["instance"] or ""))
 
 
@@ -66,28 +76,39 @@ def _undetermined(verdicts: list[Verdict]) -> list[dict]:
 
 def _coverage(inv: Inventory, verdicts: list[Verdict]) -> dict:
     families = {}
+    main = ("distro",) if inv.is_linux else ("os", "microsoft", "app")
     for fam, label in FAMILIES.items():
         vs = [v for v in verdicts if v.family == fam]
         n = Counter(v.outcome.value for v in vs)
-        families[fam] = {"label": label, "attempted": len(vs), "determined": sum(v.outcome in DETERMINED for v in vs), "outcomes": dict(sorted(n.items()))}
+        if vs or fam in main:
+            families[fam] = {"label": label, "attempted": len(vs), "determined": sum(v.outcome in DETERMINED for v in vs), "outcomes": dict(sorted(n.items()))}
     stated = []
-    if not families["os"]["determined"]:
-        stated.append("This host's Windows patch state was not assessed.")
-    for fam, label in (("microsoft", "Microsoft products"), ("app", "third-party apps")):
-        f = families[fam]
+    if not _assessed(verdicts):
+        stated.append(f"This host's {'package' if inv.is_linux else 'Windows'} patch state was not assessed.")
+    for fam, label in (("microsoft", "Microsoft products"), ("app", "third-party apps"), ("distro", "distribution packages")):
+        f = families.get(fam)
+        if not f or (fam == "distro" and not _assessed(verdicts)):
+            continue
         if f["attempted"] and not f["determined"]:
             stated.append(f"This host's {label} were not assessed.")
         elif f["determined"] < f["attempted"]:
-            stated.append(f"{label[0].upper()}{label[1:]}: {f['attempted'] - f['determined']} of {f['attempted']} checks couldn't be determined.")
+            stated.append(f"{label[0].upper()}{label[1:]}: {f['attempted'] - f['determined']:,} of {f['attempted']:,} checks couldn't be determined.")
+    if inv.is_linux and inv.facts.get("pending_reboot"):
+        stated.append("The distribution says a restart is waiting: what's running may be older than what's installed.")
     return {"sources": [{"name": s.name, "label": SOURCE_NAMES.get(s.name, s.name), "state": s.state, "count": s.count, "error": s.error} for s in inv.sources()],
-            "families": families, "statements": [*stated, NOT_YET]}
+            "families": families, "statements": [*stated, NOT_YET_LINUX if inv.is_linux else NOT_YET]}
+
+
+def _assessed(verdicts: list[Verdict]) -> bool:
+    """Patch state was judged: an OS or package verdict with evidence. A release's end-of-support date alone isn't that."""
+    return any(v.outcome in DETERMINED and v.family in ("os", "distro") and v.ecosystem != lifecycle.ECOSYSTEM for v in verdicts)
 
 
 def _headline(verdicts: list[Verdict], inv: Inventory) -> dict:
     vuln = sum(v.outcome == Outcome.VULNERABLE for v in verdicts)
     installs = len({(v.product, v.instance) for v in verdicts if v.outcome == Outcome.VULNERABLE})
     open_ = sum(v.outcome in (Outcome.UNDETERMINED, Outcome.NOT_RUN) for v in verdicts)
-    assessed = any(v.outcome in DETERMINED and v.family == "os" for v in verdicts)
+    assessed = _assessed(verdicts)
     tail = f" {open_:,} checks couldn't be determined." if open_ else ""
     if vuln:
         return {"status": "vulnerable", "text": f"VULNERABLE: {vuln:,} vulnerabilities across {installs} install{'s' * (installs > 1)}.{tail}"}
@@ -122,8 +143,16 @@ def render(r: dict) -> str:
         extra = "".join([f", {g['known_exploited']} known exploited" if g["known_exploited"] else "", f", worst CVSS {g['worst_cvss']}" if g["worst_cvss"] else ""])
         out += [f"  {g['instance']}   how sure: {g['grade']}", f"    {g['count']} CVE{'s' * (g['count'] > 1)}{extra}",
                 f"    Seen:     {g['observed']}", f"    Expected: {g['expected']} ({g['source']})", f"    Do:       {g['action']}"]
-        if g["pending_reboot"]:
+        if g["kernel"] == "running" and g["pending_reboot"]:
+            out.append(f"    Note:     {g['fixed_after_restart']} of these are fixed in a newer kernel that's already installed: restart into it, then scan again")
+        elif g["pending_reboot"]:
             out.append("    Note:     a restart is waiting. The fix may already be installed and not yet effective: restart, then scan again")
+        if g["kernel"] == "not-running":
+            out.append("    Note:     this kernel is installed but not running: it matters if the host boots it. Removing it clears these")
+        if g["no_fix_planned"]:
+            out.append(f"    No fix:   the vendor doesn't plan to fix {g['no_fix_planned']} of these" + (f"; {g['no_fix'] - g['no_fix_planned']} more have no fix yet" if g["no_fix"] > g["no_fix_planned"] else ""))
+        elif g["no_fix"] and g["no_fix"] < g["count"]:
+            out.append(f"    No fix:   {g['no_fix']} of these have no fixed version yet")
         if g["raise_confidence"]:
             out.append(f"    Why not surer: {g['raise_confidence']}")
         shown = [v["id"] + (" (known exploited)" if v["kev"] else "") + (f" CVSS {v['cvss']}" if v["cvss"] else "") for v in g["vulnerabilities"][:_SHOWN]]

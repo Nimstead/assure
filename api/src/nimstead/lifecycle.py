@@ -88,6 +88,11 @@ APP_EOL = {"nodejs:node.js": ("nodejs", _MAJOR), "python:python": ("python", _MI
            "oracle:mysql_server": ("mysql", _MINOR), "mongodb:mongodb": ("mongodb", _MINOR), "elastic:elasticsearch": ("elasticsearch", _MINOR),
            "perl:perl": ("perl", _MINOR), "ruby-lang:ruby": ("ruby", _MINOR), "openssl:openssl": ("openssl", _MINOR), "clamav:clamav": ("clamav", _MINOR),
            "atlassian:confluence_data_center": ("confluence", _MINOR)}
+# Linux platforms: advisory ecosystem prefix -> endoflife.date product. Its "eol" is the last day the release gets security fixes
+# in that ecosystem's feed: Debian's includes LTS (whose fixes are in the same feed), Ubuntu's is standard support (ESM fixes
+# are a separate Ubuntu Pro feed the agent never reports). Rolling releases (Tumbleweed) have no end and no row.
+DISTRO_EOL = {"Debian": "debian", "Ubuntu": "ubuntu", "AlmaLinux": "almalinux", "Rocky Linux": "rocky-linux", "Alpine": "alpine-linux",
+              "openSUSE": "opensuse", "SUSE": "sles"}
 EOL_URL = "https://endoflife.date/api/{}.json"
 THUNDERBIRD_URL = "https://product-details.mozilla.org/1.0/thunderbird_versions.json"  # endoflife.date has no Thunderbird
 BY_KEY = {r.key: r for r in ROWS}
@@ -193,6 +198,22 @@ def app_verdict(key: str, version: str, eol: dict, today: date) -> tuple[str, st
     if end is True or (isinstance(end, str) and date.fromisoformat(end) < today):
         return "ended", f"{product} {cycle}: no more security fixes" + (f" since {end}" if isinstance(end, str) else "")
     return None
+
+
+def distro_cycle(ecosystem: str) -> tuple[str, str] | None:
+    """(endoflife.date product, release cycle) for a Linux advisory ecosystem, or None (rolling, or not a distro we map)."""
+    name, _, rest = ecosystem.partition(":")
+    product = DISTRO_EOL.get(name)
+    if not product or not rest:
+        return None
+    if name == "Alpine":
+        return product, rest.removeprefix("v")
+    if name == "openSUSE":
+        return (product, rest.removeprefix("Leap ")) if rest.startswith("Leap ") else None
+    if name == "SUSE":  # "Linux Enterprise Server 15 SP6" -> 15.6
+        m = re.fullmatch(r"Linux Enterprise Server (\d+) SP(\d+)", rest)
+        return (product, f"{m[1]}.{m[2]}") if m else None
+    return product, rest.split(":")[0]  # Ubuntu:22.04:LTS -> 22.04
 
 
 def parse_thunderbird(versions: dict) -> dict:

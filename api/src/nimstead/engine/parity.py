@@ -3,8 +3,14 @@ every difference is listed with its reason. Anything left in `unexplained` is a 
 
 from collections import defaultdict
 
-from nimstead.engine.content import ECOSYSTEMS as IN_SLICE
+from nimstead import lifecycle
+from nimstead.engine.collection import linux
+from nimstead.engine.content import ECOSYSTEMS as WINDOWS
 from nimstead.engine.model import REASONS, Outcome, Verdict
+
+
+def in_slice(ecosystem: str) -> bool:
+    return ecosystem in WINDOWS or linux(ecosystem)
 
 
 def compare(verdicts: list[Verdict], findings: list[tuple[str, str, str]]) -> dict:
@@ -17,7 +23,7 @@ def compare(verdicts: list[Verdict], findings: list[tuple[str, str, str]]) -> di
     wanted = set(findings)
     outside, explained, unexplained = defaultdict(int), [], []
     for k in sorted(wanted):
-        if k[0] not in IN_SLICE:
+        if not in_slice(k[0]):
             outside[k[0]] += 1
         elif k not in vulnerable:
             why = next((v.reason for v in by_key.get(k, []) if v.reason), None)
@@ -27,5 +33,9 @@ def compare(verdicts: list[Verdict], findings: list[tuple[str, str, str]]) -> di
             else:
                 unexplained.append({**row, "problem": "rescan opened it and the engine has no verdict for it"})
     for k in sorted(vulnerable - wanted):
-        unexplained.append({"ecosystem": k[0], "package": k[1], "vuln_id": k[2], "problem": "the engine says vulnerable and rescan has no finding"})
+        row = {"ecosystem": k[0], "package": k[1], "vuln_id": k[2]}
+        if k[0] == lifecycle.ECOSYSTEM and k[2].startswith("EOL:"):  # DECISIONS 85: only the engine judges a Linux release's end of support
+            explained.append({**row, "engine": "end-of-life", "why": "the engine reports this release's end of support; rescan doesn't for Linux"})
+        else:
+            unexplained.append({**row, "problem": "the engine says vulnerable and rescan has no finding"})
     return {"agree": len(vulnerable & wanted), "outside_this_slice": dict(sorted(outside.items())), "explained": explained, "unexplained": unexplained, "ok": not unexplained}

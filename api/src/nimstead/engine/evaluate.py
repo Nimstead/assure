@@ -3,17 +3,23 @@
 Whether a version is affected is decided by `match_package` and the comparators, the same code `scan.rescan` uses, so the two can't
 disagree on the numbers. What's new is everything around them: an answer for what doesn't match, and "couldn't tell" as an answer."""
 
+import re
 from collections import defaultdict
+from dataclasses import replace
 
-from nimstead import msproducts, risk, winapps
-from nimstead.engine.collection import MS_FACTS, MS_UNINSTALL, Install, Inventory, Source, installs
+from nimstead import lifecycle, msproducts, risk, winapps
+from nimstead.engine.collection import MS_FACTS, MS_UNINSTALL, Install, Inventory, Source, installs, linux, manager
 from nimstead.engine.content import Content
 from nimstead.engine.model import Grade, Outcome, Verdict
-from nimstead.match import Package, canonical_id, match_package
+from nimstead.match import Package, canonical_id, match_package, normalize_ecosystem
 from nimstead.scan import HOTPATCH, hotpatch_track
 from nimstead.versions import comparator_for
 
-ENGINE_VERSION = "1"
+ENGINE_VERSION = "2"  # 2: Linux
+# what each package manager would install (Debian policy 5.6.12, RPM's EVR as the agent sends it, apk-tools' own rule)
+_DISTRO_VERSION = {"dpkg": re.compile(r"(\d+:)?\d[A-Za-z0-9.+~-]*(?<!-)"), "rpm": re.compile(r"(\d+:)?[A-Za-z0-9._+~^]+-[A-Za-z0-9._+~^]+"),
+                   "apk": re.compile(r"\d.*")}
+_MODULE = re.compile(r"\.module[+_]")  # a modular RPM's release: el9 module builds carry ".module+el9…" or ".module_el9…"
 APP_SOURCES = ("uninstall", "user_hives")  # where an app's installs can be listed: a product is only absent if both were read
 _RAISE = {"unread": "A source it depends on wasn't fully read: fix that and scan again to raise this",
           "self-reported": "The version is what the product says of itself, and the range is NVD's: not a file reading against the vendor's own statement",
@@ -24,7 +30,31 @@ def _ceiling(i: Install) -> Grade:
     return Grade.CONFIRMED if i.read_directly else Grade.REASONABLE
 
 
+def _fixes(recs: list[dict], key: str, eco: str | None) -> list[str]:
+    """Fixed versions in these records; with `eco`, only this package's in this release (a distro record covers several)."""
+    return [e["fixed"] for r in recs for a in r.get("affected", [])
+            if eco is None or (a.get("package", {}).get("name") == key and normalize_ecosystem(a.get("package", {}).get("ecosystem", "")) == eco)
+            for g in a.get("ranges", []) for e in g.get("events", []) if "fixed" in e]
+
+
+def _same_stream(version: str, recs: list[dict], key: str, eco: str) -> list[dict]:
+    """The records whose fixes are for the installed module stream: modular or not, and the same major version.
+    shortcut: two streams of one major version (nginx 1.22 and 1.24) still compare; use the module label once advisories carry it."""
+    mine, major = bool(_MODULE.search(version)), version.split(":", 1)[-1].split(".")[0]
+    return [r for r in recs if all(bool(_MODULE.search(f)) == mine and (not mine or f.split(":", 1)[-1].split(".")[0] == major)
+                                   for f in _fixes([r], key, eco))]
+
+
+def _vendor_status(recs: list[dict], key: str, eco: str) -> str:
+    """R7.5, from what the distro's own records carry: Debian marks what it won't fix in a stable release as `unimportant`."""
+    planned = any((a.get("ecosystem_specific") or {}).get("urgency") == "unimportant" for r in recs for a in r.get("affected", [])
+                  if a.get("package", {}).get("name") == key and normalize_ecosystem(a.get("package", {}).get("ecosystem", "")) == eco)
+    return "no-fix-planned" if planned else "no-fix-yet"
+
+
 def _fix_source(rec: dict, eco: str) -> str:
+    if linux(eco):  # OSV carries each distro's own feed: Debian's tracker, Ubuntu's notices, AlmaLinux's errata, ...
+        return eco.split(":")[0]
     rid = rec["id"]
     if rid.startswith("OFFICE-") or rid.startswith("MSRC-") or eco in ("Windows", msproducts.ECOSYSTEM):
         return "MSRC"
@@ -73,7 +103,10 @@ def _judge(inv: Inventory, i: Install, c: Content) -> list[Verdict]:
                         observed=f"{i.version} ({i.observed})", version=i.version)]
     key = _product_key(i, c)
     recs = _records(i, key, c)
-    base = {"family": i.family, "ecosystem": i.ecosystem, "product": key, "instance": i.instance, "observed": f"{i.version} ({i.observed})", "version": i.version}
+    base = {"family": i.family, "ecosystem": i.ecosystem, "product": key, "instance": i.instance, "observed": f"{i.version} ({i.observed})", "version": i.version,
+            "kernel": i.kernel}
+    if not recs and i.family == "distro":  # the distro's tracker covers its whole archive: nothing to check against
+        return []
     if not recs:
         missing = i.ecosystem not in c.feeds
         return [Verdict(f"product:{key}", outcome=Outcome.NOT_RUN if missing else Outcome.UNDETERMINED, reason="feed-missing" if missing else "no-advisories", **base)]
@@ -88,9 +121,11 @@ def _judge(inv: Inventory, i: Install, c: Content) -> list[Verdict]:
     for r in recs:
         by_cve[canonical_id(r)].append(r)
     out = []
+    distro = i.family == "distro"
+    valid = not distro or _DISTRO_VERSION[manager(i.ecosystem)].fullmatch(i.version)  # dpkg and rpm order any string; neither installs one
     for cve, group in sorted(by_cve.items()):
         rec = group[0]
-        fix = next((e["fixed"] for r in group for a in r.get("affected", []) for g in a.get("ranges", []) for e in g.get("events", []) if "fixed" in e), None)
+        fix = next(iter(_fixes(group, key, i.ecosystem if distro else None)), None)
         v = dict(base, check=f"{cve}/{key}", vuln_id=cve, source=_fix_source(rec, i.ecosystem), kb=(rec.get("database_specific") or {}).get("kb"),
                  summary=(rec.get("summary") or "")[:200] or None, kev=cve in c.kev)
         score = risk.cvss_base(rec.get("severity"))
@@ -98,11 +133,19 @@ def _judge(inv: Inventory, i: Install, c: Content) -> list[Verdict]:
         if i.family == "os" and _other_line(i.version, group, key):
             out.append(Verdict(outcome=Outcome.UNDETERMINED, reason="release-line", fixed=fix, **v))
             continue
-        found = match_package(Package(i.instance, i.version, key), i.ecosystem, group)
-        if not found and _incomparable(i.version, group, key, cmp):  # R5.2: it skips what it can't compare, and that isn't "not affected"
+        if distro and manager(i.ecosystem) == "rpm":
+            group = _same_stream(i.version, group, key, i.ecosystem)
+            if not group:  # every fix for it is another module stream's (R7.4, T12)
+                out.append(Verdict(outcome=Outcome.UNDETERMINED, reason="other-stream", fixed=fix, **v))
+                continue
+            fix = next(iter(_fixes(group, key, i.ecosystem)), None)
+        found = match_package(Package(i.instance, i.version, key), i.ecosystem, group) if valid else []
+        if not found and (not valid or _incomparable(i.version, group, key, cmp)):  # R5.2: it skips what it can't compare, and that isn't "not affected"
             out.append(Verdict(outcome=Outcome.UNDETERMINED, reason="incomparable", fixed=fix, **v))
         elif found:
-            out.append(Verdict(outcome=Outcome.VULNERABLE, grade=grade, fixed=found[0].fixed, detail=why, pending_reboot=bool(i.family == "os" and pending), **v))
+            status = (_vendor_status(group, key, i.ecosystem) if distro else "no-fix-yet") if found[0].fixed is None else None
+            out.append(Verdict(outcome=Outcome.VULNERABLE, grade=grade, fixed=found[0].fixed, detail=why, pending_reboot=bool(i.family == "os" and pending),
+                               vendor_status=status, **v))
         elif i.family == "os" and pending:  # T16: reported as pending, not as fixed
             out.append(Verdict(outcome=Outcome.UNDETERMINED, reason="pending-reboot", fixed=fix, **v))
         else:
@@ -136,18 +179,90 @@ def _carry_forward(verdicts: list[Verdict], prior) -> list[Verdict]:
     gone = {(v.ecosystem, v.product) for v in verdicts if v.outcome == Outcome.NOT_APPLICABLE}
     out = []
     for eco, product, vuln in sorted(set(prior)):
-        if eco in ("Windows", msproducts.ECOSYSTEM, winapps.ECOSYSTEM) and (eco, product, vuln) not in answered and (eco, product) not in gone:
-            family = {"Windows": "os", msproducts.ECOSYSTEM: "microsoft", winapps.ECOSYSTEM: "app"}[eco]
+        if (eco in ("Windows", msproducts.ECOSYSTEM, winapps.ECOSYSTEM) or linux(eco)) and (eco, product, vuln) not in answered and (eco, product) not in gone:
+            family = {"Windows": "os", msproducts.ECOSYSTEM: "microsoft", winapps.ECOSYSTEM: "app"}.get(eco, "distro")
             out.append(Verdict(f"{vuln}/{product}", family, eco, product, Outcome.UNDETERMINED, vuln_id=vuln, grade=Grade.UNVERIFIED, reason="not-reassessed"))
     return out
+
+
+def _kernels(inv: Inventory, found: list[Install], verdicts: list[Verdict], eco: str) -> list[Verdict]:
+    """R7.7: a kernel that's installed and not running is its own state, and a fix in a newer installed kernel means a restart is waiting."""
+    running = {i.keys[0]: i.version for i in found if i.kernel == "running"}
+    cmp = comparator_for(eco)
+
+    def newer(v: Verdict) -> bool:
+        try:
+            return v.product in running and cmp(v.version, running[v.product]) > 0
+        except ValueError:
+            return False
+    newer_fixed = {(v.product, v.vuln_id) for v in verdicts if v.kernel == "not-running" and v.outcome == Outcome.NOT_VULNERABLE and newer(v)}
+    out = [replace(v, pending_reboot=True) if v.kernel == "running" and v.outcome == Outcome.VULNERABLE and (v.product, v.vuln_id) in newer_fixed else v
+           for v in verdicts]
+    release = inv.facts.get("kernel_release")
+    if isinstance(release, str) and not running:
+        kernels = sorted(i.instance for i in found if i.kernel)
+        out.append(Verdict("product:running-kernel", "distro", eco, "running kernel", Outcome.UNDETERMINED, instance=release[:100], reason="kernel-unpackaged",
+                           detail=f"running {release[:100]}; " + (f"installed kernel packages: {', '.join(kernels[:5])}" if kernels else "no kernel package is installed")))
+    return out
+
+
+def _end_of_life(inv: Inventory, c: Content, eco: str) -> Verdict | None:
+    """R7.6: past its end of support, a release gets no advisories, so their absence proves nothing. Judged as of when the inventory was read."""
+    if not (cycle := lifecycle.distro_cycle(eco)):
+        return None
+    product, release = cycle
+    vid = f"EOL:{product}-{release}"
+    base = {"check": vid, "family": "distro", "ecosystem": lifecycle.ECOSYSTEM, "product": f"{product} {release}", "vuln_id": vid,
+            "instance": f"{product} {release}", "source": "endoflife.date", "observed": f"{eco} (os-release)"}
+    end, read = (c.eol or {}).get(release), (inv.collected_at or "")[:10]
+    if end is None or (isinstance(end, str) and not read):
+        why = "no end-of-support data is loaded for it" if c.eol is None else f"endoflife.date lists no {product} {release}" if end is None else "when the inventory was read isn't known"
+        return Verdict(outcome=Outcome.UNDETERMINED, reason="eol-unknown", detail=why, **base)
+    raise_ = "The date is endoflife.date's summary of the distribution's own lifecycle page"
+    if end is True or (isinstance(end, str) and end < read):
+        return Verdict(outcome=Outcome.VULNERABLE, grade=Grade.REASONABLE, detail=raise_,
+                       summary=f"{product} {release}: no security updates" + (f" since {end}" if isinstance(end, str) else ""), **base)
+    return Verdict(outcome=Outcome.NOT_VULNERABLE, grade=Grade.REASONABLE, detail=raise_,
+                   summary=f"{product} {release}: supported" + (f" until {end}" if isinstance(end, str) else ", no end date announced"), **base)
+
+
+def _evaluate_linux(inv: Inventory, c: Content, prior) -> list[Verdict]:
+    """R7.4: not installed is not-applicable, at or above the distro's fix not-vulnerable, below it vulnerable, incomparable undetermined.
+    Only a package list read in full is judged: one that isn't may not be this read's at all (the server keeps the last one)."""
+    eco = normalize_ecosystem(inv.ecosystem)
+    db = inv.source("package_db")
+    out: list[Verdict] = []
+    if eco not in c.feeds:
+        out.append(Verdict(f"product:{eco}", "distro", eco, eco, Outcome.NOT_RUN, reason="feed-missing"))
+    else:
+        found = installs(inv) if db.state == "ok" else []
+        for i in found:
+            if c.records.get((eco, i.keys[0])):  # a package no advisory names isn't a check, just inventory
+                out += _judge(inv, i, c)
+        if db.state == "ok":
+            out = _kernels(inv, found, out, eco)
+        held = {i.keys[0] for i in found}
+        out += [v for k in sorted(c.universe) if (v := _absent_or_blocked(k, "distro", eco, k, k in held, db))]
+    if eol := _end_of_life(inv, c, eco):
+        if eol.outcome == Outcome.VULNERABLE:
+            out = [replace(v, outcome=Outcome.UNDETERMINED, reason="end-of-life", grade=None) if v.outcome == Outcome.NOT_VULNERABLE else v for v in out]
+        out.append(eol)
+    out += _carry_forward(out, prior)
+    return sorted(out, key=lambda v: (v.family, v.product, v.check, v.instance or ""))
 
 
 def evaluate(inv: Inventory, content: Content, prior: tuple | list = ()) -> list[Verdict]:
     """`prior`: (ecosystem, package, vuln_id) of findings already open on this host."""
     if not inv.received:
+        if linux(inv.ecosystem):
+            return [Verdict("product:platform", "distro", inv.ecosystem, inv.ecosystem, Outcome.NOT_RUN, reason="no-inventory")]
         return [Verdict("product:windows", "os", "Windows", "Windows", Outcome.NOT_RUN, reason="no-inventory")]
+    if linux(inv.ecosystem):
+        return _evaluate_linux(inv, content, prior)
     if inv.ecosystem != "Windows":
-        return [Verdict("product:windows", "os", "Windows", "Windows", Outcome.NOT_RUN, reason="unsupported-platform", detail=f"this host reports {inv.ecosystem or 'nothing'}")]
+        why = inv.facts.get("os_unmatched") or f"this host reports {inv.ecosystem or 'nothing'}"
+        return [Verdict("product:platform", "distro" if inv.is_linux else "os", inv.ecosystem, inv.ecosystem or "unknown", Outcome.NOT_RUN,
+                        reason="unsupported-platform", detail=str(why)[:300])]
     found = installs(inv)
     out: list[Verdict] = []
     if not any(i.family == "os" for i in found):

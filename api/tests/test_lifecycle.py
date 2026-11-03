@@ -138,3 +138,10 @@ def test_sync_eol_keeps_stored_cycles_on_failure(env):
     assert s.get(Advisory, ("EOL-nodejs", "EOL", "nodejs")).record["cycles"] == {"18": "2025-04-30"}
     out = sync_eol(s, httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200, json=[{"cycle": "x"}]))))
     assert "error" in out["nodejs"] and s.get(Advisory, ("EOL-nodejs", "EOL", "nodejs")).record["cycles"] == {"18": "2025-04-30"}
+
+
+@pytest.mark.parametrize("eco,want", [("Debian:13", ("debian", "13")), ("Ubuntu:22.04:LTS", ("ubuntu", "22.04")), ("Alpine:v3.21", ("alpine-linux", "3.21")),
+                                      ("AlmaLinux:9", ("almalinux", "9")), ("Rocky Linux:8", ("rocky-linux", "8")), ("openSUSE:Leap 15.6", ("opensuse", "15.6")),
+                                      ("SUSE:Linux Enterprise Server 15 SP6", ("sles", "15.6")), ("openSUSE:Tumbleweed", None), ("Debian", None), ("PyPI", None)])
+def test_a_linux_release_maps_to_its_end_of_support_cycle(eco, want):
+    assert lifecycle.distro_cycle(eco) == want

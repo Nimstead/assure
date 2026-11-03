@@ -93,6 +93,8 @@ def _incomparable(version: str, recs: list[dict], key: str, cmp) -> bool:
             for a in r.get("affected", []):
                 if a.get("package", {}).get("name") == key:
                     for g in a.get("ranges", []):
+                        if g.get("type") not in ("ECOSYSTEM", "SEMVER"):  # a GIT range's events are commits: match_package never reads them
+                            continue
                         for e in g.get("events", []):
                             for v in e.values():
                                 if v != "0":

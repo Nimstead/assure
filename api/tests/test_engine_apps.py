@@ -277,3 +277,24 @@ def test_host_apps_through_the_api_have_parity_with_rescan_which_names_the_packa
     open_ = [(f.ecosystem, f.package, f.vuln_id) for f in s.scalars(select(Finding).where(Finding.asset_id == aid, Finding.status == "open"))]
     p = parity.compare(verdicts, open_)
     assert p["ok"] and ("PyPI", "requests", "CVE-2018-18074") in open_ and not p["outside_this_slice"].get("PyPI"), p
+
+
+# ---- found on the real run (sandbox/appengine.py)
+
+def test_a_git_range_beside_the_version_range_doesnt_make_a_fixed_install_undetermined():
+    """PyPA's records carry a GIT range of commits next to the ECOSYSTEM one; comparing a version with a commit hash made
+    requests 2.32.3 and urllib3 2.8.0 `undetermined` on the real run. match_package reads only version ranges, and so does this."""
+    rec = ghsa("PYSEC-2018-28", "PyPI", "requests", "2.20.0", "CVE-2018-18074")
+    rec["affected"][0]["ranges"].append({"type": "GIT", "repo": "https://github.com/psf/requests", "events": [{"introduced": "0"}, {"fixed": "c45d7c49ea75133e52ab22a8e9e13173938e36ff"}]})
+    v = one(evaluate(sbom_inv(pypi("requests", "2.32.3")), Content.make({("PyPI", "requests"): [rec]}, feeds={"PyPI"})), vuln_id="CVE-2018-18074")
+    assert v.outcome == Outcome.NOT_VULNERABLE
+
+
+def test_a_bind_mount_of_a_filesystem_already_walked_isnt_walked_again(monkeypatch):
+    """WSLg mounts the distro's root again at /mnt/wslg/distro: every jar was found twice. The same filesystem under a second
+    mount point is skipped; a different filesystem mounted is walked."""
+    dev = {"/": 1, "/mnt/wslg": 2, "/mnt/wslg/distro": 1, "/data": 3}
+    monkeypatch.setattr(agent.os.path, "ismount", lambda d: d in dev)
+    monkeypatch.setattr(agent.os, "stat", lambda d: type("st", (), {"st_dev": dev[d]}))
+    devs = set()
+    assert [agent._seen_filesystem(d, devs, d == "/") for d in ("/", "/srv", "/mnt/wslg", "/mnt/wslg/distro", "/data")] == [False, False, False, True, False]

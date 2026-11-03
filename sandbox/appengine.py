@@ -62,7 +62,7 @@ def main(keep=False) -> int:
         for step in SETUP:
             t = time.time()
             h.wsl("sh", "-c", step)
-            h.note("set up", step=step[:120], seconds=round(time.time() - t))
+            h.note("set up", command=step[:120], seconds=round(time.time() - t))
         t = time.time()
         inv = collect(*SCANS)
         apps = [p for p in inv["packages"] if p["ecosystem"] in ("PyPI", "npm", "Maven")]
@@ -72,7 +72,7 @@ def main(keep=False) -> int:
                apps=[f"{p['ecosystem']} {p['name']} {p['version']} at {p['source']}" for p in apps])
         with make_sessionmaker(db)() as s:
             t = time.time()
-            h.note("feeds", kev=feeds.sync_kev(s), osv=feeds.sync_osv(s, [eco.split(":")[0]], only={eco}), apps=feeds.sync_osv(s, ["PyPI", "npm", "Maven"]),
+            h.note("feeds", kev=feeds.sync_kev(s), osv=feeds.sync_osv(s, [eco.split(":")[0]], only={eco}), apps=feeds.sync_osv(s, ["PyPI", "npm", "Maven"], only={"PyPI", "npm", "Maven"}),  # as feeds.update does
                    eol=feeds.sync_eol(s), seconds=round(time.time() - t))
         token = api.post("/api/enroll-tokens", json={"sandbox": True}).json()["token"]
         a = api.post("/api/agent/enroll", json={"token": token, "hostname": h.NAME, "os_name": inv["os_name"], "ecosystem": eco}).json()
@@ -122,7 +122,7 @@ def main(keep=False) -> int:
         part_v, _, _ = judged(aid)
         h.note("with an install that can't be read", python_packages=next(x for x in part["coverage"]["sources"] if x["name"] == "python_packages"),
                headline=part["headline"], undetermined=[g for g in part["undetermined"] if g["blocked_by"] == "python_packages"],
-               app_grades=sorted({str(v.grade) for v in part_v if v.family == "application" and v.vuln_id}))
+               app_grades=sorted({str(v.grade) for v in part_v if v.family == "application" and v.grade}))
 
         # the scans off: nothing outside the package manager looked for
         off = send(collect())
@@ -158,13 +158,15 @@ def main(keep=False) -> int:
             "npm in a project and globally, and the jar, each vulnerable where they are":
                 any(v.outcome.value == "vulnerable" for v in at(WEB, "lodash")) and any(v.outcome.value == "vulnerable" for v in at("/usr/local/lib/node_modules", "semver"))
                 and any(v.outcome.value == "vulnerable" for v in at("/srv/billing/lib", "org.apache.logging.log4j:log4j-core", "CVE-2021-44228")),
-            "graded reasonable: the install's own metadata against an advisory database": {str(v.grade) for v in app_v if v.vuln_id} == {"reasonable"},
+            "a file is one install, not one per mount it shows through (WSLg's /mnt/wslg/distro is the root again)":
+                [p["source"] for p in apps if p["ecosystem"] == "Maven"] == ["/srv/billing/lib/log4j-core-2.14.1.jar"],
+            "graded reasonable: the install's own metadata against an advisory database": {str(v.grade) for v in app_v if v.grade} == {"reasonable"},
             "every finding rescan opened is a verdict or explained": p["ok"] and bool(apps_found) and apps_agree == len(apps_found),
             "same inventory and content, same verdicts": again["verdicts_sha256"] == rep["verdicts_sha256"],
             "an install that can't be read makes the scan partial, its readings unverified, and says so":
                 part["coverage"]["sources"] and any(x["name"] == "python_packages" and x["state"] == "partial" for x in part["coverage"]["sources"])
                 and any(g["blocked_by"] == "python_packages" for g in part["undetermined"])
-                and all(str(v.grade) == "unverified" for v in part_v if v.family == "application" and v.vuln_id and v.ecosystem == "PyPI"),
+                and all(str(v.grade) == "unverified" for v in part_v if v.family == "application" and v.grade and v.ecosystem == "PyPI"),
             "scans off read as not assessed, and open findings rescan closed on silence are carried, not called fixed":
                 any("Not looked for on this host" in x for x in off["coverage"]["statements"])
                 and any(v.reason == "not-reassessed" and v.family == "application" for v in off_v),

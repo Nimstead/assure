@@ -3148,16 +3148,31 @@ def _poms(z, where, out):
                 out[f"{g}:{a}", v, where] = None
 
 
+def _seen_filesystem(d, devs, top=False):
+    """True for a mount point showing a filesystem already being walked: a bind mount is the same files under another name
+    (seen on WSL: WSLg mounts the distro's own root again at /mnt/wslg/distro, so every jar was found twice)."""
+    if not (top or os.path.ismount(d)):
+        return False
+    try:
+        dev = os.stat(d).st_dev
+    except OSError:
+        return True
+    if dev in devs and not top:
+        return True
+    devs.add(dev)
+    return False
+
+
 def scan_jars(roots, max_seconds=300, max_files=500_000, mounts=None, owned=lambda p: False):
     """([Maven packages], summary). Stops at the time or file budget and says so; never follows links or enters
     network mounts. One package per file it was found in (T19), named in its `source`; a jar the OS package manager
     owns is left to it (R7.9) and counted."""
     if mounts is None:
         mounts = net_mounts()
-    start, files, found, partial, skipped = time.time(), 0, {}, None, 0
+    start, files, found, partial, skipped, devs = time.time(), 0, {}, None, 0, set()
     for root in roots:
         for d, dirs, names in os.walk(root, followlinks=False):
-            if JAR_SKIP.match(d) or d in mounts:
+            if JAR_SKIP.match(d) or d in mounts or _seen_filesystem(d, devs, d == root):
                 dirs[:] = []
                 continue
             dirs[:] = [x for x in dirs if not is_link(os.path.join(d, x))]
@@ -3357,9 +3372,9 @@ def _app_dirs(roots, b, mounts, missing, known):
         if top in ("site-packages", "dist-packages", "node_modules"):  # the root is itself an install folder
             (nm if top == "node_modules" else py).append(root)
             continue
-        base = os.path.abspath(root).rstrip("\\/").count(os.sep)
+        base, devs = os.path.abspath(root).rstrip("\\/").count(os.sep), set()
         for d, dirs, _ in os.walk(root, followlinks=False):
-            if b.spent() or JAR_SKIP.match(d) or d in mounts or d.count(os.sep) - base >= APP_MAX_DEPTH:
+            if b.spent() or JAR_SKIP.match(d) or d in mounts or d.count(os.sep) - base >= APP_MAX_DEPTH or _seen_filesystem(d, devs, d == root):
                 dirs[:] = []
                 continue
             keep = []

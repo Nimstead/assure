@@ -34,9 +34,9 @@
         {
           "name": "host_facts",
           "label": "Host facts",
-          "state": "partial",
-          "count": 11,
-          "error": "not read: baseline"
+          "state": "ok",
+          "count": 12,
+          "error": null
         },
         {
           "name": "microsoft_products",
@@ -49,7 +49,7 @@
           "name": "uninstall",
           "label": "Uninstall entries",
           "state": "ok",
-          "count": 4,
+          "count": 5,
           "error": null
         },
         {
@@ -195,7 +195,7 @@
       }
     ],
     "content_version": "2026-11-02.bd55bd00b9f8",
-    "inventory_sha256": "877c42c984d427ae838a831cd1b2e62d40533da603b791df5a6867694af2a6aa",
+    "inventory_sha256": "3bee666ac1a60f8f135875c3c7c5f54c8de74b43870b25983f177e309e7b99ef",
     "verdicts_sha256": "c21e7957ae30755f54f916d36afe278076c93940fe5ed694eef3f5ee25150742"
   },
   {
@@ -222,14 +222,14 @@
       },
       "uninstall": {
         "state": "partial",
-        "count": 3,
-        "error": "S-1-5-21-2138090677-2695671423-3428178932-500\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall: access denied",
+        "count": 4,
+        "error": "S-1-5-21-547078760-3483191499-1573513845-500\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall: access denied",
         "code": "access-denied"
       },
       "user_hives": {
         "state": "failed",
         "count": 0,
-        "error": "profile S-1-5-21-2138090677-2695671423-3428178932-1000: its hive couldn't be loaded"
+        "error": "profile S-1-5-21-547078760-3483191499-1573513845-1000: its hive couldn't be loaded"
       },
       "microsoft_products": {
         "state": "partial",
@@ -237,9 +237,8 @@
         "error": "not read: Store apps of other users"
       },
       "host_facts": {
-        "state": "partial",
-        "count": 11,
-        "error": "not read: baseline"
+        "state": "ok",
+        "count": 12
       },
       "drivers": {
         "state": "ok",
@@ -256,7 +255,7 @@
         "reason": "precondition-unknown",
         "blocked_by": "user_hives",
         "why": "what these checks depend on couldn't be read",
-        "source_said": "profile S-1-5-21-2138090677-2695671423-3428178932-1000: its hive couldn't be loaded",
+        "source_said": "profile S-1-5-21-547078760-3483191499-1573513845-1000: its hive couldn't be loaded",
         "what_to_do": "Fix that source on the host, then scan again",
         "count": 105,
         "examples": [
@@ -302,10 +301,10 @@
     ]
   },
   {
-    "step": "RESULT: FAIL",
+    "step": "RESULT: PASS",
     "checks": {
       "collection document valid and complete": true,
-      "Windows build, Uninstall entries and host facts read": false,
+      "Windows build, Uninstall entries and host facts read": true,
       "OS judged": true,
       "the old 7-Zip is vulnerable, with its grade": true,
       "every finding rescan opened is a verdict or explained": true,

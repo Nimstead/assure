@@ -87,10 +87,10 @@ def create(iso: str, memory: int = 4096, lab: bool = False, image: int = 1, comp
             "--install-additions", "--start-vm=headless"]
     if Path(additions).exists():
         args.append(f"--additions-iso={additions}")
-    if win10:  # an empty <Key> stops Enterprise Evaluation at "cannot find the Microsoft Software License Terms" (real VM); it needs none
+    if win10 or os_type(detected) in ("Windows2022_64", "Windows2019_64", "Windows2016_64"):  # an empty <Key> stops Enterprise Evaluation at "cannot find the Microsoft Software License Terms" (real VM); it needs none
         template = (Path(VBOX).parent / "UnattendedTemplates" / "win_nt6_unattended.xml").read_text(encoding="utf-8")
-        (folder / "win10.xml").write_text(re.sub(r"\s*<ProductKey>.*?</ProductKey>", "", template, flags=re.S), encoding="utf-8")
-        args.append(f"--script-template={folder / 'win10.xml'}")
+        (folder / "unattend.xml").write_text(re.sub(r"\s*<ProductKey>.*?</ProductKey>", "", template, flags=re.S), encoding="utf-8")
+        args.append(f"--script-template={folder / 'unattend.xml'}")
     vbox(*args)
     print(name)
     return name

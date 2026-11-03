@@ -51,6 +51,59 @@ def test_apk_installed_db():
         {"name": "busybox", "version": "1.36.1-r15", "source": "busybox"}]
 
 
+def _linux(tmp_path, os_release, answer, tool="dpkg-query"):
+    f = tmp_path / "os-release"
+    f.write_text(os_release)
+    ran = []
+
+    def query(cmd, timeout=600):
+        ran.append(cmd)
+        return answer
+    which = lambda name: f"/usr/bin/{name}" if name == tool else None  # noqa: E731
+    return agent.collect_linux(query, files=(str(tmp_path / "missing"), str(f)), apk_db=str(tmp_path / "no-apk"), which=which, kernel="6.12.48+deb13-amd64"), ran
+
+
+def test_linux_collect_reports_what_it_read_with_the_command_status(tmp_path):
+    from nimstead.engine.collection import valid_document
+    inv, ran = _linux(tmp_path, 'ID=debian\nVERSION_ID="13"\nPRETTY_NAME="Debian GNU/Linux 13 (trixie)"\n', (0, "libssl3t64\t3.5.1-1\topenssl\tii \nbash\t5.2-1\t\tii \n", ""))
+    assert ran == [agent.DPKG_QUERY]  # read-only, fixed argv
+    assert inv["ecosystem"] == "Debian:13" and inv["collection"]["sources"] == {"os_release": {"state": "ok", "count": 1}, "package_db": {"state": "ok", "count": 2, "exit": 0}}
+    assert inv["facts"] == {"os_id": "debian", "os_version_id": "13", "kernel_release": "6.12.48+deb13-amd64", "pending_reboot": None}
+    assert valid_document(inv["collection"]) and inv["packages"][0] == {"name": "libssl3t64", "version": "3.5.1-1", "source": "openssl", "ecosystem": "Debian:13"}
+
+
+def test_linux_collect_tells_a_failed_read_a_cut_short_one_and_an_empty_one_apart(tmp_path):
+    rel = 'ID="almalinux"\nVERSION_ID="9.6"\n'
+    failed, _ = _linux(tmp_path, rel, (1, "", "error: rpmdb open failed\n"), tool="rpm")
+    assert failed["collection"]["sources"]["package_db"] == {"state": "failed", "count": 0, "error": "rpm exited 1: error: rpmdb open failed", "exit": 1}
+    cut, _ = _linux(tmp_path, rel, (0, "openssl\t1:3.0.7-27.el9\topenssl-3.0.7-27.el9.src.rpm\nbash\t0:5.1", ""), tool="rpm")  # T3: a line cut off
+    assert cut["collection"]["sources"]["package_db"] == {"state": "partial", "count": 1, "error": "1 lines couldn't be read", "exit": 0}
+    killed, _ = _linux(tmp_path, rel, (-9, "openssl\t1:3.0.7-27.el9\topenssl-3.0.7-27.el9.src.rpm\n", ""), tool="rpm")
+    assert killed["collection"]["sources"]["package_db"]["state"] == "partial" and killed["collection"]["sources"]["package_db"]["exit"] == -9
+    empty, _ = _linux(tmp_path, rel, (0, "", ""), tool="rpm")  # sent as read; the server calls it a failure (R4.3)
+    assert empty["collection"]["sources"]["package_db"] == {"state": "ok", "count": 0, "exit": 0} and empty["packages"] == []
+    none, _ = _linux(tmp_path, rel, (None, "", "boom"), tool="nothing")
+    assert none["collection"]["sources"]["package_db"]["state"] == "failed" and "no package database" in none["collection"]["sources"]["package_db"]["error"]
+
+
+def test_linux_collect_reports_an_unknown_platform_instead_of_failing(tmp_path):
+    inv, _ = _linux(tmp_path, "ID=linuxmint\nVERSION_ID=22\n", (0, "bash\t5.2-1\t\tii \n", ""))
+    assert inv["ecosystem"] == "" and "ID=linuxmint VERSION_ID=22" in inv["facts"]["os_unmatched"] and inv["packages"]
+    gone = agent.collect_linux(lambda cmd, timeout=600: (0, "bash\t5.2-1\t\tii \n", ""), files=(str(tmp_path / "x"),), apk_db=str(tmp_path / "y"),
+                               which=lambda n: "/usr/bin/dpkg-query" if n == "dpkg-query" else None, kernel="6.1")
+    assert gone["collection"]["sources"]["os_release"] == {"state": "failed", "count": 0, "error": "no os-release file"}
+
+
+def test_pending_reboot_only_where_the_distro_says_so():
+    yes = lambda path: True  # noqa: E731
+    assert agent.reboot_pending(exists=yes) is True
+    assert agent.reboot_pending(exists=lambda p: p == agent.NOTIFY_REBOOT) is False
+    asked = lambda rc: (lambda cmd, timeout=0: (rc, "", ""))  # noqa: E731
+    which = lambda n: "/usr/bin/needs-restarting" if n == "needs-restarting" else None  # noqa: E731
+    assert [agent.reboot_pending(asked(rc), which, lambda p: False) for rc in (1, 0, 2)] == [True, False, None]
+    assert agent.reboot_pending(asked(1), lambda n: None, lambda p: False) is None
+
+
 def test_refuses_plain_http():
     with pytest.raises(agent.AgentError):
         agent.post("http://x", "/p", {}, insecure_http=False)

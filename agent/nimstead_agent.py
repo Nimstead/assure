@@ -127,11 +127,82 @@ def parse_apk(text):
     return pkgs
 
 
-def _run(cmd):
+def _query(cmd, timeout=600):
+    """(exit status, stdout, stderr) of a read-only query; None when it couldn't run. Its status is reported, not just its output (R7.2)."""
     try:
-        return subprocess.run(cmd, check=True, capture_output=True, text=True, errors="replace").stdout
-    except (OSError, subprocess.CalledProcessError) as e:
-        raise AgentError(f"{cmd[0]} failed: {e}")
+        p = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=timeout, env=dict(os.environ, LC_ALL="C"))
+        return p.returncode, p.stdout, p.stderr
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return None, "", str(e)
+
+
+OS_RELEASE = ("/etc/os-release", "/usr/lib/os-release")  # os-release(5): the first that exists, and only it
+APK_DB = "/lib/apk/db/installed"
+DPKG_QUERY = ["dpkg-query", "-W", "-f", "${Package}\t${Version}\t${source:Package}\t${db:Status-Abbrev}\n"]
+RPM_QUERY = ["rpm", "-qa", "--qf", "%{NAME}\t%{EPOCHNUM}:%{VERSION}-%{RELEASE}\t%{SOURCERPM}\n"]
+NOTIFY_REBOOT = "/usr/share/update-notifier/notify-reboot-required"  # Debian/Ubuntu: what writes the flag below, when installed
+REBOOT_FLAG = "/run/reboot-required"
+
+
+def package_db(query=_query, apk_db=APK_DB, which=shutil.which):
+    """(packages, collection line): the package database read directly in a fixed format. A cut-short or failed read says so;
+    an empty one is sent as read, and the server calls it a failure (DECISIONS 80)."""
+    if os.path.exists(apk_db):
+        try:
+            with open(apk_db) as f:
+                text = f.read()
+        except OSError as e:
+            return [], _source(0, f"{apk_db}: {e}")
+        pkgs = parse_apk(text)
+        bad = sum(1 for b in text.split("\n\n") if b.strip() and not ("\nP:" in "\n" + b and "\nV:" in "\n" + b))
+        return pkgs, {**_source(len(pkgs), f"{bad} entries couldn't be read" if bad else None), "exit": 0}
+    if which("dpkg-query"):
+        cmd, parse, tabs = DPKG_QUERY, parse_dpkg, 3
+    elif which("rpm"):
+        cmd, parse, tabs = RPM_QUERY, parse_rpm, 2
+    else:
+        return [], _source(0, "no package database found (dpkg-query, rpm or the apk database)")
+    rc, out, err = query(cmd)
+    pkgs = parse(out)
+    bad = sum(1 for ln in out.splitlines() if ln and ln.count("\t") != tabs)
+    last = (err.strip().splitlines() or [""])[-1]
+    problem = f"{bad} lines couldn't be read" if bad else None
+    if rc != 0:
+        problem = (f"{cmd[0]} couldn't run" if rc is None else f"{cmd[0]} exited {rc}") + (f": {last}" if last else "")
+    return pkgs, {**_source(len(pkgs), problem), **({"exit": rc} if rc is not None else {})}
+
+
+def reboot_pending(query=_query, which=shutil.which, exists=os.path.exists):
+    """True or False only where the distro says so; None when it doesn't (no flag mechanism installed)."""
+    if exists(NOTIFY_REBOOT):
+        return exists(REBOOT_FLAG)
+    if which("needs-restarting"):  # dnf-utils / yum-utils: exit 1 means a reboot is needed
+        rc = query(["needs-restarting", "-r"], timeout=120)[0]
+        return {0: False, 1: True}.get(rc)
+    return None
+
+
+def collect_linux(query=_query, files=OS_RELEASE, apk_db=APK_DB, which=shutil.which, kernel=None):
+    """What the host is, its packages and how far the read got (R7.1, R7.2, R4.3). An unknown platform is reported, never silence."""
+    text, problem = "", "no os-release file"
+    for path in files:
+        if os.path.exists(path):
+            try:
+                with open(path) as f:
+                    text, problem = f.read(), None
+            except OSError as e:
+                problem = f"{path}: {e}"
+            break
+    r = parse_os_release(text)
+    eco = ecosystem_from_os_release(text)
+    pkgs, db = package_db(query, apk_db, which)
+    facts = {"os_id": r.get("ID", ""), "os_version_id": r.get("VERSION_ID", ""), "kernel_release": kernel or os.uname().release,
+             "pending_reboot": reboot_pending(query, which)}
+    if not eco:
+        facts["os_unmatched"] = f"no advisory feed maps this platform: ID={r.get('ID', '?')} VERSION_ID={r.get('VERSION_ID', '?')}"[:300]
+    return {"os_name": r.get("PRETTY_NAME") or r.get("NAME", ""), "ecosystem": eco, "agent_version": AGENT_VERSION, "facts": facts,
+            "collection": {"v": 1, "sources": {"os_release": _source(1 if text else 0, problem), "package_db": db}},
+            "packages": [dict(p, ecosystem=eco) for p in pkgs]}
 
 
 # MSRC names Windows Server by build; client names come from the feature-update version.
@@ -1087,30 +1158,7 @@ def esu_active(product, run=None):
 
 
 def collect():
-    if os.name == "nt":
-        return collect_windows()
-    try:
-        with open("/etc/os-release") as f:
-            text = f.read()
-    except OSError as e:
-        raise AgentError(f"cannot read /etc/os-release: {e}")
-    r = parse_os_release(text)
-    eco = ecosystem_from_os_release(text)
-    if not eco:
-        raise AgentError("unsupported distro/release: {} {}".format(r.get("ID", "?"), r.get("VERSION_ID", "?")))
-    if os.path.exists("/lib/apk/db/installed"):
-        with open("/lib/apk/db/installed") as f:
-            pkgs = parse_apk(f.read())
-    elif shutil.which("dpkg-query"):
-        pkgs = parse_dpkg(_run(["dpkg-query", "-W", "-f", "${Package}\t${Version}\t${source:Package}\t${db:Status-Abbrev}\n"]))
-    elif shutil.which("rpm"):
-        pkgs = parse_rpm(_run(["rpm", "-qa", "--qf", "%{NAME}\t%{EPOCHNUM}:%{VERSION}-%{RELEASE}\t%{SOURCERPM}\n"]))
-    else:
-        raise AgentError("no package manager found (dpkg-query, rpm, apk db)")
-    if not pkgs:
-        raise AgentError("collected zero packages; refusing to report an empty inventory")
-    return {"os_name": r.get("PRETTY_NAME") or r.get("NAME", ""), "ecosystem": eco, "agent_version": AGENT_VERSION,
-            "packages": [dict(p, ecosystem=eco) for p in pkgs]}
+    return collect_windows() if os.name == "nt" else collect_linux()
 
 
 # ---- remediation ------------------------------------------------------------

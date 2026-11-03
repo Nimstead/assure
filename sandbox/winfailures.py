@@ -26,7 +26,6 @@ HOST_TIME = "VBoxInternal/Devices/VMMDev/0/Config/GetHostTimeDisabled"
 LEAVE_GB = 5  # under the agent's WIN_MIN_FREE_GB, enough for Windows to keep working
 PENDING = r"C:\ProgramData\Nimstead\pending-job.json"
 SILENCE_MINUTES = 330  # the server gives up on a silent Windows job after the restart deadline (1 h here) + 4 h (DECISIONS 56), and a sweep needs a poll
-BUSY = "(New-Object -ComObject Microsoft.Update.Installer).IsBusy"
 CHANGED = r"""@{ build = '%BUILD%'; hotfixes = @(Get-HotFix).Count; reboot_pending = Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending';
   state_file = Test-Path '%PENDING%' } | ConvertTo-Json -Compress"""
 
@@ -217,7 +216,8 @@ class Run:
         h.guest("Start-ScheduledTask -TaskName 'Nimstead jobs'")
         end, busy = time.time() + 120 * 60, False
         while time.time() < end and not busy:
-            busy = "True" in h.guest(BUSY, timeout=120, check=False)
+            # the agent's own flag, saved just before it installs: Windows Update's IsBusy never read True through a whole real install
+            busy = '"installing": true' in h.guest(f"Get-Content '{PENDING}' -Raw -ErrorAction SilentlyContinue", timeout=120, check=False)
             if not busy and lab_.jobs_by_id(self.api)[jid]["status"] in lab_.DONE:
                 break
             time.sleep(10)

@@ -256,7 +256,7 @@ SCRIPTS = {f"{mod.__name__}.{name}": getattr(mod, name) for mod, names in (
     (winlab, ("LAB_NIC", "FOREST", "REPLICA", "DC_DNS", "JOIN", "KERBEROS", "INSTALL")), (windc, ("PLANT", "OPT_IN", "HEALTH")),
     (wincluster, ("NODE_NET", "UNIQUE_NAT", "FEATURES", "WITNESS", "WITNESS_GRANT", "NEW_CLUSTER", "QUORUM_AND_ROLE", "PROBE", "START_PROBE", "CLUSTER_STATE")),
     (winremote_lab, ("PLANT", "REMOTING_OFF", "REMOTING_ON", "LOW_USER")), (wingpo, ("BUILD_GPO",)),
-    (winfailures, ("CHANGED", "BUSY")), (winexposure, ("ALLOW", "EXPIRED_CERT", "LISTENING"))) for name in names}
+    (winfailures, ("CHANGED",)), (winexposure, ("ALLOW", "EXPIRED_CERT", "LISTENING"))) for name in names}
 SCRIPTS["remote_scan"] = winremote_lab.scan("& 'py' -I 'agent'", "HOST", "tok")
 SCRIPTS["gpo_startup"] = wingpo.startup_script("http://x", "tok")
 

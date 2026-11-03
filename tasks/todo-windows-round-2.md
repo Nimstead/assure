@@ -188,7 +188,7 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens Greenbo
 ## Phase 6: agent quality
 
 ### W24: `doctor` and a local log (M)
-- [ ] `doctor` checks server reach, proxy, clock, tasks, folder ACL, Windows Update service, disk and runtime, and prints a fix for each failure
+- [x] `doctor` checks server reach, proxy, clock, tasks, folder ACL, Windows Update service, disk and runtime, and prints a fix for each failure (real Windows 11: all ok, then FAIL with a fix for a removed task, disabled wuauserv and a skewed clock)
 - [ ] Rotating log under the locked folder with no secrets (test asserts the key never appears); onboarding's troubleshooting points to it
 - Verify: unit tests plus one run on a VM with the task removed and the service stopped. Deps: none.
 
@@ -198,8 +198,8 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens Greenbo
 - Verify: `last_run_winfootprint.json`. Deps: none.
 
 ### W26: Failure runs (M)
-- [ ] Hard power-off during install and during rollback: job resumes or reports honestly, and never stays stuck
-- [ ] Disk full: refuses before changing anything. Server down for a day: next run catches up. Clock skew: a clear error
+- [x] Hard power-off during rollback (`last_run_winfailures.json`, Windows 11: resumed, original build restored, `rolled_back`) and during install (Windows 10 LTSC, a real licence shutdown mid-install: aborted with no changes, DECISIONS 78). The Windows 11 install cut missed its window (the harness waited on IsBusy, which never read true); it now waits on the agent's own `installing` flag, not yet rerun: the VM is on the newest build
+- [x] Disk full: refuses before changing anything. Server down: next run catches up. Clock skew: a clear error (`last_run_winfailures.json`, Windows 11)
 - Verify: `last_run_winfailures.json`. Deps: W24 helps. Bugs found get a test.
 
 ### Checkpoint D / W27

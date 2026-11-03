@@ -325,12 +325,13 @@ def sync_loldrivers(session: Session, client=None) -> int:
     return len(drivers)
 
 
-def sync_msrc(session: Session, months: int = 12, client=None) -> dict:
+def sync_msrc(session: Session, months: int = 12, client=None, month: str | None = None) -> dict:
     """Windows OS advisories from the MSRC CVRF API, stored as OSV-shaped rows (ecosystem Windows, package =
     MSRC product name, fixed = FixedBuild) so the normal matcher works. Windows 10/11/Server products with a dotted
     FixedBuild, plus the Microsoft products msproducts.py allowlists (ecosystem Microsoft, package = its key).
     # ponytail: a month is skipped when its CurrentReleaseDate is already stored on some row; a CVE re-released
-    # in a later month overwrites the older row, which makes that older month re-download. Fine at this scale."""
+    # in a later month overwrites the older row, which makes that older month re-download. Fine at this scale.
+    month: just that one document (e.g. "2023-Nov"), however old, adding rows and never overwriting any (DECISIONS 95)."""
     http = _client(client)
 
     def get(url):
@@ -347,7 +348,7 @@ def sync_msrc(session: Session, months: int = 12, client=None) -> dict:
     cutoff = (now() - timedelta(days=30 * months)).strftime("%Y-%m-%d")
     docs = sorted((d for d in get(MSRC_URL + "updates")["value"]
                    if re.fullmatch(r"\d{4}-[A-Z][a-z]{2}", d["ID"]) and "Mariner" not in (d["DocumentTitle"] or "")
-                   and d["InitialReleaseDate"] >= cutoff), key=lambda d: d["InitialReleaseDate"])
+                   and (d["ID"] == month if month else d["InitialReleaseDate"] >= cutoff)), key=lambda d: d["InitialReleaseDate"])
     have = {(i, p): m for i, p, m in session.execute(
         select(Advisory.id, Advisory.package, Advisory.modified).where(Advisory.ecosystem.in_(("Windows", msproducts.ECOSYSTEM))))}
     stored = set(have.values())
@@ -389,7 +390,8 @@ def sync_msrc(session: Session, months: int = 12, client=None) -> dict:
                        "database_specific": {"released": d["InitialReleaseDate"][:10], "channels": office_ch}, "affected": [],
                        **({"severity": [{"type": "CVSS_V3", "score": vec}]} if vec else {})}
                 row = {"id": rec["id"], "ecosystem": msproducts.ECOSYSTEM, "package": "Office CVE", "modified": mod, "record": rec}
-                (ins if (rec["id"], "Office CVE") not in have else upd).append(row)
+                if (rec["id"], "Office CVE") not in have or not month:
+                    (ins if (rec["id"], "Office CVE") not in have else upd).append(row)
                 have[(rec["id"], "Office CVE")] = mod
             for pid, (build, kb), suffix in [*((p, f, "") for p, f in fixes.items()), *((p, f, HOTPATCH) for p, f in hot.items())]:
                 # some entries say "Windows 11 version 26H1" (lowercase v); make the names uniform
@@ -417,7 +419,7 @@ def sync_msrc(session: Session, months: int = 12, client=None) -> dict:
                 if (rec["id"], name) not in have:
                     ins.append(row)
                     n["inserted"] += 1
-                elif have[(rec["id"], name)] != mod:
+                elif have[(rec["id"], name)] != mod and not month:  # an old month never replaces what a newer one said
                     upd.append(row)
                     n["updated"] += 1
                 else:

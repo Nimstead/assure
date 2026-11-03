@@ -23,7 +23,7 @@ from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
+from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -974,9 +974,14 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         steps: list[dict] = Field(default_factory=list, max_length=200)
         versions: dict[str, str | None] | None = Field(None, max_length=500)
         error: str | None = Field(None, max_length=5000)
+        offered: list | None = Field(None, max_length=10)  # Windows Update's offer instead of the job's KBs; checked in plan_step
+
+    def plan_step(job_id: str, offered: list) -> None:
+        with Sessions() as s:  # after the response: an MSRC month can take longer than the agent waits
+            remediate.plan_step(s, s.get(RemediationJob, job_id), offered)
 
     @app.post("/api/agent/jobs/{job_id}/report")
-    def agent_job_report(job_id: str, body: JobReport, s: DB, asset: Annotated[Asset, Depends(current_agent)]):
+    def agent_job_report(job_id: str, body: JobReport, s: DB, asset: Annotated[Asset, Depends(current_agent)], tasks: BackgroundTasks):
         job = s.get(RemediationJob, job_id)
         if not job or job.asset_id != asset.id:
             raise HTTPException(404, "Job not found")
@@ -985,6 +990,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         except remediate.RemediationError as e:
             raise HTTPException(409, str(e)) from None
         s.commit()
+        if job.status == "aborted" and body.offered:  # an earlier cumulative update may be the way forward (DECISIONS 95)
+            tasks.add_task(plan_step, job.id, body.offered)
         return {"status": job.status}
 
     # --- assets ------------------------------------------------------------

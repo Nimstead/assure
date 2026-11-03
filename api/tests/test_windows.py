@@ -335,3 +335,147 @@ def test_a_job_that_reached_its_step_build_succeeded_and_a_short_one_did_not():
     assert _stepped(job("windows", "10.0.26100.33438")) == "10.0.26100.33438"
     assert _stepped(job("windows", "10.0.26100.1742")) is None
     assert _stepped(job("winget", "10.0.26100.33438")) is None
+
+
+# ---- a host far behind (DECISIONS 95): real Server 2022 VM, build 20348.587, offered only 2023-11's KB5032198 -> .2113
+WS22 = "Windows Server 2022"
+NOV = {"ID": "2023-Nov", "Alias": "2023-Nov", "DocumentTitle": "November 2023 Security Updates", "InitialReleaseDate": "2023-11-14T08:00:00Z",
+       "CurrentReleaseDate": "2023-11-14T08:00:00Z", "CvrfUrl": "https://api.msrc.microsoft.com/cvrf/v3.0/cvrf/2023-Nov"}
+OCT = {**NOV, "ID": "2026-Oct", "Alias": "2026-Oct", "DocumentTitle": "October 2026 Security Updates",
+       "InitialReleaseDate": "2026-10-13T07:00:00Z", "CurrentReleaseDate": "2026-10-13T07:00:00Z"}
+# what the agent sends from Windows Update's search on that VM (its .NET update rides along)
+OFFERED = [{"kb": "5032198", "title": "2023-11 Cumulative Update for Microsoft server operating system version 21H2 for x64-based Systems (KB5032198)"},
+           {"kb": "5032005", "title": "2023-11 Cumulative Update for .NET Framework 3.5, 4.8 and 4.8.1 for Microsoft server operating system version 21H2 for x64 (KB5032005)"}]
+
+
+def nov_doc():
+    return json.loads((FIX / "2023-Nov-ws2022.json").read_text())
+
+
+def oct_ws22_doc():
+    """A recent month, the only kind the server syncs: the November shape with this month's KB and build."""
+    d = nov_doc()
+    v = d["Vulnerability"][0]
+    v["CVE"], v["Remediations"] = "CVE-2026-200001", [{**v["Remediations"][0], "Description": {"Value": "5126700"}, "FixedBuild": "10.0.20348.4297"}]
+    d["Vulnerability"] = [v]
+    return d
+
+
+def ws22_client(fetched, listed=(OCT, NOV)):
+    def handler(req: httpx.Request):
+        fetched.append(str(req.url))
+        if req.url.path.endswith("/updates"):
+            return httpx.Response(200, json={"value": list(listed)})
+        if req.url.path.endswith("/cvrf/2026-Oct"):
+            return httpx.Response(200, json=oct_ws22_doc())
+        if req.url.path.endswith("/cvrf/2023-Nov"):
+            return httpx.Response(200, json=nov_doc())
+        return httpx.Response(404)
+    return httpx.Client(transport=httpx.MockTransport(handler))
+
+
+def _aborted_ws22(env, monkeypatch):
+    """A Server 2022 host at .587 with a dispatched job for October's KB, which Windows Update won't offer it."""
+    from nimstead import feeds
+    fetched: list[str] = []
+    http = ws22_client(fetched)
+    monkeypatch.setattr(feeds, "_client", lambda client: client or http)
+    with make_sessionmaker(env)() as s:
+        sync_msrc(s, 12)
+    assert not [u for u in fetched if "2023-Nov" in u]  # the server syncs recent months only
+    c = user(env)
+    token = c.post("/api/enroll-tokens", json={"sandbox": True}).json()["token"]
+    a = c.post("/api/agent/enroll", json={"token": token, "hostname": "srv-22", "ecosystem": "Windows"}).json()
+    h = {"Authorization": f"Bearer {a['agent_key']}"}
+
+    def inv(b):
+        return c.post("/api/agent/inventory", json={"ecosystem": "Windows", "packages": [
+            {"ecosystem": "Windows", "name": WS22, "version": b, "source": None}]}, headers=h).json()
+    inv("10.0.20348.587")
+    j = c.post("/api/remediation/jobs", json={"asset_id": a["asset_id"], "ecosystem": "Windows", "package": WS22}).json()
+    assert j["packages"] == [{"name": WS22, "from": "10.0.20348.587", "kb": "5126700", "to": "10.0.20348.4297"}]
+    c.post(f"/api/remediation/jobs/{j['id']}/approve")
+    assert len(c.get("/api/agent/jobs", headers=h).json()) == 1
+    fetched.clear()
+    return c, h, j["id"], fetched, inv
+
+
+def test_an_offered_earlier_cumulative_is_fetched_from_msrc_and_planned_as_a_step(env, monkeypatch):
+    c, h, jid, fetched, inv = _aborted_ws22(env, monkeypatch)
+    r = c.post(f"/api/agent/jobs/{jid}/report", headers=h, json={
+        "outcome": "aborted", "steps": [], "offered": OFFERED,
+        "error": "No changes made: Windows Update offers exactly KB5126700 failed: []"})
+    assert r.json() == {"status": "aborted"}
+    # one month, from Microsoft's API, fetched once although two of its updates were offered
+    assert [u for u in fetched if "/cvrf/v3.0/cvrf/" in u] == ["https://api.msrc.microsoft.com/cvrf/v3.0/cvrf/2023-Nov"]
+    assert all(u.startswith("https://api.msrc.microsoft.com/") for u in fetched)
+    jobs = {j["id"]: j for j in c.get("/api/remediation/jobs").json()}
+    assert jobs[jid]["error"].startswith("Windows Update must install KB5032198 (2023-11) first; planned as a step.")
+    [step] = [j for j in jobs.values() if j["id"] != jid]
+    assert step["status"] == "planned" and not step["approved_by"]  # approval rules don't change
+    assert step["packages"] == [{"name": WS22, "from": "10.0.20348.587", "kb": "5126700", "to": "10.0.20348.4297",
+                                 "alt": {"kb": "5032198", "to": "10.0.20348.2113"}}]
+    assert "stepping stone" in step["summary"] and "KB5032198 (2023-11)" in step["summary"]
+
+    # the step runs like any job: the agent installs the one Windows Update offers, and what it doesn't fix stays open
+    assert c.post(f"/api/remediation/jobs/{step['id']}/approve").status_code == 200
+    [sent] = c.get("/api/agent/jobs", headers=h).json()
+    assert sent["packages"][0]["alt"] == {"kb": "5032198", "to": "10.0.20348.2113"}
+    c.post(f"/api/agent/jobs/{step['id']}/report", headers=h, json={"outcome": "applied", "steps": [], "versions": {WS22: "10.0.20348.2113"}})
+    inv("10.0.20348.2113")
+    assert next(j for j in c.get("/api/remediation/jobs").json() if j["id"] == step["id"])["status"] == "succeeded"
+    assert [f["vuln_id"] for f in c.get("/api/findings").json() if f["package"] == WS22] == ["CVE-2026-200001"]
+
+
+def test_a_translated_title_steps_the_same(env, monkeypatch):
+    # titles are translated (DECISIONS 68), and guest output turned the German "ü" into "?" (real German Windows 10 VM):
+    # only the leading month is read, and MSRC's rows for this product say what the KB is
+    c, h, jid, fetched, _ = _aborted_ws22(env, monkeypatch)
+    german = [{"kb": "5032198", "title": "2023-11 Kumulatives Update f?r Microsoft Server-Betriebssystem, Version 21H2 f?r x64-basierte Systeme (KB5032198)"}]
+    c.post(f"/api/agent/jobs/{jid}/report", headers=h, json={"outcome": "aborted", "steps": [], "offered": german, "error": "No changes made"})
+    [step] = [j for j in c.get("/api/remediation/jobs").json() if j["id"] != jid]
+    assert step["packages"][0]["alt"] == {"kb": "5032198", "to": "10.0.20348.2113"} and "KB5032198 (2023-11)" in step["summary"]
+
+
+def test_a_garbled_or_hostile_offered_list_plans_nothing_and_fetches_little(env, monkeypatch):
+    from nimstead.db import LedgerEntry
+    c, h, jid, fetched, _ = _aborted_ws22(env, monkeypatch)
+    report = {"outcome": "aborted", "steps": [], "error": "No changes made: not offered"}
+    assert c.post(f"/api/agent/jobs/{jid}/report", headers=h, json={**report, "offered": OFFERED * 6}).status_code == 422  # bounded
+    hostile = [
+        "KB5032198",  # not an object
+        {"kb": "5032198; Remove-Item C:\\", "title": OFFERED[0]["title"]},  # not a KB number
+        {"kb": "5032190", "title": "2023-11 Cumulative Update for Windows 11 Version 22H2 for x64-based Systems (KB5032190)"},  # another product's
+        {"kb": "5126700", "title": "2026-10 Cumulative Update for Microsoft server operating system version 21H2 (KB5126700)"},  # not earlier
+        {"kb": "5031364", "title": "2023-13 Cumulative Update"},  # no such month
+        {"kb": "5000001", "title": None},
+        {"kb": "5000002", "title": "1999-01 Cumulative Update"},
+        {"kb": "5000003", "title": "2024-01 Cumulative Update"},  # months MSRC doesn't list here: only a bounded few are asked for
+        {"kb": "5000004", "title": "2024-02 Cumulative Update"},
+        {"kb": "5000005", "title": "2024-03 Cumulative Update"},
+    ]
+    assert c.post(f"/api/agent/jobs/{jid}/report", headers=h, json={**report, "offered": hostile}).json() == {"status": "aborted"}
+    jobs = c.get("/api/remediation/jobs").json()
+    assert [j["id"] for j in jobs] == [jid] and jobs[0]["error"] == report["error"]
+    assert all(u.startswith("https://api.msrc.microsoft.com/cvrf/v3.0/") for u in fetched)
+    assert [u for u in fetched if "/cvrf/v3.0/cvrf/" in u] == ["https://api.msrc.microsoft.com/cvrf/v3.0/cvrf/2023-Nov"]
+    with make_sessionmaker(env)() as s:
+        months = [e.data["month"] for e in s.scalars(select(LedgerEntry).where(LedgerEntry.kind == "msrc_month_fetched"))]
+    assert months == ["2023-Nov", "2024-Jan", "2024-Feb"]  # STEP_MONTHS_PER_DAY: 2024-Mar waits for tomorrow
+
+
+def test_one_old_month_adds_rows_and_never_overwrites_newer_ones():
+    s = make_sessionmaker("sqlite://")()
+    sync_msrc(s, month="2023-Nov", client=ws22_client(fetched := []))
+    assert fetched[-1].endswith("/cvrf/2023-Nov")
+    rows = {(a.package, a.record["aliases"][0]): a for a in s.scalars(select(Advisory))}
+    assert rows[(WS22, "CVE-2023-36033")].record["database_specific"]["kb"] == "5032198"
+    assert rows[(WS22, "CVE-2023-36033")].record["affected"][0]["ranges"][0]["events"][1] == {"fixed": "10.0.20348.2113"}
+    newer = rows[(WS22, "CVE-2023-36033")]
+    newer.modified, newer.record = "2026-01-13T08:00:00Z", {**newer.record, "summary": "re-released later"}
+    s.commit()
+    revised = {**NOV, "CurrentReleaseDate": "2023-12-01T08:00:00Z"}  # not skipped as already stored
+    n = sync_msrc(s, month="2023-Nov", client=ws22_client([], listed=(OCT, revised)))
+    assert n["documents"] == 1 and n["updated"] == 0
+    s.expire_all()
+    assert s.get(Advisory, (newer.id, "Windows", WS22)).record["summary"] == "re-released later"

@@ -18,11 +18,11 @@ from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from nimstead import evidence
-from nimstead.db import Advisory, Asset, Finding, InstalledPackage, Org, RemediationJob, now
+from nimstead.db import Advisory, Asset, Finding, InstalledPackage, LedgerEntry, Org, RemediationJob, now
 from nimstead.match import normalize_ecosystem
 from nimstead.notify import SILENT_AFTER, notify
 from nimstead.scan import HOTPATCH
@@ -76,10 +76,11 @@ def _log(s: Session, job: RemediationJob, kind: str, **data) -> None:
         notify(s, job.org_id, f"remediation_{job.status}", f"Remediation {job.status}: {job.summary}" + (f" ({job.error})" if job.error else ""), urgent=job.status == "rollback_failed")
 
 
-def windows_kbs(s: Session, product: str, cves: list[str], ecosystem: str = "Windows") -> dict:
+def windows_kbs(s: Session, product: str, cves: list[str], ecosystem: str = "Windows", step: dict | None = None) -> dict:
     """The cumulative update that reaches the highest fixed build fixes them all: {"kb", "to"}, plus "alt" (the
     hotpatch KB and build) when every CVE also has a hotpatch fix. The agent installs whichever one Windows Update
-    offers this host, so the plan doesn't need to know whether it is hotpatch-enrolled (DECISIONS 52)."""
+    offers this host, so the plan doesn't need to know whether it is hotpatch-enrolled (DECISIONS 52). step: the
+    earlier cumulative {"kb", "to"} Windows Update offered this host instead (plan_step), carried as "alt"."""
     def best(package):
         out = {}
         for rec in s.scalars(select(Advisory.record).where(Advisory.ecosystem == ecosystem, Advisory.package == package)):
@@ -97,7 +98,11 @@ def windows_kbs(s: Session, product: str, cves: list[str], ecosystem: str = "Win
         raise RemediationError("No Windows update (KB) is known for the fixing build; refusing to plan")
     to, kb = top(cum)
     out = {"kb": kb, "to": to}
-    if not set(cves) - set(hot := best(product + HOTPATCH)):
+    if step:
+        if step["kb"] == kb or windows_cmp(step["to"], to) >= 0:
+            raise RemediationError("A step must be an earlier update than the one that fixes these findings")
+        out["alt"] = step
+    elif not set(cves) - set(hot := best(product + HOTPATCH)):
         alt_to, alt_kb = top(hot)
         if alt_kb != kb:
             out["alt"] = {"kb": alt_kb, "to": alt_to}
@@ -251,9 +256,10 @@ def fix_path(ecosystem: str, package: str) -> dict:
     return {"fix": fix, "plannable": plannable, "person_only": base in MANUAL_ONLY, "forward_only": fix in FORWARD_ONLY}
 
 
-def plan(s: Session, asset: Asset, ecosystem: str, package: str, created_by: str, include: list[str] | None = None) -> RemediationJob:
+def plan(s: Session, asset: Asset, ecosystem: str, package: str, created_by: str, include: list[str] | None = None,
+         step: dict | None = None) -> RemediationJob:
     """include: extra installed packages the dry run said the fix also needs (e.g. musl for openssl).
-    They join the plan, so they are snapshotted and rolled back with it."""
+    They join the plan, so they are snapshotted and rolled back with it. step: see windows_kbs."""
     manager = MANAGERS.get(ecosystem.split(":", 1)[0])
     if not manager:
         raise RemediationError(f"Automatic remediation is not supported for {ecosystem} packages")
@@ -285,7 +291,7 @@ def plan(s: Session, asset: Asset, ecosystem: str, package: str, created_by: str
         raise RemediationError("Installed package names or versions failed validation; refusing to plan")
     target = max((f.fixed_version for f in findings), key=sort_key(comparator_for(ecosystem)))  # agent upgrades to repo candidate
     if manager == "windows":
-        pkgs = [{**pkgs[0], **windows_kbs(s, package, [f.vuln_id for f in findings])}]
+        pkgs = [{**pkgs[0], **windows_kbs(s, package, [f.vuln_id for f in findings], step=step)}]
         target = pkgs[0]["to"]
     job = RemediationJob(
         org_id=asset.org_id, asset_id=asset.id, manager=manager, action_key=key, packages=pkgs,
@@ -563,3 +569,70 @@ def verify(s: Session, asset: Asset) -> None:
         else:
             job.status = "succeeded"
             _log(s, job, "remediation_succeeded", fixed=len(job.finding_ids))
+
+
+STEP_MONTHS_PER_DAY = 3  # MSRC months that hosts' reports can make the server fetch, per org per day (DECISIONS 95)
+MONTHS = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split()
+
+
+def _kb_build(s: Session, product: str, kb: str) -> str | None:
+    """The build a cumulative KB brings this product to, from the MSRC rows that name it."""
+    builds = [rec["affected"][0]["ranges"][0]["events"][-1].get("fixed") for rec in s.scalars(
+        select(Advisory.record).where(Advisory.ecosystem == "Windows", Advisory.package == product))
+        if str((rec.get("database_specific") or {}).get("kb")) == kb]
+    return max(builds, key=sort_key(windows_cmp)) if builds else None
+
+
+def _fetch_month(s: Session, job: RemediationJob, kb: str, month: str, client) -> bool:
+    """One MSRC CVRF month, from Microsoft's API only (feeds.MSRC_URL), at most a few a day per org."""
+    from nimstead import feeds
+    since = (datetime.now(UTC) - timedelta(days=1)).isoformat(timespec="microseconds")  # LedgerEntry.ts's own format
+    if s.scalar(select(func.count()).select_from(LedgerEntry).where(
+            LedgerEntry.org_id == job.org_id, LedgerEntry.kind == "msrc_month_fetched", LedgerEntry.ts > since)) >= STEP_MONTHS_PER_DAY:
+        return False
+    evidence.append(s, job.org_id, "msrc_month_fetched", job.id, {"asset_id": job.asset_id, "kb": kb, "month": month})
+    s.commit()  # counted before the fetch, so a failing one counts too
+    try:
+        feeds.sync_msrc(s, month=month, client=client)
+        return True
+    except Exception:  # a refused or garbled document plans nothing; the abort stands as the agent reported it
+        s.rollback()
+        return False
+
+
+def plan_step(s: Session, job: RemediationJob | None, offered, client=None) -> RemediationJob | None:
+    """Windows Update offered this host none of an aborted job's KBs. If it offers an earlier cumulative update for the same
+    product, plan (never approve) a job that steps through it: the KB's build comes from MSRC, fetching the month the title
+    names when the KB is unknown (DECISIONS 95). offered is the host's word: only KB numbers and title months are read."""
+    p = job.packages[0] if job and job.status == "aborted" and job.manager == "windows" and job.packages else {}
+    product, cur, target = str(p.get("name", "")), str(p.get("from", "")), str(p.get("to", ""))
+    if not SAFE_PRODUCT.match(product) or product.startswith(".NET") or not isinstance(offered, list):
+        return None
+    months: dict[str, tuple[str, str]] = {}  # KB -> ("2023-11", MSRC's "2023-Nov")
+    for o in offered[:10]:
+        title, kb = (o.get("title"), str(o.get("kb"))) if isinstance(o, dict) else (None, "")
+        if isinstance(title, str) and SAFE_KB.match(kb) and (m := re.match(r"(20\d\d)-(0[1-9]|1[0-2]) ", title[:300])):
+            months[kb] = (f"{m[1]}-{m[2]}", f"{m[1]}-{MONTHS[int(m[2]) - 1]}")
+    steps, tried = [], set()
+    for kb, (ym, month) in months.items():
+        if (build := _kb_build(s, product, kb)) is None and month not in tried:  # e.g. the month's .NET update: fetched once
+            tried.add(month)
+            build = _kb_build(s, product, kb) if _fetch_month(s, job, kb, month, client) else None
+        try:  # the same product line, past the host's build and short of the job's target
+            if build and build.rsplit(".", 1)[0] == target.rsplit(".", 1)[0] and windows_cmp(cur, build) < 0 < windows_cmp(target, build):
+                steps.append((build, kb, ym))
+        except ValueError:
+            continue
+    if not steps:
+        return None
+    build, kb, ym = max(steps, key=lambda x: sort_key(windows_cmp)(x[0]))
+    asset = s.get(Asset, job.asset_id)
+    try:
+        new = plan(s, asset, job.action_key.split("|", 1)[0], product, "policy", step={"kb": kb, "to": build})
+    except RemediationError:
+        return None
+    new.summary = (f"Install KB{kb} ({ym}) on {asset.hostname} as a stepping stone to KB{new.packages[0]['kb']}: Windows Update "
+                   f"offers this machine only that earlier cumulative update. Findings it doesn't fix stay open for the next step.")[:500]
+    job.error = f"Windows Update must install KB{kb} ({ym}) first; planned as a step. {job.error or ''}".strip()[:2000]
+    s.commit()
+    return new

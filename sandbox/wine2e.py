@@ -3,6 +3,8 @@ Update install of the fixing cumulative update, forced-failure rollback via DISM
 update driven entirely by the installed scheduled task.
 
 Run from api/:  uv run python ../sandbox/wine2e.py VM_NAME [--keep]
+A host Windows Update offers only an old cumulative update (fresh Server 2022 media):  ... --keep --success-only --steps
+(the hand-driven rollback in part 2 expects the newest KB to be offered, so it's skipped there)
 The API runs on the host at 127.0.0.1:8766 (the VM reaches it as 10.0.2.2 through VirtualBox NAT).
 """
 
@@ -28,6 +30,8 @@ PORT = 8766
 log: list[dict] = []
 OUT_ARG = next((a[6:] for a in sys.argv if a.startswith("--out=")), None)  # each OS version keeps its own run file
 OUT = OUT_ARG or "last_run_windows.json"  # last_run_windows11.json once the VM reports Windows 11
+FOLLOW = "--steps" in sys.argv  # a host far behind: follow the steps the server plans until the newest KB applies (DECISIONS 95)
+STEP_LIMIT = 6  # jobs, each up to 3 hours
 
 
 def note(step, **kw):
@@ -259,41 +263,63 @@ def main(keep=False) -> int:
             new_agent, new_version = rel.newer()
             rel.publish(new_agent, "3.15.2", "v9.9.9")
         jid = plan_and_get_job()
-        dispatched = time.time()
-        guest("Enable-ScheduledTask -TaskName 'Nimstead agent' | Out-Null; Start-ScheduledTask -TaskName 'Nimstead agent'")
-        note("scheduled task started for the real fix")
-        end = time.time() + 180 * 60
-        status, deferred, restarted_at = None, None, None
-        boot0 = guest("(Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('s')").strip()
-        while time.time() < end:
-            if signed_in and deferred is None:  # installed and waiting: the notice is on screen, no restart yet
-                if '"phase": "verify"' in guest(r"Get-Content C:\ProgramData\Nimstead\pending-job.json -Raw -ErrorAction SilentlyContinue", check=False):
-                    time.sleep(120)
-                    shot = ROOT / "sandbox" / "last_run_windows11_restart_notice.png"
-                    try:
-                        winvm.vbox("controlvm", NAME, "screenshotpng", str(shot))
-                    except RuntimeError:  # a headless VM can refuse it (E_FAIL); the agent's notified_at shows the notice went out
-                        shot = None
-                    state = guest(r"Get-Content C:\ProgramData\Nimstead\pending-job.json -Raw", check=False)
-                    deferred = {"minutes_after_dispatch": round((time.time() - dispatched) / 60), "screenshot": shot and shot.name,
-                                "notice_sent": '"notified_at"' in state,
-                                "boot_unchanged": guest("(Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('s')",
-                                                        check=False).strip() == boot0}
-                    note("restart deferred for the signed-in user", **deferred)
-            if signed_in and restarted_at is None and deferred and guest(
-                    "(Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('s')", check=False).strip() not in ("", boot0):
-                restarted_at = round((time.time() - dispatched) / 60)
-                who = guest(  # the agent, or Windows on its own?
-                    "Get-WinEvent -FilterHashtable @{LogName='System'; Id=1074} -MaxEvents 3 | ForEach-Object { \"$($_.TimeCreated.ToUniversalTime().ToString('s')) $($_.Message)\" }", check=False)
-                note("restarted", minutes_after_dispatch=restarted_at, who=who[-900:])
-            try:
-                status = next(j for j in api.get("/api/remediation/jobs").json() if j["id"] == jid)["status"]
-            except httpx.HTTPError:
-                pass
-            if status in ("succeeded", "not_fixed", "rolled_back", "rollback_failed", "failed", "aborted"):
+        target = next(j for j in api.get("/api/remediation/jobs").json() if j["id"] == jid)["packages"][0]["to"]
+        from nimstead.versions import windows_cmp
+        deferred, restarted_at = None, None
+        for hop in range(STEP_LIMIT if FOLLOW else 1):
+            dispatched = time.time()
+            guest("Enable-ScheduledTask -TaskName 'Nimstead agent' | Out-Null; Start-ScheduledTask -TaskName 'Nimstead agent'")
+            note("scheduled task started for the real fix", job=jid, hop=hop)
+            end = time.time() + 180 * 60
+            status = None
+            boot0 = guest("(Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('s')").strip()
+            while time.time() < end:
+                if signed_in and deferred is None:  # installed and waiting: the notice is on screen, no restart yet
+                    if '"phase": "verify"' in guest(r"Get-Content C:\ProgramData\Nimstead\pending-job.json -Raw -ErrorAction SilentlyContinue", check=False):
+                        time.sleep(120)
+                        shot = ROOT / "sandbox" / "last_run_windows11_restart_notice.png"
+                        try:
+                            winvm.vbox("controlvm", NAME, "screenshotpng", str(shot))
+                        except RuntimeError:  # a headless VM can refuse it (E_FAIL); the agent's notified_at shows the notice went out
+                            shot = None
+                        state = guest(r"Get-Content C:\ProgramData\Nimstead\pending-job.json -Raw", check=False)
+                        deferred = {"minutes_after_dispatch": round((time.time() - dispatched) / 60), "screenshot": shot and shot.name,
+                                    "notice_sent": '"notified_at"' in state,
+                                    "boot_unchanged": guest("(Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('s')",
+                                                            check=False).strip() == boot0}
+                        note("restart deferred for the signed-in user", **deferred)
+                if signed_in and restarted_at is None and deferred and guest(
+                        "(Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('s')", check=False).strip() not in ("", boot0):
+                    restarted_at = round((time.time() - dispatched) / 60)
+                    who = guest(  # the agent, or Windows on its own?
+                        "Get-WinEvent -FilterHashtable @{LogName='System'; Id=1074} -MaxEvents 3 | ForEach-Object { \"$($_.TimeCreated.ToUniversalTime().ToString('s')) $($_.Message)\" }", check=False)
+                    note("restarted", minutes_after_dispatch=restarted_at, who=who[-900:])
+                try:
+                    status = next(j for j in api.get("/api/remediation/jobs").json() if j["id"] == jid)["status"]
+                except httpx.HTTPError:
+                    pass
+                if status in ("succeeded", "not_fixed", "rolled_back", "rollback_failed", "failed", "aborted"):
+                    break
+                winvm.unstick(NAME)  # the agent's own reboot
+                time.sleep(60)
+            if not FOLLOW:
                 break
-            winvm.unstick(NAME)  # the agent's own reboot
-            time.sleep(60)
+            # --steps (DECISIONS 95): an abort that planned a step is approved like any fix; a step that applied is planned again
+            jobs = api.get("/api/remediation/jobs").json()
+            j = next(j for j in jobs if j["id"] == jid)
+            if status == "aborted":
+                step = next((x for x in jobs if x["status"] == "planned" and x["asset_id"] == a["id"] and x["action_key"] == f"Windows|{product}"), None)
+                note("aborted", error=(j["error"] or "")[:600], step=step and step["summary"], packages=step and step["packages"])
+                if not step:
+                    break
+                assert api.post(f"/api/remediation/jobs/{step['id']}/approve").status_code == 200
+                jid = step["id"]
+                continue
+            winvm.wait_ready(NAME, minutes=30)
+            if status != "succeeded" or windows_cmp(now := build(), target) >= 0:
+                break
+            note("stepped", build=now, target=target)
+            jid = plan_and_get_job()
         winvm.wait_ready(NAME, minutes=30)
         final = build()
         f_open = len(api.get("/api/findings").json())
@@ -302,6 +328,7 @@ def main(keep=False) -> int:
             j = next(j for j in api.get("/api/remediation/jobs").json() if j["id"] == jid)
             note("job steps", error=j.get("error"), steps=[f"{'ok ' if s['ok'] else 'FAIL'} {s['step']}: {s['output'][-200:]}" for s in j.get("steps", [])])
         assert status == "succeeded", status
+        assert not FOLLOW or windows_cmp(final, target) >= 0, (final, target)  # the newest KB applied, not just a step
         if px:  # enrol, report, self-update and the fix's Windows Update traffic all went through the proxy
             # TLS end to end, so the proxy sees CONNECTs only; enrol, report and self-update worked with only its port open
             seen = {"server over TLS": any(m == "CONNECT" and t == f"10.0.2.2:{PORT}" for m, t in px.log),

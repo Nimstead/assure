@@ -1,0 +1,20 @@
+{"DocumentTitle": {"Value": "November 2023 Security Updates"},
+ "ProductTree": {"FullProductName": [
+  {"ProductID": "11923", "Value": "Windows Server 2022"},
+  {"ProductID": "11924", "Value": "Windows Server 2022 (Server Core installation)"},
+  {"ProductID": "12085", "Value": "Windows 11 Version 22H2 for x64-based Systems"}]},
+ "Vulnerability": [
+  {"Title": {"Value": "Windows DWM Core Library Elevation of Privilege Vulnerability"}, "CVE": "CVE-2023-36033",
+   "CVSSScoreSets": [{"BaseScore": 7.8, "TemporalScore": 7.2, "EnvironmentalScore": 0, "Vector": "CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H/E:F/RL:O/RC:C", "ProductID": ["11923"], "IsTemporalScoreFieldSpecified": false},
+                     {"BaseScore": 7.8, "TemporalScore": 7.2, "EnvironmentalScore": 0, "Vector": "CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H/E:F/RL:O/RC:C", "ProductID": ["11924"], "IsTemporalScoreFieldSpecified": false},
+                     {"BaseScore": 7.8, "TemporalScore": 7.2, "EnvironmentalScore": 0, "Vector": "CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H/E:F/RL:O/RC:C", "ProductID": ["12085"], "IsTemporalScoreFieldSpecified": false}],
+   "Remediations": [{"Description": {"Value": "5032198"}, "URL": "https://catalog.update.microsoft.com/v7/site/Search.aspx?q=KB5032198", "Supercedence": "5031364", "SubType": "Security Update", "FixedBuild": "10.0.20348.2113", "ProductID": ["11923", "11924"], "Type": 2, "RestartRequired": {"Value": "Yes"}},
+                    {"Description": {"Value": "5032190"}, "URL": "https://catalog.update.microsoft.com/v7/site/Search.aspx?q=KB5032190", "Supercedence": "5031354", "SubType": "Security Update", "FixedBuild": "10.0.22621.2715", "ProductID": ["12085"], "Type": 2, "RestartRequired": {"Value": "Yes"}}]},
+  {"Title": {"Value": "Windows Cloud Files Mini Filter Driver Elevation of Privilege Vulnerability"}, "CVE": "CVE-2023-36036",
+   "CVSSScoreSets": [{"BaseScore": 7.8, "TemporalScore": 7.2, "EnvironmentalScore": 0, "Vector": "CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H/E:F/RL:O/RC:C", "ProductID": ["11923", "11924"], "IsTemporalScoreFieldSpecified": false}],
+   "Remediations": [{"Description": {"Value": "5032198"}, "URL": "https://catalog.update.microsoft.com/v7/site/Search.aspx?q=KB5032198", "Supercedence": "5031364", "SubType": "Security Update", "FixedBuild": "10.0.20348.2113", "ProductID": ["11923", "11924"], "Type": 2, "RestartRequired": {"Value": "Yes"}}]},
+  {"Title": {"Value": "Windows SmartScreen Security Feature Bypass Vulnerability"}, "CVE": "CVE-2023-36025",
+   "CVSSScoreSets": [{"BaseScore": 8.8, "TemporalScore": 8.2, "EnvironmentalScore": 0, "Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H/E:F/RL:O/RC:C", "ProductID": ["11923", "11924", "12085"], "IsTemporalScoreFieldSpecified": false}],
+   "Remediations": [{"Description": {"Value": "5032198"}, "URL": "https://catalog.update.microsoft.com/v7/site/Search.aspx?q=KB5032198", "Supercedence": "5031364", "SubType": "Security Update", "FixedBuild": "10.0.20348.2113", "ProductID": ["11923", "11924"], "Type": 2, "RestartRequired": {"Value": "Yes"}},
+                    {"Description": {"Value": "5032190"}, "URL": "https://catalog.update.microsoft.com/v7/site/Search.aspx?q=KB5032190", "Supercedence": "5031354", "SubType": "Security Update", "FixedBuild": "10.0.22621.2715", "ProductID": ["12085"], "Type": 2, "RestartRequired": {"Value": "Yes"}}]}
+ ]}

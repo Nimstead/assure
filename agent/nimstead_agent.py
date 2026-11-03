@@ -1970,7 +1970,11 @@ $q = $s.CreateUpdateSearcher(); %WU_SOURCE%
 $r = $q.Search("IsInstalled=0 and Type='Software'")
 ConvertTo-Json -Compress -InputObject @($r.Updates | Where-Object { $_.KBArticleIDs -contains '%KB%' } | ForEach-Object {
   [pscustomobject]@{ title = $_.Title; uninstallable = $_.IsUninstallable; reboot = $_.InstallationBehavior.RebootBehavior } })
+ConvertTo-Json -Compress -InputObject @($r.Updates | Where-Object { @($_.Categories | ForEach-Object { $_.CategoryID }) -contains '0fa1201d-4330-4fa8-8ae9-b877473b6441' } |
+  Select-Object -First 10 | ForEach-Object { [pscustomobject]@{ kb = [string]@($_.KBArticleIDs)[0]; title = $_.Title } })
 """
+# PS_FIND's second line: the security updates this search offers at all, picked by the classification's ID because titles are
+# translated (decision 68). Only reported when none of the job's KBs is offered, so the server can plan a step (decision 95)
 PS_DOWNLOAD = r"""
 $s = New-Object -ComObject Microsoft.Update.Session
 $q = $s.CreateUpdateSearcher(); %WU_SOURCE%
@@ -2110,6 +2114,17 @@ PS_SIGNED_IN = r"""@(Get-CimInstance Win32_Process -Filter "Name='explorer.exe'"
 WU_SOURCE = None  # "microsoft": search Microsoft Update directly, not WSUS (enroll --windows-update-source; local only)
 
 
+def offered_instead(out):
+    """PS_FIND's second line as [{kb, title}], at most 10, anything malformed dropped. The server reads only the KB and the
+    title's month and decides from Microsoft's own data whether it's a step; this agent still installs only a KB a job names."""
+    try:
+        items = json.loads(out)
+    except ValueError:
+        return []
+    return [{"kb": str(x["kb"]), "title": str(x.get("title") or "")[:200]} for x in (items if isinstance(items, list) else [])[:10]
+            if isinstance(x, dict) and SAFE_KB.match(str(x.get("kb", "")))]
+
+
 def wu(script):
     """A Windows Update script searching this host's configured source, or Microsoft Update when the host opted in."""
     return script.replace("%WU_SOURCE%", "$q.ServerSelection = 2" if WU_SOURCE == "microsoft" else "")
@@ -2150,6 +2165,7 @@ class WinJob:
                  retry_wait=60, booted=None):
         self.run, self.state_path, self.build, self.retry_wait = run, state_path, build, retry_wait
         self.booted = booted or boot_time
+        self.offered = None  # what Windows Update offers instead of the job's KBs, sent with an abort (decision 95)
         if job is not None:
             p = (job.get("packages") or [{}])[0]
             alt = p.get("alt") if isinstance(p.get("alt"), dict) else None  # the same fix as a hotpatch (DECISIONS 52)
@@ -2213,7 +2229,8 @@ class WinJob:
         self._resume_cluster()
         self.clear()
         return {"outcome": outcome, "steps": self.s["steps"], "error": error,
-                "versions": {self.s["product"]: self.build()} if outcome == "applied" else None}
+                "versions": {self.s["product"]: self.build()} if outcome == "applied" else None,
+                **({"offered": self.offered} if self.offered and outcome == "aborted" else {})}
 
     def pending(self):
         self.s["boot"] = int(self.booted())  # the restart it waits for is a new boot, not just time passing
@@ -2303,13 +2320,16 @@ class WinJob:
         found = {}  # KB -> (target build, how many updates Windows Update offers for it)
         for kb, to in [(s["kb"], s["to"]), *([(s["alt"]["kb"], s["alt"]["to"])] if s.get("alt") else [])]:
             rc, out = ps(self.run, wu(PS_FIND).replace("%KB%", kb))
-            found[kb] = (to, len(json.loads(out)) if rc == 0 and out.strip().startswith("[") else 0, out)
+            first, _, others = out.strip().replace("\r", "").partition("\n")
+            found[kb] = (to, len(json.loads(first)) if rc == 0 and first.startswith("[") else 0, first if rc == 0 else out)
         offered = [kb for kb, (_, n, _) in found.items() if n == 1]
         if not offered:  # say why, from this machine's own update settings (plan T14)
             rc, why = ps(self.run, PS_WHY_NOT_OFFERED.replace("%KB%", s["kb"]))
+            self.offered = None if str(s.get("product")).startswith(".NET Framework") else offered_instead(others)
+            why = (why.strip() or "Windows Update didn't offer it (not needed, superseded, or not released for this build)") + (
+                "; it offers instead: " + ", ".join(f"KB{x['kb']} ({x['title']})" for x in self.offered) if self.offered else "")
             for kb in found:
-                found[kb] = (found[kb][0], found[kb][1], (found[kb][2].strip() + "; " if found[kb][2].strip() else "")
-                             + (why.strip() or "Windows Update didn't offer it (not needed, superseded, or not released for this build)"))
+                found[kb] = (found[kb][0], found[kb][1], (found[kb][2].strip() + "; " if found[kb][2].strip() else "") + why)
         if len(found) == 1:
             self.step(f"Windows Update offers exactly KB{s['kb']}", offered, found[s["kb"]][2])
         else:  # cumulative or hotpatch: whichever this host is offered, never both

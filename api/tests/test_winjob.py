@@ -19,12 +19,13 @@ NEW_PKG = "Package_for_RollupFix~31bf3856ad364e35~amd64~~26100.33650.1.3"
 
 class FakeWin:
     def __init__(self, offered=("5126646",), service_breaks_on_new=False, removal_works=True, busy_removals=0, manifest="removable",
-                 battery="", cluster=False, drain="Paused", crashes="", why="", install_times_out=False, free_gb="50"):
+                 battery="", cluster=False, drain="Paused", crashes="", why="", install_times_out=False, free_gb="50", instead=None):
         self.build, self.pkgs, self.manifest = OLD, {BASE_PKG: "Installed"}, manifest
         self.offered, self.breaks, self.removal_works = list(offered), service_breaks_on_new, removal_works
         self.pending_remove, self.log, self.busy = [], [], busy_removals
         self.battery, self.cluster, self.drain, self.crashes, self.why = battery, cluster, drain, crashes, why
         self.boot, self.install_times_out, self.free_gb = 1_700_000_000, install_times_out, free_gb
+        self.instead = instead  # PS_FIND's second line as Windows Update wrote it, or None for an older fake's one line
 
     def __call__(self, cmd, cwd=None, timeout=None):
         self.log.append(cmd)
@@ -42,6 +43,8 @@ class FakeWin:
                 return 0, "Up"
             if "Service Control Manager" in script:
                 return 0, self.crashes if self.build == NEW else ""
+            if "mscorlib.dll" in script:  # a .NET Framework job's build
+                return 0, self.build
             if "UseWUServer" in script:
                 return 0, self.why
             if "RebootPending" in script:
@@ -67,7 +70,8 @@ class FakeWin:
                                        "permanent_parts": ["Microsoft-Windows-SenseClient-FoD-Package.mum"]}])
             if "KBArticleIDs" in script:
                 kb = script.split("-contains '")[1].split("'")[0]
-                return 0, json.dumps([{"title": f"Cumulative Update (KB{kb})", "uninstallable": False}] if kb in self.offered else [])
+                found = json.dumps([{"title": f"Cumulative Update (KB{kb})", "uninstallable": False}] if kb in self.offered else [])
+                return 0, found + ("" if self.instead is None else "\r\n" + self.instead)
         if cmd[:3] == ["dism", "/online", "/get-packages"]:
             return 0, "\n".join(f"Package Identity : {k}\nState : {v}\n" for k, v in self.pkgs.items())
         if cmd[:3] == ["dism", "/online", "/remove-package"]:
@@ -390,6 +394,52 @@ def test_not_offered_says_why_from_the_machines_update_settings(tmp_path):
     assert "not needed, superseded, or not released" in r["steps"][-1]["output"]
     r = make(tmp_path, FakeWin(offered=(), why="no Extended Security Updates licence is active"), HOT_JOB).advance()  # real Windows 10
     assert r["outcome"] == "aborted" and "0 offered" in r["steps"][-1]["output"] and "Extended Security Updates" in r["steps"][-1]["output"]
+
+
+# ---- what Windows Update offers instead (DECISIONS 95): a real Server 2022 VM at 20348.587 was offered only 2023-11
+WS22_OFFERS = ('[{"kb":"5032198","title":"2023-11 Cumulative Update for Microsoft server operating system version 21H2 for x64-based Systems (KB5032198)"},'
+               '{"kb":"5032005","title":"2023-11 Cumulative Update for .NET Framework 3.5, 4.8 and 4.8.1 for Microsoft server operating system version 21H2 for x64 (KB5032005)"}]')
+
+
+def test_not_offered_reports_what_windows_update_offers_instead_and_installs_none_of_it(tmp_path):
+    h = FakeWin(offered=(), instead=WS22_OFFERS)
+    r = make(tmp_path, h, HOT_JOB).advance()
+    assert r["outcome"] == "aborted" and r["error"].startswith("No changes made")
+    assert [x["kb"] for x in r["offered"]] == ["5032198", "5032005"] and r["offered"][0]["title"].startswith("2023-11 Cumulative Update")
+    assert "it offers instead: KB5032198 (2023-11 Cumulative Update" in r["steps"][-1]["output"]
+    assert not any(s in c[-1] for c in h.log if c[0] == "powershell" for s in ("CreateUpdateDownloader", "CreateUpdateInstaller"))
+    script = agent.PS_FIND  # one search: the job's KB first, then the security updates by classification ID, at most 10
+    assert script.index("-contains '%KB%'") < script.index("0fa1201d-4330-4fa8-8ae9-b877473b6441") and "-First 10" in script
+    assert json.loads(json.dumps(r))["offered"] == r["offered"]  # it goes in the report as it is
+
+
+def test_a_translated_offer_is_reported_as_is(tmp_path):
+    # German Windows (real VM; "ü" arrives as "?"): picked by classification ID, so no English word decides anything
+    german = '[{"kb":"5122878","title":"2026-09 Kumulatives Update f?r Windows 10 Version 21H2 f?r x64-basierte Systeme (KB5122878)"}]'
+    r = make(tmp_path, FakeWin(offered=(), instead=german)).advance()
+    assert r["offered"] == [{"kb": "5122878", "title": "2026-09 Kumulatives Update f?r Windows 10 Version 21H2 f?r x64-basierte Systeme (KB5122878)"}]
+    assert "Cumulative" not in agent.PS_FIND and "-match" not in agent.PS_FIND  # no title is matched on the host
+
+
+@pytest.mark.parametrize("instead", [
+    "not json", '{"kb": "5032198"}', "[]", '["KB5032198", {"kb": "50321; calc", "title": "x"}, {"title": "no kb"}, {"kb": null}]'])
+def test_a_garbled_offer_list_is_dropped(tmp_path, instead):
+    r = make(tmp_path, FakeWin(offered=(), instead=instead)).advance()
+    assert r["outcome"] == "aborted" and "offered" not in r and "Windows Update offers exactly KB5126646" in r["steps"][-1]["step"]
+    assert "offers instead" not in r["steps"][-1]["output"]
+
+
+def test_offer_list_is_bounded_and_only_sent_when_nothing_the_job_names_is_offered(tmp_path):
+    many = json.dumps([{"kb": str(5000000 + i), "title": "t" * 500} for i in range(40)])
+    r = make(tmp_path, FakeWin(offered=(), instead=many)).advance()
+    assert len(r["offered"]) == 10 and all(len(x["title"]) == 200 for x in r["offered"])
+    r = make(tmp_path, FakeWin(instead=WS22_OFFERS)).advance()  # the job's KB is offered: installed, nothing else said
+    assert r["outcome"] == "pending_reboot" and "offered" not in r
+    netfx = {**JOB, "packages": [{**JOB["packages"][0], "name": ".NET Framework 4.8.1 on Windows Server 2022"}]}
+    r = agent.WinJob(netfx, run=FakeWin(offered=(), instead=WS22_OFFERS), state_path=str(tmp_path / "n.json"), build=lambda: OLD,
+                     retry_wait=0).advance()  # its steps are other KBs: the OS updates on offer aren't its business
+    assert r["outcome"] == "aborted" and "offered" not in r and "Windows Update offers exactly KB5126646" in r["steps"][-1]["step"]
+    assert "offers instead" not in r["steps"][-1]["output"]
 
 
 def test_a_service_that_crashed_since_the_change_fails_health_even_if_running(tmp_path):

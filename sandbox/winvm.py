@@ -36,6 +36,12 @@ def creds(name: str) -> dict:
     return json.loads((STATE / name / "creds.json").read_text())
 
 
+def os_type(detected: str) -> str:
+    """The OS type the ISO says it is: a Server 2022 ISO created as Server 2025 got no installation media attached (real VM)."""
+    m = re.search(r"OS TypeId\s*=\s*(Windows\w+)", detected)
+    return m.group(1) if m else "Windows2025_64"
+
+
 def locale_args(detected: str) -> list[str]:
     """A localised ISO installs in its own language: a localised Windows is what the agent's language checks need (DECISIONS 68)."""
     m = re.search(r"OS Languages\s*=\s*([a-z]{2}-[A-Z]{2})", detected)
@@ -55,7 +61,7 @@ def create(iso: str, memory: int = 4096, lab: bool = False, image: int = 1, comp
     (folder / "creds.json").write_text(json.dumps({"user": "Administrator", "password": password}))
     detected = vbox("unattended", "detect", f"--iso={iso}")
     win11, win10 = "Windows11" in detected, "Windows10" in detected
-    vbox("createvm", "--name", name, "--ostype", "Windows11_64" if win11 else "Windows10_64" if win10 else "Windows2025_64",
+    vbox("createvm", "--name", name, "--ostype", os_type(detected),
          "--basefolder", str(folder), "--register")
     vbox("modifyvm", name, "--memory", str(memory), "--cpus", "2", "--firmware", "efi", "--nic1", "nat", "--graphicscontroller", "vboxsvga",
          "--nat-localhostreachable1", "on")  # VirtualBox 7 blocks guest -> host 127.0.0.1 (10.0.2.2) by default

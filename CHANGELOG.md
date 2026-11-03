@@ -16,6 +16,19 @@ Detection and fixes that close the gap with Nessus and Qualys on Windows. **Expe
 - **43 more Windows apps,** including the JetBrains IDEs, Vim, Ruby, Perl, OpenOffice, MySQL, PostgreSQL, MariaDB, MongoDB, Elasticsearch, ImageMagick, Go, Grafana, IntelliJ IDEA, GIMP and calibre; 16 can be updated by a job.
 - **Fixed:** the certificate padding fix sets both registry views; it reported applied while its finding stayed open. MSRC sync retries a dropped connection. The restart notice says Windows may restart sooner than the agent would.
 
+Windows round 2 and the detection engine (tasks/plan-windows-round-2.md; DECISIONS 68–100). **Agent 0.5.0.**
+- **Scan report per host** (`GET /api/assets/{id}/scan-report`, `python -m nimstead.engine`): every check gets a verdict (vulnerable, not vulnerable, not applicable, couldn't be determined, not run) and how sure it is, and the report says what stopped any check and what to do about it. It covers Windows, Debian and RHEL-family packages, network services, Python, npm and Java installs, and SBOMs. Findings still open and close as before.
+- **Attack paths:** each host's report says how its weaknesses chain (getting in, becoming SYSTEM, taking sign-ins, reaching other hosts) and where to break the chain; `GET /api/attack-paths` and the Assets page link one host to the next. No step is better than its evidence: routing between hosts isn't seen, so nothing across hosts reads better than reasonable.
+- **Vulnerable drivers** by exact file hash from LOLDrivers, never by name.
+- **Machine certificates** (expired, weak key, weak signature), and a listener the firewall lets through raises its product's priority, with the process and port named.
+- **Benchmark references:** DISA's Windows Server 2025 and Windows 11 registry rules as a reference per host and fleet, with CSV export. Not a conformance check: manual rules always read "not assessed".
+- **Exploit-DB** as a second public-exploit source; a second install of the same app is named on its finding.
+- **Windows updates across the fleet:** a count per KB, why each host hasn't got it, and one action to plan the rest. Fix first lists setting fixes beside upgrades.
+- **`doctor`** on the agent checks server reach, proxy, clock, tasks, folder permissions, Windows Update, disk and runtime, and says how to fix each failure; the agent keeps a rotating local log with no secrets.
+- **Any Windows language:** settings, user rights, audit policy, proxy and winget are read by ID and SID, not English names (checked on a German install).
+- **Power cuts:** a job interrupted during install or rollback finishes or says honestly that nothing changed; it never stays pending.
+- **Fixed:** Store app firewall rules made every listening port read as allowed. A job on Server 2016–2022 or LTSC no longer blames a missing ESU licence those don't need. One Windows Update search per job instead of one per candidate (the second hung 30 minutes on Server 2022). A host that never installed an update read "last installed 426 years ago".
+
 ## [0.6.0] - 2026-10-29
 
 Windows round 1 (tasks/plan.md; DECISIONS 51–57): Windows detection that covers what Nessus and Qualys report, fixes

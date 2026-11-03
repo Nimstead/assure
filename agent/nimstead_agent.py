@@ -31,7 +31,7 @@ import urllib.parse
 import urllib.request
 import zipfile
 
-AGENT_VERSION = "0.4.0"  # the server reads this line to flag outdated agents; bump on every agent change
+AGENT_VERSION = "0.5.0"  # the server reads this line to flag outdated agents; bump on every agent change
 # Ed25519 public keys (hex) allowed to sign releases (DECISIONS 31): primary (GitHub Actions) and offline backup.
 # The server only relays signed releases, so it can withhold an update but never forge one. Empty = never self-update.
 RELEASE_KEYS = ["a91fa6539c6c2593009fc71b1c1fba341b5685ba7bc97c127c068b1d732b21d2", "2438f2ccebab5bf26edf9e21a8aa8f09abd1861f52fbe0d6641b28b90f8b0e5a"]  # noqa: E501
@@ -3073,11 +3073,51 @@ _update_error = None  # this run's self-update failure, reported with the invent
 def inventory(cfg):
     # auto_update None = can't (no pinned keys), so the server asks for a reinstall rather than blaming an opt-out
     inv = {**collect(), "auto_update": bool(cfg.get("auto_update", True)) if RELEASE_KEYS else None, "update_error": _update_error}
-    if cfg.get("scan_jars"):  # local opt-in only (enroll --scan-jars); the server can't turn it on
-        jars, summary = scan_jars(local_roots())
-        inv["packages"] = [*inv["packages"], *jars]
-        inv["facts"] = {**(inv.get("facts") or {}), "jar_scan": summary}
+    return with_apps(inv, cfg)
+
+
+def with_apps(inv, cfg):
+    """Software outside the package manager, from the local opt-in scans only (enroll --scan-jars, --scan-apps; the server can't turn
+    them on). Each says in the collection document what it read, and `off` when it didn't run, so off reads as not assessed (DECISIONS 92)."""
+    lines = {k: {"state": "off", "count": 0} for k in ("java_archives", "python_packages", "npm_packages")}
+    pkgs, facts = [], {}
+    if cfg.get("scan_jars") or cfg.get("scan_apps"):
+        owned, problem = package_owned()
+        if cfg.get("scan_jars"):
+            jars, facts["jar_scan"] = scan_jars(local_roots(), owned=owned)
+            pkgs += jars
+            lines["java_archives"] = _app_line(len(jars), 0, facts["jar_scan"].get("partial"), [problem] if problem else [])
+        if cfg.get("scan_apps"):
+            apps, py, npm, facts["app_scan"] = scan_apps(cfg.get("app_roots") or [], owned, [problem] if problem else [])
+            pkgs += apps
+            lines.update(python_packages=py, npm_packages=npm)
+    inv["packages"] = [*inv["packages"], *pkgs]
+    if facts:
+        inv["facts"] = {**(inv.get("facts") or {}), **facts}
+    if isinstance((inv.get("collection") or {}).get("sources"), dict):
+        inv["collection"]["sources"].update(lines)
     return inv
+
+
+def _app_line(count, unread, stopped, problems):
+    """A scan's collection line: stopping at its budget or skipping an install it couldn't read leaves it partial, never ok."""
+    said = [*([stopped] if stopped else []), *([f"{unread} installs' metadata couldn't be read"] if unread else []), *problems]
+    if not said:
+        return {"state": "ok", "count": count}
+    return {"state": "partial" if count or stopped else "failed", "count": count, "error": "; ".join(said)[:300]}
+
+
+def _where(path):
+    """A location as the server stores it (255 characters): the end of a long path says more than its start."""
+    return path if len(path) <= 255 else "..." + path[-252:]
+
+
+def net_mounts():
+    try:
+        with open("/proc/mounts") as f:
+            return [ln.split()[1] for ln in f if len(ln.split()) > 2 and ln.split()[2] in NET_FS]
+    except OSError:
+        return []
 
 
 # ---- Java libraries on disk (plan T35): jar/war/ear files and one level of nested jars -> Maven packages ----------
@@ -3105,19 +3145,16 @@ def _poms(z, where, out):
             g, a, v = props.get("groupId", m[1]).strip(), props.get("artifactId", m[2]).strip(), props.get("version", "").strip()
             # bounded so one planted jar can't make the server refuse the whole inventory (names <= 255)
             if v and len(v) <= 100 and SAFE_VERSION.match(v) and re.fullmatch(r"[A-Za-z0-9._-]{1,120}", g) and re.fullmatch(r"[A-Za-z0-9._-]{1,120}", a):
-                out.setdefault((f"{g}:{a}", v), where)
+                out[f"{g}:{a}", v, where] = None
 
 
-def scan_jars(roots, max_seconds=300, max_files=500_000, mounts=None):
+def scan_jars(roots, max_seconds=300, max_files=500_000, mounts=None, owned=lambda p: False):
     """([Maven packages], summary). Stops at the time or file budget and says so; never follows links or enters
-    network mounts. Each finding's file is in the summary's `locations`."""
+    network mounts. One package per file it was found in (T19), named in its `source`; a jar the OS package manager
+    owns is left to it (R7.9) and counted."""
     if mounts is None:
-        try:
-            with open("/proc/mounts") as f:
-                mounts = [ln.split()[1] for ln in f if len(ln.split()) > 2 and ln.split()[2] in NET_FS]
-        except OSError:
-            mounts = []
-    start, files, found, partial = time.time(), 0, {}, None
+        mounts = net_mounts()
+    start, files, found, partial, skipped = time.time(), 0, {}, None, 0
     for root in roots:
         for d, dirs, names in os.walk(root, followlinks=False):
             if JAR_SKIP.match(d) or d in mounts:
@@ -3132,6 +3169,9 @@ def scan_jars(roots, max_seconds=300, max_files=500_000, mounts=None):
                 if not n.lower().endswith((".jar", ".war", ".ear")):
                     continue
                 p = os.path.join(d, n)
+                if owned(p):
+                    skipped += 1
+                    continue
                 try:
                     with zipfile.ZipFile(p) as z:
                         _poms(z, p, found)
@@ -3145,9 +3185,218 @@ def scan_jars(roots, max_seconds=300, max_files=500_000, mounts=None):
                 break
         if partial:
             break
-    pkgs = [{"ecosystem": "Maven", "name": k[0], "version": k[1], "source": None} for k in sorted(found)]
-    return pkgs, {"files": min(files, max_files), "complete": partial is None, **({"partial": partial} if partial else {}),
-                  "locations": [[k[0], k[1], w[-300:]] for k, w in list(sorted(found.items()))[:100]]}
+    pkgs = [{"ecosystem": "Maven", "name": k[0], "version": k[1], "source": _where(k[2])} for k in sorted(found)]
+    return pkgs, {"files": min(files, max_files), "complete": partial is None, **({"partial": partial} if partial else {}), "owned": skipped,
+                  "locations": [[k[0], k[1], k[2][-300:]] for k in sorted(found)[:100]]}
+
+
+# ---- language packages on disk (DECISIONS 92): each install's own metadata file, read; never an interpreter or package manager run ----
+PY_ROOTS = ("/usr/lib/python3*/site-packages", "/usr/lib/python3*/dist-packages", "/usr/lib/python3/dist-packages", "/usr/lib64/python3*/site-packages",
+            "/usr/local/lib/python3*/site-packages", "/usr/local/lib/python3*/dist-packages", "/usr/local/lib64/python3*/site-packages",
+            "/root/.local/lib/python3*/site-packages", "/home/*/.local/lib/python3*/site-packages")
+NPM_ROOTS = ("/usr/lib/node_modules", "/usr/local/lib/node_modules")
+# shortcut: Windows' well-known roots assume the system drive is C:; read %ProgramFiles% and the profile list if hosts differ
+PY_ROOTS_NT = (r"C:\Program Files\Python*\Lib\site-packages", r"C:\Program Files (x86)\Python*\Lib\site-packages", r"C:\Python*\Lib\site-packages",
+               r"C:\Users\*\AppData\Local\Programs\Python\Python*\Lib\site-packages", r"C:\Users\*\AppData\Roaming\Python\Python*\site-packages")
+NPM_ROOTS_NT = (r"C:\Program Files\nodejs\node_modules", r"C:\Users\*\AppData\Roaming\npm\node_modules")
+APP_MAX_SECONDS, APP_MAX_ENTRIES, APP_MAX_PACKAGES = 120, 300_000, 20_000
+APP_MAX_DEPTH = 8  # below a configured root, where site-packages and node_modules folders are looked for
+NPM_MAX_DEPTH = 6  # node_modules inside node_modules
+MAX_METADATA, MAX_PACKAGE_JSON = 64 * 1024, 1024 * 1024
+PY_NAME = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9._-]{0,118}[A-Za-z0-9])?")  # PEP 508
+NPM_NAME = re.compile(r"(?:@[a-z0-9~-][a-z0-9._~-]*/)?[a-z0-9~-][a-z0-9._~-]*")  # npm's rule for package names
+DPKG_INFO = "/var/lib/dpkg/info"
+_OWNED_KEEP = (".dist-info", ".egg-info", ".jar", ".war", ".ear", "/package.json")
+# rpm's database isn't a file we can read without rpm, so there the distribution's own trees are taken as its
+RPM_TREES = re.compile(r"/usr/lib(?:64)?/python3[^/]*/site-packages/|/usr/(?:share|lib)/java/|/usr/lib/node_modules/")
+
+
+def package_owned(dpkg_info=DPKG_INFO, apk_db=APK_DB, which=shutil.which, nt=os.name == "nt"):
+    """(path -> True when the OS package manager owns it, problem). The package manager wins (spec R7.9): what it installed is
+    judged against the distribution's advisories, which know its backports. dpkg's and apk's own file lists are read as files.
+    shortcut: rpm by location, so a `pip install --prefix /usr` there is left to rpm; read rpm's database once it's readable without rpm."""
+    if nt:
+        return (lambda p: False), None
+    owned = set()
+    try:
+        if os.path.exists(apk_db):
+            d = ""
+            with open(apk_db, encoding="utf-8", errors="replace") as f:
+                for ln in f:
+                    if ln.startswith(("F:", "R:")):
+                        p = "/" + ln[2:].strip() if ln[0] == "F" else f"{d}/{ln[2:].strip()}"
+                        d = p if ln[0] == "F" else d
+                        if p.endswith(_OWNED_KEEP):
+                            owned.add(p)
+        elif os.path.isdir(dpkg_info):
+            for n in os.listdir(dpkg_info):
+                if n.endswith(".list"):
+                    with open(os.path.join(dpkg_info, n), encoding="utf-8", errors="replace") as f:
+                        owned.update(x for x in (ln.rstrip("\n") for ln in f) if x.endswith(_OWNED_KEEP))
+        elif which("rpm"):
+            return (lambda p: bool(RPM_TREES.match(p))), None
+    except OSError as e:  # without the list, what the package manager installed would be judged twice: say so
+        return (lambda p: p in owned or p + "/package.json" in owned), f"the package manager's file list couldn't be read: {e.strerror or e}"
+    return (lambda p: p in owned or p + "/package.json" in owned), None
+
+
+def _dist_meta(path):
+    """(PEP 503 name, version) from a core-metadata file's headers (METADATA, PKG-INFO), or None."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            head = f.read(MAX_METADATA)
+    except OSError:
+        return None
+    got = {}
+    for ln in head.split("\n"):
+        if not ln.strip():  # the headers end at the first blank line; the description follows
+            break
+        k, sep, v = ln.partition(":")
+        if sep and k in ("Name", "Version"):
+            got.setdefault(k, v.strip())
+    name, ver = got.get("Name", ""), got.get("Version", "")
+    if PY_NAME.fullmatch(name) and len(ver) <= 100 and SAFE_VERSION.match(ver):
+        return re.sub(r"[-_.]+", "-", name).lower(), ver
+    return None
+
+
+def _package_json(path):
+    try:
+        if os.path.getsize(path) > MAX_PACKAGE_JSON:
+            return None
+        with open(path, encoding="utf-8") as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        return None
+    name, ver = (d.get("name"), d.get("version")) if isinstance(d, dict) else (None, None)
+    if isinstance(name, str) and isinstance(ver, str) and len(name) <= 214 and NPM_NAME.fullmatch(name) and len(ver) <= 100 and SAFE_VERSION.match(ver):
+        return name, ver
+    return None
+
+
+class _Budget:
+    def __init__(self, seconds, entries):
+        self.start, self.seconds, self.entries, self.n, self.stopped = time.time(), seconds, entries, 0, None
+
+    def spent(self):
+        self.n += 1
+        if not self.stopped and (self.n > self.entries or time.time() - self.start > self.seconds):
+            self.stopped = f"stopped after {self.n - 1} entries / {int(time.time() - self.start)} s (budget)"
+        return bool(self.stopped)
+
+
+def _python_dir(sp, out, owned, b, st):
+    try:
+        names = sorted(os.listdir(sp))
+    except OSError:
+        st["unread"] += 1
+        return
+    for n in names:
+        if not n.endswith((".dist-info", ".egg-info")):
+            continue
+        if b.spent():
+            return
+        p = os.path.join(sp, n)
+        if is_link(p):
+            continue
+        if owned(p):
+            st["owned"] += 1
+            continue
+        got = _dist_meta(os.path.join(p, "METADATA" if n.endswith(".dist-info") else "PKG-INFO") if os.path.isdir(p) else p)  # an egg-info can be a file
+        if got:
+            out[("PyPI", *got, p)] = None
+        else:
+            st["unread"] += 1
+
+
+def _npm_dir(nm, out, owned, b, st, depth=0):
+    try:
+        names = sorted(os.listdir(nm))
+    except OSError:
+        st["unread"] += 1
+        return
+    for n in names:
+        p = os.path.join(nm, n)
+        if n.startswith(".") or is_link(p) or not os.path.isdir(p):  # .bin, .package-lock.json; linked packages (npm link, pnpm) aren't followed
+            continue
+        if n.startswith("@"):
+            try:
+                inner = [os.path.join(p, x) for x in sorted(os.listdir(p))]
+            except OSError:
+                st["unread"] += 1
+                continue
+            pkgs = [x for x in inner if not is_link(x) and os.path.isdir(x)]
+        else:
+            pkgs = [p]
+        for pkg in pkgs:
+            if b.spent():
+                return
+            if owned(pkg):
+                st["owned"] += 1
+                continue
+            got = _package_json(os.path.join(pkg, "package.json"))
+            if got:
+                out[("npm", *got, pkg)] = None
+            else:
+                st["unread"] += 1
+            sub = os.path.join(pkg, "node_modules")
+            if depth < NPM_MAX_DEPTH and os.path.isdir(sub) and not is_link(sub):
+                _npm_dir(sub, out, owned, b, st, depth + 1)
+
+
+def _app_dirs(roots, b, mounts, missing, known):
+    """site-packages and node_modules folders: the well-known ones, and any within APP_MAX_DEPTH of a configured root (a venv, a project)."""
+    py_globs, npm_globs = known or ((PY_ROOTS_NT, NPM_ROOTS_NT) if os.name == "nt" else (PY_ROOTS, NPM_ROOTS))
+    py =[p for g in py_globs for p in sorted(glob.glob(g)) if os.path.isdir(p) and not is_link(p)]
+    nm = [p for g in npm_globs for p in sorted(glob.glob(g)) if os.path.isdir(p) and not is_link(p)]
+    for root in roots:
+        if not os.path.isdir(root):
+            missing.append(f"{root[-120:]}: not a folder")
+            continue
+        top = os.path.basename(root.rstrip("\\/"))
+        if top in ("site-packages", "dist-packages", "node_modules"):  # the root is itself an install folder
+            (nm if top == "node_modules" else py).append(root)
+            continue
+        base = os.path.abspath(root).rstrip("\\/").count(os.sep)
+        for d, dirs, _ in os.walk(root, followlinks=False):
+            if b.spent() or JAR_SKIP.match(d) or d in mounts or d.count(os.sep) - base >= APP_MAX_DEPTH:
+                dirs[:] = []
+                continue
+            keep = []
+            for x in dirs:
+                p = os.path.join(d, x)
+                if is_link(p) or x in (".git", "__pycache__"):
+                    continue
+                if x in ("site-packages", "dist-packages"):
+                    py.append(p)
+                elif x == "node_modules":
+                    nm.append(p)
+                else:
+                    keep.append(x)
+            dirs[:] = keep
+    return list(dict.fromkeys(py)), list(dict.fromkeys(nm))
+
+
+def scan_apps(roots, owned=lambda p: False, problems=(), seconds=APP_MAX_SECONDS, entries=APP_MAX_ENTRIES, max_packages=APP_MAX_PACKAGES,
+              mounts=None, known=None):
+    """([PyPI and npm packages, each with where it is in `source`], python line, npm line, summary). Reads only: the well-known install
+    folders (`known`: their globs) and the configured roots, bounded in depth, entries, file size, packages and time, and says where it
+    stopped (DECISIONS 92)."""
+    b, missing = _Budget(seconds, entries), [*problems]
+    py_dirs, npm_dirs = _app_dirs(roots, b, net_mounts() if mounts is None else mounts, missing, known)
+    out, st, stopped = {}, {"PyPI": {"unread": 0, "owned": 0}, "npm": {"unread": 0, "owned": 0}}, {}
+    for eco, dirs, scan in (("PyPI", py_dirs, _python_dir), ("npm", npm_dirs, _npm_dir)):
+        for d in dirs:
+            if b.stopped:
+                break
+            scan(d, out, owned, b, st[eco])
+            if len(out) > max_packages:
+                b.stopped = f"stopped at {max_packages} installs (budget)"
+        stopped[eco] = b.stopped  # where it stopped: what was read in full before that stays ok
+    pkgs = [{"ecosystem": e, "name": n, "version": v, "source": _where(w)} for e, n, v, w in sorted(out)][:max_packages]
+    lines = [_app_line(sum(p["ecosystem"] == e for p in pkgs), st[e]["unread"], stopped[e], missing) for e in ("PyPI", "npm")]
+    return pkgs, *lines, {"owned": st["PyPI"]["owned"] + st["npm"]["owned"], "folders": len(py_dirs) + len(npm_dirs), "entries": b.n,
+                          "seconds": int(time.time() - b.start), "roots": [r[-300:] for r in roots[:20]]}
 
 
 # ---- doctor: reads this host and changes nothing (DECISIONS 69) ---------------------
@@ -3361,6 +3610,20 @@ def main(argv=None):
         _log_on = False
 
 
+def app_flags(p):
+    p.add_argument("--scan-apps", action="store_true",
+                   help="also read Python and npm packages' own metadata (site-packages, node_modules) in the usual install folders "
+                        "and under each --app-root, within a 2-minute budget; nothing is run")
+    p.add_argument("--app-root", action="append", default=[], metavar="DIR",
+                   help="with --scan-apps: a folder holding virtualenvs or projects, searched 8 levels deep (repeatable)")
+
+
+def app_roots(a):
+    if a.app_root and not a.scan_apps:
+        raise AgentError("--app-root needs --scan-apps")
+    return [os.path.abspath(r) for r in a.app_root[:20]]
+
+
 def _main(argv):
     global _log_on
     ap = argparse.ArgumentParser(prog="nimstead-agent")
@@ -3379,6 +3642,7 @@ def _main(argv):
                     help="Windows, domain member: also report the domain's enabled computers, to list those with no agent")
     en.add_argument("--scan-jars", action="store_true",
                     help="also look for Java libraries (jar/war/ear) on local disks at each report, within a 5-minute budget")
+    app_flags(en)
     en.add_argument("--no-auto-update", action="store_true",
                     help="never replace this agent with newer signed releases (default: update automatically)")
     en.add_argument("--proxy", help="send all traffic to the server through this proxy (http://host:port); "
@@ -3386,7 +3650,9 @@ def _main(argv):
     en.add_argument("--channel", choices=CHANNELS, default="stable",
                     help="least proven signed releases this agent takes (the installer passes its server's channel)")
     sub.add_parser("report")
-    sub.add_parser("collect")
+    co = sub.add_parser("collect", help="print this host's inventory; the opt-in scans run only if named here")
+    co.add_argument("--scan-jars", action="store_true", help="include Java libraries on local disks")
+    app_flags(co)
     sub.add_parser("doctor", help="check this host's setup and print how to fix each failure; changes nothing")
     sr = sub.add_parser("scan-remote", help="Windows: scan other hosts with no agent, over PowerShell remoting, as you (no stored credentials)")
     sr.add_argument("--server", help="report here; NIMSTEAD_TOKEN enrols hosts the first time")
@@ -3413,7 +3679,7 @@ def _main(argv):
             _log_on = True
             log_event(f"run start: {a.cmd}, agent {AGENT_VERSION}")
         if a.cmd == "collect":
-            print(json.dumps(collect(), indent=2))
+            print(json.dumps(with_apps(collect(), {"scan_jars": a.scan_jars, "scan_apps": a.scan_apps, "app_roots": app_roots(a)}), indent=2))
         elif a.cmd == "doctor":
             return doctor(a.insecure_http)
         elif a.cmd == "scan-remote":
@@ -3436,7 +3702,7 @@ def _main(argv):
             # only the fields we expect from the server, and local choices last: the server can't opt a host in
             cfg = {"asset_id": res.get("asset_id"), "agent_key": res["agent_key"], "server": a.server,
                    "allow_remediation": a.allow_remediation, "auto_update": not a.no_auto_update, "channel": a.channel,
-                   "scan_jars": a.scan_jars, "ad_discovery": a.ad_discovery,
+                   "scan_jars": a.scan_jars, "scan_apps": a.scan_apps, "app_roots": app_roots(a), "ad_discovery": a.ad_discovery,
                    **({"windows_update_source": "microsoft"} if a.windows_update_source == "microsoft" else {}),
                    **({"proxy": a.proxy} if a.proxy else {})}
             print("enrolled as asset {}; config saved to {}".format(res.get("asset_id"), save_config(cfg)))

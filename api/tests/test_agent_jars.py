@@ -24,7 +24,9 @@ def test_finds_log4j_inside_a_fat_jar_and_names_the_file(tmp_path):
     app.write_bytes(jar({"BOOT-INF/lib/log4j-core-2.14.1.jar": inner, "META-INF/MANIFEST.MF": "x"}))
     (tmp_path / "srv" / "broken.jar").write_bytes(b"not a zip")
     pkgs, summary = agent.scan_jars([str(tmp_path)], mounts=[])
-    assert pkgs == [{"ecosystem": "Maven", "name": "org.apache.logging.log4j:log4j-core", "version": "2.14.1", "source": None}]
+    [pkg] = pkgs  # one row per file it's in, named in its source (T19)
+    assert {k: pkg[k] for k in ("ecosystem", "name", "version")} == {"ecosystem": "Maven", "name": "org.apache.logging.log4j:log4j-core", "version": "2.14.1"}
+    assert pkg["source"].endswith("billing.jar!/BOOT-INF/lib/log4j-core-2.14.1.jar")
     [[name, ver, where]] = summary["locations"]
     assert summary["complete"] and (name, ver) == ("org.apache.logging.log4j:log4j-core", "2.14.1")
     assert where.endswith("billing.jar!/BOOT-INF/lib/log4j-core-2.14.1.jar")
@@ -44,7 +46,7 @@ def test_unsafe_coordinates_are_ignored(tmp_path):
 
 def test_only_when_the_host_opted_in(monkeypatch):
     monkeypatch.setattr(agent, "collect", lambda: {"packages": [], "facts": {}})
-    monkeypatch.setattr(agent, "scan_jars", lambda roots: ([{"ecosystem": "Maven", "name": "g:a", "version": "1", "source": None}], {"complete": True}))
+    monkeypatch.setattr(agent, "scan_jars", lambda roots, owned: ([{"ecosystem": "Maven", "name": "g:a", "version": "1", "source": None}], {"complete": True}))
     assert agent.inventory({})["packages"] == []
     inv = agent.inventory({"scan_jars": True})
     assert inv["packages"][0]["name"] == "g:a" and inv["facts"]["jar_scan"] == {"complete": True}

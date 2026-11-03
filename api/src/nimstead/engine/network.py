@@ -163,12 +163,16 @@ class Prober:
                     ctx = ssl.create_default_context()
                     ctx.check_hostname, ctx.verify_mode = False, ssl.CERT_NONE  # content, not trust: the certificate is judged by the TLS check
                     sock = ctx.wrap_socket(raw, server_hostname=self.host)
-                sock.settimeout(max(0.1, deadline - time.monotonic()))
                 if payload:
                     sock.sendall(payload)
                 data = b""
                 while len(data) < read_bytes and time.monotonic() < deadline:
-                    chunk = sock.recv(read_bytes)
+                    # a short per-read timeout: a greeting arrives at once, and a silent service mustn't eat the deadline
+                    sock.settimeout(min(2.0, max(0.1, deadline - time.monotonic())))
+                    try:
+                        chunk = sock.recv(read_bytes)
+                    except (OSError, ssl.SSLError):
+                        break  # keep the bytes already read: a partial greeting is still evidence
                     if not chunk:
                         break
                     data += chunk

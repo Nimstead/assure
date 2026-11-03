@@ -164,30 +164,48 @@ UNINSTALL = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
 USER_SID = re.compile(r"^S-1-5-21-[0-9-]+\Z")
 
 
-def windows_apps(reg, users=None):
+def _read_problem(where, e):
+    """A failed read in words we write ourselves: the state comes from the error's type, never its translated text (DECISIONS 68, 80)."""
+    denied = isinstance(e, PermissionError) or getattr(e, "winerror", None) == 5
+    return f"{where}: access denied" if denied else f"{where}: {type(e).__name__} {getattr(e, 'winerror', '') or ''}".strip()
+
+
+def _list_ended(e):
+    """winreg ends every enumeration with an OSError; only ERROR_NO_MORE_ITEMS means the list was read to its end."""
+    return getattr(e, "winerror", None) in (None, 259)
+
+
+def windows_apps(reg, users=None, problems=None):
     """Installed apps from the registry Uninstall keys: HKLM 64-bit and 32-bit views, then every loaded user hive
     (per-user installs such as VS Code (User); the agent runs as SYSTEM, whose own HKCU has none), then HKCU.
     Profiles of users who aren't signed in are read by offline_user_apps. `users`: only these HKU keys.
     `reg` is the winreg module (or a fake). Skips SystemComponent=1 and entries without a name or version.
-    The publisher travels in `source`; the server decides which apps it can match (curated map only)."""
+    The publisher travels in `source`; the server decides which apps it can match (curated map only).
+    `problems` gets a line for each read that failed, as against a key that simply isn't there (R4.3)."""
     seen, out = set(), []
+    problems = problems if problems is not None else []
     if users is not None:
         places = [(reg.HKEY_USERS, u + "\\" + UNINSTALL, 0) for u in users]
     else:
         places = [(reg.HKEY_LOCAL_MACHINE, UNINSTALL, reg.KEY_WOW64_64KEY), (reg.HKEY_LOCAL_MACHINE, UNINSTALL, reg.KEY_WOW64_32KEY)]
-        places += [(reg.HKEY_USERS, sid + "\\" + UNINSTALL, 0) for sid in _subkeys(reg, reg.HKEY_USERS, "") if USER_SID.match(sid)]
+        places += [(reg.HKEY_USERS, sid + "\\" + UNINSTALL, 0) for sid in _subkeys(reg, reg.HKEY_USERS, "", problems) if USER_SID.match(sid)]
         places.append((reg.HKEY_CURRENT_USER, UNINSTALL, 0))
     for hive, path, view in places:
         try:
             root = reg.OpenKey(hive, path, 0, reg.KEY_READ | view)
-        except OSError:
+        except FileNotFoundError:
+            continue
+        except OSError as e:
+            problems.append(_read_problem(path, e))
             continue
         with root:
             i = 0
             while True:
                 try:
                     sub = reg.EnumKey(root, i)
-                except OSError:
+                except OSError as e:
+                    if not _list_ended(e):
+                        problems.append(_read_problem(path, e))
                     break
                 i += 1
                 try:
@@ -198,7 +216,10 @@ def windows_apps(reg, users=None):
                             except OSError:
                                 return None
                         name, ver, pub, sysc = val("DisplayName"), val("DisplayVersion"), val("Publisher"), val("SystemComponent")
-                except OSError:
+                except FileNotFoundError:  # uninstalled while we read
+                    continue
+                except OSError as e:
+                    problems.append(_read_problem(path + "\\" + sub, e))
                     continue
                 if sysc == 1 or not isinstance(name, str) or not isinstance(ver, str) or not name.strip() or not ver.strip():
                     continue
@@ -213,45 +234,58 @@ def windows_apps(reg, users=None):
 PROFILES = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList"
 
 
-def offline_user_apps(reg, run=None, loaded=None):
+def offline_user_apps(reg, run=None, loaded=None, problems=None):
     """Per-user apps of profiles whose hive isn't loaded (users not signed in): each NTUSER.DAT is loaded under a
     temporary HKU key, its Uninstall key read with windows_apps, and unloaded at once, also on error, so a user signing
-    in a moment later still gets their own profile. Needs SYSTEM or an elevated admin; otherwise nothing is read."""
+    in a moment later still gets their own profile. Needs SYSTEM or an elevated admin; otherwise nothing is read,
+    and `problems` says which profiles."""
     run = run or sh
-    loaded = set(loaded if loaded is not None else _subkeys(reg, reg.HKEY_USERS, ""))
+    problems = problems if problems is not None else []
+    loaded = set(loaded if loaded is not None else _subkeys(reg, reg.HKEY_USERS, "", problems))
     out = []
-    for sid in _subkeys(reg, reg.HKEY_LOCAL_MACHINE, PROFILES):
+    for sid in _subkeys(reg, reg.HKEY_LOCAL_MACHINE, PROFILES, problems):
         if not USER_SID.match(sid) or sid in loaded:
             continue
         try:
             with reg.OpenKey(reg.HKEY_LOCAL_MACHINE, PROFILES + "\\" + sid) as k:
                 home = os.path.expandvars(str(reg.QueryValueEx(k, "ProfileImagePath")[0]))
-        except OSError:
+        except OSError as e:
+            problems.append(_read_problem("profile " + sid, e))
             continue
         hive = os.path.join(home, "NTUSER.DAT")
-        if not os.path.isfile(hive) or is_link(home):
+        if not os.path.isfile(hive):  # a profile that was never used has no hive and no apps
+            continue
+        if is_link(home):
+            problems.append(f"profile {sid}: its folder is a link, not read")
             continue
         tmp = "NimsteadOffline_" + sid.replace("-", "_")
         rc, _ = run(["reg", "load", "HKU\\" + tmp, hive])
         if rc != 0:  # in use (signed in after all) or no privilege: skip it
+            problems.append(f"profile {sid}: its hive couldn't be loaded")
             continue
         try:
-            out += windows_apps(reg, users=[tmp])
+            out += windows_apps(reg, users=[tmp], problems=problems)
         finally:
             run(["reg", "unload", "HKU\\" + tmp])
     return out
 
 
-def _subkeys(reg, root, path):
+def _subkeys(reg, root, path, problems=None):
+    problems = problems if problems is not None else []
     try:
         k = reg.OpenKey(root, path) if path else root
-    except OSError:
+    except FileNotFoundError:
+        return []
+    except OSError as e:
+        problems.append(_read_problem(path or "HKEY_USERS", e))
         return []
     names, i = [], 0
     while True:
         try:
             names.append(reg.EnumKey(k, i))
-        except OSError:
+        except OSError as e:
+            if not _list_ended(e):
+                problems.append(_read_problem(path or "HKEY_USERS", e))
             return names
         i += 1
 
@@ -261,17 +295,25 @@ def collect_windows(winreg=None, run=None, machine=None, dotnet_dirs=None):
     remote = winreg is not None
     if not remote:
         import winreg
-    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion", 0,
-                        winreg.KEY_READ | winreg.KEY_WOW64_64KEY) as k:
-        def val(name, default=""):
-            try:
-                return winreg.QueryValueEx(k, name)[0]
-            except OSError:
-                return default
-        build, ubr = int(val("CurrentBuild", 0) or 0), int(val("UBR", 0))
-        dv = val("DisplayVersion") or val("ReleaseId")
-        product, itype = val("ProductName"), val("InstallationType")
-        edition = val("EditionID")
+    build, ubr, dv, product, itype, edition, read_error = 0, None, "", "", "", "", None
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion", 0,
+                            winreg.KEY_READ | winreg.KEY_WOW64_64KEY) as k:
+            def val(name, default=""):
+                try:
+                    return winreg.QueryValueEx(k, name)[0]
+                except OSError:
+                    return default
+            build, ubr = int(val("CurrentBuild", 0) or 0), val("UBR", None)
+            dv = val("DisplayVersion") or val("ReleaseId")
+            product, itype = val("ProductName"), val("InstallationType")
+            edition = val("EditionID")
+    except OSError as e:  # still report the apps, and say the build wasn't read
+        read_error = _read_problem(r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion", e)
+    build_read = _source(0, read_error or "CurrentBuild not found", failed=True) if read_error or not build else None
+    if build >= 10240 and ubr is None:
+        build_read = _source(1, "UBR not found: the build's revision is unknown")
+    ubr = int(ubr or 0)
     machine = machine or platform.machine()
     name = msrc_product_name(build, dv, itype, machine)
     version = f"10.0.{build}.{ubr}"
@@ -285,16 +327,39 @@ def collect_windows(winreg=None, run=None, machine=None, dotnet_dirs=None):
         facts["os_product"], facts["os_unmatched"] = name, f"{name} has no update build revision to compare with MSRC fixes"
     else:
         os_pkg = [{"ecosystem": "Windows", "name": name, "version": version, "source": None}]
-    ms, problem = windows_microsoft(winreg, run, dotnet_dirs)
-    if problem:
-        facts["microsoft_check"] = problem
-    host, problem = windows_host_facts(run)
+    ms, ms_problem = windows_microsoft(winreg, run, dotnet_dirs)
+    if ms_problem:
+        facts["microsoft_check"] = ms_problem
+    host, host_problem = windows_host_facts(run)
     facts.update(host)
-    if problem:
-        facts["host_check"] = problem
-    drivers, facts["driver_scan"] = windows_drivers(run)
+    if host_problem:
+        facts["host_check"] = host_problem
+    drivers, driver_scan = windows_drivers(run)
+    facts["driver_scan"] = driver_scan
+    app_problems, hive_problems = [], []
+    apps = windows_apps(winreg, problems=app_problems)
+    offline = [] if remote else offline_user_apps(winreg, problems=hive_problems)
+    unread = [k for k in ("pending_reboot", "baseline") if host.get(k) is None]
+    # no judgement here: it only says what was read and how far it got (R4.3, spec section 14). The server decides what follows
+    sources = {"windows_build": build_read or _source(len(os_pkg)),
+               "uninstall": _source(len(apps), "; ".join(app_problems)),
+               "user_hives": ({"state": "partial", "count": 0, "error": "profiles of users who aren't signed in aren't read over remoting"}
+                              if remote else _source(len(offline), "; ".join(hive_problems))),
+               "microsoft_products": _source(len(ms), ms_problem),
+               "host_facts": _source(0, host_problem, failed=True) if host_problem else _source(len(host), f"not read: {', '.join(unread)}" if unread else None),
+               "drivers": _source(len(drivers), None if driver_scan.get("complete") else driver_scan.get("problem") or "not every driver file was read")}
     return {"os_name": f"{product} {dv} ({machine}) build {version}", "ecosystem": "Windows", "agent_version": AGENT_VERSION,
-            "facts": facts, "packages": [*os_pkg, *windows_apps(winreg), *([] if remote else offline_user_apps(winreg)), *ms, *drivers]}
+            "facts": facts, "collection": {"v": 1, "sources": sources}, "packages": [*os_pkg, *apps, *offline, *ms, *drivers]}
+
+
+def _source(count, problem=None, failed=False):
+    """One line of the collection document: a list that was read and came back empty must not look like a read that failed (DECISIONS 80)."""
+    d = {"state": "failed" if failed or (problem and not count) else "partial" if problem else "ok", "count": count}
+    if problem:
+        d["error"] = problem[:300]
+        if "access denied" in problem:  # our own wording (_read_problem), never Windows'
+            d["code"] = "access-denied"
+    return d
 
 
 # ---- agentless: an admin scans hosts from their own machine, as themselves. PowerShell remoting carries their identity,
@@ -302,8 +367,12 @@ def collect_windows(winreg=None, run=None, machine=None, dotnet_dirs=None):
 PS_REMOTE_DUMP = r"""
 $ErrorActionPreference = 'SilentlyContinue'
 $keys = [ordered]@{}
+$denied = New-Object Collections.ArrayList
+# a read that failed, as against a key that isn't there: by error category, whose name isn't translated
+function Note($p, $errs) { foreach ($e in $errs) { if ($e.CategoryInfo.Category -ne 'ObjectNotFound' -and $denied.Count -lt 50) { [void]$denied.Add($p.ToLower()); break } } }
 function Dump($p) {
-  $k = Get-Item -LiteralPath "Registry::$p"
+  $ev = $null; $k = Get-Item -LiteralPath "Registry::$p" -ErrorVariable ev
+  Note $p $ev
   if (-not $k) { return @() }
   $v = @{}
   foreach ($n in $k.GetValueNames()) { $d = $k.GetValue($n); if ($d -is [string] -or $d -is [int] -or $d -is [long]) { $v[$n] = $d } }
@@ -321,9 +390,11 @@ $sql = $keys["$lm\Microsoft SQL Server\Instance Names\SQL".ToLower()]
 if ($sql) { foreach ($id in $sql.values.Values) { Dump "$lm\Microsoft SQL Server\$id\Setup" | Out-Null } }
 $dirs = @{}
 foreach ($r in "$env:ProgramFiles\dotnet", "$env:ProgramFiles\dotnet\x64", "${env:ProgramFiles(x86)}\dotnet") {
-  foreach ($s in 'shared\Microsoft.NETCore.App', 'shared\Microsoft.AspNetCore.App', 'sdk') { $dirs[("$r\$s").ToLower()] = @(Get-ChildItem -LiteralPath "$r\$s" -Directory | ForEach-Object Name) }
+  foreach ($s in 'shared\Microsoft.NETCore.App', 'shared\Microsoft.AspNetCore.App', 'sdk') {
+    $ev = $null; $dirs[("$r\$s").ToLower()] = @(Get-ChildItem -LiteralPath "$r\$s" -Directory -ErrorVariable ev | ForEach-Object Name); Note "$r\$s" $ev
+  }
 }
-ConvertTo-Json -Compress -Depth 6 -InputObject @{ host = $env:COMPUTERNAME; machine = $env:PROCESSOR_ARCHITECTURE; keys = $keys; dirs = $dirs }
+ConvertTo-Json -Compress -Depth 6 -InputObject @{ host = $env:COMPUTERNAME; machine = $env:PROCESSOR_ARCHITECTURE; keys = $keys; dirs = $dirs; denied = @($denied) }
 """
 SAFE_HOSTNAME = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,252})\Z")
 
@@ -343,8 +414,8 @@ class RemoteReg:
         def __exit__(self, *a):
             return False
 
-    def __init__(self, keys):
-        self.keys = keys
+    def __init__(self, keys, denied=()):
+        self.keys, self.denied = keys, set(denied)
 
     def OpenKey(self, root, path, reserved=0, access=0):
         base = root.path if isinstance(root, self.Key) else root
@@ -352,8 +423,10 @@ class RemoteReg:
         if access & self.KEY_WOW64_32KEY and path.startswith("software\\"):
             path = "software\\wow6432node\\" + path[len("software\\"):]
         full = f"{base}\\{path}".rstrip("\\")
+        if full in self.denied:
+            raise PermissionError(full)
         if full not in self.keys:
-            raise OSError(full)
+            raise FileNotFoundError(full)
         return self.Key(full, self.keys[full])
 
     def EnumKey(self, k, i):
@@ -397,12 +470,15 @@ def collect_remote(host, run=None):
     if not isinstance(d, dict) or not isinstance(d.get("keys"), dict) or not isinstance(d.get("dirs"), dict):
         raise AgentError(f"{host}: couldn't read it over PowerShell remoting: {out.strip()[-300:]}")
     dirs = {str(k).lower(): v for k, v in d["dirs"].items()}
+    denied = {str(x).lower() for x in d.get("denied") or [] if isinstance(x, str)}
 
     def dotnet_dirs(path):
+        if path.lower() in denied:
+            raise PermissionError(path)
         got = dirs.get(path.lower()) or []
         return [str(x) for x in got] if isinstance(got, list) else [str(got)]
     machine = {"AMD64": "AMD64", "ARM64": "ARM64"}.get(str(d.get("machine")), "AMD64")
-    return str(d.get("host") or host)[:255], collect_windows(RemoteReg(d["keys"]), remote, machine, dotnet_dirs)
+    return str(d.get("host") or host)[:255], collect_windows(RemoteReg(d["keys"], denied), remote, machine, dotnet_dirs)
 
 
 def scan_remote(server, hosts, token, insecure_http=False, keys_path=None, run=None, post_fn=None):
@@ -447,42 +523,57 @@ $sp = Join-Path $env:CommonProgramFiles 'microsoft shared\Web Server Extensions\
 if (Test-Path -LiteralPath $sp) { $o.sharepoint = (Get-Item -LiteralPath $sp).VersionInfo.FileVersionRaw.ToString() }
 $fx = Join-Path $env:windir $(if ([Environment]::Is64BitOperatingSystem) { 'Microsoft.NET\Framework64\v4.0.30319\mscorlib.dll' } else { 'Microsoft.NET\Framework\v4.0.30319\mscorlib.dll' })
 if (Test-Path -LiteralPath $fx) { $o.netfx = (Get-Item -LiteralPath $fx).VersionInfo.FileVersion }
-$apps = try { Get-AppxPackage -AllUsers -ErrorAction Stop } catch { Get-AppxPackage -ErrorAction SilentlyContinue }  # -AllUsers needs elevation; SYSTEM has it
+$short = @()  # what couldn't be read in full, as against a product that isn't there
+$apps = try { Get-AppxPackage -AllUsers -ErrorAction Stop } catch { $short += 'Store apps of other users'; Get-AppxPackage -ErrorAction SilentlyContinue }  # -AllUsers needs elevation; SYSTEM has it
 $o.store = @($apps | Where-Object { @(%STORE%) -contains $_.Name } | ForEach-Object { @{ name = $_.Name; version = $_.Version.ToString() } })
 $mp = Get-MpComputerStatus -ErrorAction SilentlyContinue
 if ($mp) { $o.defender = @{ platform = $mp.AMProductVersion; engine = $mp.AMEngineVersion; mode = "$($mp.AMRunningMode)" } }
+elseif (Get-Service -Name WinDefend -ErrorAction SilentlyContinue) { $short += 'Defender status' }
+$o.short = @($short)
 ConvertTo-Json -Compress -Depth 4 -InputObject $o
 """.replace("%STORE%", ", ".join(f"'{n}'" for n in STORE_PACKAGES))
 
 
-def _reg_values(reg, path, view):
-    """Value names and data under HKLM\\path in one registry view; [] if missing."""
+def _reg_values(reg, path, view, problems=None):
+    """Value names and data under HKLM\\path in one registry view; [] if missing. A failed read goes in `problems`."""
+    problems = problems if problems is not None else []
     try:
         k = reg.OpenKey(reg.HKEY_LOCAL_MACHINE, path, 0, reg.KEY_READ | view)
-    except OSError:
+    except FileNotFoundError:
+        return []
+    except OSError as e:
+        problems.append(_read_problem(path, e))
         return []
     out, i = [], 0
     with k:
         while True:
             try:
                 name, data, _ = reg.EnumValue(k, i)
-            except OSError:
+            except OSError as e:
+                if not _list_ended(e):
+                    problems.append(_read_problem(path, e))
                 return out
             out.append((name, data))
             i += 1
 
 
 def _dirs(path):
-    try:
-        return [e.name for e in os.scandir(path) if e.is_dir(follow_symlinks=False)]
-    except OSError:
-        return []
+    return [e.name for e in os.scandir(path) if e.is_dir(follow_symlinks=False)]
 
 
 def windows_microsoft(reg, run=None, dotnet_dirs=None):
     """(packages, problem): .NET and ASP.NET Core runtimes, SQL Server instances, Exchange, SharePoint, Store apps and
     Defender, as ecosystem "Microsoft" facts. A PowerShell failure costs only those facts, never the inventory."""
-    out, seen = [], set()
+    out, seen, problems = [], set(), []
+
+    def folders(path):
+        try:
+            return (dotnet_dirs or _dirs)(path)
+        except FileNotFoundError:
+            return []
+        except OSError as e:
+            problems.append(_read_problem(path, e))
+            return []
 
     def add(name, version, source=None):
         item = (name, str(version).strip()[:100], source)
@@ -495,7 +586,7 @@ def windows_microsoft(reg, run=None, dotnet_dirs=None):
     for root, arch in ((os.path.join(pf, "dotnet"), "native"), (os.path.join(pf, "dotnet", "x64"), "x64"), (os.path.join(pf86, "dotnet"), "x86")):
         for fx, name in (("Microsoft.NETCore.App", ".NET runtime"), ("Microsoft.AspNetCore.App", "ASP.NET Core")):
             newest = {}
-            for v in (dotnet_dirs or _dirs)(os.path.join(root, "shared", fx)):
+            for v in folders(os.path.join(root, "shared", fx)):
                 if re.fullmatch(r"\d+\.\d+\.\d+", v):
                     mm = tuple(v.split(".")[:2])
                     if mm not in newest or version_tuple(v) > version_tuple(newest[mm]):
@@ -503,18 +594,18 @@ def windows_microsoft(reg, run=None, dotnet_dirs=None):
             for v in newest.values():
                 add(name, v, arch)
         newest = {}  # SDKs: newest of each feature band (8.0.1xx, 8.0.4xx), which Microsoft patches separately
-        for v in (dotnet_dirs or _dirs)(os.path.join(root, "sdk")):
+        for v in folders(os.path.join(root, "sdk")):
             if re.fullmatch(r"\d+\.\d+\.\d{3,}", v):
                 band = (*v.split(".")[:2], v.split(".")[2][:-2])
                 if band not in newest or version_tuple(v) > version_tuple(newest[band]):
                     newest[band] = v
         for v in newest.values():
             add(".NET SDK", v, arch)
-    c2r = dict(_reg_values(reg, r"SOFTWARE\Microsoft\Office\ClickToRun\Configuration", reg.KEY_WOW64_64KEY))
+    c2r = dict(_reg_values(reg, r"SOFTWARE\Microsoft\Office\ClickToRun\Configuration", reg.KEY_WOW64_64KEY, problems))
     if c2r.get("VersionToReport"):  # Microsoft 365 Apps / Office LTSC; a policy-set UpdateChannel wins over the CDN it came from
         add("Microsoft 365 Apps", c2r["VersionToReport"], str(c2r.get("UpdateChannel") or c2r.get("CDNBaseUrl") or "")[:200] or None)
-    for inst, iid in _reg_values(reg, r"SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL", reg.KEY_WOW64_64KEY):
-        for n, v in _reg_values(reg, rf"SOFTWARE\Microsoft\Microsoft SQL Server\{iid}\Setup", reg.KEY_WOW64_64KEY):
+    for inst, iid in _reg_values(reg, r"SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL", reg.KEY_WOW64_64KEY, problems):
+        for n, v in _reg_values(reg, rf"SOFTWARE\Microsoft\Microsoft SQL Server\{iid}\Setup", reg.KEY_WOW64_64KEY, problems):
             if n == "PatchLevel":
                 add("SQL Server", v, str(inst)[:100])
     rc, text = ps(run or sh, PS_MICROSOFT)
@@ -523,7 +614,7 @@ def windows_microsoft(reg, run=None, dotnet_dirs=None):
     except (ValueError, IndexError):
         d = None
     if not isinstance(d, dict):
-        return out, f"Microsoft product check failed: {text.strip()[-200:]}"
+        return out, "; ".join([*problems, f"Microsoft product check failed: {text.strip()[-200:]}"])
     if d.get("exchange"):
         add("Exchange Server", d["exchange"])
     if d.get("sharepoint"):
@@ -538,7 +629,8 @@ def windows_microsoft(reg, run=None, dotnet_dirs=None):
     for part in ("platform", "engine"):
         if df.get(part):
             add(f"Defender {part}", df[part], df.get("mode") or None)
-    return out, None
+    short = [str(x)[:60] for x in d.get("short") or []][:5] if isinstance(d.get("short"), list) else []
+    return out, "; ".join([*problems, *(f"not read: {x}" for x in short)]) or None
 
 
 # Host state the server evaluates (winconfig.py, plan T10-T12, T36, T37, T42): a closed list read from fixed places.

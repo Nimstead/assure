@@ -153,7 +153,7 @@ class Reg:
 
     def OpenKey(self, root, path, res=0, access=0):  # noqa: N802 - winreg's names
         if path not in self.keys:
-            raise OSError(path)
+            raise FileNotFoundError(path)
         return Key(self.keys[path])
 
     def EnumValue(self, k, i):  # noqa: N802

@@ -594,7 +594,7 @@ def test_offline_profiles_are_loaded_read_and_always_unloaded(tmp_path):
 
 def test_offline_hive_unloaded_even_when_reading_fails(tmp_path, monkeypatch):
     reg = OfflineReg(tmp_path)
-    monkeypatch.setattr(agent, "windows_apps", lambda r, users=None: (_ for _ in ()).throw(OSError("corrupt hive")))
+    monkeypatch.setattr(agent, "windows_apps", lambda r, users=None, problems=None: (_ for _ in ()).throw(OSError("corrupt hive")))
     with pytest.raises(OSError):
         agent.offline_user_apps(reg, reg.run, loaded=[])
     assert reg.log[-1][:2] == ["reg", "unload"]

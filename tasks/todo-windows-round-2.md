@@ -24,7 +24,8 @@ Found while planning: `agent/nimstead_agent.py:551` compares ACL names with Engl
 so on a localised Windows the service permission check would silently find nothing.
 - [x] That check compares SIDs; tested on real ACLs by SID (a German name can't be faked on an English host, so the German install below is the proof)
 - [x] Agent's tool output reviewed by reading: the WinHTTP proxy label and winget's hash label were language-dependent too, both fixed (DECISIONS 68). `dism` passes `/english`; `reg` and `secedit` read fixed names. Not confirmed: whether the ESU licence name is translated, and whether the German test strings match real output
-- [ ] German evaluation install: enrol, report, settings audit and one update with rollback match the English results
+- [x] German evaluation install (de-DE LTSC 2021, `last_run_windows10_de.json`): enrolled and reported; Windows Update's German titles ("Kumulatives Update") give the same oracle result as the English run (KB5122878 agrees, the same .NET CU unexplained); the settings audit read 29 audit subcategories by GUID, 30 user rights by SID and 101 registry values, 12 settings findings; the collection document is ok for every source
+- [ ] German update with rollback: blocked like the English one, the evaluation image's licence service powered the VM off an hour after boot, mid-install (VBox.log, 01:00:30). Needs non-evaluation media (owner)
 - Verify: `sandbox/last_run_windows_de.json`. Files: agent, `test_agent_*`, `winvm.py` (locale option). Deps: none.
 
 ### W3: Side-by-side with Greenbone, then Nessus and Qualys (M)

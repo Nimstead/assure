@@ -31,7 +31,7 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import Integer, and_, delete, func, or_, select
 from sqlalchemy.orm import Session
 
-from nimstead import ai, evidence, external, lifecycle, mfa, notify, remediate, sbom, sso, updates, winbaseline, windrivers
+from nimstead import ai, engine, evidence, external, lifecycle, mfa, notify, remediate, sbom, sso, updates, winbaseline, windrivers
 from nimstead.db import (
     ApiToken,
     Asset,
@@ -46,11 +46,13 @@ from nimstead.db import (
     PendingLogin,
     PendingSignup,
     RemediationJob,
+    ScanRecord,
     User,
     WebSession,
     make_sessionmaker,
     now,
 )
+from nimstead.engine.collection import valid_document
 from nimstead.netguard import check_public_url
 from nimstead.scan import app_coverage, rescan
 from nimstead.versions import comparator_for
@@ -795,6 +797,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         auto_update: bool | None = None  # None: agent older than 0.2.0, can't update itself
         update_error: str | None = Field(None, max_length=500)
         facts: dict | None = None  # checked by facts_ok: small, flat, plain values
+        collection: dict | None = None  # checked by engine's valid_document: closed and bounded. None: agent older than this
 
     def facts_ok(f: dict) -> bool:
         def plain(v, depth=0):
@@ -827,9 +830,14 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         asset.os_name, asset.ecosystem, asset.last_seen = body.os_name or asset.os_name, body.ecosystem or asset.ecosystem, now()
         asset.agent_version, asset.auto_update, asset.agent_update_error = body.agent_version, body.auto_update, body.update_error
         asset.silent_alerted_at = None
+        # never the last report's: it describes the packages arriving now, or says nothing. What doesn't fit is dropped, like facts
+        asset.collection = body.collection if valid_document(body.collection) else None
         if body.facts is not None:
             if facts_ok(body.facts):  # facts that don't fit are dropped, never the packages with them
                 asset.facts = body.facts
+            elif asset.collection:  # the stored facts are the last report's, and the engine must know
+                asset.collection = {**asset.collection, "sources": {**asset.collection["sources"], "host_facts": {
+                    "state": "failed", "count": 0, "error": "these facts were too large for the server, so older ones are stored"}}}
         s.execute(delete(InstalledPackage).where(InstalledPackage.asset_id == asset.id, InstalledPackage.origin == "agent"))
         s.add_all(InstalledPackage(asset_id=asset.id, origin="agent", **p.model_dump()) for p in body.packages)
         s.flush()
@@ -1030,10 +1038,15 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def delete_asset(asset_id: str, user: Admin, s: DB):
         a = owned_asset(s, user, asset_id)
         evidence.append(s, user.org_id, "asset_deleted", a.id, {"by": user.email, "hostname": a.hostname})
-        for model in (Finding, InstalledPackage, RemediationJob):
+        for model in (Finding, InstalledPackage, RemediationJob, ScanRecord):
             s.execute(delete(model).where(model.asset_id == a.id))
         s.delete(a)
         s.commit()
+
+    @app.get("/api/assets/{asset_id}/scan-report")
+    def asset_scan_report(asset_id: str, user: CurrentUser, s: DB):
+        """Every check's verdict on this host's stored inventory (nimstead/engine). Findings still open and close through rescan."""
+        return engine.asset_report(s, owned_asset(s, user, asset_id))
 
     class AssetPatch(BaseModel):
         criticality: Literal["low", "medium", "high", "critical"] | None = None

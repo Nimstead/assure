@@ -121,6 +121,7 @@ class Asset(Base):
     facts: Mapped[dict | None]  # agent-reported host facts (edition, ESU, update management, roles); None = none sent
     maintenance_window: Mapped[dict | None]  # overrides the org's (plan T40); None = the org's
     enrolled_by: Mapped[str | None] = mapped_column(String(12))  # enrolment token id, so a leaked token's hosts can be found
+    collection: Mapped[dict | None]  # what the agent says it read of its latest inventory (engine/collection.py); None = not reported
 
 
 class InstalledPackage(Base):
@@ -221,6 +222,22 @@ def make_engine(url: str = DB_URL):
 
 def make_sessionmaker(url: str = DB_URL):
     return sessionmaker(make_engine(url), expire_on_commit=False)
+
+
+class ScanRecord(Base):
+    """One engine evaluation: inventory, content version and report, so a result can be explained later (T34). Latest few per host."""
+
+    __tablename__ = "scan_record"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    org_id: Mapped[str] = mapped_column(ForeignKey("org.id"), index=True)
+    asset_id: Mapped[str] = mapped_column(ForeignKey("asset.id", ondelete="CASCADE"), index=True)
+    created: Mapped[datetime] = mapped_column(default=now)
+    engine_version: Mapped[str] = mapped_column(String(20))
+    content_version: Mapped[str] = mapped_column(String(40))
+    inventory_sha256: Mapped[str] = mapped_column(String(64))
+    verdicts_sha256: Mapped[str] = mapped_column(String(64))
+    inventory: Mapped[dict]
+    report: Mapped[dict]
 
 
 class LedgerEntry(Base):

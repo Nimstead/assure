@@ -159,3 +159,10 @@ def test_installers_pass_the_channel_and_check_the_trusted_folder_properly(env, 
     assert ps1.index("Get-AuthenticodeSignature") < ps1.index("& $py") and "Python Software Foundation" in ps1
     assert "/agent/runtime/$arch.zip" in ps1 and "--token" not in ps1 and "$Token" not in ps1.split("if (-not $Token)")[1]
     assert Path(agent.__file__).name == "nimstead_agent.py"
+
+
+def test_rerunning_the_installer_leaves_a_runtime_that_may_be_loaded():
+    ps1 = (Path(__file__).parents[1] / "src/nimstead/static/install.ps1").read_text(encoding="utf-8")
+    keep = ps1.index('if (-not (Test-Path -LiteralPath (Join-Path $rt "python.exe")))')
+    assert keep < ps1.index("Remove-Item -LiteralPath $rt") < ps1.index("Expand-Archive")
+    assert ps1.index("Expand-Archive") < ps1.index("Get-AuthenticodeSignature")  # the signature check still runs on what's kept

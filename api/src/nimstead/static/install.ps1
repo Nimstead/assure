@@ -36,8 +36,11 @@ Invoke-WebRequest @web -Uri "$Server/agent/runtime/$arch.zip" -OutFile $zip
 $sha = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLower()
 Write-Host "runtime sha256: $sha"  # compare with the signed release (docs/install.md)
 $rt = Join-Path $runtimes $sha.Substring(0, 12)
-if (Test-Path -LiteralPath $rt) { Remove-Item -LiteralPath $rt -Recurse -Force }
-Expand-Archive -LiteralPath $zip -DestinationPath $rt
+# Same hash, same runtime: an agent run may have it loaded, so rerunning this script must not try to replace it (real VM).
+if (-not (Test-Path -LiteralPath (Join-Path $rt "python.exe"))) {
+  if (Test-Path -LiteralPath $rt) { Remove-Item -LiteralPath $rt -Recurse -Force }
+  Expand-Archive -LiteralPath $zip -DestinationPath $rt
+}
 Remove-Item -LiteralPath $zip
 # Every executable file in the runtime must carry a valid Python Software Foundation signature, checked before any runs;
 # the Visual C++ runtime DLLs Python ships are Microsoft's own, signed by Microsoft (seen in the 3.15.2 zip).

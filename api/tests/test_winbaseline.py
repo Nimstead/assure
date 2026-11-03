@@ -394,3 +394,10 @@ def test_export_is_csv_injection_safe_and_lists_manual_rules(env):
     assert next(x for x in body if x[3] == "WN25-CC-000430")[9] == "'=2+2"
     assert sum(x[6] == "not assessed (manual)" for x in body) == 291 - len(next(b for b in winbaseline.baselines() if b["id"] == "windows-server-2025")["rules"])
     assert "conform" not in res.text.lower()
+
+
+def test_a_tools_error_after_the_answer_doesnt_lose_the_answer():
+    # real Windows 11: auditpol wrote "Error 0x00000522 occurred:" and its message after the JSON, and every rule read "not assessed"
+    out = '{"reg": {}, "audit": {}, "rights": {}}\nError 0x00000522 occurred:\n\nA required privilege is not held by the client.\n'
+    assert agent.windows_baseline_facts(lambda cmd, **kw: (0, out)) == {"reg": {}, "audit": {}, "rights": {}}
+    assert "2>$null" in agent.PS_BASELINE.split("auditpol /backup")[1].splitlines()[0]

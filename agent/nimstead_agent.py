@@ -703,7 +703,7 @@ $c.snmp_default_community = if (Test-Path -LiteralPath $snmp) { $null -ne (Get-I
 $c.guest_enabled = @(Get-LocalUser | Where-Object { $_.SID.Value -like '*-501' -and $_.Enabled }).Count -gt 0
 $c.password_policy = $null
 $sp = Join-Path $env:ProgramData ('Nimstead\sec-' + [guid]::NewGuid() + '.inf')  # the agent's own locked folder; holds settings only, no secrets
-secedit /export /areas SECURITYPOLICY /cfg $sp /quiet | Out-Null
+secedit /export /areas SECURITYPOLICY /cfg $sp /quiet 2>$null | Out-Null
 if (Test-Path -LiteralPath $sp) {
   $pp = [ordered]@{}; foreach ($l in Get-Content -LiteralPath $sp) { if ($l -match '^(MinimumPasswordLength|PasswordComplexity|LockoutBadCount|ClearTextPassword)\s*=\s*(\d+)') { $pp[$Matches[1]] = [int]$Matches[2] } }
   Remove-Item -LiteralPath $sp -Force; if ($pp.Count) { $c.password_policy = $pp }
@@ -934,14 +934,14 @@ foreach ($e in '__REG__' -split ';') {
 $dir = Join-Path $env:ProgramData 'Nimstead'
 $audit = [ordered]@{}
 $f = Join-Path $dir ('audit-' + [guid]::NewGuid() + '.csv')
-auditpol /backup /file:$f | Out-Null
+auditpol /backup /file:$f 2>$null | Out-Null
 if (Test-Path -LiteralPath $f) {
   foreach ($l in Get-Content -LiteralPath $f) { if ($l -match '(\{[0-9A-Fa-f-]{36}\}),.*,([0-3])\s*$') { $audit[$Matches[1].ToUpper()] = [int]$Matches[2] } }
   Remove-Item -LiteralPath $f -Force
 }
 $rights = [ordered]@{}
 $f = Join-Path $dir ('rights-' + [guid]::NewGuid() + '.inf')
-secedit /export /areas USER_RIGHTS /cfg $f /quiet | Out-Null
+secedit /export /areas USER_RIGHTS /cfg $f /quiet 2>$null | Out-Null
 if (Test-Path -LiteralPath $f) {
   $held = @{}; $found = $false; $in = $false
   foreach ($l in Get-Content -LiteralPath $f) {
@@ -971,13 +971,21 @@ def baseline_id(entry):
     return hashlib.sha256(entry.lower().encode()).hexdigest()[:8]
 
 
+def last_json(out):
+    """The last line that is a JSON object: a tool's error text after it (seen for real: auditpol's, on Windows 11) isn't the answer."""
+    for line in reversed(out.strip().splitlines()):
+        if line.startswith("{"):
+            return json.loads(line)
+    raise ValueError("no JSON object in the output")
+
+
 def windows_baseline_facts(run=None):
     """{"reg": {id: value or null}, "audit": {guid: 0-3}, "rights": {constant: [SID]}} for the closed lists above, or None.
     Only what's on those lists is kept. Whatever isn't in the answer reads "not assessed" on the server."""
     rc, out = ps(run or sh, PS_BASELINE)
     try:
-        d = json.loads(out.strip().splitlines()[-1]) if rc == 0 else None
-    except (ValueError, IndexError):
+        d = last_json(out) if rc == 0 else None
+    except ValueError:
         d = None
     if not isinstance(d, dict) or not isinstance(d.get("reg"), dict):
         return None
@@ -1002,8 +1010,8 @@ def windows_host_facts(run=None):
     """Facts from PS_HOST, or ({}, problem). Only the keys in HOST_FACTS are kept."""
     rc, out = ps(run or sh, PS_HOST)
     try:
-        d = json.loads(out.strip().splitlines()[-1]) if rc == 0 else None
-    except (ValueError, IndexError):
+        d = last_json(out) if rc == 0 else None
+    except ValueError:
         d = None
     if not isinstance(d, dict):
         return {}, f"host check failed: {out.strip()[-200:]}"

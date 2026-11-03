@@ -811,7 +811,14 @@ foreach ($x in @(Get-ChildItem Cert:\LocalMachine\My, Cert:\LocalMachine\WebHost
 }
 $fwr = $null
 try {
-  $on = @{}; Get-NetFirewallRule -PolicyStore ActiveStore -Enabled True -Direction Inbound -Action Allow -ErrorAction Stop | ForEach-Object { $on[$_.InstanceID] = 1 }
+  # only rules for a profile in use, and not a Store app's (Program Any, Port Any, but with an Owner: only that user's app container).
+  # On a real Windows 11 those made every port read as allowed.
+  # shortcut: interface and address scopes aren't read, so "WFD Driver-only" (System, any port, Wi-Fi Direct only) still reads System's listeners
+  # (445, 139) as allowed; that raises priority, never hides one. Upgrade if it shows as noise.
+  $act = @((Get-NetConnectionProfile -ErrorAction Stop).NetworkCategory | ForEach-Object { "$_" -replace 'DomainAuthenticated', 'Domain' })
+  $on = @{}; Get-NetFirewallRule -PolicyStore ActiveStore -Enabled True -Direction Inbound -Action Allow -ErrorAction Stop |
+    Where-Object { -not $_.Owner -and ("$($_.Profile)" -eq 'Any' -or @("$($_.Profile)" -split ',\s*' | Where-Object { $_ -in $act }).Count) } |
+    ForEach-Object { $on[$_.InstanceID] = 1 }
   $apps = @{}; Get-NetFirewallApplicationFilter -PolicyStore ActiveStore -ErrorAction Stop | ForEach-Object { $apps[$_.InstanceID] = "$($_.Program)" }
   $fwr = @(Get-NetFirewallPortFilter -PolicyStore ActiveStore -ErrorAction Stop | Where-Object { $on[$_.InstanceID] -and "$($_.Protocol)" -in 'TCP', '6', 'Any' } | ForEach-Object { @{ ports = @($_.LocalPort); prog = $apps[$_.InstanceID] } })
 } catch { }

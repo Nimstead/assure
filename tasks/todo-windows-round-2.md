@@ -140,8 +140,8 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens Greenbo
 - Verify: `last_run_windrivers.json`. Files: agent, `feeds.py`, `scan.py`. Deps: none.
 
 ### W16: Certificates and listening services (M)
-- [ ] Machine store: expired, weak key and weak signature findings; roots not in Microsoft's list reported at low priority
-- [ ] Listening non-loopback ports, with process and firewall state, raise priority of a matching product through `risk.py`, with the reason shown
+- [x] Machine store: expired, weak key and weak signature findings; roots not in Microsoft's list reported at low priority (real Windows 11: an expired machine certificate opened a finding naming it, none before; weak key and signature unit-tested; roots dropped, DECISIONS 72)
+- [x] Listening non-loopback ports, with process and firewall state, raise priority of a matching product through `risk.py`, with the reason shown (`last_run_winexposure.json`, Windows 11: blocked, no reason; allowed, score 17 to 32 with the process and port named; after DECISIONS 100)
 - Verify: tests, `last_run_winexposure.json`. Deps: none.
 
 ### W17: Second exploit source; every install reported (S each)

@@ -822,8 +822,17 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             raise HTTPException(401, "Unknown agent key")
         return asset
 
+    def store_scan_report(asset_id: str) -> None:
+        """After the response: the engine's report, stored for the fleet's attack paths (DECISIONS 98). Never fails the inventory."""
+        with Sessions() as s:
+            try:
+                if a := s.get(Asset, asset_id):
+                    engine.asset_report(s, a)
+            except Exception:
+                log.exception("engine report for asset %s failed", asset_id)
+
     @app.post("/api/agent/inventory")
-    def agent_inventory(body: Inventory, s: DB, asset: Annotated[Asset, Depends(current_agent)]):
+    def agent_inventory(body: Inventory, s: DB, asset: Annotated[Asset, Depends(current_agent)], tasks: BackgroundTasks):
         if asset.last_inventory_at and now() - asset.last_inventory_at < timedelta(seconds=INVENTORY_MIN_SECONDS):
             raise HTTPException(429, f"Inventory already received; send at most one every {INVENTORY_MIN_SECONDS}s")
         if over_limit(s, "inventory:" + asset.org_id, ORG_INVENTORY_MAX_PER_HOUR):  # many fake hosts can't bypass the per-host limit
@@ -849,6 +858,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         remediate.verify(s, asset)
         remediate.auto_remediate(s, asset)
         s.commit()
+        tasks.add_task(store_scan_report, asset.id)
         return result
 
     class DirectoryEntry(BaseModel):

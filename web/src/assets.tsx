@@ -55,6 +55,7 @@ export function AssetsPage() {
       </header>
 
       <Unmanaged />
+      <AttackPaths />
       <Baselines />
       <NotAssessed />
 
@@ -167,6 +168,50 @@ export function Baselines() {
         </div>
       ))}
       <a href="/api/baselines.csv" className="flex min-h-[44px] items-center text-sm md:min-h-0">Download as CSV</a>
+    </section>
+  );
+}
+
+interface PathSummary { kind: "network" | "foothold"; start: string; grade: string; steps: string[]; break_at: { label: string; fixes: number; refs: string[] } }
+interface FleetHost { hostname: string; judged: boolean; paths: PathSummary[] }
+interface Reach { host: string; hops: string[]; grade: string; fix_on_host: string[] }
+interface AttackPathsData { hosts: Record<string, FleetHost>; chains: { start: string; why_start: string; reach: Reach[] }[] }
+
+/** How weaknesses chain on each host and from one host to the next (DECISIONS 97, 98): every step is evidence, and the grade is the weakest one's. */
+export function AttackPaths() {
+  const q = useQuery({ queryKey: ["attack-paths"], queryFn: () => api<AttackPathsData>("/api/attack-paths") });
+  const d = q.data;
+  const withPaths = Object.entries(d?.hosts ?? {}).filter(([, h]) => h.paths.length);
+  if (!d || (!withPaths.length && !d.chains.length)) return null;
+  const name = (id: string) => d.hosts[id]?.hostname ?? id;
+  const unjudged = Object.values(d.hosts).filter((h) => !h.judged).length;
+  return (
+    <section aria-labelledby="attack-paths" className="flex flex-col gap-2 border border-line bg-sunken p-4">
+      <h2 id="attack-paths" className="text-base font-semibold">How these weaknesses combine</h2>
+      <p className="max-w-prose text-sm text-muted">Each step is a vulnerability or a setting read on the host. A path is only as sure as its weakest step, and whether one host can route to another isn't seen, so nothing across hosts is better than reasonable.{unjudged ? ` ${plural(unjudged, "host")} ${unjudged === 1 ? "hasn't" : "haven't"} been judged yet.` : ""}</p>
+      {d.chains.map((c) => (
+        <div key={c.start} className="flex flex-col gap-1">
+          <h3 className="text-sm font-semibold">From {name(c.start)} ({c.why_start}), an attacker can reach {plural(c.reach.length, "other host")}</h3>
+          <ul className="flex flex-col gap-1 text-sm">
+            {c.reach.map((r) => (
+              <li key={r.host} className="break-words">
+                <span className="font-medium">{name(r.host)}</span> via {[c.start, ...r.hops].map(name).join(" → ")} · how sure: {r.grade} · cut it on {name(r.host)}: {r.fix_on_host.join(", ")}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+      <details className="text-sm">
+        <summary className="min-h-[44px] cursor-pointer py-2 md:min-h-0">Paths on each host ({withPaths.length})</summary>
+        <ul className="mt-2 flex flex-col gap-2">
+          {withPaths.map(([id, h]) => h.paths.map((p) => (
+            <li key={id + p.kind} className="break-words border-t border-line pt-2">
+              <span className="font-medium">{h.hostname}</span>, {p.start} · how sure: {p.grade}
+              <div className="text-muted">{p.steps.join(" → ")}. Break it: fix {plural(p.break_at.fixes, "way")} of {p.break_at.label.toLowerCase()} ({p.break_at.refs.join(", ")})</div>
+            </li>
+          )))}
+        </ul>
+      </details>
     </section>
   );
 }

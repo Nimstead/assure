@@ -59,16 +59,14 @@ def test_a_host_without_a_report_is_listed_as_not_judged():
 def test_attack_paths_endpoint_reads_stored_reports_and_is_org_scoped(env):
     seed(env)
     c = user(env)
-    ids = []
+
     for name, config, facts in (("a", WEAK, {}), ("b", {"remote_uac_off": 1}, {"listening": OPEN_445})):
         token = c.post("/api/enroll-tokens").json()["token"]
         k = c.post("/api/agent/enroll", json={"token": token, "hostname": name, "ecosystem": "Windows"}).json()["agent_key"]
         inv = doc(facts={"pending_reboot": False, "config": config, **CORP, **facts})
         inv["hostname"] = name
         assert c.post("/api/agent/inventory", headers={"Authorization": f"Bearer {k}"}, json=inv).status_code == 200
-    for a in c.get("/api/assets").json():
-        ids.append(a["id"])
-        assert c.get(f"/api/assets/{a['id']}/scan-report").status_code == 200  # stores the report the fleet view reads
+    ids = [a["id"] for a in c.get("/api/assets").json()]  # each inventory stored its engine report after the response
     out = c.get("/api/attack-paths").json()
     assert set(out["hosts"]) == set(ids) and all(h["judged"] for h in out["hosts"].values())
     name = {i: h["hostname"] for i, h in out["hosts"].items()}

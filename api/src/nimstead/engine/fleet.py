@@ -66,7 +66,10 @@ def build(hosts: list[dict]) -> dict:
                 ways.sort(key=lambda w: ("unverified", "reasonable", "confirmed").index(w["grade"]), reverse=True)
                 edges.append({"from": a["id"], "to": b["id"], "grade": ways[0]["grade"], "ways": ways})
     return {"hosts": {h["id"]: {"hostname": h["hostname"], "judged": h in judged, "entry": gives.get(h["id"], {}).get("entry", False),
-                                "internet_facing": bool(h.get("internet_facing"))} for h in hosts},
+                                "internet_facing": bool(h.get("internet_facing")),
+                                "paths": [{"kind": p["kind"], "start": p["start"], "grade": p["grade"], "steps": [st["label"] for st in p["steps"]],
+                                           "break_at": p["break_at"]} for p in (h["report"] or {}).get("attack_paths", [])] if h in judged else []}
+                      for h in hosts},
             "edges": edges, "chains": _chains(judged, gives, edges)}
 
 

@@ -7,7 +7,7 @@ import { afterEach, vi } from "vitest";
 import { SsoSection } from "./integrations";
 import { ApiError, meQ, type Action, type Asset, type Job, type Settings } from "./lib";
 import { ActionCard } from "./home";
-import { AssetRow, Baselines, baselineSummary, NotAssessed } from "./assets";
+import { AssetRow, AttackPaths, Baselines, baselineSummary, NotAssessed } from "./assets";
 import { Palette } from "./shell";
 import { Done, errorLead } from "./ui";
 import { Onboarding, TROUBLESHOOT_AFTER_MS } from "./onboarding";
@@ -373,6 +373,26 @@ it("Assets: nothing shows when every installed app was checked", async () => {
   const calls = serve({ "GET /api/coverage": { assessed: 4, inventory_only: 0, not_assessed: [] } });
   wrap(<NotAssessed />);
   await waitFor(() => expect(calls.some((c) => c.path === "/api/coverage")).toBe(true));
+  expect(screen.queryByRole("heading")).toBeNull();
+});
+
+it("Assets: attack paths say how sure, where to cut each edge, and nothing shows without a path", async () => {
+  const path = { kind: "network", start: "from the network", grade: "reasonable", steps: ["Getting in", "Taking credentials"],
+                 break_at: { label: "Getting in", fixes: 1, refs: ["CFG:rdp-nla"] } };
+  serve({ "GET /api/attack-paths": { hosts: { a: { hostname: "ws-1", judged: true, paths: [path] }, b: { hostname: "srv-1", judged: true, paths: [] },
+                                              c: { hostname: "new-1", judged: false, paths: [] } },
+                                     chains: [{ start: "a", why_start: "a path from the network", reach: [{ host: "b", hops: ["b"], grade: "reasonable", fix_on_host: ["CFG:remote-uac"] }] }] } });
+  wrap(<AttackPaths />);
+  expect(await screen.findByText(/From ws-1 \(a path from the network\), an attacker can reach 1 other host/)).toBeInTheDocument();
+  expect(screen.getByText(/ws-1 → srv-1 · how sure: reasonable · cut it on srv-1: CFG:remote-uac/)).toBeInTheDocument();
+  expect(screen.getByText(/1 host hasn't been judged yet/)).toBeInTheDocument();
+  expect(screen.getByText(/Break it: fix 1 way of getting in \(CFG:rdp-nla\)/)).toBeInTheDocument();
+});
+
+it("Assets: no attack paths, no section", async () => {
+  const calls = serve({ "GET /api/attack-paths": { hosts: { a: { hostname: "ws-1", judged: true, paths: [] } }, chains: [] } });
+  wrap(<AttackPaths />);
+  await waitFor(() => expect(calls.some((c) => c.path === "/api/attack-paths")).toBe(true));
   expect(screen.queryByRole("heading")).toBeNull();
 });
 

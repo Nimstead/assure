@@ -1968,12 +1968,15 @@ PS_FIND = r"""
 $s = New-Object -ComObject Microsoft.Update.Session
 $q = $s.CreateUpdateSearcher(); %WU_SOURCE%
 $r = $q.Search("IsInstalled=0 and Type='Software'")
-ConvertTo-Json -Compress -InputObject @($r.Updates | Where-Object { $_.KBArticleIDs -contains '%KB%' } | ForEach-Object {
-  [pscustomobject]@{ title = $_.Title; uninstallable = $_.IsUninstallable; reboot = $_.InstallationBehavior.RebootBehavior } })
+$hit = [ordered]@{}
+foreach ($kb in @(%KBS%)) { $hit[$kb] = @($r.Updates | Where-Object { $_.KBArticleIDs -contains $kb } | ForEach-Object {
+  [pscustomobject]@{ title = $_.Title; uninstallable = $_.IsUninstallable; reboot = $_.InstallationBehavior.RebootBehavior } }) }
+ConvertTo-Json -Compress -Depth 3 -InputObject $hit
 ConvertTo-Json -Compress -InputObject @($r.Updates | Where-Object { @($_.Categories | ForEach-Object { $_.CategoryID }) -contains '0fa1201d-4330-4fa8-8ae9-b877473b6441' } |
   Select-Object -First 10 | ForEach-Object { [pscustomobject]@{ kb = [string]@($_.KBArticleIDs)[0]; title = $_.Title } })
 """
-# PS_FIND's second line: the security updates this search offers at all, picked by the classification's ID because titles are
+# PS_FIND searches once for every KB a job may install: a real Server 2022 VM's second search, for the hotpatch, hung 30
+# minutes. Its first line maps each KB to its matches. Its second line: the security updates this search offers at all, picked by the classification's ID because titles are
 # translated (decision 68). Only reported when none of the job's KBs is offered, so the server can plan a step (decision 95)
 PS_DOWNLOAD = r"""
 $s = New-Object -ComObject Microsoft.Update.Session
@@ -2091,7 +2094,8 @@ if ($b.Count -and ($b | Where-Object { $_.BatteryStatus -ne 2 -and $_.EstimatedC
 # and the next download failed with a bare code 4; refuse before downloading instead
 PS_FREE_GB = "[math]::Floor((Get-PSDrive $env:SystemDrive.TrimEnd(':')).Free / 1GB)"
 WIN_MIN_FREE_GB = 10
-# Why Windows Update offered nothing for a KB (plan T14): its source, deferrals, ESU
+# Why Windows Update offered nothing for a KB (plan T14): its source and deferrals; ESU only where it applies (esu_active),
+# never on Server 2016-2022 or LTSC: a real Server 2022 VM was told it needed a licence
 PS_WHY_NOT_OFFERED = r"""
 $wu = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate'
 $p = Get-ItemProperty $wu -ErrorAction SilentlyContinue; $au = Get-ItemProperty "$wu\AU" -ErrorAction SilentlyContinue
@@ -2099,8 +2103,6 @@ $why = @()
 if ($au.UseWUServer -eq 1) { $why += "this machine gets updates from WSUS ($($p.WUServer)); WSUS hasn't approved KB%KB% for it" }
 if ($p.DeferQualityUpdates -eq 1 -or $p.DeferQualityUpdatesPeriodInDays) { $why += "quality updates are deferred $($p.DeferQualityUpdatesPeriodInDays) days by policy" }
 if ($p.PauseQualityUpdatesStartTime) { $why += "quality updates are paused by policy since $($p.PauseQualityUpdatesStartTime)" }
-$esu = @(Get-CimInstance SoftwareLicensingProduct -Filter "LicenseStatus=1 and PartialProductKey is not null" -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'ESU' }).Count
-if ((Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').CurrentBuild -lt 22000 -and -not $esu) { $why += "no Extended Security Updates licence is active" }
 $why -join "; "
 """
 # Failover cluster node: drain its roles before the update, bring it back after (plan T42)
@@ -2123,6 +2125,16 @@ def offered_instead(out):
         return []
     return [{"kb": str(x["kb"]), "title": str(x.get("title") or "")[:200]} for x in (items if isinstance(items, list) else [])[:10]
             if isinstance(x, dict) and SAFE_KB.match(str(x.get("kb", "")))]
+
+
+def clause_tail(text, n=300):
+    """The end of a long output from a clause boundary: a cut mid-word read "failed: is active" on a real abort."""
+    t = str(text).strip()
+    if len(t) <= n:
+        return t
+    t = t[-n:]
+    i = t.find("; ")
+    return "..." + (t[i + 2:] if 0 <= i < n // 2 else t)
 
 
 def wu(script):
@@ -2216,7 +2228,7 @@ class WinJob:
     def step(self, name, ok, output=""):
         self.s["steps"].append({"step": name, "ok": bool(ok), "output": str(output)[-1500:]})
         if not ok:
-            raise StepFailed(f"{name} failed: {str(output)[-300:].strip()}")
+            raise StepFailed(f"{name} failed: {clause_tail(output)}")
 
     def _resume_cluster(self):
         """Bring a drained cluster node back (after success, rollback or a failed start); recorded, never raises."""
@@ -2317,14 +2329,22 @@ class WinJob:
         rc, out = ps(self.run, PS_FREE_GB)
         self.step(f"at least {WIN_MIN_FREE_GB} GB free on the system drive", rc == 0 and out.strip().isdigit()
                   and int(out) >= WIN_MIN_FREE_GB, f"{out.strip()} GB free")
-        found = {}  # KB -> (target build, how many updates Windows Update offers for it)
-        for kb, to in [(s["kb"], s["to"]), *([(s["alt"]["kb"], s["alt"]["to"])] if s.get("alt") else [])]:
-            rc, out = ps(self.run, wu(PS_FIND).replace("%KB%", kb))
-            first, _, others = out.strip().replace("\r", "").partition("\n")
-            found[kb] = (to, len(json.loads(first)) if rc == 0 and first.startswith("[") else 0, first if rc == 0 else out)
+        kbs = [(s["kb"], s["to"]), *([(s["alt"]["kb"], s["alt"]["to"])] if s.get("alt") else [])]  # valid(): digits only
+        rc, out = ps(self.run, wu(PS_FIND).replace("%KBS%", ",".join(f"'{kb}'" for kb, _ in kbs)))
+        first, _, others = out.strip().replace("\r", "").partition("\n")
+        try:
+            hits = json.loads(first) if rc == 0 else None
+        except ValueError:
+            hits = None
+        hits = hits if isinstance(hits, dict) else {}
+        found = {kb: (to, len(hits[kb]) if isinstance(hits.get(kb), list) else 0,  # KB -> (target, how many offered, evidence)
+                      json.dumps(hits.get(kb, [])) if rc == 0 else f"Windows Update search failed: {clause_tail(out, 200)}")
+                 for kb, to in kbs}
         offered = [kb for kb, (_, n, _) in found.items() if n == 1]
         if not offered:  # say why, from this machine's own update settings (plan T14)
             rc, why = ps(self.run, PS_WHY_NOT_OFFERED.replace("%KB%", s["kb"]))
+            if esu_active(s.get("product"), self.run) is False:
+                why = "; ".join(x for x in (why.strip(), "no Extended Security Updates licence is active") if x)
             self.offered = None if str(s.get("product")).startswith(".NET Framework") else offered_instead(others)
             why = (why.strip() or "Windows Update didn't offer it (not needed, superseded, or not released for this build)") + (
                 "; it offers instead: " + ", ".join(f"KB{x['kb']} ({x['title']})" for x in self.offered) if self.offered else "")

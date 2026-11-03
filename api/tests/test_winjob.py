@@ -19,13 +19,14 @@ NEW_PKG = "Package_for_RollupFix~31bf3856ad364e35~amd64~~26100.33650.1.3"
 
 class FakeWin:
     def __init__(self, offered=("5126646",), service_breaks_on_new=False, removal_works=True, busy_removals=0, manifest="removable",
-                 battery="", cluster=False, drain="Paused", crashes="", why="", install_times_out=False, free_gb="50", instead=None):
+                 battery="", cluster=False, drain="Paused", crashes="", why="", install_times_out=False, free_gb="50", instead=None, esu=0):
         self.build, self.pkgs, self.manifest = OLD, {BASE_PKG: "Installed"}, manifest
         self.offered, self.breaks, self.removal_works = list(offered), service_breaks_on_new, removal_works
         self.pending_remove, self.log, self.busy = [], [], busy_removals
         self.battery, self.cluster, self.drain, self.crashes, self.why = battery, cluster, drain, crashes, why
         self.boot, self.install_times_out, self.free_gb = 1_700_000_000, install_times_out, free_gb
         self.instead = instead  # PS_FIND's second line as Windows Update wrote it, or None for an older fake's one line
+        self.esu, self.searches = esu, 0
 
     def __call__(self, cmd, cwd=None, timeout=None):
         self.log.append(cmd)
@@ -68,9 +69,13 @@ class FakeWin:
                 return 0, json.dumps([{"file": "Windows11.0-KB5126646-x64.wim", "reason": "CumulativeUpdate", "partition": "MainOS",
                                        "permanent": self.manifest == "permanent",
                                        "permanent_parts": ["Microsoft-Windows-SenseClient-FoD-Package.mum"]}])
+            if "Where-Object { $_.Name -match 'ESU' }" in script:
+                return 0, str(self.esu)
             if "KBArticleIDs" in script:
-                kb = script.split("-contains '")[1].split("'")[0]
-                found = json.dumps([{"title": f"Cumulative Update (KB{kb})", "uninstallable": False}] if kb in self.offered else [])
+                kbs = script.split("foreach ($kb in @(")[1].split(")")[0].replace("'", "").split(",")
+                self.searches += 1
+                found = json.dumps({kb: [{"title": f"Cumulative Update (KB{kb})", "uninstallable": False}] if kb in self.offered else []
+                                    for kb in kbs})
                 return 0, found + ("" if self.instead is None else "\r\n" + self.instead)
         if cmd[:3] == ["dism", "/online", "/get-packages"]:
             return 0, "\n".join(f"Package Identity : {k}\nState : {v}\n" for k, v in self.pkgs.items())
@@ -392,8 +397,22 @@ def test_not_offered_says_why_from_the_machines_update_settings(tmp_path):
     assert r["outcome"] == "aborted" and "WSUS hasn't approved KB5126646" in r["steps"][-1]["output"]
     r = make(tmp_path, FakeWin(offered=())).advance()
     assert "not needed, superseded, or not released" in r["steps"][-1]["output"]
-    r = make(tmp_path, FakeWin(offered=(), why="no Extended Security Updates licence is active"), HOT_JOB).advance()  # real Windows 10
+    win10 = {**HOT_JOB, "packages": [{**HOT_JOB["packages"][0], "name": "Windows 10 Version 22H2 for x64-based Systems"}]}
+    r = make(tmp_path, FakeWin(offered=()), win10).advance()  # real Windows 10 22H2 without a licence
     assert r["outcome"] == "aborted" and "0 offered" in r["steps"][-1]["output"] and "Extended Security Updates" in r["steps"][-1]["output"]
+    r = make(tmp_path, FakeWin(offered=(), esu=1), win10).advance()
+    assert "Extended Security Updates" not in r["steps"][-1]["output"]
+    # Server 2022 is supported without ESU: a real VM was told it needed a licence
+    ws22 = {**HOT_JOB, "packages": [{**HOT_JOB["packages"][0], "name": "Windows Server 2022 (Server Core installation)"}]}
+    h = FakeWin(offered=())
+    r = make(tmp_path, h, ws22).advance()
+    assert "Extended Security Updates" not in r["steps"][-1]["output"] and h.searches == 1  # one search for both KBs
+
+
+def test_a_long_reason_is_cut_at_a_clause_not_mid_word():
+    assert agent.clause_tail("short") == "short"
+    cut = agent.clause_tail("x" * 400 + "; no Extended Security Updates licence is active; it offers instead: " + "y" * 200)
+    assert cut.startswith("...it offers instead") or cut.startswith("...no Extended")
 
 
 # ---- what Windows Update offers instead (DECISIONS 95): a real Server 2022 VM at 20348.587 was offered only 2023-11
@@ -408,8 +427,8 @@ def test_not_offered_reports_what_windows_update_offers_instead_and_installs_non
     assert [x["kb"] for x in r["offered"]] == ["5032198", "5032005"] and r["offered"][0]["title"].startswith("2023-11 Cumulative Update")
     assert "it offers instead: KB5032198 (2023-11 Cumulative Update" in r["steps"][-1]["output"]
     assert not any(s in c[-1] for c in h.log if c[0] == "powershell" for s in ("CreateUpdateDownloader", "CreateUpdateInstaller"))
-    script = agent.PS_FIND  # one search: the job's KB first, then the security updates by classification ID, at most 10
-    assert script.index("-contains '%KB%'") < script.index("0fa1201d-4330-4fa8-8ae9-b877473b6441") and "-First 10" in script
+    script = agent.PS_FIND  # one search: the job's KBs first, then the security updates by classification ID, at most 10
+    assert script.index("@(%KBS%)") < script.index("0fa1201d-4330-4fa8-8ae9-b877473b6441") and "-First 10" in script
     assert json.loads(json.dumps(r))["offered"] == r["offered"]  # it goes in the report as it is
 
 

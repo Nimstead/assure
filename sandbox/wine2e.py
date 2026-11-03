@@ -309,7 +309,7 @@ def main(keep=False) -> int:
             j = next(j for j in jobs if j["id"] == jid)
             if status == "aborted":
                 step = next((x for x in jobs if x["status"] == "planned" and x["asset_id"] == a["id"] and x["action_key"] == f"Windows|{product}"), None)
-                note("aborted", error=(j["error"] or "")[:600], step=step and step["summary"], packages=step and step["packages"])
+                note("aborted", error=(j["error"] or "")[:600], planned=step and step["summary"], packages=step and step["packages"])
                 if not step:
                     break
                 assert api.post(f"/api/remediation/jobs/{step['id']}/approve").status_code == 200

@@ -16,7 +16,8 @@ from nimstead.versions import comparator_for
 ENGINE_VERSION = "1"
 APP_SOURCES = ("uninstall", "user_hives")  # where an app's installs can be listed: a product is only absent if both were read
 _RAISE = {"unread": "A source it depends on wasn't fully read: fix that and scan again to raise this",
-          "self-reported": "The version is what the product says of itself, and for third-party apps the range is NVD's: not a file reading against the vendor's own statement"}
+          "self-reported": "The version is what the product says of itself, and the range is NVD's: not a file reading against the vendor's own statement",
+          "self-reported-vendor": "The version is what the product says of itself, not read from its files; the fix is the vendor's own statement"}
 
 
 def _ceiling(i: Install) -> Grade:
@@ -81,7 +82,7 @@ def _judge(inv: Inventory, i: Install, c: Content) -> list[Verdict]:
     if read.state != "ok" or (i.family == "os" and pending is None):  # R6.1: the method actually used lowers the ceiling
         grade, why = Grade.UNVERIFIED, _RAISE["unread"]
     else:
-        why = None if grade == Grade.CONFIRMED else _RAISE["self-reported"]
+        why = None if grade == Grade.CONFIRMED else _RAISE["self-reported" if _fix_source(recs[0], i.ecosystem) in ("NVD", "CVE List") else "self-reported-vendor"]
     cmp = comparator_for(i.ecosystem)
     by_cve = defaultdict(list)
     for r in recs:

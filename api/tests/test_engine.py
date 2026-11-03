@@ -117,6 +117,7 @@ def test_t19_two_versions_side_by_side_get_a_verdict_each():
     vs = [v for v in run(d, content(apps=[nvd("CVE-2026-9", "20.00")])) if v.vuln_id == "CVE-2026-9"]
     assert {v.instance: v.outcome for v in vs} == {"7-Zip 19.00 (x64) 19.00": Outcome.VULNERABLE, "7-Zip 24.08 (x64) 24.08": Outcome.NOT_VULNERABLE}
     assert {v.grade for v in vs} == {Grade.REASONABLE} and {v.source for v in vs} == {"NVD"}
+    assert all("NVD" in v.detail for v in vs)
 
 
 def test_a_dotnet_folder_is_confirmed_and_an_uninstall_entry_only_reasonable():
@@ -126,6 +127,7 @@ def test_a_dotnet_folder_is_confirmed_and_an_uninstall_entry_only_reasonable():
     vs = run(d, content(ms={net: [msrc("CVE-2026-3", "8.0.11", product=net, eco="Microsoft")], edge: [msrc("CVE-2026-4", "141.0.0.0", product=edge, eco="Microsoft")]}))
     assert one(vs, vuln_id="CVE-2026-3").grade == Grade.CONFIRMED and one(vs, vuln_id="CVE-2026-4").grade == Grade.REASONABLE
     assert one(vs, vuln_id="CVE-2026-3").instance == ".NET runtime 8.0.10 (native)"
+    assert "NVD" not in one(vs, vuln_id="CVE-2026-4").detail  # Microsoft states this fix, not NVD (seen wrong on a real VM)
 
 
 # ---- verdict integrity

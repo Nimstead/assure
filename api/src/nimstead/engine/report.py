@@ -150,7 +150,8 @@ def render(r: dict) -> str:
         if g["kernel"] == "not-running":
             out.append("    Note:     this kernel is installed but not running: it matters if the host boots it. Removing it clears these")
         if g["no_fix_planned"]:
-            out.append(f"    No fix:   the vendor doesn't plan to fix {g['no_fix_planned']} of these" + (f"; {g['no_fix'] - g['no_fix_planned']} more have no fix yet" if g["no_fix"] > g["no_fix_planned"] else ""))
+            rest = g["no_fix"] - g["no_fix_planned"]
+            out.append(f"    No fix:   the vendor doesn't plan to fix {g['no_fix_planned']} of these" + (f"; {rest} more {'has' if rest == 1 else 'have'} no fix yet" if rest else ""))
         elif g["no_fix"] and g["no_fix"] < g["count"]:
             out.append(f"    No fix:   {g['no_fix']} of these have no fixed version yet")
         if g["raise_confidence"]:

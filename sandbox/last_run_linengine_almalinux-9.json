@@ -1,0 +1,560 @@
+[
+  {
+    "step": "creating sandbox distro",
+    "name": "nimstead-sbx-393d2fdd",
+    "distro": "AlmaLinux-9"
+  },
+  {
+    "step": "sandbox ready",
+    "os": "PRETTY_NAME=\"AlmaLinux 9.8 (Olive Jaguar)\""
+  },
+  {
+    "step": "collected",
+    "ecosystem": "AlmaLinux:9",
+    "packages": 207,
+    "collection": {
+      "v": 1,
+      "sources": {
+        "os_release": {
+          "state": "ok",
+          "count": 1
+        },
+        "package_db": {
+          "state": "ok",
+          "count": 207,
+          "exit": 0
+        }
+      }
+    },
+    "facts": {
+      "os_id": "almalinux",
+      "os_version_id": "9.8",
+      "kernel_release": "6.18.33.2-microsoft-standard-WSL2",
+      "pending_reboot": null
+    }
+  },
+  {
+    "step": "feeds",
+    "kev": 1766,
+    "osv": {
+      "inserted": 26342,
+      "updated": 0,
+      "skipped": 0
+    },
+    "eol": {
+      "almalinux": 3,
+      "alpine-linux": 32,
+      "clamav": 13,
+      "confluence": 91,
+      "debian": 18,
+      "elasticsearch": 12,
+      "firefox": 60,
+      "go": 18,
+      "grafana": 30,
+      "libreoffice": 32,
+      "mariadb": 30,
+      "mongodb": 33,
+      "mysql": 23,
+      "nodejs": 26,
+      "openssl": 15,
+      "opensuse": 21,
+      "oracle-jdk": 28,
+      "perl": 10,
+      "postgresql": 32,
+      "python": 18,
+      "rocky-linux": 3,
+      "ruby": 15,
+      "sles": 25,
+      "thunderbird": 157,
+      "tomcat": 9,
+      "ubuntu": 45
+    },
+    "seconds": 5
+  },
+  {
+    "step": "report",
+    "headline": {
+      "status": "vulnerable",
+      "text": "VULNERABLE: 53 vulnerabilities across 31 installs. 1 checks couldn't be determined."
+    },
+    "coverage": {
+      "sources": [
+        {
+          "name": "os_release",
+          "label": "Platform (os-release)",
+          "state": "ok",
+          "count": 1,
+          "error": null
+        },
+        {
+          "name": "package_db",
+          "label": "Package database",
+          "state": "ok",
+          "count": 207,
+          "error": null
+        }
+      ],
+      "families": {
+        "distro": {
+          "label": "Distribution packages",
+          "attempted": 3185,
+          "determined": 3184,
+          "outcomes": {
+            "not-applicable": 2986,
+            "not-vulnerable": 145,
+            "undetermined": 1,
+            "vulnerable": 53
+          }
+        }
+      },
+      "statements": [
+        "Distribution packages: 1 of 3,185 checks couldn't be determined.",
+        "Livepatch, services still running replaced libraries, and software outside the package manager (Java archives included) aren't judged by this report yet. Kernels installed but not running are judged, and marked so."
+      ]
+    },
+    "undetermined": [
+      {
+        "outcome": "undetermined",
+        "reason": "kernel-unpackaged",
+        "blocked_by": null,
+        "why": "the running kernel wasn't installed by the package manager, so the distribution's advisories don't describe it",
+        "source_said": "running 6.18.33.2-microsoft-standard-WSL2; no kernel package is installed",
+        "what_to_do": "Patch it where it comes from: the container or WSL host, the cloud image, or whoever built it",
+        "count": 1,
+        "examples": [
+          "6.18.33.2-microsoft-standard-WSL2"
+        ]
+      }
+    ],
+    "vulnerable": [
+      {
+        "instance": "brotli 0:1.0.9-9.el9_7",
+        "grade": "confirmed",
+        "count": 1,
+        "no_fix": 0,
+        "no_fix_planned": 0,
+        "known_exploited": 1,
+        "observed": "0:1.0.9-9.el9_7 (rpm database: libbrotli)",
+        "expected": "at least 1.0.9-10.el9_8.1",
+        "action": "Update to 1.0.9-10.el9_8.1 or later"
+      },
+      {
+        "instance": "acl 0:2.3.1-4.el9",
+        "grade": "confirmed",
+        "count": 1,
+        "no_fix": 0,
+        "no_fix_planned": 0,
+        "known_exploited": 0,
+        "observed": "0:2.3.1-4.el9 (rpm database: acl, libacl)",
+        "expected": "at least 2.4.0-1.el9_8",
+        "action": "Update to 2.4.0-1.el9_8 or later"
+      },
+      {
+        "instance": "attr 0:2.5.1-3.el9",
+        "grade": "confirmed",
+        "count": 1,
+        "no_fix": 0,
+        "no_fix_planned": 0,
+        "known_exploited": 0,
+        "observed": "0:2.5.1-3.el9 (rpm database: attr, libattr)",
+        "expected": "at least 2.6.0-1.el9_8",
+        "action": "Update to 2.6.0-1.el9_8 or later"
+      },
+      {
+        "instance": "ca-certificates 0:2025.2.80_v9.0.305-91.el9",
+        "grade": "confirmed",
+        "count": 1,
+        "no_fix": 0,
+        "no_fix_planned": 0,
+        "known_exploited": 0,
+        "observed": "0:2025.2.80_v9.0.305-91.el9 (rpm database: ca-certificates)",
+        "expected": "at least 2026.2.92_v9.0.319-90.3.el9_8",
+        "action": "Update to 2026.2.92_v9.0.319-90.3.el9_8 or later"
+      },
+      {
+        "instance": "coreutils 0:8.32-40.el9",
+        "grade": "confirmed",
+        "count": 2,
+        "no_fix": 0,
+        "no_fix_planned": 0,
+        "known_exploited": 0,
+        "observed": "0:8.32-40.el9 (rpm database: coreutils, coreutils-common)",
+        "expected": "at least 8.32-41.el9_8.1",
+        "action": "Update to 8.32-41.el9_8.1 or later"
+      },
+      {
+        "instance": "curl 0:7.76.1-40.el9",
+        "grade": "confirmed",
+        "count": 4,
+        "no_fix": 0,
+        "no_fix_planned": 0,
+        "known_exploited": 0,
+        "observed": "0:7.76.1-40.el9 (rpm database: curl, libcurl)",
+        "expected": "at least 7.76.1-40.el9_8.9",
+        "action": "Update to 7.76.1-40.el9_8.9 or later"
+      },
+      {
+        "instance": "dbus-broker 0:28-7.el9",
+        "grade": "confirmed",
+        "count": 1,
+        "no_fix": 0,
+        "no_fix_planned": 0,
+        "known_exploited": 0,
+        "observed": "0:28-7.el9 (rpm database: dbus-broker)",
+        "expected": "at least 28-9.el9_8",
+        "action": "Update to 28-9.el9_8 or later"
+      },
+      {
+        "instance": "expat 0:2.5.0-6.el9",
+        "grade": "confirmed",
+        "count": 4,
+        "no_fix": 0,
+        "no_fix_planned": 0,
+        "known_exploited": 0,
+        "observed": "0:2.5.0-6.el9 (rpm database: expat)",
+        "expected": "at least 2.5.0-6.el9_8.7",
+        "action": "Update to 2.5.0-6.el9_8.7 or later"
+      },
+      {
+        "instance": "gawk 0:5.1.0-6.el9",
+        "grade": "confirmed",
+        "count": 1,
+        "no_fix": 0,
+        "no_fix_planned": 0,
+        "known_exploited": 0,
+        "observed": "0:5.1.0-6.el9 (rpm database: gawk, gawk-all-langpacks)",
+        "expected": "at least 5.1.0-6.el9_8.1",
+        "action": "Update to 5.1.0-6.el9_8.1 or later"
+      },
+      {
+        "instance": "glib2 0:2.68.4-19.el9_8.1",
+        "grade": "confirmed",
+        "count": 3,
+        "no_fix": 0,
+        "no_fix_planned": 0,
+        "known_exploited": 0,
+        "observed": "0:2.68.4-19.el9_8.1 (rpm database: glib2)",
+        "expected": "at least 2.68.4-19.el9_8.10",
+        "action": "Update to 2.68.4-19.el9_8.10 or later"
+      },
+      {
+        "instance": "glibc 0:2.34-266.el9_8",
+        "grade": "confirmed",
+        "count": 4,
+        "no_fix": 0,
+        "no_fix_planned": 0,
+        "known_exploited": 0,
+        "observed": "0:2.34-266.el9_8 (rpm database: glibc, glibc-common, glibc-gconv-extra, glibc-langpack-en)",
+        "expected": "at least 2.34-283.el9_8",
+        "action": "Update to 2.34-283.el9_8 or later"
+      },
+      {
+        "instance": "gnutls 0:3.8.10-3.el9",
+        "grade": "confirmed",
+        "count": 1,
+        "no_fix": 0,
+        "no_fix_planned": 0,
+        "known_exploited": 0,
+        "observed": "0:3.8.10-3.el9 (rpm database: gnutls)",
+        "expected": "at least 3.8.10-4.el9_8",
+        "action": "Update to 3.8.10-4.el9_8 or later"
+      },
+      {
+        "instance": "gzip 0:1.12-1.el9",
+        "grade": "confirmed",
+        "count": 1,
+        "no_fix": 0,
+        "no_fix_planned": 0,
+        "known_exploited": 0,
+        "observed": "0:1.12-1.el9 (rpm database: gzip)",
+        "expected": "at least 1.12-2.el9_8",
+        "action": "Update to 1.12-2.el9_8 or later"
+      },
+      {
+        "instance": "libarchive 0:3.5.3-9.el9_7",
+        "grade": "confirmed",
+        "count": 1,
+        "no_fix": 0,
+        "no_fix_planned": 0,
+        "known_exploited": 0,
+        "observed": "0:3.5.3-9.el9_7 (rpm database: libarchive)",
+        "expected": "at least 3.5.3-11.el9_8",
+        "action": "Update to 3.5.3-11.el9_8 or later"
+      },
+      {
+        "instance": "libevent 0:2.1.12-8.el9_4",
+        "grade": "confirmed",
+        "count": 1,
+        "no_fix": 0,
+        "no_fix_planned": 0,
+        "known_exploited": 0,
+        "observed": "0:2.1.12-8.el9_4 (rpm database: libevent)",
+        "expected": "at least 2.1.13-1.el9_8",
+        "action": "Update to 2.1.13-1.el9_8 or later"
+      },
+      {
+        "instance": "libgcrypt 0:1.10.0-11.el9",
+        "grade": "confirmed",
+        "count": 1,
+        "no_fix": 0,
+        "no_fix_planned": 0,
+        "known_exploited": 0,
+        "observed": "0:1.10.0-11.el9 (rpm database: libgcrypt)",
+        "expected": "at least 1.10.0-13.el9_8",
+        "action": "Update to 1.10.0-13.el9_8 or later"
+      },
+      {
+        "instance": "libsolv 0:0.7.24-4.el9",
+        "grade": "confirmed",
+        "count": 1,
+        "no_fix": 0,
+        "no_fix_planned": 0,
+        "known_exploited": 0,
+        "observed": "0:0.7.24-4.el9 (rpm database: libsolv)",
+        "expected": "at least 0.7.24-6.el9_8",
+        "action": "Update to 0.7.24-6.el9_8 or later"
+      },
+      {
+        "instance": "libssh 0:0.10.4-18.el9",
+        "grade": "confirmed",
+        "count": 1,
+        "no_fix": 0,
+        "no_fix_planned": 0,
+        "known_exploited": 0,
+        "observed": "0:0.10.4-18.el9 (rpm database: libssh, libssh-config)",
+        "expected": "at least 0.10.4-19.el9_8",
+        "action": "Update to 0.10.4-19.el9_8 or later"
+      },
+      {
+        "instance": "libtasn1 0:4.16.0-9.el9",
+        "grade": "confirmed",
+        "count": 1,
+        "no_fix": 0,
+        "no_fix_planned": 0,
+        "known_exploited": 0,
+        "observed": "0:4.16.0-9.el9 (rpm database: libtasn1)",
+        "expected": "at least 4.16.0-10.el9_8",
+        "action": "Update to 4.16.0-10.el9_8 or later"
+      },
+      {
+        "instance": "libxml2 0:2.9.13-14.el9_7",
+        "grade": "confirmed",
+        "count": 4,
+        "no_fix": 0,
+        "no_fix_planned": 0,
+        "known_exploited": 0,
+        "observed": "0:2.9.13-14.el9_7 (rpm database: libxml2)",
+        "expected": "at least 2.9.13-14.el9_8.5",
+        "action": "Update to 2.9.13-14.el9_8.5 or later"
+      },
+      {
+        "instance": "nghttp2 0:1.43.0-6.el9_8.1",
+        "grade": "confirmed",
+        "count": 1,
+        "no_fix": 0,
+        "no_fix_planned": 0,
+        "known_exploited": 0,
+        "observed": "0:1.43.0-6.el9_8.1 (rpm database: libnghttp2)",
+        "expected": "at least 1.43.0-6.el9_8.2",
+        "action": "Update to 1.43.0-6.el9_8.2 or later"
+      },
+      {
+        "instance": "openssh 0:9.9p1-7.el9_8.alma.1",
+        "grade": "confirmed",
+        "count": 4,
+        "no_fix": 0,
+        "no_fix_planned": 0,
+        "known_exploited": 0,
+        "observed": "0:9.9p1-7.el9_8.alma.1 (rpm database: openssh, openssh-clients)",
+        "expected": "at least 9.9p1-13.el9_8.alma.1",
+        "action": "Update to 9.9p1-13.el9_8.alma.1 or later"
+      },
+      {
+        "instance": "openssl 1:3.5.5-2.el9_8",
+        "grade": "confirmed",
+        "count": 4,
+        "no_fix": 0,
+        "no_fix_planned": 0,
+        "known_exploited": 0,
+        "observed": "1:3.5.5-2.el9_8 (rpm database: openssl, openssl-fips-provider, openssl-libs)",
+        "expected": "at least 1:3.5.8-2.el9_8",
+        "action": "Update to 1:3.5.8-2.el9_8 or later"
+      },
+      {
+        "instance": "p11-kit 0:0.26.2-1.el9",
+        "grade": "confirmed",
+        "count": 1,
+        "no_fix": 0,
+        "no_fix_planned": 0,
+        "known_exploited": 0,
+        "observed": "0:0.26.2-1.el9 (rpm database: p11-kit, p11-kit-trust)",
+        "expected": "at least 0.26.4-1.el9_8",
+        "action": "Update to 0.26.4-1.el9_8 or later"
+      },
+      {
+        "instance": "pam 0:1.5.1-28.el9",
+        "grade": "confirmed",
+        "count": 1,
+        "no_fix": 0,
+        "no_fix_planned": 0,
+        "known_exploited": 0,
+        "observed": "0:1.5.1-28.el9 (rpm database: pam)",
+        "expected": "at least 1.5.1-28.el9_8.1",
+        "action": "Update to 1.5.1-28.el9_8.1 or later"
+      },
+      {
+        "instance": "pcre2 0:10.40-6.el9",
+        "grade": "confirmed",
+        "count": 1,
+        "no_fix": 0,
+        "no_fix_planned": 0,
+        "known_exploited": 0,
+        "observed": "0:10.40-6.el9 (rpm database: pcre2, pcre2-syntax)",
+        "expected": "at least 10.40-7.el9_8",
+        "action": "Update to 10.40-7.el9_8 or later"
+      },
+      {
+        "instance": "sqlite 0:3.34.1-10.el9_8",
+        "grade": "confirmed",
+        "count": 1,
+        "no_fix": 0,
+        "no_fix_planned": 0,
+        "known_exploited": 0,
+        "observed": "0:3.34.1-10.el9_8 (rpm database: sqlite-libs)",
+        "expected": "at least 3.34.1-11.el9_8",
+        "action": "Update to 3.34.1-11.el9_8 or later"
+      },
+      {
+        "instance": "sudo 0:1.9.17p2-3.el9_8",
+        "grade": "confirmed",
+        "count": 2,
+        "no_fix": 0,
+        "no_fix_planned": 0,
+        "known_exploited": 0,
+        "observed": "0:1.9.17p2-3.el9_8 (rpm database: sudo)",
+        "expected": "at least 1.9.17p2-3.el9_8.3",
+        "action": "Update to 1.9.17p2-3.el9_8.3 or later"
+      },
+      {
+        "instance": "tar 2:1.34-11.el9",
+        "grade": "confirmed",
+        "count": 1,
+        "no_fix": 0,
+        "no_fix_planned": 0,
+        "known_exploited": 0,
+        "observed": "2:1.34-11.el9 (rpm database: tar)",
+        "expected": "at least 2:1.34-13.el9_8",
+        "action": "Update to 2:1.34-13.el9_8 or later"
+      },
+      {
+        "instance": "wget 0:1.21.1-8.el9_4",
+        "grade": "confirmed",
+        "count": 1,
+        "no_fix": 0,
+        "no_fix_planned": 0,
+        "known_exploited": 0,
+        "observed": "0:1.21.1-8.el9_4 (rpm database: wget)",
+        "expected": "at least 1.21.1-11.el9_8",
+        "action": "Update to 1.21.1-11.el9_8 or later"
+      },
+      {
+        "instance": "xz 0:5.2.5-8.el9_0",
+        "grade": "confirmed",
+        "count": 1,
+        "no_fix": 0,
+        "no_fix_planned": 0,
+        "known_exploited": 0,
+        "observed": "0:5.2.5-8.el9_0 (rpm database: xz, xz-libs)",
+        "expected": "at least 5.2.5-8.el9_8.1",
+        "action": "Update to 5.2.5-8.el9_8.1 or later"
+      }
+    ],
+    "vulnerable_installs": 31,
+    "not_applicable": 2986,
+    "content_version": "2026-10-30.03d65b977b6d",
+    "inventory_sha256": "8f4b3fee200c197a8fb00242464045798982d512803e343585fdf2a7d7d5299c",
+    "verdicts_sha256": "c497bb52c2688be7e082ff6265f292b77732387706f38c743d09b0dd0a321cd7"
+  },
+  {
+    "step": "parity with rescan",
+    "findings": 53,
+    "agree": 53,
+    "outside_this_slice": {},
+    "explained": 0,
+    "explained_by": [],
+    "explained_examples": [],
+    "unexplained": []
+  },
+  {
+    "step": "collect with the package database moved aside",
+    "rc": 0,
+    "stderr": ""
+  },
+  {
+    "step": "after the failed read",
+    "package_db": {
+      "state": "ok",
+      "count": 0,
+      "exit": 0
+    },
+    "headline": {
+      "status": "not-assessed",
+      "text": "NOT ASSESSED: this host's patch state wasn't determined, so this is not a clean result. 3,094 checks couldn't be determined."
+    },
+    "undetermined": [
+      {
+        "outcome": "not-run",
+        "reason": "empty-list",
+        "blocked_by": "package_db",
+        "why": "the list of what's installed came back empty, which isn't plausible on a working system",
+        "source_said": "read to its end, with nothing in it",
+        "what_to_do": "Treat it as a failed read: run the agent's `collect` on the host and look at it",
+        "count": 3041,
+        "examples": [
+          "389-ds-base",
+          "389-ds-base-devel",
+          "389-ds-base-libs",
+          "389-ds-base-snmp",
+          "LibRaw"
+        ]
+      },
+      {
+        "outcome": "undetermined",
+        "reason": "not-reassessed",
+        "blocked_by": null,
+        "why": "a finding was open on this, and this scan has no evidence either way",
+        "source_said": null,
+        "what_to_do": "It stays open. Fix what stopped the scan, then scan again",
+        "count": 53,
+        "examples": [
+          "CVE-2024-34459",
+          "CVE-2025-13151",
+          "CVE-2025-5278",
+          "CVE-2025-6170",
+          "CVE-2026-102633"
+        ]
+      }
+    ],
+    "findings_before": 53,
+    "findings_after": 53,
+    "packages_kept": 207
+  },
+  {
+    "step": "RESULT: PASS",
+    "checks": {
+      "collection document valid, platform and package database read, with the command's exit status": true,
+      "packages judged": true,
+      "vulnerable verdicts graded confirmed against the distro's own advisory": true,
+      "end of support judged": true,
+      "the running WSL kernel isn't called clean": true,
+      "every finding rescan opened is a verdict or explained": true,
+      "same inventory and content, same verdicts": true,
+      "a failed package database read is reported as one": true,
+      "and isn't clean, names the package database, keeps the last list and closes nothing": true
+    }
+  },
+  {
+    "step": "sandbox destroyed",
+    "name": "nimstead-sbx-393d2fdd"
+  }
+]

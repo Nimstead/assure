@@ -31,6 +31,13 @@ class Product:
     nvd_dashes: bool = False  # NVD writes 7.1.2-34 where the registry has 7.1.2.34 (ImageMagick): the same patch number
 
 
+def _openjdk11(v: str) -> str:
+    """An OpenJDK update release, 11 or later; Java 8 numbers its own way (plan decision 13). Corretto's name may not carry the major."""
+    if int(v.split(".")[0]) < 11:
+        raise ValueError(v)
+    return ".".join(v.split(".")[:3])
+
+
 def _p(pattern: str) -> re.Pattern:
     return re.compile(pattern)
 
@@ -149,26 +156,26 @@ PRODUCTS: tuple[Product, ...] = (
             version=lambda m, v: "" if re.fullmatch(r"\d+\.\d+\.3\d{4}", v) else v),  # Reader and Pro share this name; 24.001.30356 is the classic track: refused
     Product("jetbrains:teamcity", _p(r"JetBrains TeamCity (?P<v>\d{4}\.\d+(?:\.\d+)*)(?: \(build \d+\))?"), publisher=_p(r"JetBrains(?: s\.r\.o\.)?"),
             version=lambda m, v: m["v"]),  # DisplayVersion is "Build 239120": a name without the release stays inventory
-    Product("atlassian:confluence_data_center", _p(r"Atlassian Confluence (?P<v>\d+\.\d+\.\d+)"), ("atlassian:confluence_data_center", "atlassian:confluence_server"),
+    Product("atlassian:confluence_data_center", _p(r"(?:Atlassian )?Confluence (?P<v>\d+\.\d+\.\d+)"), ("atlassian:confluence_data_center", "atlassian:confluence_server"),
             publisher=_p(r"Atlassian"), version=lambda m, v: m["v"], branch=True),
     Product("octopus:octopus_server", _p(r"Octopus Deploy Server"), publisher=_p(r"Octopus Deploy Pty\. Ltd\.")),
     Product("ollama:ollama", _p(r"Ollama(?: version \d+\.\d+\.\d+)?"), publisher=_p(r"Ollama")),
     Product("openssl:openssl", _p(rf"OpenSSL (?:Light )?(?P<v>\d+\.\d+\.\d+)(?: Light)?(?: LTS)?(?: for ARM)? \({_ARCH}\)"),
-            publisher=_p(r"OpenSSL Win(?:32|64|64 ARM) Installer Team"), version=lambda m, v: m["v"], branch=True),  # Shining Light builds; 1.1.1w never matches
+            publisher=_p(r"OpenSSL Win(?:32|64|64 ARM) Installer Team|Shining Light Productions"), version=lambda m, v: m["v"], branch=True),  # Shining Light builds; 1.1.1w never matches
     Product("clamav:clamav", _p(r"ClamAV (?P<v>\d+\.\d+\.\d+)"), publisher=_p(r"Cisco Systems, Inc\."), version=lambda m, v: m["v"], branch=True),
     Product("sandboxie-plus:sandboxie", _p(r"Sandboxie-Plus v\d+\.\d+\.\d+"), publisher=_p(r"https?://xanasoft\.com/?")),  # Classic numbers 5.x: out
     Product("tenable:nessus", _p(r"Tenable Nessus \(x64\)"), publisher=_p(r"Tenable,? Inc\.?"), version=lambda m, v: ".".join(v.split(".")[:3])),  # 10.12.6.20073
-    Product("tenable:nessus_agent", _p(r"Nessus Agent \(x64\)"), publisher=_p(r"Tenable,? Inc\.?"), version=lambda m, v: ".".join(v.split(".")[:3]), branch=True),
+    Product("tenable:nessus_agent", _p(r"Nessus Agent \(x64\)"), publisher=_p(r"Tenable(?:,? Inc\.?)?"), version=lambda m, v: ".".join(v.split(".")[:3]), branch=True),
     Product("joplin_project:joplin", _p(r"Joplin(?: \d+\.\d+\.\d+)?"), publisher=_p(r"Laurent Cozic")),
     Product("mattermost:mattermost_desktop", _p(r"Mattermost(?: \d+\.\d+\.\d+)?"), publisher=_p(r"Mattermost,? Inc\.?"), branch=True),
-    Product("plex:media_server", _p(r"Plex Media Server"), publisher=_p(r"Plex,? Inc\.?")),
+    Product("plex:media_server", _p(r"Plex Media Server(?: \d+(?:\.\d+)+ \((?:x64|x86)\))?"), publisher=_p(r"Plex,? Inc\.?")),
     Product("sonicwall:netextender", _p(r"SonicWall NetExtender"), publisher=_p(r"SonicWall,? Inc\.?"), version=lambda m, v: ".".join(v.split(".")[:3])),
     Product("splashtop:streamer", _p(r"Splashtop Streamer"), publisher=_p(r"Splashtop Inc\.")),
     Product("papercut:papercut_ng", _p(r"PaperCut NG"), publisher=_p(r"PaperCut Software International Pty Ltd\.?"),
             version=lambda m, v: ".".join(v.split(".")[:3]), branch=True),  # 21.0.3.57216 = release 21.0.3, build 57216
     Product("opensc_project:opensc", _p(r"OpenSC smartcard framework(?: Light)? \((?:32|64)bit\)"), publisher=_p(r"OpenSC Project"), version=lambda m, v: ".".join(v.split(".")[:3])),
-    Product("oracle:openjdk", _p(rf"Amazon Corretto JDK (?:1[1-9]|[2-9]\d) \((?:x64|x86)\)|Liberica JDK (?:1[1-9]|[2-9]\d) \((?:{_ARCH}|AArch64)\)"),
-            publisher=_p(r"Amazon(?: .*)?|BellSoft"), version=lambda m, v: ".".join(v.split(".")[:3]), branch=True),  # OpenJDK update releases (plan decision 13): 21.0.13.305. Azul Zulu numbers its own: out
+    Product("oracle:openjdk", _p(rf"Amazon Corretto(?: JDK (?:1[1-9]|[2-9]\d))? \((?:x64|x86)\)|Liberica JDK (?:1[1-9]|[2-9]\d) \((?:{_ARCH}|AArch64)\)"),
+            publisher=_p(r"Amazon(?: .*)?|BellSoft"), version=lambda m, v: _openjdk11(v), branch=True),  # OpenJDK update releases (plan decision 13): 21.0.13.305. Azul Zulu numbers its own: out
 )
 
 _BY_CPE = {c: p for p in PRODUCTS for c in (p.cpes or (p.key,))}

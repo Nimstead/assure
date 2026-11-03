@@ -485,6 +485,12 @@ def test_cvelist_rows_only_where_nvd_has_none_and_nvd_replaces_them(env):
     ("PaperCut NG", "PaperCut Software International Pty Ltd", "21.0.3.57216", ("papercut:papercut_ng", "21.0.3")),
     ("OpenSC smartcard framework (64bit)", "OpenSC Project", "0.27.1.0", ("opensc_project:opensc", "0.27.1")),
     ("Amazon Corretto JDK 21 (x64)", "Amazon", "21.0.13.11", ("oracle:openjdk", "21.0.13")),
+    # as real installers register them (batch 7 on a Windows 11 VM, 2026-11-03): each was inventory only before
+    ("Confluence 10.2.18", "Atlassian", "10.2.18", ("atlassian:confluence_data_center", "10.2.18")),
+    ("OpenSSL Light 4.0.3 (64-bit)", "Shining Light Productions", "4.0.3", ("openssl:openssl", "4.0.3")),
+    ("Nessus Agent (x64)", "Tenable", "11.2.3.20022", ("tenable:nessus_agent", "11.2.3")),
+    ("Plex Media Server 1.43.5.11079 (x64)", "Plex, Inc.", "1.43.5.11079", ("plex:media_server", "1.43.5.11079")),
+    ("Amazon Corretto (x64)", "Amazon", "21.0.13.0", ("oracle:openjdk", "21.0.13")),
     ("Liberica JDK 21 (64-bit)", "BellSoft", "21.0.13.305", ("oracle:openjdk", "21.0.13")),
     ("IntelliJ IDEA 2026.2.4", "JetBrains s.r.o.", "262.11879.100", ("jetbrains:intellij_idea", "2026.2.4")),
     ("PyCharm 2026.2.4", "JetBrains s.r.o.", "262.11879.98", ("jetbrains:pycharm", "2026.2.4")),
@@ -542,6 +548,8 @@ def test_identify_batches(name, pub, ver, want):
     ("Liberica JDK 8 (64-bit)", "BellSoft", "8.0.432.7"),  # Java 8 numbering: left out
     ("Azul Zulu JDK 21", "Azul Systems, Inc.", "21.54.109"),  # its own numbers
     ("Amazon Corretto JDK 8 (x64)", "Amazon", "8.462.8.1"),
+    ("Amazon Corretto (x64)", "Amazon", "8.472.08.1"),  # the bare name is Java 8 too: refused by its version
+    ("Confluence 10.2.18", "Someone Else", "10.2.18"),
     ("IntelliJ IDEA 2026.3 EAP", "JetBrains s.r.o.", "263.1.1"),
     ("PyCharm 2026.2.4", "Someone Else", "262.11879.98"),
     ("Erlang OTP 27 (15.2)", "Ericsson AB", "15.2"),  # the ERTS version, not OTP

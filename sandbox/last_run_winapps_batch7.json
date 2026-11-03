@@ -1,0 +1,689 @@
+{
+  "result": "PASS",
+  "vm": "nimstead-sbx-win-38a575",
+  "proven": [
+    "Adobe.Acrobat.Reader.64-bit",
+    "Cisco.ClamAV",
+    "JetBrains.IntelliJIDEA",
+    "JetBrains.PyCharm",
+    "Joplin.Joplin",
+    "Mattermost.MattermostDesktop",
+    "OpenSC.OpenSC",
+    "Sandboxie.Plus",
+    "SonicWall.NetExtender",
+    "Splashtop.SplashtopStreamer"
+  ],
+  "apps": {
+    "Adobe.Acrobat.Reader.64-bit": {
+      "proven": true,
+      "installed": "26.002.21996",
+      "old": [
+        {
+          "display_name": "Adobe Acrobat (64-bit)",
+          "registry_version": "26.002.21996",
+          "identified": [
+            "adobe:acrobat_dc",
+            "26.002.21996"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Adobe Acrobat (64-bit)",
+          "registry_version": "26.003.22075",
+          "identified": [
+            "adobe:acrobat_dc",
+            "26.003.22075"
+          ]
+        }
+      ]
+    },
+    "Ollama.Ollama": {
+      "proven": false,
+      "installed": "0.40.12",
+      "old": [
+        {
+          "display_name": "Ollama version 0.40.12",
+          "registry_version": "0.40.12",
+          "identified": [
+            "ollama:ollama",
+            "0.40.12"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Ollama version 0.40.12",
+          "registry_version": "0.40.12",
+          "identified": [
+            "ollama:ollama",
+            "0.40.12"
+          ]
+        }
+      ]
+    },
+    "ShiningLight.OpenSSL.Light": {
+      "proven": false,
+      "installed": "4.0.3",
+      "old": [],
+      "new": []
+    },
+    "Cisco.ClamAV": {
+      "proven": true,
+      "installed": "1.5.3",
+      "old": [
+        {
+          "display_name": "ClamAV 1.5.3",
+          "registry_version": "1.5.3",
+          "identified": [
+            "clamav:clamav",
+            "1.5.3"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "ClamAV 1.5.4",
+          "registry_version": "1.5.4",
+          "identified": [
+            "clamav:clamav",
+            "1.5.4"
+          ]
+        }
+      ]
+    },
+    "Sandboxie.Plus": {
+      "proven": true,
+      "installed": "1.18.5",
+      "old": [
+        {
+          "display_name": "Sandboxie-Plus v1.18.5",
+          "registry_version": "1.18.5",
+          "identified": [
+            "sandboxie-plus:sandboxie",
+            "1.18.5"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Sandboxie-Plus v1.18.6",
+          "registry_version": "1.18.6",
+          "identified": [
+            "sandboxie-plus:sandboxie",
+            "1.18.6"
+          ]
+        }
+      ]
+    },
+    "Joplin.Joplin": {
+      "proven": true,
+      "installed": "3.7.21",
+      "old": [
+        {
+          "display_name": "Joplin 3.7.21",
+          "registry_version": "3.7.21",
+          "identified": [
+            "joplin_project:joplin",
+            "3.7.21"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Joplin 3.7.22",
+          "registry_version": "3.7.22",
+          "identified": [
+            "joplin_project:joplin",
+            "3.7.22"
+          ]
+        }
+      ]
+    },
+    "Mattermost.MattermostDesktop": {
+      "proven": true,
+      "installed": "6.3.0",
+      "old": [
+        {
+          "display_name": "Mattermost",
+          "registry_version": "6.3.0.0",
+          "identified": [
+            "mattermost:mattermost_desktop",
+            "6.3.0.0"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Mattermost",
+          "registry_version": "6.3.2.0",
+          "identified": [
+            "mattermost:mattermost_desktop",
+            "6.3.2.0"
+          ]
+        }
+      ]
+    },
+    "SonicWall.NetExtender": {
+      "proven": true,
+      "installed": "10.3.4",
+      "old": [
+        {
+          "display_name": "SonicWall NetExtender",
+          "registry_version": "10.3.4",
+          "identified": [
+            "sonicwall:netextender",
+            "10.3.4"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "SonicWall NetExtender",
+          "registry_version": "10.3.5",
+          "identified": [
+            "sonicwall:netextender",
+            "10.3.5"
+          ]
+        }
+      ]
+    },
+    "Splashtop.SplashtopStreamer": {
+      "proven": true,
+      "installed": "3.8.6.1",
+      "old": [
+        {
+          "display_name": "Splashtop Streamer",
+          "registry_version": "3.8.6.1",
+          "identified": [
+            "splashtop:streamer",
+            "3.8.6.1"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Splashtop Streamer",
+          "registry_version": "3.8.6.3",
+          "identified": [
+            "splashtop:streamer",
+            "3.8.6.3"
+          ]
+        }
+      ]
+    },
+    "OpenSC.OpenSC": {
+      "proven": true,
+      "installed": "0.26.1",
+      "old": [
+        {
+          "display_name": "OpenSC smartcard framework (64bit)",
+          "registry_version": "0.26.1.0",
+          "identified": [
+            "opensc_project:opensc",
+            "0.26.1"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "OpenSC smartcard framework (64bit)",
+          "registry_version": "0.27.1.1146",
+          "identified": [
+            "opensc_project:opensc",
+            "0.27.1"
+          ]
+        }
+      ]
+    },
+    "Amazon.Corretto.21.JDK": {
+      "proven": false,
+      "installed": "21.0.12.12",
+      "old": [],
+      "new": []
+    },
+    "JetBrains.IntelliJIDEA": {
+      "proven": true,
+      "installed": "2026.2.3",
+      "old": [
+        {
+          "display_name": "IntelliJ IDEA 2026.2.3",
+          "registry_version": "262.10968.63",
+          "identified": [
+            "jetbrains:intellij_idea",
+            "2026.2.3"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "IntelliJ IDEA 2026.2.4",
+          "registry_version": "262.11879.100",
+          "identified": [
+            "jetbrains:intellij_idea",
+            "2026.2.4"
+          ]
+        }
+      ]
+    },
+    "JetBrains.PyCharm": {
+      "proven": true,
+      "installed": "2026.2.3",
+      "old": [
+        {
+          "display_name": "PyCharm 2026.2.3",
+          "registry_version": "262.10968.92",
+          "identified": [
+            "jetbrains:pycharm",
+            "2026.2.3"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "PyCharm 2026.2.4",
+          "registry_version": "262.11879.98",
+          "identified": [
+            "jetbrains:pycharm",
+            "2026.2.4"
+          ]
+        }
+      ]
+    },
+    "Plex.PlexMediaServer": {
+      "proven": false,
+      "installed": "1.43.5.11029",
+      "old": [],
+      "new": []
+    },
+    "Tenable.Nessus": {
+      "proven": false,
+      "installed": "10.12.6.20073",
+      "old": [
+        {
+          "display_name": "Tenable Nessus (x64)",
+          "registry_version": "10.12.6.20073",
+          "identified": [
+            "tenable:nessus",
+            "10.12.6"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Tenable Nessus (x64)",
+          "registry_version": "10.12.6.20073",
+          "identified": [
+            "tenable:nessus",
+            "10.12.6"
+          ]
+        }
+      ]
+    },
+    "Tenable.NessusAgent": {
+      "proven": false,
+      "installed": "11.2.3.20022",
+      "old": [],
+      "new": []
+    },
+    "JetBrains.TeamCity": {
+      "proven": false,
+      "installed": "2026.2",
+      "old": [],
+      "new": []
+    },
+    "OctopusDeploy.Server": {
+      "proven": false,
+      "why": "winget couldn't install 2025.3.14320: timed out after 1800 s"
+    },
+    "PaperCutSoftware.NG": {
+      "proven": false,
+      "why": "winget couldn't install 21.0.3.57216: timed out after 1800 s"
+    },
+    "Atlassian.Confluence": {
+      "proven": false,
+      "installed": "10.2.18",
+      "old": [],
+      "new": []
+    }
+  },
+  "steps": [
+    {
+      "step": "VM ready",
+      "python": "C:\\Program Files\\Nimstead\\runtime\\d012f3aa29cf\\python.exe",
+      "winget": "v1.29.380"
+    },
+    {
+      "step": "identified on a real install",
+      "app": "Adobe.Acrobat.Reader.64-bit",
+      "old": [
+        {
+          "display_name": "Adobe Acrobat (64-bit)",
+          "registry_version": "26.002.21996",
+          "identified": [
+            "adobe:acrobat_dc",
+            "26.002.21996"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Adobe Acrobat (64-bit)",
+          "registry_version": "26.003.22075",
+          "identified": [
+            "adobe:acrobat_dc",
+            "26.003.22075"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "NOT identified as expected",
+      "app": "Ollama.Ollama",
+      "old": [
+        {
+          "display_name": "Ollama version 0.40.12",
+          "registry_version": "0.40.12",
+          "identified": [
+            "ollama:ollama",
+            "0.40.12"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Ollama version 0.40.12",
+          "registry_version": "0.40.12",
+          "identified": [
+            "ollama:ollama",
+            "0.40.12"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "NOT identified as expected",
+      "app": "ShiningLight.OpenSSL.Light",
+      "old": [],
+      "new": []
+    },
+    {
+      "step": "identified on a real install",
+      "app": "Cisco.ClamAV",
+      "old": [
+        {
+          "display_name": "ClamAV 1.5.3",
+          "registry_version": "1.5.3",
+          "identified": [
+            "clamav:clamav",
+            "1.5.3"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "ClamAV 1.5.4",
+          "registry_version": "1.5.4",
+          "identified": [
+            "clamav:clamav",
+            "1.5.4"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "identified on a real install",
+      "app": "Sandboxie.Plus",
+      "old": [
+        {
+          "display_name": "Sandboxie-Plus v1.18.5",
+          "registry_version": "1.18.5",
+          "identified": [
+            "sandboxie-plus:sandboxie",
+            "1.18.5"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Sandboxie-Plus v1.18.6",
+          "registry_version": "1.18.6",
+          "identified": [
+            "sandboxie-plus:sandboxie",
+            "1.18.6"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "identified on a real install",
+      "app": "Joplin.Joplin",
+      "old": [
+        {
+          "display_name": "Joplin 3.7.21",
+          "registry_version": "3.7.21",
+          "identified": [
+            "joplin_project:joplin",
+            "3.7.21"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Joplin 3.7.22",
+          "registry_version": "3.7.22",
+          "identified": [
+            "joplin_project:joplin",
+            "3.7.22"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "identified on a real install",
+      "app": "Mattermost.MattermostDesktop",
+      "old": [
+        {
+          "display_name": "Mattermost",
+          "registry_version": "6.3.0.0",
+          "identified": [
+            "mattermost:mattermost_desktop",
+            "6.3.0.0"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Mattermost",
+          "registry_version": "6.3.2.0",
+          "identified": [
+            "mattermost:mattermost_desktop",
+            "6.3.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "identified on a real install",
+      "app": "SonicWall.NetExtender",
+      "old": [
+        {
+          "display_name": "SonicWall NetExtender",
+          "registry_version": "10.3.4",
+          "identified": [
+            "sonicwall:netextender",
+            "10.3.4"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "SonicWall NetExtender",
+          "registry_version": "10.3.5",
+          "identified": [
+            "sonicwall:netextender",
+            "10.3.5"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "identified on a real install",
+      "app": "Splashtop.SplashtopStreamer",
+      "old": [
+        {
+          "display_name": "Splashtop Streamer",
+          "registry_version": "3.8.6.1",
+          "identified": [
+            "splashtop:streamer",
+            "3.8.6.1"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Splashtop Streamer",
+          "registry_version": "3.8.6.3",
+          "identified": [
+            "splashtop:streamer",
+            "3.8.6.3"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "identified on a real install",
+      "app": "OpenSC.OpenSC",
+      "old": [
+        {
+          "display_name": "OpenSC smartcard framework (64bit)",
+          "registry_version": "0.26.1.0",
+          "identified": [
+            "opensc_project:opensc",
+            "0.26.1"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "OpenSC smartcard framework (64bit)",
+          "registry_version": "0.27.1.1146",
+          "identified": [
+            "opensc_project:opensc",
+            "0.27.1"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "NOT identified as expected",
+      "app": "Amazon.Corretto.21.JDK",
+      "old": [],
+      "new": []
+    },
+    {
+      "step": "identified on a real install",
+      "app": "JetBrains.IntelliJIDEA",
+      "old": [
+        {
+          "display_name": "IntelliJ IDEA 2026.2.3",
+          "registry_version": "262.10968.63",
+          "identified": [
+            "jetbrains:intellij_idea",
+            "2026.2.3"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "IntelliJ IDEA 2026.2.4",
+          "registry_version": "262.11879.100",
+          "identified": [
+            "jetbrains:intellij_idea",
+            "2026.2.4"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "identified on a real install",
+      "app": "JetBrains.PyCharm",
+      "old": [
+        {
+          "display_name": "PyCharm 2026.2.3",
+          "registry_version": "262.10968.92",
+          "identified": [
+            "jetbrains:pycharm",
+            "2026.2.3"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "PyCharm 2026.2.4",
+          "registry_version": "262.11879.98",
+          "identified": [
+            "jetbrains:pycharm",
+            "2026.2.4"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "NOT identified as expected",
+      "app": "Plex.PlexMediaServer",
+      "old": [],
+      "new": []
+    },
+    {
+      "step": "NOT identified as expected",
+      "app": "Tenable.Nessus",
+      "old": [
+        {
+          "display_name": "Tenable Nessus (x64)",
+          "registry_version": "10.12.6.20073",
+          "identified": [
+            "tenable:nessus",
+            "10.12.6"
+          ]
+        }
+      ],
+      "new": [
+        {
+          "display_name": "Tenable Nessus (x64)",
+          "registry_version": "10.12.6.20073",
+          "identified": [
+            "tenable:nessus",
+            "10.12.6"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "NOT identified as expected",
+      "app": "Tenable.NessusAgent",
+      "old": [],
+      "new": []
+    },
+    {
+      "step": "NOT identified as expected",
+      "app": "JetBrains.TeamCity",
+      "old": [],
+      "new": []
+    },
+    {
+      "step": "not installable",
+      "app": "OctopusDeploy.Server"
+    },
+    {
+      "step": "not installable",
+      "app": "PaperCutSoftware.NG"
+    },
+    {
+      "step": "NOT identified as expected",
+      "app": "Atlassian.Confluence",
+      "old": [],
+      "new": []
+    }
+  ]
+}

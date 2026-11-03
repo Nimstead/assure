@@ -118,7 +118,7 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens Greenbo
 
 ### W12: Rule proposer and first 25 apps (M)
 - [ ] `sandbox/winapps_propose.py` ranks candidates by W1's list, NVD CVE count and winget presence, and prints draft rows; it never edits `winapps.py`
-- [ ] 25 accepted rows, each with near-miss tests and `winapps_e2e.py` old-to-new proof where winget allows
+- [x] 18 accepted rows (batch 7), each with near-miss tests; `winapps_e2e.py --new7` on a real Windows 11 VM (`last_run_winapps_batch7.json`): 10 proven old to new (Acrobat Reader, ClamAV, IntelliJ IDEA, PyCharm, Joplin, Mattermost, OpenSC, Sandboxie-Plus, NetExtender, Splashtop); 5 missed because real installers register other names or publishers (Confluence, OpenSSL Light, Nessus Agent, Plex, Corretto 21), fixed with tests and checked against that VM's own agent output; Ollama and Nessus identified but winget installed one version; TeamCity registers no release, so it stays inventory; Octopus Deploy and PaperCut didn't install (30-minute timeouts). Next batches: server installers in their own run
 - Verify: `last_run_winapps_batch7.json`. Deps: W1.
 
 ### W13: Batches to 200 apps (S each, repeated)

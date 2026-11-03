@@ -10,6 +10,7 @@ Phase 2 stops there (W7). The lab's secrets live in its VMs' own folders under w
 scrubs them. The lab file holds names and addresses only.
 """
 
+import atexit
 import json
 import os
 import secrets
@@ -431,6 +432,7 @@ class Api:
                             raise
                         time.sleep(120)
         self.client = httpx.Client(base_url=f"http://127.0.0.1:{port}", timeout=60)
+        atexit.register(self.stop)  # on Windows the server outlived every harness run and held its port
         self.start()
         body = {"email": "lab@example.com", "password": "windows-lab-" + secrets.token_hex(8), "org_name": "WinLab"}
         SECRETS.add(body["password"])
@@ -453,8 +455,9 @@ class Api:
         raise RuntimeError(f"the API didn't start: see {h.TMP / 'api.log'}")
 
     def stop(self):
-        self.proc.kill()
-        self.proc.wait(timeout=30)
+        if self.proc and self.proc.poll() is None:
+            self.proc.kill()
+            self.proc.wait(timeout=30)
 
     def get(self, *a, **k):
         return self.client.get(*a, **k)

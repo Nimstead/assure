@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # a lab harness has no VM on its command line and points this at each VM in turn; winvm.run refuses anything else
 NAME = next((a for a in sys.argv[1:] if a.startswith(winvm.PREFIX)), "")
 TMP = Path(tempfile.mkdtemp(prefix="nimstead-wine2e-"))
-PORT = 8766
+PORT = int(os.environ.get("NIMSTEAD_SBX_PORT", "8766"))  # another free port when a run's server is still holding this one
 log: list[dict] = []
 OUT_ARG = next((a[6:] for a in sys.argv if a.startswith("--out=")), None)  # each OS version keeps its own run file
 OUT = OUT_ARG or "last_run_windows.json"  # last_run_windows11.json once the VM reports Windows 11

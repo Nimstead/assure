@@ -2,7 +2,7 @@
 
 The installed agent's `report` runs as SYSTEM inside a Windows job object, so PowerShell and everything else it starts count. Memory is the
 job's peak commit charge. Bytes are counted on this host, by a relay in front of the server. Use the VM with 50 apps to match W25, and run it
-once per Windows version: the file names the version. LIMITS are deliberately generous until a first run gives real numbers to set them from.
+once per Windows version: the file names the version. LIMITS are about 4x the first real run (Windows 11), published in docs/install.md.
 
 Run from api/:  uv run python ../sandbox/winfootprint.py VM_NAME [--keep]   Writes sandbox/last_run_winfootprint.json.
 """
@@ -16,7 +16,7 @@ import threading
 import winlab as lab_  # noqa: E402
 
 h = lab_.h
-LIMITS = {"cpu_seconds": 600, "peak_memory_mb": 2048, "duration_seconds": 1800, "disk_mb": 1024, "sent_mb": 50}
+LIMITS = {"cpu_seconds": 120, "peak_memory_mb": 512, "duration_seconds": 300, "disk_mb": 100, "sent_mb": 5}  # about 4x the first real run (Windows 11, 2026-11-03)
 API_PORT = h.PORT + 1  # behind the relay, which takes the port the VM knows
 METER = r"""import ctypes, json, subprocess, sys, time
 from ctypes import c_longlong as L, c_size_t as Z, c_ulong as D, c_ulonglong as U, wintypes as w

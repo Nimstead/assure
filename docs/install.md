@@ -126,6 +126,8 @@ Updates have to be signed, but the first copy of the agent comes from your serve
 2. Check the signature with an agent you already trust: `python3 nimstead_agent.py verify-release release.json release.json.sig` prints the manifest only if a pinned Nimstead release key signed it (key fingerprints `a91fa653…` and backup `2438f2cc…`, also in `RELEASE_KEYS` at the top of the agent).
 3. The manifest's `agent_sha256` must equal `sha256sum nimstead_agent.py` and the `agent sha256` the installer printed. On Windows, the `runtime sha256` it printed must equal the manifest's `runtimes.amd64.sha256` (or `arm64` / `win32`). Or skip the installer: copy this verified file to `/usr/local/lib/nimstead/` yourself, then run its `enroll --server https://… --channel stable`, `report` and `schedule` as root, with `NIMSTEAD_TOKEN` set.
 
+**What a scan costs a Windows machine.** Measured on Windows 11 26H2 (`sandbox/last_run_winfootprint.json`): one scan took 30 s, 25 s of CPU and 280 MB of memory at its peak. It read 168 MB from disk (mostly hashing about 440 drivers), stored 25 MB, and sent 76 KB to the server. The harness fails a run that goes over 120 s of CPU, 512 MB, 5 minutes, 100 MB of disk or 5 MB sent. This was measured on a fresh install with few apps; a machine with many more apps and drivers takes longer.
+
 A machine that hasn't reported for 14 hours shows **Not reporting** and sends one alert, so a stopped agent doesn't quietly leave stale findings.
 
 ### Troubleshooting

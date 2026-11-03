@@ -1,0 +1,39 @@
+[
+  {
+    "step": "install.ps1 ran",
+    "vm": "nimstead-sbx-win-38a575"
+  },
+  {
+    "step": "one scan",
+    "os": "Windows 11 Pro 26H2 (AMD64) build 10.0.26300.9711",
+    "build": "10.0.26300.9711",
+    "agent_output": "reported 454 packages",
+    "limits": {
+      "cpu_seconds": 600,
+      "peak_memory_mb": 2048,
+      "duration_seconds": 1800,
+      "disk_mb": 1024,
+      "sent_mb": 50
+    },
+    "rc": 0,
+    "duration_seconds": 30.4,
+    "cpu_seconds": 24.9,
+    "peak_memory_mb": 280,
+    "peak_process_mb": 242,
+    "processes": 19,
+    "disk_read_mb": 168,
+    "disk_written_mb": 0,
+    "disk_mb": 25,
+    "sent_mb": 0.07,
+    "received_mb": 0.0,
+    "sent_bytes": 76944
+  },
+  {
+    "step": "RESULT: PASS",
+    "checks": {
+      "scan finished": true,
+      "server got it": true,
+      "within limits (over: {})": true
+    }
+  }
+]

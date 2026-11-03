@@ -193,8 +193,8 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens Greenbo
 - Verify: unit tests plus one run on a VM with the task removed and the service stopped. Deps: none.
 
 ### W25: Footprint (S)
-- [ ] One scan on the VM with 50 apps: CPU time, peak memory, disk, duration, bytes sent, recorded per Windows version
-- [ ] Limits chosen from that run and checked by the harness; published in `docs/install.md`
+- [x] One scan: CPU time, peak memory, disk, duration, bytes sent (`last_run_winfootprint.json`, Windows 11: 30 s, 25 s CPU, 280 MB, 76 KB sent). Not on a VM with 50 apps: this one has few
+- [x] Limits chosen from that run (about 4x) and checked by the harness; published in `docs/install.md`
 - Verify: `last_run_winfootprint.json`. Deps: none.
 
 ### W26: Failure runs (M)

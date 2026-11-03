@@ -78,10 +78,12 @@ def sync_osv(session: Session, ecosystems: list[str], client=None, batch: int = 
     n = {"inserted": 0, "updated": 0, "skipped": 0}
     for top in ecosystems:
         like = Advisory.ecosystem.like(top.replace("%", "") + ":%")
+        # A record is in the zip of every ecosystem it affects (a GHSA naming a PyPI and an npm package is in both), so what's
+        # stored is known for every ecosystem this pass writes, or the second zip inserts the first's rows again (seen: npm after PyPI)
         # ponytail: whole ecosystem's (id, eco, pkg)->modified map in RAM (~100 B/row, fine to ~1M rows)
         have = {(i, e, p): m for i, e, p, m in session.execute(
             select(Advisory.id, Advisory.ecosystem, Advisory.package, Advisory.modified)
-            .where((Advisory.ecosystem == top) | like))}
+            .where((Advisory.ecosystem == top) | like | Advisory.ecosystem.in_(sorted(only or ()))))}
         ins: list[dict] = []
         upd: list[dict] = []
 
@@ -96,7 +98,8 @@ def sync_osv(session: Session, ecosystems: list[str], client=None, batch: int = 
                         continue
                     rec = json.loads(z.read(name))
                     for eco, pkg, out in _rows(rec):
-                        if only is not None and eco not in only:
+                        keep = eco in only if only is not None else eco.split(":", 1)[0] == top  # unfiltered: this zip's own ecosystem only
+                        if not keep:
                             continue
                         key = (rec["id"], eco, pkg)
                         row = {"id": rec["id"], "ecosystem": eco, "package": pkg,

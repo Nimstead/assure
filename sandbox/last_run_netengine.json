@@ -1,0 +1,65 @@
+[
+  {
+    "step": "distro up",
+    "name": "nimstead-sbx-net-dfd85a",
+    "address": "172.25.98.1"
+  },
+  {
+    "step": "verified",
+    "host": "shop.example.com",
+    "address": "172.25.98.1"
+  },
+  {
+    "step": "external.scan (shipped)",
+    "result": {
+      "address": "172.25.98.1",
+      "open": 3,
+      "resolved": 0,
+      "skipped": []
+    }
+  },
+  {
+    "step": "phase 1 verdicts",
+    "redis": "vulnerable",
+    "tls_expired": "vulnerable",
+    "git": "vulnerable",
+    "parity_ok": true,
+    "external_findings": [
+      "NIM-EXPOSED-REDIS",
+      "NIM-TLS-EXPIRED",
+      "NIM-TLS-LEGACY"
+    ]
+  },
+  {
+    "step": "phase 2 verdicts",
+    "vsftpd_cve": "vulnerable",
+    "catch_all_2121": "undetermined:catch-all"
+  },
+  {
+    "step": "phase 3 verdicts",
+    "git": "undetermined:soft-404"
+  },
+  {
+    "step": "RESULT: PASS",
+    "parity": {
+      "agree": [
+        "NIM-EXPOSED-REDIS",
+        "NIM-TLS-EXPIRED",
+        "NIM-TLS-LEGACY"
+      ],
+      "explained": [
+        {
+          "id": "NIM-WEB-GIT",
+          "why": "an engine-only remote check (web path or banner version); external.scan doesn't open it yet"
+        }
+      ],
+      "unexplained": [],
+      "ok": true
+    },
+    "phases": 3
+  },
+  {
+    "step": "distro destroyed",
+    "name": "nimstead-sbx-net-dfd85a"
+  }
+]

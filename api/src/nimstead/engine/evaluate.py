@@ -260,8 +260,8 @@ def _applications(inv: Inventory, c: Content, agent_read: bool = True) -> list[V
             out.append(_absent_or_blocked(src, "application", eco, label, True, inv.source(src)))
     for why, n in sorted(((inv.sbom or {}).get("skipped") or {}).items()):  # R4.4: what no advisory can name is counted, never clean
         if isinstance(n, int) and n > 0:
-            out.append(Verdict(f"product:sbom-{why}", "application", "SBOM", "SBOM components", Outcome.NOT_RUN, instance=f"{n:,} components",
-                               reason="sbom-unmapped", detail={"no_purl": f"{n:,} have no package URL"}.get(why, f"{n:,} have a package URL no advisory feed covers")))
+            out.append(Verdict(f"product:sbom-{why}", "application", "SBOM", "SBOM components", Outcome.NOT_RUN, instance=f"{n:,} component{'s' * (n != 1)}",
+                               reason="sbom-unmapped", detail={"no_purl": f"{n:,} with no package URL"}.get(why, f"{n:,} with a package URL no advisory feed covers")))
     return out
 
 

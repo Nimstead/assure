@@ -47,7 +47,7 @@ def test_an_sbom_component_is_judged_unverified_and_says_an_sbom_is_not_whats_ru
     assert "what was built, not what's running" in v.detail and v.observed == "2.19.1 (SBOM component, received 2026-11-03)"
     assert not [x for x in vs if x.product == "idna"]  # no advisory: not a check, and counted below
     assert {(x.check, x.outcome, x.instance) for x in vs if x.reason == "sbom-unmapped"} == {
-        ("product:sbom-no_purl", Outcome.NOT_RUN, "2 components"), ("product:sbom-unsupported_or_invalid_purl", Outcome.NOT_RUN, "1 components")}
+        ("product:sbom-no_purl", Outcome.NOT_RUN, "2 components"), ("product:sbom-unsupported_or_invalid_purl", Outcome.NOT_RUN, "1 component")}
     r = report.build(inv, c, vs)
     said = " ".join(r["coverage"]["statements"])
     assert "what was built, not what's running" in said and "3 of its 5 components weren't assessed" in said and "1 of 2 installs" in said

@@ -1,7 +1,7 @@
 [
   {
     "step": "creating sandbox distro",
-    "name": "nimstead-sbx-f76a578c",
+    "name": "nimstead-sbx-3ba8f0c7",
     "distro": "Debian"
   },
   {
@@ -11,17 +11,17 @@
   {
     "step": "set up",
     "command": "apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3-venv python3-requests nodejs npm cur",
-    "seconds": 88
+    "seconds": 87
   },
   {
     "step": "set up",
     "command": "python3 -m venv /srv/billing/.venv && /srv/billing/.venv/bin/pip install -q --disable-pip-version-check requests==2.19.1",
-    "seconds": 2
+    "seconds": 3
   },
   {
     "step": "set up",
     "command": "python3 -m venv /srv/reports/venv && /srv/reports/venv/bin/pip install -q --disable-pip-version-check requests==2.32.3",
-    "seconds": 2
+    "seconds": 3
   },
   {
     "step": "set up",
@@ -42,7 +42,7 @@
     "step": "collected",
     "seconds": 1,
     "ecosystem": "Debian:13",
-    "packages": 817,
+    "packages": 816,
     "collection": {
       "v": 1,
       "sources": {
@@ -57,7 +57,7 @@
         },
         "java_archives": {
           "state": "ok",
-          "count": 2
+          "count": 1
         },
         "python_packages": {
           "state": "ok",
@@ -79,12 +79,11 @@
       ]
     },
     "jar_scan": {
-      "files": 123224,
+      "files": 62390,
       "complete": true,
       "owned": 0
     },
     "apps": [
-      "Maven org.apache.logging.log4j:log4j-core 2.14.1 at /mnt/wslg/distro/srv/billing/lib/log4j-core-2.14.1.jar",
       "Maven org.apache.logging.log4j:log4j-core 2.14.1 at /srv/billing/lib/log4j-core-2.14.1.jar",
       "PyPI certifi 2026.10.23 at /srv/billing/.venv/lib/python3.13/site-packages/certifi-2026.10.23.dist-info",
       "PyPI certifi 2026.10.23 at /srv/reports/venv/lib/python3.13/site-packages/certifi-2026.10.23.dist-info",
@@ -146,25 +145,15 @@
       "tomcat": 9,
       "ubuntu": 45
     },
-    "seconds": 38
+    "seconds": 41
   },
   {
     "step": "report",
     "headline": {
       "status": "vulnerable",
-      "text": "VULNERABLE: 1,017 vulnerabilities across 114 installs. 20 checks couldn't be determined."
+      "text": "VULNERABLE: 1,009 vulnerabilities across 113 installs. 1 checks couldn't be determined."
     },
     "applications": [
-      {
-        "ecosystem": "Maven",
-        "product": "org.apache.logging.log4j:log4j-core",
-        "instance": "org.apache.logging.log4j:log4j-core 2.14.1 at /mnt/wslg/distro/srv/billing/lib/log4j-core-2.14.1.jar",
-        "grade": "reasonable",
-        "outcomes": {
-          "not-vulnerable": 4,
-          "vulnerable": 8
-        }
-      },
       {
         "ecosystem": "Maven",
         "product": "org.apache.logging.log4j:log4j-core",
@@ -181,8 +170,7 @@
         "instance": "certifi 2026.10.23 at /srv/billing/.venv/lib/python3.13/site-packages/certifi-2026.10.23.dist-info",
         "grade": "reasonable",
         "outcomes": {
-          "not-vulnerable": 4,
-          "undetermined": 1
+          "not-vulnerable": 5
         }
       },
       {
@@ -191,8 +179,7 @@
         "instance": "certifi 2026.10.23 at /srv/reports/venv/lib/python3.13/site-packages/certifi-2026.10.23.dist-info",
         "grade": "reasonable",
         "outcomes": {
-          "not-vulnerable": 4,
-          "undetermined": 1
+          "not-vulnerable": 5
         }
       },
       {
@@ -210,8 +197,7 @@
         "instance": "idna 3.20 at /srv/reports/venv/lib/python3.13/site-packages/idna-3.20.dist-info",
         "grade": "reasonable",
         "outcomes": {
-          "not-vulnerable": 1,
-          "undetermined": 1
+          "not-vulnerable": 2
         }
       },
       {
@@ -220,8 +206,7 @@
         "instance": "pip 25.1.1 at /srv/billing/.venv/lib/python3.13/site-packages/pip-25.1.1.dist-info",
         "grade": "reasonable",
         "outcomes": {
-          "not-vulnerable": 6,
-          "undetermined": 1,
+          "not-vulnerable": 7,
           "vulnerable": 6
         }
       },
@@ -231,8 +216,7 @@
         "instance": "pip 25.1.1 at /srv/reports/venv/lib/python3.13/site-packages/pip-25.1.1.dist-info",
         "grade": "reasonable",
         "outcomes": {
-          "not-vulnerable": 6,
-          "undetermined": 1,
+          "not-vulnerable": 7,
           "vulnerable": 6
         }
       },
@@ -242,8 +226,7 @@
         "instance": "requests 2.19.1 at /srv/billing/.venv/lib/python3.13/site-packages/requests-2.19.1.dist-info",
         "grade": "reasonable",
         "outcomes": {
-          "not-vulnerable": 2,
-          "undetermined": 1,
+          "not-vulnerable": 3,
           "vulnerable": 5
         }
       },
@@ -253,8 +236,7 @@
         "instance": "requests 2.32.3 at /srv/reports/venv/lib/python3.13/site-packages/requests-2.32.3.dist-info",
         "grade": "reasonable",
         "outcomes": {
-          "not-vulnerable": 3,
-          "undetermined": 3,
+          "not-vulnerable": 6,
           "vulnerable": 2
         }
       },
@@ -264,8 +246,7 @@
         "instance": "urllib3 1.23 at /srv/billing/.venv/lib/python3.13/site-packages/urllib3-1.23.dist-info",
         "grade": "reasonable",
         "outcomes": {
-          "not-vulnerable": 7,
-          "undetermined": 3,
+          "not-vulnerable": 10,
           "vulnerable": 12
         }
       },
@@ -275,8 +256,7 @@
         "instance": "urllib3 2.8.0 at /srv/reports/venv/lib/python3.13/site-packages/urllib3-2.8.0.dist-info",
         "grade": "reasonable",
         "outcomes": {
-          "not-vulnerable": 15,
-          "undetermined": 7
+          "not-vulnerable": 22
         }
       },
       {
@@ -315,7 +295,7 @@
           "name": "java_archives",
           "label": "Java archives",
           "state": "ok",
-          "count": 2,
+          "count": 1,
           "error": null
         },
         {
@@ -361,19 +341,18 @@
         },
         "application": {
           "label": "Applications outside the package manager",
-          "attempted": 138,
-          "determined": 119,
+          "attempted": 126,
+          "determined": 126,
           "outcomes": {
-            "not-vulnerable": 61,
-            "undetermined": 19,
-            "vulnerable": 58
+            "not-vulnerable": 76,
+            "vulnerable": 50
           }
         }
       },
       "applications": {
-        "installs": 19,
-        "judged": 15,
-        "vulnerable": 11,
+        "installs": 18,
+        "judged": 14,
+        "vulnerable": 10,
         "no_advisory": 4,
         "left_to_package_manager": 8,
         "sbom_components_not_assessed": 0,
@@ -381,23 +360,12 @@
       },
       "statements": [
         "Distribution packages: 1 of 25,412 checks couldn't be determined.",
-        "Applications outside the package manager: 19 of 138 checks couldn't be determined.",
         "8 found that the package manager owns were left to it and judged as distribution packages.",
-        "4 of 19 installs outside the package manager have no published advisory: no known vulnerability, which isn't proof of none.",
+        "4 of 18 installs outside the package manager have no published advisory: no known vulnerability, which isn't proof of none.",
         "Livepatch, services still running replaced libraries, and software outside the package manager other than Python and npm packages and Java archives (vendored binaries, containers, self-installed tools) aren't judged by this report yet. Kernels installed but not running are judged, and marked so."
       ]
     },
     "vulnerable_apps": [
-      {
-        "instance": "org.apache.logging.log4j:log4j-core 2.14.1 at /mnt/wslg/distro/srv/billing/lib/log4j-core-2.14.1.jar",
-        "grade": "reasonable",
-        "count": 8,
-        "known_exploited": 2,
-        "observed": "2.14.1 (Java archive metadata in /mnt/wslg/distro/srv/billing/lib/log4j-core-2.14.1.jar)",
-        "expected": "at least 2.25.4",
-        "source": "GitHub Advisory Database",
-        "action": "Update to 2.25.4 or later"
-      },
       {
         "instance": "org.apache.logging.log4j:log4j-core 2.14.1 at /srv/billing/lib/log4j-core-2.14.1.jar",
         "grade": "reasonable",
@@ -502,22 +470,6 @@
     "undetermined": [
       {
         "outcome": "undetermined",
-        "reason": "incomparable",
-        "blocked_by": null,
-        "why": "the installed version and the fix can't be compared",
-        "source_said": null,
-        "what_to_do": "Check the vendor's advisory by hand",
-        "count": 19,
-        "examples": [
-          "CVE-2015-2296",
-          "CVE-2018-18074",
-          "CVE-2018-25091",
-          "CVE-2019-20916",
-          "CVE-2020-26137"
-        ]
-      },
-      {
-        "outcome": "undetermined",
         "reason": "kernel-unpackaged",
         "blocked_by": null,
         "why": "the running kernel wasn't installed by the package manager, so the distribution's advisories don't describe it",
@@ -529,7 +481,7 @@
         ]
       }
     ],
-    "verdicts_sha256": "8cf857aeb82916fc26f9f1e6634ab6e986249d5e494bdf66644f75abb2851a5e",
+    "verdicts_sha256": "e8b4cdff9c01c738e5de60fac9cd0ebc64404de84a5765a9b344c0d37256b42a",
     "content_version": "2026-11-03.3faf51c16c88"
   },
   {
@@ -554,7 +506,7 @@
     },
     "headline": {
       "status": "vulnerable",
-      "text": "VULNERABLE: 1,017 vulnerabilities across 114 installs. 21 checks couldn't be determined."
+      "text": "VULNERABLE: 1,009 vulnerabilities across 113 installs. 2 checks couldn't be determined."
     },
     "undetermined": [
       {
@@ -571,7 +523,6 @@
       }
     ],
     "app_grades": [
-      "None",
       "reasonable",
       "unverified"
     ]
@@ -706,7 +657,7 @@
     },
     "headline": {
       "status": "vulnerable",
-      "text": "VULNERABLE: 54 vulnerabilities across 4 installs. 14 checks couldn't be determined."
+      "text": "VULNERABLE: 54 vulnerabilities across 4 installs. 2 checks couldn't be determined."
     },
     "coverage": {
       "sources": [
@@ -722,11 +673,10 @@
         "application": {
           "label": "Applications outside the package manager",
           "attempted": 194,
-          "determined": 180,
+          "determined": 192,
           "outcomes": {
             "not-run": 2,
-            "not-vulnerable": 126,
-            "undetermined": 12,
+            "not-vulnerable": 138,
             "vulnerable": 54
           }
         }
@@ -741,28 +691,12 @@
         "not_looked_for": []
       },
       "statements": [
-        "Applications outside the package manager: 14 of 194 checks couldn't be determined.",
+        "Applications outside the package manager: 2 of 194 checks couldn't be determined.",
         "SBOM (received 2026-11-03): An SBOM states what was built, not what's running, so nothing judged from it is better than unverified. 2 of its 6 components weren't assessed.",
         "Only components with a package URL in an ecosystem the advisory feeds cover are judged."
       ]
     },
     "undetermined": [
-      {
-        "outcome": "undetermined",
-        "reason": "incomparable",
-        "blocked_by": null,
-        "why": "the installed version and the fix can't be compared",
-        "source_said": null,
-        "what_to_do": "Check the vendor's advisory by hand",
-        "count": 12,
-        "examples": [
-          "CVE-2012-4520",
-          "CVE-2013-4249",
-          "CVE-2013-6044",
-          "CVE-2014-0483",
-          "CVE-2015-2296"
-        ]
-      },
       {
         "outcome": "not-run",
         "reason": "sbom-unmapped",
@@ -831,22 +765,23 @@
     }
   },
   {
-    "step": "RESULT: FAIL",
+    "step": "RESULT: PASS",
     "checks": {
       "collection document valid, each scan's line ok with what it read": true,
       "Debian's own python3-requests (and the rest dpkg owns) was left to dpkg, not judged twice": true,
-      "T19: requests in two virtualenvs is two installs, judged apart": false,
+      "T19: requests in two virtualenvs is two installs, judged apart": true,
       "npm in a project and globally, and the jar, each vulnerable where they are": true,
-      "graded reasonable: the install's own metadata against an advisory database": false,
+      "a file is one install, not one per mount it shows through (WSLg's /mnt/wslg/distro is the root again)": true,
+      "graded reasonable: the install's own metadata against an advisory database": true,
       "every finding rescan opened is a verdict or explained": true,
       "same inventory and content, same verdicts": true,
-      "an install that can't be read makes the scan partial, its readings unverified, and says so": false,
+      "an install that can't be read makes the scan partial, its readings unverified, and says so": true,
       "scans off read as not assessed, and open findings rescan closed on silence are carried, not called fixed": true,
       "an SBOM is judged unverified, says it isn't what's running, and counts what it can't name": true
     }
   },
   {
     "step": "sandbox destroyed",
-    "name": "nimstead-sbx-f76a578c"
+    "name": "nimstead-sbx-3ba8f0c7"
   }
 ]

@@ -192,7 +192,7 @@ test("admins sign in with their code, manage people and API tokens", async ({ br
   await tokens.getByLabel("Authenticator code").fill(await freshCode(page));  // a session alone can't mint a token
   await tokens.getByRole("button", { name: "Create token" }).click();
   const token = (await tokens.locator("pre code").textContent())!.trim();
-  const anon = await pwRequest.newContext({ baseURL: "http://localhost:5173" });
+  const anon = await pwRequest.newContext({ baseURL: `http://localhost:${process.env.NIMSTEAD_WEB_PORT ?? "5173"}` });
   const csv = await anon.get("/api/findings.csv", { headers: { Authorization: `Bearer ${token}` } });
   expect(csv.ok()).toBe(true);
   expect(await csv.text()).toMatch(/^hostname,package/);

@@ -228,7 +228,14 @@ def test_t19_each_location_is_judged_alone_graded_reasonable_and_reported_where_
     assert {s["name"]: s["state"] for s in r["coverage"]["sources"]}["npm_packages"] == "off"
     assert r["coverage"]["families"]["application"] == {"label": "Applications outside the package manager", "attempted": 2, "determined": 2,
                                                          "outcomes": {"not-vulnerable": 1, "vulnerable": 1}}
-    assert "Why not surer: The version is the install's own metadata" in report.render(r)
+    text = report.render(r)
+    assert "Why not surer: The version is the install's own metadata" in text and "What's vulnerable" not in text
+    section = text.split("Applications outside the package manager, by location\n")[1].split("\n\n")[0]
+    assert section.startswith(f"  requests 2.19.1 at {REQ_OLD}   how sure: reasonable")  # vulnerable first, in the same form as any install
+    assert section.endswith(f"  requests 2.32.3 at {REQ_NEW}   no known vulnerability (1 not-vulnerable)   how sure: reasonable")
+    assert r["coverage"]["applications"] == {"installs": 2, "judged": 2, "vulnerable": 1, "no_advisory": 0, "left_to_package_manager": 0,
+                                             "sbom_components_not_assessed": 0, "not_looked_for": ["npm packages", "Java archives"]}
+    assert [a["outcomes"] for a in r["applications"]] == [{"vulnerable": 1}, {"not-vulnerable": 1}]
 
 
 def test_a_partial_scan_lowers_its_readings_and_says_an_install_could_be_missing():

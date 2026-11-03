@@ -26,6 +26,7 @@ NOT_YET_LINUX = ("Livepatch, services still running replaced libraries, and soft
 NOT_YET_SBOM = "Only components with a package URL in an ecosystem the advisory feeds cover are judged."
 SBOM_IS_NOT_RUNNING = "An SBOM states what was built, not what's running, so nothing judged from it is better than unverified."
 DETERMINED = (Outcome.VULNERABLE, Outcome.NOT_VULNERABLE, Outcome.NOT_APPLICABLE)
+_GRADES = ("unverified", "reasonable", "confirmed")  # weakest first: an install is as sure as its weakest reading
 _SHOWN = 5
 
 
@@ -79,27 +80,40 @@ def _undetermined(verdicts: list[Verdict]) -> list[dict]:
     return sorted(out, key=lambda g: (-g["count"], g["reason"]))
 
 
-def _applications(inv: Inventory, content: Content) -> list[str]:
-    """R4.4 for software outside the package manager: what wasn't looked for, what the agent left to the package manager (R7.9),
-    what has no advisory at all, and what an SBOM couldn't name. Each said, so none of it reads as clean."""
-    out = []
-    if inv.kind != "application":
-        off = [label for src, _, label in AGENT_APPS if inv.source(src).state in ("off", NOT_REPORTED)]
-        if off:
-            out.append(f"Not looked for on this host, so not assessed: {', '.join(off)} (the agent's opt-in scans are off, or it predates them).")
-        owned = sum(x for x in ((inv.facts.get("app_scan") or {}).get("owned"), (inv.facts.get("jar_scan") or {}).get("owned")) if isinstance(x, int))
-        if owned:
-            out.append(f"{owned:,} found that the package manager owns were left to it and judged as distribution packages.")
-    found = app_installs(inv)
+def _applications(inv: Inventory, content: Content, verdicts: list[Verdict]) -> tuple[list[str], dict]:
+    """R4.4 for software outside the package manager, as counts and as sentences: what wasn't looked for, what the agent left to the
+    package manager (R7.9), what has no advisory at all, and what an SBOM couldn't name. Each said, so none of it reads as clean."""
+    out, found, sb = [], app_installs(inv), inv.sbom or {}
+    off = [] if inv.kind == "application" else [label for src, _, label in AGENT_APPS if inv.source(src).state in ("off", NOT_REPORTED)]
+    if off:
+        out.append(f"Not looked for on this host, so not assessed: {', '.join(off)} (the agent's opt-in scans are off, or it predates them).")
+    owned = sum(x for x in ((inv.facts.get("app_scan") or {}).get("owned"), (inv.facts.get("jar_scan") or {}).get("owned")) if isinstance(x, int))
+    if owned and inv.kind != "application":
+        out.append(f"{owned:,} found that the package manager owns were left to it and judged as distribution packages.")
     quiet = sum(not content.records.get((i.ecosystem, i.keys[0])) and i.ecosystem in content.feeds for i in found)
     if quiet:
         out.append(f"{quiet:,} of {len(found):,} installs outside the package manager have no published advisory: no known vulnerability, which isn't proof of none.")
-    sb = inv.sbom or {}
+    skipped = sum(n for n in (sb.get("skipped") or {}).values() if isinstance(n, int))
     if any(i.source == "sbom" for i in found) or inv.kind == "application":
-        skipped = sum(n for n in (sb.get("skipped") or {}).values() if isinstance(n, int))
         when = f" (received {sb['received'][:10]})" if sb.get("received") else ""
         out.append(f"SBOM{when}: {SBOM_IS_NOT_RUNNING}" + (f" {skipped:,} of its {sb.get('components') or 0:,} components weren't assessed." if skipped else ""))
-    return out
+    vulnerable = {(v.product, v.instance) for v in verdicts if v.family == "application" and v.outcome == Outcome.VULNERABLE}
+    return out, {"installs": len(found), "judged": sum(bool(content.records.get((i.ecosystem, i.keys[0]))) for i in found), "vulnerable": len(vulnerable),
+                 "no_advisory": quiet, "left_to_package_manager": owned, "sbom_components_not_assessed": skipped, "not_looked_for": off}
+
+
+def _installs(verdicts: list[Verdict]) -> list[dict]:
+    """One line per application install that was checked: where it is, what was concluded and how sure (R4.5). Vulnerable ones also
+    get their full entry in `vulnerable`."""
+    rows: dict[tuple, Counter] = defaultdict(Counter)
+    grade: dict[tuple, str] = {}
+    for v in verdicts:
+        if v.family == "application" and v.vuln_id and v.instance:
+            k = (v.ecosystem, v.product, v.instance)
+            rows[k][v.outcome.value] += 1
+            if v.grade and (k not in grade or _GRADES.index(v.grade) < _GRADES.index(grade[k])):
+                grade[k] = v.grade
+    return [{"ecosystem": e, "product": p, "instance": i, "grade": grade.get((e, p, i)), "outcomes": dict(sorted(n.items()))} for (e, p, i), n in sorted(rows.items())]
 
 
 def _coverage(inv: Inventory, content: Content, verdicts: list[Verdict]) -> dict:
@@ -125,9 +139,10 @@ def _coverage(inv: Inventory, content: Content, verdicts: list[Verdict]) -> dict
             stated.append(f"{label[0].upper()}{label[1:]}: {f['attempted'] - f['determined']:,} of {f['attempted']:,} checks couldn't be determined.")
     if inv.is_linux and inv.facts.get("pending_reboot"):
         stated.append("The distribution says a restart is waiting: what's running may be older than what's installed.")
-    stated += _applications(inv, content)
+    said, apps = _applications(inv, content, verdicts)
     return {"sources": [{"name": s.name, "label": SOURCE_NAMES.get(s.name, s.name), "state": s.state, "count": s.count, "error": s.error} for s in inv.sources()],
-            "families": families, "statements": [*stated, NOT_YET_SBOM if inv.kind == "application" else NOT_YET_LINUX if inv.is_linux else NOT_YET]}
+            "families": families, "applications": apps,
+            "statements": [*stated, *said, NOT_YET_SBOM if inv.kind == "application" else NOT_YET_LINUX if inv.is_linux else NOT_YET]}
 
 
 def _assessed(verdicts: list[Verdict], inv: Inventory) -> bool:
@@ -159,7 +174,8 @@ def build(inv: Inventory, content: Content, verdicts: list[Verdict]) -> dict:
             "engine_version": ENGINE_VERSION, "content_version": content.version, "inventory_sha256": inv.sha256(), "verdicts_sha256": digest(verdicts),
             "headline": _headline(verdicts, inv), "vulnerable": _vulnerable(verdicts), "undetermined": _undetermined(verdicts),
             "not_vulnerable": [{"family": f, "product": p, "instance": i, "grade": g, "checks": n} for (f, p, i, g), n in sorted(per_install.items(), key=str)],
-            "not_applicable": sum(v.outcome == Outcome.NOT_APPLICABLE for v in verdicts), "coverage": _coverage(inv, content, verdicts)}
+            "not_applicable": sum(v.outcome == Outcome.NOT_APPLICABLE for v in verdicts), "applications": _installs(verdicts),
+            "coverage": _coverage(inv, content, verdicts)}
 
 
 def _safe(line: str) -> str:
@@ -172,28 +188,51 @@ def render(r: dict) -> str:
     who = "Application, from its SBOM (no agent)" if r.get("kind") == "application" else f"{r['os'] or 'Unknown OS'}, agent {r['agent_version'] or 'unknown'}"
     out = [f"Scan report: {r['host'] or 'this host'}", who + (f", inventory read {r['inventory_read_at']}" if r["inventory_read_at"] else ""),
            "", r["headline"]["text"]]
-    if r["vulnerable"]:
+    host = [g for g in r["vulnerable"] if g["family"] != "application"]
+    apps = [g for g in r["vulnerable"] if g["family"] == "application"]
+    if host:
         out += ["", "What's vulnerable"]
-    for g in r["vulnerable"]:
-        extra = "".join([f", {g['known_exploited']} known exploited" if g["known_exploited"] else "", f", worst CVSS {g['worst_cvss']}" if g["worst_cvss"] else ""])
-        out += [f"  {g['instance']}   how sure: {g['grade']}", f"    {g['count']} CVE{'s' * (g['count'] > 1)}{extra}",
-                f"    Seen:     {g['observed']}", f"    Expected: {g['expected']} ({g['source']})", f"    Do:       {g['action']}"]
-        if g["kernel"] == "running" and g["pending_reboot"]:
-            out.append(f"    Note:     {g['fixed_after_restart']} of these are fixed in a newer kernel that's already installed: restart into it, then scan again")
-        elif g["pending_reboot"]:
-            out.append("    Note:     a restart is waiting. The fix may already be installed and not yet effective: restart, then scan again")
-        if g["kernel"] == "not-running":
-            out.append("    Note:     this kernel is installed but not running: it matters if the host boots it. Removing it clears these")
-        if g["no_fix_planned"]:
-            rest = g["no_fix"] - g["no_fix_planned"]
-            out.append(f"    No fix:   the vendor doesn't plan to fix {g['no_fix_planned']} of these" + (f"; {rest} more {'has' if rest == 1 else 'have'} no fix yet" if rest else ""))
-        elif g["no_fix"] and g["no_fix"] < g["count"]:
-            out.append(f"    No fix:   {g['no_fix']} of these have no fixed version yet")
-        if g["raise_confidence"]:
-            out.append(f"    Why not surer: {g['raise_confidence']}")
-        shown = [v["id"] + (" (known exploited)" if v["kev"] else "") + (f" CVSS {v['cvss']}" if v["cvss"] else "") for v in g["vulnerabilities"][:_SHOWN]]
-        more = g["count"] - len(shown)
-        out.append("    Worst:    " + "; ".join(shown) + (f"; and {more:,} more" if more > 0 else ""))
+    for g in host:
+        out += _group(g)
+    if apps or r.get("applications"):  # each install where it was found, vulnerable first, then the rest one line each
+        out += ["", "Components, from the SBOM" if r.get("kind") == "application" else "Applications outside the package manager, by location"]
+    for g in apps:
+        out += _group(g)
+    for a in r.get("applications", []):
+        if not (n := a["outcomes"]).get("vulnerable"):
+            out.append(f"  {a['instance']}   {'no known vulnerability' if set(n) == {'not-vulnerable'} else 'not proven either way'} "
+                       f"({', '.join(f'{x:,} {k}' for k, x in n.items())})" + (f"   how sure: {a['grade']}" if a["grade"] else ""))
+    out += _rest(r)
+    return "\n".join(_safe(x) for x in out)
+
+
+def _group(g: dict) -> list[str]:
+    """One vulnerable install, the same way whatever kind of software it is."""
+    extra = "".join([f", {g['known_exploited']} known exploited" if g["known_exploited"] else "", f", worst CVSS {g['worst_cvss']}" if g["worst_cvss"] else ""])
+    out = [f"  {g['instance']}   how sure: {g['grade']}", f"    {g['count']} CVE{'s' * (g['count'] > 1)}{extra}",
+            f"    Seen:     {g['observed']}", f"    Expected: {g['expected']} ({g['source']})", f"    Do:       {g['action']}"]
+    if g["kernel"] == "running" and g["pending_reboot"]:
+        out.append(f"    Note:     {g['fixed_after_restart']} of these are fixed in a newer kernel that's already installed: restart into it, then scan again")
+    elif g["pending_reboot"]:
+        out.append("    Note:     a restart is waiting. The fix may already be installed and not yet effective: restart, then scan again")
+    if g["kernel"] == "not-running":
+        out.append("    Note:     this kernel is installed but not running: it matters if the host boots it. Removing it clears these")
+    if g["no_fix_planned"]:
+        rest = g["no_fix"] - g["no_fix_planned"]
+        out.append(f"    No fix:   the vendor doesn't plan to fix {g['no_fix_planned']} of these" + (f"; {rest} more {'has' if rest == 1 else 'have'} no fix yet" if rest else ""))
+    elif g["no_fix"] and g["no_fix"] < g["count"]:
+        out.append(f"    No fix:   {g['no_fix']} of these have no fixed version yet")
+    if g["raise_confidence"]:
+        out.append(f"    Why not surer: {g['raise_confidence']}")
+    shown = [v["id"] + (" (known exploited)" if v["kev"] else "") + (f" CVSS {v['cvss']}" if v["cvss"] else "") for v in g["vulnerabilities"][:_SHOWN]]
+    more = g["count"] - len(shown)
+    out.append("    Worst:    " + "; ".join(shown) + (f"; and {more:,} more" if more > 0 else ""))
+    return out
+
+
+def _rest(r: dict) -> list[str]:
+    """What couldn't be determined, and coverage."""
+    out = []
     if r["undetermined"]:
         out += ["", "What couldn't be determined"]
     for g in r["undetermined"]:
@@ -209,7 +248,11 @@ def render(r: dict) -> str:
         out.append(f"    {s['label']:<24}{s['state']:<14}{s['count']:>6}" + (f"   {s['error']}" if s["error"] else ""))
     out.append("  What was concluded:")
     for f in c["families"].values():
-        out.append(f"    {f['label']:<24}{f['determined']:,} of {f['attempted']:,} determined   " + ", ".join(f"{n:,} {k}" for k, n in f["outcomes"].items()))
+        out.append(f"    {f['label'] + ' ':<24}{f['determined']:,} of {f['attempted']:,} determined   " + ", ".join(f"{n:,} {k}" for k, n in f["outcomes"].items()))
+    if (a := c.get("applications")) and (a["installs"] or a["left_to_package_manager"] or a["sbom_components_not_assessed"]):
+        out.append(f"  Outside the package manager: {a['installs']:,} installs found, {a['judged']:,} with advisories judged, {a['vulnerable']:,} vulnerable, "
+                   f"{a['no_advisory']:,} with no advisory; {a['left_to_package_manager']:,} left to the package manager"
+                   + (f"; {a['sbom_components_not_assessed']:,} SBOM components not assessed" if a["sbom_components_not_assessed"] else ""))
     out += [f"  {x}" for x in c["statements"]]
     out += ["", f"Engine {r['engine_version']}, content {r['content_version']}, inventory {r['inventory_sha256'][:12]}, verdicts {r['verdicts_sha256'][:12]}"]
-    return "\n".join(_safe(x) for x in out)
+    return out

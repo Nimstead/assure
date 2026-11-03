@@ -18,7 +18,9 @@ export function updateSource(f?: HostFacts): string {
   if (!f || (f.wsus === undefined && !f.last_update_success)) return "";
   const from = f.wsus ? `Updates from WSUS (${f.wsus})` : "Updates from Windows Update";
   const defer = f.wufb_quality_deferral_days ? `, deferred ${f.wufb_quality_deferral_days} days by policy` : "";
-  const last = f.last_update_success ? ` · last installed ${relativeTime(f.last_update_success)}` : "";
+  // Windows reports 1601-01-01 (its zero date) when nothing has ever been installed: seen on real VMs as "426 years ago"
+  const never = f.last_update_success?.startsWith("1601-");
+  const last = f.last_update_success ? (never ? " · nothing installed through it yet" : ` · last installed ${relativeTime(f.last_update_success)}`) : "";
   return from + defer + last;
 }
 

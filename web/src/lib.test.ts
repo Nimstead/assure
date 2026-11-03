@@ -104,5 +104,7 @@ describe("updateSource (plan T12)", () => {
     expect(updateSource({ wsus: null })).toBe("Updates from Windows Update");
     expect(updateSource({})).toBe("");
     expect(updateSource(undefined)).toBe("");
+    // Windows' zero date, from a real VM that had never installed an update
+    expect(updateSource({ wsus: null, last_update_success: "1601-01-01T00:00:00.0000000" })).toBe("Updates from Windows Update · nothing installed through it yet");
   });
 });

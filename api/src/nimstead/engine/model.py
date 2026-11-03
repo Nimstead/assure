@@ -43,6 +43,19 @@ REASONS = {
     "kernel-unpackaged": ("the running kernel wasn't installed by the package manager, so the distribution's advisories don't describe it",
                           "Patch it where it comes from: the container or WSL host, the cloud image, or whoever built it"),
     "not-reassessed": ("a finding was open on this, and this scan has no evidence either way", "It stays open. Fix what stopped the scan, then scan again"),
+    # network slice (remote prober)
+    "port-filtered": ("the port didn't answer in time, so whether this service is exposed couldn't be determined; a drop is not a closed port",
+                      "Check from outside whether a firewall drops it. It is not proven closed, so this isn't a clean result"),
+    "timed-out": ("the check didn't finish within the time budget the engine gave it", "The host may be slow or rate-limiting. Nothing changed on it; try again"),
+    "host-lost": ("the target stopped answering partway through the scan", "Check the host is up and reachable, then scan again"),
+    "catch-all": ("this port answered a nonsense probe as if it were genuine, so anything it appears to be can't be trusted (R10.5)",
+                  "A catch-all, tarpit or honeypot can't be fingerprinted from outside: identify the service from the host itself (agent or credentials)"),
+    "soft-404": ("the site returns success for paths that don't exist, so a page being served proves nothing (R10.3)",
+                 "The web-path checks can't run against a catch-all web server; read the host directly instead"),
+    "backported": ("the banner carries a distribution's own build suffix, and distributions backport fixes without changing the upstream number (R10.2)",
+                   "Read the installed version from the host (agent or credentials); a banner can't show a backported fix"),
+    "safe-mode": ("this check could disturb the target and safe mode is on, which content can't override (R2.6)", "Opt this target in to disruptive checks to run it"),
+    "scanner-limited": ("this scanner's own TLS library can't offer the protocol this check needs, so it couldn't be tested", "Scan from a host whose OpenSSL still allows it, or read the setting from the server itself"),
 }
 
 

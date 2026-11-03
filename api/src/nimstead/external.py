@@ -95,12 +95,20 @@ def address_proven(ip: str, host: str, value: str, ports=PROOF_PORTS, timeout: f
     return False
 
 
-def port_open(ip: str, port: int, timeout: float = 3.0) -> bool:
+def connect_state(ip: str, port: int, timeout: float = 3.0) -> str:
+    """'open' (accepted), 'closed' (refused: proof nothing listens), or 'filtered' (timed out/unreachable: a drop, which
+    proves nothing either way). The engine's prober needs the three apart; `port_open` keeps the old true/false meaning."""
     try:
         with socket.create_connection((ip, port), timeout=timeout):
-            return True
-    except OSError:
-        return False
+            return "open"
+    except (ConnectionRefusedError, ConnectionResetError):  # a refusal or reset proves something answered and nothing is listening
+        return "closed"
+    except OSError:  # timed out, host unreachable, network down: a drop we can't read either way
+        return "filtered"
+
+
+def port_open(ip: str, port: int, timeout: float = 3.0) -> bool:
+    return connect_state(ip, port, timeout) == "open"
 
 
 def tls_probe(ip: str, host: str, port: int = TLS_PORT, timeout: float = 5.0) -> dict:
@@ -150,32 +158,44 @@ def _accepts_legacy(ip, host, port, timeout) -> bool | None:
         return False
 
 
+def exposed_finding(port: int) -> dict:
+    """The finding for a risky service reachable on `port`. One place, so the engine's prober and `scan` can't drift."""
+    cid, name, cvss, fix = SERVICES[port]
+    return {"id": f"NIM-EXPOSED-{cid}", "package": f"tcp/{port} {name}", "cvss": cvss, "likelihood": likelihood_of(f"NIM-EXPOSED-{cid}"),
+            "summary": f"{name} (TCP {port}) is reachable from the internet. {fix}"}
+
+
+def tls_findings(host: str, t: dict) -> tuple[list[dict], list[str]]:
+    """What a TLS probe's facts mean, as findings. Shared by `scan` and the prober so their verdicts agree."""
+    found, skipped = [], []
+    days = (t["not_after"] - datetime.now(UTC).timestamp()) / 86400 if t["not_after"] else None
+    if days is not None and days < 0:
+        found.append(_tls("NIM-TLS-EXPIRED", 7.5, f"The certificate expired {int(-days)} day(s) ago. Renew it."))
+    elif days is not None and days < EXPIRY_WARN_DAYS:
+        found.append(_tls("NIM-TLS-EXPIRING", 4.0, f"The certificate expires in {int(days)} day(s). Renew it now."))
+    if t["trusted"] is False and not (days is not None and days < 0):
+        msg = t["error"] or "untrusted"
+        if "mismatch" in msg.lower() or "hostname" in msg.lower():
+            found.append(_tls("NIM-TLS-NAME", 6.5, f"The certificate doesn't match {host} ({msg})."))
+        else:
+            found.append(_tls("NIM-TLS-UNTRUSTED", 5.9, f"Browsers won't trust the certificate ({msg})."))
+    if t["legacy"] is True:
+        found.append(_tls("NIM-TLS-LEGACY", 5.3, "TLS 1.0/1.1 are still accepted; allow TLS 1.2 and 1.3 only."))
+    elif t["legacy"] is None and t["trusted"] is not None:
+        skipped.append("legacy TLS (this server's OpenSSL can't offer TLS 1.0/1.1)")
+    return found, skipped
+
+
 def checks(host: str, ip: str) -> tuple[list[dict], list[str]]:
     """Run every check. Returns (problems found, checks that couldn't run on this machine)."""
     found, skipped = [], []
     with ThreadPoolExecutor(max_workers=8) as pool:
         open_ports = {p for p, ok in zip(SERVICES, pool.map(lambda p: port_open(ip, p), SERVICES), strict=True) if ok}
-    for port in sorted(open_ports):
-        cid, name, cvss, fix = SERVICES[port]
-        found.append({"id": f"NIM-EXPOSED-{cid}", "package": f"tcp/{port} {name}", "cvss": cvss, "likelihood": likelihood_of(f"NIM-EXPOSED-{cid}"),
-                      "summary": f"{name} (TCP {port}) is reachable from the internet. {fix}"})
+    found += [exposed_finding(port) for port in sorted(open_ports)]
     if port_open(ip, TLS_PORT):
-        t = tls_probe(ip, host)
-        days = (t["not_after"] - datetime.now(UTC).timestamp()) / 86400 if t["not_after"] else None
-        if days is not None and days < 0:
-            found.append(_tls("NIM-TLS-EXPIRED", 7.5, f"The certificate expired {int(-days)} day(s) ago. Renew it."))
-        elif days is not None and days < EXPIRY_WARN_DAYS:
-            found.append(_tls("NIM-TLS-EXPIRING", 4.0, f"The certificate expires in {int(days)} day(s). Renew it now."))
-        if t["trusted"] is False and not (days is not None and days < 0):
-            msg = t["error"] or "untrusted"
-            if "mismatch" in msg.lower() or "hostname" in msg.lower():
-                found.append(_tls("NIM-TLS-NAME", 6.5, f"The certificate doesn't match {host} ({msg})."))
-            else:
-                found.append(_tls("NIM-TLS-UNTRUSTED", 5.9, f"Browsers won't trust the certificate ({msg})."))
-        if t["legacy"] is True:
-            found.append(_tls("NIM-TLS-LEGACY", 5.3, "TLS 1.0/1.1 are still accepted; allow TLS 1.2 and 1.3 only."))
-        elif t["legacy"] is None and t["trusted"] is not None:
-            skipped.append("legacy TLS (this server's OpenSSL can't offer TLS 1.0/1.1)")
+        f, s = tls_findings(host, tls_probe(ip, host))
+        found += f
+        skipped += s
     return found, skipped
 
 
@@ -189,9 +209,10 @@ def _tls(cid, cvss, text):
     return {"id": cid, "package": f"tcp/{TLS_PORT} TLS", "cvss": cvss, "likelihood": TLS_LIKELIHOOD, "summary": text}
 
 
-def scan(s: Session, asset: Asset, lookup=None, run_checks=None) -> dict:
-    """Re-prove ownership of the name and of the address, scan, and open/resolve findings with ledger entries. Raises
-    ScanRefused, probing nothing, if the target isn't (or is no longer) proven or doesn't resolve to public addresses only."""
+def prove_scope(s: Session, asset: Asset, lookup=None) -> str:
+    """The mandatory gate before any packet: re-prove the name and the address, and that it resolves to a public address
+    only. Returns the pinned IP every connection must go to. Raises ScanRefused (recording a lapsed proof) otherwise.
+    Shared by `scan` and the engine's network prober, so scope is enforced in exactly one place (spec R2.9, DECISIONS 28)."""
     if asset.kind != "external":
         raise ScanRefused("Only external targets are scanned from outside")
     if asset.verified_at is None:
@@ -211,6 +232,13 @@ def scan(s: Session, asset: Asset, lookup=None, run_checks=None) -> dict:
         s.commit()
         raise ScanRefused(f"Not scanned: {ip} doesn't serve the verification value at {PROOF_PATH} (HTTPS or HTTP). "
                           "Owning the name doesn't prove you run the server it points at")
+    return ip
+
+
+def scan(s: Session, asset: Asset, lookup=None, run_checks=None) -> dict:
+    """Re-prove ownership of the name and of the address, scan, and open/resolve findings with ledger entries. Raises
+    ScanRefused, probing nothing, if the target isn't (or is no longer) proven or doesn't resolve to public addresses only."""
+    ip = prove_scope(s, asset, lookup)
     found, skipped = (run_checks or checks)(asset.hostname, ip)
     t = now()
     existing = {f.vuln_id: f for f in s.scalars(select(Finding).where(Finding.asset_id == asset.id))}

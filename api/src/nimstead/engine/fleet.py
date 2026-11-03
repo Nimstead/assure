@@ -17,6 +17,8 @@ ACCEPTS = {"remote-uac": ((445, 5985, 5986), "credentials", "local administrator
            "smb-signing": ((445,), "poisoning", "SMB signing isn't required, so a relayed sign-in from A's network works"),
            "ntlmv1": ((445,), "credentials", "it accepts NTLMv1, whose responses can be cracked or relayed")}
 POISONING = ("CFG:llmnr", "CFG:netbios")
+MAX_EDGES = 2_000  # a fleet on Windows' default SMB and LLMNR settings links nearly every pair: past this, say it's cut short
+MAX_CHAINS = 50
 
 
 def _open_ports(facts: dict) -> set[int]:
@@ -41,36 +43,50 @@ def build(hosts: list[dict]) -> dict:
         any_path = net or next(iter(h["report"]["attack_paths"]), None)
         gives[h["id"]] = {"credentials": "credentials" in steps, "poisoning": bool(lateral & set(POISONING)), "entry": bool(net),
                           "grade": any_path["grade"] if any_path else None}
-    edges = []
+    # sources that give the same things from the same domain read the same to every target: judged once per group, not once per
+    # host pair (a dense 400-host fleet took 12 s and 200 MB per request before; DECISIONS 101)
+    groups: dict[tuple, list[str]] = {}
+    for a in judged:
+        g = gives[a["id"]]
+        if g["grade"]:
+            groups.setdefault((g["credentials"], g["poisoning"], g["grade"], _domain(a.get("facts") or {})), []).append(a["id"])
+    edges, truncated = [], False
     for b in judged:
         opened = _open_ports(b.get("facts") or {})
+        if not opened:
+            continue
         found = {f["package"] for f in winconfig.evaluate(b.get("facts") or {}, b.get("os_version") or "")}
-        for a in judged:
-            g = gives[a["id"]]
-            if a["id"] == b["id"] or not g["grade"]:
-                continue
+        dom_b = _domain(b.get("facts") or {})
+        for (creds, poison, grade, dom), ids in groups.items():
             ways = []
             for check, (ports, needs, how) in ACCEPTS.items():
                 port = next((p for p in ports if p in opened), None)
-                if check not in found or not g[needs] or port is None:
+                if check not in found or not (creds if needs == "credentials" else poison) or port is None:
                     continue
-                dom = _domain(a.get("facts") or {})
-                same = bool(dom) and dom == _domain(b.get("facts") or {})
+                same = bool(dom) and dom == dom_b
                 if needs == "credentials":
                     because = f"both are in the domain {dom}" if same else "only if they share a local administrator password, which can't be seen"
                 else:  # poisoning on A's network, relayed to B
                     because = "sign-ins on A's network can be captured by name poisoning and relayed" + (f"; both are in the domain {dom}" if same else "")
                 ways.append({"via": f"CFG:{check}", "how": how, "port": port, "because": because,
-                             "grade": _grade(g["grade"], "reasonable" if same else "unverified")})
-            if ways:
-                ways.sort(key=lambda w: ("unverified", "reasonable", "confirmed").index(w["grade"]), reverse=True)
-                edges.append({"from": a["id"], "to": b["id"], "grade": ways[0]["grade"], "ways": ways})
-    return {"hosts": {h["id"]: {"hostname": h["hostname"], "judged": h in judged, "entry": gives.get(h["id"], {}).get("entry", False),
+                             "grade": _grade(grade, "reasonable" if same else "unverified")})
+            if not ways:
+                continue
+            ways.sort(key=lambda w: ("unverified", "reasonable", "confirmed").index(w["grade"]), reverse=True)
+            for aid in ids:
+                if aid == b["id"]:
+                    continue
+                if len(edges) >= MAX_EDGES:
+                    truncated = True
+                    break
+                edges.append({"from": aid, "to": b["id"], "grade": ways[0]["grade"], "ways": ways})
+    seen = {h["id"] for h in judged}
+    return {"hosts": {h["id"]: {"hostname": h["hostname"], "judged": h["id"] in seen, "entry": gives.get(h["id"], {}).get("entry", False),
                                 "internet_facing": bool(h.get("internet_facing")),
                                 "paths": [{"kind": p["kind"], "start": p["start"], "grade": p["grade"], "steps": [st["label"] for st in p["steps"]],
-                                           "break_at": p["break_at"]} for p in (h["report"] or {}).get("attack_paths", [])] if h in judged else []}
+                                           "break_at": p["break_at"]} for p in (h["report"] or {}).get("attack_paths", [])] if h["id"] in seen else []}
                       for h in hosts},
-            "edges": edges, "chains": _chains(judged, gives, edges)}
+            "edges": edges, "truncated": truncated, "chains": _chains(judged, gives, edges)}
 
 
 def _chains(judged: list[dict], gives: dict, edges: list[dict]) -> list[dict]:
@@ -95,4 +111,4 @@ def _chains(judged: list[dict], gives: dict, edges: list[dict]) -> list[dict]:
         if reach:
             out.append({"start": h["id"], "why_start": "a path from the network" if gives[h["id"]]["entry"] else "marked internet-facing",
                         "reach": reach})
-    return sorted(out, key=lambda c: -len(c["reach"]))
+    return sorted(out, key=lambda c: -len(c["reach"]))[:MAX_CHAINS]  # each BFS walks at most MAX_EDGES edges

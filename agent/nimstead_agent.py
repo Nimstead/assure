@@ -775,7 +775,7 @@ $snmp = 'Registry::HKLM\SYSTEM\CurrentControlSet\Services\SNMP\Parameters\ValidC
 $c.snmp_default_community = if (Test-Path -LiteralPath $snmp) { $null -ne (Get-ItemProperty -LiteralPath $snmp).public -or $null -ne (Get-ItemProperty -LiteralPath $snmp).private } else { $false }
 $c.guest_enabled = @(Get-LocalUser | Where-Object { $_.SID.Value -like '*-501' -and $_.Enabled }).Count -gt 0
 $c.password_policy = $null
-$sp = Join-Path $env:ProgramData ('Nimstead\sec-' + [guid]::NewGuid() + '.inf')  # the agent's own locked folder; holds settings only, no secrets
+$sp = Join-Path $env:TEMP ('nimstead-sec-' + [guid]::NewGuid() + '.inf')  # this process's own temp, not ProgramData: enrol runs before that is locked
 secedit /export /areas SECURITYPOLICY /cfg $sp /quiet 2>$null | Out-Null
 if (Test-Path -LiteralPath $sp) {
   $pp = [ordered]@{}; foreach ($l in Get-Content -LiteralPath $sp) { if ($l -match '^(MinimumPasswordLength|PasswordComplexity|LockoutBadCount|ClearTextPassword)\s*=\s*(\d+)') { $pp[$Matches[1]] = [int]$Matches[2] } }
@@ -1010,8 +1010,8 @@ foreach ($e in '__REG__' -split ';') {
 }
 # No translated word is read (DECISIONS 68, 76). auditpol's table: its numeric last column, found from the GUID, whatever the other
 # columns say. secedit's file: rights by constant and holders by SID. A name secedit couldn't turn into a SID is resolved here;
-# one that won't resolve is "?", which reads "not assessed". Both files go in the agent's own locked folder and hold settings only.
-$dir = Join-Path $env:ProgramData 'Nimstead'
+# one that won't resolve is "?", which reads "not assessed". Both files go in this process's own temp (enrol runs before ProgramData\Nimstead is locked).
+$dir = $env:TEMP
 $audit = [ordered]@{}
 $f = Join-Path $dir ('audit-' + [guid]::NewGuid() + '.csv')
 auditpol /backup /file:$f 2>$null | Out-Null

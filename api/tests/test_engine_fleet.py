@@ -51,6 +51,17 @@ def test_name_poisoning_relays_to_a_host_that_doesnt_require_smb_signing():
     assert e["ways"][0]["via"] == "CFG:smb-signing" and "name poisoning" in e["ways"][0]["because"]
 
 
+def test_a_dense_fleet_is_cut_short_and_stays_cheap():
+    import time
+    a = host("a", WEAK, recs=[rec("CVE-2026-1001", LOCAL)])
+    b = host("b", {"remote_uac_off": 1}, {"listening": OPEN_445})
+    fleet_ = [{**(a if i % 2 else b), "id": f"h{i}", "hostname": f"h{i}"} for i in range(3000)]  # same reports, as fake hosts would send
+    t = time.time()
+    out = fleet.build(fleet_)
+    assert out["truncated"] and len(out["edges"]) == fleet.MAX_EDGES and len(out["chains"]) <= fleet.MAX_CHAINS
+    assert time.time() - t < 10  # was cubic: 400 such hosts took 12 s
+
+
 def test_a_host_without_a_report_is_listed_as_not_judged():
     out = fleet.build([host("a", WEAK), {"id": "z", "hostname": "z", "facts": {}, "report": None}])
     assert out["hosts"]["z"]["judged"] is False and not any("z" in (e["from"], e["to"]) for e in out["edges"])

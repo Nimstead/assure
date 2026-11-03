@@ -13,7 +13,7 @@ from nimstead.engine.collection import Inventory
 from nimstead.engine.evaluate import ENGINE_VERSION, evaluate
 from nimstead.engine.model import Verdict
 
-KEEP_RECORDS = 20  # per host; each holds a whole inventory
+KEEP_RECORDS = 5  # per host; each holds a whole inventory, up to 10 MB (DECISIONS 101)
 
 
 def scan_inventory(s: Session, inv: Inventory, prior=()) -> tuple[list[Verdict], dict]:

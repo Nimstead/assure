@@ -1072,19 +1072,20 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     @app.get("/api/attack-paths")
     def attack_paths(user: CurrentUser, s: DB):
         """Which hosts an attacker who gets into one can reach next, from each host's latest stored scan report (engine/fleet.py)."""
+        if over_limit(s, "attack-paths:" + user.org_id, 120):  # a whole-fleet read: shared server, so bounded per organisation
+            raise HTTPException(429, "Attack paths were read too often this hour; try again later")
+        s.commit()
         newest = (select(ScanRecord.asset_id, func.max(ScanRecord.created).label("at")).where(ScanRecord.org_id == user.org_id)
                   .group_by(ScanRecord.asset_id).subquery())
-        latest = {}
-        for r in s.scalars(select(ScanRecord).join(newest, and_(ScanRecord.asset_id == newest.c.asset_id, ScanRecord.created == newest.c.at))
-                           .order_by(ScanRecord.id)):
-            latest.setdefault(r.asset_id, r)  # two records stored in the same instant: either is the latest
-        hosts = []
-        for a in s.scalars(select(Asset).where(Asset.org_id == user.org_id)):
-            r = latest.get(a.id)
-            win = next((p["version"] for p in (r.inventory.get("packages") or [] if r else []) if p.get("ecosystem") == "Windows"), "")
-            hosts.append({"id": a.id, "hostname": a.hostname, "facts": a.facts or {}, "os_version": win, "report": r.report if r else None,
-                          "internet_facing": a.internet_facing})
-        return engine_fleet.build(hosts)
+        latest = {}  # the report only: the stored inventory can be 10 MB a host
+        for aid, report in s.execute(select(ScanRecord.asset_id, ScanRecord.report)
+                                     .join(newest, and_(ScanRecord.asset_id == newest.c.asset_id, ScanRecord.created == newest.c.at)).order_by(ScanRecord.id)):
+            latest.setdefault(aid, report)  # two records stored in the same instant: either is the latest
+        win = dict(s.execute(select(InstalledPackage.asset_id, InstalledPackage.version).join(Asset, Asset.id == InstalledPackage.asset_id)
+                             .where(Asset.org_id == user.org_id, InstalledPackage.ecosystem == "Windows")).all())
+        return engine_fleet.build([{"id": a.id, "hostname": a.hostname, "facts": a.facts or {}, "os_version": win.get(a.id, ""),
+                                    "report": latest.get(a.id), "internet_facing": a.internet_facing}
+                                   for a in s.scalars(select(Asset).where(Asset.org_id == user.org_id))])
 
     class AssetPatch(BaseModel):
         criticality: Literal["low", "medium", "high", "critical"] | None = None

@@ -148,7 +148,8 @@ def evaluate(facts: dict, os_version: str = "", today=None) -> list[dict]:
             add("defender-signatures", f"{d['signature_age']} days", f"Defender signatures are {d['signature_age']} days old", "next", 55,
                 fix="Check updates reach Defender (Update-MpSignature)")
     if isinstance(c.get("firewall_off"), list) and c["firewall_off"]:
-        add("firewall", ", ".join(c["firewall_off"]), f"Windows Firewall is off for the {', '.join(c['firewall_off'])} profile(s)", "planned", 40,
+        off = ", ".join(map(str, c["firewall_off"]))  # facts come from the host: a non-string item mustn't crash the rescan
+        add("firewall", off, f"Windows Firewall is off for the {off} profile(s)", "planned", 40,
             fix="Turn the firewall on for every profile")
 
     # ---- hardening audit: settings the Microsoft security baselines fix, each exploitable or hiding an attack (DECISIONS 64)

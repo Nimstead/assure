@@ -28,6 +28,20 @@ Settings come from `winconfig.evaluate`, so a setting the agent couldn't read op
 ## Not yet
 
 - Linux hosts and SBOMs get no paths. Their settings facts would come first.
-- Paths across hosts. The network slice's reachability, and Active Directory's group membership, would link one host's
-  "reaching other hosts" to another host's "getting in".
+- Routing between hosts. Paths across hosts (below) use each target's own firewall state, not whether the source can
+  route to it. The network slice's probes from inside a segment, and Active Directory group membership, would raise them.
 - Whether an escalation flaw is reachable from the entry's privilege level (a service account versus a user). Each step is judged on its own.
+
+## Across hosts
+
+`GET /api/attack-paths` (`engine/fleet.py`) links hosts from each one's latest stored report and its own facts, without scanning
+again. An edge A → B needs all three of these:
+
+1. **A gives the attacker something.** It has a path and a way to take sign-ins, or name poisoning (LLMNR, NetBIOS) on its network.
+2. **B accepts it.** Local administrators keep full rights over the network, SMB signing isn't required (relay), or B allows NTLMv1.
+3. **B's own firewall allows the port that carries it.** A listener that's blocked, or that the agent couldn't read, makes no edge.
+
+Hosts in the same domain grade an edge *reasonable* at best, since routing isn't seen. Outside a shared domain, an edge that
+rests on sign-ins needs a reused local administrator password, which can't be seen, so it's *unverified* and says so. Chains
+start at hosts with a path from the network, or marked internet-facing. They list every host reachable by the fewest hops, and
+what to fix on each one to cut the edge into it.

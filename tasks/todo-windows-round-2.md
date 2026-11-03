@@ -40,16 +40,24 @@ so on a localised Windows the service permission check would silently find nothi
 Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens Greenbone.
 
 ### E1: Research and licences (research side, outside this repo)
-- [ ] Greenbone's architecture, knowledge base, dependencies, authenticated checks, patch and version logic, confidence and false positives studied; notes stay outside the repo
-- [ ] `docs/engine/spec-detection.md`: concepts and requirements in our own words; `docs/engine/greenbone-licences.md`: each component's licence, quoted
-- [ ] Separate reviewer with source access passes the spec: nothing copied or closely paraphrased
+- [x] Greenbone's architecture, knowledge base, dependencies, authenticated checks, patch and version logic, confidence and false positives studied; notes stay outside the repo
+- [x] `docs/engine/spec-detection.md`: concepts and requirements in our own words; `docs/engine/greenbone-licences.md`: each component's licence, quoted
+- [x] Separate reviewer with source access passes the spec: nothing copied or closely paraphrased (ab07eb9; process not legally validated, DECISIONS 79)
 
 ### E2: First end-to-end Windows scan (L, split on starting)
-- [ ] Facts with provenance, detection rules with declared dependencies, a verdict of vulnerable, not vulnerable or can't tell, confidence and an evidence chain for each
-- [ ] Demonstrable: one command scans a real Windows VM and prints a report saying why each finding exists and what stopped any check from concluding
-- [ ] Existing OS, Microsoft and curated app detection runs through it with no finding lost or added unexplained, measured against the current pipeline
+- [x] Facts with provenance, detection rules with declared dependencies, a verdict of vulnerable, not vulnerable or can't tell, confidence and an evidence chain for each
+- [x] Demonstrable: one command scans a real Windows VM and prints a report saying why each finding exists and what stopped any check from concluding
+- [x] Existing OS, Microsoft and curated app detection runs through it with no finding lost or added unexplained, measured against the current pipeline (`last_run_winengine.json`: PASS on Windows 11)
 
 ### E3 onward: rule breadth; then Linux, network services, applications and attack-path correlation, in that order, each with a benchmark run
+- [x] Linux: Debian 13 and AlmaLinux 9 PASS (`last_run_linengine_*.json`)
+- [x] Network services: remote prober with scope proof, negative controls and safety classes, PASS (`last_run_netengine.json`)
+- [x] Applications: Python, npm and Java installs and SBOMs, PASS on Debian 13 (`last_run_appengine.json`)
+- [x] Attack paths on one host (DECISIONS 97, `docs/engine/design-paths.md`): shown on the real German Windows 10 host's inventory
+- [x] Attack paths across hosts (DECISIONS 98): `GET /api/attack-paths` from stored reports and each host's own firewall state
+- [ ] Routing between hosts seen by the network slice from inside a segment, and AD group membership, to raise those edges
+- [ ] Findings open and close through the engine instead of `scan.rescan` (parity holds on every real run so far)
+- [ ] Benchmark runs against Greenbone, then Nessus and Qualys (W3)
 
 ## Phase 1: the OS matrix
 

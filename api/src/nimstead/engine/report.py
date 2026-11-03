@@ -7,6 +7,7 @@ import re
 from collections import Counter, defaultdict
 
 from nimstead import lifecycle
+from nimstead.engine import paths
 from nimstead.engine.collection import AGENT_APPS, NOT_REPORTED, Inventory, app_installs
 from nimstead.engine.content import Content
 from nimstead.engine.evaluate import ENGINE_VERSION
@@ -19,7 +20,8 @@ SOURCE_NAMES = {"windows_build": "Windows build", "uninstall": "Uninstall entrie
                 "microsoft_products": "Microsoft products", "host_facts": "Host facts", "drivers": "Drivers",
                 "os_release": "Platform (os-release)", "package_db": "Package database",
                 **{src: label for src, _, label in AGENT_APPS}, "sbom": "SBOM"}
-NOT_YET = "End of support, Windows settings and drivers aren't judged by this report yet: they stay findings in the normal view."
+NOT_YET = ("End of support, Windows settings and drivers aren't judged by this report yet: they stay findings in the normal view. "
+           "Settings are read here only to show how they combine with vulnerabilities into attack paths.")
 NOT_YET_LINUX = ("Livepatch, services still running replaced libraries, and software outside the package manager other than Python and npm packages "
                  "and Java archives (vendored binaries, containers, self-installed tools) aren't judged by this report yet. "
                  "Kernels installed but not running are judged, and marked so.")
@@ -175,6 +177,7 @@ def build(inv: Inventory, content: Content, verdicts: list[Verdict]) -> dict:
             "headline": _headline(verdicts, inv), "vulnerable": _vulnerable(verdicts), "undetermined": _undetermined(verdicts),
             "not_vulnerable": [{"family": f, "product": p, "instance": i, "grade": g, "checks": n} for (f, p, i, g), n in sorted(per_install.items(), key=str)],
             "not_applicable": sum(v.outcome == Outcome.NOT_APPLICABLE for v in verdicts), "applications": _installs(verdicts),
+            "attack_paths": paths.build(inv, content, verdicts),
             "coverage": _coverage(inv, content, verdicts)}
 
 
@@ -202,6 +205,7 @@ def render(r: dict) -> str:
         if not (n := a["outcomes"]).get("vulnerable"):
             out.append(f"  {a['instance']}   {'no known vulnerability' if set(n) == {'not-vulnerable'} else 'not proven either way'} "
                        f"({', '.join(f'{x:,} {k}' for k, x in n.items())})" + (f"   how sure: {a['grade']}" if a["grade"] else ""))
+    out += paths.render(r.get("attack_paths") or [])
     out += _rest(r)
     return "\n".join(_safe(x) for x in out)
 

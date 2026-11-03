@@ -53,8 +53,9 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens Greenbo
 ## Phase 1: the OS matrix
 
 ### W4: Windows 10 LTSC 2021: real fix and rollback (M) **by mid-December 2026**
-- [ ] ISO found (LTSC 2021 evaluation, else IoT LTSC); if neither, blocked and listed
-- [ ] `wine2e.py`: finding opens, permanence check passes on a Windows 10 package, install, reboot, injected failure, DISM rollback to the exact build, then applied by the scheduled task
+- [x] ISO found: LTSC 2021 evaluation, direct from Microsoft (fwlink 2195404), no form
+- [x] Finding opens, permanence check passes on a Windows 10 package (found and fixed: Windows 10 names only the servicing stack in its plan), install, reboot, injected failure, DISM rollback to the exact build 19044.1288, three times on final code (`last_run_windows10_ltsc_powercut.json`)
+- [ ] NOT done: applied by the scheduled task. This evaluation image is in licence notification mode and `WLMS` shuts it down an hour after each boot; the reinstall after a rollback, and once the task's fix, ran past it (`last_run_windows10_ltsc_task.log`). `slmgr /ato` and `/rearm` didn't help. The shutdown was a real power cut mid-install: the agent reported no changes made within 4 minutes (DECISIONS 78), where before it left the job silent for hours. Found on the way: install.ps1 couldn't be rerun while an agent run held the runtime; winvm power-cycled a healthy Windows 10 VM and couldn't cold-boot a hung one. All fixed. Next try: Windows 10 IoT Enterprise LTSC evaluation, or a licensed image
 - [ ] Windows Update oracle agrees; .NET Framework proof (`winnetfx.py`) on this line; STATUS says exactly what's still unproven (ESU offer on 22H2)
 - Verify: `last_run_windows10_ltsc.json`. Files: `winvm.py`, agent if it finds bugs. Deps: none.
 

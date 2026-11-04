@@ -2,7 +2,7 @@
 2026 CVRF (trimmed fixture), and findings end to end."""
 
 import json
-import os
+import ntpath
 from pathlib import Path
 
 import httpx
@@ -182,8 +182,8 @@ def test_agent_collects_microsoft_facts():
     dirs = {"Microsoft.NETCore.App": ["8.0.18", "8.0.20", "9.0.9", "10.0.0-rc.1"], "Microsoft.AspNetCore.App": ["8.0.20"]}
 
     def dotnet(path):  # runtimes only in the native Program Files\dotnet folder; 8.0.18 is older than 8.0.20: not reported
-        parent, fx = os.path.split(path)
-        return dirs.get(fx, []) if os.path.dirname(os.path.dirname(parent)).endswith("Program Files") and parent.endswith(r"dotnet\shared") else []
+        parent, fx = ntpath.split(path)
+        return dirs.get(fx, []) if ntpath.dirname(ntpath.dirname(parent)).endswith("Program Files") and parent.endswith(r"dotnet\shared") else []
     pkgs, problem = agent.windows_microsoft(reg, lambda cmd: (0, ps_out), dotnet)
     got = {(p["name"], p["version"]) for p in pkgs}
     assert problem is None and got == {(".NET runtime", "8.0.20"), (".NET runtime", "9.0.9"), ("ASP.NET Core", "8.0.20"),

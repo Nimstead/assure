@@ -47,6 +47,15 @@ CONFIG_FIXES = frozenset({"wdigest", "ntlmv1", "llmnr", "smb-signing", "smb1", "
                           "insecure-guest-auth", "winrm-basic", "winrm-unencrypted", "script-block-logging"})
 FORWARD_ONLY = ("winget",)  # can't be undone: a person approves it as such, never the trust ladder (plan T22)
 MANUAL_ONLY = ("winget", "winconfig")  # setting changes can break old clients: a person decides (plan decision 11)
+
+
+def servicing(job: RemediationJob) -> bool:
+    """A Windows step through a servicing stack update: it can't be removed, so like winget it's forward-only and a person's call (DECISIONS 105)."""
+    return job.manager == "windows" and bool(job.packages) and job.packages[0].get("servicing") is True
+
+
+def forward_only(job: RemediationJob) -> bool:
+    return job.manager in FORWARD_ONLY or servicing(job)
 SAFE_PRODUCT = re.compile(r"^(?:\.NET Framework 4[0-9.]* on )?Windows [A-Za-z0-9 .()-]{1,120}$")
 SAFE_KB = re.compile(r"^[0-9]{6,8}$")
 SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9+._-]{0,200}$")
@@ -347,9 +356,9 @@ def approve(s: Session, job: RemediationJob, by: str, policy: bool = False, forw
     org = s.get(Org, job.org_id)
     if job.status != "planned":
         raise RemediationError(f"Job is {job.status}, not awaiting approval")
-    if job.manager in MANUAL_ONLY and policy:  # never automated, whatever the trust ladder says (plan T22, T38)
+    if (job.manager in MANUAL_ONLY or servicing(job)) and policy:  # never automated, whatever the trust ladder says (plan T22, T38)
         raise RemediationError("This kind of fix is only ever approved by a person")
-    if job.manager in FORWARD_ONLY and not forward_only_ack:
+    if forward_only(job) and not forward_only_ack:
         raise RemediationError("This fix can't be undone: confirm that you accept a forward-only change")
     if org.remediation_mode == "suggest":
         raise RemediationError("Remediation is in suggest-only mode for this organisation")
@@ -360,7 +369,7 @@ def approve(s: Session, job: RemediationJob, by: str, policy: bool = False, forw
         if not ok:
             raise RemediationError(why)
     job.status, job.approved_by = "approved", by
-    _log(s, job, "remediation_approved", by=by, **({"forward_only": True} if job.manager in FORWARD_ONLY else {}))
+    _log(s, job, "remediation_approved", by=by, **({"forward_only": True} if forward_only(job) else {}))
     return job
 
 
@@ -604,6 +613,29 @@ def _fetch_month(s: Session, job: RemediationJob, kb: str, month: str, client) -
         return False
 
 
+def _plan_servicing(s: Session, job: RemediationJob, asset: Asset, product: str, cur: str, months: dict) -> RemediationJob | None:
+    """No earlier cumulative is offered, only an update MSRC doesn't list with a build: on an old Server 2016 that's a servicing stack
+    update, which Windows installs before any cumulative. Plan it as a forward-only step, approved only by a person; the agent installs
+    it only if its own downloaded manifest says it's a servicing stack package (DECISIONS 105). One the agent refused isn't planned again."""
+    refused = {str((j.packages[0].get("alt") or {}).get("kb")) for j in s.scalars(select(RemediationJob).where(
+        RemediationJob.asset_id == job.asset_id, RemediationJob.manager == "windows", RemediationJob.status == "aborted")) if j.packages and j.packages[0].get("servicing")}
+    kb = next((k for k in months if _kb_build(s, product, k) is None and k not in refused), None)
+    if len(months) != 1 or not kb or not SAFE_VERSION.match(cur):  # exactly one dated offer, as Server 2016 was: a longer list plans nothing
+        return None
+    try:
+        new = plan(s, asset, job.action_key.split("|", 1)[0], product, "policy", step={"kb": kb, "to": cur})
+    except RemediationError:
+        return None
+    new.packages = [{**new.packages[0], "servicing": True}]
+    ym = months[kb][0]
+    new.summary = (f"Install KB{kb} ({ym}) on {asset.hostname}: Windows Update offers this machine only that update, before any cumulative. "
+                   f"The agent installs it only if its own manifest says it's a servicing stack update, which can't be removed: approve it as "
+                   f"a forward-only change. The cumulative is planned after it.")[:500]
+    job.error = f"Windows Update offers only KB{kb} ({ym}); planned as a forward-only servicing step. {job.error or ''}".strip()[:2000]
+    s.commit()
+    return new
+
+
 def plan_step(s: Session, job: RemediationJob | None, offered, client=None) -> RemediationJob | None:
     """Windows Update offered this host none of an aborted job's KBs. If it offers an earlier cumulative update for the same
     product, plan (never approve) a job that steps through it: the KB's build comes from MSRC, fetching the month the title
@@ -627,10 +659,10 @@ def plan_step(s: Session, job: RemediationJob | None, offered, client=None) -> R
                 steps.append((build, kb, ym))
         except ValueError:
             continue
-    if not steps:
-        return None
-    build, kb, ym = max(steps, key=lambda x: sort_key(windows_cmp)(x[0]))
     asset = s.get(Asset, job.asset_id)
+    if not steps:
+        return _plan_servicing(s, job, asset, product, cur, months)
+    build, kb, ym = max(steps, key=lambda x: sort_key(windows_cmp)(x[0]))
     try:
         new = plan(s, asset, job.action_key.split("|", 1)[0], product, "policy", step={"kb": kb, "to": build})
     except RemediationError:

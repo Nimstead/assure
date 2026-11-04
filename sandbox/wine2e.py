@@ -312,7 +312,8 @@ def main(keep=False) -> int:
                 note("aborted", error=(j["error"] or "")[:600], planned=step and step["summary"], packages=step and step["packages"])
                 if not step:
                     break
-                assert api.post(f"/api/remediation/jobs/{step['id']}/approve").status_code == 200
+                # a servicing step can't be undone: approved as forward-only, as a person would (DECISIONS 105)
+                assert api.post(f"/api/remediation/jobs/{step['id']}/approve", json={"forward_only": True} if step.get("forward_only") else None).status_code == 200
                 jid = step["id"]
                 continue
             winvm.wait_ready(NAME, minutes=30)

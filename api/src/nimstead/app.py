@@ -1380,7 +1380,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             "action_key": j.action_key, "packages": j.packages, "finding_ids": j.finding_ids, "summary": j.summary,
             "created_by": j.created_by, "approved_by": j.approved_by, "created": j.created, "updated": j.updated,
             "steps": j.steps, "error": j.error, "result_versions": j.result_versions,
-            "forward_only": j.manager in remediate.FORWARD_ONLY,
+            "forward_only": remediate.forward_only(j),
         }
 
     class PlanReq(BaseModel):

@@ -479,3 +479,49 @@ def test_one_old_month_adds_rows_and_never_overwrites_newer_ones():
     assert n["documents"] == 1 and n["updated"] == 0
     s.expire_all()
     assert s.get(Advisory, (newer.id, "Windows", WS22)).record["summary"] == "re-released later"
+
+
+# ---- a servicing stack update before any cumulative (DECISIONS 105): a real Server 2016 at 14393.693 was offered only 2025-07's SSU
+SSU = [{"kb": "5062799", "title": "2025-07 Servicing Stack Update for Windows Server 2016 for x64-based Systems (KB5062799)"}]
+
+
+def test_a_lone_servicing_stack_offer_is_planned_as_a_forward_only_step_a_person_approves(env, monkeypatch):
+    c, h, jid, fetched, inv = _aborted_ws22(env, monkeypatch)
+    c.post(f"/api/agent/jobs/{jid}/report", headers=h, json={"outcome": "aborted", "steps": [], "offered": SSU, "error": "No changes made"})
+    jobs = {j["id"]: j for j in c.get("/api/remediation/jobs").json()}
+    assert jobs[jid]["error"].startswith("Windows Update offers only KB5062799 (2025-07); planned as a forward-only servicing step.")
+    [step] = [j for j in jobs.values() if j["id"] != jid]
+    assert step["status"] == "planned" and step["forward_only"] is True and "servicing stack update" in step["summary"]
+    assert step["packages"] == [{"name": WS22, "from": "10.0.20348.587", "kb": "5126700", "to": "10.0.20348.4297",
+                                 "alt": {"kb": "5062799", "to": "10.0.20348.587"}, "servicing": True}]
+    assert c.post(f"/api/remediation/jobs/{step['id']}/approve").status_code == 409  # it can't be undone: said so, or no
+    with make_sessionmaker(env)() as s:
+        from nimstead import remediate as rem
+        from nimstead.db import RemediationJob
+        with pytest.raises(rem.RemediationError, match="only ever approved by a person"):
+            rem.approve(s, s.get(RemediationJob, step["id"]), "trust ladder", policy=True)
+    assert c.post(f"/api/remediation/jobs/{step['id']}/approve", json={"forward_only": True}).status_code == 200
+    [sent] = c.get("/api/agent/jobs", headers=h).json()
+    assert sent["packages"][0]["servicing"] is True
+    # the build doesn't move: the step is done when the agent reports the build it planned to stay at
+    c.post(f"/api/agent/jobs/{step['id']}/report", headers=h, json={"outcome": "applied", "steps": [], "versions": {WS22: "10.0.20348.587"}})
+    inv("10.0.20348.587")
+    assert next(j for j in c.get("/api/remediation/jobs").json() if j["id"] == step["id"])["status"] == "succeeded"
+
+
+def test_a_servicing_step_the_agent_refused_isnt_planned_again_and_a_longer_list_plans_none(env, monkeypatch):
+    c, h, jid, fetched, _ = _aborted_ws22(env, monkeypatch)
+    c.post(f"/api/agent/jobs/{jid}/report", headers=h, json={"outcome": "aborted", "steps": [], "offered": SSU, "error": "No changes made"})
+    [step] = [j for j in c.get("/api/remediation/jobs").json() if j["id"] != jid]
+    c.post(f"/api/remediation/jobs/{step['id']}/approve", json={"forward_only": True})
+    c.get("/api/agent/jobs", headers=h)
+    r = c.post(f"/api/agent/jobs/{step['id']}/report", headers=h, json={"outcome": "aborted", "steps": [], "offered": SSU,
+                                                                       "error": "No changes made: not a servicing stack update"})
+    assert r.json() == {"status": "aborted"}
+    assert len(c.get("/api/remediation/jobs").json()) == 2  # refused once: not planned again
+    two = [*SSU, {"kb": "5062800", "title": "2025-07 Update (KB5062800)"}]
+    with make_sessionmaker(env)() as s:
+        from nimstead import remediate as rem
+        from nimstead.db import RemediationJob
+        assert rem._plan_servicing(s, s.get(RemediationJob, jid), None, WS22, "10.0.20348.587",
+                                   {k["kb"]: ("2025-07", "2025-Jul") for k in two}) is None

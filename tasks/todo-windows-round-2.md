@@ -77,7 +77,8 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens the ref
 
 ### W6: Server 2016 and Windows 11 Enterprise (M each)
 - [x] Server 2016 (support ends January 2027, so lowest priority of the servers): same proof, or a clear refusal. **A clear refusal** (`last_run_windows_server2016.json`, 2026-11-04): it installs, enrols and reports here; from 14393.693 Windows Update offers only 2025-07's servicing stack update (KB5062799) and no cumulative, so the job stops with "No changes made" and names the update it offers instead. No step is planned: steps are cumulatives MSRC lists with a build, and servicing stack updates are permanent, which the agent refuses because they can't be rolled back
-- [ ] Your call: let a servicing stack update through as a forward-only, person-approved step (as winget is), so an old Server 2016 can reach a cumulative. Today it needs a person to install the SSU by hand once
+- [x] Your call: let a servicing stack update through as a forward-only, person-approved step (as winget is), so an old Server 2016 can reach a cumulative. **Allowed** (DECISIONS 105): planned when it's the only update offered, approved only by a person as forward-only, installed only if its own manifest names a servicing stack package; unit-tested
+- [ ] The same Server 2016 VM, through the servicing step to a cumulative: `last_run_windows_server2016_ssu.json`
 - [ ] Windows 11 Enterprise evaluation: the same proof on an edition and release other than 26H2 Pro
 - Verify: run files. Deps: W5.
 

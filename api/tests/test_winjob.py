@@ -572,3 +572,62 @@ def test_windows_10_plan_is_the_servicing_stack_with_the_update_only_a_download(
         {"file": "SSU-19041.7714-x64-express", "reason": "ServicingStackUpdate", "partition": "MainOS", "permanent": True, "permanent_parts": ["update.mum"]},
         {"file": "Windows10.0-KB5122878-x64.cab", "reason": "CumulativeUpdate", "partition": "MainOS", "permanent": False, "permanent_parts": []}])
     assert ok and "Windows10.0-KB5122878-x64.cab" in detail and "stays after rollback" in detail
+
+
+# ---- a forward-only servicing step (DECISIONS 105): installed only as what its own manifest says, verified by the KB being there
+class FakeSSU(FakeWin):
+    def __init__(self, name="Package_for_ServicingStack_7330", installs=True, **kw):
+        super().__init__(offered=kw.pop("offered", ("5062799",)), **kw)
+        self.mum, self.installs, self.hotfix = name, installs, False
+
+    def __call__(self, cmd, cwd=None, timeout=None):
+        if cmd[0] == "powershell":
+            script = cmd[-1]
+            if "assemblyIdentity" in script:
+                return 0, self.mum
+            if "Get-HotFix" in script:
+                return 0, str(self.hotfix)
+            if "CreateUpdateInstaller" in script and "5062799" in script:
+                self.hotfix = self.installs
+                return 0, json.dumps({"download": 2, "install": 2 if self.installs else 4, "reboot": False})
+        return super().__call__(cmd, cwd, timeout)
+
+
+SSU_JOB = {**JOB, "packages": [{**JOB["packages"][0], "alt": {"kb": "5062799", "to": OLD}, "servicing": True}]}
+
+
+def test_a_servicing_stack_update_is_installed_only_as_its_manifest_says_and_verified_by_the_kb(tmp_path):
+    h = FakeSSU()
+    r = make(tmp_path, h, SSU_JOB).advance()
+    assert r["outcome"] == "applied" and r["versions"] == {JOB["packages"][0]["name"]: OLD}  # the build doesn't move
+    names = [s["step"] for s in r["steps"]]
+    assert "update is a servicing stack update (its own manifest)" in names and "KB5062799 installed" in names
+    assert not any("removable" in n for n in names)  # its permanence isn't the question here: it's the agreed exception
+    assert not any(c[:3] == ["dism", "/online", "/remove-package"] for c in h.log)
+
+
+def test_anything_else_on_the_servicing_path_is_refused_with_no_changes(tmp_path):
+    h = FakeSSU(name="Package_for_RollupFix~31bf3856ad364e35~amd64~~14393.9612.1.1")
+    r = make(tmp_path, h, SSU_JOB).advance()
+    assert r["outcome"] == "aborted" and r["error"].startswith("No changes made")
+    assert not any("CreateUpdateInstaller" in c[-1] for c in h.log if c[0] == "powershell")
+    # if Windows Update offers the cumulative itself instead, it's the normal, reversible path
+    r = make(tmp_path, FakeSSU(offered=("5126646",)), SSU_JOB).advance()
+    assert r["outcome"] == "pending_reboot" and any("removable" in s["step"] for s in r["steps"])
+
+
+def test_a_servicing_install_that_fails_its_check_is_reported_failed_not_rolled_back(tmp_path):
+    h = FakeSSU(installs=False)
+    r = make(tmp_path, h, SSU_JOB).advance()
+    assert r["outcome"] in ("failed", "rolled_back", "aborted") and r["outcome"] != "rolled_back"
+    assert not any(c[:3] == ["dism", "/online", "/remove-package"] for c in h.log)
+
+
+def test_a_power_cut_during_a_servicing_install_is_judged_by_the_kb(tmp_path):
+    for there, outcome in ((True, "applied"), (False, "aborted")):
+        h = FakeSSU()
+        w = make(tmp_path, h, SSU_JOB)
+        w.s.update(kb="5062799", to=OLD, installing=True, baseline={BASE_PKG: "Installed"})
+        w.save()
+        h.hotfix = there
+        assert resume(tmp_path, h)["outcome"] == outcome

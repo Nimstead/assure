@@ -4,6 +4,9 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Added
+- **Servicing stack updates as a forward-only step** (DECISIONS 105): when Windows Update offers an old Windows Server only a servicing stack update, the server plans it as a forward-only job a person approves (`{"forward_only": true}`), and the agent installs it only if the package's own manifest says it's a servicing stack update. The cumulative is planned after it.
+
 ## [0.6.0] - 2026-11-04 (preview)
 
 Windows rounds 1 and 2 (tasks/plan.md, tasks/plan-windows-round-2.md; DECISIONS 51–101): Windows detection across the OS, Microsoft's own products and common apps, fixes

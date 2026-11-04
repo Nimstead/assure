@@ -15,6 +15,7 @@ import glob
 import hashlib
 import io
 import json
+import ntpath
 import os
 import platform
 import re
@@ -184,7 +185,7 @@ def reboot_pending(query=_query, which=shutil.which, exists=os.path.exists):
     return None
 
 
-def collect_linux(query=_query, files=OS_RELEASE, apk_db=APK_DB, which=shutil.which, kernel=None):
+def collect_linux(query=_query, files=OS_RELEASE, apk_db=APK_DB, which=shutil.which, kernel=None, reboot=None):
     """What the host is, its packages and how far the read got (R7.1, R7.2, R4.3). An unknown platform is reported, never silence."""
     text, problem = "", "no os-release file"
     for path in files:
@@ -199,7 +200,7 @@ def collect_linux(query=_query, files=OS_RELEASE, apk_db=APK_DB, which=shutil.wh
     eco = ecosystem_from_os_release(text)
     pkgs, db = package_db(query, apk_db, which)
     facts = {"os_id": r.get("ID", ""), "os_version_id": r.get("VERSION_ID", ""), "kernel_release": kernel or os.uname().release,
-             "pending_reboot": reboot_pending(query, which)}
+             "pending_reboot": (reboot or reboot_pending)(query, which)}
     if not eco:
         facts["os_unmatched"] = f"no advisory feed maps this platform: ID={r.get('ID', '?')} VERSION_ID={r.get('VERSION_ID', '?')}"[:300]
     return {"os_name": r.get("PRETTY_NAME") or r.get("NAME", ""), "ecosystem": eco, "agent_version": AGENT_VERSION, "facts": facts,
@@ -656,10 +657,10 @@ def windows_microsoft(reg, run=None, dotnet_dirs=None):
     # .NET from the runtime folders themselves (the registry keeps versions long uninstalled). Only the newest patch
     # of each major.minor: by default .NET runs every app on the latest patch installed, so older ones don't run.
     pf, pf86 = os.environ.get("ProgramFiles", r"C:\Program Files"), os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
-    for root, arch in ((os.path.join(pf, "dotnet"), "native"), (os.path.join(pf, "dotnet", "x64"), "x64"), (os.path.join(pf86, "dotnet"), "x86")):
+    for root, arch in ((ntpath.join(pf, "dotnet"), "native"), (ntpath.join(pf, "dotnet", "x64"), "x64"), (ntpath.join(pf86, "dotnet"), "x86")):
         for fx, name in (("Microsoft.NETCore.App", ".NET runtime"), ("Microsoft.AspNetCore.App", "ASP.NET Core")):
             newest = {}
-            for v in folders(os.path.join(root, "shared", fx)):
+            for v in folders(ntpath.join(root, "shared", fx)):
                 if re.fullmatch(r"\d+\.\d+\.\d+", v):
                     mm = tuple(v.split(".")[:2])
                     if mm not in newest or version_tuple(v) > version_tuple(newest[mm]):
@@ -667,7 +668,7 @@ def windows_microsoft(reg, run=None, dotnet_dirs=None):
             for v in newest.values():
                 add(name, v, arch)
         newest = {}  # SDKs: newest of each feature band (8.0.1xx, 8.0.4xx), which Microsoft patches separately
-        for v in folders(os.path.join(root, "sdk")):
+        for v in folders(ntpath.join(root, "sdk")):
             if re.fullmatch(r"\d+\.\d+\.\d{3,}", v):
                 band = (*v.split(".")[:2], v.split(".")[2][:-2])
                 if band not in newest or version_tuple(v) > version_tuple(newest[band]):
@@ -1751,7 +1752,7 @@ class WinAppJob:
         exe = exe.strip().splitlines()[-1] if rc == 0 and exe.strip() else ""
         self.step("winget found (App Installer under WindowsApps, admin-owned)", ok=bool(exe), output=exe or "winget unavailable")
         rc, vc = ps(self.run, PS_VCLIBS)
-        cwd = os.path.dirname(vc.strip().splitlines()[-1]) if rc == 0 and vc.strip() else None
+        cwd = ntpath.dirname(vc.strip().splitlines()[-1]) if rc == 0 and vc.strip() else None
         common = ["--id", wid, "--exact", "--source", "winget", "--version", p["to"], "--accept-source-agreements", "--disable-interactivity"]
         out = self.step(f"winget lists {wid} {p['to']} with an installer hash", [exe, "show", *common], cwd=cwd)
         self.step("installer SHA-256 published", ok=bool(re.search(r"(?im):\s*[0-9a-f]{64}\s*$", out)), output=out)  # by the value: winget's labels are localised

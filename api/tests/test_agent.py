@@ -62,7 +62,8 @@ def _linux(tmp_path, os_release, answer, tool="dpkg-query"):
         ran.append(cmd)
         return answer
     which = lambda name: f"/usr/bin/{name}" if name == tool else None  # noqa: E731
-    return agent.collect_linux(query, files=(str(tmp_path / "missing"), str(f)), apk_db=str(tmp_path / "no-apk"), which=which, kernel="6.12.48+deb13-amd64"), ran
+    return agent.collect_linux(query, files=(str(tmp_path / "missing"), str(f)), apk_db=str(tmp_path / "no-apk"), which=which, kernel="6.12.48+deb13-amd64",
+                               reboot=lambda q, w: None), ran  # not the test machine's own reboot flag (CI's Ubuntu has one)
 
 
 def test_linux_collect_reports_what_it_read_with_the_command_status(tmp_path):

@@ -188,8 +188,10 @@ def kb_fleet(s: Session, org_id: str) -> list[dict]:
         return []
     kbs: dict[str, dict[str, dict]] = defaultdict(dict)
     hot_builds: dict[str, set] = defaultdict(set)
-    for pkg, rec in s.execute(select(Advisory.package, Advisory.record).where(
-            Advisory.ecosystem == "Windows", Advisory.package.in_([*hosts, *(p + HOTPATCH for p in hosts)]))):
+    names = [*hosts, *(p + HOTPATCH for p in hosts)]  # a host can report many "Windows" names: stay under SQL parameter limits
+    rows = [r for i in range(0, len(names), 500) for r in s.execute(select(Advisory.package, Advisory.record).where(
+        Advisory.ecosystem == "Windows", Advisory.package.in_(names[i:i + 500])))]
+    for pkg, rec in rows:
         fixed = rec["affected"][0]["ranges"][0]["events"][-1].get("fixed")
         info = rec.get("database_specific") or {}
         if pkg.endswith(HOTPATCH):
@@ -200,8 +202,10 @@ def kb_fleet(s: Session, org_id: str) -> list[dict]:
             row["released"] = row["released"] or info.get("released")
             row["cves"].update(rec["aliases"])
     statuses: dict[tuple[str, str], set] = defaultdict(set)
-    for asset_id, product, status in s.execute(select(Finding.asset_id, Finding.package, Finding.status).distinct().where(
-            Finding.org_id == org_id, Finding.ecosystem == "Windows", Finding.status.in_(("open", "accepted")), Finding.package.in_(list(hosts)))):
+    products = list(hosts)
+    for asset_id, product, status in [r for i in range(0, len(products), 500) for r in s.execute(
+            select(Finding.asset_id, Finding.package, Finding.status).distinct().where(Finding.org_id == org_id, Finding.ecosystem == "Windows",
+                                                                                     Finding.status.in_(("open", "accepted")), Finding.package.in_(products[i:i + 500])))]:
         statuses[asset_id, product].add(status)
     on_hotpatch = {a.id for p, members in hosts.items() for a, v in members if v in hot_builds[p]}
     hot_cves: dict[str, set] = defaultdict(set)

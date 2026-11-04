@@ -188,7 +188,7 @@ export function AttackPaths() {
   return (
     <section aria-labelledby="attack-paths" className="flex flex-col gap-2 border border-line bg-sunken p-4">
       <h2 id="attack-paths" className="text-base font-semibold">How these weaknesses combine</h2>
-      <p className="max-w-prose text-sm text-muted">Each step is a vulnerability or a setting read on the host. A path is only as sure as its weakest step, and whether one host can route to another isn't seen, so nothing across hosts is better than reasonable.{unjudged ? ` ${plural(unjudged, "host")} ${unjudged === 1 ? "hasn't" : "haven't"} been judged yet.` : ""}{d.truncated ? " So many hosts link to each other that only the first links are shown: fix the settings named below first." : ""}</p>
+      <p className="max-w-prose text-sm text-muted">Each step is a vulnerability or a setting read on the host. A path is only as sure as its weakest step, and whether one host can route to another isn't seen, so nothing across hosts is better than reasonable. Each host's part rests on what its own agent reported, so a compromised host could make its own links look worse or better.{unjudged ? ` ${plural(unjudged, "host")} ${unjudged === 1 ? "hasn't" : "haven't"} been judged yet.` : ""}{d.truncated ? " So many hosts link to each other that only the first links are shown: fix the settings named below first." : ""}</p>
       {d.chains.map((c) => (
         <div key={c.start} className="flex flex-col gap-1">
           <h3 className="text-sm font-semibold">From {name(c.start)} ({c.why_start}), an attacker can reach {plural(c.reach.length, "other host")}</h3>

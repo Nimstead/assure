@@ -305,3 +305,7 @@ def test_winjob_touches_only_its_own_kind_of_package(tmp_path):
         return agent.WinJob({"packages": [{"name": name, "kb": "5127694", "from": "1.0.0", "to": "2.0.0"}]}, run=run, state_path=str(tmp_path / "s.json"))
     assert list(job(".NET Framework 4.8.1 on Windows 11 version 25H2").rollups()) == ["Package_for_DotNetRollup_481~31bf3856ad364e35~amd64~~10.0.9363.1"]
     assert list(job("Windows 11 Version 25H2 for x64-based Systems").rollups()) == ["Package_for_RollupFix~31bf3856ad364e35~amd64~~26100.9711.1.30"]
+
+
+def test_a_two_part_sdk_version_is_no_band_not_an_error():
+    assert msproducts._sdk("8.0") is None and msproducts._sdk("8.0.426") == ".NET 8.0 SDK 4xx"

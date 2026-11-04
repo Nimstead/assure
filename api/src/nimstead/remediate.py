@@ -56,10 +56,10 @@ def servicing(job: RemediationJob) -> bool:
 
 def forward_only(job: RemediationJob) -> bool:
     return job.manager in FORWARD_ONLY or servicing(job)
-SAFE_PRODUCT = re.compile(r"^(?:\.NET Framework 4[0-9.]* on )?Windows [A-Za-z0-9 .()-]{1,120}$")
-SAFE_KB = re.compile(r"^[0-9]{6,8}$")
-SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9+._-]{0,200}$")
-SAFE_VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+~:_^-]{0,200}$")
+SAFE_PRODUCT = re.compile(r"^(?:\.NET Framework 4[0-9.]* on )?Windows [A-Za-z0-9 .()-]{1,120}\Z")  # \Z: $ also matches before a final newline
+SAFE_KB = re.compile(r"^[0-9]{6,8}\Z")
+SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9+._-]{0,200}\Z")
+SAFE_VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+~:_^-]{0,200}\Z")
 ACTIVE = ("planned", "approved", "dispatched", "verifying")
 AGENT_OUTCOMES = ("applied", "rolled_back", "rollback_failed", "aborted")
 ALERT_STATUSES = ("rolled_back", "rollback_failed", "failed", "not_fixed", "aborted")
@@ -182,6 +182,11 @@ def _rollout(plannable: list[Asset], jobs: list[RemediationJob], ring0: set[str]
     return [a.id for a in plannable], "No canary machine has proven this update, so each fix waits for a person's approval."
 
 
+def _aims(job: RemediationJob):
+    """The build a job installs: a stepped or servicing job's earlier step, not the cumulative it's planned towards."""
+    return (job.packages[0].get("alt") or {}).get("to") or job.packages[0].get("to")
+
+
 def kb_fleet(s: Session, org_id: str) -> list[dict]:
     """Per product, its newest cumulative updates: how many of the org's hosts have each, judged by the build they last
     reported, and for the rest why not, from their jobs and facts. A host on the hotpatch track has an update when none of
@@ -241,13 +246,13 @@ def kb_fleet(s: Session, org_id: str) -> list[dict]:
                 if _reaches(version, row["build"]) or (a.id in on_hotpatch and not row["cves"] & hot_cves[a.id]):
                     continue
                 # a job reaching this build or beyond counts for it (cumulative); any active one is what plan() would refuse on
-                job = next((j for j in by_host[a.id] if j.status in ACTIVE or _reaches(j.packages[0].get("to"), row["build"])), None)
+                job = next((j for j in by_host[a.id] if j.status in ACTIVE or _reaches(_aims(j), row["build"])), None)
                 st = statuses[a.id, product]
                 missing.append({"asset_id": a.id, "hostname": a.hostname, "build": version, "ring": a.ring, "why": _job_why(job),
                                 "notes": _host_notes(a, st), "job": {"id": job.id, "status": job.status} if job else None})
                 if "open" in st and not (job and (job.status in ACTIVE or job.status in ALERT_STATUSES)):  # failures get a look first, as on Home
                     plannable.append(a)
-            this_kb = [j for j in jobs[key] if _reaches(j.packages[0].get("to"), row["build"])]
+            this_kb = [j for j in jobs[key] if _reaches(_aims(j), row["build"])]
             ids, note = _rollout(plannable, this_kb, ring0, soak_hours)
             month = date.fromisoformat(row["released"]).strftime("%B %Y") + " cumulative" if row["released"] else "Cumulative"
             out.append({"kb": kb, "product": product, "title": f"{month} KB{kb}", "released": row["released"], "build": row["build"],
@@ -649,11 +654,13 @@ def plan_step(s: Session, job: RemediationJob | None, offered, client=None) -> R
         title, kb = (o.get("title"), str(o.get("kb"))) if isinstance(o, dict) else (None, "")
         if isinstance(title, str) and SAFE_KB.match(kb) and (m := re.match(r"(20\d\d)-(0[1-9]|1[0-2]) ", title[:300])):
             months[kb] = (f"{m[1]}-{m[2]}", f"{m[1]}-{MONTHS[int(m[2]) - 1]}")
-    steps, tried = [], set()
+    steps, tried, read = [], set(), set()
     for kb, (ym, month) in months.items():
         if (build := _kb_build(s, product, kb)) is None and month not in tried:  # e.g. the month's .NET update: fetched once
             tried.add(month)
-            build = _kb_build(s, product, kb) if _fetch_month(s, job, kb, month, client) else None
+            if _fetch_month(s, job, kb, month, client):
+                read.add(month)
+                build = _kb_build(s, product, kb)
         try:  # the same product line, past the host's build and short of the job's target
             if build and build.rsplit(".", 1)[0] == target.rsplit(".", 1)[0] and windows_cmp(cur, build) < 0 < windows_cmp(target, build):
                 steps.append((build, kb, ym))
@@ -661,7 +668,8 @@ def plan_step(s: Session, job: RemediationJob | None, offered, client=None) -> R
             continue
     asset = s.get(Asset, job.asset_id)
     if not steps:
-        return _plan_servicing(s, job, asset, product, cur, months)
+        # only an update whose month MSRC's data was read for: a refused or failed fetch says nothing about what it is
+        return _plan_servicing(s, job, asset, product, cur, months) if {m for _, m in months.values()} <= read else None
     build, kb, ym = max(steps, key=lambda x: sort_key(windows_cmp)(x[0]))
     try:
         new = plan(s, asset, job.action_key.split("|", 1)[0], product, "policy", step={"kb": kb, "to": build})

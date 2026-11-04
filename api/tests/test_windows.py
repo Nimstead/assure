@@ -525,3 +525,22 @@ def test_a_servicing_step_the_agent_refused_isnt_planned_again_and_a_longer_list
         from nimstead.db import RemediationJob
         assert rem._plan_servicing(s, s.get(RemediationJob, jid), None, WS22, "10.0.20348.587",
                                    {k["kb"]: ("2025-07", "2025-Jul") for k in two}) is None
+
+
+def test_no_servicing_step_when_msrc_data_for_that_month_wasnt_read(env, monkeypatch):
+    """A refused (3 a day) or failed fetch leaves the KB unknown: that says nothing about it being a servicing stack update."""
+    from nimstead import remediate as rem
+    c, h, jid, fetched, _ = _aborted_ws22(env, monkeypatch)
+    monkeypatch.setattr(rem, "_fetch_month", lambda *a, **k: False)
+    c.post(f"/api/agent/jobs/{jid}/report", headers=h, json={"outcome": "aborted", "steps": [], "offered": SSU, "error": "No changes made"})
+    jobs = c.get("/api/remediation/jobs").json()
+    assert len(jobs) == 1 and "servicing" not in (jobs[0]["error"] or "")
+    assert rem.SAFE_VERSION.match("10.0.20348.587\n") is None and rem.SAFE_KB.match("5062799\n") is None  # $ would let these by
+
+
+def test_a_stepped_job_counts_for_the_build_it_installs():
+    from nimstead import remediate as rem
+    from nimstead.db import RemediationJob
+    j = RemediationJob(manager="windows", packages=[{"name": WS22, "kb": "5126700", "to": "10.0.20348.4297", "alt": {"kb": "5062799", "to": "10.0.20348.587"}}])
+    assert rem._aims(j) == "10.0.20348.587"
+    assert rem._aims(RemediationJob(manager="windows", packages=[{"name": WS22, "to": "10.0.20348.4297"}])) == "10.0.20348.4297"

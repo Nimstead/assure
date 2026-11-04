@@ -94,7 +94,7 @@ def parse_dpkg(text):
     pkgs = []
     for line in text.splitlines():
         f = line.split("\t")
-        if len(f) < 5 or not f[4].startswith("ii"):
+        if len(f) < 5 or f[4][1:2] != "i":  # the second letter is the state: "hi" is installed and held (apt-mark hold)
             continue
         # advisories are keyed by source version, which a binary can differ from (bsdutils 1:2.41-5 from util-linux 2.41-5)
         pkgs.append({"name": f[0], "version": f[1], "source": f[2] or f[0], **({"source_version": f[3]} if f[3] and f[3] != f[1] else {})})
@@ -3273,6 +3273,8 @@ def scan_jars(roots, max_seconds=300, max_files=500_000, mounts=None, owned=lamb
                 if owned(p):
                     skipped += 1
                     continue
+                if not regular(p):
+                    continue
                 try:
                     with zipfile.ZipFile(p) as z:
                         _poms(z, p, found)
@@ -3341,8 +3343,18 @@ def package_owned(dpkg_info=DPKG_INFO, apk_db=APK_DB, which=shutil.which, nt=os.
     return (lambda p: p in owned or p + "/package.json" in owned), None
 
 
+def regular(path):
+    """A plain file, not followed: a FIFO a user planted in a scanned folder would block the root agent's open() for good."""
+    try:
+        return stat.S_ISREG(os.lstat(path).st_mode)
+    except OSError:
+        return False
+
+
 def _dist_meta(path):
     """(PEP 503 name, version) from a core-metadata file's headers (METADATA, PKG-INFO), or None."""
+    if not regular(path):
+        return None
     try:
         with open(path, encoding="utf-8", errors="replace") as f:
             head = f.read(MAX_METADATA)
@@ -3362,6 +3374,8 @@ def _dist_meta(path):
 
 
 def _package_json(path):
+    if not regular(path):
+        return None
     try:
         if os.path.getsize(path) > MAX_PACKAGE_JSON:
             return None

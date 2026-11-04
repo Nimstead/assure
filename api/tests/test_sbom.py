@@ -302,3 +302,26 @@ def test_unsupported_formats_422_with_message(env, body, msg):
     c = user(env)
     r = put(c, app_asset(c)["id"], body)
     assert r.status_code == 422 and msg in r.json()["detail"]
+
+
+def test_one_feed_failing_cannot_stop_the_hourly_update(env, monkeypatch):
+    """A feed's outage or schema change keeps its stored rows; the other feeds and every host's re-match still run."""
+    s = sessionmaker(make_engine(env))()
+    org = Org(name="o")
+    s.add(org)
+    s.flush()
+    a = Asset(org_id=org.id, hostname="h", agent_key_hash="h")
+    s.add(a)
+    s.flush()
+    s.add(InstalledPackage(asset_id=a.id, origin="agent", ecosystem="Windows", name="Windows 11", version="10.0.26200.1"))
+    s.commit()
+
+    def broken(*a, **k):
+        raise AttributeError("'str' object has no attribute 'get'")  # a changed schema read by code expecting a dict
+    for name in ("sync_kev", "sync_msrc"):
+        monkeypatch.setattr(feeds, name, broken)
+    for name in ("sync_epss", "sync_nvd", "sync_office", "sync_loldrivers"):
+        monkeypatch.setattr(feeds, name, lambda *a, **k: {})
+    out = feeds.update_all(s)
+    assert "AttributeError" in out["kev"]["error"] and "AttributeError" in out["msrc"]["error"] and out["office"] == {}
+    assert out["rescanned"] == 1

@@ -61,7 +61,10 @@ def _netfx_os(os_product: str | None) -> str | None:
 
 def _sdk(v: str) -> str | None:
     """'8.0.426' -> '.NET 8.0 SDK 4xx': each feature band gets its own fixes. A third part below 100 is a runtime."""
-    band = int(v.split(".")[2]) // 100
+    parts = v.split(".")
+    if len(parts) < 3:  # "8.0": no feature band to judge by
+        return None
+    band = int(parts[2]) // 100
     return f"{_minor('.NET', v)} SDK {band}xx" if band else None
 
 

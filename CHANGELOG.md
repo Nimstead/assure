@@ -7,6 +7,14 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 ### Added
 - **Servicing stack updates as a forward-only step** (DECISIONS 105): when Windows Update offers an old Windows Server only a servicing stack update, the server plans it as a forward-only job a person approves (`{"forward_only": true}`), and the agent installs it only if the package's own manifest says it's a servicing stack update. The cumulative is planned after it.
 
+### Fixed
+- Debian and Ubuntu packages held with `apt-mark hold` are reported again (they were left out of the inventory).
+- The agent opens only plain files when scanning jars, Python and npm packages: a named pipe a user planted could block it.
+- A .NET SDK reported with a two-part version no longer fails that host's report.
+- A servicing stack step is planned only when Microsoft's data for that month was read.
+- One feed failing or changing format no longer stops the hourly update and re-match for every organisation.
+- The per-update fleet view counts a stepped job by the build it installs.
+
 ## [0.6.0] - 2026-11-04 (preview)
 
 Windows rounds 1 and 2 (tasks/plan.md, tasks/plan-windows-round-2.md; DECISIONS 51–101): Windows detection across the OS, Microsoft's own products and common apps, fixes

@@ -120,7 +120,7 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens the ref
 ## Phase 3: detection breadth
 
 ### W12: Rule proposer and first 25 apps (M)
-- [ ] `sandbox/winapps_propose.py` ranks candidates by W1's list, NVD CVE count and winget presence, and prints draft rows; it never edits `winapps.py`
+- [x] `sandbox/winapps_propose.py` ranks candidates by W1's list, NVD CVE count and winget presence, and prints draft rows; it never edits `winapps.py` (e5448e1, DECISIONS 77)
 - [x] 18 accepted rows (batch 7), each with near-miss tests; `winapps_e2e.py --new7` on a real Windows 11 VM (`last_run_winapps_batch7.json`): 10 proven old to new (Acrobat Reader, ClamAV, IntelliJ IDEA, PyCharm, Joplin, Mattermost, OpenSC, Sandboxie-Plus, NetExtender, Splashtop); 5 missed because real installers register other names or publishers (Confluence, OpenSSL Light, Nessus Agent, Plex, Corretto 21), fixed with tests and checked against that VM's own agent output; Ollama and Nessus identified but winget installed one version; TeamCity registers no release, so it stays inventory; Octopus Deploy and PaperCut didn't install (30-minute timeouts). Next batches: server installers in their own run
 - Verify: `last_run_winapps_batch7.json`. Deps: W1.
 
@@ -139,8 +139,8 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens the ref
 - Verify: `last_run_winnoise_full.json`. Deps: W13 (rerun at the end), W4, W5.
 
 ### W15: Vulnerable drivers by exact hash (M)
-- [ ] LOLDrivers' licence and format checked; a feed syncs its hashes and fails loudly on a changed schema
-- [ ] Agent reports the SHA-256 of loaded drivers within a size cap; only exact matches open findings
+- [x] LOLDrivers' licence and format checked; a feed syncs its hashes and fails loudly on a changed schema (f25bee4, DECISIONS 71)
+- [x] Agent reports the SHA-256 of loaded drivers within a size cap; only exact matches open findings (f25bee4; real VM `last_run_windrivers.json`)
 - [x] Real VM: a known vulnerable driver file present is flagged, an unrelated driver isn't. File hashed, not loaded (`last_run_windrivers.json`, Windows 11: 439 drivers hashed, only RTCore64.sys flagged, never loaded)
 - Verify: `last_run_windrivers.json`. Files: agent, `feeds.py`, `scan.py`. Deps: none.
 
@@ -150,8 +150,8 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens the ref
 - Verify: tests, `last_run_winexposure.json`. Deps: none.
 
 ### W17: Second exploit source; every install reported (S each)
-- [ ] Public-exploit source beside Metasploit (check Exploit-DB's data and terms first), adds a reason in `risk.py`
-- [ ] Two installs of one app both judged; today only the oldest is
+- [x] Public-exploit source beside Metasploit (check Exploit-DB's data and terms first), adds a reason in `risk.py` (ded463d, DECISIONS 73: the repository's terms read; the website's terms page refused the download)
+- [x] Two installs of one app both judged; today only the oldest is (ded463d)
 - Deps: none.
 
 ### Checkpoint C
@@ -160,29 +160,29 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens the ref
 ## Phase 4: benchmarks
 
 ### W18: Rule table and terms check (M)
-- [ ] DISA and Microsoft terms read and quoted in DECISIONS, amending 64; if they stop redistribution, ship IDs only
-- [ ] One baseline (Server 2025 STIG): registry-based automated rules as data, evaluated server-side on agent facts; anything else reads "not assessed"
+- [x] DISA and Microsoft terms read and quoted in DECISIONS, amending 64; if they stop redistribution, ship IDs only (04e5aad, DECISIONS 75: redistribution isn't established, so IDs, severity and setting facts only)
+- [x] One baseline (Server 2025 STIG): registry-based automated rules as data, evaluated server-side on agent facts; anything else reads "not assessed" (04e5aad: 85 of 291 rules automated, 156 after W19)
 - [ ] Real VM: results for 20 sampled rules checked by hand against the guest
 - Verify: `last_run_winbaseline.json`. Files: `winconfig.py`, new data file, agent's closed list. Deps: none.
 
 ### W19: Audit policy and user rights (M)
-- [ ] `auditpol` read by subcategory GUID and `secedit` rights by SID, so language doesn't matter
+- [x] `auditpol` read by subcategory GUID and `secedit` rights by SID, so language doesn't matter (1df4712, DECISIONS 76)
 - [ ] Automated rule count rises; German VM agrees (with W2)
 - Deps: W18, W2.
 
 ### W20: Benchmark view and export (M)
-- [ ] Per host and fleet: pass, fail, not assessed, with the baseline's version; wording claims no conformance
-- [ ] CSV export; second baseline (Windows 11) added as data only
+- [x] Per host and fleet: pass, fail, not assessed, with the baseline's version; wording claims no conformance (42ea0ab)
+- [x] CSV export; second baseline (Windows 11) added as data only (42ea0ab)
 - Verify: e2e + axe. Deps: W18.
 
 ## Phase 5: remediation and fleet view
 
 ### W21: Fix first includes all fix paths (S)
-- [ ] Settings, Office and winget fixes appear on Home with the same approval rules (STATUS review note)
+- [x] Settings, Office and winget fixes appear on Home with the same approval rules (STATUS review note) (8d86f23)
 - Deps: none.
 
 ### W22: Per-KB fleet view (M)
-- [ ] "October 2026 cumulative: 41 of 50 hosts", drill to the hosts and why each isn't fixed, one action to plan the rest through canary rings
+- [x] "October 2026 cumulative: 41 of 50 hosts", drill to the hosts and why each isn't fixed, one action to plan the rest through canary rings (3c0aad8, DECISIONS 70)
 - Verify: tests, e2e, perf at 1,000 hosts with `perf.py`. Deps: none.
 
 ### W23: winget on Server (M, spike first)
@@ -194,7 +194,7 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens the ref
 
 ### W24: `doctor` and a local log (M)
 - [x] `doctor` checks server reach, proxy, clock, tasks, folder ACL, Windows Update service, disk and runtime, and prints a fix for each failure (real Windows 11: all ok, then FAIL with a fix for a removed task, disabled wuauserv and a skewed clock)
-- [ ] Rotating log under the locked folder with no secrets (test asserts the key never appears); onboarding's troubleshooting points to it
+- [x] Rotating log under the locked folder with no secrets (test asserts the key never appears); onboarding's troubleshooting points to it (b803374, DECISIONS 69; ran on a real VM in 5ef9183)
 - Verify: unit tests plus one run on a VM with the task removed and the service stopped. Deps: none.
 
 ### W25: Footprint (S)

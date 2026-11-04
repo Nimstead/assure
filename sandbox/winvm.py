@@ -137,7 +137,10 @@ def wait_ready(name: str, minutes=90, reset_after=12, restart_after=20, max_rese
             if disk != seen:
                 seen, idle = disk, time.time()
             elif resets < max_resets and time.time() - idle > reset_after * 60:
-                vbox("controlvm", name, "reset", check=False)
+                # cold, not a warm reset: this host's firmware hangs at the VirtualBox logo after a warm one (Server 2019 setup looped on it)
+                vbox("controlvm", name, "poweroff", check=False)
+                time.sleep(5)
+                vbox("startvm", name, "--type", "headless", check=False)
                 idle, resets = time.time(), resets + 1
         time.sleep(20)
     raise RuntimeError(f"{name} not ready after {minutes} min")

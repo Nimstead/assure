@@ -68,7 +68,7 @@ def test_wait_ready_resets_a_setup_whose_disk_went_idle(monkeypatch):
     monkeypatch.setattr(winvm, "vbox", lambda *a, **k: calls.append((a, clock[0])))
     with pytest.raises(RuntimeError):
         winvm.wait_ready("nimstead-sbx-win-x", minutes=30)
-    assert calls and calls[0][0][2] == "reset" and calls[0][1] > 12 * 60
+    assert calls and calls[0][0][2] == "poweroff" and calls[1][0][0] == "startvm" and calls[0][1] > 12 * 60  # cold: a warm reset hangs the firmware
 
 
 def test_a_healthy_vm_that_logs_no_guest_os_line_is_not_power_cycled(tmp_path, monkeypatch):

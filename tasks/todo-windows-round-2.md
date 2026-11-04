@@ -72,6 +72,7 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens the ref
 - [ ] Each: fresh install, fix and rollback through the task, oracle comparison, `winnetfx.py`, hardening audit
 - [ ] Differences found (package format, build mapping) fixed with a test
 - Server 2022 so far (`last_run_windows_server2022_not_offered.json`, `last_run_windows_server2022.json`): enrols, reports, oracle run; 2021 media is offered only 2023-11's KB5032198, so the server plans it as a step (DECISIONS 95) and the agent takes it, recording its SSU as permanent. Found and fixed: a second Windows Update search that hung 30 minutes and an ESU reason Server 2022 doesn't need (DECISIONS 96). Not done: the step's install ran past the agent's 2-hour limit on this host's VirtualBox, which runs on Hyper-V's slower engine (NEM), so the agent took its timeout path (roll back, remove what lands late). Needs a host with VT-x/AMD-V free for VirtualBox, or a longer run
+- [ ] Server 2019: BLOCKED on this host. Two fresh installs from the evaluation ISO never got past the first boot (Windows' loading spinner, 16 KB written in 30 minutes; the first install's warm-reset loop is fixed, `winvm` now cold-boots). Server 2022 media boots here, so it's this build on VirtualBox's Hyper-V fallback engine (NEM), not the agent. Needs a host where VirtualBox gets AMD-V, or another hypervisor
 - Verify: `last_run_windows_server2022.json`, `..._server2019.json`. Deps: none.
 
 ### W6: Server 2016 and Windows 11 Enterprise (M each)

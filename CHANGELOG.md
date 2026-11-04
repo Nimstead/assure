@@ -4,10 +4,10 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
-## [0.6.0] - 2026-11-03
+## [0.6.0] - 2026-11-04 (preview)
 
-Windows rounds 1 and 2 (tasks/plan.md, tasks/plan-windows-round-2.md; DECISIONS 51–101): Windows detection that covers what Nessus and Qualys report, fixes
-they don't make, an agent that needs no Python, and a detection engine that says how sure it is. **Agent 0.5.0.**
+Windows rounds 1 and 2 (tasks/plan.md, tasks/plan-windows-round-2.md; DECISIONS 51–101): Windows detection across the OS, Microsoft's own products and common apps, fixes
+with rollback, an agent that needs no Python, and a detection engine that says how sure it is. **Agent 0.5.0.**
 
 **Upgrade from 0.5.x:** run `deploy/update.sh`. Five database migrations (`9a61c0e4d2b7` host facts, `c3e8f1a92d45`
 maintenance windows and Active Directory computers, `a7d3e5b1c920` the engine's collection document and scan records, `d4f1b8a3c6e2` a package's source version, `e5c2a9d7f413` the directory source), applied on start. Things to know:
@@ -70,7 +70,7 @@ maintenance windows and Active Directory computers, `a7d3e5b1c920` the engine's 
 
 ### Since the round 1 notes above
 
-Detection and fixes that close the gap with Nessus and Qualys on Windows. **Expect new open findings after the first reports.**
+Wider Windows detection and more fixes. **Expect new open findings after the first reports.**
 - **Windows hosts far behind can be fixed:** a job installs the earlier cumulative update when that's what Windows Update offers, and the next job finishes the way.
 - **Clearer refusal:** a Windows job with two possible updates now says why neither was offered, such as no Extended Security Updates licence.
 - **Ended release branches:** Thunderbird, Firefox ESR, PostgreSQL, MySQL, MariaDB, MongoDB, Elasticsearch, Go, Grafana, LibreOffice, Tomcat, Ruby and Perl now report when their branch gets no more fixes.

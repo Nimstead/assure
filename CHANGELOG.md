@@ -4,7 +4,7 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
-## [0.6.0] - 2026-11-03
+## [0.6.0] - 2026-11-04 (preview)
 
 Windows rounds 1 and 2 (tasks/plan.md, tasks/plan-windows-round-2.md; DECISIONS 51–101): Windows detection that covers what Nessus and Qualys report, fixes
 they don't make, an agent that needs no Python, and a detection engine that says how sure it is. **Agent 0.5.0.**

@@ -26,7 +26,7 @@ export function updateSource(f?: HostFacts): string {
 
 export interface Asset {
   id: string; hostname: string; os_name: string; ecosystem: string; kind: "host" | "application" | "external";
-  criticality: Criticality; internet_facing: boolean; sandbox: boolean; ring: 0 | 1; health_units: string[];
+  criticality: Criticality; internet_facing: boolean; directory_source?: boolean; sandbox: boolean; ring: 0 | 1; health_units: string[];
   first_seen: string; last_seen: string; open_by_priority: Partial<Record<Priority, number>>;
   apps?: { assessed: number; inventory_only: number }; // Windows hosts: installed apps checked against those only listed
   agent_version?: string; agent_outdated?: boolean; agent_update?: AgentUpdate; agent_update_error?: string | null; not_reporting?: boolean; // hosts only

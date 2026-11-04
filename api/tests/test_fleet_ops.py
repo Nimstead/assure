@@ -95,6 +95,9 @@ def test_unmanaged_computers_from_the_directory(env):
     a = c.post("/api/agent/enroll", json={"token": token, "hostname": "SRV-1.corp.example", "ecosystem": "Windows"}).json()
     h = {"Authorization": f"Bearer {a['agent_key']}"}
     recent, stale = (now() - timedelta(days=2)).isoformat() + "Z", (now() - timedelta(days=90)).isoformat() + "Z"
+    assert c.post("/api/agent/directory", headers=h, json={"domain": "CORP.example", "computers": []}).status_code == 403  # not chosen yet
+    aid = c.get("/api/assets").json()[0]["id"]
+    assert c.patch(f"/api/assets/{aid}", json={"directory_source": True}).json()["directory_source"] is True
     r = c.post("/api/agent/directory", headers=h, json={"domain": "CORP.example", "computers": [
         {"name": "SRV-1", "os": "Windows Server 2022 Standard", "os_version": "10.0 (20348)", "last_logon": recent},  # has the agent
         {"name": "OLD-FS", "os": "Windows Server 2012 R2 Standard", "os_version": "6.3 (9600)", "last_logon": recent},
@@ -127,7 +130,27 @@ def test_one_directory_per_org_so_invented_domains_cant_pile_up(env):
     token = c.post("/api/enroll-tokens").json()["token"]
     a = c.post("/api/agent/enroll", json={"token": token, "hostname": "x", "ecosystem": "Windows"}).json()
     h = {"Authorization": f"Bearer {a['agent_key']}"}
+    c.patch(f"/api/assets/{c.get('/api/assets').json()[0]['id']}", json={"directory_source": True})
     for d in ("a.example", "b.example", "c.example"):
         c.post("/api/agent/directory", headers=h, json={"domain": d, "computers": [{"name": f"pc-{i}"} for i in range(50)]})
     with make_sessionmaker(env)() as s:
         assert s.query(DirectoryComputer).count() == 50
+
+
+def test_only_the_host_an_admin_chose_may_replace_the_directory(env):
+    """Round 2's security review: any enrolled host could empty the org's AD list and hide real machines (DECISIONS 102)."""
+    c = user(env)
+    keys = {}
+    for name in ("dc-reader", "laptop"):
+        token = c.post("/api/enroll-tokens").json()["token"]
+        keys[name] = {"Authorization": f"Bearer {c.post('/api/agent/enroll', json={'token': token, 'hostname': name, 'ecosystem': 'Windows'}).json()['agent_key']}"}
+    ids = {a["hostname"]: a["id"] for a in c.get("/api/assets").json()}
+    c.patch(f"/api/assets/{ids['dc-reader']}", json={"directory_source": True})
+    body = {"domain": "corp.example", "computers": [{"name": "pc-1"}]}
+    assert c.post("/api/agent/directory", headers=keys["dc-reader"], json=body).status_code == 200
+    r = c.post("/api/agent/directory", headers=keys["laptop"], json={"domain": "corp.example", "computers": []})
+    assert r.status_code == 403 and "directory source" in r.json()["detail"]
+    assert [x["name"] for x in c.get("/api/directory/unmanaged").json()] == []  # pc-1 has no last logon: listed nowhere, but still stored
+    from nimstead.db import DirectoryComputer
+    with make_sessionmaker(env)() as s:
+        assert s.query(DirectoryComputer).count() == 1  # the laptop's empty list didn't replace it

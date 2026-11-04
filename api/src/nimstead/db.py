@@ -105,6 +105,7 @@ class Asset(Base):
     ecosystem: Mapped[str] = mapped_column(String(100), default="")  # OSV distro ecosystem, e.g. Debian:12
     criticality: Mapped[str] = mapped_column(String(20), default="medium")
     internet_facing: Mapped[bool] = mapped_column(Boolean, default=False)
+    directory_source: Mapped[bool] = mapped_column(Boolean, default=False)  # an admin chose it to send the AD list (DECISIONS 102)
     sandbox: Mapped[bool] = mapped_column(Boolean, default=False)  # disposable test target; remediation dev-guard
     kind: Mapped[str] = mapped_column(String(20), default="host", server_default="host")  # host | application (no agent; SBOM only) | external (outside-in scan)
     verified_at: Mapped[datetime | None]  # external: ownership proven by DNS TXT (re-checked before every scan)

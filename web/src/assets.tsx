@@ -8,7 +8,7 @@ import { Alert, btnPrimary, btnQuiet, ConfirmDialog, CopyBlock, dialogBox, Done,
 import clsx from "clsx";
 import { ExternalTargets } from "./targets";
 
-type AssetPatch = Partial<Pick<Asset, "criticality" | "internet_facing" | "ring" | "health_units">>;
+type AssetPatch = Partial<Pick<Asset, "criticality" | "internet_facing" | "directory_source" | "ring" | "health_units">>;
 const LEVELS: Criticality[] = ["low", "medium", "high", "critical"];
 
 export function AssetsPage() {
@@ -308,6 +308,15 @@ export function AssetRow({ a, onPatch, onDelete, saved, error }: { a: Asset; onP
           </Switch.Root>
           Internet-facing
         </label>
+        {a.kind === "host" && (a.directory_source || (typeof a.facts?.domain_role === "number" && a.facts.domain_role >= 1)) && (
+          <label className="flex min-h-[44px] cursor-pointer items-center gap-2 whitespace-nowrap text-sm md:min-h-0"
+            title="Only this machine's agent may send the domain's computer list (with --ad-discovery); any other host is refused">
+            <Switch.Root checked={!!a.directory_source} onCheckedChange={(directory_source) => onPatch({ directory_source })} className={switchRoot}>
+              <Switch.Thumb className={switchThumb} />
+            </Switch.Root>
+            Directory source
+          </label>
+        )}
         {a.kind === "host" && <><label className="flex items-center gap-2 text-sm">
           <span className="whitespace-nowrap text-muted">Ring</span>
           <select className={clsx(input, "w-auto md:min-h-9")} value={a.ring} onChange={(e) => onPatch({ ring: Number(e.target.value) as 0 | 1 })}>

@@ -204,7 +204,8 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens Greenbo
 
 ### Checkpoint D / W27
 - [x] Security review of the round's routes, engine and agent changes (DECISIONS 101): nothing against 7, 27 or 31; the attack-paths cost fixed with a test; settings exports moved out of ProgramData
-- [ ] From that review: only an admin-marked directory source may replace the AD list (needs a migration); `GET /api/assets` without full facts; chunk the per-KB query; say on the page that edges rest on each host's own facts
+- [x] From that review: only an admin-chosen directory source may replace the AD list (DECISIONS 102)
+- [ ] From that review: `GET /api/assets` without full facts; chunk the per-KB query; say on the page that edges rest on each host's own facts
 - [ ] Review not yet covering remediate.py, feeds.py, lifecycle.py, msproducts.py, office.py, winapps.py, external.py, updates.py, and the agent's Linux, jar and app scanners
 - [ ] API on SQLite and PostgreSQL, web unit and e2e, ruff; STATUS, CHANGELOG, README and `docs/install.md` updated
 - [ ] Plan's seven "great" conditions each marked met or not, with the run file

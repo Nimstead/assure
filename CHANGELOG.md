@@ -9,8 +9,8 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 Windows rounds 1 and 2 (tasks/plan.md, tasks/plan-windows-round-2.md; DECISIONS 51–101): Windows detection that covers what Nessus and Qualys report, fixes
 they don't make, an agent that needs no Python, and a detection engine that says how sure it is. **Agent 0.5.0.**
 
-**Upgrade from 0.5.x:** run `deploy/update.sh`. Four database migrations (`9a61c0e4d2b7` host facts, `c3e8f1a92d45`
-maintenance windows and Active Directory computers, `a7d3e5b1c920` the engine's collection document and scan records, `d4f1b8a3c6e2` a package's source version), applied on start. Things to know:
+**Upgrade from 0.5.x:** run `deploy/update.sh`. Five database migrations (`9a61c0e4d2b7` host facts, `c3e8f1a92d45`
+maintenance windows and Active Directory computers, `a7d3e5b1c920` the engine's collection document and scan records, `d4f1b8a3c6e2` a package's source version, `e5c2a9d7f413` the directory source), applied on start. Things to know:
 - **Windows installs no longer need Python.** `install.ps1` brings Python's official embeddable runtime (3.15.2,
   pinned by hash in the signed release, every program file signed by the Python Software Foundation). Machines enrolled
   with a system Python move to the bundled runtime on their own at their next agent update. Your server fetches the
@@ -49,7 +49,7 @@ maintenance windows and Active Directory computers, `a7d3e5b1c920` the engine's 
 - **Fleet operations:** maintenance windows, restart deferral with a deadline, no install on battery, one Windows job
   at a time per failover cluster (node drained and resumed) or per domain's controllers, crash events in health checks,
   and why Windows Update didn't offer a KB (WSUS, deferral, ESU). Proxy support (`--proxy` / WinHTTP), jittered
-  below-normal scheduled tasks, and a list of Active Directory computers with no agent (opt-in `--ad-discovery`).
+  below-normal scheduled tasks, and a list of Active Directory computers with no agent (opt-in `--ad-discovery` on one machine, which an admin then chooses as the directory source on **Assets**; any other host's list is refused).
 - Windows Update accuracy oracle in the VM harnesses (`sandbox/winoracle.py`).
 
 ### Fixed

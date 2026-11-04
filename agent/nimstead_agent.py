@@ -3827,8 +3827,12 @@ def _main(argv):
             log_event(f"reported {len(inv['packages'])} packages")
             if cfg.get("ad_discovery") and os.name == "nt":  # local opt-in only: which domain computers have no agent
                 d = ad_computers()
-                post(cfg["server"], "/api/agent/directory", d, a.insecure_http, cfg["agent_key"])
-                print(f"reported {len(d['computers'])} computers from {d['domain']}")
+                try:
+                    post(cfg["server"], "/api/agent/directory", d, a.insecure_http, cfg["agent_key"])
+                    print(f"reported {len(d['computers'])} computers from {d['domain']}")
+                except AgentError as e:  # the inventory went through: say why the list didn't (an admin chooses the source, DECISIONS 102)
+                    print(f"nimstead-agent: directory not sent: {e}", file=sys.stderr)
+                    log_event(f"directory not sent: {e}")
     except AgentError as e:
         print(f"nimstead-agent: error: {e}", file=sys.stderr)
         log_event(f"error: {e}")

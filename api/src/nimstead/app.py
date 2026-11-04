@@ -877,7 +877,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     @app.post("/api/agent/directory")
     def agent_directory(body: Directory, s: DB, asset: Annotated[Asset, Depends(current_agent)]):
         """Computer objects an opted-in agent read from its domain (plan T43); replaces that domain's list for the org."""
-        if over_limit(s, "directory:" + asset.org_id, 24):
+        if not asset.directory_source:  # any other host's key acts only on its own asset (DECISIONS 27, 102)
+            raise HTTPException(403, "An admin has to choose this machine as the directory source on the Assets page first")
+        if over_limit(s, "directory:" + asset.id, 24):
             raise HTTPException(429, "Directory already received recently")
         domain = body.domain.strip().lower()
         # one directory per org, replaced whole: a fake host inventing domains can't grow the shared database
@@ -1012,7 +1014,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             release = signed_release() is not None
         return {
             "id": a.id, "hostname": a.hostname, "os_name": a.os_name, "ecosystem": a.ecosystem,
-            "kind": a.kind, "criticality": a.criticality, "internet_facing": a.internet_facing, "sandbox": a.sandbox,
+            "kind": a.kind, "criticality": a.criticality, "internet_facing": a.internet_facing, "directory_source": a.directory_source, "sandbox": a.sandbox,
             "ring": a.ring, "health_units": a.health_units,
             "first_seen": a.first_seen, "last_seen": a.last_seen, "open_by_priority": counts,
             **({"apps": apps} if apps else {}),
@@ -1090,6 +1092,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     class AssetPatch(BaseModel):
         criticality: Literal["low", "medium", "high", "critical"] | None = None
         internet_facing: bool | None = None
+        directory_source: bool | None = None
         ring: Literal[0, 1] | None = None
         health_units: list[str] | None = Field(None, max_length=20)
         maintenance_window: dict | None = None  # {} = use the organisation's

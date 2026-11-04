@@ -130,9 +130,9 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens the ref
 
 ### W14: Full noise review (M)
 - [ ] `winnoise.py` split across VMs so every curated app is covered (32 weren't; the disk ran out)
-- [ ] The 2 `raw_says_applies_no_finding` from the last run explained
+- [x] The 2 `raw_says_applies_no_finding` from the last run explained: ImageMagick CVE-2017-5506 and Opera CVE-2010-0653 each list the product at version `*` with no range in NVD, which a raw reading takes as every version. `winapps.py` skips entries with no end bound on purpose. Opera's text says "before 10.10", and ImageMagick's 2017 double free was fixed in the 7.0.4 line, both far older than what was installed, so no finding is right
 - [ ] 50 random findings checked by hand against vendor advisories, on Windows 11, a Server and Windows 10
-- [ ] Drop "demo fleet" from the round 1 item: it's Linux, so the reason goes in DECISIONS
+- [x] Drop "demo fleet" from the round 1 item: it's Linux, so the reason goes in DECISIONS (104)
 - Verify: `last_run_winnoise_full.json`. Deps: W13 (rerun at the end), W4, W5.
 
 ### W15: Vulnerable drivers by exact hash (M)

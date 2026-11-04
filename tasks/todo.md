@@ -153,7 +153,7 @@ allowlist the MSRC Defender products.
 
 ## Checkpoint C
 - [ ] Each product from T5–T9, T19, T20 proven on a real install in a VM (run file committed) — **partly: Edge, .NET runtime, SQL Server, Defender and Microsoft 365 Apps report the version the host itself reports, and old .NET opens 17 findings the update closes (`last_run_winproducts.json`, Windows 11). Not run: Exchange and SharePoint (need a domain); the .NET SDK collector added afterwards is unit-tested only**
-- [ ] Noise review: on the demo fleet + one real Windows VM, every new finding opened was checked by hand against Microsoft's KB/release notes; zero unexplained — **partly, one real Windows VM (`last_run_winproducts_findings.json`, 1,164 findings): .NET 17 of 17 agree CVE by CVE with Microsoft's .NET release data; Windows, Edge and SQL Server fix versions exist in Microsoft's release notes, checked by fix build, not CVE by CVE. One unverified: Windows Security App (see STATUS). Demo fleet not reviewed**
+- [ ] Noise review: on one real Windows VM (not the demo fleet, which is Linux: DECISIONS 104), every new finding opened was checked by hand against Microsoft's KB/release notes; zero unexplained — **partly, one real Windows VM (`last_run_winproducts_findings.json`, 1,164 findings): .NET 17 of 17 agree CVE by CVE with Microsoft's .NET release data; Windows, Edge and SQL Server fix versions exist in Microsoft's release notes, checked by fix build, not CVE by CVE. One unverified: Windows Security App (see STATUS). Demo fleet not reviewed**
 - [x] Performance: `sandbox/perf.py` re-run, hourly re-match within 10 % of the last numbers — **22.5 s vs 20.8 s (+8 %), `last_run_perf_sqlite.json`**
 
 ---

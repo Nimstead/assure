@@ -28,20 +28,20 @@ so on a localised Windows the service permission check would silently find nothi
 - [ ] German update with rollback: blocked like the English one, the evaluation image's licence service powered the VM off an hour after boot, mid-install (VBox.log, 01:00:30). Needs non-evaluation media (owner)
 - Verify: `sandbox/last_run_windows_de.json`. Files: agent, `test_agent_*`, `winvm.py` (locale option). Deps: none.
 
-### W3: Side-by-side with Greenbone, then Nessus and Qualys (M)
+### W3: Side-by-side with the reference scanner, then commercial scanners (M)
 - [ ] Runs as an executable benchmark. Studying its source is the separate research track (E1, DECISIONS 79); whoever runs this comparison and fixes its gaps works from reports and vendor data
 - [ ] Short look first: does the free feed's credentialed Windows scan cover patches and apps? If not, stop and report
 - [ ] Same VM, old OS and old apps, both scanners; every CVE on only one side classified: ours missed, theirs wrong, or out of scope
 - [ ] Each "ours missed" becomes a test or a W-task; the result lives in a private run file, no public claim
-- Verify: `sandbox/last_run_compare.json`. Files: `sandbox/wincompare.py` (new), one report. Deps: none. Nessus only if you decide so.
+- Verify: `sandbox/last_run_compare.json`. Files: `sandbox/wincompare.py` (new), one report. Deps: none. A commercial scanner only if you decide so.
 
 ## Engine track: a real scanning engine (owner's priority, 2026-11-02; runs beside the OS matrix)
 
-Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens Greenbone.
+Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens the reference scanner.
 
 ### E1: Research and licences (research side, outside this repo)
-- [x] Greenbone's architecture, knowledge base, dependencies, authenticated checks, patch and version logic, confidence and false positives studied; notes stay outside the repo
-- [x] `docs/engine/spec-detection.md`: concepts and requirements in our own words; `docs/engine/greenbone-licences.md`: each component's licence, quoted
+- [x] The reference scanner's architecture, knowledge base, dependencies, authenticated checks, patch and version logic, confidence and false positives studied; notes stay outside the repo
+- [x] `docs/engine/spec-detection.md`: concepts and requirements in our own words; a licence report, each component's licence quoted, kept on the research side
 - [x] Separate reviewer with source access passes the spec: nothing copied or closely paraphrased (ab07eb9; process not legally validated, DECISIONS 79)
 
 ### E2: First end-to-end Windows scan (L, split on starting)
@@ -57,7 +57,7 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens Greenbo
 - [x] Attack paths across hosts (DECISIONS 98): `GET /api/attack-paths` from stored reports and each host's own firewall state
 - [ ] Routing between hosts seen by the network slice from inside a segment, and AD group membership, to raise those edges
 - [ ] Findings open and close through the engine instead of `scan.rescan` (parity holds on every real run so far)
-- [ ] Benchmark runs against Greenbone, then Nessus and Qualys (W3)
+- [ ] Benchmark runs against the reference scanner, then commercial scanners (W3)
 
 ## Phase 1: the OS matrix
 
@@ -213,4 +213,4 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens Greenbo
 ## Needs the owner
 - [ ] Review this plan; answer its two open questions
 - [ ] Push `windows-round-1`, run CI (the `windows-runtime` job has never run), merge, tag, approve the release
-- [ ] Human pentest; code-signing certificate decision; Nessus decision
+- [ ] Human pentest; code-signing certificate decision; commercial-scanner decision

@@ -1,6 +1,6 @@
 # Implementation Plan (Windows round 1): exact Windows Server and Windows 10/11 detection and remediation
 
-Status: **built on branch `windows-round-1`** (2026-10-29; see STATUS.md for proof and gaps; target: detection parity with Nessus/Qualys on Windows, remediation they don't have). Tasks: `tasks/todo.md`. Previous plans: `plan-0.3-agent.md`, `plan-0.4-security.md`, `plan-0.5-ux.md`, `plan-0.6-ux.md`.
+Status: **built on branch `windows-round-1`** (2026-10-29; see STATUS.md for proof and gaps; target: detection parity with commercial scanners on Windows, remediation they don't have). Tasks: `tasks/todo.md`. Previous plans: `plan-0.3-agent.md`, `plan-0.4-security.md`, `plan-0.5-ux.md`, `plan-0.6-ux.md`.
 
 ## Overview
 Today Windows coverage is: the OS build against MSRC FixedBuild (exact), ~18 third-party apps against a curated NVD CPE
@@ -66,11 +66,11 @@ It also removes the biggest Windows adoption blocker: today the agent needs an a
 | G9 | Remediation is the OS cumulative update only | .NET cumulative, Microsoft 365 Apps and third-party apps have no fix path |
 | G10 | Proven on Server 2025 and Windows 11 26H2 only | Windows 10 22H2, Server 2016/2019/2022 detection and remediation unproven on real hosts |
 
-## Coverage against Nessus and Qualys (Windows)
-What a buyer comparing us with Tenable Nessus/Tenable.io agents and Qualys VMDR + Patch Management expects on Windows,
+## Coverage against commercial scanners (Windows)
+What a buyer comparing us with commercial scanners' agents and their patch management expects on Windows,
 and where this plan delivers it. "Out" rows are deliberate and say why.
 
-| Capability buyers expect | Nessus / Qualys | Today | This plan | Status (2026-10-29) |
+| Capability buyers expect | Commercial scanners | Today | This plan | Status (2026-10-29) |
 |---|---|---|---|---|
 | Missing OS security updates, all supported Windows 10/11/Server | both | MSRC build match | T2 hotpatch, T4 unmapped releases, T1 oracle proves it | Built. Windows 11 and Server 2025 oracles agree on the OS KB, every gap explained |
 | End-of-life / unsupported OS and software | both (large "unsupported software" family) | none | T3 OS, T28 Microsoft + third-party apps | Built, unit-tested (OS, Microsoft products, endoflife.date) |
@@ -83,16 +83,16 @@ and where this plan delivers it. "Out" rows are deliberate and say why.
 | Exposure-aware priority (role installed?) and threat context (exploit public, ransomware, Microsoft's exploitability index) | VPR / TruRisk | KEV, EPSS, CVSS | T11, T39 | Built, unit-tested |
 | Pending reboot, WSUS/WUfB context, ESU | both | none | T12, T14 | Built, shown on Assets (web tests, axe) |
 | Find Windows hosts with no agent | both (discovery scans, AD connectors) | none | T43 (from Active Directory) | Built, tests only (no domain in the sandbox) |
-| OS patch deployment with rollback | Qualys PM (rollback limited); Tenable via Patch Management (Adaptiva) | LCU + DISM rollback | T13, T15, T16, T18 | Proven on Windows 11 26H2 (agent 0.4.0) and Server 2025 (agent 0.4.0, 2026-10-29); hotpatch BLOCKED (Azure); .NET DROPPED; Windows 10 / Server 2016–2022 BLOCKED (ISOs) |
-| Third-party and Microsoft app patching | Qualys PM | none | T17, T21, T22 | Built, fakes only (no VM run) |
-| Reversible configuration fixes | Qualys (partial) | none | T38 | Built, fakes only (no VM run) |
-| Maintenance windows, reboot control, user deferral, no install on battery | Qualys PM | immediate, 60 s reboot warning | T40, T41 | Deferral, notice sent, restart after the deadline and job verified on Windows 11 once; an earlier run's restart at 45 min is unexplained; window dispatch fakes only |
-| Cluster/DC-safe patching (one node at a time) | Qualys PM (partial), ConfigMgr CAU | one job per host only | T42 | Built, fakes only (no cluster or domain) |
+| OS patch deployment with rollback | add-on products (rollback limited) | LCU + DISM rollback | T13, T15, T16, T18 | Proven on Windows 11 26H2 (agent 0.4.0) and Server 2025 (agent 0.4.0, 2026-10-29); hotpatch BLOCKED (Azure); .NET DROPPED; Windows 10 / Server 2016–2022 BLOCKED (ISOs) |
+| Third-party and Microsoft app patching | add-on | none | T17, T21, T22 | Built, fakes only (no VM run) |
+| Reversible configuration fixes | partial | none | T38 | Built, fakes only (no VM run) |
+| Maintenance windows, reboot control, user deferral, no install on battery | add-on | immediate, 60 s reboot warning | T40, T41 | Deferral, notice sent, restart after the deadline and job verified on Windows 11 once; an earlier run's restart at 45 min is unexplained; window dispatch fakes only |
+| Cluster/DC-safe patching (one node at a time) | partial, ConfigMgr CAU | one job per host only | T42 | Built, fakes only (no cluster or domain) |
 | Fleet operation: proxies, jittered schedules, low agent footprint, no runtime to install | both | no proxy, no jitter, Python required | T25–T27, T44 | No-Python install and runtime update proven on Windows 11 and Server 2025 Core; proxy-only enrol, report, self-update and fix proven on Windows 11 |
 | Proof of accuracy | vendor claims | Linux: OSV agreement | T1 oracle on every Windows version, Checkpoint C noise review | Windows 11 oracle agrees exactly with Windows Update, OS and .NET Framework (`last_run_winnetfx.json`); Server 2025 before .NET Framework; noise review on one VM, partly |
-| Agentless credentialed network scanning (SMB/WinRM) | Nessus core | none | `scan-remote` over PowerShell remoting as the admin running it, no stored credential (DECISIONS 65) | Built; on one VM scanning itself, reports exactly what the agent reports (`last_run_winremote.json`); not across two hosts or a domain; no SMB; hosts need remoting on; finds, doesn't fix |
+| Agentless credentialed network scanning (SMB/WinRM) | core | none | `scan-remote` over PowerShell remoting as the admin running it, no stored credential (DECISIONS 65) | Built; on one VM scanning itself, reports exactly what the agent reports (`last_run_winremote.json`); not across two hosts or a domain; no SMB; hosts need remoting on; finds, doesn't fix |
 | Full CIS/STIG benchmarks | separate compliance SKUs | none | **Out:** its own plan; T36/T37 and a free hardening audit (DECISIONS 64) cover what's directly exploitable, with no conformance claim | Out |
-| Unauthenticated internal network scanning (e.g. MS17-010 from the wire) | Nessus | external (internet) only | **Out:** the agent sees the build directly; internal scanning is its own plan | Out |
+| Unauthenticated internal network scanning (e.g. MS17-010 from the wire) | yes | external (internet) only | **Out:** the agent sees the build directly; internal scanning is its own plan | Out |
 
 ## Architecture decisions (become DECISIONS 51+ as each lands)
 1. **Accuracy oracle first.** Windows Update Agent on the host is Microsoft's own answer to "which security updates are
@@ -119,7 +119,7 @@ and where this plan delivers it. "Out" rows are deliberate and say why.
    change, verified by fresh inventory, rollback or refuse. A path with no real rollback is offered only as an explicit,
    labelled "forward-only" plan: manual approval, a ConfirmDialog that says it can't be undone, never automated by the
    trust ladder or canary rings.
-8. **Third-party fixes through winget, pinned in the agent.** Qualys sells third-party patching; Nessus has none. The
+8. **Third-party fixes through winget, pinned in the agent.** Third-party patching is a paid add-on where commercial scanners offer it at all. The
    agent holds the map curated product key → winget ID (from the `winapps.py` products); the server only names the
    product key and target version. `winget` runs with `--source winget --exact --id`, winget's own installer-hash check,
    and only to a version newer than installed and at least the fixed version. A compromised server can therefore only
@@ -144,7 +144,7 @@ and where this plan delivers it. "Out" rows are deliberate and say why.
     version with winget in a VM and checks inventory → match → finding → closed. That keeps DECISIONS 24's precision
     and makes adding products routine.
 11. **Hardening checks are CVE-grade only, each with its reason and evidence.** Only settings that attackers exploit
-    directly (relay, credential theft, privilege escalation) and that Nessus/Qualys report inside vulnerability
+    directly (relay, credential theft, privilege escalation) and that commercial scanners report inside vulnerability
     management. They reuse T10's closed agent list and `WinConfig` ecosystem. A fix is offered only when it is one
     recorded registry or feature change that can be put back exactly, so rollback restores the value that was there.
 12. **Remediation obeys time and topology.** A job dispatches only inside the asset's maintenance window (none set =
@@ -286,7 +286,7 @@ T43 AD discovery (independent)              T44 proxy + fleet scheduling (before
 - An MSI installer and Authenticode-signing our own files: after the owner has a code-signing certificate
   (architecture decision 9). `install.ps1` covers Intune, GPO and ConfigMgr until then.
 
-## Decisions on the open questions (2026-10-29, made for parity with Nessus/Qualys; 6 added the same day)
+## Decisions on the open questions (2026-10-29, made for parity with commercial scanners; 6 added the same day)
 1. **Hotpatch:** detection (T2) ships regardless; it's the correctness bug. Remediation (T15) is proven on an Azure
    "Windows Server 2025 Datacenter: Azure Edition" VM, where hotpatch needs no Arc subscription. Needs an Azure
    subscription from the owner (a few hours of one VM); until then T15 waits and nothing else does.
@@ -317,7 +317,7 @@ T43 AD discovery (independent)              T44 proxy + fleet scheduling (before
    build → dropped with the reason. Nothing is approximated to keep a task alive.
 10. **SQL Server editions** (Express, Developer, Standard, Enterprise, LocalDB) share engine builds, so all are
     covered by the version's product name; edition is shown, never used for matching.
-11. **Config-step CVEs in T10** (the set Nessus/Qualys flag after patching): Secure Boot 2023 certificates;
+11. **Config-step CVEs in T10** (the set commercial scanners flag after patching): Secure Boot 2023 certificates;
     CVE-2023-24932 (BlackLotus) boot manager revocations; CVE-2013-3900 (`EnableCertPaddingCheck`, both registry
     views); certificate-based authentication strong mapping on DCs (KB5014754, `StrongCertificateBindingEnforcement`);
     speculative-execution mitigations on Windows Server, which ship disabled (`FeatureSettingsOverride` /

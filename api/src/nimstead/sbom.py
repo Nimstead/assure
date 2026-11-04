@@ -15,6 +15,7 @@ MAX_COMPONENTS = 50_000  # same cap as an agent inventory
 
 _ECOSYSTEM = {"pypi": "PyPI", "npm": "npm", "maven": "Maven", "nuget": "NuGet", "gem": "RubyGems", "golang": "Go", "cargo": "crates.io",
               "composer": "Packagist", "hex": "Hex", "pub": "Pub"}
+ECOSYSTEMS = frozenset(_ECOSYSTEM.values())  # language ecosystems: what SBOMs and the agent's app scans name, outside any OS package manager
 
 
 class SbomError(ValueError):

@@ -44,6 +44,21 @@ def test_osv_upsert_and_incremental_skip():
     assert count(s, Advisory) == 4
 
 
+def test_a_record_in_two_ecosystems_zips_is_stored_once_whichever_zip_comes_second():
+    """Seen on a real sync: GHSA-3644-q5cj-c5c7 names a PyPI and an npm package and is in both zips, so npm after PyPI failed on
+    the PyPI row it inserted again, and with both in use every hourly npm update was skipped."""
+    both = {"id": "GHSA-x", "modified": "2026-01-01", "affected": [{"package": {"ecosystem": "PyPI", "name": "langsmith"}, "ranges": []},
+                                                                  {"package": {"ecosystem": "npm", "name": "langsmith"}, "ranges": []}]}
+    s = make_sessionmaker("sqlite://")()
+    for top in ("PyPI", "npm"):
+        sync_osv(s, [top], client(zip_of(both)), only={"PyPI", "npm"})
+    assert count(s, Advisory) == 2
+    s = make_sessionmaker("sqlite://")()
+    for top in ("PyPI", "npm"):  # unfiltered, each zip writes only its own ecosystem
+        assert sync_osv(s, [top], client(zip_of(both)))["inserted"] == 1
+    assert count(s, Advisory) == 2
+
+
 def test_osv_http_error_raises():
     with pytest.raises(httpx.HTTPStatusError):
         sync_osv(make_sessionmaker("sqlite://")(), ["Debian"], client(status=404))

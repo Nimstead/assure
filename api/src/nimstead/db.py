@@ -45,6 +45,10 @@ class Org(Base):
     notify_emails_confirmed: Mapped[list] = mapped_column(default=list)  # subset that clicked the confirmation link; only these get mail
     agent_updates_paused: Mapped[bool] = mapped_column(Boolean, default=False)  # org-wide hold on agent self-updates
     sla_days: Mapped[dict] = mapped_column(default=dict)  # priority -> days to remediate; {} = evidence.SLA_DAYS defaults
+    # plan T40-T41: when fixes may run ({days: [0-6, Monday=0], start: "HH:MM", hours, tz}; None = any time) and how long a
+    # signed-in user may put off a restart
+    maintenance_window: Mapped[dict | None]
+    reboot_deadline_hours: Mapped[int] = mapped_column(Integer, default=24, server_default="24")
 
 
 class User(Base):
@@ -101,6 +105,7 @@ class Asset(Base):
     ecosystem: Mapped[str] = mapped_column(String(100), default="")  # OSV distro ecosystem, e.g. Debian:12
     criticality: Mapped[str] = mapped_column(String(20), default="medium")
     internet_facing: Mapped[bool] = mapped_column(Boolean, default=False)
+    directory_source: Mapped[bool] = mapped_column(Boolean, default=False)  # an admin chose it to send the AD list (DECISIONS 102)
     sandbox: Mapped[bool] = mapped_column(Boolean, default=False)  # disposable test target; remediation dev-guard
     kind: Mapped[str] = mapped_column(String(20), default="host", server_default="host")  # host | application (no agent; SBOM only) | external (outside-in scan)
     verified_at: Mapped[datetime | None]  # external: ownership proven by DNS TXT (re-checked before every scan)
@@ -114,7 +119,10 @@ class Asset(Base):
     auto_update: Mapped[bool | None]  # agent can replace itself with signed releases; None = agent too old to say
     agent_update_error: Mapped[str | None] = mapped_column(String(500))  # last self-update failure the agent reported
     silent_alerted_at: Mapped[datetime | None]  # "not reporting" alert sent for the current outage; cleared by the next report
+    facts: Mapped[dict | None]  # agent-reported host facts (edition, ESU, update management, roles); None = none sent
+    maintenance_window: Mapped[dict | None]  # overrides the org's (plan T40); None = the org's
     enrolled_by: Mapped[str | None] = mapped_column(String(12))  # enrolment token id, so a leaked token's hosts can be found
+    collection: Mapped[dict | None]  # what the agent says it read of its latest inventory (engine/collection.py); None = not reported
 
 
 class InstalledPackage(Base):
@@ -125,6 +133,7 @@ class InstalledPackage(Base):
     name: Mapped[str] = mapped_column(String(255))
     version: Mapped[str] = mapped_column(String(255))
     source: Mapped[str | None] = mapped_column(String(255))
+    source_version: Mapped[str | None] = mapped_column(String(255))  # dpkg, only where it differs: None compares `version` (DECISIONS 84)
     origin: Mapped[str] = mapped_column(String(10), default="agent", server_default="agent")  # agent | sbom: each replaces only its own rows
 
 
@@ -138,6 +147,18 @@ class Advisory(Base):
     modified: Mapped[str] = mapped_column(String(40), default="")
     record: Mapped[dict]
     __table_args__ = (Index("ix_advisory_lookup", "ecosystem", "package"),)
+
+
+class DirectoryComputer(Base):
+    """Computer objects an opted-in agent read from Active Directory (plan T43): which Windows hosts have no agent."""
+    __tablename__ = "directory_computer"
+    org_id: Mapped[str] = mapped_column(ForeignKey("org.id"), primary_key=True)
+    domain: Mapped[str] = mapped_column(String(255), primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), primary_key=True)  # lower-case host name
+    os: Mapped[str] = mapped_column(String(255), default="")
+    os_version: Mapped[str] = mapped_column(String(100), default="")
+    last_logon: Mapped[datetime | None]
+    seen_at: Mapped[datetime] = mapped_column(default=now)
 
 
 class Kev(Base):
@@ -203,6 +224,22 @@ def make_engine(url: str = DB_URL):
 
 def make_sessionmaker(url: str = DB_URL):
     return sessionmaker(make_engine(url), expire_on_commit=False)
+
+
+class ScanRecord(Base):
+    """One engine evaluation: inventory, content version and report, so a result can be explained later (T34). Latest few per host."""
+
+    __tablename__ = "scan_record"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    org_id: Mapped[str] = mapped_column(ForeignKey("org.id"), index=True)
+    asset_id: Mapped[str] = mapped_column(ForeignKey("asset.id", ondelete="CASCADE"), index=True)
+    created: Mapped[datetime] = mapped_column(default=now)
+    engine_version: Mapped[str] = mapped_column(String(20))
+    content_version: Mapped[str] = mapped_column(String(40))
+    inventory_sha256: Mapped[str] = mapped_column(String(64))
+    verdicts_sha256: Mapped[str] = mapped_column(String(64))
+    inventory: Mapped[dict]
+    report: Mapped[dict]
 
 
 class LedgerEntry(Base):

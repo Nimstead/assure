@@ -1,0 +1,170 @@
+[
+ {
+  "Id": "e32bc3da-4db1-4858-a62c-6fbe4db6afbd",
+  "Verified": "TRUE",
+  "Author": "Michael Haag",
+  "Created": "2023-01-09",
+  "MitreID": "T1068",
+  "Category": "vulnerable driver",
+  "Commands": {
+   "Command": "sc.exe create RTCore64.sys binPath=C:\\windows\\temp\\RTCore64.sys type=kernel && sc.exe start RTCore64.sys",
+   "Description": "The driver in Micro-Star MSI Afterburner 4.6.2.15658 (aka RTCore64.sys and RTCore32.sys) allows any authenticated user to read and write to arbitrary memory, I/O ports, and MSRs. This can be exploited for privilege escalation, code execution under high privileges, and information disclosure. These signed drivers can also be used to bypass the Microsoft driver-signing policy to deploy malicious code.",
+   "OperatingSystem": "Windows 10",
+   "Privileges": "kernel",
+   "Usecase": "Elevate privileges"
+  },
+  "Resources": [
+   "https://github.com/elastic/protections-artifacts/search?q=VulnDriver",
+   "https://news.sophos.com/en-us/2022/10/04/blackbyte-ransomware-returns/",
+   "https://github.com/elastic/protections-artifacts/search?q=VulnDriver",
+   "https://github.com/VoidSec/Exploit-Development/tree/b82b6d3ac1cce66221101d3e0f4634aa64cb4ca7/windows/x64/kernel/RTCore64_MSI_Afterburner_v.4.6.4.16117"
+  ],
+  "Acknowledgement": {
+   "Handle": "",
+   "Person": ""
+  },
+  "KnownVulnerableSamples": [
+   {
+    "MD5": "2d8e4f38b36c334d0a32a7324832501d",
+    "SHA1": "f6f11ad2cd2b0cf95ed42324876bee1d83e01775",
+    "SHA256": "01aa278b07b58dc46c84bd0b1b5c8e9ee4e62ea0bf7a695862444af32e87f1fd",
+    "Authentihash": {
+     "SHA256": "478c36f8af7844a80e24c1822507beef6314519185717ec7ae224a0e04b2f330"
+    }
+   },
+   {
+    "MD5": "0ec361f2fba49c73260af351c39ff9cb",
+    "SHA1": "af50109b112995f8c82be8ef3a88be404510cdde",
+    "SHA256": "cdd2a4575a46bada4837a6153a79c14d60ee3129830717ef09e0e3efd9d00812",
+    "Authentihash": {
+     "SHA256": "ff8d17761c1645bdd1f0eccc69024907bbbfbe5c60679402b7d02f95b16310fe"
+    }
+   }
+  ],
+  "Tags": [
+   "rtcore64.sys"
+  ],
+  "IndicatorSemantics": "Exact file/Authenticode hashes only for blocking; Tags are hunting names. ResearchEvidence is context-only."
+ },
+ {
+  "Id": "00561455-9da1-4f0c-8564-e4c99b716a74",
+  "Verified": "TRUE",
+  "Author": "Michael Haag",
+  "Created": "2024-09-10",
+  "MitreID": "T1068",
+  "Category": "malicious",
+  "Commands": {
+   "Command": "sc.exe create driver_c3d48ddd.sys binPath=C:\\windows\\temp\\driver_c3d48ddd.sys type=kernel && sc.exe start driver_c3d48ddd.sys",
+   "Description": "Sophos, from time to time, has observed a threat actor deploy variants of Poortry on different machines within a single estate during an attack. These variants contain the same payload, but signed with a different certificate than the driver first seen used during the attack.",
+   "Usecase": "Elevate privileges",
+   "Privileges": "kernel",
+   "OperatingSystem": "Windows 10"
+  },
+  "Resources": [
+   "https://news.sophos.com/en-us/2024/08/27/burnt-cigar-2/"
+  ],
+  "Acknowledgement": {
+   "Person": "",
+   "Handle": ""
+  },
+  "KnownVulnerableSamples": [
+   {
+    "MD5": "41046ce853788277da0d7e8c4e0a3123",
+    "SHA1": "e9bca8f4b8c60688eacc7d18c6ba7777c181bb84",
+    "SHA256": "090d409f86430e078694e621ad0bd5e458d32aa727f0eb99bda3961577df8d49",
+    "Authentihash": {
+     "SHA256": "77cb09dc2fc3c56f3b12ad03a85cedbe3a8e0bb876dadfd76a1fb6c57602817b"
+    }
+   }
+  ],
+  "Tags": [
+   "driver_090d409f.sys"
+  ],
+  "IndicatorSemantics": "Exact file/Authenticode hashes only for blocking; Tags are hunting names. ResearchEvidence is context-only."
+ },
+ {
+  "Id": "17cf4fac-88f1-467d-9f62-481d33accc5b",
+  "Verified": "FALSE",
+  "Author": "Michael Haag",
+  "Created": "2023-01-09",
+  "MitreID": "T1068",
+  "Category": "vulnerable driver",
+  "Commands": {
+   "Command": "sc.exe create otipcibus.sys binPath=C:\\windows\\temp\\otipcibus.sys type=kernel && sc.exe start otipcibus.sys",
+   "Description": "",
+   "OperatingSystem": "Windows 10",
+   "Privileges": "kernel",
+   "Usecase": "Elevate privileges"
+  },
+  "Resources": [
+   "https://learn.microsoft.com/en-us/windows/security/threat-protection/windows-defender-application-control/microsoft-recommended-driver-block-rules"
+  ],
+  "Acknowledgement": {
+   "Handle": "",
+   "Person": ""
+  },
+  "KnownVulnerableSamples": [
+   {
+    "MD5": "d5a642329cce4df94b8dc1ba9660ae34",
+    "SHA1": "ccdd3a1ebe9a1c8f8a72af20a05a10f11da1d308",
+    "SHA256": "4e3eb5b9bce2fd9f6878ae36288211f0997f6149aa8c290ed91228ba4cdfae80",
+    "Authentihash": {
+     "SHA256": "1cda1a6e33d14d5dd06344425102bf840f8149e817ecfb01c59a2190d3367024"
+    }
+   }
+  ],
+  "Tags": [
+   "otipcibus.sys"
+  ],
+  "IndicatorSemantics": "Exact file/Authenticode hashes only for blocking; Tags are hunting names. ResearchEvidence is context-only."
+ },
+ {
+  "Id": "19003e00-d42d-4cbe-91f3-756451bdd7da",
+  "Verified": "TRUE",
+  "Author": "Michael Haag, Guus Verbeek",
+  "Created": "2023-01-09",
+  "MitreID": "T1068",
+  "Category": "vulnerable driver",
+  "Commands": {
+   "Command": "sc.exe create AsrSetupDrv103.sys binPath=C:\\windows\\temp\\AsrSetupDrv103.sys type=kernel && sc.exe start AsrSetupDrv103.sys",
+   "Description": "",
+   "OperatingSystem": "Windows 10",
+   "Privileges": "kernel",
+   "Usecase": "Elevate privileges"
+  },
+  "Resources": [
+   "https://learn.microsoft.com/en-us/windows/security/threat-protection/windows-defender-application-control/microsoft-recommended-driver-block-rules"
+  ],
+  "Acknowledgement": {
+   "Handle": "",
+   "Person": ""
+  },
+  "KnownVulnerableSamples": [
+   {
+    "MD5": "9226339848e359f5e4cd519bef7dcd39",
+    "SHA1": "b33b99ae2653b4e675beb7d9eb2c925a1f105bd4",
+    "SHA256": "9d9346e6f46f831e263385a9bd32428e01919cca26a035bbb8e9cb00bf410bc3",
+    "Authentihash": {
+     "SHA256": "399effe75d32bdab6fa0a6bffe02dbf0a59219d940b654837c3be1c0bd02e9aa"
+    }
+   },
+   {
+    "MD5": "5cd0ec261c8c2a39d9105fbbcad4e5b9",
+    "SHA1": "0ac0c21ca05161eaa6a042f347391a2a2fc78c96",
+    "SHA256": "a0728184caead84f2e88777d833765f2d8af6a20aad77b426e07e76ef91f5c3f",
+    "Authentihash": {
+     "SHA256": "7aaf2aa194b936e48bc90f01ee854768c8383c0be50cfb41b346666aec0cf853"
+    }
+   },
+   {
+    "Authentihash": {
+     "SHA256": "399effe75d32bdab6fa0a6bffe02dbf0a59219d940b654837c3be1c0bd02e9aa"
+    }
+   }
+  ],
+  "Tags": [
+   "asrsetupdrv103.sys"
+  ],
+  "IndicatorSemantics": "Exact file/Authenticode hashes only for blocking; Tags are hunting names. ResearchEvidence is context-only."
+ }
+]

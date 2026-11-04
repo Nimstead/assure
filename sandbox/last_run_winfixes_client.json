@@ -1,0 +1,228 @@
+[
+  {
+    "step": "winget-unknown",
+    "outcome": "aborted",
+    "error": "No changes made: job validated failed: unknown product or setting, or invalid version",
+    "steps": [
+      [
+        "job validated",
+        false
+      ]
+    ]
+  },
+  {
+    "step": "winget-downgrade",
+    "outcome": "aborted",
+    "error": "No changes made: fix is newer than installed failed: 26.05 -> 23.01",
+    "steps": [
+      [
+        "job validated",
+        true
+      ],
+      [
+        "fix is newer than installed",
+        false
+      ]
+    ]
+  },
+  {
+    "step": "winget-upgrade",
+    "outcome": "applied",
+    "error": null,
+    "steps": [
+      [
+        "job validated",
+        true
+      ],
+      [
+        "fix is newer than installed",
+        true
+      ],
+      [
+        "winget found (App Installer under WindowsApps, admin-owned)",
+        true
+      ],
+      [
+        "winget lists 7zip.7zip 26.05 with an installer hash",
+        true
+      ],
+      [
+        "installer SHA-256 published",
+        true
+      ],
+      [
+        "7zip.7zip upgraded to 26.05",
+        true
+      ]
+    ]
+  },
+  {
+    "step": "7-Zip by inventory",
+    "before": [
+      "26.04"
+    ],
+    "after": [
+      "26.05"
+    ],
+    "planned": [
+      "26.04",
+      "26.05"
+    ]
+  },
+  {
+    "step": "winconfig-rollback",
+    "outcome": "rolled_back",
+    "error": "Change failed and was rolled back: injected failure (sandbox test) failed: --fail-after-apply",
+    "steps": [
+      [
+        "job validated",
+        true
+      ],
+      [
+        "LanmanServer running before change",
+        true
+      ],
+      [
+        "recorded RequireSecuritySignature before the change",
+        true
+      ],
+      [
+        "RequireSecuritySignature set to 1",
+        true
+      ],
+      [
+        "LanmanServer running after change",
+        true
+      ],
+      [
+        "injected failure (sandbox test)",
+        false
+      ],
+      [
+        "RequireSecuritySignature removed again",
+        true
+      ]
+    ]
+  },
+  {
+    "step": "SMB signing after rollback",
+    "found": null,
+    "now": null
+  },
+  {
+    "step": "winconfig-apply",
+    "outcome": "applied",
+    "error": null,
+    "steps": [
+      [
+        "job validated",
+        true
+      ],
+      [
+        "LanmanServer running before change",
+        true
+      ],
+      [
+        "recorded RequireSecuritySignature before the change",
+        true
+      ],
+      [
+        "RequireSecuritySignature set to 1",
+        true
+      ],
+      [
+        "LanmanServer running after change",
+        true
+      ]
+    ]
+  },
+  {
+    "step": "SMB signing after apply",
+    "now": "1"
+  },
+  {
+    "step": "Microsoft 365 Apps installed",
+    "build": "16.0.20527.20088",
+    "planned_from": "16.0.20527.20088",
+    "to": "16.0.20527.20112"
+  },
+  {
+    "step": "office-rollback",
+    "outcome": "rolled_back",
+    "error": "Change failed and was rolled back: injected failure (sandbox test) failed: --fail-after-apply",
+    "steps": [
+      [
+        "job validated",
+        true
+      ],
+      [
+        "fix is newer than installed",
+        true
+      ],
+      [
+        "installed build matches plan",
+        true
+      ],
+      [
+        "no Office app open (never force-closed)",
+        true
+      ],
+      [
+        "Office updated to 16.0.20527.20112",
+        true
+      ],
+      [
+        "injected failure (sandbox test)",
+        false
+      ],
+      [
+        "Office updated to 16.0.20527.20088",
+        true
+      ]
+    ]
+  },
+  {
+    "step": "office-apply",
+    "outcome": "applied",
+    "error": null,
+    "steps": [
+      [
+        "job validated",
+        true
+      ],
+      [
+        "fix is newer than installed",
+        true
+      ],
+      [
+        "installed build matches plan",
+        true
+      ],
+      [
+        "no Office app open (never force-closed)",
+        true
+      ],
+      [
+        "Office updated to 16.0.20527.20112",
+        true
+      ]
+    ]
+  },
+  {
+    "step": "Office build after apply",
+    "now": "16.0.20527.20112"
+  },
+  {
+    "step": "RESULT: PASS",
+    "checks": {
+      "unknown product refused": true,
+      "older version refused": true,
+      "7-Zip upgraded as SYSTEM, verified by inventory": true,
+      "winconfig rollback restored the value found": true,
+      "winconfig applied, LanmanServer running": true,
+      "office rollback back to the build found": true,
+      "office updated to the planned build": true
+    },
+    "kind": "client"
+  }
+]

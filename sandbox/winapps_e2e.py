@@ -1,0 +1,185 @@
+"""Curated Windows apps on real installs (plan T31-T33), in a DISPOSABLE Windows VM (sandbox/winvm.py).
+
+For each product: winget installs an old version, the agent's own `collect` reads the registry, and the server-side
+map must identify exactly that product and version; then the latest version is installed and must identify again
+with a newer version. Writes sandbox/last_run_winapps.json. Products winget can't install at an old version are
+recorded as such, never counted as proven.
+
+Run from api/:  uv run python ../sandbox/winapps_e2e.py VM_NAME [--keep]   (the VM needs Python or the bundled runtime)
+"""
+
+import json
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+import winvm  # noqa: E402
+
+from nimstead import msproducts, winapps  # noqa: E402
+
+NAME = sys.argv[1]
+assert NAME.startswith(winvm.PREFIX)
+ROOT = Path(__file__).resolve().parents[1]
+OUT = Path(__file__).with_name("last_run_winapps.json")
+# winget id -> (old version, expected product key)
+APPS = {
+    "7zip.7zip": ("23.01", "7-zip:7-zip"), "WinSCP.WinSCP": ("6.1.2", "winscp:winscp"),
+    "TimKosse.FileZilla.Client": ("3.65.0", "filezilla-project:filezilla_client"),
+    "DominikReichl.KeePass": ("2.55", "keepass:keepass"), "Notepad++.Notepad++": ("8.6.2", "notepad-plus-plus:notepad++"),
+    "VideoLAN.VLC": ("3.0.18", "videolan:vlc_media_player"), "EclipseAdoptium.Temurin.21.JDK": ("21.0.2.13", "oracle:openjdk"),
+    "Microsoft.OpenJDK.17": ("17.0.10.7", "oracle:openjdk"), "Mozilla.Thunderbird": ("115.6.0", "mozilla:thunderbird"),
+    "TheDocumentFoundation.LibreOffice": ("7.6.4.1", "libreoffice:libreoffice"), "Opera.Opera": ("106.0.4998.70", "opera:opera_browser"),
+    "VivaldiTechnologies.Vivaldi": ("6.5.3206.53", "vivaldi:vivaldi"), "Foxit.FoxitReader": ("2023.3.0.23028", "foxit:pdf_reader"),
+    "OpenVPNTechnologies.OpenVPN": ("2.6.8.1", "openvpn:openvpn"), "Oracle.VirtualBox": ("7.0.12", "oracle:vm_virtualbox"),
+    "Microsoft.PowerShell": ("7.4.1.0", "PowerShell 7.4"), "Microsoft.VisualStudioCode": ("1.85.0", "Visual Studio Code"),
+}
+NEW = {  # batch 4 alone with --new: versions below winget's newest on 2026-10-31
+    "IrfanSkiljan.IrfanView": ("4.75", "irfanview:irfanview"), "GIMP.GIMP.3": ("3.2.4.0", "gimp:gimp"), "GoLang.Go": ("1.26.7", "golang:go"),
+    "PostgreSQL.PostgreSQL.17": ("17.9-1", "postgresql:postgresql"), "MariaDB.Server": ("12.3.3.0", "mariadb:mariadb"),
+    "GrafanaLabs.Grafana.OSS": ("13.2.4", "grafana:grafana"), "JetBrains.IntelliJIDEA.Community": ("2025.2.6.1", "jetbrains:intellij_idea"),
+    "Anysphere.Cursor": ("3.19.7", "anysphere:cursor"), "calibre.calibre": ("9.16.0", "calibre-ebook:calibre"),
+    "TigerVNC.TigerVNC": ("1.16.1", "tigervnc:tigervnc"), "SumatraPDF.SumatraPDF": ("3.6", "sumatrapdfreader:sumatrapdf"),
+    "Nextcloud.NextcloudDesktop": ("35.0.0", "nextcloud:desktop"), "NoMachine.NoMachine": ("10.1.7", "nomachine:nomachine"),
+    "Greenshot.Greenshot": ("1.3.323", "getgreenshot:greenshot"), "GnuPG.Gpg4win": ("5.1.0", "gpg4win:gpg4win"),
+    "qBittorrent.qBittorrent": ("5.2.4", "qbittorrent:qbittorrent"), "Discord.Discord": ("1.0.9265", "discord:discord"),
+}
+NEW5 = {  # batch 5 alone with --new5
+    "ImageMagick.ImageMagick": ("7.1.2.33", "imagemagick:imagemagick"),
+    "TrackerSoftware.PDF-XChangeEditor": ("11.1.0.0", "pdf-xchange:pdf-xchange_editor"), "Elastic.Elasticsearch": ("7.16.2", "elastic:elasticsearch"),
+    "Devolutions.RemoteDesktopManager": ("2026.3.10.0", "devolutions:remote_desktop_manager"), "uvncbvba.UltraVNC": ("1.8.3.0", "uvnc:ultravnc"),
+    "Atlassian.Sourcetree": ("3.4.32", "atlassian:sourcetree"), "Anysphere.Cursor": ("3.19.7", "anysphere:cursor"),
+    "MongoDB.Server": ("9.0.2", "mongodb:mongodb"), "Oracle.MySQL": ("8.4.6", "oracle:mysql_server"),  # last: this MongoDB installer hung a VM
+}
+NEW6 = {  # batch 6 alone with --new6
+    "vim.vim": ("9.2.1176", "vim:vim"), "Apache.OpenOffice": ("4.116.9816", "apache:openoffice"), "JetBrains.Rider": ("2026.2.3", "jetbrains:rider"),
+    "JetBrains.PyCharm.Community": ("2025.2.6", "jetbrains:pycharm"), "JetBrains.WebStorm": ("2026.2.3", "jetbrains:webstorm"), "JetBrains.GoLand": ("2026.2.3", "jetbrains:goland"),
+    "JetBrains.PhpStorm": ("2026.2.3", "jetbrains:phpstorm"), "JetBrains.CLion": ("2026.2.3.1", "jetbrains:clion"), "JetBrains.DataGrip": ("2026.2.6", "jetbrains:datagrip"),
+    "Neovim.Neovim": ("0.12.5", "neovim:neovim"), "StrawberryPerl.StrawberryPerl": ("5.42.2.1", "perl:perl"), "TortoiseGit.TortoiseGit": ("2.19.0", "tortoisegit:tortoisegit"),
+    "TortoiseSVN.TortoiseSVN": ("1.14.9.29743", "tigris:tortoisesvn"), "Mobatek.MobaXterm": ("26.5.0.5542", "mobatek:mobaxterm"), "Inkscape.Inkscape": ("1.4.3", "inkscape:inkscape"),
+    "Insecure.Nmap": ("7.60", "nmap:nmap"), "RubyInstallerTeam.Ruby.3.3": ("3.3.12-2", "ruby-lang:ruby"), "Postman.Postman": ("12.34.3", "postman:postman"),
+}
+NEW7 = {  # batch 7 alone with --new7: (old, key, winget's newest on 2026-11-02), versions checked against winget-pkgs manifests. None: winget has one version, so the
+    # run shows whether the name is identified but can't prove an upgrade. Liberica shares oracle:openjdk with Corretto and would read "already installed": run it alone
+    "Adobe.Acrobat.Reader.64-bit": ("26.002.21996", "adobe:acrobat_dc", "26.002.22031"), "Ollama.Ollama": ("0.40.12", "ollama:ollama", "0.40.13"),
+    "ShiningLight.OpenSSL.Light": ("4.0.3", "openssl:openssl", "4.1.0"), "Cisco.ClamAV": ("1.5.3", "clamav:clamav", "1.5.4"),
+    "Sandboxie.Plus": ("1.18.5", "sandboxie-plus:sandboxie", "1.18.6"), "Joplin.Joplin": ("3.7.21", "joplin_project:joplin", "3.7.22"),
+    "Mattermost.MattermostDesktop": ("6.3.0", "mattermost:mattermost_desktop", "6.3.1"), "SonicWall.NetExtender": ("10.3.4", "sonicwall:netextender", "10.3.5"),
+    "Splashtop.SplashtopStreamer": ("3.8.6.1", "splashtop:streamer", "3.8.6.3"), "OpenSC.OpenSC": ("0.26.1", "opensc_project:opensc", "0.27.1"),
+    "Amazon.Corretto.21.JDK": ("21.0.12.12", "oracle:openjdk", "21.0.13.0"), "JetBrains.IntelliJIDEA": ("2026.2.3", "jetbrains:intellij_idea", "2026.2.4"),
+    "JetBrains.PyCharm": ("2026.2.3", "jetbrains:pycharm", "2026.2.4"), "Plex.PlexMediaServer": ("1.43.5.11029", "plex:media_server", "1.43.5.11079"),
+    "Tenable.Nessus": ("10.12.6.20073", "tenable:nessus", None), "Tenable.NessusAgent": ("11.2.3.20022", "tenable:nessus_agent", None),
+    "JetBrains.TeamCity": ("2026.2", "jetbrains:teamcity", "2026.2.1"), "OctopusDeploy.Server": ("2025.3.14320", "octopus:octopus_server", "2025.3.14327"),
+    "PaperCutSoftware.NG": ("21.0.3.57216", "papercut:papercut_ng", None), "Atlassian.Confluence": ("10.2.18", "atlassian:confluence_data_center", "10.2.19"),  # servers last
+}
+if "--new7" in sys.argv:
+    APPS, OUT = NEW7, OUT.with_name("last_run_winapps_batch7.json")
+if "--new6" in sys.argv:
+    APPS, OUT = NEW6, OUT.with_name("last_run_winapps_batch6.json")
+if "--new" in sys.argv:
+    APPS, OUT = NEW, OUT.with_name("last_run_winapps_batch4.json")
+if "--new5" in sys.argv:
+    APPS, OUT = NEW5, OUT.with_name("last_run_winapps_batch5.json")
+log: list[dict] = []
+
+
+def note(step, **kw):
+    log.append({"step": step, **kw})
+    print(f"[{time.strftime('%H:%M:%S')}] {step}", json.dumps(kw, default=str)[:300] if kw else "", flush=True)
+
+
+def guest(cmd, timeout=1800):
+    try:
+        rc, out = winvm.run(NAME, cmd, timeout=timeout)
+    except subprocess.TimeoutExpired:  # a hung installer fails that app, not the run
+        rc, out = 1, f"timed out after {timeout} s"
+    if "Error starting guest session" in out:  # a hung installer left guest control down: not this app's failure (real VM, 2026-11-01)
+        winvm.wait_ready(NAME, minutes=45)
+        rc, out = winvm.run(NAME, cmd, timeout=timeout)
+    return rc, out
+
+
+def collect(py, agent):
+    rc, out = guest(f"& '{py}' -I '{agent}' collect")
+    return json.loads(out[out.index("{"):]) if rc == 0 else {"packages": []}
+
+
+def found(inv, want):
+    """Every install identified as `want` (some products, e.g. JDKs, install a newer version beside the old one)."""
+    hits = []
+    for p in inv["packages"]:
+        if p["ecosystem"] != "WinApp":
+            continue
+        hit = winapps.identify(p["name"], p["source"], p["version"]) or msproducts.from_winapp(p["name"], p["source"], p["version"])
+        if hit and hit[0] == want:
+            hits.append({"display_name": p["name"], "registry_version": p["version"], "identified": list(hit)})
+    return hits
+
+
+def older_version(wid):
+    """The version just below winget's newest: winget drops old versions, and the one below still has an upgrade."""
+    rc, out = guest(f"winget show --id {wid} --exact --versions --accept-source-agreements --disable-interactivity")
+    lines = out.splitlines()
+    vs = [v.strip() for v in lines[next((i for i, x in enumerate(lines) if x.startswith("---")), len(lines)) + 1:] if v.strip()]
+    return vs[1] if rc == 0 and len(vs) > 1 else None
+
+
+def save(results):
+    proven = sorted(w for w, r in results.items() if r["proven"])
+    OUT.write_text(json.dumps({"result": "PASS" if proven else "FAIL", "vm": NAME, "proven": proven, "apps": results, "steps": log},
+                              indent=2, default=str) + "\n", encoding="utf-8")
+    return proven
+
+
+def main(keep=False) -> int:
+    winvm.wait_ready(NAME, minutes=90)
+    rc, py = guest(r"(Resolve-Path 'C:\Program Files\Nimstead\runtime\*\python.exe', 'C:\Program Files\Python3*\python.exe' -ErrorAction SilentlyContinue)[0].Path")
+    py = py.strip()
+    if rc != 0 or not py.endswith("python.exe"):  # a fresh VM has no Python: the pinned runtime the agent ships with
+        import winfixes
+        guest(r"New-Item -ItemType Directory -Force C:\nimtest | Out-Null")
+        winfixes.runtime()
+        py = winfixes.PY
+    agent = r"C:\nimtest\nimstead_agent.py"
+    guest(r"New-Item -ItemType Directory -Force C:\nimtest | Out-Null")
+    c = winvm.creds(NAME)  # copyto: the agent source is too long for a command line (WinError 206)
+    winvm.vbox("guestcontrol", NAME, "copyto", "--username", c["user"], "--password", c["password"],
+               "--target-directory", "C:\\nimtest\\", str(ROOT / "agent" / "nimstead_agent.py"))
+    rc, out = guest("winget --version")
+    note("VM ready", python=py, winget=out.strip()[-40:])
+    assert collect(py, agent)["packages"], "the agent can't read inventory here"  # or every app reads as not identified
+    results = {}
+    for wid, (old, key, *_) in APPS.items():
+        if found(collect(py, agent), key):
+            results[wid] = {"proven": False, "why": "already installed before the test (an earlier run): uninstall it to retest"}
+            note("already installed", app=wid)
+            continue
+        install = ("winget install --id {} --exact --version {} --silent --accept-package-agreements "
+                   "--accept-source-agreements --disable-interactivity --scope machine")
+        rc, out = guest(install.format(wid, old), timeout=1800)
+        if rc != 0 and "No version found" in out and (alt := older_version(wid)):
+            old = alt  # the pinned old version left winget's repository
+            rc, out = guest(install.format(wid, old), timeout=1800)
+        if rc != 0 and "No applicable installer" in out:  # per-user only (Cursor, Discord): the agent reads every profile
+            rc, out = guest(install.format(wid, old).replace(" --scope machine", ""), timeout=1800)
+        if rc != 0:
+            results[wid] = {"proven": False, "why": f"winget couldn't install {old}: {out.strip()[-200:]}"}
+            note("not installable", app=wid)
+            continue
+        before = found(collect(py, agent), key)
+        guest(f"winget upgrade --id {wid} --exact --silent --accept-package-agreements --disable-interactivity", timeout=1800)
+        after = found(collect(py, agent), key)
+        old_vs = {h["identified"][1] for h in before}
+        ok = bool(before and any(h["identified"][1] not in old_vs for h in after))
+        results[wid] = {"proven": ok, "installed": old, "old": before, "new": after}
+        note("identified on a real install" if ok else "NOT identified as expected", app=wid, old=before, new=after)
+        save(results)  # kept if a later installer hangs the run
+    proven = save(results)
+    if not keep:
+        winvm.destroy(NAME)
+    return 0 if proven else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(keep="--keep" in sys.argv))

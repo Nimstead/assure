@@ -20,7 +20,8 @@ def main() -> int:
     global OUT
     if "Client" in h.guest(r"(gp 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').InstallationType"):
         OUT = "last_run_windows11_resume.json"
-    agent = r'"C:\Program Files\Python313\python.exe" "C:\Program Files\Nimstead\nimstead_agent.py"'
+    py = h.guest(r"(Resolve-Path 'C:\Program Files\Nimstead\runtime\*\python.exe', 'C:\Program Files\Python3*\python.exe' -ErrorAction SilentlyContinue)[0].Path").strip()
+    agent = f'"{py}" -I "C:\\Program Files\\Nimstead\\nimstead_agent.py"'  # the bundled runtime since agent 0.4.0
     h.note("resume start", build=h.build(), pending=h.guest(r"Test-Path C:\ProgramData\Nimstead\pending-job.json").strip())
     for i in range(1, 5):
         out = rf"C:\nimtest\resume{i}.json"
@@ -29,7 +30,7 @@ def main() -> int:
         h.note(f"resume {i}", outcome=r["outcome"], error=r.get("error"), steps=[s["step"] for s in r["steps"]][-6:])
         if r["outcome"] != "pending_reboot":
             h.note("final", outcome=r["outcome"], build=h.build())
-            return 0 if r["outcome"] == "rolled_back" else 1
+            return 0 if r["outcome"] in ("rolled_back", "applied") else 1
         h.reboot_and_wait()
         h.note("rebooted", build=h.build())
     return 1

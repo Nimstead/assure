@@ -1,7 +1,9 @@
 """Third-party Windows apps: curated map, registry parsing, version comparator, NVD translation, end to end."""
 
+import copy
 import gzip
 import json
+import sys
 from pathlib import Path
 
 import httpx
@@ -28,13 +30,14 @@ def ident(name, version, publisher=None):
 
 @pytest.mark.parametrize("name,pub,ver,want", [
     ("Google Chrome", "Google LLC", "156.0.8078.48", ("google:chrome", "156.0.8078.48")),
-    ("Microsoft Edge", "Microsoft Corporation", "156.0.4314.42", ("microsoft:edge_chromium", "156.0.4314.42")),
     ("Mozilla Firefox (x64 en-US)", "Mozilla", "128.0.3", ("mozilla:firefox", "128.0.3")),
     ("Mozilla Firefox 115.3.0 (x86 de)", "Mozilla", "115.3.0", ("mozilla:firefox", "115.3.0")),
     ("Mozilla Firefox ESR (x64 en-US)", "Mozilla", "115.10.0esr", ("mozilla:firefox_esr", "115.10.0")),
     ("7-Zip 24.08 (x64)", "Igor Pavlov", "24.08", ("7-zip:7-zip", "24.08")),
     ("7-Zip 9.20 (x64 edition)", "Igor Pavlov", "9.20.00.0", ("7-zip:7-zip", "9.20.00.0")),
     ("Notepad++ (64-bit x64)", "Notepad++ Team", "8.9.8.1", ("notepad-plus-plus:notepad++", "8.9.8.1")),
+    # the MSI installer's name (real VM, 2026-10-29)
+    ("Notepad++ (x64)", "Notepad++ team (MSI installer)", "8.9.8.1", ("notepad-plus-plus:notepad++", "8.9.8.1")),
     ("VLC media player", "VideoLAN", "3.0.24", ("videolan:vlc_media_player", "3.0.24")),
     ("Zoom Workplace (64-bit)", "Zoom Video Communications, Inc.", "6.2.5 (47209)", ("zoom:workplace_desktop", "6.2.5 (47209)")),
     ("Adobe Acrobat Reader (64-bit)", "Adobe", "24.003.20112", ("adobe:acrobat_reader", "24.003.20112")),
@@ -46,8 +49,6 @@ def ident(name, version, publisher=None):
     ("PuTTY release 0.81 (64-bit)", "Simon Tatham", "0.81.0.0", ("putty:putty", "0.81.0.0")),
     ("WinRAR 7.01 (64-bit)", "win.rar GmbH", "7.01.0", ("rarlab:winrar", "7.01.0")),
     ("Wireshark 4.2.5 x64", "The Wireshark developers", "4.2.5", ("wireshark:wireshark", "4.2.5")),
-    ("Microsoft Visual Studio Code (User)", "Microsoft Corporation", "1.141.2", ("microsoft:visual_studio_code", "1.141.2")),
-    ("Microsoft Visual Studio Code", "Microsoft Corporation", "1.90.0", ("microsoft:visual_studio_code", "1.90.0")),
 ])
 def test_identify_positive(name, pub, ver, want):
     assert ident(name, ver, pub) == want
@@ -58,6 +59,8 @@ def test_identify_positive(name, pub, ver, want):
     ("Chrome Remote Desktop", "Google LLC", "1.0"),
     ("Google Chrome Beta", "Google LLC", "130.0.1"),
     ("Microsoft Edge WebView2 Runtime", "Microsoft Corporation", "130.0.1"),
+    ("Microsoft Edge", "Microsoft Corporation", "156.0.4314.42"),  # matched from MSRC now (msproducts.py)
+    ("Microsoft Visual Studio Code (User)", "Microsoft Corporation", "1.141.2"),
     ("Firefox Developer Edition (x64 en-US)", "Mozilla", "130.0b1"),
     ("Mozilla Firefox Beta (x64 en-US)", "Mozilla", "130.0b1"),
     ("Mozilla Maintenance Service", "Mozilla", "130.0"),
@@ -76,8 +79,6 @@ def test_identify_positive(name, pub, ver, want):
     ("Python 3.14.0rc2 (64-bit)", "Python Software Foundation", "3.14.150.0"),
     ("Java 8 Update 431 (64-bit)", "Oracle Corporation", "8.0.4310.10"),  # NVD says 1.8.0 update431: excluded, not guessed
     ("Java(TM) SE Development Kit 8 Update 431 (64-bit)", "Oracle Corporation", "8.0.4310.10"),
-    ("Eclipse Temurin JRE with Hotspot 17.0.20+8 (x64)", "Eclipse Adoptium", "17.0.20.8"),  # no NVD CPE exists
-    ("Adobe Acrobat (64-bit)", "Adobe", "24.003.20112"),
     ("Adobe Acrobat Reader 2020", "Adobe", "20.005.30500"),
     ("PuTTY release 0.81 (64-bit) beta", "Simon Tatham", "0.81"),
     ("WinRAR 7.10 beta 1 (64-bit)", "win.rar GmbH", "7.10.1"),
@@ -277,6 +278,27 @@ def test_windows_apps_survives_missing_hives():
 
 # ---- end to end -----------------------------------------------------------------------------------------------
 
+def _windows_host(c, name, apps):
+    token = c.post("/api/enroll-tokens").json()["token"]
+    a = c.post("/api/agent/enroll", json={"token": token, "hostname": name, "ecosystem": "Windows"}).json()
+    r = c.post("/api/agent/inventory", headers={"Authorization": f"Bearer {a['agent_key']}"}, json={"ecosystem": "Windows", "packages": [
+        {"ecosystem": "WinApp", "name": n, "version": v, "source": p} for n, v, p in apps]})
+    assert r.status_code == 200, r.text
+
+
+def test_coverage_says_what_was_only_listed(env):
+    c = user(env)
+    chrome, other = ("Google Chrome", "156.0.8078.48", "Google LLC"), ("Acme Widget", "1.0", "Acme")
+    _windows_host(c, "pc-1", [chrome, other, ("Rare Tool", "2.0", None)])
+    _windows_host(c, "pc-2", [other])
+    by_host = {a["hostname"]: a["apps"] for a in c.get("/api/assets").json()}
+    assert by_host == {"pc-1": {"assessed": 1, "inventory_only": 2}, "pc-2": {"assessed": 0, "inventory_only": 1}}
+    assert c.get("/api/coverage").json() == {"assessed": 1, "inventory_only": 3, "not_assessed": [
+        {"name": "Acme Widget", "publisher": "Acme", "hosts": 2}, {"name": "Rare Tool", "publisher": None, "hosts": 1}]}
+    other_org = user(env, "b@example.com")
+    assert other_org.get("/api/coverage").json() == {"assessed": 0, "inventory_only": 0, "not_assessed": []}
+
+
 def test_winapp_asset_end_to_end(env):
     with make_sessionmaker(env)() as s:
         sync_fixture(s)
@@ -318,3 +340,331 @@ def test_windows_apps_reads_per_user_installs_from_every_loaded_profile():
     })
     names = [a["name"] for a in agent.windows_apps(reg)]
     assert names == ["Microsoft Visual Studio Code (User)", "Zoom Workplace (64-bit)"]
+
+
+# ---- CVE List v5 as a second source (plan T30) -----------------------------------------------------------------
+
+V5 = json.loads((Path(__file__).parent / "fixtures" / "cvelist" / "CVE-2025-6554.json").read_text())  # real record
+
+
+def test_v5_chrome_record_from_googles_cna():
+    [(key, rec)] = winapps.advisories_v5(V5)
+    assert key == "google:chrome" and rec["id"] == "CVE-2025-6554-v5" and rec["aliases"] == ["CVE-2025-6554"]
+    assert rec["affected"][0]["ranges"][0]["events"] == [{"introduced": "0"}, {"fixed": "138.0.7204.96"}]
+    assert rec["severity"][0]["score"].startswith("CVSS:3.1/")  # from CISA's ADP container
+
+
+@pytest.mark.parametrize("edit,want", [
+    (lambda r: r["cveMetadata"].update(state="REJECTED"), []),
+    (lambda r: r["containers"]["cna"]["affected"][0].update(platforms=["Linux", "Mac"]), []),
+    (lambda r: r["containers"]["cna"]["affected"][0].update(product="Chrome Remote Desktop"), []),
+    (lambda r: r["containers"]["cna"]["affected"][0]["versions"][0].update(versionType="git"), []),
+    (lambda r: r["containers"]["cna"]["affected"][0]["versions"][0].update(status="unknown"), []),
+    (lambda r: r["containers"]["cna"]["affected"][0]["versions"][0].update(lessThan="*"), []),
+])
+def test_v5_refuses_what_it_cant_state_exactly(edit, want):
+    r = copy.deepcopy(V5)
+    edit(r)
+    assert winapps.advisories_v5(r) == want
+
+
+def test_v5_cpes_from_cisa_adp_map_through_the_curated_cpes():
+    r = copy.deepcopy(V5)
+    r["containers"]["cna"]["affected"] = []
+    r["containers"]["adp"][0]["affected"] = [{"vendor": "7-zip", "product": "7-zip", "cpes": ["cpe:2.3:a:7-zip:7-zip:*:*:*:*:*:*:*:*"],
+                                               "versions": [{"version": "0", "status": "affected", "lessThan": "25.01", "versionType": "custom"}]}]
+    [(key, rec)] = winapps.advisories_v5(r)
+    assert key == "7-zip:7-zip" and rec["affected"][0]["ranges"][0]["events"] == [{"introduced": "0"}, {"fixed": "25.01"}]
+
+
+def test_cvelist_rows_only_where_nvd_has_none_and_nvd_replaces_them(env):
+    from nimstead.feeds import cvelist_records, sync_winapps
+    s = make_sessionmaker(env)()
+    assert cvelist_records(s, [V5]) == 1
+    assert [a.id for a in s.scalars(select(Advisory).where(Advisory.ecosystem == "WinApp"))] == ["CVE-2025-6554-v5"]
+    nvd = {"id": "CVE-2025-6554", "lastModified": "2025-07-01", "descriptions": [{"lang": "en", "value": "V8"}],
+           "configurations": [{"nodes": [{"cpeMatch": [{"vulnerable": True, "criteria": "cpe:2.3:a:google:chrome:*:*:*:*:*:*:*:*",
+                                                         "versionEndExcluding": "138.0.7204.96"}]}]}]}
+    sync_winapps(s, [nvd])
+    assert [a.id for a in s.scalars(select(Advisory).where(Advisory.ecosystem == "WinApp"))] == ["CVE-2025-6554"]
+    assert cvelist_records(s, [V5]) == 0  # NVD has it now: v5 isn't added back
+
+
+# ---- batches 1-3 (plan T31-T33): registry names as each installer writes them, and the near misses beside them
+
+@pytest.mark.parametrize("name,pub,ver,want", [
+    ("Eclipse Temurin JDK with Hotspot 21.0.5+11 (x64)", "Eclipse Adoptium", "21.0.5.11", ("oracle:openjdk", "21.0.5")),
+    ("Microsoft Build of OpenJDK with Hotspot 17.0.13+11 (x64)", "Microsoft", "17.0.13.11", ("oracle:openjdk", "17.0.13")),
+    ("Opera Stable 115.0.5322.68", "Opera Software", "115.0.5322.68", ("opera:opera_browser", "115.0.5322.68")),
+    ("Vivaldi", "Vivaldi Technologies AS.", "7.0.3495.18", ("vivaldi:vivaldi", "7.0.3495.18")),
+    ("Mozilla Thunderbird (x64 en-US)", "Mozilla", "128.4.2esr", ("mozilla:thunderbird", "128.4.2")),
+    ("LibreOffice 24.8.3.2", "The Document Foundation", "24.8.3.2", ("libreoffice:libreoffice", "24.8.3")),
+    ("Foxit PDF Reader", "Foxit Software Inc.", "2024.3.0.26795", ("foxit:pdf_reader", "2024.3.0.26795")),
+    ("KeePass Password Safe 2.57.1", "Dominik Reichl", "2.57.1", ("keepass:keepass", "2.57.1")),
+    ("KeePass 2.61.1", "Dominik Reichl", "2.61.1", ("keepass:keepass", "2.61.1")),  # current installers (real VM, 2026-10-29)
+    ("KeePassXC", "KeePassXC Team", "2.7.9", None),
+    ("TeamViewer", "TeamViewer", "15.59.5", ("teamviewer:teamviewer", "15.59.5")),
+    ("AnyDesk", "AnyDesk Software GmbH", "ad 9.0.0", ("anydesk:anydesk", "9.0.0")),
+    ("Cisco Secure Client - AnyConnect VPN", "Cisco Systems, Inc.", "5.1.6.103", ("cisco:secure_client", "5.1.6.103")),
+    ("FortiClient VPN", "Fortinet Technologies Inc", "7.4.0.1658", ("fortinet:forticlient", "7.4.0.1658")),
+    ("GlobalProtect", "Palo Alto Networks", "6.2.4", ("paloaltonetworks:globalprotect", "6.2.4")),
+    ("OpenVPN 2.6.12-I001 amd64", "OpenVPN, Inc.", "2.6.1201", ("openvpn:openvpn", "2.6.12")),
+    ("WinSCP 6.3.5", "Martin Prikryl", "6.3.5", ("winscp:winscp", "6.3.5")),
+    ("FileZilla 3.68.1", "Tim Kosse", "3.68.1", ("filezilla-project:filezilla_client", "3.68.1")),
+    ("VMware Tools", "Broadcom Inc.", "12.4.5.23787635", ("vmware:tools", "12.4.5")),
+    ("Oracle VirtualBox 7.1.4", "Oracle Corporation", "7.1.4", ("oracle:vm_virtualbox", "7.1.4")),
+    ("Docker Desktop", "Docker Inc.", "4.36.0", ("docker:desktop", "4.36.0")),
+    ("Dell Command | Update for Windows Universal", "Dell Inc.", "5.4.0", ("dell:command_update", "5.4.0")),
+    ("Apache Tomcat 10.1 Tomcat10", "The Apache Software Foundation", "10.1.33", ("apache:tomcat", "10.1.33")),
+    ("UniversalForwarder", "Splunk, Inc.", "9.3.1.0", ("splunk:universal_forwarder", "9.3.1.0")),
+    # batch 4: exactly as a real VM's registry had them (2026-10-31)
+    ("IrfanView 4.75 (64-bit)", "Irfan Skiljan", "4.75", ("irfanview:irfanview", "4.75")),
+    ("GIMP 3.2.4", "The GIMP Team", "3.2.4.0", ("gimp:gimp", "3.2.4")),
+    ("Go Programming Language amd64 go1.26.7", "https://go.dev", "1.26.7", ("golang:go", "1.26.7")),
+    ("PostgreSQL 17 ", "PostgreSQL Global Development Group", "17.11-4", ("postgresql:postgresql", "17.11")),
+    ("MariaDB 12.3 (x64)", "MariaDB Corporation Ab", "12.3.3.0", ("mariadb:mariadb", "12.3.3")),
+    ("GrafanaOSS", "Grafana Labs", "13.2.4.0", ("grafana:grafana", "13.2.4")),
+    ("IntelliJ IDEA Community Edition 2025.2.6.1", "JetBrains s.r.o.", "252.28539.33", ("jetbrains:intellij_idea", "2025.2.6.1")),
+    ("Cursor (User)", "Anysphere", "3.19.7", ("anysphere:cursor", "3.19.7")),
+    ("Cursor", "Anysphere", "3.20.14", ("anysphere:cursor", "3.20.14")),  # machine-wide install
+    ("calibre 64bit", "Kovid Goyal", "9.16.0", ("calibre-ebook:calibre", "9.16.0")),
+    ("TigerVNC 1.16.1 ()", "TigerVNC team", "1.16.1", ("tigervnc:tigervnc", "1.16.1")),
+    ("SumatraPDF", "Krzysztof Kowalczyk", "3.6", ("sumatrapdfreader:sumatrapdf", "3.6")),
+    ("Nextcloud", "Nextcloud GmbH", "35.0.0.20261012", ("nextcloud:desktop", "35.0.0")),
+    ("NoMachine", "NoMachine S.a.r.l.", "10.1.7", ("nomachine:nomachine", "10.1.7")),
+    ("Greenshot 1.3.323", "Greenshot", "1.3.323", ("getgreenshot:greenshot", "1.3.323")),
+    ("Gpg4win (5.1.0)", "The Gpg4win Project", "5.1.0", ("gpg4win:gpg4win", "5.1.0")),
+    ("qBittorrent", "The qBittorrent project", "5.2.4", ("qbittorrent:qbittorrent", "5.2.4")),
+    ("Discord", "Discord Inc.", "1.0.9265", ("discord:discord", "1.0.9265")),
+    # batch 5, the same way (2026-11-01)
+    ("MySQL Server 8.4", "Oracle Corporation", "8.4.9", ("oracle:mysql_server", "8.4.9")),
+    ("ImageMagick 7.1.2-33 Q16-HDRI (64-bit) (2026-10-10)", "ImageMagick Studio LLC", "7.1.2.33", ("imagemagick:imagemagick", "7.1.2.33")),
+    ("MongoDB 9.0.2 2008R2Plus SSL (64 bit)", "MongoDB Inc.", "9.0.2", ("mongodb:mongodb", "9.0.2")),
+    ("PDF-XChange Editor", "PDF-XChange Co Ltd.", "11.1.0.0", ("pdf-xchange:pdf-xchange_editor", "11.1.0.0")),
+    ("Elasticsearch 7.16.2", "Elastic", "7.16.2", ("elastic:elasticsearch", "7.16.2")),
+    ("Remote Desktop Manager", "Devolutions inc.", "2026.3.10.0", ("devolutions:remote_desktop_manager", "2026.3.10.0")),
+    ("UltraVNC", "uvnc", "1.8.3.0", ("uvnc:ultravnc", "1.8.3.0")),
+    ("SourceTree", "Atlassian", "3.4.32", ("atlassian:sourcetree", "3.4.32")),
+    ("Sourcetree Enterprise", "Atlassian", "3.4.33.0", ("atlassian:sourcetree", "3.4.33.0")),  # machine-wide install
+    # batch 6, the same way (2026-11-01)
+    ("Vim 9.2 (x64) (current user)", "The Vim Project", "9.2.1176", ("vim:vim", "9.2.1176")),
+    ("OpenOffice 4.1.16", "Apache Software Foundation", "4.116.9816", ("apache:openoffice", "4.1.16")),
+    ("JetBrains Rider 2026.2.3", "JetBrains s.r.o.", "262.10968.135", ("jetbrains:rider", "2026.2.3")),
+    ("PyCharm Community Edition 2025.2.6", "JetBrains s.r.o.", "252.28539.27", ("jetbrains:pycharm", "2025.2.6")),
+    ("WebStorm 2026.2.3", "JetBrains s.r.o.", "262.10968.77", ("jetbrains:webstorm", "2026.2.3")),
+    ("GoLand 2026.2.3", "JetBrains s.r.o.", "262.10968.67", ("jetbrains:goland", "2026.2.3")),
+    ("PhpStorm 2026.2.3", "JetBrains s.r.o.", "262.10968.76", ("jetbrains:phpstorm", "2026.2.3")),
+    ("CLion 2026.2.3.1", "JetBrains s.r.o.", "262.10968.176", ("jetbrains:clion", "2026.2.3.1")),
+    ("DataGrip 2026.2.6", "JetBrains s.r.o.", "262.10968.148", ("jetbrains:datagrip", "2026.2.6")),
+    ("Neovim", "neovim.io", "0.12.5", ("neovim:neovim", "0.12.5")),
+    ("Strawberry Perl (64-bit)", "strawberryperl.com project", "5.42.2001", ("perl:perl", "5.42.2")),
+    ("TortoiseGit 2.19.0.0 (64 bit)", "TortoiseGit", "2.19.0.0", ("tortoisegit:tortoisegit", "2.19.0.0")),
+    ("TortoiseSVN 1.14.9.29743 (64 bit)", "TortoiseSVN", "1.14.29743", ("tigris:tortoisesvn", "1.14.9")),
+    ("MobaXterm", "Mobatek", "26.5.0.5542", ("mobatek:mobaxterm", "26.5.0.5542")),
+    ("Inkscape", "Inkscape", "1.4.3", ("inkscape:inkscape", "1.4.3")),
+    ("Nmap 7.60", None, "7.60", ("nmap:nmap", "7.60")),
+    ("Ruby 3.3", "RubyInstaller Team", "3.3.12-2-x64", ("ruby-lang:ruby", "3.3.12")),
+    ("Postman x64 12.34.3", "Postman", "12.34.3", ("postman:postman", "12.34.3")),
+    # batch 7, from winget manifests or known installers: not yet on a VM
+    ("Adobe Acrobat (64-bit)", "Adobe", "26.002.22031", ("adobe:acrobat_dc", "26.002.22031")),
+    ("JetBrains TeamCity 2026.2.1", "JetBrains s.r.o.", "Build 239120", ("jetbrains:teamcity", "2026.2.1")),
+    ("Atlassian Confluence 10.2.19", "Atlassian", "10.2.19", ("atlassian:confluence_data_center", "10.2.19")),
+    ("Octopus Deploy Server", "Octopus Deploy Pty. Ltd.", "2025.3.14327", ("octopus:octopus_server", "2025.3.14327")),
+    ("Ollama version 0.40.13", "Ollama", "0.40.13", ("ollama:ollama", "0.40.13")),
+    ("OpenSSL 3.5.6 Light LTS (64-bit)", "OpenSSL Win64 Installer Team", "3.5.6", ("openssl:openssl", "3.5.6")),
+    ("OpenSSL Light 4.1.0 for ARM (64-bit)", "OpenSSL Win64 ARM Installer Team", "4.1.0.0", ("openssl:openssl", "4.1.0")),
+    ("ClamAV 1.5.4", "Cisco Systems, Inc.", "1.5.4.0", ("clamav:clamav", "1.5.4")),
+    ("Sandboxie-Plus v1.18.6", "http://xanasoft.com/", "1.18.6", ("sandboxie-plus:sandboxie", "1.18.6")),
+    ("Tenable Nessus (x64)", "Tenable, Inc.", "10.12.6.20073", ("tenable:nessus", "10.12.6")),
+    ("Nessus Agent (x64)", "Tenable, Inc.", "11.2.3.20022", ("tenable:nessus_agent", "11.2.3")),
+    ("Joplin 3.7.22", "Laurent Cozic", "3.7.22", ("joplin_project:joplin", "3.7.22")),
+    ("Mattermost", "Mattermost, Inc.", "6.3.1.0", ("mattermost:mattermost_desktop", "6.3.1.0")),
+    ("Plex Media Server", "Plex, Inc.", "1.43.5.11079", ("plex:media_server", "1.43.5.11079")),
+    ("SonicWall NetExtender", "SonicWall Inc.", "10.3.5.1", ("sonicwall:netextender", "10.3.5")),
+    ("Splashtop Streamer", "Splashtop Inc.", "3.8.6.3", ("splashtop:streamer", "3.8.6.3")),
+    ("PaperCut NG", "PaperCut Software International Pty Ltd", "21.0.3.57216", ("papercut:papercut_ng", "21.0.3")),
+    ("OpenSC smartcard framework (64bit)", "OpenSC Project", "0.27.1.0", ("opensc_project:opensc", "0.27.1")),
+    ("Amazon Corretto JDK 21 (x64)", "Amazon", "21.0.13.11", ("oracle:openjdk", "21.0.13")),
+    # as real installers register them (batch 7 on a Windows 11 VM, 2026-11-03): each was inventory only before
+    ("Confluence 10.2.18", "Atlassian", "10.2.18", ("atlassian:confluence_data_center", "10.2.18")),
+    ("OpenSSL Light 4.0.3 (64-bit)", "Shining Light Productions", "4.0.3", ("openssl:openssl", "4.0.3")),
+    ("Nessus Agent (x64)", "Tenable", "11.2.3.20022", ("tenable:nessus_agent", "11.2.3")),
+    ("Plex Media Server 1.43.5.11079 (x64)", "Plex, Inc.", "1.43.5.11079", ("plex:media_server", "1.43.5.11079")),
+    ("Amazon Corretto (x64)", "Amazon", "21.0.13.0", ("oracle:openjdk", "21.0.13")),
+    ("Liberica JDK 21 (64-bit)", "BellSoft", "21.0.13.305", ("oracle:openjdk", "21.0.13")),
+    ("IntelliJ IDEA 2026.2.4", "JetBrains s.r.o.", "262.11879.100", ("jetbrains:intellij_idea", "2026.2.4")),
+    ("PyCharm 2026.2.4", "JetBrains s.r.o.", "262.11879.98", ("jetbrains:pycharm", "2026.2.4")),
+])
+def test_identify_batches(name, pub, ver, want):
+    assert winapps.identify(name, pub, ver) == want
+
+
+@pytest.mark.parametrize("name,pub,ver", [
+    ("Eclipse Temurin JDK with Hotspot 8u432-b06 (x64)", "Eclipse Adoptium", "8.0.432.6"),  # Java 8 numbering: left out
+    ("TeamViewer QuickSupport", "TeamViewer", "15.59.5"),
+    ("Vivaldi", "Someone Else", "7.0"),
+    ("OpenVPN Connect", "OpenVPN Inc.", "3.5.1"),
+    ("Docker Desktop", "Not Docker", "4.36.0"),
+    ("VMware Horizon Client", "VMware, Inc.", "8.13.0"),
+    ("Cursor (User)", "Someone Else", "3.19.7"),
+    ("Discord", "Discord Fan Tools", "1.0"),
+    ("Nextcloud Talk", "Nextcloud GmbH", "22.0.0"),
+    ("PostgreSQL ODBC Driver", "PostgreSQL Global Development Group", "16.0"),
+    ("GNU Privacy Guard", "The GnuPG Project", "2.5.21"),
+    ("XAMPP", "Apache Friends", "8.2.4-0"),
+    ("Foxit PDF Editor", "Foxit Software Inc.", "14.0.8.33807"),
+    ("Redis on Windows", "MSOpenTech", "3.0.504"),
+    ("Ruby 3.3", "Someone Else", "3.3.12"),
+    ("Npcap 0.93", "Nmap Project", "0.93"),
+    ("Strawberry Perl (64-bit)", "strawberryperl.com project", "not-a-version"),
+    ("pgAdmin 4 version 9.18", "The pgAdmin Development Team", "9.18"),
+    ("MySQL Workbench 8.0 CE", "Oracle Corporation", "8.0.40"),
+    ("MySQL Server 8.4", "Someone Else", "8.4.9"),
+    ("SourceTree", "Someone Else", "3.4.32"),
+    ("Adobe Acrobat (64-bit)", "Adobe", "24.001.30356"),  # the classic track, which NVD keeps apart from continuous
+    ("Adobe Acrobat 2020", "Adobe", "20.001.30002"),
+    ("Adobe Acrobat (64-bit)", "Someone Else", "26.002.22031"),
+    ("JetBrains TeamCity", "JetBrains s.r.o.", "Build 239120"),  # a build number isn't a release
+    ("TeamCity Agent", "JetBrains s.r.o.", "2026.2"),
+    ("Atlassian Confluence 10.2.19", "Someone Else", "10.2.19"),
+    ("Atlassian Companion", "Atlassian", "2.0"),
+    ("Octopus Deploy Tentacle", "Octopus Deploy Pty. Ltd.", "8.3.3164"),
+    ("Ollama", "Someone Else", "0.40.13"),
+    ("OpenSSL 1.1.1w Light (64-bit)", "OpenSSL Win64 Installer Team", "1.1.1w"),  # NVD letters: left out
+    ("FireDaemon OpenSSL 3", "FireDaemon", "3.5.6"),
+    ("OpenSSL 3.5.6 Light (64-bit)", "Someone Else", "3.5.6"),
+    ("ClamWin Free Antivirus", "alch", "0.103"),
+    ("Sandboxie 5.73.8 (64-bit)", "Sandboxie Holdings, LLC", "5.73.8"),  # Classic
+    ("Nessus Network Monitor", "Tenable, Inc.", "6.5.1"),
+    ("Joplin", "Someone Else", "3.7.22"),
+    ("Mattermost", "Someone Else", "6.3.1"),
+    ("Plex", "Plex, Inc.", "1.115.0"),
+    ("Plex HTPC", "Plex, Inc.", "1.71.1"),
+    ("Connect Tunnel", "SonicWall Inc.", "12.5.0.1108"),
+    ("Splashtop Business", "Splashtop Inc.", "3.8.601.0"),
+    ("PaperCut Mobility Print", "PaperCut Software International Pty Ltd", "2026.09.28.1448"),
+    ("PaperCut MF", "PaperCut Software International Pty Ltd", "25.0.10"),
+    ("OpenSC smartcard framework (64bit)", "Someone Else", "0.27.1"),
+    ("Liberica JDK 8 (64-bit)", "BellSoft", "8.0.432.7"),  # Java 8 numbering: left out
+    ("Azul Zulu JDK 21", "Azul Systems, Inc.", "21.54.109"),  # its own numbers
+    ("Amazon Corretto JDK 8 (x64)", "Amazon", "8.462.8.1"),
+    ("Amazon Corretto (x64)", "Amazon", "8.472.08.1"),  # the bare name is Java 8 too: refused by its version
+    ("Confluence 10.2.18", "Someone Else", "10.2.18"),
+    ("IntelliJ IDEA 2026.3 EAP", "JetBrains s.r.o.", "263.1.1"),
+    ("PyCharm 2026.2.4", "Someone Else", "262.11879.98"),
+    ("Erlang OTP 27 (15.2)", "Ericsson AB", "15.2"),  # the ERTS version, not OTP
+    ("Wazuh Agent", "Wazuh, Inc", "4.14.3"),
+    ("Zabbix Agent 2 (64-bit)", "Zabbix SIA", "7.4.2"),
+])
+def test_identify_batch_near_misses(name, pub, ver):
+    assert winapps.identify(name, pub, ver) is None
+
+
+# ---- users who aren't signed in (plan T34) ----------------------------------------------------------------------
+
+class OfflineReg(FakeReg):
+    """Two profiles: S-...-1001 signed in (hive loaded), S-...-1002 signed out (NTUSER.DAT on disk only)."""
+
+    def __init__(self, tmp_path, fail_load=False):
+        self.home = tmp_path / "bob"
+        self.home.mkdir()
+        (self.home / "NTUSER.DAT").write_bytes(b"regf")
+        self.offline = {"zoom": {"DisplayName": "Zoom Workplace (64-bit)", "DisplayVersion": "6.2.5", "Publisher": "Zoom Communications, Inc."}}
+        super().__init__({})
+        self.log, self.fail_load = [], fail_load
+
+    def OpenKey(self, parent, path, reserved=0, access=0):  # noqa: N802
+        if parent == self.HKEY_LOCAL_MACHINE and path == agent.PROFILES:
+            return FakeKey(subs={"S-1-5-21-1-2-3-1001": {}, "S-1-5-21-1-2-3-1002": {}, "S-1-5-18": {}})
+        if parent == self.HKEY_LOCAL_MACHINE and path.startswith(agent.PROFILES + "\\"):
+            return FakeKey(values={"ProfileImagePath": str(self.home)})
+        return super().OpenKey(parent, path, reserved, access)
+
+    def run(self, cmd):
+        self.log.append(cmd[:3])
+        if cmd[1] == "load":
+            if self.fail_load:
+                return 1, "ERROR: The process cannot access the file because it is being used by another process."
+            self.tree[(("HKU", cmd[2].split("\\")[1]), 0)] = self.offline
+        elif cmd[1] == "unload":
+            self.tree.pop((("HKU", cmd[2].split("\\")[1]), 0), None)
+        return 0, ""
+
+
+def test_offline_profiles_are_loaded_read_and_always_unloaded(tmp_path):
+    reg = OfflineReg(tmp_path)
+    apps = agent.offline_user_apps(reg, reg.run, loaded=["S-1-5-21-1-2-3-1001"])
+    assert [a["name"] for a in apps] == ["Zoom Workplace (64-bit)"]
+    tmp = r"HKU\NimsteadOffline_S_1_5_21_1_2_3_1002"
+    assert reg.log == [["reg", "load", tmp], ["reg", "unload", tmp]]  # only the signed-out user's hive, then unloaded
+    assert not reg.tree  # nothing left loaded
+
+
+def test_offline_hive_unloaded_even_when_reading_fails(tmp_path, monkeypatch):
+    reg = OfflineReg(tmp_path)
+    monkeypatch.setattr(agent, "windows_apps", lambda r, users=None, problems=None: (_ for _ in ()).throw(OSError("corrupt hive")))
+    with pytest.raises(OSError):
+        agent.offline_user_apps(reg, reg.run, loaded=[])
+    assert reg.log[-1][:2] == ["reg", "unload"]
+
+
+def test_a_hive_in_use_is_skipped(tmp_path):
+    reg = OfflineReg(tmp_path, fail_load=True)
+    assert agent.offline_user_apps(reg, reg.run, loaded=["S-1-5-21-1-2-3-1001"]) == [] and [c[1] for c in reg.log] == ["load"]
+
+
+def test_imagemagick_dashed_versions_compare_with_the_registry_number():
+    cve = {"id": "CVE-2026-1", "configurations": [{"nodes": [{"cpeMatch": [
+        {"vulnerable": True, "criteria": "cpe:2.3:a:imagemagick:imagemagick:*:*:*:*:*:*:*:*", "versionStartIncluding": "7.0.0-0", "versionEndExcluding": "7.1.2-34"}]}]}]}
+    [(key, rec)] = winapps.advisories(cve)
+    assert key == "imagemagick:imagemagick"
+    assert rec["affected"][0]["ranges"][0]["events"] == [{"introduced": "7.0.0.0"}, {"fixed": "7.1.2.34"}]
+
+
+def test_a_configuration_without_nodes_is_skipped_not_fatal():
+    # real NVD feed, 2026-11-01: this stopped the whole sync
+    cve = {"id": "CVE-2026-1", "configurations": [{"operator": "AND"}, {"nodes": [{"cpeMatch": [
+        {"vulnerable": True, "criteria": "cpe:2.3:a:7-zip:7-zip:*:*:*:*:*:*:*:*", "versionEndExcluding": "24.09"}]}]}]}
+    assert [k for k, _ in winapps.advisories(cve)] == ["7-zip:7-zip"]
+
+
+def test_a_cve_tied_to_apple_hardware_never_reaches_windows():
+    cve = {"id": "CVE-2024-11691", "configurations": [{"operator": "AND", "nodes": [
+        {"cpeMatch": [{"vulnerable": True, "criteria": "cpe:2.3:a:mozilla:thunderbird:*:*:*:*:*:*:*:*", "versionEndExcluding": "128.5"}]},
+        {"cpeMatch": [{"vulnerable": False, "criteria": "cpe:2.3:h:apple:m1:-:*:*:*:*:*:*:*"}]}]}]}
+    assert winapps.advisories(cve) == []
+
+
+def test_rule_proposer_self_check():
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "sandbox"))
+    import winapps_propose
+    winapps_propose.self_check()
+
+
+def test_a_second_nvd_name_for_docker_desktop_feeds_the_same_key():
+    assert winapps._BY_CPE["docker:docker_desktop"].key == "docker:desktop"
+
+
+def test_batch_7_dead_branches_are_reported_ended():
+    from datetime import date
+
+    from nimstead import lifecycle
+    eol = {"openssl": lifecycle.parse_eol([{"cycle": "3.0", "eol": "2026-09-07"}, {"cycle": "3.5", "eol": "2030-04-08"}]),
+           "clamav": lifecycle.parse_eol([{"cycle": "1.5", "eol": False}, {"cycle": "1.0", "eol": "2025-08-14"}]),
+           "confluence": lifecycle.parse_eol([{"cycle": "10.2", "eol": "2027-12-02"}, {"cycle": "8.5", "eol": "2025-11-30"}])}
+    verdict = lambda k, v: lifecycle.app_verdict(k, v, eol, date(2026, 11, 2))  # noqa: E731
+    assert verdict("openssl:openssl", "3.0.15")[0] == "ended" and verdict("openssl:openssl", "3.5.6") is None
+    assert verdict("clamav:clamav", "1.0.7")[0] == "ended" and verdict("clamav:clamav", "1.5.4") is None
+    assert verdict("atlassian:confluence_data_center", "8.5.20")[0] == "ended" and verdict("atlassian:confluence_data_center", "10.2.19") is None
+
+
+def test_a_dead_thunderbird_branch_is_reported_ended():
+    from datetime import date
+
+    from nimstead import lifecycle
+    cycles = lifecycle.parse_thunderbird({"LATEST_THUNDERBIRD_VERSION": "159.0", "THUNDERBIRD_ESR": "153.6.0esr"})
+    verdict = lambda v: lifecycle.app_verdict("mozilla:thunderbird", v, {"thunderbird": cycles}, date(2026, 11, 1))  # noqa: E731
+    assert verdict("115.6.0")[0] == "ended" and verdict("158.0")[0] == "ended"
+    assert verdict("153.6.0") is None and verdict("159.0") is None
+    with pytest.raises(ValueError):
+        lifecycle.parse_thunderbird({"LATEST_THUNDERBIRD_VERSION": "54.0", "THUNDERBIRD_ESR": "153.0"})

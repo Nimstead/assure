@@ -23,19 +23,20 @@ from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
+from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import Integer, delete, func, select
+from sqlalchemy import Integer, and_, delete, func, or_, select
 from sqlalchemy.orm import Session
 
-from nimstead import ai, evidence, external, mfa, notify, remediate, sbom, sso, updates
+from nimstead import ai, engine, evidence, external, lifecycle, mfa, notify, remediate, sbom, sso, updates, winbaseline, windrivers
 from nimstead.db import (
     ApiToken,
     Asset,
     AuthFailure,
+    DirectoryComputer,
     EnrollToken,
     Finding,
     InstalledPackage,
@@ -45,13 +46,16 @@ from nimstead.db import (
     PendingLogin,
     PendingSignup,
     RemediationJob,
+    ScanRecord,
     User,
     WebSession,
     make_sessionmaker,
     now,
 )
+from nimstead.engine import fleet as engine_fleet
+from nimstead.engine.collection import valid_document
 from nimstead.netguard import check_public_url
-from nimstead.scan import rescan
+from nimstead.scan import app_coverage, rescan
 from nimstead.versions import comparator_for
 
 SESSION_COOKIE = "nimstead_session"
@@ -335,6 +339,20 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     @app.get("/agent/nimstead_agent.py")
     def agent_file():
         return Response(AGENT_FILE.read_bytes(), media_type="text/x-python")
+
+    @app.get("/agent/runtime/{arch}.zip")
+    def agent_runtime(arch: str):
+        """The Windows agent's bundled Python, only as the signed release names it (plan decision 9)."""
+        rt = (json.loads(rel["release"]).get("runtimes") or {}) if (rel := signed_release()) else {}
+        if arch not in rt or arch not in ("amd64", "arm64", "win32"):
+            raise HTTPException(404, "No signed runtime for this architecture on this server")
+        try:
+            body = updates.runtime_file(arch).read_bytes()
+        except OSError:
+            raise HTTPException(404, "Runtime not fetched yet; the hourly feed update fetches it") from None
+        if hashlib.sha256(body).hexdigest() != rt[arch]["sha256"]:
+            raise HTTPException(404, "Stored runtime doesn't match the signed release")
+        return Response(body, media_type="application/zip")
 
     # --- auth --------------------------------------------------------------
 
@@ -771,6 +789,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         name: str = Field(max_length=255)
         version: str = Field(max_length=255)
         source: str | None = Field(None, max_length=255)
+        source_version: str | None = Field(None, max_length=255)  # None from agents older than this, and where it equals version
 
     class Inventory(BaseModel):
         os_name: str = Field("", max_length=255)
@@ -779,6 +798,21 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         agent_version: str = Field("", max_length=50)
         auto_update: bool | None = None  # None: agent older than 0.2.0, can't update itself
         update_error: str | None = Field(None, max_length=500)
+        facts: dict | None = None  # checked by facts_ok: small, flat, plain values
+        collection: dict | None = None  # checked by engine's valid_document: closed and bounded. None: agent older than this
+
+    def facts_ok(f: dict) -> bool:
+        def plain(v, depth=0):
+            if v is None or isinstance(v, (bool, int, float)):
+                return True
+            if isinstance(v, str):
+                return len(v) <= 500
+            if isinstance(v, list):
+                return depth < 4 and len(v) <= 500 and all(plain(x, depth + 1) for x in v)  # lists of rows (jar locations)
+            if isinstance(v, dict):
+                return depth < 3 and len(v) <= 200 and all(isinstance(k, str) and len(k) <= 100 and plain(x, depth + 1) for k, x in v.items())
+            return False
+        return len(f) <= 64 and all(isinstance(k, str) and len(k) <= 64 for k in f) and plain(f) and len(json.dumps(f)) <= 64_000
 
     def current_agent(s: DB, authorization: Annotated[str | None, Header()] = None) -> Asset:
         if not authorization or not authorization.startswith("Bearer "):
@@ -788,8 +822,17 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             raise HTTPException(401, "Unknown agent key")
         return asset
 
+    def store_scan_report(asset_id: str) -> None:
+        """After the response: the engine's report, stored for the fleet's attack paths (DECISIONS 98). Never fails the inventory."""
+        with Sessions() as s:
+            try:
+                if a := s.get(Asset, asset_id):
+                    engine.asset_report(s, a)
+            except Exception:
+                log.exception("engine report for asset %s failed", asset_id)
+
     @app.post("/api/agent/inventory")
-    def agent_inventory(body: Inventory, s: DB, asset: Annotated[Asset, Depends(current_agent)]):
+    def agent_inventory(body: Inventory, s: DB, asset: Annotated[Asset, Depends(current_agent)], tasks: BackgroundTasks):
         if asset.last_inventory_at and now() - asset.last_inventory_at < timedelta(seconds=INVENTORY_MIN_SECONDS):
             raise HTTPException(429, f"Inventory already received; send at most one every {INVENTORY_MIN_SECONDS}s")
         if over_limit(s, "inventory:" + asset.org_id, ORG_INVENTORY_MAX_PER_HOUR):  # many fake hosts can't bypass the per-host limit
@@ -798,14 +841,137 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         asset.os_name, asset.ecosystem, asset.last_seen = body.os_name or asset.os_name, body.ecosystem or asset.ecosystem, now()
         asset.agent_version, asset.auto_update, asset.agent_update_error = body.agent_version, body.auto_update, body.update_error
         asset.silent_alerted_at = None
-        s.execute(delete(InstalledPackage).where(InstalledPackage.asset_id == asset.id, InstalledPackage.origin == "agent"))
-        s.add_all(InstalledPackage(asset_id=asset.id, origin="agent", **p.model_dump()) for p in body.packages)
+        # never the last report's: it describes the packages arriving now, or says nothing. What doesn't fit is dropped, like facts
+        asset.collection = body.collection if valid_document(body.collection) else None
+        if body.facts is not None:
+            if facts_ok(body.facts):  # facts that don't fit are dropped, never the packages with them
+                asset.facts = body.facts
+            elif asset.collection:  # the stored facts are the last report's, and the engine must know
+                asset.collection = {**asset.collection, "sources": {**asset.collection["sources"], "host_facts": {
+                    "state": "failed", "count": 0, "error": "these facts were too large for the server, so older ones are stored"}}}
+        db_read = ((asset.collection or {}).get("sources") or {}).get("package_db")
+        if not (db_read and (db_read["state"] != "ok" or not db_read.get("count"))):  # DECISIONS 83: a Linux list not read in full doesn't replace the last
+            s.execute(delete(InstalledPackage).where(InstalledPackage.asset_id == asset.id, InstalledPackage.origin == "agent"))
+            s.add_all(InstalledPackage(asset_id=asset.id, origin="agent", **p.model_dump()) for p in body.packages)
         s.flush()
         result = rescan(s, asset)
         remediate.verify(s, asset)
         remediate.auto_remediate(s, asset)
         s.commit()
+        tasks.add_task(store_scan_report, asset.id)
         return result
+
+    class DirectoryEntry(BaseModel):
+        name: str = Field(min_length=1, max_length=255)
+        os: str = Field("", max_length=255)
+        os_version: str = Field("", max_length=100)
+        last_logon: datetime | None = None
+
+    class Directory(BaseModel):
+        domain: str = Field(min_length=1, max_length=255)
+        computers: list[DirectoryEntry] = Field(max_length=20_000)
+
+    def csv_safe(v: str) -> str:  # same rule as the findings export: no formula injection into spreadsheets
+        return "'" + v if v[:1] in ("=", "+", "-", "@", "\t", "\r") else v
+
+    @app.post("/api/agent/directory")
+    def agent_directory(body: Directory, s: DB, asset: Annotated[Asset, Depends(current_agent)]):
+        """Computer objects an opted-in agent read from its domain (plan T43); replaces that domain's list for the org."""
+        if not asset.directory_source:  # any other host's key acts only on its own asset (DECISIONS 27, 102)
+            raise HTTPException(403, "An admin has to choose this machine as the directory source on the Assets page first")
+        if over_limit(s, "directory:" + asset.id, 24):
+            raise HTTPException(429, "Directory already received recently")
+        domain = body.domain.strip().lower()
+        # one directory per org, replaced whole: a fake host inventing domains can't grow the shared database
+        s.execute(delete(DirectoryComputer).where(DirectoryComputer.org_id == asset.org_id))
+        seen = set()
+        for c in body.computers:
+            name = c.name.strip().lower()
+            if name and name not in seen:
+                seen.add(name)
+                s.add(DirectoryComputer(org_id=asset.org_id, domain=domain, name=name, os=c.os, os_version=c.os_version,
+                                        last_logon=c.last_logon.replace(tzinfo=None) if c.last_logon else None))
+        s.commit()
+        return {"computers": len(seen)}
+
+    @app.get("/api/directory/unmanaged")
+    def unmanaged_computers(user: CurrentUser, s: DB, format: str | None = None):
+        """Enabled computers seen in their domain in the last 30 days that have no enrolled agent (plan T43)."""
+        hosts = {h.lower().split(".")[0] for h in s.scalars(select(Asset.hostname).where(Asset.org_id == user.org_id, Asset.kind == "host"))}
+        cutoff = now() - timedelta(days=30)
+        rows = [c for c in s.scalars(select(DirectoryComputer).where(DirectoryComputer.org_id == user.org_id).order_by(DirectoryComputer.name))
+                if c.name.split(".")[0] not in hosts and c.last_logon and c.last_logon >= cutoff]
+        out = [{"domain": c.domain, "name": c.name, "os": c.os, "os_version": c.os_version, "last_logon": c.last_logon,
+                "end_of_support": (lambda r: r.label if r and lifecycle.verdict(r, None, now().date()) else None)(
+                    lifecycle.directory_row(c.os, c.os_version))} for c in rows]
+        if format == "csv":
+            buf = io.StringIO()
+            w = csv.writer(buf)
+            w.writerow(["domain", "name", "os", "os_version", "last_logon", "end_of_support"])
+            for r in out:
+                w.writerow([csv_safe(str(r[k] or "")) for k in ("domain", "name", "os", "os_version", "last_logon", "end_of_support")])
+            return Response(buf.getvalue(), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=unmanaged-windows.csv"})
+        return out
+
+    BASELINE_COLUMNS = ["hostname", "baseline", "version", "rule_id", "vuln_id", "severity", "status", "setting", "expected", "found", "note"]
+
+    def windows_hosts(s: Session, org_id: str):
+        return s.scalars(select(Asset).where(Asset.org_id == org_id, Asset.kind == "host", Asset.ecosystem == "Windows").order_by(Asset.hostname))
+
+    @app.get("/api/baselines")
+    def baseline_fleet(user: CurrentUser, s: DB):
+        """How Windows hosts compare with the automated part of a baseline (DECISIONS 75). A reference, never a conformance result."""
+        hosts, fleet, none = [], {}, 0
+        for a in windows_hosts(s, user.org_id):
+            r = winbaseline.evaluate(a.os_name, a.facts)
+            if not r:
+                none += 1
+                continue
+            r.pop("rules")
+            hosts.append({"asset_id": a.id, "hostname": a.hostname, "last_seen": a.last_seen, **r})
+            f = fleet.setdefault(r["baseline_id"], {**{k: r[k] for k in ("baseline_id", "name", "version", "automated", "manual")},
+                                                    "hosts": 0, "pass": 0, "fail": 0, "not_assessed": 0, "not_applicable": 0})
+            f["hosts"] += 1
+            for k in ("pass", "fail", "not_assessed", "not_applicable"):
+                f[k] += r[k]
+        return {"baselines": list(fleet.values()), "hosts": hosts, "no_baseline": none}
+
+    @app.get("/api/baselines.csv")
+    def export_baselines(user: CurrentUser, s: DB):
+        if over_limit(s, "export:" + user.org_id, EXPORT_MAX_PER_HOUR):  # hosts times rules: each one reads every Windows host's facts
+            raise HTTPException(429, f"At most {EXPORT_MAX_PER_HOUR} exports an hour")
+        org_id = user.org_id
+
+        def rows():  # streamed from its own session, like the findings export
+            buf = io.StringIO()
+            w = csv.writer(buf)
+
+            def line(cells):
+                buf.seek(0)
+                buf.truncate()
+                w.writerow([csv_safe(str(c)) for c in cells])
+                return buf.getvalue()
+            yield line(BASELINE_COLUMNS)
+            with Sessions() as s2:
+                for a in windows_hosts(s2, org_id):
+                    r = winbaseline.evaluate(a.os_name, a.facts)
+                    if not r:
+                        continue
+                    for x in r["rules"]:
+                        yield line([a.hostname, r["name"], r["version"], x["id"], x["v"], x["severity"], x["status"], x["setting"], x["expected"], x["found"], x["note"]])
+                    for x in winbaseline.for_host(a.os_name)["not_automated"]:
+                        yield line([a.hostname, r["name"], r["version"], x["id"], x["v"], x["sev"], "not assessed (manual)", "", "", "", ""])
+        return StreamingResponse(rows(), media_type="text/csv", headers={"Content-Disposition": 'attachment; filename="nimstead-baselines.csv"'})
+
+    @app.get("/api/baselines/{asset_id}")
+    def baseline_host(asset_id: str, user: CurrentUser, s: DB):
+        a = s.get(Asset, asset_id)
+        if not a or a.org_id != user.org_id or a.kind != "host":
+            raise HTTPException(404, "No such host")
+        r = winbaseline.evaluate(a.os_name, a.facts)
+        if not r:
+            raise HTTPException(404, "No baseline for this host's operating system")
+        return {"asset_id": a.id, "hostname": a.hostname, **r}
 
     @app.get("/api/agent/manifest")
     def agent_manifest(s: DB, asset: Annotated[Asset, Depends(current_agent)]):
@@ -821,9 +987,14 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         steps: list[dict] = Field(default_factory=list, max_length=200)
         versions: dict[str, str | None] | None = Field(None, max_length=500)
         error: str | None = Field(None, max_length=5000)
+        offered: list | None = Field(None, max_length=10)  # Windows Update's offer instead of the job's KBs; checked in plan_step
+
+    def plan_step(job_id: str, offered: list) -> None:
+        with Sessions() as s:  # after the response: an MSRC month can take longer than the agent waits
+            remediate.plan_step(s, s.get(RemediationJob, job_id), offered)
 
     @app.post("/api/agent/jobs/{job_id}/report")
-    def agent_job_report(job_id: str, body: JobReport, s: DB, asset: Annotated[Asset, Depends(current_agent)]):
+    def agent_job_report(job_id: str, body: JobReport, s: DB, asset: Annotated[Asset, Depends(current_agent)], tasks: BackgroundTasks):
         job = s.get(RemediationJob, job_id)
         if not job or job.asset_id != asset.id:
             raise HTTPException(404, "Job not found")
@@ -832,21 +1003,25 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         except remediate.RemediationError as e:
             raise HTTPException(409, str(e)) from None
         s.commit()
+        if job.status == "aborted" and body.offered:  # an earlier cumulative update may be the way forward (DECISIONS 95)
+            tasks.add_task(plan_step, job.id, body.offered)
         return {"status": job.status}
 
     # --- assets ------------------------------------------------------------
 
-    def asset_json(a: Asset, counts: dict, paused: bool = False, release: bool | None = None) -> dict:
+    def asset_json(a: Asset, counts: dict, paused: bool = False, release: bool | None = None, apps: dict | None = None) -> dict:
         if release is None and a.kind == "host":
             release = signed_release() is not None
         return {
             "id": a.id, "hostname": a.hostname, "os_name": a.os_name, "ecosystem": a.ecosystem,
-            "kind": a.kind, "criticality": a.criticality, "internet_facing": a.internet_facing, "sandbox": a.sandbox,
+            "kind": a.kind, "criticality": a.criticality, "internet_facing": a.internet_facing, "directory_source": a.directory_source, "sandbox": a.sandbox,
             "ring": a.ring, "health_units": a.health_units,
             "first_seen": a.first_seen, "last_seen": a.last_seen, "open_by_priority": counts,
+            **({"apps": apps} if apps else {}),
             **({"agent_version": a.agent_version, "agent_outdated": a.agent_version != latest_agent_version(),
                 "agent_update": agent_update_status(a, paused, release), "agent_update_error": a.agent_update_error,
-                "not_reporting": a.last_seen < now() - notify.SILENT_AFTER}
+                "not_reporting": a.last_seen < now() - notify.SILENT_AFTER, "facts": a.facts or {},
+                "maintenance_window": a.maintenance_window}
                if a.kind == "host" else {}),
             **({"verified": a.verified_at is not None, "verified_at": a.verified_at, "txt_name": external.txt_name(a.hostname),
                 "txt_value": external.txt_value(a.org_id, a.hostname), "proof_path": external.PROOF_PATH} if a.kind == "external" else {}),
@@ -864,7 +1039,17 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             counts[aid][prio] = n
         assets = s.scalars(select(Asset).where(Asset.org_id == user.org_id).order_by(Asset.hostname)).all()
         paused, release = s.get(Org, user.org_id).agent_updates_paused, signed_release() is not None
-        return [asset_json(a, counts[a.id], paused, release) for a in assets]
+        apps = app_coverage(s, user.org_id)[0]
+        return [asset_json(a, counts[a.id], paused, release, apps.get(a.id)) for a in assets]
+
+    @app.get("/api/coverage")
+    def coverage(user: CurrentUser, s: DB):
+        """How much of the fleet's Windows software is checked at all, so a clean result can't be misread."""
+        per_asset, missed = app_coverage(s, user.org_id)
+        top = sorted(missed.items(), key=lambda m: (-len(m[1]), m[0][0]))[:200]
+        return {"assessed": sum(a["assessed"] for a in per_asset.values()),
+                "inventory_only": sum(a["inventory_only"] for a in per_asset.values()),
+                "not_assessed": [{"name": n, "publisher": p, "hosts": len(ids)} for (n, p), ids in top]}
 
     def owned_asset(s: Session, user: User, asset_id: str) -> Asset:
         a = s.get(Asset, asset_id)
@@ -876,24 +1061,51 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def delete_asset(asset_id: str, user: Admin, s: DB):
         a = owned_asset(s, user, asset_id)
         evidence.append(s, user.org_id, "asset_deleted", a.id, {"by": user.email, "hostname": a.hostname})
-        for model in (Finding, InstalledPackage, RemediationJob):
+        for model in (Finding, InstalledPackage, RemediationJob, ScanRecord):
             s.execute(delete(model).where(model.asset_id == a.id))
         s.delete(a)
         s.commit()
 
+    @app.get("/api/assets/{asset_id}/scan-report")
+    def asset_scan_report(asset_id: str, user: CurrentUser, s: DB):
+        """Every check's verdict on this host's stored inventory (nimstead/engine). Findings still open and close through rescan."""
+        return engine.asset_report(s, owned_asset(s, user, asset_id))
+
+    @app.get("/api/attack-paths")
+    def attack_paths(user: CurrentUser, s: DB):
+        """Which hosts an attacker who gets into one can reach next, from each host's latest stored scan report (engine/fleet.py)."""
+        if over_limit(s, "attack-paths:" + user.org_id, 120):  # a whole-fleet read: shared server, so bounded per organisation
+            raise HTTPException(429, "Attack paths were read too often this hour; try again later")
+        s.commit()
+        newest = (select(ScanRecord.asset_id, func.max(ScanRecord.created).label("at")).where(ScanRecord.org_id == user.org_id)
+                  .group_by(ScanRecord.asset_id).subquery())
+        latest = {}  # the report only: the stored inventory can be 10 MB a host
+        for aid, report in s.execute(select(ScanRecord.asset_id, ScanRecord.report)
+                                     .join(newest, and_(ScanRecord.asset_id == newest.c.asset_id, ScanRecord.created == newest.c.at)).order_by(ScanRecord.id)):
+            latest.setdefault(aid, report)  # two records stored in the same instant: either is the latest
+        win = dict(s.execute(select(InstalledPackage.asset_id, InstalledPackage.version).join(Asset, Asset.id == InstalledPackage.asset_id)
+                             .where(Asset.org_id == user.org_id, InstalledPackage.ecosystem == "Windows")).all())
+        return engine_fleet.build([{"id": a.id, "hostname": a.hostname, "facts": a.facts or {}, "os_version": win.get(a.id, ""),
+                                    "report": latest.get(a.id), "internet_facing": a.internet_facing}
+                                   for a in s.scalars(select(Asset).where(Asset.org_id == user.org_id))])
+
     class AssetPatch(BaseModel):
         criticality: Literal["low", "medium", "high", "critical"] | None = None
         internet_facing: bool | None = None
+        directory_source: bool | None = None
         ring: Literal[0, 1] | None = None
         health_units: list[str] | None = Field(None, max_length=20)
+        maintenance_window: dict | None = None  # {} = use the organisation's
 
     @app.patch("/api/assets/{asset_id}")
     def update_asset(asset_id: str, body: AssetPatch, user: Admin, s: DB):
         a = owned_asset(s, user, asset_id)
         if body.health_units and not all(remediate.SAFE_NAME.match(u) for u in body.health_units):
             raise HTTPException(422, "Invalid systemd unit name")
+        if body.maintenance_window and not remediate.valid_window(body.maintenance_window):
+            raise HTTPException(422, "Maintenance window needs days (0-6, Monday=0), start HH:MM, hours 1-24 and a time zone")
         for k, v in body.model_dump(exclude_none=True).items():
-            setattr(a, k, v)
+            setattr(a, k, v or None if k == "maintenance_window" else v)
         s.flush()
         evidence.append(s, a.org_id, "asset_context_changed", a.id, {"by": user.email, **body.model_dump(exclude_none=True)})
         rescan(s, a, inventory_received=False)  # context changed -> scores change
@@ -1019,6 +1231,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             "due": due.isoformat() if due else None,
             "id": f.id, "asset_id": f.asset_id, "hostname": hostname, "ecosystem": f.ecosystem,
             "package": f.package, "installed_version": f.installed_version, "fixed_version": f.fixed_version,
+            "setting_fix": f.ecosystem == "WinConfig" and f.package in remediate.CONFIG_FIXES,
             "vuln_id": f.vuln_id, "advisory_ids": f.advisory_ids, "summary": f.summary, "cvss": f.cvss,
             "epss": f.epss, "kev": f.kev, "score": f.score, "priority": f.priority, "reasons": f.reasons,
             "status": f.status, "first_seen": f.first_seen, "last_seen": f.last_seen, "resolved_at": f.resolved_at,
@@ -1090,7 +1303,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         if kev is not None:
             stmt = stmt.where(Finding.kev == kev)
         if fixable is not None:
-            stmt = stmt.where(Finding.fixed_version.is_not(None) if fixable else Finding.fixed_version.is_(None))
+            # a setting, an end of support or an exposure never has a fixed version, but there is always something to do
+            has_fix = Finding.fixed_version.is_not(None) | Finding.ecosystem.in_(("WinConfig", lifecycle.ECOSYSTEM, external.ECOSYSTEM, windrivers.ECOSYSTEM))
+            stmt = stmt.where(has_fix if fixable else ~has_fix)
         if q:
             like = f"%{q.lower()}%"
             stmt = stmt.where(func.lower(Finding.package).like(like) | func.lower(Finding.vuln_id).like(like) | func.lower(Asset.hostname).like(like))
@@ -1162,6 +1377,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             "action_key": j.action_key, "packages": j.packages, "finding_ids": j.finding_ids, "summary": j.summary,
             "created_by": j.created_by, "approved_by": j.approved_by, "created": j.created, "updated": j.updated,
             "steps": j.steps, "error": j.error, "result_versions": j.result_versions,
+            "forward_only": j.manager in remediate.FORWARD_ONLY,
         }
 
     class PlanReq(BaseModel):
@@ -1187,15 +1403,39 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                 .where(RemediationJob.org_id == user.org_id))
         if status:
             stmt = stmt.where(RemediationJob.status.in_(status.split(",")))
-        return [job_json(j, h) for j, h in s.execute(stmt.order_by(RemediationJob.updated.desc()).limit(500))]
+        org_window = s.get(Org, user.org_id).maintenance_window
+        out = []
+        for j, h in s.execute(stmt.order_by(RemediationJob.updated.desc()).limit(500)):
+            d = job_json(j, h)
+            if j.status == "approved":  # approved but outside its window: say when it can start (plan T40)
+                inside, nxt = remediate.window_state(s.get(Asset, j.asset_id).maintenance_window or org_window)
+                d["waits_for_window"] = None if inside or nxt is None else nxt.strftime("%Y-%m-%dT%H:%M:%SZ")
+            out.append(d)
+        return out
+
+    @app.get("/api/windows-updates")
+    def windows_updates(user: CurrentUser, s: DB):
+        remediate.sweep(s, user.org_id)
+        return [{k: v for k, v in r.items() if k not in ("missing", "plan_asset_ids")} for r in remediate.kb_fleet(s, user.org_id)]
+
+    @app.get("/api/windows-updates/{kb}")
+    def windows_update_hosts(kb: str, user: CurrentUser, s: DB, product: str = Query(max_length=255)):
+        remediate.sweep(s, user.org_id)
+        row = next((r for r in remediate.kb_fleet(s, user.org_id) if r["kb"] == kb and r["product"] == product), None)
+        if not row:
+            raise HTTPException(404, "Update not found")
+        return row
+
+    class ApproveReq(BaseModel):
+        forward_only: bool = False  # the approver accepts a fix that can't be undone (winget, plan T22)
 
     @app.post("/api/remediation/jobs/{job_id}/approve")
-    def approve_job(job_id: str, user: Admin, s: DB):
+    def approve_job(job_id: str, user: Admin, s: DB, body: ApproveReq | None = None):
         job = s.get(RemediationJob, job_id)
         if not job or job.org_id != user.org_id:
             raise HTTPException(404, "Job not found")
         try:
-            remediate.approve(s, job, user.email)
+            remediate.approve(s, job, user.email, forward_only_ack=bool(body and body.forward_only))
         except remediate.RemediationError as e:
             raise HTTPException(409, str(e)) from None
         s.commit()
@@ -1216,6 +1456,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     class Policy(BaseModel):
         remediation_mode: Literal["suggest", "approve", "auto"] | None = None
         canary_soak_hours: int | None = Field(None, ge=1, le=720)
+        maintenance_window: dict | None = None  # {} clears it (any time); see remediate.valid_window
+        reboot_deadline_hours: int | None = Field(None, ge=1, le=168)
         agent_updates_paused: bool | None = None
         sla_days: dict[Literal["fix-now", "next", "planned", "low"], Annotated[int, Field(ge=1, le=365)]] | None = None
 
@@ -1223,6 +1465,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def get_settings(user: CurrentUser, s: DB):
         o = s.get(Org, user.org_id)
         return {"remediation_mode": o.remediation_mode, "canary_soak_hours": o.canary_soak_hours, "sla_days": evidence.sla_days(o),
+                "maintenance_window": o.maintenance_window, "reboot_deadline_hours": o.reboot_deadline_hours,
                 "agent_updates_paused": o.agent_updates_paused, "signed_agent_release": signed_release() is not None,
                 "platform": updates.status(),
                 "production_remediation_allowed": remediate.production_allowed()}
@@ -1233,6 +1476,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         changes = body.model_dump(exclude_none=True)
         if "sla_days" in changes:  # organisation-defined periods (NIST SI-2): given priorities change, the rest stay
             changes["sla_days"] = {**o.sla_days, **changes["sla_days"]}
+        if "maintenance_window" in changes:
+            if changes["maintenance_window"] and not remediate.valid_window(changes["maintenance_window"]):
+                raise HTTPException(422, "Maintenance window needs days (0-6, Monday=0), start HH:MM, hours 1-24 and a time zone")
+            changes["maintenance_window"] = changes["maintenance_window"] or None
         for k, v in changes.items():
             setattr(o, k, v)
         evidence.append(s, o.id, "policy_changed", o.id, {"by": user.email, **changes})
@@ -1637,20 +1884,22 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def summary(user: CurrentUser, s: DB):
         remediate.sweep(s, user.org_id)
         is_open = (Finding.org_id == user.org_id, Finding.status == "open")
+        # A setting has no fixed version, but one the agent can change is a fix like any other
+        fixable = or_(Finding.fixed_version.is_not(None), and_(Finding.ecosystem == "WinConfig", Finding.package.in_(remediate.CONFIG_FIXES)))
         by_priority = dict(s.execute(select(Finding.priority, func.count()).where(*is_open).group_by(Finding.priority)).all())
         # Group fixes into actions: "upgrade openssl to X" clears N findings on M hosts. Rank in SQL, detail only the top 10.
         ranked = s.execute(
             select(Finding.ecosystem, Finding.package, func.max(Finding.kev.cast(Integer)), func.max(Finding.score),
                    func.count(Finding.vuln_id.distinct()))
-            .where(*is_open, Finding.fixed_version.is_not(None)).group_by(Finding.ecosystem, Finding.package)
+            .where(*is_open, fixable).group_by(Finding.ecosystem, Finding.package)
         ).all()
         top = []
         for eco, pkg, kev, max_score, _ in sorted(ranked, key=lambda r: (bool(r[2]), r[3], r[4]), reverse=True)[:10]:
-            rows = s.execute(select(Finding.fixed_version, Finding.vuln_id, Asset.hostname, Asset.id).join(Asset, Asset.id == Finding.asset_id)
-                             .where(*is_open, Finding.ecosystem == eco, Finding.package == pkg, Finding.fixed_version.is_not(None))).all()
+            rows = s.execute(select(Finding.fixed_version, Finding.vuln_id, Asset.hostname, Asset.id, Finding.summary).join(Asset, Asset.id == Finding.asset_id)
+                             .where(*is_open, Finding.ecosystem == eco, Finding.package == pkg, fixable)).all()
             cmp = comparator_for(eco)
-            fixes = {r[0] for r in rows}
-            fixed = max(fixes, key=functools.cmp_to_key(cmp)) if cmp else sorted(fixes)[-1]  # highest fix clears them all
+            fixes = {r[0] for r in rows if r[0]}
+            fixed = None if not fixes else max(fixes, key=functools.cmp_to_key(cmp)) if cmp else sorted(fixes)[-1]  # highest fix clears them all
             asset_ids = sorted({r[3] for r in rows})
             # A fix already in flight for this package: Home links to it instead of offering "Plan fix", which the API refuses
             # while one is active. Failed ones are listed under "needs a look" and can be planned again.
@@ -1664,7 +1913,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                         "asset_ids": asset_ids, "busy_asset_ids": sorted({j.asset_id for j in active}),
                         "job": {"id": active[0].id, "status": active[0].status} if active else None,
                         "last_attempt": {"id": last.id, "status": last.status, "error": last.error} if last and last.status in FAILED_JOB else None,
-                        "vulns": sorted({r[1] for r in rows}), "kev": bool(kev), "max_score": max_score})
+                        "vulns": sorted({r[1] for r in rows}), "kev": bool(kev), "max_score": max_score,
+                        "summary": rows[0][4] if eco == "WinConfig" else None, **remediate.fix_path(eco, pkg)})
         hosts = s.scalars(select(Asset).where(Asset.org_id == user.org_id, Asset.kind == "host")).all()
         paused, release = s.get(Org, user.org_id).agent_updates_paused, signed_release() is not None
         return {

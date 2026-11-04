@@ -1,0 +1,61 @@
+[
+  {
+    "step": "Grafana installed",
+    "output": "you by its owner.\nMicrosoft is not responsible for, nor does it grant any licenses to, third-party packages.\nDownloading https://dl.grafana.com/grafana/release/13.2.4/grafana_13.2.4_38252365904_windows_amd64.msi\nSuccessfully verified installer hash\nStarting package install...\nSuccessfully installed\n"
+  },
+  {
+    "step": "install.ps1 ran",
+    "vm": "nimstead-sbx-win-38a575"
+  },
+  {
+    "step": "firewall blocking",
+    "listening": [
+      {
+        "port": 3000,
+        "process": "grafana",
+        "firewall": "blocked"
+      }
+    ],
+    "score": 17,
+    "priority": "low",
+    "reasons": [
+      "Fix available"
+    ]
+  },
+  {
+    "step": "firewall allowing",
+    "listening": [
+      {
+        "port": 3000,
+        "process": "grafana",
+        "firewall": "allowed"
+      }
+    ],
+    "score": 32,
+    "priority": "planned",
+    "reasons": [
+      "Fix available",
+      "Listening on the network: grafana on TCP port 3000, and a firewall rule allows it"
+    ]
+  },
+  {
+    "step": "expired certificate",
+    "finding": {
+      "package": "machine-cert-expired",
+      "summary": "2 machine certificate(s) have expired: CN=nimstead-expired.test, CN=nimstead-expired.test. Renew them, or remove them from the machine store if nothing uses them",
+      "priority": "planned"
+    }
+  },
+  {
+    "step": "RESULT: FAIL",
+    "checks": {
+      "the listener was read as blocked": true,
+      "blocked: no listening reason": true,
+      "no expired certificate finding yet": false,
+      "the listener was read as allowed": true,
+      "allowed: the reason names the process and port": true,
+      "allowed: the score rose": true,
+      "expired certificate opened a finding naming it": true
+    }
+  }
+]

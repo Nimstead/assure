@@ -1,0 +1,50 @@
+[
+  {
+    "step": "remoting on",
+    "output": "WinRM has been updated to receive requests.\nWinRM service type changed successfully. \nWinRM service started. \n\nWinRM has been updated for remote management.\nWinRM firewall exception enabled. \nConfigured LocalAccountTokenFilterPolicy to grant administrative rights remotely to local users. \n\n\n"
+  },
+  {
+    "step": "scan-remote",
+    "rc": 0,
+    "tail": "Microsoft\", \"name\": \"Microsoft.SecHealthUI\", \"version\": \"1000.26100.9457.0\", \"source\": null}, {\"ecosystem\": \"Microsoft\", \"name\": \"Defender platform\", \"version\": \"4.18.25080.5\", \"source\": \"Normal\"}, {\"ecosystem\": \"Microsoft\", \"name\": \"Defender engine\", \"version\": \"1.1.25080.5\", \"source\": \"Normal\"}]}\n"
+  },
+  {
+    "step": "remote vs local",
+    "packages": 13,
+    "only_local": [],
+    "only_remote": []
+  },
+  {
+    "step": "settings that differ",
+    "differ": {}
+  },
+  {
+    "step": "feeds",
+    "msrc": {
+      "documents": 2,
+      "skipped_documents": 0,
+      "inserted": 48242,
+      "updated": 0,
+      "skipped": 0
+    }
+  },
+  {
+    "step": "findings from the agentless scan",
+    "count": 1044,
+    "ecosystems": [
+      "Microsoft",
+      "WinConfig",
+      "Windows"
+    ]
+  },
+  {
+    "step": "RESULT: PASS",
+    "checks": {
+      "nothing the agent sees is missing": true,
+      "nothing extra": true,
+      "OS, .NET Framework and an installed app are there": true,
+      "settings were read": true,
+      "findings opened": true
+    }
+  }
+]

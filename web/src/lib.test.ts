@@ -1,4 +1,4 @@
-import { aiFilterToPatch, dependenciesNeeded, looksLikeQuestion, filtersToApi, filtersToSearch, groupJobs, humaniseKind, installCommands, isActiveJob, parseFilters, priorityOf, relativeTime, whyMatched, type Job } from "./lib";
+import { aiFilterToPatch, dependenciesNeeded, looksLikeQuestion, filtersToApi, filtersToSearch, groupJobs, humaniseKind, installCommands, isActiveJob, parseFilters, priorityOf, relativeTime, updateSource, whyMatched, fixLabel, type Job } from "./lib";
 
 describe("priorityOf", () => {
   it("mirrors the server thresholds and lets KEV override", () => {
@@ -22,6 +22,14 @@ describe("formatting", () => {
 });
 
 describe("findings filters <-> URL", () => {
+  it("never says no fix yet for a setting, an end of support or an exposure", () => {
+    expect(fixLabel({ fixed_version: null, ecosystem: "WinConfig" })).toBe("change the setting");
+    expect(fixLabel({ fixed_version: null, ecosystem: "Lifecycle" })).toBe("move to a supported version");
+    expect(fixLabel({ fixed_version: null, ecosystem: "External" })).toBe("close or restrict it");
+    expect(fixLabel({ fixed_version: null, ecosystem: "WinDriver" })).toBe("update or remove the driver");
+    expect(fixLabel({ fixed_version: null, ecosystem: "Debian:12" })).toBe("no fix yet");
+    expect(fixLabel({ fixed_version: "1.2", ecosystem: "Debian:12" })).toBe("1.2");
+  });
   it("defaults to open + fixable only with a clean URL", () => {
     const f = parseFilters({});
     expect(f).toMatchObject({ status: "open", fixable: true, priority: [], q: "" });
@@ -88,4 +96,15 @@ it("reads the dependencies a refused dry run needs", () => {
   expect(dependenciesNeeded("No changes made: change limited to planned packages failed: would also change: musl, libcrypto3")).toEqual(["musl", "libcrypto3"]);
   expect(dependenciesNeeded("No changes made: drifted: openssl")).toEqual([]);
   expect(dependenciesNeeded(null)).toEqual([]);
+});
+
+describe("updateSource (plan T12)", () => {
+  it("says where updates come from, any deferral, and the last install", () => {
+    expect(updateSource({ wsus: "http://wsus.corp:8530", wufb_quality_deferral_days: 7 })).toBe("Updates from WSUS (http://wsus.corp:8530), deferred 7 days by policy");
+    expect(updateSource({ wsus: null })).toBe("Updates from Windows Update");
+    expect(updateSource({})).toBe("");
+    expect(updateSource(undefined)).toBe("");
+    // Windows' zero date, from a real VM that had never installed an update
+    expect(updateSource({ wsus: null, last_update_success: "1601-01-01T00:00:00.0000000" })).toBe("Updates from Windows Update · nothing installed through it yet");
+  });
 });

@@ -93,7 +93,9 @@ export function Onboarding() {
                   <li>The command finished without an error on the machine. If it printed one, that's the place to start.</li>
                   <li>The machine can reach <code className="font-mono">{window.location.origin}</code> (firewall, proxy, or a name it can't resolve).</li>
                   <li>On Windows, Python 3 is installed for all users and the PowerShell window was opened as Administrator.</li>
-                  <li>The <a className="underline" href="https://github.com/Nimstead/assure/blob/main/docs/install.md" target="_blank" rel="noopener noreferrer">install guide</a> covers proxies and HTTPS.</li>
+                  <li>Run the agent's <code className="font-mono">doctor</code> command on the machine, as root or Administrator. It checks the server, proxy, clock, schedule and disk, and says how to fix each failure.</li>
+                  <li>The agent's log is <code className="font-mono">/var/lib/nimstead/agent.log</code> on Linux and <code className="font-mono">C:\ProgramData\Nimstead\agent.log</code> on Windows.</li>
+                  <li>The <a className="underline" href="https://github.com/Nimstead/assure/blob/main/docs/install.md#troubleshooting" target="_blank" rel="noopener noreferrer">install guide</a> has the exact <code className="font-mono">doctor</code> command, and covers proxies and HTTPS.</li>
                 </ul>
               </div>
             )}

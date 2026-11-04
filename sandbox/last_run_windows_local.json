@@ -17,11 +17,11 @@
   },
   {
     "step": "install.ps1 ran elevated",
-    "output": "dc5ba59a6d9b1c1a570c05ad03fe6a7b5</ToString><Props><S N=\"Message\">agent sha256: 99fe47f5bd87d23f31fc1e6ba3ef96ddc5ba59a6d9b1c1a570c05ad03fe6a7b5</S><B N=\"NoNewLine\">false</B><S N=\"ForegroundColor\">Gray</S><S N=\"BackgroundColor\">Black</S></Props></Obj><S N=\"Source\">Write-Host</S><DT N=\"TimeGenerated\">2026-10-28T11:29:14.6945391-07:00</DT><Obj N=\"Tags\" RefId=\"2\"><TN RefId=\"2\"><T>System.Collections.Generic.List`1[[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]]</T><T>System.Object</T></TN><LST><S>PSHOST</S></LST></Obj><S N=\"User\">NIMSTEAD-SBX\\Administrator</S><S N=\"Computer\">nimstead-sbx</S><U32 N=\"ProcessId\">8644</U32><U32 N=\"NativeThreadId\">8800</U32><U32 N=\"ManagedThreadId\">9</U32></Props></Obj><S S=\"warning\">Plain HTTP server (dev only)</S><Obj S=\"information\" RefId=\"3\"><TNRef RefId=\"0\" /><ToString>Nimstead agent installed.</ToString><Props><Obj N=\"MessageData\" RefId=\"4\"><TNRef RefId=\"1\" /><ToString>Nimstead agent installed.</ToString><Props><S N=\"Message\">Nimstead agent installed.</S><B N=\"NoNewLine\">false</B><S N=\"ForegroundColor\">Gray</S><S N=\"BackgroundColor\">Black</S></Props></Obj><S N=\"Source\">Write-Host</S><DT N=\"TimeGenerated\">2026-10-28T11:29:38.9812114-07:00</DT><Obj N=\"Tags\" RefId=\"5\"><TNRef RefId=\"2\" /><LST><S>PSHOST</S></LST></Obj><S N=\"User\">NIMSTEAD-SBX\\Administrator</S><S N=\"Computer\">nimstead-sbx</S><U32 N=\"ProcessId\">8644</U32><U32 N=\"NativeThreadId\">8800</U32><U32 N=\"ManagedThreadId\">9</U32></Props></Obj></Objs>",
+    "output": "5698ac0278e275e4681ea3ec5e58a06</ToString><Props><Obj N=\"MessageData\" RefId=\"4\"><TNRef RefId=\"1\" /><ToString>agent sha256: cac800b79ec2e35b12bf14d9c2cd3230c5698ac0278e275e4681ea3ec5e58a06</ToString><Props><S N=\"Message\">agent sha256: cac800b79ec2e35b12bf14d9c2cd3230c5698ac0278e275e4681ea3ec5e58a06</S><B N=\"NoNewLine\">false</B><S N=\"ForegroundColor\">Gray</S><S N=\"BackgroundColor\">Black</S></Props></Obj><S N=\"Source\">Write-Host</S><DT N=\"TimeGenerated\">2026-10-30T19:37:01.5620108-07:00</DT><Obj N=\"Tags\" RefId=\"5\"><TNRef RefId=\"2\" /><LST><S>PSHOST</S></LST></Obj><S N=\"User\">NIMSTEAD-SBX\\Administrator</S><S N=\"Computer\">nimstead-sbx</S><U32 N=\"ProcessId\">8084</U32><U32 N=\"NativeThreadId\">7332</U32><U32 N=\"ManagedThreadId\">9</U32></Props></Obj><S S=\"warning\">Plain HTTP server (dev only)</S><Obj S=\"information\" RefId=\"6\"><TNRef RefId=\"0\" /><ToString>Nimstead agent installed.</ToString><Props><Obj N=\"MessageData\" RefId=\"7\"><TNRef RefId=\"1\" /><ToString>Nimstead agent installed.</ToString><Props><S N=\"Message\">Nimstead agent installed.</S><B N=\"NoNewLine\">false</B><S N=\"ForegroundColor\">Gray</S><S N=\"BackgroundColor\">Black</S></Props></Obj><S N=\"Source\">Write-Host</S><DT N=\"TimeGenerated\">2026-10-30T19:38:09.4095639-07:00</DT><Obj N=\"Tags\" RefId=\"8\"><TNRef RefId=\"2\" /><LST><S>PSHOST</S></LST></Obj><S N=\"User\">NIMSTEAD-SBX\\Administrator</S><S N=\"Computer\">nimstead-sbx</S><U32 N=\"ProcessId\">8084</U32><U32 N=\"NativeThreadId\">7332</U32><U32 N=\"ManagedThreadId\">9</U32></Props></Obj></Objs>",
     "assets": [
       [
         "nimstead-sbx",
-        "0.3.0"
+        "0.4.0"
       ]
     ]
   },
@@ -42,6 +42,16 @@
     "owner": "BUILTIN\\Administrators",
     "junction_left": "False",
     "victim_file": "not yours"
+  },
+  {
+    "step": "standard user against the runtime",
+    "wrote": {
+      "agent": false,
+      "python": false,
+      "python folder": false,
+      "runtime folder": false,
+      "install folder": false
+    }
   },
   {
     "step": "RESULT: PASS"

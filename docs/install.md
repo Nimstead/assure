@@ -78,12 +78,36 @@ $env:NIMSTEAD_TOKEN = "nme_…"; irm https://assure.example.com/install.ps1 | ie
 
 | | Linux | Windows |
 |---|---|---|
-| **Supported** | Debian, Ubuntu, RHEL family (AlmaLinux, Rocky), Alpine, SUSE | Windows Server 2025 and Windows 11 (proven); Windows 10 detection |
-| **Needs** | Python 3.9+ and curl | Python for all users (`winget install Python.Python.3.13 --scope machine`) |
+| **Supported** | Debian, Ubuntu, RHEL family (AlmaLinux, Rocky), Alpine, SUSE | Windows 10 / Server 2016 and newer (fixes proven on Server 2025 and Windows 11) |
+| **Needs** | Python 3.9+ and curl | nothing: the installer brings Python's official embeddable runtime (see below) |
 | **Runs** | a systemd timer every 6 hours | a SYSTEM scheduled task every 6 hours and at startup |
 | **With remediation** | plus a 15-minute check for approved fixes | plus a 15-minute check for approved fixes |
 
 The agent is one readable file, [`agent/nimstead_agent.py`](../agent/nimstead_agent.py), using only Python's standard library.
+
+**On Windows nothing needs to be installed first.** The installer downloads Python's official embeddable runtime (the
+version pinned in [`agent/windows-runtime.json`](../agent/windows-runtime.json)) from your server, checks that every
+program file in it is signed by the Python Software Foundation, and keeps it under `Program Files\Nimstead\runtime\`,
+which only administrators can change. It prints the runtime's `sha256` next to the agent's. The agent keeps the runtime
+current from signed releases, as it does itself. Windows 8.1 / Server 2012 R2 and older are refused: current Python
+doesn't run there, and those systems no longer get security updates.
+
+**Java libraries on disk (opt-in):** enrol with `--scan-jars` (on Windows, `$env:NIMSTEAD_SCAN_JARS = "1"` before
+the install command) and each report also looks through local disks for `.jar`, `.war` and `.ear` files, including
+jars nested one level inside them, and reports the libraries they contain (log4j-style findings name the file). It
+never follows links or enters network shares, and stops after 5 minutes or 500,000 files, saying the scan was partial.
+
+**Behind a proxy:** set `$env:NIMSTEAD_PROXY = "http://proxy.example:8080"` before the install command (on Linux, pass
+`--proxy` to `enroll`). Without it, Windows machines use the machine-wide WinHTTP proxy if one is set (`netsh winhttp
+show proxy`), the same one Windows Update uses. TLS to your server stays end to end; a plain-HTTP server is refused
+through a proxy. Scheduled runs start at a random point within 30 minutes (job checks within 2), at below-normal
+priority, so a large fleet doesn't report all at once.
+
+Windows Update fixes behind a proxy with no direct internet access: Windows downloads updates with Delivery
+Optimization, which on Windows 11 26H2 ignored the proxy and stalled every download (seen in our VM test). Set the
+**Download Mode** policy to **Bypass** (Computer Configuration > Administrative Templates > Windows Components >
+Delivery Optimization; registry `DODownloadMode` = 100) and a device-wide proxy, or allow direct HTTP to
+`*.delivery.mp.microsoft.com`. Without either, the fix's download step times out and the job stops with nothing changed.
 
 ### The agent updates itself
 
@@ -100,9 +124,23 @@ Updates have to be signed, but the first copy of the agent comes from your serve
 
 1. From the [GitHub release](https://github.com/Nimstead/assure/releases) your server runs, download `release.json`, `release.json.sig` and `nimstead_agent.py`.
 2. Check the signature with an agent you already trust: `python3 nimstead_agent.py verify-release release.json release.json.sig` prints the manifest only if a pinned Nimstead release key signed it (key fingerprints `a91fa653…` and backup `2438f2cc…`, also in `RELEASE_KEYS` at the top of the agent).
-3. The manifest's `agent_sha256` must equal `sha256sum nimstead_agent.py` and the `agent sha256` the installer printed. Or skip the installer: copy this verified file to `/usr/local/lib/nimstead/` yourself, then run its `enroll --server https://… --channel stable`, `report` and `schedule` as root, with `NIMSTEAD_TOKEN` set.
+3. The manifest's `agent_sha256` must equal `sha256sum nimstead_agent.py` and the `agent sha256` the installer printed. On Windows, the `runtime sha256` it printed must equal the manifest's `runtimes.amd64.sha256` (or `arm64` / `win32`). Or skip the installer: copy this verified file to `/usr/local/lib/nimstead/` yourself, then run its `enroll --server https://… --channel stable`, `report` and `schedule` as root, with `NIMSTEAD_TOKEN` set.
+
+**What a scan costs a Windows machine.** Measured on Windows 11 26H2 (`sandbox/last_run_winfootprint.json`): one scan took 30 s, 25 s of CPU and 280 MB of memory at its peak. It read 168 MB from disk (mostly hashing about 440 drivers), stored 25 MB, and sent 76 KB to the server. The harness fails a run that goes over 120 s of CPU, 512 MB, 5 minutes, 100 MB of disk or 5 MB sent. This was measured on a fresh install with few apps; a machine with many more apps and drivers takes longer.
 
 A machine that hasn't reported for 14 hours shows **Not reporting** and sends one alert, so a stopped agent doesn't quietly leave stale findings.
+
+### Troubleshooting
+
+Run `doctor` on the machine. It checks the server, proxy, clock, schedule, disk and Python, and on Windows also the state folder's permissions and the Windows Update service. Each check prints `ok` or `FAIL` with one line on how to fix it, and the command exits non-zero if any failed. It changes nothing on the machine and doesn't send the agent key.
+
+```bash
+sudo python3 /usr/local/lib/nimstead/nimstead_agent.py doctor
+```
+
+On Windows, in an elevated PowerShell: `& (Resolve-Path "$env:ProgramFiles\Nimstead\runtime\*\python.exe")[0] -I "$env:ProgramFiles\Nimstead\nimstead_agent.py" doctor`. A stopped Windows Update service is normal, because it starts when needed; only a disabled one fails.
+
+The agent logs each run's start and end, job outcomes and errors to `/var/lib/nimstead/agent.log` on Linux and `C:\ProgramData\Nimstead\agent.log` on Windows. Only root or Administrators can read it. It keeps at most about 2 MB (`agent.log` and `agent.log.1`), and leaves out the agent key and enrolment token.
 
 ### Remove the agent
 
@@ -110,7 +148,7 @@ A machine that hasn't reported for 14 hours shows **Not reporting** and sends on
 sudo python3 /usr/local/lib/nimstead/nimstead_agent.py uninstall --yes
 ```
 
-On Windows, in an elevated PowerShell: `py -3 -I "$env:ProgramFiles\Nimstead\nimstead_agent.py" uninstall --yes`. This removes the timers or scheduled tasks, the agent key, saved state and the agent itself, then tells you to delete the machine on the **Assets** page. It's refused while a Windows update is waiting for its restart.
+On Windows, in an elevated PowerShell: `& (Resolve-Path "$env:ProgramFiles\Nimstead\runtime\*\python.exe")[0] -I "$env:ProgramFiles\Nimstead\nimstead_agent.py" uninstall --yes`. This removes the timers or scheduled tasks, the agent key, saved state, the local log and the agent itself, then tells you to delete the machine on the **Assets** page. It's refused while a Windows update is waiting for its restart.
 
 ### Fixing things automatically
 
@@ -216,3 +254,14 @@ Run `cd api && uv run python -m nimstead.feeds update` hourly with cron or a sys
 - [ ] Single sign-on tested before turning on **Require SSO**
 
 Every setting is in [configuration.md](configuration.md).
+
+## Scan Windows hosts with no agent
+
+From a Windows machine with the agent's files, signed in as an admin of the hosts:
+
+```powershell
+$env:NIMSTEAD_TOKEN = '<enrolment token>'   # only the first time a host is seen
+python nimstead_agent.py scan-remote --server https://your-server host1 host2
+```
+
+It uses PowerShell remoting as you: no credential is typed, stored or sent to the server. Each host needs remoting on. Note that `Enable-PSRemoting` on a machine outside a domain sets `LocalAccountTokenFilterPolicy=1`, which Nimstead then reports as `remote-uac`. Hosts scanned this way get findings but not fixes: fixes need the agent. Each host's report key is saved in `.nimstead-remote-scan.json` in your profile, so keep that file private.

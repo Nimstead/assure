@@ -7,11 +7,30 @@ export type Priority = (typeof PRIORITIES)[number];
 export type Status = "open" | "resolved" | "accepted";
 export type Criticality = "low" | "medium" | "high" | "critical";
 
+export interface HostFacts {
+  edition_id?: string; esu?: boolean | null; os_unmatched?: string;
+  wsus?: string | null; wufb_quality_deferral_days?: number | null; pending_reboot?: boolean; last_update_success?: string | null;
+  [k: string]: unknown;
+}
+
+/** Where a Windows host gets its updates from, in one line, or "" when the agent hasn't said (plan T12). */
+export function updateSource(f?: HostFacts): string {
+  if (!f || (f.wsus === undefined && !f.last_update_success)) return "";
+  const from = f.wsus ? `Updates from WSUS (${f.wsus})` : "Updates from Windows Update";
+  const defer = f.wufb_quality_deferral_days ? `, deferred ${f.wufb_quality_deferral_days} days by policy` : "";
+  // Windows reports 1601-01-01 (its zero date) when nothing has ever been installed: seen on real VMs as "426 years ago"
+  const never = f.last_update_success?.startsWith("1601-");
+  const last = f.last_update_success ? (never ? " · nothing installed through it yet" : ` · last installed ${relativeTime(f.last_update_success)}`) : "";
+  return from + defer + last;
+}
+
 export interface Asset {
   id: string; hostname: string; os_name: string; ecosystem: string; kind: "host" | "application" | "external";
-  criticality: Criticality; internet_facing: boolean; sandbox: boolean; ring: 0 | 1; health_units: string[];
+  criticality: Criticality; internet_facing: boolean; directory_source?: boolean; sandbox: boolean; ring: 0 | 1; health_units: string[];
   first_seen: string; last_seen: string; open_by_priority: Partial<Record<Priority, number>>;
+  apps?: { assessed: number; inventory_only: number }; // Windows hosts: installed apps checked against those only listed
   agent_version?: string; agent_outdated?: boolean; agent_update?: AgentUpdate; agent_update_error?: string | null; not_reporting?: boolean; // hosts only
+  facts?: HostFacts; // hosts only: what the agent reports about the host itself
   verified?: boolean; verified_at?: string | null; txt_name?: string; txt_value?: string; proof_path?: string; // external targets only
 }
 // What happens to a host's agent next (app.py agent_update_status)
@@ -23,12 +42,14 @@ export const AGENT_UPDATE: Record<Exclude<AgentUpdate, "current">, { label: stri
   off: { label: "Agent outdated", why: () => "Automatic updates are switched off on this host. Rerun the install command to update it; the enrolment is kept." },
   reinstall: { label: "Agent outdated", why: (a) => `${a.agent_version ? `Agent ${a.agent_version}` : "This agent"} can't update itself. Rerun the install command on this host once; the enrolment is kept, and later versions update automatically.` },
 };
+export interface Coverage { assessed: number; inventory_only: number; not_assessed: { name: string; publisher: string | null; hosts: number }[] }
+export const coverageQ = { queryKey: ["coverage"], queryFn: () => api<Coverage>("/api/coverage") };
 export interface SbomResult { components: number; mapped: number; unique_packages: number; skipped: Record<string, number>; open: number; resolved: number }
 export const sbomSummary = (r: SbomResult) =>
   `${r.mapped} of ${r.components} components recognised (${r.unique_packages} unique packages), ${r.components - r.mapped} skipped. ${r.open} open finding${r.open === 1 ? "" : "s"}, ${r.resolved} resolved.`;
 export interface Finding {
   id: string; asset_id: string; hostname: string; ecosystem: string; package: string;
-  installed_version: string; fixed_version: string | null; vuln_id: string; advisory_ids: string[];
+  installed_version: string; fixed_version: string | null; setting_fix: boolean; vuln_id: string; advisory_ids: string[];
   summary: string | null; cvss: number | null; epss: number | null; kev: boolean; score: number;
   priority: Priority; reasons: string[]; status: Status; first_seen: string; last_seen: string;
   resolved_at: string | null;
@@ -36,8 +57,11 @@ export interface Finding {
   due: string | null;
 }
 export interface Action {
-  ecosystem: string; package: string; fixed_version: string; hosts: string[]; asset_ids: string[]; vulns: string[];
-  kev: boolean; max_score: number;
+  /** fixed_version is null for a setting, which `summary` then describes. */
+  ecosystem: string; package: string; fixed_version: string | null; hosts: string[]; asset_ids: string[]; vulns: string[];
+  kev: boolean; max_score: number; summary: string | null;
+  /** How it gets fixed: the same rules plan and approve apply. person_only is never approved by the trust ladder. */
+  fix: string | null; plannable: boolean; person_only: boolean; forward_only: boolean;
   /** A fix already in flight for this package, if any: link to it rather than planning another. */
   job: { id: string; status: JobStatus } | null;
   /** Machines with that fix in flight; the rest can still be planned. */
@@ -57,6 +81,7 @@ export interface Job {
   id: string; asset_id: string; hostname: string; status: JobStatus; manager: string; action_key: string;
   packages: unknown; finding_ids: string[]; summary: string; created_by: string; approved_by: string | null;
   created: string; updated: string; steps: JobStep[] | null; error: string | null;
+  forward_only?: boolean; waits_for_window?: string | null; // plan T22, T40
 }
 export const JOB_GROUPS = [
   { key: "approval", title: "Needs approval", statuses: ["planned"] },
@@ -75,6 +100,14 @@ export const groupJobs = (jobs: Job[]) =>
 export const ACTIVE_JOB_STATUSES: readonly JobStatus[] = ["planned", "approved", "dispatched", "verifying"];
 /** Running somewhere, so worth polling. */
 export const isActiveJob = (j: Pick<Job, "status">) => j.status !== "planned" && ACTIVE_JOB_STATUSES.includes(j.status);
+/** One cumulative update across the fleet (remediate.kb_fleet). The hosts and the plan come from kbHostsQ. */
+export interface KbRow { kb: string; product: string; title: string; released: string | null; build: string; hosts: number; fixed: number; plan_note: string | null }
+export interface KbHost { asset_id: string; hostname: string; build: string; ring: number; why: string; notes: string[]; job: { id: string; status: JobStatus } | null }
+export const kbFleetQ = queryOptions({ queryKey: ["kb-fleet"], queryFn: () => api<KbRow[]>("/api/windows-updates") });
+export const kbHostsQ = (r: Pick<KbRow, "kb" | "product">) => queryOptions({
+  queryKey: ["kb-fleet", r.kb, r.product],
+  queryFn: () => api<KbRow & { missing: KbHost[]; plan_asset_ids: string[] }>(`/api/windows-updates/${r.kb}?product=${encodeURIComponent(r.product)}`),
+});
 export const jobsQ = queryOptions({ queryKey: ["jobs"], queryFn: () => api<Job[]>("/api/remediation/jobs") });
 /** Address of a job card on the Remediation page. */
 export const jobAnchor = (id: string) => `job-${id}`;
@@ -97,7 +130,10 @@ export interface EnrollToken { id: string; created: string; expires: string; rev
 export interface Settings {
   remediation_mode: "suggest" | "approve" | "auto"; canary_soak_hours: number; production_remediation_allowed: boolean;
   agent_updates_paused: boolean; signed_agent_release: boolean; platform: Platform; sla_days: Record<Priority, number>;
+  maintenance_window: MaintenanceWindow | null; reboot_deadline_hours: number;
 }
+/** When fixes may run (plan T40): days 0-6 = Monday-Sunday, start "HH:MM" local to tz, length in hours. */
+export interface MaintenanceWindow { days: number[]; start: string; hours: number; tz: string }
 // updates.status(): last_update is what deploy/update.sh last did on the Docker host
 export interface Platform {
   version: string; latest: string | null; latest_url: string | null; update_available: boolean; checked: string | null;
@@ -180,8 +216,17 @@ export function relativeTime(s: string, now = Date.now()): string {
 export const plural = (n: number, one: string, many = one + "s") => `${n.toLocaleString("en")} ${n === 1 ? one : many}`;
 export const pct = (x: number) => (x < 0.01 ? "<1%" : `${Math.round(x * 100)}%`);
 
+/** What to move to. Settings, end of support and exposures never have a fixed version, and "no fix yet" would be untrue. */
+export function fixLabel(f: Pick<Finding, "fixed_version" | "ecosystem">): string {
+  return f.fixed_version ?? ({ WinConfig: "change the setting", Lifecycle: "move to a supported version", External: "close or restrict it", WinDriver: "update or remove the driver" } as Record<string, string>)[f.ecosystem] ?? "no fix yet";
+}
+
 /** "Installed A < fixed B per DSA-1" sentence parts. */
-export function whyMatched(f: Pick<Finding, "installed_version" | "fixed_version" | "advisory_ids" | "vuln_id">): string {
+export function whyMatched(f: Pick<Finding, "installed_version" | "fixed_version" | "advisory_ids" | "vuln_id"> & { ecosystem?: string }): string {
+  if (f.ecosystem === "WinConfig") return `Found ${f.installed_version} on this host.`;
+  if (f.ecosystem === "Lifecycle") return `Installed ${f.installed_version}, which is past its end of support.`;
+  if (f.ecosystem === "External") return "Seen from outside by an external scan.";
+  if (f.ecosystem === "WinDriver") return `This exact file (SHA-256 ${f.installed_version}) is listed by LOLDrivers.`;
   if (!f.fixed_version) return `Installed ${f.installed_version}. No fixed version has been published yet.`;
   const src = f.advisory_ids.length ? f.advisory_ids.slice(0, 3).join(", ") : f.vuln_id;
   return `Installed ${f.installed_version} < fixed ${f.fixed_version} per ${src}`;
@@ -256,9 +301,9 @@ export function aiFilterToPatch(a: AiFilter): Partial<FindingsFilters> {
 // ---- misc ----------------------------------------------------------------------
 /** Everything derived from these changes together; one place decides what a change makes stale. */
 const STALE = {
-  jobs: ["jobs", "summary", "ledger"],
+  jobs: ["jobs", "summary", "ledger", "kb-fleet"],
   findings: ["findings", "finding", "summary", "ledger"],
-  assets: ["assets", "findings", "finding", "summary", "ledger", "jobs"],
+  assets: ["assets", "findings", "finding", "summary", "ledger", "jobs", "kb-fleet"],
   people: ["users", "api-tokens", "enroll-tokens", "ledger"],
 } as const;
 export const refresh = (qc: QueryClient, what: keyof typeof STALE) =>

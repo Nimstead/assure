@@ -1,6 +1,7 @@
 """Disposable Windows Server 2025 or Windows 11 VM (VirtualBox) for testing Windows install + remediation.
 
-  uv run python ../sandbox/winvm.py create  ISO   # unattended install (Server Core, or Windows 11 Pro), headless; prints the VM name
+  uv run python ../sandbox/winvm.py create  ISO [--memory=MB] [--lab] [--image=N]   # unattended install (Server Core, or Windows 11 Pro), headless;
+      # prints the VM name. --lab: a second NIC on a private network (static IPs are set inside the guest). --image: a Server edition's image index
   uv run python ../sandbox/winvm.py destroy NAME  # power off + delete VM and disks (only nimstead-sbx-win-* names)
   uv run python ../sandbox/winvm.py run NAME 'powershell...'   # run as the VM's Administrator via guest control
 
@@ -10,6 +11,7 @@ the VM's own folder (it is disposable).
 
 import base64
 import json
+import re
 import secrets
 import subprocess
 import sys
@@ -19,6 +21,7 @@ from pathlib import Path
 
 VBOX = r"C:\Program Files\Oracle\VirtualBox\VBoxManage.exe"
 PREFIX = "nimstead-sbx-win-"
+LAB_NET = "nimstead-sbx-lab"  # VirtualBox internal network: lab VMs reach each other on it, and nothing else does
 STATE = Path(tempfile.gettempdir()) / "nimstead-sbx-win"
 
 
@@ -33,33 +36,61 @@ def creds(name: str) -> dict:
     return json.loads((STATE / name / "creds.json").read_text())
 
 
-def create(iso: str) -> str:
+def os_type(detected: str) -> str:
+    """The OS type the ISO says it is: a Server 2022 ISO created as Server 2025 got no installation media attached (real VM)."""
+    m = re.search(r"OS TypeId\s*=\s*(Windows\w+)", detected)
+    return m.group(1) if m else "Windows2025_64"
+
+
+def locale_args(detected: str) -> list[str]:
+    """A localised ISO installs in its own language: a localised Windows is what the agent's language checks need (DECISIONS 68)."""
+    m = re.search(r"OS Languages\s*=\s*([a-z]{2}-[A-Z]{2})", detected)
+    lang = m.group(1) if m else "en-US"
+    if lang == "en-US":
+        return ["--locale=en_US", "--country=GB"]
+    return [f"--locale={lang.replace('-', '_')}", f"--country={lang[-2:]}", f"--language={lang}"]
+
+
+def create(iso: str, memory: int = 4096, lab: bool = False, image: int = 1, computer: str = "nimstead-sbx", password: str | None = None) -> str:
+    """`image`: Server image index (1 = Server Core Standard). `computer`, `password`: a lab's machines need their own names and one
+    Administrator secret, because a promoted machine's Administrator becomes the domain's."""
     name = PREFIX + secrets.token_hex(3)
     folder = STATE / name
     folder.mkdir(parents=True)
-    password = "Nim!" + secrets.token_hex(8)
+    password = password or "Nim!" + secrets.token_hex(8)
     (folder / "creds.json").write_text(json.dumps({"user": "Administrator", "password": password}))
-    win11 = "Windows11" in vbox("unattended", "detect", f"--iso={iso}")
-    vbox("createvm", "--name", name, "--ostype", "Windows11_64" if win11 else "Windows2025_64", "--basefolder", str(folder), "--register")
-    vbox("modifyvm", name, "--memory", "4096", "--cpus", "2", "--firmware", "efi", "--nic1", "nat", "--graphicscontroller", "vboxsvga",
+    detected = vbox("unattended", "detect", f"--iso={iso}")
+    win11, win10 = "Windows11" in detected, "Windows10" in detected
+    vbox("createvm", "--name", name, "--ostype", os_type(detected),
+         "--basefolder", str(folder), "--register")
+    vbox("modifyvm", name, "--memory", str(memory), "--cpus", "2", "--firmware", "efi", "--nic1", "nat", "--graphicscontroller", "vboxsvga",
          "--nat-localhostreachable1", "on")  # VirtualBox 7 blocks guest -> host 127.0.0.1 (10.0.2.2) by default
+    if lab:
+        vbox("modifyvm", name, "--nic2", "intnet", "--intnet2", LAB_NET)
+    if win10:  # setup hung at "Getting ready", disk idle, with the default Hyper-V paravirtual interface (real VM)
+        vbox("modifyvm", name, "--paravirt-provider", "none")
     if win11:  # Windows 11 setup refuses hardware without TPM 2.0 and Secure Boot
         vbox("modifyvm", name, "--tpm-type", "2.0")
         for step in (["inituefivarstore"], ["enrollmssignatures"], ["enrollorclpk"], ["secureboot", "--enable"]):
             vbox("modifynvram", name, *step)
     disk = folder / f"{name}.vdi"
-    vbox("createmedium", "disk", "--filename", str(disk), "--size", "40960")
+    # dynamic, 80 GB: 40 GB filled up on Windows 11 after one update install + rollback (WinSxS 19.6 GB)
+    vbox("createmedium", "disk", "--filename", str(disk), "--size", "81920")
     vbox("storagectl", name, "--name", "SATA", "--add", "sata", "--controller", "IntelAhci")
     vbox("storageattach", name, "--storagectl", "SATA", "--port", "0", "--device", "0", "--type", "hdd", "--medium", str(disk))
     additions = str(Path(VBOX).parent / "VBoxGuestAdditions.iso")
     # Windows 11 consumer ISO: Pro with Microsoft's public generic install key (unactivated; the VM is disposable)
-    edition = ["--image-index=6", "--key=VK7JG-NPHTM-C97JM-9MPGT-3V66T"] if win11 else ["--image-index=1"]
+    edition = ["--image-index=6", "--key=VK7JG-NPHTM-C97JM-9MPGT-3V66T"] if win11 else [f"--image-index={image}"]
     args = ["unattended", "install", name, f"--iso={iso}", *edition, "--user=Administrator",
             f"--admin-password={password}", f"--password={password}", "--full-user-name=Administrator",
-            "--locale=en_US", "--country=GB", "--time-zone=UTC", "--hostname=nimstead-sbx.local",
+            *locale_args(detected), "--time-zone=UTC", f"--hostname={computer}.local",
             "--install-additions", "--start-vm=headless"]
     if Path(additions).exists():
         args.append(f"--additions-iso={additions}")
+    if win10 or os_type(detected) in ("Windows2022_64", "Windows2019_64", "Windows2016_64"):  # an empty <Key> stops Enterprise Evaluation at "cannot find the Microsoft Software License Terms" (real VM); it needs none
+        template = (Path(VBOX).parent / "UnattendedTemplates" / "win_nt6_unattended.xml").read_text(encoding="utf-8")
+        (folder / "unattend.xml").write_text(re.sub(r"\s*<ProductKey>.*?</ProductKey>", "", template, flags=re.S), encoding="utf-8")
+        args.append(f"--script-template={folder / 'unattend.xml'}")
     vbox(*args)
     print(name)
     return name
@@ -78,10 +109,12 @@ def run(name: str, command: str, timeout=3600, user: dict | None = None) -> tupl
     return p.returncode, (p.stdout or "") + (p.stderr or "")
 
 
-def wait_ready(name: str, minutes=90, reset_after=12, max_resets=3) -> None:
-    """Until guest additions answer and PowerShell runs. Under Hyper-V's NEM backend the reboots during unattended
-    setup hang (seen every time on this host: idle, no guest activity); a hard reset recovers each one."""
-    last, end, resets = time.time(), time.time() + minutes * 60, 0
+def wait_ready(name: str, minutes=90, reset_after=12, restart_after=20, max_resets=3) -> None:
+    """Until guest additions answer and PowerShell runs. Under Hyper-V's NEM backend the reboots during unattended setup
+    can hang (idle, no guest activity); a hard reset recovers those. Only those: a reset while setup is still working ends
+    it for good ("The computer restarted unexpectedly", real VMs), so the clock runs from the last disk activity."""
+    idle = up = time.time()
+    end, resets, seen = time.time() + minutes * 60, 0, None
     while time.time() < end:
         try:
             rc, out = run(name, "'ready'", timeout=60)
@@ -90,12 +123,61 @@ def wait_ready(name: str, minutes=90, reset_after=12, max_resets=3) -> None:
         except (subprocess.TimeoutExpired, FileNotFoundError):
             pass
         if unstick(name):
-            last = time.time()
-        elif resets < max_resets and time.time() - last > reset_after * 60:
-            vbox("controlvm", name, "reset", check=False)
-            last, resets = time.time(), resets + 1
+            idle = up = time.time()
+        elif os_up(name):
+            disk = disk_activity(name)
+            if disk_busy(seen, disk):  # still applying an update at "Restarting" (real Server 2025): powering off now could end it
+                up = time.time()
+            seen = disk
+            if resets < max_resets and time.time() - up > restart_after * 60:
+                clean_restart(name)
+                idle, up, resets = time.time(), time.time(), resets + 1
+        else:
+            up, disk = time.time(), disk_activity(name)
+            if disk != seen:
+                seen, idle = disk, time.time()
+            elif resets < max_resets and time.time() - idle > reset_after * 60:
+                vbox("controlvm", name, "reset", check=False)
+                idle, resets = time.time(), resets + 1
         time.sleep(20)
     raise RuntimeError(f"{name} not ready after {minutes} min")
+
+
+def disk_busy(before: str | None, now: str, floor=16 << 20) -> bool:
+    """More than idle chatter since the last look: an idle Windows always writes a little, and counting that as work
+    kept a VM whose guest control had hung from ever being restarted (real Windows 10, DECISIONS 78)."""
+    total = lambda s: sum(int(x) for x in re.findall(r'c="(\d+)"', s or ""))  # noqa: E731
+    return before is None or total(now) - total(before) > floor
+
+
+def disk_activity(name: str) -> str:
+    return vbox("debugvm", name, "statistics", "--pattern", "/Public/Storage/AHCI0/Port0/Bytes*", check=False)
+
+
+def clean_restart(name: str, wait=300) -> None:
+    """Windows booted but guest control stayed "not ready" for over an hour on two VMs, and a cold boot fixed it at once.
+    The power button lets Windows flush its writes first; a cold start avoids the warm-reset hang (see unstick)."""
+    vbox("controlvm", name, "acpipowerbutton", check=False)
+    end = time.time() + wait
+    while time.time() < end and 'VMState="poweroff"' not in vbox("showvminfo", name, "--machinereadable", check=False):
+        time.sleep(10)
+    vbox("controlvm", name, "poweroff", check=False)  # no-op once off
+    time.sleep(5)
+    vbox("startvm", name, "--type", "headless")
+
+
+def additions_since_reset(lines: list[str]) -> bool:
+    reset = max((i for i, s in enumerate(lines) if "to 'RESETTING'" in s), default=-1)
+    return any("Guest Additions information report" in s for s in lines[reset + 1:])
+
+
+def os_up(name: str) -> bool:
+    """Windows booted since the last reset, so it isn't hung, only still setting up: a hard reset then loses its unflushed
+    writes (real VM: three resets, 12 minutes apart, left VBoxService.exe all zeros, error 1392, and guest control dead for good)."""
+    try:
+        return additions_since_reset((STATE / name / name / "Logs" / "VBox.log").read_text(errors="replace").splitlines())
+    except OSError:
+        return False
 
 
 def unstick(name: str) -> bool:
@@ -108,7 +190,8 @@ def unstick(name: str) -> bool:
     except (OSError, ValueError):
         return False
     reset = max((i for i, s in enumerate(lines) if "to 'RESETTING'" in s), default=-1)
-    if reset < 0 or any("Guest OS reported" in s for s in lines[reset:]) or stamps[-1][1] - dict(stamps)[reset] < 120:
+    # Windows 10 logs no "Guest OS reported": a healthy VM read as hung and was power-cycled mid-job (real VM, DECISIONS 78)
+    if reset < 0 or additions_since_reset(lines) or any("Guest OS reported" in s for s in lines[reset:]) or stamps[-1][1] - dict(stamps)[reset] < 120:
         return False
     vbox("controlvm", name, "poweroff", check=False)
     time.sleep(5)
@@ -126,7 +209,8 @@ def destroy(name: str) -> None:
 if __name__ == "__main__":
     cmd = sys.argv[1]
     if cmd == "create":
-        create(sys.argv[2])
+        opts = dict(a[2:].split("=", 1) for a in sys.argv[3:] if "=" in a)
+        create(sys.argv[2], memory=int(opts.get("memory", 4096)), lab="--lab" in sys.argv, image=int(opts.get("image", 1)))
     elif cmd == "destroy":
         destroy(sys.argv[2])
     elif cmd == "wait":

@@ -158,3 +158,36 @@ def test_release_files_left_from_the_previous_version_are_replaced(gh):
     d.mkdir(parents=True)
     (d / "release.json").write_text('{"version":"0.2.9","channel":"preview"}')
     assert updates.check(s, client)["release_files_fetched"] and json.loads((d / "release.json").read_text())["version"] == "0.3.0"
+
+
+def test_runtimes_are_fetched_only_when_they_match_the_signed_hash_and_served_only_then(gh, env):
+    import hashlib
+
+    import nimstead.app as appmod
+    s, _, _, _, d = gh
+    good, bad = b"PK good runtime", b"PK tampered"
+    rel = {"version": "0.3.0", "agent_sha256": hashlib.sha256(appmod.AGENT_FILE.read_bytes()).hexdigest(),
+           "runtimes": {"amd64": {"version": "3.15.2", "sha256": hashlib.sha256(good).hexdigest()},
+                        "arm64": {"version": "3.15.2", "sha256": hashlib.sha256(good).hexdigest()}}}
+    d.mkdir(parents=True)
+    (d / "release.json").write_text(json.dumps(rel))
+    (d / "release.json.sig").write_text("ok")
+    calls = []
+
+    def handler(req):
+        calls.append(req.url.path)
+        return httpx.Response(200, content=good if req.url.path.endswith("amd64.zip") else bad)
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    assert updates.fetch_runtimes(client) == ["amd64"]  # arm64's bytes don't match the signed hash: not stored
+    assert (d / "python-embed-amd64.zip").read_bytes() == good and not (d / "python-embed-arm64.zip").exists()
+    assert updates.fetch_runtimes(client) == [] and calls.count("/Nimstead/assure/releases/download/v0.3.0/python-embed-amd64.zip") == 1
+
+    c = TestClient(create_app(env))
+    r = c.get("/agent/runtime/amd64.zip")
+    assert r.status_code == 200 and r.content == good
+    assert c.get("/agent/runtime/arm64.zip").status_code == 404  # signed but not fetched
+    assert c.get("/agent/runtime/win32.zip").status_code == 404  # not in the signed release
+    assert c.get("/agent/runtime/x86.zip").status_code == 404
+    assert b"agent_sha256" not in c.get("/agent/runtime/..%2Frelease.json.zip").content  # never reaches the release dir
+    (d / "python-embed-amd64.zip").write_bytes(bad)  # changed on disk after the check
+    assert c.get("/agent/runtime/amd64.zip").status_code == 404

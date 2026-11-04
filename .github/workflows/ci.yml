@@ -57,6 +57,26 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
       - run: docker compose config --quiet && docker build -t nimstead/assure:ci .
 
+  windows-runtime:
+    # The agent on the exact embeddable Python it ships with (plan decision 9): PSF signature valid, every module the
+    # agent imports present, and a real Windows inventory collected.
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - name: Pinned runtime, hash-checked
+        run: python -I scripts/fetch_runtimes.py rt
+      - name: Agent runs on it
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Expand-Archive rt\python-embed-amd64.zip rt\amd64
+          $s = Get-AuthenticodeSignature rt\amd64\python.exe
+          if ($s.Status -ne 'Valid' -or $s.SignerCertificate.Subject -notmatch '^CN=Python Software Foundation,') { throw "bad signature: $($s.Status)" }
+          $inv = & rt\amd64\python.exe -I agent\nimstead_agent.py collect | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or -not $inv.facts) { throw "collect failed" }
+          "$($inv.os_name): $($inv.packages.Count) packages"
+
   web:
     runs-on: ubuntu-latest
     timeout-minutes: 20

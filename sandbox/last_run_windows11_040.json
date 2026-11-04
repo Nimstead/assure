@@ -1,0 +1,79 @@
+[
+  {
+    "time": "2026-10-29T04:57:13",
+    "step": "feeds",
+    "msrc": {
+      "documents": 2,
+      "skipped_documents": 0,
+      "inserted": 47731,
+      "updated": 0,
+      "skipped": 0
+    },
+    "kev": 1762,
+    "epss": 396966
+  },
+  {
+    "time": "2026-10-29T04:57:21",
+    "step": "VM ready",
+    "build": "10.0.26300.9457"
+  },
+  {
+    "time": "2026-10-29T04:58:23",
+    "step": "install.ps1 output {\"output\": \"ery 6 hours and at startup, approved fixes checked every 15 minutes\\nNimstead agent installed.\\nMSFT_TaskTimeTrigger\\nMSFT_TaskBootTrigger\\n#< CLIXML\\n<Objs Version=\\\"1.1.0.1\\\" xmlns=\\\"http://schemas.microsoft.com/powershell/2004/04\\\"><Obj S=\\\"information\\\" RefId=\\\"0\\\"><TN RefId=\\\"0\\\"><T>System.Management.Automation.InformationRecord</T><T>System.Object</T></TN><ToString>runtime sha256"
+  },
+  {
+    "time": "2026-10-29T04:58:23",
+    "step": "install.ps1 ran elevated: enrolled, reported, task registered {\"triggers\": [\"#< CLIXML\", \"<Objs Version=\\\"1.1.0.1\\\" xmlns=\\\"http://schemas.microsoft.com/powershell/2004/04\\\"><Obj S=\\\"information\\\" RefId=\\\"0\\\"><TN RefId=\\\"0\\\"><T>System.Management.Automation.InformationRecord</T><T>System.Object</T></TN><ToString>runtime sha256: d012f3aa29cf07436dae8aea1fec0fd195c2612a0b059b1f915ae0afb9ad1f62</ToString><Props><Obj N=\\\"MessageData\\\" RefId=\\\"1\\\"><TN RefId=\\\"1\\\">"
+  },
+  {
+    "time": "2026-10-29T04:59:02",
+    "step": "oracle: Windows Update vs Nimstead {\"agree\": [{\"kb\": \"5127648\", \"title\": \"2026-10 Security Update (KB5127648) (26300.9711)\", \"cves\": [\"CVE-2026-100201\", \"CVE-2026-100203\", \"CVE-2026-100215\", \"CVE-2026-100216\", \"CVE-2026-100217\", \"CVE-2026-100219\", \"CVE-2026-100220\", \"CVE-2026-100225\", \"CVE-2026-102188\", \"CVE-2026-102189\", \"CVE-2026-102193\", \"CVE-2026-102194\", \"CVE-2026-102196\", \"CVE-2026-102197\", \"CVE-2026-102199\", \"CVE-2026-102201"
+  },
+  {
+    "time": "2026-10-29T04:59:12",
+    "step": "job dispatched",
+    "kb": "5127648",
+    "target": "10.0.26300.9711"
+  },
+  {
+    "time": "2026-10-29T05:07:10",
+    "step": "update installed, waiting for reboot",
+    "outcome": "pending_reboot",
+    "steps": [
+      "update is removable (manifest checked before install)",
+      "KB5127648 downloaded and installed",
+      "new cumulative package identified",
+      "reboot required to finish"
+    ]
+  },
+  {
+    "time": "2026-10-29T05:10:03",
+    "step": "rebooted",
+    "build": "10.0.26300.9711"
+  },
+  {
+    "time": "2026-10-29T05:15:13",
+    "step": "injected failure -> rollback started",
+    "outcome": "pending_reboot",
+    "steps": [
+      "Spooler running after change",
+      "injected failure (sandbox test)",
+      "remove Package_for_RollupFix~31bf3856ad364e35~amd64~~26100.9711.1.30",
+      "reboot required to finish rollback"
+    ]
+  },
+  {
+    "time": "2026-10-29T05:19:31",
+    "step": "rollback finished",
+    "outcome": "rolled_back",
+    "build_now": "10.0.26300.9457",
+    "build_before": "10.0.26300.9457"
+  },
+  {
+    "time": "2026-10-29T05:19:41",
+    "step": "scheduled task started for the real fix"
+  },
+  {
+    "step": "harness host lost (PC crash) after the scheduled task installed KB5127648 and restarted; job finished with winresume.py: last_run_windows11_040_resume.json"
+  }
+]

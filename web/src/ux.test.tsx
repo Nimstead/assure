@@ -7,12 +7,12 @@ import { afterEach, vi } from "vitest";
 import { SsoSection } from "./integrations";
 import { ApiError, meQ, type Action, type Asset, type Job, type Settings } from "./lib";
 import { ActionCard } from "./home";
-import { AssetRow } from "./assets";
+import { AssetRow, AttackPaths, Baselines, baselineSummary, NotAssessed } from "./assets";
 import { Palette } from "./shell";
 import { Done, errorLead } from "./ui";
 import { Onboarding, TROUBLESHOOT_AFTER_MS } from "./onboarding";
 import { ApiTokensSection, QrCode, UsersSection } from "./people";
-import { JobCard } from "./remediation";
+import { JobCard, KbFleet } from "./remediation";
 import { SettingsPage } from "./settings";
 
 // Link keeps its search and hash in the href, so tests can check where a link really goes.
@@ -171,6 +171,9 @@ it("onboarding shows troubleshooting when no report arrives", async () => {
   expect(screen.queryByText("Nothing yet? Check these:")).not.toBeInTheDocument();
   await act(async () => { vi.advanceTimersByTime(TROUBLESHOOT_AFTER_MS + 100); });
   expect(screen.getByText("Nothing yet? Check these:")).toBeInTheDocument();
+  expect(screen.getAllByText("doctor").length).toBeGreaterThan(0);
+  expect(screen.getByText("/var/lib/nimstead/agent.log")).toBeInTheDocument();
+  expect(screen.getByText("C:\\ProgramData\\Nimstead\\agent.log")).toBeInTheDocument();
 });
 
 it("TOTP setup draws a QR code of the otpauth URI, dark on white in any theme", () => {
@@ -211,7 +214,30 @@ it("Settings and onboarding name the setting that turns production remediation o
 });
 
 const ACTION: Action = { ecosystem: "Debian:12", package: "openssl", fixed_version: "3.0.19", hosts: ["web-1", "web-2"], asset_ids: ["a1", "a2"],
-  busy_asset_ids: [], vulns: ["CVE-1"], kev: false, max_score: 80, job: null, last_attempt: null };
+  busy_asset_ids: [], vulns: ["CVE-1"], kev: false, max_score: 80, job: null, last_attempt: null,
+  summary: null, fix: "apt", plannable: true, person_only: false, forward_only: false };
+
+it("Home: a setting fix reads as a setting, says a person approves it, and plans like any other", async () => {
+  const calls = serve({ "POST /api/remediation/jobs": { id: "j2" } });
+  wrap(<ol><ActionCard a={{ ...ACTION, ecosystem: "WinConfig", package: "wdigest", fixed_version: null, vulns: ["CFG:wdigest"], summary: "WDigest keeps passwords in memory.", fix: "winconfig", person_only: true }} /></ol>);
+  expect(screen.getByText(/Change setting/)).toHaveTextContent("Change setting wdigest");
+  expect(screen.getByText("WDigest keeps passwords in memory.")).toBeInTheDocument();
+  expect(screen.getByText(/Fixes 1 finding on 2 hosts/)).toBeInTheDocument();
+  expect(screen.getByText(/A person approves this one/)).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: /Plan fix/ }));
+  await waitFor(() => expect(calls.filter((c) => c.method === "POST")).toHaveLength(2));
+  expect(calls.find((c) => c.method === "POST")?.body).toEqual({ asset_id: "a1", ecosystem: "WinConfig", package: "wdigest" });
+});
+
+it("Home: a winget fix says it can't be undone; a product with no fix path offers no plan", () => {
+  serve({});
+  const r = wrap(<ol><ActionCard a={{ ...ACTION, ecosystem: "WinApp", package: "7-zip:7-zip", fix: "winget", person_only: true, forward_only: true }} /></ol>);
+  expect(screen.getByText(/A person approves this one.*can't be undone/)).toBeInTheDocument();
+  r.unmount();
+  wrap(<ol><ActionCard a={{ ...ACTION, ecosystem: "Microsoft", package: "SQL Server", fix: "winget", plannable: false, person_only: true }} /></ol>);
+  expect(screen.queryByRole("button", { name: /Plan fix/ })).not.toBeInTheDocument();
+  expect(screen.getByText(/update it with its own updater/)).toBeInTheDocument();
+});
 
 it("Home: a fix in flight on one host still lets you plan the others", () => {
   serve({});
@@ -229,6 +255,39 @@ it("Home: after an aborted attempt that needs more packages, it points to the jo
   r.unmount();
   wrap(<ol><ActionCard a={{ ...ACTION, last_attempt: { ...aborted, status: "rolled_back", error: "health check failed" } }} /></ol>);
   expect(screen.getByRole("button", { name: /Plan fix again/ })).toBeInTheDocument();  // nothing extra needed: trying again is fine
+});
+
+it("Windows updates: a count per KB opens to why each machine hasn't got it, and plans only who the rollout allows", async () => {
+  const row = { kb: "5127648", product: "Windows 11", title: "October 2026 cumulative KB5127648", released: "2026-10-14", build: "10.0.26200.9711", hosts: 50, fixed: 48, plan_note: "Canary machines first." };
+  const calls = serve({
+    "GET /api/windows-updates": [row, { ...row, kb: "5120000", title: "September 2026 cumulative KB5120000", fixed: 50 }],
+    "GET /api/windows-updates/5127648": { ...row, plan_asset_ids: ["c1"], missing: [
+      { asset_id: "c1", hostname: "canary-1", build: "10.0.26200.6899", ring: 0, why: "No job yet", notes: ["A restart is pending, which can change its build"], job: null },
+      { asset_id: "h2", hostname: "pc-2", build: "10.0.26200.6899", ring: 1, why: "Last attempt rolled back: health check failed", notes: [], job: { id: "j7", status: "rolled_back" } },
+    ] },
+    "POST /api/remediation/jobs": { id: "j8" },
+  });
+  wrap(<KbFleet />);
+  expect(await screen.findByText("48 of 50 hosts")).toBeInTheDocument();
+  expect(screen.getByText("50 of 50 hosts")).toBeInTheDocument();
+  expect(screen.getAllByText(/machines? without it/)).toHaveLength(1);  // a fully patched update has nothing to open
+  expect(calls.some((c) => c.path.endsWith("/5127648"))).toBe(false);  // the hosts load when asked for
+  await userEvent.click(screen.getByText(/Show 2 machines without it/));
+  expect(await screen.findByText("No job yet")).toBeInTheDocument();
+  expect(screen.getByText("(canary)", { exact: false })).toBeInTheDocument();
+  expect(screen.getByText(/restart is pending/)).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: /rolled back: health check failed/ })).toHaveAttribute("href", "/remediation#job-j7");
+  expect(screen.getByText("Canary machines first.")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: /Plan 1 machine now/ }));
+  await waitFor(() => expect(calls.find((c) => c.method === "POST")?.body).toEqual({ asset_id: "c1", ecosystem: "Windows", package: "Windows 11" }));
+  expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
+});
+
+it("Windows updates: nothing shows on a fleet with no Windows", async () => {
+  const calls = serve({ "GET /api/windows-updates": [] });
+  const r = wrap(<KbFleet />);
+  await waitFor(() => expect(calls).toHaveLength(1));
+  expect(r.container).toBeEmptyDOMElement();
 });
 
 it("Done is announced through the shell's live region", async () => {
@@ -299,4 +358,53 @@ it("a token without an expiry says so instead of crashing Settings", async () =>
   serve({ "GET /api/tokens": [{ id: "t1", name: "old", created_by: "a@b.c", created: "2026-01-01T00:00:00", expires: null, last_used: null }] });
   wrap(<ApiTokensSection />);
   expect(await screen.findByText(/never expires/)).toBeInTheDocument();
+});
+
+it("Assets: says which installed apps weren't checked, and a host with none checked says so", async () => {
+  serve({ "GET /api/coverage": { assessed: 1, inventory_only: 3, not_assessed: [{ name: "Acme Widget", publisher: "Acme", hosts: 2 }] } });
+  wrap(<NotAssessed />);
+  expect(await screen.findByRole("heading", { name: "3 installed apps aren't checked for vulnerabilities" })).toBeInTheDocument();
+  expect(screen.getByText("Acme Widget")).toBeInTheDocument();
+  wrap(<ul><AssetRow a={{ ...HOST, apps: { assessed: 0, inventory_only: 2 } }} onPatch={() => {}} onDelete={() => {}} /></ul>);
+  expect(screen.getByText("None of its 2 installed apps could be checked.")).toBeInTheDocument();
+});
+
+it("Assets: nothing shows when every installed app was checked", async () => {
+  const calls = serve({ "GET /api/coverage": { assessed: 4, inventory_only: 0, not_assessed: [] } });
+  wrap(<NotAssessed />);
+  await waitFor(() => expect(calls.some((c) => c.path === "/api/coverage")).toBe(true));
+  expect(screen.queryByRole("heading")).toBeNull();
+});
+
+it("Assets: attack paths say how sure, where to cut each edge, and nothing shows without a path", async () => {
+  const path = { kind: "network", start: "from the network", grade: "reasonable", steps: ["Getting in", "Taking credentials"],
+                 break_at: { label: "Getting in", fixes: 1, refs: ["CFG:rdp-nla"] } };
+  serve({ "GET /api/attack-paths": { hosts: { a: { hostname: "ws-1", judged: true, paths: [path] }, b: { hostname: "srv-1", judged: true, paths: [] },
+                                              c: { hostname: "new-1", judged: false, paths: [] } },
+                                     chains: [{ start: "a", why_start: "a path from the network", reach: [{ host: "b", hops: ["b"], grade: "reasonable", fix_on_host: ["CFG:remote-uac"] }] }] } });
+  wrap(<AttackPaths />);
+  expect(await screen.findByText(/From ws-1 \(a path from the network\), an attacker can reach 1 other host/)).toBeInTheDocument();
+  expect(screen.getByText(/ws-1 → srv-1 · how sure: reasonable · cut it on srv-1: CFG:remote-uac/)).toBeInTheDocument();
+  expect(screen.getByText(/1 host hasn't been judged yet/)).toBeInTheDocument();
+  expect(screen.getByText(/Break it: fix 1 way of getting in \(CFG:rdp-nla\)/)).toBeInTheDocument();
+});
+
+it("Assets: no attack paths, no section", async () => {
+  const calls = serve({ "GET /api/attack-paths": { hosts: { a: { hostname: "ws-1", judged: true, paths: [] } }, chains: [] } });
+  wrap(<AttackPaths />);
+  await waitFor(() => expect(calls.some((c) => c.path === "/api/attack-paths")).toBe(true));
+  expect(screen.queryByRole("heading")).toBeNull();
+});
+
+const BASE = { name: "DISA STIG for Windows Server 2025", version: "V1R4", automated: 156, manual: 135, pass: 100, fail: 20, not_assessed: 16, not_applicable: 20 };
+
+it("Assets: a baseline reads as a share of the checks we can automate, never as conformance", async () => {
+  expect(baselineSummary(BASE)).toBe("100 of 136 checks we can automate pass, 20 fail, 16 not assessed");
+  serve({ "GET /api/baselines": { no_baseline: 1, baselines: [{ ...BASE, baseline_id: "x", hosts: 1 }], hosts: [{ ...BASE, asset_id: "a", hostname: "srv-1" }] } });
+  wrap(<Baselines />);
+  expect(await screen.findByText(/A reference, not a conformance result/)).toBeInTheDocument();
+  expect(screen.getByText(/manual checks are not assessed/)).toBeInTheDocument();
+  expect(screen.getByText(/135 manual checks not assessed/)).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Download as CSV" })).toHaveAttribute("href", "/api/baselines.csv");
+  expect(document.body.textContent).not.toMatch(/compliant/i);
 });

@@ -192,7 +192,7 @@ test("admins sign in with their code, manage people and API tokens", async ({ br
   await tokens.getByLabel("Authenticator code").fill(await freshCode(page));  // a session alone can't mint a token
   await tokens.getByRole("button", { name: "Create token" }).click();
   const token = (await tokens.locator("pre code").textContent())!.trim();
-  const anon = await pwRequest.newContext({ baseURL: "http://localhost:5173" });
+  const anon = await pwRequest.newContext({ baseURL: `http://localhost:${process.env.NIMSTEAD_WEB_PORT ?? "5173"}` });
   const csv = await anon.get("/api/findings.csv", { headers: { Authorization: `Bearer ${token}` } });
   expect(csv.ok()).toBe(true);
   expect(await csv.text()).toMatch(/^hostname,package/);
@@ -295,6 +295,51 @@ for (const width of [1440, 375] as const) {
     });
   }
 }
+
+test("Windows updates: who has a KB, why the others don't, and planning the rest", async ({ browser }) => {
+  const context = await browser.newContext({ storageState: STATE });
+  const page = await context.newPage();
+  const W11 = "Windows 11 Version 25H2 for x64-based Systems";
+  const tok = await (await page.request.post("/api/enroll-tokens", { data: { sandbox: true } })).json();
+  for (const [hostname, build] of [["win-patched", "10.0.26200.9711"], ["win-old", "10.0.26200.6899"]] as const) {
+    const a = await (await page.request.post("/api/agent/enroll", { data: { token: tok.token, hostname, ecosystem: "Windows" } })).json();
+    const r = await page.request.post("/api/agent/inventory", { data: { ecosystem: "Windows", packages: [{ ecosystem: "Windows", name: W11, version: build, source: null }] }, headers: { Authorization: `Bearer ${a.agent_key}` } });
+    expect(r.ok()).toBe(true);
+  }
+  await page.goto("/remediation");
+  const row = page.getByRole("listitem").filter({ hasText: "October 2026 cumulative KB5127648" });
+  await expect(row.getByText("1 of 2 hosts")).toBeVisible();
+  await row.getByText("Show 1 machine without it").click();
+  await expect(row.getByText("win-old")).toBeVisible();
+  await expect(row.getByText("No job yet")).toBeVisible();
+  await expect(row.getByText(/No canary machine has proven this update/)).toBeVisible();
+  await axe(page, "Windows updates open");
+  await row.getByRole("button", { name: /Plan the rest \(1\)/ }).click();
+  await expect(page).toHaveURL(/\/remediation#job-/);
+  await expect(row.getByText("Planned, waiting for approval")).toBeVisible();
+  await expect(row.getByRole("button", { name: /Plan the rest/ })).toHaveCount(0);  // it's in flight now
+  await context.close();
+});
+
+test("Baseline view: per host counts, wording that claims no conformance, rules on demand, CSV", async ({ browser }) => {
+  const context = await browser.newContext({ storageState: STATE });
+  const page = await context.newPage();
+  const tok = await (await page.request.post("/api/enroll-tokens", { data: { sandbox: true } })).json();
+  const a = await (await page.request.post("/api/agent/enroll", { data: { token: tok.token, hostname: "stig-srv", ecosystem: "Windows" } })).json();
+  const r = await page.request.post("/api/agent/inventory", { data: { os_name: "Windows Server 2025 Standard 24H2 (AMD64) build 10.0.26100.1", ecosystem: "Windows", packages: [], facts: { domain_role: 3, installation_type: "Server", baseline: { audit: { "{0CCE9215-69AE-11D9-BED3-505054503030}": 1 } } } }, headers: { Authorization: `Bearer ${a.agent_key}` } });
+  expect(r.ok()).toBe(true);
+  await page.goto("/assets");
+  const section = page.getByRole("region", { name: "Windows settings compared with published baselines" });
+  await expect(section.getByText(/not a conformance result/)).toBeVisible();
+  await expect(section.getByText(/manual checks not assessed/)).toBeVisible();
+  await section.getByText(/stig-srv/).click();
+  await expect(section.getByText(/WN25-AU-000200/)).toBeVisible();
+  await axe(page, "baseline rules open");
+  const csv = await page.request.get("/api/baselines.csv");
+  expect(csv.headers()["content-type"]).toContain("text/csv");
+  expect(await csv.text()).toContain("stig-srv,DISA STIG for Windows Server 2025,V1R4");
+  await context.close();
+});
 
 test("a member (read-only) sees no controls the API would refuse, and every page passes axe", async ({ browser }) => {
   // a member with a password, as an invitation would add (no SMTP in this test)

@@ -6,6 +6,7 @@ what the asset is (criticality, internet exposure) and whether a fix exists.
 """
 
 from dataclasses import dataclass, field
+from functools import lru_cache
 
 from cvss import CVSS3, CVSS4
 
@@ -24,21 +25,75 @@ class Risk:
         return "; ".join(self.reasons)
 
 
+@lru_cache(maxsize=65536)  # a rescan pass scores the same few thousand vectors once per finding
+def _vector_score(kind: str, vector: str):
+    try:
+        if kind == "CVSS_V3":
+            return CVSS3(vector).scores()[0]
+        if kind == "CVSS_V4":
+            return CVSS4(vector).base_score
+    except Exception:  # noqa: S110 — malformed vector in feed: ignore that vector only
+        pass
+    return None
+
+
 def cvss_base(severity: list[dict] | None) -> float | None:
     """Highest base score from OSV `severity` vectors."""
-    best = None
-    for s in severity or []:
-        try:
-            if s.get("type") == "CVSS_V3":
-                v = CVSS3(s["score"]).scores()[0]
-            elif s.get("type") == "CVSS_V4":
-                v = CVSS4(s["score"]).base_score
-            else:
-                continue
-        except Exception:  # noqa: S112 — malformed vector in feed: ignore that vector only
-            continue
-        best = v if best is None else max(best, v)
-    return float(best) if best is not None else None
+    scores = [v for s in severity or [] if isinstance(s.get("score"), str)
+              and (v := _vector_score(s.get("type"), s["score"])) is not None]
+    return float(max(scores)) if scores else None
+
+
+# CVRF component tags (DECISIONS 51) -> the Windows Server roles or client optional features that expose them. A tag
+# not listed here changes nothing; the finding stays open either way (plan decision 6: the build is still vulnerable).
+ROLE_TAGS = {
+    "Role: DNS Server": ("DNS",), "Windows DHCP Server": ("DHCP",),
+    "Windows Routing and Remote Access Service (RRAS)": ("RemoteAccess", "Routing", "DirectAccess-VPN"),
+    "Windows Hyper-V": ("Hyper-V", "Microsoft-Hyper-V", "Microsoft-Hyper-V-All"),
+    "Windows Message Queuing Queue Manager": ("MSMQ", "MSMQ-Server", "MSMQ-Container"),
+    "Remote Desktop Gateway Service": ("RDS-Gateway",), "Network Policy Server (NPS)": ("NPAS",),
+    "Active Directory Federation Services (AD FS)": ("ADFS-Federation",), "Active Directory Domain Services": ("AD-Domain-Services",),
+    "WebDAV": ("Web-DAV-Publishing", "IIS-WebDAV"), "Windows Subsystem for Linux": ("Microsoft-Windows-Subsystem-Linux",),
+}
+PRIORITY = [(75, "fix-now"), (50, "next"), (25, "planned"), (0, "low")]
+
+
+def _tier(s: int) -> str:
+    return next(p for t, p in PRIORITY if s >= t)
+
+
+def context(r: Risk, *, kev: bool, ransomware: bool = False, public_exploit: bool = False, exploit_db: bool = False, msrc: dict | None = None,
+            roles: list | None = None, listening: str | None = None) -> Risk:
+    """Threat and exposure context on top of score() (plan T11, T39). KEV still overrides everything: a known-exploited
+    CVE is never lowered. Microsoft saying "exploited" counts like KEV before CISA lists it."""
+    msrc = msrc or {}
+    s, reasons = r.score, list(r.reasons)
+    if ransomware:
+        reasons.insert(1, "Used in ransomware campaigns (CISA KEV)")
+    if msrc.get("exploited") and not kev:
+        s = max(s, 90)
+        reasons.insert(0, "Exploited in the wild (Microsoft)")
+    elif not kev and msrc.get("exploitability") in ("Exploitation More Likely", "Exploitation Detected"):
+        s = min(100, s + 10)
+        reasons.append(f"Microsoft rates it: {msrc['exploitability']}")
+    if public_exploit and not kev:
+        s = min(100, s + 10)
+        reasons.append("Public exploit (Metasploit module)")
+    if exploit_db and not kev:
+        s = s if public_exploit else min(100, s + 10)  # a second source is another reason, not more points
+        reasons.append("Public exploit (Exploit-DB)")
+    if msrc.get("disclosed"):
+        reasons.append("Publicly disclosed before the fix")
+    feats = ROLE_TAGS.get(msrc.get("tag", ""))
+    if feats and isinstance(roles, list) and roles and not kev and not msrc.get("exploited") and not set(feats) & set(roles):
+        s = round(s * 0.6)
+        reasons.append(f"{msrc['tag'].removeprefix('Role: ')} isn't installed here: lower priority until it is")
+    if listening:  # this host's copy of the product is reachable over the network, as read by the agent (DECISIONS 72)
+        s = min(100, s + 15) if not kev else s
+        reasons.append(listening)
+    if s == r.score and reasons == r.reasons:
+        return r
+    return Risk(s, "fix-now" if kev or msrc.get("exploited") else _tier(s), reasons)
 
 
 def score(

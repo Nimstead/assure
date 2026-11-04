@@ -1,0 +1,432 @@
+{
+ "DocumentTitle": {
+  "Value": "September 2025 Security Updates"
+ },
+ "DocumentTracking": {
+  "Identification": {
+   "ID": {
+    "Value": "2025-Sep"
+   },
+   "Alias": {
+    "Value": "2025-Sep"
+   }
+  },
+  "Status": 2,
+  "Version": "1.0",
+  "RevisionHistory": [
+   {
+    "Number": "1211",
+    "Date": "2026-10-15T02:08:11",
+    "Description": {
+     "Value": "September 2025 Security Updates"
+    }
+   }
+  ],
+  "InitialReleaseDate": "2025-09-09T07:00:00",
+  "CurrentReleaseDate": "2026-10-15T02:08:11"
+ },
+ "ProductTree": {
+  "FullProductName": [
+   {
+    "ProductID": "12436",
+    "CPE": "cpe:2.3:o:microsoft:windows_server_2025:10.0.26100.6584:*:*:*:*:*:*:*",
+    "Value": "Windows Server 2025"
+   },
+   {
+    "ProductID": "12437",
+    "CPE": "cpe:2.3:o:microsoft:windows_server_2025:10.0.26100.6584:*:*:*:*:*:*:*",
+    "Value": "Windows Server 2025 (Server Core installation)"
+   }
+  ]
+ },
+ "Vulnerability": [
+  {
+   "Title": {
+    "Value": "PowerShell Direct Elevation of Privilege Vulnerability"
+   },
+   "Notes": [
+    {
+     "Title": "Description",
+     "Type": 2,
+     "Ordinal": "0",
+     "Value": "<p>Improper restriction of communication channel to intended endpoints in Windows PowerShell allows an authorized attacker to elevate privileges locally.</p>\n"
+    },
+    {
+     "Title": "Windows PowerShell",
+     "Type": 7,
+     "Ordinal": "20",
+     "Value": "Windows PowerShell"
+    }
+   ],
+   "DiscoveryDate": "0001-01-01T00:00:00",
+   "DiscoveryDateSpecified": false,
+   "ReleaseDate": "0001-01-01T00:00:00",
+   "ReleaseDateSpecified": false,
+   "CVE": "CVE-2025-49734",
+   "CWE": [
+    {
+     "ID": "CWE-923",
+     "Value": "Improper Restriction of Communication Channel to Intended Endpoints"
+    }
+   ],
+   "ProductStatuses": [],
+   "Threats": [
+    {
+     "Description": {
+      "Value": "Elevation of Privilege"
+     },
+     "ProductID": [
+      "12437"
+     ],
+     "Type": 0,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    },
+    {
+     "Description": {
+      "Value": "Elevation of Privilege"
+     },
+     "ProductID": [
+      "12436"
+     ],
+     "Type": 0,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    },
+    {
+     "Description": {
+      "Value": "Important"
+     },
+     "ProductID": [
+      "12437"
+     ],
+     "Type": 3,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    },
+    {
+     "Description": {
+      "Value": "Important"
+     },
+     "ProductID": [
+      "12436"
+     ],
+     "Type": 3,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    }
+   ],
+   "CVSSScoreSets": [
+    {
+     "BaseScore": 7.0,
+     "TemporalScore": 6.1,
+     "EnvironmentalScore": 0,
+     "Vector": "CVSS:3.1/AV:L/AC:H/PR:L/UI:N/S:U/C:H/I:H/A:H/E:U/RL:O/RC:C",
+     "ProductID": [
+      "12437"
+     ],
+     "IsTemporalScoreFieldSpecified": false
+    },
+    {
+     "BaseScore": 7.0,
+     "TemporalScore": 6.1,
+     "EnvironmentalScore": 0,
+     "Vector": "CVSS:3.1/AV:L/AC:H/PR:L/UI:N/S:U/C:H/I:H/A:H/E:U/RL:O/RC:C",
+     "ProductID": [
+      "12436"
+     ],
+     "IsTemporalScoreFieldSpecified": false
+    }
+   ],
+   "Remediations": [
+    {
+     "Description": {
+      "Value": "5065426"
+     },
+     "URL": "https://catalog.update.microsoft.com/v7/site/Search.aspx?q=KB5065426",
+     "Supercedence": "5063878",
+     "ProductID": [
+      "12437",
+      "12436"
+     ],
+     "Type": 2,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "RestartRequired": {
+      "Value": "Yes"
+     },
+     "SubType": "Security Update",
+     "FixedBuild": "10.0.26100.6584"
+    },
+    {
+     "URL": "https://support.microsoft.com/help/5065426",
+     "ProductID": [
+      "12437",
+      "12436"
+     ],
+     "Type": 3,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "SubType": "5065426"
+    },
+    {
+     "Description": {
+      "Value": "5065426"
+     },
+     "URL": "https://support.microsoft.com/help/5065426",
+     "ProductID": [
+      "12437",
+      "12436"
+     ],
+     "Type": 6,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": []
+    },
+    {
+     "Description": {
+      "Value": "5065474"
+     },
+     "URL": "https://catalog.update.microsoft.com/v7/site/Search.aspx?q=KB5065474",
+     "Supercedence": "5064010",
+     "ProductID": [
+      "12437",
+      "12436"
+     ],
+     "Type": 2,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "RestartRequired": {
+      "Value": "Yes"
+     },
+     "SubType": "SecurityHotpatchUpdate",
+     "FixedBuild": "10.0.26100.6508"
+    },
+    {
+     "URL": "https://support.microsoft.com/help/5065474",
+     "ProductID": [
+      "12437",
+      "12436"
+     ],
+     "Type": 3,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "SubType": "5065474"
+    },
+    {
+     "Description": {
+      "Value": "5065474"
+     },
+     "URL": "https://support.microsoft.com/help/5065474",
+     "ProductID": [
+      "12437",
+      "12436"
+     ],
+     "Type": 6,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": []
+    }
+   ],
+   "Ordinal": "258"
+  },
+  {
+   "Title": {
+    "Value": "Windows Routing and Remote Access Service (RRAS) Information Disclosure Vulnerability"
+   },
+   "Notes": [
+    {
+     "Title": "Description",
+     "Type": 2,
+     "Ordinal": "0",
+     "Value": "<p>Buffer over-read in Windows Routing and Remote Access Service (RRAS) allows an unauthorized attacker to disclose information over a network.</p>\n"
+    },
+    {
+     "Title": "Windows Routing and Remote Access Service (RRAS)",
+     "Type": 7,
+     "Ordinal": "20",
+     "Value": "Windows Routing and Remote Access Service (RRAS)"
+    }
+   ],
+   "DiscoveryDate": "0001-01-01T00:00:00",
+   "DiscoveryDateSpecified": false,
+   "ReleaseDate": "0001-01-01T00:00:00",
+   "ReleaseDateSpecified": false,
+   "CVE": "CVE-2025-53796",
+   "CWE": [
+    {
+     "ID": "CWE-126",
+     "Value": "Buffer Over-read"
+    }
+   ],
+   "ProductStatuses": [],
+   "Threats": [
+    {
+     "Description": {
+      "Value": "Information Disclosure"
+     },
+     "ProductID": [
+      "12437"
+     ],
+     "Type": 0,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    },
+    {
+     "Description": {
+      "Value": "Information Disclosure"
+     },
+     "ProductID": [
+      "12436"
+     ],
+     "Type": 0,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    },
+    {
+     "Description": {
+      "Value": "Important"
+     },
+     "ProductID": [
+      "12437"
+     ],
+     "Type": 3,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    },
+    {
+     "Description": {
+      "Value": "Important"
+     },
+     "ProductID": [
+      "12436"
+     ],
+     "Type": 3,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    }
+   ],
+   "CVSSScoreSets": [
+    {
+     "BaseScore": 6.5,
+     "TemporalScore": 5.7,
+     "EnvironmentalScore": 0,
+     "Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:N/A:N/E:U/RL:O/RC:C",
+     "ProductID": [
+      "12437"
+     ],
+     "IsTemporalScoreFieldSpecified": false
+    },
+    {
+     "BaseScore": 6.5,
+     "TemporalScore": 5.7,
+     "EnvironmentalScore": 0,
+     "Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:N/A:N/E:U/RL:O/RC:C",
+     "ProductID": [
+      "12436"
+     ],
+     "IsTemporalScoreFieldSpecified": false
+    }
+   ],
+   "Remediations": [
+    {
+     "Description": {
+      "Value": "5065426"
+     },
+     "URL": "https://catalog.update.microsoft.com/v7/site/Search.aspx?q=KB5065426",
+     "Supercedence": "5063878",
+     "ProductID": [
+      "12437",
+      "12436"
+     ],
+     "Type": 2,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "RestartRequired": {
+      "Value": "Yes"
+     },
+     "SubType": "Security Update",
+     "FixedBuild": "10.0.26100.6584"
+    },
+    {
+     "URL": "https://support.microsoft.com/help/5065426",
+     "ProductID": [
+      "12437",
+      "12436"
+     ],
+     "Type": 3,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "SubType": "5065426"
+    },
+    {
+     "Description": {
+      "Value": "5065426"
+     },
+     "URL": "https://support.microsoft.com/help/5065426",
+     "ProductID": [
+      "12437",
+      "12436"
+     ],
+     "Type": 6,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": []
+    },
+    {
+     "Description": {
+      "Value": "5065474"
+     },
+     "URL": "https://catalog.update.microsoft.com/v7/site/Search.aspx?q=KB5065474",
+     "Supercedence": "5064010",
+     "ProductID": [
+      "12437",
+      "12436"
+     ],
+     "Type": 2,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "RestartRequired": {
+      "Value": "Yes"
+     },
+     "SubType": "SecurityHotpatchUpdate",
+     "FixedBuild": "10.0.26100.6508"
+    },
+    {
+     "URL": "https://support.microsoft.com/help/5065474",
+     "ProductID": [
+      "12437",
+      "12436"
+     ],
+     "Type": 3,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "SubType": "5065474"
+    },
+    {
+     "Description": {
+      "Value": "5065474"
+     },
+     "URL": "https://support.microsoft.com/help/5065474",
+     "ProductID": [
+      "12437",
+      "12436"
+     ],
+     "Type": 6,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": []
+    }
+   ],
+   "Ordinal": "260"
+  }
+ ]
+}

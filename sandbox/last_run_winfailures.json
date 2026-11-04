@@ -1,0 +1,228 @@
+[
+  {
+    "step": "feeds",
+    "msrc": {
+      "documents": 2,
+      "skipped_documents": 0,
+      "inserted": 48974,
+      "updated": 0,
+      "skipped": 0
+    }
+  },
+  {
+    "step": "install.ps1 ran",
+    "vm": "nimstead-sbx-win-38a575"
+  },
+  {
+    "step": "agent installed",
+    "os": "Windows 11 Pro 26H2 (AMD64) build 10.0.26300.9457",
+    "build": "10.0.26300.9457"
+  },
+  {
+    "step": "doctor",
+    "output": "ok    config: C:\\ProgramData\\Nimstead\\agent.json\nok    proxy: none: connects directly\nok    server: http://10.0.2.2:8766\nok    clock: within 1 seconds of the server\nok    schedule: Nimstead agent, Nimstead jobs\nok    state folder: C:\\ProgramData\\Nimstead: only SYSTEM and Administrators\nok    Windows Update: Running, start type Manual\nok    disk: 53432 MiB free\nok    runtime: agent 0.5.0 on Python 3.15: C:\\Program Files\\Nimstead\\runtime\\d012f3aa29cf\\python.exe\nall 9 checks passed\nlog: C:\\ProgramData\\Nimstead\\agent.log\n"
+  },
+  {
+    "step": "doctor before anything is broken",
+    "lines": {
+      "config": "ok",
+      "proxy": "ok",
+      "server": "ok",
+      "clock": "ok",
+      "schedule": "ok",
+      "state folder": "ok",
+      "Windows Update": "ok",
+      "disk": "ok",
+      "runtime": "ok"
+    }
+  },
+  {
+    "step": "doctor",
+    "output": "ok    config: C:\\ProgramData\\Nimstead\\agent.json\nok    proxy: none: connects directly\nok    server: http://10.0.2.2:8766\nok    clock: within 1 seconds of the server\nFAIL  schedule: missing or disabled: Nimstead agent. Fix: Run `nimstead_agent.py schedule` as Administrator.\nok    state folder: C:\\ProgramData\\Nimstead: only SYSTEM and Administrators\nFAIL  Windows Update: the service wuauserv is disabled. Fix: Run: Set-Service wuauserv -StartupType Manual (and check no policy disables it).\nok    disk: 53432 MiB free\nok    runtime: agent 0.5.0 on Python 3.15: C:\\Program Files\\Nimstead\\runtime\\d012f3aa29cf\\python.exe\n2 of 9 checks failed\nlog: C:\\ProgramData\\Nimstead\\agent.log\n"
+  },
+  {
+    "step": "scenario: doctor",
+    "ok": true,
+    "checks": {
+      "task removed shows FAIL": true,
+      "wuauserv disabled shows FAIL": true,
+      "each FAIL says how to fix it": true
+    }
+  },
+  {
+    "step": "doctor",
+    "output": "ok    config: C:\\ProgramData\\Nimstead\\agent.json\nok    proxy: none: connects directly\nok    server: http://10.0.2.2:8766\nFAIL  clock: this machine is 36000 seconds ahead of the server. Fix: Set the time: w32tm /resync.\nok    schedule: Nimstead agent, Nimstead jobs\nok    state folder: C:\\ProgramData\\Nimstead: only SYSTEM and Administrators\nok    Windows Update: Running, start type Manual\nok    disk: 53647 MiB free\nok    runtime: agent 0.5.0 on Python 3.15: C:\\Program Files\\Nimstead\\runtime\\d012f3aa29cf\\python.exe\n1 of 9 checks failed\nlog: C:\\ProgramData\\Nimstead\\agent.log\n"
+  },
+  {
+    "step": "scenario: clock",
+    "ok": true,
+    "checks": {
+      "clock shows FAIL": true,
+      "says it's ahead and by how much": true,
+      "says how to fix it": true
+    }
+  },
+  {
+    "step": "runs with the server down",
+    "report": [
+      1,
+      ".0.2.2:8766 failed: <urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>\nnimstead-agent: error: request to http://10.0.2.2:8766 failed: <urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>\n\n"
+    ],
+    "remediate": [
+      1,
+      ".0.2.2:8766 failed: <urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>\nnimstead-agent: error: request to http://10.0.2.2:8766 failed: <urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>\n\n"
+    ]
+  },
+  {
+    "step": "the next run",
+    "rc": 0,
+    "output": "reported 450 packages\n\n",
+    "last_seen_before": "2026-11-03T16:03:15.534053",
+    "last_seen_after": "2026-11-03T16:19:50.070812"
+  },
+  {
+    "step": "scenario: server down",
+    "ok": true,
+    "checks": {
+      "report fails plainly": true,
+      "job poll fails plainly": true,
+      "next run catches up": true
+    }
+  },
+  {
+    "step": "job with the disk full",
+    "outcome": "aborted",
+    "steps": [
+      [
+        "job validated",
+        true
+      ],
+      [
+        "installed build matches plan",
+        true
+      ],
+      [
+        "no reboot already pending",
+        true
+      ],
+      [
+        "on mains power or battery above half",
+        true
+      ],
+      [
+        "at least 10 GB free on the system drive",
+        false
+      ]
+    ],
+    "before": "{\"hotfixes\":4,\"state_file\":false,\"build\":\"10.0.26300.9457\",\"reboot_pending\":false}\n",
+    "after": "{\"hotfixes\":4,\"state_file\":false,\"build\":\"10.0.26300.9457\",\"reboot_pending\":false}\n"
+  },
+  {
+    "step": "scenario: disk full",
+    "ok": true,
+    "checks": {
+      "refused at the free space check": true,
+      "nothing changed": true
+    }
+  },
+  {
+    "step": "power cut during the rollback"
+  },
+  {
+    "step": "resume 0",
+    "outcome": "pending_reboot",
+    "error": null,
+    "steps": [
+      "injected failure (sandbox test)",
+      "remove Package_for_RollupFix~31bf3856ad364e35~amd64~~26100.9711.1.30",
+      "reboot required to finish rollback"
+    ]
+  },
+  {
+    "step": "resume 1",
+    "outcome": "rolled_back",
+    "error": "Change failed and was rolled back: injected failure (sandbox test) failed: --fail-after-apply",
+    "steps": [
+      "remove Package_for_RollupFix~31bf3856ad364e35~amd64~~26100.9711.1.30",
+      "reboot required to finish rollback",
+      "original build restored"
+    ]
+  },
+  {
+    "step": "after the cut",
+    "outcome": "rolled_back",
+    "build": "10.0.26300.9457",
+    "was": "10.0.26300.9457",
+    "last": " true, \"output\": \"\"}, {\"step\": \"reboot required to finish rollback\", \"ok\": true, \"output\": \"\"}, {\"step\": \"original build restored\", \"ok\": true, \"output\": \"10.0.26300.9457\"}], \"error\": \"Change failed and was rolled back: injected failure (sandbox test) failed: --fail-after-apply\", \"versions\": null}\n\n"
+  },
+  {
+    "step": "scenario: rollback cut",
+    "ok": true,
+    "checks": {
+      "the cut landed during the removal": true,
+      "finished, not stuck": true,
+      "says what's true": true,
+      "no job left pending": true
+    }
+  },
+  {
+    "step": "Windows Update never seen installing"
+  },
+  {
+    "step": "jobs",
+    "vm": "succeeded"
+  },
+  {
+    "step": "after the cut",
+    "status": "succeeded",
+    "error": null,
+    "build": "10.0.26300.9711",
+    "was": "10.0.26300.9457",
+    "steps": [
+      [
+        "KB5127648 downloaded",
+        true
+      ],
+      [
+        "update is removable (manifest checked before install)",
+        true
+      ],
+      [
+        "KB5127648 downloaded and installed",
+        true
+      ],
+      [
+        "new cumulative package identified",
+        true
+      ],
+      [
+        "reboot required to finish",
+        true
+      ],
+      [
+        "build updated",
+        true
+      ]
+    ]
+  },
+  {
+    "step": "scenario: install cut",
+    "ok": false,
+    "checks": {
+      "the cut landed during the install": false,
+      "the job finished or was reported, not stuck": true,
+      "what it says matches the machine": true
+    }
+  },
+  {
+    "step": "RESULT: FAIL",
+    "checks": {
+      "doctor": true,
+      "clock": true,
+      "server down": true,
+      "disk full": true,
+      "rollback cut": true,
+      "install cut": false
+    }
+  }
+]

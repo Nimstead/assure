@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, CheckCircle2, TriangleAlert } from "lucide-react";
-import { dependenciesNeeded, filtersToSearch, jobAnchor, JOB_STATUS_LABEL, parseFilters, plural, PRIORITIES, PRIORITY_LABEL, priorityOf, summaryQ, useTitle, type Action } from "./lib";
+import { dependenciesNeeded, coverageQ, filtersToSearch, jobAnchor, JOB_STATUS_LABEL, parseFilters, plural, PRIORITIES, PRIORITY_LABEL, priorityOf, summaryQ, useTitle, type Action } from "./lib";
 import { PlanFixButton } from "./remediation";
 import { ErrorState, KevBadge, Loading, PriorityPill, StatusPill } from "./ui";
 import clsx from "clsx";
@@ -14,6 +14,7 @@ const tile = (p: string, n: number) => (p === "fix-now" && n > 0 ? "text-now-fg"
 
 export function Home() {
   const q = useQuery(summaryQ);
+  const coverage = useQuery(coverageQ);
   useTitle(q.data?.assets === 0 ? "Add a machine" : "Fix first");
 
   if (q.isPending) return <HomeSkeleton />;
@@ -22,14 +23,15 @@ export function Home() {
   if (s.assets === 0) return <Suspense fallback={<Loading className="h-64" />}><Onboarding /></Suspense>;
 
   const total = PRIORITIES.reduce((n, p) => n + (s.open_by_priority[p] ?? 0), 0);
+  const unchecked = coverage.data?.inventory_only ?? 0;
   return (
     <div className="flex flex-col gap-8">
       <header>
         <h1 className="text-3xl font-semibold">Fix first</h1>
         <p className="mt-1 text-muted">
           {total === 0
-            ? `No open findings across ${plural(s.assets, "machine")}.`
-            : `${plural(total, "open finding")} across ${plural(s.assets, "machine")}. These upgrades clear the most risk.`}
+            ? `No open findings across ${plural(s.assets, "machine")}.${unchecked ? ` Installed apps not checked: ${unchecked}, listed on Assets.` : ""}`
+            : `${plural(total, "open finding")} across ${plural(s.assets, "machine")}. These fixes clear the most risk.`}
         </p>
       </header>
 
@@ -73,12 +75,12 @@ export function Home() {
       </ul>
 
       <section aria-labelledby="actions">
-        <h2 id="actions" className="mb-3 text-lg font-semibold">Recommended upgrades</h2>
+        <h2 id="actions" className="mb-3 text-lg font-semibold">Recommended fixes</h2>
         {s.top_actions.length === 0 ? (
           <div className="flex items-start gap-3 border border-dashed border-line-strong p-5">
             <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-accent" aria-hidden />
             <p className="text-sm text-muted">
-              {total === 0 ? "Everything reported so far is clean. New findings will show up here." : "Nothing here can be fixed by an upgrade yet. Review the findings with no fix to mitigate or accept them."}
+              {total === 0 ? "Everything reported so far is clean. New findings will show up here." : "Nothing here can be fixed by an upgrade or a setting change yet. Review the findings with no fix to mitigate or accept them."}
             </p>
           </div>
         ) : (
@@ -100,17 +102,23 @@ export function ActionCard({ a }: { a: Action }) {
     <li className="flex flex-col gap-3 border border-line bg-surface p-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
         <p className="text-base">
-          Upgrade <strong className="break-all font-semibold">{a.package}</strong> to{" "}
-          <code className="break-all bg-sunken px-1.5 py-0.5 font-mono text-[13px]">{a.fixed_version}</code>
+          {a.fixed_version ? <>
+            Upgrade <strong className="break-all font-semibold">{a.package}</strong> to{" "}
+            <code className="break-all bg-sunken px-1.5 py-0.5 font-mono text-[13px]">{a.fixed_version}</code>
+          </> : <>Change setting <strong className="break-all font-semibold">{a.package}</strong></>}
         </p>
+        {a.summary && <p className="mt-1 max-w-prose break-words text-sm text-muted">{a.summary}</p>}
         <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm text-muted">
           <PriorityPill priority={priorityOf(a.max_score, a.kev)} />
           {a.kev && <KevBadge />}
           <span>
-            Fixes {plural(a.vulns.length, "vulnerability", "vulnerabilities")} on {plural(a.hosts.length, "host")}
+            Fixes {a.fixed_version ? plural(a.vulns.length, "vulnerability", "vulnerabilities") : plural(a.vulns.length, "finding")} on {plural(a.hosts.length, "host")}
             <span className="hidden md:inline">: {a.hosts.slice(0, 3).join(", ")}{a.hosts.length > 3 && ` +${a.hosts.length - 3}`}</span>
           </span>
         </p>
+        {a.plannable
+          ? (a.person_only || a.forward_only) && <p className="mt-1 text-sm text-muted">{a.person_only && "A person approves this one, never the trust ladder."}{a.forward_only && " It can't be undone."}</p>
+          : <p className="mt-1 text-sm text-muted">Nimstead can't plan this one: update it with its own updater or by policy.</p>}
       </div>
       <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">
         {(a.job || failed) && (
@@ -122,7 +130,7 @@ export function ActionCard({ a }: { a: Action }) {
           </span>
         )}
         <span className="flex flex-wrap items-start gap-x-4 gap-y-2">
-        {free.length > 0 && !needsMore && (
+        {a.plannable && free.length > 0 && !needsMore && (
           <PlanFixButton ecosystem={a.ecosystem} pkg={a.package} assetIds={free}
             label={a.job ? `Plan fix for ${plural(free.length, "more host")}` : failed ? "Plan fix again" : "Plan fix"} />
         )}

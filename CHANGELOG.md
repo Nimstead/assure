@@ -4,6 +4,97 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-03
+
+Windows rounds 1 and 2 (tasks/plan.md, tasks/plan-windows-round-2.md; DECISIONS 51–101): Windows detection that covers what Nessus and Qualys report, fixes
+they don't make, an agent that needs no Python, and a detection engine that says how sure it is. **Agent 0.5.0.**
+
+**Upgrade from 0.5.x:** run `deploy/update.sh`. Five database migrations (`9a61c0e4d2b7` host facts, `c3e8f1a92d45`
+maintenance windows and Active Directory computers, `a7d3e5b1c920` the engine's collection document and scan records, `d4f1b8a3c6e2` a package's source version, `e5c2a9d7f413` the directory source), applied on start. Things to know:
+- **Windows installs no longer need Python.** `install.ps1` brings Python's official embeddable runtime (3.15.2,
+  pinned by hash in the signed release, every program file signed by the Python Software Foundation). Machines enrolled
+  with a system Python move to the bundled runtime on their own at their next agent update. Your server fetches the
+  runtime zips with the release files; offline installs copy `python-embed-*.zip` into `NIMSTEAD_RELEASE_DIR` too.
+- **More findings on Windows.** Expect new open findings after the first reports: end of support (OS, .NET, SQL
+  Server, Exchange, SharePoint, Office, curated apps), Microsoft products (Edge, .NET runtimes, SQL Server, Exchange,
+  SharePoint, Defender, Store apps, PowerShell, Visual Studio, Microsoft 365 Apps), 22 more third-party apps, and
+  configuration findings (ecosystem `WinConfig`). Edge and VS Code findings move from `WinApp` (NVD) to `Microsoft`
+  (MSRC): the old ones close and new ones open once.
+- **Approved fixes wait for a maintenance window** once you set one (Settings → Remediation); none set = any time, as
+  before. Workstation restarts can now be put off by a signed-in user until a deadline (default 24 hours).
+- **API additions:** `facts` on inventories and host assets; `maintenance_window` / `reboot_deadline_hours` on
+  `/api/settings` and `maintenance_window` on assets; `waits_for_window` and `forward_only` on jobs; approving a
+  forward-only fix needs `{"forward_only": true}`; `POST /api/agent/directory`; `GET /api/directory/unmanaged`
+  (`?format=csv`); `forward_only_changes` in evidence packs.
+
+### Added
+- **Hotpatch-aware Windows matching:** hotpatch and cumulative fixes are separate tracks; a job carries both KBs and the
+  agent installs whichever Windows Update offers (before, a non-hotpatch Server 2025 host could be planned the hotpatch KB).
+- **End-of-support findings** from a dated Microsoft Lifecycle table (Windows 10/11 by edition and ESU, Server
+  2012–2025 and 23H2, .NET, SQL Server, Exchange, SharePoint, Office) and endoflife.date for curated apps.
+- **Microsoft products from MSRC's own fixed builds** by an allowlist, with SQL Server GDR/CU and each Exchange CU as
+  separate tracks, and Microsoft 365 Apps / Office LTSC by channel and version line (Microsoft's release feed).
+- **CVE List v5 (vendor CNAs + CISA Vulnrichment)** as a second source for curated apps where NVD hasn't configured a
+  CVE yet; **22 more curated apps** (OpenJDK builds, browsers, VPN and remote-access clients, file transfer,
+  virtualisation, Docker Desktop, Tomcat and more).
+- Per-user apps of users who aren't signed in; an opt-in **Java library scan** (`--scan-jars`) whose findings name the jar.
+- **Configuration findings:** Secure Boot 2023 certificates (the 2011 CA expired 2026-10-19), BlackLotus revocation,
+  CVE-2013-3900, Spectre/Meltdown on Server, SMBv1, SMB signing, LLMNR, NetBIOS, NTLMv1, WDigest, RDP NLA, TLS 1.0/1.1,
+  DC LDAP signing and channel binding, AlwaysInstallElevated, Spooler on DCs, unquoted or writable service paths,
+  PowerShell 2.0, LSA protection, Defender, firewall, BitLocker.
+- **Threat context:** Microsoft "exploited" counts like KEV; Microsoft's exploitability index, public Metasploit modules
+  and KEV ransomware use are reasons; CVEs in roles that aren't installed (DNS, DHCP, Hyper-V, MSMQ…) rank lower but stay open.
+- **Fix paths:** winget for curated apps (forward-only: a person approves it as such, never the trust ladder), Microsoft
+  365 Apps with rollback to the previous build, and six reversible settings.
+- **Fleet operations:** maintenance windows, restart deferral with a deadline, no install on battery, one Windows job
+  at a time per failover cluster (node drained and resumed) or per domain's controllers, crash events in health checks,
+  and why Windows Update didn't offer a KB (WSUS, deferral, ESU). Proxy support (`--proxy` / WinHTTP), jittered
+  below-normal scheduled tasks, and a list of Active Directory computers with no agent (opt-in `--ad-discovery` on one machine, which an admin then chooses as the directory source on **Assets**; any other host's list is refused).
+- Windows Update accuracy oracle in the VM harnesses (`sandbox/winoracle.py`).
+
+### Fixed
+- Findings hid every Windows setting, end-of-support and exposure finding by default, and called them "no fix yet"; they now show, with what to do. Plan fix is offered on settings the agent can change. Links to advisory pages that can't exist are gone, and an unset registry value no longer reads `[None, None]`.
+- KeePass and Notepad++ (MSI) are identified by the names their current installers register ("KeePass 2.x",
+  "Notepad++ (x64)"); both were inventory only before (found on a real Windows 11 install).
+- A Windows job's 15-minute check no longer judges a DISM rollback before the restart it waits for.
+- The hourly re-match scores each CVSS vector once per pass.
+- `resume-job` takes the run lock, so it can't advance a pending Windows job while the startup run is advancing it.
+- A Windows cumulative update gets up to 2 hours to install (a reinstall on Windows 11 with a user signed in ran past 30 minutes), and a rollback also removes an update that finished installing after the agent stopped waiting for it; before, that ended in "ROLLBACK FAILED" (found on a real Windows 11 VM).
+- Proven on real Windows 11 VMs: winget, Office and Windows-setting fixes with rollback, proxy-only operation, restart deferral (one early restart in an earlier run remains unexplained), crash events in health checks, offline user hives, the jar scan and service ACL checks.
+- A Windows job whose restart a signed-in user put off is no longer marked failed after 2 hours; the server waits until 4 hours after the restart deadline (found on a real Windows 11 VM).
+- winget fixes run as SYSTEM on real Windows 11: winget exited with a missing-DLL error because its C++ runtime wasn't on the path. Office updates and rollbacks repeat a request the Click-to-Run client dropped; before, a dropped rollback ended in "ROLLBACK FAILED" (both found on a real Windows 11 VM).
+- A Windows update job stops before downloading when the system drive has under 10 GB free, saying how much is free; before, a full disk ended in "downloaded failed: 4" (found on a real Windows 11 VM).
+- winget fixes find winget on real Windows 11: the App Installer folder is owned by Administrators there, not TrustedInstaller (only the WindowsApps root is), so every winget job was refused as "winget unavailable". Owners are now compared by SID (found on a real Windows 11 26H2 VM).
+- The runtime signature check in `install.ps1` now filters by extension: PowerShell 5.1 ignores `-Include` beside
+  `-LiteralPath` (found in the real VM run).
+
+### Since the round 1 notes above
+
+Detection and fixes that close the gap with Nessus and Qualys on Windows. **Expect new open findings after the first reports.**
+- **Windows hosts far behind can be fixed:** a job installs the earlier cumulative update when that's what Windows Update offers, and the next job finishes the way.
+- **Clearer refusal:** a Windows job with two possible updates now says why neither was offered, such as no Extended Security Updates licence.
+- **Ended release branches:** Thunderbird, Firefox ESR, PostgreSQL, MySQL, MariaDB, MongoDB, Elasticsearch, Go, Grafana, LibreOffice, Tomcat, Ruby and Perl now report when their branch gets no more fixes.
+- **Fixed:** one NVD record with no configuration nodes stopped the app feed sync; a CVE only for Apple silicon was reported on Windows.
+- **Agentless scan:** `scan-remote` reads hosts with no agent over PowerShell remoting, as you, with no stored credential. It finds; fixes still need the agent.
+- **.NET Framework findings:** read from mscorlib, on the host's own line and OS, with a fix through Windows Update that can be rolled back.
+- **.NET SDKs:** the newest of each feature band, against MSRC's SDK fixes.
+- **Hardening audit:** 24 more settings (UAC, stored sign-in passwords, password and lockout policy, anonymous access, LM hashes, WinRM, SNMP and more), free; 7 more settings can be fixed by a reversible job. This is not a CIS or STIG conformance check.
+- **43 more Windows apps,** including the JetBrains IDEs, Vim, Ruby, Perl, OpenOffice, MySQL, PostgreSQL, MariaDB, MongoDB, Elasticsearch, ImageMagick, Go, Grafana, IntelliJ IDEA, GIMP and calibre; 16 can be updated by a job.
+- **Fixed:** the certificate padding fix sets both registry views; it reported applied while its finding stayed open. MSRC sync retries a dropped connection. The restart notice says Windows may restart sooner than the agent would.
+
+Windows round 2 and the detection engine (tasks/plan-windows-round-2.md; DECISIONS 68–101). **Agent 0.5.0.**
+- **Scan report per host** (`GET /api/assets/{id}/scan-report`, `python -m nimstead.engine`): every check gets a verdict (vulnerable, not vulnerable, not applicable, couldn't be determined, not run) and how sure it is, and the report says what stopped any check and what to do about it. It covers Windows, Debian and RHEL-family packages, network services, Python, npm and Java installs, and SBOMs. Findings still open and close as before.
+- **Attack paths:** each host's report says how its weaknesses chain (getting in, becoming SYSTEM, taking sign-ins, reaching other hosts) and where to break the chain; `GET /api/attack-paths` and the Assets page link one host to the next. No step is better than its evidence: routing between hosts isn't seen, so nothing across hosts reads better than reasonable.
+- **Vulnerable drivers** by exact file hash from LOLDrivers, never by name.
+- **Machine certificates** (expired, weak key, weak signature), and a listener the firewall lets through raises its product's priority, with the process and port named.
+- **Benchmark references:** DISA's Windows Server 2025 and Windows 11 registry rules as a reference per host and fleet, with CSV export. Not a conformance check: manual rules always read "not assessed".
+- **Exploit-DB** as a second public-exploit source; a second install of the same app is named on its finding.
+- **Windows updates across the fleet:** a count per KB, why each host hasn't got it, and one action to plan the rest. Fix first lists setting fixes beside upgrades.
+- **`doctor`** on the agent checks server reach, proxy, clock, tasks, folder permissions, Windows Update, disk and runtime, and says how to fix each failure; the agent keeps a rotating local log with no secrets.
+- **Any Windows language:** settings, user rights, audit policy, proxy and winget are read by ID and SID, not English names (checked on a German install).
+- **Power cuts:** a job interrupted during install or rollback finishes or says honestly that nothing changed; it never stays pending.
+- **Fixed:** Store app firewall rules made every listening port read as allowed. A job on Server 2016–2022 or LTSC no longer blames a missing ESU licence those don't need. One Windows Update search per job instead of one per candidate (the second hung 30 minutes on Server 2022). A host that never installed an update read "last installed 426 years ago".
+
 ## [0.5.0] - 2026-10-29
 
 A safer, clearer interface, from two rounds of UI and accessibility review (tasks/plan-0.5-ux.md, tasks/plan-0.6-ux.md; DECISIONS 41–50). Agent unchanged (0.3.0).
@@ -177,7 +268,8 @@ The first early-access release. Everything listed is proven by tests and, for an
 
 Licensed under FSL-1.1-ALv2: this release becomes available under Apache 2.0 on 2028-10-27.
 
-[Unreleased]: https://github.com/Nimstead/assure/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/Nimstead/assure/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/Nimstead/assure/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/Nimstead/assure/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Nimstead/assure/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/Nimstead/assure/compare/v0.3.0...v0.3.1

@@ -1,0 +1,1967 @@
+{
+ "DocumentTitle": {
+  "Value": "October 2026 Security Updates"
+ },
+ "DocumentTracking": {
+  "Identification": {
+   "ID": {
+    "Value": "2026-Oct"
+   },
+   "Alias": {
+    "Value": "2026-Oct"
+   }
+  },
+  "Status": 2,
+  "Version": "1.0",
+  "RevisionHistory": [
+   {
+    "Number": "2224",
+    "Date": "2026-10-28T18:09:02",
+    "Description": {
+     "Value": "October 2026 Security Updates"
+    }
+   }
+  ],
+  "InitialReleaseDate": "2026-10-13T07:00:00",
+  "CurrentReleaseDate": "2026-10-28T18:09:02"
+ },
+ "ProductTree": {
+  "FullProductName": [
+   {
+    "ProductID": "10950",
+    "CPE": "cpe:2.3:a:microsoft:sharepoint_server_2016:*:*:*:*:enterprise:*:*:*",
+    "Value": "Microsoft SharePoint Enterprise Server 2016"
+   },
+   {
+    "ProductID": "11585",
+    "CPE": "cpe:2.3:a:microsoft:sharepoint_server_2019:*:*:*:*:*:*:*:*",
+    "Value": "Microsoft SharePoint Server 2019"
+   },
+   {
+    "ProductID": "11763",
+    "CPE": "cpe:2.3:a:microsoft:365_apps:*:*:*:*:enterprise:*:*:*",
+    "Value": "Microsoft 365 Apps for Enterprise for 64-bit Systems"
+   },
+   {
+    "ProductID": "11961",
+    "CPE": "cpe:2.3:a:microsoft:sharepoint_server:-:*:*:*:subscription:*:*:*",
+    "Value": "Microsoft SharePoint Server Subscription Edition"
+   },
+   {
+    "ProductID": "12013",
+    "CPE": "cpe:2.3:a:microsoft:defender_for_endpoint:-:*:*:*:*:*:*:*",
+    "Value": "Microsoft Defender for Endpoint for Windows"
+   },
+   {
+    "ProductID": "12079-21985",
+    "CPE": "cpe:2.3:a:microsoft:.net:4.8.1:*:*:*:*:*:*:*",
+    "Value": "Microsoft .NET Framework 3.5 AND 4.8.1 on Windows 11 version 24H2"
+   },
+   {
+    "ProductID": "12147",
+    "CPE": "cpe:2.3:a:microsoft:sql_server_2022:*:*:*:*:*:*:x64:*",
+    "Value": "Microsoft SQL Server 2022 for x64-based Systems (GDR)"
+   },
+   {
+    "ProductID": "12262",
+    "CPE": "cpe:2.3:a:microsoft:powershell:7.4:-:*:*:*:*:*:*",
+    "Value": "PowerShell 7.4"
+   },
+   {
+    "ProductID": "12293",
+    "CPE": "cpe:2.3:a:microsoft:exchange_server_2019:*:cumulative_update_14:*:*:*:*:*:*",
+    "Value": "Microsoft Exchange Server 2019 Cumulative Update 14"
+   },
+   {
+    "ProductID": "12414",
+    "CPE": "cpe:2.3:a:microsoft:.net:8.0.0:*:*:*:*:*:*:*",
+    "Value": ".NET 8.0 runtime installed on Windows"
+   },
+   {
+    "ProductID": "12434",
+    "CPE": "cpe:2.3:a:microsoft:.net:9.0.0:*:*:*:*:*:*:*",
+    "Value": ".NET 9.0 runtime installed on Windows"
+   },
+   {
+    "ProductID": "12502",
+    "CPE": "cpe:2.3:a:microsoft:exchange_server_2019:*:cumulative_update_15:*:*:*:*:*:*",
+    "Value": "Microsoft Exchange Server 2019 Cumulative Update 15"
+   },
+   {
+    "ProductID": "16767",
+    "CPE": "cpe:2.3:a:microsoft:visual_studio_2022:*:*:*:*:*:*:*:*",
+    "Value": "Microsoft Visual Studio 2022 version 17.14"
+   },
+   {
+    "ProductID": "16787",
+    "CPE": "cpe:2.3:a:microsoft:powershell:7.5:-:*:*:*:*:*:*",
+    "Value": "PowerShell 7.5"
+   },
+   {
+    "ProductID": "16792",
+    "CPE": "cpe:2.3:a:microsoft:exchange_server_se:*:RTM:*:*:*:*:*:*",
+    "Value": "Microsoft Exchange Server Subscription Edition RTM"
+   },
+   {
+    "ProductID": "20748",
+    "CPE": "cpe:2.3:a:microsoft:sql_server_2025:*:*:*:*:*:*:x64:*",
+    "Value": "Microsoft SQL Server 2025 for x64-based Systems (GDR)"
+   },
+   {
+    "ProductID": "20837",
+    "CPE": "cpe:2.3:a:microsoft:.net:10.0.0:*:*:*:*:*:*:*",
+    "Value": ".NET 10.0 runtime installed on Windows"
+   },
+   {
+    "ProductID": "21227",
+    "CPE": "cpe:2.3:a:microsoft:powershell:7.6:-:*:*:*:*:*:*",
+    "Value": "PowerShell 7.6"
+   },
+   {
+    "ProductID": "21955",
+    "CPE": "cpe:2.3:a:microsoft:edge_chromium:*:*:*:*:*:*:*:*",
+    "Value": "Microsoft Edge (Chromium-based)"
+   },
+   {
+    "ProductID": "22009",
+    "CPE": "cpe:2.3:a:microsoft:microsoft_sql_server_2022_for_x64-based_systems_\\(cu27\\):*:*:*:*:*:*:*:*",
+    "Value": "Microsoft SQL Server 2022 for x64-based Systems (CU27)"
+   },
+   {
+    "ProductID": "22010",
+    "CPE": "cpe:2.3:a:microsoft:microsoft_sql_server_2025_for_x64-based_systems_\\(cu9\\):*:*:*:*:*:*:*:*",
+    "Value": "Microsoft SQL Server 2025 for x64-based Systems (CU9)"
+   },
+   {
+    "ProductID": "22026",
+    "CPE": "cpe:2.3:a:microsoft:microsoft_paint:*:*:*:*:*:*:*:*",
+    "Value": "Microsoft Paint"
+   }
+  ]
+ },
+ "Vulnerability": [
+  {
+   "Title": {
+    "Value": "Microsoft Office Excel Remote Code Execution Vulnerability"
+   },
+   "Notes": [
+    {
+     "Title": "Description",
+     "Type": 2,
+     "Ordinal": "0",
+     "Value": "<p>Use after free in Microsoft Office Excel allows an unauthorized attacker to execute code over a network.</p>\n"
+    },
+    {
+     "Title": "Microsoft Office Excel",
+     "Type": 7,
+     "Ordinal": "20",
+     "Value": "Microsoft Office Excel"
+    }
+   ],
+   "DiscoveryDate": "0001-01-01T00:00:00",
+   "DiscoveryDateSpecified": false,
+   "ReleaseDate": "0001-01-01T00:00:00",
+   "ReleaseDateSpecified": false,
+   "CVE": "CVE-2026-100209",
+   "CWE": [
+    {
+     "ID": "CWE-416",
+     "Value": "Use After Free"
+    }
+   ],
+   "ProductStatuses": [],
+   "Threats": [
+    {
+     "Description": {
+      "Value": "Remote Code Execution"
+     },
+     "ProductID": [
+      "11763"
+     ],
+     "Type": 0,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    },
+    {
+     "Description": {
+      "Value": "Critical"
+     },
+     "ProductID": [
+      "11763"
+     ],
+     "Type": 3,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    },
+    {
+     "Description": {
+      "Value": "Publicly Disclosed:No;Exploited:No;Latest Software Release:Exploitation Less Likely"
+     },
+     "Type": 1,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    }
+   ],
+   "CVSSScoreSets": [
+    {
+     "BaseScore": 8.8,
+     "TemporalScore": 7.7,
+     "EnvironmentalScore": 0,
+     "Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H/E:U/RL:O/RC:C",
+     "ProductID": [
+      "11763"
+     ],
+     "IsTemporalScoreFieldSpecified": false
+    }
+   ],
+   "Remediations": [
+    {
+     "Description": {
+      "Value": "Release Notes"
+     },
+     "URL": "https://learn.microsoft.com/en-us/officeupdates/microsoft365-apps-security-updates",
+     "ProductID": [
+      "11763"
+     ],
+     "Type": 2,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "RestartRequired": {},
+     "SubType": "Security Update",
+     "FixedBuild": "https://aka.ms/OfficeSecurityReleases"
+    },
+    {
+     "URL": "https://learn.microsoft.com/en-us/officeupdates/microsoft365-apps-security-updates",
+     "ProductID": [
+      "11763"
+     ],
+     "Type": 3,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "SubType": "Release Notes"
+    }
+   ],
+   "Ordinal": "7"
+  },
+  {
+   "Title": {
+    "Value": "Chromium CVE-2026-102299: Type confusion"
+   },
+   "Notes": [
+    {
+     "Title": "Description",
+     "Type": 2,
+     "Ordinal": "0",
+     "Value": "<p>This CVE was assigned by Chrome. Microsoft Edge (Chromium-based) ingests Chromium, which addresses this vulnerability. Please see <a href=\"https://chromereleases.googleblog.com/2026\">Google Chrome Releases</a> for more information.</p>\n"
+    },
+    {
+     "Title": "Microsoft Edge (Chromium-based)",
+     "Type": 7,
+     "Ordinal": "20",
+     "Value": "Microsoft Edge (Chromium-based)"
+    }
+   ],
+   "DiscoveryDate": "0001-01-01T00:00:00",
+   "DiscoveryDateSpecified": false,
+   "ReleaseDate": "0001-01-01T00:00:00",
+   "ReleaseDateSpecified": false,
+   "CVE": "CVE-2026-102299",
+   "CWE": [
+    {
+     "ID": "CWE-843",
+     "Value": "Access of Resource Using Incompatible Type ('Type Confusion')"
+    }
+   ],
+   "ProductStatuses": [],
+   "Threats": [
+    {
+     "Description": {},
+     "ProductID": [
+      "21955"
+     ],
+     "Type": 0,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    },
+    {
+     "Description": {
+      "Value": "Important"
+     },
+     "ProductID": [
+      "21955"
+     ],
+     "Type": 3,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    }
+   ],
+   "CVSSScoreSets": [
+    {
+     "BaseScore": 8.8,
+     "TemporalScore": 8.8,
+     "EnvironmentalScore": 0,
+     "Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H",
+     "ProductID": [
+      "21955"
+     ],
+     "IsTemporalScoreFieldSpecified": false
+    }
+   ],
+   "Remediations": [
+    {
+     "Description": {
+      "Value": "Release Notes"
+     },
+     "URL": "https://catalog.update.microsoft.com/Search.aspx?q=Edge-Stable",
+     "ProductID": [
+      "21955"
+     ],
+     "Type": 2,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "RestartRequired": {
+      "Value": "No"
+     },
+     "SubType": "Security Update",
+     "FixedBuild": "154.0.4258.53"
+    },
+    {
+     "URL": "https://docs.microsoft.com/en-us/DeployEdge/microsoft-edge-relnotes-security",
+     "ProductID": [
+      "21955"
+     ],
+     "Type": 3,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "SubType": "Release Notes"
+    }
+   ],
+   "Ordinal": "61"
+  },
+  {
+   "Title": {
+    "Value": "Microsoft Office SharePoint Spoofing Vulnerability"
+   },
+   "Notes": [
+    {
+     "Title": "Description",
+     "Type": 2,
+     "Ordinal": "0",
+     "Value": "<p>Improper neutralization of input during web page generation ('cross-site scripting') in Microsoft Office SharePoint allows an authorized attacker to perform spoofing over a network.</p>\n"
+    },
+    {
+     "Title": "Microsoft Office SharePoint",
+     "Type": 7,
+     "Ordinal": "20",
+     "Value": "Microsoft Office SharePoint"
+    }
+   ],
+   "DiscoveryDate": "0001-01-01T00:00:00",
+   "DiscoveryDateSpecified": false,
+   "ReleaseDate": "0001-01-01T00:00:00",
+   "ReleaseDateSpecified": false,
+   "CVE": "CVE-2026-102859",
+   "CWE": [
+    {
+     "ID": "CWE-79",
+     "Value": "Improper Neutralization of Input During Web Page Generation ('Cross-site Scripting')"
+    }
+   ],
+   "ProductStatuses": [],
+   "Threats": [
+    {
+     "Description": {
+      "Value": "Spoofing"
+     },
+     "ProductID": [
+      "11961"
+     ],
+     "Type": 0,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    },
+    {
+     "Description": {
+      "Value": "Important"
+     },
+     "ProductID": [
+      "11961"
+     ],
+     "Type": 3,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    },
+    {
+     "Description": {
+      "Value": "Publicly Disclosed:No;Exploited:No;Latest Software Release:Exploitation Less Likely"
+     },
+     "Type": 1,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    }
+   ],
+   "CVSSScoreSets": [
+    {
+     "BaseScore": 4.6,
+     "TemporalScore": 4.0,
+     "EnvironmentalScore": 0,
+     "Vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:R/S:U/C:L/I:L/A:N/E:U/RL:O/RC:C",
+     "ProductID": [
+      "11961"
+     ],
+     "IsTemporalScoreFieldSpecified": false
+    }
+   ],
+   "Remediations": [
+    {
+     "Description": {
+      "Value": "5002927"
+     },
+     "URL": "https://www.microsoft.com/en-us/download/details.aspx?id=108862",
+     "Supercedence": "5002908",
+     "ProductID": [
+      "11961"
+     ],
+     "Type": 2,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "RestartRequired": {
+      "Value": "Yes"
+     },
+     "SubType": "Security Update",
+     "FixedBuild": "16.0.20326.20190"
+    },
+    {
+     "URL": "https://support.microsoft.com/help/5002927",
+     "ProductID": [
+      "11961"
+     ],
+     "Type": 3,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "SubType": "5002927"
+    }
+   ],
+   "Ordinal": "101"
+  },
+  {
+   "Title": {
+    "Value": ".NET and Visual Studio Elevation of Privilege Vulnerability"
+   },
+   "Notes": [
+    {
+     "Title": "Description",
+     "Type": 2,
+     "Ordinal": "0",
+     "Value": "<p>Access of resource using incompatible type ('type confusion') in .NET and Visual Studio allows an unauthorized attacker to elevate privileges over a network.</p>\n"
+    },
+    {
+     "Title": ".NET and Visual Studio",
+     "Type": 7,
+     "Ordinal": "20",
+     "Value": ".NET and Visual Studio"
+    }
+   ],
+   "DiscoveryDate": "0001-01-01T00:00:00",
+   "DiscoveryDateSpecified": false,
+   "ReleaseDate": "0001-01-01T00:00:00",
+   "ReleaseDateSpecified": false,
+   "CVE": "CVE-2026-102869",
+   "CWE": [
+    {
+     "ID": "CWE-843",
+     "Value": "Access of Resource Using Incompatible Type ('Type Confusion')"
+    }
+   ],
+   "ProductStatuses": [],
+   "Threats": [
+    {
+     "Description": {
+      "Value": "Elevation of Privilege"
+     },
+     "ProductID": [
+      "16767"
+     ],
+     "Type": 0,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    },
+    {
+     "Description": {
+      "Value": "Elevation of Privilege"
+     },
+     "ProductID": [
+      "12079-21985"
+     ],
+     "Type": 0,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    },
+    {
+     "Description": {
+      "Value": "Important"
+     },
+     "ProductID": [
+      "16767"
+     ],
+     "Type": 3,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    },
+    {
+     "Description": {
+      "Value": "Important"
+     },
+     "ProductID": [
+      "12079-21985"
+     ],
+     "Type": 3,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    }
+   ],
+   "CVSSScoreSets": [
+    {
+     "BaseScore": 8.8,
+     "TemporalScore": 7.7,
+     "EnvironmentalScore": 0,
+     "Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H/E:U/RL:O/RC:C",
+     "ProductID": [
+      "16767"
+     ],
+     "IsTemporalScoreFieldSpecified": false
+    },
+    {
+     "BaseScore": 8.8,
+     "TemporalScore": 7.7,
+     "EnvironmentalScore": 0,
+     "Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H/E:U/RL:O/RC:C",
+     "ProductID": [
+      "12079-21985"
+     ],
+     "IsTemporalScoreFieldSpecified": false
+    }
+   ],
+   "Remediations": [
+    {
+     "Description": {
+      "Value": "Release Notes"
+     },
+     "URL": "https://learn.microsoft.com/en-us/visualstudio/releases/2022/release-history",
+     "ProductID": [
+      "16767"
+     ],
+     "Type": 2,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "RestartRequired": {
+      "Value": "Yes"
+     },
+     "SubType": "Security Update",
+     "FixedBuild": "17.14.42"
+    },
+    {
+     "URL": "https://learn.microsoft.com/en-us/visualstudio/releases/2022/release-notes",
+     "ProductID": [
+      "16767"
+     ],
+     "Type": 3,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "SubType": "Release Notes"
+    },
+    {
+     "Description": {
+      "Value": "5127690"
+     },
+     "URL": "https://www.catalog.update.microsoft.com/Search.aspx?q=KB5127690",
+     "ProductID": [
+      "12079-21985"
+     ],
+     "Type": 2,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "RestartRequired": {
+      "Value": "Maybe"
+     },
+     "SubType": "Security Update",
+     "FixedBuild": "2.0.50727.9188 AND 3.0.30729.9171 AND 4.8.9363.0"
+    },
+    {
+     "URL": "https://support.microsoft.com/help/5127690",
+     "ProductID": [
+      "12079-21985"
+     ],
+     "Type": 3,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "SubType": "5127690"
+    }
+   ],
+   "Ordinal": "110"
+  },
+  {
+   "Title": {
+    "Value": "Microsoft QUIC Remote Code Execution Vulnerability"
+   },
+   "Notes": [
+    {
+     "Title": "Description",
+     "Type": 2,
+     "Ordinal": "0",
+     "Value": "<p>Heap-based buffer overflow in Microsoft QUIC allows an unauthorized attacker to execute code over a network.</p>\n"
+    },
+    {
+     "Title": "Microsoft QUIC",
+     "Type": 7,
+     "Ordinal": "20",
+     "Value": "Microsoft QUIC"
+    }
+   ],
+   "DiscoveryDate": "0001-01-01T00:00:00",
+   "DiscoveryDateSpecified": false,
+   "ReleaseDate": "0001-01-01T00:00:00",
+   "ReleaseDateSpecified": false,
+   "CVE": "CVE-2026-105016",
+   "CWE": [
+    {
+     "ID": "CWE-122",
+     "Value": "Heap-based Buffer Overflow"
+    }
+   ],
+   "ProductStatuses": [],
+   "Threats": [
+    {
+     "Description": {
+      "Value": "Remote Code Execution"
+     },
+     "ProductID": [
+      "16767"
+     ],
+     "Type": 0,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    },
+    {
+     "Description": {
+      "Value": "Remote Code Execution"
+     },
+     "ProductID": [
+      "12414"
+     ],
+     "Type": 0,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    },
+    {
+     "Description": {
+      "Value": "Remote Code Execution"
+     },
+     "ProductID": [
+      "12434"
+     ],
+     "Type": 0,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    },
+    {
+     "Description": {
+      "Value": "Remote Code Execution"
+     },
+     "ProductID": [
+      "20837"
+     ],
+     "Type": 0,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    }
+   ],
+   "CVSSScoreSets": [
+    {
+     "BaseScore": 9.8,
+     "TemporalScore": 8.5,
+     "EnvironmentalScore": 0,
+     "Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H/E:U/RL:O/RC:C",
+     "ProductID": [
+      "16767"
+     ],
+     "IsTemporalScoreFieldSpecified": false
+    },
+    {
+     "BaseScore": 9.8,
+     "TemporalScore": 8.5,
+     "EnvironmentalScore": 0,
+     "Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H/E:U/RL:O/RC:C",
+     "ProductID": [
+      "12414"
+     ],
+     "IsTemporalScoreFieldSpecified": false
+    },
+    {
+     "BaseScore": 9.8,
+     "TemporalScore": 8.5,
+     "EnvironmentalScore": 0,
+     "Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H/E:U/RL:O/RC:C",
+     "ProductID": [
+      "12434"
+     ],
+     "IsTemporalScoreFieldSpecified": false
+    },
+    {
+     "BaseScore": 9.8,
+     "TemporalScore": 8.5,
+     "EnvironmentalScore": 0,
+     "Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H/E:U/RL:O/RC:C",
+     "ProductID": [
+      "20837"
+     ],
+     "IsTemporalScoreFieldSpecified": false
+    }
+   ],
+   "Remediations": [
+    {
+     "Description": {
+      "Value": "Release Notes"
+     },
+     "URL": "https://learn.microsoft.com/en-us/visualstudio/releases/2022/release-history",
+     "ProductID": [
+      "16767"
+     ],
+     "Type": 2,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "RestartRequired": {
+      "Value": "Yes"
+     },
+     "SubType": "Security Update",
+     "FixedBuild": "17.14.42"
+    },
+    {
+     "URL": "https://learn.microsoft.com/en-us/visualstudio/releases/2022/release-notes",
+     "ProductID": [
+      "16767"
+     ],
+     "Type": 3,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "SubType": "Release Notes"
+    },
+    {
+     "Description": {
+      "Value": "5130034"
+     },
+     "URL": "https://dotnet.microsoft.com/download/dotnet/8.0",
+     "ProductID": [
+      "12414"
+     ],
+     "Type": 2,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "RestartRequired": {
+      "Value": "Yes"
+     },
+     "SubType": "Security Update",
+     "FixedBuild": "8.0.32"
+    },
+    {
+     "URL": "https://support.microsoft.com/help/5130034",
+     "ProductID": [
+      "12414"
+     ],
+     "Type": 3,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "SubType": "5130034"
+    },
+    {
+     "Description": {
+      "Value": "5130035"
+     },
+     "URL": "https://dotnet.microsoft.com/download/dotnet/9.0",
+     "ProductID": [
+      "12434"
+     ],
+     "Type": 2,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "RestartRequired": {
+      "Value": "Yes"
+     },
+     "SubType": "Security Update",
+     "FixedBuild": "9.0.21"
+    },
+    {
+     "URL": "https://support.microsoft.com/help/5130035",
+     "ProductID": [
+      "12434"
+     ],
+     "Type": 3,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "SubType": "5130035"
+    },
+    {
+     "Description": {
+      "Value": "Release Notes"
+     },
+     "URL": "https://dotnet.microsoft.com/download/dotnet/10.0",
+     "ProductID": [
+      "20837"
+     ],
+     "Type": 2,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "RestartRequired": {
+      "Value": "Yes"
+     },
+     "SubType": "Security Update",
+     "FixedBuild": "10.0.14"
+    },
+    {
+     "URL": "https://github.com/dotnet/announcements/issues/446",
+     "ProductID": [
+      "20837"
+     ],
+     "Type": 3,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "SubType": "Release Notes"
+    }
+   ],
+   "Ordinal": "147"
+  },
+  {
+   "Title": {
+    "Value": "Microsoft Defender Information Disclosure Vulnerability"
+   },
+   "Notes": [
+    {
+     "Title": "Description",
+     "Type": 2,
+     "Ordinal": "0",
+     "Value": "<p>Out-of-bounds read in Microsoft Defender allows an authorized attacker to disclose information locally.</p>\n"
+    },
+    {
+     "Title": "Microsoft Defender",
+     "Type": 7,
+     "Ordinal": "20",
+     "Value": "Microsoft Defender"
+    }
+   ],
+   "DiscoveryDate": "0001-01-01T00:00:00",
+   "DiscoveryDateSpecified": false,
+   "ReleaseDate": "0001-01-01T00:00:00",
+   "ReleaseDateSpecified": false,
+   "CVE": "CVE-2026-105726",
+   "CWE": [
+    {
+     "ID": "CWE-125",
+     "Value": "Out-of-bounds Read"
+    }
+   ],
+   "ProductStatuses": [],
+   "Threats": [
+    {
+     "Description": {
+      "Value": "Information Disclosure"
+     },
+     "ProductID": [
+      "12013"
+     ],
+     "Type": 0,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    },
+    {
+     "Description": {
+      "Value": "Important"
+     },
+     "ProductID": [
+      "12013"
+     ],
+     "Type": 3,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    },
+    {
+     "Description": {
+      "Value": "Publicly Disclosed:No;Exploited:No;Latest Software Release:Exploitation Less Likely"
+     },
+     "Type": 1,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    }
+   ],
+   "CVSSScoreSets": [
+    {
+     "BaseScore": 5.5,
+     "TemporalScore": 4.8,
+     "EnvironmentalScore": 0,
+     "Vector": "CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N/E:U/RL:O/RC:C",
+     "ProductID": [
+      "12013"
+     ],
+     "IsTemporalScoreFieldSpecified": false
+    }
+   ],
+   "Remediations": [
+    {
+     "Description": {
+      "Value": "Release Notes"
+     },
+     "URL": "",
+     "ProductID": [
+      "12013"
+     ],
+     "Type": 2,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "RestartRequired": {
+      "Value": "Maybe"
+     },
+     "SubType": "Security Update",
+     "FixedBuild": "4.18.26060.3008"
+    },
+    {
+     "URL": "https://learn.microsoft.com/en-us/defender-endpoint/microsoft-defender-endpoint-releases#windows-antivirus--june-2026--platform-418260603008--engine-11260603008",
+     "ProductID": [
+      "12013"
+     ],
+     "Type": 3,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "SubType": "Release Notes"
+    }
+   ],
+   "Ordinal": "167"
+  },
+  {
+   "Title": {
+    "Value": "Google: CVE-2026-111497 Buffer overflow vulnerability in the Brotli decoder"
+   },
+   "Notes": [
+    {
+     "Title": "Description",
+     "Type": 2,
+     "Ordinal": "0",
+     "Value": "<p>Out-of-bounds write in .NET allows an unauthorized attacker to elevate privileges over a network.</p>\n"
+    },
+    {
+     "Title": ".NET",
+     "Type": 7,
+     "Ordinal": "20",
+     "Value": ".NET"
+    }
+   ],
+   "DiscoveryDate": "0001-01-01T00:00:00",
+   "DiscoveryDateSpecified": false,
+   "ReleaseDate": "0001-01-01T00:00:00",
+   "ReleaseDateSpecified": false,
+   "CVE": "CVE-2026-111497",
+   "ProductStatuses": [],
+   "Threats": [
+    {
+     "Description": {
+      "Value": "Elevation of Privilege"
+     },
+     "ProductID": [
+      "16767"
+     ],
+     "Type": 0,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    },
+    {
+     "Description": {
+      "Value": "Elevation of Privilege"
+     },
+     "ProductID": [
+      "21227"
+     ],
+     "Type": 0,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    },
+    {
+     "Description": {
+      "Value": "Elevation of Privilege"
+     },
+     "ProductID": [
+      "16787"
+     ],
+     "Type": 0,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    },
+    {
+     "Description": {
+      "Value": "Elevation of Privilege"
+     },
+     "ProductID": [
+      "12262"
+     ],
+     "Type": 0,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    }
+   ],
+   "CVSSScoreSets": [
+    {
+     "BaseScore": 8.1,
+     "TemporalScore": 7.1,
+     "EnvironmentalScore": 0,
+     "Vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H/E:U/RL:O/RC:C",
+     "ProductID": [
+      "16767"
+     ],
+     "IsTemporalScoreFieldSpecified": false
+    },
+    {
+     "BaseScore": 8.1,
+     "TemporalScore": 7.1,
+     "EnvironmentalScore": 0,
+     "Vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H/E:U/RL:O/RC:C",
+     "ProductID": [
+      "21227"
+     ],
+     "IsTemporalScoreFieldSpecified": false
+    },
+    {
+     "BaseScore": 8.1,
+     "TemporalScore": 7.1,
+     "EnvironmentalScore": 0,
+     "Vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H/E:U/RL:O/RC:C",
+     "ProductID": [
+      "16787"
+     ],
+     "IsTemporalScoreFieldSpecified": false
+    },
+    {
+     "BaseScore": 8.1,
+     "TemporalScore": 7.1,
+     "EnvironmentalScore": 0,
+     "Vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H/E:U/RL:O/RC:C",
+     "ProductID": [
+      "12262"
+     ],
+     "IsTemporalScoreFieldSpecified": false
+    }
+   ],
+   "Remediations": [
+    {
+     "Description": {
+      "Value": "Release Notes"
+     },
+     "URL": "https://learn.microsoft.com/en-us/visualstudio/releases/2022/release-history",
+     "ProductID": [
+      "16767"
+     ],
+     "Type": 2,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "RestartRequired": {
+      "Value": "Yes"
+     },
+     "SubType": "Security Update",
+     "FixedBuild": "17.14.43"
+    },
+    {
+     "URL": "https://learn.microsoft.com/en-us/visualstudio/releases/2022/release-notes",
+     "ProductID": [
+      "16767"
+     ],
+     "Type": 3,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "SubType": "Release Notes"
+    },
+    {
+     "Description": {
+      "Value": "Release Notes"
+     },
+     "URL": "https://github.com/PowerShell/PowerShell/releases/tag/v7.6.9",
+     "ProductID": [
+      "21227"
+     ],
+     "Type": 2,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "RestartRequired": {
+      "Value": "Maybe"
+     },
+     "SubType": "Security Update",
+     "FixedBuild": "7.6.9"
+    },
+    {
+     "URL": "https://github.com/PowerShell/Announcements/blob/main/pwsh/2026/10/CVE-2026-111497.md",
+     "ProductID": [
+      "21227"
+     ],
+     "Type": 3,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "SubType": "Release Notes"
+    },
+    {
+     "Description": {
+      "Value": "Release Notes"
+     },
+     "URL": "https://github.com/PowerShell/PowerShell/releases/tag/v7.5.13",
+     "ProductID": [
+      "16787"
+     ],
+     "Type": 2,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "RestartRequired": {
+      "Value": "Maybe"
+     },
+     "SubType": "Security Update",
+     "FixedBuild": "7.5.13"
+    },
+    {
+     "URL": "https://github.com/PowerShell/Announcements/blob/main/pwsh/2026/10/CVE-2026-111497.md",
+     "ProductID": [
+      "16787"
+     ],
+     "Type": 3,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "SubType": "Release Notes"
+    },
+    {
+     "Description": {
+      "Value": "Release Notes"
+     },
+     "URL": "https://github.com/PowerShell/PowerShell/releases/tag/v7.4.22",
+     "ProductID": [
+      "12262"
+     ],
+     "Type": 2,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "RestartRequired": {
+      "Value": "Maybe"
+     },
+     "SubType": "Security Update",
+     "FixedBuild": "7.4.22"
+    },
+    {
+     "URL": "https://github.com/PowerShell/Announcements/blob/main/pwsh/2026/10/CVE-2026-111497.md",
+     "ProductID": [
+      "12262"
+     ],
+     "Type": 3,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "SubType": "Release Notes"
+    }
+   ],
+   "Ordinal": "527"
+  },
+  {
+   "Title": {
+    "Value": "Microsoft SQL Server Remote Code Execution Vulnerability"
+   },
+   "Notes": [
+    {
+     "Title": "Description",
+     "Type": 2,
+     "Ordinal": "0",
+     "Value": "<p>Deserialization of untrusted data in SQL Server allows an authorized attacker to execute code over a network.</p>\n"
+    },
+    {
+     "Title": "SQL Server",
+     "Type": 7,
+     "Ordinal": "20",
+     "Value": "SQL Server"
+    }
+   ],
+   "DiscoveryDate": "0001-01-01T00:00:00",
+   "DiscoveryDateSpecified": false,
+   "ReleaseDate": "0001-01-01T00:00:00",
+   "ReleaseDateSpecified": false,
+   "CVE": "CVE-2026-65674",
+   "CWE": [
+    {
+     "ID": "CWE-502",
+     "Value": "Deserialization of Untrusted Data"
+    }
+   ],
+   "ProductStatuses": [],
+   "Threats": [
+    {
+     "Description": {
+      "Value": "Remote Code Execution"
+     },
+     "ProductID": [
+      "22009"
+     ],
+     "Type": 0,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    },
+    {
+     "Description": {
+      "Value": "Remote Code Execution"
+     },
+     "ProductID": [
+      "22010"
+     ],
+     "Type": 0,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    },
+    {
+     "Description": {
+      "Value": "Remote Code Execution"
+     },
+     "ProductID": [
+      "12147"
+     ],
+     "Type": 0,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    },
+    {
+     "Description": {
+      "Value": "Remote Code Execution"
+     },
+     "ProductID": [
+      "20748"
+     ],
+     "Type": 0,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    }
+   ],
+   "CVSSScoreSets": [
+    {
+     "BaseScore": 8.8,
+     "TemporalScore": 7.7,
+     "EnvironmentalScore": 0,
+     "Vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H/E:U/RL:O/RC:C",
+     "ProductID": [
+      "12147"
+     ],
+     "IsTemporalScoreFieldSpecified": false
+    },
+    {
+     "BaseScore": 8.8,
+     "TemporalScore": 7.7,
+     "EnvironmentalScore": 0,
+     "Vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H/E:U/RL:O/RC:C",
+     "ProductID": [
+      "20748"
+     ],
+     "IsTemporalScoreFieldSpecified": false
+    }
+   ],
+   "Remediations": [
+    {
+     "Description": {
+      "Value": "5126934"
+     },
+     "URL": "https://www.microsoft.com/download/details.aspx?familyid=a96e87d9-4786-4b4e-9274-8619b01ef73a",
+     "Supercedence": "5104824",
+     "ProductID": [
+      "22009"
+     ],
+     "Type": 2,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "RestartRequired": {
+      "Value": "Yes"
+     },
+     "SubType": "Security Update",
+     "FixedBuild": "16.0.4305.5"
+    },
+    {
+     "URL": "https://support.microsoft.com/help/5126934",
+     "ProductID": [
+      "22009"
+     ],
+     "Type": 3,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "SubType": "5126934"
+    },
+    {
+     "Description": {
+      "Value": "5126934"
+     },
+     "URL": "https://support.microsoft.com/help/5126934",
+     "ProductID": [
+      "22009"
+     ],
+     "Type": 6,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": []
+    },
+    {
+     "Description": {
+      "Value": "5126967"
+     },
+     "URL": "https://www.microsoft.com/download/details.aspx?familyid=6d582614-a5b0-4cfa-b1f5-ef5c74f5d252",
+     "Supercedence": "5122048",
+     "ProductID": [
+      "22010"
+     ],
+     "Type": 2,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "RestartRequired": {
+      "Value": "Yes"
+     },
+     "SubType": "Security Update",
+     "FixedBuild": "17.0.5015.4"
+    },
+    {
+     "URL": "https://support.microsoft.com/help/5126967",
+     "ProductID": [
+      "22010"
+     ],
+     "Type": 3,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "SubType": "5126967"
+    },
+    {
+     "Description": {
+      "Value": "5126967"
+     },
+     "URL": "https://support.microsoft.com/help/5126967",
+     "ProductID": [
+      "22010"
+     ],
+     "Type": 6,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": []
+    },
+    {
+     "Description": {
+      "Value": "5128493"
+     },
+     "URL": "https://www.microsoft.com/download/details.aspx?familyid=82f92ae1-1cf3-4c27-9938-0b44f5a0a296",
+     "Supercedence": "5122771",
+     "ProductID": [
+      "12147"
+     ],
+     "Type": 2,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "RestartRequired": {
+      "Value": "Yes"
+     },
+     "SubType": "Security Update",
+     "FixedBuild": "16.0.1210.3"
+    },
+    {
+     "URL": "https://support.microsoft.com/help/5128493",
+     "ProductID": [
+      "12147"
+     ],
+     "Type": 3,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "SubType": "5128493"
+    },
+    {
+     "Description": {
+      "Value": "5128493"
+     },
+     "URL": "https://support.microsoft.com/help/5128493",
+     "ProductID": [
+      "12147"
+     ],
+     "Type": 6,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": []
+    },
+    {
+     "Description": {
+      "Value": "5128492"
+     },
+     "URL": "https://www.microsoft.com/download/details.aspx?familyid=05d38ba3-f609-4011-b045-d56a9eb0bccb",
+     "Supercedence": "5122770",
+     "ProductID": [
+      "20748"
+     ],
+     "Type": 2,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "RestartRequired": {
+      "Value": "Yes"
+     },
+     "SubType": "Security Update",
+     "FixedBuild": "17.0.1145.4"
+    },
+    {
+     "URL": "https://support.microsoft.com/help/5128492",
+     "ProductID": [
+      "20748"
+     ],
+     "Type": 3,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "SubType": "5128492"
+    },
+    {
+     "Description": {
+      "Value": "5128492"
+     },
+     "URL": "https://support.microsoft.com/help/5128492",
+     "ProductID": [
+      "20748"
+     ],
+     "Type": 6,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": []
+    }
+   ],
+   "Ordinal": "892"
+  },
+  {
+   "Title": {
+    "Value": "Microsoft Exchange Server Spoofing Vulnerability"
+   },
+   "Notes": [
+    {
+     "Title": "Description",
+     "Type": 2,
+     "Ordinal": "0",
+     "Value": "<p>Improper neutralization of input during web page generation ('cross-site scripting') in Microsoft Exchange Server allows an unauthorized attacker to perform spoofing over a network.</p>\n"
+    },
+    {
+     "Title": "Microsoft Exchange Server",
+     "Type": 7,
+     "Ordinal": "20",
+     "Value": "Microsoft Exchange Server"
+    }
+   ],
+   "DiscoveryDate": "0001-01-01T00:00:00",
+   "DiscoveryDateSpecified": false,
+   "ReleaseDate": "0001-01-01T00:00:00",
+   "ReleaseDateSpecified": false,
+   "CVE": "CVE-2026-70279",
+   "CWE": [
+    {
+     "ID": "CWE-79",
+     "Value": "Improper Neutralization of Input During Web Page Generation ('Cross-site Scripting')"
+    }
+   ],
+   "ProductStatuses": [],
+   "Threats": [
+    {
+     "Description": {
+      "Value": "Spoofing"
+     },
+     "ProductID": [
+      "12502"
+     ],
+     "Type": 0,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    },
+    {
+     "Description": {
+      "Value": "Spoofing"
+     },
+     "ProductID": [
+      "12293"
+     ],
+     "Type": 0,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    },
+    {
+     "Description": {
+      "Value": "Spoofing"
+     },
+     "ProductID": [
+      "16792"
+     ],
+     "Type": 0,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    },
+    {
+     "Description": {
+      "Value": "Important"
+     },
+     "ProductID": [
+      "12502"
+     ],
+     "Type": 3,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    }
+   ],
+   "CVSSScoreSets": [
+    {
+     "BaseScore": 9.3,
+     "TemporalScore": 8.1,
+     "EnvironmentalScore": 0,
+     "Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:H/I:H/A:N/E:U/RL:O/RC:C",
+     "ProductID": [
+      "12502"
+     ],
+     "IsTemporalScoreFieldSpecified": false
+    },
+    {
+     "BaseScore": 9.3,
+     "TemporalScore": 8.1,
+     "EnvironmentalScore": 0,
+     "Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:H/I:H/A:N/E:U/RL:O/RC:C",
+     "ProductID": [
+      "12293"
+     ],
+     "IsTemporalScoreFieldSpecified": false
+    },
+    {
+     "BaseScore": 9.3,
+     "TemporalScore": 8.1,
+     "EnvironmentalScore": 0,
+     "Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:H/I:H/A:N/E:U/RL:O/RC:C",
+     "ProductID": [
+      "16792"
+     ],
+     "IsTemporalScoreFieldSpecified": false
+    }
+   ],
+   "Remediations": [
+    {
+     "Description": {
+      "Value": "5128896"
+     },
+     "URL": "",
+     "ProductID": [
+      "12502"
+     ],
+     "Type": 2,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "RestartRequired": {
+      "Value": "No"
+     },
+     "SubType": "Security Update",
+     "FixedBuild": "15.02.1748.055"
+    },
+    {
+     "URL": "https://support.microsoft.com/help/5128896",
+     "ProductID": [
+      "12502"
+     ],
+     "Type": 3,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "SubType": "5128896"
+    },
+    {
+     "Description": {
+      "Value": "5128897"
+     },
+     "URL": "",
+     "ProductID": [
+      "12293"
+     ],
+     "Type": 2,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "RestartRequired": {
+      "Value": "No"
+     },
+     "SubType": "Security Update",
+     "FixedBuild": "15.02.1544.050"
+    },
+    {
+     "URL": "https://support.microsoft.com/help/5128897",
+     "ProductID": [
+      "12293"
+     ],
+     "Type": 3,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "SubType": "5128897"
+    },
+    {
+     "Description": {
+      "Value": "5128895"
+     },
+     "URL": "https://www.microsoft.com/en-us/download/details.aspx?id=108875",
+     "ProductID": [
+      "16792"
+     ],
+     "Type": 2,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "RestartRequired": {
+      "Value": "No"
+     },
+     "SubType": "Security Update",
+     "FixedBuild": "15.02.2562.056"
+    },
+    {
+     "URL": "https://support.microsoft.com/help/5128895",
+     "ProductID": [
+      "16792"
+     ],
+     "Type": 3,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "SubType": "5128895"
+    }
+   ],
+   "Ordinal": "1218"
+  },
+  {
+   "Title": {
+    "Value": "Windows Paint Remote Code Execution Vulnerability"
+   },
+   "Notes": [
+    {
+     "Title": "Description",
+     "Type": 2,
+     "Ordinal": "0",
+     "Value": "<p>Out-of-bounds read in Windows Paint allows an unauthorized attacker to execute code over a network.</p>\n"
+    },
+    {
+     "Title": "Windows Paint",
+     "Type": 7,
+     "Ordinal": "20",
+     "Value": "Windows Paint"
+    }
+   ],
+   "DiscoveryDate": "0001-01-01T00:00:00",
+   "DiscoveryDateSpecified": false,
+   "ReleaseDate": "0001-01-01T00:00:00",
+   "ReleaseDateSpecified": false,
+   "CVE": "CVE-2026-83844",
+   "CWE": [
+    {
+     "ID": "CWE-125",
+     "Value": "Out-of-bounds Read"
+    }
+   ],
+   "ProductStatuses": [],
+   "Threats": [
+    {
+     "Description": {
+      "Value": "Remote Code Execution"
+     },
+     "ProductID": [
+      "22026"
+     ],
+     "Type": 0,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    },
+    {
+     "Description": {
+      "Value": "Important"
+     },
+     "ProductID": [
+      "22026"
+     ],
+     "Type": 3,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    },
+    {
+     "Description": {
+      "Value": "Publicly Disclosed:No;Exploited:No;Latest Software Release:Exploitation Less Likely"
+     },
+     "Type": 1,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    }
+   ],
+   "CVSSScoreSets": [
+    {
+     "BaseScore": 8.1,
+     "TemporalScore": 7.1,
+     "EnvironmentalScore": 0,
+     "Vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H/E:U/RL:O/RC:C",
+     "ProductID": [
+      "22026"
+     ],
+     "IsTemporalScoreFieldSpecified": false
+    }
+   ],
+   "Remediations": [
+    {
+     "Description": {
+      "Value": "Store App"
+     },
+     "URL": "https://apps.microsoft.com/detail/9pcfs5b6t72h?hl=en-US&gl=US",
+     "ProductID": [
+      "22026"
+     ],
+     "Type": 2,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "RestartRequired": {
+      "Value": "Maybe"
+     },
+     "SubType": "Security Update",
+     "FixedBuild": "11.2605.91.0"
+    },
+    {
+     "URL": "https://apps.microsoft.com/detail/9pcfs5b6t72h?hl=en-US&gl=US",
+     "ProductID": [
+      "22026"
+     ],
+     "Type": 3,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "SubType": "Store App"
+    }
+   ],
+   "Ordinal": "1466"
+  },
+  {
+   "Title": {
+    "Value": "Microsoft Office SharePoint Spoofing Vulnerability"
+   },
+   "Notes": [
+    {
+     "Title": "Description",
+     "Type": 2,
+     "Ordinal": "0",
+     "Value": "<p>Improper neutralization of input during web page generation ('cross-site scripting') in Microsoft Office SharePoint allows an unauthorized attacker to perform spoofing over a network.</p>\n"
+    },
+    {
+     "Title": "Microsoft Office SharePoint",
+     "Type": 7,
+     "Ordinal": "20",
+     "Value": "Microsoft Office SharePoint"
+    }
+   ],
+   "DiscoveryDate": "0001-01-01T00:00:00",
+   "DiscoveryDateSpecified": false,
+   "ReleaseDate": "0001-01-01T00:00:00",
+   "ReleaseDateSpecified": false,
+   "CVE": "CVE-2026-97783",
+   "CWE": [
+    {
+     "ID": "CWE-79",
+     "Value": "Improper Neutralization of Input During Web Page Generation ('Cross-site Scripting')"
+    }
+   ],
+   "ProductStatuses": [],
+   "Threats": [
+    {
+     "Description": {
+      "Value": "Spoofing"
+     },
+     "ProductID": [
+      "11585"
+     ],
+     "Type": 0,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    },
+    {
+     "Description": {
+      "Value": "Spoofing"
+     },
+     "ProductID": [
+      "10950"
+     ],
+     "Type": 0,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    },
+    {
+     "Description": {
+      "Value": "Spoofing"
+     },
+     "ProductID": [
+      "11961"
+     ],
+     "Type": 0,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    },
+    {
+     "Description": {
+      "Value": "Important"
+     },
+     "ProductID": [
+      "11585"
+     ],
+     "Type": 3,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false
+    }
+   ],
+   "CVSSScoreSets": [
+    {
+     "BaseScore": 8.1,
+     "TemporalScore": 7.1,
+     "EnvironmentalScore": 0,
+     "Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:N/E:U/RL:O/RC:C",
+     "ProductID": [
+      "11585"
+     ],
+     "IsTemporalScoreFieldSpecified": false
+    },
+    {
+     "BaseScore": 8.1,
+     "TemporalScore": 7.1,
+     "EnvironmentalScore": 0,
+     "Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:N/E:U/RL:O/RC:C",
+     "ProductID": [
+      "10950"
+     ],
+     "IsTemporalScoreFieldSpecified": false
+    },
+    {
+     "BaseScore": 8.1,
+     "TemporalScore": 7.1,
+     "EnvironmentalScore": 0,
+     "Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:N/E:U/RL:O/RC:C",
+     "ProductID": [
+      "11961"
+     ],
+     "IsTemporalScoreFieldSpecified": false
+    }
+   ],
+   "Remediations": [
+    {
+     "Description": {
+      "Value": "5002883"
+     },
+     "URL": "https://www.microsoft.com/en-us/download/details.aspx?id=108726",
+     "Supercedence": "5002874",
+     "ProductID": [
+      "11585"
+     ],
+     "Type": 2,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "RestartRequired": {},
+     "SubType": "Security Update",
+     "FixedBuild": "16.0.10417.20175"
+    },
+    {
+     "URL": "https://support.microsoft.com/help/5002883",
+     "ProductID": [
+      "11585"
+     ],
+     "Type": 3,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "SubType": "5002883"
+    },
+    {
+     "Description": {
+      "Value": "5002891"
+     },
+     "URL": "https://www.microsoft.com/en-us/download/details.aspx?id=108723",
+     "Supercedence": "5002880",
+     "ProductID": [
+      "10950"
+     ],
+     "Type": 2,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "RestartRequired": {},
+     "SubType": "Security Update",
+     "FixedBuild": "16.0.5561.1001"
+    },
+    {
+     "URL": "https://support.microsoft.com/help/5002891",
+     "ProductID": [
+      "10950"
+     ],
+     "Type": 3,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "SubType": "5002891"
+    },
+    {
+     "Description": {
+      "Value": "5002882"
+     },
+     "URL": "https://www.microsoft.com/en-us/download/details.aspx?id=108730",
+     "Supercedence": "5002873",
+     "ProductID": [
+      "11961"
+     ],
+     "Type": 2,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "RestartRequired": {},
+     "SubType": "Security Update",
+     "FixedBuild": "16.0.19725.20434"
+    },
+    {
+     "URL": "https://support.microsoft.com/help/5002882",
+     "ProductID": [
+      "11961"
+     ],
+     "Type": 3,
+     "Date": "0001-01-01T00:00:00",
+     "DateSpecified": false,
+     "AffectedFiles": [],
+     "SubType": "5002882"
+    }
+   ],
+   "Ordinal": "2112"
+  }
+ ]
+}

@@ -51,3 +51,11 @@ def test_the_signing_job_downloads_no_package_tool():
     uses = [s["uses"].split("@")[0] for s in steps if "uses" in s]
     assert set(uses) <= {"actions/checkout", "actions/attest-build-provenance"}, uses
     assert "pip install" in str(steps) and "--only-binary :all:" in str(steps)
+
+
+def test_runtimes_are_hash_checked_in_a_job_without_the_key():
+    jobs = yaml.safe_load((GITHUB / "workflows" / "release.yml").read_text())["jobs"]
+    rt = jobs["runtimes"]
+    assert "NIMSTEAD_RELEASE_KEY" not in str(rt) and "environment" not in rt
+    steps = [s.get("run", "") for s in rt["steps"]]
+    assert steps.index(next(s for s in steps if "fetch_runtimes.py" in s)) < steps.index(next(s for s in steps if "gh release upload" in s))

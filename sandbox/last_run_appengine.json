@@ -1,0 +1,787 @@
+[
+  {
+    "step": "creating sandbox distro",
+    "name": "nimstead-sbx-3ba8f0c7",
+    "distro": "Debian"
+  },
+  {
+    "step": "sandbox ready",
+    "os": "PRETTY_NAME=\"Debian GNU/Linux 13 (trixie)\""
+  },
+  {
+    "step": "set up",
+    "command": "apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3-venv python3-requests nodejs npm cur",
+    "seconds": 87
+  },
+  {
+    "step": "set up",
+    "command": "python3 -m venv /srv/billing/.venv && /srv/billing/.venv/bin/pip install -q --disable-pip-version-check requests==2.19.1",
+    "seconds": 3
+  },
+  {
+    "step": "set up",
+    "command": "python3 -m venv /srv/reports/venv && /srv/reports/venv/bin/pip install -q --disable-pip-version-check requests==2.32.3",
+    "seconds": 3
+  },
+  {
+    "step": "set up",
+    "command": "mkdir -p /srv/web && cd /srv/web && npm init -y >/dev/null && npm install -s --no-audit --no-fund lodash@4.17.15 minimis",
+    "seconds": 1
+  },
+  {
+    "step": "set up",
+    "command": "npm install -g -s --no-audit --no-fund semver@7.5.1",
+    "seconds": 1
+  },
+  {
+    "step": "set up",
+    "command": "mkdir -p /srv/billing/lib && curl -sSfo /srv/billing/lib/log4j-core-2.14.1.jar https://repo1.maven.org/maven2/org/apache",
+    "seconds": 0
+  },
+  {
+    "step": "collected",
+    "seconds": 1,
+    "ecosystem": "Debian:13",
+    "packages": 816,
+    "collection": {
+      "v": 1,
+      "sources": {
+        "os_release": {
+          "state": "ok",
+          "count": 1
+        },
+        "package_db": {
+          "state": "ok",
+          "count": 798,
+          "exit": 0
+        },
+        "java_archives": {
+          "state": "ok",
+          "count": 1
+        },
+        "python_packages": {
+          "state": "ok",
+          "count": 12
+        },
+        "npm_packages": {
+          "state": "ok",
+          "count": 5
+        }
+      }
+    },
+    "app_scan": {
+      "owned": 8,
+      "folders": 6,
+      "entries": 42,
+      "seconds": 0,
+      "roots": [
+        "/srv"
+      ]
+    },
+    "jar_scan": {
+      "files": 62390,
+      "complete": true,
+      "owned": 0
+    },
+    "apps": [
+      "Maven org.apache.logging.log4j:log4j-core 2.14.1 at /srv/billing/lib/log4j-core-2.14.1.jar",
+      "PyPI certifi 2026.10.23 at /srv/billing/.venv/lib/python3.13/site-packages/certifi-2026.10.23.dist-info",
+      "PyPI certifi 2026.10.23 at /srv/reports/venv/lib/python3.13/site-packages/certifi-2026.10.23.dist-info",
+      "PyPI chardet 3.0.4 at /srv/billing/.venv/lib/python3.13/site-packages/chardet-3.0.4.dist-info",
+      "PyPI charset-normalizer 3.5.2 at /srv/reports/venv/lib/python3.13/site-packages/charset_normalizer-3.5.2.dist-info",
+      "PyPI idna 2.7 at /srv/billing/.venv/lib/python3.13/site-packages/idna-2.7.dist-info",
+      "PyPI idna 3.20 at /srv/reports/venv/lib/python3.13/site-packages/idna-3.20.dist-info",
+      "PyPI pip 25.1.1 at /srv/billing/.venv/lib/python3.13/site-packages/pip-25.1.1.dist-info",
+      "PyPI pip 25.1.1 at /srv/reports/venv/lib/python3.13/site-packages/pip-25.1.1.dist-info",
+      "PyPI requests 2.19.1 at /srv/billing/.venv/lib/python3.13/site-packages/requests-2.19.1.dist-info",
+      "PyPI requests 2.32.3 at /srv/reports/venv/lib/python3.13/site-packages/requests-2.32.3.dist-info",
+      "PyPI urllib3 1.23 at /srv/billing/.venv/lib/python3.13/site-packages/urllib3-1.23.dist-info",
+      "PyPI urllib3 2.8.0 at /srv/reports/venv/lib/python3.13/site-packages/urllib3-2.8.0.dist-info",
+      "npm lodash 4.17.15 at /srv/web/node_modules/lodash",
+      "npm lru-cache 6.0.0 at /usr/local/lib/node_modules/semver/node_modules/lru-cache",
+      "npm minimist 1.2.0 at /srv/web/node_modules/minimist",
+      "npm semver 7.5.1 at /usr/local/lib/node_modules/semver",
+      "npm yallist 4.0.0 at /usr/local/lib/node_modules/semver/node_modules/yallist"
+    ]
+  },
+  {
+    "step": "feeds",
+    "kev": 1766,
+    "osv": {
+      "inserted": 61037,
+      "updated": 0,
+      "skipped": 0
+    },
+    "apps": {
+      "inserted": 268456,
+      "updated": 0,
+      "skipped": 442
+    },
+    "eol": {
+      "almalinux": 3,
+      "alpine-linux": 32,
+      "clamav": 13,
+      "confluence": 91,
+      "debian": 18,
+      "elasticsearch": 12,
+      "firefox": 60,
+      "go": 18,
+      "grafana": 30,
+      "libreoffice": 32,
+      "mariadb": 30,
+      "mongodb": 33,
+      "mysql": 23,
+      "nodejs": 26,
+      "openssl": 15,
+      "opensuse": 21,
+      "oracle-jdk": 28,
+      "perl": 10,
+      "postgresql": 32,
+      "python": 18,
+      "rocky-linux": 3,
+      "ruby": 15,
+      "sles": 25,
+      "thunderbird": 157,
+      "tomcat": 9,
+      "ubuntu": 45
+    },
+    "seconds": 41
+  },
+  {
+    "step": "report",
+    "headline": {
+      "status": "vulnerable",
+      "text": "VULNERABLE: 1,009 vulnerabilities across 113 installs. 1 checks couldn't be determined."
+    },
+    "applications": [
+      {
+        "ecosystem": "Maven",
+        "product": "org.apache.logging.log4j:log4j-core",
+        "instance": "org.apache.logging.log4j:log4j-core 2.14.1 at /srv/billing/lib/log4j-core-2.14.1.jar",
+        "grade": "reasonable",
+        "outcomes": {
+          "not-vulnerable": 4,
+          "vulnerable": 8
+        }
+      },
+      {
+        "ecosystem": "PyPI",
+        "product": "certifi",
+        "instance": "certifi 2026.10.23 at /srv/billing/.venv/lib/python3.13/site-packages/certifi-2026.10.23.dist-info",
+        "grade": "reasonable",
+        "outcomes": {
+          "not-vulnerable": 5
+        }
+      },
+      {
+        "ecosystem": "PyPI",
+        "product": "certifi",
+        "instance": "certifi 2026.10.23 at /srv/reports/venv/lib/python3.13/site-packages/certifi-2026.10.23.dist-info",
+        "grade": "reasonable",
+        "outcomes": {
+          "not-vulnerable": 5
+        }
+      },
+      {
+        "ecosystem": "PyPI",
+        "product": "idna",
+        "instance": "idna 2.7 at /srv/billing/.venv/lib/python3.13/site-packages/idna-2.7.dist-info",
+        "grade": "reasonable",
+        "outcomes": {
+          "vulnerable": 2
+        }
+      },
+      {
+        "ecosystem": "PyPI",
+        "product": "idna",
+        "instance": "idna 3.20 at /srv/reports/venv/lib/python3.13/site-packages/idna-3.20.dist-info",
+        "grade": "reasonable",
+        "outcomes": {
+          "not-vulnerable": 2
+        }
+      },
+      {
+        "ecosystem": "PyPI",
+        "product": "pip",
+        "instance": "pip 25.1.1 at /srv/billing/.venv/lib/python3.13/site-packages/pip-25.1.1.dist-info",
+        "grade": "reasonable",
+        "outcomes": {
+          "not-vulnerable": 7,
+          "vulnerable": 6
+        }
+      },
+      {
+        "ecosystem": "PyPI",
+        "product": "pip",
+        "instance": "pip 25.1.1 at /srv/reports/venv/lib/python3.13/site-packages/pip-25.1.1.dist-info",
+        "grade": "reasonable",
+        "outcomes": {
+          "not-vulnerable": 7,
+          "vulnerable": 6
+        }
+      },
+      {
+        "ecosystem": "PyPI",
+        "product": "requests",
+        "instance": "requests 2.19.1 at /srv/billing/.venv/lib/python3.13/site-packages/requests-2.19.1.dist-info",
+        "grade": "reasonable",
+        "outcomes": {
+          "not-vulnerable": 3,
+          "vulnerable": 5
+        }
+      },
+      {
+        "ecosystem": "PyPI",
+        "product": "requests",
+        "instance": "requests 2.32.3 at /srv/reports/venv/lib/python3.13/site-packages/requests-2.32.3.dist-info",
+        "grade": "reasonable",
+        "outcomes": {
+          "not-vulnerable": 6,
+          "vulnerable": 2
+        }
+      },
+      {
+        "ecosystem": "PyPI",
+        "product": "urllib3",
+        "instance": "urllib3 1.23 at /srv/billing/.venv/lib/python3.13/site-packages/urllib3-1.23.dist-info",
+        "grade": "reasonable",
+        "outcomes": {
+          "not-vulnerable": 10,
+          "vulnerable": 12
+        }
+      },
+      {
+        "ecosystem": "PyPI",
+        "product": "urllib3",
+        "instance": "urllib3 2.8.0 at /srv/reports/venv/lib/python3.13/site-packages/urllib3-2.8.0.dist-info",
+        "grade": "reasonable",
+        "outcomes": {
+          "not-vulnerable": 22
+        }
+      },
+      {
+        "ecosystem": "npm",
+        "product": "lodash",
+        "instance": "lodash 4.17.15 at /srv/web/node_modules/lodash",
+        "grade": "reasonable",
+        "outcomes": {
+          "not-vulnerable": 4,
+          "vulnerable": 6
+        }
+      },
+      {
+        "ecosystem": "npm",
+        "product": "minimist",
+        "instance": "minimist 1.2.0 at /srv/web/node_modules/minimist",
+        "grade": "reasonable",
+        "outcomes": {
+          "vulnerable": 2
+        }
+      },
+      {
+        "ecosystem": "npm",
+        "product": "semver",
+        "instance": "semver 7.5.1 at /usr/local/lib/node_modules/semver",
+        "grade": "reasonable",
+        "outcomes": {
+          "not-vulnerable": 1,
+          "vulnerable": 1
+        }
+      }
+    ],
+    "coverage": {
+      "sources": [
+        {
+          "name": "java_archives",
+          "label": "Java archives",
+          "state": "ok",
+          "count": 1,
+          "error": null
+        },
+        {
+          "name": "npm_packages",
+          "label": "npm packages",
+          "state": "ok",
+          "count": 5,
+          "error": null
+        },
+        {
+          "name": "os_release",
+          "label": "Platform (os-release)",
+          "state": "ok",
+          "count": 1,
+          "error": null
+        },
+        {
+          "name": "package_db",
+          "label": "Package database",
+          "state": "ok",
+          "count": 798,
+          "error": null
+        },
+        {
+          "name": "python_packages",
+          "label": "Python packages",
+          "state": "ok",
+          "count": 12,
+          "error": null
+        }
+      ],
+      "families": {
+        "distro": {
+          "label": "Distribution packages",
+          "attempted": 25412,
+          "determined": 25411,
+          "outcomes": {
+            "not-applicable": 3294,
+            "not-vulnerable": 21158,
+            "undetermined": 1,
+            "vulnerable": 959
+          }
+        },
+        "application": {
+          "label": "Applications outside the package manager",
+          "attempted": 126,
+          "determined": 126,
+          "outcomes": {
+            "not-vulnerable": 76,
+            "vulnerable": 50
+          }
+        }
+      },
+      "applications": {
+        "installs": 18,
+        "judged": 14,
+        "vulnerable": 10,
+        "no_advisory": 4,
+        "left_to_package_manager": 8,
+        "sbom_components_not_assessed": 0,
+        "not_looked_for": []
+      },
+      "statements": [
+        "Distribution packages: 1 of 25,412 checks couldn't be determined.",
+        "8 found that the package manager owns were left to it and judged as distribution packages.",
+        "4 of 18 installs outside the package manager have no published advisory: no known vulnerability, which isn't proof of none.",
+        "Livepatch, services still running replaced libraries, and software outside the package manager other than Python and npm packages and Java archives (vendored binaries, containers, self-installed tools) aren't judged by this report yet. Kernels installed but not running are judged, and marked so."
+      ]
+    },
+    "vulnerable_apps": [
+      {
+        "instance": "org.apache.logging.log4j:log4j-core 2.14.1 at /srv/billing/lib/log4j-core-2.14.1.jar",
+        "grade": "reasonable",
+        "count": 8,
+        "known_exploited": 2,
+        "observed": "2.14.1 (Java archive metadata in /srv/billing/lib/log4j-core-2.14.1.jar)",
+        "expected": "at least 2.25.4",
+        "source": "GitHub Advisory Database",
+        "action": "Update to 2.25.4 or later"
+      },
+      {
+        "instance": "minimist 1.2.0 at /srv/web/node_modules/minimist",
+        "grade": "reasonable",
+        "count": 2,
+        "known_exploited": 0,
+        "observed": "1.2.0 (npm package metadata in /srv/web/node_modules/minimist)",
+        "expected": "at least 1.2.6",
+        "source": "GitHub Advisory Database",
+        "action": "Update to 1.2.6 or later"
+      },
+      {
+        "instance": "urllib3 1.23 at /srv/billing/.venv/lib/python3.13/site-packages/urllib3-1.23.dist-info",
+        "grade": "reasonable",
+        "count": 12,
+        "known_exploited": 0,
+        "observed": "1.23 (Python package metadata in /srv/billing/.venv/lib/python3.13/site-packages/urllib3-1.23.dist-info)",
+        "expected": "at least 2.8.0",
+        "source": "GitHub Advisory Database",
+        "action": "Update to 2.8.0 or later"
+      },
+      {
+        "instance": "lodash 4.17.15 at /srv/web/node_modules/lodash",
+        "grade": "reasonable",
+        "count": 6,
+        "known_exploited": 0,
+        "observed": "4.17.15 (npm package metadata in /srv/web/node_modules/lodash)",
+        "expected": "at least 4.18.0",
+        "source": "GitHub Advisory Database",
+        "action": "Update to 4.18.0 or later"
+      },
+      {
+        "instance": "pip 25.1.1 at /srv/billing/.venv/lib/python3.13/site-packages/pip-25.1.1.dist-info",
+        "grade": "reasonable",
+        "count": 6,
+        "known_exploited": 0,
+        "observed": "25.1.1 (Python package metadata in /srv/billing/.venv/lib/python3.13/site-packages/pip-25.1.1.dist-info)",
+        "expected": "at least 26.2.0",
+        "source": "GitHub Advisory Database",
+        "action": "Update to 26.2.0 or later"
+      },
+      {
+        "instance": "pip 25.1.1 at /srv/reports/venv/lib/python3.13/site-packages/pip-25.1.1.dist-info",
+        "grade": "reasonable",
+        "count": 6,
+        "known_exploited": 0,
+        "observed": "25.1.1 (Python package metadata in /srv/reports/venv/lib/python3.13/site-packages/pip-25.1.1.dist-info)",
+        "expected": "at least 26.2.0",
+        "source": "GitHub Advisory Database",
+        "action": "Update to 26.2.0 or later"
+      },
+      {
+        "instance": "requests 2.19.1 at /srv/billing/.venv/lib/python3.13/site-packages/requests-2.19.1.dist-info",
+        "grade": "reasonable",
+        "count": 5,
+        "known_exploited": 0,
+        "observed": "2.19.1 (Python package metadata in /srv/billing/.venv/lib/python3.13/site-packages/requests-2.19.1.dist-info)",
+        "expected": "at least 2.33.0",
+        "source": "GitHub Advisory Database",
+        "action": "Update to 2.33.0 or later"
+      },
+      {
+        "instance": "semver 7.5.1 at /usr/local/lib/node_modules/semver",
+        "grade": "reasonable",
+        "count": 1,
+        "known_exploited": 0,
+        "observed": "7.5.1 (npm package metadata in /usr/local/lib/node_modules/semver)",
+        "expected": "at least 7.5.2",
+        "source": "GitHub Advisory Database",
+        "action": "Update to 7.5.2 or later"
+      },
+      {
+        "instance": "idna 2.7 at /srv/billing/.venv/lib/python3.13/site-packages/idna-2.7.dist-info",
+        "grade": "reasonable",
+        "count": 2,
+        "known_exploited": 0,
+        "observed": "2.7 (Python package metadata in /srv/billing/.venv/lib/python3.13/site-packages/idna-2.7.dist-info)",
+        "expected": "at least 3.15",
+        "source": "GitHub Advisory Database",
+        "action": "Update to 3.15 or later"
+      },
+      {
+        "instance": "requests 2.32.3 at /srv/reports/venv/lib/python3.13/site-packages/requests-2.32.3.dist-info",
+        "grade": "reasonable",
+        "count": 2,
+        "known_exploited": 0,
+        "observed": "2.32.3 (Python package metadata in /srv/reports/venv/lib/python3.13/site-packages/requests-2.32.3.dist-info)",
+        "expected": "at least 2.33.0",
+        "source": "GitHub Advisory Database",
+        "action": "Update to 2.33.0 or later"
+      }
+    ],
+    "undetermined": [
+      {
+        "outcome": "undetermined",
+        "reason": "kernel-unpackaged",
+        "blocked_by": null,
+        "why": "the running kernel wasn't installed by the package manager, so the distribution's advisories don't describe it",
+        "source_said": "running 6.18.33.2-microsoft-standard-WSL2; no kernel package is installed",
+        "what_to_do": "Patch it where it comes from: the container or WSL host, the cloud image, or whoever built it",
+        "count": 1,
+        "examples": [
+          "6.18.33.2-microsoft-standard-WSL2"
+        ]
+      }
+    ],
+    "verdicts_sha256": "e8b4cdff9c01c738e5de60fac9cd0ebc64404de84a5765a9b344c0d37256b42a",
+    "content_version": "2026-11-03.3faf51c16c88"
+  },
+  {
+    "step": "parity with rescan",
+    "findings": 1001,
+    "app_findings": 42,
+    "app_agree": 42,
+    "agree": 1001,
+    "outside_this_slice": {},
+    "explained": 0,
+    "explained_by": [],
+    "unexplained": []
+  },
+  {
+    "step": "with an install that can't be read",
+    "python_packages": {
+      "name": "python_packages",
+      "label": "Python packages",
+      "state": "partial",
+      "count": 12,
+      "error": "1 installs' metadata couldn't be read"
+    },
+    "headline": {
+      "status": "vulnerable",
+      "text": "VULNERABLE: 1,009 vulnerabilities across 113 installs. 2 checks couldn't be determined."
+    },
+    "undetermined": [
+      {
+        "outcome": "undetermined",
+        "reason": "source-partial",
+        "blocked_by": "python_packages",
+        "why": "the list these checks depend on was only partly read, so another install could be missing from it",
+        "source_said": "1 installs' metadata couldn't be read",
+        "what_to_do": "Fix that source on the host, then scan again",
+        "count": 1,
+        "examples": [
+          "Python packages"
+        ]
+      }
+    ],
+    "app_grades": [
+      "reasonable",
+      "unverified"
+    ]
+  },
+  {
+    "step": "with the scans off",
+    "sources": [
+      {
+        "name": "java_archives",
+        "label": "Java archives",
+        "state": "off",
+        "count": 0,
+        "error": null
+      },
+      {
+        "name": "npm_packages",
+        "label": "npm packages",
+        "state": "off",
+        "count": 0,
+        "error": null
+      },
+      {
+        "name": "python_packages",
+        "label": "Python packages",
+        "state": "off",
+        "count": 0,
+        "error": null
+      }
+    ],
+    "statements": [
+      "Distribution packages: 1 of 25,412 checks couldn't be determined.",
+      "This host's applications outside the package manager were not assessed.",
+      "Not looked for on this host, so not assessed: Python packages, npm packages, Java archives (the agent's opt-in scans are off, or it predates them).",
+      "Livepatch, services still running replaced libraries, and software outside the package manager other than Python and npm packages and Java archives (vendored binaries, containers, self-installed tools) aren't judged by this report yet. Kernels installed but not running are judged, and marked so."
+    ],
+    "carried": [
+      [
+        "idna",
+        "CVE-2024-3651"
+      ],
+      [
+        "idna",
+        "CVE-2026-45409"
+      ],
+      [
+        "lodash",
+        "CVE-2020-28500"
+      ],
+      [
+        "lodash",
+        "CVE-2020-8203"
+      ],
+      [
+        "lodash",
+        "CVE-2021-23337"
+      ],
+      [
+        "lodash",
+        "CVE-2025-13465"
+      ],
+      [
+        "lodash",
+        "CVE-2026-2950"
+      ],
+      [
+        "lodash",
+        "CVE-2026-4800"
+      ],
+      [
+        "minimist",
+        "CVE-2020-7598"
+      ],
+      [
+        "minimist",
+        "CVE-2021-44906"
+      ],
+      [
+        "org.apache.logging.log4j:log4j-core",
+        "CVE-2021-44228"
+      ],
+      [
+        "org.apache.logging.log4j:log4j-core",
+        "CVE-2021-44832"
+      ],
+      [
+        "org.apache.logging.log4j:log4j-core",
+        "CVE-2021-45046"
+      ],
+      [
+        "org.apache.logging.log4j:log4j-core",
+        "CVE-2021-45105"
+      ],
+      [
+        "org.apache.logging.log4j:log4j-core",
+        "CVE-2025-68161"
+      ],
+      [
+        "org.apache.logging.log4j:log4j-core",
+        "CVE-2026-34477"
+      ],
+      [
+        "org.apache.logging.log4j:log4j-core",
+        "CVE-2026-34479"
+      ],
+      [
+        "org.apache.logging.log4j:log4j-core",
+        "CVE-2026-34480"
+      ],
+      [
+        "pip",
+        "CVE-2025-8869"
+      ],
+      [
+        "pip",
+        "CVE-2026-13346"
+      ]
+    ],
+    "app_findings_still_open": 0
+  },
+  {
+    "step": "SBOM",
+    "upload": {
+      "components": 6,
+      "mapped": 4,
+      "unique_packages": 4,
+      "skipped": {
+        "no_purl": 1,
+        "unsupported_or_invalid_purl": 1
+      },
+      "open": 54,
+      "resolved": 0
+    },
+    "headline": {
+      "status": "vulnerable",
+      "text": "VULNERABLE: 54 vulnerabilities across 4 installs. 2 checks couldn't be determined."
+    },
+    "coverage": {
+      "sources": [
+        {
+          "name": "sbom",
+          "label": "SBOM",
+          "state": "ok",
+          "count": 4,
+          "error": null
+        }
+      ],
+      "families": {
+        "application": {
+          "label": "Applications outside the package manager",
+          "attempted": 194,
+          "determined": 192,
+          "outcomes": {
+            "not-run": 2,
+            "not-vulnerable": 138,
+            "vulnerable": 54
+          }
+        }
+      },
+      "applications": {
+        "installs": 4,
+        "judged": 4,
+        "vulnerable": 4,
+        "no_advisory": 0,
+        "left_to_package_manager": 0,
+        "sbom_components_not_assessed": 2,
+        "not_looked_for": []
+      },
+      "statements": [
+        "Applications outside the package manager: 2 of 194 checks couldn't be determined.",
+        "SBOM (received 2026-11-03): An SBOM states what was built, not what's running, so nothing judged from it is better than unverified. 2 of its 6 components weren't assessed.",
+        "Only components with a package URL in an ecosystem the advisory feeds cover are judged."
+      ]
+    },
+    "undetermined": [
+      {
+        "outcome": "not-run",
+        "reason": "sbom-unmapped",
+        "blocked_by": null,
+        "why": "these SBOM components can't be named in an ecosystem the advisories use, so they weren't assessed",
+        "source_said": "1 have no package URL",
+        "what_to_do": "Generate the SBOM with a package URL (purl) for every component",
+        "count": 1,
+        "examples": [
+          "1 components"
+        ]
+      },
+      {
+        "outcome": "not-run",
+        "reason": "sbom-unmapped",
+        "blocked_by": null,
+        "why": "these SBOM components can't be named in an ecosystem the advisories use, so they weren't assessed",
+        "source_said": "1 have a package URL no advisory feed covers",
+        "what_to_do": "Generate the SBOM with a package URL (purl) for every component",
+        "count": 1,
+        "examples": [
+          "1 components"
+        ]
+      }
+    ],
+    "vulnerable": [
+      {
+        "instance": "org.apache.logging.log4j:log4j-core 2.14.1",
+        "grade": "unverified",
+        "count": 8,
+        "expected": "at least 2.25.4",
+        "source": "GitHub Advisory Database",
+        "raise_confidence": "An SBOM states what was built, not what's running: an agent reading the deployed files would raise this"
+      },
+      {
+        "instance": "django 3.2.0",
+        "grade": "unverified",
+        "count": 38,
+        "expected": "at least 5.2.17",
+        "source": "GitHub Advisory Database",
+        "raise_confidence": "An SBOM states what was built, not what's running: an agent reading the deployed files would raise this"
+      },
+      {
+        "instance": "lodash 4.17.15",
+        "grade": "unverified",
+        "count": 6,
+        "expected": "at least 4.18.0",
+        "source": "GitHub Advisory Database",
+        "raise_confidence": "An SBOM states what was built, not what's running: an agent reading the deployed files would raise this"
+      },
+      {
+        "instance": "requests 2.32.3",
+        "grade": "unverified",
+        "count": 2,
+        "expected": "at least 2.33.0",
+        "source": "GitHub Advisory Database",
+        "raise_confidence": "An SBOM states what was built, not what's running: an agent reading the deployed files would raise this"
+      }
+    ],
+    "parity": {
+      "findings": 54,
+      "agree": 54,
+      "explained": 0,
+      "unexplained": [],
+      "outside_this_slice": {}
+    }
+  },
+  {
+    "step": "RESULT: PASS",
+    "checks": {
+      "collection document valid, each scan's line ok with what it read": true,
+      "Debian's own python3-requests (and the rest dpkg owns) was left to dpkg, not judged twice": true,
+      "T19: requests in two virtualenvs is two installs, judged apart": true,
+      "npm in a project and globally, and the jar, each vulnerable where they are": true,
+      "a file is one install, not one per mount it shows through (WSLg's /mnt/wslg/distro is the root again)": true,
+      "graded reasonable: the install's own metadata against an advisory database": true,
+      "every finding rescan opened is a verdict or explained": true,
+      "same inventory and content, same verdicts": true,
+      "an install that can't be read makes the scan partial, its readings unverified, and says so": true,
+      "scans off read as not assessed, and open findings rescan closed on silence are carried, not called fixed": true,
+      "an SBOM is judged unverified, says it isn't what's running, and counts what it can't name": true
+    }
+  },
+  {
+    "step": "sandbox destroyed",
+    "name": "nimstead-sbx-3ba8f0c7"
+  }
+]

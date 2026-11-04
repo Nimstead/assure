@@ -1,0 +1,315 @@
+[
+  {
+    "step": "old 7-Zip",
+    "version": "24.08",
+    "output": "sh\nStarting package install...\n\n   - \n   \\ \n   | \n   / \n                                                                                                                        \nSuccessfully installed\n"
+  },
+  {
+    "step": "feeds",
+    "msrc": {
+      "documents": 2,
+      "skipped_documents": 0,
+      "inserted": 48979,
+      "updated": 0,
+      "skipped": 0
+    },
+    "nvd": 60782,
+    "kev": 1766
+  },
+  {
+    "step": "report",
+    "headline": {
+      "status": "vulnerable",
+      "text": "VULNERABLE: 1,040 vulnerabilities across 10 installs."
+    },
+    "coverage": {
+      "sources": [
+        {
+          "name": "drivers",
+          "label": "Drivers",
+          "state": "ok",
+          "count": 437,
+          "error": null
+        },
+        {
+          "name": "host_facts",
+          "label": "Host facts",
+          "state": "ok",
+          "count": 12,
+          "error": null
+        },
+        {
+          "name": "microsoft_products",
+          "label": "Microsoft products",
+          "state": "ok",
+          "count": 8,
+          "error": null
+        },
+        {
+          "name": "uninstall",
+          "label": "Uninstall entries",
+          "state": "ok",
+          "count": 5,
+          "error": null
+        },
+        {
+          "name": "user_hives",
+          "label": "Signed-out users' apps",
+          "state": "ok",
+          "count": 0,
+          "error": null
+        },
+        {
+          "name": "windows_build",
+          "label": "Windows build",
+          "state": "ok",
+          "count": 1,
+          "error": null
+        }
+      ],
+      "families": {
+        "os": {
+          "label": "Windows itself",
+          "attempted": 1007,
+          "determined": 1007,
+          "outcomes": {
+            "vulnerable": 1007
+          }
+        },
+        "microsoft": {
+          "label": "Microsoft products",
+          "attempted": 1243,
+          "determined": 1243,
+          "outcomes": {
+            "not-applicable": 13,
+            "not-vulnerable": 1201,
+            "vulnerable": 29
+          }
+        },
+        "app": {
+          "label": "Third-party apps",
+          "attempted": 104,
+          "determined": 104,
+          "outcomes": {
+            "not-applicable": 98,
+            "not-vulnerable": 2,
+            "vulnerable": 4
+          }
+        }
+      },
+      "statements": [
+        "End of support, Windows settings, drivers and Java archives aren't judged by this report yet: they stay findings in the normal view."
+      ]
+    },
+    "undetermined": [],
+    "vulnerable": [
+      {
+        "instance": "Windows 11 Version 26H2 for x64-based Systems",
+        "grade": "confirmed",
+        "count": 1007,
+        "known_exploited": 1,
+        "observed": "10.0.26300.9457 (registry, CurrentBuild and UBR)",
+        "expected": "at least 10.0.26300.9711",
+        "action": "Install KB5127648, then restart"
+      },
+      {
+        "instance": "7-Zip 24.08 (x64) 24.08",
+        "grade": "reasonable",
+        "count": 4,
+        "known_exploited": 1,
+        "observed": "24.08 (registry, Uninstall entry)",
+        "expected": "at least 25.01",
+        "action": "Update to 25.01 or later"
+      },
+      {
+        "instance": "Microsoft.RawImageExtension 2.5.24.0",
+        "grade": "confirmed",
+        "count": 3,
+        "known_exploited": 0,
+        "observed": "2.5.24.0 (agent reading of Microsoft.RawImageExtension)",
+        "expected": "at least 2.5.35.0",
+        "action": "Update to 2.5.35.0 or later"
+      },
+      {
+        "instance": ".NET Framework 4.8.9345.0",
+        "grade": "confirmed",
+        "count": 18,
+        "known_exploited": 0,
+        "observed": "4.8.9345.0 (agent reading of .NET Framework)",
+        "expected": "at least 4.8.10008.0",
+        "action": "Update to 4.8.10008.0 or later"
+      },
+      {
+        "instance": "Microsoft.HEVCVideoExtension 2.4.45.0",
+        "grade": "confirmed",
+        "count": 3,
+        "known_exploited": 0,
+        "observed": "2.4.45.0 (agent reading of Microsoft.HEVCVideoExtension)",
+        "expected": "at least 2.4.87.0",
+        "action": "Update to 2.4.87.0 or later"
+      },
+      {
+        "instance": "Microsoft.MPEG2VideoExtension 1.2.13.0",
+        "grade": "confirmed",
+        "count": 1,
+        "known_exploited": 0,
+        "observed": "1.2.13.0 (agent reading of Microsoft.MPEG2VideoExtension)",
+        "expected": "at least 1.2.32.0",
+        "action": "Update to 1.2.32.0 or later"
+      },
+      {
+        "instance": "Microsoft.Paint 11.2601.440.0",
+        "grade": "confirmed",
+        "count": 1,
+        "known_exploited": 0,
+        "observed": "11.2601.440.0 (agent reading of Microsoft.Paint)",
+        "expected": "at least 11.2609.401.0",
+        "action": "Update to 11.2609.401.0 or later"
+      },
+      {
+        "instance": "Microsoft.SecHealthUI 1000.26100.9457.0",
+        "grade": "confirmed",
+        "count": 1,
+        "known_exploited": 0,
+        "observed": "1000.26100.9457.0 (agent reading of Microsoft.SecHealthUI)",
+        "expected": "at least 1000.27840.1000.0",
+        "action": "Update to 1000.27840.1000.0 or later"
+      },
+      {
+        "instance": "Defender engine 1.1.25080.5",
+        "grade": "reasonable",
+        "count": 1,
+        "known_exploited": 0,
+        "observed": "1.1.25080.5 (agent reading of Defender engine)",
+        "expected": "at least 1.1.26090.9",
+        "action": "Update to 1.1.26090.9 or later"
+      },
+      {
+        "instance": "Defender platform 4.18.25080.5",
+        "grade": "reasonable",
+        "count": 1,
+        "known_exploited": 0,
+        "observed": "4.18.25080.5 (agent reading of Defender platform)",
+        "expected": "at least 4.18.26060.3008",
+        "action": "Update to 4.18.26060.3008 or later"
+      }
+    ],
+    "content_version": "2026-11-02.bd55bd00b9f8",
+    "inventory_sha256": "3bee666ac1a60f8f135875c3c7c5f54c8de74b43870b25983f177e309e7b99ef",
+    "verdicts_sha256": "c21e7957ae30755f54f916d36afe278076c93940fe5ed694eef3f5ee25150742"
+  },
+  {
+    "step": "parity with rescan",
+    "findings": 1046,
+    "agree": 1040,
+    "outside_this_slice": {
+      "WinConfig": 6
+    },
+    "explained": [],
+    "unexplained": []
+  },
+  {
+    "step": "collect as a standard user",
+    "rc": 0,
+    "tail": "isk\"\n    },\n    {\n      \"ecosystem\": \"WinDriver\",\n      \"name\": \"ztdns.sys\",\n      \"version\": \"d849035b20650ba8cf45457d5af379b223cf3abf30fa43058818311bf8138dc6\",\n      \"source\": \"on disk\"\n    }\n  ]\n}\n"
+  },
+  {
+    "step": "as a standard user",
+    "sources": {
+      "windows_build": {
+        "state": "ok",
+        "count": 1
+      },
+      "uninstall": {
+        "state": "partial",
+        "count": 4,
+        "error": "S-1-5-21-547078760-3483191499-1573513845-500\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall: access denied",
+        "code": "access-denied"
+      },
+      "user_hives": {
+        "state": "failed",
+        "count": 0,
+        "error": "profile S-1-5-21-547078760-3483191499-1573513845-1000: its hive couldn't be loaded"
+      },
+      "microsoft_products": {
+        "state": "partial",
+        "count": 3,
+        "error": "not read: Store apps of other users"
+      },
+      "host_facts": {
+        "state": "ok",
+        "count": 12
+      },
+      "drivers": {
+        "state": "ok",
+        "count": 437
+      }
+    },
+    "headline": {
+      "status": "vulnerable",
+      "text": "VULNERABLE: 1,030 vulnerabilities across 4 installs. 130 checks couldn't be determined."
+    },
+    "undetermined": [
+      {
+        "outcome": "not-run",
+        "reason": "precondition-unknown",
+        "blocked_by": "user_hives",
+        "why": "what these checks depend on couldn't be read",
+        "source_said": "profile S-1-5-21-547078760-3483191499-1573513845-1000: its hive couldn't be loaded",
+        "what_to_do": "Fix that source on the host, then scan again",
+        "count": 105,
+        "examples": [
+          "7-zip:7-zip",
+          "Azure Connected Machine Agent",
+          "Microsoft Edge",
+          "Microsoft PowerToys",
+          "PowerShell 7"
+        ]
+      },
+      {
+        "outcome": "undetermined",
+        "reason": "source-partial",
+        "blocked_by": "microsoft_products",
+        "why": "the list these checks depend on was only partly read, so another install could be missing from it",
+        "source_said": "not read: Store apps of other users",
+        "what_to_do": "Fix that source on the host, then scan again",
+        "count": 16,
+        "examples": [
+          ".NET Framework",
+          ".NET SDK",
+          ".NET runtime",
+          "ASP.NET Core",
+          "Defender engine"
+        ]
+      },
+      {
+        "outcome": "undetermined",
+        "reason": "not-reassessed",
+        "blocked_by": null,
+        "why": "a finding was open on this, and this scan has no evidence either way",
+        "source_said": null,
+        "what_to_do": "It stays open. Fix what stopped the scan, then scan again",
+        "count": 9,
+        "examples": [
+          "CVE-2026-105725",
+          "CVE-2026-108400",
+          "CVE-2026-21413",
+          "CVE-2026-58599",
+          "CVE-2026-58600"
+        ]
+      }
+    ]
+  },
+  {
+    "step": "RESULT: PASS",
+    "checks": {
+      "collection document valid and complete": true,
+      "Windows build, Uninstall entries and host facts read": true,
+      "OS judged": true,
+      "the old 7-Zip is vulnerable, with its grade": true,
+      "every finding rescan opened is a verdict or explained": true,
+      "same inventory and content, same verdicts": true,
+      "a standard user's collect isn't reported clean": true
+    }
+  }
+]

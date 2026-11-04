@@ -1,0 +1,25 @@
+[
+  {
+    "step": "resume start",
+    "build": "10.0.26300.9711",
+    "pending": "True"
+  },
+  {
+    "step": "resume 1",
+    "outcome": "applied",
+    "error": null,
+    "steps": [
+      "update is removable (manifest checked before install)",
+      "KB5127648 downloaded and installed",
+      "new cumulative package identified",
+      "reboot required to finish",
+      "build updated",
+      "Spooler running after change"
+    ]
+  },
+  {
+    "step": "final",
+    "outcome": "applied",
+    "build": "10.0.26300.9711"
+  }
+]

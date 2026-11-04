@@ -19,5 +19,11 @@ for f in fixtures.glob("*.json"):
     for r in d["records"]:
         s.merge(Advisory(id=r["id"], ecosystem=normalize_ecosystem(d["ecosystem"]), package=d["name"], record=r))
 s.merge(Kev(cve="CVE-2024-35195", date_added="2024-06-01"))
+W11 = "Windows 11 Version 25H2 for x64-based Systems"
+s.merge(Advisory(id="MSRC-CVE-2026-100201-1", ecosystem="Windows", package=W11, record={  # shaped as feeds.sync_msrc stores it
+    "id": "MSRC-CVE-2026-100201-1", "aliases": ["CVE-2026-100201"], "modified": "2026-10-14", "summary": "Windows bug (KB5127648)",
+    "database_specific": {"kb": "5127648", "hotpatch": False, "released": "2026-10-14"},
+    "affected": [{"package": {"ecosystem": "Windows", "name": W11},
+                  "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": "10.0.26200.9711"}]}]}]}))
 s.commit()
 print("seeded")

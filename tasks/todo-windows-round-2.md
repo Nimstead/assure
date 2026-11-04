@@ -182,8 +182,8 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens the ref
 - Verify: tests, e2e, perf at 1,000 hosts with `perf.py`. Deps: none.
 
 ### W23: winget on Server (M, spike first)
-- [ ] Can Microsoft-signed winget be installed on Server 2022/2025 by a hash-pinned, signature-checked path? If not, stop: DECISIONS entry and STATUS line
-- [ ] If so: one app old-to-new as SYSTEM on Server, verified by inventory, person-approved as on clients
+- [x] Can Microsoft-signed winget be installed on Server 2022/2025 by a hash-pinned, signature-checked path? On Server 2025 Core, no: hashes and Microsoft signatures check out but Core can't provision MSIX packages. On Desktop Experience it's already there (DECISIONS 103). Server 2022 not run
+- [x] One app old-to-new as SYSTEM on Server, verified by inventory, person-approved as on clients: 7-Zip 26.04 to 26.05 on Server 2025 Desktop Experience (`last_run_winfixes_server2.json`)
 - Verify: `last_run_winfixes_server2.json`. Deps: W5.
 
 ## Phase 6: agent quality

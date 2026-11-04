@@ -88,3 +88,28 @@ def test_click_to_run_host_end_to_end(env):
     assert f["fixed_version"] == "16.0.20430.20180"
     assert inv("16.0.20430.20180")["open"] == 0
     assert inv("16.0.20999.20000")["open"] == 0  # a line the feed doesn't list: not judged, never guessed
+
+
+def test_a_superseded_line_takes_its_fix_from_a_newer_line_of_its_channel(session):
+    """SemiAnnual 20131's last build is 2026-09-08: a host on it gets October's fix only by moving to 20228 or later."""
+    sync_office(session, feed_client())
+    rows = {a.package: a.record["affected"][0]["ranges"][0]["events"] for a in session.scalars(select(Advisory).where(Advisory.package.like("Microsoft 365 Apps %")))}
+    assert rows["Microsoft 365 Apps SemiAnnual 20131"] == [{"introduced": "16.0.20131.0"}, {"fixed": "16.0.20228.20274"}]
+    assert "Microsoft 365 Apps MonthlyEnterprise 20131" not in rows  # a line the channel doesn't list has no CVE rows
+
+
+def test_a_line_older_than_its_channel_still_lists_is_end_of_support(env):
+    with make_sessionmaker(env)() as s:
+        sync_msrc(s, 60, msrc_client())
+        sync_office(s, feed_client())
+    c = user(env)
+    token = c.post("/api/enroll-tokens").json()["token"]
+    a = c.post("/api/agent/enroll", json={"token": token, "hostname": "pc", "ecosystem": "Windows"}).json()
+    h = {"Authorization": f"Bearer {a['agent_key']}"}
+
+    def inv(build):
+        c.post("/api/agent/inventory", headers=h, json={"ecosystem": "Windows", "packages": [
+            {"ecosystem": "Microsoft", "name": "Microsoft 365 Apps", "version": build, "source": MEC}]})
+        return [f["vuln_id"] for f in c.get("/api/findings").json() if f["status"] == "open"]
+    assert inv("16.0.17928.20114") == ["EOL:m365-MonthlyEnterprise-17928"]  # two years behind on a channel listing 20228 onwards
+    assert inv("16.0.20228.20276") == []

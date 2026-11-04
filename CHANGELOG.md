@@ -14,6 +14,7 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 - A servicing stack step is planned only when Microsoft's data for that month was read.
 - One feed failing or changing format no longer stops the hourly update and re-match for every organisation.
 - The per-update fleet view counts a stepped job by the build it installs.
+- Microsoft 365 Apps on a version line Microsoft no longer updates is judged: a superseded line's CVEs take their fix from a newer line of the channel, and a line older than any the channel lists opens an end-of-support finding (DECISIONS 106).
 
 ## [0.6.0] - 2026-11-04 (preview)
 

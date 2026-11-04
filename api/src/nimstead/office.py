@@ -5,8 +5,10 @@ Microsoft's own release feed (`OfficeReleases`: per channel, each supported vers
 For a CVE published in a month's security release, the fixed build on a channel's version line is the first build of
 that line made available on or after that release date. A host is compared only with its own channel and line:
 key "Microsoft 365 Apps <channelId> <line>", line = the build's third part (16.0.<20430>.20180).
-A line with no build since the release isn't judged (never guessed); a changed feed schema fails the sync loudly and
-keeps the rows already stored.
+A line with no build since the release has been superseded: its fix is the first such build on a newer line of the same
+channel. A line older than every line its channel still lists gets an end-of-support finding instead (lifecycle.m365_line,
+from the "m365-lines" EOL row written here); a line newer than any listed isn't judged (never guessed). A changed feed
+schema fails the sync loudly and keeps the rows already stored.
 """
 
 import re
@@ -15,7 +17,7 @@ from datetime import date
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from nimstead.db import Advisory
+from nimstead.db import Advisory, now
 from nimstead.msproducts import ECOSYSTEM
 
 URL = "https://clients.config.office.net/releases/v1.0/OfficeReleases"
@@ -79,7 +81,11 @@ def sync(s: Session, feed, cves: list[dict]) -> int:
             if line.split(" ")[0] not in c["channels"]:
                 continue
             fixed = next((b for when, b in builds if when >= c["released"]), None)
-            if not fixed:  # nothing released on this line since: not judged
+            ch, num = line.split(" ")
+            if not fixed:  # superseded: a host on it gets the fix only by moving to a newer line of its channel
+                fixed = min((b for other, bs in by_line.items() if other.split(" ")[0] == ch and int(other.split(" ")[1]) > int(num)
+                             for when, b in bs if when >= c["released"]), key=lambda b: tuple(map(int, b.split("."))), default=None)
+            if not fixed:
                 continue
             pkg = PREFIX + line
             rec = {"id": f"M365-{c['cve']}-{line.replace(' ', '-')}", "aliases": [c["cve"]], "modified": c["modified"],
@@ -90,6 +96,13 @@ def sync(s: Session, feed, cves: list[dict]) -> int:
                 rec["severity"] = c["severity"]
             rows.append(Advisory(id=rec["id"], ecosystem=ECOSYSTEM, package=pkg, modified=c["modified"], record=rec))
     s.add_all(rows)
+    oldest: dict[str, int] = {}  # per subscription channel, the oldest line still getting builds (Perpetual is lifecycle.ROWS')
+    for line in by_line:
+        ch, num = line.split(" ")
+        if not ch.startswith("Perpetual"):
+            oldest[ch] = min(oldest.get(ch, int(num)), int(num))
+    s.merge(Advisory(id="EOL-m365-lines", ecosystem="EOL", package="m365-lines", modified=now().isoformat(),
+                     record={"id": "EOL-m365-lines", "cycles": oldest}))
     s.flush()
     return len(rows)
 

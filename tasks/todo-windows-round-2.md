@@ -199,7 +199,7 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens the ref
 - Verify: `last_run_winfootprint.json`. Deps: none.
 
 ### W26: Failure runs (M)
-- [x] Hard power-off during rollback (`last_run_winfailures.json`, Windows 11: resumed, original build restored, `rolled_back`) and during install (Windows 10 LTSC, a real licence shutdown mid-install: aborted with no changes, DECISIONS 78). The Windows 11 install cut missed its window (the harness waited on IsBusy, which never read true); it now waits on the agent's own `installing` flag, not yet rerun: the VM is on the newest build
+- [x] Hard power-off during rollback (`last_run_winfailures.json`, Windows 11: resumed, original build restored, `rolled_back`) and during install (Windows 10 LTSC, a real licence shutdown mid-install: aborted with no changes, DECISIONS 78). The Windows 11 install cut missed its window (the harness waited on IsBusy, which never read true); rerun waiting on the agent's own `installing` flag on a fresh Windows 11 VM: the cut landed mid-install and the job reported no changes made, build unchanged (`last_run_winfailures_install_cut.json`)
 - [x] Disk full: refuses before changing anything. Server down: next run catches up. Clock skew: a clear error (`last_run_winfailures.json`, Windows 11)
 - Verify: `last_run_winfailures.json`. Deps: W24 helps. Bugs found get a test.
 

@@ -1,0 +1,80 @@
+[
+  {
+    "step": "feeds",
+    "msrc": {
+      "documents": 2,
+      "skipped_documents": 0,
+      "inserted": 48974,
+      "updated": 0,
+      "skipped": 0
+    }
+  },
+  {
+    "step": "install.ps1 ran",
+    "vm": "nimstead-sbx-win-44418e"
+  },
+  {
+    "step": "agent installed",
+    "os": "Windows 11 Pro 26H2 (AMD64) build 10.0.26300.9457",
+    "build": "10.0.26300.9457"
+  },
+  {
+    "step": "power cut during the install"
+  },
+  {
+    "step": "jobs",
+    "vm": "dispatched"
+  },
+  {
+    "step": "jobs",
+    "vm": "aborted"
+  },
+  {
+    "step": "after the cut",
+    "status": "aborted",
+    "error": "No changes made: the machine stopped during the install and nothing new is installed. Plan the fix again.",
+    "build": "10.0.26300.9457",
+    "was": "10.0.26300.9457",
+    "steps": [
+      [
+        "at least 10 GB free on the system drive",
+        true
+      ],
+      [
+        "Windows Update offers exactly KB5127648",
+        true
+      ],
+      [
+        "rollback baseline recorded",
+        true
+      ],
+      [
+        "KB5127648 downloaded",
+        true
+      ],
+      [
+        "update is removable (manifest checked before install)",
+        true
+      ],
+      [
+        "stopped during the install, checked what it left",
+        true
+      ]
+    ]
+  },
+  {
+    "step": "scenario: install cut",
+    "ok": true,
+    "checks": {
+      "the cut landed during the install": true,
+      "the job finished or was reported, not stuck": true,
+      "what it says matches the machine": true
+    }
+  },
+  {
+    "step": "RESULT: PASS",
+    "checks": {
+      "install cut": true
+    }
+  }
+]

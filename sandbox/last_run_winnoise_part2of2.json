@@ -1,0 +1,658 @@
+{
+ "steps": [
+  {
+   "step": "feed",
+   "feed": "2010",
+   "curated_cves": 487
+  },
+  {
+   "step": "feed",
+   "feed": "2011",
+   "curated_cves": 1215
+  },
+  {
+   "step": "feed",
+   "feed": "2012",
+   "curated_cves": 1862
+  },
+  {
+   "step": "feed",
+   "feed": "2013",
+   "curated_cves": 2700
+  },
+  {
+   "step": "feed",
+   "feed": "2014",
+   "curated_cves": 3369
+  },
+  {
+   "step": "feed",
+   "feed": "2015",
+   "curated_cves": 4185
+  },
+  {
+   "step": "feed",
+   "feed": "2016",
+   "curated_cves": 5258
+  },
+  {
+   "step": "feed",
+   "feed": "2017",
+   "curated_cves": 6603
+  },
+  {
+   "step": "feed",
+   "feed": "2018",
+   "curated_cves": 7911
+  },
+  {
+   "step": "feed",
+   "feed": "2019",
+   "curated_cves": 9253
+  },
+  {
+   "step": "feed",
+   "feed": "2020",
+   "curated_cves": 10331
+  },
+  {
+   "step": "feed",
+   "feed": "2021",
+   "curated_cves": 11592
+  },
+  {
+   "step": "feed",
+   "feed": "2022",
+   "curated_cves": 13150
+  },
+  {
+   "step": "feed",
+   "feed": "2023",
+   "curated_cves": 14384
+  },
+  {
+   "step": "feed",
+   "feed": "2024",
+   "curated_cves": 15606
+  },
+  {
+   "step": "feed",
+   "feed": "2025",
+   "curated_cves": 16615
+  },
+  {
+   "step": "feed",
+   "feed": "2026",
+   "curated_cves": 22301
+  },
+  {
+   "step": "feed",
+   "feed": "modified",
+   "curated_cves": 22302
+  },
+  {
+   "step": "install",
+   "i": 0,
+   "app": "WinSCP.WinSCP",
+   "version": "6.1.2",
+   "ok": true
+  },
+  {
+   "step": "install",
+   "i": 1,
+   "app": "DominikReichl.KeePass",
+   "version": "2.61.0",
+   "ok": true
+  },
+  {
+   "step": "install",
+   "i": 2,
+   "app": "VideoLAN.VLC",
+   "version": "3.0.18",
+   "ok": true
+  },
+  {
+   "step": "install",
+   "i": 3,
+   "app": "Microsoft.OpenJDK.17",
+   "version": "17.0.10.7",
+   "ok": true
+  },
+  {
+   "step": "install",
+   "i": 4,
+   "app": "TheDocumentFoundation.LibreOffice",
+   "version": "26.8.1.1",
+   "ok": true
+  },
+  {
+   "step": "install",
+   "i": 5,
+   "app": "VivaldiTechnologies.Vivaldi",
+   "version": "6.5.3206.53",
+   "ok": false
+  },
+  {
+   "step": "install",
+   "i": 6,
+   "app": "OpenVPNTechnologies.OpenVPN",
+   "version": "2.7.601",
+   "ok": true
+  },
+  {
+   "step": "install",
+   "i": 7,
+   "app": "Microsoft.PowerShell",
+   "version": "7.4.1.0",
+   "ok": true
+  },
+  {
+   "step": "install",
+   "i": 8,
+   "app": "IrfanSkiljan.IrfanView",
+   "version": "4.75",
+   "ok": true
+  },
+  {
+   "step": "install",
+   "i": 9,
+   "app": "GoLang.Go",
+   "version": "1.26.7",
+   "ok": true
+  },
+  {
+   "step": "install",
+   "i": 10,
+   "app": "MariaDB.Server",
+   "version": "12.3.3.0",
+   "ok": true
+  },
+  {
+   "step": "install",
+   "i": 11,
+   "app": "JetBrains.IntelliJIDEA.Community",
+   "version": "2025.2.6.1",
+   "ok": true
+  },
+  {
+   "step": "install",
+   "i": 12,
+   "app": "calibre.calibre",
+   "version": "9.16.0",
+   "ok": true
+  },
+  {
+   "step": "install",
+   "i": 13,
+   "app": "SumatraPDF.SumatraPDF",
+   "version": "3.6",
+   "ok": true
+  },
+  {
+   "step": "install",
+   "i": 14,
+   "app": "NoMachine.NoMachine",
+   "version": "10.1.7",
+   "ok": true
+  },
+  {
+   "step": "install",
+   "i": 15,
+   "app": "GnuPG.Gpg4win",
+   "version": "5.1.0",
+   "ok": true
+  },
+  {
+   "step": "install",
+   "i": 16,
+   "app": "Discord.Discord",
+   "version": "1.0.9265",
+   "ok": true
+  },
+  {
+   "step": "install",
+   "i": 17,
+   "app": "TrackerSoftware.PDF-XChangeEditor",
+   "version": "11.1.0.0",
+   "ok": true
+  },
+  {
+   "step": "install",
+   "i": 18,
+   "app": "Devolutions.RemoteDesktopManager",
+   "version": "2026.3.10.0",
+   "ok": true
+  },
+  {
+   "step": "install",
+   "i": 19,
+   "app": "Atlassian.Sourcetree",
+   "version": "3.4.32",
+   "ok": true
+  },
+  {
+   "step": "install",
+   "i": 20,
+   "app": "vim.vim",
+   "version": "9.2.1176",
+   "ok": true
+  },
+  {
+   "step": "install",
+   "i": 21,
+   "app": "JetBrains.Rider",
+   "version": "2026.2.3",
+   "ok": true
+  },
+  {
+   "step": "install",
+   "i": 22,
+   "app": "JetBrains.WebStorm",
+   "version": "2026.2.3",
+   "ok": true
+  },
+  {
+   "step": "install",
+   "i": 23,
+   "app": "JetBrains.PhpStorm",
+   "version": "2026.2.3",
+   "ok": true
+  },
+  {
+   "step": "install",
+   "i": 24,
+   "app": "JetBrains.DataGrip",
+   "version": "2026.2.6",
+   "ok": true
+  },
+  {
+   "step": "install",
+   "i": 25,
+   "app": "StrawberryPerl.StrawberryPerl",
+   "version": "5.42.2.1",
+   "ok": true
+  },
+  {
+   "step": "install",
+   "i": 26,
+   "app": "TortoiseSVN.TortoiseSVN",
+   "version": "1.14.9.29743",
+   "ok": true
+  },
+  {
+   "step": "install",
+   "i": 27,
+   "app": "Inkscape.Inkscape",
+   "version": "1.4.3",
+   "ok": true
+  },
+  {
+   "step": "install",
+   "i": 28,
+   "app": "RubyInstallerTeam.Ruby.3.3",
+   "version": "3.3.12-2",
+   "ok": true
+  },
+  {
+   "step": "install",
+   "i": 29,
+   "app": "Adobe.Acrobat.Reader.64-bit",
+   "version": "26.002.21996",
+   "ok": true
+  },
+  {
+   "step": "install",
+   "i": 30,
+   "app": "ShiningLight.OpenSSL.Light",
+   "version": "4.0.3",
+   "ok": true
+  },
+  {
+   "step": "install",
+   "i": 31,
+   "app": "Sandboxie.Plus",
+   "version": "1.18.5",
+   "ok": true
+  },
+  {
+   "step": "install",
+   "i": 32,
+   "app": "Mattermost.MattermostDesktop",
+   "version": "6.3.0",
+   "ok": true
+  },
+  {
+   "step": "install",
+   "i": 33,
+   "app": "Splashtop.SplashtopStreamer",
+   "version": "3.8.6.1",
+   "ok": true
+  },
+  {
+   "step": "install",
+   "i": 34,
+   "app": "Amazon.Corretto.21.JDK",
+   "version": "21.0.12.12",
+   "ok": true
+  },
+  {
+   "step": "install",
+   "i": 35,
+   "app": "JetBrains.PyCharm",
+   "version": "2026.2.3",
+   "ok": true
+  },
+  {
+   "step": "install",
+   "i": 36,
+   "app": "Tenable.Nessus",
+   "version": "10.12.6.20073",
+   "ok": true
+  },
+  {
+   "step": "install",
+   "i": 37,
+   "app": "JetBrains.TeamCity",
+   "version": "2026.2",
+   "ok": false
+  },
+  {
+   "step": "install",
+   "i": 38,
+   "app": "MongoDB.Server",
+   "version": "9.0.2",
+   "ok": true
+  },
+  {
+   "step": "old",
+   "products": 35,
+   "winapp_findings": 29,
+   "unexplained": 0,
+   "tied_to_something_else": 0,
+   "raw_says_applies_no_finding": 2
+  }
+ ],
+ "installed": {
+  "WinSCP.WinSCP": {
+   "version": "6.1.2",
+   "ok": true
+  },
+  "DominikReichl.KeePass": {
+   "version": "2.61.0",
+   "ok": true
+  },
+  "VideoLAN.VLC": {
+   "version": "3.0.18",
+   "ok": true
+  },
+  "Microsoft.OpenJDK.17": {
+   "version": "17.0.10.7",
+   "ok": true
+  },
+  "TheDocumentFoundation.LibreOffice": {
+   "version": "26.8.1.1",
+   "ok": true
+  },
+  "VivaldiTechnologies.Vivaldi": {
+   "version": "6.5.3206.53",
+   "ok": false,
+   "why": "                                                                                                                      \nNo package found matching input criteria."
+  },
+  "OpenVPNTechnologies.OpenVPN": {
+   "version": "2.7.601",
+   "ok": true
+  },
+  "Microsoft.PowerShell": {
+   "version": "7.4.1.0",
+   "ok": true
+  },
+  "IrfanSkiljan.IrfanView": {
+   "version": "4.75",
+   "ok": true
+  },
+  "GoLang.Go": {
+   "version": "1.26.7",
+   "ok": true
+  },
+  "MariaDB.Server": {
+   "version": "12.3.3.0",
+   "ok": true
+  },
+  "JetBrains.IntelliJIDEA.Community": {
+   "version": "2025.2.6.1",
+   "ok": true
+  },
+  "calibre.calibre": {
+   "version": "9.16.0",
+   "ok": true
+  },
+  "SumatraPDF.SumatraPDF": {
+   "version": "3.6",
+   "ok": true
+  },
+  "NoMachine.NoMachine": {
+   "version": "10.1.7",
+   "ok": true
+  },
+  "GnuPG.Gpg4win": {
+   "version": "5.1.0",
+   "ok": true
+  },
+  "Discord.Discord": {
+   "version": "1.0.9265",
+   "ok": true
+  },
+  "TrackerSoftware.PDF-XChangeEditor": {
+   "version": "11.1.0.0",
+   "ok": true
+  },
+  "Devolutions.RemoteDesktopManager": {
+   "version": "2026.3.10.0",
+   "ok": true
+  },
+  "Atlassian.Sourcetree": {
+   "version": "3.4.32",
+   "ok": true
+  },
+  "vim.vim": {
+   "version": "9.2.1176",
+   "ok": true
+  },
+  "JetBrains.Rider": {
+   "version": "2026.2.3",
+   "ok": true
+  },
+  "JetBrains.WebStorm": {
+   "version": "2026.2.3",
+   "ok": true
+  },
+  "JetBrains.PhpStorm": {
+   "version": "2026.2.3",
+   "ok": true
+  },
+  "JetBrains.DataGrip": {
+   "version": "2026.2.6",
+   "ok": true
+  },
+  "StrawberryPerl.StrawberryPerl": {
+   "version": "5.42.2.1",
+   "ok": true
+  },
+  "TortoiseSVN.TortoiseSVN": {
+   "version": "1.14.9.29743",
+   "ok": true
+  },
+  "Inkscape.Inkscape": {
+   "version": "1.4.3",
+   "ok": true
+  },
+  "RubyInstallerTeam.Ruby.3.3": {
+   "version": "3.3.12-2",
+   "ok": true
+  },
+  "Adobe.Acrobat.Reader.64-bit": {
+   "version": "26.002.21996",
+   "ok": true
+  },
+  "ShiningLight.OpenSSL.Light": {
+   "version": "4.0.3",
+   "ok": true
+  },
+  "Sandboxie.Plus": {
+   "version": "1.18.5",
+   "ok": true
+  },
+  "Mattermost.MattermostDesktop": {
+   "version": "6.3.0",
+   "ok": true
+  },
+  "Splashtop.SplashtopStreamer": {
+   "version": "3.8.6.1",
+   "ok": true
+  },
+  "Amazon.Corretto.21.JDK": {
+   "version": "21.0.12.12",
+   "ok": true
+  },
+  "JetBrains.PyCharm": {
+   "version": "2026.2.3",
+   "ok": true
+  },
+  "Tenable.Nessus": {
+   "version": "10.12.6.20073",
+   "ok": true
+  },
+  "JetBrains.TeamCity": {
+   "version": "2026.2",
+   "ok": false,
+   "why": "timed out after 1200 s"
+  },
+  "MongoDB.Server": {
+   "version": "9.0.2",
+   "ok": true
+  }
+ },
+ "old": {
+  "products": {
+   "adobe:acrobat_dc": [
+    "26.002.21996"
+   ],
+   "oracle:openjdk": [
+    "17.0.10",
+    "21.0.12"
+   ],
+   "jetbrains:datagrip": [
+    "2026.2.6"
+   ],
+   "discord:discord": [
+    "1.0.9267"
+   ],
+   "golang:go": [
+    "1.26.7"
+   ],
+   "gpg4win:gpg4win": [
+    "5.1.0"
+   ],
+   "inkscape:inkscape": [
+    "1.4.3"
+   ],
+   "jetbrains:intellij_idea": [
+    "2025.2.6.1"
+   ],
+   "irfanview:irfanview": [
+    "4.75"
+   ],
+   "jetbrains:rider": [
+    "2026.2.3"
+   ],
+   "keepass:keepass": [
+    "2.61"
+   ],
+   "libreoffice:libreoffice": [
+    "26.8.1"
+   ],
+   "mariadb:mariadb": [
+    "12.3.3"
+   ],
+   "mattermost:mattermost_desktop": [
+    "6.3.0.0"
+   ],
+   "mongodb:mongodb": [
+    "9.0.2"
+   ],
+   "nomachine:nomachine": [
+    "10.1.7"
+   ],
+   "openssl:openssl": [
+    "4.0.3"
+   ],
+   "openvpn:openvpn": [
+    "2.7.6"
+   ],
+   "pdf-xchange:pdf-xchange_editor": [
+    "11.1.0.0"
+   ],
+   "jetbrains:phpstorm": [
+    "2026.2.3"
+   ],
+   "jetbrains:pycharm": [
+    "2026.2.3"
+   ],
+   "devolutions:remote_desktop_manager": [
+    "2026.3.10.0"
+   ],
+   "ruby-lang:ruby": [
+    "3.3.12"
+   ],
+   "sandboxie-plus:sandboxie": [
+    "1.18.5"
+   ],
+   "atlassian:sourcetree": [
+    "3.4.32.0"
+   ],
+   "splashtop:streamer": [
+    "3.8.6.1"
+   ],
+   "perl:perl": [
+    "5.42.2"
+   ],
+   "sumatrapdfreader:sumatrapdf": [
+    "3.6"
+   ],
+   "tenable:nessus": [
+    "10.12.6"
+   ],
+   "tigris:tortoisesvn": [
+    "1.14.9"
+   ],
+   "videolan:vlc_media_player": [
+    "3.0.18.0"
+   ],
+   "vim:vim": [
+    "9.2.1176"
+   ],
+   "jetbrains:webstorm": [
+    "2026.2.3"
+   ],
+   "winscp:winscp": [
+    "6.1.2"
+   ],
+   "calibre-ebook:calibre": [
+    "9.16.0"
+   ]
+  },
+  "winapp_findings": 29,
+  "unexplained": [],
+  "tied_to_something_else": [],
+  "raw_says_applies_no_finding": [
+   [
+    "sandboxie-plus:sandboxie",
+    "CVE-2024-49360"
+   ],
+   [
+    "tenable:nessus",
+    "CVE-2022-28291"
+   ]
+  ]
+ }
+}

@@ -130,7 +130,7 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens the ref
 - Deps: W12.
 
 ### W14: Full noise review (M)
-- [ ] `winnoise.py` split across VMs so every curated app is covered (32 weren't; the disk ran out)
+- [x] `winnoise.py` split across VMs so every curated app is covered (32 weren't; the disk ran out). **Done** (`--part=k/n`, 2026-11-04): 74 of 78 apps installed across two fresh Windows 11 VMs (FileZilla, MySQL, Vivaldi and TeamCity wouldn't install at an old version). Part 1 (`last_run_winnoise_part1of2.json`): 324 findings at old versions and 32 after updating, none unexplained. Part 2 (`last_run_winnoise_part2of2.json`): 29 findings at old versions, none unexplained; its update pass wasn't judged, because guest control stopped answering after 90 minutes of upgrades and the run was stopped
 - [x] The 2 `raw_says_applies_no_finding` from the last run explained: ImageMagick CVE-2017-5506 and Opera CVE-2010-0653 each list the product at version `*` with no range in NVD, which a raw reading takes as every version. `winapps.py` skips entries with no end bound on purpose. Opera's text says "before 10.10", and ImageMagick's 2017 double free was fixed in the 7.0.4 line, both far older than what was installed, so no finding is right
 - [ ] 50 random findings checked by hand against vendor advisories, on Windows 11, a Server and Windows 10
 - [x] Drop "demo fleet" from the round 1 item: it's Linux, so the reason goes in DECISIONS (104)

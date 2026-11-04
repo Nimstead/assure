@@ -88,7 +88,7 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens the ref
 ### W7: `winlab.py`: DC and member (M), the gate
 - [ ] Memory per VM and a private network as options; Server Core DC promoted by script, member joined, Kerberos remoting works
 - [ ] Peak host memory recorded with two and with three VMs running
-- [ ] If it can't hold: stop Phase 2, say so in STATUS. No half-proof
+- [x] If it can't hold: stop Phase 2, say so in STATUS. No half-proof. **It can't** (`last_run_winlab.json`, 2026-11-04): three VMs at 2,560 MB plus the host's 2 GB need 9,728 MB free; this host has about 4,300 MB of its 16 GB free with no VM running. Phase 2 (W7-W11) stops here and needs a host with about 12 GB free
 - Verify: `last_run_winlab.json`. Files: `sandbox/winvm.py`, `sandbox/winlab.py` (new). Deps: W5.
 
 ### W8: Two DCs: discovery and one-at-a-time patching (M)

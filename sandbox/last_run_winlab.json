@@ -1,0 +1,15 @@
+[
+  {
+    "step": "host before the lab",
+    "total_mb": 15959,
+    "free_mb": 4279,
+    "free_disk_gb": 98,
+    "vms": 3,
+    "vm_mb": 2560
+  },
+  {
+    "step": "RESULT: HOST CANNOT HOLD THE LAB",
+    "why": "3 VMs at 2560 MB plus 2048 MB for the host need 9728 MB of free memory; this host has 4279 MB free",
+    "next": "stop Phase 2 and say so in STATUS (W7); this run removed what it made"
+  }
+]

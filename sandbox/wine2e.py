@@ -367,7 +367,7 @@ def main(keep=False) -> int:
             note("VM destroyed", name=NAME)
         elif not passed:
             note("VM kept for inspection", name=NAME, destroy=f"uv run python ../sandbox/winvm.py destroy {NAME}")
-        mode = "".join(f"_{m}" for m in ("proxy", "signed-in") if f"--{m}" in sys.argv)
+        mode = "".join(f"_{m}" for m in ("proxy", "signed-in", "findings-only") if f"--{m}" in sys.argv)  # never over a full proof's file
         (ROOT / "sandbox" / OUT.replace(".json", mode.replace("-", "_") + ".json")).write_text(json.dumps(log, indent=2, default=str))
 
 

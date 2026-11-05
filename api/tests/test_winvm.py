@@ -96,3 +96,35 @@ def test_a_localised_iso_installs_in_its_own_language():
 def test_the_vm_takes_the_os_type_the_iso_reports():
     assert os_type("    OS TypeId    = Windows2022_64\n    OS Version = 10.0.20348.587") == "Windows2022_64"
     assert os_type("nothing detected") == "Windows2025_64"
+
+
+def test_reuse_installs_a_base_once_then_clones_it(monkeypatch, tmp_path):
+    """The hour of setup is paid once per ISO and image; every later run is a linked clone of the powered-off snapshot."""
+    calls, made, vms = [], [], []
+    monkeypatch.setattr(winvm, "STATE", tmp_path)
+    monkeypatch.setattr(winvm, "BASES", tmp_path / "bases.json")
+
+    def create(iso, memory, image=1):
+        name = winvm.PREFIX + f"base{len(made)}"
+        (tmp_path / name).mkdir()
+        (tmp_path / name / "creds.json").write_text('{"user": "Administrator", "password": "p"}')
+        made.append(name)
+        vms.append(name)
+        return name
+
+    def vbox(*a, **k):
+        calls.append(a)
+        if a[0] == "list":
+            return "\n".join(f'"{v}" {{x}}' for v in vms)
+        return 'VMState="poweroff"' if a[0] == "showvminfo" else ""
+    monkeypatch.setattr(winvm, "create", create)
+    monkeypatch.setattr(winvm, "wait_ready", lambda n: None)
+    monkeypatch.setattr(winvm, "vbox", vbox)
+    a, b = winvm.clone("C:/iso/server2016.iso"), winvm.clone("C:/iso/server2016.iso")
+    assert made == [winvm.PREFIX + "base0"] and a != b and a.startswith(winvm.PREFIX)
+    assert sum(1 for c in calls if c[:3] == ("snapshot", made[0], "take")) == 1
+    assert [c for c in calls if c[0] == "clonevm"][0][:6] == ("clonevm", made[0], "--snapshot", "ready", "--options", "link")
+    assert (tmp_path / a / "creds.json").read_text() == (tmp_path / made[0] / "creds.json").read_text()
+    vms.clear()  # the base was destroyed by hand: the next clone builds a new one
+    winvm.clone("C:/iso/server2016.iso")
+    assert len(made) == 2

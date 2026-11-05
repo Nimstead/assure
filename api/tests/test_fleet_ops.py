@@ -1,7 +1,7 @@
 """Fleet-grade remediation (plan T40, T42): maintenance windows, the restart deadline, and one Windows job at a time per
 failover cluster or per domain's controllers."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 from sqlalchemy import select
@@ -9,7 +9,7 @@ from test_api import user
 from test_windows import W11, msrc_client
 
 from nimstead import remediate
-from nimstead.db import Asset, RemediationJob, make_sessionmaker
+from nimstead.db import Asset, RemediationJob, make_sessionmaker, now
 from nimstead.feeds import sync_msrc
 
 SAT_NIGHT = {"days": [5], "start": "22:00", "hours": 4, "tz": "Europe/London"}
@@ -79,6 +79,10 @@ def test_one_windows_job_at_a_time_per_cluster_and_per_domain_controllers(env):
     _, hd1, d1 = windows_host(c, env, "dc-1", dc)
     _, hd2, _ = windows_host(c, env, "dc-2", dc)
     assert len(c.get("/api/agent/jobs", headers=hd1).json()) == 1 and c.get("/api/agent/jobs", headers=hd2).json() == []
+    with make_sessionmaker(env)() as s:  # 3 hours into dc-1's install, with no report since: still installing, still holds the group
+        s.get(RemediationJob, d1["id"]).updated = now() - timedelta(hours=3)
+        s.commit()
+    assert c.get("/api/agent/jobs", headers=hd2).json() == []
     with make_sessionmaker(env)() as s:
         assert s.scalar(select(RemediationJob.status).where(RemediationJob.id == j2["id"])) == "approved"
         assert remediate.serial_group(s.scalar(select(Asset).where(Asset.hostname == "sql-b"))) == "cluster:sqlclus01"

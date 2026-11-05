@@ -523,7 +523,9 @@ def dispatch(s: Session, asset: Asset) -> list[dict]:
         win_busy = bool(peers) and s.scalar(select(RemediationJob.id).where(
             RemediationJob.asset_id.in_(peers), RemediationJob.manager == "windows",
             RemediationJob.status.in_(("dispatched", "verifying")),
-            RemediationJob.updated >= now() - DISPATCH_TIMEOUT).limit(1)) is not None  # a silent peer can't hold the group forever
+            # a silent peer can't hold the group forever, but a Windows install is silent for hours: the same limit sweep() gives it.
+            # With DISPATCH_TIMEOUT (2 h) a real DC's update outlasted it and the second DC was handed its update alongside (W8 lab)
+            RemediationJob.updated >= now() - timedelta(hours=org.reboot_deadline_hours or 24) - WIN_TIMEOUT_MARGIN).limit(1)) is not None
     for job in s.scalars(select(RemediationJob).where(RemediationJob.asset_id == asset.id, RemediationJob.status == "approved")):
         if job.manager == "windows":
             if win_busy:

@@ -8,6 +8,7 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 - **Servicing stack updates as a forward-only step** (DECISIONS 105): when Windows Update offers an old Windows Server only a servicing stack update, the server plans it as a forward-only job a person approves (`{"forward_only": true}`), and the agent installs it only if the package's own manifest says it's a servicing stack update. The cumulative is planned after it.
 
 ### Fixed
+- **Two domain controllers (or cluster nodes) could be patched at once** when the first one's Windows update ran past two hours without reporting: the group now holds for as long as the server waits on that install (the restart deadline plus 4 hours). Found on a real two-DC lab.
 - Debian and Ubuntu packages held with `apt-mark hold` are reported again (they were left out of the inventory).
 - The agent opens only plain files when scanning jars, Python and npm packages: a named pipe a user planted could block it.
 - A .NET SDK reported with a two-part version no longer fails that host's report.

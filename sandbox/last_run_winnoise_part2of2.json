@@ -88,7 +88,7 @@
   {
    "step": "feed",
    "feed": "modified",
-   "curated_cves": 22302
+   "curated_cves": 22391
   },
   {
    "step": "install",
@@ -354,7 +354,7 @@
    "i": 37,
    "app": "JetBrains.TeamCity",
    "version": "2026.2",
-   "ok": false
+   "ok": true
   },
   {
    "step": "install",
@@ -367,6 +367,14 @@
    "step": "old",
    "products": 35,
    "winapp_findings": 29,
+   "unexplained": 0,
+   "tied_to_something_else": 0,
+   "raw_says_applies_no_finding": 2
+  },
+  {
+   "step": "updated",
+   "products": 30,
+   "winapp_findings": 23,
    "unexplained": 0,
    "tied_to_something_else": 0,
    "raw_says_applies_no_finding": 2
@@ -420,7 +428,8 @@
   },
   "JetBrains.IntelliJIDEA.Community": {
    "version": "2025.2.6.1",
-   "ok": true
+   "ok": true,
+   "removed_for_room": true
   },
   "calibre.calibre": {
    "version": "9.16.0",
@@ -460,19 +469,23 @@
   },
   "JetBrains.Rider": {
    "version": "2026.2.3",
-   "ok": true
+   "ok": true,
+   "removed_for_room": true
   },
   "JetBrains.WebStorm": {
    "version": "2026.2.3",
-   "ok": true
+   "ok": true,
+   "removed_for_room": true
   },
   "JetBrains.PhpStorm": {
    "version": "2026.2.3",
-   "ok": true
+   "ok": true,
+   "removed_for_room": true
   },
   "JetBrains.DataGrip": {
    "version": "2026.2.6",
-   "ok": true
+   "ok": true,
+   "removed_for_room": true
   },
   "StrawberryPerl.StrawberryPerl": {
    "version": "5.42.2.1",
@@ -516,7 +529,8 @@
   },
   "JetBrains.PyCharm": {
    "version": "2026.2.3",
-   "ok": true
+   "ok": true,
+   "removed_for_room": true
   },
   "Tenable.Nessus": {
    "version": "10.12.6.20073",
@@ -524,8 +538,8 @@
   },
   "JetBrains.TeamCity": {
    "version": "2026.2",
-   "ok": false,
-   "why": "timed out after 1200 s"
+   "ok": true,
+   "removed_for_room": true
   },
   "MongoDB.Server": {
    "version": "9.0.2",
@@ -654,5 +668,115 @@
     "CVE-2022-28291"
    ]
   ]
- }
+ },
+ "updated": {
+  "products": {
+   "adobe:acrobat_dc": [
+    "26.003.22075"
+   ],
+   "oracle:openjdk": [
+    "21.0.13"
+   ],
+   "discord:discord": [
+    "1.0.9267"
+   ],
+   "golang:go": [
+    "1.27.3"
+   ],
+   "gpg4win:gpg4win": [
+    "5.1.1"
+   ],
+   "inkscape:inkscape": [
+    "1.4.4"
+   ],
+   "jetbrains:intellij_idea": [
+    "2025.2.6.1"
+   ],
+   "irfanview:irfanview": [
+    "4.76"
+   ],
+   "keepass:keepass": [
+    "2.61.1"
+   ],
+   "libreoffice:libreoffice": [
+    "26.8.2"
+   ],
+   "mariadb:mariadb": [
+    "12.3.3",
+    "13.0.2"
+   ],
+   "mattermost:mattermost_desktop": [
+    "6.3.2.0"
+   ],
+   "mongodb:mongodb": [
+    "9.0.4"
+   ],
+   "nomachine:nomachine": [
+    "10.2.3"
+   ],
+   "openssl:openssl": [
+    "4.0.3",
+    "4.1.0"
+   ],
+   "openvpn:openvpn": [
+    "2.7.7"
+   ],
+   "pdf-xchange:pdf-xchange_editor": [
+    "11.1.1.0"
+   ],
+   "devolutions:remote_desktop_manager": [
+    "2026.3.12.0"
+   ],
+   "ruby-lang:ruby": [
+    "3.3.13"
+   ],
+   "sandboxie-plus:sandboxie": [
+    "1.18.6"
+   ],
+   "atlassian:sourcetree": [
+    "3.4.33.0"
+   ],
+   "splashtop:streamer": [
+    "3.8.6.3"
+   ],
+   "perl:perl": [
+    "5.42.2"
+   ],
+   "sumatrapdfreader:sumatrapdf": [
+    "3.6.1"
+   ],
+   "tenable:nessus": [
+    "10.12.6"
+   ],
+   "tigris:tortoisesvn": [
+    "1.15.0"
+   ],
+   "videolan:vlc_media_player": [
+    "3.0.24.0"
+   ],
+   "vim:vim": [
+    "9.2.1186"
+   ],
+   "winscp:winscp": [
+    "6.7"
+   ],
+   "calibre-ebook:calibre": [
+    "9.17.0"
+   ]
+  },
+  "winapp_findings": 23,
+  "unexplained": [],
+  "tied_to_something_else": [],
+  "raw_says_applies_no_finding": [
+   [
+    "sandboxie-plus:sandboxie",
+    "CVE-2024-49360"
+   ],
+   [
+    "tenable:nessus",
+    "CVE-2022-28291"
+   ]
+  ]
+ },
+ "result": "NOTHING UNEXPLAINED"
 }

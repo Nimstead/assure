@@ -1,0 +1,188 @@
+{
+ "source": "last_run_windows_server2025_findings.json",
+ "seed": 25,
+ "checked": [
+  {
+   "row": 61,
+   "finding": [
+    "Windows",
+    "Windows Server 2025 (Server Core installation)",
+    "CVE-2026-102217",
+    "10.0.26100.1742",
+    "10.0.26100.33650",
+    "low"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://api.msrc.microsoft.com/sug/v2.0/en-US/affectedProduct?$filter=cveNumber%20eq%20%27CVE-2026-102217%27",
+   "note": "MSRC lists Windows Server 2025 and its Server Core installation as affected (8.8 EoP, released 2026-10-13), fixed by KB5126646 at build 10.0.26100.33650; 26100.1742 is below it."
+  },
+  {
+   "row": 116,
+   "finding": [
+    "Windows",
+    "Windows Server 2025 (Server Core installation)",
+    "CVE-2026-62762",
+    "10.0.26100.1742",
+    "10.0.26100.33438",
+    "low"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://api.msrc.microsoft.com/sug/v2.0/en-US/affectedProduct?$filter=cveNumber%20eq%20%27CVE-2026-62762%27",
+   "note": "MSRC lists Windows Server 2025 and its Server Core installation as affected (6.5 DoS, released 2026-09-08), fixed by KB5122871 at build 10.0.26100.33438; 26100.1742 is below it."
+  },
+  {
+   "row": 468,
+   "finding": [
+    "Windows",
+    "Windows Server 2025 (Server Core installation)",
+    "CVE-2026-69639",
+    "10.0.26100.1742",
+    "10.0.26100.33650",
+    "planned"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://api.msrc.microsoft.com/sug/v2.0/en-US/affectedProduct?$filter=cveNumber%20eq%20%27CVE-2026-69639%27",
+   "note": "MSRC lists Windows Server 2025 and its Server Core installation as affected (9.8 RCE, released 2026-10-13), fixed by KB5126646 at build 10.0.26100.33650; 26100.1742 is below it."
+  },
+  {
+   "row": 654,
+   "finding": [
+    "Windows",
+    "Windows Server 2025 (Server Core installation)",
+    "CVE-2026-69985",
+    "10.0.26100.1742",
+    "10.0.26100.33650",
+    "planned"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://api.msrc.microsoft.com/sug/v2.0/en-US/affectedProduct?$filter=cveNumber%20eq%20%27CVE-2026-69985%27",
+   "note": "MSRC lists Windows Server 2025 and its Server Core installation as affected (8.8 RCE, released 2026-10-13), fixed by KB5126646 at build 10.0.26100.33650; 26100.1742 is below it."
+  },
+  {
+   "row": 802,
+   "finding": [
+    "Windows",
+    "Windows Server 2025 (Server Core installation)",
+    "CVE-2026-70222",
+    "10.0.26100.1742",
+    "10.0.26100.33650",
+    "low"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://api.msrc.microsoft.com/sug/v2.0/en-US/affectedProduct?$filter=cveNumber%20eq%20%27CVE-2026-70222%27",
+   "note": "MSRC lists Windows Server 2025 and its Server Core installation as affected (7.8 EoP, released 2026-10-13), fixed by KB5126646 at build 10.0.26100.33650; 26100.1742 is below it."
+  },
+  {
+   "row": 999,
+   "finding": [
+    "Windows",
+    "Windows Server 2025 (Server Core installation)",
+    "CVE-2026-77889",
+    "10.0.26100.1742",
+    "10.0.26100.33438",
+    "low"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://api.msrc.microsoft.com/sug/v2.0/en-US/affectedProduct?$filter=cveNumber%20eq%20%27CVE-2026-77889%27",
+   "note": "MSRC lists Windows Server 2025 and its Server Core installation as affected (7.5 DoS, released 2026-09-08), fixed by KB5122871 at build 10.0.26100.33438; 26100.1742 is below it."
+  },
+  {
+   "row": 1333,
+   "finding": [
+    "Windows",
+    "Windows Server 2025 (Server Core installation)",
+    "CVE-2026-83983",
+    "10.0.26100.1742",
+    "10.0.26100.33438",
+    "low"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://api.msrc.microsoft.com/sug/v2.0/en-US/affectedProduct?$filter=cveNumber%20eq%20%27CVE-2026-83983%27",
+   "note": "MSRC lists Windows Server 2025 and its Server Core installation as affected (7.8 EoP, released 2026-09-08), fixed by KB5122871 at build 10.0.26100.33438; 26100.1742 is below it."
+  },
+  {
+   "row": 1603,
+   "finding": [
+    "Windows",
+    "Windows Server 2025 (Server Core installation)",
+    "CVE-2026-96071",
+    "10.0.26100.1742",
+    "10.0.26100.33650",
+    "low"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://api.msrc.microsoft.com/sug/v2.0/en-US/affectedProduct?$filter=cveNumber%20eq%20%27CVE-2026-96071%27",
+   "note": "MSRC lists Windows Server 2025 and its Server Core installation as affected (7.5 RCE, released 2026-10-13), fixed by KB5126646 at build 10.0.26100.33650; 26100.1742 is below it."
+  },
+  {
+   "row": 1,
+   "finding": [
+    "Microsoft",
+    ".NET Framework 4.8.1 on Windows Server 2025",
+    "CVE-2026-108398",
+    "4.8.9266.0",
+    "4.8.9363.0",
+    "planned"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://api.msrc.microsoft.com/sug/v2.0/en-US/affectedProduct?$filter=cveNumber%20eq%20%27CVE-2026-108398%27",
+   "note": "MSRC row 'Microsoft .NET Framework 3.5 AND 4.8.1' on platform Windows Server 2025, released 2026-10-13, KB5127690, fixed build '2.0.50727.9188 AND 3.0.30729.9171 AND 4.8.9363.0'; 4.8.9266.0 is below 4.8.9363.0. (4.8.10008.0 applies only to Windows 11 26H2.)"
+  },
+  {
+   "row": 8,
+   "finding": [
+    "Microsoft",
+    ".NET Framework 4.8.1 on Windows Server 2025",
+    "CVE-2026-84008",
+    "4.8.9266.0",
+    "4.8.9363.0",
+    "low"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://api.msrc.microsoft.com/sug/v2.0/en-US/affectedProduct?$filter=cveNumber%20eq%20%27CVE-2026-84008%27",
+   "note": "MSRC row 'Microsoft .NET Framework 3.5 AND 4.8.1' on platform Windows Server 2025, released 2026-10-13, KB5127690, fixed build '2.0.50727.9188 AND 3.0.30729.9171 AND 4.8.9363.0'; 4.8.9266.0 is below 4.8.9363.0. (4.8.10008.0 applies only to Windows 11 26H2.)"
+  },
+  {
+   "row": 9,
+   "finding": [
+    "Microsoft",
+    ".NET Framework 4.8.1 on Windows Server 2025",
+    "CVE-2026-85363",
+    "4.8.9266.0",
+    "4.8.9363.0",
+    "planned"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://api.msrc.microsoft.com/sug/v2.0/en-US/affectedProduct?$filter=cveNumber%20eq%20%27CVE-2026-85363%27",
+   "note": "MSRC row 'Microsoft .NET Framework 3.5 AND 4.8.1' on platform Windows Server 2025, released 2026-10-13, KB5127690, fixed build '2.0.50727.9188 AND 3.0.30729.9171 AND 4.8.9363.0'; 4.8.9266.0 is below 4.8.9363.0. (4.8.10008.0 applies only to Windows 11 26H2.)"
+  },
+  {
+   "row": 26,
+   "finding": [
+    "WinConfig",
+    "script-block-logging",
+    "CFG:script-block-logging",
+    "off",
+    null,
+    "low"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_logging?view=powershell-5.1",
+   "note": "Microsoft's Windows PowerShell 5.1 doc: script block logging is turned on by the policy 'Turn on PowerShell Script Block Logging' or HKLM\\Software\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging EnableScriptBlockLogging=1, so without either it is off. The doc does not itself say 'off by default' or recommend it; the 'off' state is the VM's reading, which I could not re-check."
+  },
+  {
+   "row": 29,
+   "finding": [
+    "WinConfig",
+    "speculative-execution",
+    "CVE-2017-5715",
+    "override=None mask=None",
+    null,
+    "planned"
+   ],
+   "verdict": "UNVERIFIABLE",
+   "source_url": "https://support.microsoft.com/en-us/topic/kb4072698-windows-server-and-azure-stack-hci-guidance-to-protect-against-silicon-based-microarchitectural-and-speculative-execution-side-channel-vulnerabilities-2f965763-00e2-8f98-b632-0d96f30c8c8e",
+   "note": "KB4072698 says CVE-2017-5715 is 'Disabled by default' on Windows Server and is enabled with FeatureSettingsOverride=0 / FeatureSettingsOverrideMask=3, which fits override=None mask=None. But its Applies To list ends at Server 2022 and no sentence names Server 2025; the MSRC affectedProduct API returns 0 rows for CVE-2017-5715; a Microsoft-domain search found no Server 2025 statement. Likely correct, but no vendor text covers Server 2025."
+  }
+ ]
+}

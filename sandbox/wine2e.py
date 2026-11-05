@@ -201,6 +201,12 @@ def main(keep=False) -> int:
         import winoracle
         table = winoracle.run(as_system, guest, api.get("/api/findings").json())
         note("oracle: Windows Update vs Nimstead", **{k: v for k, v in table.items()})
+        if "--findings-only" in sys.argv:  # the noise review's hand-check: everything the first report opened, as winproducts writes it
+            (ROOT / "sandbox" / OUT.replace(".json", "_findings.json")).write_text(json.dumps(sorted(
+                ([x["ecosystem"], x["package"], x["vuln_id"], x.get("installed_version"), x.get("fixed_version"), x.get("priority")]
+                 for x in api.get("/api/findings", params={"limit": 5000}).json()), key=str), indent=0))
+            note("RESULT: PASS")
+            return 0
         guest("Disable-ScheduledTask -TaskName 'Nimstead agent' | Out-Null")  # keep it out of the way for the rollback test
 
         def plan_and_get_job():

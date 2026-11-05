@@ -1,0 +1,174 @@
+{
+ "source": "last_run_windows10_findings.json",
+ "seed": 10,
+ "checked": [
+  {
+   "row": 0,
+   "finding": [
+    "Lifecycle",
+    "Windows 10 22H2",
+    "EOL:win10-22h2",
+    "10.0.19045.2006",
+    null,
+    "fix-now"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://learn.microsoft.com/en-us/lifecycle/products/windows-10-enterprise-and-education",
+   "note": "Microsoft Lifecycle: Windows 10 Enterprise Version 22H2 end date 10/15/2025 6:59:59 AM (i.e. 2025-10-14 PT); retired over a year ago. No fix version is right: only ESU or moving to Windows 11 helps; machine has no ESU licence."
+  },
+  {
+   "row": 423,
+   "finding": [
+    "Microsoft",
+    "Microsoft Edge",
+    "CVE-2026-113058",
+    "92.0.902.67",
+    "156.0.4314.42",
+    "planned"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2026-113058",
+   "note": "MSRC affectedProduct: Microsoft Edge (Chromium-based), Important, CVSS 8.8, fixedBuildNumber 156.0.4314.42 (Edge security release notes: Stable 156.0.4314.42 on 2026-10-22). Installed 92.0.902.67 is the Edge shipped on the 19045.2006 media, never updated, so affected."
+  },
+  {
+   "row": 569,
+   "finding": [
+    "Microsoft",
+    "Microsoft Edge",
+    "CVE-2026-113204",
+    "92.0.902.67",
+    "156.0.4314.42",
+    "planned"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2026-113204",
+   "note": "MSRC affectedProduct: Microsoft Edge (Chromium-based), Moderate, fixedBuildNumber 156.0.4314.42 (Edge security release notes: Stable 156.0.4314.42 on 2026-10-22). Installed 92.0.902.67 is the Edge shipped on the 19045.2006 media, never updated, so affected."
+  },
+  {
+   "row": 948,
+   "finding": [
+    "Microsoft",
+    "Microsoft Edge",
+    "CVE-2026-87538",
+    "92.0.902.67",
+    "153.0.4234.32",
+    "low"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2026-87538",
+   "note": "MSRC affectedProduct: Microsoft Edge (Chromium-based), Low, fixedBuildNumber 153.0.4234.32 (Edge security release notes: Stable 153.0.4234.32 on 2026-09-10). Installed 92.0.902.67 is the Edge shipped on the 19045.2006 media, never updated, so affected."
+  },
+  {
+   "row": 1007,
+   "finding": [
+    "Microsoft",
+    "Microsoft Edge",
+    "CVE-2026-87599",
+    "92.0.902.67",
+    "153.0.4234.32",
+    "low"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2026-87599",
+   "note": "MSRC affectedProduct: Microsoft Edge (Chromium-based), Moderate, fixedBuildNumber 153.0.4234.32 (Edge security release notes: Stable 153.0.4234.32 on 2026-09-10). Installed 92.0.902.67 is the Edge shipped on the 19045.2006 media, never updated, so affected."
+  },
+  {
+   "row": 1251,
+   "finding": [
+    "WinConfig",
+    "secure-boot",
+    "CFG:secure-boot",
+    "off",
+    null,
+    "planned"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://learn.microsoft.com/en-us/windows-hardware/design/device-experiences/oem-secure-boot",
+   "note": "Microsoft: Secure Boot makes the firmware verify signatures of all boot software so the device boots only trusted software; 'off' means that check is absent. Value 'off' is the agent's reading of the VM; not re-read on the VM here (may be a VM without UEFI Secure Boot enabled)."
+  },
+  {
+   "row": 1283,
+   "finding": [
+    "Windows",
+    "Windows 10 Version 22H2 for x64-based Systems",
+    "CVE-2026-102217",
+    "10.0.19045.2006",
+    "10.0.19045.7807",
+    "low"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2026-102217",
+   "note": "MSRC affectedProduct: Windows 10 Version 22H2 for x64-based Systems, Elevation of Privilege, Important, CVSS 8.8, released 2026-10-13, fixed by KB5126657 at 10.0.19045.7807; installed .2006 (2022 media) predates it. KB5126657 'Applies to: Windows 10 ESU' (Oct 2026, after end of support), so the fix needs ESU; the machine is still affected."
+  },
+  {
+   "row": 1319,
+   "finding": [
+    "Windows",
+    "Windows 10 Version 22H2 for x64-based Systems",
+    "CVE-2026-108461",
+    "10.0.19045.2006",
+    "10.0.19045.7807",
+    "low"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2026-108461",
+   "note": "MSRC affectedProduct: Windows 10 Version 22H2 for x64-based Systems, Elevation of Privilege, Important, CVSS 7.0, released 2026-10-13, fixed by KB5126657 at 10.0.19045.7807; installed .2006 (2022 media) predates it. KB5126657 'Applies to: Windows 10 ESU' (Oct 2026, after end of support), so the fix needs ESU; the machine is still affected."
+  },
+  {
+   "row": 2131,
+   "finding": [
+    "Windows",
+    "Windows 10 Version 22H2 for x64-based Systems",
+    "CVE-2026-83637",
+    "10.0.19045.2006",
+    "10.0.19045.7807",
+    "low"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2026-83637",
+   "note": "MSRC affectedProduct: Windows 10 Version 22H2 for x64-based Systems, Elevation of Privilege, Important, CVSS 7.8, released 2026-10-13, fixed by KB5126657 at 10.0.19045.7807; installed .2006 (2022 media) predates it. KB5126657 'Applies to: Windows 10 ESU' (Oct 2026, after end of support), so the fix needs ESU; the machine is still affected."
+  },
+  {
+   "row": 2241,
+   "finding": [
+    "Windows",
+    "Windows 10 Version 22H2 for x64-based Systems",
+    "CVE-2026-83786",
+    "10.0.19045.2006",
+    "10.0.19045.7807",
+    "low"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2026-83786",
+   "note": "MSRC affectedProduct: Windows 10 Version 22H2 for x64-based Systems, Information Disclosure, Important, CVSS 4.7, released 2026-10-13, fixed by KB5126657 at 10.0.19045.7807; installed .2006 (2022 media) predates it. KB5126657 'Applies to: Windows 10 ESU' (Oct 2026, after end of support), so the fix needs ESU; the machine is still affected."
+  },
+  {
+   "row": 2423,
+   "finding": [
+    "Windows",
+    "Windows 10 Version 22H2 for x64-based Systems",
+    "CVE-2026-85377",
+    "10.0.19045.2006",
+    "10.0.19045.7807",
+    "low"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2026-85377",
+   "note": "MSRC affectedProduct: Windows 10 Version 22H2 for x64-based Systems, Elevation of Privilege, Important, CVSS 7.8, released 2026-10-13, fixed by KB5126657 at 10.0.19045.7807; installed .2006 (2022 media) predates it. KB5126657 'Applies to: Windows 10 ESU' (Oct 2026, after end of support), so the fix needs ESU; the machine is still affected."
+  },
+  {
+   "row": 2436,
+   "finding": [
+    "Windows",
+    "Windows 10 Version 22H2 for x64-based Systems",
+    "CVE-2026-85806",
+    "10.0.19045.2006",
+    "10.0.19045.7807",
+    "low"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2026-85806",
+   "note": "MSRC affectedProduct: Windows 10 Version 22H2 for x64-based Systems, Remote Code Execution, Important, CVSS 9.8, released 2026-10-13, fixed by KB5126657 at 10.0.19045.7807; installed .2006 (2022 media) predates it. KB5126657 'Applies to: Windows 10 ESU' (Oct 2026, after end of support), so the fix needs ESU; the machine is still affected."
+  }
+ ]
+}

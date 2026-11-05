@@ -1,0 +1,47 @@
+[
+  {
+    "step": "lab reset to its snapshot",
+    "vms": [
+      "NIMDC1",
+      "NIMM1",
+      "NIMM2"
+    ]
+  },
+  {
+    "step": "NIMM1 scanning NIMM2 vs its own agent",
+    "only_agent": [],
+    "only_remote": [],
+    "settings_differ": {},
+    "packages": 323,
+    "settings": 51
+  },
+  {
+    "step": "remoting off",
+    "rc": 33,
+    "output": "agent exit=2\nNIMM2: NIMM2: couldn't read it over PowerShell remoting: Command -ComputerName NIMM2 -FilePath 'C:\\Users\\ADMINI~1.TES\\A ...\n+ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    + CategoryInfo          : OpenError: (NIMM2:String) [], PSRemotingTransportException\n    + FullyQualifiedErrorId : WinRMOperationTimeout,PSSessionStateBroken\n"
+  },
+  {
+    "step": "no admin right",
+    "rc": 33,
+    "output": "agent exit=2\nNIMM2: NIMM2: couldn't read it over PowerShell remoting: + Invoke-Command -ComputerName NIMM2 -FilePath 'C:\\Users\\NIMLOW~1.TES\\A ...\n+ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    + CategoryInfo          : OpenError: (NIMM2:String) [], PSRemotingTransportException\n    + FullyQualifiedErrorId : AccessDenied,PSSessionStateBroken\n"
+  },
+  {
+    "step": "reported to the server",
+    "rc": 0,
+    "output": "NIMM2: reported 323 packages\nagent exit=0\n",
+    "asset": "NIMM2"
+  },
+  {
+    "step": "RESULT: PASS",
+    "checks": {
+      "packages equal the agent's": true,
+      "settings equal the agent's": true,
+      "an installed app came across": true,
+      "remoting off: fails, naming the host and why": true,
+      "remoting off: no asset that could read as clean": true,
+      "no admin right: fails, saying access was denied": true,
+      "no admin right: no asset that could read as clean": true,
+      "a real scan reports the host": true
+    }
+  }
+]

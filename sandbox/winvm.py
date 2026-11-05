@@ -68,8 +68,8 @@ def create(iso: str, memory: int = 4096, lab: bool = False, image: int = 1, comp
          "--basefolder", str(folder), "--register")
     vbox("modifyvm", name, "--memory", str(memory), "--cpus", "2", "--firmware", "efi", "--nic1", "nat", "--graphicscontroller", "vboxsvga",
          "--nat-localhostreachable1", "on")  # VirtualBox 7 blocks guest -> host 127.0.0.1 (10.0.2.2) by default
-    if lab:
-        vbox("modifyvm", name, "--nic2", "intnet", "--intnet2", LAB_NET)
+    if lab:  # and a hardware clock in UTC, read as UTC inside (winlab's LAB_NIC): see winlab.utc_clock
+        vbox("modifyvm", name, "--nic2", "intnet", "--intnet2", LAB_NET, "--rtc-use-utc", "on")
     if win10:  # setup hung at "Getting ready", disk idle, with the default Hyper-V paravirtual interface (real VM)
         vbox("modifyvm", name, "--paravirt-provider", "none")
     if win11:  # Windows 11 setup refuses hardware without TPM 2.0 and Secure Boot

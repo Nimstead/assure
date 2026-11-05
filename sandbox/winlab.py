@@ -56,6 +56,7 @@ Set-NetIPInterface -InterfaceIndex $nat.ifIndex -InterfaceMetric 50
 if (-not (Get-NetFirewallRule -DisplayName 'Nimstead lab network' -ErrorAction SilentlyContinue)) {
   New-NetFirewallRule -DisplayName 'Nimstead lab network' -Direction Inbound -RemoteAddress %SUBNET%.0/24 -Action Allow | Out-Null }
 Enable-PSRemoting -Force -SkipNetworkProfileCheck | Out-Null
+Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\TimeZoneInformation' RealTimeIsUniversal 1 -Type DWord  # see utc_clock
 """
 FOREST = r"""$ErrorActionPreference = 'Stop'
 Install-WindowsFeature AD-Domain-Services -IncludeManagementTools | Out-Null
@@ -274,6 +275,27 @@ def reset() -> dict:
         start(v)
     h.note("lab reset to its snapshot", vms=[v["computer"] for v in lab["vms"]])
     return lab
+
+
+def utc_clock() -> None:
+    """Each boot started 8 hours fast (VirtualBox gives the host's local time, read as Pacific time inside) until Windows corrected it
+    seconds later; that was late for NETLOGON, so a member booted without its domain and a startup script never ran (real lab,
+    2026-11-05). A UTC hardware clock read as UTC fixes it; this brings a lab built before that into line, snapshot and all."""
+    lab = reset()
+    dc, members = by_role(lab)
+    for v in lab["vms"]:
+        on(v)
+        h.guest(r"Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\TimeZoneInformation' RealTimeIsUniversal 1 -Type DWord")
+    for v in reversed(lab["vms"]):  # the DC goes last and comes back first
+        stop(v)
+        winvm.vbox("modifyvm", v["vm"], "--rtc-use-utc", "on")
+        winvm.vbox("snapshot", v["vm"], "delete", SNAPSHOT)
+        winvm.vbox("snapshot", v["vm"], "take", SNAPSHOT)
+    start(dc)
+    wait_ad(dc)
+    for v in members:
+        start(v)
+    h.note("lab clocks set to UTC and snapshot taken again", vms=[v["computer"] for v in lab["vms"]])
 
 
 def teardown() -> None:
@@ -575,6 +597,8 @@ if __name__ == "__main__":
         sys.exit(harness(recheck, "last_run_winlab.json"))
     elif cmd == "reset":
         reset()
+    elif cmd == "utc-clock":
+        utc_clock()
     elif cmd == "teardown":
         teardown()
     else:

@@ -24,6 +24,9 @@ Get-ADComputer %COMPUTER% | Move-ADObject -TargetPath $ou.DistinguishedName
 $g = New-GPO -Name NimsteadAgent
 New-GPLink -Guid $g.Id -Target $ou.DistinguishedName | Out-Null
 Set-GPRegistryValue -Guid $g.Id -Key 'HKLM\Software\Nimstead\Lab' -ValueName gpo -Type DWord -Value 1 | Out-Null  # makes GPT.INI and bumps the version
+# "Specify startup policy processing wait time": the member's network took past the default 30 s at boot, so policy ran
+# without SYSVOL ("downloaded policies with error") and the startup script never started (real lab, 2026-11-05)
+Set-GPRegistryValue -Guid $g.Id -Key 'HKLM\Software\Policies\Microsoft\Windows\System' -ValueName GpNetworkStartTimeoutPolicyValue -Type DWord -Value 120 | Out-Null
 $root = "C:\Windows\SYSVOL\sysvol\$($d.DNSRoot)\Policies\{$($g.Id)}\Machine\Scripts"
 New-Item -ItemType Directory -Force "$root\Startup" | Out-Null
 Copy-Item C:\nimtest\nimstead-install.cmd, C:\nimtest\nimstead-install.ps1 "$root\Startup\"
@@ -68,6 +71,13 @@ def main() -> int:
 
     lab_.on(m)
     h.guest(r"Set-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon' AutoAdminLogon '0'")  # the unattended install's autologon would be someone
+    # a DC just back from its snapshot can't serve SYSVOL yet: the member's boot then "downloaded policies with error" and skipped
+    # the GPO (real lab). Wait until the member reads it, as an admin would before restarting machines for it
+    end = time.time() + 15 * 60
+    while "NimsteadAgent" not in h.guest("gpupdate /target:computer /force | Out-Null; gpresult /r /scope computer", timeout=600, check=False):
+        assert time.time() < end, f"{m['computer']} still doesn't apply the GPO after 15 minutes"
+        time.sleep(30)
+    h.note("member applies the GPO", computer=m["computer"])
     assert lab_.asset_named(api, m["computer"]) is None
     started = time.time()
     cold_cycle(m)

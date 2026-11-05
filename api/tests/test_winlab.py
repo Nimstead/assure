@@ -43,7 +43,7 @@ def test_create_keeps_its_defaults(monkeypatch, tmp_path):
 def test_create_for_a_lab(monkeypatch, tmp_path):
     name, calls, c = creating(monkeypatch, tmp_path, memory=2560, lab=True, image=3, computer="NIMDC1", password="Nim!same")
     assert name.startswith(winvm.PREFIX) and c["password"] == "Nim!same"
-    assert ("modifyvm", name, "--nic2", "intnet", "--intnet2", "nimstead-sbx-lab") in calls
+    assert ("modifyvm", name, "--nic2", "intnet", "--intnet2", "nimstead-sbx-lab", "--rtc-use-utc", "on") in calls
     modify = next(a for a in calls if a[0] == "modifyvm" and "--memory" in a)
     assert modify[modify.index("--memory") + 1] == "2560"
     install = next(a for a in calls if a[:2] == ("unattended", "install"))

@@ -41,7 +41,7 @@ def last_json(out: str) -> dict:
 
 
 def scan(line: str, host: str, token: str) -> str:
-    return f"$env:NIMSTEAD_TOKEN = '{token}'; {line} --insecure-http scan-remote --server {lab_.SERVER} {host}; exit $LASTEXITCODE"
+    return f"$env:NIMSTEAD_TOKEN = '{token}'; {line} --insecure-http scan-remote --server {lab_.SERVER} {host}; 'agent exit=' + $LASTEXITCODE; exit $LASTEXITCODE"  # guest control doesn't pass the code through (2 reads as 1 or 33)
 
 
 def main() -> int:
@@ -74,7 +74,7 @@ def main() -> int:
     h.guest(REMOTING_OFF, check=False)
     rc, out = lab_.as_user(m1, admin, scan(line, target, api.token), check=False)
     h.note("remoting off", rc=rc, output=out[-500:])
-    checks["remoting off: fails, naming the host and why"] = rc == 2 and target.lower() in out.lower() and "remoting" in out.lower()
+    checks["remoting off: fails, naming the host and why"] = "agent exit=2" in out and target.lower() in out.lower() and "remoting" in out.lower()
     checks["remoting off: no asset that could read as clean"] = lab_.asset_named(api, target) is None
     lab_.on(m2)
     h.guest(REMOTING_ON)
@@ -86,7 +86,7 @@ def main() -> int:
     low = {"user": f"nimlow@{lab_.DOMAIN}", "password": secret}
     rc, out = lab_.as_user(m1, low, scan(line, target, api.token), check=False)
     h.note("no admin right", rc=rc, output=out[-500:])
-    checks["no admin right: fails, saying access was denied"] = rc == 2 and "denied" in out.lower()
+    checks["no admin right: fails, saying access was denied"] = "agent exit=2" in out and "denied" in out.lower()
     checks["no admin right: no asset that could read as clean"] = lab_.asset_named(api, target) is None
 
     # and for real: the same scan, reported

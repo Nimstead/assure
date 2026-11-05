@@ -45,13 +45,23 @@ Remove-Item -LiteralPath $zip
 # Every executable file in the runtime must carry a valid Python Software Foundation signature, checked before any runs;
 # the Visual C++ runtime DLLs Python ships are Microsoft's own, signed by Microsoft (seen in the 3.15.2 zip).
 # (filtered by extension: PowerShell 5.1 ignores -Include next to -LiteralPath, seen for real in the VM proof)
-$bad = @(Get-ChildItem -LiteralPath $rt -Recurse -File | Where-Object { @('.exe', '.dll', '.pyd') -contains $_.Extension.ToLower() } | Where-Object {
+# A GPO startup script runs before Windows can verify signatures: the same files read as not valid there and Valid 22 s
+# later (real lab, 2026-11-05). So a signature that can't be verified yet is checked again, for up to 2 minutes; an
+# unsigned file, a changed one or another signer fails at once, and nothing runs until every file is Valid.
+for ($try = 1; ; $try++) {
+  $bad = @(Get-ChildItem -LiteralPath $rt -Recurse -File | Where-Object { @('.exe', '.dll', '.pyd') -contains $_.Extension.ToLower() } | ForEach-Object {
     $s = Get-AuthenticodeSignature -LiteralPath $_.FullName
-    $s.Status -ne "Valid" -or -not ($s.SignerCertificate.Subject -match '^CN=Python Software Foundation,' -or
-      ($_.Name -match '^vcruntime140(_1)?\.dll$' -and $s.SignerCertificate.Subject -match ', O=Microsoft Corporation,')) })
+    if ($s.Status -ne "Valid" -or -not ($s.SignerCertificate.Subject -match '^CN=Python Software Foundation,' -or
+        ($_.Name -match '^vcruntime140(_1)?\.dll$' -and $s.SignerCertificate.Subject -match ', O=Microsoft Corporation,'))) {
+      [pscustomobject]@{ Name = $_.Name; Status = "$($s.Status)"; Why = $s.StatusMessage } } })
+  $final = @($bad | Where-Object { @('NotSigned', 'HashMismatch', 'Valid') -contains $_.Status })  # Valid here means another signer
+  if (-not $bad.Count -or $final.Count -or $try -ge 7) { break }
+  Write-Host "signatures not verifiable yet ($($bad[0].Status): $($bad[0].Why)); checking again in 20 s"
+  Start-Sleep -Seconds 20
+}
 if ($bad.Count -or -not (Test-Path -LiteralPath (Join-Path $rt "python.exe"))) {
   Remove-Item -LiteralPath $rt -Recurse -Force
-  throw "The downloaded runtime isn't signed by the Python Software Foundation ($($bad[0].Name)); nothing was installed."
+  throw "The downloaded runtime isn't signed by the Python Software Foundation ($($bad[0].Name): $($bad[0].Status), $($bad[0].Why)); nothing was installed."
 }
 $py = Join-Path $rt "python.exe"
 $pyArgs = @("-I")  # isolated: no user site-packages, no PYTHON* environment variables

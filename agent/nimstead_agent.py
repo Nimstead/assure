@@ -598,7 +598,10 @@ if (Test-Path -LiteralPath $sp) { $o.sharepoint = (Get-Item -LiteralPath $sp).Ve
 $fx = Join-Path $env:windir $(if ([Environment]::Is64BitOperatingSystem) { 'Microsoft.NET\Framework64\v4.0.30319\mscorlib.dll' } else { 'Microsoft.NET\Framework\v4.0.30319\mscorlib.dll' })
 if (Test-Path -LiteralPath $fx) { $o.netfx = (Get-Item -LiteralPath $fx).VersionInfo.FileVersion }
 $short = @()  # what couldn't be read in full, as against a product that isn't there
-$apps = try { Get-AppxPackage -AllUsers -ErrorAction Stop } catch { $short += 'Store apps of other users'; Get-AppxPackage -ErrorAction SilentlyContinue }  # -AllUsers needs elevation; SYSTEM has it
+$apps = try { Get-AppxPackage -AllUsers -ErrorAction Stop } catch { $short += 'Store apps of other users'  # -AllUsers needs elevation; SYSTEM has it
+  # over remoting on Server Core this one throws ("type initializer for '<Module>'"), which -ErrorAction can't silence: it lost the
+  # whole block, .NET Framework and Defender too, in a scan across real hosts
+  try { Get-AppxPackage -ErrorAction Stop } catch { $short += 'Store apps'; @() } }
 $o.store = @($apps | Where-Object { @(%STORE%) -contains $_.Name } | ForEach-Object { @{ name = $_.Name; version = $_.Version.ToString() } })
 $mp = Get-MpComputerStatus -ErrorAction SilentlyContinue
 if ($mp) { $o.defender = @{ platform = $mp.AMProductVersion; engine = $mp.AMEngineVersion; mode = "$($mp.AMRunningMode)" } }

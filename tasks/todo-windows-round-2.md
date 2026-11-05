@@ -94,8 +94,8 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens the ref
 - Verify: `last_run_winlab.json`. Files: `sandbox/winvm.py`, `sandbox/winlab.py` (new). Deps: W5.
 
 ### W8: Two DCs: discovery and one-at-a-time patching (M)
-- [ ] AD discovery lists the real computers, leaves out disabled and stale ones, stores no credential
-- [ ] Both DCs get a job: never at once, both healthy afterwards
+- [x] AD discovery lists the real computers, leaves out disabled and stale ones, stores no credential. **Proven** (`last_run_windc.json`, 2026-11-05): the DC chosen as directory source read 4 computers (the disabled one left out by its own query); Assets lists only NIMM1, the member with no agent; the never-logged-on one is left out by the 30-day rule; the agent's task runs as SYSTEM with no domain password in its config. (`lastLogonTimestamp` can't be planted: the SAM owns it)
+- [x] Both DCs get a job: never at once, both healthy afterwards. **Proven** (same run): NIMDC1 patched and verified first, NIMM2 dispatched only after (313 samples, never both in flight), both builds updated with NTDS, DNS, Netlogon and KDC running, and replication worked after patching. The run reads FAIL on one check only: `repadmin /showrepl` still counted failures from attempts made while the other DC was restarting; the harness now syncs before it reads. NIMM2's guest control hung at its post-update restart for 2 hours (disk idle) and was restarted cleanly by hand; its agent resumed and verified. The first run found a real bug: a DC's job stopped holding the group after 2 hours, so the second DC was handed its update while the first was still installing (fixed, 42334ab)
 - Verify: `last_run_windc.json`. Closes round 1 T42 (DC) and T43 items. Deps: W7.
 
 ### W9: Two-node cluster (M)

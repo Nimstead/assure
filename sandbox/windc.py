@@ -28,7 +28,9 @@ OPT_IN = r"""$ErrorActionPreference = 'Stop'
 $p = 'C:\ProgramData\Nimstead\agent.json'; $c = Get-Content $p -Raw | ConvertFrom-Json; $c.ad_discovery = $true
 Set-Content $p -Encoding ascii -Value ($c | ConvertTo-Json -Depth 5)
 """
-HEALTH = r"""$s = @('NTDS', 'DNS', 'Netlogon', 'KDC') | ForEach-Object { "$((Get-Service $_).Status)" }
+# a sync first: showrepl keeps the failures of attempts made while the other DC was restarting until the next one (real lab)
+HEALTH = r"""repadmin /syncall /AdeP | Out-Null
+$s = @('NTDS', 'DNS', 'Netlogon', 'KDC') | ForEach-Object { "$((Get-Service $_).Status)" }
 $f = @(repadmin /showrepl /csv | ConvertFrom-Csv | Where-Object { [int]$_.'Number of Failures' -ne 0 }).Count
 ConvertTo-Json -Compress -InputObject @{ services = @($s); repl_failures = $f }
 """

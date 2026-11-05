@@ -1,0 +1,156 @@
+[
+  {
+    "step": "lab reset to its snapshot",
+    "vms": [
+      "NIMDC1",
+      "NIMM1",
+      "NIMM2"
+    ]
+  },
+  {
+    "step": "feeds",
+    "msrc": {
+      "documents": 3,
+      "skipped_documents": 0,
+      "inserted": 48999,
+      "updated": 0,
+      "skipped": 0
+    }
+  },
+  {
+    "step": "second domain controller promoted",
+    "dc": "NIMM2"
+  },
+  {
+    "step": "install.ps1 ran",
+    "vm": "nimstead-sbx-win-1ce838"
+  },
+  {
+    "step": "install.ps1 ran",
+    "vm": "nimstead-sbx-win-74d14f"
+  },
+  {
+    "step": "the DCs as the server sees them",
+    "roles": {
+      "NIMDC1": 5,
+      "NIMM2": 4
+    }
+  },
+  {
+    "step": "report with AD discovery on",
+    "rc": 0,
+    "output": "reported 324 packages\nreported 4 computers from nimstead-sbx.test\n\n"
+  },
+  {
+    "step": "directory",
+    "raw": [
+      "nim-stale",
+      "nimdc1",
+      "nimm1",
+      "nimm2"
+    ],
+    "unmanaged": [
+      "nimm1"
+    ]
+  },
+  {
+    "step": "jobs",
+    "NIMDC1": "approved",
+    "NIMM2": "approved"
+  },
+  {
+    "step": "jobs",
+    "NIMDC1": "dispatched",
+    "NIMM2": "approved"
+  },
+  {
+    "step": "jobs",
+    "NIMDC1": "verifying",
+    "NIMM2": "approved"
+  },
+  {
+    "step": "jobs",
+    "NIMDC1": "succeeded",
+    "NIMM2": "approved"
+  },
+  {
+    "step": "jobs",
+    "NIMDC1": "succeeded",
+    "NIMM2": "dispatched"
+  },
+  {
+    "step": "jobs",
+    "NIMDC1": "succeeded",
+    "NIMM2": "verifying"
+  },
+  {
+    "step": "jobs",
+    "NIMDC1": "succeeded",
+    "NIMM2": "succeeded"
+  },
+  {
+    "step": "both DCs' jobs finished",
+    "statuses": [
+      "succeeded",
+      "succeeded"
+    ],
+    "samples": 313,
+    "together": [],
+    "steps": [
+      [
+        "build updated",
+        "NTDS running after change",
+        "DNS running after change",
+        "Netlogon running after change",
+        "KDC running after change"
+      ],
+      [
+        "build updated",
+        "NTDS running after change",
+        "DNS running after change",
+        "Netlogon running after change",
+        "KDC running after change"
+      ]
+    ]
+  },
+  {
+    "step": "after patching",
+    "health": {
+      "NIMDC1": {
+        "services": [
+          "Running",
+          "Running",
+          "Running",
+          "Running"
+        ],
+        "repl_failures": 5
+      },
+      "NIMM2": {
+        "services": [
+          "Running",
+          "Running",
+          "Running",
+          "Running"
+        ],
+        "repl_failures": 5
+      }
+    }
+  },
+  {
+    "step": "RESULT: FAIL",
+    "checks": {
+      "replication between the DCs before patching": true,
+      "both report as domain controllers": true,
+      "the real computers were read": true,
+      "disabled object left out by the agent": true,
+      "stale object left out of the list": true,
+      "a real computer with no agent is listed": true,
+      "hosts with an agent aren't listed": true,
+      "no credential stored: the agent's task runs as SYSTEM, with no domain secret in its config": true,
+      "both jobs succeeded": true,
+      "never at once": true,
+      "both healthy": false,
+      "replication after patching": true
+    }
+  }
+]

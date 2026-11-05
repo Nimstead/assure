@@ -133,9 +133,10 @@ def nic2_mac(info: str) -> str:
 
 
 def kerberos_proved(out: str, target: str) -> bool:
-    """The remote host answered as the domain's Administrator, and the ticket for its WinRM service is in this session."""
+    """The remote host answered as the domain's Administrator, and the ticket for its WinRM service is in this session. WinRM asks
+    for HTTP/<host>, which Active Directory maps to the computer's HOST/ name by default, so klist lists HOST/ (real lab)."""
     low = out.lower()
-    return f"{target}|{NETBIOS}\\administrator".lower() in low and f"http/{target}.{DOMAIN}".lower() in low
+    return f"{target}|{NETBIOS}\\administrator".lower() in low and any(f"{s}/{target}.{DOMAIN}".lower() in low for s in ("http", "host"))
 
 
 def scrub(text: str, known: set[str]) -> str:
@@ -315,6 +316,19 @@ class Peak(threading.Thread):
         low = min((s["min_free_mb"] for s in self.seen.values()), default=HOST_MIN_FREE_MB)
         if low < HOST_MIN_FREE_MB:
             raise HostShort(f"free host memory fell to {low} MB during '{self.phase}', under the {HOST_MIN_FREE_MB} MB this host needs to stay usable: {self.seen}")
+
+
+def recheck() -> int:
+    """The Kerberos proof again on the built lab, added to its run file (the first real build's check missed the HOST/ ticket)."""
+    h.log[:] = json.loads((ROOT / "sandbox" / "last_run_winlab.json").read_text())
+    lab = load()
+    dc, members = by_role(lab)
+    rc, out = as_user(members[0], domain_admin(lab), KERBEROS.replace("%TARGET%", members[1]["computer"]).replace("%DOMAIN%", DOMAIN))
+    proved = kerberos_proved(out, members[1]["computer"])
+    h.note("Kerberos remoting member to member (rechecked)", source=members[0]["computer"], target=members[1]["computer"], proved=proved, output=out[-1200:])
+    measured = {p for e in h.log if e["step"] == "peak host memory" for p in e["phases"]}
+    return conclude({"Kerberos remoting member to member": proved, "two VMs measured": "2 VMs running" in measured,
+                     "three VMs measured": "3 VMs running" in measured})
 
 
 def build(iso: str, vms=3, memory=VM_MB, resume=False) -> int:
@@ -557,6 +571,8 @@ if __name__ == "__main__":
     if cmd == "build":
         sys.exit(harness(lambda: build(sys.argv[2], vms=int(opts.get("vms", 3)), memory=int(opts.get("memory", VM_MB)), resume="--resume" in sys.argv),
                          "last_run_winlab.json"))
+    elif cmd == "recheck":
+        sys.exit(harness(recheck, "last_run_winlab.json"))
     elif cmd == "reset":
         reset()
     elif cmd == "teardown":

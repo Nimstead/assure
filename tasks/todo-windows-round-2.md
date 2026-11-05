@@ -88,9 +88,9 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens the ref
 ## Phase 2: a real domain, in VMs
 
 ### W7: `winlab.py`: DC and member (M), the gate
-- [ ] Memory per VM and a private network as options; Server Core DC promoted by script, member joined, Kerberos remoting works
-- [ ] Peak host memory recorded with two and with three VMs running
-- [x] If it can't hold: stop Phase 2, say so in STATUS. No half-proof. **It can't** (`last_run_winlab.json`, 2026-11-04): three VMs at 2,560 MB plus the host's 2 GB need 9,728 MB free; this host has about 4,300 MB of its 16 GB free with no VM running. Phase 2 (W7-W11) stops here and needs a host with about 12 GB free
+- [x] Memory per VM and a private network as options; Server Core DC promoted by script, member joined, Kerberos remoting works. **Proven** (`last_run_winlab.json`, 2026-11-05, Server 2025 Core): NIMDC1 promoted as `nimstead-sbx.test`, NIMM1 and NIMM2 joined with a working secure channel, NIMM1 runs a command on NIMM2 as the domain's Administrator over Kerberos (klist holds the HOST/ ticket WinRM's HTTP name maps to). The real run found three harness bugs, fixed: the join's DNS check gave `Resolve-DnsName` two names, a new DC's slow boot outlasted a 30-minute wait, and the Kerberos check looked only for an HTTP/ ticket
+- [x] Peak host memory recorded with two and with three VMs running: 22,513 MB and 22,777 MB used of 31,862 MB at peak, never under 9,085 MB free (2,560 MB per VM)
+- [x] If it can't hold: stop Phase 2, say so in STATUS. No half-proof. **It couldn't on 16 GB; it does on 32 GB (above)**. First run (`last_run_winlab.json`, 2026-11-04): three VMs at 2,560 MB plus the host's 2 GB need 9,728 MB free; this host has about 4,300 MB of its 16 GB free with no VM running. Phase 2 (W7-W11) stops here and needs a host with about 12 GB free
 - Verify: `last_run_winlab.json`. Files: `sandbox/winvm.py`, `sandbox/winlab.py` (new). Deps: W5.
 
 ### W8: Two DCs: discovery and one-at-a-time patching (M)

@@ -1,15 +1,99 @@
 [
   {
     "step": "host before the lab",
-    "total_mb": 15959,
-    "free_mb": 4279,
-    "free_disk_gb": 98,
+    "total_mb": 31862,
+    "free_mb": 9937,
+    "free_disk_gb": 150,
     "vms": 3,
-    "vm_mb": 2560
+    "vm_mb": 2560,
+    "resumed": [
+      "NIMDC1",
+      "NIMM1"
+    ]
   },
   {
-    "step": "RESULT: HOST CANNOT HOLD THE LAB",
-    "why": "3 VMs at 2560 MB plus 2048 MB for the host need 9728 MB of free memory; this host has 4279 MB free",
-    "next": "stop Phase 2 and say so in STATUS (W7); this run removed what it made"
+    "step": "VM installed",
+    "computer": "NIMM1",
+    "vm": "nimstead-sbx-win-010ec4",
+    "memory": null
+  },
+  {
+    "step": "member joined",
+    "computer": "NIMM1"
+  },
+  {
+    "step": "2 VMs running",
+    "memory": {
+      "total_mb": 31862,
+      "peak_used_mb": 22513,
+      "min_free_mb": 9349
+    }
+  },
+  {
+    "step": "VM installed",
+    "computer": "NIMM2",
+    "vm": "nimstead-sbx-win-74d14f",
+    "memory": {
+      "total_mb": 31862,
+      "peak_used_mb": 22777,
+      "min_free_mb": 9085
+    }
+  },
+  {
+    "step": "member joined",
+    "computer": "NIMM2"
+  },
+  {
+    "step": "3 VMs running",
+    "memory": {
+      "total_mb": 31862,
+      "peak_used_mb": 22777,
+      "min_free_mb": 9085
+    }
+  },
+  {
+    "step": "Kerberos remoting member to member",
+    "source": "NIMM1",
+    "target": "NIMM2",
+    "proved": false,
+    "output": "-CTS-HMAC-SHA1-96\n\tTicket Flags 0x40a10000 -> forwardable renewable pre_authent name_canonicalize \n\tStart Time: 11/5/2026 2:29:35 (local)\n\tEnd Time:   11/5/2026 12:29:32 (local)\n\tRenew Time: 11/12/2026 2:29:32 (local)\n\tSession Key Type: AES-256-CTS-HMAC-SHA1-96\n\tCache Flags: 0 \n\tKdc Called: NIMDC1.nimstead-sbx.test\n\n#2>\tClient: Administrator @ NIMSTEAD-SBX.TEST\n\tServer: LDAP/NIMDC1.nimstead-sbx.test/nimstead-sbx.test @ NIMSTEAD-SBX.TEST\n\tKerbTicket Encryption Type: AES-256-CTS-HMAC-SHA1-96\n\tTicket Flags 0x40a50000 -> forwardable renewable pre_authent ok_as_delegate name_canonicalize \n\tStart Time: 11/5/2026 2:29:32 (local)\n\tEnd Time:   11/5/2026 12:29:32 (local)\n\tRenew Time: 11/12/2026 2:29:32 (local)\n\tSession Key Type: AES-256-CTS-HMAC-SHA1-96\n\tCache Flags: 0 \n\tKdc Called: NIMDC1.nimstead-sbx.test\n#< CLIXML\n<Objs Version=\"1.1.0.1\" xmlns=\"http://schemas.microsoft.com/powershell/2004/04\"><Obj S=\"progress\" RefId=\"0\"><TN RefId=\"0\"><T>System.Management.Automation.PSCustomObject</T><T>System.Object</T></TN><MS><I64 N=\"SourceId\">1</I64><PR N=\"Record\"><AV>Preparing modules for first use.</AV><AI>0</AI><Nil /><PI>-1</PI><PC>-1</PC><T>Completed</T><SR>-1</SR><SD> </SD></PR></MS></Obj></Objs>"
+  },
+  {
+    "step": "peak host memory",
+    "phases": {
+      "2 VMs running": {
+        "total_mb": 31862,
+        "peak_used_mb": 22513,
+        "min_free_mb": 9349
+      },
+      "3 VMs running": {
+        "total_mb": 31862,
+        "peak_used_mb": 22777,
+        "min_free_mb": 9085
+      }
+    }
+  },
+  {
+    "step": "RESULT: FAIL",
+    "checks": {
+      "Kerberos remoting member to member": false,
+      "two VMs measured": true,
+      "three VMs measured": true
+    }
+  },
+  {
+    "step": "Kerberos remoting member to member (rechecked)",
+    "source": "NIMM1",
+    "target": "NIMM2",
+    "proved": true,
+    "output": "Type: AES-256-CTS-HMAC-SHA1-96\n\tTicket Flags 0x40e10000 -> forwardable renewable initial pre_authent name_canonicalize \n\tStart Time: 11/5/2026 2:34:41 (local)\n\tEnd Time:   11/5/2026 12:34:41 (local)\n\tRenew Time: 11/12/2026 2:34:41 (local)\n\tSession Key Type: AES-256-CTS-HMAC-SHA1-96\n\tCache Flags: 0x1 -> PRIMARY \n\tKdc Called: NIMDC1.nimstead-sbx.test\n\n#1>\tClient: Administrator @ NIMSTEAD-SBX.TEST\n\tServer: HOST/NIMM2.nimstead-sbx.test @ NIMSTEAD-SBX.TEST\n\tKerbTicket Encryption Type: AES-256-CTS-HMAC-SHA1-96\n\tTicket Flags 0x40a10000 -> forwardable renewable pre_authent name_canonicalize \n\tStart Time: 11/5/2026 2:34:44 (local)\n\tEnd Time:   11/5/2026 12:34:41 (local)\n\tRenew Time: 11/12/2026 2:34:41 (local)\n\tSession Key Type: AES-256-CTS-HMAC-SHA1-96\n\tCache Flags: 0 \n\tKdc Called: NIMDC1.nimstead-sbx.test\n#< CLIXML\n<Objs Version=\"1.1.0.1\" xmlns=\"http://schemas.microsoft.com/powershell/2004/04\"><Obj S=\"progress\" RefId=\"0\"><TN RefId=\"0\"><T>System.Management.Automation.PSCustomObject</T><T>System.Object</T></TN><MS><I64 N=\"SourceId\">1</I64><PR N=\"Record\"><AV>Preparing modules for first use.</AV><AI>0</AI><Nil /><PI>-1</PI><PC>-1</PC><T>Completed</T><SR>-1</SR><SD> </SD></PR></MS></Obj></Objs>"
+  },
+  {
+    "step": "RESULT: PASS",
+    "checks": {
+      "Kerberos remoting member to member": true,
+      "two VMs measured": true,
+      "three VMs measured": true
+    }
   }
 ]

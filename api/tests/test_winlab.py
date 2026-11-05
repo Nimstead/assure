@@ -82,6 +82,7 @@ def test_second_nic_mac_and_kerberos_proof():
     assert winlab.nic2_mac('nic1="nat"\nmacaddress1="080027000001"\nmacaddress2="080027000002"\n') == "080027000002"
     good = "NIMM2|nimstead-sbx\\administrator\nCurrent LogonId...\n#2> Client: Administrator @ NIMSTEAD-SBX.TEST\n   Server: HTTP/NIMM2.nimstead-sbx.test @ NIMSTEAD-SBX.TEST\n"
     assert winlab.kerberos_proved(good, "NIMM2")
+    assert winlab.kerberos_proved(good.replace("HTTP/", "HOST/"), "NIMM2")  # what klist really lists: AD maps HTTP to HOST
     assert not winlab.kerberos_proved(good, "NIMM3")
     assert not winlab.kerberos_proved("NIMM2|nimstead-sbx\\administrator\nno tickets", "NIMM2")  # could have been NTLM
     assert not winlab.kerberos_proved("NIMM2|nimm2\\administrator\nHTTP/NIMM2.nimstead-sbx.test", "NIMM2")  # a local account

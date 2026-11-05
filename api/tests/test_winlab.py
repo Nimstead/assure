@@ -270,6 +270,10 @@ def test_each_script_parses_without_running(name):
     assert p.stdout.strip() == "", p.stdout
 
 
+class StopAtKerberos(Exception):
+    pass
+
+
 def test_a_resumed_build_keeps_finished_machines_and_uses_a_created_one(monkeypatch, tmp_path):
     """A real build stopped at the first member's join after 3 hours: resuming keeps the DC and joins that VM, creating only the third."""
     monkeypatch.setattr(winlab.winvm, "STATE", tmp_path)
@@ -292,8 +296,10 @@ def test_a_resumed_build_keeps_finished_machines_and_uses_a_created_one(monkeypa
     monkeypatch.setattr(winlab, "lab_net", lambda *a: None)
     monkeypatch.setattr(winlab, "promote_forest", lambda *a: done.append("promote"))
     monkeypatch.setattr(winlab, "join", lambda v, d, admin: done.append((v["computer"], admin)))
-    monkeypatch.setattr(winlab, "as_user", lambda *a: (1, "stop here"))
-    with pytest.raises(Exception):  # stops after the joins, at the Kerberos step this test doesn't fake
+    def as_user(*a):
+        raise StopAtKerberos  # the joins are what this test is about
+    monkeypatch.setattr(winlab, "as_user", as_user)
+    with pytest.raises(StopAtKerberos):
         winlab.build("x.iso", resume=True)
     assert created == [plan[2]["computer"]] and done == [(plan[1]["computer"], "adm"), (plan[2]["computer"], "adm")]
     assert all(v.get("done") for v in json.loads((tmp_path / "lab.json").read_text())["vms"])

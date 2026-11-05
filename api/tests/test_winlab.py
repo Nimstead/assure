@@ -268,3 +268,32 @@ def test_each_script_parses_without_running(name):
     filled = re.sub(r"%[A-Z_]+%", "x", SCRIPTS[name])
     p = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script], input=filled, capture_output=True, text=True, check=True, timeout=60)
     assert p.stdout.strip() == "", p.stdout
+
+
+def test_a_resumed_build_keeps_finished_machines_and_uses_a_created_one(monkeypatch, tmp_path):
+    """A real build stopped at the first member's join after 3 hours: resuming keeps the DC and joins that VM, creating only the third."""
+    monkeypatch.setattr(winlab.winvm, "STATE", tmp_path)
+    monkeypatch.setattr(winlab, "LAB_FILE", tmp_path / "lab.json")
+    monkeypatch.setattr(winlab.h, "log", [])
+    plan = winlab.plan_lab(3)
+    dc, m1 = {**plan[0], "vm": winvm.PREFIX + "dc", "done": True}, {**plan[1], "vm": winvm.PREFIX + "m1"}
+    (tmp_path / "lab.json").write_text(json.dumps({"domain": winlab.DOMAIN, "vms": [dc, m1]}))
+    (tmp_path / dc["vm"]).mkdir()
+    (tmp_path / dc["vm"] / "creds.json").write_text('{"user": "Administrator", "password": "adm"}')
+    (tmp_path / dc["vm"] / "lab-secrets.json").write_text('{"safe_mode": "sm"}')
+    done, created = [], []
+    monkeypatch.setattr(winlab, "host_memory", lambda: (32000, 12000))
+    monkeypatch.setattr(winlab.Peak, "start", lambda self: None)
+    monkeypatch.setattr(winlab.Peak, "check", lambda self: self.seen.setdefault(self.phase, {}))
+    monkeypatch.setattr(winlab.time, "sleep", lambda s: None)
+    monkeypatch.setattr(winlab, "on", lambda v: None)
+    monkeypatch.setattr(winlab.winvm, "wait_ready", lambda *a, **k: None)
+    monkeypatch.setattr(winlab.winvm, "create", lambda iso, **k: created.append(k["computer"]) or winvm.PREFIX + "m2")
+    monkeypatch.setattr(winlab, "lab_net", lambda *a: None)
+    monkeypatch.setattr(winlab, "promote_forest", lambda *a: done.append("promote"))
+    monkeypatch.setattr(winlab, "join", lambda v, d, admin: done.append((v["computer"], admin)))
+    monkeypatch.setattr(winlab, "as_user", lambda *a: (1, "stop here"))
+    with pytest.raises(Exception):  # stops after the joins, at the Kerberos step this test doesn't fake
+        winlab.build("x.iso", resume=True)
+    assert created == [plan[2]["computer"]] and done == [(plan[1]["computer"], "adm"), (plan[2]["computer"], "adm")]
+    assert all(v.get("done") for v in json.loads((tmp_path / "lab.json").read_text())["vms"])

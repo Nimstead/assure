@@ -44,7 +44,8 @@ LAB_NIC = r"""$ErrorActionPreference = 'Stop'
 New-Item -ItemType Directory -Force C:\nimtest | Out-Null
 $lab = Get-NetAdapter | Where-Object { ($_.MacAddress -replace '-', '') -eq '%MAC%' }
 $nat = Get-NetAdapter | Where-Object { $_.ifIndex -ne $lab.ifIndex } | Select-Object -First 1
-New-NetIPAddress -InterfaceIndex $lab.ifIndex -IPAddress %IP% -PrefixLength 24 | Out-Null
+if (-not (Get-NetIPAddress -InterfaceIndex $lab.ifIndex -IPAddress %IP% -ErrorAction SilentlyContinue)) {  # a resumed build runs this again
+  New-NetIPAddress -InterfaceIndex $lab.ifIndex -IPAddress %IP% -PrefixLength 24 | Out-Null }
 Set-DnsClientServerAddress -InterfaceIndex $lab.ifIndex -ServerAddresses %DNS%
 Set-DnsClientServerAddress -InterfaceIndex $nat.ifIndex -ServerAddresses %NATDNS%
 # every VM's NAT address is 10.0.2.15: it must never reach the domain's DNS
@@ -52,7 +53,8 @@ Set-DnsClient -InterfaceIndex $nat.ifIndex -RegisterThisConnectionsAddress $fals
 Set-NetIPInterface -InterfaceIndex $lab.ifIndex -InterfaceMetric 5
 Set-NetIPInterface -InterfaceIndex $nat.ifIndex -InterfaceMetric 50
 # the lab network has no gateway, so Windows calls it public until the domain is seen; the firewall stays on for everything else
-New-NetFirewallRule -DisplayName 'Nimstead lab network' -Direction Inbound -RemoteAddress %SUBNET%.0/24 -Action Allow | Out-Null
+if (-not (Get-NetFirewallRule -DisplayName 'Nimstead lab network' -ErrorAction SilentlyContinue)) {
+  New-NetFirewallRule -DisplayName 'Nimstead lab network' -Direction Inbound -RemoteAddress %SUBNET%.0/24 -Action Allow | Out-Null }
 Enable-PSRemoting -Force -SkipNetworkProfileCheck | Out-Null
 """
 FOREST = r"""$ErrorActionPreference = 'Stop'
@@ -229,7 +231,7 @@ def promote_replica(v: dict, admin: str, safe: str) -> None:
 
 def join(v: dict, dc: dict, admin: str) -> None:
     on(v)
-    seen = h.guest(f"(Resolve-DnsName {dc['computer']}.{DOMAIN}, {DOMAIN} -Type A -DnsOnly -ErrorAction Stop).IPAddress", check=False)
+    seen = h.guest(f"'{dc['computer']}.{DOMAIN}', '{DOMAIN}' | ForEach-Object {{ (Resolve-DnsName $_ -Type A -DnsOnly -ErrorAction Stop).IPAddress }}", check=False)
     assert dc["ip"] in seen and "10.0.2." not in seen, f"the DC's address as seen from {v['computer']}: {seen[-300:]}"
     h.guest(JOIN.replace("%DOMAIN%", DOMAIN).replace("%ADMIN%", admin), timeout=900)
     h.reboot_and_wait()
@@ -315,25 +317,34 @@ class Peak(threading.Thread):
             raise HostShort(f"free host memory fell to {low} MB during '{self.phase}', under the {HOST_MIN_FREE_MB} MB this host needs to stay usable: {self.seen}")
 
 
-def build(iso: str, vms=3, memory=VM_MB) -> int:
-    if LAB_FILE.exists():
-        raise RuntimeError(f"a lab already exists ({LAB_FILE}): run `winlab.py teardown` first")
-    lab = {"domain": DOMAIN, "vms": []}
+def build(iso: str, vms=3, memory=VM_MB, resume=False) -> int:
+    """`resume`: carry on with the lab a failed build left: machines it finished are kept, one it had created is used as it is."""
+    if LAB_FILE.exists() and not resume:
+        raise RuntimeError(f"a lab already exists ({LAB_FILE}): run `winlab.py teardown` first, or `build ISO --resume`")
+    lab = json.loads(LAB_FILE.read_text()) if resume else {"domain": DOMAIN, "vms": []}
+    have = {v["computer"]: v for v in lab["vms"]}
     peak = Peak()
     total, free = host_memory()
     disk = shutil.disk_usage(winvm.STATE.parent).free // 2**30
-    h.note("host before the lab", total_mb=total, free_mb=free, free_disk_gb=disk, vms=vms, vm_mb=memory)
-    if why := host_short(vms, memory, free, disk):
+    h.note("host before the lab", total_mb=total, free_mb=free, free_disk_gb=disk, vms=vms, vm_mb=memory, resumed=sorted(have))
+    if not resume and (why := host_short(vms, memory, free, disk)):
         raise HostShort(why)
-    admin, safe = "Nim!" + secrets.token_hex(8), "Nim!" + secrets.token_hex(8)
+    if have:  # the domain's Administrator is every lab VM's own; the DC keeps its safe-mode password in its folder
+        dc0 = lab["vms"][0]
+        admin, safe = winvm.creds(dc0["vm"])["password"], json.loads((winvm.STATE / dc0["vm"] / "lab-secrets.json").read_text())["safe_mode"]
+    else:
+        admin, safe = "Nim!" + secrets.token_hex(8), "Nim!" + secrets.token_hex(8)
     SECRETS.update((admin, safe))
     peak.start()
     try:
         for i, v in enumerate(plan_lab(vms)):
             peak.phase = f"{i + 1} VMs running"
-            v["vm"] = winvm.create(iso, memory=memory, lab=True, computer=v["computer"], password=admin)
-            lab["vms"].append(v)
-            LAB_FILE.write_text(json.dumps(lab, indent=2))  # from the first VM on: teardown can find a half-built lab
+            if (v := have.get(v["computer"], v)).get("done"):
+                continue
+            if not v.get("vm"):
+                v["vm"] = winvm.create(iso, memory=memory, lab=True, computer=v["computer"], password=admin)
+                lab["vms"].append(v)
+                LAB_FILE.write_text(json.dumps(lab, indent=2))  # from the first VM on: teardown can find a half-built lab
             on(v)
             winvm.wait_ready(v["vm"], minutes=90)
             h.note("VM installed", computer=v["computer"], vm=v["vm"], memory=peak.seen.get(peak.phase))
@@ -345,6 +356,8 @@ def build(iso: str, vms=3, memory=VM_MB) -> int:
             else:
                 lab_net(v, lab["vms"][0]["ip"], lab["vms"][0]["ip"])  # all names through the DC, which forwards the rest
                 join(v, lab["vms"][0], admin)
+            v["done"] = True
+            LAB_FILE.write_text(json.dumps(lab, indent=2))
             peak.check()
             if i >= 1:  # a settled machine's memory, not only its install's
                 time.sleep(300)
@@ -542,7 +555,8 @@ if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""
     opts = dict(a[2:].split("=", 1) for a in sys.argv[2:] if a.startswith("--") and "=" in a)
     if cmd == "build":
-        sys.exit(harness(lambda: build(sys.argv[2], vms=int(opts.get("vms", 3)), memory=int(opts.get("memory", VM_MB))), "last_run_winlab.json"))
+        sys.exit(harness(lambda: build(sys.argv[2], vms=int(opts.get("vms", 3)), memory=int(opts.get("memory", VM_MB)), resume="--resume" in sys.argv),
+                         "last_run_winlab.json"))
     elif cmd == "reset":
         reset()
     elif cmd == "teardown":

@@ -50,7 +50,9 @@ def guest(cmd, timeout=3600, check=True):
         # Windows 11 finishes a cumulative update with a second restart, which can land between two commands (seen
         # for real: empty output, then "Guest Additions are not ready"); wait it out, cold-booting a firmware hang
         time.sleep(15)
-        winvm.wait_ready(NAME, minutes=30)
+        # 60: wait_ready restarts a booted Windows whose guest control hung only after 20 min, and a new domain
+        # controller's boot after that took longer than the 10 min a 30-min wait left (real lab, 2026-11-05)
+        winvm.wait_ready(NAME, minutes=60)
     if check and rc != 0:
         raise RuntimeError(f"guest command failed ({rc}): {cmd[:200]}\n{out[-2000:]}")
     return out

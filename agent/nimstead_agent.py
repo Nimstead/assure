@@ -2050,8 +2050,8 @@ if ($al) {
 }
 ConvertTo-Json -Compress -Depth 4 -InputObject @($out)
 """
-# A forward-only servicing step (DECISIONS 105): the downloaded package's own update.mum must name a servicing stack package;
-# Windows Update delivers it signed, and the name is the same in every language. Afterwards the KB must be installed.
+# A forward-only servicing step (DECISIONS 105): the downloaded package's own update.mum must say it updates the servicing stack
+# (selfUpdate) and is permanent, for this KB. Attributes, so the same in every language; Server 2016's names it Package_for_KB.
 PS_SERVICING = r"""
 $f = Get-ChildItem 'C:\Windows\SoftwareDistribution\Download' -Recurse -Depth 1 -File -Include '*KB%KB%*.cab' |
   Where-Object { $_.FullName -notmatch '\\Metadata\\' } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
@@ -2059,7 +2059,8 @@ if (-not $f) { throw "downloaded package for KB%KB% not found" }
 $tmp = Join-Path $env:TEMP ('nimstead-ssu-' + [guid]::NewGuid()); New-Item -ItemType Directory $tmp | Out-Null
 try {
   expand.exe "-F:update.mum" $f.FullName $tmp | Out-Null
-  ([xml](Get-Content -LiteralPath (Join-Path $tmp 'update.mum') -Raw -ErrorAction Stop)).assembly.assemblyIdentity.name
+  $p = ([xml](Get-Content -LiteralPath (Join-Path $tmp 'update.mum') -Raw -ErrorAction Stop)).assembly.package
+  "$($p.identifier)|selfUpdate=$($p.selfUpdate)|$($p.permanence)"
 } finally { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue }
 """
 PS_HOTFIX = r"""[bool](Get-HotFix -Id 'KB%KB%' -ErrorAction SilentlyContinue)"""
@@ -2395,7 +2396,7 @@ class WinJob:
         if self.ssu():  # the one update that can't be rolled back: installed only as what its own manifest says it is
             rc, out = ps(self.run, PS_SERVICING.replace("%KB%", s["kb"]))
             name = out.strip().splitlines()[-1] if rc == 0 and out.strip() else out
-            self.step("update is a servicing stack update (its own manifest)", rc == 0 and name.startswith("Package_for_ServicingStack"), name)
+            self.step("update is a servicing stack update (its own manifest)", rc == 0 and name == f"KB{s['kb']}|selfUpdate=true|permanent", name)
         else:
             rc, out = ps(self.run, PS_PERMANENCE.replace("%KB%", s["kb"]))
             # permanent sub-packages (Features on Demand) stay behind on removal; rollback is judged by the build returning

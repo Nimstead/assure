@@ -576,14 +576,14 @@ def test_windows_10_plan_is_the_servicing_stack_with_the_update_only_a_download(
 
 # ---- a forward-only servicing step (DECISIONS 105): installed only as what its own manifest says, verified by the KB being there
 class FakeSSU(FakeWin):
-    def __init__(self, name="Package_for_ServicingStack_7330", installs=True, **kw):
+    def __init__(self, name="KB5062799|selfUpdate=true|permanent", installs=True, **kw):  # as Server 2016's real update.mum reads
         super().__init__(offered=kw.pop("offered", ("5062799",)), **kw)
         self.mum, self.installs, self.hotfix = name, installs, False
 
     def __call__(self, cmd, cwd=None, timeout=None):
         if cmd[0] == "powershell":
             script = cmd[-1]
-            if "assemblyIdentity" in script:
+            if "selfUpdate" in script:
                 return 0, self.mum
             if "Get-HotFix" in script:
                 return 0, str(self.hotfix)
@@ -607,7 +607,7 @@ def test_a_servicing_stack_update_is_installed_only_as_its_manifest_says_and_ver
 
 
 def test_anything_else_on_the_servicing_path_is_refused_with_no_changes(tmp_path):
-    h = FakeSSU(name="Package_for_RollupFix~31bf3856ad364e35~amd64~~14393.9612.1.1")
+    h = FakeSSU(name="KB5062799|selfUpdate=|permanent")  # permanent but not a servicing stack update: a cumulative's mum
     r = make(tmp_path, h, SSU_JOB).advance()
     assert r["outcome"] == "aborted" and r["error"].startswith("No changes made")
     assert not any("CreateUpdateInstaller" in c[-1] for c in h.log if c[0] == "powershell")

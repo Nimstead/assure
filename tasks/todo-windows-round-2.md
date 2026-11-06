@@ -213,8 +213,22 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens the ref
 - [x] From that review: `GET /api/assets` sends only the facts the list shows; the per-KB query is chunked; the attack-paths panel says edges rest on each host's own report
 - [x] Review not yet covering remediate.py, feeds.py, lifecycle.py, msproducts.py, office.py, winapps.py, external.py, updates.py, and the agent's Linux, jar and app scanners. **Reviewed 2026-11-04**: ten findings, no way around the approval rules. Fixed with tests: held Debian packages (`hi`) left out of the inventory; a FIFO or link named like a jar, METADATA or package.json opened by the root agent (a FIFO blocks it for good); a two-part .NET SDK version failing the host's report; a servicing step planned when MSRC's month wasn't read (refused or failed fetch); `$` in the server's name checks letting a final newline by; one feed's schema change stopping the hourly update for every org; the per-KB view counting a stepped job as reaching the final cumulative. Left, each low: feed size limits checked after download rather than while streaming (TLS-pinned hosts); Thunderbird branch CVEs fixed at a major's first release matching nothing while the branch is current; no start timeout on the agent's systemd unit (the FIFO, the known way to hang it, is fixed)
 - [x] Office Click-to-Run on a version line the feed no longer lists, or with no build since a CVE, gets no row for that CVE, so a host years behind on Current reads nearly clean (review 2026-11-04, medium). **Fixed** (DECISIONS 106): a superseded line takes its fix from a newer line of its channel, and a line older than any listed is end of support
-- [ ] API on SQLite and PostgreSQL, web unit and e2e, ruff; STATUS, CHANGELOG, README and `docs/install.md` updated
-- [ ] Plan's seven "great" conditions each marked met or not, with the run file
+- [ ] API on SQLite and PostgreSQL, web unit and e2e, ruff; STATUS, CHANGELOG, README and `docs/install.md` updated. **Partly** (2026-11-06, after W11): API 1,589 passed on SQLite, ruff clean; STATUS, CHANGELOG and docs/install.md carry the round. Not rerun since 0.7.1's CI: PostgreSQL and web (no API or web code changed since); README not reviewed
+- [x] Plan's seven "great" conditions each marked met or not, with the run file (2026-11-06):
+  1. Every likely Windows version fixed and rolled back on a real install: **not met**. Windows 11 and Server 2025 yes; Server 2016 stepped forward (`last_run_windows_server2016_ssu.json`); Windows 10 LTSC rolled back but not applied by the task (W4, evaluation licence shutdown); Server 2022 overran the install limit and 2019 never boots on this host (W5); Windows 11 Enterprise not tried (W6)
+  2. Fleet features on a real domain: **met** (`last_run_windc.json`, `last_run_wincluster.json`, `last_run_winremote_lab.json`, `last_run_wingpo.json`)
+  3. A host's page says what share was assessed: **met in code and tests** (W1), not yet shown on a VM with 50 apps
+  4. Side-by-side with another scanner, every disagreement explained: **not met**, W3 not started
+  5. At least 200 curated apps, noise review over every one: **not met**: 100 curated, noise review over 74 installed (W13, W14)
+  6. Benchmark-referenced audit per host: **met** (`last_run_winbaseline.json`, W20's view and export)
+  7. Survives power loss, full disk, dead server, explains its failures: **met** (`last_run_winfailures.json`, `last_run_winfailures_install_cut.json`, W24's doctor)
+
+## Open after the sweep (2026-11-06)
+Every unchecked item above, by why it's open:
+- **Blocked by this host** (VirtualBox on Hyper-V's slower engine): W5 Server 2022 stepping (overran the 2-hour limit) and Server 2019 (never boots). Needs Hyper-V off, which is the owner's call (DECISIONS 107), or another machine
+- **Blocked by evaluation media**: W2's German rollback and W4's apply by the task (the licence service powers the VM off an hour after boot); W4's oracle and .NET proofs wait on the same. Needs licensed or IoT LTSC media. W6 Windows 11 Enterprise: its evaluation ISO sits behind Microsoft's registration form, which asks for the owner's details
+- **Waiting on the owner**: Checkpoint A (W3's gaps reviewed with you); the items below
+- **Not started, real work, unblocked**: W3 side-by-side with the reference scanner (starts with a short look at whether its free feed checks Windows patches at all); W13 app batches to 200 (each batch a VM run of several hours); W1's 50-app VM screenshot and axe check; Checkpoint C (needs W13); the engine track's last three (routing and AD group edges, findings through the engine, its benchmark run, which needs W3)
 
 ## Needs the owner
 - [ ] Review this plan; answer its two open questions

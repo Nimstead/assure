@@ -32,7 +32,7 @@ import urllib.parse
 import urllib.request
 import zipfile
 
-AGENT_VERSION = "0.6.1"  # the server reads this line to flag outdated agents; bump on every agent change
+AGENT_VERSION = "0.6.2"  # the server reads this line to flag outdated agents; bump on every agent change
 # Ed25519 public keys (hex) allowed to sign releases (DECISIONS 31): primary (GitHub Actions) and offline backup.
 # The server only relays signed releases, so it can withhold an update but never forge one. Empty = never self-update.
 RELEASE_KEYS = ["a91fa6539c6c2593009fc71b1c1fba341b5685ba7bc97c127c068b1d732b21d2", "2438f2ccebab5bf26edf9e21a8aa8f09abd1861f52fbe0d6641b28b90f8b0e5a"]  # noqa: E501
@@ -2114,6 +2114,9 @@ PS_REBOOT_PENDING = r"""
 PS_CRASHES = r"""
 $dn = (Get-Service -Name '%SVC%' -ErrorAction Stop).DisplayName
 $t = [DateTimeOffset]::FromUnixTimeSeconds(%SINCE%).LocalDateTime
+# from the last boot at the earliest: a slow host's shutdown ends services with 7031 too, and the update's restart is that shutdown
+# (a real cluster node's ClusSvc, twice); a crash on the new build after it boots still counts
+$boot = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime; if ($boot -gt $t) { $t = $boot }
 @(Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = 'Service Control Manager'; Id = 7031, 7034, 7024; StartTime = $t } -ErrorAction SilentlyContinue |
   Where-Object { $_.Properties[0].Value -eq $dn } | ForEach-Object { "event $($_.Id) at $($_.TimeCreated.ToString('s'))" }) -join "; "
 """

@@ -4,6 +4,30 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+## [0.7.0] - unreleased (preview)
+
+Windows round 2 (tasks/plan-windows-round-2.md; DECISIONS 102-108): proofs on real Windows servers and a real Active Directory
+domain, and the bugs they found. **Agent 0.6.0.** No database migration.
+
+**Upgrade from 0.6.x:** run `deploy/update.sh`. Things to know:
+- **AD discovery needs a directory source.** An admin chooses the one host whose directory the server takes (Assets, that host's
+  settings); until then its agent's directory upload is refused with a message saying so.
+- **Old Windows Server may get a forward-only step.** When Windows Update offers only a servicing stack update, it's planned as a
+  forward-only job that only a person can approve (`{"forward_only": true}`).
+- **More end-of-support findings for Microsoft 365 Apps** on version lines Microsoft no longer updates.
+
+**Proven on real hosts in this release:** a domain controller and two members built by script, with Kerberos remoting member to
+member (`last_run_winlab.json`); AD discovery and two DCs patched one at a time, both healthy after (`last_run_windc.json`);
+agentless scanning across hosts matching the host's own agent (`last_run_winremote_lab.json`); a servicing stack update then a
+cumulative on Server 2016 (`last_run_windows_server2016_ssu.json`); 50 findings hand-checked against Microsoft's sources on
+Windows 11, Server 2025 and Windows 10 (49 confirmed, 1 unverifiable, none wrong).
+
+**Not proven yet** (STATUS lists each): a failover cluster drained and patched (W9: the cluster forms with its witness, the
+role didn't stay up on this host), the agent installed by a GPO startup script at boot (W10: the member can't reach its DC that
+early here), SharePoint and Exchange collectors (W11), the benchmark rule hand-checks on a VM (W18, W19), Server 2019 and
+Server 2022 stepping (W5), Windows 10 apply (needs non-evaluation media), Windows 11 Enterprise (no ISO), commercial-scanner
+benchmarks (owner registration).
+
 ### Added
 - **Servicing stack updates as a forward-only step** (DECISIONS 105): when Windows Update offers an old Windows Server only a servicing stack update, the server plans it as a forward-only job a person approves (`{"forward_only": true}`), and the agent installs it only if the package's own manifest says it's a servicing stack update. The cumulative is planned after it.
 

@@ -99,7 +99,7 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens the ref
 - Verify: `last_run_windc.json`. Closes round 1 T42 (DC) and T43 items. Deps: W7.
 
 ### W9: Two-node cluster (M)
-- [ ] File-share witness cluster; node drained, patched, resumed; the role stays online, checked from outside throughout
+- [ ] File-share witness cluster; node drained, patched, resumed; the role stays online, checked from outside throughout. **Deferred to 0.8** (2026-11-06): on the real lab the cluster forms (NIMCLUS) and its file-share witness comes online, but IIS as a clustered generic service stuck at Start Pending; the harness now clusters a client access point with IIS on both nodes, not yet run. A first try couldn't reach the DC from the node (LDAP "server is not operational"), which didn't repeat
 - [ ] Maintenance-window dispatch shown on the same run
 - Verify: `last_run_wincluster.json`. Closes round 1 cluster items. Deps: W7.
 
@@ -110,7 +110,7 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens the ref
 - Verify: `last_run_winremote_lab.json`, `last_run_wingpo.json`. Deps: W7.
 
 ### W11: SharePoint and Exchange collectors (S, time-box 1 day each)
-- [ ] One try each from evaluation media, binaries only if that's enough for the collector
+- [ ] One try each from evaluation media, binaries only if that's enough for the collector. **Deferred to 0.8** (PM call 2026-11-06: ship what's proven)
 - [ ] Collected version compared with what the host itself reports, or the reason it couldn't run recorded
 - Verify: run file or STATUS line. Deps: W7.
 
@@ -162,7 +162,7 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens the ref
 ### W18: Rule table and terms check (M)
 - [x] DISA and Microsoft terms read and quoted in DECISIONS, amending 64; if they stop redistribution, ship IDs only (04e5aad, DECISIONS 75: redistribution isn't established, so IDs, severity and setting facts only)
 - [x] One baseline (Server 2025 STIG): registry-based automated rules as data, evaluated server-side on agent facts; anything else reads "not assessed" (04e5aad: 85 of 291 rules automated, 156 after W19)
-- [ ] Real VM: results for 20 sampled rules checked by hand against the guest
+- [ ] Real VM: results for 20 sampled rules checked by hand against the guest. **Deferred to 0.8** (PM call 2026-11-06)
 - Verify: `last_run_winbaseline.json`. Files: `winconfig.py`, new data file, agent's closed list. Deps: none.
 
 ### W19: Audit policy and user rights (M)

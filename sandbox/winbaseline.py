@@ -17,7 +17,10 @@ import winproducts as wp
 
 from nimstead import winbaseline  # noqa: E402
 
-OUT = f.ROOT / "sandbox" / "last_run_winbaseline.json"
+# --judge-as="Windows 11": a host with no baseline of its own (a German Windows 10, for W19) read against one, to check that audit
+# policy and user rights arrive whole on a localised install; its pass/fail then says nothing about that OS
+JUDGE_AS = next((a.split("=", 1)[1] for a in sys.argv if a.startswith("--judge-as=")), None)
+OUT = f.ROOT / "sandbox" / ("last_run_winbaseline_judged_as.json" if JUDGE_AS else "last_run_winbaseline.json")
 SAMPLE = 20
 
 
@@ -38,7 +41,7 @@ def main(keep=False) -> int:
     f.copy_in(f.ROOT / "agent" / "nimstead_agent.py")
     inv = wp.collect()
     facts = inv.get("facts") or {}
-    result = winbaseline.evaluate(inv.get("os_name"), facts)
+    result = winbaseline.evaluate(f"{JUDGE_AS} (judged as, really {inv.get('os_name')})" if JUDGE_AS else inv.get("os_name"), facts)
     h.note("agent report", os_name=inv.get("os_name"), domain_role=facts.get("domain_role"), installation_type=facts.get("installation_type"),
            report_bytes=len(json.dumps(facts)), baseline_bytes=len(json.dumps(facts.get("baseline"))))
     checks = {"this OS has a baseline": result is not None, "the agent reported baseline values": bool(facts.get("baseline")),

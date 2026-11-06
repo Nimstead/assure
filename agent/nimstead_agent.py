@@ -32,7 +32,7 @@ import urllib.parse
 import urllib.request
 import zipfile
 
-AGENT_VERSION = "0.6.0"  # the server reads this line to flag outdated agents; bump on every agent change
+AGENT_VERSION = "0.6.2"  # the server reads this line to flag outdated agents; bump on every agent change
 # Ed25519 public keys (hex) allowed to sign releases (DECISIONS 31): primary (GitHub Actions) and offline backup.
 # The server only relays signed releases, so it can withhold an update but never forge one. Empty = never self-update.
 RELEASE_KEYS = ["a91fa6539c6c2593009fc71b1c1fba341b5685ba7bc97c127c068b1d732b21d2", "2438f2ccebab5bf26edf9e21a8aa8f09abd1861f52fbe0d6641b28b90f8b0e5a"]  # noqa: E501
@@ -1714,8 +1714,8 @@ class WinAppJob:
 
     def health(self, when):
         for u in self.units:
-            rc, out = ps(self.run, f"(Get-Service -Name '{u}' -ErrorAction Stop).Status")
-            self.step(f"{u} running {when}", ok=rc == 0 and out.strip() == "Running", output=out)
+            rc, out = ps(self.run, PS_SERVICE_UP.replace("%SVC%", u), timeout=SERVICE_UP_WAIT + 60)
+            self.step(f"{u} running {when}", ok=rc == 0 and out.strip().splitlines()[-1:] == ["Running"], output=out)
 
     def valid(self):
         p = self.pkgs[0] if len(self.pkgs) == 1 and isinstance(self.pkgs[0], dict) else {}
@@ -2067,6 +2067,13 @@ try {
 } finally { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue }
 """
 PS_HOTFIX = r"""[bool](Get-HotFix -Id 'KB%KB%' -ErrorAction SilentlyContinue)"""
+# A service that starts by itself is given time to after a restart: read once, a cluster node's ClusSvc was still starting
+# 15 s after boot, so a good update was rolled back and then the rollback read as failed (real cluster, 2026-11-06).
+# Anything else, or one still not running after the wait, is judged as it is.
+SERVICE_UP_WAIT = 300
+PS_SERVICE_UP = r"""$s = Get-Service -Name '%SVC%' -ErrorAction Stop; $end = (Get-Date).AddSeconds(%WAIT%)
+while ($s.Status -ne 'Running' -and "$($s.StartType)" -eq 'Automatic' -and (Get-Date) -lt $end) { Start-Sleep -Seconds 10; $s.Refresh() }
+$s.Status""".replace("%WAIT%", str(SERVICE_UP_WAIT))
 # Companions Windows ships as permanent with every Windows 11 cumulative update. Neither changes the OS build that
 # rollback restores, so like permanent Feature-on-Demand parts they stay after a rollback and are reported, not refused.
 PERMANENT_COMPANIONS = {("ServicingStackUpdate", "MainOS"), ("SafeOSDU", "WinRE")}
@@ -2107,6 +2114,9 @@ PS_REBOOT_PENDING = r"""
 PS_CRASHES = r"""
 $dn = (Get-Service -Name '%SVC%' -ErrorAction Stop).DisplayName
 $t = [DateTimeOffset]::FromUnixTimeSeconds(%SINCE%).LocalDateTime
+# from the last boot at the earliest: a slow host's shutdown ends services with 7031 too, and the update's restart is that shutdown
+# (a real cluster node's ClusSvc, twice); a crash on the new build after it boots still counts
+$boot = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime; if ($boot -gt $t) { $t = $boot }
 @(Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = 'Service Control Manager'; Id = 7031, 7034, 7024; StartTime = $t } -ErrorAction SilentlyContinue |
   Where-Object { $_.Properties[0].Value -eq $dn } | ForEach-Object { "event $($_.Id) at $($_.TimeCreated.ToString('s'))" }) -join "; "
 """
@@ -2294,7 +2304,7 @@ class WinJob:
         plan T13): a service that dies and is restarted by its recovery actions can read "Running" when sampled."""
         since = self.s.get("changed_at")
         for u in self.s["units"]:
-            rc, out = ps(self.run, f"(Get-Service -Name '{u}' -ErrorAction Stop).Status")
+            rc, out = ps(self.run, PS_SERVICE_UP.replace("%SVC%", u), timeout=SERVICE_UP_WAIT + 60)
             ok = rc == 0 and out.strip() == "Running"
             if ok and since:
                 rc2, crashes = ps(self.run, PS_CRASHES.replace("%SVC%", u).replace("%SINCE%", str(int(since))))

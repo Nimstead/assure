@@ -99,19 +99,19 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens the ref
 - Verify: `last_run_windc.json`. Closes round 1 T42 (DC) and T43 items. Deps: W7.
 
 ### W9: Two-node cluster (M)
-- [ ] File-share witness cluster; node drained, patched, resumed; the role stays online, checked from outside throughout. **Deferred to 0.8** (2026-11-06): on the real lab the cluster forms (NIMCLUS) and its file-share witness comes online, but IIS as a clustered generic service stuck at Start Pending; the harness now clusters a client access point with IIS on both nodes, not yet run. A first try couldn't reach the DC from the node (LDAP "server is not operational"), which didn't repeat
-- [ ] Maintenance-window dispatch shown on the same run
+- [x] File-share witness cluster; node drained, patched, resumed; the role stays online, checked from outside throughout. **Proven** (`last_run_wincluster.json`, 2026-11-06, agent 0.6.2): NIMCLUS with a file-share witness on the DC; each node drained, patched to 26100.33438 and resumed, never both at once; 617 probes from the DC, served by both nodes in turn, longest gap 14 s; both nodes up and the role online at the end. The runs found two agent bugs, fixed: ClusSvc read once 15 s before it was up after a restart (0.6.1 waits up to 5 minutes for a service that starts by itself), and the shutdown for the update itself ended ClusSvc with 7031, read as a crash (0.6.2 counts only events after the last boot); each had rolled back a good update. Harness fixes: IIS as an ordinary service with a client access point (as a clustered service it stuck at Start Pending), the NAT step, cluster facts from the database, the witness retried while the DC's server starts. NIMM1's guest control hung at its post-update restart on every run and was restarted cleanly by hand (logged in the run); its agent resumed and verified
+- [x] Maintenance-window dispatch shown on the same run: with the window closed both jobs stayed approved and said when they could start (Monday 00:00 UTC); opened, they went out one node at a time
 - Verify: `last_run_wincluster.json`. Closes round 1 cluster items. Deps: W7.
 
 ### W10: Agentless and GPO install across real hosts (M)
 - [x] `scan-remote` from one member to another: same packages and settings as that host's agent reports. **Proven** (`last_run_winremote_lab.json`, 2026-11-05): NIMM1 scanning NIMM2 by Kerberos reads the same 323 packages and 51 settings as NIMM2's own agent. The first run missed .NET Framework and Defender: over remoting on Server Core the fallback `Get-AppxPackage` throws an error `-ErrorAction` can't silence, which lost that whole block; it now costs only the Store list
 - [x] A host with remoting off or no admin right reads as such, not as clean: both exit 2 naming the host and why (a WinRM timeout, access denied), and no asset appears
-- [ ] `install.ps1` by GPO startup script enrols a member with no one signed in; documented in `docs/install.md`. **Not proven on this host** (`last_run_wingpo.json`, four runs 2026-11-05): the GPO applies and its startup script starts at boot, but at that point the member's NETLOGON can't yet reach the DC (about 20 s in), so Group Policy reads no SYSVOL and the script can't load; run as SYSTEM after boot the same script works. Not the clock (boot clocks were 8 h fast until fixed: `winlab.py utc-clock`) and not the network wait (120 s set, Windows still waited 30). The first run's one script start also hit a signature check that wasn't verifiable that early; install.ps1 now retries that for 2 minutes and fails at once on unsigned or changed files. Next: a faster host, or a scheduled-task GPO preference instead of a startup script
+- [x] `install.ps1` by GPO startup script enrols a member with no one signed in; documented in `docs/install.md`. **Proven by a GPO scheduled task instead** (`last_run_wingpo.json`, 2026-11-06): a Group Policy Preferences task (run as SYSTEM, at startup, 2-minute delay, action Update) enrolled NIMM2 3.7 minutes after boot with nobody signed in; the agent's task runs as SYSTEM, the member outside the OU didn't enrol, and a second boot didn't enrol again. A startup script never could on this host: it runs before the member reaches its DC (NETLOGON fails about 20 s in, four runs). Action Replace failed once: it recreates the task at boot, after the trigger. The how-to is in `docs/install.md`, with the note that the token in SYSVOL is readable domain-wide
 - Verify: `last_run_winremote_lab.json`, `last_run_wingpo.json`. Deps: W7.
 
 ### W11: SharePoint and Exchange collectors (S, time-box 1 day each)
-- [ ] One try each from evaluation media, binaries only if that's enough for the collector. **Deferred to 0.8** (PM call 2026-11-06: ship what's proven)
-- [ ] Collected version compared with what the host itself reports, or the reason it couldn't run recorded
+- [ ] One try each from evaluation media, binaries only if that's enough for the collector. **Blocked on the owner** (2026-11-06): no SharePoint Server or Exchange Server media on this machine; Microsoft's trial installers are several GB and downloading them is the owner's call. The domain lab they need (W7) now runs, so this is a download away
+- [x] Collected version compared with what the host itself reports, or the reason it couldn't run recorded. **Reason recorded**: not run, no install media (above). Until then both collectors stay tested with fakes only, as STATUS says
 - Verify: run file or STATUS line. Deps: W7.
 
 ### Checkpoint B
@@ -162,12 +162,12 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens the ref
 ### W18: Rule table and terms check (M)
 - [x] DISA and Microsoft terms read and quoted in DECISIONS, amending 64; if they stop redistribution, ship IDs only (04e5aad, DECISIONS 75: redistribution isn't established, so IDs, severity and setting facts only)
 - [x] One baseline (Server 2025 STIG): registry-based automated rules as data, evaluated server-side on agent facts; anything else reads "not assessed" (04e5aad: 85 of 291 rules automated, 156 after W19)
-- [ ] Real VM: results for 20 sampled rules checked by hand against the guest. **Deferred to 0.8** (PM call 2026-11-06)
+- [x] Real VM: results for 20 sampled rules checked by hand against the guest. **Done** (`last_run_winbaseline.json`, 2026-11-06, fresh Server 2025 Core): 156 automated rules, 51 pass, 79 fail, 26 not applicable, none not assessed. Of 20 sampled (user rights by SID, audit policy by subcategory GUID, registry values), the agent's reading equals the guest's own (secedit, auditpol, Get-ItemProperty) on all 20, and each verdict follows the rule as written. One to read again: WN25-UR-000130 fails on an `S-1-5-99-…` service identity stock Server 2025 grants SeImpersonatePrivilege, which the STIG may already allow for (not checked)
 - Verify: `last_run_winbaseline.json`. Files: `winconfig.py`, new data file, agent's closed list. Deps: none.
 
 ### W19: Audit policy and user rights (M)
 - [x] `auditpol` read by subcategory GUID and `secedit` rights by SID, so language doesn't matter (1df4712, DECISIONS 76)
-- [ ] Automated rule count rises; German VM agrees (with W2)
+- [x] Automated rule count rises; German VM agrees (with W2). Count: 85 to 156 of 291 (1df4712). **German install agrees** (`last_run_winbaseline_judged_as.json`, 2026-11-06): on a German Windows 10 LTSC 2021, read against the Windows 11 table with `--judge-as` (no German Server 2025 or Windows 11 image here), all 144 automated rules got a value (none not assessed), and of 20 sampled the agent's reading equals the guest's own on all 20, where auditpol answers "Erfolg", "Erfolg und Fehler" and "Keine Überwachung" and secedit names "Gast": the agent reads audit policy by GUID and rights by SID. Pass/fail there says nothing about Windows 10, which has no table
 - Deps: W18, W2.
 
 ### W20: Benchmark view and export (M)

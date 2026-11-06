@@ -1,0 +1,172 @@
+[
+  {
+    "step": "agent report",
+    "os_name": "Windows Server 2025 Standard Evaluation 24H2 (AMD64) build 10.0.26100.1742",
+    "domain_role": 2,
+    "installation_type": "Server Core",
+    "report_bytes": 7280,
+    "baseline_bytes": 4575
+  },
+  {
+    "step": "result",
+    "name": "DISA STIG for Windows Server 2025",
+    "version": "V1R4",
+    "automated": 156,
+    "manual": 135,
+    "pass": 51,
+    "fail": 79,
+    "not_assessed": 0,
+    "not_applicable": 26
+  },
+  {
+    "step": "rule WN25-UR-000060",
+    "status": "pass",
+    "expected": "held by nobody",
+    "agent_read": "nobody",
+    "guest_read": "nobody"
+  },
+  {
+    "step": "rule WN25-UR-000020",
+    "status": "pass",
+    "expected": "held by nobody",
+    "agent_read": "nobody",
+    "guest_read": "nobody"
+  },
+  {
+    "step": "rule WN25-UR-000070",
+    "status": "pass",
+    "expected": "held only by Administrators, Service, Local Service, Network Service",
+    "agent_read": "Local Service, Network Service, Administrators, Service",
+    "guest_read": "SeCreateGlobalPrivilege = *S-1-5-19,*S-1-5-20,*S-1-5-32-544,*S-1-5-6"
+  },
+  {
+    "step": "rule WN25-AU-000170",
+    "status": "fail",
+    "expected": "audits success",
+    "agent_read": "no auditing",
+    "guest_read": "NIMSTEAD-SBX,System,Group Membership,{0CCE9249-69AE-11D9-BED3-505054503030},No Auditing,"
+  },
+  {
+    "step": "rule WN25-UR-000130",
+    "status": "fail",
+    "expected": "held only by Administrators, Service, Local Service, Network Service",
+    "agent_read": "Local Service, Network Service, Administrators, Service, S-1-5-99-216390572-1995538116-3857911515-24",
+    "guest_read": "SeImpersonatePrivilege = *S-1-5-19,*S-1-5-20,*S-1-5-32-544,*S-1-5-6,*S-1-5-99-216390572-1995538116-3857911515-2404958512-2623887229"
+  },
+  {
+    "step": "rule WN25-SO-000110",
+    "status": "pass",
+    "expected": "1",
+    "agent_read": "1",
+    "guest_read": "1"
+  },
+  {
+    "step": "rule WN25-AU-000340",
+    "status": "pass",
+    "expected": "audits success",
+    "agent_read": "success and failure",
+    "guest_read": "NIMSTEAD-SBX,System,Other System Events,{0CCE9214-69AE-11D9-BED3-505054503030},Success and Failure,"
+  },
+  {
+    "step": "rule WN25-SO-000020",
+    "status": "pass",
+    "expected": "1",
+    "agent_read": "1",
+    "guest_read": "1"
+  },
+  {
+    "step": "rule WN25-AU-000300",
+    "status": "fail",
+    "expected": "audits success",
+    "agent_read": "no auditing",
+    "guest_read": "NIMSTEAD-SBX,System,Sensitive Privilege Use,{0CCE9228-69AE-11D9-BED3-505054503030},No Auditing,"
+  },
+  {
+    "step": "rule WN25-CC-000430",
+    "status": "fail",
+    "expected": "0",
+    "agent_read": "not set",
+    "guest_read": "not set"
+  },
+  {
+    "step": "rule WN25-CC-000490",
+    "status": "fail",
+    "expected": "0",
+    "agent_read": "not set",
+    "guest_read": "not set"
+  },
+  {
+    "step": "rule WN25-UR-000200",
+    "status": "pass",
+    "expected": "held only by Administrators",
+    "agent_read": "Administrators",
+    "guest_read": "SeProfileSingleProcessPrivilege = *S-1-5-32-544"
+  },
+  {
+    "step": "rule WN25-SO-000120",
+    "status": "fail",
+    "expected": "1 to 900",
+    "agent_read": "not set",
+    "guest_read": "not set"
+  },
+  {
+    "step": "rule WN25-UR-000160",
+    "status": "pass",
+    "expected": "held by nobody",
+    "agent_read": "nobody",
+    "guest_read": "nobody"
+  },
+  {
+    "step": "rule WN25-CC-000470",
+    "status": "fail",
+    "expected": "0",
+    "agent_read": "not set",
+    "guest_read": "not set"
+  },
+  {
+    "step": "rule WN25-SO-000320",
+    "status": "pass",
+    "expected": "1",
+    "agent_read": "1",
+    "guest_read": "1"
+  },
+  {
+    "step": "rule WN25-AU-000140",
+    "status": "fail",
+    "expected": "audits success",
+    "agent_read": "no auditing",
+    "guest_read": "NIMSTEAD-SBX,System,Process Creation,{0CCE922B-69AE-11D9-BED3-505054503030},No Auditing,"
+  },
+  {
+    "step": "rule WN25-SO-000230",
+    "status": "fail",
+    "expected": "1",
+    "agent_read": "0",
+    "guest_read": "0"
+  },
+  {
+    "step": "rule WN25-UR-000100",
+    "status": "pass",
+    "expected": "held only by Administrators",
+    "agent_read": "Administrators",
+    "guest_read": "SeDebugPrivilege = *S-1-5-32-544"
+  },
+  {
+    "step": "rule WN25-CC-000250",
+    "status": "fail",
+    "expected": "0 or 1",
+    "agent_read": "not set",
+    "guest_read": "not set"
+  },
+  {
+    "step": "CHECK BY HAND: each rule's status against guest_read above; a mismatch is a bug in the table or the collector"
+  },
+  {
+    "step": "RESULT: PASS (automatic checks only, the 20 rules still need reading)",
+    "checks": {
+      "this OS has a baseline": true,
+      "the agent reported baseline values": true,
+      "the report fits the server's limit": true
+    }
+  }
+]

@@ -1,0 +1,172 @@
+[
+  {
+    "step": "agent report",
+    "os_name": "Windows 10 Enterprise LTSC 2021 Evaluation 21H2 (AMD64) build 10.0.19044.1288",
+    "domain_role": 0,
+    "installation_type": "Client",
+    "report_bytes": 7578,
+    "baseline_bytes": 4646
+  },
+  {
+    "step": "result",
+    "name": "DISA STIG for Windows 11",
+    "version": "V2R11",
+    "automated": 144,
+    "manual": 113,
+    "pass": 53,
+    "fail": 87,
+    "not_assessed": 0,
+    "not_applicable": 4
+  },
+  {
+    "step": "rule WN11-SO-000265",
+    "status": "pass",
+    "expected": "1",
+    "agent_read": "1",
+    "guest_read": "1"
+  },
+  {
+    "step": "rule WN11-SO-000245",
+    "status": "fail",
+    "expected": "1",
+    "agent_read": "not set",
+    "guest_read": "not set"
+  },
+  {
+    "step": "rule WN11-SO-000270",
+    "status": "pass",
+    "expected": "1",
+    "agent_read": "1",
+    "guest_read": "1"
+  },
+  {
+    "step": "rule WN11-AU-000065",
+    "status": "pass",
+    "expected": "audits success",
+    "agent_read": "success",
+    "guest_read": "NIMSTEAD-SBX,System,Abmelden,{0CCE9216-69AE-11D9-BED3-505054503030},Erfolg,"
+  },
+  {
+    "step": "rule WN11-UR-000120",
+    "status": "pass",
+    "expected": "held only by Administrators",
+    "agent_read": "Administrators",
+    "guest_read": "SeLoadDriverPrivilege = *S-1-5-32-544"
+  },
+  {
+    "step": "rule WN11-UR-000025",
+    "status": "fail",
+    "expected": "held only by Administrators, Users",
+    "agent_read": "S-1-5-21-556126117-918380616-1143182932-501, Administrators, Users, S-1-5-32-551",
+    "guest_read": "SeInteractiveLogonRight = Gast,*S-1-5-32-544,*S-1-5-32-545,*S-1-5-32-551"
+  },
+  {
+    "step": "rule WN11-SO-000035",
+    "status": "pass",
+    "expected": "1",
+    "agent_read": "1",
+    "guest_read": "1"
+  },
+  {
+    "step": "rule WN11-AU-000135",
+    "status": "pass",
+    "expected": "audits failure",
+    "agent_read": "success and failure",
+    "guest_read": "NIMSTEAD-SBX,System,Andere Systemereignisse,{0CCE9214-69AE-11D9-BED3-505054503030},Erfolg und Fehler,"
+  },
+  {
+    "step": "rule WN11-CC-000350",
+    "status": "fail",
+    "expected": "0",
+    "agent_read": "not set",
+    "guest_read": "not set"
+  },
+  {
+    "step": "rule WN11-AU-000110",
+    "status": "fail",
+    "expected": "audits failure",
+    "agent_read": "no auditing",
+    "guest_read": "NIMSTEAD-SBX,System,Sensible Verwendung von Rechten,{0CCE9228-69AE-11D9-BED3-505054503030},Keine \ufffdberwachung,"
+  },
+  {
+    "step": "rule WN11-CC-000220",
+    "status": "pass",
+    "expected": "0, or not set",
+    "agent_read": "not set",
+    "guest_read": "not set"
+  },
+  {
+    "step": "rule WN11-CC-000290",
+    "status": "fail",
+    "expected": "3",
+    "agent_read": "not set",
+    "guest_read": "not set"
+  },
+  {
+    "step": "rule WN11-UR-000055",
+    "status": "pass",
+    "expected": "held by nobody",
+    "agent_read": "nobody",
+    "guest_read": "nobody"
+  },
+  {
+    "step": "rule WN11-SO-000040",
+    "status": "pass",
+    "expected": "1",
+    "agent_read": "1",
+    "guest_read": "1"
+  },
+  {
+    "step": "rule WN11-UR-000040",
+    "status": "pass",
+    "expected": "held only by Administrators",
+    "agent_read": "Administrators",
+    "guest_read": "SeCreatePagefilePrivilege = *S-1-5-32-544"
+  },
+  {
+    "step": "rule WN11-CC-000280",
+    "status": "fail",
+    "expected": "1",
+    "agent_read": "not set",
+    "guest_read": "not set"
+  },
+  {
+    "step": "rule WN11-SO-000190",
+    "status": "fail",
+    "expected": "2147483640",
+    "agent_read": "not set",
+    "guest_read": "not set"
+  },
+  {
+    "step": "rule WN11-AU-000050",
+    "status": "fail",
+    "expected": "audits success",
+    "agent_read": "no auditing",
+    "guest_read": "NIMSTEAD-SBX,System,Prozesserstellung,{0CCE922B-69AE-11D9-BED3-505054503030},Keine \ufffdberwachung,"
+  },
+  {
+    "step": "rule WN11-SO-000110",
+    "status": "pass",
+    "expected": "0",
+    "agent_read": "0",
+    "guest_read": "0"
+  },
+  {
+    "step": "rule WN11-00-000126",
+    "status": "fail",
+    "expected": "1",
+    "agent_read": "not set",
+    "guest_read": "not set"
+  },
+  {
+    "step": "CHECK BY HAND: each rule's status against guest_read above; a mismatch is a bug in the table or the collector"
+  },
+  {
+    "step": "RESULT: PASS (automatic checks only, the 20 rules still need reading)",
+    "checks": {
+      "this OS has a baseline": true,
+      "the agent reported baseline values": true,
+      "the report fits the server's limit": true
+    }
+  }
+]

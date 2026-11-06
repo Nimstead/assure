@@ -12,6 +12,8 @@ from datetime import UTC, datetime
 
 import winlab as lab_  # noqa: E402
 
+from nimstead.db import Asset, make_sessionmaker  # noqa: E402
+
 h = lab_.h
 CLUSTER, ROLE = "NIMCLUS", "NIMROLE"
 CLUSTER_IP, ROLE_IP = f"{lab_.SUBNET}.40", f"{lab_.SUBNET}.50"
@@ -30,7 +32,7 @@ Set-NetIPInterface -InterfaceIndex $nat.InterfaceIndex -Dhcp Disabled
 # turning DHCP off can already drop the leased address ("not found", real lab)
 Remove-NetIPAddress -InterfaceIndex $nat.InterfaceIndex -IPAddress $nat.IPAddress -Confirm:$false -ErrorAction SilentlyContinue
 Remove-NetRoute -InterfaceIndex $nat.InterfaceIndex -DestinationPrefix 0.0.0.0/0 -Confirm:$false -ErrorAction SilentlyContinue
-New-NetIPAddress -InterfaceIndex $nat.InterfaceIndex -IPAddress 10.0.2.16 -PrefixLength 24 -DefaultGateway 10.0.2.2 -RouteMetric 10 | Out-Null
+New-NetIPAddress -InterfaceIndex $nat.InterfaceIndex -IPAddress 10.0.2.16 -PrefixLength 24 -DefaultGateway 10.0.2.2 | Out-Null  # it has no -RouteMetric (real lab)
 Start-Sleep 5
 (Invoke-WebRequest %SERVER%/api/health -UseBasicParsing -TimeoutSec 30).StatusCode
 """
@@ -123,7 +125,11 @@ def build_cluster(lab: dict) -> None:
     h.note("cluster formed", name=CLUSTER, output=out[-300:])
     lab_.on(dc)
     h.guest(fill(WITNESS_GRANT, NETBIOS=lab_.NETBIOS, CLUSTER=CLUSTER))
-    _, out = lab_.as_user(n1, admin, fill(QUORUM_AND_ROLE, DC=dc["computer"], ROLE=ROLE, ROLE_IP=ROLE_IP))
+    for _ in range(6):  # the witness is the DC's share: right after the lab reset its server can still be starting (real lab)
+        rc, out = lab_.as_user(n1, admin, fill(QUORUM_AND_ROLE, DC=dc["computer"], ROLE=ROLE, ROLE_IP=ROLE_IP), check=False)
+        if rc == 0 or "paused or is in the process of being started" not in out:
+            break
+        time.sleep(30)
     h.note("witness and role", output=out[-300:])
     assert "Online" in out, out[-1000:]
 
@@ -143,7 +149,8 @@ def main() -> int:
         a = lab_.asset_named(api, v["computer"])
         assert api.patch(f"/api/assets/{a['id']}", json={"health_units": ["ClusSvc"], "maintenance_window": closed_window(datetime.now(UTC))}).status_code == 200
         assets.append(a)
-    groups = [a["facts"].get("cluster") for a in assets]
+    with make_sessionmaker(api.env["NIMSTEAD_DB"])() as s:  # the asset list sends only the facts it shows, and not this one
+        groups = [(s.get(Asset, a["id"]).facts or {}).get("cluster") for a in assets]
     h.note("the nodes as the server sees them", cluster=groups)
     checks = {"both nodes report the cluster": all(str(g).upper() == CLUSTER for g in groups)}
 

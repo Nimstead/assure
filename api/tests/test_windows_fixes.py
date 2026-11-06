@@ -26,7 +26,7 @@ class Host:
         self.reg, self.office = dict(reg or {}), "16.0.20430.20100"
         self.winget_cwds, self.c2r_drops = [], 0
 
-    def __call__(self, cmd, cwd=None):
+    def __call__(self, cmd, cwd=None, timeout=None):
         self.log.append(cmd)
         if cmd[0] == "powershell":
             s = cmd[-1]

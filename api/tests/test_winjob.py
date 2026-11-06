@@ -3,6 +3,7 @@ and Windows 11)."""
 
 import json
 import re
+import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -631,3 +632,15 @@ def test_a_power_cut_during_a_servicing_install_is_judged_by_the_kb(tmp_path):
         w.save()
         h.hotfix = there
         assert resume(tmp_path, h)["outcome"] == outcome
+
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="needs Windows PowerShell and a real service")
+def test_the_service_check_reads_a_running_service_and_gives_up_on_a_missing_one():
+    """The wait only applies to an automatic service still starting: one already running reads at once."""
+    rc, out = agent.ps(agent.sh, agent.PS_SERVICE_UP.replace("%SVC%", "EventLog"), timeout=60)
+    assert rc == 0 and out.strip().splitlines()[-1] == "Running"
+    rc, _ = agent.ps(agent.sh, agent.PS_SERVICE_UP.replace("%SVC%", "NoSuchServiceNimstead"), timeout=60)
+    assert rc != 0
+    rc, out = agent.ps(agent.sh, agent.PS_CRASHES.replace("%SVC%", "EventLog").replace("%SINCE%", "0"), timeout=60)
+    assert rc == 0, out  # from the last boot, not 1970: runs, and finds nothing for a service that hasn't crashed

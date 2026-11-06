@@ -27,15 +27,23 @@ Set-GPRegistryValue -Guid $g.Id -Key 'HKLM\Software\Nimstead\Lab' -ValueName gpo
 # "Specify startup policy processing wait time": the member's network took past the default 30 s at boot, so policy ran
 # without SYSVOL ("downloaded policies with error") and the startup script never started (real lab, 2026-11-05)
 Set-GPRegistryValue -Guid $g.Id -Key 'HKLM\Software\Policies\Microsoft\Windows\System' -ValueName GpNetworkStartTimeoutPolicyValue -Type DWord -Value 120 | Out-Null
-$root = "C:\Windows\SYSVOL\sysvol\$($d.DNSRoot)\Policies\{$($g.Id)}\Machine\Scripts"
-New-Item -ItemType Directory -Force "$root\Startup" | Out-Null
-Copy-Item C:\nimtest\nimstead-install.cmd, C:\nimtest\nimstead-install.ps1 "$root\Startup\"
-Set-Content "$root\scripts.ini" -Encoding Unicode -Value "[Startup]`r`n0CmdLine=nimstead-install.cmd`r`n0Parameters=`r`n"
-# the registry extension (from above) and the scripts extension, ascending by GUID as Windows requires; no cmdlet sets a startup script
+# A Group Policy Preferences scheduled task, not a startup script: a startup script runs during early boot, before this host's
+# member could reach its DC (NETLOGON failed ~20 s in, four runs, 2026-11-05), so it never started. The member receives the task with
+# its policy; at boot it runs as SYSTEM 2 minutes in, once the network is up, with nobody signed in. Action "U" (update), not "R":
+# replace deletes and recreates the task at every policy pass, boot included, and a task recreated after boot missed its trigger.
+$gpo = "C:\Windows\SYSVOL\sysvol\$($d.DNSRoot)\Policies\{$($g.Id)}\Machine"
+New-Item -ItemType Directory -Force "$gpo\Nimstead", "$gpo\Preferences\ScheduledTasks" | Out-Null
+Copy-Item C:\nimtest\nimstead-install.ps1 "$gpo\Nimstead\"
+$script = "\\$($d.DNSRoot)\SysVol\$($d.DNSRoot)\Policies\{$($g.Id)}\Machine\Nimstead\nimstead-install.ps1"
+$uid = "{$([guid]::NewGuid().ToString().ToUpper())}"; $now = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
+Set-Content "$gpo\Preferences\ScheduledTasks\ScheduledTasks.xml" -Encoding UTF8 -Value @"
+<?xml version="1.0" encoding="utf-8"?>
+<ScheduledTasks clsid="{CC63F200-7309-4ba0-B154-A71CD118DBCC}"><TaskV2 clsid="{D8896631-B747-47a7-84A6-C155337F3BC8}" name="Nimstead install" image="0" changed="$now" uid="$uid"><Properties action="U" name="Nimstead install" runAs="NT AUTHORITY\System" logonType="S4U"><Task version="1.2"><RegistrationInfo><Author>Nimstead</Author><Description>Installs the Nimstead agent once</Description></RegistrationInfo><Principals><Principal id="Author"><UserId>NT AUTHORITY\System</UserId><LogonType>S4U</LogonType><RunLevel>HighestAvailable</RunLevel></Principal></Principals><Settings><IdleSettings><Duration>PT10M</Duration><WaitTimeout>PT1H</WaitTimeout><StopOnIdleEnd>false</StopOnIdleEnd><RestartOnIdle>false</RestartOnIdle></IdleSettings><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy><DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries><StopIfGoingOnBatteries>false</StopIfGoingOnBatteries><AllowHardTerminate>true</AllowHardTerminate><StartWhenAvailable>true</StartWhenAvailable><AllowStartOnDemand>true</AllowStartOnDemand><Enabled>true</Enabled><Hidden>false</Hidden><ExecutionTimeLimit>PT1H</ExecutionTimeLimit><Priority>7</Priority></Settings><Triggers><BootTrigger><Enabled>true</Enabled><Delay>PT2M</Delay></BootTrigger></Triggers><Actions Context="Author"><Exec><Command>cmd.exe</Command><Arguments>/c powershell -NoProfile -ExecutionPolicy Bypass -File "$script" &gt;&gt; C:\Windows\Temp\nimstead-gpo.log 2&gt;&amp;1</Arguments></Exec></Actions></Task></Properties></TaskV2></ScheduledTasks>
+"@
+# the registry extension (from above) and the Preferences scheduled-tasks one, with its tool, ascending by GUID as Windows requires
 Set-ADObject "CN={$($g.Id)},CN=Policies,CN=System,$($d.DistinguishedName)" -Replace @{
-  gPCMachineExtensionNames = '[{35378EAC-683F-11D2-A89A-00C04FBBCFA2}{D02B1F72-3407-48AE-BA88-E8213C6761F1}][{42B5FAAE-6536-11D2-AE5A-0000F87571E3}{40B6664F-4972-11D1-A7CA-0000F87571E3}]' }
+  gPCMachineExtensionNames = '[{00000000-0000-0000-0000-000000000000}{CAB54552-DEEA-4691-817E-ED4A4D1AFC72}][{35378EAC-683F-11D2-A89A-00C04FBBCFA2}{D02B1F72-3407-48AE-BA88-E8213C6761F1}][{AADCED64-746C-4633-A97C-D61349046527}{CAB54552-DEEA-4691-817E-ED4A4D1AFC72}]' }
 """
-STARTUP_CMD = r'powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0nimstead-install.ps1" > C:\Windows\Temp\nimstead-gpo.log 2>&1'
 
 
 def startup_script(server: str, token: str) -> str:
@@ -64,7 +72,6 @@ def main() -> int:
     api = lab_.Api(msrc=False)
 
     lab_.on(dc)
-    write_guest(r"C:\nimtest\nimstead-install.cmd", STARTUP_CMD)
     write_guest(r"C:\nimtest\nimstead-install.ps1", startup_script(lab_.SERVER, api.token))
     h.guest(BUILD_GPO.replace("%COMPUTER%", m["computer"]), timeout=900)
     h.note("GPO built and linked", ou="NimGPO", computer=m["computer"])
@@ -74,7 +81,7 @@ def main() -> int:
     # a DC just back from its snapshot can't serve SYSVOL yet: the member's boot then "downloaded policies with error" and skipped
     # the GPO (real lab). Wait until the member reads it, as an admin would before restarting machines for it
     end = time.time() + 15 * 60
-    while "NimsteadAgent" not in h.guest("gpupdate /target:computer /force | Out-Null; gpresult /r /scope computer", timeout=600, check=False):
+    while "Nimstead install" not in h.guest("gpupdate /target:computer /force | Out-Null; Get-ScheduledTask -TaskName 'Nimstead install' -ErrorAction SilentlyContinue | ForEach-Object TaskName", timeout=600, check=False):
         assert time.time() < end, f"{m['computer']} still doesn't apply the GPO after 15 minutes"
         time.sleep(30)
     h.note("member applies the GPO", computer=m["computer"])
@@ -90,7 +97,9 @@ def main() -> int:
 
     lab_.winvm.wait_ready(m["vm"], minutes=30)
     quser = h.guest("quser 2>&1 | Out-String", check=False)
-    principal = h.guest(f"(Get-ScheduledTask -TaskName '{TASK}').Principal.UserId", check=False).strip()
+    # install.ps1 enrols first and registers the agent's task after: give it time before reading
+    principal = h.guest(f"$e = (Get-Date).AddMinutes(5); while (-not (Get-ScheduledTask -TaskName '{TASK}' -ErrorAction SilentlyContinue) -and (Get-Date) -lt $e) {{ Start-Sleep 10 }}; "
+                        f"(Get-ScheduledTask -TaskName '{TASK}').Principal.UserId", check=False, timeout=420).strip()
     log = h.guest(r"Get-Content C:\Windows\Temp\nimstead-gpo.log -Raw -ErrorAction SilentlyContinue", check=False)
     h.note("on the member after enrolling", quser=quser.strip()[-200:], task_runs_as=principal, startup_log=log[-400:])
     checks = {"enrolled with nobody signed in": nobody_signed_in(quser), "agent's task runs as SYSTEM": principal == "SYSTEM",

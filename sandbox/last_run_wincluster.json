@@ -1,0 +1,195 @@
+[
+  {
+    "step": "lab reset to its snapshot",
+    "vms": [
+      "NIMDC1",
+      "NIMM1",
+      "NIMM2"
+    ]
+  },
+  {
+    "step": "feeds",
+    "msrc": {
+      "documents": 3,
+      "skipped_documents": 0,
+      "inserted": 48999,
+      "updated": 0,
+      "skipped": 0
+    }
+  },
+  {
+    "step": "second node's NAT address moved",
+    "health": "200"
+  },
+  {
+    "step": "cluster formed",
+    "name": "NIMCLUS",
+    "output": ""
+  },
+  {
+    "step": "witness and role",
+    "output": "Online\nFile Share Witness\n"
+  },
+  {
+    "step": "install.ps1 ran",
+    "vm": "nimstead-sbx-win-010ec4"
+  },
+  {
+    "step": "install.ps1 ran",
+    "vm": "nimstead-sbx-win-74d14f"
+  },
+  {
+    "step": "the nodes as the server sees them",
+    "cluster": [
+      "NIMCLUS",
+      "NIMCLUS"
+    ]
+  },
+  {
+    "step": "role answering from outside",
+    "first": [
+      [
+        1793941382,
+        "NIMM1"
+      ],
+      [
+        1793941387,
+        "NIMM1"
+      ],
+      [
+        1793941392,
+        "NIMM1"
+      ]
+    ]
+  },
+  {
+    "step": "window closed: nothing handed out",
+    "statuses": [
+      "approved",
+      "approved"
+    ],
+    "until": [
+      "2026-11-09T00:00:00Z",
+      "2026-11-09T00:00:00Z"
+    ]
+  },
+  {
+    "step": "window opened"
+  },
+  {
+    "step": "jobs",
+    "NIMM1": "approved",
+    "NIMM2": "approved"
+  },
+  {
+    "step": "jobs",
+    "NIMM1": "dispatched",
+    "NIMM2": "approved"
+  },
+  {
+    "step": "jobs",
+    "NIMM1": "verifying",
+    "NIMM2": "approved"
+  },
+  {
+    "step": "jobs",
+    "NIMM1": "succeeded",
+    "NIMM2": "approved"
+  },
+  {
+    "step": "jobs",
+    "NIMM1": "succeeded",
+    "NIMM2": "dispatched"
+  },
+  {
+    "step": "jobs",
+    "NIMM1": "succeeded",
+    "NIMM2": "verifying"
+  },
+  {
+    "step": "jobs",
+    "NIMM1": "succeeded",
+    "NIMM2": "succeeded"
+  },
+  {
+    "step": "both nodes' jobs finished",
+    "statuses": [
+      "succeeded",
+      "succeeded"
+    ],
+    "together": [],
+    "last_steps": [
+      [
+        [
+          "new cumulative package identified",
+          true
+        ],
+        [
+          "reboot required to finish",
+          true
+        ],
+        [
+          "build updated",
+          true
+        ],
+        [
+          "ClusSvc running after change",
+          true
+        ],
+        [
+          "cluster node resumed",
+          true
+        ]
+      ],
+      [
+        [
+          "new cumulative package identified",
+          true
+        ],
+        [
+          "reboot required to finish",
+          true
+        ],
+        [
+          "build updated",
+          true
+        ],
+        [
+          "ClusSvc running after change",
+          true
+        ],
+        [
+          "cluster node resumed",
+          true
+        ]
+      ]
+    ]
+  },
+  {
+    "step": "role from outside, throughout",
+    "samples": 617,
+    "down": 2,
+    "longest_outage_seconds": 14,
+    "served_by": [
+      "NIMM1",
+      "NIMM2"
+    ]
+  },
+  {
+    "step": "cluster at the end",
+    "state": "NIMM1=Up NIMM2=Up\nOnline\nNIMM1"
+  },
+  {
+    "step": "RESULT: PASS",
+    "checks": {
+      "both nodes report the cluster": true,
+      "window closed: jobs stayed approved and say when they can start": true,
+      "both jobs succeeded": true,
+      "never both nodes at once": true,
+      "each node was drained and resumed": true,
+      "role stayed online from outside (longest gap under 90 s)": true,
+      "the role really moved between the nodes": true,
+      "both nodes up and the role online at the end": true
+    }
+  }
+]

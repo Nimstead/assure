@@ -126,7 +126,7 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens the ref
 
 ### W13: Batches to 200 apps (S each, repeated)
 - [ ] Each batch ≤ 25, own run file and commit; every app labelled proven, or matched from a real name only, in UI and STATUS
-- [ ] Stop early if the next batches have under 20 NVD CVEs each: say so rather than pad the count
+- [x] Stop early if the next batches have under 20 NVD CVEs each: say so rather than pad the count. **Stopped at 105** (batch 8, 2026-11-06, `last_run_winapps_batch8.json` and `_retry.json` on a Windows 11 VM): the proposer's 15 winget candidates with 20 or more CVEs, each installed old and upgraded, with the agent's own reading of every new Uninstall entry recorded and the rows written from those names. 5 accepted: GStreamer, SiYuan, Unbound and Erlang/OTP proven old to new, Suricata identified at its installed version (winget didn't upgrade it). 10 out, each with its reason in `winapps.py`: the Wazuh and Zabbix agents, Devolutions Server Console, Adobe Connect, Synology's client and Absolute's client share an NVD product with a server, so its CVEs would land on the client; GPAC registers nothing; JT2Go, Redis and Acronis have one winget version. Every candidate left below them has under 20 CVEs, so the next batch would pad. 200 isn't reached: great condition 5 stays not met. Found on the way: a hung Zabbix MSI held Windows Installer's lock and failed the next four installs, retried after stopping it
 - Deps: W12.
 
 ### W14: Full noise review (M)
@@ -229,7 +229,8 @@ Every unchecked item above, by why it's open:
 - **Blocked by evaluation media**: W2's German rollback and W4's apply by the task (the licence service powers the VM off an hour after boot); W4's oracle and .NET proofs wait on the same. Needs licensed or IoT LTSC media. W6 Windows 11 Enterprise: its evaluation ISO sits behind Microsoft's registration form, which asks for the owner's details
 - **Waiting on the owner**: Checkpoint A (W3's gaps reviewed with you); the items below
 - **W3** stopped at its short look (DECISIONS 110): the reference scanner's free feed has no Windows patch tests after October 2025, so which scanner to compare with is the owner's call
-- **Not started, real work, unblocked**: W13 app batches to 200 (each batch a VM run of several hours); W1's 50-app VM screenshot and axe check; Checkpoint C (needs W13); the engine track's last three (routing and AD group edges, findings through the engine, its benchmark run, which needs W3)
+- **W13** stopped at 105 apps by its own rule (no winget candidates with 20 or more CVEs left that map); 
+- **Not started, real work, unblocked**: W1's 50-app VM screenshot and axe check; Checkpoint C (needs W13); the engine track's last three (routing and AD group edges, findings through the engine, its benchmark run, which needs W3)
 
 ## Needs the owner
 - [ ] Review this plan; answer its two open questions

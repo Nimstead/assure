@@ -1,0 +1,298 @@
+{
+  "result": "FAIL",
+  "vm": "nimstead-sbx-win-beb53f",
+  "proven": [],
+  "apps": {
+    "GPAC.GPAC": {
+      "proven": false,
+      "installed": "26.02",
+      "old": [],
+      "new": [],
+      "entries_old": [
+        [
+          "Microsoft Visual C++ 2015 Redistributable (x64) - 14.0.23026",
+          "Microsoft Corporation",
+          "14.0.23026.0"
+        ]
+      ],
+      "entries_new": [
+        [
+          "Microsoft Visual C++ 2015 Redistributable (x64) - 14.0.23026",
+          "Microsoft Corporation",
+          "14.0.23026.0"
+        ]
+      ]
+    },
+    "OISF.Suricata": {
+      "proven": false,
+      "installed": "6.0.12",
+      "old": [],
+      "new": [],
+      "entries_old": [
+        [
+          "Suricata IDS/IPS 6.0.12-1-64bit",
+          "Open Information Security Foundation",
+          "6.0.12"
+        ]
+      ],
+      "entries_new": [
+        [
+          "Suricata IDS/IPS 6.0.12-1-64bit",
+          "Open Information Security Foundation",
+          "6.0.12"
+        ]
+      ]
+    },
+    "gstreamerproject.gstreamer": {
+      "proven": false,
+      "installed": "1.28.7",
+      "old": [],
+      "new": [],
+      "entries_old": [
+        [
+          "GStreamer 1.0 (MSVC x86_64) version 1.28.7",
+          "GStreamer Project",
+          "1.28.7"
+        ],
+        [
+          "Microsoft Visual C++ 2015-2022 Redistributable (x64) - 14.44.35211",
+          "Microsoft Corporation",
+          "14.44.35211.0"
+        ]
+      ],
+      "entries_new": [
+        [
+          "GStreamer 1.0 (MSVC x86_64) version 1.28.8",
+          "GStreamer Project",
+          "1.28.8"
+        ],
+        [
+          "Microsoft Visual C++ 2015-2022 Redistributable (x64) - 14.44.35211",
+          "Microsoft Corporation",
+          "14.44.35211.0"
+        ]
+      ]
+    },
+    "Wazuh.WazuhAgent": {
+      "proven": false,
+      "installed": "4.14.9",
+      "old": [],
+      "new": [],
+      "entries_old": [
+        [
+          "Wazuh Agent",
+          "Wazuh, Inc.",
+          "4.14.9"
+        ]
+      ],
+      "entries_new": [
+        [
+          "Wazuh Agent",
+          "Wazuh, Inc.",
+          "4.14.10"
+        ]
+      ]
+    },
+    "Zabbix.Agent.2": {
+      "proven": false,
+      "installed": "7.4.6",
+      "old": [],
+      "new": [],
+      "entries_old": [
+        [
+          "Zabbix Agent 2 (64-bit)",
+          "Zabbix SIA",
+          "7.4.6.2400"
+        ]
+      ],
+      "entries_new": [
+        [
+          "Zabbix Agent 2 (64-bit)",
+          "Zabbix SIA",
+          "7.4.6.2400"
+        ]
+      ]
+    },
+    "B3log.SiYuan": {
+      "proven": false,
+      "why": "winget couldn't install 3.8.8: \n   - Waiting for another install/uninstall to complete...\n   \\ Waiting for another install/uninstall to complete...\n   | Waiting for another install/uninstall to complete...\n   / Cancelling operation"
+    },
+    "Absolute.SecureAccessClient": {
+      "proven": false,
+      "why": "winget couldn't install 14.56.22794: \n   - Waiting for another install/uninstall to complete...\n   \\ Waiting for another install/uninstall to complete...\n   | Waiting for another install/uninstall to complete...\n   / Cancelling operation"
+    },
+    "NLnetLabs.Unbound": {
+      "proven": false,
+      "why": "winget couldn't install 1.26.0: timed out after 1800 s"
+    },
+    "Erlang.ErlangOTP": {
+      "proven": false,
+      "why": "winget couldn't install 29.1.1: timed out after 1800 s"
+    },
+    "Siemens.JT2Go": {
+      "proven": false,
+      "why": "winget has only one version of it"
+    },
+    "Redis.Redis": {
+      "proven": false,
+      "why": "winget has only one version of it"
+    },
+    "Synology.SurveillanceStationClient": {
+      "proven": false,
+      "installed": "2.2.2.2596",
+      "old": [],
+      "new": [],
+      "entries_old": [
+        [
+          "Synology Surveillance Station Client",
+          "Synology",
+          "2.2.2.2596"
+        ]
+      ],
+      "entries_new": [
+        [
+          "Synology Surveillance Station Client",
+          "Synology",
+          "2.2.3.2598"
+        ]
+      ]
+    },
+    "Adobe.Connect": {
+      "proven": false,
+      "installed": "2026.8.51",
+      "old": [],
+      "new": [],
+      "entries_old": [
+        [
+          "Adobe Connect",
+          "Adobe Systems Inc.",
+          "2026.8.51.64"
+        ]
+      ],
+      "entries_new": [
+        [
+          "Adobe Connect",
+          "Adobe Systems Inc.",
+          "2026.9.61.64"
+        ]
+      ]
+    },
+    "Devolutions.ServerConsole": {
+      "proven": false,
+      "installed": "2026.3.6.0",
+      "old": [],
+      "new": [],
+      "entries_old": [
+        [
+          "Devolutions Server Console",
+          "Devolutions inc.",
+          "2026.3.6.0"
+        ],
+        [
+          "Microsoft Windows Desktop Runtime 10.0.14 (x64)",
+          "Microsoft Corporation",
+          "10.0.14.50000"
+        ]
+      ],
+      "entries_new": [
+        [
+          "Devolutions Server Console",
+          "Devolutions inc.",
+          "2026.3.12.0"
+        ],
+        [
+          "Microsoft Windows Desktop Runtime 10.0.14 (x64)",
+          "Microsoft Corporation",
+          "10.0.14.50000"
+        ]
+      ]
+    },
+    "Acronis.CyberProtectHomeOffice": {
+      "proven": false,
+      "why": "winget has only one version of it"
+    }
+  },
+  "steps": [
+    {
+      "step": "VM ready",
+      "python": "C:\\nimtest\\rt\\python.exe",
+      "winget": "v1.11.510"
+    },
+    {
+      "step": "NOT identified as expected",
+      "app": "GPAC.GPAC",
+      "old": [],
+      "new": []
+    },
+    {
+      "step": "NOT identified as expected",
+      "app": "OISF.Suricata",
+      "old": [],
+      "new": []
+    },
+    {
+      "step": "NOT identified as expected",
+      "app": "gstreamerproject.gstreamer",
+      "old": [],
+      "new": []
+    },
+    {
+      "step": "NOT identified as expected",
+      "app": "Wazuh.WazuhAgent",
+      "old": [],
+      "new": []
+    },
+    {
+      "step": "NOT identified as expected",
+      "app": "Zabbix.Agent.2",
+      "old": [],
+      "new": []
+    },
+    {
+      "step": "not installable",
+      "app": "B3log.SiYuan"
+    },
+    {
+      "step": "not installable",
+      "app": "Absolute.SecureAccessClient"
+    },
+    {
+      "step": "not installable",
+      "app": "NLnetLabs.Unbound"
+    },
+    {
+      "step": "not installable",
+      "app": "Erlang.ErlangOTP"
+    },
+    {
+      "step": "one version only",
+      "app": "Siemens.JT2Go"
+    },
+    {
+      "step": "one version only",
+      "app": "Redis.Redis"
+    },
+    {
+      "step": "NOT identified as expected",
+      "app": "Synology.SurveillanceStationClient",
+      "old": [],
+      "new": []
+    },
+    {
+      "step": "NOT identified as expected",
+      "app": "Adobe.Connect",
+      "old": [],
+      "new": []
+    },
+    {
+      "step": "NOT identified as expected",
+      "app": "Devolutions.ServerConsole",
+      "old": [],
+      "new": []
+    },
+    {
+      "step": "one version only",
+      "app": "Acronis.CyberProtectHomeOffice"
+    }
+  ]
+}

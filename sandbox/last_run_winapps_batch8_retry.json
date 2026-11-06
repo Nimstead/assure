@@ -1,0 +1,118 @@
+{
+  "result": "FAIL",
+  "vm": "nimstead-sbx-win-beb53f",
+  "proven": [],
+  "apps": {
+    "B3log.SiYuan": {
+      "proven": false,
+      "installed": "3.8.8",
+      "old": [],
+      "new": [],
+      "entries_old": [
+        [
+          "SiYuan 3.8.8",
+          "Yunnan Liandi Technology Co., Ltd.",
+          "3.8.8"
+        ]
+      ],
+      "entries_new": [
+        [
+          "SiYuan 3.8.9",
+          "Yunnan Liandi Technology Co., Ltd.",
+          "3.8.9"
+        ]
+      ]
+    },
+    "Absolute.SecureAccessClient": {
+      "proven": false,
+      "installed": "14.56.22794",
+      "old": [],
+      "new": [],
+      "entries_old": [
+        [
+          "Absolute Secure Access Client",
+          "Absolute Software Corporation",
+          "14.56.22794"
+        ]
+      ],
+      "entries_new": [
+        [
+          "Absolute Secure Access Client",
+          "Absolute Software Corporation",
+          "14.60.28244"
+        ]
+      ]
+    },
+    "NLnetLabs.Unbound": {
+      "proven": false,
+      "installed": "1.26.0",
+      "old": [],
+      "new": [],
+      "entries_old": [
+        [
+          "Unbound",
+          "NLnet Labs",
+          "1.26.0"
+        ]
+      ],
+      "entries_new": [
+        [
+          "Unbound",
+          "NLnet Labs",
+          "1.26.1"
+        ]
+      ]
+    },
+    "Erlang.ErlangOTP": {
+      "proven": false,
+      "installed": "29.1.1",
+      "old": [],
+      "new": [],
+      "entries_old": [
+        [
+          "Erlang OTP 29.1.1 (17.1)",
+          "Ericsson AB",
+          "29.1.1"
+        ]
+      ],
+      "entries_new": [
+        [
+          "Erlang OTP 29.1.2 (17.1.1)",
+          "Ericsson AB",
+          "29.1.2"
+        ]
+      ]
+    }
+  },
+  "steps": [
+    {
+      "step": "VM ready",
+      "python": "C:\\nimtest\\rt\\python.exe",
+      "winget": "v1.29.380"
+    },
+    {
+      "step": "NOT identified as expected",
+      "app": "B3log.SiYuan",
+      "old": [],
+      "new": []
+    },
+    {
+      "step": "NOT identified as expected",
+      "app": "Absolute.SecureAccessClient",
+      "old": [],
+      "new": []
+    },
+    {
+      "step": "NOT identified as expected",
+      "app": "NLnetLabs.Unbound",
+      "old": [],
+      "new": []
+    },
+    {
+      "step": "NOT identified as expected",
+      "app": "Erlang.ErlangOTP",
+      "old": [],
+      "new": []
+    }
+  ]
+}

@@ -110,8 +110,8 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens the ref
 - Verify: `last_run_winremote_lab.json`, `last_run_wingpo.json`. Deps: W7.
 
 ### W11: SharePoint and Exchange collectors (S, time-box 1 day each)
-- [ ] One try each from evaluation media, binaries only if that's enough for the collector. **Deferred to 0.8** (PM call 2026-11-06: ship what's proven)
-- [ ] Collected version compared with what the host itself reports, or the reason it couldn't run recorded
+- [ ] One try each from evaluation media, binaries only if that's enough for the collector. **Blocked on the owner** (2026-11-06): no SharePoint Server or Exchange Server media on this machine; Microsoft's trial installers are several GB and downloading them is the owner's call. The domain lab they need (W7) now runs, so this is a download away
+- [x] Collected version compared with what the host itself reports, or the reason it couldn't run recorded. **Reason recorded**: not run, no install media (above). Until then both collectors stay tested with fakes only, as STATUS says
 - Verify: run file or STATUS line. Deps: W7.
 
 ### Checkpoint B

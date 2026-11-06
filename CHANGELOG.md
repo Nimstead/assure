@@ -4,7 +4,7 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
-## [0.7.0] - unreleased (preview)
+## [0.7.0] - 2026-11-06 (preview)
 
 Windows round 2 (tasks/plan-windows-round-2.md; DECISIONS 102-108): proofs on real Windows servers and a real Active Directory
 domain, and the bugs they found. **Agent 0.6.0.** No database migration.

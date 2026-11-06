@@ -19,15 +19,18 @@ from nimstead.db import DirectoryComputer, make_sessionmaker  # noqa: E402
 
 h = lab_.h
 PLANT = r"""$ErrorActionPreference = 'Stop'
-$recent = [int64](Get-Date).AddDays(-1).ToFileTimeUtc(); $old = [int64](Get-Date).AddDays(-90).ToFileTimeUtc()
-New-ADComputer NIM-STALE -Enabled $true; Set-ADComputer NIM-STALE -Replace @{ lastLogonTimestamp = $old }
-New-ADComputer NIM-DISABLED -Enabled $false; Set-ADComputer NIM-DISABLED -Replace @{ lastLogonTimestamp = $recent }
+# lastLogonTimestamp is the SAM's and can't be written (real DC: "owned by the Security Accounts Manager"), so the stale one is a
+# computer that never logged on: no timestamp, which the server's 30-day rule leaves out as it does one last seen 90 days ago
+New-ADComputer NIM-STALE -Enabled $true
+New-ADComputer NIM-DISABLED -Enabled $false
 """
 OPT_IN = r"""$ErrorActionPreference = 'Stop'
 $p = 'C:\ProgramData\Nimstead\agent.json'; $c = Get-Content $p -Raw | ConvertFrom-Json; $c.ad_discovery = $true
 Set-Content $p -Encoding ascii -Value ($c | ConvertTo-Json -Depth 5)
 """
-HEALTH = r"""$s = @('NTDS', 'DNS', 'Netlogon', 'KDC') | ForEach-Object { "$((Get-Service $_).Status)" }
+# a sync first: showrepl keeps the failures of attempts made while the other DC was restarting until the next one (real lab)
+HEALTH = r"""repadmin /syncall /AdeP | Out-Null
+$s = @('NTDS', 'DNS', 'Netlogon', 'KDC') | ForEach-Object { "$((Get-Service $_).Status)" }
 $f = @(repadmin /showrepl /csv | ConvertFrom-Csv | Where-Object { [int]$_.'Number of Failures' -ne 0 }).Count
 ConvertTo-Json -Compress -InputObject @{ services = @($s); repl_failures = $f }
 """
@@ -87,6 +90,9 @@ def main() -> int:
     lab_.on(dc1)
     h.guest(PLANT)
     h.guest(OPT_IN)
+    # an admin names the one host whose directory the server takes (DECISIONS 102): the agent's opt-in alone is refused
+    src = lab_.asset_named(api, dc1["computer"])
+    assert api.patch(f"/api/assets/{src['id']}", json={"directory_source": True}).status_code == 200
     rc, out = lab_.agent_system("report", "discover")
     h.note("report with AD discovery on", rc=rc, output=out[-400:])
     with make_sessionmaker(api.env["NIMSTEAD_DB"])() as s:

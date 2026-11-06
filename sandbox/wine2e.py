@@ -50,7 +50,9 @@ def guest(cmd, timeout=3600, check=True):
         # Windows 11 finishes a cumulative update with a second restart, which can land between two commands (seen
         # for real: empty output, then "Guest Additions are not ready"); wait it out, cold-booting a firmware hang
         time.sleep(15)
-        winvm.wait_ready(NAME, minutes=30)
+        # 60: wait_ready restarts a booted Windows whose guest control hung only after 20 min, and a new domain
+        # controller's boot after that took longer than the 10 min a 30-min wait left (real lab, 2026-11-05)
+        winvm.wait_ready(NAME, minutes=60)
     if check and rc != 0:
         raise RuntimeError(f"guest command failed ({rc}): {cmd[:200]}\n{out[-2000:]}")
     return out
@@ -201,6 +203,12 @@ def main(keep=False) -> int:
         import winoracle
         table = winoracle.run(as_system, guest, api.get("/api/findings").json())
         note("oracle: Windows Update vs Nimstead", **{k: v for k, v in table.items()})
+        if "--findings-only" in sys.argv:  # the noise review's hand-check: everything the first report opened, as winproducts writes it
+            (ROOT / "sandbox" / OUT.replace(".json", "_findings.json")).write_text(json.dumps(sorted(
+                ([x["ecosystem"], x["package"], x["vuln_id"], x.get("installed_version"), x.get("fixed_version"), x.get("priority")]
+                 for x in api.get("/api/findings", params={"limit": 5000}).json()), key=str), indent=0))
+            note("RESULT: PASS")
+            return 0
         guest("Disable-ScheduledTask -TaskName 'Nimstead agent' | Out-Null")  # keep it out of the way for the rollback test
 
         def plan_and_get_job():
@@ -312,7 +320,8 @@ def main(keep=False) -> int:
                 note("aborted", error=(j["error"] or "")[:600], planned=step and step["summary"], packages=step and step["packages"])
                 if not step:
                     break
-                assert api.post(f"/api/remediation/jobs/{step['id']}/approve").status_code == 200
+                # a servicing step can't be undone: approved as forward-only, as a person would (DECISIONS 105)
+                assert api.post(f"/api/remediation/jobs/{step['id']}/approve", json={"forward_only": True} if step.get("forward_only") else None).status_code == 200
                 jid = step["id"]
                 continue
             winvm.wait_ready(NAME, minutes=30)
@@ -360,7 +369,7 @@ def main(keep=False) -> int:
             note("VM destroyed", name=NAME)
         elif not passed:
             note("VM kept for inspection", name=NAME, destroy=f"uv run python ../sandbox/winvm.py destroy {NAME}")
-        mode = "".join(f"_{m}" for m in ("proxy", "signed-in") if f"--{m}" in sys.argv)
+        mode = "".join(f"_{m}" for m in ("proxy", "signed-in", "findings-only") if f"--{m}" in sys.argv)  # never over a full proof's file
         (ROOT / "sandbox" / OUT.replace(".json", mode.replace("-", "_") + ".json")).write_text(json.dumps(log, indent=2, default=str))
 
 

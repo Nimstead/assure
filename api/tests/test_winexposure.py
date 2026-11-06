@@ -133,7 +133,10 @@ def test_end_to_end_only_the_matching_product_rises_with_the_reason_shown(env):
     assert loud["CVE-2026-0002"]["score"] == quiet["CVE-2026-0002"]["score"]  # chrome isn't what's listening
     assert not any("Listening" in x for x in loud["CVE-2026-0002"]["reasons"])
     assert inv([])["CVE-2026-0001"]["score"] == quiet["CVE-2026-0001"]["score"]  # stops listening: back down
-    assert len(c.get("/api/assets").json()[0]["facts"]["listening"]) == 0
+    from nimstead.db import Asset
+    with make_sessionmaker(env)() as s:
+        assert s.query(Asset).one().facts["listening"] == []  # stored; the asset list leaves it out (DECISIONS 101)
+    assert "listening" not in c.get("/api/assets").json()[0]["facts"]
 
 
 def test_agent_keeps_the_new_facts_and_only_reads():

@@ -1,0 +1,29 @@
+[
+  {
+    "step": "lab reset to its snapshot",
+    "vms": [
+      "NIMDC1",
+      "NIMM1",
+      "NIMM2"
+    ]
+  },
+  {
+    "step": "GPO built and linked",
+    "ou": "NimGPO",
+    "computer": "NIMM2"
+  },
+  {
+    "step": "member applies the GPO",
+    "computer": "NIMM2"
+  },
+  {
+    "step": "enrolled by itself",
+    "computer": "NIMM2",
+    "minutes_after_boot": 40.6,
+    "asset": null
+  },
+  {
+    "step": "RESULT: FAIL",
+    "error": "AssertionError: NIMM2 didn't enrol in 40 minutes of booting: nothing was run on it, so read C:\\Windows\\Temp\\nimstead-gpo.log there"
+  }
+]

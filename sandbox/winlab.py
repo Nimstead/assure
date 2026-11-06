@@ -44,7 +44,8 @@ LAB_NIC = r"""$ErrorActionPreference = 'Stop'
 New-Item -ItemType Directory -Force C:\nimtest | Out-Null
 $lab = Get-NetAdapter | Where-Object { ($_.MacAddress -replace '-', '') -eq '%MAC%' }
 $nat = Get-NetAdapter | Where-Object { $_.ifIndex -ne $lab.ifIndex } | Select-Object -First 1
-New-NetIPAddress -InterfaceIndex $lab.ifIndex -IPAddress %IP% -PrefixLength 24 | Out-Null
+if (-not (Get-NetIPAddress -InterfaceIndex $lab.ifIndex -IPAddress %IP% -ErrorAction SilentlyContinue)) {  # a resumed build runs this again
+  New-NetIPAddress -InterfaceIndex $lab.ifIndex -IPAddress %IP% -PrefixLength 24 | Out-Null }
 Set-DnsClientServerAddress -InterfaceIndex $lab.ifIndex -ServerAddresses %DNS%
 Set-DnsClientServerAddress -InterfaceIndex $nat.ifIndex -ServerAddresses %NATDNS%
 # every VM's NAT address is 10.0.2.15: it must never reach the domain's DNS
@@ -52,8 +53,10 @@ Set-DnsClient -InterfaceIndex $nat.ifIndex -RegisterThisConnectionsAddress $fals
 Set-NetIPInterface -InterfaceIndex $lab.ifIndex -InterfaceMetric 5
 Set-NetIPInterface -InterfaceIndex $nat.ifIndex -InterfaceMetric 50
 # the lab network has no gateway, so Windows calls it public until the domain is seen; the firewall stays on for everything else
-New-NetFirewallRule -DisplayName 'Nimstead lab network' -Direction Inbound -RemoteAddress %SUBNET%.0/24 -Action Allow | Out-Null
+if (-not (Get-NetFirewallRule -DisplayName 'Nimstead lab network' -ErrorAction SilentlyContinue)) {
+  New-NetFirewallRule -DisplayName 'Nimstead lab network' -Direction Inbound -RemoteAddress %SUBNET%.0/24 -Action Allow | Out-Null }
 Enable-PSRemoting -Force -SkipNetworkProfileCheck | Out-Null
+Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\TimeZoneInformation' RealTimeIsUniversal 1 -Type DWord  # see utc_clock
 """
 FOREST = r"""$ErrorActionPreference = 'Stop'
 Install-WindowsFeature AD-Domain-Services -IncludeManagementTools | Out-Null
@@ -131,9 +134,10 @@ def nic2_mac(info: str) -> str:
 
 
 def kerberos_proved(out: str, target: str) -> bool:
-    """The remote host answered as the domain's Administrator, and the ticket for its WinRM service is in this session."""
+    """The remote host answered as the domain's Administrator, and the ticket for its WinRM service is in this session. WinRM asks
+    for HTTP/<host>, which Active Directory maps to the computer's HOST/ name by default, so klist lists HOST/ (real lab)."""
     low = out.lower()
-    return f"{target}|{NETBIOS}\\administrator".lower() in low and f"http/{target}.{DOMAIN}".lower() in low
+    return f"{target}|{NETBIOS}\\administrator".lower() in low and any(f"{s}/{target}.{DOMAIN}".lower() in low for s in ("http", "host"))
 
 
 def scrub(text: str, known: set[str]) -> str:
@@ -229,7 +233,7 @@ def promote_replica(v: dict, admin: str, safe: str) -> None:
 
 def join(v: dict, dc: dict, admin: str) -> None:
     on(v)
-    seen = h.guest(f"(Resolve-DnsName {dc['computer']}.{DOMAIN}, {DOMAIN} -Type A -DnsOnly -ErrorAction Stop).IPAddress", check=False)
+    seen = h.guest(f"'{dc['computer']}.{DOMAIN}', '{DOMAIN}' | ForEach-Object {{ (Resolve-DnsName $_ -Type A -DnsOnly -ErrorAction Stop).IPAddress }}", check=False)
     assert dc["ip"] in seen and "10.0.2." not in seen, f"the DC's address as seen from {v['computer']}: {seen[-300:]}"
     h.guest(JOIN.replace("%DOMAIN%", DOMAIN).replace("%ADMIN%", admin), timeout=900)
     h.reboot_and_wait()
@@ -271,6 +275,27 @@ def reset() -> dict:
         start(v)
     h.note("lab reset to its snapshot", vms=[v["computer"] for v in lab["vms"]])
     return lab
+
+
+def utc_clock() -> None:
+    """Each boot started 8 hours fast (VirtualBox gives the host's local time, read as Pacific time inside) until Windows corrected it
+    seconds later; that was late for NETLOGON, so a member booted without its domain and a startup script never ran (real lab,
+    2026-11-05). A UTC hardware clock read as UTC fixes it; this brings a lab built before that into line, snapshot and all."""
+    lab = reset()
+    dc, members = by_role(lab)
+    for v in lab["vms"]:
+        on(v)
+        h.guest(r"Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\TimeZoneInformation' RealTimeIsUniversal 1 -Type DWord")
+    for v in reversed(lab["vms"]):  # the DC goes last and comes back first
+        stop(v)
+        winvm.vbox("modifyvm", v["vm"], "--rtc-use-utc", "on")
+        winvm.vbox("snapshot", v["vm"], "delete", SNAPSHOT)
+        winvm.vbox("snapshot", v["vm"], "take", SNAPSHOT)
+    start(dc)
+    wait_ad(dc)
+    for v in members:
+        start(v)
+    h.note("lab clocks set to UTC and snapshot taken again", vms=[v["computer"] for v in lab["vms"]])
 
 
 def teardown() -> None:
@@ -315,25 +340,47 @@ class Peak(threading.Thread):
             raise HostShort(f"free host memory fell to {low} MB during '{self.phase}', under the {HOST_MIN_FREE_MB} MB this host needs to stay usable: {self.seen}")
 
 
-def build(iso: str, vms=3, memory=VM_MB) -> int:
-    if LAB_FILE.exists():
-        raise RuntimeError(f"a lab already exists ({LAB_FILE}): run `winlab.py teardown` first")
-    lab = {"domain": DOMAIN, "vms": []}
+def recheck() -> int:
+    """The Kerberos proof again on the built lab, added to its run file (the first real build's check missed the HOST/ ticket)."""
+    h.log[:] = json.loads((ROOT / "sandbox" / "last_run_winlab.json").read_text())
+    lab = load()
+    dc, members = by_role(lab)
+    rc, out = as_user(members[0], domain_admin(lab), KERBEROS.replace("%TARGET%", members[1]["computer"]).replace("%DOMAIN%", DOMAIN))
+    proved = kerberos_proved(out, members[1]["computer"])
+    h.note("Kerberos remoting member to member (rechecked)", source=members[0]["computer"], target=members[1]["computer"], proved=proved, output=out[-1200:])
+    measured = {p for e in h.log if e["step"] == "peak host memory" for p in e["phases"]}
+    return conclude({"Kerberos remoting member to member": proved, "two VMs measured": "2 VMs running" in measured,
+                     "three VMs measured": "3 VMs running" in measured})
+
+
+def build(iso: str, vms=3, memory=VM_MB, resume=False) -> int:
+    """`resume`: carry on with the lab a failed build left: machines it finished are kept, one it had created is used as it is."""
+    if LAB_FILE.exists() and not resume:
+        raise RuntimeError(f"a lab already exists ({LAB_FILE}): run `winlab.py teardown` first, or `build ISO --resume`")
+    lab = json.loads(LAB_FILE.read_text()) if resume else {"domain": DOMAIN, "vms": []}
+    have = {v["computer"]: v for v in lab["vms"]}
     peak = Peak()
     total, free = host_memory()
     disk = shutil.disk_usage(winvm.STATE.parent).free // 2**30
-    h.note("host before the lab", total_mb=total, free_mb=free, free_disk_gb=disk, vms=vms, vm_mb=memory)
-    if why := host_short(vms, memory, free, disk):
+    h.note("host before the lab", total_mb=total, free_mb=free, free_disk_gb=disk, vms=vms, vm_mb=memory, resumed=sorted(have))
+    if not resume and (why := host_short(vms, memory, free, disk)):
         raise HostShort(why)
-    admin, safe = "Nim!" + secrets.token_hex(8), "Nim!" + secrets.token_hex(8)
+    if have:  # the domain's Administrator is every lab VM's own; the DC keeps its safe-mode password in its folder
+        dc0 = lab["vms"][0]
+        admin, safe = winvm.creds(dc0["vm"])["password"], json.loads((winvm.STATE / dc0["vm"] / "lab-secrets.json").read_text())["safe_mode"]
+    else:
+        admin, safe = "Nim!" + secrets.token_hex(8), "Nim!" + secrets.token_hex(8)
     SECRETS.update((admin, safe))
     peak.start()
     try:
         for i, v in enumerate(plan_lab(vms)):
             peak.phase = f"{i + 1} VMs running"
-            v["vm"] = winvm.create(iso, memory=memory, lab=True, computer=v["computer"], password=admin)
-            lab["vms"].append(v)
-            LAB_FILE.write_text(json.dumps(lab, indent=2))  # from the first VM on: teardown can find a half-built lab
+            if (v := have.get(v["computer"], v)).get("done"):
+                continue
+            if not v.get("vm"):
+                v["vm"] = winvm.create(iso, memory=memory, lab=True, computer=v["computer"], password=admin)
+                lab["vms"].append(v)
+                LAB_FILE.write_text(json.dumps(lab, indent=2))  # from the first VM on: teardown can find a half-built lab
             on(v)
             winvm.wait_ready(v["vm"], minutes=90)
             h.note("VM installed", computer=v["computer"], vm=v["vm"], memory=peak.seen.get(peak.phase))
@@ -345,6 +392,8 @@ def build(iso: str, vms=3, memory=VM_MB) -> int:
             else:
                 lab_net(v, lab["vms"][0]["ip"], lab["vms"][0]["ip"])  # all names through the DC, which forwards the rest
                 join(v, lab["vms"][0], admin)
+            v["done"] = True
+            LAB_FILE.write_text(json.dumps(lab, indent=2))
             peak.check()
             if i >= 1:  # a settled machine's memory, not only its install's
                 time.sleep(300)
@@ -542,9 +591,14 @@ if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""
     opts = dict(a[2:].split("=", 1) for a in sys.argv[2:] if a.startswith("--") and "=" in a)
     if cmd == "build":
-        sys.exit(harness(lambda: build(sys.argv[2], vms=int(opts.get("vms", 3)), memory=int(opts.get("memory", VM_MB))), "last_run_winlab.json"))
+        sys.exit(harness(lambda: build(sys.argv[2], vms=int(opts.get("vms", 3)), memory=int(opts.get("memory", VM_MB)), resume="--resume" in sys.argv),
+                         "last_run_winlab.json"))
+    elif cmd == "recheck":
+        sys.exit(harness(recheck, "last_run_winlab.json"))
     elif cmd == "reset":
         reset()
+    elif cmd == "utc-clock":
+        utc_clock()
     elif cmd == "teardown":
         teardown()
     else:

@@ -21,7 +21,9 @@ import winlab as lab_  # noqa: E402
 
 h = lab_.h
 winvm = lab_.winvm
-OUT = "last_run_winfailures.json"
+# --only="install cut" reruns one scenario into its own file, so the others' results stay as they were
+ONLY = next((a[7:] for a in sys.argv if a.startswith("--only=")), None)
+OUT = f"last_run_winfailures_{ONLY.replace(' ', '_')}.json" if ONLY else "last_run_winfailures.json"
 HOST_TIME = "VBoxInternal/Devices/VMMDev/0/Config/GetHostTimeDisabled"
 LEAVE_GB = 5  # under the agent's WIN_MIN_FREE_GB, enough for Windows to keep working
 PENDING = r"C:\ProgramData\Nimstead\pending-job.json"
@@ -248,8 +250,9 @@ def main(keep=False) -> int:
     api = lab_.Api()
     r = Run(api)
     r.setup()
-    results = run_all([("doctor", r.broken_setup), ("clock", r.clock), ("server down", r.server_down), ("disk full", r.disk_full),
-                       ("rollback cut", r.rollback_cut), ("install cut", r.install_cut)], lambda: lab_.save(OUT))
+    scenarios = [("doctor", r.broken_setup), ("clock", r.clock), ("server down", r.server_down), ("disk full", r.disk_full),
+                 ("rollback cut", r.rollback_cut), ("install cut", r.install_cut)]
+    results = run_all([s for s in scenarios if ONLY in (None, s[0])], lambda: lab_.save(OUT))
     rc = lab_.conclude({k: v["ok"] for k, v in results.items()})
     if rc == 0 and not keep:
         winvm.destroy(h.NAME)

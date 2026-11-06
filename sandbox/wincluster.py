@@ -27,7 +27,8 @@ New-NetRoute -InterfaceIndex $lab.InterfaceIndex -DestinationPrefix 0.0.0.0/0 -N
 UNIQUE_NAT = r"""$ErrorActionPreference = 'Stop'
 $nat = Get-NetIPAddress -AddressFamily IPv4 | Where-Object IPAddress -like '10.0.2.*'
 Set-NetIPInterface -InterfaceIndex $nat.InterfaceIndex -Dhcp Disabled
-Remove-NetIPAddress -InterfaceIndex $nat.InterfaceIndex -IPAddress $nat.IPAddress -Confirm:$false
+# turning DHCP off can already drop the leased address ("not found", real lab)
+Remove-NetIPAddress -InterfaceIndex $nat.InterfaceIndex -IPAddress $nat.IPAddress -Confirm:$false -ErrorAction SilentlyContinue
 Remove-NetRoute -InterfaceIndex $nat.InterfaceIndex -DestinationPrefix 0.0.0.0/0 -Confirm:$false -ErrorAction SilentlyContinue
 New-NetIPAddress -InterfaceIndex $nat.InterfaceIndex -IPAddress 10.0.2.16 -PrefixLength 24 -DefaultGateway 10.0.2.2 -RouteMetric 10 | Out-Null
 Start-Sleep 5
@@ -36,7 +37,8 @@ Start-Sleep 5
 FEATURES = r"""$ErrorActionPreference = 'Stop'
 $r = Install-WindowsFeature Failover-Clustering, Web-Server -IncludeManagementTools
 Set-Content C:\inetpub\wwwroot\Default.htm -Encoding ascii -Value $env:COMPUTERNAME
-Stop-Service W3SVC; Set-Service W3SVC -StartupType Manual  # the cluster starts it on the node that owns the role
+# IIS stays an ordinary service on both nodes: as a clustered generic service it stuck at Start Pending (real lab, Server 2025).
+# The role is the client access point, so the page at its address names whichever node owns it
 "$($r.RestartNeeded)"
 """
 WITNESS = r"""$ErrorActionPreference = 'Stop'
@@ -54,7 +56,7 @@ $n = Get-ClusterNetwork | Where-Object Address -eq '%SUBNET%.0'; $n.Role = 3
 """
 QUORUM_AND_ROLE = r"""$ErrorActionPreference = 'Stop'
 Set-ClusterQuorum -FileShareWitness \\%DC%\witness | Out-Null
-Add-ClusterGenericServiceRole -ServiceName W3SVC -Name %ROLE% -StaticAddress %ROLE_IP% | Out-Null
+Add-ClusterServerRole -Name %ROLE% -StaticAddress %ROLE_IP% | Out-Null
 (Get-ClusterGroup %ROLE%).State
 (Get-ClusterQuorum).QuorumResource.Name
 """

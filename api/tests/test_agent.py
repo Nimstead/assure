@@ -251,3 +251,23 @@ def test_scan_remote_enrols_once_keeps_going_past_a_failure_and_sends_no_credent
     assert not agent.scan_remote("https://n", ["srv1"], None, keys_path=keys, run=run, post_fn=post_fn)
     assert [p for p, _, _ in sent] == ["/api/agent/inventory"]  # the second scan needs no token
     assert agent.scan_remote("https://other", ["srv1"], None, keys_path=keys, run=run, post_fn=post_fn)  # another server's key isn't reused
+
+
+def test_dpkg_reports_held_and_still_installed_packages():
+    """dpkg's first status letter is what's wanted, the second what is: apt-mark hold reads "hi", often the old package that matters."""
+    out = "openssl\t3.0.11-1\t\t3.0.11-1\thi \nlibx\t1.0\t\t1.0\tri \nhalf\t1.0\t\t1.0\tiU \n"
+    assert [p["name"] for p in agent.parse_dpkg(out)] == ["openssl", "libx"]
+
+
+def test_scanners_open_only_plain_files(tmp_path):
+    """A user's FIFO named like a jar or METADATA would block the root agent's open() for good; a link isn't followed."""
+    (tmp_path / "real.json").write_text("{}")
+    assert agent.regular(tmp_path / "real.json") and not agent.regular(tmp_path) and not agent.regular(tmp_path / "missing")
+    if hasattr(os, "mkfifo"):
+        os.mkfifo(tmp_path / "a.jar")
+        assert not agent.regular(tmp_path / "a.jar") and agent._package_json(tmp_path / "a.jar") is None
+    try:
+        os.symlink(tmp_path / "real.json", tmp_path / "link.json")
+    except OSError:  # Windows without the symlink right
+        return
+    assert not agent.regular(tmp_path / "link.json")

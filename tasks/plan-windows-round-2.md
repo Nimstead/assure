@@ -35,9 +35,9 @@ compared ourselves with a competing scanner. This round closes those first, then
   redistributing it needs a CIS licence. W18 checks the terms of both sources before any content lands; this amends 64 and
   needs a new DECISIONS entry.
 - **App breadth stays curated, the curating gets cheaper.** A tool proposes rows, a person and a VM run accept them.
-- **Three benchmarks.** Nessus and Qualys are the commercial references for capability, coverage, accuracy and usability.
-  Greenbone is also an executable benchmark and, being open source, something to study (DECISIONS 79). Nessus Essentials
-  (5 hosts) and any Qualys trial need your registration and a read of their terms, which may restrict competitive use; not
+- **Three benchmarks.** Commercial scanners are the references for capability, coverage, accuracy and usability.
+  The open-source reference scanner is also an executable benchmark and, being open source, something to study (DECISIONS 79). A commercial scanner's free
+  edition or trial needs your registration and a read of their terms, which may restrict competitive use; not
   confirmed either way. Results stay private until checked.
 - **A real engine, not lookups.** Owner's direction, 2026-11-02: an independently engineered, modular detection engine
   (Engine track in the todo), first on Windows, then Linux, network services, applications and attack-path correlation.
@@ -49,7 +49,7 @@ compared ourselves with a competing scanner. This round closes those first, then
 ### Phase 0: know where we stand
 - W1 Coverage: assessed vs inventory-only, per host and fleet
 - W2 Fix the locale bug found while planning; prove on a German install
-- W3 Side-by-side with Greenbone on one old VM
+- W3 Side-by-side with the reference scanner on one old VM
 
 ### Phase 1: the OS matrix (no domain needed)
 - W4 Windows 10 LTSC 2021: real fix and rollback (**deadline**)
@@ -110,7 +110,7 @@ longest (each batch of 25 is a day). The whole round: 6–8 weeks of elapsed tim
 - **ARM64 proof:** VirtualBox can't run it here, so unit tests only until someone has the hardware.
 - **In this round:** macOS, ticketing connectors, and network scanning of unmanaged devices. Network services come after the
   first Windows engine milestone, in the Engine track.
-- **Thousands of apps.** 200 well-chosen curated apps won't match Nessus's plugin count, and W1 says so on screen.
+- **Thousands of apps.** 200 well-chosen curated apps won't match a commercial scanner's plugin count, and W1 says so on screen.
 
 ## Needs the owner (no task can replace these)
 - **Push, CI, review, tag, release.** The `windows-runtime` CI job has never run, and no customer can use any of this yet.
@@ -118,20 +118,20 @@ longest (each batch of 25 is a day). The whole round: 6–8 weeks of elapsed tim
 - **Independent human pentest.** W27 doesn't replace it.
 - **Code-signing certificate,** which unlocks an MSI (round 1 plan, decision 9). It costs money unless a free programme
   accepts the FSL licence; not checked.
-- **Optional:** Nessus Essentials decision (above), a machine with 32 GB+ for Exchange, Azure for hotpatch.
+- **Optional:** Commercial-scanner decision (above), a machine with 32 GB+ for Exchange, Azure for hotpatch.
 
 ## Risks
 | Risk | Impact | Mitigation |
 |---|---|---|
 | Host can't run three VMs (15.6 GB, NEM backend hangs seen before) | High | W7 is the gate; Server Core; a clear stop |
 | LTSC 2021 evaluation ISO not obtainable | High for W4 | Checked first; not confirmed available. IoT LTSC evaluation next; else you supply one |
-| Greenbone's free feed is weak on credentialed Windows checks (not confirmed) | Med | W3 starts with a short look; the Nessus decision is the fallback |
+| The reference scanner's free feed is weak on credentialed Windows checks (not confirmed) | Med | W3 starts with a short look; the commercial-scanner decision is the fallback |
 | Evaluation ISOs lapse or vanish | Low | Fresh install each run; the fwlinks are recorded |
 | STIG or baseline terms restrict redistribution | Med | W18 checks first; else ship check IDs only and read titles from the user's own copy |
 | Host DNS drops or a Windows Update corruption spoils long runs | Med | Harnesses resume; live log watch on every long run, as before |
 
 ## Open questions
-1. Do you want Nessus Essentials in the comparison? (Needs your registration and licence check.)
+1. Do you want a commercial scanner's free edition in the comparison? (Needs your registration and licence check.)
 2. Does benchmark reference (W18) amending DECISIONS 64 suit you, or stay with the free audit only? Assumed yes.
 
 Sources for the dates and data above:
@@ -139,5 +139,4 @@ Sources for the dates and data above:
 [LTSC 2021 still supported](https://pureinfotech.com/windows-10-ltsc-2021-end-support-message-glitch/),
 [Server 2025 STIG at NIST NCP](https://ncp.nist.gov/checklist/1324/download/17724),
 [Microsoft Security Compliance Toolkit](https://www.microsoft.com/download/details.aspx?id=55319),
-[Nessus licence limits](https://docs.tenable.com/nessus/Content/LicenseUtilization.htm),
 [LOLDrivers](https://www.loldrivers.io/drivers/724d7989-dfce-4bb2-9beb-dee15df5b790/).

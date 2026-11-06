@@ -23,7 +23,10 @@ from signin import signup
 from nimstead import feeds, winapps  # noqa: E402
 from nimstead.db import make_sessionmaker  # noqa: E402
 
-OUT = Path(__file__).with_name("last_run_winnoise.json")
+# --part=2/3: this VM installs every third app from the second on, so every curated app fits on some VM's disk (one VM ran out at 50)
+PART = next((a[7:] for a in sys.argv if a.startswith("--part=")), None)
+OUT = Path(__file__).with_name(f"last_run_winnoise_part{PART.replace('/', 'of')}.json" if PART else "last_run_winnoise.json")
+SKIP = {"OctopusDeploy.Server", "PaperCutSoftware.NG"}  # winget couldn't install either in batch 7 (30-minute timeouts)
 TMP = Path(tempfile.mkdtemp(prefix="nimstead-sbx-noise-"))
 KEYS = {c for p in winapps.PRODUCTS for c in (p.cpes or (p.key,))}
 TO_KEY = {c: p.key for p in winapps.PRODUCTS for c in (p.cpes or (p.key,))}
@@ -134,9 +137,12 @@ def main(keep=False) -> int:
                  "--target-directory", "C:\\nimtest\\", str(e.ROOT / "agent" / "nimstead_agent.py"))
     assert e.collect(py, ag)["packages"], "the agent can't read inventory here"
 
-    apps = {**e.APPS, **e.NEW, **e.NEW5, **e.NEW6}
+    apps = {w: v for w, v in {**e.APPS, **e.NEW, **e.NEW5, **e.NEW6, **e.NEW7}.items() if w not in SKIP}
     mongo = [w for w in apps if "mongo" in w.lower()]  # it hung guest control on a real VM: last, so it can't cost the others
     order = [w for w in apps if w not in mongo] + mongo
+    if PART:
+        k, n = map(int, PART.split("/"))
+        order = order[k - 1::n]
     install = ("winget install --id {} --exact --version {} --silent --accept-package-agreements "
                "--accept-source-agreements --disable-interactivity --scope machine")
     done = json.loads(OUT.read_text(encoding="utf-8"))["installed"] if "--resume" in sys.argv else {}  # apps already on this VM

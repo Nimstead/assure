@@ -437,7 +437,16 @@ def update_all(session: Session, client=None) -> dict:
     agent report. Run from cron/systemd timer (e.g. hourly)."""
     in_use = {normalize_ecosystem(e) for e in session.scalars(select(InstalledPackage.ecosystem).distinct())}
     used = sorted({e.split(":", 1)[0] for e in in_use} - {"Windows", "WinApp", msproducts.ECOSYSTEM, windrivers.ECOSYSTEM})  # MSRC and NVD, not OSV
-    out = {"kev": sync_kev(session, client), "epss": sync_epss(session, client), "nvd": sync_nvd(session, ["modified"], client), "osv": {}}
+    def guarded(name, fn):  # one feed's outage or schema change keeps its stored rows and must not stop every org's re-match
+        try:
+            return fn()
+        except Exception as e:
+            session.rollback()
+            log.error("%s skipped, kept the stored rows: %s", name, e)
+            return {"error": f"{type(e).__name__}: {e}"[:200]}
+
+    out = {"kev": guarded("KEV", lambda: sync_kev(session, client)), "epss": guarded("EPSS", lambda: sync_epss(session, client)),
+           "nvd": guarded("NVD", lambda: sync_nvd(session, ["modified"], client)), "osv": {}}
     try:
         out["metasploit"] = sync_metasploit(session, client)
     except (httpx.HTTPError, ValueError) as e:
@@ -456,8 +465,8 @@ def update_all(session: Session, client=None) -> dict:
             log.warning("OSV sync skipped for %r: %s", eco, e)
             out["osv"][eco] = {"error": f"{type(e).__name__}: {e}"[:200]}
     if in_use & {"Windows", msproducts.ECOSYSTEM}:
-        out["msrc"] = sync_msrc(session, client=client)
-        out["office"] = sync_office(session, client=client)
+        out["msrc"] = guarded("MSRC", lambda: sync_msrc(session, client=client))
+        out["office"] = guarded("OfficeReleases", lambda: sync_office(session, client=client))
         try:
             out["loldrivers"] = sync_loldrivers(session, client)
         except (httpx.HTTPError, ValueError) as e:  # JSONDecodeError is a ValueError
@@ -465,7 +474,7 @@ def update_all(session: Session, client=None) -> dict:
             log.error("LOLDrivers skipped, kept the stored hashes: %s", e)
             out["loldrivers"] = {"error": str(e)[:200]}
     if "WinApp" in in_use:
-        out["eol"] = sync_eol(session, client=client)
+        out["eol"] = guarded("endoflife.date", lambda: sync_eol(session, client=client))
         try:
             out["cvelist"] = sync_cvelist(session, client=client)
         except (httpx.HTTPError, ValueError, zipfile.BadZipFile) as e:

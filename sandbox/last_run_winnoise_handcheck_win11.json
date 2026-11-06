@@ -1,0 +1,356 @@
+{
+ "source": "last_run_winproducts_findings.json",
+ "seed": 14,
+ "checked": [
+  {
+   "row": 0,
+   "finding": [
+    "Lifecycle",
+    ".NET 8",
+    "EOL:dotnet-8",
+    "8.0.31",
+    null,
+    "planned"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://raw.githubusercontent.com/dotnet/core/main/release-notes/releases-index.json",
+   "note": "Microsoft's .NET releases index gives .NET 8.0 \"eol-date\" 2026-11-10 (endoflife.date agrees), so 10 days from the finding; 'planned' with no fix version fits an approaching end of support."
+  },
+  {
+   "row": 64,
+   "finding": [
+    "Microsoft",
+    "Microsoft Edge",
+    "CVE-2026-118351",
+    "156.0.4314.50",
+    "156.0.4314.56",
+    "low"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2026-118351",
+   "note": "MSRC: Chromium CVE (Skia memory corruption) fixed in Microsoft Edge 156.0.4314.56; Edge security release notes show Stable 156.0.4314.56 on 2026-10-29 with Chromium security fixes, so .50 is affected."
+  },
+  {
+   "row": 70,
+   "finding": [
+    "Microsoft",
+    "Microsoft Edge",
+    "CVE-2026-118357",
+    "156.0.4314.50",
+    "156.0.4314.56",
+    "low"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2026-118357",
+   "note": "MSRC: Chromium CVE (use after free in FileSystem) fixed in Microsoft Edge 156.0.4314.56, the Stable release of 2026-10-29; installed .50 predates it. Stable .58 followed on 2026-10-30."
+  },
+  {
+   "row": 135,
+   "finding": [
+    "Microsoft",
+    "SQL Server 2022 GDR",
+    "CVE-2026-83945",
+    "16.0.1000.6",
+    "16.0.1210.3",
+    "low"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2026-83945",
+   "note": "MSRC lists SQL Server 2022 GDR fixed by KB5128493 at 16.0.1210.3; the KB page names CVE-2026-83945 and that build. Installed 16.0.1000.6 is RTM, which is on the GDR path."
+  },
+  {
+   "row": 153,
+   "finding": [
+    "WinConfig",
+    "cert-padding-check",
+    "CVE-2013-3900",
+    "not set / not set",
+    null,
+    "low"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2013-3900",
+   "note": "MSRC says the check stays opt-in on all supported Windows 10/11 and \"the reg key must be set\" in both Wintrust\\Config and Wow6432Node; both unset here. 26H2 isn't in the MSRC table but the text covers it. Aside: MSRC corrected the type to REG_DWORD; the agent's remediation writes REG_SZ."
+  },
+  {
+   "row": 156,
+   "finding": [
+    "WinConfig",
+    "netbios",
+    "CFG:netbios",
+    "2",
+    null,
+    "low"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://learn.microsoft.com/en-us/windows-hardware/customize/desktop/unattend/microsoft-windows-netbt-interfaces-interface-netbiosoptions",
+   "note": "'2' is the count of adapters whose NetbiosOptions isn't 2; Microsoft's doc says only 2 disables NetBIOS (0 uses DHCP, 1 enables). Caveat: an adapter at 0 is off only if DHCP says so, which the check can't see."
+  },
+  {
+   "row": 231,
+   "finding": [
+    "Windows",
+    "Windows 11 Version 26H2 for x64-based Systems",
+    "CVE-2026-108463",
+    "10.0.26300.9457",
+    "10.0.26300.9711",
+    "planned"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2026-108463",
+   "note": "MSRC lists Windows 11 26H2 x64 (Security Feature Bypass, Important) fixed by KB5127648 at 10.0.26300.9711 (2026-Oct); installed .9457 is older. Later OOB .9725 and preview .9818 exist but don't change the minimum fix."
+  },
+  {
+   "row": 278,
+   "finding": [
+    "Windows",
+    "Windows 11 Version 26H2 for x64-based Systems",
+    "CVE-2026-69905",
+    "10.0.26300.9457",
+    "10.0.26300.9711",
+    "low"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2026-69905",
+   "note": "MSRC lists Windows 11 26H2 x64 (Tampering, Important) fixed by KB5127648 at 10.0.26300.9711 (2026-Oct); installed .9457 is older. Later OOB .9725 and preview .9818 exist but don't change the minimum fix."
+  },
+  {
+   "row": 385,
+   "finding": [
+    "Windows",
+    "Windows 11 Version 26H2 for x64-based Systems",
+    "CVE-2026-70111",
+    "10.0.26300.9457",
+    "10.0.26300.9711",
+    "planned"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2026-70111",
+   "note": "MSRC lists Windows 11 26H2 x64 (Elevation of Privilege, Important) fixed by KB5127648 at 10.0.26300.9711 (2026-Oct); installed .9457 is older. Later OOB .9725 and preview .9818 exist but don't change the minimum fix."
+  },
+  {
+   "row": 426,
+   "finding": [
+    "Windows",
+    "Windows 11 Version 26H2 for x64-based Systems",
+    "CVE-2026-70170",
+    "10.0.26300.9457",
+    "10.0.26300.9711",
+    "low"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2026-70170",
+   "note": "MSRC lists Windows 11 26H2 x64 (Denial of Service, Important) fixed by KB5127648 at 10.0.26300.9711 (2026-Oct); installed .9457 is older. Later OOB .9725 and preview .9818 exist but don't change the minimum fix."
+  },
+  {
+   "row": 455,
+   "finding": [
+    "Windows",
+    "Windows 11 Version 26H2 for x64-based Systems",
+    "CVE-2026-70235",
+    "10.0.26300.9457",
+    "10.0.26300.9711",
+    "low"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2026-70235",
+   "note": "MSRC lists Windows 11 26H2 x64 (Spoofing, Important) fixed by KB5127648 at 10.0.26300.9711 (2026-Oct); installed .9457 is older. Later OOB .9725 and preview .9818 exist but don't change the minimum fix."
+  },
+  {
+   "row": 467,
+   "finding": [
+    "Windows",
+    "Windows 11 Version 26H2 for x64-based Systems",
+    "CVE-2026-70255",
+    "10.0.26300.9457",
+    "10.0.26300.9711",
+    "planned"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2026-70255",
+   "note": "MSRC lists Windows 11 26H2 x64 (Elevation of Privilege, Important) fixed by KB5127648 at 10.0.26300.9711 (2026-Oct); installed .9457 is older. Later OOB .9725 and preview .9818 exist but don't change the minimum fix."
+  },
+  {
+   "row": 480,
+   "finding": [
+    "Windows",
+    "Windows 11 Version 26H2 for x64-based Systems",
+    "CVE-2026-70280",
+    "10.0.26300.9457",
+    "10.0.26300.9711",
+    "low"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2026-70280",
+   "note": "MSRC lists Windows 11 26H2 x64 (Security Feature Bypass, Important) fixed by KB5127648 at 10.0.26300.9711 (2026-Oct); installed .9457 is older. Later OOB .9725 and preview .9818 exist but don't change the minimum fix."
+  },
+  {
+   "row": 560,
+   "finding": [
+    "Windows",
+    "Windows 11 Version 26H2 for x64-based Systems",
+    "CVE-2026-83667",
+    "10.0.26300.9457",
+    "10.0.26300.9711",
+    "low"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2026-83667",
+   "note": "MSRC lists Windows 11 26H2 x64 (Denial of Service, Important) fixed by KB5127648 at 10.0.26300.9711 (2026-Oct); installed .9457 is older. Later OOB .9725 and preview .9818 exist but don't change the minimum fix."
+  },
+  {
+   "row": 563,
+   "finding": [
+    "Windows",
+    "Windows 11 Version 26H2 for x64-based Systems",
+    "CVE-2026-83670",
+    "10.0.26300.9457",
+    "10.0.26300.9711",
+    "low"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2026-83670",
+   "note": "MSRC lists Windows 11 26H2 x64 (Information Disclosure, Important) fixed by KB5127648 at 10.0.26300.9711 (2026-Oct); installed .9457 is older. Later OOB .9725 and preview .9818 exist but don't change the minimum fix."
+  },
+  {
+   "row": 617,
+   "finding": [
+    "Windows",
+    "Windows 11 Version 26H2 for x64-based Systems",
+    "CVE-2026-83735",
+    "10.0.26300.9457",
+    "10.0.26300.9711",
+    "planned"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2026-83735",
+   "note": "MSRC lists Windows 11 26H2 x64 (Elevation of Privilege, Important) fixed by KB5127648 at 10.0.26300.9711 (2026-Oct); installed .9457 is older. Later OOB .9725 and preview .9818 exist but don't change the minimum fix."
+  },
+  {
+   "row": 634,
+   "finding": [
+    "Windows",
+    "Windows 11 Version 26H2 for x64-based Systems",
+    "CVE-2026-83757",
+    "10.0.26300.9457",
+    "10.0.26300.9711",
+    "low"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2026-83757",
+   "note": "MSRC lists Windows 11 26H2 x64 (Elevation of Privilege, Important) fixed by KB5127648 at 10.0.26300.9711 (2026-Oct); installed .9457 is older. Later OOB .9725 and preview .9818 exist but don't change the minimum fix."
+  },
+  {
+   "row": 831,
+   "finding": [
+    "Windows",
+    "Windows 11 Version 26H2 for x64-based Systems",
+    "CVE-2026-85797",
+    "10.0.26300.9457",
+    "10.0.26300.9711",
+    "low"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2026-85797",
+   "note": "MSRC lists Windows 11 26H2 x64 (Information Disclosure, Important) fixed by KB5127648 at 10.0.26300.9711 (2026-Oct); installed .9457 is older. Later OOB .9725 and preview .9818 exist but don't change the minimum fix."
+  },
+  {
+   "row": 857,
+   "finding": [
+    "Windows",
+    "Windows 11 Version 26H2 for x64-based Systems",
+    "CVE-2026-85826",
+    "10.0.26300.9457",
+    "10.0.26300.9711",
+    "low"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2026-85826",
+   "note": "MSRC lists Windows 11 26H2 x64 (Elevation of Privilege, Important) fixed by KB5127648 at 10.0.26300.9711 (2026-Oct); installed .9457 is older. Later OOB .9725 and preview .9818 exist but don't change the minimum fix."
+  },
+  {
+   "row": 908,
+   "finding": [
+    "Windows",
+    "Windows 11 Version 26H2 for x64-based Systems",
+    "CVE-2026-85912",
+    "10.0.26300.9457",
+    "10.0.26300.9711",
+    "low"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2026-85912",
+   "note": "MSRC lists Windows 11 26H2 x64 (Elevation of Privilege, Important) fixed by KB5127648 at 10.0.26300.9711 (2026-Oct); installed .9457 is older. Later OOB .9725 and preview .9818 exist but don't change the minimum fix."
+  },
+  {
+   "row": 953,
+   "finding": [
+    "Windows",
+    "Windows 11 Version 26H2 for x64-based Systems",
+    "CVE-2026-88080",
+    "10.0.26300.9457",
+    "10.0.26300.9711",
+    "low"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2026-88080",
+   "note": "MSRC lists Windows 11 26H2 x64 (Elevation of Privilege, Important) fixed by KB5127648 at 10.0.26300.9711 (2026-Oct); installed .9457 is older. Later OOB .9725 and preview .9818 exist but don't change the minimum fix."
+  },
+  {
+   "row": 1048,
+   "finding": [
+    "Windows",
+    "Windows 11 Version 26H2 for x64-based Systems",
+    "CVE-2026-96315",
+    "10.0.26300.9457",
+    "10.0.26300.9711",
+    "low"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2026-96315",
+   "note": "MSRC lists Windows 11 26H2 x64 (Tampering, Important) fixed by KB5127648 at 10.0.26300.9711 (2026-Oct); installed .9457 is older. Later OOB .9725 and preview .9818 exist but don't change the minimum fix."
+  },
+  {
+   "row": 1050,
+   "finding": [
+    "Windows",
+    "Windows 11 Version 26H2 for x64-based Systems",
+    "CVE-2026-96317",
+    "10.0.26300.9457",
+    "10.0.26300.9711",
+    "low"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2026-96317",
+   "note": "MSRC lists Windows 11 26H2 x64 (Elevation of Privilege, Important) fixed by KB5127648 at 10.0.26300.9711 (2026-Oct); installed .9457 is older. Later OOB .9725 and preview .9818 exist but don't change the minimum fix."
+  },
+  {
+   "row": 1080,
+   "finding": [
+    "Windows",
+    "Windows 11 Version 26H2 for x64-based Systems",
+    "CVE-2026-96911",
+    "10.0.26300.9457",
+    "10.0.26300.9711",
+    "planned"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2026-96911",
+   "note": "MSRC lists Windows 11 26H2 x64 (Elevation of Privilege, Important) fixed by KB5127648 at 10.0.26300.9711 (2026-Oct); installed .9457 is older. Later OOB .9725 and preview .9818 exist but don't change the minimum fix."
+  },
+  {
+   "row": 1087,
+   "finding": [
+    "Windows",
+    "Windows 11 Version 26H2 for x64-based Systems",
+    "CVE-2026-96918",
+    "10.0.26300.9457",
+    "10.0.26300.9711",
+    "low"
+   ],
+   "verdict": "CONFIRMED",
+   "source_url": "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2026-96918",
+   "note": "MSRC lists Windows 11 26H2 x64 (Elevation of Privilege, Important) fixed by KB5127648 at 10.0.26300.9711 (2026-Oct); installed .9457 is older. Later OOB .9725 and preview .9818 exist but don't change the minimum fix."
+  }
+ ]
+}

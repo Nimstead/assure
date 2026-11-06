@@ -1009,6 +1009,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     # --- assets ------------------------------------------------------------
 
+    # the facts the asset list shows; the rest (up to 64 KB a host: listeners, certificates, baseline) stays server-side (DECISIONS 101)
+    LIST_FACTS = ("os_unmatched", "pending_reboot", "wsus", "wufb_quality_deferral_days", "last_update_success", "domain_role", "edition_id", "esu")
+
     def asset_json(a: Asset, counts: dict, paused: bool = False, release: bool | None = None, apps: dict | None = None) -> dict:
         if release is None and a.kind == "host":
             release = signed_release() is not None
@@ -1020,7 +1023,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             **({"apps": apps} if apps else {}),
             **({"agent_version": a.agent_version, "agent_outdated": a.agent_version != latest_agent_version(),
                 "agent_update": agent_update_status(a, paused, release), "agent_update_error": a.agent_update_error,
-                "not_reporting": a.last_seen < now() - notify.SILENT_AFTER, "facts": a.facts or {},
+                "not_reporting": a.last_seen < now() - notify.SILENT_AFTER, "facts": {k: v for k, v in (a.facts or {}).items() if k in LIST_FACTS},
                 "maintenance_window": a.maintenance_window}
                if a.kind == "host" else {}),
             **({"verified": a.verified_at is not None, "verified_at": a.verified_at, "txt_name": external.txt_name(a.hostname),
@@ -1377,7 +1380,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             "action_key": j.action_key, "packages": j.packages, "finding_ids": j.finding_ids, "summary": j.summary,
             "created_by": j.created_by, "approved_by": j.approved_by, "created": j.created, "updated": j.updated,
             "steps": j.steps, "error": j.error, "result_versions": j.result_versions,
-            "forward_only": j.manager in remediate.FORWARD_ONLY,
+            "forward_only": remediate.forward_only(j),
         }
 
     class PlanReq(BaseModel):

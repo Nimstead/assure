@@ -1,0 +1,55 @@
+[
+  {
+    "step": "VM ready",
+    "os": "Windows Server 2025 Standard Evaluation 26100"
+  },
+  {
+    "step": "downloads",
+    "hashes_match": true
+  },
+  {
+    "step": "signatures",
+    "packages": [
+      [
+        "Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle",
+        "Valid",
+        "CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US"
+      ],
+      [
+        "Microsoft.VCLibs.140.00.UWPDesktop_14.0.33728.0_x64.appx",
+        "Valid",
+        "CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US"
+      ],
+      [
+        "Microsoft.VCLibs.140.00_14.0.33519.0_x64.appx",
+        "Valid",
+        "CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US"
+      ],
+      [
+        "Microsoft.WindowsAppRuntime.1.8_8000.616.304.0_x64.appx",
+        "Valid",
+        "CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US"
+      ]
+    ]
+  },
+  {
+    "step": "provisioned",
+    "output": "\n\nPath          : \nOnline        : True\nRestartNeeded : False\n\n\n\n\n"
+  },
+  {
+    "step": "winget as SYSTEM",
+    "exe": "C:\\Program Files\\WindowsApps\\Microsoft.DesktopAppInstaller_1.29.380.0_x64__8wekyb3d8bbwe\\winget.exe",
+    "output": ""
+  },
+  {
+    "step": "RESULT: FAIL",
+    "checks": {
+      "no winget before": false,
+      "every file matches its pinned SHA-256": true,
+      "dependencies found for x64": true,
+      "every package Authenticode-valid and signed by Microsoft Corporation": true,
+      "the agent's own lookup finds winget.exe": true,
+      "winget runs as SYSTEM": false
+    }
+  }
+]

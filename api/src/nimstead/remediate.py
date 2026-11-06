@@ -47,10 +47,19 @@ CONFIG_FIXES = frozenset({"wdigest", "ntlmv1", "llmnr", "smb-signing", "smb1", "
                           "insecure-guest-auth", "winrm-basic", "winrm-unencrypted", "script-block-logging"})
 FORWARD_ONLY = ("winget",)  # can't be undone: a person approves it as such, never the trust ladder (plan T22)
 MANUAL_ONLY = ("winget", "winconfig")  # setting changes can break old clients: a person decides (plan decision 11)
-SAFE_PRODUCT = re.compile(r"^(?:\.NET Framework 4[0-9.]* on )?Windows [A-Za-z0-9 .()-]{1,120}$")
-SAFE_KB = re.compile(r"^[0-9]{6,8}$")
-SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9+._-]{0,200}$")
-SAFE_VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+~:_^-]{0,200}$")
+
+
+def servicing(job: RemediationJob) -> bool:
+    """A Windows step through a servicing stack update: it can't be removed, so like winget it's forward-only and a person's call (DECISIONS 105)."""
+    return job.manager == "windows" and bool(job.packages) and job.packages[0].get("servicing") is True
+
+
+def forward_only(job: RemediationJob) -> bool:
+    return job.manager in FORWARD_ONLY or servicing(job)
+SAFE_PRODUCT = re.compile(r"^(?:\.NET Framework 4[0-9.]* on )?Windows [A-Za-z0-9 .()-]{1,120}\Z")  # \Z: $ also matches before a final newline
+SAFE_KB = re.compile(r"^[0-9]{6,8}\Z")
+SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9+._-]{0,200}\Z")
+SAFE_VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+~:_^-]{0,200}\Z")
 ACTIVE = ("planned", "approved", "dispatched", "verifying")
 AGENT_OUTCOMES = ("applied", "rolled_back", "rollback_failed", "aborted")
 ALERT_STATUSES = ("rolled_back", "rollback_failed", "failed", "not_fixed", "aborted")
@@ -173,6 +182,11 @@ def _rollout(plannable: list[Asset], jobs: list[RemediationJob], ring0: set[str]
     return [a.id for a in plannable], "No canary machine has proven this update, so each fix waits for a person's approval."
 
 
+def _aims(job: RemediationJob):
+    """The build a job installs: a stepped or servicing job's earlier step, not the cumulative it's planned towards."""
+    return (job.packages[0].get("alt") or {}).get("to") or job.packages[0].get("to")
+
+
 def kb_fleet(s: Session, org_id: str) -> list[dict]:
     """Per product, its newest cumulative updates: how many of the org's hosts have each, judged by the build they last
     reported, and for the rest why not, from their jobs and facts. A host on the hotpatch track has an update when none of
@@ -188,8 +202,10 @@ def kb_fleet(s: Session, org_id: str) -> list[dict]:
         return []
     kbs: dict[str, dict[str, dict]] = defaultdict(dict)
     hot_builds: dict[str, set] = defaultdict(set)
-    for pkg, rec in s.execute(select(Advisory.package, Advisory.record).where(
-            Advisory.ecosystem == "Windows", Advisory.package.in_([*hosts, *(p + HOTPATCH for p in hosts)]))):
+    names = [*hosts, *(p + HOTPATCH for p in hosts)]  # a host can report many "Windows" names: stay under SQL parameter limits
+    rows = [r for i in range(0, len(names), 500) for r in s.execute(select(Advisory.package, Advisory.record).where(
+        Advisory.ecosystem == "Windows", Advisory.package.in_(names[i:i + 500])))]
+    for pkg, rec in rows:
         fixed = rec["affected"][0]["ranges"][0]["events"][-1].get("fixed")
         info = rec.get("database_specific") or {}
         if pkg.endswith(HOTPATCH):
@@ -200,8 +216,10 @@ def kb_fleet(s: Session, org_id: str) -> list[dict]:
             row["released"] = row["released"] or info.get("released")
             row["cves"].update(rec["aliases"])
     statuses: dict[tuple[str, str], set] = defaultdict(set)
-    for asset_id, product, status in s.execute(select(Finding.asset_id, Finding.package, Finding.status).distinct().where(
-            Finding.org_id == org_id, Finding.ecosystem == "Windows", Finding.status.in_(("open", "accepted")), Finding.package.in_(list(hosts)))):
+    products = list(hosts)
+    for asset_id, product, status in [r for i in range(0, len(products), 500) for r in s.execute(
+            select(Finding.asset_id, Finding.package, Finding.status).distinct().where(Finding.org_id == org_id, Finding.ecosystem == "Windows",
+                                                                                     Finding.status.in_(("open", "accepted")), Finding.package.in_(products[i:i + 500])))]:
         statuses[asset_id, product].add(status)
     on_hotpatch = {a.id for p, members in hosts.items() for a, v in members if v in hot_builds[p]}
     hot_cves: dict[str, set] = defaultdict(set)
@@ -228,13 +246,13 @@ def kb_fleet(s: Session, org_id: str) -> list[dict]:
                 if _reaches(version, row["build"]) or (a.id in on_hotpatch and not row["cves"] & hot_cves[a.id]):
                     continue
                 # a job reaching this build or beyond counts for it (cumulative); any active one is what plan() would refuse on
-                job = next((j for j in by_host[a.id] if j.status in ACTIVE or _reaches(j.packages[0].get("to"), row["build"])), None)
+                job = next((j for j in by_host[a.id] if j.status in ACTIVE or _reaches(_aims(j), row["build"])), None)
                 st = statuses[a.id, product]
                 missing.append({"asset_id": a.id, "hostname": a.hostname, "build": version, "ring": a.ring, "why": _job_why(job),
                                 "notes": _host_notes(a, st), "job": {"id": job.id, "status": job.status} if job else None})
                 if "open" in st and not (job and (job.status in ACTIVE or job.status in ALERT_STATUSES)):  # failures get a look first, as on Home
                     plannable.append(a)
-            this_kb = [j for j in jobs[key] if _reaches(j.packages[0].get("to"), row["build"])]
+            this_kb = [j for j in jobs[key] if _reaches(_aims(j), row["build"])]
             ids, note = _rollout(plannable, this_kb, ring0, soak_hours)
             month = date.fromisoformat(row["released"]).strftime("%B %Y") + " cumulative" if row["released"] else "Cumulative"
             out.append({"kb": kb, "product": product, "title": f"{month} KB{kb}", "released": row["released"], "build": row["build"],
@@ -343,9 +361,9 @@ def approve(s: Session, job: RemediationJob, by: str, policy: bool = False, forw
     org = s.get(Org, job.org_id)
     if job.status != "planned":
         raise RemediationError(f"Job is {job.status}, not awaiting approval")
-    if job.manager in MANUAL_ONLY and policy:  # never automated, whatever the trust ladder says (plan T22, T38)
+    if (job.manager in MANUAL_ONLY or servicing(job)) and policy:  # never automated, whatever the trust ladder says (plan T22, T38)
         raise RemediationError("This kind of fix is only ever approved by a person")
-    if job.manager in FORWARD_ONLY and not forward_only_ack:
+    if forward_only(job) and not forward_only_ack:
         raise RemediationError("This fix can't be undone: confirm that you accept a forward-only change")
     if org.remediation_mode == "suggest":
         raise RemediationError("Remediation is in suggest-only mode for this organisation")
@@ -356,7 +374,7 @@ def approve(s: Session, job: RemediationJob, by: str, policy: bool = False, forw
         if not ok:
             raise RemediationError(why)
     job.status, job.approved_by = "approved", by
-    _log(s, job, "remediation_approved", by=by, **({"forward_only": True} if job.manager in FORWARD_ONLY else {}))
+    _log(s, job, "remediation_approved", by=by, **({"forward_only": True} if forward_only(job) else {}))
     return job
 
 
@@ -505,7 +523,9 @@ def dispatch(s: Session, asset: Asset) -> list[dict]:
         win_busy = bool(peers) and s.scalar(select(RemediationJob.id).where(
             RemediationJob.asset_id.in_(peers), RemediationJob.manager == "windows",
             RemediationJob.status.in_(("dispatched", "verifying")),
-            RemediationJob.updated >= now() - DISPATCH_TIMEOUT).limit(1)) is not None  # a silent peer can't hold the group forever
+            # a silent peer can't hold the group forever, but a Windows install is silent for hours: the same limit sweep() gives it.
+            # With DISPATCH_TIMEOUT (2 h) a real DC's update outlasted it and the second DC was handed its update alongside (W8 lab)
+            RemediationJob.updated >= now() - timedelta(hours=org.reboot_deadline_hours or 24) - WIN_TIMEOUT_MARGIN).limit(1)) is not None
     for job in s.scalars(select(RemediationJob).where(RemediationJob.asset_id == asset.id, RemediationJob.status == "approved")):
         if job.manager == "windows":
             if win_busy:
@@ -600,6 +620,29 @@ def _fetch_month(s: Session, job: RemediationJob, kb: str, month: str, client) -
         return False
 
 
+def _plan_servicing(s: Session, job: RemediationJob, asset: Asset, product: str, cur: str, months: dict) -> RemediationJob | None:
+    """No earlier cumulative is offered, only an update MSRC doesn't list with a build: on an old Server 2016 that's a servicing stack
+    update, which Windows installs before any cumulative. Plan it as a forward-only step, approved only by a person; the agent installs
+    it only if its own downloaded manifest says it's a servicing stack package (DECISIONS 105). One the agent refused isn't planned again."""
+    refused = {str((j.packages[0].get("alt") or {}).get("kb")) for j in s.scalars(select(RemediationJob).where(
+        RemediationJob.asset_id == job.asset_id, RemediationJob.manager == "windows", RemediationJob.status == "aborted")) if j.packages and j.packages[0].get("servicing")}
+    kb = next((k for k in months if _kb_build(s, product, k) is None and k not in refused), None)
+    if len(months) != 1 or not kb or not SAFE_VERSION.match(cur):  # exactly one dated offer, as Server 2016 was: a longer list plans nothing
+        return None
+    try:
+        new = plan(s, asset, job.action_key.split("|", 1)[0], product, "policy", step={"kb": kb, "to": cur})
+    except RemediationError:
+        return None
+    new.packages = [{**new.packages[0], "servicing": True}]
+    ym = months[kb][0]
+    new.summary = (f"Install KB{kb} ({ym}) on {asset.hostname}: Windows Update offers this machine only that update, before any cumulative. "
+                   f"The agent installs it only if its own manifest says it's a servicing stack update, which can't be removed: approve it as "
+                   f"a forward-only change. The cumulative is planned after it.")[:500]
+    job.error = f"Windows Update offers only KB{kb} ({ym}); planned as a forward-only servicing step. {job.error or ''}".strip()[:2000]
+    s.commit()
+    return new
+
+
 def plan_step(s: Session, job: RemediationJob | None, offered, client=None) -> RemediationJob | None:
     """Windows Update offered this host none of an aborted job's KBs. If it offers an earlier cumulative update for the same
     product, plan (never approve) a job that steps through it: the KB's build comes from MSRC, fetching the month the title
@@ -613,20 +656,23 @@ def plan_step(s: Session, job: RemediationJob | None, offered, client=None) -> R
         title, kb = (o.get("title"), str(o.get("kb"))) if isinstance(o, dict) else (None, "")
         if isinstance(title, str) and SAFE_KB.match(kb) and (m := re.match(r"(20\d\d)-(0[1-9]|1[0-2]) ", title[:300])):
             months[kb] = (f"{m[1]}-{m[2]}", f"{m[1]}-{MONTHS[int(m[2]) - 1]}")
-    steps, tried = [], set()
+    steps, tried, read = [], set(), set()
     for kb, (ym, month) in months.items():
         if (build := _kb_build(s, product, kb)) is None and month not in tried:  # e.g. the month's .NET update: fetched once
             tried.add(month)
-            build = _kb_build(s, product, kb) if _fetch_month(s, job, kb, month, client) else None
+            if _fetch_month(s, job, kb, month, client):
+                read.add(month)
+                build = _kb_build(s, product, kb)
         try:  # the same product line, past the host's build and short of the job's target
             if build and build.rsplit(".", 1)[0] == target.rsplit(".", 1)[0] and windows_cmp(cur, build) < 0 < windows_cmp(target, build):
                 steps.append((build, kb, ym))
         except ValueError:
             continue
-    if not steps:
-        return None
-    build, kb, ym = max(steps, key=lambda x: sort_key(windows_cmp)(x[0]))
     asset = s.get(Asset, job.asset_id)
+    if not steps:
+        # only an update whose month MSRC's data was read for: a refused or failed fetch says nothing about what it is
+        return _plan_servicing(s, job, asset, product, cur, months) if {m for _, m in months.values()} <= read else None
+    build, kb, ym = max(steps, key=lambda x: sort_key(windows_cmp)(x[0]))
     try:
         new = plan(s, asset, job.action_key.split("|", 1)[0], product, "policy", step={"kb": kb, "to": build})
     except RemediationError:

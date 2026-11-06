@@ -4,6 +4,43 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-06 (preview)
+
+Windows round 2 (tasks/plan-windows-round-2.md; DECISIONS 102-108): proofs on real Windows servers and a real Active Directory
+domain, and the bugs they found. **Agent 0.6.0.** No database migration.
+
+**Upgrade from 0.6.x:** run `deploy/update.sh`. Things to know:
+- **AD discovery needs a directory source.** An admin chooses the one host whose directory the server takes (Assets, that host's
+  settings); until then its agent's directory upload is refused with a message saying so.
+- **Old Windows Server may get a forward-only step.** When Windows Update offers only a servicing stack update, it's planned as a
+  forward-only job that only a person can approve (`{"forward_only": true}`).
+- **More end-of-support findings for Microsoft 365 Apps** on version lines Microsoft no longer updates.
+
+**Proven on real hosts in this release:** a domain controller and two members built by script, with Kerberos remoting member to
+member (`last_run_winlab.json`); AD discovery and two DCs patched one at a time, both healthy after (`last_run_windc.json`);
+agentless scanning across hosts matching the host's own agent (`last_run_winremote_lab.json`); a servicing stack update then a
+cumulative on Server 2016 (`last_run_windows_server2016_ssu.json`); 50 findings hand-checked against Microsoft's sources on
+Windows 11, Server 2025 and Windows 10 (49 confirmed, 1 unverifiable, none wrong).
+
+**Not proven yet** (STATUS lists each): a failover cluster drained and patched (W9: the cluster forms with its witness, the
+role didn't stay up on this host), the agent installed by a GPO startup script at boot (W10: the member can't reach its DC that
+early here), SharePoint and Exchange collectors (W11), the benchmark rule hand-checks on a VM (W18, W19), Server 2019 and
+Server 2022 stepping (W5), Windows 10 apply (needs non-evaluation media), Windows 11 Enterprise (no ISO), commercial-scanner
+benchmarks (owner registration).
+
+### Added
+- **Servicing stack updates as a forward-only step** (DECISIONS 105): when Windows Update offers an old Windows Server only a servicing stack update, the server plans it as a forward-only job a person approves (`{"forward_only": true}`), and the agent installs it only if the package's own manifest says it's a servicing stack update. The cumulative is planned after it.
+
+### Fixed
+- **Two domain controllers (or cluster nodes) could be patched at once** when the first one's Windows update ran past two hours without reporting: the group now holds for as long as the server waits on that install (the restart deadline plus 4 hours). Found on a real two-DC lab.
+- Debian and Ubuntu packages held with `apt-mark hold` are reported again (they were left out of the inventory).
+- The agent opens only plain files when scanning jars, Python and npm packages: a named pipe a user planted could block it.
+- A .NET SDK reported with a two-part version no longer fails that host's report.
+- A servicing stack step is planned only when Microsoft's data for that month was read.
+- One feed failing or changing format no longer stops the hourly update and re-match for every organisation.
+- The per-update fleet view counts a stepped job by the build it installs.
+- Microsoft 365 Apps on a version line Microsoft no longer updates is judged: a superseded line's CVEs take their fix from a newer line of the channel, and a line older than any the channel lists opens an end-of-support finding (DECISIONS 106).
+
 ## [0.6.0] - 2026-11-04 (preview)
 
 Windows rounds 1 and 2 (tasks/plan.md, tasks/plan-windows-round-2.md; DECISIONS 51–101): Windows detection across the OS, Microsoft's own products and common apps, fixes

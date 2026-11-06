@@ -186,6 +186,16 @@ def microsoft_row(p) -> Row | None:
     return None
 
 
+def m365_line(p, oldest: dict) -> tuple[str, str] | None:
+    """(key, text) for Click-to-Run on a version line older than every line its channel still gets builds on (office.sync)."""
+    from nimstead.office import CHANNELS
+    ch = CHANNELS.get((p.source or "").rstrip("/").rsplit("/", 1)[-1].lower())
+    m = re.fullmatch(r"16\.0\.(\d+)\.\d+", p.version or "")
+    if not ch or ch.startswith("Perpetual") or not m or not isinstance(oldest.get(ch), int) or int(m[1]) >= oldest[ch]:
+        return None
+    return f"m365-{ch}-{m[1]}", f"Microsoft 365 Apps {ch} version {m[1]}: no more security updates (Microsoft's release feed lists only newer versions)"
+
+
 def app_verdict(key: str, version: str, eol: dict, today: date) -> tuple[str, str] | None:
     """A curated third-party app on a release cycle endoflife.date says has ended: (severity, text)."""
     product, cycle_of = APP_EOL.get(key, (None, None))
@@ -258,6 +268,11 @@ def findings(packages: list, facts: dict, today: date, eol: dict | None = None) 
     for p in packages:
         if (row := microsoft_row(p)) and (v := verdict(row, None, today)):
             add(row, p.version, v)
+        if p.ecosystem == "Microsoft" and p.name == "Microsoft 365 Apps" and eol and (hit := m365_line(p, eol.get("m365-lines") or {})):
+            if hit[0] not in seen:
+                seen.add(hit[0])
+                out.append({"package": p.name, "version": p.version, "vuln_id": f"EOL:{hit[0]}", "summary": hit[1], "ended": True,
+                            "source": "https://learn.microsoft.com/officeupdates/update-history-microsoft365-apps-by-date"})
         if p.ecosystem == "WinApp" and eol:
             from nimstead.winapps import identify
             if (hit := identify(p.name, p.source, p.version)) and (v := app_verdict(hit[0], hit[1], eol, today)):

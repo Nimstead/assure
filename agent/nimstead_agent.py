@@ -32,7 +32,7 @@ import urllib.parse
 import urllib.request
 import zipfile
 
-AGENT_VERSION = "0.5.0"  # the server reads this line to flag outdated agents; bump on every agent change
+AGENT_VERSION = "0.6.0"  # the server reads this line to flag outdated agents; bump on every agent change
 # Ed25519 public keys (hex) allowed to sign releases (DECISIONS 31): primary (GitHub Actions) and offline backup.
 # The server only relays signed releases, so it can withhold an update but never forge one. Empty = never self-update.
 RELEASE_KEYS = ["a91fa6539c6c2593009fc71b1c1fba341b5685ba7bc97c127c068b1d732b21d2", "2438f2ccebab5bf26edf9e21a8aa8f09abd1861f52fbe0d6641b28b90f8b0e5a"]  # noqa: E501
@@ -94,7 +94,7 @@ def parse_dpkg(text):
     pkgs = []
     for line in text.splitlines():
         f = line.split("\t")
-        if len(f) < 5 or not f[4].startswith("ii"):
+        if len(f) < 5 or f[4][1:2] != "i":  # the second letter is the state: "hi" is installed and held (apt-mark hold)
             continue
         # advisories are keyed by source version, which a binary can differ from (bsdutils 1:2.41-5 from util-linux 2.41-5)
         pkgs.append({"name": f[0], "version": f[1], "source": f[2] or f[0], **({"source_version": f[3]} if f[3] and f[3] != f[1] else {})})
@@ -598,7 +598,10 @@ if (Test-Path -LiteralPath $sp) { $o.sharepoint = (Get-Item -LiteralPath $sp).Ve
 $fx = Join-Path $env:windir $(if ([Environment]::Is64BitOperatingSystem) { 'Microsoft.NET\Framework64\v4.0.30319\mscorlib.dll' } else { 'Microsoft.NET\Framework\v4.0.30319\mscorlib.dll' })
 if (Test-Path -LiteralPath $fx) { $o.netfx = (Get-Item -LiteralPath $fx).VersionInfo.FileVersion }
 $short = @()  # what couldn't be read in full, as against a product that isn't there
-$apps = try { Get-AppxPackage -AllUsers -ErrorAction Stop } catch { $short += 'Store apps of other users'; Get-AppxPackage -ErrorAction SilentlyContinue }  # -AllUsers needs elevation; SYSTEM has it
+$apps = try { Get-AppxPackage -AllUsers -ErrorAction Stop } catch { $short += 'Store apps of other users'  # -AllUsers needs elevation; SYSTEM has it
+  # over remoting on Server Core this one throws ("type initializer for '<Module>'"), which -ErrorAction can't silence: it lost the
+  # whole block, .NET Framework and Defender too, in a scan across real hosts
+  try { Get-AppxPackage -ErrorAction Stop } catch { $short += 'Store apps'; @() } }
 $o.store = @($apps | Where-Object { @(%STORE%) -contains $_.Name } | ForEach-Object { @{ name = $_.Name; version = $_.Version.ToString() } })
 $mp = Get-MpComputerStatus -ErrorAction SilentlyContinue
 if ($mp) { $o.defender = @{ platform = $mp.AMProductVersion; engine = $mp.AMEngineVersion; mode = "$($mp.AMRunningMode)" } }
@@ -2050,6 +2053,20 @@ if ($al) {
 }
 ConvertTo-Json -Compress -Depth 4 -InputObject @($out)
 """
+# A forward-only servicing step (DECISIONS 105): the downloaded package's own update.mum must say it updates the servicing stack
+# (selfUpdate) and is permanent, for this KB. Attributes, so the same in every language; Server 2016's names it Package_for_KB.
+PS_SERVICING = r"""
+$f = Get-ChildItem 'C:\Windows\SoftwareDistribution\Download' -Recurse -Depth 1 -File -Include '*KB%KB%*.cab' |
+  Where-Object { $_.FullName -notmatch '\\Metadata\\' } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+if (-not $f) { throw "downloaded package for KB%KB% not found" }
+$tmp = Join-Path $env:TEMP ('nimstead-ssu-' + [guid]::NewGuid()); New-Item -ItemType Directory $tmp | Out-Null
+try {
+  expand.exe "-F:update.mum" $f.FullName $tmp | Out-Null
+  $p = ([xml](Get-Content -LiteralPath (Join-Path $tmp 'update.mum') -Raw -ErrorAction Stop)).assembly.package
+  "$($p.identifier)|selfUpdate=$($p.selfUpdate)|$($p.permanence)"
+} finally { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue }
+"""
+PS_HOTFIX = r"""[bool](Get-HotFix -Id 'KB%KB%' -ErrorAction SilentlyContinue)"""
 # Companions Windows ships as permanent with every Windows 11 cumulative update. Neither changes the OS build that
 # rollback restores, so like permanent Feature-on-Demand parts they stay after a rollback and are reported, not refused.
 PERMANENT_COMPANIONS = {("ServicingStackUpdate", "MainOS"), ("SafeOSDU", "WinRE")}
@@ -2194,7 +2211,8 @@ class WinJob:
                       "to": p.get("to"), "product": p.get("name"), "units": job.get("health_units") or [],
                       "alt": {"kb": str(alt.get("kb", "")), "to": alt.get("to")} if alt else None, "reboot_by": reboot_by,
                       "settle": min(max(int(job.get("settle_seconds", 60) or 0), 0), 900) if settle is None else int(settle),
-                      "inject": bool(fail_after_apply)}  # sandbox fault injection (run-job only; never from the server)
+                      "inject": bool(fail_after_apply),  # sandbox fault injection (run-job only; never from the server)
+                      "servicing": p.get("servicing") is True}  # its alt is a servicing stack update: forward-only (DECISIONS 105)
         else:
             with open(state_path) as f:
                 self.s = json.load(f)
@@ -2216,6 +2234,7 @@ class WinJob:
                 and (s.get("changed_at") is None or (isinstance(s["changed_at"], int) and not isinstance(s["changed_at"], bool)))
                 and isinstance(s.get("cluster", False), bool) and isinstance(s.get("notified_at", 0), (int, float))
                 and isinstance(s.get("late_removal", False), bool) and isinstance(s.get("installing", False), bool)
+                and isinstance(s.get("servicing", False), bool)
                 and isinstance(s.get("boot", 0), int) and not isinstance(s.get("boot", 0), bool)
                 and isinstance(s.get("units"), list) and all(SAFE_NAME.match(str(u)) for u in s["units"])
                 and isinstance(s.get("settle"), int) and 0 <= s["settle"] <= 900
@@ -2301,6 +2320,8 @@ class WinJob:
             now = self.s["phase"]  # where we were when it failed decides what is safe
             if now == "start":
                 return self.result("aborted", f"No changes made: {e}")
+            if now == "verify" and self.ssu():  # nothing to roll back to: it stays installed, and the report says so
+                return self.result("failed", f"Servicing stack update installed, then a check failed; it can't be removed and stays installed: {e}")
             if now == "verify":
                 return self._rollback(str(e))
             return self.result("rollback_failed", f"ROLLBACK FAILED, host needs attention: {e}")
@@ -2309,6 +2330,12 @@ class WinJob:
         """The machine stopped during the install (seen for real, Windows 10). Anything new goes the way of a failed update;
         nothing new means nothing changed, and a drained cluster node comes back either way (DECISIONS 78)."""
         s = self.s
+        if self.ssu():  # it adds no cumulative package: whether the KB is there is what tells
+            rc, out = ps(self.run, PS_HOTFIX.replace("%KB%", s["kb"]))
+            if rc == 0 and out.strip().splitlines()[-1:] == ["True"]:
+                s["phase"] = "verify"
+                return self._verify()
+            return self.result("aborted", "No changes made: the machine stopped during the install and the servicing stack update isn't installed. Plan it again.")
         try:
             new = sorted(set(self.rollups()) - set(s["baseline"]))
         except StepFailed:  # servicing still busy: look again at the next poll, never guess
@@ -2369,10 +2396,15 @@ class WinJob:
                   "installed cumulative packages: " + ", ".join(k for k, v in s["baseline"].items() if v.strip() == "Installed"))
         rc, out = ps(self.run, wu(PS_DOWNLOAD).replace("%KB%", s["kb"]))
         self.step(f"KB{s['kb']} downloaded", rc == 0 and out.strip().splitlines()[-1:] in (["2"], ["3"]), out)
-        rc, out = ps(self.run, PS_PERMANENCE.replace("%KB%", s["kb"]))
-        # permanent sub-packages (Features on Demand) stay behind on removal; rollback is judged by the build returning
-        ok, detail = removable(json.loads(out)) if rc == 0 and out.strip().startswith("[") else (False, out)
-        self.step("update is removable (manifest checked before install)", ok, detail)
+        if self.ssu():  # the one update that can't be rolled back: installed only as what its own manifest says it is
+            rc, out = ps(self.run, PS_SERVICING.replace("%KB%", s["kb"]))
+            name = out.strip().splitlines()[-1] if rc == 0 and out.strip() else out
+            self.step("update is a servicing stack update (its own manifest)", rc == 0 and name == f"KB{s['kb']}|selfUpdate=true|permanent", name)
+        else:
+            rc, out = ps(self.run, PS_PERMANENCE.replace("%KB%", s["kb"]))
+            # permanent sub-packages (Features on Demand) stay behind on removal; rollback is judged by the build returning
+            ok, detail = removable(json.loads(out)) if rc == 0 and out.strip().startswith("[") else (False, out)
+            self.step("update is removable (manifest checked before install)", ok, detail)
         rc, node = ps(self.run, PS_CLUSTER_NODE)
         if rc == 0 and node.strip():  # a failover cluster node: move its roles off first; a failed drain changes nothing
             rc, out = ps(self.run, PS_CLUSTER_DRAIN)
@@ -2388,19 +2420,29 @@ class WinJob:
         res = json.loads(out) if rc == 0 and out.strip().startswith("{") else {}
         s["phase"], s["installing"] = "verify", False  # from here on, failures roll back
         self.step(f"KB{s['kb']} downloaded and installed", res.get("install") in (2, 3), out)
-        new = sorted(set(self.rollups()) - set(s["baseline"]))
-        s["new_packages"] = new
-        self.step("new cumulative package identified", len(new) >= 1, ", ".join(new) or "none")
+        if not self.ssu():
+            new = sorted(set(self.rollups()) - set(s["baseline"]))
+            s["new_packages"] = new
+            self.step("new cumulative package identified", len(new) >= 1, ", ".join(new) or "none")
         if res.get("reboot"):
             self.s["steps"].append({"step": "reboot required to finish", "ok": True, "output": ""})
             return self.pending()
         return self._verify()
 
+    def ssu(self):
+        """This run installs the job's servicing stack step: the server marked it so, and it's the KB Windows Update offered."""
+        s = self.s
+        return bool(s.get("servicing") and s.get("alt") and s["kb"] == s["alt"].get("kb"))
+
     def _verify(self):
         s = self.s
         cur = self.build()
-        reached = (windows_version_key(cur) >= windows_version_key(s["to"])) if s.get("to") else cur != s["from"]
-        self.step("build updated", reached, f"now {cur}, target {s.get('to')}")
+        if self.ssu():  # the build doesn't move; the KB is what must now be there
+            rc, out = ps(self.run, PS_HOTFIX.replace("%KB%", s["kb"]))
+            self.step(f"KB{s['kb']} installed", rc == 0 and out.strip().splitlines()[-1:] == ["True"], out.strip() or "not listed")
+        else:
+            reached = (windows_version_key(cur) >= windows_version_key(s["to"])) if s.get("to") else cur != s["from"]
+            self.step("build updated", reached, f"now {cur}, target {s.get('to')}")
         if s["units"] and s["settle"]:
             time.sleep(s["settle"])
         self.health("after change")
@@ -3235,6 +3277,8 @@ def scan_jars(roots, max_seconds=300, max_files=500_000, mounts=None, owned=lamb
                 if owned(p):
                     skipped += 1
                     continue
+                if not regular(p):
+                    continue
                 try:
                     with zipfile.ZipFile(p) as z:
                         _poms(z, p, found)
@@ -3303,8 +3347,18 @@ def package_owned(dpkg_info=DPKG_INFO, apk_db=APK_DB, which=shutil.which, nt=os.
     return (lambda p: p in owned or p + "/package.json" in owned), None
 
 
+def regular(path):
+    """A plain file, not followed: a FIFO a user planted in a scanned folder would block the root agent's open() for good."""
+    try:
+        return stat.S_ISREG(os.lstat(path).st_mode)
+    except OSError:
+        return False
+
+
 def _dist_meta(path):
     """(PEP 503 name, version) from a core-metadata file's headers (METADATA, PKG-INFO), or None."""
+    if not regular(path):
+        return None
     try:
         with open(path, encoding="utf-8", errors="replace") as f:
             head = f.read(MAX_METADATA)
@@ -3324,6 +3378,8 @@ def _dist_meta(path):
 
 
 def _package_json(path):
+    if not regular(path):
+        return None
     try:
         if os.path.getsize(path) > MAX_PACKAGE_JSON:
             return None

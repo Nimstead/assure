@@ -334,8 +334,9 @@ def test_results_are_not_findings_and_the_report_fits(env):
              "config": {f"k{i}": 1 for i in range(100)}}
     r = c.post("/api/agent/inventory", headers=h, json={"os_name": SERVER, "ecosystem": "Windows", "packages": [], "facts": facts})
     assert r.status_code == 200
-    asset = next(x for x in c.get("/api/assets").json() if x["hostname"] == "srv")
-    assert asset["facts"].get("baseline") == baseline
+    from nimstead.db import Asset, make_sessionmaker
+    with make_sessionmaker(env)() as s:  # stored whole; the asset list leaves baseline out (DECISIONS 101)
+        assert s.query(Asset).filter_by(hostname="srv").one().facts.get("baseline") == baseline
     assert not [x for x in c.get("/api/findings").json() if x["ecosystem"] != "WinConfig"]  # the host's own config checks may fire
 
 

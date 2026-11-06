@@ -1,6 +1,6 @@
 # Engine, first slice: an end-to-end Windows scan (E2)
 
-Requirements are in `spec-detection.md` (R and T numbers refer to it). The boundary is in DECISIONS 79: whoever builds this works from these two documents plus Microsoft, NVD and vendor sources, and doesn't open Greenbone.
+Requirements are in `spec-detection.md` (R and T numbers refer to it). The boundary is in DECISIONS 79: whoever builds this works from these two documents plus Microsoft, NVD and vendor sources, and doesn't open the reference scanner.
 
 ## What it must show
 

@@ -2,6 +2,7 @@
 
   uv run python ../sandbox/winvm.py create  ISO [--memory=MB] [--lab] [--image=N]   # unattended install (Server Core, or Windows 11 Pro), headless;
       # prints the VM name. --lab: a second NIC on a private network (static IPs are set inside the guest). --image: a Server edition's image index
+      # --reuse: a linked clone of a freshly installed copy of that ISO, made once and kept powered off (saves the hour setup takes)
   uv run python ../sandbox/winvm.py destroy NAME  # power off + delete VM and disks (only nimstead-sbx-win-* names)
   uv run python ../sandbox/winvm.py run NAME 'powershell...'   # run as the VM's Administrator via guest control
 
@@ -13,6 +14,7 @@ import base64
 import json
 import re
 import secrets
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -23,6 +25,7 @@ VBOX = r"C:\Program Files\Oracle\VirtualBox\VBoxManage.exe"
 PREFIX = "nimstead-sbx-win-"
 LAB_NET = "nimstead-sbx-lab"  # VirtualBox internal network: lab VMs reach each other on it, and nothing else does
 STATE = Path(tempfile.gettempdir()) / "nimstead-sbx-win"
+BASES = STATE / "bases.json"  # "<iso stem>-<image>" -> the base VM a --reuse clone starts from
 
 
 def vbox(*args, check=True, timeout=3600) -> str:
@@ -65,8 +68,8 @@ def create(iso: str, memory: int = 4096, lab: bool = False, image: int = 1, comp
          "--basefolder", str(folder), "--register")
     vbox("modifyvm", name, "--memory", str(memory), "--cpus", "2", "--firmware", "efi", "--nic1", "nat", "--graphicscontroller", "vboxsvga",
          "--nat-localhostreachable1", "on")  # VirtualBox 7 blocks guest -> host 127.0.0.1 (10.0.2.2) by default
-    if lab:
-        vbox("modifyvm", name, "--nic2", "intnet", "--intnet2", LAB_NET)
+    if lab:  # and a hardware clock in UTC, read as UTC inside (winlab's LAB_NIC): see winlab.utc_clock
+        vbox("modifyvm", name, "--nic2", "intnet", "--intnet2", LAB_NET, "--rtc-use-utc", "on")
     if win10:  # setup hung at "Getting ready", disk idle, with the default Hyper-V paravirtual interface (real VM)
         vbox("modifyvm", name, "--paravirt-provider", "none")
     if win11:  # Windows 11 setup refuses hardware without TPM 2.0 and Secure Boot
@@ -92,6 +95,33 @@ def create(iso: str, memory: int = 4096, lab: bool = False, image: int = 1, comp
         (folder / "unattend.xml").write_text(re.sub(r"\s*<ProductKey>.*?</ProductKey>", "", template, flags=re.S), encoding="utf-8")
         args.append(f"--script-template={folder / 'unattend.xml'}")
     vbox(*args)
+    print(name)
+    return name
+
+
+def clone(iso: str, memory: int = 4096, image: int = 1) -> str:
+    """A linked clone of this ISO's base: the base is a VM installed once and snapshotted powered off as soon as it was ready,
+    so a clone boots the same fresh install (same build, nothing applied) without the hour of setup. Clones share the base's
+    computer name, machine SID and Administrator password, so a domain lab never uses them; destroy removes only the clone's disk."""
+    bases = json.loads(BASES.read_text()) if BASES.exists() else {}
+    key = f"{Path(iso).stem}-{image}"
+    base = bases.get(key)
+    if not base or f'"{base}"' not in vbox("list", "vms"):
+        base = create(iso, memory, image=image)
+        wait_ready(base)
+        vbox("controlvm", base, "acpipowerbutton", check=False)
+        end = time.time() + 600
+        while 'VMState="poweroff"' not in vbox("showvminfo", base, "--machinereadable") and time.time() < end:
+            time.sleep(10)
+        vbox("controlvm", base, "poweroff", check=False)  # no-op once Windows shut itself down
+        vbox("snapshot", base, "take", "ready")
+        BASES.write_text(json.dumps({**bases, key: base}))
+    name = PREFIX + secrets.token_hex(3)
+    (STATE / name).mkdir(parents=True)
+    shutil.copy(STATE / base / "creds.json", STATE / name / "creds.json")
+    vbox("clonevm", base, "--snapshot", "ready", "--options", "link", "--name", name, "--basefolder", str(STATE / name), "--register")
+    vbox("modifyvm", name, "--memory", str(memory))
+    vbox("startvm", name, "--type", "headless")
     print(name)
     return name
 
@@ -137,7 +167,10 @@ def wait_ready(name: str, minutes=90, reset_after=12, restart_after=20, max_rese
             if disk != seen:
                 seen, idle = disk, time.time()
             elif resets < max_resets and time.time() - idle > reset_after * 60:
-                vbox("controlvm", name, "reset", check=False)
+                # cold, not a warm reset: this host's firmware hangs at the VirtualBox logo after a warm one (Server 2019 setup looped on it)
+                vbox("controlvm", name, "poweroff", check=False)
+                time.sleep(5)
+                vbox("startvm", name, "--type", "headless", check=False)
                 idle, resets = time.time(), resets + 1
         time.sleep(20)
     raise RuntimeError(f"{name} not ready after {minutes} min")
@@ -210,7 +243,11 @@ if __name__ == "__main__":
     cmd = sys.argv[1]
     if cmd == "create":
         opts = dict(a[2:].split("=", 1) for a in sys.argv[3:] if "=" in a)
-        create(sys.argv[2], memory=int(opts.get("memory", 4096)), lab="--lab" in sys.argv, image=int(opts.get("image", 1)))
+        if "--reuse" in sys.argv:
+            assert "--lab" not in sys.argv, "lab machines need their own names and SIDs: no clones"
+            clone(sys.argv[2], memory=int(opts.get("memory", 4096)), image=int(opts.get("image", 1)))
+        else:
+            create(sys.argv[2], memory=int(opts.get("memory", 4096)), lab="--lab" in sys.argv, image=int(opts.get("image", 1)))
     elif cmd == "destroy":
         destroy(sys.argv[2])
     elif cmd == "wait":

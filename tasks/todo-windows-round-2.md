@@ -30,8 +30,8 @@ so on a localised Windows the service permission check would silently find nothi
 
 ### W3: Side-by-side with the reference scanner, then commercial scanners (M)
 - [ ] Runs as an executable benchmark. Studying its source is the separate research track (E1, DECISIONS 79); whoever runs this comparison and fixes its gaps works from reports and vendor data
-- [ ] Short look first: does the free feed's credentialed Windows scan cover patches and apps? If not, stop and report
-- [ ] Same VM, old OS and old apps, both scanners; every CVE on only one side classified: ours missed, theirs wrong, or out of scope
+- [x] Short look first: does the free feed's credentialed Windows scan cover patches and apps? If not, stop and report. **Not for current Windows patches: stopped and reported** (2026-11-06, DECISIONS 110). From the free feed's own file listing (names only, nothing opened; 95,107 tests): 1,978 Microsoft KB tests, the newest for October 2025 (KB5066xxx), none for any month since; this year's whole addition is about 50 tests, one of them Microsoft's. Windows apps are covered (about 460 Chrome and 460 Firefox tests for Windows, Adobe, 7-Zip, Notepad++), also thin this year. The vendor's own comparison page names enterprise software such as Exchange as paid-feed only. So on a host patched past October 2025, every Windows CVE since would read "theirs missed" and prove nothing about us
+- [ ] Waits on the owner (DECISIONS 110): a commercial scanner's trial, or the free feed on a VM held below October 2025. Same VM, old OS and old apps, both scanners; every CVE on only one side classified: ours missed, theirs wrong, or out of scope
 - [ ] Each "ours missed" becomes a test or a W-task; the result lives in a private run file, no public claim
 - Verify: `sandbox/last_run_compare.json`. Files: `sandbox/wincompare.py` (new), one report. Deps: none. A commercial scanner only if you decide so.
 
@@ -228,7 +228,8 @@ Every unchecked item above, by why it's open:
 - **Blocked by this host** (VirtualBox on Hyper-V's slower engine): W5 Server 2022 stepping (overran the 2-hour limit) and Server 2019 (never boots). Needs Hyper-V off, which is the owner's call (DECISIONS 107), or another machine
 - **Blocked by evaluation media**: W2's German rollback and W4's apply by the task (the licence service powers the VM off an hour after boot); W4's oracle and .NET proofs wait on the same. Needs licensed or IoT LTSC media. W6 Windows 11 Enterprise: its evaluation ISO sits behind Microsoft's registration form, which asks for the owner's details
 - **Waiting on the owner**: Checkpoint A (W3's gaps reviewed with you); the items below
-- **Not started, real work, unblocked**: W3 side-by-side with the reference scanner (starts with a short look at whether its free feed checks Windows patches at all); W13 app batches to 200 (each batch a VM run of several hours); W1's 50-app VM screenshot and axe check; Checkpoint C (needs W13); the engine track's last three (routing and AD group edges, findings through the engine, its benchmark run, which needs W3)
+- **W3** stopped at its short look (DECISIONS 110): the reference scanner's free feed has no Windows patch tests after October 2025, so which scanner to compare with is the owner's call
+- **Not started, real work, unblocked**: W13 app batches to 200 (each batch a VM run of several hours); W1's 50-app VM screenshot and axe check; Checkpoint C (needs W13); the engine track's last three (routing and AD group edges, findings through the engine, its benchmark run, which needs W3)
 
 ## Needs the owner
 - [ ] Review this plan; answer its two open questions

@@ -12,7 +12,7 @@ from sqlalchemy import select
 from test_agent import agent
 from test_api import user
 
-from nimstead import winapps
+from nimstead import scan, winapps
 from nimstead.db import Advisory, make_sessionmaker
 from nimstead.feeds import sync_nvd
 from nimstead.versions import appver_cmp
@@ -297,6 +297,25 @@ def test_coverage_says_what_was_only_listed(env):
         {"name": "Acme Widget", "publisher": "Acme", "hosts": 2}, {"name": "Rare Tool", "publisher": None, "hosts": 1}]}
     other_org = user(env, "b@example.com")
     assert other_org.get("/api/coverage").json() == {"assessed": 0, "inventory_only": 0, "not_assessed": []}
+
+
+def test_a_runtime_counts_as_checked_only_when_its_fact_is_reported_at_that_version(env):
+    """A real Windows 11 VM (last_run_wincoverage.json): Desktop Runtime 10.0.14 read as unchecked beside ".NET runtime 10.0.14"."""
+    c = user(env)
+    token = c.post("/api/enroll-tokens").json()["token"]
+    for host, fact in (("with-fact", "10.0.14"), ("other-version", "10.0.13"), ("no-fact", None)):
+        a = c.post("/api/agent/enroll", json={"token": token, "hostname": host, "ecosystem": "Windows"}).json()
+        pkgs = [{"ecosystem": "WinApp", "name": "Microsoft Windows Desktop Runtime 10.0.14 (x64)", "version": "10.0.14.50000",
+                 "source": "Microsoft Corporation"}]
+        pkgs += [{"ecosystem": "Microsoft", "name": ".NET runtime", "version": fact, "source": None}] if fact else []
+        assert c.post("/api/agent/inventory", headers={"Authorization": f"Bearer {a['agent_key']}"},
+                      json={"ecosystem": "Windows", "packages": pkgs}).status_code == 200
+    by_host = {a["hostname"]: a["apps"] for a in c.get("/api/assets").json()}
+    assert by_host == {"with-fact": {"assessed": 1, "inventory_only": 0}, "other-version": {"assessed": 0, "inventory_only": 1},
+                       "no-fact": {"assessed": 0, "inventory_only": 1}}
+    assert scan.runtime_fact("Microsoft ASP.NET Core 9.0.11 - Shared Framework (x64)") == ("ASP.NET Core", "9.0.11")
+    assert scan.runtime_fact("Microsoft .NET Runtime - 9.0.11 (x64)") == (".NET runtime", "9.0.11")  # installers write both forms
+    assert scan.runtime_fact("Microsoft .NET SDK 9.0.307 (x64)") is None  # an SDK isn't its runtime
 
 
 def test_winapp_asset_end_to_end(env):

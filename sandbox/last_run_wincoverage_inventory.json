@@ -1,0 +1,3788 @@
+{
+ "os_name": "Windows 11 Pro 26H2 (AMD64) build 10.0.26300.9457",
+ "ecosystem": "Windows",
+ "agent_version": "0.6.2",
+ "facts": {
+  "edition_id": "Professional",
+  "installation_type": "Client",
+  "esu": null,
+  "config": {
+   "secure_boot": true,
+   "uefica2023_status": "Updated",
+   "uefica2023_error": null,
+   "secure_boot_last_event": 1808,
+   "dbx_pca2011_revoked": false,
+   "cert_padding_check": [
+    null,
+    null
+   ],
+   "spectre_override": null,
+   "spectre_mask": null,
+   "smb1_server": false,
+   "smb_signing_required": true,
+   "llmnr": null,
+   "netbios_adapters": 6,
+   "lm_compat": null,
+   "run_as_ppl": 2,
+   "wdigest": null,
+   "rdp_enabled": false,
+   "rdp_nla": 1,
+   "tls1.0_server": null,
+   "tls1.1_server": null,
+   "ldap_signing": null,
+   "ldap_channel_binding": null,
+   "always_install_elevated": null,
+   "uac_lua": 1,
+   "uac_admin_prompt": 5,
+   "remote_uac_off": null,
+   "restrict_anonymous_sam": 1,
+   "restrict_anonymous": 0,
+   "everyone_includes_anonymous": 0,
+   "no_lm_hash": 1,
+   "autorun": null,
+   "smb_client_signing": null,
+   "insecure_guest_auth": null,
+   "winrm_basic": null,
+   "winrm_unencrypted": null,
+   "rdp_encryption": 2,
+   "safe_dll_search": null,
+   "auto_update_off": null,
+   "autologon_stored": false,
+   "script_block_logging": null,
+   "ssl3_server": null,
+   "remote_registry_running": false,
+   "snmp_default_community": false,
+   "guest_enabled": false,
+   "password_policy": {
+    "MinimumPasswordLength": 0,
+    "PasswordComplexity": 0,
+    "LockoutBadCount": 10,
+    "ClearTextPassword": 0
+   },
+   "spooler_running": true,
+   "unquoted_service_paths": [],
+   "writable_service_binaries": [],
+   "powershell2": null,
+   "defender": {
+    "signature_age": 0,
+    "mode": "Normal",
+    "realtime": true
+   },
+   "firewall_off": [],
+   "bitlocker_os": "Off"
+  },
+  "roles": [
+   "WorkFolders-Client",
+   "WCF-Services45",
+   "WCF-TCP-PortSharing45",
+   "MediaPlayback",
+   "WindowsMediaPlayer",
+   "SmbDirect",
+   "Printing-PrintToPDFServices-Features",
+   "Windows-Defender-Default-Definitions",
+   "SearchEngine-Client-Package",
+   "Microsoft-RemoteDesktopConnection",
+   "Printing-Foundation-Features",
+   "Printing-Foundation-InternetPrinting-Client",
+   "MSRDC-Infrastructure",
+   "NetFx4-AdvSrvs"
+  ],
+  "domain_role": 0,
+  "domain": "WORKGROUP",
+  "cluster": null,
+  "wsus": null,
+  "wufb_quality_deferral_days": null,
+  "pending_reboot": true,
+  "last_update_success": "2026-11-06T21:24:12.0000000",
+  "machine_certs": [],
+  "listening": [
+   {
+    "port": 49670,
+    "process": "services",
+    "firewall": "blocked"
+   },
+   {
+    "port": 49668,
+    "process": "spoolsv",
+    "firewall": "allowed"
+   },
+   {
+    "port": 49667,
+    "process": "svchost",
+    "firewall": "allowed"
+   },
+   {
+    "port": 49666,
+    "process": "svchost",
+    "firewall": "allowed"
+   },
+   {
+    "port": 49665,
+    "process": "wininit",
+    "firewall": "blocked"
+   },
+   {
+    "port": 49664,
+    "process": "lsass",
+    "firewall": "blocked"
+   },
+   {
+    "port": 10050,
+    "process": "zabbix_agent2",
+    "firewall": "allowed"
+   },
+   {
+    "port": 7680,
+    "process": "svchost",
+    "firewall": "blocked"
+   },
+   {
+    "port": 6379,
+    "process": "redis-server",
+    "firewall": "allowed"
+   },
+   {
+    "port": 4000,
+    "process": "nxd",
+    "firewall": "allowed"
+   },
+   {
+    "port": 445,
+    "process": "System",
+    "firewall": "blocked"
+   },
+   {
+    "port": 135,
+    "process": "svchost",
+    "firewall": "allowed"
+   },
+   {
+    "port": 6783,
+    "process": "SRManager",
+    "firewall": "allowed"
+   },
+   {
+    "port": 5473,
+    "process": "nxservice64",
+    "firewall": "blocked"
+   },
+   {
+    "port": 5041,
+    "process": "nxservice64",
+    "firewall": "blocked"
+   },
+   {
+    "port": 5040,
+    "process": "svchost",
+    "firewall": "allowed"
+   },
+   {
+    "port": 139,
+    "process": "System",
+    "firewall": "blocked"
+   }
+  ],
+  "baseline": {
+   "reg": {
+    "a03a74e4": "10",
+    "862c02c5": null,
+    "9662685e": null,
+    "3303a001": null,
+    "4072f8ea": null,
+    "2d26f30a": null,
+    "6e3689a4": null,
+    "abdf5ce3": null,
+    "0da8b76a": null,
+    "b297e0ba": 5,
+    "1edf85ba": 3,
+    "f01c2584": 1,
+    "78160de0": 1,
+    "90ba269f": 1,
+    "1d312ee7": 1,
+    "725b70d0": 0,
+    "db38c994": 1,
+    "bcbddad3": null,
+    "c3eec544": null,
+    "dd66eefe": null,
+    "7321fde2": null,
+    "cf584e03": null,
+    "ce6dde33": null,
+    "25592271": null,
+    "360f88f0": null,
+    "e2674e0f": null,
+    "b02b824c": null,
+    "0765073e": null,
+    "471da9a6": null,
+    "afa3961f": null,
+    "e9e5a47c": null,
+    "ac1a7685": null,
+    "009dc183": null,
+    "0856308f": null,
+    "cb8dddf0": null,
+    "23959350": null,
+    "0a5332d7": null,
+    "19bafbb8": null,
+    "f62510e3": null,
+    "89fe55ca": null,
+    "d140a708": null,
+    "e3c42a63": null,
+    "627c42db": null,
+    "8119efa6": null,
+    "022e6936": null,
+    "7629c83d": null,
+    "cc80cbab": null,
+    "a9925952": null,
+    "5109d72b": null,
+    "0cddc0f4": null,
+    "ee760fcd": null,
+    "825bcbf4": null,
+    "77ad4d33": null,
+    "75f0c990": null,
+    "537f92b0": null,
+    "97623577": null,
+    "f65c27a0": null,
+    "846b4cf1": null,
+    "6688dcc9": null,
+    "97392944": null,
+    "9927841d": null,
+    "dae6dc1b": null,
+    "6418d477": null,
+    "596c6126": null,
+    "fabdade4": null,
+    "2dd0280e": 0,
+    "76fee2b5": null,
+    "e6ea830b": 536870912,
+    "679a702e": 536870912,
+    "d3b3a865": null,
+    "b35ca6a4": 0,
+    "fe404485": 1,
+    "0611e89f": null,
+    "58bdd23d": 1,
+    "c84e9d68": 0,
+    "825f86c5": 1,
+    "257215bd": null,
+    "6977c15f": null,
+    "19c4cee3": null,
+    "c801dae1": null,
+    "97ac0226": null,
+    "34398a38": 1,
+    "76ab17d9": 0,
+    "275e32f9": null,
+    "da7759cb": 1,
+    "dbcf34bf": 0,
+    "d2b9b2f1": 1,
+    "cfa1f22c": null,
+    "09e3edcd": 1,
+    "fe03bfbc": null,
+    "9da12190": 0,
+    "cd76b0a9": 30,
+    "4f9d1dbe": null,
+    "dbe5e80b": 1,
+    "4bc46170": 1,
+    "6f01306e": 1,
+    "33c7660c": 1,
+    "32baa8ea": null,
+    "1da85066": null,
+    "d30f6229": null,
+    "a8fa4d13": null
+   },
+   "audit": {
+    "{0CCE9210-69AE-11D9-BED3-505054503030}": 1,
+    "{0CCE9211-69AE-11D9-BED3-505054503030}": 0,
+    "{0CCE9212-69AE-11D9-BED3-505054503030}": 3,
+    "{0CCE9213-69AE-11D9-BED3-505054503030}": 0,
+    "{0CCE9214-69AE-11D9-BED3-505054503030}": 3,
+    "{0CCE9215-69AE-11D9-BED3-505054503030}": 3,
+    "{0CCE9216-69AE-11D9-BED3-505054503030}": 1,
+    "{0CCE9217-69AE-11D9-BED3-505054503030}": 1,
+    "{0CCE921B-69AE-11D9-BED3-505054503030}": 1,
+    "{0CCE921C-69AE-11D9-BED3-505054503030}": 0,
+    "{0CCE9224-69AE-11D9-BED3-505054503030}": 0,
+    "{0CCE9227-69AE-11D9-BED3-505054503030}": 0,
+    "{0CCE9228-69AE-11D9-BED3-505054503030}": 0,
+    "{0CCE922B-69AE-11D9-BED3-505054503030}": 0,
+    "{0CCE922F-69AE-11D9-BED3-505054503030}": 1,
+    "{0CCE9230-69AE-11D9-BED3-505054503030}": 1,
+    "{0CCE9231-69AE-11D9-BED3-505054503030}": 0,
+    "{0CCE9232-69AE-11D9-BED3-505054503030}": 0,
+    "{0CCE9234-69AE-11D9-BED3-505054503030}": 0,
+    "{0CCE9235-69AE-11D9-BED3-505054503030}": 1,
+    "{0CCE9236-69AE-11D9-BED3-505054503030}": 0,
+    "{0CCE9237-69AE-11D9-BED3-505054503030}": 1,
+    "{0CCE923A-69AE-11D9-BED3-505054503030}": 0,
+    "{0CCE923B-69AE-11D9-BED3-505054503030}": 0,
+    "{0CCE923C-69AE-11D9-BED3-505054503030}": 0,
+    "{0CCE923F-69AE-11D9-BED3-505054503030}": 0,
+    "{0CCE9244-69AE-11D9-BED3-505054503030}": 0,
+    "{0CCE9248-69AE-11D9-BED3-505054503030}": 0,
+    "{0CCE9249-69AE-11D9-BED3-505054503030}": 0
+   },
+   "rights": {
+    "SeAuditPrivilege": [
+     "S-1-5-19",
+     "S-1-5-20",
+     "S-1-5-99-216390572-1995538116-3857911515-2404958512-2623887229"
+    ],
+    "SeBackupPrivilege": [
+     "S-1-5-21-830414957-1284455264-2012561117-500",
+     "S-1-5-32-544",
+     "S-1-5-32-551"
+    ],
+    "SeCreateGlobalPrivilege": [
+     "S-1-5-19",
+     "S-1-5-20",
+     "S-1-5-32-544",
+     "S-1-5-6"
+    ],
+    "SeCreatePagefilePrivilege": [
+     "S-1-5-32-544"
+    ],
+    "SeCreatePermanentPrivilege": [],
+    "SeCreateTokenPrivilege": [],
+    "SeDebugPrivilege": [
+     "S-1-5-32-544"
+    ],
+    "SeDenyBatchLogonRight": [],
+    "SeDenyInteractiveLogonRight": [
+     "S-1-5-21-830414957-1284455264-2012561117-1000",
+     "S-1-5-21-830414957-1284455264-2012561117-501"
+    ],
+    "SeDenyNetworkLogonRight": [
+     "S-1-5-21-830414957-1284455264-2012561117-501"
+    ],
+    "SeDenyRemoteInteractiveLogonRight": [],
+    "SeDenyServiceLogonRight": [],
+    "SeEnableDelegationPrivilege": [],
+    "SeImpersonatePrivilege": [
+     "S-1-5-19",
+     "S-1-5-20",
+     "S-1-5-32-544",
+     "S-1-5-6",
+     "S-1-5-99-216390572-1995538116-3857911515-2404958512-2623887229"
+    ],
+    "SeIncreaseBasePriorityPrivilege": [
+     "S-1-5-32-544",
+     "S-1-5-90-0"
+    ],
+    "SeInteractiveLogonRight": [
+     "S-1-5-21-830414957-1284455264-2012561117-501",
+     "S-1-5-32-544",
+     "S-1-5-32-545",
+     "S-1-5-32-551"
+    ],
+    "SeLoadDriverPrivilege": [
+     "S-1-5-32-544"
+    ],
+    "SeLockMemoryPrivilege": [],
+    "SeMachineAccountPrivilege": [],
+    "SeManageVolumePrivilege": [
+     "S-1-5-32-544"
+    ],
+    "SeNetworkLogonRight": [
+     "S-1-1-0",
+     "S-1-5-32-544",
+     "S-1-5-32-545",
+     "S-1-5-32-551"
+    ],
+    "SeProfileSingleProcessPrivilege": [
+     "S-1-5-32-544"
+    ],
+    "SeRemoteInteractiveLogonRight": [
+     "S-1-5-32-544",
+     "S-1-5-32-555"
+    ],
+    "SeRemoteShutdownPrivilege": [
+     "S-1-5-32-544"
+    ],
+    "SeRestorePrivilege": [
+     "S-1-5-21-830414957-1284455264-2012561117-500",
+     "S-1-5-32-544",
+     "S-1-5-32-551"
+    ],
+    "SeSystemEnvironmentPrivilege": [
+     "S-1-5-32-544"
+    ],
+    "SeSystemtimePrivilege": [
+     "S-1-5-19",
+     "S-1-5-32-544"
+    ],
+    "SeTakeOwnershipPrivilege": [
+     "S-1-5-32-544"
+    ],
+    "SeTcbPrivilege": [
+     "S-1-5-21-830414957-1284455264-2012561117-1000",
+     "S-1-5-21-830414957-1284455264-2012561117-500"
+    ],
+    "SeTrustedCredManAccessPrivilege": []
+   }
+  },
+  "driver_scan": {
+   "hashed": 466,
+   "too_large": 0,
+   "unreadable": 0,
+   "stopped": false,
+   "complete": true
+  }
+ },
+ "collection": {
+  "v": 1,
+  "sources": {
+   "windows_build": {
+    "state": "ok",
+    "count": 1
+   },
+   "uninstall": {
+    "state": "ok",
+    "count": 77
+   },
+   "user_hives": {
+    "state": "ok",
+    "count": 0
+   },
+   "microsoft_products": {
+    "state": "ok",
+    "count": 9
+   },
+   "host_facts": {
+    "state": "ok",
+    "count": 12
+   },
+   "drivers": {
+    "state": "ok",
+    "count": 466
+   },
+   "java_archives": {
+    "state": "off",
+    "count": 0
+   },
+   "python_packages": {
+    "state": "off",
+    "count": 0
+   },
+   "npm_packages": {
+    "state": "off",
+    "count": 0
+   }
+  }
+ },
+ "packages": [
+  {
+   "ecosystem": "Windows",
+   "name": "Windows 11 Version 26H2 for x64-based Systems",
+   "version": "10.0.26300.9457",
+   "source": null
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "7-Zip 26.05 (x64)",
+   "version": "26.05",
+   "source": "Igor Pavlov"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Absolute Secure Access Client",
+   "version": "14.60.28244",
+   "source": "Absolute Software Corporation"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Acronis Cyber Protect Home Office",
+   "version": "28.3.41126",
+   "source": "Acronis"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Adobe Acrobat (64-bit)",
+   "version": "26.003.22075",
+   "source": "Adobe"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Adobe Connect",
+   "version": "2026.9.61.64",
+   "source": "Adobe Systems Inc."
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Amazon Corretto (x64)",
+   "version": "21.0.13.0",
+   "source": "Amazon"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Bonjour",
+   "version": "3.0.0.10",
+   "source": "Apple Inc."
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "ClamAV 1.5.4",
+   "version": "1.5.4",
+   "source": "Cisco Systems, Inc."
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Copilot",
+   "version": "156.0.4314.58",
+   "source": "Microsoft Corporation"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Cursor",
+   "version": "3.27.12",
+   "source": "Anysphere"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Devolutions Server Console",
+   "version": "2026.3.12.0",
+   "source": "Devolutions inc."
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Discord",
+   "version": "1.0.9267",
+   "source": "Discord Inc."
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Eclipse Temurin JDK with Hotspot 21.0.13+9 (x64)",
+   "version": "21.0.13.9",
+   "source": "Eclipse Adoptium"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Erlang OTP 29.1.2 (17.1.1)",
+   "version": "29.1.2",
+   "source": "Ericsson AB"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Foxit PDF Reader",
+   "version": "2026.2.1.39815",
+   "source": "Foxit Software Inc."
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "GIMP 3.2.8",
+   "version": "3.2.8.0",
+   "source": "The GIMP Team"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "GNU Privacy Guard",
+   "version": "2.5.24",
+   "source": "The GnuPG Project"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "GStreamer 1.0 (MSVC x86_64) version 1.28.8",
+   "version": "1.28.8",
+   "source": "GStreamer Project"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Git",
+   "version": "2.56.0.4",
+   "source": "The Git Development Community"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Go Programming Language amd64 go1.27.3",
+   "version": "1.27.3",
+   "source": "https://go.dev"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Gpg4win (5.1.1)",
+   "version": "5.1.1",
+   "source": "The Gpg4win Project"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Greenshot 1.3.328",
+   "version": "1.3.328",
+   "source": "Greenshot"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "ImageMagick 7.1.2-34 Q16-HDRI (64-bit) (2026-10-14)",
+   "version": "7.1.2.34",
+   "source": "ImageMagick Studio LLC"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Inkscape",
+   "version": "1.4.4",
+   "source": "Inkscape"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "IrfanView 4.76 (64-bit)",
+   "version": "4.76",
+   "source": "Irfan Skiljan"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "JT2Go",
+   "version": "2606.0.26253",
+   "source": "Siemens PLM Software"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Joplin 3.7.22",
+   "version": "3.7.22",
+   "source": "Laurent Cozic"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "KeePass Password Safe 2.61.1",
+   "version": "2.61.1",
+   "source": "Dominik Reichl"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "LibreOffice 26.8.2.2",
+   "version": "26.8.2.2",
+   "source": "The Document Foundation"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Mattermost",
+   "version": "6.3.2.0",
+   "source": "Mattermost, Inc."
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Microsoft Edge",
+   "version": "156.0.4314.58",
+   "source": "Microsoft Corporation"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Microsoft OneDrive",
+   "version": "26.198.1011.0006",
+   "source": "Microsoft Corporation"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Microsoft Visual C++ 2008 Redistributable - x64 9.0.30729.6161",
+   "version": "9.0.30729.6161",
+   "source": "Microsoft Corporation"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Microsoft Visual C++ 2008 Redistributable - x86 9.0.30729.6161",
+   "version": "9.0.30729.6161",
+   "source": "Microsoft Corporation"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Microsoft Visual C++ 2013 Redistributable (x86) - 12.0.21005",
+   "version": "12.0.21005.1",
+   "source": "Microsoft Corporation"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Microsoft Visual C++ v14 Redistributable (x64) - 14.51.36247",
+   "version": "14.51.36247.0",
+   "source": "Microsoft Corporation"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Microsoft Visual C++ v14 Redistributable (x86) - 14.51.36247",
+   "version": "14.51.36247.0",
+   "source": "Microsoft Corporation"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Microsoft Windows Desktop Runtime 10.0.14 (x64)",
+   "version": "10.0.14.50000",
+   "source": "Microsoft Corporation"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "MobaXterm",
+   "version": "23.4.0.5156",
+   "source": "Mobatek"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Neovim",
+   "version": "0.12.6",
+   "source": "neovim.io"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Nextcloud",
+   "version": "35.0.3.20261104",
+   "source": "Nextcloud GmbH"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Nmap 7.80",
+   "version": "7.80",
+   "source": "Nmap Project"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "NoMachine",
+   "version": "10.2.3",
+   "source": "NoMachine S.a.r.l."
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Notepad++ (64-bit x64)",
+   "version": "8.9.8.1",
+   "source": "Notepad++ Team"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Npcap 0.9982",
+   "version": "0.9982",
+   "source": "Nmap Project"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Ollama",
+   "version": "0.1.42",
+   "source": "Ollama"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "OpenOffice 4.1.17",
+   "version": "4.117.9818",
+   "source": "Apache Software Foundation"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "OpenSC smartcard framework (64bit)",
+   "version": "0.27.1.1146",
+   "source": "OpenSC Project"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "OpenSSL Light 4.1.0 (64-bit)",
+   "version": "4.1.0",
+   "source": "Shining Light Productions"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "OpenVPN 2.7.7-I001 amd64",
+   "version": "2.7.701",
+   "source": "OpenVPN, Inc."
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Opera Stable 139.0.6053.38",
+   "version": "139.0.6053.38",
+   "source": "Opera Software"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Oracle VirtualBox Guest Additions 7.2.22",
+   "version": "7.2.22.175245",
+   "source": "Oracle and/or its affiliates"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "PDF-XChange Editor",
+   "version": "11.1.1.0",
+   "source": "PDF-XChange Co Ltd."
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Postman x64 12.35.4",
+   "version": "12.35.4",
+   "source": "Postman"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Redis on Windows",
+   "version": "3.0.504",
+   "source": "MSOpenTech"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Remote Desktop Manager",
+   "version": "2026.3.12.0",
+   "source": "Devolutions inc."
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Ruby 3.3",
+   "version": "3.3.13-1-x64",
+   "source": "RubyInstaller Team"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Sandboxie-Plus v1.18.6",
+   "version": "1.18.6",
+   "source": "http://xanasoft.com/"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "SiYuan 3.8.9",
+   "version": "3.8.9",
+   "source": "Yunnan Liandi Technology Co., Ltd."
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "SonicWall NetExtender",
+   "version": "10.3.5",
+   "source": "SonicWall Inc."
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Splashtop Streamer",
+   "version": "3.8.6.3",
+   "source": "Splashtop Inc."
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Strawberry Perl (64-bit)",
+   "version": "5.42.3001",
+   "source": "strawberryperl.com project"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "SumatraPDF",
+   "version": "3.6.1",
+   "source": "Krzysztof Kowalczyk"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Suricata IDS/IPS 7.0.10-1-64bit",
+   "version": "7.0.10",
+   "source": "Open Information Security Foundation"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Synology Surveillance Station Client",
+   "version": "2.2.3.2598",
+   "source": "Synology"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "TigerVNC 1.16.2 ()",
+   "version": "1.16.2",
+   "source": "TigerVNC team"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "TortoiseGit 2.19.1.0 (64 bit)",
+   "version": "2.19.1.0",
+   "source": "TortoiseGit"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "TortoiseSVN 1.15.0.29830 (64 bit)",
+   "version": "1.15.29830",
+   "source": "TortoiseSVN"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "UltraVNC",
+   "version": "1.8.3.2",
+   "source": "uvnc"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Unbound",
+   "version": "1.26.1",
+   "source": "NLnet Labs"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "VLC media player",
+   "version": "3.0.24",
+   "source": "VideoLAN"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Vim 9.2 (x64)",
+   "version": "9.2.1186",
+   "source": "The Vim Project"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Wazuh Agent",
+   "version": "4.14.10",
+   "source": "Wazuh, Inc."
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "WinSCP 6.7",
+   "version": "6.7",
+   "source": "Martin Prikryl"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "Zabbix Agent 2 (64-bit)",
+   "version": "7.4.8.2400",
+   "source": "Zabbix SIA"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "calibre 64bit",
+   "version": "9.18.0",
+   "source": "Kovid Goyal"
+  },
+  {
+   "ecosystem": "WinApp",
+   "name": "qBittorrent",
+   "version": "5.3.0",
+   "source": "The qBittorrent project"
+  },
+  {
+   "ecosystem": "Microsoft",
+   "name": ".NET runtime",
+   "version": "10.0.14",
+   "source": "native"
+  },
+  {
+   "ecosystem": "Microsoft",
+   "name": ".NET Framework",
+   "version": "4.8.9345.0",
+   "source": "533509"
+  },
+  {
+   "ecosystem": "Microsoft",
+   "name": "Microsoft.HEVCVideoExtension",
+   "version": "2.4.45.0",
+   "source": null
+  },
+  {
+   "ecosystem": "Microsoft",
+   "name": "Microsoft.Paint",
+   "version": "11.2601.440.0",
+   "source": null
+  },
+  {
+   "ecosystem": "Microsoft",
+   "name": "Microsoft.SecHealthUI",
+   "version": "1000.29680.1000.0",
+   "source": null
+  },
+  {
+   "ecosystem": "Microsoft",
+   "name": "Microsoft.MPEG2VideoExtension",
+   "version": "1.2.32.0",
+   "source": null
+  },
+  {
+   "ecosystem": "Microsoft",
+   "name": "Microsoft.RawImageExtension",
+   "version": "2.5.42.0",
+   "source": null
+  },
+  {
+   "ecosystem": "Microsoft",
+   "name": "Defender platform",
+   "version": "4.18.26100.4",
+   "source": "Normal"
+  },
+  {
+   "ecosystem": "Microsoft",
+   "name": "Defender engine",
+   "version": "1.1.26100.4",
+   "source": "Normal"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "3ware.sys",
+   "version": "537c7bf0dcc56757ddb97d709fa65c1b3cbf9619563df9a13fa8287b71d9e8b5",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "acpi.sys",
+   "version": "e08a3597c683d0391c49adaab0e2011b13b1ab23501bd52d1ad697a733fc02e4",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "acpiex.sys",
+   "version": "ba4bbed308c75b49027d9f09602e2e1f0510bc878b3f893add7e2c61150bd424",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "adp80xx.sys",
+   "version": "9f3061731fc80c4e2d41bd379573ed12daf396d84bad1a5c89ed32b10febe929",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "afd.sys",
+   "version": "c6da5fb094ecbe65e9a2ab7a2efb08e67bf8e1e91542fab44683597ce24492a1",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "afunix.sys",
+   "version": "4e0e82727b8b0a20cef4dd7a46fa5d17abdae036e26083ed4c06b07804d0ad9f",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ahcache.sys",
+   "version": "7663ee75af7b47752bfce46564a9010a5d2327f1fd7c680d8b8df32f31edac47",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "amdppm.sys",
+   "version": "2c99130a0aeee1f79386927243fa9e809c833c762ae4584b46676bc3a3fb6fe2",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "amdsata.sys",
+   "version": "25433299f63eb920a6a74b0c1d40a95c7d9bc647ff5cd71d4f1730283b660e86",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "amdsbs.sys",
+   "version": "afa0a9eaccc36cfc88ac41dcd0149ac6f9763d12c898397e831d80f202ef4402",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "amdwps.sys",
+   "version": "e84ccd1521e0f1db5b0a6e67a50dc53b430d79112c973cc354acd616f0824343",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "amdxata.sys",
+   "version": "eb4c463a91fc778b335c3a9f4a74539ce0378f59974b2b46d5350c6c8afddb69",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "appid.sys",
+   "version": "058c17be62fc3279b6a425f788744ba7d9e5b5d48bb51bbab90887e3dd5f9ff7",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "applessd.sys",
+   "version": "8097bba0ab20b5eccbd02def237a0b36e845ee8f50c684d72148a89bdba34a7a",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "applockerfltr.sys",
+   "version": "486d5e49f54adc656f83ff2b2ac010b6c146b0656ff96b59a4e6ce1214983520",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "arcsas.sys",
+   "version": "9987d0687f24e842f0987193826749441c693d674f423358d44a1ba2473e515f",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "atapi.sys",
+   "version": "ef0ce4293928adccec9a8e6f2dee57bc8d3df013f44a1bbdf4dd46da76f3a9fe",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "bxvbda.sys",
+   "version": "8fca12e3aba77f5a64a54431969edc8b32e1a8f3f6fc06282120fe003b2be1b9",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "bam.sys",
+   "version": "93d440e0cf319aaef35b4eb2502ae75e051082d10eb2c338f0eff86982956246",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "basicdisplay.sys",
+   "version": "75ab8fd5c899616e70b6252b6c7291463f7750de5866fbb5b6f8b0d21daf3eea",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "basicrender.sys",
+   "version": "cbac7c00ac64c28fa56b735ab4065c9d95fcb992f84b00100309f8737daa819d",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "beep.sys",
+   "version": "98cdbd998cf136fbbb9ecce829717b917374d0af20780bfd02767303c2756d85",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "bfs.sys",
+   "version": "b10ba6b69397acd95f9679f15d3ec1e201f0fc329d867d4f49c20b9a4257bb2d",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "bindflt.sys",
+   "version": "6ddeb46f05a0be64f19271f5062776c3d0073e3803dec28cff23efc891162970",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "bowser.sys",
+   "version": "7b30d7f70deacdc84338eff05212c099f412815a5fd64bb4b9efc293c52c69c3",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "bttflt.sys",
+   "version": "0f65089c4a1b84b51d46cb758fe06ad3651eeecc72ed4a82dad15bc419f60ad5",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "cdd.dll",
+   "version": "3d4c2db1b1da4872d102bcc3ec093694d3263226c6173124020344f64a22ba68",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "cdrom.sys",
+   "version": "d9200f7c9d0b4112f5b936aac480c010b8074358dd8e014ca1e29d4bb73b0083",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "cht4sx64.sys",
+   "version": "ffaa9abf91808e2569206a5a5d5d3542b02860965d8f1ea5790307648cd1e4d3",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "cimfs.sys",
+   "version": "116b77f4d17694409a3e202308776882f045554ed8c615c3442df539625f0df7",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "cldflt.sys",
+   "version": "d108428a0541913751507f5f91da3f5837217f2cd65f6bebdcd52fcac6baf292",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "clfs.sys",
+   "version": "3bc0c50ae8021ea49ace07cf617ce7e84a7b3b2de29284dba1537dc6550ec441",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "cmbatt.sys",
+   "version": "8364517ebca6047a21738bf2a484378344a4368ccdc77972915372220574046d",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "cng.sys",
+   "version": "06091eff0af746917534920d67c5974748e6ed052b38943a46a4a3b491c527e6",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "compositebus.sys",
+   "version": "cd3da415d3eb770aff4a6fcffc83627394c607674611449896250d6b8e1b4839",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "condrv.sys",
+   "version": "b5a619f6132531a1d4bbd09096ea026394db3b78346c85ff2b8998e7d6db1205",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "csc.sys",
+   "version": "7c1e8a0108addda36305412453dc08fd3e1f5a4e70f35896a8c3ab0cf9f5db9d",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "dfsc.sys",
+   "version": "0a570f21481909c2c4557bcc1b7213674e02a9f120e46f6696756eb58d848cb8",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "disk.sys",
+   "version": "007db5a388db4edfe1073af2f722c4c4b0ff9f0b1a38b19bd8c2c72d3f2f8b32",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "dxgkrnl.sys",
+   "version": "ab420f6672308ead7fae9698bd7a5597a4f32213f32766b8e78c49210d6ad6b2",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "e1g6032e.sys",
+   "version": "3b0a51e1fc4d5bd3e7ec182799ad712aeeaf1dcd761d7e98bec8a0a67f7334af",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "evbda.sys",
+   "version": "60fe372e60f532099a242ef73c24c142ceb66ce7b1f7ca48b826a02d9dd513c9",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "evbd0a.sys",
+   "version": "53af6cd54eae4d4952bc1fa57225a6a376d27e61e7eefd00acaf6c1d9346be0e",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ehstorclass.sys",
+   "version": "10f3328824c2f173e999112113eb9b530c1849b2e0aaf76dce40baefb1e9a6f8",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ehstortcgdrv.sys",
+   "version": "7e77a018d8402db42c9609b88c5807b5c595b97c4fdacacf90a504c45e39656f",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "executioncontext.sys",
+   "version": "266c6ae6e37e2f68bdfa49e88a2ec24478b63521d9978369fa8de602725d31ae",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "fastfat.sys",
+   "version": "5605ccbefd5c7d3e04853c174db27b368b40228f85d2481f8bf3f0b499a91527",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "filecrypt.sys",
+   "version": "48f8408987eccdcc97b3d32c14c17fcc9e4e13ffb8be5e6c481b931be7ad5b1c",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "fileinfo.sys",
+   "version": "56b772ac11842c2d1bb5f13bbf24f84ea51aad78dff8ccc26fb64e4b2b73f85e",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "fltmgr.sys",
+   "version": "33fe4804a039e5d52c53a3a656ebf6aa1ea767e955ca7ff1643e8ac55c2c7a09",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "fvevol.sys",
+   "version": "bfa677bffc77df3ac5ee9233438773abfcaef658e496e0d562a7338129b8b442",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "genpass.sys",
+   "version": "6607b762cad45a321b287163aefdbef62d17fd7980e5ea44b8c5e83f5217d4f5",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "hpsamd.sys",
+   "version": "a1de9a347d9964bd050cc644f213e09720106d7457482e04a965ae7b51a22554",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "http.sys",
+   "version": "7aacdd6818c18eaa8698e792154218d503bc014f860bee62985711d929cdcbe6",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "i8042prt.sys",
+   "version": "f89ddd3f0d99dcac5851c660db6a1e3b8bcc88c90725c704b87129ed02f94472",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "iastoravc.sys",
+   "version": "a46a34e6dc1573d29b87ad22b336c6a7358a657a416b1643c0d3dad671d81692",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "iastorv.sys",
+   "version": "7e862c0367b382ade309dea6beb95fd2eed15cae8bdda37658d66484c00f88bb",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "intelide.sys",
+   "version": "1dab987a4a64963aeb4ff2096ac2291b82aaa6c262704752526a2a3961182021",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "intelpep.sys",
+   "version": "81d0892c1b71fcf15aff47d4188b622f5d2d6c19db8f436d5657172e5ef0c869",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "intelpmt.sys",
+   "version": "a05600e18b156adc34aa848ff7769c8fd90bbef6a6f4c4dcfe5ba38d531ab584",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "iorate.sys",
+   "version": "f35e1f621e1694495ee51306fe950739f3a83cde80d005476d1e960303eef53b",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "isapnp.sys",
+   "version": "f4dc0b159729d5404fefb7784c6807dde9b7c81b70cb21a2d34d31f321f17fce",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "itsas35i.sys",
+   "version": "5e7abce438ff8a3e03f1c235685a95c9bc787b87854efaf2c6eb5764b8269d4e",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "kbdclass.sys",
+   "version": "47c014517ded0799a943e8d6f07196bb76a6841db44d9437275d54f9069861d5",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "kdnic.sys",
+   "version": "030fb78c8c7c1c63300508eed5b2beea463d8fa0df9602fe6c5e40e0212b87f3",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ksecdd.sys",
+   "version": "3bb62b2eaf110e0f8ba64f398273c5e30d0894162eedc9529b38d53fe5d42013",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ksecpkg.sys",
+   "version": "21d772cc4fea73e79da356955ad423a27652dbb5951081276d9ca313b28dc0bc",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "lltdio.sys",
+   "version": "520f7e4649fe6c3432fc6c89889a58cf8ed1f10032a231e63dfb2b39f2fc11ca",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "lsi_sas.sys",
+   "version": "2d3860a83b5e12c355a1f6f6dd7d61a41c0ba05950510d0655457b97584e4cc4",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "lsi_sas2i.sys",
+   "version": "b0cfed90a269fc79767f2012c64bd256451feab1948fde416daff95a85ff8a69",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "lsi_sas3i.sys",
+   "version": "aa3f0407e20a2d7e90d412f4325fb0d7124f12eec4215cd32a7df9aa5322d135",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "luafv.sys",
+   "version": "0bec1ef4dbe5a7c40ec0a2036eead0a6b367395a782313ab886fbe85587381cf",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "megasas2i.sys",
+   "version": "03713bdcd061cf24d8dc4d8b4cd250e28a5946c384e60644cb4328dc42b8f50d",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "megasas35i.sys",
+   "version": "ef1aa5eb345a92a1b657a4d010500bbd1ec731b8ec22a35472f5d2da96138ec6",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "megasr.sys",
+   "version": "6ca30a0b91dd54edd33c3ec41e6922d329ed38c4955e38c04745328961b31974",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "mmcss.sys",
+   "version": "ac39cd989946c2bb1f3d5619467b10fbc4395aa69988fed7f08e171da96363df",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "monitor.sys",
+   "version": "0f2a57695f031a6dc39073089911b8cdd95a028a7da8fcb90c9d3df418cd2fa8",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "mouclass.sys",
+   "version": "0cb695cdd5edd557ed9e544e2dad3fe9ec6684f81c1b7bbff0a841bf1c495339",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "mountmgr.sys",
+   "version": "8c7f26efca8520bb8ea5ca3f7e39f4e577f59df874a089109cf0c439121144a6",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "mpi3drvi.sys",
+   "version": "9ed1f6d7de917cf5b387eb1856bf2ea6be69cdc804adb3cab00b00647c25c163",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "mpsdrv.sys",
+   "version": "62452df401b113e42a645131babf5c6beffddaf86a9bbbff7674add3b4fbae7b",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "mrxsmb.sys",
+   "version": "309c51fec0e09c0a61e7368e199665c0eef7fe88c557bd0571bd77e46af4e0cf",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "mrxsmb20.sys",
+   "version": "f1ddf9063d08752a183e881f66e06f7c9dec452d9c9bfe708d7773a691636515",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "msfs.sys",
+   "version": "a5dfcc1bb3061ae6563075b860d65e97f318679408f17de0dc3caa3026f024a1",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "msisadrv.sys",
+   "version": "df2bf42c5cd3401fa0215ab3eea91efd07edce240f36e30fb14371f5c4b3ad80",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "mslldp.sys",
+   "version": "f04535932a1ec92088ebf04cbd5e448564b24f527f3ac7d2679d189ee90f7861",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "msseccore.sys",
+   "version": "601a25a94a818dae478bbe35d231274dbc8c060efb81216aabfd4f7d7963a480",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "mssmbios.sys",
+   "version": "b158d81780504ab412c17bb9db0c710f6ad9c7f2b75e7095c2fc2fc1847dc9a0",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "mup.sys",
+   "version": "9a6cf0e6bf8963960c3ec073b85edc51e0ced1ad1c238131f3e06bcf3f42e897",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "mvumis.sys",
+   "version": "55ca3903d53aeabe3297cb5a52598cab2775d28f9821b94f124fefa6302ee4b5",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ndis.sys",
+   "version": "052af5c0c624be28635b4f53d0ca7ef86f02352d0ab177c8eecf8ae085e888bf",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ndiscap.sys",
+   "version": "fba64648916f419942f4e26ab74ede9058102ed027bdc3dec42045eb349fc5d2",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ndisvirtualbus.sys",
+   "version": "5620649d1a8f0f38f367e473bdbeb80a3a89a4a21326e2304cd0389d24c68511",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ndu.sys",
+   "version": "bd47b8019d806f828438a48468f67595f03cd48d95ede8f3dbb9998d0ec9aea3",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "netadaptercx.sys",
+   "version": "db041655127d53e3b0f0f6cca67d2cd5cd77baee507619fedff2652da36ecd91",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "netbios.sys",
+   "version": "29c10b2bd9c7272c7c71462f39252a75de0159eccfc58bdf1c407d8c226f0afc",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "netbt.sys",
+   "version": "8774d55e8d031e7feb9b4015e7e71b7c6bcac38cb56839d759f11c0cf5ab85fe",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "npfs.sys",
+   "version": "7428025b18bd0ed4958295c4fca56ab2e61a6ac83ecb7a4d858b6def8674cae8",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "npsvctrig.sys",
+   "version": "dde7961a0323d8450a3506af210ee5ab8eacde91d6f78f6d91d52c456fb9a3a3",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "nsiproxy.sys",
+   "version": "070ebe2ce0107b198438603f82c113ff4b8afc24b77bd0533dc71047085dade6",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ntfs.sys",
+   "version": "64835fa4bd4a4202d29500f337ebf71704d5b6dea135de40d3dbd52717475b53",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "null.sys",
+   "version": "e56f9025a414858bd32d3cfdcf5b622202b535bcbf83fc1786a122e13eb89bc9",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "nvdimm.sys",
+   "version": "3d1c76d34decb6347a1d464f3862a1460a3bc8342e6d30f752133c55830247cf",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "nvmedisk.sys",
+   "version": "ed789955358feb3d5e7faa3bb46e6cf69656774dbc73f61328f4071347f5724d",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "nvraid.sys",
+   "version": "db769bf751d7b23ffce8cc1baabb335da5da15e06a845a049eb68c3791686fed",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "nvstor.sys",
+   "version": "6c52424748a9f88a3c0c33a1a4d9813107066fc7550b7c27ba3dd3d606df4fca",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "partmgr.sys",
+   "version": "6b5ad1739135ba6fa5b26ce971f73911eacef1563c97f1c8eeebe138d41cc6c7",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "pci.sys",
+   "version": "09fb387886e98a704658efd0619d763c78c0855cc70629d5a529cc44ab0fb89e",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "pciide.sys",
+   "version": "c1d9865f7be6ab9ff68879fbf5b54d270290bc7217b2aca0baef50285aef2be1",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "pcmcia.sys",
+   "version": "505f1106fcb85c22fb2b68b8ebdc945a0c361ec12f8fbc4ff2c412d58bb785d9",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "pcw.sys",
+   "version": "b6c09b56ea59b7a63d1e77ec982a9efa2e9f381dbef461f490afc0037d1c24b8",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "pdc.sys",
+   "version": "7594e8ad88ae9c45e219f0f005b8452aca43d3810db5e0b7f81e6dc482b89cac",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "peauth.sys",
+   "version": "d0c02d8d17e587ebee0663c5825768957703b9dbdde43cafb036eb9c953ccc87",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "percsas2i.sys",
+   "version": "7026717ebc767674c3b52e2465fd9298ce02f7560a096162e9b50d6782a8cf08",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "percsas3i.sys",
+   "version": "32843e02f6f814336989698031eb8ec222db8e299f8bdc4d34c1cbffa4babf48",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "pmem.sys",
+   "version": "42dc33427358a149bc2cb6afdaa03fb14d624becf4b955ac5e27814fd4cd0f11",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "prm.sys",
+   "version": "cef2b58655b4c4e3947ccce2f0357059819e20ca8945134a40459d2f7ec60650",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "pacer.sys",
+   "version": "c55d96d802050bf377e01d83d1b52938a4050e502a50d55208c3ee92932c11f4",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "pvscsii.sys",
+   "version": "db637123a22e12c848086d65bf57c4a5ee48c5c64a323004fa05e07bb4366f62",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "rdbss.sys",
+   "version": "45f9b204350608403e142b97455a277f91b917abbcf1a2d9e314c8dfd026de46",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "rdpbus.sys",
+   "version": "9949536b5aaddda744bfb5d189f134c371142513a10801abc403efcb1eaecb3a",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "rdyboost.sys",
+   "version": "e93f329054f7390d4f533c2f6f102e8379375e46f2de482f5f7ac5f6b7af90f1",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "rspndr.sys",
+   "version": "748c4f980e59c568efe0599358a1c7900a03baa11a22471ea8eca8460dfda48e",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "sbp2port.sys",
+   "version": "7027e3fe0fb1f3bd5600927eca4a6d0c763ff3695f14b59a757b668bb9d6e55b",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "scmbus.sys",
+   "version": "167d74d8f1a0815409a6a315fa55bb416fe8584280a89393a98aca1a6a245327",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "sdbus.sys",
+   "version": "c1e9481b69992105adda6d0e0ae577452f3ce8714ca3f5c7ecb55df2d0897479",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "sdstor.sys",
+   "version": "d172aa216915c5976314dd1248f5ae47cca54a1bd5084955e4f6640a111f6807",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "sisraid2.sys",
+   "version": "b4a9423e6a418565bfca7f1c41940a5cb899e08b77ba13fe0b5394aee693002a",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "sisraid4.sys",
+   "version": "6ec82d50515963c7ed8a114fd3ff21a05b98fd0c7c84341dd8ac98af379a3848",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "smartsamd.sys",
+   "version": "0aacf89126c5cfa00d33fdab2b79e6cf15e6e4dcb8eea13a4ab4d062d1239f53",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "spaceport.sys",
+   "version": "41adbe9db03d1180f3412f2de52336c5e4b92a988d6f46847e63beaf0329d26a",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "srv2.sys",
+   "version": "0fa957a37514c59ce93c35f0987c54d1440230d6a5585bd46157bd24218a1fec",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "srvnet.sys",
+   "version": "49c005fb1f8ef9e229a2a1dcdc0711fb7d770371c4a53fbeecf3b5aca513d3b9",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "stexstor.sys",
+   "version": "341cd0f3bdaf580ebe35a2e3ebbdcf94e46b85901a2effcdcdba3d3897a44937",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "storahci.sys",
+   "version": "fe46b67c1417e3b7f70b5d9dbed23700c4d9e9fbff4a3e5cc513da1599f60513",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "vmstorfl.sys",
+   "version": "76e08a81aeaab356bb3f1fc2215847f0f5b8df2ea3ed0e530373affd7f7bd6b3",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "stornvme.sys",
+   "version": "977432c9738d2f5f1b50e5f572c0483f8edd01f2149952da2a5c1c961d1c1068",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "storqosflt.sys",
+   "version": "ad832147985fd5f29ecce9840d9211d1c823e0ff95cb7674b972855f78c0ba4a",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "storufs.sys",
+   "version": "0544d73f4c7c20a860449d54193c8df4a75b28a84c3cd2a8ccd8f7cdc185420c",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "storvsc.sys",
+   "version": "f9c05a262b74a03ef68725abcac2d329c63d9b189add4c68d5f3a9d90cc73b68",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "swenum.sys",
+   "version": "0e6d766bbd3d9b7476cde2d2e9c317fa51090c9a608929c9e372f66ea2e2f88f",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "tcpip.sys",
+   "version": "4e6435dbc4357451440a280d35c03678b6a4632c3fd12ff6933cc545d215328f",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "tcpipreg.sys",
+   "version": "dde46264b000e132893aaaa3d4d2746329030c581f4d9130cb9a2e158dd259ff",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "tdx.sys",
+   "version": "3e221bd24b0d171812eb354a73dedc209f7cb3dacb78523d3f0651352269accf",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "tpm.sys",
+   "version": "2bef98b8653c7a2886081680cfba5d971ce73d350517431e157929a1a83d754f",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "uaspstor.sys",
+   "version": "f14db954cf2730e64d3092ba0c6462be7340deed467f74b84779e423833414c5",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ucpd.sys",
+   "version": "61bf7cedf139bafee613507f01117d388c78d7de02e43e43fe7ed118bb569d3c",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ucx01000.sys",
+   "version": "305daf035040c9491ab317277d34e0a72f1c17d3bcf15b89f172cb349637facd",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "udfs.sys",
+   "version": "f5bbe1bee599c6dd6f8d687675f526cdcbfc55817f1b5b43f991fe9dc9b3254d",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "umbus.sys",
+   "version": "ea211d5531bc397d1ae6e8692124ff8abefcdd8d8609dc14333155f108bd81df",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "unionfs.sys",
+   "version": "2491317f4b7e768e072e280bb30e10bd81d198850d563cfd714b0b9cafa68716",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "urschipidea.sys",
+   "version": "12f6a60d01b9c99b73be45598f2ccca605d879ece849686b724062f3636c2100",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "urscx01000.sys",
+   "version": "f7cb01210df55cee7f29a72576a6411693b6083e70ddb8d081ff5fd2a9697c3c",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "usbccgp.sys",
+   "version": "45725f59798ca0cf1e3be1d2fc114d347d4a0582e0e1cce2e23059b3e6f72909",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "usbehci.sys",
+   "version": "4ec5a152bf9b1fbe96aea542d6b5087ebea042c8d9d2125a24dd5dcd1f941704",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "usbhub.sys",
+   "version": "71cd14e1972406c0860046714bb06cff722a82ac004368f0d95babd16b1211f2",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "usbhub3.sys",
+   "version": "7dc63213ab42d8228ad4c101356f8f27d02d50b103ff8ddf19809a7fe234ca92",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "usbstor.sys",
+   "version": "1c33d653b605120111e4fdc18b35a5befc69f5d50cc96a77f6415dc58b3c1634",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "usbxhci.sys",
+   "version": "8275fedabab0b57f32348bc5b6e07a2db22b2f9126f0f083e4e29b2b934c4661",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "vboxguest.sys",
+   "version": "b674cc47ac4912e58b3fd7f127e9868e869cd2ff3d3e4bdbb780b599d87571ab",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "vboxmouse.sys",
+   "version": "ec77f305452f46e3d0717b94d235c6de31da47711aa00e40956296c7d85de1bd",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "vboxsf.sys",
+   "version": "a0ddf1a56695ce4f1984de570a56cd45b372a979365a4038618ce2e04f4cc442",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "vboxwddm.sys",
+   "version": "32a73f69cd0ad747053e21adebce6d691b8b1a4caf5d43472ab1678794e03e8e",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "vdrvroot.sys",
+   "version": "0029fa9fe4f3055244d25646bf833705b937a7553430c50d055f643e993bdb6d",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "vid.sys",
+   "version": "6611bcd768efcff90c13d39c4d9770315269c43201b3a58b638977486ab06697",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "vmbus.sys",
+   "version": "03d827b890e5381cbc2c38802c015010028932d31a58417d715b73f389e5c1cc",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "volmgr.sys",
+   "version": "adccc9f19c6f848c698350b308e611b7dba7f32d49a26ec34b3134cdb58f4023",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "volmgrx.sys",
+   "version": "cf0683de0279cdc890eaa56f8addcdc1e6ddb3f963145449914fcee2a1e7c003",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "volsnap.sys",
+   "version": "0bed9a1dd57709cab5b9a33a9c44fcaa12c0277699c651cf0375226acf8f62f9",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "volume.sys",
+   "version": "42e63746060e7698bddf08ffb22905e11ef9a329181c06930784238ade49506f",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "vpci.sys",
+   "version": "5582d06d0cae7c1e2d4df659824ec9e7434c64b3f17738ef723c82db08f389ec",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "vsmraid.sys",
+   "version": "2e0f359b2b2f2d73d8b576cd2ecfca82a2cea642fd7e0266f6175a6ec912ce0a",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "vstxraid.sys",
+   "version": "a07ddd9d26605fde1afdf258094b08626a3ba80ec289ffcc81ca5e4885ec063b",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "vwififlt.sys",
+   "version": "db1c64a4458625259ab53123004ef07c1c8ecef9ab7a9e59a0254cd3b72726a1",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "wcifs.sys",
+   "version": "797977736b84869b194a86491cf5d5c2eb9b09f2ec13a4a8d87020d29327d0d3",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "wdf01000.sys",
+   "version": "8fc84407ca0f4fcbfc14e296225217fc6784fd4e60be0a22227ad0e2b2f1a5fd",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "wdfilter.sys",
+   "version": "293bd5fdcecef474bf5acbda4540a721de7fe38c6bf687482c5d8d4d23f4b68b",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "wdnisdrv.sys",
+   "version": "be3b88845df367f5a520ac0316fb9ae7e71a21912d6d1d399854392ca8aaae72",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "wfplwfs.sys",
+   "version": "cd17b1a4d71ce2ad507d8bdaa019be1d36046240b4f4caf3b3795c6d975d569d",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "wimmount.sys",
+   "version": "5ada00ea41ecb0c02a2de9abcc043c28d1281f53e2f243221378fa733cb2d656",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "windowstrustedrt.sys",
+   "version": "f09a1537e4ed4af1c40263bdcb2e89e3748fad3b34d9b4c977384cc92adab337",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "windowstrustedrtproxy.sys",
+   "version": "fa8336a782b6e51d6677d7c1423d8efa4ede207c64d29bb0a360ac8615cb7492",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "wof.sys",
+   "version": "cf54507b523f057da37b83fe5cbd1ad6fd00344099add2e7660c2aa70e966dd2",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "wtd.sys",
+   "version": "309028f7274fefcf5a7bd037f515726ec43e5be06e5ddc484042c7e068124569",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "tap0901.sys",
+   "version": "581dcaace05d5c1ac9512457ff50565aca5d904d2c209bd3fc369ca4d4a0d2b1",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ovpn-dco.sys",
+   "version": "88f6066061db9b9873748cfcf5f5a7a6fdf6c3100688b31c3f4403800a0b3a45",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ksld.sys",
+   "version": "bd17231833aa369b3b2b6963899bf05dbefd673db270aec15446f2fab4a17b5a",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "nxfs.sys",
+   "version": "0d3a6a78469a85923c45034b9f90f296178a8f89b3b4e0a9ce5125cc662d362d",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "nxusbs.sys",
+   "version": "76f2fc136f08d5ae33e1be264114d18274cd36591276992a0fb931ad26006ecf",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "nxusbh.sys",
+   "version": "6b94b6439fb8409d6792d772b33e6abae3e0e0570657c46c3634786c5ccc7958",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "nxusbf.sys",
+   "version": "e758999fad31a376992a8c0af6cac0841638f28acbda47bf9a6c1f35192e72cc",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "npcap.sys",
+   "version": "8c9413971a6860ddb6945367122a26390a69e836eb4051d5933620a729215348",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "loop.sys",
+   "version": "9c57b73e6aa751680d1d588aba374f8fa31592d834d6fe669003d6285f3dfd1c",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "sbiedrv.sys",
+   "version": "4b0d3e020228183e9c16db9d99f58b3e402a93c3b66373f0bf6d23447d8559eb",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "nmvadapter.sys",
+   "version": "1e7233a7694685476742f63e07eba24e63bdbaea364f7d7c5945f404248fa586",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "tib_mounter.sys",
+   "version": "71986ac662e6bc3bdf361ac1eee7bd3d0055af6bebb682291e4868594b4aec72",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "fltsrv.sys",
+   "version": "7bbb93ea37f96b800ea4bc2bf616d3752486af14149491d1501e6cf09546887c",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "snapman.sys",
+   "version": "6b59f7ec6d4d21f5ae91d909176e3183d4b0a2e792b98930b434629e68d427ec",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "virtual_file.sys",
+   "version": "aaaede982ab2709319bd523b7f7b1526f346f3f12baad2980967adae4f9243cb",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "volume_tracker.sys",
+   "version": "cbe37349c689596e228553386203156433434cdd335d0515b3064160242b5680",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "file_tracker.sys",
+   "version": "eb619e6a47faf024d19afe98f4d687799676abec7d389df26f67dd93547f7fe1",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ngscan.sys",
+   "version": "76e0b5e56abf334214c72262b65eea0900be45241bb31890cf53aa7569f73349",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "bddci.sys",
+   "version": "528804013487cdb1da617e512d1de68060602887bcc8a7822bdb1346a2995ffd",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "file_protector.sys",
+   "version": "d26c641b7cf3806ee05977ebc5cfde5beab9e808081af2aeb5f5f5eab11dfd13",
+   "source": "loaded"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "1394ohci.sys",
+   "version": "9df5d0ebdbcaf08e3f376ae993aca8aedef266228d8f1dd41d6f79f294840b2f",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "acpidev.sys",
+   "version": "b137e1ff89fca189cceb6d7208de63482787684a410a917da18574b04196e0aa",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "acpitime.sys",
+   "version": "193eb944858c86c60d3ce1d834b003c0a3092beb20b27e7398199bc46c02dd5b",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "acx01000.sys",
+   "version": "9f58a85f052e95c6a7b46860febe4de70b627256ca2941b86e3c740f5e7aed90",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "agilevpn.sys",
+   "version": "4695352e6b7169c0688daa4896c4696f41f55babe577ac4796bf1a82cd68c9fd",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "amdgpio2.sys",
+   "version": "46a53925baa34fa9d87e7c3157504a4557d81cd8b8608e7ab6caf02f482f7792",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "amdi2c.sys",
+   "version": "387811d57def06c9736d9f0bab0dfb0f83dbab19e5489bf9a6dcdcbd682dd8fe",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "amdk8.sys",
+   "version": "2ed74c4e83b791b612f4edcc70b87de3b850abcd93f2a41efa1d8f7c65b3620f",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "appvstrm.sys",
+   "version": "3a3e7226604bbb69ede8bc8a4fde61f59922b8c795442d7f05a8077c11a2fa0c",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "appvvemgr.sys",
+   "version": "c8bcd77030f948a6287adda728fcba6b4297dec9fe6a05cdeccef624075c8ae1",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "appvvfs.sys",
+   "version": "93e1218efac0bf749890dcd70db531132c445346d80cea00a83c4ae908de9eef",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "asyncmac.sys",
+   "version": "6135cbea049e8a2654d4e1d14b7be1afe461df62e3f55190b2b3c05d777858da",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ataport.sys",
+   "version": "0dfc272c731bf3e86a68f89a75e7352cfdad2a406756b806668711dde6feec35",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "battc.sys",
+   "version": "a0256037431349b1076d62c3bfbef5b89e8113bc1a044427b6e69c0726e0d071",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "bcmfn2.sys",
+   "version": "9ad12e18a042c5b8efb19297bc2e7bd1fef75a138fefb64c6bf0261fd3e53ab1",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "bridge.sys",
+   "version": "446414daabfe8dc3ef26cff1d7dd2fbe78d9779cbf280703eb29dd800c19d791",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "btampm.sys",
+   "version": "cf02dcaae04eab78b2ee37cfbfac5a3e89822a79502e86a942e334e2d205be10",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "btha2dp.sys",
+   "version": "35e70c642c1e4c1343315b89bda399ec76468ab5691d7b2c74f55c2489fa8d06",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "bthenum.sys",
+   "version": "4e3e15071f4a0b924a67b0f6f1507834bde7286985ab48abe2f379bdd272f210",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "bthhfenum.sys",
+   "version": "28965e598a488152f6dac317db99d8b2422447c4231cb6b17456abb77beceb6a",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "bthmini.sys",
+   "version": "51bbaa4451cf61814b7aff0e57a73cdd9879a64b09b2f08b616e656eccb119a5",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "bthmodem.sys",
+   "version": "b4dd5bdf4119c92ac27f40f40fda788d7c722814f03573598166a2ec909de4a4",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "bthport.sys",
+   "version": "6750a4ea8acec328ec615863cc1a10b5808be0beacbf8f9f329fa340ded38d62",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "bthusb.sys",
+   "version": "77c5652ffb3ec6c7d35ee3e8b3867107854a686dc0c886410a254bd99211eedf",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "buttonconverter.sys",
+   "version": "c34eade7ffdac60ff64ac968647b6db956afb9be47d1fb811d825afed2d63971",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "cad.sys",
+   "version": "d3849629a7e52cd60a1d9ad632b65fb861702c30ec02d0cf8faa1667bc3f63eb",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "cdfs.sys",
+   "version": "aad5c128205c5876e89b9f3fd55535ab3d373eb58ae519f0898ac93c71f48b86",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "cea.sys",
+   "version": "c82628cc7e768b28c3ff57c429e7735d345a0611be07e529188058b6eca95b9f",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "cht4dx64.sys",
+   "version": "2014b87479a23b3390167fd78be35cfae75645a7c5ac0fe16cba2a60aac48e09",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "cht4vfx.sys",
+   "version": "289f18d3fa652d1b60c8799ea38ed3caf04416aa62817a9a49028141ba1adfb9",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "cht4vx64.sys",
+   "version": "9ec811c11ebf399a5c4fddd07a9e63975f2145151306c8599f64dc35a0966eb0",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "circlass.sys",
+   "version": "443f128cdd3d22c9a9f6201c432cfc6d4888c7f589b0eb32f022b71e8271db9c",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "classpnp.sys",
+   "version": "16cf1fd7aed6d5ae1a3a9f1225048f5cc033dd05abc9ed6e0b643da62fd6f489",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "clipsp.sys",
+   "version": "a266a5cb31c2dc5e391c85a998d2fb4254e0bc3abd5cee6af9e507233df4932c",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "cmimcext.sys",
+   "version": "2913f378dc2e7ff0f73d6259a3e6839f695dfe19b2797c0b52873833403897f0",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "cnghwassist.sys",
+   "version": "8d79879e02f6dc19f04743d78004e228d3ebf64a5cc3a57d0e0b624091be5765",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "crashdmp.sys",
+   "version": "25698c7adcbb3b0413d7d58e0355d828c48fe2c8f673040f7372382af4a6ed53",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "dam.sys",
+   "version": "41dad712cf282bce84b6a2e02150f17945b7bf79eb0bcd11c7d0c7ad1688a411",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "devauthe.sys",
+   "version": "460c641e1b094336514bb1be794de9377fcdec8dc031f4a380ef6bf80d0554cf",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "diskdump.sys",
+   "version": "21075882b65f325c71be69e8f1f6675ad5a1b04499f12ce9723f6268600844f8",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "dmpusbstor.sys",
+   "version": "51cc70753ba534563b4a220314a92c94246fbcf7483752db2f5bc3ddfe40698e",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "dmvsc.sys",
+   "version": "cde68cfcfb9930fbc2493000fbd3e4fe20d3f495f1b414e184985c5659730024",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "drmk.sys",
+   "version": "48c4f9892ce04210c2a05892012bfe4cc4b7d8634e33b4f3256660497923a534",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "drmkaud.sys",
+   "version": "6e06eb364267541476f0d6bae4b6bef1fcac965f6907c56fd1bd56d0966a9410",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "dumpata.sys",
+   "version": "13b1cc5d33f843bf7577db184a2593294f6bb7bf238b67c12e357d92d036f59c",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "dumpfve.sys",
+   "version": "34e918829a09ac0ba0eba7a83271d9632d8f84819483baf394e8b28797f4d6af",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "dumpsd.sys",
+   "version": "923f7b0addac1717c87e47cade65938d42985a7b0ef799d0b3abfa8a1f3941ba",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "dumpsdport.sys",
+   "version": "0c2d0719e73da2c5db256dbf8ed42647c7bba14ab7c135671dbf222bae3ffd04",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "dumpstorport.sys",
+   "version": "e268aa5e7366a34e03646e226f4f93b18165c4ec008273f9c43ae1296f94c956",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "dxgmms1.sys",
+   "version": "2db32cb238357ed55ff20ed1f406abc26d4dfd9b695fdc8dfb3812218169a036",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "dxgmms2.sys",
+   "version": "c45c5a50ff293324a4a398766c9b5acd27c149a5954b5d09f128758b30ce72fa",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "errdev.sys",
+   "version": "42e3fa480f869c3e1d6bf2e78cb7665f19d5f399a8d359fffa4b71805dafeb9a",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "exfat.sys",
+   "version": "aab24ed31f52c10c01d71cbb49c9f744714eae3d272cc7743a5a86dddae6e4b1",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "fdc.sys",
+   "version": "ace9195d382eed208d1c64ae2452b8fa4d55329c5e23086d7a341c0ed19b8803",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "filetrace.sys",
+   "version": "d78da37b91c47be3b758522bd17f91f72f94b6230a9b916ff998ade74a23fc26",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "flpydisk.sys",
+   "version": "5ea1d8dc505165c76280bd0d59191a2ad872001089bf1579ea673b51f39f311d",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "fsdepends.sys",
+   "version": "561e096a019e7193d987f98b9ea3cb4bfec6d28de6be54a445b1ff53151d0a5a",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "fs_rec.sys",
+   "version": "799c95dec78122055300086193767662a6798b537e21ab2e7b9860be1e252ea3",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "fwpkclnt.sys",
+   "version": "e846c63a88a153ee7785a68a1cc0a73dea598736c5cc4490cce95abf3e7d1143",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "globmerger.sys",
+   "version": "b0b2faad55b7c7224ebababdb314eb98ca5668c0405330f7fe634b92ebfb4290",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "hdaudbus.sys",
+   "version": "a4e85029ebb526599f6aa163e5313bcd84ca6ce055ff21c2f94b9f27d269ce2e",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "hdaudio.sys",
+   "version": "47ddb08d2df245cbfb8cb6b4b4524cdca614e6f2546dfd260b0789a758747512",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "hidbatt.sys",
+   "version": "23fc4ead8368f57cf40993491f3fe7e48d2866870eefdce923f78ba387830e45",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "hidbth.sys",
+   "version": "9d4d08b124d12c85c175b8a73afe90637b57721cc57381593616c9996ab8573e",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "hidclass.sys",
+   "version": "e6fa3c6228789b74bfbc746529b081c8cc64661fe43671abc2d440952731abb8",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "hidi2c.sys",
+   "version": "95abc529b491cf12c429ffc216046bcf544dc3edb8be671e638270bc9ada7961",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "hidinterrupt.sys",
+   "version": "61c59a8cf497947a22b584762877a6ce4cf8c9a553ad404649501a5ff61995a5",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "hidir.sys",
+   "version": "967edda02ea047bf5f6689787fd7e74bfc16435ec5dd2c1c8e8f6c6eadd5dade",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "hidparse.sys",
+   "version": "f5ae3718dda1dc8165574fd4ee998219841139bce8d93244a7e1f8f953b51f6a",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "hidspi.sys",
+   "version": "bdf26c59c62dab54a52373aca5afbcbf110c6531eb4ec076d8a21b99938114ed",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "hidspicx.sys",
+   "version": "a527861dd8fb33fa24d2ed5d0a608833947954cf278354a53944baa684dda483",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "hidusb.sys",
+   "version": "b20a57bbba00c78de842cff4d17c7c0a7b0649e5d5ea022ad24a9e678030de31",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "hsp.sys",
+   "version": "54a4374ae70c31479c3bfc6fa22b9051880953e81ae93e2f560cff170400bf89",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "hvcrash.sys",
+   "version": "4624f76e07b9e7f5a6427ed25be14e15e9ae78b453803e0d6f39bdfdf0de2568",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "hvservice.sys",
+   "version": "de4919f9ae85b2b127f181eefde1a03970aed4b2b88958a05a8101f4e156a23b",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "hvsocket.sys",
+   "version": "282dc0b9585a4d0acd1b6a11f7ad167dff497d083499e97a490bbaabc51aa5fe",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "hwpolicy.sys",
+   "version": "2c5bf5cd6c6f7830e8f5df9fbd701a89d0700b0103d74d5018458db00c9e1b84",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "hyperkbd.sys",
+   "version": "1a5592cfbc576fd90569d219b5a1e21b9f6a062b54cd6a5974504c393d4549db",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "hypervideo.sys",
+   "version": "59513bd70e155ecf5fb02cfc40d6e747446b4fed57ca4ac3bc7c028b600df1d4",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "iagpio.sys",
+   "version": "faaa46f22944e043a90ae6e9f0f86af187fc2819c563da375b2a409347bb2c35",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "iai2c.sys",
+   "version": "9296a14590dfd94a3c728caf3ca91ba211f27974f9cff8417cddc00d1453315c",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ialpss2i_gpio2.sys",
+   "version": "6ff5d13ef69e8fbcb4772c7b5c4d5770c78e0b29f9164fa1611efde91ce876be",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ialpss2i_gpio2_bxt_p.sys",
+   "version": "2141de558461b592d4111a0388d1aac8062fa72cd1e2a2d2d68279a9633288e9",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ialpss2i_gpio2_cnl.sys",
+   "version": "e353d90d0b79a70f976fd5ea1cb7e25a97835e25116962ea035424715b2f43fe",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ialpss2i_gpio2_glk.sys",
+   "version": "71fdc25244298d62a335769d6ed43394c33fbd8db05aa54ca924a2977f37858f",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ialpss2i_i2c.sys",
+   "version": "3f1f9ec7571d0f82d3f5bba298965491260708f05ebaaa2cc23483521a5ff079",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ialpss2i_i2c_bxt_p.sys",
+   "version": "bf354297a55713d9e2dd4044d42810c007733ee54d5a80d58b96dd279d92c716",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ialpss2i_i2c_cnl.sys",
+   "version": "f105edd16e38f5c0044cc7139e4084a04b0ae3212171a1c7f6fe759f3f5f77fc",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ialpss2i_i2c_glk.sys",
+   "version": "a92487129b81376471c842b9932ff3a7b3abbbb89797978e3fdeaf71a6fd5e3f",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ialpssi_gpio.sys",
+   "version": "f77696ae55b992154a3b35f7660bd73e0ab35a6eceec1931c0d35748cfa605c0",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ialpssi_i2c.sys",
+   "version": "8445e41bab21964c7f014742795e462bddc6c37a261990b3d6bf4e637a719547",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ibbus.sys",
+   "version": "4eb00e751f4517edeffee1225ef5e188b352d062b67f4b7d8b885344febf141d",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "indirectkmd.sys",
+   "version": "6e704623e81c58ee233e9d0f83bdd5e73a0e78cdf6f8cfc189e8894e29f6f89f",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "intelpmax.sys",
+   "version": "af0c3c9ae1db6f60c65c0a046f01c740bd47e10b73fbf0a3a05bb0ab8542362b",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "intelppm.sys",
+   "version": "77080e8e44761d8472ce32c363623fc26469cf1abd3e7cd01276a390b212d5b9",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ipfltdrv.sys",
+   "version": "d776d0a721146ac9abb260fe07b131eaef50a174ddcb439bd29cf8d1b982559f",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ipmidrv.sys",
+   "version": "4399c3f5e6db1ada50447b3725eba48849ce1b437bd1593b5084f165148defa0",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ipnat.sys",
+   "version": "81881dc14b6d426b22ff903b625d3f576f682a66147186cfceb64c67d9411f72",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ipt.sys",
+   "version": "45f6e014bc0099b4d38e5fd086791d83b447de22ed90a1cab1b11e53c1df0ca2",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "kbdhid.sys",
+   "version": "9ad1d82b02377e7d0fd0e717b08c1a1e11453b3514a604f9a0add2712822fc68",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "kbldfltr.sys",
+   "version": "fdb3adcd2ae3a7bd7807df015be00e581f93f162bf9b4c9a943bbaea43045130",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "kdnic_legacy.sys",
+   "version": "76e0ecd9d0b6acab034a33c33a5f2fae93bbaa55244719fb80bcf581281e0493",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "kerb3961kernel.sys",
+   "version": "d180185b1ff54ea9132b16343e3c14467cd155386afd7026e65eda56bda2802e",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "kmpdc.sys",
+   "version": "3e04e3840ea350ee68bc80ec8c048f026940288d4fc40d3ef8552d2af57f88ea",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "knetpwrdepbroker.sys",
+   "version": "9a8e147166b25d4569534ce251a587960dcadc74d6f349fa61f488713f60a6b9",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ks.sys",
+   "version": "17cd07e2fe13eb0a2e49e9fc7caca1c675157013fa6779dd0aed203c7be6d8e8",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ksthunk.sys",
+   "version": "8ec5c0efa7dcf063020d4d1a321bc32d5fd0354299deffa36e6760a45535735a",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "mausbhost.sys",
+   "version": "b753dc3d48fc8eb46c671d398a8fe01216133db498f23a7bea08e8729e1e735a",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "mausbip.sys",
+   "version": "a1bd67ed92801d0f15082501934c665984a2f908b4ca87669496ccb4e94dd16d",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "mbbcx.sys",
+   "version": "17a167388d3ad969bfa22216cc04b92845ac7fd21678e31dc77cc2566d4832ef",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "mcd.sys",
+   "version": "9e0d0caacaa4cd61fd5a1e4f6eee63dcac894d92059c916d9968a5081225851f",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "microsoft.bluetooth.avrcptransport.sys",
+   "version": "28d6fde58749af151067f18141934a215a750aaf4b3d5b685a8b601e29aa4ada",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "microsoft.bluetooth.legacy.leenumerator.sys",
+   "version": "35f45a96fa6e0cd3d5671b255d5446e619daf17c2bd830b7b8e8dc5cd51e26a8",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "mlx4_bus.sys",
+   "version": "211bdc6bb0720ee7221d77f205bd828ab4172ac4f454877beaf5e3d74419442c",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "modem.sys",
+   "version": "4f8e5bfeeb552b585c33e911e97f0b70082c0968ee4d51314196694a77b9088d",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "mouhid.sys",
+   "version": "0675a2d2b5488af06ed72f13f687290189a61111ca048c33122657b07fd74458",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "mrxdav.sys",
+   "version": "c742787873508a1e600a9e60ccda79f9828bbb9a9bc2e7cf8a2009b872a12396",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "msgpioclx.sys",
+   "version": "d9b0205943edfb3a8250bb0d44998c9ed321293242a987b286069968e67df2d2",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "msgpiowin32.sys",
+   "version": "273b2b6c9b66f907f21561086240678e115be27b6cd2b950624efbdb5b9cfda4",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "mshidkmdf.sys",
+   "version": "760e5e19767e01a1a37d40e7b90cfaafee6a0dc892391f199789ee5f9ef5e535",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "mshidumdf.sys",
+   "version": "4e310617a209a1e7a924674ae3dd2c0a6d06828c7da3d2e6d82cd7070bc0d353",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "mshwnclx.sys",
+   "version": "3a245262ebbd2c661395ab770a18fdc774ee34e31a1ef96cf391ea068aa2469b",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "msiscsi.sys",
+   "version": "211385620a78aadcc71a125dbf9c00c13b89855dad321565ec130ffba9697411",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "mskssrv.sys",
+   "version": "2ba53d406a04b86eaf4adfef6def2777c5dde36f87e974b4f7d230a6962858c6",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "mspclock.sys",
+   "version": "2c2f0005498165db9c798c8f32cb2ea82be9756946207cae44c2d3dbf0560364",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "mspqm.sys",
+   "version": "bafbdd88fec7b8e8fa3d60ebc78100f64247232ca60dd9615d241477380a20ad",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "msquic.sys",
+   "version": "6ed056c0844dfb511b06635722c9c51381e4b9f1cf802185d468ee3ba33cd47c",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "msquicprev.sys",
+   "version": "fcec284f7c2ede5fc6dafe87bf96ae3fec1c564d0aba8dd88d0049a8d8031cfe",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "msrpc.sys",
+   "version": "4dc103137769d35693ad5f5e6f274842859d4e5d1865f45035e7caf25220c253",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "mssecflt.sys",
+   "version": "7c0bfb062ee220279d0604580a6ac0054e93b9acbf28ce6ff669fd74116bc41b",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "mssecwfp.sys",
+   "version": "001922a9dc44fd4e9594145163f569ce045ef887330754640e8f9009588f0281",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "mstee.sys",
+   "version": "c36ae7bb096e32376bcc04e4ea22ac306bc94b782846591944d3bbac2182f708",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "mtconfig.sys",
+   "version": "c68818ce3acf1b50a8b39690489a2f51d73ba61a397d22f7b907bcabdbffaecb",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ndfltr.sys",
+   "version": "b712379ca3ece73efe1a9dd1bb94bc7ca0c4e3d68fcca9a99888f67e11af00e8",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ndisimplatform.sys",
+   "version": "da342c1954227749f405910e94a742ecb57d47de2480582863dc292caf36b1ed",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ndistapi.sys",
+   "version": "3e7c2bcb829dd77d17a0620bb457215788e7dd6538d65b2a09900a34beed7967",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ndisuio.sys",
+   "version": "066cc6d74febbb6d655a7623d9700dc42b040bff7152b6b534f03b310fb8125f",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ndiswan.sys",
+   "version": "f40f6e6002fb4db14c54bb697bebabeff9bb0aad1af943c10fd23c2499579c2c",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ndkperf.sys",
+   "version": "14c80e43627c3145fba83528016b0fce14a726c8130eac03ef1c2ac83fb485bb",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ndkping.sys",
+   "version": "b515174a7fc47b0e48da6e7ab1190978e9fa55fdc9ae2e4a3c0d0b42082de117",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ndproxy.sys",
+   "version": "cf27339f9e549fb455cd54b3fd4c5f030500ab47a7929f23b909195ac9a91910",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "netio.sys",
+   "version": "c92b8430e37102ed0a8879829c2a466e1286804ffeb8228b4ac19857654b87a0",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "netvsc.sys",
+   "version": "20c1bd29ba4746aad1fbdae543be39d94acda67c7c5e6e77f7db910c5c33b557",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ngelam.sys",
+   "version": "c5e79520f466fbebf30f57c54313a7fe1fcc3f36ce1177f2336297f5226b6ae7",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "nmclientlib.sys",
+   "version": "75e115ed9a8652fdb3bcd48a12727961ba967a0f072ec9e03676926b728d75b7",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "nmfilter.sys",
+   "version": "d9873df68161f7b8b762b6e5a2441549baa8786e7bf72b4b298d614329d59f0e",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "nmutildrv.sys",
+   "version": "f418cdadaee05497d9379cf50aa00fa466d71bd924d3c20b61db9814eb7f63da",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "nmutilnt.sys",
+   "version": "ce28eeaaeeb08ae76b89ba2b234d95af5cdff8d7d05c8bb99341aa46bfc75ed0",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ntosext.sys",
+   "version": "a0d65e80d1095b774103b88aab48489eead62ca53cc621c0e4a32366a6189c98",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "nwifi.sys",
+   "version": "338dfac1105503124f79ab8389f8b09df797d9b3ff9199f7f0d699f6bc399234",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "nxaudio.sys",
+   "version": "ff3ec9127059fea3802695b40d6781f1ec0fed7ecb47e9d5e9373a16452e14d0",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "p9rdr.sys",
+   "version": "eddbe190f8a4992541fe02d80943a852904979cb85a9e431489f6af07a04969d",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "parport.sys",
+   "version": "46b916329c1e92f4d47a1ea9f5f2d92f72bdb624b0297df2badfefbeb4b8c6de",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "pciidex.sys",
+   "version": "4556e5165781778fce316704152cafd406ba02c33c4909c51888fd6ba1c025e5",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "pktmon.sys",
+   "version": "7e1f37a30b0d79e56fdf83dd6db76ead6215dd0bdcb4aa388ebcb477666eefef",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "pktmonapi.sys",
+   "version": "25b8d94237b64efde165cc4786d5326116048ec5f1c80c5553167a2b85fa3c2b",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "pnpmem.sys",
+   "version": "74468ba2353cff2c555723d032d3e2129a1675e071c22b3904146548a6d6c6f0",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "portcfg.sys",
+   "version": "b11622606790b5ca52fa344d21edd8ec303abda8f7f0d3ad82a932cabbff3efb",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "portcls.sys",
+   "version": "c2af2d7fbf7d0bdd8851adbf0fe1d1c4f8785d7e17852d6f5774dafe91059097",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "processr.sys",
+   "version": "988a1b1a1ce8fd9e562d28b98b50119f6a5dd00b48da6c4a842e707bdd992760",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "proclaunchmon.sys",
+   "version": "3fcac4371460ef510bea9d772ffad68d2af0720078ac3bd84bd1e4979cf882e4",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "qwavedrv.sys",
+   "version": "3a9c49957b7ee2e398c1a20c95c905a0811213a079430b31b8c2b5cffedcdee0",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ramdisk.sys",
+   "version": "e706c3c549860d3eb848d30fbd2ea9dbf5e2a96a11f050fd93f73fca53eecfb3",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "rasacd.sys",
+   "version": "4d156bf1af4a10c6039a4679c5cbc74a5aba8f6eff84bef635a72c742bbf4218",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "rasl2tp.sys",
+   "version": "db5f26555dc1166e2293cc9e7b721a34338f224397607ab1b9fdd0db53528fa0",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "raspppoe.sys",
+   "version": "4174df6db0196626db7dfd7a66b960103a01a08dbaa5de2fc6cc7b22c2dd41d7",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "raspptp.sys",
+   "version": "42426bca3c86bd78065bfd3243a3a045cf25a59736d4d81aba206e3028e0c301",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "rassstp.sys",
+   "version": "bcee01cbe8aa580aad9a22b6c587fa7d2848064771541e98061e979b853124df",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "rdpdr.sys",
+   "version": "e48f64da6d7a3826525c9db7ea9cb208c129d393b2ffac6f49ac18969ebed639",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "refs.sys",
+   "version": "3aa5d90958fc582c5f6567d2b970a3a37b3d4d80a4b58b5a8676943b7860d3c4",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "refsv1.sys",
+   "version": "d229f8803109480b324a283ee17014099d59bf171478a8d3c21cc7c1bde2a9e1",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "rfcomm.sys",
+   "version": "044e64ff20ed27df3a86202e7eea53ef4e7b0b31939a472bc4c1982cf5e6708f",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "rhproxy.sys",
+   "version": "816c553ec9382554d13162a9c30213ac54ce503858c5dbd84c8b1be1c9e3c5d1",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "rmcast.sys",
+   "version": "944ba7c25770ebccc23535bcd4668107c50bd5c983c3510dfecee19e82b8c250",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "rndismp.sys",
+   "version": "f51d597612219bdf9ce523e749ada48e587901fcb81dbf4592d38242e363d597",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "rootmdm.sys",
+   "version": "ebcd1fd9a9b659df91db67981cd6747f9f9aa2aacd7f37bd714f9c942a43be2b",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "routepolicy.sys",
+   "version": "9b6c43ee1968791a344c1bc5d7859b4f7a2549a6c13760b726765bf7d5166ea6",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "rteth.sys",
+   "version": "ad633fab8a7b61337b9ef6ad7651f213bfeadc2caa741af95dbf20e5c3ec8bce",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "scfilter.sys",
+   "version": "54341c844a722f25d72bebfb860d31b432bc4c2e47c03694b0fc24a3e7cb0c8b",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "scsiport.sys",
+   "version": "04893bae9e65674bfdd2d8566d7a96cc49521ba17bd1ee07ce9224e5a48a0221",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "sdport.sys",
+   "version": "b8e738d974fc5d618665ce8ca2b1bb3c0a1bed09855b8b9be39754ebd9ad6fed",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "sercx.sys",
+   "version": "60fa91dcab5ae2a092ba5c8ed5c8850c9f78d2b93bf3cf7413c1b9e5eca20dec",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "sercx2.sys",
+   "version": "d2f7ebfe1144fd1a2f456e4bbc3a9b90b9d57f12f86fb2b535cabfd138e27dd7",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "serenum.sys",
+   "version": "59d9888a42e20faeff78bc3312e0015148c5c21abcb0799e1c93fe24b70210f8",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "serial.sys",
+   "version": "0cce651e05c888a994c4370233e0f68ece99821e652cf075ea389a1b8f62515f",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "sermouse.sys",
+   "version": "15b5a47cff67ef58df5712d97bd9c32aa2575568f5c4243f760e39a51e7b0fb3",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "sfloppy.sys",
+   "version": "b725eecf95afbc2f40b07c911fc44351a52c871577eae44db3320b561a29e228",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "smbdirect.sys",
+   "version": "36971a2f0cd833181b89ff9d955ff7d7a70962d3809a6065bbc707701c2527dd",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "smclib.sys",
+   "version": "b09c01f8d7585714fb36645fbd763b1a8fd32f43398d07f00e55355df239b0dd",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "spacedump.sys",
+   "version": "91a8ded2233fb6e754eb9d2154657bb72efc97c630ec04d0b0aed9e6c7e59eb0",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "spaceparser.sys",
+   "version": "c293f6a1d770cb3a564546d1d7989eed25a8baa7b6f53cd5720cea3562eed275",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "spbcx.sys",
+   "version": "2dce131a8316315bd5aeebf4ec6e92b2945450f4e4b11da6bd6400feb18d5b0b",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "storport.sys",
+   "version": "4a9c1154c586801dc6b823dad04304b3797636e5cb6c968ea41905f5f3c10621",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "stream.sys",
+   "version": "c162f0dc9eeca81d13243747a35196f7f8f0dc1c316e9b88af8a0f6cd5eee6fa",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "tape.sys",
+   "version": "db02014f4777006f4973932e4a4e6f5a83e04093f1dc53cd9c7d63d3523802c9",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "tbs.sys",
+   "version": "a7758026d7e7afd0f4e7f02fda1e96c5f5859fe2361a06b2b314c36e2b85d9c4",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "tdi.sys",
+   "version": "b77dd2bfc8b39de79ab5806c52d7bdf3b7ce064dc281c2976420d736f6aac4ac",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "terminpt.sys",
+   "version": "ccf0698bb05d64ed135aa932e02d671256557a331fdbe3cf744f8a8fb5abbc86",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "tm.sys",
+   "version": "453d4a71a68f671bb415e00f673001976abcb589e2361d8b4e08fc9f5d28169b",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "tsusbflt.sys",
+   "version": "c5b243d68723dfdb05c163bb02c83691a0b9bfe6f795dafc37daf751beb4f7a8",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "tsusbgd.sys",
+   "version": "e61af626da91ffa22c48d4e93b1e0691d1f2dd522f6050d3e5a28bf57c0de8e6",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "tsusbhub.sys",
+   "version": "c218e7f54f8623434e2324d2828aa255525fb821efc99460763e2f491c1257e2",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "tunnel.sys",
+   "version": "824a80dabb9d4113460d67426efa585ace0c452a6e362b332e26ba626e3dc0a2",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ucmcx.sys",
+   "version": "aa8d3d96b1c4d71bb4449cce4b567d8bd61cfb44718372078fd83a3194af12cb",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ucmtcpcicx.sys",
+   "version": "cc4a8e00f928e31600f3cf224d85e86679eb5f16e230fab3c9c3973323d3c13c",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ucmucsiacpiclient.sys",
+   "version": "3931ac4925b70d4d84b36610c522dfba373e98416ffa65cd6b468782aeb76b50",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ucmucsicx.sys",
+   "version": "94d501c03b2af71c526db0f4dc8e1bc4017c810fd6312483cf01d6ad4b9ae03e",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "udecx.sys",
+   "version": "6da8b54b88e22938b4b783adf5513f02129bc043359aa8390f9b3f6aab623564",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "uevagentdriver.sys",
+   "version": "10828b6e3bbee3e8744b28b5697ee0e12888a48bbb2c02d027bede57cf5b34b8",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ufx01000.sys",
+   "version": "78ed801f832e1a3d6309665db93c06434f89a24319311a9b632158be4e16cec3",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ufxsynopsys.sys",
+   "version": "4b8938777b92f4f1b3199def96f03e710cc22d8a2720297f3f1b53a696d3347f",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "usb8023.sys",
+   "version": "d3199010e004505a2d544b4e2e703463def6151b513f4bba8b28f7e4b84ca3e6",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "usbaudio.sys",
+   "version": "793812c17ee6d10d4280a1dcb2b48e83c71b8d6fcbb15dfe3f57cf2510fecd44",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "usbaudio2.sys",
+   "version": "a1d7582991fc7286a042d84c4832f924c0d954492a65310626a5e7e187030d2e",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "usbcamd2.sys",
+   "version": "e5cd6fbcb9a8fab3cebbe70372322204eea189426d934167e8967b769b70c524",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "usbcir.sys",
+   "version": "bf667a635e51d3acd2ffe78ffb33c1aaf62b60f58484b53647ae0a27bbc60a98",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "usbd.sys",
+   "version": "edb180bdfd2143a66ad02f3b25ccc09f6fb1f07589517b93f7479d30bb107e2b",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "usbohci.sys",
+   "version": "9cddc3b413918a146917ffc57926418f3949e44d6d821adade7339c2b1e6eaa0",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "usbpmapi.sys",
+   "version": "18546f99db90b636e5b4f8ec05baa010aed2d29ddecce70b83a2d3a89edbc386",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "usbport.sys",
+   "version": "69a98cbeb805fac7b4250b03eb95f44ecfebf26782e25298fff481dbbe4c7547",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "usbprint.sys",
+   "version": "48d173e31573e9d96485b1846763ed67070e0a1750959407b1573848fb0b97ec",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "usbser.sys",
+   "version": "823753c996cec647669b38b308d8c437e61b10090e830a9396934af6fae3bdab",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "usbuhci.sys",
+   "version": "9cfa5bedbb8dfda03896429348951cdf6d6fa627f8858df2a1bd0bc9ada772f2",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "verifierext.sys",
+   "version": "d2fcac287e70b20d32762728770a7bf3ea7970c1c8c1c317a7b3f93c9200542b",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "vhdmp.sys",
+   "version": "4041ade322310ae5eb93a0891a6f6b740f2b89319a7f07f1d4aa2d7de8197fa9",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "vhf.sys",
+   "version": "83f59710b654b78c0739af508b9b59303919443188d24c53d3437dde4992f0c3",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "videoprt.sys",
+   "version": "2217306412f130c668883152957ccfd7e708035b77e478c54cd273de154c21b3",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "vmbkmcl.sys",
+   "version": "0930a7ca2636267f3ef0c0f1886cc2e5e5774897df166e20c4f3d6ef6e50c725",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "vmbushid.sys",
+   "version": "67380e2dc050c74b04f48238c11cf7a57e9dab2c89ca9df66117d57b69eaaf29",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "vmgencounter.sys",
+   "version": "bfd17e40b498aa842d59fd38e0ff128416cc6cf0af9cb2eb7637c5e265180258",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "vmgid.sys",
+   "version": "2066f124e18b277595ca72bc205ceff7f42e4cc226b5ddad29933fba20dafe7e",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "vms3cap.sys",
+   "version": "8f7a702e1e703ecaca3d95fd21202d5b09d43eb1aeeb9676cba58127d36395d9",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "wacompen.sys",
+   "version": "55c5747ecd53113af450aa0b5055a8d0962b6ab1ff8b5431630e60b27e025a36",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "wanarp.sys",
+   "version": "43ed1c1bf2c01f7ca912052d351d0bd8cc63219be4199a3ec584d713063de3fb",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "watchdog.sys",
+   "version": "934992ff53c0d0517966e01247729227570e4a50b3f93afbc4d04f37c8bd01e3",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "wdboot.sys",
+   "version": "fae9e12e8f5d1ac08d2570bf338204d20f271d416e3a814bbcd7516c8e4f3c50",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "wddevflt.sys",
+   "version": "6ac5d8d09a13de50d96e7e49ded116e0831ab0e0a39495276a3beee5b45bb63b",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "wdfilter.sys",
+   "version": "653eb082c2820cee7c7043af89362ed343ce61e9615fc7f0b3ca7ec025d64aba",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "wdfldr.sys",
+   "version": "ad04ef498606d8691f5392aca68d3ea70c80621008db95add94b7fdbeae8241d",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "wdiwifi.sys",
+   "version": "3a0f7190b25623ba9ca6f02f98ed286a8c13849a90e9fd16697754748f450f59",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "wdmcompanionfilter.sys",
+   "version": "ddac459d912f325386758e67182aec0eb8d4035aacd70b007f0eb7d4be753011",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "wdnisdrv.sys",
+   "version": "36e15c5a2a0f2f28e4ddf4aae9455f184a26cd47ca94dde13d76e9a0bdf7d17e",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "werkernel.sys",
+   "version": "0e5937808c7fc1daa98282d2526a450d57a15e56aa7cc179023d6ada0656340d",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "wificx.sys",
+   "version": "e6f254526664d02301faa3d12d415ece5d987bfff613edd09ab90a4207e452e2",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "winaccel.sys",
+   "version": "0534b9038f46ba8fb87536c0872ae150fd359bbfdc11a7f353ea8e1eba9b08cf",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "winaccelcx.sys",
+   "version": "e2c6a6dc14bbc3d23940efc6f8432d7c3cf1dd88825d2ee93ceea7ef8a91c8e0",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "winhv.sys",
+   "version": "df2020be376215d828c809d1c1d44fedec778cabe18c71e5e2e9f6ae92b5668e",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "winhvr.sys",
+   "version": "7d407fc49711176e3e8f3e4ecf68121ab7031804c9058b3d893acc92deeca1ce",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "winmad.sys",
+   "version": "4be9617627adb71a2e5321d77ee54b6bf0ec97c8003753e8b733219a6cb43114",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "winnat.sys",
+   "version": "2cc67b9eae09c592968835da29f3b9f950c28a2a57fa731bf0704c4d7a9ceb26",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "winusb.sys",
+   "version": "04f8f5f63c7c7f8cf69c5f19abd6384b68e53707251f44f9665f76161f87bd18",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "winverbs.sys",
+   "version": "d9c3d761561dee8deed149352efebe9a71da6ae32f0d6170d019d88f64344778",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "wmiacpi.sys",
+   "version": "3a8540de14ed7f876de425fa0379790f01526a1df50c409a4e8bc3fc134f7177",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "wmilib.sys",
+   "version": "24ef49436964332ee7a8886510ce31e409305779cb4e8cc988642ae1d93b29d8",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "wpdupfltr.sys",
+   "version": "45489df939804ffe56e9a833cbed357402795d7d0cbd6dfcda29645cd3df4300",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "wpprecorder.sys",
+   "version": "6cee9524050675be70941200f7e8c3d4aab22fa2d0a91aadd09885694d248977",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ws2ifsl.sys",
+   "version": "fba37c8010961e5a8667fd072ff53670c5c82d97d70179d0e4b6701170dd0535",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "wudfpf.sys",
+   "version": "aa7be8f7856194d5c2c7a819729e857d35d7879a7392618228726bffeb5553b3",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "wudfrd.sys",
+   "version": "eedcc147c4416566604cc32bc994582d7976b08fa28ef1a54a0c782c7ae6074c",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "xboxgip.sys",
+   "version": "ea57e827b3b739d89f68cb41460c3466eac0c9d2be128cd9f7eea6654a816db7",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "xinputhid.sys",
+   "version": "1e85d1a191f09ed62645658c94f908b733da5a026ed2b6b662635ebbddf84588",
+   "source": "on disk"
+  },
+  {
+   "ecosystem": "WinDriver",
+   "name": "ztdns.sys",
+   "version": "d849035b20650ba8cf45457d5af379b223cf3abf30fa43058818311bf8138dc6",
+   "source": "on disk"
+  }
+ ]
+}

@@ -16,7 +16,7 @@ Today an app outside the curated map is silently inventory, so "0 findings" can 
 - [x] `GET /api/assets` gives assessed and inventory-only counts per host; `GET /api/coverage` gives fleet totals and names
 - [x] Assets and Home say it in plain words; a host with nothing assessed says so. Home's sentence has no test of its own
 - [x] Fleet list of unassessed apps, most common first (top 200), which feeds W12
-- [ ] Not done: screenshot from the VM with 50 apps, axe on the new section (the e2e seed has no Windows apps), `perf.py` at 1,000 hosts for the extra query on `/api/assets`. An app assessed through the agent's own Microsoft facts can read as "listed only" if it also has an Uninstall entry: errs towards under-claiming, to be measured on the VM `perf.py` at 1,000 hosts ran on 2026-11-04: `GET /api/assets` 0.43 s; at 200 hosts the coverage query adds 0.02 s (0.066 s to 0.083 s against the 2026-10-29 code on the same machine).
+- [x] Screenshot from a VM with 50 apps, axe on the new section, `perf.py` at 1,000 hosts. **Done** (2026-11-06, `last_run_wincoverage.json`): a fresh Windows 11 26H2 VM with 63 apps installed by winget at their newest versions (one, Gpg4win, wouldn't install); the agent's own report read 56 installs checked and 21 listed only. The under-claim this line predicted is real and measured: Windows Desktop Runtime 10.0.14 read as listed only although the same host's ".NET runtime 10.0.14" fact is what the server checks. Fixed with a test: a .NET or ASP.NET Core runtime's Uninstall entry counts as checked when its host reports that fact at that version, so the VM reads 57 and 20; the 20 left are Visual C++ redistributables, OneDrive, Copilot, Bonjour, Npcap, the guest additions and the server-side clients batch 8 left out. Screenshot: the e2e suite posts that VM's report as a host and saves Assets (`web/e2e-screenshots/assets-coverage-real-vm.png`, "57 of 77 installed apps checked"); a new e2e test runs axe on the section at 1440 light and 375 dark, no serious or critical violation. `perf.py` at 1,000 hosts ran on 2026-11-04: `GET /api/assets` 0.43 s; at 200 hosts the coverage query adds 0.02 s
 - Verify: tests with a seeded mixed host; screenshot from the VM with 50 apps. Files: `app.py`, `winapps.py`, `web/src/`. Deps: none.
 
 ### W2: Locale bug, proven on a German install (M)
@@ -155,7 +155,7 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens the ref
 - Deps: none.
 
 ### Checkpoint C
-- [ ] W1's coverage re-measured on the VM with 50 apps; change reported; STATUS's stale apps line rewritten
+- [x] W1's coverage re-measured on the VM with 50 apps; change reported; STATUS's stale apps line rewritten (2026-11-06): 57 of 77 installs checked on 63 apps (above); STATUS now says 105 curated apps
 
 ## Phase 4: benchmarks
 
@@ -230,7 +230,7 @@ Every unchecked item above, by why it's open:
 - **Waiting on the owner**: Checkpoint A (W3's gaps reviewed with you); the items below
 - **W3** stopped at its short look (DECISIONS 110): the reference scanner's free feed has no Windows patch tests after October 2025, so which scanner to compare with is the owner's call
 - **W13** stopped at 105 apps by its own rule (no winget candidates with 20 or more CVEs left that map); 
-- **Not started, real work, unblocked**: W1's 50-app VM screenshot and axe check; Checkpoint C (needs W13); the engine track's last three (routing and AD group edges, findings through the engine, its benchmark run, which needs W3)
+- **Not started, real work, unblocked**: the engine track's last three (routing and AD group edges, findings through the engine, its benchmark run, which needs W3)
 
 ## Needs the owner
 - [ ] Review this plan; answer its two open questions

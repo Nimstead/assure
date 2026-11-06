@@ -3,6 +3,7 @@
 import functools
 import hashlib
 import json
+import re
 from collections import defaultdict
 
 from sqlalchemy import select
@@ -21,15 +22,27 @@ def app_assessed(name: str, source: str | None, version: str) -> bool:
     return bool(winapps.identify(name, source, version) or msproducts.from_winapp(name, source, version))
 
 
+# A .NET runtime's Uninstall entry, judged through the agent's own ".NET runtime" / "ASP.NET Core" fact rather than its name
+_RUNTIME = re.compile(r"Microsoft (?:(?P<asp>ASP\.NET Core)|Windows Desktop Runtime|\.NET Runtime)(?: -)? (?P<v>\d+\.\d+\.\d+)(?: .*)?")
+
+
+def runtime_fact(name: str) -> tuple[str, str] | None:
+    """(fact name, version) the same host reports for this Uninstall entry, if it's a .NET runtime."""
+    m = _RUNTIME.fullmatch(name)
+    return ("ASP.NET Core" if m["asp"] else ".NET runtime", m["v"]) if m else None
+
+
 def app_coverage(s: Session, org_id: str) -> tuple[dict[str, dict], dict[tuple[str, str | None], set[str]]]:
-    """Windows apps we check against those we only list: counts per asset, and the assets holding each unchecked app."""
+    """Windows apps we check against those we only list: counts per asset, and the assets holding each unchecked app. A runtime
+    counts as checked only when its host also reports the matching fact at that version: that fact is what the server checks."""
     per_asset: dict[str, dict] = defaultdict(lambda: {"assessed": 0, "inventory_only": 0})
     missed: dict[tuple[str, str | None], set[str]] = defaultdict(set)
-    rows = s.execute(select(InstalledPackage.asset_id, InstalledPackage.name, InstalledPackage.source, InstalledPackage.version)
-                     .join(Asset, Asset.id == InstalledPackage.asset_id)
-                     .where(Asset.org_id == org_id, InstalledPackage.ecosystem == winapps.ECOSYSTEM))
-    for asset_id, name, source, version in rows:
-        if app_assessed(name, source, version):
+    base = (select(InstalledPackage.asset_id, InstalledPackage.name, InstalledPackage.source, InstalledPackage.version)
+            .join(Asset, Asset.id == InstalledPackage.asset_id).where(Asset.org_id == org_id))
+    facts = {(a, n, v) for a, n, _, v in s.execute(base.where(InstalledPackage.ecosystem == msproducts.ECOSYSTEM,
+                                                              InstalledPackage.name.in_([".NET runtime", "ASP.NET Core"])))}
+    for asset_id, name, source, version in s.execute(base.where(InstalledPackage.ecosystem == winapps.ECOSYSTEM)):
+        if app_assessed(name, source, version) or ((f := runtime_fact(name)) and (asset_id, *f) in facts):
             per_asset[asset_id]["assessed"] += 1
         else:
             per_asset[asset_id]["inventory_only"] += 1

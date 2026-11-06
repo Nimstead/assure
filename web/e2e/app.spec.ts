@@ -2,7 +2,7 @@ import { expect, request as pwRequest, test, type Browser, type Page } from "@pl
 import AxeBuilder from "@axe-core/playwright";
 import { spawnSync } from "node:child_process";
 import { createHmac } from "node:crypto";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const STATE = "e2e-data/state.json";
@@ -436,6 +436,39 @@ test("phones: Evidence is one tap away and controls are at least 44px, dialogs a
     expect(await smallTargets(ap), `${path}: touch targets under 44px`).toEqual([]);
   }
   await anon.close();
+});
+
+test("apps the curated rules don't cover are said, on Assets, and pass axe (W1)", async ({ browser }) => {
+  const context = await browser.newContext({ storageState: STATE });
+  const page = await context.newPage();
+  const tok = await (await page.request.post("/api/enroll-tokens", { data: { sandbox: true } })).json();
+  const a = await (await page.request.post("/api/agent/enroll", { data: { token: tok.token, hostname: "win-apps", ecosystem: "Windows" } })).json();
+  const app = (name: string, source: string, version: string) => ({ ecosystem: "WinApp", name, source, version });
+  const r = await page.request.post("/api/agent/inventory", { data: { ecosystem: "Windows", packages: [
+    app("7-Zip 24.08 (x64)", "Igor Pavlov", "24.08"), app("Acme Widget", "Acme", "1.0"), app("Contoso Helper", "Contoso", "2.3")] },
+    headers: { Authorization: `Bearer ${a.agent_key}` } });
+  expect(r.ok()).toBe(true);
+  await page.goto("/assets");
+  const section = page.getByRole("region", { name: "2 installed apps aren't checked for vulnerabilities" });
+  await expect(section.getByText("1 install of known apps is checked.", { exact: false })).toBeVisible();
+  await section.getByText("Show them, most common first").click();
+  await expect(section.getByText("Acme Widget")).toBeVisible();
+  for (const [width, scheme] of [[1440, "light"], [375, "dark"]] as const) {
+    await page.setViewportSize({ width, height: width === 375 ? 812 : 900 });
+    await page.emulateMedia({ colorScheme: scheme });
+    await axe(page, `coverage section @${width} ${scheme}`);
+  }
+  // the screenshot W1 asks for: a real Windows 11 VM's report with 63 apps installed (sandbox/wincoverage.py)
+  const real = await (await page.request.post("/api/agent/enroll", { data: { token: tok.token, hostname: "win11-63-apps", ecosystem: "Windows" } })).json();
+  const inv = JSON.parse(readFileSync(new URL("../../sandbox/last_run_wincoverage_inventory.json", import.meta.url), "utf-8"));
+  expect((await page.request.post("/api/agent/inventory", { data: inv, headers: { Authorization: `Bearer ${real.agent_key}` } })).ok()).toBe(true);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.goto("/assets");
+  await expect(page.getByText("win11-63-apps").first()).toBeVisible();
+  mkdirSync(SHOTS, { recursive: true });
+  await page.screenshot({ path: `${SHOTS}/assets-coverage-real-vm.png`, fullPage: true });
+  await context.close();
 });
 
 test("screenshots at 1440 and 375", async ({ browser }) => {

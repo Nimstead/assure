@@ -4,6 +4,9 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Fixed
+- **A Windows fix no longer rolls back because a service was still starting** (agent 0.6.1). The agent's health check gives a service that starts by itself up to 5 minutes to reach Running after a restart; on a real failover cluster node, ClusSvc was 15 seconds from running when it was read, so a good update was rolled back and the rollback then read as failed.
+
 ## [0.7.0] - 2026-11-06 (preview)
 
 Windows round 2 (tasks/plan-windows-round-2.md; DECISIONS 102-108): proofs on real Windows servers and a real Active Directory

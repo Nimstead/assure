@@ -19,11 +19,28 @@
   {
     "step": "enrolled by itself",
     "computer": "NIMM2",
-    "minutes_after_boot": 40.6,
-    "asset": null
+    "minutes_after_boot": 3.7,
+    "asset": "NIMM2"
   },
   {
-    "step": "RESULT: FAIL",
-    "error": "AssertionError: NIMM2 didn't enrol in 40 minutes of booting: nothing was run on it, so read C:\\Windows\\Temp\\nimstead-gpo.log there"
+    "step": "on the member after enrolling",
+    "quser": "*\nAt line:2 char:1\n+ quser 2>&1 | Out-String\n+ ~~~~~~~~~~\n    + CategoryInfo          : NotSpecified: (No User exists for *:String) [], RemoteException\n    + FullyQualifiedErrorId : NativeCommandError",
+    "task_runs_as": "SYSTEM",
+    "startup_log": "runtime sha256: d012f3aa29cf07436dae8aea1fec0fd195c2612a0b059b1f915ae0afb9ad1f62\nagent sha256: f3dc2b0315c75687868ccf4e9705c101ef17bb621a8e5c3d004d71b33d4fe080\nWARNING: Plain HTTP server (dev only)\nenrolled as asset 8efb76d0e0ea4b0594cfb872d3fc4f80; config saved to C:\\ProgramData\\Nimstead\\agent.json\nreported 322 packages\nscheduled: every 6 hours and at startup\nNimstead agent installed.\n\n"
+  },
+  {
+    "step": "after a second boot",
+    "hosts": [
+      "NIMM2"
+    ]
+  },
+  {
+    "step": "RESULT: PASS",
+    "checks": {
+      "enrolled with nobody signed in": true,
+      "agent's task runs as SYSTEM": true,
+      "the machine outside the OU didn't enrol": true,
+      "a second boot doesn't enrol again": true
+    }
   }
 ]

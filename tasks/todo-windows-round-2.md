@@ -162,7 +162,7 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens the ref
 ### W18: Rule table and terms check (M)
 - [x] DISA and Microsoft terms read and quoted in DECISIONS, amending 64; if they stop redistribution, ship IDs only (04e5aad, DECISIONS 75: redistribution isn't established, so IDs, severity and setting facts only)
 - [x] One baseline (Server 2025 STIG): registry-based automated rules as data, evaluated server-side on agent facts; anything else reads "not assessed" (04e5aad: 85 of 291 rules automated, 156 after W19)
-- [ ] Real VM: results for 20 sampled rules checked by hand against the guest. **Deferred to 0.8** (PM call 2026-11-06)
+- [x] Real VM: results for 20 sampled rules checked by hand against the guest. **Done** (`last_run_winbaseline.json`, 2026-11-06, fresh Server 2025 Core): 156 automated rules, 51 pass, 79 fail, 26 not applicable, none not assessed. Of 20 sampled (user rights by SID, audit policy by subcategory GUID, registry values), the agent's reading equals the guest's own (secedit, auditpol, Get-ItemProperty) on all 20, and each verdict follows the rule as written. One to read again: WN25-UR-000130 fails on an `S-1-5-99-…` service identity stock Server 2025 grants SeImpersonatePrivilege, which the STIG may already allow for (not checked)
 - Verify: `last_run_winbaseline.json`. Files: `winconfig.py`, new data file, agent's closed list. Deps: none.
 
 ### W19: Audit policy and user rights (M)

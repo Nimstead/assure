@@ -125,7 +125,11 @@ def build_cluster(lab: dict) -> None:
     h.note("cluster formed", name=CLUSTER, output=out[-300:])
     lab_.on(dc)
     h.guest(fill(WITNESS_GRANT, NETBIOS=lab_.NETBIOS, CLUSTER=CLUSTER))
-    _, out = lab_.as_user(n1, admin, fill(QUORUM_AND_ROLE, DC=dc["computer"], ROLE=ROLE, ROLE_IP=ROLE_IP))
+    for _ in range(6):  # the witness is the DC's share: right after the lab reset its server can still be starting (real lab)
+        rc, out = lab_.as_user(n1, admin, fill(QUORUM_AND_ROLE, DC=dc["computer"], ROLE=ROLE, ROLE_IP=ROLE_IP), check=False)
+        if rc == 0 or "paused or is in the process of being started" not in out:
+            break
+        time.sleep(30)
     h.note("witness and role", output=out[-300:])
     assert "Online" in out, out[-1000:]
 

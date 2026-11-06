@@ -167,7 +167,7 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens the ref
 
 ### W19: Audit policy and user rights (M)
 - [x] `auditpol` read by subcategory GUID and `secedit` rights by SID, so language doesn't matter (1df4712, DECISIONS 76)
-- [ ] Automated rule count rises; German VM agrees (with W2)
+- [x] Automated rule count rises; German VM agrees (with W2). Count: 85 to 156 of 291 (1df4712). **German install agrees** (`last_run_winbaseline_judged_as.json`, 2026-11-06): on a German Windows 10 LTSC 2021, read against the Windows 11 table with `--judge-as` (no German Server 2025 or Windows 11 image here), all 144 automated rules got a value (none not assessed), and of 20 sampled the agent's reading equals the guest's own on all 20, where auditpol answers "Erfolg", "Erfolg und Fehler" and "Keine Überwachung" and secedit names "Gast": the agent reads audit policy by GUID and rights by SID. Pass/fail there says nothing about Windows 10, which has no table
 - Deps: W18, W2.
 
 ### W20: Benchmark view and export (M)

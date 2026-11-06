@@ -4,6 +4,10 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-11-06 (preview)
+
+**Agent 0.6.2.** No database migration; run `deploy/update.sh`. Proven on real hosts since 0.7.0: a two-node failover cluster patched node by node with its role online throughout (`last_run_wincluster.json`), the agent installed at boot by a Group Policy scheduled task (`last_run_wingpo.json`, steps in docs/install.md), and the benchmark settings read in full on Server 2025 and on a German install (`last_run_winbaseline.json`, `last_run_winbaseline_judged_as.json`). Still not proven: SharePoint and Exchange collectors (no install media), Server 2019 and Server 2022 stepping, Windows 10 apply, Windows 11 Enterprise.
+
 ### Fixed
 - **A Windows update no longer rolls back because a watched service was stopped by the update's own restart** (agent 0.6.2): the crash check counts only events after the last boot. On a slow cluster node, the shutdown ended ClusSvc with event 7031 each time.
 - **A Windows fix no longer rolls back because a service was still starting** (agent 0.6.1). The agent's health check gives a service that starts by itself up to 5 minutes to reach Running after a restart; on a real failover cluster node, ClusSvc was 15 seconds from running when it was read, so a good update was rolled back and the rollback then read as failed.

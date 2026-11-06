@@ -32,7 +32,7 @@ import urllib.parse
 import urllib.request
 import zipfile
 
-AGENT_VERSION = "0.6.2"  # the server reads this line to flag outdated agents; bump on every agent change
+AGENT_VERSION = "0.6.3"  # the server reads this line to flag outdated agents; bump on every agent change
 # Ed25519 public keys (hex) allowed to sign releases (DECISIONS 31): primary (GitHub Actions) and offline backup.
 # The server only relays signed releases, so it can withhold an update but never forge one. Empty = never self-update.
 RELEASE_KEYS = ["a91fa6539c6c2593009fc71b1c1fba341b5685ba7bc97c127c068b1d732b21d2", "2438f2ccebab5bf26edf9e21a8aa8f09abd1861f52fbe0d6641b28b90f8b0e5a"]  # noqa: E501
@@ -834,6 +834,28 @@ foreach ($t in Get-NetTCPConnection -State Listen) {
   $fw = if (@($c.firewall_off).Count) { 'off' } elseif ($null -eq $fwr) { $null } elseif (FwAllows $fwr ([int]$t.LocalPort) "$($pr.Path)") { 'allowed' } else { 'blocked' }
   $lis[$k] = [ordered]@{ port = [int]$t.LocalPort; process = "$($pr.ProcessName)"; firewall = $fw }
 }
+# for attack paths across hosts (DECISIONS 112): this host's own addresses, the private addresses it has a connection open to
+# (routing seen, nothing probed), its Administrators group by SID, and the domain accounts signed in here with their groups.
+# Each is null when it can't be read, never an empty list that would read as "none"
+$addrs = $null; try { $addrs = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction Stop | Where-Object { $_.IPAddress -notmatch '^(127\.|169\.254\.)' } | ForEach-Object { "$($_.IPAddress)" } | Select-Object -Unique -First 16) } catch { }
+$peers = $null; try { $peers = @(Get-NetTCPConnection -State Established -ErrorAction Stop | Where-Object { "$($_.RemoteAddress)" -match '^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)' } | ForEach-Object { "$($_.RemoteAddress):$($_.RemotePort)" } | Select-Object -Unique -First 64) } catch { }
+$admins = $null; try { $admins = @(Get-LocalGroupMember -SID S-1-5-32-544 -ErrorAction Stop | ForEach-Object { "$($_.SID)" } | Select-Object -First 50) } catch { }
+$signed = $null
+try {
+  $s = [ordered]@{}; $partial = $false
+  $me = (Get-LocalUser -ErrorAction Stop | Select-Object -First 1).SID.AccountDomainSid.Value  # this machine's own accounts
+  foreach ($u in @(Get-CimInstance Win32_LoggedOnUser -ErrorAction Stop)) {
+    $sid = $null; try { $sid = (New-Object Security.Principal.NTAccount("$($u.Antecedent.Domain)", "$($u.Antecedent.Name)")).Translate([Security.Principal.SecurityIdentifier]).Value } catch { }
+    if (-not $sid -or $sid -notlike 'S-1-5-21-*' -or $s.Contains($sid)) { continue }
+    $s[$sid] = 1
+    if ((New-Object Security.Principal.SecurityIdentifier($sid)).AccountDomainSid.Value -eq $me) { continue }  # a local account: no AD groups
+    # a domain account's groups are what B's Administrators group names (Domain Admins): without them the list would hide an
+    # edge, so one failed lookup makes the whole fact unreadable (real lab, 2026-11-06: a lookup failed after a ticket purge)
+    try { $o = [ADSI]"LDAP://<SID=$sid>"; $o.RefreshCache(@('tokenGroups')); $gs = @($o.Properties['tokenGroups']); if (-not $gs.Count) { $partial = $true }
+      foreach ($g in $gs) { $s[(New-Object Security.Principal.SecurityIdentifier($g, 0)).Value] = 1 } } catch { $partial = $true }
+  }
+  if (-not $partial) { $signed = @($s.Keys | Select-Object -First 100) }
+} catch { }
 $cs = Get-CimInstance Win32_ComputerSystem
 $wu = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate'
 $roles = if (Get-Command Get-WindowsFeature) { @(Get-WindowsFeature | Where-Object Installed | ForEach-Object Name) } else {
@@ -841,13 +863,13 @@ $roles = if (Get-Command Get-WindowsFeature) { @(Get-WindowsFeature | Where-Obje
 $last = $null; try { $last = (New-Object -ComObject Microsoft.Update.AutoUpdate).Results.LastInstallationSuccessDate.ToString('o') } catch { }
 $pending = (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending') -or (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired')
 ConvertTo-Json -Compress -Depth 4 -InputObject ([ordered]@{ config = $c; roles = @($roles | Select-Object -First 400);
-  machine_certs = @($certs); listening = @($lis.Values);
+  machine_certs = @($certs); listening = @($lis.Values); addresses = $addrs; peers = $peers; local_admins = $admins; signed_in_sids = $signed;
   domain_role = [int]$cs.DomainRole; domain = "$($cs.Domain)"; cluster = Reg 'HKLM\Cluster' 'ClusterName';
   wsus = if ((Reg "$wu\AU" 'UseWUServer') -eq 1) { Reg $wu 'WUServer' } else { $null };
   wufb_quality_deferral_days = Reg $wu 'DeferQualityUpdatesPeriodInDays'; pending_reboot = $pending; last_update_success = $last })
 """
 HOST_FACTS = ("config", "roles", "domain_role", "domain", "cluster", "wsus", "wufb_quality_deferral_days", "pending_reboot",
-              "last_update_success", "machine_certs", "listening")
+              "last_update_success", "machine_certs", "listening", "addresses", "peers", "local_admins", "signed_in_sids")
 
 
 # Benchmark settings the server judges (winbaseline.py, DECISIONS 75): a closed list in the signed agent, generated once from

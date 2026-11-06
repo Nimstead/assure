@@ -4,6 +4,9 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Added
+- **Attack paths across hosts tell a real route from a guess** (agent 0.6.3, DECISIONS 112): a sign-in edge inside a domain is confirmed when an account signed in on the first host is an administrator on the second and the first was seen connected to it, and unverified when no signed-in account is. The agent reports its own addresses, its open connections to private addresses, its Administrators group and the signed-in domain accounts' SIDs; nothing is probed.
+
 ### Proven
 - **SharePoint and Exchange collectors on real installs** (W11): SharePoint Server Subscription Edition and Exchange Server Subscription Edition from Microsoft's trial media, in the domain lab; the agent's version equals the host's own for both (`last_run_winsharepoint.json`, `last_run_winexchange.json`). No code change was needed.
 

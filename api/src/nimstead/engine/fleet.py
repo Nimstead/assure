@@ -3,8 +3,10 @@
 Built from each host's latest stored engine report and its own facts, never by scanning again. An edge A -> B needs three
 things, each from evidence: A gives the attacker something (credentials taken on it, or name poisoning on its network), B
 accepts it (local administrators over the network, relay because SMB signing isn't required, NTLMv1), and B's own firewall
-allows the port that uses it. Whether A can route to B isn't seen, so no edge is better than reasonable; reuse of a local
-administrator password can't be seen at all, so an edge resting on it is unverified and says so.
+allows the port that uses it. Inside a domain, a sign-in edge is confirmed only when an account signed in on A is in B's
+Administrators group and A was seen with a connection open to B; with no such account it's unverified. Otherwise routing isn't
+seen, so no edge is better than reasonable; reuse of a local administrator password can't be seen at all, so an edge resting on
+it is unverified and says so (DECISIONS 98, 112).
 """
 
 from collections import deque
@@ -32,6 +34,40 @@ def _domain(facts: dict) -> str | None:
     return d.upper() if isinstance(d, str) and d and d.upper() != "WORKGROUP" and isinstance(facts.get("domain_role"), int) and facts["domain_role"] >= 1 else None
 
 
+def _list(facts: dict, key: str, cap: int) -> set[str] | None:
+    """A list fact as a set, or None when the agent couldn't read it (an old agent, a failed read): None is never "empty"."""
+    v = facts.get(key)
+    return {x for x in v[:cap] if isinstance(x, str) and len(x) <= 200} if isinstance(v, list) else None
+
+
+def _routed(fa: dict, fb: dict) -> bool:
+    """A has a connection open to one of B's own addresses: routing from A to B seen, not assumed (DECISIONS 112)."""
+    peers, addrs = _list(fa, "peers", 64), _list(fb, "addresses", 16)
+    return bool(peers and addrs and {p.rsplit(":", 1)[0] for p in peers} & addrs)
+
+
+def _refine(ways: list[dict], base: str, fa: dict, fb: dict) -> list[dict]:
+    """One source's ways into B, judged on what A and B said about themselves: whether an account signed in on A is an
+    administrator on B (its SIDs and their groups against B's Administrators group), and whether A was seen reaching B."""
+    signed, admins, routed = _list(fa, "signed_in_sids", 100), _list(fb, "local_admins", 50), _routed(fa, fb)
+    out = []
+    for w in ways:
+        w = dict(w)
+        if w.pop("_domain_creds", False) and signed is not None and admins is not None:
+            if signed & admins:
+                w["because"] += "; an account signed in on A is in B's Administrators group"
+                if routed:
+                    w["because"] += ", and A had a connection open to B"
+                    w["grade"] = _grade(base, "confirmed")
+            else:  # the hash an attacker takes from A doesn't open B as an administrator
+                w["because"] = "no account signed in on A when it last reported is in B's Administrators group"
+                w["grade"] = "unverified"
+        elif routed:
+            w["because"] += "; A had a connection open to B"
+        out.append(w)
+    return sorted(out, key=lambda w: ("unverified", "reasonable", "confirmed").index(w["grade"]), reverse=True)
+
+
 def build(hosts: list[dict]) -> dict:
     """hosts: [{id, hostname, facts, os_version, report (latest stored engine report, or None), internet_facing}]."""
     judged = [h for h in hosts if h.get("report") and "attack_paths" in h["report"]]
@@ -51,6 +87,7 @@ def build(hosts: list[dict]) -> dict:
         if g["grade"]:
             groups.setdefault((g["credentials"], g["poisoning"], g["grade"], _domain(a.get("facts") or {})), []).append(a["id"])
     edges, truncated = [], False
+    facts = {h["id"]: h.get("facts") or {} for h in judged}
     for b in judged:
         opened = _open_ports(b.get("facts") or {})
         if not opened:
@@ -69,17 +106,17 @@ def build(hosts: list[dict]) -> dict:
                 else:  # poisoning on A's network, relayed to B
                     because = "sign-ins on A's network can be captured by name poisoning and relayed" + (f"; both are in the domain {dom}" if same else "")
                 ways.append({"via": f"CFG:{check}", "how": how, "port": port, "because": because,
-                             "grade": _grade(grade, "reasonable" if same else "unverified")})
+                             "grade": _grade(grade, "reasonable" if same else "unverified"), "_domain_creds": same and needs == "credentials"})
             if not ways:
                 continue
-            ways.sort(key=lambda w: ("unverified", "reasonable", "confirmed").index(w["grade"]), reverse=True)
             for aid in ids:
                 if aid == b["id"]:
                     continue
                 if len(edges) >= MAX_EDGES:
                     truncated = True
                     break
-                edges.append({"from": aid, "to": b["id"], "grade": ways[0]["grade"], "ways": ways})
+                mine = _refine(ways, grade, facts[aid], b.get("facts") or {})
+                edges.append({"from": aid, "to": b["id"], "grade": mine[0]["grade"], "ways": mine})
     seen = {h["id"] for h in judged}
     return {"hosts": {h["id"]: {"hostname": h["hostname"], "judged": h["id"] in seen, "entry": gives.get(h["id"], {}).get("entry", False),
                                 "internet_facing": bool(h.get("internet_facing")),

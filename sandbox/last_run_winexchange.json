@@ -1,0 +1,47 @@
+[
+  {
+    "step": "media in",
+    "computer": "NIMM2",
+    "iso": "C:\\Users\\Ciaran\\Downloads\\win-eval\\exchange-se.iso",
+    "setup_signature": "Valid|CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US"
+  },
+  {
+    "step": "Exchange prerequisites",
+    "out": "prereqs ok"
+  },
+  {
+    "step": "Exchange setup PrepareAD",
+    "out": "\nMicrosoft Exchange Server Subscription Edition Unattended Setup\n\nCopying Files...\nFile copy complete.  Setup will now collect additional information needed for installation.\n\n\nPerforming Microsoft Exchange Server Prerequisite Check\n\n Prerequisite AnalysisSetup will prepare the organization for Exchange Server Subscription Edition by using 'Setup /PrepareAD'. No Exchange Server 2016 roles have been detected in this topology. After this operation, you will not be able to install any Exchange Server 2016 roles.\nSetup will prepare the organization for Exchange Server Subscription Edition by using 'Setup /PrepareAD'. No Exchange Server 2013 roles have been detected in this topology. After this operation, you will not be able to install any Exchange Server 2013 roles.\n\n\nConfiguring Microsoft Exchange Server\n\n Organization Preparation ... COMPLETED\n\nThe Exchange Server setup operation completed successfully.\n\n\nEXIT 0\n\n"
+  },
+  {
+    "step": "Exchange setup management tools",
+    "out": "\nCopying Files...\nFile copy complete.  Setup will now collect additional information needed for installation.\n\n     Languages\n     Management tools\n\nPerforming Microsoft Exchange Server Prerequisite Check\n\n Configuring Prerequisites ... COMPLETED\n Prerequisite Analysis ... COMPLETED\n\nConfiguring Microsoft Exchange Server\n\n Preparing Setup ... COMPLETED\n Stopping Services ... COMPLETED\n Copying Exchange Files ... COMPLETED\n Language Files ... COMPLETED\n Restoring Services ... COMPLETED\n Language Configuration ... COMPLETED\n Exchange Management Tools ... COMPLETED\n Finalizing Setup ... COMPLETED\n\nThe Exchange Server setup operation completed successfully.\n\n\nEXIT 0\n\n"
+  },
+  {
+    "step": "collector beside the host",
+    "collected": [
+      "15.2.2562.17"
+    ],
+    "host": {
+      "uninstall": "Microsoft Exchange Server Subscription Edition|15.2.2562.17\nMicrosoft Exchange Server Language Pack - Chinese (Traditional)|15.2.2562.17\nMicrosoft Exchange Server Language Pack - German|15.2.2562.17\nMicrosoft Exchange Server Language Pack - English|15.2.2562.17\nMicrosoft Exchange Server Language Pack - French|15.2.2562.17\nMicrosoft Exchange Server Language Pack - Italian|15.2.2562.17\nMicrosoft Exchange Server Language Pack - Japanese|15.2.2562.17\nMicrosoft Exchange Server Language Pack - Korean|15.2.2562.17\nMicrosoft Exchange Server Language Pack - Portuguese|15.2.2562.17\nMicrosoft Exchange Server Language Pack - Russian|15.2.2562.17\nMicrosoft Exchange Server Language Pack - Chinese (Simplified)|15.2.2562.17\nMicrosoft Exchange Server Language Pack - Spanish|15.2.2562.17\nMicrosoft Exchange Server|15.2.2562.17",
+      "setup_key": "15.2.2562.17"
+    },
+    "server_key": [
+      [
+        "Exchange Server 15.2.2562"
+      ],
+      "15.2.2562.17"
+    ]
+  },
+  {
+    "step": "CHECK BY HAND: Exchange's Uninstall entry may carry the RTM's display version; the setup key is the installed build"
+  },
+  {
+    "step": "RESULT: PASS",
+    "checks": {
+      "the agent reports Exchange Server": true,
+      "its version is the host's own": true,
+      "the server has a key to match advisories on": true
+    }
+  }
+]

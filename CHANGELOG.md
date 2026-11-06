@@ -4,6 +4,9 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Proven
+- **SharePoint and Exchange collectors on real installs** (W11): SharePoint Server Subscription Edition and Exchange Server Subscription Edition from Microsoft's trial media, in the domain lab; the agent's version equals the host's own for both (`last_run_winsharepoint.json`, `last_run_winexchange.json`). No code change was needed.
+
 ## [0.7.1] - 2026-11-06 (preview)
 
 **Agent 0.6.2.** No database migration; run `deploy/update.sh`. Proven on real hosts since 0.7.0: a two-node failover cluster patched node by node with its role online throughout (`last_run_wincluster.json`), the agent installed at boot by a Group Policy scheduled task (`last_run_wingpo.json`, steps in docs/install.md), and the benchmark settings read in full on Server 2025 and on a German install (`last_run_winbaseline.json`, `last_run_winbaseline_judged_as.json`). Still not proven: SharePoint and Exchange collectors (no install media), Server 2019 and Server 2022 stepping, Windows 10 apply, Windows 11 Enterprise.

@@ -110,12 +110,12 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens the ref
 - Verify: `last_run_winremote_lab.json`, `last_run_wingpo.json`. Deps: W7.
 
 ### W11: SharePoint and Exchange collectors (S, time-box 1 day each)
-- [ ] One try each from evaluation media, binaries only if that's enough for the collector. **Blocked on the owner** (2026-11-06): no SharePoint Server or Exchange Server media on this machine; Microsoft's trial installers are several GB and downloading them is the owner's call. The domain lab they need (W7) now runs, so this is a download away
-- [x] Collected version compared with what the host itself reports, or the reason it couldn't run recorded. **Reason recorded**: not run, no install media (above). Until then both collectors stay tested with fakes only, as STATUS says
+- [x] One try each from evaluation media, binaries only if that's enough for the collector. **Done** (2026-11-06, the owner said download them; `sandbox/winmsservers.py`): SharePoint Server Subscription Edition installed as binaries only (prerequisites, setup with the published trial key, no farm) on NIMM1; Exchange Server Subscription Edition as the management tools role after /PrepareAD on NIMM2, run as the domain's Administrator by a scheduled task (DECISIONS 109). Both from Microsoft's Download Center, setup signed by Microsoft. A mailbox server wasn't tried
+- [x] Collected version compared with what the host itself reports. **Proven**: SharePoint 16.0.14326.20450 by the agent and in the host's Uninstall entries (`last_run_winsharepoint.json`); Exchange 15.2.2562.17 by the agent, in its Uninstall entries and in the build its v15 setup key records (`last_run_winexchange.json`). The server keys both for MSRC matching ("SharePoint Server Subscription Edition", "Exchange Server 15.2.2562"); no advisory sync ran, so no findings were checked on them
 - Verify: run file or STATUS line. Deps: W7.
 
 ### Checkpoint B
-- [ ] Every round 1 "NOT proven: no domain" line is closed or restated with the reason
+- [x] Every round 1 "NOT proven: no domain" line is closed or restated with the reason: AD discovery and DC serialisation (W8), cluster drain and maintenance-window dispatch (W9), Exchange and SharePoint collection (W11) all ran on the domain lab
 
 ## Phase 3: detection breadth
 

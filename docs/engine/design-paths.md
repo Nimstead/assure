@@ -28,8 +28,8 @@ Settings come from `winconfig.evaluate`, so a setting the agent couldn't read op
 ## Not yet
 
 - Linux hosts and SBOMs get no paths. Their settings facts would come first.
-- Routing between hosts. Paths across hosts (below) use each target's own firewall state, not whether the source can
-  route to it. The network slice's probes from inside a segment, and Active Directory group membership, would raise them.
+- Routing between hosts in general. A source is seen reaching a target only when it had a connection open to one of the
+  target's addresses as it reported (below); nothing is probed, so a route that wasn't in use when the agent ran isn't seen.
 - Whether an escalation flaw is reachable from the entry's privilege level (a service account versus a user). Each step is judged on its own.
 
 ## Across hosts
@@ -41,7 +41,10 @@ again. An edge A → B needs all three of these:
 2. **B accepts it.** Local administrators keep full rights over the network, SMB signing isn't required (relay), or B allows NTLMv1.
 3. **B's own firewall allows the port that carries it.** A listener that's blocked, or that the agent couldn't read, makes no edge.
 
-Hosts in the same domain grade an edge *reasonable* at best, since routing isn't seen. Outside a shared domain, an edge that
+Hosts in the same domain grade an edge *reasonable*, since routing isn't usually seen. A sign-in edge inside the domain is
+judged on what both hosts said about themselves (DECISIONS 112): *confirmed* when an account signed in on A, or one of its
+groups, is in B's Administrators group and A had a connection open to one of B's addresses; *unverified* when no account
+signed in on A is in B's Administrators group; *reasonable* as before when either host couldn't read these. Outside a shared domain, an edge that
 rests on sign-ins needs a reused local administrator password, which can't be seen, so it's *unverified* and says so. Chains
 start at hosts with a path from the network, or marked internet-facing. They list every host reachable by the fewest hops, and
 what to fix on each one to cut the edge into it.

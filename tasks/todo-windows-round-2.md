@@ -16,7 +16,7 @@ Today an app outside the curated map is silently inventory, so "0 findings" can 
 - [x] `GET /api/assets` gives assessed and inventory-only counts per host; `GET /api/coverage` gives fleet totals and names
 - [x] Assets and Home say it in plain words; a host with nothing assessed says so. Home's sentence has no test of its own
 - [x] Fleet list of unassessed apps, most common first (top 200), which feeds W12
-- [ ] Not done: screenshot from the VM with 50 apps, axe on the new section (the e2e seed has no Windows apps), `perf.py` at 1,000 hosts for the extra query on `/api/assets`. An app assessed through the agent's own Microsoft facts can read as "listed only" if it also has an Uninstall entry: errs towards under-claiming, to be measured on the VM `perf.py` at 1,000 hosts ran on 2026-11-04: `GET /api/assets` 0.43 s; at 200 hosts the coverage query adds 0.02 s (0.066 s to 0.083 s against the 2026-10-29 code on the same machine).
+- [x] Screenshot from a VM with 50 apps, axe on the new section, `perf.py` at 1,000 hosts. **Done** (2026-11-06, `last_run_wincoverage.json`): a fresh Windows 11 26H2 VM with 63 apps installed by winget at their newest versions (one, Gpg4win, wouldn't install); the agent's own report read 56 installs checked and 21 listed only. The under-claim this line predicted is real and measured: Windows Desktop Runtime 10.0.14 read as listed only although the same host's ".NET runtime 10.0.14" fact is what the server checks. Fixed with a test: a .NET or ASP.NET Core runtime's Uninstall entry counts as checked when its host reports that fact at that version, so the VM reads 57 and 20; the 20 left are Visual C++ redistributables, OneDrive, Copilot, Bonjour, Npcap, the guest additions and the server-side clients batch 8 left out. Screenshot: the e2e suite posts that VM's report as a host and saves Assets (`web/e2e-screenshots/assets-coverage-real-vm.png`, "57 of 77 installed apps checked"); a new e2e test runs axe on the section at 1440 light and 375 dark, no serious or critical violation. `perf.py` at 1,000 hosts ran on 2026-11-04: `GET /api/assets` 0.43 s; at 200 hosts the coverage query adds 0.02 s
 - Verify: tests with a seeded mixed host; screenshot from the VM with 50 apps. Files: `app.py`, `winapps.py`, `web/src/`. Deps: none.
 
 ### W2: Locale bug, proven on a German install (M)
@@ -30,8 +30,8 @@ so on a localised Windows the service permission check would silently find nothi
 
 ### W3: Side-by-side with the reference scanner, then commercial scanners (M)
 - [ ] Runs as an executable benchmark. Studying its source is the separate research track (E1, DECISIONS 79); whoever runs this comparison and fixes its gaps works from reports and vendor data
-- [ ] Short look first: does the free feed's credentialed Windows scan cover patches and apps? If not, stop and report
-- [ ] Same VM, old OS and old apps, both scanners; every CVE on only one side classified: ours missed, theirs wrong, or out of scope
+- [x] Short look first: does the free feed's credentialed Windows scan cover patches and apps? If not, stop and report. **Not for current Windows patches: stopped and reported** (2026-11-06, DECISIONS 110). From the free feed's own file listing (names only, nothing opened; 95,107 tests): 1,978 Microsoft KB tests, the newest for October 2025 (KB5066xxx), none for any month since; this year's whole addition is about 50 tests, one of them Microsoft's. Windows apps are covered (about 460 Chrome and 460 Firefox tests for Windows, Adobe, 7-Zip, Notepad++), also thin this year. The vendor's own comparison page names enterprise software such as Exchange as paid-feed only. So on a host patched past October 2025, every Windows CVE since would read "theirs missed" and prove nothing about us
+- [ ] The owner chose a commercial trial (2026-11-06); terms read first (DECISIONS 111): two of the best-known trials forbid use for competitive analysis, so they're out. A third (a free edition up to 25 machines, run on a local server) has no clause on comparison, benchmarking or publishing; its installer is 1.28 GB and waits on the owner's go-ahead. Same VM, old OS and old apps, both scanners; every CVE on only one side classified: ours missed, theirs wrong, or out of scope
 - [ ] Each "ours missed" becomes a test or a W-task; the result lives in a private run file, no public claim
 - Verify: `sandbox/last_run_compare.json`. Files: `sandbox/wincompare.py` (new), one report. Deps: none. A commercial scanner only if you decide so.
 
@@ -55,8 +55,8 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens the ref
 - [x] Applications: Python, npm and Java installs and SBOMs, PASS on Debian 13 (`last_run_appengine.json`)
 - [x] Attack paths on one host (DECISIONS 97, `docs/engine/design-paths.md`): shown on the real German Windows 10 host's inventory
 - [x] Attack paths across hosts (DECISIONS 98): `GET /api/attack-paths` from stored reports and each host's own firewall state
-- [ ] Routing between hosts seen by the network slice from inside a segment, and AD group membership, to raise those edges
-- [ ] Findings open and close through the engine instead of `scan.rescan` (parity holds on every real run so far)
+- [ ] Routing between hosts seen by the network slice from inside a segment, and AD group membership, to raise those edges. **Built, half proven** (2026-11-06, DECISIONS 112, agent 0.6.3): no probes; each agent reports its own addresses, its open connections to private addresses, its Administrators group and the signed-in domain accounts with their AD groups, all by SID. A sign-in edge is confirmed when one of A's accounts is in B's Administrators group and A was seen connected to B, unverified when none is, reasonable when either host couldn't read these. **Proven on the domain lab** (`last_run_winpaths_lab.json`): with the domain's Administrator signed in on NIMM1 and reaching NIMM2 over SMB, NIMM2 listed Domain Admins in its Administrators group, NIMM1 listed that account's groups and a connection to NIMM2:445, and the edge read confirmed. **Not yet proven**: the negative case. That run stopped the account's task without a restart, so its logon session was still listed, and its group lookup had failed, which left a partial list (it now makes the whole fact unreadable, never partial). Its rerun, with NIMM1 restarted first, stopped on a VirtualBox session lock; it needs VirtualBox's service restarted, which waits until the W3 VM is free
+- [ ] Findings open and close through the engine instead of `scan.rescan` (parity holds on every real run so far). **Sized, needs its own plan and the owner's review** (plan written: `tasks/plan-engine-findings.md`). **Phase 1 done** (2026-11-07, the owner's go-ahead): the engine shadows each new inventory and logs any difference neither side explains to the ledger (`engine_disagrees`); zero across the API suite and e2e; perf.py at 1,000 hosts re-matches in 21.4 s and ingests at 1.43 s median. Phase 2 (a preview release with the shadow on real hosts) needs a release (PM call, 2026-11-06): `rescan` is about 180 lines that open and close findings and also score them (CVSS, KEV, ransomware, public exploits, the hotpatch track), write the evidence ledger and send fix-now notices, called from four places including the hourly fleet-wide feed update, which perf.py measures at 1,000 hosts. The engine has none of the scoring, ledger or notices yet, and its parity with `rescan` is a side check. Making it authoritative rewrites the path every customer's results take, so it gets a plan with a shadow period (both run, every difference logged) before the engine takes over, not a change inside a run of tasks
 - [ ] Benchmark runs against the reference scanner, then commercial scanners (W3)
 
 ## Phase 1: the OS matrix
@@ -110,12 +110,12 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens the ref
 - Verify: `last_run_winremote_lab.json`, `last_run_wingpo.json`. Deps: W7.
 
 ### W11: SharePoint and Exchange collectors (S, time-box 1 day each)
-- [ ] One try each from evaluation media, binaries only if that's enough for the collector. **Blocked on the owner** (2026-11-06): no SharePoint Server or Exchange Server media on this machine; Microsoft's trial installers are several GB and downloading them is the owner's call. The domain lab they need (W7) now runs, so this is a download away
-- [x] Collected version compared with what the host itself reports, or the reason it couldn't run recorded. **Reason recorded**: not run, no install media (above). Until then both collectors stay tested with fakes only, as STATUS says
+- [x] One try each from evaluation media, binaries only if that's enough for the collector. **Done** (2026-11-06, the owner said download them; `sandbox/winmsservers.py`): SharePoint Server Subscription Edition installed as binaries only (prerequisites, setup with the published trial key, no farm) on NIMM1; Exchange Server Subscription Edition as the management tools role after /PrepareAD on NIMM2, run as the domain's Administrator by a scheduled task (DECISIONS 109). Both from Microsoft's Download Center, setup signed by Microsoft. A mailbox server wasn't tried
+- [x] Collected version compared with what the host itself reports. **Proven**: SharePoint 16.0.14326.20450 by the agent and in the host's Uninstall entries (`last_run_winsharepoint.json`); Exchange 15.2.2562.17 by the agent, in its Uninstall entries and in the build its v15 setup key records (`last_run_winexchange.json`). The server keys both for MSRC matching ("SharePoint Server Subscription Edition", "Exchange Server 15.2.2562"); no advisory sync ran, so no findings were checked on them
 - Verify: run file or STATUS line. Deps: W7.
 
 ### Checkpoint B
-- [ ] Every round 1 "NOT proven: no domain" line is closed or restated with the reason
+- [x] Every round 1 "NOT proven: no domain" line is closed or restated with the reason: AD discovery and DC serialisation (W8), cluster drain and maintenance-window dispatch (W9), Exchange and SharePoint collection (W11) all ran on the domain lab
 
 ## Phase 3: detection breadth
 
@@ -126,7 +126,7 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens the ref
 
 ### W13: Batches to 200 apps (S each, repeated)
 - [ ] Each batch ≤ 25, own run file and commit; every app labelled proven, or matched from a real name only, in UI and STATUS
-- [ ] Stop early if the next batches have under 20 NVD CVEs each: say so rather than pad the count
+- [x] Stop early if the next batches have under 20 NVD CVEs each: say so rather than pad the count. **Stopped at 105** (batch 8, 2026-11-06, `last_run_winapps_batch8.json` and `_retry.json` on a Windows 11 VM): the proposer's 15 winget candidates with 20 or more CVEs, each installed old and upgraded, with the agent's own reading of every new Uninstall entry recorded and the rows written from those names. 5 accepted: GStreamer, SiYuan, Unbound and Erlang/OTP proven old to new, Suricata identified at its installed version (winget didn't upgrade it). 10 out, each with its reason in `winapps.py`: the Wazuh and Zabbix agents, Devolutions Server Console, Adobe Connect, Synology's client and Absolute's client share an NVD product with a server, so its CVEs would land on the client; GPAC registers nothing; JT2Go, Redis and Acronis have one winget version. Every candidate left below them has under 20 CVEs, so the next batch would pad. 200 isn't reached: great condition 5 stays not met. Found on the way: a hung Zabbix MSI held Windows Installer's lock and failed the next four installs, retried after stopping it
 - Deps: W12.
 
 ### W14: Full noise review (M)
@@ -155,7 +155,7 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens the ref
 - Deps: none.
 
 ### Checkpoint C
-- [ ] W1's coverage re-measured on the VM with 50 apps; change reported; STATUS's stale apps line rewritten
+- [x] W1's coverage re-measured on the VM with 50 apps; change reported; STATUS's stale apps line rewritten (2026-11-06): 57 of 77 installs checked on 63 apps (above); STATUS now says 105 curated apps
 
 ## Phase 4: benchmarks
 
@@ -213,8 +213,24 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens the ref
 - [x] From that review: `GET /api/assets` sends only the facts the list shows; the per-KB query is chunked; the attack-paths panel says edges rest on each host's own report
 - [x] Review not yet covering remediate.py, feeds.py, lifecycle.py, msproducts.py, office.py, winapps.py, external.py, updates.py, and the agent's Linux, jar and app scanners. **Reviewed 2026-11-04**: ten findings, no way around the approval rules. Fixed with tests: held Debian packages (`hi`) left out of the inventory; a FIFO or link named like a jar, METADATA or package.json opened by the root agent (a FIFO blocks it for good); a two-part .NET SDK version failing the host's report; a servicing step planned when MSRC's month wasn't read (refused or failed fetch); `$` in the server's name checks letting a final newline by; one feed's schema change stopping the hourly update for every org; the per-KB view counting a stepped job as reaching the final cumulative. Left, each low: feed size limits checked after download rather than while streaming (TLS-pinned hosts); Thunderbird branch CVEs fixed at a major's first release matching nothing while the branch is current; no start timeout on the agent's systemd unit (the FIFO, the known way to hang it, is fixed)
 - [x] Office Click-to-Run on a version line the feed no longer lists, or with no build since a CVE, gets no row for that CVE, so a host years behind on Current reads nearly clean (review 2026-11-04, medium). **Fixed** (DECISIONS 106): a superseded line takes its fix from a newer line of its channel, and a line older than any listed is end of support
-- [ ] API on SQLite and PostgreSQL, web unit and e2e, ruff; STATUS, CHANGELOG, README and `docs/install.md` updated
-- [ ] Plan's seven "great" conditions each marked met or not, with the run file
+- [ ] API on SQLite and PostgreSQL, web unit and e2e, ruff; STATUS, CHANGELOG, README and `docs/install.md` updated. **Partly** (2026-11-06, after W11): API 1,589 passed on SQLite, ruff clean; STATUS, CHANGELOG and docs/install.md carry the round. Not rerun since 0.7.1's CI: PostgreSQL and web (no API or web code changed since); README not reviewed
+- [x] Plan's seven "great" conditions each marked met or not, with the run file (2026-11-06):
+  1. Every likely Windows version fixed and rolled back on a real install: **not met**. Windows 11 and Server 2025 yes; Server 2016 stepped forward (`last_run_windows_server2016_ssu.json`); Windows 10 LTSC rolled back but not applied by the task (W4, evaluation licence shutdown); Server 2022 overran the install limit and 2019 never boots on this host (W5); Windows 11 Enterprise not tried (W6)
+  2. Fleet features on a real domain: **met** (`last_run_windc.json`, `last_run_wincluster.json`, `last_run_winremote_lab.json`, `last_run_wingpo.json`)
+  3. A host's page says what share was assessed: **met in code and tests** (W1), not yet shown on a VM with 50 apps
+  4. Side-by-side with another scanner, every disagreement explained: **not met**, W3 not started
+  5. At least 200 curated apps, noise review over every one: **not met**: 100 curated, noise review over 74 installed (W13, W14)
+  6. Benchmark-referenced audit per host: **met** (`last_run_winbaseline.json`, W20's view and export)
+  7. Survives power loss, full disk, dead server, explains its failures: **met** (`last_run_winfailures.json`, `last_run_winfailures_install_cut.json`, W24's doctor)
+
+## Open after the sweep (2026-11-06)
+Every unchecked item above, by why it's open:
+- **Blocked by this host** (VirtualBox on Hyper-V's slower engine): W5 Server 2022 stepping (overran the 2-hour limit) and Server 2019 (never boots). Needs Hyper-V off, which is the owner's call (DECISIONS 107), or another machine
+- **Blocked by evaluation media**: W2's German rollback and W4's apply by the task (the licence service powers the VM off an hour after boot); W4's oracle and .NET proofs wait on the same. Needs licensed or IoT LTSC media. W6 Windows 11 Enterprise: its evaluation ISO sits behind Microsoft's registration form, which asks for the owner's details
+- **Waiting on the owner**: Checkpoint A (W3's gaps reviewed with you); the items below
+- **W3** stopped at its short look (DECISIONS 110): the reference scanner's free feed has no Windows patch tests after October 2025, so which scanner to compare with is the owner's call
+- **W13** stopped at 105 apps by its own rule (no winget candidates with 20 or more CVEs left that map); 
+- **Not started, real work, unblocked**: the engine track's last three (routing and AD group edges, findings through the engine, its benchmark run, which needs W3)
 
 ## Needs the owner
 - [ ] Review this plan; answer its two open questions

@@ -248,13 +248,16 @@ def _end_of_life(inv: Inventory, c: Content, eco: str) -> Verdict | None:
                    summary=f"{product} {release}: supported" + (f" until {end}" if isinstance(end, str) else ", no end date announced"), **base)
 
 
-def _applications(inv: Inventory, c: Content, agent_read: bool = True) -> list[Verdict]:
+def _applications(inv: Inventory, c: Content, agent_read: bool = True, blocked_by: Source | None = None) -> list[Verdict]:
     """Software outside the OS package manager: each install against its ecosystem's advisories (R7.9, T19). `agent_read` False: the
-    agent's rows aren't this read's (DECISIONS 83), so only an SBOM's are judged. A scan that's off says so in coverage, not as a check."""
+    agent's rows aren't this read's (DECISIONS 83), so only an SBOM's are judged, and each of the agent's says why it wasn't
+    (`blocked_by`, the read that failed). A scan that's off says so in coverage, not as a check."""
     out = []
     for i in app_installs(inv):
         if i.source == "sbom" or agent_read:
             out += _judge(inv, i, c)
+        elif blocked_by and c.records.get((i.ecosystem, i.keys[0])):  # one an advisory names; the rest is inventory, as when judged
+            out.append(_absent_or_blocked(i.keys[0], "application", i.ecosystem, i.keys[0], True, blocked_by))
     for src, eco, label in AGENT_APPS if agent_read else ():
         if inv.source(src).state in ("partial", "failed"):  # an install could be missing from it (R4.2)
             out.append(_absent_or_blocked(src, "application", eco, label, True, inv.source(src)))
@@ -290,7 +293,7 @@ def _evaluate_linux(inv: Inventory, c: Content, prior) -> list[Verdict]:
         if eol.outcome == Outcome.VULNERABLE:
             out = [replace(v, outcome=Outcome.UNDETERMINED, reason="end-of-life", grade=None) if v.outcome == Outcome.NOT_VULNERABLE else v for v in out]
         out.append(eol)
-    out += _applications(inv, c, db.state == "ok")  # after end of support: a distro's lifecycle says nothing of PyPI's advisories
+    out += _applications(inv, c, db.state == "ok", db)  # after end of support: a distro's lifecycle says nothing of PyPI's advisories
     out += _carry_forward(out, prior)
     return _sorted(out)
 

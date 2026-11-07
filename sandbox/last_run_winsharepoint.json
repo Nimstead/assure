@@ -1,0 +1,44 @@
+[
+  {
+    "step": "media in",
+    "computer": "NIMM1",
+    "iso": "C:\\Users\\Ciaran\\Downloads\\win-eval\\sharepoint-se.iso",
+    "setup_signature": "Valid|CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US"
+  },
+  {
+    "step": "prerequisites",
+    "attempt": 1,
+    "exit_code": "0"
+  },
+  {
+    "step": "SharePoint setup",
+    "exit_code": "0",
+    "log_tail": "2026/11/06 04:42:07:983::[1956] Not running post install command from install job.  Install: yes, Before chain: FALSE, UI Level: 0\n2026/11/06 04:42:07:984::[1956] Not showing completion dialog because it was not requested.\n2026/11/06 04:42:07:984::[1956] Setup completed successfully. Reboot is required.\n2026/11/06 04:42:07:984::[1956] Catalyst execution finished: 11/06/2026 04:42:07.  Return code: 0.\n2026/11/06 04:42:07:985::[1956] PERF: TickCount=294781 Name=RunSetup Description=End function\n\n2026/11/06 04:42:08:447::[1956] Setup temp folder set to [C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\Setup00000774].\n2026/11/06 04:42:08:447::[1956] Temp folder deleted\n\n"
+  },
+  {
+    "step": "collector beside the host",
+    "collected": [
+      "16.0.14326.20450"
+    ],
+    "host": {
+      "uninstall": "Microsoft SharePoint Server Subscription Edition|16.0.14326.20450\nMicrosoft SharePoint Server Subscription Edition Core|16.0.14326.20450\nMicrosoft SharePoint Server Subscription Edition 1033 Language Pack|16.0.14326.20450\nMicrosoft SharePoint Server Subscription Edition|16.0.14326.20450"
+    },
+    "server_key": [
+      [
+        "SharePoint Server Subscription Edition"
+      ],
+      "16.0.14326.20450"
+    ]
+  },
+  {
+    "step": "CHECK BY HAND: Exchange's Uninstall entry may carry the RTM's display version; the setup key is the installed build"
+  },
+  {
+    "step": "RESULT: PASS",
+    "checks": {
+      "the agent reports SharePoint Server": true,
+      "its version is the host's own": true,
+      "the server has a key to match advisories on": true
+    }
+  }
+]

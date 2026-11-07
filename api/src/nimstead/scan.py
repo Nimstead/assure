@@ -3,6 +3,8 @@
 import functools
 import hashlib
 import json
+import logging
+import re
 from collections import defaultdict
 
 from sqlalchemy import select
@@ -13,6 +15,7 @@ from nimstead.db import Advisory, Asset, Cvss, Epss, Finding, InstalledPackage, 
 from nimstead.match import Match, Package, match_package, normalize_ecosystem
 from nimstead.notify import notify
 
+log = logging.getLogger(__name__)
 HOTPATCH = " (Hotpatch)"  # advisory package suffix for MSRC hotpatch fixes (DECISIONS 52)
 
 
@@ -21,15 +24,27 @@ def app_assessed(name: str, source: str | None, version: str) -> bool:
     return bool(winapps.identify(name, source, version) or msproducts.from_winapp(name, source, version))
 
 
+# A .NET runtime's Uninstall entry, judged through the agent's own ".NET runtime" / "ASP.NET Core" fact rather than its name
+_RUNTIME = re.compile(r"Microsoft (?:(?P<asp>ASP\.NET Core)|Windows Desktop Runtime|\.NET Runtime)(?: -)? (?P<v>\d+\.\d+\.\d+)(?: .*)?")
+
+
+def runtime_fact(name: str) -> tuple[str, str] | None:
+    """(fact name, version) the same host reports for this Uninstall entry, if it's a .NET runtime."""
+    m = _RUNTIME.fullmatch(name)
+    return ("ASP.NET Core" if m["asp"] else ".NET runtime", m["v"]) if m else None
+
+
 def app_coverage(s: Session, org_id: str) -> tuple[dict[str, dict], dict[tuple[str, str | None], set[str]]]:
-    """Windows apps we check against those we only list: counts per asset, and the assets holding each unchecked app."""
+    """Windows apps we check against those we only list: counts per asset, and the assets holding each unchecked app. A runtime
+    counts as checked only when its host also reports the matching fact at that version: that fact is what the server checks."""
     per_asset: dict[str, dict] = defaultdict(lambda: {"assessed": 0, "inventory_only": 0})
     missed: dict[tuple[str, str | None], set[str]] = defaultdict(set)
-    rows = s.execute(select(InstalledPackage.asset_id, InstalledPackage.name, InstalledPackage.source, InstalledPackage.version)
-                     .join(Asset, Asset.id == InstalledPackage.asset_id)
-                     .where(Asset.org_id == org_id, InstalledPackage.ecosystem == winapps.ECOSYSTEM))
-    for asset_id, name, source, version in rows:
-        if app_assessed(name, source, version):
+    base = (select(InstalledPackage.asset_id, InstalledPackage.name, InstalledPackage.source, InstalledPackage.version)
+            .join(Asset, Asset.id == InstalledPackage.asset_id).where(Asset.org_id == org_id))
+    facts = {(a, n, v) for a, n, _, v in s.execute(base.where(InstalledPackage.ecosystem == msproducts.ECOSYSTEM,
+                                                              InstalledPackage.name.in_([".NET runtime", "ASP.NET Core"])))}
+    for asset_id, name, source, version in s.execute(base.where(InstalledPackage.ecosystem == winapps.ECOSYSTEM)):
+        if app_assessed(name, source, version) or ((f := runtime_fact(name)) and (asset_id, *f) in facts):
             per_asset[asset_id]["assessed"] += 1
         else:
             per_asset[asset_id]["inventory_only"] += 1
@@ -59,6 +74,20 @@ def host_checks(pkgs: list, facts: dict, today, eol: dict | None = None, drivers
     return out
 
 
+def _shadow(s: Session, asset: Asset, pkgs: list, seen: set, prior: list) -> None:
+    """The engine beside rescan (tasks/plan-engine-findings.md, phase 1): a difference neither side explains goes to the ledger,
+    once per host per rescan, and never changes a finding. Its failure is logged and never stops rescan."""
+    from nimstead import engine
+    try:
+        p = engine.shadow(s, asset, pkgs, seen, prior)
+    except Exception:
+        log.exception("engine shadow failed on %s; findings unaffected", asset.hostname)
+        return
+    if p["unexplained"]:
+        evidence.append(s, asset.org_id, "engine_disagrees", asset.id, {"host": asset.hostname, "agree": p["agree"],
+                                                                          "count": len(p["unexplained"]), "unexplained": p["unexplained"][:20]})
+
+
 def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dict | None = None) -> dict:
     """`cache`: decoded advisory records by (ecosystem, package), shared across hosts within one feed-update pass."""
     if asset.kind == "external":  # no inventory: findings come from external.scan(); only re-score here
@@ -70,6 +99,7 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
         (f.ecosystem, f.package, f.vuln_id): f
         for f in s.scalars(select(Finding).where(Finding.asset_id == asset.id))
     }
+    prior = [k for k, f in existing.items() if f.status in ("open", "accepted")]  # before this rescan changes them
     seen: set[tuple[str, str, str]] = set()
     inv = sorted((p.ecosystem, p.name, p.version, p.source or "", *([p.source_version] if p.source_version else [])) for p in pkgs)
     if inventory_received:
@@ -227,6 +257,8 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
             f.status, f.resolved_at = "resolved", t  # inventory proves the vulnerable version is gone
             resolved += 1
             events.append(("finding_resolved", f))
+    if inventory_received:  # on each new inventory only: on the hourly re-match it made 1,000 hosts take 585 s, not 29 s (perf.py)
+        _shadow(s, asset, pkgs, seen, prior)
     s.flush()
     for kind, f in events:
         evidence.append(s, asset.org_id, kind, f.id, {

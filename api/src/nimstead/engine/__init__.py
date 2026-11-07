@@ -23,6 +23,14 @@ def scan_inventory(s: Session, inv: Inventory, prior=()) -> tuple[list[Verdict],
     return verdicts, report.build(inv, c, verdicts)
 
 
+def shadow(s: Session, asset: Asset, pkgs: list, opened: set, prior: list) -> dict:
+    """Phase 1 of tasks/plan-engine-findings.md: the engine's verdicts on the inventory `rescan` just judged, compared with
+    what it opened (parity.compare). Reads only: findings still open and close through `rescan`."""
+    from nimstead.engine import parity
+    inv = Inventory.from_asset(asset, pkgs, sbom_received(s, asset))
+    return parity.compare(evaluate(inv, content.load(s, inv), prior), sorted(opened))
+
+
 def prior_findings(s: Session, asset: Asset) -> list[tuple[str, str, str]]:
     """Findings open on this host, and those `rescan` closed from this same inventory: it closes on silence, and "fixed" needs evidence (R4.6)."""
     since = asset.last_inventory_at or now()

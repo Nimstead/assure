@@ -1,0 +1,163 @@
+[
+  {
+    "step": "lab reset to its snapshot",
+    "vms": [
+      "NIMDC1",
+      "NIMM1",
+      "NIMM2"
+    ]
+  },
+  {
+    "step": "feeds",
+    "msrc": {
+      "documents": 3,
+      "skipped_documents": 0,
+      "inserted": 48999,
+      "updated": 0,
+      "skipped": 0
+    }
+  },
+  {
+    "step": "install.ps1 ran",
+    "vm": "nimstead-sbx-win-010ec4"
+  },
+  {
+    "step": "install.ps1 ran",
+    "vm": "nimstead-sbx-win-74d14f"
+  },
+  {
+    "step": "A gives credentials",
+    "out": "a weak"
+  },
+  {
+    "step": "B accepts them",
+    "out": "b accepts"
+  },
+  {
+    "step": "with the domain's Administrator signed in on A and reaching B",
+    "facts": {
+      "A": {
+        "addresses": [
+          "10.77.0.11",
+          "10.0.2.15"
+        ],
+        "peers": [
+          "10.77.0.12:445"
+        ],
+        "local_admins": [
+          "S-1-5-21-2246194620-4290396524-4250886324-500",
+          "S-1-5-21-1011162058-7063405-4292055603-512"
+        ],
+        "signed_in_sids": [
+          "S-1-5-21-1011162058-7063405-4292055603-500",
+          "S-1-5-32-544",
+          "S-1-5-32-545",
+          "S-1-5-21-1011162058-7063405-4292055603-572",
+          "S-1-5-21-1011162058-7063405-4292055603-519",
+          "S-1-5-21-1011162058-7063405-4292055603-518",
+          "S-1-5-21-1011162058-7063405-4292055603-513",
+          "S-1-5-21-1011162058-7063405-4292055603-512",
+          "S-1-5-21-1011162058-7063405-4292055603-520",
+          "S-1-5-21-2246194620-4290396524-4250886324-500"
+        ]
+      },
+      "B": {
+        "addresses": [
+          "10.0.2.15",
+          "10.77.0.12"
+        ],
+        "peers": [
+          "10.77.0.11:61016"
+        ],
+        "local_admins": [
+          "S-1-5-21-3786212751-3231175563-514778956-500",
+          "S-1-5-21-1011162058-7063405-4292055603-512"
+        ],
+        "signed_in_sids": [
+          "S-1-5-21-1011162058-7063405-4292055603-500",
+          "S-1-5-32-544",
+          "S-1-5-32-545",
+          "S-1-5-21-1011162058-7063405-4292055603-572",
+          "S-1-5-21-1011162058-7063405-4292055603-519",
+          "S-1-5-21-1011162058-7063405-4292055603-518",
+          "S-1-5-21-1011162058-7063405-4292055603-513",
+          "S-1-5-21-1011162058-7063405-4292055603-512",
+          "S-1-5-21-1011162058-7063405-4292055603-520",
+          "S-1-5-21-3786212751-3231175563-514778956-500"
+        ]
+      }
+    },
+    "edge": {
+      "from": "296eb15ef7604878a82de4c721593110",
+      "to": "2b9dac9c6a094aa9a8a215ed9e155f69",
+      "grade": "confirmed",
+      "ways": [
+        {
+          "via": "CFG:remote-uac",
+          "how": "local administrators keep full rights over the network (pass-the-hash)",
+          "port": 445,
+          "because": "both are in the domain NIMSTEAD-SBX.TEST; an account signed in on A is in B's Administrators group, and A had a connection open to B",
+          "grade": "confirmed"
+        },
+        {
+          "via": "CFG:smb-signing",
+          "how": "SMB signing isn't required, so a relayed sign-in from A's network works",
+          "port": 445,
+          "because": "sign-ins on A's network can be captured by name poisoning and relayed; both are in the domain NIMSTEAD-SBX.TEST; A had a connection open to B",
+          "grade": "reasonable"
+        }
+      ]
+    }
+  },
+  {
+    "step": "after the task stopped",
+    "facts_a": {
+      "addresses": [
+        "10.77.0.11",
+        "10.0.2.15"
+      ],
+      "peers": [
+        "10.77.0.12:445"
+      ],
+      "local_admins": [
+        "S-1-5-21-2246194620-4290396524-4250886324-500",
+        "S-1-5-21-1011162058-7063405-4292055603-512"
+      ],
+      "signed_in_sids": [
+        "S-1-5-21-1011162058-7063405-4292055603-500",
+        "S-1-5-21-2246194620-4290396524-4250886324-500"
+      ]
+    },
+    "edge": {
+      "from": "296eb15ef7604878a82de4c721593110",
+      "to": "2b9dac9c6a094aa9a8a215ed9e155f69",
+      "grade": "reasonable",
+      "ways": [
+        {
+          "via": "CFG:smb-signing",
+          "how": "SMB signing isn't required, so a relayed sign-in from A's network works",
+          "port": 445,
+          "because": "sign-ins on A's network can be captured by name poisoning and relayed; both are in the domain NIMSTEAD-SBX.TEST; A had a connection open to B",
+          "grade": "reasonable"
+        },
+        {
+          "via": "CFG:remote-uac",
+          "how": "local administrators keep full rights over the network (pass-the-hash)",
+          "port": 445,
+          "because": "no account signed in on A when it last reported is in B's Administrators group",
+          "grade": "unverified"
+        }
+      ]
+    }
+  },
+  {
+    "step": "RESULT: FAIL",
+    "checks": {
+      "B reports its Administrators group, Domain Admins in it": true,
+      "A reports the signed-in account's groups, Domain Admins among them": true,
+      "A reports a connection open to B's own address": true,
+      "the edge A to B reads confirmed": true,
+      "with nobody from B's Administrators signed in on A, it reads unverified": false
+    }
+  }
+]

@@ -12,7 +12,7 @@ from sqlalchemy import select
 from test_agent import agent
 from test_api import user
 
-from nimstead import winapps
+from nimstead import scan, winapps
 from nimstead.db import Advisory, make_sessionmaker
 from nimstead.feeds import sync_nvd
 from nimstead.versions import appver_cmp
@@ -299,6 +299,25 @@ def test_coverage_says_what_was_only_listed(env):
     assert other_org.get("/api/coverage").json() == {"assessed": 0, "inventory_only": 0, "not_assessed": []}
 
 
+def test_a_runtime_counts_as_checked_only_when_its_fact_is_reported_at_that_version(env):
+    """A real Windows 11 VM (last_run_wincoverage.json): Desktop Runtime 10.0.14 read as unchecked beside ".NET runtime 10.0.14"."""
+    c = user(env)
+    token = c.post("/api/enroll-tokens").json()["token"]
+    for host, fact in (("with-fact", "10.0.14"), ("other-version", "10.0.13"), ("no-fact", None)):
+        a = c.post("/api/agent/enroll", json={"token": token, "hostname": host, "ecosystem": "Windows"}).json()
+        pkgs = [{"ecosystem": "WinApp", "name": "Microsoft Windows Desktop Runtime 10.0.14 (x64)", "version": "10.0.14.50000",
+                 "source": "Microsoft Corporation"}]
+        pkgs += [{"ecosystem": "Microsoft", "name": ".NET runtime", "version": fact, "source": None}] if fact else []
+        assert c.post("/api/agent/inventory", headers={"Authorization": f"Bearer {a['agent_key']}"},
+                      json={"ecosystem": "Windows", "packages": pkgs}).status_code == 200
+    by_host = {a["hostname"]: a["apps"] for a in c.get("/api/assets").json()}
+    assert by_host == {"with-fact": {"assessed": 1, "inventory_only": 0}, "other-version": {"assessed": 0, "inventory_only": 1},
+                       "no-fact": {"assessed": 0, "inventory_only": 1}}
+    assert scan.runtime_fact("Microsoft ASP.NET Core 9.0.11 - Shared Framework (x64)") == ("ASP.NET Core", "9.0.11")
+    assert scan.runtime_fact("Microsoft .NET Runtime - 9.0.11 (x64)") == (".NET runtime", "9.0.11")  # installers write both forms
+    assert scan.runtime_fact("Microsoft .NET SDK 9.0.307 (x64)") is None  # an SDK isn't its runtime
+
+
 def test_winapp_asset_end_to_end(env):
     with make_sessionmaker(env)() as s:
         sync_fixture(s)
@@ -494,6 +513,14 @@ def test_cvelist_rows_only_where_nvd_has_none_and_nvd_replaces_them(env):
     ("Liberica JDK 21 (64-bit)", "BellSoft", "21.0.13.305", ("oracle:openjdk", "21.0.13")),
     ("IntelliJ IDEA 2026.2.4", "JetBrains s.r.o.", "262.11879.100", ("jetbrains:intellij_idea", "2026.2.4")),
     ("PyCharm 2026.2.4", "JetBrains s.r.o.", "262.11879.98", ("jetbrains:pycharm", "2026.2.4")),
+    # batch 8, as installed on a Windows 11 VM (2026-11-06)
+    ("Suricata IDS/IPS 6.0.12-1-64bit", "Open Information Security Foundation", "6.0.12", ("oisf:suricata", "6.0.12")),
+    ("GStreamer 1.0 (MSVC x86_64) version 1.28.7", "GStreamer Project", "1.28.7", ("gstreamer:gstreamer", "1.28.7")),
+    ("GStreamer 1.0 (MSVC x86_64) version 1.28.8", "GStreamer Project", "1.28.8", ("gstreamer:gstreamer", "1.28.8")),
+    ("SiYuan 3.8.8", "Yunnan Liandi Technology Co., Ltd.", "3.8.8", ("b3log:siyuan", "3.8.8")),
+    ("Unbound", "NLnet Labs", "1.26.1", ("nlnetlabs:unbound", "1.26.1")),
+    ("Erlang OTP 29.1.1 (17.1)", "Ericsson AB", "29.1.1", ("erlang:erlang/otp", "29.1.1")),
+    ("Erlang OTP 29.1.2 (17.1.1)", "Ericsson AB", "29.1.2", ("erlang:erlang/otp", "29.1.2")),
 ])
 def test_identify_batches(name, pub, ver, want):
     assert winapps.identify(name, pub, ver) == want
@@ -555,6 +582,17 @@ def test_identify_batches(name, pub, ver, want):
     ("Erlang OTP 27 (15.2)", "Ericsson AB", "15.2"),  # the ERTS version, not OTP
     ("Wazuh Agent", "Wazuh, Inc", "4.14.3"),
     ("Zabbix Agent 2 (64-bit)", "Zabbix SIA", "7.4.2"),
+    # batch 8: same names from someone else, and the clients whose CVEs are in a server product (real VM names)
+    ("Suricata IDS/IPS 6.0.12-1-64bit", "Someone Else", "6.0.12"),
+    ("GStreamer 1.0 (MSVC x86_64) version 1.28.8", "Someone Else", "1.28.8"),
+    ("GStreamer 1.0 (MSVC x86_64) development files", "GStreamer Project", "1.28.8"),
+    ("Devolutions Server Console", "Devolutions inc.", "2026.3.12.0"),
+    ("Adobe Connect", "Adobe Systems Inc.", "2026.9.61.64"),
+    ("Synology Surveillance Station Client", "Synology", "2.2.3.2598"),
+    ("Wazuh Agent", "Wazuh, Inc.", "4.14.10"),
+    ("Absolute Secure Access Client", "Absolute Software Corporation", "14.60.28244"),
+    ("Unbound", "Someone Else", "1.26.1"),
+    ("SiYuan 3.8.9", "Someone Else", "3.8.9"),
 ])
 def test_identify_batch_near_misses(name, pub, ver):
     assert winapps.identify(name, pub, ver) is None

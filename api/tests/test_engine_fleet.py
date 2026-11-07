@@ -51,6 +51,39 @@ def test_name_poisoning_relays_to_a_host_that_doesnt_require_smb_signing():
     assert e["ways"][0]["via"] == "CFG:smb-signing" and "name poisoning" in e["ways"][0]["because"]
 
 
+DA = "S-1-5-21-1-2-3-512"  # Domain Admins of corp.example
+
+
+def test_a_sign_in_edge_is_confirmed_by_group_membership_and_a_connection_seen():
+    a = host("a", WEAK, {"signed_in_sids": ["S-1-5-21-1-2-3-1104", DA], "peers": ["10.77.0.12:445", "10.77.0.1:389"]},
+             recs=[rec("CVE-2026-1001", LOCAL)])
+    b = host("b", {"remote_uac_off": 1}, {"listening": OPEN_445, "local_admins": ["S-1-5-21-9-9-9-500", DA], "addresses": ["10.77.0.12"]})
+    e = next(x for x in fleet.build([a, b])["edges"] if (x["from"], x["to"]) == ("a", "b"))
+    assert e["grade"] == "confirmed" and "B's Administrators group" in e["ways"][0]["because"] and "connection open to B" in e["ways"][0]["because"]
+    # the same account, but A never seen reaching B: routing isn't seen, so no better than reasonable
+    a2 = host("a", WEAK, {"signed_in_sids": [DA], "peers": ["10.77.0.1:389"]}, recs=[rec("CVE-2026-1001", LOCAL)])
+    e = fleet.build([a2, b])["edges"][0]
+    assert e["grade"] == "reasonable" and "B's Administrators group" in e["ways"][0]["because"]
+
+
+def test_a_sign_in_edge_drops_to_unverified_when_no_account_on_a_administers_b():
+    a = host("a", WEAK, {"signed_in_sids": ["S-1-5-21-1-2-3-1104"], "peers": ["10.77.0.12:445"]}, recs=[rec("CVE-2026-1001", LOCAL)])
+    b = host("b", {"remote_uac_off": 1}, {"listening": OPEN_445, "local_admins": [DA], "addresses": ["10.77.0.12"]})
+    e = fleet.build([a, b])["edges"][0]
+    assert e["grade"] == "unverified" and "no account signed in on A" in e["ways"][0]["because"]
+    # an agent that couldn't read the groups (None, an old agent) says nothing either way: reasonable, as before
+    old = host("a", WEAK, recs=[rec("CVE-2026-1001", LOCAL)])
+    assert fleet.build([old, b])["edges"][0]["grade"] == "reasonable"
+
+
+def test_routing_seen_is_named_on_a_relay_edge_without_raising_it():
+    a = host("a", {**WEAK, "llmnr": None}, {"peers": ["10.77.0.12:445"]}, recs=[rec("CVE-2026-1001", LOCAL)])
+    b = host("b", {"smb_signing_required": False}, {"listening": OPEN_445, "addresses": ["10.77.0.12"]})
+    w = fleet.build([a, b])["edges"][0]["ways"][0]
+    assert w["via"] == "CFG:smb-signing" and w["grade"] == "reasonable" and "connection open to B" in w["because"]
+    assert "_domain_creds" not in w
+
+
 def test_a_dense_fleet_is_cut_short_and_stays_cheap():
     import time
     a = host("a", WEAK, recs=[rec("CVE-2026-1001", LOCAL)])

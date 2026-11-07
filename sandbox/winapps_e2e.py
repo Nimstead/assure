@@ -73,6 +73,18 @@ NEW7 = {  # batch 7 alone with --new7: (old, key, winget's newest on 2026-11-02)
     "JetBrains.TeamCity": ("2026.2", "jetbrains:teamcity", "2026.2.1"), "OctopusDeploy.Server": ("2025.3.14320", "octopus:octopus_server", "2025.3.14327"),
     "PaperCutSoftware.NG": ("21.0.3.57216", "papercut:papercut_ng", None), "Atlassian.Confluence": ("10.2.18", "atlassian:confluence_data_center", "10.2.19"),  # servers last
 }
+NEW8 = {  # batch 8 with --new8 (2026-11-06, every candidate with 20 or more NVD CVEs and an installer that registers): old None
+    # takes the version just below winget's newest. Rows are written after this run from the names it records, so a guessed
+    # name can't miss as five did in batch 7
+    "GPAC.GPAC": (None, "gpac:gpac"), "OISF.Suricata": (None, "oisf:suricata"), "gstreamerproject.gstreamer": (None, "gstreamer:gstreamer"),
+    "Wazuh.WazuhAgent": (None, "wazuh:wazuh"), "Zabbix.Agent.2": (None, "zabbix:zabbix"), "B3log.SiYuan": (None, "b3log:siyuan"),
+    "Absolute.SecureAccessClient": (None, "absolute:secure_access"), "NLnetLabs.Unbound": (None, "nlnetlabs:unbound"),
+    "Erlang.ErlangOTP": (None, "erlang:erlang/otp"), "Siemens.JT2Go": (None, "siemens:jt2go"), "Redis.Redis": (None, "redis:redis"),
+    "Synology.SurveillanceStationClient": (None, "synology:surveillance_station"), "Adobe.Connect": (None, "adobe:connect"),
+    "Devolutions.ServerConsole": (None, "devolutions:devolutions_server"), "Acronis.CyberProtectHomeOffice": (None, "acronis:cyber_protect"),
+}
+if "--new8" in sys.argv:
+    APPS, OUT = NEW8, OUT.with_name("last_run_winapps_batch8.json")
 if "--new7" in sys.argv:
     APPS, OUT = NEW7, OUT.with_name("last_run_winapps_batch7.json")
 if "--new6" in sys.argv:
@@ -81,6 +93,8 @@ if "--new" in sys.argv:
     APPS, OUT = NEW, OUT.with_name("last_run_winapps_batch4.json")
 if "--new5" in sys.argv:
     APPS, OUT = NEW5, OUT.with_name("last_run_winapps_batch5.json")
+if only := next((a[7:].split(",") for a in sys.argv if a.startswith("--only=")), None):  # a retry of some, in its own run file
+    APPS, OUT = {w: v for w, v in APPS.items() if w in only}, OUT.with_name(OUT.stem + "_retry.json")
 log: list[dict] = []
 
 
@@ -117,6 +131,11 @@ def found(inv, want):
     return hits
 
 
+def entries(inv):
+    """Every Uninstall entry as the agent read it: what a row is written from."""
+    return {(p["name"], p["source"], p["version"]) for p in inv["packages"] if p["ecosystem"] == "WinApp"}
+
+
 def older_version(wid):
     """The version just below winget's newest: winget drops old versions, and the one below still has an upgrade."""
     rc, out = guest(f"winget show --id {wid} --exact --versions --accept-source-agreements --disable-interactivity")
@@ -151,9 +170,14 @@ def main(keep=False) -> int:
     assert collect(py, agent)["packages"], "the agent can't read inventory here"  # or every app reads as not identified
     results = {}
     for wid, (old, key, *_) in APPS.items():
-        if found(collect(py, agent), key):
+        start = collect(py, agent)
+        if found(start, key):
             results[wid] = {"proven": False, "why": "already installed before the test (an earlier run): uninstall it to retest"}
             note("already installed", app=wid)
+            continue
+        if old is None and not (old := older_version(wid)):
+            results[wid] = {"proven": False, "why": "winget has only one version of it"}
+            note("one version only", app=wid)
             continue
         install = ("winget install --id {} --exact --version {} --silent --accept-package-agreements "
                    "--accept-source-agreements --disable-interactivity --scope machine")
@@ -167,12 +191,15 @@ def main(keep=False) -> int:
             results[wid] = {"proven": False, "why": f"winget couldn't install {old}: {out.strip()[-200:]}"}
             note("not installable", app=wid)
             continue
-        before = found(collect(py, agent), key)
+        inv_old = collect(py, agent)
+        before = found(inv_old, key)
         guest(f"winget upgrade --id {wid} --exact --silent --accept-package-agreements --disable-interactivity", timeout=1800)
-        after = found(collect(py, agent), key)
+        inv_new = collect(py, agent)
+        after = found(inv_new, key)
         old_vs = {h["identified"][1] for h in before}
         ok = bool(before and any(h["identified"][1] not in old_vs for h in after))
-        results[wid] = {"proven": ok, "installed": old, "old": before, "new": after}
+        results[wid] = {"proven": ok, "installed": old, "old": before, "new": after,
+                        "entries_old": sorted(entries(inv_old) - entries(start)), "entries_new": sorted(entries(inv_new) - entries(start))}
         note("identified on a real install" if ok else "NOT identified as expected", app=wid, old=before, new=after)
         save(results)  # kept if a later installer hangs the run
     proven = save(results)

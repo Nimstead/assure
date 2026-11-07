@@ -176,6 +176,18 @@ PRODUCTS: tuple[Product, ...] = (
     Product("opensc_project:opensc", _p(r"OpenSC smartcard framework(?: Light)? \((?:32|64)bit\)"), publisher=_p(r"OpenSC Project"), version=lambda m, v: ".".join(v.split(".")[:3])),
     Product("oracle:openjdk", _p(rf"Amazon Corretto(?: JDK (?:1[1-9]|[2-9]\d))? \((?:x64|x86)\)|Liberica JDK (?:1[1-9]|[2-9]\d) \((?:{_ARCH}|AArch64)\)"),
             publisher=_p(r"Amazon(?: .*)?|BellSoft"), version=lambda m, v: _openjdk11(v), branch=True),  # OpenJDK update releases (plan decision 13): 21.0.13.305. Azul Zulu numbers its own: out
+    # ---- batch 8 (2026-11-06): names as the installers registered them on a Windows 11 VM (last_run_winapps_batch8.json). Left out
+    # with a reason: Wazuh and Zabbix agents, Devolutions Server Console, Adobe Connect and Synology's client, whose CVEs are in
+    # the server or NAS product of the same name, and Absolute's client, which shares one NVD product with its server; GPAC, which
+    # registers nothing
+    Product("oisf:suricata", _p(r"Suricata IDS/IPS \d+\.\d+\.\d+-\d+-(?:32|64)bit"), publisher=_p(r"Open Information Security Foundation")),
+    Product("gstreamer:gstreamer", _p(r"GStreamer 1\.0 \(MSVC (?:x86_64|x86|arm64)\) version \d+\.\d+\.\d+"), publisher=_p(r"GStreamer Project")),
+    Product("b3log:siyuan", _p(r"SiYuan \d+\.\d+\.\d+"), publisher=_p(r"Yunnan Liandi Technology Co\., Ltd\.")),
+    Product("nlnetlabs:unbound", _p(r"Unbound"), publisher=_p(r"NLnet Labs")),
+    # "Erlang OTP 29.1.1 (17.1)": OTP's version, then the runtime's. Older installers wrote "Erlang OTP 27 (15.2)" with the runtime's
+    # version as DisplayVersion, which can't be mapped: the name needs OTP's full version
+    Product("erlang:erlang/otp", _p(r"Erlang OTP (?P<v>\d+\.\d+(?:\.\d+)*) \(\d+(?:\.\d+)*\)"), publisher=_p(r"Ericsson AB"),
+            version=lambda m, v: m["v"], branch=True),
 )
 
 _BY_CPE = {c: p for p in PRODUCTS for c in (p.cpes or (p.key,))}

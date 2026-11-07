@@ -31,9 +31,10 @@ so on a localised Windows the service permission check would silently find nothi
 ### W3: Side-by-side with the reference scanner, then commercial scanners (M)
 - [ ] Runs as an executable benchmark. Studying its source is the separate research track (E1, DECISIONS 79); whoever runs this comparison and fixes its gaps works from reports and vendor data
 - [x] Short look first: does the free feed's credentialed Windows scan cover patches and apps? If not, stop and report. **Not for current Windows patches: stopped and reported** (2026-11-06, DECISIONS 110). From the free feed's own file listing (names only, nothing opened; 95,107 tests): 1,978 Microsoft KB tests, the newest for October 2025 (KB5066xxx), none for any month since; this year's whole addition is about 50 tests, one of them Microsoft's. Windows apps are covered (about 460 Chrome and 460 Firefox tests for Windows, Adobe, 7-Zip, Notepad++), also thin this year. The vendor's own comparison page names enterprise software such as Exchange as paid-feed only. So on a host patched past October 2025, every Windows CVE since would read "theirs missed" and prove nothing about us
-- [ ] The owner chose a commercial trial (2026-11-06); terms read first (DECISIONS 111): two of the best-known trials forbid use for competitive analysis, so they're out. A third (a free edition up to 25 machines, run on a local server) has no clause on comparison, benchmarking or publishing; its installer is 1.28 GB and waits on the owner's go-ahead. Same VM, old OS and old apps, both scanners; every CVE on only one side classified: ours missed, theirs wrong, or out of scope
-- [ ] Each "ours missed" becomes a test or a W-task; the result lives in a private run file, no public claim
-- Verify: `sandbox/last_run_compare.json`. Files: `sandbox/wincompare.py` (new), one report. Deps: none. A commercial scanner only if you decide so.
+- [x] The owner chose a commercial trial (2026-11-06); terms read first (DECISIONS 111): two of the best-known trials forbid use for competitive analysis, so they're out. A third (a free edition up to 25 machines, run on a local server) has no clause on comparison, benchmarking or publishing; its installer is 1.28 GB and waits on the owner's go-ahead. Same VM, old OS and old apps, both scanners; every CVE on only one side classified: ours missed, theirs wrong, or out of scope. **Done** (2026-11-07, DECISIONS 113): the owner installed and signed in, I scanned and exported; classification in the private run file
+- [x] Each "ours missed" becomes a test or a W-task; the result lives in a private run file, no public claim. VirtualBox's publisher: fixed with a test. Microsoft apps more than 12 months behind: W-task below
+- [ ] Microsoft apps (VS Code, PowerShell) more than a year behind miss CVEs older than the 12 months of MSRC the server reads, where NVD has exact ranges (DECISIONS 113). Needs a choice: a longer MSRC window for app products, or NVD as a second source; measure the hourly update with perf.py either way
+- Verify: the private run file (`../nimstead-private/w3/`), never `sandbox/`. Files: `sandbox/wincompare.py` (new), one report. Deps: none. A commercial scanner only if you decide so.
 
 ## Engine track: a real scanning engine (owner's priority, 2026-11-02; runs beside the OS matrix)
 
@@ -218,7 +219,7 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens the ref
   1. Every likely Windows version fixed and rolled back on a real install: **not met**. Windows 11 and Server 2025 yes; Server 2016 stepped forward (`last_run_windows_server2016_ssu.json`); Windows 10 LTSC rolled back but not applied by the task (W4, evaluation licence shutdown); Server 2022 overran the install limit and 2019 never boots on this host (W5); Windows 11 Enterprise not tried (W6)
   2. Fleet features on a real domain: **met** (`last_run_windc.json`, `last_run_wincluster.json`, `last_run_winremote_lab.json`, `last_run_wingpo.json`)
   3. A host's page says what share was assessed: **met in code and tests** (W1), not yet shown on a VM with 50 apps
-  4. Side-by-side with another scanner, every disagreement explained: **not met**, W3 not started
+  4. Side-by-side with another scanner, every disagreement explained: **met** (2026-11-07, DECISIONS 113; private run file)
   5. At least 200 curated apps, noise review over every one: **not met**: 100 curated, noise review over 74 installed (W13, W14)
   6. Benchmark-referenced audit per host: **met** (`last_run_winbaseline.json`, W20's view and export)
   7. Survives power loss, full disk, dead server, explains its failures: **met** (`last_run_winfailures.json`, `last_run_winfailures_install_cut.json`, W24's doctor)
@@ -228,7 +229,7 @@ Every unchecked item above, by why it's open:
 - **Blocked by this host** (VirtualBox on Hyper-V's slower engine): W5 Server 2022 stepping (overran the 2-hour limit) and Server 2019 (never boots). Needs Hyper-V off, which is the owner's call (DECISIONS 107), or another machine
 - **Blocked by evaluation media**: W2's German rollback and W4's apply by the task (the licence service powers the VM off an hour after boot); W4's oracle and .NET proofs wait on the same. Needs licensed or IoT LTSC media. W6 Windows 11 Enterprise: its evaluation ISO sits behind Microsoft's registration form, which asks for the owner's details
 - **Waiting on the owner**: Checkpoint A (W3's gaps reviewed with you); the items below
-- **W3** stopped at its short look (DECISIONS 110): the reference scanner's free feed has no Windows patch tests after October 2025, so which scanner to compare with is the owner's call
+- **W3** done with a commercial trial (DECISIONS 113); its one open follow-up is the MSRC window for Microsoft apps, a design choice
 - **W13** stopped at 105 apps by its own rule (no winget candidates with 20 or more CVEs left that map); 
 - **Not started, real work, unblocked**: the engine track's last three (routing and AD group edges, findings through the engine, its benchmark run, which needs W3)
 

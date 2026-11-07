@@ -93,7 +93,7 @@ PRODUCTS: tuple[Product, ...] = (
     Product("vmware:workstation", _p(r"VMware Workstation"), ("vmware:workstation", "vmware:workstation_pro"),
             publisher=_p(r"VMware, Inc\.|Broadcom Inc\."), version=lambda m, v: ".".join(v.split(".")[:3])),
     Product("oracle:vm_virtualbox", _p(r"Oracle VirtualBox \d+\.\d+\.\d+|Oracle VM VirtualBox \d+\.\d+\.\d+"),
-            publisher=_p(r"Oracle Corporation"), branch=True),
+            publisher=_p(r"Oracle Corporation|Oracle and/or its affiliates"), branch=True),  # 7.0+ installers sign the latter (W3 VM)
     Product("docker:desktop", _p(r"Docker Desktop"), ("docker:desktop", "docker:docker_desktop"), publisher=_p(r"Docker Inc\.")),
     Product("dell:command_update", _p(r"Dell Command \| Update(?: for Windows(?: Universal| 10)?)?"), publisher=_p(r"Dell Inc\.")),
     Product("apache:tomcat", _p(r"Apache Tomcat \d+\.\d+ Tomcat\d+(?: \(remove only\))?"),

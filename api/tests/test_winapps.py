@@ -432,6 +432,7 @@ def test_cvelist_rows_only_where_nvd_has_none_and_nvd_replaces_them(env):
     ("FileZilla 3.68.1", "Tim Kosse", "3.68.1", ("filezilla-project:filezilla_client", "3.68.1")),
     ("VMware Tools", "Broadcom Inc.", "12.4.5.23787635", ("vmware:tools", "12.4.5")),
     ("Oracle VirtualBox 7.1.4", "Oracle Corporation", "7.1.4", ("oracle:vm_virtualbox", "7.1.4")),
+    ("Oracle VM VirtualBox 7.0.12", "Oracle and/or its affiliates", "7.0.12", ("oracle:vm_virtualbox", "7.0.12")),  # W3 VM
     ("Docker Desktop", "Docker Inc.", "4.36.0", ("docker:desktop", "4.36.0")),
     ("Dell Command | Update for Windows Universal", "Dell Inc.", "5.4.0", ("dell:command_update", "5.4.0")),
     ("Apache Tomcat 10.1 Tomcat10", "The Apache Software Foundation", "10.1.33", ("apache:tomcat", "10.1.33")),
@@ -593,6 +594,7 @@ def test_identify_batches(name, pub, ver, want):
     ("Absolute Secure Access Client", "Absolute Software Corporation", "14.60.28244"),
     ("Unbound", "Someone Else", "1.26.1"),
     ("SiYuan 3.8.9", "Someone Else", "3.8.9"),
+    ("Oracle VirtualBox Guest Additions 7.2.22", "Oracle and/or its affiliates", "7.2.22.175245"),  # the guest side: not the hypervisor
 ])
 def test_identify_batch_near_misses(name, pub, ver):
     assert winapps.identify(name, pub, ver) is None

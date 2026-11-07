@@ -127,7 +127,7 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens the ref
 
 ### W13: Batches to 200 apps (S each, repeated)
 - [ ] Each batch ≤ 25, own run file and commit; every app labelled proven, or matched from a real name only, in UI and STATUS
-- [x] Stop early if the next batches have under 20 NVD CVEs each: say so rather than pad the count. **Stopped at 105** (batch 8, 2026-11-06, `last_run_winapps_batch8.json` and `_retry.json` on a Windows 11 VM): the proposer's 15 winget candidates with 20 or more CVEs, each installed old and upgraded, with the agent's own reading of every new Uninstall entry recorded and the rows written from those names. 5 accepted: GStreamer, SiYuan, Unbound and Erlang/OTP proven old to new, Suricata identified at its installed version (winget didn't upgrade it). 10 out, each with its reason in `winapps.py`: the Wazuh and Zabbix agents, Devolutions Server Console, Adobe Connect, Synology's client and Absolute's client share an NVD product with a server, so its CVEs would land on the client; GPAC registers nothing; JT2Go, Redis and Acronis have one winget version. Every candidate left below them has under 20 CVEs, so the next batch would pad. 200 isn't reached: great condition 5 stays not met. Found on the way: a hung Zabbix MSI held Windows Installer's lock and failed the next four installs, retried after stopping it
+- [x] Stop early if the next batches have under 20 NVD CVEs each: say so rather than pad the count. **Stopped at 105** (batch 8, 2026-11-06, `last_run_winapps_batch8.json` and `_retry.json` on a Windows 11 VM): the proposer's 15 winget candidates with 20 or more CVEs, each installed old and upgraded, with the agent's own reading of every new Uninstall entry recorded and the rows written from those names. 5 accepted: GStreamer, SiYuan, Unbound and Erlang/OTP proven old to new, Suricata identified at its installed version (winget didn't upgrade it). 10 out, each with its reason in `winapps.py`: the Wazuh and Zabbix agents, Devolutions Server Console, Adobe Connect, Synology's client and Absolute's client share an NVD product with a server, so its CVEs would land on the client; GPAC registers nothing; JT2Go, Redis and Acronis have one winget version. Every candidate left below them has under 20 CVEs, so the next batch would pad. 200 isn't reached; great condition 5 is now "every app worth curating is curated" (DECISIONS 115), met at 105. Found on the way: a hung Zabbix MSI held Windows Installer's lock and failed the next four installs, retried after stopping it
 - Deps: W12.
 
 ### W14: Full noise review (M)
@@ -220,7 +220,7 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens the ref
   2. Fleet features on a real domain: **met** (`last_run_windc.json`, `last_run_wincluster.json`, `last_run_winremote_lab.json`, `last_run_wingpo.json`)
   3. A host's page says what share was assessed: **met in code and tests** (W1), not yet shown on a VM with 50 apps
   4. Side-by-side with another scanner, every disagreement explained: **met** (2026-11-07, DECISIONS 113; private run file)
-  5. At least 200 curated apps, noise review over every one: **not met**: 100 curated, noise review over 74 installed (W13, W14)
+  5. At least 200 curated apps, noise review over every one: **met as redefined** (DECISIONS 115: every app worth curating, 105; noise review over 74 installed, W14)
   6. Benchmark-referenced audit per host: **met** (`last_run_winbaseline.json`, W20's view and export)
   7. Survives power loss, full disk, dead server, explains its failures: **met** (`last_run_winfailures.json`, `last_run_winfailures_install_cut.json`, W24's doctor)
 
@@ -230,7 +230,8 @@ Every unchecked item above, by why it's open:
 - **Blocked by evaluation media**: W2's German rollback and W4's apply by the task (the licence service powers the VM off an hour after boot); W4's oracle and .NET proofs wait on the same. Needs licensed or IoT LTSC media. W6 Windows 11 Enterprise: its evaluation ISO sits behind Microsoft's registration form, which asks for the owner's details
 - **Waiting on the owner**: Checkpoint A (W3's gaps reviewed with you); the items below
 - **W3** done with a commercial trial (DECISIONS 113); both gaps it found fixed (DECISIONS 113, 114)
-- **W13** stopped at 105 apps by its own rule (no winget candidates with 20 or more CVEs left that map); 
+- **W13** stopped at 105 apps by its own rule; the 200 target replaced by that rule (DECISIONS 115)
+- **Free routes checked** (2026-11-07, DECISIONS 115): the Windows 11 Enterprise and IoT LTSC evaluations need Microsoft's registration form with your details; Hyper-V off breaks WSL and Docker. Each is yours to do
 - **Not started, real work, unblocked**: the engine track's last three (routing and AD group edges, findings through the engine, its benchmark run, which needs W3)
 
 ## Needs the owner

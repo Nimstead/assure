@@ -29,7 +29,7 @@ from winvm import PREFIX, STATE  # noqa: E402
 QEMU_DIR = Path(os.environ.get("QEMU_DIR", Path(os.environ.get("USERPROFILE", "")) / "Downloads" / "qemu-dl" / "qemu"))
 CPU = os.environ.get("QEMU_CPU", "Westmere")  # has what Server 2019+ needs (NX, CX16, LAHF, POPCNT), no xsave
 ACCEL = os.environ.get("QEMU_ACCEL", "whpx")  # kernel-irqchip=off froze setup at "Starting services" with both vCPUs spinning
-DETACHED = 0x00000008 | 0x00000200  # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP: outlives the harness run that made it
+DETACHED =0x00000008 | 0x00000200  # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP: outlives the harness run that made it
 
 RUNNER = r"""$ErrorActionPreference = 'Continue'
 $base = 'http://10.0.2.2:PORT'
@@ -120,11 +120,15 @@ def start(name: str) -> None:
     if not c.get("pid") or not _alive(c["pid"]):
         # -cpu max crashed the vCPU at setup's first restart ("failed to get xsave state", "WHPX: Unexpected VP exit code 4");
         # a plain model without xsave/AVX avoids what WHPX won't hand back
-        args = [str(QEMU_DIR / "qemu-system-x86_64.exe"), "-accel", ACCEL, "-machine", "pc", "-cpu", CPU, "-smp", "2",
+        args = [str(QEMU_DIR / "qemu-system-x86_64.exe"), "-accel", c.get("accel", ACCEL), "-machine", "pc", "-cpu", c.get("cpu", CPU), "-smp", "2",
                 "-m", str(c["memory"]), "-drive", f"file={folder / 'disk.qcow2'},if=ide,index=0",
                 "-drive", f"file={c['iso']},media=cdrom,index=2", "-drive", f"file=fat:floppy:{folder / 'floppy'},if=floppy,format=raw,readonly=on",
-                "-nic", "user,model=e1000", "-display", "none", "-qmp", f"tcp:127.0.0.1:{c['qmp_port']},server,nowait",
-                "-boot", "order=cd,once=d" if not c.get("installed") else "order=c"]
+                # a warm reset never boots again under WHPX here (setup's first restart: a hang at the BIOS with the
+                # interrupt controller off, a vCPU crash with it on); -no-reboot ends the process instead, and start()
+                # boots it cold, as winvm does for VirtualBox's warm-reset hang
+                "-no-reboot", "-nic", "user,model=e1000", "-display", "none", "-qmp", f"tcp:127.0.0.1:{c['qmp_port']},server,nowait",
+                "-boot", "once=d" if not c.get("launched") else "order=c"]  # the ISO on the first launch only
+        c["launched"] = True
         c["pid"] = subprocess.Popen(args, creationflags=DETACHED, close_fds=True, stdout=open(folder / "qemu.log", "ab"),
                                     stderr=subprocess.STDOUT).pid
     (folder / "qemu.json").write_text(json.dumps(c))
@@ -137,7 +141,8 @@ def create(iso: str, memory: int = 4096, image: int = 1, computer: str = "nimste
     (folder / "q").mkdir()
     password = "Nim!" + secrets.token_hex(8)
     (folder / "creds.json").write_text(json.dumps({"user": "Administrator", "password": password}))
-    c = {"iso": str(Path(iso).resolve()), "memory": memory, "qmp_port": free_port(), "relay_port": free_port()}
+    # the VM keeps the CPU and interrupt settings it was installed with, whichever process restarts it later
+    c = {"iso": str(Path(iso).resolve()), "memory": memory, "qmp_port": free_port(), "relay_port": free_port(), "cpu": CPU, "accel": ACCEL}
     (folder / "floppy" / "autounattend.xml").write_text(unattend(password, image, computer), encoding="utf-8")
     (folder / "floppy" / "runner.ps1").write_text(RUNNER.replace("PORT", str(c["relay_port"])), encoding="utf-8")
     subprocess.run([str(QEMU_DIR / "qemu-img.exe"), "create", "-f", "qcow2", str(folder / "disk.qcow2"), "80G"], check=True,
@@ -196,16 +201,21 @@ def wait_ready(name: str, minutes=90, reset_after=25) -> None:
         except subprocess.TimeoutExpired:
             pass
         if conf(name).get("installed") and time.time() - last_reset > reset_after * 60:
-            try:
-                qmp(name, "system_reset")
-            except OSError:
-                pass
+            power_cycle(name)  # cold, never a warm reset (see start)
             last_reset = time.time()
     raise RuntimeError(f"{name} not ready after {minutes} min")
 
 
+def power_cycle(name: str) -> None:
+    c = conf(name)
+    if c.get("pid"):
+        subprocess.run(["taskkill", "/F", "/PID", str(c["pid"])], capture_output=True)
+        time.sleep(3)
+    start(name)
+
+
 def unstick(name: str) -> bool:
-    """A Windows restart ends with QEMU still running; only a shutdown ends the process. Restart it if so."""
+    """Every Windows restart ends the QEMU process (-no-reboot): boot it again, cold. True if it did."""
     c = conf(name)
     if c.get("pid") and not _alive(c["pid"]):
         start(name)

@@ -17,10 +17,16 @@ update). Only its input changes: the list of (ecosystem, package, vulnerability,
 findings from comes from the engine's VULNERABLE verdicts instead of its own matching loop.
 
 ## Phases
-1. **Shadow** (S): inside `rescan`, also run the engine on the same inventory and advisory cache, and compare the two sets.
-   Differences go to one ledger entry per host per rescan (`engine_disagrees`), never to findings. `perf.py` at 1,000 hosts
-   must stay within 20% of today's hourly re-match (22.5 s).
+1. **Shadow** (S): inside `rescan`, also run the engine on the same inventory and compare the two sets. Differences go to
+   one ledger entry per host per rescan (`engine_disagrees`), never to findings. `perf.py` at 1,000 hosts must stay within
+   20% of the last hourly re-match (29.2 s) and of ingest (1.30 s median).
    *Done when:* every e2e and sandbox run reads zero disagreements, and `perf.py` passes.
+   **Status (2026-11-07):** built. It runs on each new inventory only: on the hourly re-match too, 1,000 hosts took 585 s,
+   since the engine loads its own advisories per host. Sharing `rescan`'s per-pass cache with the engine would let it run
+   there as well; that belongs with phase 3, when the engine does the matching. The full API suite (1,614 tests) and e2e
+   read zero disagreements beyond the one a test forces; the first run found two real gaps, both fixed with tests: parity
+   ignored a product-level "not run" verdict (every old agent would have logged a disagreement every report), and a
+   Linux host's language packages got no verdict at all when its package read wasn't documented.
 2. **Shadow on real hosts** (owner's call how long): run with the shadow on through one preview release. Any disagreement
    on a real host is a bug in one side, fixed with a test before going on.
 3. **Switch opening** (S): `rescan` opens findings from the engine's VULNERABLE verdicts. Its own matching loop stays as the

@@ -516,3 +516,47 @@ def test_the_cli_prints_the_report_and_json(env, tmp_path, capsys):
     assert main([str(p2), "--db", env]) == 2
     assert main([str(Path(tmp_path) / "none.json"), "--db", env]) == 2
     assert "isn't an inventory" in capsys.readouterr().err
+
+
+# ---- phase 1 of tasks/plan-engine-findings.md: the engine runs beside rescan and only reports
+
+def _disagreements(c):
+    return [e for e in c.get("/api/evidence/ledger").json()["entries"] if e["kind"] == "engine_disagrees"]
+
+
+def test_the_engine_shadows_every_rescan_and_agrees_on_a_rich_host(env):
+    seed(env)
+    c = user(env)
+    enrolled(c, RICH)
+    assert _disagreements(c) == []  # Windows, Microsoft and app findings: the engine says vulnerable on each one rescan opened
+
+
+def test_a_disagreement_is_one_ledger_entry_and_changes_no_finding(env, monkeypatch):
+    seed(env)
+    c = user(env)
+    gap = [{"ecosystem": "WinApp", "package": SEVEN, "vuln_id": "CVE-2026-9", "problem": "rescan opened it and the engine has no verdict for it"}]
+    monkeypatch.setattr(engine, "shadow", lambda *a: {"agree": 3, "unexplained": gap})
+    enrolled(c, RICH)
+    (d,) = _disagreements(c)
+    assert d["data"]["count"] == 1 and d["data"]["unexplained"] == gap and d["data"]["host"] == "lab-1"
+    assert any(f["vuln_id"] == "CVE-2026-9" for f in c.get("/api/findings").json())  # the finding opened as before
+
+
+def test_a_failing_shadow_never_stops_rescan(env, monkeypatch):
+    seed(env)
+    c = user(env)
+
+    def boom(*a):
+        raise RuntimeError("engine bug")
+    monkeypatch.setattr(engine, "shadow", boom)
+    enrolled(c, RICH)
+    assert c.get("/api/findings").json() and _disagreements(c) == []
+
+
+def test_parity_explains_a_product_the_engine_wouldnt_judge_as_a_whole():
+    """An inventory with no collection document (an old agent): one "not run" verdict per product, which explains its CVEs."""
+    from nimstead.engine.model import Verdict
+    v = Verdict("product:openssl", "distro", "Debian:12", "openssl", Outcome.NOT_RUN, reason="no-collection-document", blocker="package_db")
+    p = parity.compare([v], [("Debian:12", "openssl", "CVE-2023-5678")])
+    assert p["ok"] and p["explained"][0]["engine"] == "no-collection-document"
+    assert not parity.compare([v], [("Debian:12", "curl", "CVE-2023-1")])["ok"]  # only its own product

@@ -1,0 +1,114 @@
+{
+ "vm": "nimstead-sbx-win-20f618",
+ "edition": "EnterpriseEval",
+ "build_now": "10.0.26300.9711",
+ "job_report": {
+  "outcome": "applied",
+  "steps": [
+   {
+    "step": "job validated",
+    "ok": true,
+    "output": ""
+   },
+   {
+    "step": "installed build matches plan",
+    "ok": true,
+    "output": "installed 10.0.26300.9457, planned 10.0.26300.9457"
+   },
+   {
+    "step": "no reboot already pending",
+    "ok": true,
+    "output": "False\n"
+   },
+   {
+    "step": "LanmanServer running before change",
+    "ok": true,
+    "output": "Running\n"
+   },
+   {
+    "step": "on mains power or battery above half",
+    "ok": true,
+    "output": "ok"
+   },
+   {
+    "step": "at least 10 GB free on the system drive",
+    "ok": true,
+    "output": "46 GB free"
+   },
+   {
+    "step": "Windows Update offers exactly KB5127648",
+    "ok": true,
+    "output": "[{\"title\": \"2026-10 Security Update (KB5127648) (26300.9711)\", \"uninstallable\": false, \"reboot\": 2}]"
+   },
+   {
+    "step": "rollback baseline recorded",
+    "ok": true,
+    "output": "installed cumulative packages: Package_for_RollupFix~31bf3856ad364e35~amd64~~26100.9457.1.0"
+   },
+   {
+    "step": "KB5127648 downloaded",
+    "ok": true,
+    "output": "2\n"
+   },
+   {
+    "step": "update is removable (manifest checked before install)",
+    "ok": true,
+    "output": "Windows11.0-KB5127648-x64: update.mum not permanent; permanent parts: Microsoft-Windows-SenseClient-FoD-Package~31bf3856ad364e35~amd64~~10.0.26100.9711.mum"
+   },
+   {
+    "step": "KB5127648 downloaded and installed",
+    "ok": true,
+    "output": "{\"download\":2,\"install\":2,\"reboot\":true}\n"
+   },
+   {
+    "step": "new cumulative package identified",
+    "ok": true,
+    "output": "Package_for_RollupFix~31bf3856ad364e35~amd64~~26100.9711.1.30"
+   },
+   {
+    "step": "reboot required to finish",
+    "ok": true,
+    "output": ""
+   },
+   {
+    "step": "build updated",
+    "ok": true,
+    "output": "now 10.0.26300.9711, target 10.0.26300.9711"
+   },
+   {
+    "step": "LanmanServer running after change",
+    "ok": true,
+    "output": "Running"
+   }
+  ],
+  "error": null,
+  "versions": {
+   "Windows 11 Version 26H2 for x64-based Systems": "10.0.26300.9711"
+  }
+ },
+ "agent_log": [
+  "2026-11-07T15:24:17Z run start: report, agent 0.6.3",
+  "2026-11-07T15:24:50Z reported 449 packages",
+  "2026-11-07T15:24:50Z run end: exit 0",
+  "2026-11-07T16:01:44Z run start: resume-job, agent 0.6.3",
+  "2026-11-07T16:05:11Z run end: exit 0",
+  "2026-11-07T16:13:01Z run start: resume-job, agent 0.6.3",
+  "2026-11-07T16:13:06Z run end: exit 0",
+  "2026-11-07T16:13:45Z run start: remediate, agent 0.6.3",
+  "2026-11-07T16:40:33Z run start: remediate, agent 0.6.3",
+  "2026-11-07T16:40:33Z error: another nimstead-agent run is in progress",
+  "2026-11-07T16:40:33Z run end: exit 1",
+  "2026-11-07T16:43:39Z run start: remediate, agent 0.6.3",
+  "2026-11-07T16:43:47Z error: another nimstead-agent run is in progress",
+  "2026-11-07T16:43:47Z run end: exit 1",
+  "2026-11-07T16:52:29Z restart put off until 2026-11-07T17:13:45Z: someone is signed in",
+  "2026-11-07T16:52:29Z run end: exit 0",
+  "2026-11-07T19:49:08Z run start: remediate, agent 0.6.3",
+  "2026-11-07T19:50:11Z job e36a23663ba447c1ae09968415779a95: applied",
+  "2026-11-07T19:50:19Z job e36a23663ba447c1ae09968415779a95: report failed: request to http://10.0.2.2:8766 failed: <urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>",
+  "2026-11-07T19:50:27Z error: request to http://10.0.2.2:8766 failed: <urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>",
+  "2026-11-07T19:50:27Z run end: exit 1",
+  ""
+ ],
+ "why_this_file": "wine2e.py's run (last_run_windows11_enterprise.json) proved the injected-failure rollback, then read FAIL when the VM hung on the deferred restart (VirtualBox on Hyper-V's NEM). After a power cycle the agent's own startup task verified the job and wrote this report; the harness server had stopped, so it was read from the agent's outcome file instead of the API."
+}

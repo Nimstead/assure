@@ -83,14 +83,15 @@ def create(iso: str, memory: int = 4096, lab: bool = False, image: int = 1, comp
     vbox("storageattach", name, "--storagectl", "SATA", "--port", "0", "--device", "0", "--type", "hdd", "--medium", str(disk))
     additions = str(Path(VBOX).parent / "VBoxGuestAdditions.iso")
     # Windows 11 consumer ISO: Pro with Microsoft's public generic install key (unactivated; the VM is disposable)
-    edition = ["--image-index=6", "--key=VK7JG-NPHTM-C97JM-9MPGT-3V66T"] if win11 else [f"--image-index={image}"]
+    win11_eval = win11 and "EnterpriseEval" in detected  # one image, needs no key (W6)
+    edition = ["--image-index=6", "--key=VK7JG-NPHTM-C97JM-9MPGT-3V66T"] if win11 and not win11_eval else [f"--image-index={image}"]
     args = ["unattended", "install", name, f"--iso={iso}", *edition, "--user=Administrator",
             f"--admin-password={password}", f"--password={password}", "--full-user-name=Administrator",
             *locale_args(detected), "--time-zone=UTC", f"--hostname={computer}.local",
             "--install-additions", "--start-vm=headless"]
     if Path(additions).exists():
         args.append(f"--additions-iso={additions}")
-    if win10 or os_type(detected) in ("Windows2022_64", "Windows2019_64", "Windows2016_64"):  # an empty <Key> stops Enterprise Evaluation at "cannot find the Microsoft Software License Terms" (real VM); it needs none
+    if win10 or win11_eval or os_type(detected) in ("Windows2022_64", "Windows2019_64", "Windows2016_64"):  # an empty <Key> stops Enterprise Evaluation at "cannot find the Microsoft Software License Terms" (real VM); it needs none
         template = (Path(VBOX).parent / "UnattendedTemplates" / "win_nt6_unattended.xml").read_text(encoding="utf-8")
         (folder / "unattend.xml").write_text(re.sub(r"\s*<ProductKey>.*?</ProductKey>", "", template, flags=re.S), encoding="utf-8")
         args.append(f"--script-template={folder / 'unattend.xml'}")

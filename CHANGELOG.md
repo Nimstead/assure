@@ -4,6 +4,10 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-11-07 (preview)
+
+**Agent 0.6.3.** No database migration; run `deploy/update.sh`. Proven on real hosts since 0.7.1: the SharePoint and Exchange collectors (`last_run_winsharepoint.json`, `last_run_winexchange.json`), coverage on a Windows 11 VM with 63 apps (`last_run_wincoverage.json`), five more curated apps from real installer names (`last_run_winapps_batch8.json`), and an attack path across hosts read as confirmed (`last_run_winpaths_lab.json`). Not yet proven on real hosts: the unverified case of that edge (unit-tested), and the comparison with a commercial scanner (W3).
+
 ### Added
 - **Attack paths across hosts tell a real route from a guess** (agent 0.6.3, DECISIONS 112): a sign-in edge inside a domain is confirmed when an account signed in on the first host is an administrator on the second and the first was seen connected to it, and unverified when no signed-in account is. The agent reports its own addresses, its open connections to private addresses, its Administrators group and the signed-in domain accounts' SIDs; nothing is probed.
 

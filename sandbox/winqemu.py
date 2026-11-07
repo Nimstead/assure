@@ -28,6 +28,7 @@ from winvm import PREFIX, STATE  # noqa: E402
 
 QEMU_DIR = Path(os.environ.get("QEMU_DIR", Path(os.environ.get("USERPROFILE", "")) / "Downloads" / "qemu-dl" / "qemu"))
 CPU = os.environ.get("QEMU_CPU", "Westmere")  # has what Server 2019+ needs (NX, CX16, LAHF, POPCNT), no xsave
+ACCEL = os.environ.get("QEMU_ACCEL", "whpx")  # kernel-irqchip=off froze setup at "Starting services" with both vCPUs spinning
 DETACHED = 0x00000008 | 0x00000200  # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP: outlives the harness run that made it
 
 RUNNER = r"""$ErrorActionPreference = 'Continue'
@@ -118,8 +119,8 @@ def start(name: str) -> None:
                                            str(c["relay_port"])], creationflags=DETACHED, close_fds=True).pid
     if not c.get("pid") or not _alive(c["pid"]):
         # -cpu max crashed the vCPU at setup's first restart ("failed to get xsave state", "WHPX: Unexpected VP exit code 4");
-        # a plain model without xsave/AVX, and QEMU's own interrupt controller, avoid what WHPX won't hand back
-        args = [str(QEMU_DIR / "qemu-system-x86_64.exe"), "-accel", "whpx,kernel-irqchip=off", "-machine", "pc", "-cpu", CPU, "-smp", "2",
+        # a plain model without xsave/AVX avoids what WHPX won't hand back
+        args = [str(QEMU_DIR / "qemu-system-x86_64.exe"), "-accel", ACCEL, "-machine", "pc", "-cpu", CPU, "-smp", "2",
                 "-m", str(c["memory"]), "-drive", f"file={folder / 'disk.qcow2'},if=ide,index=0",
                 "-drive", f"file={c['iso']},media=cdrom,index=2", "-drive", f"file=fat:floppy:{folder / 'floppy'},if=floppy,format=raw,readonly=on",
                 "-nic", "user,model=e1000", "-display", "none", "-qmp", f"tcp:127.0.0.1:{c['qmp_port']},server,nowait",

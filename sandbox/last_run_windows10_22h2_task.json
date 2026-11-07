@@ -1,0 +1,107 @@
+{
+ "vm": "nimstead-sbx-win-ac743a",
+ "media": "Win10_22H2_English_x64v1.iso from microsoft.com (SHA-256 A6F470CA...852E, matches Microsoft's), Pro, unactivated",
+ "harness_log": [
+  "\ufeff[21:47:35] feeds {\"msrc\": {\"documents\": 3, \"skipped_documents\": 0, \"inserted\": 48999, \"updated\": 0, \"skipped\": 0}, \"kev\": 1769, \"epss\": 401675}",
+  "[21:47:50] VM ready {\"build\": \"10.0.19045.2965\"}",
+  "[21:49:26] install.ps1 output {\"output\": \"ery 6 hours and at startup, approved fixes checked every 15 minutes\\nNimstead agent installed.\\nMSFT_TaskTimeTrigger\\nMSFT_TaskBootTrigger\\n#< CLIXML\\n<Objs Version=\\\"1.1.0.1\\\" xmlns=\\\"http://schemas.microsoft.com/powershell/2004/04\\\"><Obj S=\\\"information\\\" RefId=\\\"0\\\"><TN RefId=\\\"0\\\"><T>System.Management.Automation.InformationRecord</T><T>System.Object</T></TN><ToString>runtime sha256",
+  "[21:49:26] install.ps1 ran elevated: enrolled, reported, task registered {\"triggers\": [\"#< CLIXML\", \"<Objs Version=\\\"1.1.0.1\\\" xmlns=\\\"http://schemas.microsoft.com/powershell/2004/04\\\"><Obj S=\\\"information\\\" RefId=\\\"0\\\"><TN RefId=\\\"0\\\"><T>System.Management.Automation.InformationRecord</T><T>System.Object</T></TN><ToString>runtime sha256: d012f3aa29cf07436dae8aea1fec0fd195c2612a0b059b1f915ae0afb9ad1f62</ToString><Props><Obj N=\\\"MessageData\\\" RefId=\\\"1\\\"><TN RefId=\\\"1\\\">",
+  "[21:50:18] oracle: Windows Update vs Nimstead {\"agree\": [], \"only_windows_update\": [{\"kb\": \"5066747\", \"title\": \"2025-10 Cumulative Update for .NET Framework 3.5, 4.8 and 4.8.1 for Windows 10 Version 22H2 for x64 (KB5066747)\", \"cves\": [], \"why\": \"not explained\"}, {\"kb\": \"5066791\", \"title\": \"2025-10 Cumulative Update for Windows 10 Version 22H2 for x64-based Systems (KB5066791)\", \"cves\": [], \"why\": \"not explained\"}], \"only_nimstead\": [{\"kb\": \"5",
+  "[21:50:40] scheduled task started for the real fix {\"job\": \"167cc343a16c4edab0ecf93863f8c3ca\", \"hop\": 0}",
+  "[21:51:46] aborted {\"error\": \"Windows Update must install KB5066791 (2025-10) first; planned as a step. No changes made: Windows Update offers exactly one of KB5126657 / KB5122878 failed: ...[]; no Extended Security Updates licence is active; it offers instead: KB5066747 (2025-10 Cumulative Update for .NET Framework 3.5, 4.8 and 4.8.1 for Windows 10 Version 22H2 for x64 (KB5066747)), KB5066791 (2025-10 Cumulative Up",
+  "[21:51:51] scheduled task started for the real fix {\"job\": \"78931cb7ec6d4f58a401ac27f8d238c6\", \"hop\": 1}"
+ ],
+ "step_job_outcome": {
+  "id": "78931cb7ec6d4f58a401ac27f8d238c6",
+  "report": {
+   "outcome": "applied",
+   "steps": [
+    {
+     "step": "job validated",
+     "ok": true,
+     "output": ""
+    },
+    {
+     "step": "installed build matches plan",
+     "ok": true,
+     "output": "installed 10.0.19045.2965, planned 10.0.19045.2965"
+    },
+    {
+     "step": "no reboot already pending",
+     "ok": true,
+     "output": "False\n"
+    },
+    {
+     "step": "LanmanServer running before change",
+     "ok": true,
+     "output": "Running\n"
+    },
+    {
+     "step": "on mains power or battery above half",
+     "ok": true,
+     "output": "ok"
+    },
+    {
+     "step": "at least 10 GB free on the system drive",
+     "ok": true,
+     "output": "66 GB free"
+    },
+    {
+     "step": "Windows Update offers exactly one of KB5126657 / KB5066791",
+     "ok": true,
+     "output": "KB5126657: 0 offered; KB5066791: 1 offered"
+    },
+    {
+     "step": "rollback baseline recorded",
+     "ok": true,
+     "output": "installed cumulative packages: Package_for_RollupFix~31bf3856ad364e35~amd64~~19041.2965.1.8"
+    },
+    {
+     "step": "KB5066791 downloaded",
+     "ok": true,
+     "output": "2\n"
+    },
+    {
+     "step": "update is removable (manifest checked before install)",
+     "ok": true,
+     "output": "Windows10.0-KB5066791-x64.cab: update.mum not permanent; permanent parts: none; also installed, stays after rollback: SSU-19041.6449-x64-express (ServicingStackUpdate, MainOS, permanent)"
+    },
+    {
+     "step": "KB5066791 downloaded and installed",
+     "ok": true,
+     "output": "{\"download\":2,\"install\":2,\"reboot\":true}\n"
+    },
+    {
+     "step": "new cumulative package identified",
+     "ok": true,
+     "output": "Package_for_RollupFix~31bf3856ad364e35~amd64~~19041.6456.1.21"
+    },
+    {
+     "step": "reboot required to finish",
+     "ok": true,
+     "output": ""
+    },
+    {
+     "step": "build updated",
+     "ok": true,
+     "output": "now 10.0.19045.6456, target 10.0.19045.6456"
+    },
+    {
+     "step": "LanmanServer running after change",
+     "ok": true,
+     "output": "Running"
+    }
+   ],
+   "error": null,
+   "versions": {
+    "Windows 10 Version 22H2 for x64-based Systems": "10.0.19045.6456"
+   }
+  }
+ },
+ "agent_log_after": [
+  "2026-11-07T23:30:05Z job 78931cb7ec6d4f58a401ac27f8d238c6: report failed: request to http://10.0.2.2:8766 failed: <urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>",
+  "2026-11-07T23:30:15Z error: request to http://10.0.2.2:8766 failed: <urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>",
+  "2026-11-07T23:30:15Z run end: exit 1"
+ ],
+ "why_this_file": "wine2e.py --success-only --steps: hop 0 (the newest KB) aborted with no changes because Windows Update offers it only under an ESU licence, and the server planned 2025-10's KB5066791 as a step; the harness was killed by a restart of the session after dispatching hop 1, so the agent's own outcome file is the record of hop 1"
+}

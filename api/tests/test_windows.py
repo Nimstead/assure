@@ -79,6 +79,22 @@ def test_sync_msrc_shapes_osv_records_and_is_incremental():
     assert again["documents"] == 0 and again["skipped_documents"] == 1 and f2 == ["/cvrf/v3.0/updates"]
 
 
+def test_sync_msrc_older_months_add_app_rows_only_and_are_read_once():
+    """W3 (DECISIONS 114): an app years behind needs its old CVEs; Windows' cumulative fixes don't, and an old month's
+    rows never replace a newer month's."""
+    s = make_sessionmaker("sqlite://")()
+    n = sync_msrc(s, 0, msrc_client(), apps_months=60)  # 2026-Oct falls before the usual window: apps only
+    rows = s.scalars(select(Advisory).where(Advisory.ecosystem != "State")).all()
+    assert n["documents"] == 1 and rows and {r.ecosystem for r in rows} == {"Microsoft"}
+    assert {r.package for r in rows} == {"Visual Studio Code"} and not [r for r in rows if r.package == "Office CVE"]
+    again = sync_msrc(s, 0, msrc_client(fetched=(f := [])), apps_months=60)
+    assert again["skipped_documents"] == 1 and f == ["/cvrf/v3.0/updates"]
+    # the same month read in full later adds the Windows rows and keeps the app rows
+    full = sync_msrc(s, 60, msrc_client())
+    assert full["documents"] == 1 and {r.ecosystem for r in s.scalars(select(Advisory))} >= {"Windows", "Microsoft"}
+    assert sync_msrc(s, 60, msrc_client())["skipped_documents"] == 1  # and once whole, it's skipped as before
+
+
 def test_sync_msrc_score_without_vector_goes_to_cvss_table():
     d = doc()
     for v in d["Vulnerability"]:

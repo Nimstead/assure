@@ -31,6 +31,7 @@ NVD_URL = "https://nvd.nist.gov/feeds/json/cve/2.0/nvdcve-2.0-{}.json.gz"  # {ye
 METASPLOIT_URL = "https://raw.githubusercontent.com/rapid7/metasploit-framework/master/db/modules_metadata_base.json"
 EXPLOITDB_URL = "https://gitlab.com/exploit-database/exploitdb/-/raw/main/files_exploits.csv"
 MSRC_URL = "https://api.msrc.microsoft.com/cvrf/v3.0/"  # "updates" lists months; "cvrf/{ID}" is one month
+MSRC_APPS_MONTHS = 60  # the hourly update also reads 5 years before the usual 12 months, for Microsoft apps only (DECISIONS 114)
 KEEP = ("id", "aliases", "upstream", "withdrawn", "summary", "severity", "modified")
 
 
@@ -325,13 +326,16 @@ def sync_loldrivers(session: Session, client=None) -> int:
     return len(drivers)
 
 
-def sync_msrc(session: Session, months: int = 12, client=None, month: str | None = None) -> dict:
+def sync_msrc(session: Session, months: int = 12, client=None, month: str | None = None, apps_months: int = 0) -> dict:
     """Windows OS advisories from the MSRC CVRF API, stored as OSV-shaped rows (ecosystem Windows, package =
     MSRC product name, fixed = FixedBuild) so the normal matcher works. Windows 10/11/Server products with a dotted
     FixedBuild, plus the Microsoft products msproducts.py allowlists (ecosystem Microsoft, package = its key).
     # ponytail: a month is skipped when its CurrentReleaseDate is already stored on some row; a CVE re-released
     # in a later month overwrites the older row, which makes that older month re-download. Fine at this scale.
-    month: just that one document (e.g. "2023-Nov"), however old, adding rows and never overwriting any (DECISIONS 95)."""
+    month: just that one document (e.g. "2023-Nov"), however old, adding rows and never overwriting any (DECISIONS 95).
+    apps_months: months before `months` read for the allowlisted Microsoft apps only (VS Code, PowerShell...), whose fixes
+    aren't cumulative like Windows', so an app years behind still gets its old CVEs (DECISIONS 114). Each such month is read
+    once (state row "MSRC-APPS-STATE"), adds rows and never overwrites any."""
     http = _client(client)
 
     def get(url):
@@ -346,18 +350,24 @@ def sync_msrc(session: Session, months: int = 12, client=None, month: str | None
         return r.json()
 
     cutoff = (now() - timedelta(days=30 * months)).strftime("%Y-%m-%d")
+    apps_cutoff = (now() - timedelta(days=30 * (months + apps_months))).strftime("%Y-%m-%d")
     docs = sorted((d for d in get(MSRC_URL + "updates")["value"]
                    if re.fullmatch(r"\d{4}-[A-Z][a-z]{2}", d["ID"]) and "Mariner" not in (d["DocumentTitle"] or "")
-                   and (d["ID"] == month if month else d["InitialReleaseDate"] >= cutoff)), key=lambda d: d["InitialReleaseDate"])
+                   and (d["ID"] == month if month else d["InitialReleaseDate"] >= apps_cutoff)), key=lambda d: d["InitialReleaseDate"])
     have = {(i, p): m for i, p, m in session.execute(
         select(Advisory.id, Advisory.package, Advisory.modified).where(Advisory.ecosystem.in_(("Windows", msproducts.ECOSYSTEM))))}
     stored = set(have.values())
+    state = session.get(Advisory, ("MSRC-APPS-STATE", "State", "msrc-apps"))
+    apps_done = set((state.record if state else {}).get("done", []))
     n = {"documents": 0, "skipped_documents": 0, "inserted": 0, "updated": 0, "skipped": 0}
     for d in docs:
         mod = d["CurrentReleaseDate"]
-        if mod in stored:
+        apps_only = not month and d["InitialReleaseDate"] < cutoff
+        # a month read for apps only is read again in full when it's wanted whole (a step's old KB, DECISIONS 95)
+        if (mod in stored and (apps_only or mod not in apps_done)) or (apps_only and mod in apps_done):
             n["skipped_documents"] += 1
             continue
+        keep = bool(month) or apps_only  # an older month adds rows and never replaces what a newer one said
         doc = get(MSRC_URL + "cvrf/" + d["ID"])
         names = {p["ProductID"]: p["Value"] for p in doc["ProductTree"]["FullProductName"]}
         ins: list[dict] = []
@@ -384,20 +394,23 @@ def sync_msrc(session: Session, months: int = 12, client=None, month: str | None
             # Office Click-to-Run: no build in MSRC, so the CVE is kept for office.sync to pair with the channel feed
             office_ch = sorted({ch for r in v.get("Remediations", []) if str(r.get("FixedBuild", "")).startswith("https://")
                                 for pid in r.get("ProductID", []) for ch in office.channels_for(names.get(pid, ""))})
-            if office_ch:
+            if office_ch and not apps_only:
                 vec = next((s.get("Vector", "") for s in v.get("CVSSScoreSets", []) if s.get("Vector", "").startswith("CVSS:3")), "")
                 rec = {"id": f"OFFICE-{cve}", "aliases": [cve], "modified": mod, "summary": v["Title"]["Value"][:500],
                        "database_specific": {"released": d["InitialReleaseDate"][:10], "channels": office_ch}, "affected": [],
                        **({"severity": [{"type": "CVSS_V3", "score": vec}]} if vec else {})}
                 row = {"id": rec["id"], "ecosystem": msproducts.ECOSYSTEM, "package": "Office CVE", "modified": mod, "record": rec}
-                if (rec["id"], "Office CVE") not in have or not month:
+                if (rec["id"], "Office CVE") not in have or not keep:
                     (ins if (rec["id"], "Office CVE") not in have else upd).append(row)
                 have[(rec["id"], "Office CVE")] = mod
             for pid, (build, kb), suffix in [*((p, f, "") for p, f in fixes.items()), *((p, f, HOTPATCH) for p, f in hot.items())]:
                 # some entries say "Windows 11 version 26H1" (lowercase v); make the names uniform
                 name = re.sub(r"^(Windows 11) version", r"\1 Version", names.get(pid, ""))
                 eco = "Windows"
-                if not re.match(r"Windows (10|11|Server)\b", name):
+                if re.match(r"Windows (10|11|Server)\b", name):
+                    if apps_only:
+                        continue  # Windows fixes are cumulative: the recent months already carry the newest build
+                else:
                     if suffix or not (mk := msproducts.key_for(names.get(pid, ""), build)):
                         continue  # not an allowlisted Microsoft product (DECISIONS 53)
                     eco, (name, build) = msproducts.ECOSYSTEM, mk
@@ -419,13 +432,20 @@ def sync_msrc(session: Session, months: int = 12, client=None, month: str | None
                 if (rec["id"], name) not in have:
                     ins.append(row)
                     n["inserted"] += 1
-                elif have[(rec["id"], name)] != mod and not month:  # an old month never replaces what a newer one said
+                elif have[(rec["id"], name)] != mod and not keep:
                     upd.append(row)
                     n["updated"] += 1
                 else:
                     n["skipped"] += 1
                 have[(rec["id"], name)] = mod
         _flush(session, ins, upd)
+        # a month with no app rows stores none, so remember it was read for apps or it downloads again every hour; once
+        # read whole, it's forgotten here so the usual stored-month skip applies
+        if apps_only or mod in apps_done:
+            (apps_done.add if apps_only else apps_done.discard)(mod)
+            session.merge(Advisory(id="MSRC-APPS-STATE", ecosystem="State", package="msrc-apps", modified=mod,
+                                   record={"done": sorted(apps_done)}))
+            session.commit()
         n["documents"] += 1
     return n
 
@@ -465,7 +485,7 @@ def update_all(session: Session, client=None) -> dict:
             log.warning("OSV sync skipped for %r: %s", eco, e)
             out["osv"][eco] = {"error": f"{type(e).__name__}: {e}"[:200]}
     if in_use & {"Windows", msproducts.ECOSYSTEM}:
-        out["msrc"] = guarded("MSRC", lambda: sync_msrc(session, client=client))
+        out["msrc"] = guarded("MSRC", lambda: sync_msrc(session, client=client, apps_months=MSRC_APPS_MONTHS))
         out["office"] = guarded("OfficeReleases", lambda: sync_office(session, client=client))
         try:
             out["loldrivers"] = sync_loldrivers(session, client)

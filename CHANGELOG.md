@@ -4,6 +4,10 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Fixed
+- **VirtualBox 7.x was never checked**: its installer registers the publisher as "Oracle and/or its affiliates", which the curated row didn't accept (DECISIONS 113).
+- **Microsoft apps more than a year behind missed older CVEs**: the hourly update now also reads the five years of MSRC before the usual 12 months, for Microsoft apps only (VS Code, PowerShell, ...), each month once (DECISIONS 114).
+
 ### Proven
 - **The unverified case of an attack path across hosts, on real hosts** (`last_run_winpaths_lab.json`): with nobody from the target's Administrators group signed in on the source, the sign-in edge reads unverified. 0.7.2 shipped it unit-tested only. No code change.
 

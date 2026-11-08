@@ -235,7 +235,7 @@ Every unchecked item above, by why it's open:
 - **Not started, real work, unblocked**: the engine track's last three (routing and AD group edges, findings through the engine, its benchmark run, which needs W3)
 
 ## Needs the owner
-- [ ] Review this plan; answer its two open questions
+- [x] Review this plan; answer its two open questions (both answered 2026-11-08: the free commercial edition was used for W3; benchmark references kept)
 - [ ] Push `windows-round-1`, run CI (the `windows-runtime` job has never run), merge, tag, approve the release
 - [ ] Human pentest: **the owner is arranging a tester** (2026-11-08); scope for them in `docs/pentest-scope.md`
 - [x] Code-signing certificate decision: **deferred, releases stay Ed25519-signed only** (owner, 2026-11-08, DECISIONS 119)

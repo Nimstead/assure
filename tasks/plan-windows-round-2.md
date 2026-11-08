@@ -131,8 +131,8 @@ longest (each batch of 25 is a day). The whole round: 6–8 weeks of elapsed tim
 | Host DNS drops or a Windows Update corruption spoils long runs | Med | Harnesses resume; live log watch on every long run, as before |
 
 ## Open questions
-1. Do you want a commercial scanner's free edition in the comparison? (Needs your registration and licence check.)
-2. Does benchmark reference (W18) amending DECISIONS 64 suit you, or stay with the free audit only? Assumed yes.
+1. Do you want a commercial scanner's free edition in the comparison? (Needs your registration and licence check.) **Answered: yes, used for W3 (DECISIONS 111, 113).**
+2. Does benchmark reference (W18) amending DECISIONS 64 suit you, or stay with the free audit only? **Answered: keep it (owner, 2026-11-08; DECISIONS 75).**
 
 Sources for the dates and data above:
 [Microsoft lifecycle, IoT LTSC 2021](https://docs.microsoft.com:443/en-us/lifecycle/products/windows-10-iot-enterprise-ltsc-2021),

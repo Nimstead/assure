@@ -5,10 +5,13 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 ## [Unreleased]
 
 ### Fixed
+- **A Windows Server couldn't take a .NET Framework fix** (agent 0.6.4, DECISIONS 118): Windows Update offers servers only .NET's combined cumulative, a KB MSRC never names, so every job stopped with no changes made. The server now plans the same fix with that KB, the agent judges it by the per-version package it downloads as, and it recognises Server's `Package_for_DotNetRollup~` name, without which a failed install couldn't be rolled back. Proven on real Server 2019 and 2022.
+- **A .NET update offered alone was planned as a servicing stack step** (DECISIONS 117): only a person could approve it and the agent refused it, so nothing broke, but the host couldn't move on.
 - **VirtualBox 7.x was never checked**: its installer registers the publisher as "Oracle and/or its affiliates", which the curated row didn't accept (DECISIONS 113).
 - **Microsoft apps more than a year behind missed older CVEs**: the hourly update now also reads the five years of MSRC before the usual 12 months, for Microsoft apps only (VS Code, PowerShell, ...), each month once (DECISIONS 114).
 
 ### Proven
+- **Server 2019, Server 2022, Windows 11 Enterprise and Windows 10 22H2 on real installs** (2026-11-07/08): fixes through the scheduled task on each, rollback on 2019 and Windows 11 Enterprise, .NET Framework and hardening on both servers. Servers under QEMU with Windows' own hypervisor where VirtualBox couldn't run them here (`sandbox/winqemu.py`, DECISIONS 116).
 - **The unverified case of an attack path across hosts, on real hosts** (`last_run_winpaths_lab.json`): with nobody from the target's Administrators group signed in on the source, the sign-in edge reads unverified. 0.7.2 shipped it unit-tested only. No code change.
 
 ## [0.7.2] - 2026-11-07 (preview)

@@ -33,7 +33,7 @@ Three containers run:
 | `feeds` | Every hour: refreshes CISA KEV, EPSS, NVD, OSV and MSRC, re-matches every asset, retries failed alerts and writes a signed ledger checkpoint. The first run takes a while. |
 | `db` | PostgreSQL 17, in the `pg` volume. Not exposed outside Compose. |
 
-**Windows third-party apps** are matched against NVD, which needs a one-off history load (a few minutes per year):
+**Windows third-party apps** are matched against NVD, which needs a one-off history load (a few minutes per year). Microsoft's own apps (VS Code, PowerShell and the like) also use MSRC, whose last five years load on their own over the first hourly runs:
 
 ```bash
 docker compose exec feeds python -m nimstead.feeds nvd 2023 2024 2025 2026
@@ -78,7 +78,7 @@ $env:NIMSTEAD_TOKEN = "nme_…"; irm https://assure.example.com/install.ps1 | ie
 
 | | Linux | Windows |
 |---|---|---|
-| **Supported** | Debian, Ubuntu, RHEL family (AlmaLinux, Rocky), Alpine, SUSE | Windows 10 / Server 2016 and newer (fixes proven on Server 2025 and Windows 11) |
+| **Supported** | Debian, Ubuntu, RHEL family (AlmaLinux, Rocky), Alpine, SUSE | Windows 10 / Server 2016 and newer (fixes proven on Server 2019, 2022 and 2025, Windows 11 and Windows 10 22H2) |
 | **Needs** | Python 3.9+ and curl | nothing: the installer brings Python's official embeddable runtime (see below) |
 | **Runs** | a systemd timer every 6 hours | a SYSTEM scheduled task every 6 hours and at startup |
 | **With remediation** | plus a 15-minute check for approved fixes | plus a 15-minute check for approved fixes |

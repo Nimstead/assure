@@ -93,17 +93,20 @@ Not just unit tests. Each of these ran end to end in a disposable VM or WSL dist
 | Alpine 3.21 | ✓ | ✓ apk | ✓ after an injected failure |
 | openSUSE Leap 16.0 | ✓ | ✓ zypper | ✓ after a real service failure; snapper also undoes install-script side effects |
 | Windows Server 2025 | ✓ | ✓ cumulative update as SYSTEM | ✓ after an injected failure (DISM removal); permanent updates refused up front |
-| Windows 11 Pro 26H2 | ✓ | ✓ cumulative update as SYSTEM | ✓ after an injected failure (DISM removal), and after a power cut mid-rollback; every package the update brings checked up front |
-| Windows 10 Enterprise LTSC 2021 (English and German) | ✓ | not yet: the evaluation image shuts itself down mid-install | ✓ after an injected failure; a power cut mid-install reported as no change |
+| Windows Server 2019 | ✓ | ✓ cumulative and .NET Framework updates through the scheduled task | ✓ after an injected failure, for both |
+| Windows Server 2022 | ✓ | ✓ cumulative and .NET Framework updates through the scheduled task | ✓ .NET Framework update after an injected failure |
+| Windows 11 Pro 26H2 · Enterprise · Pro in German | ✓ | ✓ cumulative update as SYSTEM, through the scheduled task | ✓ after an injected failure (DISM removal), and after a power cut mid-rollback; every package the update brings checked up front |
+| Windows 10 22H2 | ✓ | ✓ the last free cumulative (2025-10) through the scheduled task; newer updates need an ESU licence and are refused with no change | not tried on 22H2 (see LTSC) |
+| Windows 10 Enterprise LTSC 2021 (English and German) | ✓ | ✓ by hand; the expired evaluation image shut itself down before the scheduled task could | ✓ after an injected failure; a power cut mid-install reported as no change |
 
-Plus real Keycloak SSO, DNS, SMTP and webhook integrations, Vault and S3 object-lock key storage, the Docker Compose install, and 1,000-host performance runs on SQLite and PostgreSQL 17. About 1,560 API tests run on both databases in CI.
+Plus real Keycloak SSO, DNS, SMTP and webhook integrations, Vault and S3 object-lock key storage, the Docker Compose install, and 1,000-host performance runs on SQLite and PostgreSQL 17. About 1,620 API tests run on both databases in CI.
 
 ## Known limitations
 
 The full, honest list is in [STATUS.md](STATUS.md#not-proven--known-gaps-honest). The ones you're most likely to meet:
 
-- Windows remediation is proven on Windows Server 2025 and Windows 11, and rollback on Windows 10 LTSC; applying a fix on Windows 10 and Server 2016–2022 hasn't been proven in a VM yet. The Windows agent needs no Python (it brings its own, signed); that install path is proven on Windows 11.
-- Windows third-party apps cover 100 curated products; other apps are inventoried but not matched. App updates through winget can't be rolled back, so a person always approves them as such.
+- Windows remediation is proven on Windows Server 2019, 2022 and 2025, Windows 11 and Windows 10 22H2. Server 2016 is untried, and a fix newer than 2025-10 on Windows 10 needs an Extended Security Updates licence, which we haven't had to test with. The Windows agent needs no Python (it brings its own, signed); that install path is proven on Windows 11.
+- Windows third-party apps cover about 100 curated products, each labelled in the finding by how it was proven (old to new on a real machine, a real install's name, or the name pattern only); other apps are inventoried but not matched. App updates through winget can't be rolled back, so a person always approves them as such.
 - Rollback restores package files and the package database everywhere, but undoes changes install scripts made elsewhere only with zypper and snapper.
 - SBOMs must be JSON (CycloneDX 1.4–1.6, SPDX 2.2/2.3). Findings mean a package is present, not that the vulnerable code is reachable.
 - The AI features (optional) have only been tested against a mocked API.

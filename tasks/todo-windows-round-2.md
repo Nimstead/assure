@@ -84,7 +84,7 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens the ref
 - Verify: run files. Deps: W5.
 
 ### Checkpoint A
-- [ ] Round 1 todo items for the matrix updated; W3's gaps reviewed with you; Phase 3 reordered if needed
+- [x] Round 1 todo items for the matrix updated; W3's gaps reviewed with you; Phase 3 reordered if needed. **Signed off by the owner 2026-11-08**: both gaps W3 found (VirtualBox 7.x, older CVEs in Microsoft apps) fixed and shipped in 0.7.3
 
 ## Phase 2: a real domain, in VMs
 
@@ -228,7 +228,7 @@ Boundary in DECISIONS 79: E1 is the research side; E2 onward never opens the ref
 Every unchecked item above, by why it's open:
 - **Blocked by this host** (VirtualBox on Hyper-V's slower engine): W5 Server 2022 stepping (overran the 2-hour limit) and Server 2019 (never boots). Needs Hyper-V off, which is the owner's call (DECISIONS 107), or another machine
 - **Blocked by evaluation media**: W2's German rollback and W4's apply by the task (the licence service powers the VM off an hour after boot); W4's oracle and .NET proofs wait on the same. Needs licensed or IoT LTSC media. W6 Windows 11 Enterprise: done (2026-11-07)
-- **Waiting on the owner**: Checkpoint A (W3's gaps reviewed with you); the items below
+- **Waiting on the owner**: the items below (Checkpoint A signed off 2026-11-08)
 - **W3** done with a commercial trial (DECISIONS 113); both gaps it found fixed (DECISIONS 113, 114)
 - **W13** stopped at 105 apps by its own rule; the 200 target replaced by that rule (DECISIONS 115)
 - **Free routes checked** (2026-11-07, DECISIONS 115): the Windows 11 Enterprise and IoT LTSC evaluations need Microsoft's registration form with your details; Hyper-V off breaks WSL and Docker. Each is yours to do
@@ -237,4 +237,7 @@ Every unchecked item above, by why it's open:
 ## Needs the owner
 - [ ] Review this plan; answer its two open questions
 - [ ] Push `windows-round-1`, run CI (the `windows-runtime` job has never run), merge, tag, approve the release
-- [ ] Human pentest; code-signing certificate decision; commercial-scanner decision
+- [ ] Human pentest: **the owner is arranging a tester** (2026-11-08); scope for them in `docs/pentest-scope.md`
+- [x] Code-signing certificate decision: **deferred, releases stay Ed25519-signed only** (owner, 2026-11-08, DECISIONS 119)
+- [x] Commercial-scanner decision: a free edition was used for W3 (DECISIONS 111, 113)
+- [x] Engine authority: **switch after a clean shadow on real hosts** (owner, 2026-11-08, DECISIONS 120)

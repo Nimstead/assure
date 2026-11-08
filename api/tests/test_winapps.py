@@ -28,6 +28,13 @@ def ident(name, version, publisher=None):
     return winapps.identify(name, publisher, version)
 
 
+def assert_same_coverage(name, pub, ver):
+    """The coverage count's name-first shortcut answers exactly as the full check would."""
+    from nimstead import msproducts
+    from nimstead.scan import app_assessed
+    assert app_assessed(name, pub, ver) == bool(winapps.identify(name, pub, ver) or msproducts.from_winapp(name, pub, ver))
+
+
 @pytest.mark.parametrize("name,pub,ver,want", [
     ("Google Chrome", "Google LLC", "156.0.8078.48", ("google:chrome", "156.0.8078.48")),
     ("Mozilla Firefox (x64 en-US)", "Mozilla", "128.0.3", ("mozilla:firefox", "128.0.3")),
@@ -51,6 +58,7 @@ def ident(name, version, publisher=None):
     ("Wireshark 4.2.5 x64", "The Wireshark developers", "4.2.5", ("wireshark:wireshark", "4.2.5")),
 ])
 def test_identify_positive(name, pub, ver, want):
+    assert_same_coverage(name, pub, ver)
     assert ident(name, ver, pub) == want
 
 
@@ -88,6 +96,7 @@ def test_identify_positive(name, pub, ver, want):
     ("Brave", "Brave Software Inc", "156.1.98.60"),
 ])
 def test_identify_negative(name, pub, ver):
+    assert_same_coverage(name, pub, ver)
     assert ident(name, ver, pub) is None
 
 
@@ -524,6 +533,7 @@ def test_cvelist_rows_only_where_nvd_has_none_and_nvd_replaces_them(env):
     ("Erlang OTP 29.1.2 (17.1.1)", "Ericsson AB", "29.1.2", ("erlang:erlang/otp", "29.1.2")),
 ])
 def test_identify_batches(name, pub, ver, want):
+    assert_same_coverage(name, pub, ver)
     assert winapps.identify(name, pub, ver) == want
 
 
@@ -597,6 +607,7 @@ def test_identify_batches(name, pub, ver, want):
     ("Oracle VirtualBox Guest Additions 7.2.22", "Oracle and/or its affiliates", "7.2.22.175245"),  # the guest side: not the hypervisor
 ])
 def test_identify_batch_near_misses(name, pub, ver):
+    assert_same_coverage(name, pub, ver)
     assert winapps.identify(name, pub, ver) is None
 
 

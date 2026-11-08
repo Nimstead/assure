@@ -331,3 +331,108 @@ def test_plan_can_include_dependencies_named_by_the_dry_run(env):
     j = c.post("/api/remediation/jobs", json={**body, "include": ["libc6"]}).json()
     assert {p["name"] for p in j["packages"]} == {"libssl3", "openssl", "libc6", "libc-bin"}  # sibling binaries come too
     assert "with libc6" in j["summary"]
+
+
+def test_an_inventory_that_kept_the_old_list_does_not_judge_the_fix(env):
+    """The agent couldn't read its package database, so the server kept the list from before the fix (DECISIONS 83).
+    That list says nothing about the fix: the job waits for a real one instead of turning not_fixed."""
+    from nimstead.engine.collection import DOC_VERSION
+    c = setup(env)
+    aid, h = add_host(c)
+    jid = _dispatched(c, aid, h)
+    c.post(f"/api/agent/jobs/{jid}/report", json={"outcome": "applied"}, headers=h)
+    failed = {"v": DOC_VERSION, "sources": {"package_db": {"state": "failed", "count": 0, "error": "dpkg-query exited 2", "exit": 2}}}
+    c.post("/api/agent/inventory", json={**inv(NEW), "packages": [], "collection": failed}, headers=h)
+    assert c.get("/api/remediation/jobs").json()[0]["status"] == "verifying"
+    c.post("/api/agent/inventory", json=inv(NEW), headers=h)
+    assert c.get("/api/remediation/jobs").json()[0]["status"] == "succeeded"
+
+
+def test_accepting_a_finding_mid_verification_is_not_a_fix(env):
+    c = setup(env)
+    aid, h = add_host(c)
+    jid = _dispatched(c, aid, h)
+    c.post(f"/api/agent/jobs/{jid}/report", json={"outcome": "applied"}, headers=h)
+    for f in c.get("/api/findings", params={"asset_id": aid}).json():
+        c.post(f"/api/findings/{f['id']}/accept", json={"reason": "vendor appliance, isolated", "days": 30})
+    c.post("/api/agent/inventory", json=inv(OLD), headers=h)  # the old version is still installed
+    assert c.get("/api/remediation/jobs").json()[0]["status"] == "not_fixed"
+    assert "remediation_succeeded" not in ledger_kinds(c)
+
+
+def test_a_timed_out_windows_job_holds_the_host_for_the_margin(env):
+    """sweep() fails a silent Windows job, but its install may still be running (its late report is accepted), so the
+    next Windows job for that host waits the margin out instead of being handed out alongside."""
+    from nimstead.remediate import WIN_TIMEOUT_MARGIN
+    c = setup(env)
+    aid, h = add_host(c)
+    first = _dispatched(c, aid, h)
+    s = sessionmaker(make_engine(env))()
+    s.execute(update(RemediationJob).values(manager="windows", updated=now() - timedelta(hours=29)))
+    s.commit()
+    assert c.get("/api/remediation/jobs").json()[0]["status"] == "failed"  # swept
+    second = plan(c, aid).json()["id"]
+    c.post(f"/api/remediation/jobs/{second}/approve")
+    s.execute(update(RemediationJob).where(RemediationJob.id == second).values(manager="windows"))
+    s.commit()
+    assert c.get("/api/agent/jobs", headers=h).json() == []  # held by the first, which may still be installing
+    s.execute(update(RemediationJob).where(RemediationJob.id == first).values(updated=now() - WIN_TIMEOUT_MARGIN - timedelta(minutes=1)))
+    s.commit()
+    assert [j["id"] for j in c.get("/api/agent/jobs", headers=h).json()] == [second]
+
+
+def test_a_held_windows_job_is_still_cancelled_by_the_kill_switch(env):
+    c = setup(env)
+    aid, h = add_host(c)
+    first = _dispatched(c, aid, h)
+    s = sessionmaker(make_engine(env))()
+    s.execute(update(RemediationJob).values(manager="windows"))
+    s.commit()
+    c.post(f"/api/agent/jobs/{first}/report", json={"outcome": "rolled_back", "error": "x"}, headers=h)
+    held = plan(c, aid).json()["id"]
+    c.post(f"/api/remediation/jobs/{held}/approve")
+    s.execute(update(RemediationJob).where(RemediationJob.id.in_([first, held])).values(manager="windows"))
+    s.execute(update(RemediationJob).where(RemediationJob.id == first).values(status="dispatched"))  # the host is busy
+    s.commit()
+    c.patch("/api/settings", json={"remediation_mode": "suggest"})
+    c.get("/api/agent/jobs", headers=h)
+    assert next(j for j in c.get("/api/remediation/jobs").json() if j["id"] == held)["status"] == "cancelled"
+
+
+def test_a_windows_failure_halts_only_its_own_release(env):
+    """One action key spans every month: a failed September cumulative halts September, not October (as kb_fleet)."""
+    from nimstead import remediate
+    from nimstead.db import Asset, Org
+    s = sessionmaker(make_engine(env), expire_on_commit=False)()
+    org = Org(name="o", canary_soak_hours=1)
+    s.add(org)
+    s.flush()
+    s.add(Asset(org_id=org.id, hostname="canary", ring=0, agent_key_hash="c"))
+    host = Asset(org_id=org.id, hostname="h", agent_key_hash="h")
+    s.add(host)
+    s.flush()
+
+    def job(to, status):
+        j = RemediationJob(org_id=org.id, asset_id=host.id, status=status, manager="windows", action_key="Windows|Windows 11 24H2",
+                           packages=[{"name": "Windows 11 24H2", "kb": "5000000", "from": "10.0.26100.1000", "to": to}],
+                           finding_ids=[], summary="s", created_by="policy")
+        s.add(j)
+        s.flush()
+        return j
+    job("10.0.26100.4000", "failed")
+    assert remediate.canary_ok(s, org, job("10.0.26100.3000", "planned"))[1].startswith("This change failed")
+    assert not remediate.canary_ok(s, org, job("10.0.26100.5000", "planned"))[1].startswith("This change failed")
+
+
+def test_plan_the_rest_in_one_request_keeps_what_it_could_plan(env):
+    c = setup(env)
+    a1, _ = add_host(c, "sbx-1")
+    a2, _ = add_host(c, "sbx-2", version=NEW)  # nothing to fix there
+    other = setup(env, email="b@example.com")
+    foreign, _ = add_host(other, "theirs")
+    r = c.post("/api/remediation/jobs/batch", json={"asset_ids": [a1, a2, foreign, a1], "ecosystem": "Debian:12", "package": "openssl"})
+    assert r.status_code == 201
+    body = r.json()
+    assert [j["asset_id"] for j in body["jobs"]] == [a1]  # planned once, though named twice
+    assert {e["asset_id"]: e["error"] for e in body["errors"]} == {
+        a2: "No open, fixable findings for this package on this asset", foreign: "Asset not found"}  # another org's id says nothing more

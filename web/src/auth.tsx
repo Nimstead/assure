@@ -19,7 +19,7 @@ const ssoError = (code: string | null) => code && (SSO_ERRORS[code] ?? "Single s
 export const SignInPage = () => <AuthPage mode="signin" />;
 export const SignUpPage = () => <AuthPage mode="signup" />;
 
-export function AuthPage({ mode }: { mode: "signin" | "signup" }) {
+function AuthPage({ mode }: { mode: "signin" | "signup" }) {
   const signup = mode === "signup";
   useTitle(signup ? "Create account" : "Sign in");
   const qc = useQueryClient();

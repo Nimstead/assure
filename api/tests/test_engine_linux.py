@@ -277,3 +277,18 @@ def test_decision_84_rescan_stores_and_compares_the_source_version_and_an_old_ag
     assert parity.compare(verdicts, [(f.ecosystem, f.package, f.vuln_id) for f in found])["agree"] == 1
     found, verdicts, held = host("deb-old", [{k: v for k, v in UTIL[1].items() if k != "source_version"}])  # an agent older than this
     assert not found and [p.source_version for p in held] == [None] and one(verdicts, vuln_id="CVE-2026-9").outcome == Outcome.NOT_VULNERABLE
+
+
+def test_the_digest_is_the_plain_json_hash_and_not_applicable_verdicts_are_shared():
+    """The digest's per-verdict cache changes nothing it hashes, and a distro's not-installed packages (R7.4) are one
+    verdict each per process, not one per host."""
+    import hashlib
+    import json
+
+    from nimstead.engine.report import digest
+    c = lcontent(deb("CVE-2026-1", "openssl", "3.5.1-1+deb13u2"), universe={"curl", "zlib"})
+    first, second = run(ldoc(*SSL), c), run(ldoc(*SSL, pkg("zlib1g", "1:1.3", "zlib")), c)
+    for vs in (first, second, []):
+        assert digest(vs) == hashlib.sha256(json.dumps([v.as_dict() for v in vs], sort_keys=True).encode()).hexdigest()
+    curl = [v for v in first + second if v.check == "product:curl"]
+    assert len(curl) == 2 and curl[0] is curl[1] and curl[0].outcome == Outcome.NOT_APPLICABLE

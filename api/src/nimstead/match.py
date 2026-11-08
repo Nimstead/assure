@@ -9,9 +9,18 @@ Low-noise rules:
   (e.g. DSA + DEBIAN-CVE) collapse into one finding.
 """
 
+import functools
+import logging
 from dataclasses import dataclass, field
 
 from nimstead.versions import Cmp, comparator_for, sort_key
+
+log = logging.getLogger(__name__)
+
+
+@functools.lru_cache(maxsize=4096)  # once per distinct case, and bounded: the hourly re-match repeats them all
+def _incomparable(ecosystem: str, name: str, version: str, advisory: str, error: str) -> None:
+    log.warning("%s %s %s: not compared with %s (%s), so not matched", ecosystem, name, version, advisory, error)
 
 
 @dataclass(frozen=True)
@@ -23,7 +32,6 @@ class Package:
 
 @dataclass
 class Match:
-    package: Package
     vuln_id: str  # canonical id, CVE where known
     advisory_ids: list[str]
     fixed: str | None  # lowest fixed version above installed, None = no fix yet
@@ -100,8 +108,8 @@ def match_package(pkg: Package, ecosystem: str, records: list[dict]) -> list[Mat
                         break
                 if not hit and pkg.version in aff.get("versions", []):
                     hit = True
-            except ValueError:
-                # ponytail: unparseable versions skipped silently per record; surface as a data-quality metric later
+            except ValueError as e:  # a version one side can't parse: a miss, so it is logged rather than silent
+                _incomparable(eco, name, pkg.version, rec.get("id", "?"), str(e)[:200])
                 continue
             if not hit:
                 continue
@@ -112,6 +120,6 @@ def match_package(pkg: Package, ecosystem: str, records: list[dict]) -> list[Mat
                 if fixed and (m.fixed is None or cmp(fixed, m.fixed) < 0):
                     m.fixed = fixed
             else:
-                by_id[cid] = Match(pkg, cid, [rec["id"]], fixed, rec.get("summary") or rec.get("details", "")[:200], rec)
+                by_id[cid] = Match(cid, [rec["id"]], fixed, rec.get("summary") or rec.get("details", "")[:200], rec)
             break
     return list(by_id.values())

@@ -62,3 +62,25 @@ def test_last_affected_and_unsupported():
 def test_canonical_id_prefers_cve():
     assert canonical_id({"id": "UBUNTU-CVE-2023-1", "upstream": ["CVE-2023-1"]}) == "CVE-2023-1"
     assert canonical_id({"id": "GHSA-abc"}) == "GHSA-abc"
+
+
+@pytest.mark.parametrize("events, version, want", [
+    ([{"fixed": "1.5.0"}, {"introduced": "0"}], "1.4.0", (True, "1.5.0")),  # events out of order: sorted, "0" first
+    ([{"fixed": "1.5.0"}, {"introduced": "0"}], "1.6.0", (False, None)),
+    ([{"introduced": "0"}, {"fixed": "1.5.0"}, {"introduced": "2.0.0"}, {"fixed": "2.3.0"}], "1.2.0", (True, "1.5.0")),  # lowest fix above
+    ([{"introduced": "0"}, {"fixed": "1.5.0"}, {"introduced": "2.0.0"}, {"fixed": "2.3.0"}], "1.7.0", (False, None)),
+    ([{"introduced": "0"}, {"fixed": "1.5.0"}, {"introduced": "2.0.0"}, {"fixed": "2.3.0"}], "2.1.0", (True, "2.3.0")),
+    ([{"introduced": "1.0.0"}, {"last_affected": "1.2.0"}], "1.2.0", (True, None)),
+    ([{"introduced": "1.0.0"}, {"last_affected": "1.2.0"}], "1.2.1", (False, None)),
+])
+def test_range_order_and_the_fix_it_names(events, version, want):
+    aff = [{"package": {"ecosystem": "PyPI", "name": "p"}, "ranges": [{"type": "ECOSYSTEM", "events": events}]}]
+    got = match_package(Package("p", version), "PyPI", [{"id": "GHSA-1", "aliases": [], "affected": aff}])
+    assert (bool(got), got[0].fixed if got else None) == want
+
+
+def test_an_incomparable_version_is_logged_not_silent(caplog):
+    aff = [{"package": {"ecosystem": "PyPI", "name": "p"}, "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": "not a version"}]}]}]
+    with caplog.at_level("WARNING", logger="nimstead.match"):
+        assert match_package(Package("p", "1.0"), "PyPI", [{"id": "GHSA-bad", "aliases": [], "affected": aff}]) == []
+    assert "GHSA-bad" in caplog.text

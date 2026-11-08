@@ -3,6 +3,7 @@
 Whether a version is affected is decided by `match_package` and the comparators, the same code `scan.rescan` uses, so the two can't
 disagree on the numbers. What's new is everything around them: an answer for what doesn't match, and "couldn't tell" as an answer."""
 
+import functools
 import re
 from collections import defaultdict
 from dataclasses import replace
@@ -175,11 +176,16 @@ def _judge(inv: Inventory, i: Install, c: Content) -> list[Verdict]:
     return out
 
 
+@functools.lru_cache(maxsize=131_072)  # the same verdict for every host of a distro release that lacks the package
+def _not_applicable(check: str, family: str, eco: str, product: str, source: str) -> Verdict:
+    return Verdict(f"product:{check}", family, eco, product, Outcome.NOT_APPLICABLE, detail=f"not on the {source} list, which was read in full")
+
+
 def _absent_or_blocked(check: str, family: str, eco: str, product: str, present: bool, s: Source) -> Verdict | None:
     """The product as a whole. Absent counts only if the list it would be on was read to its end (R4.2)."""
     base = {"check": f"product:{check}", "family": family, "ecosystem": eco, "product": product}
     if s.state == "ok":
-        return None if present else Verdict(outcome=Outcome.NOT_APPLICABLE, detail=f"not on the {s.name} list, which was read in full", **base)
+        return None if present else _not_applicable(check, family, eco, product, s.name)
     return Verdict(outcome=Outcome.UNDETERMINED if s.state == "partial" else Outcome.NOT_RUN, reason=s.reason, blocker=s.name, detail=s.error, **base)
 
 

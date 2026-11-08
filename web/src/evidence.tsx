@@ -8,7 +8,7 @@ import { btnPrimary, CopyBlock, ErrorState, input, Loading } from "./ui";
 const LEDGER_SHOWN = 50;
 
 /** What a ledger entry is about, from its own data: "CVE-2024-1234 · openssl · web-1" rather than an 8-character id. */
-export function ledgerSubject(e: LedgerEntry): string {
+function ledgerSubject(e: LedgerEntry): string {
   const d = e.data ?? {};
   const str = (k: string) => (typeof d[k] === "string" ? (d[k] as string) : "");
   const parts = [str("vuln_id"), str("package") || str("action").split("|")[1] || "", str("host") || str("hostname") || str("name") || str("email")].filter(Boolean);
@@ -35,7 +35,7 @@ export function EvidencePage() {
   const days = PERIODS.includes(Number(period)) ? Number(period) : 90;
   const setDays = (d: number) => navigate({ to: "/evidence", search: d === 90 ? {} : { period: String(d) }, replace: true });
   const report = useQuery({ queryKey: ["evidence-report", days], queryFn: () => api<EvidenceReport>(`/api/evidence/report?days=${days}`) });
-  const ledger = useQuery({ queryKey: ["ledger"], queryFn: () => api<{ problems: string[]; entries: LedgerEntry[] }>(`/api/evidence/ledger?limit=${LEDGER_SHOWN}`) });
+  const ledger = useQuery({ queryKey: ["ledger"], queryFn: () => api<{ problems: string[]; entries: LedgerEntry[]; total: number }>(`/api/evidence/ledger?limit=${LEDGER_SHOWN}`) });
 
   return (
     <div className="flex flex-col gap-8">
@@ -60,9 +60,8 @@ export function EvidencePage() {
         <h2 id="ledger" className="text-lg font-semibold">Ledger</h2>
         {/* say what's shown: the page promises every decision, and the full chain is in the signed pack */}
         <p className="mb-3 mt-1 text-sm text-muted">
-          {report.data && report.data.ledger.entries > LEDGER_SHOWN
-            ? `Latest ${LEDGER_SHOWN} of ${report.data.ledger.entries.toLocaleString()} entries. The signed pack holds the full ledger.`
-            : "Newest first. The signed pack holds the same entries."}
+          {ledger.data && ledger.data.total > LEDGER_SHOWN ? `Latest ${LEDGER_SHOWN} of ${ledger.data.total.toLocaleString()} entries, newest first.` : "Newest first."}
+          {report.data && ` The signed pack for the last ${days} days holds ${report.data.ledger.entries.toLocaleString()} of them, with every checkpoint.`}
         </p>
         {ledger.isPending ? <Loading className="h-40" label="Loading ledger…" /> : ledger.error ? <ErrorState error={ledger.error} retry={() => ledger.refetch()} /> : <LedgerView problems={ledger.data.problems} entries={ledger.data.entries} />}
       </section>
@@ -152,7 +151,7 @@ function SigningKey() {
   );
 }
 
-export function LedgerView({ problems, entries }: { problems: string[]; entries: LedgerEntry[] }) {
+function LedgerView({ problems, entries }: { problems: string[]; entries: LedgerEntry[] }) {
   return (
     <div className="flex flex-col gap-3">
       {problems.length === 0 ? (

@@ -239,10 +239,7 @@ def pep440_cmp(a: str, b: str) -> int:
 def windows_cmp(a: str, b: str) -> int:
     if not (re.fullmatch(r"\d+(\.\d+)*", a.strip()) and re.fullmatch(r"\d+(\.\d+)*", b.strip())):
         raise ValueError(f"invalid Windows build: {a!r} / {b!r}")
-    ta, tb = [int(x) for x in a.split(".")], [int(x) for x in b.split(".")]
-    n = max(len(ta), len(tb))
-    ta, tb = ta + [0] * (n - len(ta)), tb + [0] * (n - len(tb))
-    return (ta > tb) - (ta < tb)
+    return appver_cmp(a, b)  # the same dotted-number order; only what's accepted is stricter
 
 
 # --- Windows third-party apps (curated map in winapps.py): dotted numeric -------

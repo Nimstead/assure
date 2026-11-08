@@ -193,6 +193,12 @@ PRODUCTS: tuple[Product, ...] = (
 _BY_CPE = {c: p for p in PRODUCTS for c in (p.cpes or (p.key,))}
 
 
+def names_product(name: str, publisher: str | None) -> bool:
+    """Whether a curated product's name and publisher patterns match, before its version is read (identify's first test)."""
+    name, publisher = name.strip(), (publisher or "").strip()
+    return any(p.name.fullmatch(name) and (not p.publisher or p.publisher.fullmatch(publisher)) for p in PRODUCTS)
+
+
 def identify(name: str, publisher: str | None, version: str) -> tuple[str, str] | None:
     """(product key, version in NVD's convention) for an installed app, or None (inventory only, never matched)."""
     name, publisher = name.strip(), (publisher or "").strip()

@@ -512,9 +512,17 @@ def update_all(session: Session, client=None) -> dict:
                     out["external"]["scanned"] += 1
                 except external.ScanRefused:
                     out["external"]["refused"] += 1
+                except Exception:
+                    session.rollback()
+                    log.exception("outside-in scan of %s skipped this run", asset.hostname)
             continue
-        rescan(session, asset, inventory_received=False, cache=cache)
-        out["rescanned"] += 1
+        try:  # one host's failure (a bad record, a lost lock) costs that host this hour, not the rest of the run
+            rescan(session, asset, inventory_received=False, cache=cache)
+            out["rescanned"] += 1
+        except Exception:
+            session.rollback()
+            log.exception("re-match of %s skipped this run", asset.hostname)
+            out.setdefault("rescan_failed", []).append(asset.id)
     for org_id in session.scalars(select(Org.id)).all():  # hourly signed ledger checkpoints, kept off-database
         evidence.checkpoint(session, org_id)
     out["webhooks_sealed"] = notify.seal_legacy(session)

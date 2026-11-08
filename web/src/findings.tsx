@@ -6,7 +6,7 @@ import { Dialog, Switch } from "radix-ui";
 import { ArrowRight, ExternalLink, Search, SlidersHorizontal, Sparkles, X } from "lucide-react";
 import clsx from "clsx";
 import {
-  ACTIVE_JOB_STATUSES, adminGate, aiFilterToPatch, aiStatusQ, api, assetsQ, FINDINGS_CAP, filtersToApi, filtersToSearch, jobAnchor, jobsQ, looksLikeQuestion, parseFilters, pct, plural,
+  ACTIVE_JOB_STATUSES, adminGate, aiFilterToPatch, aiStatusQ, api, assetsQ, FINDINGS_CAP, filtersToApi, filtersToSearch, jobAnchor, looksLikeQuestion, parseFilters, pct, plural,
   PRIORITIES, PRIORITY_LABEL, refresh, relativeTime, parseUtc, useIsAdmin, useTitle, whyMatched, fixLabel, type AiFilter, type Finding, type FindingsFilters, type Job, type RawSearch, type Status,
 } from "./lib";
 import { PlanFixButton } from "./remediation";
@@ -32,7 +32,7 @@ export function FindingsPage({ search }: { search: RawSearch }) {
 
   // The search box is local state, debounced into the URL.
   const [text, setText] = useState(f.q);
-  useEffect(() => setText(f.q), [f.q]);
+  useEffect(() => { setText((t) => (t.trim() === f.q ? t : f.q)); }, [f.q]);  // our own debounced, trimmed text coming back keeps "open " as typed
   const ai = useQuery(aiStatusQ).data?.enabled === true;
   const question = ai && looksLikeQuestion(text);
   const [asked, setAsked] = useState(false);
@@ -161,7 +161,7 @@ function Results({ rows, f, noAssets, onClear, onPick }: { rows: Finding[]; f: F
 }
 
 /** How far the curated rule behind a Windows app finding was proven (W13): said, so a match from a name pattern isn't read as proven. */
-export const RULE_EVIDENCE = {
+const RULE_EVIDENCE = {
   proven: "This app's rule was proven on a real install: an old version found by its registry entry, then the upgrade seen.",
   "real name": "This app's rule was checked against a real install's registry entry, but no upgrade was seen yet.",
   pattern: "This app's rule matches by its installer's name only; it hasn't been seen on a real install yet.",
@@ -317,7 +317,8 @@ function Due({ due }: { due: string }) {
 
 /** A fix already planned or running for this package on this machine, from the jobs list Remediation keeps. */
 function useJobFor(f: Finding) {
-  const jobs = useQuery(jobsQ);
+  // the active ones only: the full list is the newest 500, and an older planned job would be missed
+  const jobs = useQuery({ queryKey: ["jobs", "active"], queryFn: () => api<Job[]>(`/api/remediation/jobs?status=${ACTIVE_JOB_STATUSES.join(",")}`) });
   return jobs.data?.find((j) => j.asset_id === f.asset_id && j.action_key === `${f.ecosystem}|${f.package}` && ACTIVE_JOB_STATUSES.includes(j.status));
 }
 
@@ -351,7 +352,7 @@ function RevokeAcceptance({ id }: { id: string }) {
   );
 }
 
-function AcceptRisk({ f }: { f: Finding }) {
+export function AcceptRisk({ f }: { f: Finding }) {
   const admin = useIsAdmin();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -364,9 +365,9 @@ function AcceptRisk({ f }: { f: Finding }) {
       : api(`/api/findings/${f.id}/accept`, { method: "POST", body: { reason: reason.trim(), days } }),
     onSuccess: () => refreshFindings(qc),
   });
+  const [tried, setTried] = useState(false);  // say what's wrong once they've tried, not while they type
   if (!open) return <button className={btnQuiet} onClick={() => setOpen(true)} {...adminGate(admin)}>Accept risk</button>;
   const ok = reason.trim().length >= 10;
-  const [tried, setTried] = useState(false);  // say what's wrong once they've tried, not while they type
   return (
     <form className="w-full border border-line-strong p-3" onSubmit={(e) => { e.preventDefault(); setTried(true); if (ok) accept.mutate(); }}>
       <p className="text-sm text-muted">Accepting hides this finding for a limited time, then it comes back for review. Your reason, your name and the expiry are recorded in the tamper-evident evidence ledger and shown to auditors.</p>

@@ -438,7 +438,7 @@ def test_parity_explains_a_difference_and_lists_what_it_cannot(env):
     assert [x["vuln_id"] for x in parity.compare(vs, [])["unexplained"]] == ["CVE-2026-2"]
 
 
-def test_t7_through_the_api_rescan_closes_on_silence_and_the_report_says_it_has_no_evidence(env):
+def test_t7_through_the_api_an_unread_source_closes_nothing_and_the_report_says_it_has_no_evidence(env):
     seed(env)
     c = user(env)
     aid, h = enrolled(c, RICH)
@@ -450,6 +450,14 @@ def test_t7_through_the_api_rescan_closes_on_silence_and_the_report_says_it_has_
     carried = next(g for g in body["undetermined"] if g["reason"] == "not-reassessed")
     assert "CVE-2026-9" in carried["examples"]
     assert any(g["reason"] == "access-denied" and g["blocked_by"] == "uninstall" for g in body["undetermined"])
+    from nimstead.scan import rescan
+    s = make_sessionmaker(env)()
+
+    def still_open():
+        return {f.vuln_id for f in s.scalars(select(Finding).where(Finding.asset_id == aid, Finding.ecosystem == "WinApp", Finding.status == "open"))}
+    assert "CVE-2026-9" in still_open()  # rescan doesn't call it fixed either: nobody read the apps
+    rescan(s, s.get(Asset, aid), inventory_received=False)  # nor does the hourly re-match of the same short list
+    assert "CVE-2026-9" in still_open()
 
 
 def test_a_scan_is_recorded_once_with_what_explains_it_and_can_be_replayed(env):
@@ -560,3 +568,30 @@ def test_parity_explains_a_product_the_engine_wouldnt_judge_as_a_whole():
     p = parity.compare([v], [("Debian:12", "openssl", "CVE-2023-5678")])
     assert p["ok"] and p["explained"][0]["engine"] == "no-collection-document"
     assert not parity.compare([v], [("Debian:12", "curl", "CVE-2023-1")])["ok"]  # only its own product
+
+
+@pytest.mark.parametrize("sources, blocked", [
+    ({"uninstall": {"state": "ok", "count": 40}, "windows_build": {"state": "ok", "count": 1}}, set()),
+    ({"uninstall": {"state": "ok", "count": 0}}, {"WinApp", "Microsoft"}),  # read to its end with nothing in it (R4.3)
+    ({"uninstall": {"state": "ok", "count": 9}, "user_hives": {"state": "partial", "count": 2}}, {"WinApp"}),
+    ({"windows_build": {"state": "failed", "count": 0, "code": "access-denied"}}, {"Windows"}),
+    ({"user_hives": {"state": "off", "count": 0}}, set()),  # excluded by policy is a decision, not a failed read
+])
+def test_unread_sources_block_resolving_their_ecosystems(sources, blocked):
+    from nimstead.scan import unread
+    assert unread({"v": 1, "sources": sources}) == blocked
+    assert unread(None) == set()  # an agent too old to say: today's behaviour
+
+
+def test_one_inventory_is_evaluated_once_and_its_record_still_stored(env, monkeypatch):
+    """rescan's shadow evaluates the inventory; the stored scan report after the response reuses those verdicts."""
+    import nimstead.engine as eng
+    seed(env)
+    calls = []
+    real = eng.evaluate
+    monkeypatch.setattr(eng, "evaluate", lambda *a, **k: calls.append(1) or real(*a, **k))
+    c = user(env)
+    aid, _ = enrolled(c, RICH)
+    assert len(calls) == 1
+    s = make_sessionmaker(env)()
+    assert s.scalar(select(ScanRecord).where(ScanRecord.asset_id == aid)) is not None

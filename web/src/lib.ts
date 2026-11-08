@@ -84,7 +84,7 @@ export interface Job {
   created: string; updated: string; steps: JobStep[] | null; error: string | null;
   forward_only?: boolean; waits_for_window?: string | null; // plan T22, T40
 }
-export const JOB_GROUPS = [
+const JOB_GROUPS = [
   { key: "approval", title: "Needs approval", statuses: ["planned"] },
   { key: "progress", title: "In progress", statuses: ["approved", "dispatched", "verifying"] },
   { key: "attention", title: "Needs attention", statuses: ["failed", "rolled_back", "rollback_failed", "not_fixed", "aborted"] },

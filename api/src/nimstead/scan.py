@@ -6,6 +6,7 @@ import json
 import logging
 import re
 from collections import defaultdict
+from datetime import timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -17,11 +18,31 @@ from nimstead.notify import notify
 
 log = logging.getLogger(__name__)
 HOTPATCH = " (Hotpatch)"  # advisory package suffix for MSRC hotpatch fixes (DECISIONS 52)
+INVENTORY_LOG_EVERY = timedelta(days=1)  # an unchanged inventory is written to the ledger at most this often
+# the collection sources (engine/collection.py) each finding ecosystem is read from: one that wasn't read proves nothing is gone
+READ_FROM = {"Windows": ("windows_build",), winapps.ECOSYSTEM: ("uninstall", "user_hives"),
+             msproducts.ECOSYSTEM: ("microsoft_products", "uninstall")}
 
 
-@functools.lru_cache(maxsize=50_000)  # a fleet repeats the same few names, and each lookup tries every curated rule
+def unread(collection: dict | None) -> set[str]:
+    """Finding ecosystems whose sources the agent says it couldn't read in full (failed, partial, or an empty Uninstall list)."""
+    sources = (collection or {}).get("sources") or {}
+
+    def bad(name):
+        s = sources.get(name)
+        return s is not None and (s.get("state") in ("failed", "partial") or (name == "uninstall" and not s.get("count")))
+    return {eco for eco, names in READ_FROM.items() if any(bad(n) for n in names)}
+
+
+@functools.lru_cache(maxsize=20_000)  # a fleet's distinct app names: few, where (name, version) pairs are not
+def _named(name: str, source: str | None) -> bool:
+    """Whether any curated rule names this app at all. Most installed apps match none, whatever their version."""
+    return winapps.names_product(name, source) or msproducts.names_product(name, source)
+
+
 def app_assessed(name: str, source: str | None, version: str) -> bool:
-    return bool(winapps.identify(name, source, version) or msproducts.from_winapp(name, source, version))
+    # the name decides for most apps (1,000 hosts x 150 apps: 1.7 s a page load when every version was its own cache entry)
+    return _named(name, source) and bool(winapps.identify(name, source, version) or msproducts.from_winapp(name, source, version))
 
 
 # A .NET runtime's Uninstall entry, judged through the agent's own ".NET runtime" / "ASP.NET Core" fact rather than its name
@@ -50,6 +71,12 @@ def app_coverage(s: Session, org_id: str) -> tuple[dict[str, dict], dict[tuple[s
             per_asset[asset_id]["inventory_only"] += 1
             missed[name, source].add(asset_id)
     return per_asset, missed
+
+
+def cve_ids(m: Match) -> list[str]:
+    """Every CVE one match stands for: a distro fix record (RLSA, DSA) names several, and the finding carries the lowest."""
+    r = m.record
+    return sorted({m.vuln_id, *(i for i in (r.get("id", ""), *r.get("aliases", []), *r.get("upstream", [])) if i.startswith("CVE-"))})
 
 
 def hotpatch_track(hot: list[dict], version: str) -> tuple[set[str], list[dict]] | None:
@@ -102,11 +129,6 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
     prior = [k for k, f in existing.items() if f.status in ("open", "accepted")]  # before this rescan changes them
     seen: set[tuple[str, str, str]] = set()
     inv = sorted((p.ecosystem, p.name, p.version, p.source or "", *([p.source_version] if p.source_version else [])) for p in pkgs)
-    if inventory_received:
-        evidence.append(s, asset.org_id, "inventory_received", asset.id, {
-            "hostname": asset.hostname, "packages": len(inv),
-            "inventory_sha256": hashlib.sha256(json.dumps(inv).encode()).hexdigest(),
-        })
     events: list[tuple[str, Finding]] = []
     fix_now: list[str] = []  # findings that became fix-now in this rescan
 
@@ -183,9 +205,9 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
         seen.add(key)
         rec = {"_risk": (x["risk"].score, x["risk"].priority, x["risk"].reasons)} if x.get("risk") else {}
         matches.append((key, x["ecosystem"], x["package"], x["version"],
-                        Match(Package(x["package"], x["version"]), x["vuln_id"], [x["vuln_id"]], x.get("fixed"), x["summary"], rec)))
+                        Match(x["vuln_id"], [x["vuln_id"]], x.get("fixed"), x["summary"], rec)))
     # exploitation and severity context in three queries, not three lookups per CVE
-    cves = sorted({m.vuln_id for *_, m in matches if m.vuln_id.startswith("CVE-")})
+    cves = sorted({c for *_, m in matches for c in cve_ids(m) if c.startswith("CVE-")})
     kevs, ransomware, epss, nvd = set(), set(), {}, {}
     for i in range(0, len(cves), 500):
         part = cves[i:i + 500]
@@ -203,11 +225,12 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
     listeners = winconfig.reachable_listeners(asset.facts or {})
 
     for key, eco, name, version, m in matches:
-        kev = m.vuln_id in kevs
-        ep = epss.get(m.vuln_id)
+        ids = cve_ids(m)  # one fix for several CVEs is as exploited, as likely and as severe as the worst of them
+        kev = any(c in kevs for c in ids)
+        ep = max((epss[c] for c in ids if c in epss), default=None)
         cvss = risk.cvss_base(m.record.get("severity"))
         if cvss is None:
-            cvss = nvd.get(m.vuln_id)
+            cvss = max((nvd[c] for c in ids if c in nvd), default=None)
         r = risk.Risk(*m.record["_risk"]) if "_risk" in m.record else risk.score(
             kev=kev,
             epss=ep,
@@ -217,8 +240,9 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
             fix_available=m.fixed is not None or eco == "WinConfig",  # a setting is fixed by changing it
         )
         if "_risk" not in m.record:
-            r = risk.context(r, kev=kev, ransomware=m.vuln_id in ransomware, public_exploit=m.vuln_id in exploits.get("metasploit", ()),
-                             exploit_db=m.vuln_id in exploits.get("exploitdb", ()),
+            r = risk.context(r, kev=kev, ransomware=any(c in ransomware for c in ids),
+                             public_exploit=any(c in exploits.get("metasploit", ()) for c in ids),
+                             exploit_db=any(c in exploits.get("exploitdb", ()) for c in ids),
                              msrc=(m.record.get("database_specific") or {}), roles=roles,
                              listening=next((why for keys, why in listeners if eco in (winapps.ECOSYSTEM, msproducts.ECOSYSTEM) and name.startswith(keys)), None))
         f = existing.get(key)
@@ -239,8 +263,10 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
         locs = (((asset.facts or {}).get("jar_scan") or {}).get("locations") or []) if eco == "Maven" else []
         loc = next((x[2] for x in locs if isinstance(x, list) and len(x) == 3 and x[:2] == [name, version]), None)
         others = [f"{v} (fixed in {fix})" if fix else v for v, fix in also.get(key, {}).items() if v != version]
+        same_fix = [c for c in ids if c != m.vuln_id]
         f.summary = ((m.summary or "") + (f" (in {loc})" if loc else "")  # a jar the agent found on disk
-                     + (f" Also affected on this host: {', '.join(others[:5])}." if others else ""))[:1000]
+                     + (f" Also affected on this host: {', '.join(others[:5])}." if others else "")
+                     + (f" The same fix covers {', '.join(same_fix[:10])}{' and more' if len(same_fix) > 10 else ''}." if same_fix else ""))[:1000]
         f.cvss, f.epss, f.kev = cvss, ep, kev
         f.score, f.priority, f.reasons = r.score, r.priority, r.reasons
         f.last_seen = t
@@ -250,16 +276,28 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
     resolved = 0
     scan = (asset.facts or {}).get("driver_scan")
     drivers_complete = isinstance(scan, dict) and scan.get("complete") is True
+    blocked = unread(asset.collection)  # the latest report's: the hourly re-match reads the same short list
     for key, f in existing.items():
         if key[0] == windrivers.ECOSYSTEM and not drivers_complete:  # a scan that failed or stopped early proves nothing is gone
+            continue
+        if key[0] in blocked:  # e.g. Uninstall access denied: the apps' findings stay as they were until a full read
             continue
         if key not in seen and f.status in ("open", "accepted"):
             f.status, f.resolved_at = "resolved", t  # inventory proves the vulnerable version is gone
             resolved += 1
             events.append(("finding_resolved", f))
-    if inventory_received:  # on each new inventory only: on the hourly re-match it made 1,000 hosts take 585 s, not 29 s (perf.py)
-        _shadow(s, asset, pkgs, seen, prior)
     s.flush()
+    # ledger entries last: the first append locks the org row until the commit below, so matching above never holds it
+    if inventory_received:
+        digest = hashlib.sha256(json.dumps(inv).encode()).hexdigest()
+        # an unchanged inventory goes on the record once a day, not every report: hourly agents made the ledger (and every
+        # evidence pack, which must hold a period's entries whole) grow by 24 rows per host a day (DECISIONS 121)
+        if (digest != asset.inventory_logged_sha256 or not asset.inventory_logged_at
+                or asset.inventory_logged_at <= t - INVENTORY_LOG_EVERY):
+            evidence.append(s, asset.org_id, "inventory_received", asset.id, {
+                "hostname": asset.hostname, "packages": len(inv), "inventory_sha256": digest})
+            asset.inventory_logged_sha256, asset.inventory_logged_at = digest, t
+        _shadow(s, asset, pkgs, seen, prior)  # new inventories only: on the hourly re-match it made 1,000 hosts take 585 s, not 29 s
     for kind, f in events:
         evidence.append(s, asset.org_id, kind, f.id, {
             "host": asset.hostname, "vuln_id": f.vuln_id, "package": f.package,

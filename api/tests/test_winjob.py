@@ -485,6 +485,9 @@ def test_a_netfx_umbrella_is_judged_by_the_per_version_package_it_downloads(tmp_
     assert j.valid() and j.s["named_kb"] == "5127666"
     j.s["named_kb"] = "5127666; calc"  # the saved state is never trusted: it goes into PowerShell after the restart
     assert not j.valid()
+    for field, bad in (("to", "10.0.26100.abc"), ("from", "10.0.x"), ("alt", {"kb": "5128923", "to": "4.8.v2"})):
+        j.s = {**dict(json.load(open(tmp_path / "n.json"))), field: bad}
+        assert not j.valid(), field  # a build that only fails to compare after the install would roll a good update back
 
 
 def test_a_service_that_crashed_since_the_change_fails_health_even_if_running(tmp_path):

@@ -301,6 +301,10 @@ def test_silent_host_flagged_and_alerted_once_per_outage(env, monkeypatch, tmp_p
     s.query(Asset).update({Asset.last_seen: now() - timedelta(hours=15)})
     s.commit()
     assert notify.alert_silent_hosts(s, state) == 1  # a new outage alerts again
+    never = enrol(c)  # enrolled by a script whose machine never finished setup: it never reported, so it didn't stop
+    s.query(Asset).filter(Asset.id == never["asset_id"]).update({Asset.last_seen: now() - timedelta(hours=15)})
+    s.commit()
+    assert notify.alert_silent_hosts(s, state) == 0
     s.close()
 
 
@@ -394,7 +398,7 @@ def test_no_not_reporting_storm_after_the_server_itself_was_down(env, monkeypatc
     sent = []
     monkeypatch.setattr(notify, "notify", lambda s, org_id, kind, text, urgent=False: sent.append(kind))
     s = sessionmaker(make_engine(env))()
-    s.query(Asset).update({Asset.last_seen: now() - timedelta(hours=20)})
+    s.query(Asset).update({Asset.last_seen: now() - timedelta(hours=20), Asset.last_inventory_at: now() - timedelta(hours=20)})  # it had reported
     s.commit()
     state = tmp_path / "monitor.json"
     state.write_text(_json.dumps({"last_check": (now() - timedelta(hours=20)).isoformat(), "grace_until": None}))  # server down 20 h

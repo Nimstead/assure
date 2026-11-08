@@ -86,6 +86,8 @@ def test_key_for(name, fixed, want):
     ("Microsoft Visual Studio Code (User)", MS, "1.140.0", ("Visual Studio Code", "1.140.0")),
 ])
 def test_from_winapp(name, pub, ver, want):
+    from test_winapps import assert_same_coverage
+    assert_same_coverage(name, pub, ver)
     assert from_winapp(name, pub, ver) == want
 
 

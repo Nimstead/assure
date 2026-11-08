@@ -335,3 +335,25 @@ def mfa_login(c, email, password="correct horse battery"):  # noqa: S107  the te
         r = c.post("/api/auth/login", json={**body, "setup": d["setup"], "code": mfa.code(d["secret"], int(time.time() // 30))})
         r.secret = d["secret"]
     return r
+
+
+def test_one_fix_for_several_cves_is_ranked_by_the_worst_of_them(env):
+    """RPM and Debian fix records (RLSA, DSA) name several CVEs; the finding carries the lowest id, but a KEV listing,
+    EPSS or CVSS of any of the others counts, and the others are named."""
+    from sqlalchemy.orm import sessionmaker
+
+    from nimstead.db import Advisory, Epss, Kev, make_engine
+    s = sessionmaker(make_engine(env))()
+    rec = {"id": "DSA-9999-1", "aliases": ["CVE-2030-1", "CVE-2030-2", "CVE-2030-3"], "summary": "zlib flaws", "affected": [{
+        "package": {"ecosystem": "Debian:12", "name": "zlib"},
+        "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": "1:1.3-1"}]}]}]}
+    s.add_all([Advisory(id=rec["id"], ecosystem="Debian:12", package="zlib", record=rec), Kev(cve="CVE-2030-3", date_added="2030-01-01"),
+               Epss(cve="CVE-2030-2", score=0.9, percentile=0.99)])
+    s.commit()
+    c = user(env)
+    h = {"Authorization": f"Bearer {enrol(c)['agent_key']}"}
+    c.post("/api/agent/inventory", json={"ecosystem": "Debian:12", "packages": [
+        {"ecosystem": "Debian:12", "name": "zlib1g", "version": "1:1.2.13.dfsg-1", "source": "zlib"}]}, headers=h)
+    [f] = [f for f in c.get("/api/findings").json() if f["package"] == "zlib"]
+    assert f["vuln_id"] == "CVE-2030-1" and f["kev"] and f["epss"] == 0.9 and f["priority"] == "fix-now"
+    assert "CVE-2030-2, CVE-2030-3" in f["summary"]

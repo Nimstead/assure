@@ -117,6 +117,11 @@ UNINSTALL = [  # (DisplayName, Publisher, (match, version) -> key); fullmatch on
 _UNINSTALL = [(re.compile(n), re.compile(p), f) for n, p, f in UNINSTALL]
 
 
+def names_product(name: str, publisher: str | None) -> bool:
+    """Whether an allowlisted Uninstall entry's name and publisher match, before its version is read (from_winapp's test)."""
+    return any(n.fullmatch(name) and p.fullmatch(publisher or "") for n, p, _ in _UNINSTALL)
+
+
 def from_winapp(name: str, publisher: str | None, version: str) -> tuple[str, str] | None:
     """An Uninstall-key entry that is an allowlisted Microsoft product: (key, normalised version)."""
     v = norm(version)

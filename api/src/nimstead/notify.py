@@ -16,7 +16,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from nimstead import sso
@@ -158,7 +158,9 @@ def alert_silent_hosts(s: Session, state_file: Path | None = None) -> int:
     if _in_server_grace(state_file or _monitor_state()):
         return 0
     by_org: dict[str, list[Asset]] = {}
-    for a in s.scalars(select(Asset).where(Asset.kind == "host", Asset.last_seen < now() - SILENT_AFTER, Asset.silent_alerted_at.is_(None))
+    # last_inventory_at: a host enrolled by a script that never finished setup never reported, so it can't have stopped
+    for a in s.scalars(select(Asset).where(Asset.kind == "host", Asset.last_seen < now() - SILENT_AFTER, Asset.silent_alerted_at.is_(None),
+                                           Asset.last_inventory_at.is_not(None))
                        .order_by(Asset.hostname)):
         by_org.setdefault(a.org_id, []).append(a)
     for org_id, hosts in by_org.items():
@@ -173,8 +175,13 @@ def alert_silent_hosts(s: Session, state_file: Path | None = None) -> int:
     return sum(len(h) for h in by_org.values())
 
 
+KEEP_DELIVERIES = timedelta(days=90)
+
+
 def retry_failed(s: Session) -> int:
-    """Re-send failed deliveries (up to MAX_ATTEMPTS within RETRY_WINDOW) to the org's current targets."""
+    """Re-send failed deliveries (up to MAX_ATTEMPTS within RETRY_WINDOW) to the org's current targets. Hourly, so it also
+    drops delivery records older than KEEP_DELIVERIES: Settings shows the last few, and a dead webhook adds rows every hour."""
+    s.execute(delete(Notification).where(Notification.ts < now() - KEEP_DELIVERIES))
     n = 0
     for row in s.scalars(select(Notification).where(Notification.ok.is_(False), Notification.retried.is_(False),
                                                     Notification.attempt < MAX_ATTEMPTS, Notification.ts > now() - RETRY_WINDOW)):

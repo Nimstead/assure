@@ -257,6 +257,9 @@ def test_dpkg_reports_held_and_still_installed_packages():
     """dpkg's first status letter is what's wanted, the second what is: apt-mark hold reads "hi", often the old package that matters."""
     out = "openssl\t3.0.11-1\t\t3.0.11-1\thi \nlibx\t1.0\t\t1.0\tri \nhalf\t1.0\t\t1.0\tiU \n"
     assert [p["name"] for p in agent.parse_dpkg(out)] == ["openssl", "libx"]
+    # installed with triggers still to run (after an interrupted apt): on disk and running, so reported
+    out = "libc-bin\t2.36-9\t\t2.36-9\tit \ndbus\t1.14\t\t1.14\tiW \nhalfconf\t1.0\t\t1.0\tiF \n"
+    assert [p["name"] for p in agent.parse_dpkg(out)] == ["libc-bin", "dbus"]
 
 
 def test_scanners_open_only_plain_files(tmp_path):

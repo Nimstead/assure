@@ -28,7 +28,10 @@ def shadow(s: Session, asset: Asset, pkgs: list, opened: set, prior: list) -> di
     what it opened (parity.compare). Reads only: findings still open and close through `rescan`."""
     from nimstead.engine import parity
     inv = Inventory.from_asset(asset, pkgs, sbom_received(s, asset))
-    return parity.compare(evaluate(inv, content.load(s, inv), prior), sorted(opened))
+    c = content.load(s, inv)
+    verdicts = evaluate(inv, c, prior)
+    s.info[("engine_scan", asset.id)] = (inv, c, verdicts)  # asset_report stores these after the response rather than evaluating again
+    return parity.compare(verdicts, sorted(opened))
 
 
 def prior_findings(s: Session, asset: Asset) -> list[tuple[str, str, str]]:
@@ -46,10 +49,15 @@ def sbom_received(s: Session, asset: Asset) -> dict | None:
     return {"received": e.ts[:19], **{k: e.data.get(k) for k in ("components", "mapped", "skipped")}} if e else None
 
 
-def asset_report(s: Session, asset: Asset) -> dict:
-    """The report from the host's stored inventory, and its record: inventory, content version and verdicts, so it can be explained later (T34)."""
-    inv = Inventory.from_asset(asset, s.scalars(select(InstalledPackage).where(InstalledPackage.asset_id == asset.id)).all(), sbom_received(s, asset))
-    _, out = scan_inventory(s, inv, prior_findings(s, asset))
+def asset_report(s: Session, asset: Asset, scanned: tuple | None = None) -> dict:
+    """The report from the host's stored inventory, and its record: inventory, content version and verdicts, so it can be explained later (T34).
+    `scanned`: (inventory, content, verdicts) shadow() just evaluated for this inventory, so it isn't evaluated twice."""
+    if scanned:
+        inv, c, verdicts = scanned
+        out = report.build(inv, c, verdicts)
+    else:
+        inv = Inventory.from_asset(asset, s.scalars(select(InstalledPackage).where(InstalledPackage.asset_id == asset.id)).all(), sbom_received(s, asset))
+        _, out = scan_inventory(s, inv, prior_findings(s, asset))
     same = select(ScanRecord.id).where(ScanRecord.asset_id == asset.id, ScanRecord.inventory_sha256 == out["inventory_sha256"],
                                        ScanRecord.content_version == out["content_version"], ScanRecord.verdicts_sha256 == out["verdicts_sha256"]).limit(1)
     if not s.scalar(same):  # asking twice about the same inventory and content stores one record

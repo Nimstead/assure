@@ -191,3 +191,27 @@ def test_runtimes_are_fetched_only_when_they_match_the_signed_hash_and_served_on
     assert b"agent_sha256" not in c.get("/agent/runtime/..%2Frelease.json.zip").content  # never reaches the release dir
     (d / "python-embed-amd64.zip").write_bytes(bad)  # changed on disk after the check
     assert c.get("/agent/runtime/amd64.zip").status_code == 404
+
+
+def test_a_promoted_release_reaches_a_server_that_cached_its_preview_signature(gh, monkeypatch):
+    """Promotion re-signs the same tag for stable. Agents installed from a stable server refuse the preview signature,
+    so a stable server keeps looking until the promoted files are there, then stops."""
+    s, client, state, sent, d = gh
+    monkeypatch.setenv("NIMSTEAD_UPDATE_CHANNEL", "stable")
+    d.mkdir(parents=True)
+    (d / "release.json").write_text(json.dumps({"version": "0.3.0", "channel": "preview"}))  # as GitHub serves it
+    assert updates.check(s, client)["release_files_fetched"] is False  # not promoted yet: same bytes, nothing stored
+    state["releases"]["v0.3.0"] = ("stable", "ok")
+    assert updates.check(s, client)["release_files_fetched"]
+    assert json.loads((d / "release.json").read_text())["channel"] == "stable"
+    n = len(state["calls"])
+    updates.check(s, client)
+    assert not [c for c in state["calls"][n:] if c.endswith("release.json")]  # stable cached: no more fetching
+
+
+def test_a_stable_release_behind_five_previews_is_still_found(gh, monkeypatch):
+    s, client, state, sent, d = gh
+    monkeypatch.setenv("NIMSTEAD_UPDATE_CHANNEL", "stable")
+    state["releases"] = {"v0.3.0": ("preview", "ok"), "v0.4.0": ("stable", "ok"), **{f"v0.5.{i}": ("preview", "ok") for i in range(6)}}
+    updates.check(s, client)
+    assert updates.status()["latest"] == "0.4.0"

@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { afterEach, vi } from "vitest";
 import { SsoSection } from "./integrations";
-import { ApiError, meQ, type Action, type Asset, type Job, type Settings } from "./lib";
+import { ApiError, meQ, type Action, type Asset, type Finding, type Job, type Settings } from "./lib";
 import { ActionCard } from "./home";
 import { AssetRow, AttackPaths, Baselines, baselineSummary, NotAssessed } from "./assets";
 import { Palette } from "./shell";
@@ -13,6 +13,8 @@ import { Done, errorLead } from "./ui";
 import { Onboarding, TROUBLESHOOT_AFTER_MS } from "./onboarding";
 import { ApiTokensSection, QrCode, UsersSection } from "./people";
 import { JobCard, KbFleet } from "./remediation";
+import { AcceptRisk, FindingsPage } from "./findings";
+import { EvidencePage } from "./evidence";
 import { SettingsPage } from "./settings";
 
 // Link keeps its search and hash in the href, so tests can check where a link really goes.
@@ -218,15 +220,15 @@ const ACTION: Action = { ecosystem: "Debian:12", package: "openssl", fixed_versi
   summary: null, fix: "apt", plannable: true, person_only: false, forward_only: false };
 
 it("Home: a setting fix reads as a setting, says a person approves it, and plans like any other", async () => {
-  const calls = serve({ "POST /api/remediation/jobs": { id: "j2" } });
+  const calls = serve({ "POST /api/remediation/jobs/batch": { jobs: [{ id: "j2" }], errors: [] } });
   wrap(<ol><ActionCard a={{ ...ACTION, ecosystem: "WinConfig", package: "wdigest", fixed_version: null, vulns: ["CFG:wdigest"], summary: "WDigest keeps passwords in memory.", fix: "winconfig", person_only: true }} /></ol>);
   expect(screen.getByText(/Change setting/)).toHaveTextContent("Change setting wdigest");
   expect(screen.getByText("WDigest keeps passwords in memory.")).toBeInTheDocument();
   expect(screen.getByText(/Fixes 1 finding on 2 hosts/)).toBeInTheDocument();
   expect(screen.getByText(/A person approves this one/)).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: /Plan fix/ }));
-  await waitFor(() => expect(calls.filter((c) => c.method === "POST")).toHaveLength(2));
-  expect(calls.find((c) => c.method === "POST")?.body).toEqual({ asset_id: "a1", ecosystem: "WinConfig", package: "wdigest" });
+  await waitFor(() => expect(calls.filter((c) => c.method === "POST")).toHaveLength(1));  // both hosts in one request
+  expect(calls.find((c) => c.method === "POST")?.body).toEqual({ asset_ids: ["a1", "a2"], ecosystem: "WinConfig", package: "wdigest" });
 });
 
 it("Home: a winget fix says it can't be undone; a product with no fix path offers no plan", () => {
@@ -265,7 +267,7 @@ it("Windows updates: a count per KB opens to why each machine hasn't got it, and
       { asset_id: "c1", hostname: "canary-1", build: "10.0.26200.6899", ring: 0, why: "No job yet", notes: ["A restart is pending, which can change its build"], job: null },
       { asset_id: "h2", hostname: "pc-2", build: "10.0.26200.6899", ring: 1, why: "Last attempt rolled back: health check failed", notes: [], job: { id: "j7", status: "rolled_back" } },
     ] },
-    "POST /api/remediation/jobs": { id: "j8" },
+    "POST /api/remediation/jobs/batch": { jobs: [{ id: "j8" }], errors: [] },
   });
   wrap(<KbFleet />);
   expect(await screen.findByText("48 of 50 hosts")).toBeInTheDocument();
@@ -279,7 +281,7 @@ it("Windows updates: a count per KB opens to why each machine hasn't got it, and
   expect(screen.getByRole("link", { name: /rolled back: health check failed/ })).toHaveAttribute("href", "/remediation#job-j7");
   expect(screen.getByText("Canary machines first.")).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: /Plan 1 machine now/ }));
-  await waitFor(() => expect(calls.find((c) => c.method === "POST")?.body).toEqual({ asset_id: "c1", ecosystem: "Windows", package: "Windows 11" }));
+  await waitFor(() => expect(calls.find((c) => c.method === "POST")?.body).toEqual({ asset_ids: ["c1"], ecosystem: "Windows", package: "Windows 11" }));
   expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
 });
 
@@ -407,4 +409,56 @@ it("Assets: a baseline reads as a share of the checks we can automate, never as 
   expect(screen.getByText(/135 manual checks not assessed/)).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Download as CSV" })).toHaveAttribute("href", "/api/baselines.csv");
   expect(document.body.textContent).not.toMatch(/compliant/i);
+});
+
+it("Findings: Accept risk opens its form, asks for a reason and records the acceptance", async () => {
+  const calls = serve({ "POST /api/findings/f1/accept": {} });
+  wrap(<AcceptRisk f={{ id: "f1", vuln_id: "CVE-1" } as Finding} />);
+  await userEvent.click(screen.getByRole("button", { name: "Accept risk" }));  // used to throw: a hook after the early return
+  const reason = screen.getByRole("textbox", { name: /Reason/ });
+  await userEvent.type(reason, "isolated lab box, no network");
+  await userEvent.click(screen.getByRole("button", { name: /^Accept/ }));
+  await waitFor(() => expect(calls.find((c) => c.method === "POST")?.body).toEqual({ reason: "isolated lab box, no network", days: 90 }));
+});
+
+it("Settings: when the settings can't load, This server says so instead of loading forever", async () => {
+  serve({ ...SETTINGS_API, "GET /api/settings": undefined });
+  wrap(<SettingsPage />);
+  const server = document.getElementById("server")!;
+  expect(await within(server).findByRole("button", { name: "Try again" })).toBeInTheDocument();
+});
+
+it("Findings: the search box keeps a trailing space while the URL catches up with the trimmed text", async () => {
+  serve({ "GET /api/findings": [], "GET /api/assets": [] });
+  const r = wrap(<FindingsPage search={{}} />);
+  const box = screen.getByRole("searchbox", { name: /Search findings/ });
+  await userEvent.type(box, "open ");
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  qc.setQueryData(meQ.queryKey, ME);
+  r.rerender(<QueryClientProvider client={qc}><FindingsPage search={{ q: "open" }} /></QueryClientProvider>);  // the debounce wrote "open"
+  expect(screen.getByRole("searchbox", { name: /Search findings/ })).toHaveValue("open ");
+  r.rerender(<QueryClientProvider client={qc}><FindingsPage search={{ q: "ssl" }} /></QueryClientProvider>);  // a real change (back button) still wins
+  expect(screen.getByRole("searchbox", { name: /Search findings/ })).toHaveValue("ssl");
+});
+
+it("Findings: the drawer finds a fix in progress among active jobs only, however many finished jobs there are", async () => {
+  const f = { id: "f1", asset_id: "a1", hostname: "web-1", ecosystem: "Debian:12", package: "openssl", installed_version: "1", fixed_version: "2",
+    vuln_id: "CVE-1", advisory_ids: [], summary: "", cvss: null, epss: null, kev: false, score: 50, priority: "next", reasons: [], status: "open",
+    first_seen: "2026-11-01T00:00:00", last_seen: "2026-11-08T00:00:00", resolved_at: null, due: null, setting_fix: false, rule_evidence: null };
+  serve({ "GET /api/findings": [f], "GET /api/assets": [{ id: "a1", hostname: "web-1", kind: "host" }], "GET /api/findings/f1": f,
+    "GET /api/remediation/jobs": [{ id: "j1", asset_id: "a1", action_key: "Debian:12|openssl", status: "planned" }] });
+  wrap(<FindingsPage search={{ f: "f1" }} />);
+  expect(await screen.findByText("Fix in progress:")).toBeInTheDocument();
+  const urls = vi.mocked(fetch).mock.calls.map(([u]) => String(u)).filter((u) => u.startsWith("/api/remediation/jobs"));
+  expect(urls).toEqual(["/api/remediation/jobs?status=planned,approved,dispatched,verifying"]);
+});
+
+it("Evidence: the ledger note counts the whole ledger, and says how much of it the period's pack holds", async () => {
+  serve({ "GET /api/evidence/ledger": { problems: [], entries: [], total: 900 },
+    "GET /api/evidence/report": { controls: [], period: { from: "2026-08-10T00:00:00+00:00", to: "2026-11-08T00:00:00+00:00" },
+      metrics: { resolved: 0, resolved_within_sla: 0, overdue_open: 0, mttr_days: null }, ledger: { head_hash: "x", entries: 40 } },
+    "GET /api/evidence/public-key": { pem: "", fingerprint_sha256: "ab", verifier_sha256: "cd" } });
+  wrap(<EvidencePage />);
+  expect(await screen.findByText(/Latest 50 of 900 entries, newest first\./)).toBeInTheDocument();
+  expect(await screen.findByText(/holds 40 of them/)).toBeInTheDocument();
 });

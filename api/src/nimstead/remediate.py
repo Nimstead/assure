@@ -18,7 +18,7 @@ from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from nimstead import evidence, msproducts
@@ -290,6 +290,7 @@ def plan(s: Session, asset: Asset, ecosystem: str, package: str, created_by: str
     if not findings:
         raise RemediationError("No open, fixable findings for this package on this asset")
     key = f"{ecosystem}|{package}"
+    s.get(Org, asset.org_id, with_for_update=True)  # PostgreSQL: two plans of one action on one host can't both pass this check
     if s.scalar(select(RemediationJob).where(RemediationJob.asset_id == asset.id, RemediationJob.action_key == key,
                                              RemediationJob.status.in_(ACTIVE))):
         raise RemediationError("A remediation for this package is already in progress on this asset")
@@ -345,7 +346,9 @@ def proves(canary: RemediationJob, job: RemediationJob) -> bool:
 def canary_ok(s: Session, org: Org, job: RemediationJob) -> tuple[bool, str]:
     """Broad-ring auto changes need the same action to have succeeded on a canary and soaked, with no failures anywhere."""
     same = s.scalars(select(RemediationJob).where(RemediationJob.org_id == org.id, RemediationJob.action_key == job.action_key)).all()
-    if any(j.status in ("rolled_back", "rollback_failed", "failed", "not_fixed") for j in same):
+    # a Windows action key spans every month: a failed September job halts September's rollout, not October's (as kb_fleet)
+    target = job.packages[0].get("to") if job.packages and job.packages[0].get("kb") else None
+    if any(j.status in HALTS and (target is None or _reaches(_aims(j), target)) for j in same):
         return False, "This change failed elsewhere; automatic rollout halted"
     canary_ids = set(s.scalars(select(Asset.id).where(Asset.org_id == org.id, Asset.ring == 0)))
     if not canary_ids:
@@ -361,7 +364,9 @@ def canary_ok(s: Session, org: Org, job: RemediationJob) -> tuple[bool, str]:
 
 def approve(s: Session, job: RemediationJob, by: str, policy: bool = False, forward_only_ack: bool = False) -> RemediationJob:
     asset = s.get(Asset, job.asset_id)
-    org = s.get(Org, job.org_id)
+    org = s.get(Org, job.org_id, with_for_update=True)  # PostgreSQL: two admins approving at once can't both pass the check
+    s.flush()
+    s.refresh(job, ["status"])  # as committed by whoever held the lock before us
     if job.status != "planned":
         raise RemediationError(f"Job is {job.status}, not awaiting approval")
     if (job.manager in MANUAL_ONLY or servicing(job)) and policy:  # never automated, whatever the trust ladder says (plan T22, T38)
@@ -513,15 +518,18 @@ def serial_group(asset: Asset) -> str | None:
 def dispatch(s: Session, asset: Asset) -> list[dict]:
     """Hand approved jobs to the agent, re-checking every gate at the last moment."""
     sweep(s, asset.org_id)
-    org = s.get(Org, asset.org_id)
+    org = s.get(Org, asset.org_id, with_for_update=True)  # PostgreSQL: two group members polling at once read "free" in turn
     out = []
     inside, _ = window_state(asset.maintenance_window or org.maintenance_window)
     if not inside:  # approved jobs wait for the window (plan T40); nothing is handed out early
         return out
     # one Windows job in flight per host: it may reboot the machine, and anything handed out alongside it would be stranded;
     # and one per cluster or domain-controller group, so they never restart together (plan T42)
+    # a job sweep() timed out may still be installing: its late report is accepted, so it holds the host for the margin too
+    timed_out = and_(RemediationJob.status == "failed", RemediationJob.error.in_((TIMEOUT_ERROR, WIN_TIMEOUT_ERROR)),
+                     RemediationJob.updated >= now() - WIN_TIMEOUT_MARGIN)
     win_busy = s.scalar(select(RemediationJob.id).where(RemediationJob.asset_id == asset.id, RemediationJob.manager == "windows",
-                                                        RemediationJob.status == "dispatched").limit(1)) is not None
+                                                        or_(RemediationJob.status == "dispatched", timed_out)).limit(1)) is not None
     if not win_busy and (group := serial_group(asset)):
         peers = [a.id for a in s.scalars(select(Asset).where(Asset.org_id == asset.org_id, Asset.id != asset.id)) if serial_group(a) == group]
         win_busy = bool(peers) and s.scalar(select(RemediationJob.id).where(
@@ -531,10 +539,6 @@ def dispatch(s: Session, asset: Asset) -> list[dict]:
             # With DISPATCH_TIMEOUT (2 h) a real DC's update outlasted it and the second DC was handed its update alongside (W8 lab)
             RemediationJob.updated >= now() - timedelta(hours=org.reboot_deadline_hours or 24) - WIN_TIMEOUT_MARGIN).limit(1)) is not None
     for job in s.scalars(select(RemediationJob).where(RemediationJob.asset_id == asset.id, RemediationJob.status == "approved")):
-        if job.manager == "windows":
-            if win_busy:
-                continue  # stays approved; handed out once the current one (here or in its group) reports
-            win_busy = True
         if not asset.sandbox and not production_allowed():  # flags may have changed since approval
             job.status, job.error = "failed", "Blocked: asset is not a sandbox"
             _log(s, job, "remediation_failed", error=job.error)
@@ -549,6 +553,10 @@ def dispatch(s: Session, asset: Asset) -> list[dict]:
                 job.status, job.approved_by, job.error = "planned", None, why
                 _log(s, job, "remediation_held", reason=why)
                 continue
+        if job.manager == "windows":  # after the gates: a held job is still cancelled by the kill switch at once
+            if win_busy:
+                continue  # stays approved; handed out once the current one (here or in its group) reports
+            win_busy = True
         job.status = "dispatched"
         _log(s, job, "remediation_dispatched")
         extra = {"reboot_by": (now() + timedelta(hours=org.reboot_deadline_hours or 24)).strftime("%Y-%m-%dT%H:%M:%SZ")} \
@@ -583,7 +591,9 @@ def _stepped(job: RemediationJob) -> str | None:
 def verify(s: Session, asset: Asset) -> None:
     """After a fresh inventory: a job succeeded only if its findings are now resolved."""
     for job in s.scalars(select(RemediationJob).where(RemediationJob.asset_id == asset.id, RemediationJob.status == "verifying")):
-        still_open = [f.vuln_id for f in s.scalars(select(Finding).where(Finding.id.in_(job.finding_ids), Finding.status == "open"))]
+        # accepted is not fixed: accepting a risk mid-verification must not turn the job into a success (or a canary proof)
+        still_open = [f.vuln_id for f in s.scalars(select(Finding).where(Finding.id.in_(job.finding_ids),
+                                                                         Finding.status.in_(("open", "accepted"))))]
         if still_open and (step := _stepped(job)):  # what's left needs the next job; those findings stay open (DECISIONS 67)
             job.status = "succeeded"
             _log(s, job, "remediation_stepped", to=step, still_open=still_open)

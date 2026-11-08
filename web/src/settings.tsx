@@ -241,7 +241,7 @@ export function SettingsPage() {
       </Group>
 
       <Group id="server" title="This server">
-        {s ? <PlatformSection p={s.platform} /> : <Loading className="h-16" label="" />}
+        {s ? <PlatformSection p={s.platform} /> : q.error ? <ErrorState error={q.error} retry={() => q.refetch()} /> : <Loading className="h-16" label="" />}
       </Group>
     </div>
   );

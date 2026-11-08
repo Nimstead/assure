@@ -4,6 +4,36 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+## [0.7.4] - 2026-11-08 (preview)
+
+**Agent 0.6.5.** One database migration (two columns on assets), applied on start; run `deploy/update.sh`. Fixes from a full code audit. Every fix has a test that fails without it; API suites pass on SQLite and PostgreSQL, and the platform-update lab passes including its rollback.
+
+### Fixed
+- **Two ledger writes at once could fail or fork the chain**: ledger appends now lock the organisation first. One failing host no longer stops the hourly rescan of the rest.
+- **Accept risk crashed the findings drawer** (React hook order).
+- **A fix was judged "not fixed" from an inventory that kept the old package list**: jobs are verified only on an inventory that replaced it.
+- **A host read as clean when a Windows source failed or came back empty**: findings from that source stay open until it reads again.
+- **dpkg packages with pending triggers were dropped** (agent 0.6.5): the `iW` and `it` states are reported.
+- **One fix record covering several CVEs was ranked by its first CVE only**: KEV, EPSS, CVSS and exploit data now count every CVE, and the summary names the others.
+- **Two domain controllers could be planned or dispatched together** under concurrent requests: plan, approve and dispatch lock the organisation.
+- **Accepting a finding mid-verification counted the fix as a success**: accepted findings count as not fixed.
+- **A failed update's rollback lost job reports written after the backup**: `deploy/update.sh` saves a second dump before restoring.
+- **Promotion to beta or stable didn't reach servers that had cached the preview's release files**: they're fetched again while below the server's channel. The release check no longer looks at only the last five tags.
+- **One release's failure halted every later Windows release**: a canary failure halts only its own release.
+- **A timed-out Windows install could overlap the next**: a timed-out job holds the host for the timeout margin. A held job still answers the kill switch and the canary and suggest-mode gates first.
+- **Silent-host alerts fired for hosts that never reported.**
+- **Old notification records were kept forever**: they're deleted after 90 days.
+- **The agent crashed on a malformed jobs answer** (agent 0.6.5), and a Windows job's target build is checked as a number before anything runs.
+- **Settings' server section loaded forever on an error**, the findings search box dropped a trailing space, the finding drawer saw only the newest 500 jobs, and the ledger note counted the wrong set.
+- **Versions the matcher couldn't compare were skipped silently**: they're logged.
+
+### Changed
+- **"Plan the rest" plans every host in one request** (`POST /api/remediation/jobs/batch`).
+- **Faster at 1000 hosts**: ingest 1.43 to 0.86 s, the Assets coverage count 1.7 to 0.3 s, and the next evidence pack at 297k entries 9.7 to 7.8 s. The ledger is checked from its last verified entry, with a full check hourly and on every pack, and an unchanged inventory is recorded once a day per host (DECISIONS 121). The engine evaluates each inventory once and builds and hashes the shared "not installed" verdicts once per process; verdicts and digests are unchanged (DECISIONS 122).
+
+### Removed
+- Dead code: the stub `nimstead` console script, an unused match field, a network safety level and option nobody used, a duplicate Windows version comparator, and unused web exports.
+
 ## [0.7.3] - 2026-11-08 (preview)
 
 **Agent 0.6.4.** No database migration; run `deploy/update.sh`. Proven on real installs since 0.7.2: Server 2019 and 2022 (fixes, .NET Framework, hardening), Windows 11 Enterprise and Windows 10 22H2 (fixes through the scheduled task), German Windows 11 Pro, and the unverified case of an attack path across hosts. Still not proven: a fix on Windows 10 (it needs an ESU licence).

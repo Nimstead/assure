@@ -32,7 +32,7 @@ import urllib.parse
 import urllib.request
 import zipfile
 
-AGENT_VERSION = "0.6.4"  # the server reads this line to flag outdated agents; bump on every agent change
+AGENT_VERSION = "0.6.5"  # the server reads this line to flag outdated agents; bump on every agent change
 # Ed25519 public keys (hex) allowed to sign releases (DECISIONS 31): primary (GitHub Actions) and offline backup.
 # The server only relays signed releases, so it can withhold an update but never forge one. Empty = never self-update.
 RELEASE_KEYS = ["a91fa6539c6c2593009fc71b1c1fba341b5685ba7bc97c127c068b1d732b21d2", "2438f2ccebab5bf26edf9e21a8aa8f09abd1861f52fbe0d6641b28b90f8b0e5a"]  # noqa: E501
@@ -94,7 +94,9 @@ def parse_dpkg(text):
     pkgs = []
     for line in text.splitlines():
         f = line.split("\t")
-        if len(f) < 5 or f[4][1:2] != "i":  # the second letter is the state: "hi" is installed and held (apt-mark hold)
+        # the second letter is the state: "hi" is installed and held (apt-mark hold); "iW"/"it" are installed with triggers still
+        # to run, as after an interrupted apt (libc-bin, man-db): every file is on disk. "iU" (unpacked) and "iF" are not.
+        if len(f) < 5 or f[4][1:2] not in ("i", "W", "t"):
             continue
         # advisories are keyed by source version, which a binary can differ from (bsdutils 1:2.41-5 from util-linux 2.41-5)
         pkgs.append({"name": f[0], "version": f[1], "source": f[2] or f[0], **({"source_version": f[3]} if f[3] and f[3] != f[1] else {})})
@@ -1959,7 +1961,10 @@ def run_jobs(server, key, insecure_http, run=sh, outcome_dir=None, win_state=Non
             if res["outcome"] == "pending_reboot":
                 return problems, True
             record(w.s["job"]["id"], res)
-    for job in post(server, "/api/agent/jobs", None, insecure_http, key):
+    jobs = post(server, "/api/agent/jobs", None, insecure_http, key)
+    if not (isinstance(jobs, list) and all(isinstance(j, dict) for j in jobs)):  # e.g. an intercepting proxy's answer
+        raise AgentError("the server's answer to /api/agent/jobs isn't a list of jobs")  # handled like a failed request, not a crash
+    for job in jobs:
         try:
             mgr = job.get("manager")
             runner = (WinJob(job, run=run, state_path=win_state) if mgr == "windows" else WinAppJob(job, run=run)
@@ -2261,9 +2266,10 @@ class WinJob:
                 s.get("phase") in ("start", "verify", "rolled_back_pending") and isinstance(s.get("steps"), list)
                 and SAFE_KB.match(str(s.get("kb", ""))) and SAFE_PRODUCT.match(str(s.get("product")))
                 and (s.get("named_kb") is None or SAFE_KB.match(str(s["named_kb"])))  # it goes into PowerShell too
-                and SAFE_VERSION.match(str(s.get("from") or "")) and (s.get("to") is None or SAFE_VERSION.match(str(s["to"])))
+                # builds, compared as numbers after the install: a version that only fails then would roll back a good update
+                and SAFE_BUILD.match(str(s.get("from") or "")) and (s.get("to") is None or SAFE_BUILD.match(str(s["to"])))
                 and (s.get("alt") is None or (isinstance(s["alt"], dict) and SAFE_KB.match(str(s["alt"].get("kb", "")))
-                                              and SAFE_VERSION.match(str(s["alt"].get("to") or ""))))
+                                              and SAFE_BUILD.match(str(s["alt"].get("to") or ""))))
                 and (s.get("reboot_by") is None or re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", str(s["reboot_by"])))
                 and (s.get("changed_at") is None or (isinstance(s["changed_at"], int) and not isinstance(s["changed_at"], bool)))
                 and isinstance(s.get("cluster", False), bool) and isinstance(s.get("notified_at", 0), (int, float))
@@ -2746,7 +2752,7 @@ def version_tuple(v):
     return tuple(int(x) for x in m.groups()) if m else None
 
 
-RUNTIME_ARCHES = {"AMD64": "amd64", "ARM64": "arm64", "X86": "win32"}.values()
+RUNTIME_ARCH = {"AMD64": "amd64", "ARM64": "arm64", "X86": "win32"}  # platform.machine() -> the release's runtime name
 
 
 def verify_release(manifest, sig_b64, keys=None):
@@ -2766,7 +2772,7 @@ def verify_release(manifest, sig_b64, keys=None):
         raise AgentError("signed release manifest is malformed")
     rt = rel.get("runtimes")  # the Windows agent's bundled Python (absent before 0.6.0)
     if rt is not None and not (isinstance(rt, dict) and rt and all(
-            a in RUNTIME_ARCHES and isinstance(r, dict) and version_tuple(r.get("version"))
+            a in RUNTIME_ARCH.values() and isinstance(r, dict) and version_tuple(r.get("version"))
             and re.fullmatch(r"[0-9a-f]{64}", str(r.get("sha256"))) for a, r in rt.items())):
         raise AgentError("signed release manifest has a malformed runtimes entry")
     return rel
@@ -2855,7 +2861,6 @@ def self_update(cfg, insecure_http, path=None, keys=None, smoke=None, memo=None)
 
 # ---- the Windows agent's bundled Python (plan decision 9) ---------------------------------------------------------
 RUNTIME_ROOT = os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "Nimstead", "runtime")
-RUNTIME_ARCH = {"AMD64": "amd64", "ARM64": "arm64", "X86": "win32"}
 MAX_RUNTIME_BYTES = 40 * 1024 * 1024
 PS_PSF_SIGNED = ("@(Get-ChildItem -LiteralPath %DIR% -Recurse -File | Where-Object { @('.exe', '.dll', '.pyd') -contains "
                  "$_.Extension.ToLower() } | Where-Object { "
@@ -3352,7 +3357,6 @@ NPM_MAX_DEPTH = 6  # node_modules inside node_modules
 MAX_METADATA, MAX_PACKAGE_JSON = 64 * 1024, 1024 * 1024
 PY_NAME = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9._-]{0,118}[A-Za-z0-9])?")  # PEP 508
 NPM_NAME = re.compile(r"(?:@[a-z0-9~-][a-z0-9._~-]*/)?[a-z0-9~-][a-z0-9._~-]*")  # npm's rule for package names
-DPKG_INFO = "/var/lib/dpkg/info"
 _OWNED_KEEP = (".dist-info", ".egg-info", ".jar", ".war", ".ear", "/package.json")
 # rpm's database isn't a file we can read without rpm, so there the distribution's own trees are taken as its
 RPM_TREES = re.compile(r"/usr/lib(?:64)?/python3[^/]*/site-packages/|/usr/(?:share|lib)/java/|/usr/lib/node_modules/")

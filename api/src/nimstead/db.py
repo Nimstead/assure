@@ -123,6 +123,9 @@ class Asset(Base):
     maintenance_window: Mapped[dict | None]  # overrides the org's (plan T40); None = the org's
     enrolled_by: Mapped[str | None] = mapped_column(String(12))  # enrolment token id, so a leaked token's hosts can be found
     collection: Mapped[dict | None]  # what the agent says it read of its latest inventory (engine/collection.py); None = not reported
+    # the last inventory written to the ledger: an unchanged one is written at most once a day (DECISIONS 121)
+    inventory_logged_sha256: Mapped[str | None] = mapped_column(String(64))
+    inventory_logged_at: Mapped[datetime | None]
 
 
 class InstalledPackage(Base):

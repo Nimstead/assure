@@ -1,6 +1,6 @@
 # Plan: findings open and close through the engine
 
-Status: **proposed, needs the owner's review** (2026-11-06). The engine track's last item
+Status: **approved by the owner 2026-11-08** (DECISIONS 120): switch to phase 3 once real hosts show no unexplained disagreement. The engine track's last item
 (`tasks/todo-windows-round-2.md`, "Findings open and close through the engine instead of `scan.rescan`").
 
 ## Why it matters

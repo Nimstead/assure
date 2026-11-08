@@ -823,12 +823,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             raise HTTPException(401, "Unknown agent key")
         return asset
 
-    def store_scan_report(asset_id: str) -> None:
+    def store_scan_report(asset_id: str, scanned: tuple | None) -> None:
         """After the response: the engine's report, stored for the fleet's attack paths (DECISIONS 98). Never fails the inventory."""
         with Sessions() as s:
             try:
                 if a := s.get(Asset, asset_id):
-                    engine.asset_report(s, a)
+                    engine.asset_report(s, a, scanned)
             except Exception:
                 log.exception("engine report for asset %s failed", asset_id)
 
@@ -851,15 +851,17 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                 asset.collection = {**asset.collection, "sources": {**asset.collection["sources"], "host_facts": {
                     "state": "failed", "count": 0, "error": "these facts were too large for the server, so older ones are stored"}}}
         db_read = ((asset.collection or {}).get("sources") or {}).get("package_db")
-        if not (db_read and (db_read["state"] != "ok" or not db_read.get("count"))):  # DECISIONS 83: a Linux list not read in full doesn't replace the last
+        replaced = not (db_read and (db_read["state"] != "ok" or not db_read.get("count")))  # DECISIONS 83: a Linux list not read in full doesn't replace the last
+        if replaced:
             s.execute(delete(InstalledPackage).where(InstalledPackage.asset_id == asset.id, InstalledPackage.origin == "agent"))
             s.add_all(InstalledPackage(asset_id=asset.id, origin="agent", **p.model_dump()) for p in body.packages)
         s.flush()
         result = rescan(s, asset)
-        remediate.verify(s, asset)
+        if replaced:  # the kept list is the one from before the fix: judging the job on it would call it not fixed
+            remediate.verify(s, asset)
         remediate.auto_remediate(s, asset)
         s.commit()
-        tasks.add_task(store_scan_report, asset.id)
+        tasks.add_task(store_scan_report, asset.id, s.info.pop(("engine_scan", asset.id), None))  # rescan's shadow already evaluated it
         return result
 
     class DirectoryEntry(BaseModel):
@@ -1402,6 +1404,26 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         s.commit()
         return job_json(job, a.hostname)
 
+    class PlanMany(BaseModel):
+        asset_ids: list[str] = Field(min_length=1, max_length=5000)
+        ecosystem: str = Field(max_length=100)
+        package: str = Field(max_length=255)
+
+    @app.post("/api/remediation/jobs/batch", status_code=201)
+    def create_jobs(body: PlanMany, user: Admin, s: DB):
+        """One fix on many machines in one request ("plan the rest"): each plan is its own commit, so one refusal keeps the others."""
+        jobs, errors = [], []
+        for aid in dict.fromkeys(body.asset_ids):
+            try:
+                a = owned_asset(s, user, aid)
+                job = remediate.plan(s, a, body.ecosystem, body.package, user.email)
+                s.commit()
+                jobs.append(job_json(job, a.hostname))
+            except (remediate.RemediationError, HTTPException) as e:
+                s.rollback()
+                errors.append({"asset_id": aid, "error": str(getattr(e, "detail", e))})
+        return {"jobs": jobs, "errors": errors}
+
     @app.get("/api/remediation/jobs")
     def list_jobs(user: CurrentUser, s: DB, status: str | None = None):
         remediate.sweep(s, user.org_id)
@@ -1835,7 +1857,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     @app.get("/api/evidence/ledger")
     def ledger(user: CurrentUser, s: DB, limit: int = Query(100, ge=1, le=1000)):
         rows = s.scalars(select(LedgerEntry).where(LedgerEntry.org_id == user.org_id).order_by(LedgerEntry.seq.desc()).limit(limit))
-        return {"problems": evidence.verify_chain(s, user.org_id), "entries": [evidence.entry_dict(e) for e in rows]}
+        # full=False: only what's new since the last check (a full one runs at least hourly)
+        return {"problems": evidence.verify_chain(s, user.org_id, full=False), "entries": [evidence.entry_dict(e) for e in rows],
+                "total": s.scalar(select(func.count()).select_from(LedgerEntry).where(LedgerEntry.org_id == user.org_id))}
 
     @app.get("/api/evidence/public-key")
     def evidence_public_key():
@@ -1850,16 +1874,21 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/evidence/report")
     def evidence_report(user: CurrentUser, s: DB, days: int = Query(90, ge=1, le=730)):
-        pack = evidence.build_pack(s, user.org_id, *evidence.default_period(days))
-        pack["ledger"] = {"head_hash": pack["ledger"]["head_hash"], "entries": len(pack["ledger"]["entries"])}
+        pack = evidence.build_pack(s, user.org_id, *evidence.default_period(days), with_entries=False)
+        pack["ledger"] = {"head_hash": pack["ledger"]["head_hash"], "entries": pack["ledger"]["entries"]}  # a count: the page lists them
         return pack
 
     @app.get("/api/evidence/pack")
     def evidence_pack(user: CurrentUser, s: DB, days: int = Query(90, ge=1, le=730)):
-        if problems := evidence.verify_chain(s, user.org_id):
+        # the chain since the last full check (one runs at least hourly, and whenever an anchor moved), then every entry the
+        # pack holds, re-hashed as it is built: reading and hashing the whole ledger twice was most of a pack's time
+        if problems := evidence.verify_chain(s, user.org_id, full=False):
             raise HTTPException(409, f"Ledger integrity check failed; refusing to sign: {problems[:3]}")
         evidence.checkpoint(s, user.org_id)
-        data = evidence.pack_zip(evidence.build_pack(s, user.org_id, *evidence.default_period(days)))
+        pack = evidence.build_pack(s, user.org_id, *evidence.default_period(days))
+        if problems := evidence.entry_problems(user.org_id, pack["ledger"]["entries"]):
+            raise HTTPException(409, f"Ledger integrity check failed; refusing to sign: {problems[:3]}")
+        data = evidence.pack_zip(pack)
         name = f"nimstead-evidence-{datetime.now():%Y%m%d}.zip"
         return Response(data, media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{name}"'})
 

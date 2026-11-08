@@ -227,6 +227,14 @@ def test_outcomes_persist_and_retry_when_report_fails(tmp_path, monkeypatch):
     assert not list(out.glob("*.json")) and calls.count("/api/agent/jobs/j1/report") == 2
 
 
+def test_a_jobs_answer_that_isnt_a_list_is_an_agent_error_not_a_crash(tmp_path, monkeypatch):
+    import pytest
+    for answer in ({"detail": "Not found"}, "<html>proxy login</html>", [1, 2]):
+        monkeypatch.setattr(agent, "post", lambda *a, answer=answer, **k: answer)
+        with pytest.raises(agent.AgentError, match="isn't a list of jobs"):
+            agent.run_jobs("https://x", "k", False, run=FakeApt(tmp_path, OLD, NEW), outcome_dir=str(tmp_path / "o"), **job_kw(tmp_path))
+
+
 def test_remediate_requires_local_opt_in(tmp_path, monkeypatch, capsys):
     cfg = tmp_path / "agent.json"
     cfg.write_text('{"server": "https://x", "agent_key": "k"}')

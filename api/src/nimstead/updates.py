@@ -35,7 +35,6 @@ MAX_FILE = 64 * 1024
 MAX_RUNTIME = 40 * 1024 * 1024  # one embeddable Python zip is ~14 MB
 MAX_LIST = 2 * 1024 * 1024  # the releases API page, with release notes
 CHANNELS = ("preview", "beta", "stable")  # least to most proven (scripts/sign_release.py)
-CANDIDATES = 5  # newest releases above ours whose manifests are checked per daily run
 
 
 def channel() -> str:
@@ -112,7 +111,7 @@ def newest_for_channel(client: httpx.Client, running: str, ch: str) -> dict:
     page = _get(client, f"https://api.github.com/repos/{REPO}/releases?per_page=30", MAX_LIST).json()
     tags = sorted({str(r.get("tag_name")) for r in page if isinstance(r, dict) and not r.get("draft")
                    and re.fullmatch(r"v\d+\.\d+\.\d+", str(r.get("tag_name")))}, key=vtuple, reverse=True)
-    for tag in [t for t in tags if vtuple(running) and vtuple(t) > vtuple(running)][:CANDIDATES]:
+    for tag in [t for t in tags if vtuple(running) and vtuple(t) > vtuple(running)]:  # all of them: five previews in a row can hide a stable one
         base = f"https://github.com/{REPO}/releases/download/{tag}/"
         try:
             manifest, sig = _get(client, base + "release.json").content, _get(client, base + "release.json.sig").text
@@ -125,9 +124,12 @@ def newest_for_channel(client: httpx.Client, running: str, ch: str) -> dict:
 
 
 def fetch_release_files(client: httpx.Client) -> bool:
-    """release.json + .sig for the running version, if missing or left over from the previous version. True when fetched now."""
+    """release.json + .sig for the running version, if missing, left over from the previous version, or signed for a less
+    proven channel than this server's (a promotion re-signs the same tag, and agents installed on this channel refuse the
+    older signature). True when new files were stored."""
     running = current_version()
-    if not running or _read("release.json").get("version") == running:
+    cached = _read("release.json")
+    if not running or (cached.get("version") == running and takes(channel(), release_channel(cached))):
         return False
     base = f"https://github.com/{REPO}/releases/download/v{running}/"
     try:
@@ -135,6 +137,9 @@ def fetch_release_files(client: httpx.Client) -> bool:
     except (httpx.HTTPError, ValueError) as e:
         log.info("no signed release files for v%s yet: %s", running, e)
         return False
+    d = release_dir()
+    if (d / "release.json").exists() and (d / "release.json").read_bytes() == manifest:
+        return False  # not promoted since the last look
     _write("release.json.sig", sig)
     _write("release.json", manifest)  # the server checks the signature before relaying (app.signed_release)
     return True

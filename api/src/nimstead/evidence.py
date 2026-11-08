@@ -12,7 +12,7 @@ from pathlib import Path
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from nimstead import keys, verify_pack
@@ -42,9 +42,9 @@ def sla_history(s: Session, org_id: str):
 
 
 def append(s: Session, org_id: str, kind: str, subject: str, data: dict) -> LedgerEntry:
-    """Add one entry to the org's chain. Caller commits."""
+    """Add one entry to the org's chain. Caller commits, which releases the org row lock taken here."""
+    s.get(Org, org_id, with_for_update=True)  # PostgreSQL: concurrent appends (API workers, the feeds process) queue for seq
     last = s.scalar(select(LedgerEntry).where(LedgerEntry.org_id == org_id).order_by(LedgerEntry.seq.desc()).limit(1))
-    # ponytail: concurrent appends race on seq and fail on the unique constraint (loud, not silent); add a row lock on Postgres
     e = {
         "seq": (last.seq + 1) if last else 1,
         "ts": datetime.now(UTC).isoformat(timespec="microseconds"),
@@ -68,16 +68,34 @@ def entry_dict(e) -> dict:
     return {"seq": e.seq, "ts": e.ts, "kind": e.kind, "subject": e.subject, "data": e.data, "prev_hash": e.prev_hash, "hash": e.hash}
 
 
-def verify_chain(s: Session, org_id: str) -> list[str]:
-    entries = s.execute(select(*LEDGER_COLS).where(LedgerEntry.org_id == org_id).order_by(LedgerEntry.seq)).all()
-    problems, prev_hash = [], GENESIS
-    for i, e in enumerate(entries, 1):
+# org -> (seq, hash) of the newest entry a check passed, and when the last full check was. Per process; bounded by orgs.
+_VERIFIED: dict[str, tuple[int, str, datetime]] = {}
+FULL_CHECK_EVERY = timedelta(hours=1)
+
+
+def verify_chain(s: Session, org_id: str, full: bool = True) -> list[str]:
+    """Problems with the org's chain and its checkpoints. full=False (the Evidence page) checks only entries after the last
+    passed check, anchored on that entry's stored hash, which any consistent rewrite of earlier history changes; a full
+    check (every row, every checkpoint) still runs at least hourly, and always before a pack is signed."""
+    done = None if full else _VERIFIED.get(org_id)
+    if done and datetime.now(UTC) - done[2] > FULL_CHECK_EVERY:
+        done = None
+    if done and s.scalar(select(LedgerEntry.hash).where(LedgerEntry.org_id == org_id, LedgerEntry.seq == done[0])) != done[1]:
+        done = None  # the anchor changed: check everything
+    start, prev_hash = (done[0], done[1]) if done else (0, GENESIS)
+    entries = s.execute(select(*LEDGER_COLS).where(LedgerEntry.org_id == org_id, LedgerEntry.seq > start).order_by(LedgerEntry.seq)).all()
+    problems = []
+    for i, e in enumerate(entries, start + 1):
         d = entry_dict(e)
         if e.seq != i or e.prev_hash != prev_hash:
             problems.append(f"entry {e.seq}: chain broken")
         if entry_hash(d) != e.hash:
             problems.append(f"entry {e.seq}: hash mismatch")
         prev_hash = e.hash
+    if done:  # checkpoints pin history up to the anchor, which the last full check compared them with
+        if not problems and entries:
+            _VERIFIED[org_id] = (entries[-1].seq, entries[-1].hash, done[2])
+        return problems
     by_seq = {e.seq: e.hash for e in entries}
     for cp in load_checkpoints(org_id):
         if not checkpoint_valid(cp):
@@ -86,6 +104,25 @@ def verify_chain(s: Session, org_id: str) -> list[str]:
             problems.append(f"checkpoint at seq {cp['seq']}: entry missing (ledger truncated)")
         elif cp["seq"] > 0 and by_seq[cp["seq"]] != cp["hash"]:
             problems.append(f"checkpoint at seq {cp['seq']}: hash differs (ledger rewritten)")
+    if problems or not entries:
+        _VERIFIED.pop(org_id, None)
+    else:
+        _VERIFIED[org_id] = (entries[-1].seq, entries[-1].hash, datetime.now(UTC))
+    return problems
+
+
+def entry_problems(org_id: str, entries: list[dict]) -> list[str]:
+    """A pack's entries, re-hashed and linked as verify.py will check them, so no altered entry is ever signed. A problem
+    also drops the org's last passed check, so the next one reads the whole chain."""
+    problems, prev = [], None
+    for e in entries:
+        if entry_hash(e) != e["hash"]:
+            problems.append(f"entry {e['seq']}: hash mismatch")
+        if prev is not None and (e["seq"] != prev["seq"] + 1 or e["prev_hash"] != prev["hash"]):
+            problems.append(f"entry {e['seq']}: chain broken")
+        prev = e
+    if problems:
+        _VERIFIED.pop(org_id, None)
     return problems
 
 
@@ -205,7 +242,8 @@ def _controls(m: dict, sla: dict) -> list[dict]:
     ]
 
 
-def build_pack(s: Session, org_id: str, start: datetime, end: datetime) -> dict:
+def build_pack(s: Session, org_id: str, start: datetime, end: datetime, with_entries: bool = True) -> dict:
+    """with_entries=False (the on-screen report): the period's ledger entries are counted, not loaded."""
     org = s.get(Org, org_id)
     assets = s.scalars(select(Asset).where(Asset.org_id == org_id)).all()
     findings = s.execute(select(Finding.id, Finding.asset_id, Finding.vuln_id, Finding.package, Finding.status, Finding.priority,
@@ -282,8 +320,13 @@ def build_pack(s: Session, org_id: str, start: datetime, end: datetime) -> dict:
                                                        LedgerEntry.ts >= s_iso, LedgerEntry.ts <= e_iso)) if "sla_days" in d]
     m["sla_changes"] = len(sla_changes)
     head = s.scalar(select(LedgerEntry).where(LedgerEntry.org_id == org_id).order_by(LedgerEntry.seq.desc()).limit(1))
-    entries = [entry_dict(e) for e in s.execute(
-        select(*LEDGER_COLS).where(LedgerEntry.org_id == org_id, LedgerEntry.ts >= s_iso, LedgerEntry.ts <= e_iso).order_by(LedgerEntry.seq))]
+    in_period = (LedgerEntry.org_id == org_id, LedgerEntry.ts >= s_iso, LedgerEntry.ts <= e_iso)
+    if with_entries:
+        entries = [entry_dict(e) for e in s.execute(select(*LEDGER_COLS).where(*in_period).order_by(LedgerEntry.seq))]
+        period_head = entries[-1]["hash"] if entries else GENESIS
+    else:
+        entries = s.scalar(select(func.count()).select_from(LedgerEntry).where(*in_period))
+        period_head = s.scalar(select(LedgerEntry.hash).where(*in_period).order_by(LedgerEntry.seq.desc()).limit(1)) or GENESIS
     # One server key signs every tenant's packs and anyone can name an org anything, so the signed body also says who
     # the tenant provably is: its id, when it was created, and the domains it proved by DNS (which no other org can hold).
     domains = {*org.sso_verified_domains, *(a.hostname for a in assets if a.kind == "external" and a.verified_at is not None)}
@@ -298,7 +341,8 @@ def build_pack(s: Session, org_id: str, start: datetime, end: datetime) -> dict:
         "basis": ("Findings come from authenticated agent inventories matched against OSV advisories. "
                   "Time to remediate is measured from first detection to the first inventory showing a fixed version "
                   "(not from the vendor's release date). "
-                  "Every detection, resolution and inventory receipt is recorded in a SHA-256 hash-chained ledger; "
+                  "Every detection and resolution, every inventory that changed and at least one inventory a day per host "
+                  "are recorded in a SHA-256 hash-chained ledger; "
                   "this pack is signed with Ed25519."),
         "sla_days": sla_by_priority,
         "sla_changes": sla_changes,
@@ -308,7 +352,7 @@ def build_pack(s: Session, org_id: str, start: datetime, end: datetime) -> dict:
         "assets": [{"hostname": a.hostname, "os": a.os_name, "last_seen": a.last_seen.isoformat()} for a in assets],
         "findings": rows,
         # chain_head pins the whole chain at signing time; compare across successive packs to detect rewritten history
-        "ledger": {"entries": entries, "head_hash": entries[-1]["hash"] if entries else GENESIS,
+        "ledger": {"entries": entries, "head_hash": period_head,
                    "chain_head": {"seq": head.seq, "hash": head.hash} if head else {"seq": 0, "hash": GENESIS},
                    "checkpoints": load_checkpoints(org_id)},
     }

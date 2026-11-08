@@ -1,6 +1,7 @@
 """The report: what's vulnerable and how sure we are, then what couldn't be determined and what to do about it, then coverage.
 Plain data first (JSON, the API), and a text rendering of that same data. A clean claim is only ever made when everything was read."""
 
+import functools
 import hashlib
 import json
 import re
@@ -32,8 +33,14 @@ _GRADES = ("unverified", "reasonable", "confirmed")  # weakest first: an install
 _SHOWN = 5
 
 
+@functools.lru_cache(maxsize=131_072)  # verdicts are immutable, and a fleet shares most (a distro's not-installed packages: R7.4)
+def _verdict_json(v: Verdict) -> str:
+    return json.dumps(v.as_dict(), sort_keys=True)
+
+
 def digest(verdicts: list[Verdict]) -> str:
-    return hashlib.sha256(json.dumps([v.as_dict() for v in verdicts], sort_keys=True).encode()).hexdigest()
+    """sha256 of json.dumps([v.as_dict() ...], sort_keys=True), each verdict serialised once per process."""
+    return hashlib.sha256(("[" + ", ".join(map(_verdict_json, verdicts)) + "]").encode()).hexdigest()
 
 
 def _highest(versions: set[str], eco: str) -> str | None:

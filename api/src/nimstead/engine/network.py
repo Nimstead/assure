@@ -37,7 +37,6 @@ ECOSYSTEM = external.ECOSYSTEM  # "External": the same ecosystem external.scan o
 
 
 class Safety(StrEnum):
-    PASSIVE = "passive"      # a plain connect or greeting read
     PROBE = "probe"          # one read-only request/response exchange (R10.4: no writes, no lasting effect)
     DISRUPTIVE = "disruptive"  # could disturb the target: never run while safe mode is on
 
@@ -220,8 +219,8 @@ class Prober:
         e.timed_out = time.monotonic() - start > self.budget.deadline
         return e
 
-    def observe(self, extra_ports: tuple[int, ...] = ()) -> dict[int, Endpoint]:
-        ports = sorted(set(external.SERVICES) | {external.TLS_PORT, 80, *BANNER_PORTS, *extra_ports})
+    def observe(self) -> dict[int, Endpoint]:
+        ports = sorted(set(external.SERVICES) | {external.TLS_PORT, 80, *BANNER_PORTS})
         with ThreadPoolExecutor(max_workers=self.budget.per_host) as pool:
             return {e.port: e for e in pool.map(self._probe_port, ports)}
 
@@ -440,11 +439,11 @@ def parity(verdicts: list[Verdict], external_ids: set[str]) -> dict:
 
 # --- entry point (scope proven, then probe) --------------------------------
 
-def run(s, asset, lookup=None, budget: Budget | None = None, safe_mode: bool = True, extra_ports: tuple[int, ...] = ()) -> tuple[list[Verdict], dict, Prober]:
+def run(s, asset, lookup=None, budget: Budget | None = None, safe_mode: bool = True) -> tuple[list[Verdict], dict, Prober]:
     """Re-prove scope (no packet before it passes), probe, and return (verdicts, report, prober). Raises external.ScanRefused."""
     ip = external.prove_scope(s, asset, lookup)
     prober = Prober(asset.hostname, ip, budget, safe_mode)
-    endpoints = prober.observe(extra_ports)
+    endpoints = prober.observe()
     host_lost = all(e.state == "filtered" for e in endpoints.values())
     verdicts = evaluate(prober, endpoints)
     return verdicts, build_report(asset.hostname, ip, verdicts, endpoints, [], host_lost), prober

@@ -5,7 +5,7 @@ import zipfile
 from datetime import timedelta
 
 from fastapi.testclient import TestClient
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import sessionmaker
 from test_api import INV, enrol, user
 
@@ -274,3 +274,90 @@ def test_org_sla_and_new_framework_mappings_are_in_the_pack(env):
     assert "not the vendor's release date" in controls[("PCI DSS v4.0.1", "6.3.3")]["evidence"]
     for bad in ({"fix-now": 0}, {"fix-now": 400}, {"urgent": 5}):
         assert c.patch("/api/settings", json={"sla_days": bad}).status_code == 422
+
+
+def test_concurrent_appends_queue_instead_of_colliding(env):
+    """Two writers (API workers, the feeds process) appending to one org's chain at once both land, in order. The org row
+    lock is PostgreSQL's; SQLite serialises writers itself, so there it only checks the chain stays whole."""
+    import threading
+
+    from nimstead.db import Org
+    mk = sessionmaker(make_engine(env), expire_on_commit=False)
+    with mk() as s:
+        org = Org(name="o")
+        s.add(org)
+        s.commit()
+    errors = []
+
+    def writer(n):
+        for i in range(25):
+            try:
+                with mk() as s:
+                    evidence.append(s, org.id, "test", f"{n}-{i}", {})
+                    s.commit()
+            except Exception as e:  # noqa: BLE001  any failure is the bug
+                errors.append(e)
+    if not env.startswith("postgresql"):
+        writer(0)
+    else:
+        ts = [threading.Thread(target=writer, args=(n,)) for n in range(4)]
+        for t in ts:
+            t.start()
+        for t in ts:
+            t.join()
+    with mk() as s:
+        assert not errors and evidence.verify_chain(s, org.id) == []
+
+
+def test_evidence_page_checks_new_entries_and_a_moved_anchor_forces_a_full_check(env):
+    c, _ = setup_flow(env)
+    s = sessionmaker(make_engine(env))()
+    org_id = s.scalar(select(Finding.org_id))
+    evidence.checkpoint(s, org_id)
+    led = c.get("/api/evidence/ledger").json()
+    assert led["problems"] == [] and led["total"] == s.scalar(select(func.count()).select_from(LedgerEntry))
+    _rewrite_chain_consistently(s, org_id, 3)  # changes every later stored hash, the anchor's too
+    assert any("ledger rewritten" in p for p in c.get("/api/evidence/ledger").json()["problems"])
+
+
+def test_a_pack_always_checks_the_whole_chain_and_the_page_follows(env):
+    c, _ = setup_flow(env)
+    s = sessionmaker(make_engine(env))()
+    org_id = s.scalar(select(Finding.org_id))
+    assert c.get("/api/evidence/ledger").json()["problems"] == []
+    s.execute(update(LedgerEntry).where(LedgerEntry.org_id == org_id, LedgerEntry.seq == 2).values(data={"edited": True}))
+    s.commit()
+    assert c.get("/api/evidence/pack").status_code == 409  # signing re-reads every row
+    assert any("hash mismatch" in p for p in c.get("/api/evidence/ledger").json()["problems"])  # and the page now does too
+
+
+def test_the_report_counts_the_period_without_loading_it(env):
+    c, _ = setup_flow(env)
+    s = sessionmaker(make_engine(env))()
+    org_id = s.scalar(select(Finding.org_id))
+    full = evidence.build_pack(s, org_id, *evidence.default_period(30))["ledger"]
+    counted = evidence.build_pack(s, org_id, *evidence.default_period(30), with_entries=False)["ledger"]
+    assert counted["entries"] == len(full["entries"]) > 0 and counted["head_hash"] == full["head_hash"]
+    assert c.get("/api/evidence/report", params={"days": 30}).json()["ledger"]["entries"] == counted["entries"]
+
+
+def test_an_unchanged_inventory_is_written_once_a_day(env):
+    """Hourly agents must not add 24 ledger rows a host a day: a changed inventory is written at once, the same one daily."""
+    from nimstead.db import Asset
+    c = user(env)
+    a = enrol(c)
+    h = {"Authorization": f"Bearer {a['agent_key']}"}
+
+    def receipts():
+        return [e for e in c.get("/api/evidence/ledger", params={"limit": 1000}).json()["entries"] if e["kind"] == "inventory_received"]
+    for _ in range(3):
+        c.post("/api/agent/inventory", json=INV, headers=h)
+    assert len(receipts()) == 1
+    changed = {**INV, "packages": INV["packages"][:2]}
+    c.post("/api/agent/inventory", json=changed, headers=h)
+    assert len(receipts()) == 2  # a change is on the record at once
+    s = sessionmaker(make_engine(env))()
+    s.execute(update(Asset).values(inventory_logged_at=now() - timedelta(days=1, minutes=1)))
+    s.commit()
+    c.post("/api/agent/inventory", json=changed, headers=h)
+    assert len(receipts()) == 3  # and the same one again after a day

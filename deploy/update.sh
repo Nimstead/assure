@@ -195,6 +195,14 @@ ERR="version $NEW didn't become healthy within $((HEALTH_TRIES * 5)) s: $($DC lo
 echo "$ERR; rolling back to $CUR" >&2
 back
 $DC stop app >/dev/null 2>&1 || true
+# Agents kept reporting to the new version during the health check, and drop a job outcome once it's accepted: keep what
+# reached it, so those rows can be recovered by hand after the restore below replaces them
+AFTER="${DUMP%.dump}-after-failed-update.dump"
+if ( umask 077; $DC exec -T db pg_dump -U nimstead -Fc nimstead > "$AFTER" ) 2>/dev/null && [ -s "$AFTER" ]; then
+  ERR="$ERR; what agents sent $NEW is kept in $ROOT/$AFTER"
+else
+  rm -f "$AFTER"
+fi
 # Restore into a fresh database: the new version's migrations may have added tables a plain restore would leave behind
 if $DC exec -T db pg_restore --list < "$DUMP" >/dev/null 2>&1 \
    && $DC exec -T db sh -c 'dropdb -U nimstead --force nimstead && createdb -U nimstead nimstead' \

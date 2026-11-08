@@ -337,6 +337,11 @@ def test_failed_alert_is_retried_with_its_text_and_gives_up_after_three_attempts
     assert len(texts) == 1 and "URGENT" in texts.pop()  # same message each time
     sent.behaviour["fn"] = lambda req: httpx.Response(200)
     assert notify.retry_failed(s) == 0  # nothing left to retry once exhausted
+    from datetime import timedelta
+    s.execute(update(Notification).values(ts=now() - timedelta(days=91)))
+    s.commit()
+    notify.retry_failed(s)
+    assert s.scalars(select(Notification)).all() == []  # delivery records are kept 90 days, not forever
 
 
 def test_private_targets_only_with_explicit_dev_switch(monkeypatch):

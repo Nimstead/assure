@@ -214,13 +214,11 @@ export function PlanFixButton({ ecosystem, pkg, assetIds, hosts = assetIds.lengt
   const navigate = useNavigate();
   const plan = useMutation({
     mutationFn: async (_from: string) => {
-      const errors: string[] = [], made: Job[] = [];
-      for (const asset_id of assetIds) {
-        try { made.push(await api<Job>("/api/remediation/jobs", { method: "POST", body: { asset_id, ecosystem, package: pkg } })); }
-        catch (e) { errors.push((e as Error).message); }
-      }
-      if (errors.length) throw new Error([...new Set(errors)].join(" "));
-      return made;
+      // one request for every machine: each is planned on its own, so a refusal on one keeps the others
+      const r = await api<{ jobs: Job[]; errors: { asset_id: string; error: string }[] }>("/api/remediation/jobs/batch",
+        { method: "POST", body: { asset_ids: assetIds, ecosystem, package: pkg } });
+      if (r.errors.length) throw new Error([...new Set(r.errors.map((e) => e.error))].join(" "));
+      return r.jobs;
     },
     onSettled: () => refresh(qc, "jobs"), // partial failures still created some jobs
     // Land on the new fix, but only if the user is still where they pressed the button.

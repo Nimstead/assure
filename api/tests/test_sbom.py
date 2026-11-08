@@ -226,6 +226,29 @@ def test_unknown_agent_ecosystem_cannot_stop_the_hourly_update(env, monkeypatch)
     assert out["rescanned"] == 1 and "alerts_retried" in out  # re-matching, checkpoints and retries still ran
 
 
+def test_one_host_failing_to_rematch_does_not_stop_the_hourly_update(env, monkeypatch):
+    """A rescan that raises (a ledger seq collision with the API, a bad record) costs that host, not the rest of the run."""
+    s = sessionmaker(make_engine(env))()
+    org = Org(name="o")
+    s.add(org)
+    s.flush()
+    s.add_all([Asset(org_id=org.id, hostname=h, agent_key_hash=h) for h in ("a", "b")])
+    s.commit()
+    for name in ("sync_kev", "sync_epss", "sync_nvd"):
+        monkeypatch.setattr(feeds, name, lambda *a, **k: {})
+    real, calls = feeds.rescan, []
+
+    def flaky(sess, asset, **kw):
+        calls.append(asset.hostname)
+        if len(calls) == 1:
+            raise RuntimeError("duplicate key value violates unique constraint")
+        return real(sess, asset, **kw)
+    monkeypatch.setattr(feeds, "rescan", flaky)
+    out = feeds.update_all(s)
+    assert len(calls) == 2 and out["rescanned"] == 1 and len(out["rescan_failed"]) == 1
+    assert "alerts_retried" in out and "hosts_not_reporting_alerted" in out  # the tail of the run still ran
+
+
 def test_osv_sync_only_filter_keeps_language_ecosystem(monkeypatch):
     from test_feeds import client, count, rec, zip_of
     s = sessionmaker(make_engine("sqlite://"))()

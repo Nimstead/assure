@@ -22,7 +22,7 @@ from nimstead import feeds  # noqa: E402
 from nimstead.db import make_sessionmaker  # noqa: E402
 
 AGENT = rf'"{f.PY}" -I "{f.AGENT}"'
-OUT = f.ROOT / "sandbox" / "last_run_winnetfx.json"
+OUT = f.ROOT / "sandbox" / next((a[6:] for a in sys.argv if a.startswith("--out=")), "last_run_winnetfx.json")  # one file per OS
 
 
 def mscorlib():

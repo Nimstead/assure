@@ -24,7 +24,7 @@ from nimstead.db import make_sessionmaker  # noqa: E402
 spec = importlib.util.spec_from_file_location("agent_file", f.ROOT / "agent" / "nimstead_agent.py")
 agent_file = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(agent_file)
-OUT = f.ROOT / "sandbox" / "last_run_winhardening.json"
+OUT = f.ROOT / "sandbox" / next((a[6:] for a in sys.argv if a.startswith("--out=")), "last_run_winhardening.json")  # one file per OS
 
 
 def value(key, name):

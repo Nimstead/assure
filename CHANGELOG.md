@@ -4,6 +4,10 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-11-08 (preview)
+
+**Agent 0.6.4.** No database migration; run `deploy/update.sh`. Proven on real installs since 0.7.2: Server 2019 and 2022 (fixes, .NET Framework, hardening), Windows 11 Enterprise and Windows 10 22H2 (fixes through the scheduled task), German Windows 11 Pro, and the unverified case of an attack path across hosts. Still not proven: a fix on Windows 10 (it needs an ESU licence).
+
 ### Fixed
 - **A Windows Server couldn't take a .NET Framework fix** (agent 0.6.4, DECISIONS 118): Windows Update offers servers only .NET's combined cumulative, a KB MSRC never names, so every job stopped with no changes made. The server now plans the same fix with that KB, the agent judges it by the per-version package it downloads as, and it recognises Server's `Package_for_DotNetRollup~` name, without which a failed install couldn't be rolled back. Proven on real Server 2019 and 2022.
 - **A .NET update offered alone was planned as a servicing stack step** (DECISIONS 117): only a person could approve it and the agent refused it, so nothing broke, but the host couldn't move on.

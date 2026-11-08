@@ -29,7 +29,7 @@
         false
       ],
       [
-        "UseLogonCredential removed again",
+        "UseLogonCredential restored to 0x0",
         true
       ]
     ]
@@ -63,8 +63,8 @@
   },
   {
     "step": "setting wdigest",
-    "found": "",
-    "after_failure": "",
+    "found": "0",
+    "after_failure": "0",
     "after_apply": "0",
     "secure": "0"
   },
@@ -98,7 +98,7 @@
         false
       ],
       [
-        "LmCompatibilityLevel removed again",
+        "LmCompatibilityLevel restored to 0x5",
         true
       ]
     ]
@@ -132,8 +132,8 @@
   },
   {
     "step": "setting ntlmv1",
-    "found": "",
-    "after_failure": "",
+    "found": "5",
+    "after_failure": "5",
     "after_apply": "5",
     "secure": "5"
   },
@@ -167,7 +167,7 @@
         false
       ],
       [
-        "EnableMulticast removed again",
+        "EnableMulticast restored to 0x0",
         true
       ]
     ]
@@ -201,8 +201,8 @@
   },
   {
     "step": "setting llmnr",
-    "found": "",
-    "after_failure": "",
+    "found": "0",
+    "after_failure": "0",
     "after_apply": "0",
     "secure": "0"
   },
@@ -236,7 +236,7 @@
         false
       ],
       [
-        "RequireSecuritySignature restored to 0x0",
+        "RequireSecuritySignature restored to 0x1",
         true
       ]
     ]
@@ -270,8 +270,8 @@
   },
   {
     "step": "setting smb-signing",
-    "found": "0",
-    "after_failure": "0",
+    "found": "1",
+    "after_failure": "1",
     "after_apply": "1",
     "secure": "1"
   },
@@ -305,7 +305,7 @@
         false
       ],
       [
-        "SMB1 removed again",
+        "SMB1 restored to 0x0",
         true
       ]
     ]
@@ -339,8 +339,8 @@
   },
   {
     "step": "setting smb1",
-    "found": "",
-    "after_failure": "",
+    "found": "0",
+    "after_failure": "0",
     "after_apply": "0",
     "secure": "0"
   },
@@ -382,11 +382,11 @@
         false
       ],
       [
-        "EnableCertPaddingCheck removed again",
+        "EnableCertPaddingCheck restored to 1",
         true
       ],
       [
-        "EnableCertPaddingCheck removed again",
+        "EnableCertPaddingCheck restored to 1",
         true
       ]
     ]
@@ -428,8 +428,8 @@
   },
   {
     "step": "setting cert-padding-check",
-    "found": "",
-    "after_failure": "",
+    "found": "1",
+    "after_failure": "1",
     "after_apply": "1",
     "secure": "1"
   },
@@ -601,7 +601,7 @@
         false
       ],
       [
-        "NoDriveTypeAutoRun removed again",
+        "NoDriveTypeAutoRun restored to 0xff",
         true
       ]
     ]
@@ -635,8 +635,8 @@
   },
   {
     "step": "setting autorun",
-    "found": "",
-    "after_failure": "",
+    "found": "255",
+    "after_failure": "255",
     "after_apply": "255",
     "secure": "255"
   },
@@ -670,7 +670,7 @@
         false
       ],
       [
-        "AllowInsecureGuestAuth removed again",
+        "AllowInsecureGuestAuth restored to 0x0",
         true
       ]
     ]
@@ -704,8 +704,8 @@
   },
   {
     "step": "setting insecure-guest-auth",
-    "found": "",
-    "after_failure": "",
+    "found": "0",
+    "after_failure": "0",
     "after_apply": "0",
     "secure": "0"
   },
@@ -739,7 +739,7 @@
         false
       ],
       [
-        "AllowBasic removed again",
+        "AllowBasic restored to 0x0",
         true
       ]
     ]
@@ -773,8 +773,8 @@
   },
   {
     "step": "setting winrm-basic",
-    "found": "",
-    "after_failure": "",
+    "found": "0",
+    "after_failure": "0",
     "after_apply": "0",
     "secure": "0"
   },
@@ -808,7 +808,7 @@
         false
       ],
       [
-        "AllowUnencryptedTraffic removed again",
+        "AllowUnencryptedTraffic restored to 0x0",
         true
       ]
     ]
@@ -842,8 +842,8 @@
   },
   {
     "step": "setting winrm-unencrypted",
-    "found": "",
-    "after_failure": "",
+    "found": "0",
+    "after_failure": "0",
     "after_apply": "0",
     "secure": "0"
   },
@@ -877,7 +877,7 @@
         false
       ],
       [
-        "EnableScriptBlockLogging removed again",
+        "EnableScriptBlockLogging restored to 0x1",
         true
       ]
     ]
@@ -911,8 +911,8 @@
   },
   {
     "step": "setting script-block-logging",
-    "found": "",
-    "after_failure": "",
+    "found": "1",
+    "after_failure": "1",
     "after_apply": "1",
     "secure": "1"
   },
@@ -931,7 +931,39 @@
     "still": []
   },
   {
-    "step": "RESULT: FAIL",
-    "error": "RuntimeError: guest command failed (1): winget show --id Microsoft.DotNet.SDK.8 --exact --versions --accept-source-agreements --disable-interactivity\nK.8 --exact --versions --accept-s ...\r\n\r\nAt C:\\nimtest\\runner.ps1:7 char:14\r\n+ ...      $out = & powershell.exe -NoProfile -NonInteractive -ExecutionPol ...\r\n+                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\r\n    + CategoryInfo          : NotSpecified: (+ winget show -...-accept-s ...\r\n:String) [], RemoteException\r\n    + FullyQualifiedErrorId : NativeCommandError\r\n \r\npowershell.exe : + ~~~~~~\r\n\r\nAt C:\\nimtest\\runner.ps1:7 char:14\r\n+ ...      $out = & powershell.exe -NoProfile -NonInteractive -ExecutionPol ...\r\n+                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\r\n    + CategoryInfo          : NotSpecified: (+ ~~~~~~\r\n:String) [], RemoteException\r\n    + FullyQualifiedErrorId : NativeCommandError\r\n \r\npowershell.exe :     + CategoryInfo          : ObjectNotFound: (winget:String) [], CommandNotFoundException\r\n\r\nAt C:\\nimtest\\runner.ps1:7 char:14\r\n+ ...      $out = & powershell.exe -NoProfile -NonInteractive -ExecutionPol ...\r\n+                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\r\n    + CategoryInfo          : NotSpecified: (    + CategoryI...oundException\r\n:String) [], RemoteException\r\n    + FullyQualifiedErrorId : NativeCommandError\r\n \r\npowershell.exe :     + FullyQualifiedErrorId : CommandNotFoundException\r\n\r\nAt C:\\nimtest\\runner.ps1:7 char:14\r\n+ ...      $out = & powershell.exe -NoProfile -NonInteractive -ExecutionPol ...\r\n+                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\r\n    + CategoryInfo          : NotSpecified: (    + FullyQual...oundException\r\n:String) [], RemoteException\r\n    + FullyQualifiedErrorId : NativeCommandError\r\n \r\npowershell.exe :  \r\n\r\nAt C:\\nimtest\\runner.ps1:7 char:14\r\n+ ...      $out = & powershell.exe -NoProfile -NonInteractive -ExecutionPol ...\r\n+                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\r\n    + CategoryInfo          : NotSpecified: ( \r\n:String) [], RemoteException\r\n    + FullyQualifiedErrorId : NativeCommandError\r\n \r\n"
+    "step": ".NET SDK part skipped",
+    "why": "no winget on this host (Server Core)"
+  },
+  {
+    "step": "RESULT: PASS",
+    "checks": {
+      "wdigest: failure restored what was there": true,
+      "wdigest: job left the secure value": true,
+      "ntlmv1: failure restored what was there": true,
+      "ntlmv1: job left the secure value": true,
+      "llmnr: failure restored what was there": true,
+      "llmnr: job left the secure value": true,
+      "smb-signing: failure restored what was there": true,
+      "smb-signing: job left the secure value": true,
+      "smb1: failure restored what was there": true,
+      "smb1: job left the secure value": true,
+      "cert-padding-check: failure restored what was there": true,
+      "cert-padding-check: job left the secure value": true,
+      "anonymous-sam: failure restored what was there": true,
+      "anonymous-sam: job left the secure value": true,
+      "lm-hash: failure restored what was there": true,
+      "lm-hash: job left the secure value": true,
+      "autorun: failure restored what was there": true,
+      "autorun: job left the secure value": true,
+      "insecure-guest-auth: failure restored what was there": true,
+      "insecure-guest-auth: job left the secure value": true,
+      "winrm-basic: failure restored what was there": true,
+      "winrm-basic: job left the secure value": true,
+      "winrm-unencrypted: failure restored what was there": true,
+      "winrm-unencrypted: job left the secure value": true,
+      "script-block-logging: failure restored what was there": true,
+      "script-block-logging: job left the secure value": true,
+      "every applied setting closed its finding": true
+    }
   }
 ]

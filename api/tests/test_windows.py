@@ -79,6 +79,22 @@ def test_sync_msrc_shapes_osv_records_and_is_incremental():
     assert again["documents"] == 0 and again["skipped_documents"] == 1 and f2 == ["/cvrf/v3.0/updates"]
 
 
+def test_sync_msrc_older_months_add_app_rows_only_and_are_read_once():
+    """W3 (DECISIONS 114): an app years behind needs its old CVEs; Windows' cumulative fixes don't, and an old month's
+    rows never replace a newer month's."""
+    s = make_sessionmaker("sqlite://")()
+    n = sync_msrc(s, 0, msrc_client(), apps_months=60)  # 2026-Oct falls before the usual window: apps only
+    rows = s.scalars(select(Advisory).where(Advisory.ecosystem != "State")).all()
+    assert n["documents"] == 1 and rows and {r.ecosystem for r in rows} == {"Microsoft"}
+    assert {r.package for r in rows} == {"Visual Studio Code"} and not [r for r in rows if r.package == "Office CVE"]
+    again = sync_msrc(s, 0, msrc_client(fetched=(f := [])), apps_months=60)
+    assert again["skipped_documents"] == 1 and f == ["/cvrf/v3.0/updates"]
+    # the same month read in full later adds the Windows rows and keeps the app rows
+    full = sync_msrc(s, 60, msrc_client())
+    assert full["documents"] == 1 and {r.ecosystem for r in s.scalars(select(Advisory))} >= {"Windows", "Microsoft"}
+    assert sync_msrc(s, 60, msrc_client())["skipped_documents"] == 1  # and once whole, it's skipped as before
+
+
 def test_sync_msrc_score_without_vector_goes_to_cvss_table():
     d = doc()
     for v in d["Vulnerability"]:
@@ -525,6 +541,34 @@ def test_a_servicing_step_the_agent_refused_isnt_planned_again_and_a_longer_list
         from nimstead.db import RemediationJob
         assert rem._plan_servicing(s, s.get(RemediationJob, jid), None, WS22, "10.0.20348.587",
                                    {k["kb"]: ("2025-07", "2025-Jul") for k in two}) is None
+
+
+def test_a_lone_dotnet_cumulative_isnt_planned_as_a_servicing_step(env, monkeypatch):
+    """A real Server 2022 at 20348.2113 (2026-11-08) was offered only 2026-10's .NET Framework umbrella cumulative (KB5128928),
+    which MSRC's 2026-Oct document doesn't name at all (it lists its parts, e.g. KB5127687): the title says what it is."""
+    from nimstead import remediate as rem
+    c, h, jid, fetched, _ = _aborted_ws22(env, monkeypatch)
+    monkeypatch.setattr(rem, "_fetch_month", lambda *a, **k: True)  # the month was read, and doesn't name the KB
+    dotnet = [{"kb": "5128928", "title": "2026-10 Cumulative Update for .NET Framework 3.5, 4.8 and 4.8.1 for Microsoft server "
+                                         "operating system version 21H2 for x64 (KB5128928)"}]
+    c.post(f"/api/agent/jobs/{jid}/report", headers=h, json={"outcome": "aborted", "steps": [], "offered": dotnet, "error": "No changes made"})
+    jobs = c.get("/api/remediation/jobs").json()
+    assert len(jobs) == 1 and "servicing" not in (jobs[0]["error"] or "")
+
+
+def test_a_lone_update_msrc_names_for_another_product_isnt_a_servicing_step(env, monkeypatch):
+    from nimstead import remediate as rem
+    c, h, jid, fetched, _ = _aborted_ws22(env, monkeypatch)
+    monkeypatch.setattr(rem, "_fetch_month", lambda *a, **k: True)
+    with make_sessionmaker(env)() as s:
+        s.add(Advisory(id="MSRC-CVE-2026-108398-12345", ecosystem="Microsoft", package="SQL Server 2022 GDR",
+                       modified="2026-10-14T07:00:00Z", record={"id": "MSRC-CVE-2026-108398-12345", "aliases": ["CVE-2026-108398"],
+                                                               "database_specific": {"kb": "5128999"}, "affected": []}))
+        s.commit()
+    other = [{"kb": "5128999", "title": "2026-10 Security Update (KB5128999)"}]  # nothing in the title says what it is
+    c.post(f"/api/agent/jobs/{jid}/report", headers=h, json={"outcome": "aborted", "steps": [], "offered": other, "error": "No changes made"})
+    jobs = c.get("/api/remediation/jobs").json()
+    assert len(jobs) == 1 and "servicing" not in (jobs[0]["error"] or "")
 
 
 def test_no_servicing_step_when_msrc_data_for_that_month_wasnt_read(env, monkeypatch):

@@ -29,6 +29,12 @@ BASES = STATE / "bases.json"  # "<iso stem>-<image>" -> the base VM a --reuse cl
 
 
 def vbox(*args, check=True, timeout=3600) -> str:
+    if args[:1] == ("guestcontrol",) and args[2:3] == ("copyto",) and (STATE / args[1] / "qemu.json").exists():
+        import winqemu  # a QEMU VM (W5) has no guest control: its runner fetches the files from the host relay
+        rest = list(args[3:])
+        target = rest[rest.index("--target-directory") + 1]
+        winqemu.copyto(args[1], target, [a for i, a in enumerate(rest) if not a.startswith("--") and not rest[i - 1].startswith("--")])
+        return ""
     p = subprocess.run([VBOX, *args], capture_output=True, text=True, timeout=timeout)
     if check and p.returncode != 0:
         raise RuntimeError(f"VBoxManage {' '.join(args[:3])} failed: {p.stdout[-800:]} {p.stderr[-800:]}")
@@ -43,6 +49,12 @@ def os_type(detected: str) -> str:
     """The OS type the ISO says it is: a Server 2022 ISO created as Server 2025 got no installation media attached (real VM)."""
     m = re.search(r"OS TypeId\s*=\s*(Windows\w+)", detected)
     return m.group(1) if m else "Windows2025_64"
+
+
+def pro_index(detected: str) -> int:
+    """The image that is plain Pro: 6 on the English consumer ISOs, 5 on the German one (Pro N is 6 there, real ISO 2026-11-08)."""
+    m = re.search(r"Image #(\d+)\s*=\s*Windows 1[01] Pro \(", detected)
+    return int(m.group(1)) if m else 6
 
 
 def locale_args(detected: str) -> list[str]:
@@ -83,14 +95,16 @@ def create(iso: str, memory: int = 4096, lab: bool = False, image: int = 1, comp
     vbox("storageattach", name, "--storagectl", "SATA", "--port", "0", "--device", "0", "--type", "hdd", "--medium", str(disk))
     additions = str(Path(VBOX).parent / "VBoxGuestAdditions.iso")
     # Windows 11 consumer ISO: Pro with Microsoft's public generic install key (unactivated; the VM is disposable)
-    edition = ["--image-index=6", "--key=VK7JG-NPHTM-C97JM-9MPGT-3V66T"] if win11 else [f"--image-index={image}"]
+    evaluation = "Eval" in detected  # one image, needs no key (W6); expired builds stay in licence notification mode (W4)
+    consumer = (win11 or win10) and not evaluation  # multi-edition consumer ISO: Pro (image 6 on both) with the public generic key
+    edition = [f"--image-index={pro_index(detected)}", "--key=VK7JG-NPHTM-C97JM-9MPGT-3V66T"] if consumer else [f"--image-index={image}"]
     args = ["unattended", "install", name, f"--iso={iso}", *edition, "--user=Administrator",
             f"--admin-password={password}", f"--password={password}", "--full-user-name=Administrator",
             *locale_args(detected), "--time-zone=UTC", f"--hostname={computer}.local",
             "--install-additions", "--start-vm=headless"]
     if Path(additions).exists():
         args.append(f"--additions-iso={additions}")
-    if win10 or os_type(detected) in ("Windows2022_64", "Windows2019_64", "Windows2016_64"):  # an empty <Key> stops Enterprise Evaluation at "cannot find the Microsoft Software License Terms" (real VM); it needs none
+    if ((win10 or win11) and evaluation) or os_type(detected) in ("Windows2022_64", "Windows2019_64", "Windows2016_64"):  # an empty <Key> stops Enterprise Evaluation at "cannot find the Microsoft Software License Terms" (real VM); it needs none
         template = (Path(VBOX).parent / "UnattendedTemplates" / "win_nt6_unattended.xml").read_text(encoding="utf-8")
         (folder / "unattend.xml").write_text(re.sub(r"\s*<ProductKey>.*?</ProductKey>", "", template, flags=re.S), encoding="utf-8")
         args.append(f"--script-template={folder / 'unattend.xml'}")
@@ -129,6 +143,9 @@ def clone(iso: str, memory: int = 4096, image: int = 1) -> str:
 def run(name: str, command: str, timeout=3600, user: dict | None = None) -> tuple[int, str]:
     """`user`: {"user", "password"} of another guest account (default: the VM's Administrator)."""
     assert name.startswith(PREFIX)
+    if (STATE / name / "qemu.json").exists() and not user:  # a QEMU VM (W5, winqemu.py) has no guest control
+        import winqemu
+        return winqemu.run(name, command, timeout)
     c = user or creds(name)
     # guest control re-joins argv without quoting, so send the script base64-encoded (UTF-16LE, as PowerShell expects)
     encoded = base64.b64encode(("$ProgressPreference = 'SilentlyContinue'\n" + command).encode("utf-16-le")).decode()
@@ -143,6 +160,9 @@ def wait_ready(name: str, minutes=90, reset_after=12, restart_after=20, max_rese
     """Until guest additions answer and PowerShell runs. Under Hyper-V's NEM backend the reboots during unattended setup
     can hang (idle, no guest activity); a hard reset recovers those. Only those: a reset while setup is still working ends
     it for good ("The computer restarted unexpectedly", real VMs), so the clock runs from the last disk activity."""
+    if (STATE / name / "qemu.json").exists():
+        import winqemu
+        return winqemu.wait_ready(name, minutes)
     idle = up = time.time()
     end, resets, seen = time.time() + minutes * 60, 0, None
     while time.time() < end:
@@ -216,6 +236,9 @@ def os_up(name: str) -> bool:
 def unstick(name: str) -> bool:
     """Windows 11 VMs (TPM 2.0) hang in the firmware after every warm reset, including Windows' own reboots: the VM
     log shows the reset and then no Windows boot. Only a cold power cycle boots again. Returns True if it cycled."""
+    if (STATE / name / "qemu.json").exists():
+        import winqemu
+        return winqemu.unstick(name)
     try:
         lines = (STATE / name / name / "Logs" / "VBox.log").read_text(errors="replace").splitlines()
         stamps = [(i, sum(float(x) * m for x, m in zip(s[:15].split(":"), (3600, 60, 1), strict=True))) for i, s in enumerate(lines)
@@ -234,6 +257,9 @@ def unstick(name: str) -> bool:
 
 def destroy(name: str) -> None:
     assert name.startswith(PREFIX), "refusing to touch a VM that isn't a Nimstead sandbox"
+    if (STATE / name / "qemu.json").exists():
+        import winqemu
+        return winqemu.destroy(name)
     vbox("controlvm", name, "poweroff", check=False)
     time.sleep(3)
     vbox("unregistervm", name, "--delete", check=False)

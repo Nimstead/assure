@@ -67,7 +67,7 @@
           "10.77.0.12"
         ],
         "peers": [
-          "10.77.0.11:61016"
+          "10.77.0.11:53842"
         ],
         "local_admins": [
           "S-1-5-21-3786212751-3231175563-514778956-500",
@@ -88,8 +88,8 @@
       }
     },
     "edge": {
-      "from": "296eb15ef7604878a82de4c721593110",
-      "to": "2b9dac9c6a094aa9a8a215ed9e155f69",
+      "from": "e92ac6aec6b34538bd5cde3a46af5cbe",
+      "to": "9c63e546d31446d0bd735b24c584c830",
       "grade": "confirmed",
       "ways": [
         {
@@ -110,34 +110,34 @@
     }
   },
   {
-    "step": "after the task stopped",
+    "step": "after the task stopped and A restarted",
     "facts_a": {
       "addresses": [
         "10.77.0.11",
         "10.0.2.15"
       ],
       "peers": [
-        "10.77.0.12:445"
+        "10.77.0.1:49672",
+        "10.77.0.1:135"
       ],
       "local_admins": [
         "S-1-5-21-2246194620-4290396524-4250886324-500",
         "S-1-5-21-1011162058-7063405-4292055603-512"
       ],
       "signed_in_sids": [
-        "S-1-5-21-1011162058-7063405-4292055603-500",
         "S-1-5-21-2246194620-4290396524-4250886324-500"
       ]
     },
     "edge": {
-      "from": "296eb15ef7604878a82de4c721593110",
-      "to": "2b9dac9c6a094aa9a8a215ed9e155f69",
+      "from": "e92ac6aec6b34538bd5cde3a46af5cbe",
+      "to": "9c63e546d31446d0bd735b24c584c830",
       "grade": "reasonable",
       "ways": [
         {
           "via": "CFG:smb-signing",
           "how": "SMB signing isn't required, so a relayed sign-in from A's network works",
           "port": 445,
-          "because": "sign-ins on A's network can be captured by name poisoning and relayed; both are in the domain NIMSTEAD-SBX.TEST; A had a connection open to B",
+          "because": "sign-ins on A's network can be captured by name poisoning and relayed; both are in the domain NIMSTEAD-SBX.TEST",
           "grade": "reasonable"
         },
         {
@@ -151,13 +151,13 @@
     }
   },
   {
-    "step": "RESULT: FAIL",
+    "step": "RESULT: PASS",
     "checks": {
       "B reports its Administrators group, Domain Admins in it": true,
       "A reports the signed-in account's groups, Domain Admins among them": true,
       "A reports a connection open to B's own address": true,
       "the edge A to B reads confirmed": true,
-      "with nobody from B's Administrators signed in on A, it reads unverified": false
+      "with nobody from B's Administrators signed in on A, the sign-in way reads unverified": true
     }
   }
 ]

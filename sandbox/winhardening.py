@@ -24,7 +24,7 @@ from nimstead.db import make_sessionmaker  # noqa: E402
 spec = importlib.util.spec_from_file_location("agent_file", f.ROOT / "agent" / "nimstead_agent.py")
 agent_file = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(agent_file)
-OUT = f.ROOT / "sandbox" / "last_run_winhardening.json"
+OUT = f.ROOT / "sandbox" / next((a[6:] for a in sys.argv if a.startswith("--out=")), "last_run_winhardening.json")  # one file per OS
 
 
 def value(key, name):
@@ -78,6 +78,10 @@ def main(keep=False) -> int:
         assert api.post("/api/agent/inventory", headers=auth, json=inv).status_code == 200
         return wp.found(inv, ".NET SDK"), [x for x in api.get("/api/findings", params={"limit": 5000}).json() if " SDK " in x["package"]]
 
+    if "True" not in h.guest("[bool](Get-Command winget -ErrorAction SilentlyContinue)", check=False):
+        # Server Core ships no winget (real Server 2019 and 2022 under QEMU, 2026-11-08): the SDK part can't install old SDKs here
+        h.note(".NET SDK part skipped", why="no winget on this host (Server Core)")
+        return finish(checks, keep)
     sdk = "Microsoft.DotNet.SDK.8"
     versions = wp.versions(sdk)
     reported, opened = [], []
@@ -94,7 +98,10 @@ def main(keep=False) -> int:
     now, left = sdk_findings()
     h.note(".NET SDK updated", reported=now, findings_left=len(left), newest=versions[0])
     checks[".NET SDK findings closed by the update"] = bool(opened) and not left
+    return finish(checks, keep)
 
+
+def finish(checks: dict, keep: bool) -> int:
     ok = all(checks.values())
     h.note("RESULT: " + ("PASS" if ok else "FAIL"), checks=checks)
     if not keep:

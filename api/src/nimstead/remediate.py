@@ -21,7 +21,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from nimstead import evidence
+from nimstead import evidence, msproducts
 from nimstead.db import Advisory, Asset, Finding, InstalledPackage, LedgerEntry, Org, RemediationJob, now
 from nimstead.match import normalize_ecosystem
 from nimstead.notify import SILENT_AFTER, notify
@@ -85,7 +85,8 @@ def _log(s: Session, job: RemediationJob, kind: str, **data) -> None:
         notify(s, job.org_id, f"remediation_{job.status}", f"Remediation {job.status}: {job.summary}" + (f" ({job.error})" if job.error else ""), urgent=job.status == "rollback_failed")
 
 
-def windows_kbs(s: Session, product: str, cves: list[str], ecosystem: str = "Windows", step: dict | None = None) -> dict:
+def windows_kbs(s: Session, product: str, cves: list[str], ecosystem: str = "Windows", step: dict | None = None,
+                umbrella: str | None = None) -> dict:
     """The cumulative update that reaches the highest fixed build fixes them all: {"kb", "to"}, plus "alt" (the
     hotpatch KB and build) when every CVE also has a hotpatch fix. The agent installs whichever one Windows Update
     offers this host, so the plan doesn't need to know whether it is hotpatch-enrolled (DECISIONS 52). step: the
@@ -107,7 +108,9 @@ def windows_kbs(s: Session, product: str, cves: list[str], ecosystem: str = "Win
         raise RemediationError("No Windows update (KB) is known for the fixing build; refusing to plan")
     to, kb = top(cum)
     out = {"kb": kb, "to": to}
-    if step:
+    if umbrella:  # .NET's combined cumulative, the only package Windows Update offers a server for that fix (DECISIONS 118)
+        out["alt"] = {"kb": umbrella, "to": to}
+    elif step:
         if step["kb"] == kb or windows_cmp(step["to"], to) >= 0:
             raise RemediationError("A step must be an earlier update than the one that fixes these findings")
         out["alt"] = step
@@ -378,7 +381,8 @@ def approve(s: Session, job: RemediationJob, by: str, policy: bool = False, forw
     return job
 
 
-def plan_windows_app(s: Session, asset: Asset, ecosystem: str, package: str, findings: list, created_by: str) -> RemediationJob:
+def plan_windows_app(s: Session, asset: Asset, ecosystem: str, package: str, findings: list, created_by: str,
+                     umbrella: str | None = None) -> RemediationJob:
     """winget (curated apps, Edge, VS Code: forward-only), office (Click-to-Run, rolls back to the build it found) or
     winconfig (one setting from the agent's closed list, rolled back to the value it found). Plan T17, T21, T22, T38."""
     from nimstead.office import PREFIX as OFFICE
@@ -389,7 +393,7 @@ def plan_windows_app(s: Session, asset: Asset, ecosystem: str, package: str, fin
         pkgs, manager, summary = [{"name": check, "from": "current", "to": "fixed"}], "winconfig", f"Change setting {check} on {asset.hostname}"
     elif package.startswith(".NET Framework"):  # a KB through Windows Update like the OS, compared with mscorlib (DECISIONS 63)
         manager = "windows"
-        kbs = windows_kbs(s, package, [f.vuln_id for f in findings], ecosystem)
+        kbs = windows_kbs(s, package, [f.vuln_id for f in findings], ecosystem, umbrella=umbrella)
         pkgs, summary = [{"name": package, "from": findings[0].installed_version, **kbs}], f"Install KB{kbs['kb']} for {package} on {asset.hostname}"
     else:
         manager = "office" if package.startswith(OFFICE) else "winget"
@@ -620,13 +624,23 @@ def _fetch_month(s: Session, job: RemediationJob, kb: str, month: str, client) -
         return False
 
 
-def _plan_servicing(s: Session, job: RemediationJob, asset: Asset, product: str, cur: str, months: dict) -> RemediationJob | None:
+def _kb_in_msrc(s: Session, kb: str) -> bool:
+    """MSRC names this KB for some product. Servicing stack updates have no CVEs, so MSRC never does; a .NET Framework cumulative
+    offered alone (a real Server 2022 at 20348.2113, 2026-11-08) was planned as a servicing step until this check."""
+    # shortcut: scans the stored MSRC rows (tens of thousands); only an aborted Windows job comes here. Index the KB if that grows.
+    return any(str((r.get("database_specific") or {}).get("kb")) == kb for r in s.scalars(
+        select(Advisory.record).where(Advisory.ecosystem.in_(("Windows", msproducts.ECOSYSTEM)))))
+
+
+def _plan_servicing(s: Session, job: RemediationJob, asset: Asset, product: str, cur: str, months: dict,
+                    not_servicing: frozenset = frozenset()) -> RemediationJob | None:
     """No earlier cumulative is offered, only an update MSRC doesn't list with a build: on an old Server 2016 that's a servicing stack
     update, which Windows installs before any cumulative. Plan it as a forward-only step, approved only by a person; the agent installs
     it only if its own downloaded manifest says it's a servicing stack package (DECISIONS 105). One the agent refused isn't planned again."""
     refused = {str((j.packages[0].get("alt") or {}).get("kb")) for j in s.scalars(select(RemediationJob).where(
         RemediationJob.asset_id == job.asset_id, RemediationJob.manager == "windows", RemediationJob.status == "aborted")) if j.packages and j.packages[0].get("servicing")}
-    kb = next((k for k in months if _kb_build(s, product, k) is None and k not in refused), None)
+    kb = next((k for k in months if _kb_build(s, product, k) is None and k not in refused and k not in not_servicing
+               and not _kb_in_msrc(s, k)), None)
     if len(months) != 1 or not kb or not SAFE_VERSION.match(cur):  # exactly one dated offer, as Server 2016 was: a longer list plans nothing
         return None
     try:
@@ -643,19 +657,56 @@ def _plan_servicing(s: Session, job: RemediationJob, asset: Asset, product: str,
     return new
 
 
+def _plan_dotnet_umbrella(s: Session, job: RemediationJob, offered: list) -> RemediationJob | None:
+    """On a server Windows Update offers .NET Framework's fix only inside its combined cumulative ("3.5, 4.7.2 and 4.8"), a KB
+    MSRC never names (real Server 2019 and 2022, 2026-11-08). If it offers exactly one .NET Framework update, plan (never
+    approve) the same fix with that KB as the job's alternative: same target, and the agent still installs it only if it's
+    removable and calls it done only when mscorlib reaches the fix (DECISIONS 118). One the agent refused isn't planned again."""
+    p = job.packages[0]
+    # the same month's combined update only: on Windows 10 without ESU the 2025-10 one was offered for a 2026-10 fix, and planning it
+    # as the same fix only had the agent refuse it (real VM, 2026-11-08)
+    released = {str((r.get("database_specific") or {}).get("released", ""))[:7] for r in s.scalars(
+        select(Advisory.record).where(Advisory.ecosystem == msproducts.ECOSYSTEM, Advisory.package == p.get("name")))
+        if str((r.get("database_specific") or {}).get("kb")) == p.get("kb")}
+    nets = [str(o["kb"]) for o in offered[:10] if isinstance(o, dict) and isinstance(o.get("title"), str)
+            and ".NET Framework" in o["title"][:300] and SAFE_KB.match(str(o.get("kb"))) and o["title"][:7] in released]
+    refused = {str((j.packages[0].get("alt") or {}).get("kb")) for j in s.scalars(select(RemediationJob).where(
+        RemediationJob.asset_id == job.asset_id, RemediationJob.manager == "windows", RemediationJob.status == "aborted")) if j.packages}
+    if len(nets) != 1 or nets[0] == p.get("kb") or nets[0] in refused or (p.get("alt") or {}).get("kb") == nets[0]:
+        return None
+    asset = s.get(Asset, job.asset_id)
+    findings = list(s.scalars(select(Finding).where(Finding.id.in_(job.finding_ids), Finding.status == "open")))
+    if not findings:
+        return None
+    try:
+        new = plan_windows_app(s, asset, job.action_key.split("|", 1)[0], p["name"], findings, "policy", umbrella=nets[0])
+    except RemediationError:
+        return None
+    new.summary = (f"Install KB{nets[0]} for {p['name']} on {asset.hostname}: Windows Update offers this server .NET Framework's fix "
+                   f"(KB{new.packages[0]['kb']}) only inside that combined cumulative update.")[:500]
+    job.error = f"Windows Update offers .NET Framework's fix as KB{nets[0]}; planned with it. {job.error or ''}".strip()[:2000]
+    s.commit()
+    return new
+
+
 def plan_step(s: Session, job: RemediationJob | None, offered, client=None) -> RemediationJob | None:
     """Windows Update offered this host none of an aborted job's KBs. If it offers an earlier cumulative update for the same
     product, plan (never approve) a job that steps through it: the KB's build comes from MSRC, fetching the month the title
     names when the KB is unknown (DECISIONS 95). offered is the host's word: only KB numbers and title months are read."""
     p = job.packages[0] if job and job.status == "aborted" and job.manager == "windows" and job.packages else {}
     product, cur, target = str(p.get("name", "")), str(p.get("from", "")), str(p.get("to", ""))
-    if not SAFE_PRODUCT.match(product) or product.startswith(".NET") or not isinstance(offered, list):
+    if not SAFE_PRODUCT.match(product) or not isinstance(offered, list):
         return None
+    if product.startswith(".NET"):
+        return _plan_dotnet_umbrella(s, job, offered)
     months: dict[str, tuple[str, str]] = {}  # KB -> ("2023-11", MSRC's "2023-Nov")
+    dotnet = set()  # .NET Framework's umbrella cumulatives: MSRC lists their parts, never them (DECISIONS 117)
     for o in offered[:10]:
         title, kb = (o.get("title"), str(o.get("kb"))) if isinstance(o, dict) else (None, "")
         if isinstance(title, str) and SAFE_KB.match(kb) and (m := re.match(r"(20\d\d)-(0[1-9]|1[0-2]) ", title[:300])):
             months[kb] = (f"{m[1]}-{m[2]}", f"{m[1]}-{MONTHS[int(m[2]) - 1]}")
+            if ".NET" in title[:300]:  # product names stay in English in a localised title (DECISIONS 68)
+                dotnet.add(kb)
     steps, tried, read = [], set(), set()
     for kb, (ym, month) in months.items():
         if (build := _kb_build(s, product, kb)) is None and month not in tried:  # e.g. the month's .NET update: fetched once
@@ -671,7 +722,7 @@ def plan_step(s: Session, job: RemediationJob | None, offered, client=None) -> R
     asset = s.get(Asset, job.asset_id)
     if not steps:
         # only an update whose month MSRC's data was read for: a refused or failed fetch says nothing about what it is
-        return _plan_servicing(s, job, asset, product, cur, months) if {m for _, m in months.values()} <= read else None
+        return _plan_servicing(s, job, asset, product, cur, months, frozenset(dotnet)) if {m for _, m in months.values()} <= read else None
     build, kb, ym = max(steps, key=lambda x: sort_key(windows_cmp)(x[0]))
     try:
         new = plan(s, asset, job.action_key.split("|", 1)[0], product, "policy", step={"kb": kb, "to": build})

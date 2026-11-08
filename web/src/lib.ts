@@ -50,6 +50,7 @@ export const sbomSummary = (r: SbomResult) =>
 export interface Finding {
   id: string; asset_id: string; hostname: string; ecosystem: string; package: string;
   installed_version: string; fixed_version: string | null; setting_fix: boolean; vuln_id: string; advisory_ids: string[];
+  rule_evidence?: "proven" | "real name" | "pattern" | null;
   summary: string | null; cvss: number | null; epss: number | null; kev: boolean; score: number;
   priority: Priority; reasons: string[]; status: Status; first_seen: string; last_seen: string;
   resolved_at: string | null;

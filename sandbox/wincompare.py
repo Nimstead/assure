@@ -72,6 +72,10 @@ def prepare(name: str, exe: str) -> int:
     agent = api.post("/api/agent/enroll", json={"token": token, "hostname": "w3", "ecosystem": "Windows"}).json()
 
     e.winvm.wait_ready(name, minutes=90)
+    # the first W3 VM began a Windows update mid-comparison and sat at 7% for hours (2026-11-07): both scans must see the same machine
+    e.guest(r"New-Item -Force 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU' | Out-Null; "
+            r"Set-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU' NoAutoUpdate 1 -Type DWord; "
+            r"Stop-Service wuauserv -Force; Set-Service wuauserv -StartupType Disabled")
     e.guest(r"New-Item -ItemType Directory -Force C:\nimtest | Out-Null")
     winfixes.runtime()
     py, ag = winfixes.PY, r"C:\nimtest\nimstead_agent.py"

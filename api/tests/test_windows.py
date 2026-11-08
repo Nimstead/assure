@@ -543,6 +543,24 @@ def test_a_servicing_step_the_agent_refused_isnt_planned_again_and_a_longer_list
                                    {k["kb"]: ("2025-07", "2025-Jul") for k in two}) is None
 
 
+def test_a_lone_dotnet_cumulative_isnt_planned_as_a_servicing_step(env, monkeypatch):
+    """A real Server 2022 at 20348.2113 (2026-11-08) was offered only 2026-10's .NET Framework cumulative: MSRC lists that KB (for
+    .NET), so it isn't a servicing stack update, and planning it as one only had the agent refuse it."""
+    from nimstead import remediate as rem
+    c, h, jid, fetched, _ = _aborted_ws22(env, monkeypatch)
+    monkeypatch.setattr(rem, "_fetch_month", lambda *a, **k: True)  # the month was read
+    with make_sessionmaker(env)() as s:
+        s.add(Advisory(id="MSRC-CVE-2026-108398-12345", ecosystem="Microsoft", package=".NET Framework 4.8 on Windows Server 2022",
+                       modified="2026-10-14T07:00:00Z", record={"id": "MSRC-CVE-2026-108398-12345", "aliases": ["CVE-2026-108398"],
+                                                               "database_specific": {"kb": "5128928"}, "affected": []}))
+        s.commit()
+    dotnet = [{"kb": "5128928", "title": "2026-10 Cumulative Update for .NET Framework 3.5, 4.8 and 4.8.1 for Microsoft server "
+                                         "operating system version 21H2 for x64 (KB5128928)"}]
+    c.post(f"/api/agent/jobs/{jid}/report", headers=h, json={"outcome": "aborted", "steps": [], "offered": dotnet, "error": "No changes made"})
+    jobs = c.get("/api/remediation/jobs").json()
+    assert len(jobs) == 1 and "servicing" not in (jobs[0]["error"] or "")
+
+
 def test_no_servicing_step_when_msrc_data_for_that_month_wasnt_read(env, monkeypatch):
     """A refused (3 a day) or failed fetch leaves the KB unknown: that says nothing about it being a servicing stack update."""
     from nimstead import remediate as rem

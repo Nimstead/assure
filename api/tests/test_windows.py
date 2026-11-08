@@ -544,19 +544,29 @@ def test_a_servicing_step_the_agent_refused_isnt_planned_again_and_a_longer_list
 
 
 def test_a_lone_dotnet_cumulative_isnt_planned_as_a_servicing_step(env, monkeypatch):
-    """A real Server 2022 at 20348.2113 (2026-11-08) was offered only 2026-10's .NET Framework cumulative: MSRC lists that KB (for
-    .NET), so it isn't a servicing stack update, and planning it as one only had the agent refuse it."""
+    """A real Server 2022 at 20348.2113 (2026-11-08) was offered only 2026-10's .NET Framework umbrella cumulative (KB5128928),
+    which MSRC's 2026-Oct document doesn't name at all (it lists its parts, e.g. KB5127687): the title says what it is."""
     from nimstead import remediate as rem
     c, h, jid, fetched, _ = _aborted_ws22(env, monkeypatch)
-    monkeypatch.setattr(rem, "_fetch_month", lambda *a, **k: True)  # the month was read
-    with make_sessionmaker(env)() as s:
-        s.add(Advisory(id="MSRC-CVE-2026-108398-12345", ecosystem="Microsoft", package=".NET Framework 4.8 on Windows Server 2022",
-                       modified="2026-10-14T07:00:00Z", record={"id": "MSRC-CVE-2026-108398-12345", "aliases": ["CVE-2026-108398"],
-                                                               "database_specific": {"kb": "5128928"}, "affected": []}))
-        s.commit()
+    monkeypatch.setattr(rem, "_fetch_month", lambda *a, **k: True)  # the month was read, and doesn't name the KB
     dotnet = [{"kb": "5128928", "title": "2026-10 Cumulative Update for .NET Framework 3.5, 4.8 and 4.8.1 for Microsoft server "
                                          "operating system version 21H2 for x64 (KB5128928)"}]
     c.post(f"/api/agent/jobs/{jid}/report", headers=h, json={"outcome": "aborted", "steps": [], "offered": dotnet, "error": "No changes made"})
+    jobs = c.get("/api/remediation/jobs").json()
+    assert len(jobs) == 1 and "servicing" not in (jobs[0]["error"] or "")
+
+
+def test_a_lone_update_msrc_names_for_another_product_isnt_a_servicing_step(env, monkeypatch):
+    from nimstead import remediate as rem
+    c, h, jid, fetched, _ = _aborted_ws22(env, monkeypatch)
+    monkeypatch.setattr(rem, "_fetch_month", lambda *a, **k: True)
+    with make_sessionmaker(env)() as s:
+        s.add(Advisory(id="MSRC-CVE-2026-108398-12345", ecosystem="Microsoft", package="SQL Server 2022 GDR",
+                       modified="2026-10-14T07:00:00Z", record={"id": "MSRC-CVE-2026-108398-12345", "aliases": ["CVE-2026-108398"],
+                                                               "database_specific": {"kb": "5128999"}, "affected": []}))
+        s.commit()
+    other = [{"kb": "5128999", "title": "2026-10 Security Update (KB5128999)"}]  # nothing in the title says what it is
+    c.post(f"/api/agent/jobs/{jid}/report", headers=h, json={"outcome": "aborted", "steps": [], "offered": other, "error": "No changes made"})
     jobs = c.get("/api/remediation/jobs").json()
     assert len(jobs) == 1 and "servicing" not in (jobs[0]["error"] or "")
 

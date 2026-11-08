@@ -628,13 +628,15 @@ def _kb_in_msrc(s: Session, kb: str) -> bool:
         select(Advisory.record).where(Advisory.ecosystem.in_(("Windows", msproducts.ECOSYSTEM)))))
 
 
-def _plan_servicing(s: Session, job: RemediationJob, asset: Asset, product: str, cur: str, months: dict) -> RemediationJob | None:
+def _plan_servicing(s: Session, job: RemediationJob, asset: Asset, product: str, cur: str, months: dict,
+                    not_servicing: frozenset = frozenset()) -> RemediationJob | None:
     """No earlier cumulative is offered, only an update MSRC doesn't list with a build: on an old Server 2016 that's a servicing stack
     update, which Windows installs before any cumulative. Plan it as a forward-only step, approved only by a person; the agent installs
     it only if its own downloaded manifest says it's a servicing stack package (DECISIONS 105). One the agent refused isn't planned again."""
     refused = {str((j.packages[0].get("alt") or {}).get("kb")) for j in s.scalars(select(RemediationJob).where(
         RemediationJob.asset_id == job.asset_id, RemediationJob.manager == "windows", RemediationJob.status == "aborted")) if j.packages and j.packages[0].get("servicing")}
-    kb = next((k for k in months if _kb_build(s, product, k) is None and k not in refused and not _kb_in_msrc(s, k)), None)
+    kb = next((k for k in months if _kb_build(s, product, k) is None and k not in refused and k not in not_servicing
+               and not _kb_in_msrc(s, k)), None)
     if len(months) != 1 or not kb or not SAFE_VERSION.match(cur):  # exactly one dated offer, as Server 2016 was: a longer list plans nothing
         return None
     try:
@@ -660,10 +662,13 @@ def plan_step(s: Session, job: RemediationJob | None, offered, client=None) -> R
     if not SAFE_PRODUCT.match(product) or product.startswith(".NET") or not isinstance(offered, list):
         return None
     months: dict[str, tuple[str, str]] = {}  # KB -> ("2023-11", MSRC's "2023-Nov")
+    dotnet = set()  # .NET Framework's umbrella cumulatives: MSRC lists their parts, never them (DECISIONS 117)
     for o in offered[:10]:
         title, kb = (o.get("title"), str(o.get("kb"))) if isinstance(o, dict) else (None, "")
         if isinstance(title, str) and SAFE_KB.match(kb) and (m := re.match(r"(20\d\d)-(0[1-9]|1[0-2]) ", title[:300])):
             months[kb] = (f"{m[1]}-{m[2]}", f"{m[1]}-{MONTHS[int(m[2]) - 1]}")
+            if ".NET" in title[:300]:  # product names stay in English in a localised title (DECISIONS 68)
+                dotnet.add(kb)
     steps, tried, read = [], set(), set()
     for kb, (ym, month) in months.items():
         if (build := _kb_build(s, product, kb)) is None and month not in tried:  # e.g. the month's .NET update: fetched once
@@ -679,7 +684,7 @@ def plan_step(s: Session, job: RemediationJob | None, offered, client=None) -> R
     asset = s.get(Asset, job.asset_id)
     if not steps:
         # only an update whose month MSRC's data was read for: a refused or failed fetch says nothing about what it is
-        return _plan_servicing(s, job, asset, product, cur, months) if {m for _, m in months.values()} <= read else None
+        return _plan_servicing(s, job, asset, product, cur, months, frozenset(dotnet)) if {m for _, m in months.values()} <= read else None
     build, kb, ym = max(steps, key=lambda x: sort_key(windows_cmp)(x[0]))
     try:
         new = plan(s, asset, job.action_key.split("|", 1)[0], product, "policy", step={"kb": kb, "to": build})

@@ -247,6 +247,8 @@ async function ctx(browser: Browser, width: number, colorScheme: "light" | "dark
 }
 
 async function axe(page: Page, label: string) {
+  // a theme or viewport switch starts colour transitions; contrast read mid-fade is neither theme's
+  await page.evaluate(() => Promise.all(document.getAnimations().filter((a) => a instanceof CSSTransition).map((a) => a.finished.catch(() => {}))));
   const { violations } = await new AxeBuilder({ page }).analyze();
   const bad = violations.filter((v) => v.impact === "serious" || v.impact === "critical");
   expect(bad.map((v) => `${label}: ${v.id} (${v.impact}) ${v.nodes.slice(0, 3).map((n) => n.target.join(" ")).join(" | ")}`), label).toEqual([]);

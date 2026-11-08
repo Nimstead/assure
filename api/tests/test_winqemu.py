@@ -24,8 +24,10 @@ def test_unattend_is_well_formed_and_escapes_the_password():
     ns = {"u": "urn:schemas-microsoft-com:unattend"}
     assert root.find(".//u:MetaData/u:Value", ns).text == "3"
     assert root.find(".//u:AdministratorPassword/u:Value", ns).text == "Nim!<a&b>'x"
-    line = root.find(".//u:CommandLine", ns).text
-    assert "Register-ScheduledTask -TaskName NimRunner" in line and "-Password 'Nim!<a&b>''x'" in line  # PowerShell's quote escape
+    assert root.find(".//u:CommandLine", ns).text.endswith("-File A:\\setup.ps1")
+    assert "SetupComplete.cmd" in root.find(".//u:RunSynchronousCommand/u:Path", ns).text  # registered before any logon
+    script = winqemu.setup_script("Nim!<a&b>'x")
+    assert "Register-ScheduledTask -TaskName NimRunner" in script and "-Password 'Nim!<a&b>''x'" in script  # PowerShell's quote escape
 
 
 def test_run_round_trips_through_the_relay(tmp_path, monkeypatch):

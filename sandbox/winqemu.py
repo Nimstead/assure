@@ -54,17 +54,29 @@ def free_port() -> int:
         return s.getsockname()[1]
 
 
+def setup_script(password: str) -> str:
+    """Puts the runner on the disk and registers it as a startup task as Administrator. Run twice (end of setup as SYSTEM,
+    then at first logon): -Force makes the second a no-op."""
+    return ("New-Item -ItemType Directory -Force C:\\nimtest | Out-Null\r\n"
+            "Copy-Item A:\\runner.ps1 C:\\nimtest\\runner.ps1 -Force\r\n"
+            "$a = New-ScheduledTaskAction -Execute powershell.exe -Argument '-NoProfile -ExecutionPolicy Bypass -File C:\\nimtest\\runner.ps1'\r\n"
+            "$t = New-ScheduledTaskTrigger -AtStartup\r\n"
+            "$s = New-ScheduledTaskSettingsSet -ExecutionTimeLimit 0 -AllowStartIfOnBatteries -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1)\r\n"
+            f"Register-ScheduledTask -TaskName NimRunner -Action $a -Trigger $t -Settings $s -User Administrator -Password '{password.replace(chr(39), chr(39) * 2)}' -RunLevel Highest -Force | Out-Null\r\n"
+            "Start-ScheduledTask -TaskName NimRunner\r\n")
+
+
+SETUP_COMPLETE = "powershell -NoProfile -ExecutionPolicy Bypass -File A:\\setup.ps1 > C:\\Windows\\Temp\\nimrunner-setup.log 2>&1\r\n"
+
+
 def unattend(password: str, image: int, computer: str) -> str:
     """Server setup with no questions: one BIOS partition, the chosen image, UTC, Administrator's password, autologon (as
-    VirtualBox's unattended install leaves it, so wine2e's signed-in assumptions hold), then the runner as a startup task."""
+    VirtualBox's unattended install leaves it, so wine2e's signed-in assumptions hold), then the runner as a startup task.
+    The runner is registered from SetupComplete.cmd, which Windows runs as SYSTEM at the end of every install: Server 2019
+    signed in and never ran its FirstLogonCommands (real VM, 2026-11-08), which stays only as a second chance."""
     pw = escape(password)
-    task = ("powershell -NoProfile -ExecutionPolicy Bypass -Command \"New-Item -ItemType Directory -Force C:\\nimtest | Out-Null; "
-            "Copy-Item A:\\runner.ps1 C:\\nimtest\\runner.ps1 -Force; "
-            "$a = New-ScheduledTaskAction -Execute powershell.exe -Argument '-NoProfile -ExecutionPolicy Bypass -File C:\\nimtest\\runner.ps1'; "
-            "$t = New-ScheduledTaskTrigger -AtStartup; "
-            "$s = New-ScheduledTaskSettingsSet -ExecutionTimeLimit 0 -AllowStartIfOnBatteries -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1); "
-            f"Register-ScheduledTask -TaskName NimRunner -Action $a -Trigger $t -Settings $s -User Administrator -Password '{password.replace(chr(39), chr(39) * 2)}' -RunLevel Highest -Force; "
-            "Start-ScheduledTask -TaskName NimRunner\"")
+    task = "powershell -NoProfile -ExecutionPolicy Bypass -File A:\\setup.ps1"
+    place = "cmd /c mkdir C:\\Windows\\Setup\\Scripts &amp; copy /y A:\\SetupComplete.cmd C:\\Windows\\Setup\\Scripts\\SetupComplete.cmd"
     return f"""<?xml version="1.0" encoding="utf-8"?>
 <unattend xmlns="urn:schemas-microsoft-com:unattend" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
  <settings pass="windowsPE">
@@ -84,6 +96,9 @@ def unattend(password: str, image: int, computer: str) -> str:
  <settings pass="specialize">
   <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
    <ComputerName>{escape(computer)}</ComputerName><TimeZone>UTC</TimeZone>
+  </component>
+  <component name="Microsoft-Windows-Deployment" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+   <RunSynchronous><RunSynchronousCommand wcm:action="add"><Order>1</Order><Path>{place}</Path></RunSynchronousCommand></RunSynchronous>
   </component>
  </settings>
  <settings pass="oobeSystem">
@@ -145,6 +160,8 @@ def create(iso: str, memory: int = 4096, image: int = 1, computer: str = "nimste
     c = {"iso": str(Path(iso).resolve()), "memory": memory, "qmp_port": free_port(), "relay_port": free_port(), "cpu": CPU, "accel": ACCEL}
     (folder / "floppy" / "autounattend.xml").write_text(unattend(password, image, computer), encoding="utf-8")
     (folder / "floppy" / "runner.ps1").write_text(RUNNER.replace("PORT", str(c["relay_port"])), encoding="utf-8")
+    (folder / "floppy" / "setup.ps1").write_text(setup_script(password), encoding="utf-8")
+    (folder / "floppy" / "SetupComplete.cmd").write_text(SETUP_COMPLETE, encoding="ascii")
     subprocess.run([str(QEMU_DIR / "qemu-img.exe"), "create", "-f", "qcow2", str(folder / "disk.qcow2"), "80G"], check=True,
                    capture_output=True)
     (folder / "qemu.json").write_text(json.dumps(c))

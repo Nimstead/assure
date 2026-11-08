@@ -305,7 +305,8 @@ def test_a_servers_combined_netfx_cumulative_is_planned_as_the_same_fix(env):
 
     def handler(req):
         if req.url.path.endswith("/updates"):
-            return httpx.Response(200, json={"value": [{"ID": "2026-Oct", "DocumentTitle": "Oct", "InitialReleaseDate": "2099-01-01", "CurrentReleaseDate": "2099-01-01"}]})
+            return httpx.Response(200, json={"value": [{"ID": "2026-Oct", "DocumentTitle": "Oct", "InitialReleaseDate": "2026-10-14T07:00:00",
+                                                        "CurrentReleaseDate": "2026-10-14T07:00:00"}]})
         return httpx.Response(200, json=cvrf)
     with make_sessionmaker(env)() as s:
         sync_msrc(s, 60, httpx.Client(transport=httpx.MockTransport(handler)))
@@ -317,24 +318,27 @@ def test_a_servers_combined_netfx_cumulative_is_planned_as_the_same_fix(env):
     assert c.post("/api/agent/inventory", headers=h, json={"ecosystem": "Windows", "packages": [
         {"ecosystem": "Windows", "name": "Windows Server 2022", "version": "10.0.20348.2113", "source": None},
         {"ecosystem": "Microsoft", "name": ".NET Framework", "version": "4.8.4420.0", "source": "528449"}]}).status_code == 200
-    j = c.post("/api/remediation/jobs", json={"asset_id": a["asset_id"], "ecosystem": "Microsoft", "package": name}).json()
     umbrella = {"kb": "5128928", "title": "2026-10 Cumulative Update for .NET Framework 3.5, 4.8 and 4.8.1 for Microsoft server "
                                           "operating system version 21H2 for x64 (KB5128928)"}
 
-    def abort(job_id):
+    def abort(job_id, offer):
         assert c.post(f"/api/remediation/jobs/{job_id}/approve").status_code == 200
         c.get("/api/agent/jobs", headers=h)
-        c.post(f"/api/agent/jobs/{job_id}/report", headers=h, json={"outcome": "aborted", "steps": [], "offered": [umbrella],
+        c.post(f"/api/agent/jobs/{job_id}/report", headers=h, json={"outcome": "aborted", "steps": [], "offered": [offer],
                                                                     "error": "No changes made"})
         return {x["id"]: x for x in c.get("/api/remediation/jobs").json()}
 
-    jobs = abort(j["id"])
+    # an older month's combined update isn't the same fix (real Windows 10 22H2 without ESU: 2025-10's offered for a 2026-10 fix)
+    old = c.post("/api/remediation/jobs", json={"asset_id": a["asset_id"], "ecosystem": "Microsoft", "package": name}).json()
+    assert len(abort(old["id"], {**umbrella, "kb": "5066747", "title": "2025-10" + umbrella["title"][7:]})) == 1
+    j = c.post("/api/remediation/jobs", json={"asset_id": a["asset_id"], "ecosystem": "Microsoft", "package": name}).json()
+    jobs = abort(j["id"], umbrella)
     assert jobs[j["id"]]["error"].startswith("Windows Update offers .NET Framework's fix as KB5128928; planned with it.")
-    [new] = [x for x in jobs.values() if x["id"] != j["id"]]
+    [new] = [x for x in jobs.values() if x["id"] not in (j["id"], old["id"])]
     assert new["status"] == "planned" and new["packages"] == [{"name": name, "from": "4.8.4420.0", "kb": "5127687", "to": "4.8.4811.0",
                                                                 "alt": {"kb": "5128928", "to": "4.8.4811.0"}}]
     assert "only inside that combined cumulative" in new["summary"]
-    assert len(abort(new["id"])) == 2  # refused with it: not planned again
+    assert len(abort(new["id"], umbrella)) == 3  # refused with it: not planned again
 
 
 def test_winjob_touches_only_its_own_kind_of_package(tmp_path):

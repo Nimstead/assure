@@ -663,8 +663,13 @@ def _plan_dotnet_umbrella(s: Session, job: RemediationJob, offered: list) -> Rem
     approve) the same fix with that KB as the job's alternative: same target, and the agent still installs it only if it's
     removable and calls it done only when mscorlib reaches the fix (DECISIONS 118). One the agent refused isn't planned again."""
     p = job.packages[0]
+    # the same month's combined update only: on Windows 10 without ESU the 2025-10 one was offered for a 2026-10 fix, and planning it
+    # as the same fix only had the agent refuse it (real VM, 2026-11-08)
+    released = {str((r.get("database_specific") or {}).get("released", ""))[:7] for r in s.scalars(
+        select(Advisory.record).where(Advisory.ecosystem == msproducts.ECOSYSTEM, Advisory.package == p.get("name")))
+        if str((r.get("database_specific") or {}).get("kb")) == p.get("kb")}
     nets = [str(o["kb"]) for o in offered[:10] if isinstance(o, dict) and isinstance(o.get("title"), str)
-            and ".NET Framework" in o["title"][:300] and SAFE_KB.match(str(o.get("kb")))]
+            and ".NET Framework" in o["title"][:300] and SAFE_KB.match(str(o.get("kb"))) and o["title"][:7] in released]
     refused = {str((j.packages[0].get("alt") or {}).get("kb")) for j in s.scalars(select(RemediationJob).where(
         RemediationJob.asset_id == job.asset_id, RemediationJob.manager == "windows", RemediationJob.status == "aborted")) if j.packages}
     if len(nets) != 1 or nets[0] == p.get("kb") or nets[0] in refused or (p.get("alt") or {}).get("kb") == nets[0]:

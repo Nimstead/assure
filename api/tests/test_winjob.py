@@ -457,9 +457,34 @@ def test_offer_list_is_bounded_and_only_sent_when_nothing_the_job_names_is_offer
     assert r["outcome"] == "pending_reboot" and "offered" not in r
     netfx = {**JOB, "packages": [{**JOB["packages"][0], "name": ".NET Framework 4.8.1 on Windows Server 2022"}]}
     r = agent.WinJob(netfx, run=FakeWin(offered=(), instead=WS22_OFFERS), state_path=str(tmp_path / "n.json"), build=lambda: OLD,
-                     retry_wait=0).advance()  # its steps are other KBs: the OS updates on offer aren't its business
-    assert r["outcome"] == "aborted" and "offered" not in r and "Windows Update offers exactly KB5126646" in r["steps"][-1]["step"]
-    assert "offers instead" not in r["steps"][-1]["output"]
+                     retry_wait=0).advance()  # the OS update on offer isn't its business; the combined .NET cumulative is (DECISIONS 118)
+    assert r["outcome"] == "aborted" and "Windows Update offers exactly KB5126646" in r["steps"][-1]["step"]
+    assert [x["kb"] for x in r["offered"]] == ["5032005"]
+    r = agent.WinJob(netfx, run=FakeWin(offered=(), instead=json.dumps(json.loads(WS22_OFFERS)[:1])), state_path=str(tmp_path / "n2.json"),
+                     build=lambda: OLD, retry_wait=0).advance()
+    assert r["outcome"] == "aborted" and "offered" not in r  # only OS updates on offer: nothing said
+
+
+def test_a_netfx_umbrella_is_judged_by_the_per_version_package_it_downloads(tmp_path):
+    """Real Server 2019 (2026-11-08): KB5128923 (the combined cumulative) arrives as Windows10.0-KB5127666-x64.cab."""
+    class Umbrella(FakeWin):
+        def __call__(self, cmd, cwd=None, timeout=None):
+            script = cmd[-1] if isinstance(cmd, list) else ""
+            if "downloaded package for KB%" not in script and "CumulativeUpdate_KB5128923" in script:
+                return 1, "downloaded package for KB5128923 not found"
+            return super().__call__(cmd, cwd=cwd, timeout=timeout)
+    netfx = {**JOB, "packages": [{**JOB["packages"][0], "name": ".NET Framework 4.7 on Windows Server 2019", "kb": "5127666",
+                                  "alt": {"kb": "5128923", "to": JOB["packages"][0]["to"]}}]}
+    h = Umbrella(offered=("5128923",))
+    h.pkgs["Package_for_DotNetRollup~31bf3856ad364e35~amd64~~10.0.4005.2"] = "Installed"  # as the real server's own rollup
+    r = agent.WinJob(netfx, run=h, state_path=str(tmp_path / "n.json"), build=lambda: OLD, retry_wait=0).advance()
+    [rm] = [s for s in r["steps"] if s["step"].startswith("update is removable")]
+    assert rm["ok"], rm
+    j = agent.WinJob(netfx, run=h, state_path=str(tmp_path / "n.json"), build=lambda: OLD)
+    j.s = dict(json.load(open(tmp_path / "n.json")))
+    assert j.valid() and j.s["named_kb"] == "5127666"
+    j.s["named_kb"] = "5127666; calc"  # the saved state is never trusted: it goes into PowerShell after the restart
+    assert not j.valid()
 
 
 def test_a_service_that_crashed_since_the_change_fails_health_even_if_running(tmp_path):

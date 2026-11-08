@@ -1,0 +1,308 @@
+[
+  {
+    "step": "feeds",
+    "msrc": {
+      "documents": 2,
+      "skipped_documents": 0,
+      "inserted": 30495,
+      "updated": 0,
+      "skipped": 0
+    }
+  },
+  {
+    "step": "reported vs the host",
+    "reported": [
+      {
+        "ecosystem": "Microsoft",
+        "name": ".NET Framework",
+        "version": "4.7.3946.0",
+        "source": "461814"
+      }
+    ],
+    "mscorlib": "4.7.3946.0",
+    "findings": 18,
+    "packages": [
+      ".NET Framework 4.7 on Windows Server 2019"
+    ],
+    "fixed": [
+      "4.7.4150.0"
+    ]
+  },
+  {
+    "step": "oracle: Windows Update vs Nimstead",
+    "agree": [],
+    "only_windows_update": [
+      {
+        "kb": "5128923",
+        "title": "2026-10 Cumulative Update for .NET Framework 3.5, 4.7.2 and 4.8 for Windows Server 2019 for x64 (KB5128923)",
+        "cves": [],
+        "why": "not explained"
+      }
+    ],
+    "only_nimstead": [
+      {
+        "kb": "5127666",
+        "cves": [
+          "CVE-2026-102869",
+          "CVE-2026-108398",
+          "CVE-2026-58280",
+          "CVE-2026-69651",
+          "CVE-2026-70007",
+          "CVE-2026-70035",
+          "CVE-2026-70174",
+          "CVE-2026-83520",
+          "CVE-2026-84008",
+          "CVE-2026-85363",
+          "CVE-2026-96222",
+          "CVE-2026-96224",
+          "CVE-2026-96233",
+          "CVE-2026-96958",
+          "CVE-2026-96959",
+          "CVE-2026-96960",
+          "CVE-2026-97788",
+          "CVE-2026-97801"
+        ],
+        "why": "not explained"
+      }
+    ]
+  },
+  {
+    "step": "hardening audit",
+    "config": {
+      "secure_boot": null,
+      "uefica2023_status": "NotStarted",
+      "uefica2023_error": null,
+      "secure_boot_last_event": null,
+      "dbx_pca2011_revoked": null,
+      "cert_padding_check": [
+        "1",
+        "1"
+      ],
+      "spectre_override": null,
+      "spectre_mask": null,
+      "smb1_server": false,
+      "smb_signing_required": true,
+      "llmnr": 0,
+      "netbios_adapters": 2,
+      "lm_compat": 5,
+      "run_as_ppl": null,
+      "wdigest": 0,
+      "rdp_enabled": false,
+      "rdp_nla": 1,
+      "tls1.0_server": null,
+      "tls1.1_server": null,
+      "ldap_signing": null,
+      "ldap_channel_binding": null,
+      "always_install_elevated": null,
+      "uac_lua": 1,
+      "uac_admin_prompt": 5,
+      "remote_uac_off": null,
+      "restrict_anonymous_sam": 1,
+      "restrict_anonymous": 0,
+      "everyone_includes_anonymous": 0,
+      "no_lm_hash": 1,
+      "autorun": 255,
+      "smb_client_signing": 0,
+      "insecure_guest_auth": 0,
+      "winrm_basic": 0,
+      "winrm_unencrypted": 0,
+      "rdp_encryption": 2,
+      "safe_dll_search": null,
+      "auto_update_off": null,
+      "autologon_stored": false,
+      "script_block_logging": 1,
+      "ssl3_server": null,
+      "remote_registry_running": true,
+      "snmp_default_community": false,
+      "guest_enabled": false,
+      "password_policy": {
+        "MinimumPasswordLength": 0,
+        "PasswordComplexity": 1,
+        "LockoutBadCount": 10,
+        "ClearTextPassword": 0
+      },
+      "spooler_running": false,
+      "unquoted_service_paths": [],
+      "writable_service_binaries": [],
+      "powershell2": null,
+      "defender": {
+        "signature_age": 3015,
+        "mode": "",
+        "realtime": true
+      },
+      "firewall_off": [],
+      "bitlocker_os": null
+    },
+    "findings": [
+      "lsa-protection",
+      "netbios",
+      "password-length",
+      "speculative-execution",
+      "tls1.0-server",
+      "tls1.1-server"
+    ]
+  },
+  {
+    "step": "planned",
+    "job": "8ed1af8f21fd4a9690949ff6396e0f60",
+    "packages": [
+      {
+        "name": ".NET Framework 4.7 on Windows Server 2019",
+        "from": "4.7.3946.0",
+        "kb": "5127666",
+        "to": "4.7.4150.0"
+      }
+    ]
+  },
+  {
+    "step": "fail",
+    "outcome": "aborted",
+    "error": "No changes made: Windows Update offers exactly KB5127666 failed: []; Windows Update didn't offer it (not needed, superseded, or not released for this build); it offers instead: KB5128923 (2026-10 Cumulative Update for .NET Framework 3.5, 4.7.2 and 4.8 for Windows Server 2019 for x64 (KB5128923))",
+    "steps": [
+      "ok  job validated: ",
+      "ok  installed build matches plan: installed 4.7.3946.0, planned 4.7.3946.0",
+      "ok  no reboot already pending: False\n",
+      "ok  LanmanServer running before change: Running\n",
+      "ok  on mains power or battery above half: ok",
+      "ok  at least 10 GB free on the system drive: 64 GB free",
+      "FAIL Windows Update offers exactly KB5127666: ased for this build); it offers instead: KB5128923 (2026-10 Cumulative Update for .NET Framework 3.5, 4.7.2 and 4.8 for Windows Server 2019 for x64 (KB5128923))"
+    ]
+  },
+  {
+    "step": "server planned after the abort",
+    "jobs": [
+      {
+        "id": "d30d652f9df546e38f1ee9731884532a",
+        "packages": [
+          {
+            "name": ".NET Framework 4.7 on Windows Server 2019",
+            "from": "4.7.3946.0",
+            "kb": "5127666",
+            "to": "4.7.4150.0",
+            "alt": {
+              "kb": "5128923",
+              "to": "4.7.4150.0"
+            }
+          }
+        ],
+        "summary": "Install KB5128923 for .NET Framework 4.7 on Windows Server 2019 on netfx: Windows Update offers this server .NET Framework's fix (KB5127666) only inside that combined cumulative update."
+      }
+    ]
+  },
+  {
+    "step": "planned",
+    "job": "d30d652f9df546e38f1ee9731884532a",
+    "packages": [
+      {
+        "name": ".NET Framework 4.7 on Windows Server 2019",
+        "from": "4.7.3946.0",
+        "kb": "5127666",
+        "to": "4.7.4150.0",
+        "alt": {
+          "kb": "5128923",
+          "to": "4.7.4150.0"
+        }
+      }
+    ]
+  },
+  {
+    "step": "fail-umbrella",
+    "outcome": "pending_reboot",
+    "error": null,
+    "steps": [
+      "ok  at least 10 GB free on the system drive: 64 GB free",
+      "ok  Windows Update offers exactly one of KB5127666 / KB5128923: KB5127666: 0 offered; KB5128923: 1 offered",
+      "ok  rollback baseline recorded: installed cumulative packages: Package_for_DotNetRollup~31bf3856ad364e35~amd64~~10.0.4005.2",
+      "ok  KB5128923 downloaded: 2\n",
+      "ok  update is removable (manifest checked before install): Windows10.0-KB5127666-x64.cab: update.mum not permanent; permanent parts: none",
+      "ok  KB5128923 downloaded and installed: {\"download\":2,\"install\":2,\"reboot\":true}\n",
+      "ok  new cumulative package identified: Package_for_DotNetRollup~31bf3856ad364e35~amd64~~10.0.4150.2",
+      "ok  reboot required to finish: "
+    ]
+  },
+  {
+    "step": "fail-umbrella-resume0",
+    "outcome": "pending_reboot",
+    "error": null,
+    "steps": [
+      "ok  KB5128923 downloaded and installed: {\"download\":2,\"install\":2,\"reboot\":true}\n",
+      "ok  new cumulative package identified: Package_for_DotNetRollup~31bf3856ad364e35~amd64~~10.0.4150.2",
+      "ok  reboot required to finish: ",
+      "ok  build updated: now 4.7.4150.0, target 4.7.4150.0",
+      "ok  LanmanServer running after change: Running",
+      "FAIL injected failure (sandbox test): --fail-after-apply",
+      "ok  remove Package_for_DotNetRollup~31bf3856ad364e35~amd64~~10.0.4150.2: ",
+      "ok  reboot required to finish rollback: "
+    ]
+  },
+  {
+    "step": "fail-umbrella-resume1",
+    "outcome": "rolled_back",
+    "error": "Change failed and was rolled back: injected failure (sandbox test) failed: --fail-after-apply",
+    "steps": [
+      "ok  reboot required to finish: ",
+      "ok  build updated: now 4.7.4150.0, target 4.7.4150.0",
+      "ok  LanmanServer running after change: Running",
+      "FAIL injected failure (sandbox test): --fail-after-apply",
+      "ok  remove Package_for_DotNetRollup~31bf3856ad364e35~amd64~~10.0.4150.2: ",
+      "ok  reboot required to finish rollback: ",
+      "ok  original build restored: 4.7.3946.0",
+      "ok  LanmanServer running after rollback: Running"
+    ]
+  },
+  {
+    "step": "after the forced failure",
+    "outcome": "rolled_back",
+    "mscorlib": "4.7.3946.0",
+    "before": "4.7.3946.0"
+  },
+  {
+    "step": "apply",
+    "outcome": "pending_reboot",
+    "error": null,
+    "steps": [
+      "ok  at least 10 GB free on the system drive: 64 GB free",
+      "ok  Windows Update offers exactly one of KB5127666 / KB5128923: KB5127666: 0 offered; KB5128923: 1 offered",
+      "ok  rollback baseline recorded: installed cumulative packages: Package_for_DotNetRollup~31bf3856ad364e35~amd64~~10.0.4005.2",
+      "ok  KB5128923 downloaded: 2\n",
+      "ok  update is removable (manifest checked before install): Windows10.0-KB5127666-x64.cab: update.mum not permanent; permanent parts: none",
+      "ok  KB5128923 downloaded and installed: {\"download\":2,\"install\":2,\"reboot\":true}\n",
+      "ok  new cumulative package identified: Package_for_DotNetRollup~31bf3856ad364e35~amd64~~10.0.4150.2",
+      "ok  reboot required to finish: "
+    ]
+  },
+  {
+    "step": "apply-resume0",
+    "outcome": "applied",
+    "error": null,
+    "steps": [
+      "ok  rollback baseline recorded: installed cumulative packages: Package_for_DotNetRollup~31bf3856ad364e35~amd64~~10.0.4005.2",
+      "ok  KB5128923 downloaded: 2\n",
+      "ok  update is removable (manifest checked before install): Windows10.0-KB5127666-x64.cab: update.mum not permanent; permanent parts: none",
+      "ok  KB5128923 downloaded and installed: {\"download\":2,\"install\":2,\"reboot\":true}\n",
+      "ok  new cumulative package identified: Package_for_DotNetRollup~31bf3856ad364e35~amd64~~10.0.4150.2",
+      "ok  reboot required to finish: ",
+      "ok  build updated: now 4.7.4150.0, target 4.7.4150.0",
+      "ok  LanmanServer running after change: Running"
+    ]
+  },
+  {
+    "step": "after the update",
+    "outcome": "applied",
+    "mscorlib": "4.7.4150.0",
+    "target": "4.7.4150.0",
+    "findings_left": 0
+  },
+  {
+    "step": "RESULT: PASS",
+    "checks": {
+      "version matches mscorlib": true,
+      "findings opened": true,
+      "Windows Update names no .NET Framework KB we miss": true,
+      "hardening audit read its values": true,
+      "forced failure removed the update, mscorlib back": true,
+      "update applied, mscorlib reached the fix": true,
+      "findings closed by inventory": true
+    }
+  }
+]

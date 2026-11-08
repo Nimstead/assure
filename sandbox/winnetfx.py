@@ -50,6 +50,10 @@ def finish(r, name):
 def main(keep=False) -> int:
     h.winvm.wait_ready(h.NAME, minutes=90)
     h.guest(r"New-Item -ItemType Directory -Force C:\nimtest, C:\ProgramData\Nimstead | Out-Null")
+    # this run drives each job itself with the agent under test: the installed agent's tasks from an earlier run would resume
+    # it first at boot, and an older installed agent discarded state it couldn't read (real Server 2019, 2026-11-08)
+    h.guest("'Nimstead agent','Nimstead jobs' | ForEach-Object { Disable-ScheduledTask -TaskName $_ -ErrorAction SilentlyContinue | Out-Null }",
+            check=False)
     f.runtime()
     f.copy_in(f.ROOT / "agent" / "nimstead_agent.py")
     env = {"NIMSTEAD_DB": f"sqlite:///{(h.TMP / 'nf.db').as_posix()}", "NIMSTEAD_SECURE_COOKIES": "0", "NIMSTEAD_OPEN_SIGNUP": "1",
@@ -61,7 +65,7 @@ def main(keep=False) -> int:
         h.note("feeds", msrc=feeds.sync_msrc(s, 2))
     api = TestClient(create_app(env["NIMSTEAD_DB"]))
     signup(api, {"email": "win@example.com", "password": "windows-e2e-password", "org_name": "WinNetfx"})
-    token = api.post("/api/enroll-tokens").json()["token"]
+    token = api.post("/api/enroll-tokens", json={"sandbox": True}).json()["token"]  # jobs are approved through the server
     agent = api.post("/api/agent/enroll", json={"token": token, "hostname": "netfx", "ecosystem": "Windows"}).json()
     auth = {"Authorization": f"Bearer {agent['agent_key']}"}
 
@@ -93,12 +97,29 @@ def main(keep=False) -> int:
     package = nf[0]["package"]
     r = api.post("/api/remediation/jobs", json={"asset_id": agent["asset_id"], "ecosystem": "Microsoft", "package": package})
     assert r.status_code == 201, r.text
-    pkgs = r.json()["packages"]
-    h.note("planned", packages=pkgs)
-    job = {"id": "netfx", "manager": "windows", "packages": pkgs, "health_units": ["LanmanServer"], "settle_seconds": 60}
-    h.guest("Set-Content -Path C:\\nimtest\\job.json -Encoding ascii -Value '" + json.dumps(job) + "'")
 
+    def take(jid):
+        """Approve the server's job and hand the agent exactly what the server sends it."""
+        assert api.post(f"/api/remediation/jobs/{jid}/approve").status_code == 200, jid
+        [sent] = [j for j in api.get("/api/agent/jobs", headers=auth).json() if j["id"] == jid]
+        job = {**sent, "health_units": ["LanmanServer"], "settle_seconds": 60}
+        h.guest("Set-Content -Path C:\\nimtest\\job.json -Encoding ascii -Value '" + json.dumps(job) + "'")
+        h.note("planned", job=jid, packages=sent["packages"])
+        return sent
+
+    sent = take(r.json()["id"])
     r = finish(run_job(r"run-job --yes --fail-after-apply < C:\nimtest\job.json", "fail"), "fail")
+    if r["outcome"] == "aborted" and r.get("offered"):  # a server's combined .NET cumulative (DECISIONS 118): the server plans it
+        api.post(f"/api/agent/jobs/{sent['id']}/report", headers=auth, json={k: r[k] for k in ("outcome", "steps", "error", "offered") if k in r})
+        follow = [j for j in api.get("/api/remediation/jobs").json() if j["status"] == "planned"]
+        h.note("server planned after the abort", jobs=[{"id": j["id"], "packages": j["packages"], "summary": j["summary"]} for j in follow])
+        if follow:
+            sent = take(follow[0]["id"])
+            r = finish(run_job(r"run-job --yes --fail-after-apply < C:\nimtest\job.json", "fail-umbrella"), "fail-umbrella")
+    pkgs = sent["packages"]
+    alt = (pkgs[0].get("alt") or {}).get("kb")
+    checks["Windows Update names no .NET Framework KB we miss"] = not [u for u in table["only_windows_update"]
+                                                                       if ".NET Framework" in u["title"] and u["kb"] != alt]
     back = mscorlib()
     h.note("after the forced failure", outcome=r["outcome"], mscorlib=back, before=start)
     checks["forced failure removed the update, mscorlib back"] = r["outcome"] == "rolled_back" and back == start

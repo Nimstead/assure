@@ -296,6 +296,47 @@ def test_netfx_opens_on_its_own_line_plans_its_kb_and_closes_when_mscorlib_reach
     assert not report("4.8.10008.0")
 
 
+def test_a_servers_combined_netfx_cumulative_is_planned_as_the_same_fix(env):
+    """Real Server 2022 and 2019 (2026-11-08): MSRC names the per-version KB, Windows Update offers only the combined one."""
+    name = ".NET Framework 4.8 on Windows Server 2022"
+    tree = {"FullProductName": [{"ProductID": "1", "Value": "Microsoft .NET Framework 3.5 AND 4.8 on Windows Server 2022"}]}
+    cvrf = {"ProductTree": tree, "Vulnerability": [{"CVE": "CVE-2026-1", "Title": {"Value": "x"}, "Remediations": [
+        {"ProductID": ["1"], "FixedBuild": "2.0.50727.9188 AND 3.0.30729.9171 AND 4.8.4811.0", "Description": {"Value": "5127687"}}]}]}
+
+    def handler(req):
+        if req.url.path.endswith("/updates"):
+            return httpx.Response(200, json={"value": [{"ID": "2026-Oct", "DocumentTitle": "Oct", "InitialReleaseDate": "2099-01-01", "CurrentReleaseDate": "2099-01-01"}]})
+        return httpx.Response(200, json=cvrf)
+    with make_sessionmaker(env)() as s:
+        sync_msrc(s, 60, httpx.Client(transport=httpx.MockTransport(handler)))
+        s.commit()
+    c = user(env)
+    token = c.post("/api/enroll-tokens", json={"sandbox": True}).json()["token"]
+    a = c.post("/api/agent/enroll", json={"token": token, "hostname": "w", "ecosystem": "Windows"}).json()
+    h = {"Authorization": f"Bearer {a['agent_key']}"}
+    assert c.post("/api/agent/inventory", headers=h, json={"ecosystem": "Windows", "packages": [
+        {"ecosystem": "Windows", "name": "Windows Server 2022", "version": "10.0.20348.2113", "source": None},
+        {"ecosystem": "Microsoft", "name": ".NET Framework", "version": "4.8.4420.0", "source": "528449"}]}).status_code == 200
+    j = c.post("/api/remediation/jobs", json={"asset_id": a["asset_id"], "ecosystem": "Microsoft", "package": name}).json()
+    umbrella = {"kb": "5128928", "title": "2026-10 Cumulative Update for .NET Framework 3.5, 4.8 and 4.8.1 for Microsoft server "
+                                          "operating system version 21H2 for x64 (KB5128928)"}
+
+    def abort(job_id):
+        assert c.post(f"/api/remediation/jobs/{job_id}/approve").status_code == 200
+        c.get("/api/agent/jobs", headers=h)
+        c.post(f"/api/agent/jobs/{job_id}/report", headers=h, json={"outcome": "aborted", "steps": [], "offered": [umbrella],
+                                                                    "error": "No changes made"})
+        return {x["id"]: x for x in c.get("/api/remediation/jobs").json()}
+
+    jobs = abort(j["id"])
+    assert jobs[j["id"]]["error"].startswith("Windows Update offers .NET Framework's fix as KB5128928; planned with it.")
+    [new] = [x for x in jobs.values() if x["id"] != j["id"]]
+    assert new["status"] == "planned" and new["packages"] == [{"name": name, "from": "4.8.4420.0", "kb": "5127687", "to": "4.8.4811.0",
+                                                                "alt": {"kb": "5128928", "to": "4.8.4811.0"}}]
+    assert "only inside that combined cumulative" in new["summary"]
+    assert len(abort(new["id"])) == 2  # refused with it: not planned again
+
+
 def test_winjob_touches_only_its_own_kind_of_package(tmp_path):
     out = ("Package Identity : Package_for_RollupFix~31bf3856ad364e35~amd64~~26100.9711.1.30\nState : Installed\n\n"
            "Package Identity : Package_for_DotNetRollup_481~31bf3856ad364e35~amd64~~10.0.9363.1\nState : Installed\n")
@@ -305,6 +346,12 @@ def test_winjob_touches_only_its_own_kind_of_package(tmp_path):
         return agent.WinJob({"packages": [{"name": name, "kb": "5127694", "from": "1.0.0", "to": "2.0.0"}]}, run=run, state_path=str(tmp_path / "s.json"))
     assert list(job(".NET Framework 4.8.1 on Windows 11 version 25H2").rollups()) == ["Package_for_DotNetRollup_481~31bf3856ad364e35~amd64~~10.0.9363.1"]
     assert list(job("Windows 11 Version 25H2 for x64-based Systems").rollups()) == ["Package_for_RollupFix~31bf3856ad364e35~amd64~~26100.9711.1.30"]
+    # Server 2022 names its .NET rollup without the version suffix: missed, a forced failure couldn't roll back (real VM, DECISIONS 118)
+    out = ("Package Identity : Package_for_DotNetRollup~31bf3856ad364e35~amd64~~10.0.4811.2\nState : Installed\n\n"
+           "Package Identity : Package_for_RollupFix~31bf3856ad364e35~amd64~~20348.2113.1.22\nState : Installed\n")
+    assert list(job(".NET Framework 4.8 on Windows Server 2022").rollups()) == ["Package_for_DotNetRollup~31bf3856ad364e35~amd64~~10.0.4811.2"]
+    assert agent.ROLLUP_NAME.match("Package_for_DotNetRollup~31bf3856ad364e35~amd64~~10.0.4811.2")
+    assert not agent.ROLLUP_NAME.match("Package_for_DotNetRollupX~31bf3856ad364e35~amd64~~10.0.4811.2")
 
 
 def test_a_two_part_sdk_version_is_no_band_not_an_error():

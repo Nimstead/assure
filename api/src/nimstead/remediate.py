@@ -85,7 +85,8 @@ def _log(s: Session, job: RemediationJob, kind: str, **data) -> None:
         notify(s, job.org_id, f"remediation_{job.status}", f"Remediation {job.status}: {job.summary}" + (f" ({job.error})" if job.error else ""), urgent=job.status == "rollback_failed")
 
 
-def windows_kbs(s: Session, product: str, cves: list[str], ecosystem: str = "Windows", step: dict | None = None) -> dict:
+def windows_kbs(s: Session, product: str, cves: list[str], ecosystem: str = "Windows", step: dict | None = None,
+                umbrella: str | None = None) -> dict:
     """The cumulative update that reaches the highest fixed build fixes them all: {"kb", "to"}, plus "alt" (the
     hotpatch KB and build) when every CVE also has a hotpatch fix. The agent installs whichever one Windows Update
     offers this host, so the plan doesn't need to know whether it is hotpatch-enrolled (DECISIONS 52). step: the
@@ -107,7 +108,9 @@ def windows_kbs(s: Session, product: str, cves: list[str], ecosystem: str = "Win
         raise RemediationError("No Windows update (KB) is known for the fixing build; refusing to plan")
     to, kb = top(cum)
     out = {"kb": kb, "to": to}
-    if step:
+    if umbrella:  # .NET's combined cumulative, the only package Windows Update offers a server for that fix (DECISIONS 118)
+        out["alt"] = {"kb": umbrella, "to": to}
+    elif step:
         if step["kb"] == kb or windows_cmp(step["to"], to) >= 0:
             raise RemediationError("A step must be an earlier update than the one that fixes these findings")
         out["alt"] = step
@@ -378,7 +381,8 @@ def approve(s: Session, job: RemediationJob, by: str, policy: bool = False, forw
     return job
 
 
-def plan_windows_app(s: Session, asset: Asset, ecosystem: str, package: str, findings: list, created_by: str) -> RemediationJob:
+def plan_windows_app(s: Session, asset: Asset, ecosystem: str, package: str, findings: list, created_by: str,
+                     umbrella: str | None = None) -> RemediationJob:
     """winget (curated apps, Edge, VS Code: forward-only), office (Click-to-Run, rolls back to the build it found) or
     winconfig (one setting from the agent's closed list, rolled back to the value it found). Plan T17, T21, T22, T38."""
     from nimstead.office import PREFIX as OFFICE
@@ -389,7 +393,7 @@ def plan_windows_app(s: Session, asset: Asset, ecosystem: str, package: str, fin
         pkgs, manager, summary = [{"name": check, "from": "current", "to": "fixed"}], "winconfig", f"Change setting {check} on {asset.hostname}"
     elif package.startswith(".NET Framework"):  # a KB through Windows Update like the OS, compared with mscorlib (DECISIONS 63)
         manager = "windows"
-        kbs = windows_kbs(s, package, [f.vuln_id for f in findings], ecosystem)
+        kbs = windows_kbs(s, package, [f.vuln_id for f in findings], ecosystem, umbrella=umbrella)
         pkgs, summary = [{"name": package, "from": findings[0].installed_version, **kbs}], f"Install KB{kbs['kb']} for {package} on {asset.hostname}"
     else:
         manager = "office" if package.startswith(OFFICE) else "winget"
@@ -653,14 +657,43 @@ def _plan_servicing(s: Session, job: RemediationJob, asset: Asset, product: str,
     return new
 
 
+def _plan_dotnet_umbrella(s: Session, job: RemediationJob, offered: list) -> RemediationJob | None:
+    """On a server Windows Update offers .NET Framework's fix only inside its combined cumulative ("3.5, 4.7.2 and 4.8"), a KB
+    MSRC never names (real Server 2019 and 2022, 2026-11-08). If it offers exactly one .NET Framework update, plan (never
+    approve) the same fix with that KB as the job's alternative: same target, and the agent still installs it only if it's
+    removable and calls it done only when mscorlib reaches the fix (DECISIONS 118). One the agent refused isn't planned again."""
+    p = job.packages[0]
+    nets = [str(o["kb"]) for o in offered[:10] if isinstance(o, dict) and isinstance(o.get("title"), str)
+            and ".NET Framework" in o["title"][:300] and SAFE_KB.match(str(o.get("kb")))]
+    refused = {str((j.packages[0].get("alt") or {}).get("kb")) for j in s.scalars(select(RemediationJob).where(
+        RemediationJob.asset_id == job.asset_id, RemediationJob.manager == "windows", RemediationJob.status == "aborted")) if j.packages}
+    if len(nets) != 1 or nets[0] == p.get("kb") or nets[0] in refused or (p.get("alt") or {}).get("kb") == nets[0]:
+        return None
+    asset = s.get(Asset, job.asset_id)
+    findings = list(s.scalars(select(Finding).where(Finding.id.in_(job.finding_ids), Finding.status == "open")))
+    if not findings:
+        return None
+    try:
+        new = plan_windows_app(s, asset, job.action_key.split("|", 1)[0], p["name"], findings, "policy", umbrella=nets[0])
+    except RemediationError:
+        return None
+    new.summary = (f"Install KB{nets[0]} for {p['name']} on {asset.hostname}: Windows Update offers this server .NET Framework's fix "
+                   f"(KB{new.packages[0]['kb']}) only inside that combined cumulative update.")[:500]
+    job.error = f"Windows Update offers .NET Framework's fix as KB{nets[0]}; planned with it. {job.error or ''}".strip()[:2000]
+    s.commit()
+    return new
+
+
 def plan_step(s: Session, job: RemediationJob | None, offered, client=None) -> RemediationJob | None:
     """Windows Update offered this host none of an aborted job's KBs. If it offers an earlier cumulative update for the same
     product, plan (never approve) a job that steps through it: the KB's build comes from MSRC, fetching the month the title
     names when the KB is unknown (DECISIONS 95). offered is the host's word: only KB numbers and title months are read."""
     p = job.packages[0] if job and job.status == "aborted" and job.manager == "windows" and job.packages else {}
     product, cur, target = str(p.get("name", "")), str(p.get("from", "")), str(p.get("to", ""))
-    if not SAFE_PRODUCT.match(product) or product.startswith(".NET") or not isinstance(offered, list):
+    if not SAFE_PRODUCT.match(product) or not isinstance(offered, list):
         return None
+    if product.startswith(".NET"):
+        return _plan_dotnet_umbrella(s, job, offered)
     months: dict[str, tuple[str, str]] = {}  # KB -> ("2023-11", MSRC's "2023-Nov")
     dotnet = set()  # .NET Framework's umbrella cumulatives: MSRC lists their parts, never them (DECISIONS 117)
     for o in offered[:10]:

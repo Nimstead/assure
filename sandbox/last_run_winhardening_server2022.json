@@ -1,0 +1,937 @@
+[
+  {
+    "step": "wdigest_fail",
+    "outcome": "rolled_back",
+    "error": "Change failed and was rolled back: injected failure (sandbox test) failed: --fail-after-apply",
+    "steps": [
+      [
+        "job validated",
+        true
+      ],
+      [
+        "LanmanServer running before change",
+        true
+      ],
+      [
+        "recorded UseLogonCredential before the change",
+        true
+      ],
+      [
+        "UseLogonCredential set to 0",
+        true
+      ],
+      [
+        "LanmanServer running after change",
+        true
+      ],
+      [
+        "injected failure (sandbox test)",
+        false
+      ],
+      [
+        "UseLogonCredential removed again",
+        true
+      ]
+    ]
+  },
+  {
+    "step": "wdigest_apply",
+    "outcome": "applied",
+    "error": null,
+    "steps": [
+      [
+        "job validated",
+        true
+      ],
+      [
+        "LanmanServer running before change",
+        true
+      ],
+      [
+        "recorded UseLogonCredential before the change",
+        true
+      ],
+      [
+        "UseLogonCredential set to 0",
+        true
+      ],
+      [
+        "LanmanServer running after change",
+        true
+      ]
+    ]
+  },
+  {
+    "step": "setting wdigest",
+    "found": "",
+    "after_failure": "",
+    "after_apply": "0",
+    "secure": "0"
+  },
+  {
+    "step": "ntlmv1_fail",
+    "outcome": "rolled_back",
+    "error": "Change failed and was rolled back: injected failure (sandbox test) failed: --fail-after-apply",
+    "steps": [
+      [
+        "job validated",
+        true
+      ],
+      [
+        "LanmanServer running before change",
+        true
+      ],
+      [
+        "recorded LmCompatibilityLevel before the change",
+        true
+      ],
+      [
+        "LmCompatibilityLevel set to 5",
+        true
+      ],
+      [
+        "LanmanServer running after change",
+        true
+      ],
+      [
+        "injected failure (sandbox test)",
+        false
+      ],
+      [
+        "LmCompatibilityLevel removed again",
+        true
+      ]
+    ]
+  },
+  {
+    "step": "ntlmv1_apply",
+    "outcome": "applied",
+    "error": null,
+    "steps": [
+      [
+        "job validated",
+        true
+      ],
+      [
+        "LanmanServer running before change",
+        true
+      ],
+      [
+        "recorded LmCompatibilityLevel before the change",
+        true
+      ],
+      [
+        "LmCompatibilityLevel set to 5",
+        true
+      ],
+      [
+        "LanmanServer running after change",
+        true
+      ]
+    ]
+  },
+  {
+    "step": "setting ntlmv1",
+    "found": "",
+    "after_failure": "",
+    "after_apply": "5",
+    "secure": "5"
+  },
+  {
+    "step": "llmnr_fail",
+    "outcome": "rolled_back",
+    "error": "Change failed and was rolled back: injected failure (sandbox test) failed: --fail-after-apply",
+    "steps": [
+      [
+        "job validated",
+        true
+      ],
+      [
+        "LanmanServer running before change",
+        true
+      ],
+      [
+        "recorded EnableMulticast before the change",
+        true
+      ],
+      [
+        "EnableMulticast set to 0",
+        true
+      ],
+      [
+        "LanmanServer running after change",
+        true
+      ],
+      [
+        "injected failure (sandbox test)",
+        false
+      ],
+      [
+        "EnableMulticast removed again",
+        true
+      ]
+    ]
+  },
+  {
+    "step": "llmnr_apply",
+    "outcome": "applied",
+    "error": null,
+    "steps": [
+      [
+        "job validated",
+        true
+      ],
+      [
+        "LanmanServer running before change",
+        true
+      ],
+      [
+        "recorded EnableMulticast before the change",
+        true
+      ],
+      [
+        "EnableMulticast set to 0",
+        true
+      ],
+      [
+        "LanmanServer running after change",
+        true
+      ]
+    ]
+  },
+  {
+    "step": "setting llmnr",
+    "found": "",
+    "after_failure": "",
+    "after_apply": "0",
+    "secure": "0"
+  },
+  {
+    "step": "smb_signing_fail",
+    "outcome": "rolled_back",
+    "error": "Change failed and was rolled back: injected failure (sandbox test) failed: --fail-after-apply",
+    "steps": [
+      [
+        "job validated",
+        true
+      ],
+      [
+        "LanmanServer running before change",
+        true
+      ],
+      [
+        "recorded RequireSecuritySignature before the change",
+        true
+      ],
+      [
+        "RequireSecuritySignature set to 1",
+        true
+      ],
+      [
+        "LanmanServer running after change",
+        true
+      ],
+      [
+        "injected failure (sandbox test)",
+        false
+      ],
+      [
+        "RequireSecuritySignature restored to 0x0",
+        true
+      ]
+    ]
+  },
+  {
+    "step": "smb_signing_apply",
+    "outcome": "applied",
+    "error": null,
+    "steps": [
+      [
+        "job validated",
+        true
+      ],
+      [
+        "LanmanServer running before change",
+        true
+      ],
+      [
+        "recorded RequireSecuritySignature before the change",
+        true
+      ],
+      [
+        "RequireSecuritySignature set to 1",
+        true
+      ],
+      [
+        "LanmanServer running after change",
+        true
+      ]
+    ]
+  },
+  {
+    "step": "setting smb-signing",
+    "found": "0",
+    "after_failure": "0",
+    "after_apply": "1",
+    "secure": "1"
+  },
+  {
+    "step": "smb1_fail",
+    "outcome": "rolled_back",
+    "error": "Change failed and was rolled back: injected failure (sandbox test) failed: --fail-after-apply",
+    "steps": [
+      [
+        "job validated",
+        true
+      ],
+      [
+        "LanmanServer running before change",
+        true
+      ],
+      [
+        "recorded SMB1 before the change",
+        true
+      ],
+      [
+        "SMB1 set to 0",
+        true
+      ],
+      [
+        "LanmanServer running after change",
+        true
+      ],
+      [
+        "injected failure (sandbox test)",
+        false
+      ],
+      [
+        "SMB1 removed again",
+        true
+      ]
+    ]
+  },
+  {
+    "step": "smb1_apply",
+    "outcome": "applied",
+    "error": null,
+    "steps": [
+      [
+        "job validated",
+        true
+      ],
+      [
+        "LanmanServer running before change",
+        true
+      ],
+      [
+        "recorded SMB1 before the change",
+        true
+      ],
+      [
+        "SMB1 set to 0",
+        true
+      ],
+      [
+        "LanmanServer running after change",
+        true
+      ]
+    ]
+  },
+  {
+    "step": "setting smb1",
+    "found": "",
+    "after_failure": "",
+    "after_apply": "0",
+    "secure": "0"
+  },
+  {
+    "step": "cert_padding_check_fail",
+    "outcome": "rolled_back",
+    "error": "Change failed and was rolled back: injected failure (sandbox test) failed: --fail-after-apply",
+    "steps": [
+      [
+        "job validated",
+        true
+      ],
+      [
+        "LanmanServer running before change",
+        true
+      ],
+      [
+        "recorded EnableCertPaddingCheck before the change",
+        true
+      ],
+      [
+        "EnableCertPaddingCheck set to 1",
+        true
+      ],
+      [
+        "recorded EnableCertPaddingCheck before the change",
+        true
+      ],
+      [
+        "EnableCertPaddingCheck set to 1",
+        true
+      ],
+      [
+        "LanmanServer running after change",
+        true
+      ],
+      [
+        "injected failure (sandbox test)",
+        false
+      ],
+      [
+        "EnableCertPaddingCheck removed again",
+        true
+      ],
+      [
+        "EnableCertPaddingCheck removed again",
+        true
+      ]
+    ]
+  },
+  {
+    "step": "cert_padding_check_apply",
+    "outcome": "applied",
+    "error": null,
+    "steps": [
+      [
+        "job validated",
+        true
+      ],
+      [
+        "LanmanServer running before change",
+        true
+      ],
+      [
+        "recorded EnableCertPaddingCheck before the change",
+        true
+      ],
+      [
+        "EnableCertPaddingCheck set to 1",
+        true
+      ],
+      [
+        "recorded EnableCertPaddingCheck before the change",
+        true
+      ],
+      [
+        "EnableCertPaddingCheck set to 1",
+        true
+      ],
+      [
+        "LanmanServer running after change",
+        true
+      ]
+    ]
+  },
+  {
+    "step": "setting cert-padding-check",
+    "found": "",
+    "after_failure": "",
+    "after_apply": "1",
+    "secure": "1"
+  },
+  {
+    "step": "anonymous_sam_fail",
+    "outcome": "rolled_back",
+    "error": "Change failed and was rolled back: injected failure (sandbox test) failed: --fail-after-apply",
+    "steps": [
+      [
+        "job validated",
+        true
+      ],
+      [
+        "LanmanServer running before change",
+        true
+      ],
+      [
+        "recorded RestrictAnonymousSAM before the change",
+        true
+      ],
+      [
+        "RestrictAnonymousSAM set to 1",
+        true
+      ],
+      [
+        "LanmanServer running after change",
+        true
+      ],
+      [
+        "injected failure (sandbox test)",
+        false
+      ],
+      [
+        "RestrictAnonymousSAM restored to 0x1",
+        true
+      ]
+    ]
+  },
+  {
+    "step": "anonymous_sam_apply",
+    "outcome": "applied",
+    "error": null,
+    "steps": [
+      [
+        "job validated",
+        true
+      ],
+      [
+        "LanmanServer running before change",
+        true
+      ],
+      [
+        "recorded RestrictAnonymousSAM before the change",
+        true
+      ],
+      [
+        "RestrictAnonymousSAM set to 1",
+        true
+      ],
+      [
+        "LanmanServer running after change",
+        true
+      ]
+    ]
+  },
+  {
+    "step": "setting anonymous-sam",
+    "found": "1",
+    "after_failure": "1",
+    "after_apply": "1",
+    "secure": "1"
+  },
+  {
+    "step": "lm_hash_fail",
+    "outcome": "rolled_back",
+    "error": "Change failed and was rolled back: injected failure (sandbox test) failed: --fail-after-apply",
+    "steps": [
+      [
+        "job validated",
+        true
+      ],
+      [
+        "LanmanServer running before change",
+        true
+      ],
+      [
+        "recorded NoLMHash before the change",
+        true
+      ],
+      [
+        "NoLMHash set to 1",
+        true
+      ],
+      [
+        "LanmanServer running after change",
+        true
+      ],
+      [
+        "injected failure (sandbox test)",
+        false
+      ],
+      [
+        "NoLMHash restored to 0x1",
+        true
+      ]
+    ]
+  },
+  {
+    "step": "lm_hash_apply",
+    "outcome": "applied",
+    "error": null,
+    "steps": [
+      [
+        "job validated",
+        true
+      ],
+      [
+        "LanmanServer running before change",
+        true
+      ],
+      [
+        "recorded NoLMHash before the change",
+        true
+      ],
+      [
+        "NoLMHash set to 1",
+        true
+      ],
+      [
+        "LanmanServer running after change",
+        true
+      ]
+    ]
+  },
+  {
+    "step": "setting lm-hash",
+    "found": "1",
+    "after_failure": "1",
+    "after_apply": "1",
+    "secure": "1"
+  },
+  {
+    "step": "autorun_fail",
+    "outcome": "rolled_back",
+    "error": "Change failed and was rolled back: injected failure (sandbox test) failed: --fail-after-apply",
+    "steps": [
+      [
+        "job validated",
+        true
+      ],
+      [
+        "LanmanServer running before change",
+        true
+      ],
+      [
+        "recorded NoDriveTypeAutoRun before the change",
+        true
+      ],
+      [
+        "NoDriveTypeAutoRun set to 255",
+        true
+      ],
+      [
+        "LanmanServer running after change",
+        true
+      ],
+      [
+        "injected failure (sandbox test)",
+        false
+      ],
+      [
+        "NoDriveTypeAutoRun removed again",
+        true
+      ]
+    ]
+  },
+  {
+    "step": "autorun_apply",
+    "outcome": "applied",
+    "error": null,
+    "steps": [
+      [
+        "job validated",
+        true
+      ],
+      [
+        "LanmanServer running before change",
+        true
+      ],
+      [
+        "recorded NoDriveTypeAutoRun before the change",
+        true
+      ],
+      [
+        "NoDriveTypeAutoRun set to 255",
+        true
+      ],
+      [
+        "LanmanServer running after change",
+        true
+      ]
+    ]
+  },
+  {
+    "step": "setting autorun",
+    "found": "",
+    "after_failure": "",
+    "after_apply": "255",
+    "secure": "255"
+  },
+  {
+    "step": "insecure_guest_auth_fail",
+    "outcome": "rolled_back",
+    "error": "Change failed and was rolled back: injected failure (sandbox test) failed: --fail-after-apply",
+    "steps": [
+      [
+        "job validated",
+        true
+      ],
+      [
+        "LanmanServer running before change",
+        true
+      ],
+      [
+        "recorded AllowInsecureGuestAuth before the change",
+        true
+      ],
+      [
+        "AllowInsecureGuestAuth set to 0",
+        true
+      ],
+      [
+        "LanmanServer running after change",
+        true
+      ],
+      [
+        "injected failure (sandbox test)",
+        false
+      ],
+      [
+        "AllowInsecureGuestAuth removed again",
+        true
+      ]
+    ]
+  },
+  {
+    "step": "insecure_guest_auth_apply",
+    "outcome": "applied",
+    "error": null,
+    "steps": [
+      [
+        "job validated",
+        true
+      ],
+      [
+        "LanmanServer running before change",
+        true
+      ],
+      [
+        "recorded AllowInsecureGuestAuth before the change",
+        true
+      ],
+      [
+        "AllowInsecureGuestAuth set to 0",
+        true
+      ],
+      [
+        "LanmanServer running after change",
+        true
+      ]
+    ]
+  },
+  {
+    "step": "setting insecure-guest-auth",
+    "found": "",
+    "after_failure": "",
+    "after_apply": "0",
+    "secure": "0"
+  },
+  {
+    "step": "winrm_basic_fail",
+    "outcome": "rolled_back",
+    "error": "Change failed and was rolled back: injected failure (sandbox test) failed: --fail-after-apply",
+    "steps": [
+      [
+        "job validated",
+        true
+      ],
+      [
+        "LanmanServer running before change",
+        true
+      ],
+      [
+        "recorded AllowBasic before the change",
+        true
+      ],
+      [
+        "AllowBasic set to 0",
+        true
+      ],
+      [
+        "LanmanServer running after change",
+        true
+      ],
+      [
+        "injected failure (sandbox test)",
+        false
+      ],
+      [
+        "AllowBasic removed again",
+        true
+      ]
+    ]
+  },
+  {
+    "step": "winrm_basic_apply",
+    "outcome": "applied",
+    "error": null,
+    "steps": [
+      [
+        "job validated",
+        true
+      ],
+      [
+        "LanmanServer running before change",
+        true
+      ],
+      [
+        "recorded AllowBasic before the change",
+        true
+      ],
+      [
+        "AllowBasic set to 0",
+        true
+      ],
+      [
+        "LanmanServer running after change",
+        true
+      ]
+    ]
+  },
+  {
+    "step": "setting winrm-basic",
+    "found": "",
+    "after_failure": "",
+    "after_apply": "0",
+    "secure": "0"
+  },
+  {
+    "step": "winrm_unencrypted_fail",
+    "outcome": "rolled_back",
+    "error": "Change failed and was rolled back: injected failure (sandbox test) failed: --fail-after-apply",
+    "steps": [
+      [
+        "job validated",
+        true
+      ],
+      [
+        "LanmanServer running before change",
+        true
+      ],
+      [
+        "recorded AllowUnencryptedTraffic before the change",
+        true
+      ],
+      [
+        "AllowUnencryptedTraffic set to 0",
+        true
+      ],
+      [
+        "LanmanServer running after change",
+        true
+      ],
+      [
+        "injected failure (sandbox test)",
+        false
+      ],
+      [
+        "AllowUnencryptedTraffic removed again",
+        true
+      ]
+    ]
+  },
+  {
+    "step": "winrm_unencrypted_apply",
+    "outcome": "applied",
+    "error": null,
+    "steps": [
+      [
+        "job validated",
+        true
+      ],
+      [
+        "LanmanServer running before change",
+        true
+      ],
+      [
+        "recorded AllowUnencryptedTraffic before the change",
+        true
+      ],
+      [
+        "AllowUnencryptedTraffic set to 0",
+        true
+      ],
+      [
+        "LanmanServer running after change",
+        true
+      ]
+    ]
+  },
+  {
+    "step": "setting winrm-unencrypted",
+    "found": "",
+    "after_failure": "",
+    "after_apply": "0",
+    "secure": "0"
+  },
+  {
+    "step": "script_block_logging_fail",
+    "outcome": "rolled_back",
+    "error": "Change failed and was rolled back: injected failure (sandbox test) failed: --fail-after-apply",
+    "steps": [
+      [
+        "job validated",
+        true
+      ],
+      [
+        "LanmanServer running before change",
+        true
+      ],
+      [
+        "recorded EnableScriptBlockLogging before the change",
+        true
+      ],
+      [
+        "EnableScriptBlockLogging set to 1",
+        true
+      ],
+      [
+        "LanmanServer running after change",
+        true
+      ],
+      [
+        "injected failure (sandbox test)",
+        false
+      ],
+      [
+        "EnableScriptBlockLogging removed again",
+        true
+      ]
+    ]
+  },
+  {
+    "step": "script_block_logging_apply",
+    "outcome": "applied",
+    "error": null,
+    "steps": [
+      [
+        "job validated",
+        true
+      ],
+      [
+        "LanmanServer running before change",
+        true
+      ],
+      [
+        "recorded EnableScriptBlockLogging before the change",
+        true
+      ],
+      [
+        "EnableScriptBlockLogging set to 1",
+        true
+      ],
+      [
+        "LanmanServer running after change",
+        true
+      ]
+    ]
+  },
+  {
+    "step": "setting script-block-logging",
+    "found": "",
+    "after_failure": "",
+    "after_apply": "1",
+    "secure": "1"
+  },
+  {
+    "step": "feeds",
+    "msrc": {
+      "documents": 2,
+      "skipped_documents": 0,
+      "inserted": 30495,
+      "updated": 0,
+      "skipped": 0
+    }
+  },
+  {
+    "step": "settings the audit still reports after their job",
+    "still": []
+  },
+  {
+    "step": "RESULT: FAIL",
+    "error": "RuntimeError: guest command failed (1): winget show --id Microsoft.DotNet.SDK.8 --exact --versions --accept-source-agreements --disable-interactivity\nK.8 --exact --versions --accept-s ...\r\n\r\nAt C:\\nimtest\\runner.ps1:7 char:14\r\n+ ...      $out = & powershell.exe -NoProfile -NonInteractive -ExecutionPol ...\r\n+                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\r\n    + CategoryInfo          : NotSpecified: (+ winget show -...-accept-s ...\r\n:String) [], RemoteException\r\n    + FullyQualifiedErrorId : NativeCommandError\r\n \r\npowershell.exe : + ~~~~~~\r\n\r\nAt C:\\nimtest\\runner.ps1:7 char:14\r\n+ ...      $out = & powershell.exe -NoProfile -NonInteractive -ExecutionPol ...\r\n+                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\r\n    + CategoryInfo          : NotSpecified: (+ ~~~~~~\r\n:String) [], RemoteException\r\n    + FullyQualifiedErrorId : NativeCommandError\r\n \r\npowershell.exe :     + CategoryInfo          : ObjectNotFound: (winget:String) [], CommandNotFoundException\r\n\r\nAt C:\\nimtest\\runner.ps1:7 char:14\r\n+ ...      $out = & powershell.exe -NoProfile -NonInteractive -ExecutionPol ...\r\n+                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\r\n    + CategoryInfo          : NotSpecified: (    + CategoryI...oundException\r\n:String) [], RemoteException\r\n    + FullyQualifiedErrorId : NativeCommandError\r\n \r\npowershell.exe :     + FullyQualifiedErrorId : CommandNotFoundException\r\n\r\nAt C:\\nimtest\\runner.ps1:7 char:14\r\n+ ...      $out = & powershell.exe -NoProfile -NonInteractive -ExecutionPol ...\r\n+                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\r\n    + CategoryInfo          : NotSpecified: (    + FullyQual...oundException\r\n:String) [], RemoteException\r\n    + FullyQualifiedErrorId : NativeCommandError\r\n \r\npowershell.exe :  \r\n\r\nAt C:\\nimtest\\runner.ps1:7 char:14\r\n+ ...      $out = & powershell.exe -NoProfile -NonInteractive -ExecutionPol ...\r\n+                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\r\n    + CategoryInfo          : NotSpecified: ( \r\n:String) [], RemoteException\r\n    + FullyQualifiedErrorId : NativeCommandError\r\n \r\n"
+  }
+]

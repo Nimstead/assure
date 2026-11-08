@@ -1993,8 +1993,9 @@ SAFE_KB = re.compile(r"^[0-9]{6,8}\Z")
 DISM_TRANSIENT = ("0x80010108", "0x800f0816", "0x800f082f", "0x80070020", "0x800f0805", "0x80004005")
 DISM_RETRIES = 15
 SAFE_PRODUCT = re.compile(r"^(?:\.NET Framework 4[0-9.]* on )?Windows [A-Za-z0-9 .()-]{1,120}\Z")
-ROLLUP = re.compile(r"Package Identity : (Package_for_(?:RollupFix|DotNetRollup_\d+)~[^\s]+)\s+State : ([A-Za-z ]+)")
-ROLLUP_NAME = re.compile(r"^Package_for_(?:RollupFix|DotNetRollup_\d+)~[A-Za-z0-9._~-]{1,200}\Z")
+# .NET's rollup is Package_for_DotNetRollup_481~ on Windows 11 and Package_for_DotNetRollup~ on Server 2022 (real VMs, DECISIONS 118)
+ROLLUP = re.compile(r"Package Identity : (Package_for_(?:RollupFix|DotNetRollup(?:_\d+)?)~[^\s]+)\s+State : ([A-Za-z ]+)")
+ROLLUP_NAME = re.compile(r"^Package_for_(?:RollupFix|DotNetRollup(?:_\d+)?)~[A-Za-z0-9._~-]{1,200}\Z")
 TRUSTED_OWNERS = {"S-1-5-18", "S-1-5-32-544"}  # SYSTEM, Administrators
 
 PS_FIND = r"""
@@ -2259,6 +2260,7 @@ class WinJob:
             return bool(
                 s.get("phase") in ("start", "verify", "rolled_back_pending") and isinstance(s.get("steps"), list)
                 and SAFE_KB.match(str(s.get("kb", ""))) and SAFE_PRODUCT.match(str(s.get("product")))
+                and (s.get("named_kb") is None or SAFE_KB.match(str(s["named_kb"])))  # it goes into PowerShell too
                 and SAFE_VERSION.match(str(s.get("from") or "")) and (s.get("to") is None or SAFE_VERSION.match(str(s["to"])))
                 and (s.get("alt") is None or (isinstance(s["alt"], dict) and SAFE_KB.match(str(s["alt"].get("kb", "")))
                                               and SAFE_VERSION.match(str(s["alt"].get("to") or ""))))
@@ -2412,7 +2414,9 @@ class WinJob:
             rc, why = ps(self.run, PS_WHY_NOT_OFFERED.replace("%KB%", s["kb"]))
             if esu_active(s.get("product"), self.run) is False:
                 why = "; ".join(x for x in (why.strip(), "no Extended Security Updates licence is active") if x)
-            self.offered = None if str(s.get("product")).startswith(".NET Framework") else offered_instead(others)
+            self.offered = offered_instead(others)
+            if str(s.get("product")).startswith(".NET Framework"):  # only its own kind: a server's combined .NET cumulative (DECISIONS 118)
+                self.offered = [x for x in self.offered or [] if ".NET Framework" in x["title"]] or None
             why = (why.strip() or "Windows Update didn't offer it (not needed, superseded, or not released for this build)") + (
                 "; it offers instead: " + ", ".join(f"KB{x['kb']} ({x['title']})" for x in self.offered) if self.offered else "")
             for kb in found:
@@ -2422,7 +2426,7 @@ class WinJob:
         else:  # cumulative or hotpatch: whichever this host is offered, never both
             self.step(f"Windows Update offers exactly one of KB{' / KB'.join(found)}", len(offered) == 1,
                       "; ".join(f"KB{kb}: {n} offered" for kb, (_, n, _) in found.items()) + ("" if offered else f"; {found[s['kb']][2]}"))
-            s["kb"], s["to"] = offered[0], found[offered[0]][0]
+            s["named_kb"], s["kb"], s["to"] = s["kb"], offered[0], found[offered[0]][0]
         s["baseline"] = self.rollups()
         self.step("rollback baseline recorded", any(v.strip() == "Installed" for v in s["baseline"].values()),
                   "installed cumulative packages: " + ", ".join(k for k, v in s["baseline"].items() if v.strip() == "Installed"))
@@ -2434,6 +2438,10 @@ class WinJob:
             self.step("update is a servicing stack update (its own manifest)", rc == 0 and name == f"KB{s['kb']}|selfUpdate=true|permanent", name)
         else:
             rc, out = ps(self.run, PS_PERMANENCE.replace("%KB%", s["kb"]))
+            if rc != 0 and str(s.get("product")).startswith(".NET Framework") and s.get("named_kb", s["kb"]) != s["kb"]:
+                # .NET's combined cumulative downloads as the per-version package the job names (KB5128923 arrives as
+                # Windows10.0-KB5127666-x64.cab, real Server 2019, DECISIONS 118): judge that package's own manifest
+                rc, out = ps(self.run, PS_PERMANENCE.replace("%KB%", s["named_kb"]))
             # permanent sub-packages (Features on Demand) stay behind on removal; rollback is judged by the build returning
             ok, detail = removable(json.loads(out)) if rc == 0 and out.strip().startswith("[") else (False, out)
             self.step("update is removable (manifest checked before install)", ok, detail)

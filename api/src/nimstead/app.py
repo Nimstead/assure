@@ -57,6 +57,7 @@ from nimstead.engine.collection import valid_document
 from nimstead.netguard import check_public_url
 from nimstead.scan import app_coverage, rescan
 from nimstead.versions import comparator_for
+from nimstead.winapps_evidence import EVIDENCE as WINAPP_EVIDENCE
 
 SESSION_COOKIE = "nimstead_session"
 SSO_COOKIE = "nimstead_sso"
@@ -1235,6 +1236,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             "id": f.id, "asset_id": f.asset_id, "hostname": hostname, "ecosystem": f.ecosystem,
             "package": f.package, "installed_version": f.installed_version, "fixed_version": f.fixed_version,
             "setting_fix": f.ecosystem == "WinConfig" and f.package in remediate.CONFIG_FIXES,
+            # how far the curated rule behind a Windows app finding was proven on a real VM (W13; sandbox/winapps_evidence.py)
+            "rule_evidence": (WINAPP_EVIDENCE.get(f.package, ("pattern",))[0] if f.ecosystem == "WinApp" else None),
             "vuln_id": f.vuln_id, "advisory_ids": f.advisory_ids, "summary": f.summary, "cvss": f.cvss,
             "epss": f.epss, "kev": f.kev, "score": f.score, "priority": f.priority, "reasons": f.reasons,
             "status": f.status, "first_seen": f.first_seen, "last_seen": f.last_seen, "resolved_at": f.resolved_at,

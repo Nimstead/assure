@@ -160,6 +160,13 @@ function Results({ rows, f, noAssets, onClear, onPick }: { rows: Finding[]; f: F
   );
 }
 
+/** How far the curated rule behind a Windows app finding was proven (W13): said, so a match from a name pattern isn't read as proven. */
+export const RULE_EVIDENCE = {
+  proven: "This app's rule was proven on a real install: an old version found by its registry entry, then the upgrade seen.",
+  "real name": "This app's rule was checked against a real install's registry entry, but no upgrade was seen yet.",
+  pattern: "This app's rule matches by its installer's name only; it hasn't been seen on a real install yet.",
+} as const;
+
 const COLS = ["prio", "vuln", "pkg", "ver", "host", "score", "reason"] as const;
 const HEADS = ["Priority", "Vulnerability", "Package", "Installed → fixed", "Host", "Score", "Why"];
 // Phones hide the header row, so each cell names its column for screen readers there.
@@ -250,6 +257,7 @@ function FindingDetail({ f }: { f: Finding }) {
       <p className="break-words text-sm"><strong className="break-all font-semibold">{f.package}</strong> on <strong className="break-all font-semibold">{f.hostname}</strong></p>
       <p className="mt-1 break-words bg-sunken p-3 font-mono text-[13px]">{whyMatched(f)}</p>
       {f.fixed_version && <p className="mt-2 text-sm text-muted">Fix: upgrade {f.package} to {f.fixed_version} or later.</p>}
+      {f.rule_evidence && <p className="mt-2 text-sm text-muted">{RULE_EVIDENCE[f.rule_evidence]}</p>}
 
       <H>Why it's ranked here</H>
       <ul className="list-disc space-y-1 pl-5 text-sm">{f.reasons.map((r) => <li key={r}>{r}</li>)}</ul>

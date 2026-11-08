@@ -708,3 +708,28 @@ def test_a_dead_thunderbird_branch_is_reported_ended():
     assert verdict("153.6.0") is None and verdict("159.0") is None
     with pytest.raises(ValueError):
         lifecycle.parse_thunderbird({"LATEST_THUNDERBIRD_VERSION": "54.0", "THUNDERBIRD_ESR": "153.0"})
+
+
+
+def test_every_curated_rule_says_how_far_it_was_proven(env):
+    """W13: proven old to new on a real VM, identified from a real registry entry, or matched by its name pattern only."""
+    from nimstead.winapps_evidence import EVIDENCE
+    curated = {p.key for p in winapps.PRODUCTS}
+    assert set(EVIDENCE) <= curated and {v[0] for v in EVIDENCE.values()} <= {"proven", "real name"}
+    assert all(f.startswith("last_run_win") and f.endswith(".json") for _, files in EVIDENCE.values() for f in files)
+    # batch 8 (TODO W13): four proven old to new from the real entries, Suricata identified at its installed version only
+    assert {k: EVIDENCE[k][0] for k in ("b3log:siyuan", "gstreamer:gstreamer", "nlnetlabs:unbound", "erlang:erlang/otp", "oisf:suricata")} == {
+        "b3log:siyuan": "proven", "gstreamer:gstreamer": "proven", "nlnetlabs:unbound": "proven", "erlang:erlang/otp": "proven",
+        "oisf:suricata": "real name"}
+    with make_sessionmaker(env)() as s:
+        s.add(Advisory(id="CVE-2026-1", ecosystem="WinApp", package="7-zip:7-zip", modified="2026-10-01T00:00:00",
+                       record={"id": "CVE-2026-1", "aliases": [], "summary": "x", "affected": [{"package": {"ecosystem": "WinApp", "name": "7-zip:7-zip"},
+                               "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": "24.09"}]}]}]}))
+        s.commit()
+    c = user(env)
+    token = c.post("/api/enroll-tokens").json()["token"]
+    a = c.post("/api/agent/enroll", json={"token": token, "hostname": "w", "ecosystem": "Windows"}).json()
+    assert c.post("/api/agent/inventory", headers={"Authorization": f"Bearer {a['agent_key']}"}, json={"ecosystem": "Windows", "packages": [
+        {"ecosystem": "WinApp", "name": "7-Zip 23.01 (x64)", "version": "23.01", "source": "Igor Pavlov"}]}).status_code == 200
+    [f] = [x for x in c.get("/api/findings").json() if x["ecosystem"] == "WinApp"]
+    assert f["rule_evidence"] == EVIDENCE["7-zip:7-zip"][0] == "proven"

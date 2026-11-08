@@ -8,6 +8,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -59,5 +60,10 @@ def test_run_round_trips_through_the_relay(tmp_path, monkeypatch):
         with pytest.raises(subprocess.TimeoutExpired):  # nobody picks it up: it's withdrawn, never run later
             winqemu.run(name, "'late'", timeout=2)
         assert not list(q.glob("*.cmd"))
+        (q / "files").mkdir()  # a file copyto staged comes back byte for byte; nothing else is served
+        (q / "files" / ("ab" * 16)).write_bytes(b"\x00agent\xff")
+        assert urllib.request.urlopen(f"http://127.0.0.1:{port}/file/{'ab' * 16}", timeout=5).read() == b"\x00agent\xff"
+        with pytest.raises(urllib.error.HTTPError):
+            urllib.request.urlopen(f"http://127.0.0.1:{port}/file/..%5Cqemu.json", timeout=5)
     finally:
         relay.kill()

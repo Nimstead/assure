@@ -193,6 +193,25 @@ def run(name: str, command: str, timeout=3600) -> tuple[int, str]:
     raise subprocess.TimeoutExpired(command[:80], timeout)
 
 
+def copyto(name: str, target_dir: str, sources: list[str]) -> None:
+    """VirtualBox's guestcontrol copyto, for a QEMU VM: each file is staged for the relay and fetched by the guest's runner."""
+    staged = STATE / name / "q" / "files"
+    staged.mkdir(exist_ok=True)
+    port = conf(name)["relay_port"]
+    for src in sources:
+        fid = uuid.uuid4().hex
+        shutil.copyfile(src, staged / fid)
+        dest = target_dir.rstrip("\\") + "\\" + Path(src).name
+        try:
+            rc, out = run(name, f"New-Item -ItemType Directory -Force '{target_dir}' | Out-Null; "
+                                f"Invoke-WebRequest -UseBasicParsing -Uri http://10.0.2.2:{port}/file/{fid} -OutFile '{dest}'; "
+                                f"(Get-Item '{dest}').Length", timeout=600)
+        finally:
+            (staged / fid).unlink(missing_ok=True)
+        if rc != 0 or out.strip().splitlines()[-1:] != [str(Path(src).stat().st_size)]:
+            raise RuntimeError(f"copy of {src} into {name} failed: {out[-500:]}")
+
+
 def qmp(name: str, command: str, **arguments) -> dict:
     with socket.create_connection(("127.0.0.1", conf(name)["qmp_port"]), timeout=10) as s:
         f = s.makefile("rw")

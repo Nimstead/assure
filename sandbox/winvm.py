@@ -29,6 +29,12 @@ BASES = STATE / "bases.json"  # "<iso stem>-<image>" -> the base VM a --reuse cl
 
 
 def vbox(*args, check=True, timeout=3600) -> str:
+    if args[:1] == ("guestcontrol",) and args[2:3] == ("copyto",) and (STATE / args[1] / "qemu.json").exists():
+        import winqemu  # a QEMU VM (W5) has no guest control: its runner fetches the files from the host relay
+        rest = list(args[3:])
+        target = rest[rest.index("--target-directory") + 1]
+        winqemu.copyto(args[1], target, [a for i, a in enumerate(rest) if not a.startswith("--") and not rest[i - 1].startswith("--")])
+        return ""
     p = subprocess.run([VBOX, *args], capture_output=True, text=True, timeout=timeout)
     if check and p.returncode != 0:
         raise RuntimeError(f"VBoxManage {' '.join(args[:3])} failed: {p.stdout[-800:]} {p.stderr[-800:]}")

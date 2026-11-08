@@ -23,6 +23,9 @@ class Relay(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):  # noqa: N802
+        if m := re.fullmatch(r"/file/([0-9a-f]{32})", self.path):  # a file winqemu.copyto staged for the guest to fetch
+            f = Q / "files" / m.group(1)
+            return self._send(200, f.read_bytes()) if f.exists() else self._send(404)
         if self.path != "/next":
             return self._send(404)
         for job in sorted(Q.glob("*.cmd"), key=os.path.getmtime):

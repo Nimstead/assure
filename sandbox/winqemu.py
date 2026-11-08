@@ -177,8 +177,11 @@ def run(name: str, command: str, timeout=3600) -> tuple[int, str]:
     encoded = base64.b64encode(("$ProgressPreference = 'SilentlyContinue'\n" + command).encode("utf-16-le")).decode()
     (q / f"{jid}.tmp").write_text(json.dumps({"id": jid, "cmd": encoded}))
     os.replace(q / f"{jid}.tmp", q / f"{jid}.cmd")  # the relay never hands out a half-written job
-    end = time.time() + timeout
+    end, checked = time.time() + timeout, time.time()
     while time.time() < end:
+        if time.time() - checked > 30:  # a guest restart ended QEMU (-no-reboot): boot it cold, as the job can't run otherwise
+            unstick(name)
+            checked = time.time()
         out = q / f"{jid}.out"
         if out.exists():
             r = json.loads(out.read_text(encoding="utf-8"))

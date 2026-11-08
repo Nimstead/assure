@@ -51,6 +51,12 @@ def os_type(detected: str) -> str:
     return m.group(1) if m else "Windows2025_64"
 
 
+def pro_index(detected: str) -> int:
+    """The image that is plain Pro: 6 on the English consumer ISOs, 5 on the German one (Pro N is 6 there, real ISO 2026-11-08)."""
+    m = re.search(r"Image #(\d+)\s*=\s*Windows 1[01] Pro \(", detected)
+    return int(m.group(1)) if m else 6
+
+
 def locale_args(detected: str) -> list[str]:
     """A localised ISO installs in its own language: a localised Windows is what the agent's language checks need (DECISIONS 68)."""
     m = re.search(r"OS Languages\s*=\s*([a-z]{2}-[A-Z]{2})", detected)
@@ -91,7 +97,7 @@ def create(iso: str, memory: int = 4096, lab: bool = False, image: int = 1, comp
     # Windows 11 consumer ISO: Pro with Microsoft's public generic install key (unactivated; the VM is disposable)
     evaluation = "Eval" in detected  # one image, needs no key (W6); expired builds stay in licence notification mode (W4)
     consumer = (win11 or win10) and not evaluation  # multi-edition consumer ISO: Pro (image 6 on both) with the public generic key
-    edition = ["--image-index=6", "--key=VK7JG-NPHTM-C97JM-9MPGT-3V66T"] if consumer else [f"--image-index={image}"]
+    edition = [f"--image-index={pro_index(detected)}", "--key=VK7JG-NPHTM-C97JM-9MPGT-3V66T"] if consumer else [f"--image-index={image}"]
     args = ["unattended", "install", name, f"--iso={iso}", *edition, "--user=Administrator",
             f"--admin-password={password}", f"--password={password}", "--full-user-name=Administrator",
             *locale_args(detected), "--time-zone=UTC", f"--hostname={computer}.local",

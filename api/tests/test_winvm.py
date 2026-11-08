@@ -11,6 +11,15 @@ REPORT = "00:14:09 VMMDev: Guest Additions information report: Version 7.2.22"
 RESET = "00:24:24 Changing the VM state from 'RUNNING' to 'RESETTING'"
 
 
+def test_pro_is_found_by_name_not_position():
+    de = ("    Image #5     = Windows 11 Pro (10.0.26300.9457 / x64 / de-DE)\n"
+          "    Image #6     = Windows 11 Pro N (10.0.26300.9457 / x64 / de-DE)\n"
+          "    Image #7     = Windows 11 Pro Education (10.0.26300.9457 / x64 / de-DE)\n")
+    assert winvm.pro_index(de) == 5
+    assert winvm.pro_index("    Image #6     = Windows 10 Pro (10.0.19041.2965 / x64 / en-US)\n") == 6
+    assert winvm.pro_index("no images listed") == 6
+
+
 def test_booted_only_if_the_additions_reported_after_the_last_reset():
     assert not additions_since_reset(["boot"])
     assert additions_since_reset([REPORT])

@@ -22,6 +22,9 @@ ECOSYSTEMS = ("Windows", msproducts.ECOSYSTEM, winapps.ECOSYSTEM)
 
 @dataclass(frozen=True)
 class Content:
+    """Detection input snapshot keyed by (ecosystem, product), with KEV, CVSS, feed coverage, and a version.
+
+    universe contains distro packages with advisories; eol optionally holds distro lifecycle data."""
     records: dict[tuple[str, str], list[dict]]  # (ecosystem, product key) -> OSV-shaped records, sorted by id
     kev: frozenset[str]
     cvss: dict[str, float]  # NVD's, for what the advisory itself doesn't score
@@ -32,6 +35,11 @@ class Content:
 
     @classmethod
     def make(cls, records: dict, kev=(), cvss: dict | None = None, feeds=None, universe=(), eol: dict | None = None) -> Content:
+        """Return a sorted Content snapshot with a hash-derived version.
+
+        records maps (ecosystem, product) tuples to OSV dictionaries with id keys. kev and universe
+        are iterables of strings; cvss maps CVEs to scores. feeds overrides inferred loaded ecosystems.
+        eol is optional lifecycle data. Missing record IDs raise KeyError."""
         records = {k: sorted(v, key=lambda r: r["id"]) for k, v in records.items()}
         kev, cvss, universe = frozenset(kev), cvss or {}, frozenset(universe)
         feeds = frozenset(feeds if feeds is not None else {e for (e, _), v in records.items() if v})
@@ -42,6 +50,9 @@ class Content:
 
 
 def load(s: Session, inv: Inventory) -> Content:
+    """Read the advisories and risk metadata needed for Inventory inv from Session s.
+
+    Return Content with feed-coverage and lifecycle metadata. Does not write; database errors propagate."""
     wanted = {(i.ecosystem, k) for i in installs(inv) for k in i.keys}
     wanted |= {(e, k + HOTPATCH) for e, k in wanted if e == "Windows"}
     apps = {(i.ecosystem, i.keys[0]) for i in app_installs(inv)}

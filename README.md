@@ -118,6 +118,8 @@ The full, honest list is in [STATUS.md](STATUS.md#not-proven--known-gaps-honest)
 
 ## Documentation
 
+Start with the [documentation index](docs/README.md) for tutorials, task guides, reference, and explanations.
+
 | | |
 |---|---|
 | [Install](docs/install.md) | Docker Compose, HTTPS, enrolling machines, automated fixes, upgrades, backups |

@@ -25,6 +25,7 @@ const STATUSES: Status[] = ["open", "resolved", "accepted"];
 // phones have no "/" key to speak of
 const COARSE = typeof matchMedia !== "undefined" && matchMedia("(pointer: coarse), (max-width: 47.99em)").matches;
 
+/** Render paginated, sortable findings using URL search filters, grouping, selection, and the finding drawer. */
 export function FindingsPage({ search }: { search: RawSearch }) {
   useTitle("Findings");
   const f = parseFilters(search);
@@ -539,6 +540,7 @@ function RevokeAcceptance({ id }: { id: string }) {
   );
 }
 
+/** Render risk-acceptance controls for finding f; successful changes invalidate related queries. */
 export function AcceptRisk({ f }: { f: Finding }) {
   const admin = useIsAdmin();
   const qc = useQueryClient();

@@ -66,6 +66,7 @@ function SectionBar() {
 
 const PRODUCTION_HOW = <>To let fixes run on other machines, set <code className="bg-sunken px-1">NIMSTEAD_ALLOW_PRODUCTION_REMEDIATION=1</code> in <code className="bg-sunken px-1">.env</code> on the server and restart it, once you've watched fixes and rollbacks work on test machines.</>;
 
+/** Render account, organisation policy, integration, and server settings with role-gated mutations. */
 export function SettingsPage() {
   useTitle("Settings");
   const qc = useQueryClient();
@@ -287,6 +288,7 @@ function MaintenanceSection({ s, admin, pending, onSave, saved, error }: { s: Se
   );
 }
 
+/** Render server version, release channel, and update outcome from platform data p. */
 export function PlatformSection({ p }: { p: Settings["platform"] }) {
   const last = p.last_update;
   return (

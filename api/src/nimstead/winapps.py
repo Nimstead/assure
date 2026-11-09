@@ -22,6 +22,11 @@ _ARCH = r"(?:32|64)-bit"
 
 @dataclass(frozen=True)
 class Product:
+    """Curated Windows application identity and version mapping.
+
+    key names the advisory product; name and optional publisher are full-match patterns. cpes
+    lists alternate NVD identities, version normalises DisplayVersion, branch restricts ranges,
+    and nvd_dashes reconciles registry and NVD patch separators."""
     key: str  # advisory package name (vendor:product of the primary CPE)
     name: re.Pattern  # fullmatch on the registry DisplayName
     cpes: tuple[str, ...] = ()  # NVD vendor:product values whose matches feed this key (default: just key)

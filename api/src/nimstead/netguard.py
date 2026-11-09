@@ -57,6 +57,9 @@ class GuardedTransport(httpx.HTTPTransport):
     (rebinding). TLS still verifies the certificate against the real hostname (SNI)."""
 
     def handle_request(self, request):
+        """Send an httpx.Request to a checked IP while preserving the original TLS hostname.
+
+        Mutates request.url and extensions. Raise ValueError for refused URLs; HTTP transport errors propagate."""
         host = request.url.host
         ip = check_public_url(str(request.url))[0]
         if ip != host:
@@ -68,5 +71,9 @@ class GuardedTransport(httpx.HTTPTransport):
 def guarded_client(timeout: float = 5.0) -> httpx.Client:
     # No keep-alive: the pool is keyed by the rewritten IP, not the hostname, so a connection whose certificate was
     # checked for one name could otherwise be reused for another name on the same address without a new TLS check.
+    """Return an HTTPS client with DNS pinning, no redirects, and no connection reuse.
+
+    timeout is the request timeout in seconds. The caller must close the returned httpx.Client.
+    Requests can raise ValueError for refused targets or httpx transport errors."""
     transport = GuardedTransport(limits=httpx.Limits(max_keepalive_connections=0))
     return httpx.Client(transport=transport, timeout=timeout, follow_redirects=False)

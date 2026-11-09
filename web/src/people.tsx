@@ -42,6 +42,7 @@ export function MfaEnrol({ setup, onCode, pending, extra }: { setup: MfaSetup; o
   );
 }
 
+/** Display one-time recovery codes and their copy action; callers must supply the newly issued list. */
 export function RecoveryCodes({ codes }: { codes: string[] }) {
   return (
     <div role="status" className="flex flex-col gap-2 border border-line-strong p-4">
@@ -51,6 +52,7 @@ export function RecoveryCodes({ codes }: { codes: string[] }) {
   );
 }
 
+/** Render password, MFA, and session-revocation controls for the signed-in person. */
 export function AccountSection() {
   const me = useQuery(meQ).data;
   const qc = useQueryClient();
@@ -105,6 +107,7 @@ export function AccountSection() {
   );
 }
 
+/** Render admin controls for organisation members and invitations. */
 export function UsersSection() {
   const qc = useQueryClient();
   const me = useQuery(meQ).data;
@@ -153,6 +156,7 @@ export function UsersSection() {
   );
 }
 
+/** Render admin controls to create, list, and revoke read-only API tokens; show new secrets once. */
 export function ApiTokensSection() {
   const qc = useQueryClient();
   const me = useQuery(meQ).data;

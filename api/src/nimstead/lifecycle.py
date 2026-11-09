@@ -17,6 +17,7 @@ LC = "https://learn.microsoft.com/lifecycle/products/"
 
 @dataclass(frozen=True)
 class Row:
+    """Lifecycle record with stable key, display label, final support date, source URL, and optional ESU end date."""
     key: str  # stable id, part of the finding's vuln_id
     label: str
     end: date  # last day of security updates (the date Microsoft names)

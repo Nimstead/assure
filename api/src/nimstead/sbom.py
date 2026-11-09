@@ -19,11 +19,18 @@ ECOSYSTEMS = frozenset(_ECOSYSTEM.values())  # language ecosystems: what SBOMs a
 
 
 class SbomError(ValueError):
+    """An invalid or unsupported SBOM document; its message is suitable for the upload error response."""
     pass
 
 
 def parse_purl(purl: str) -> tuple[str, str, str] | None:
-    """-> (OSV ecosystem, OSV package name, version), or None for an unsupported type / malformed / unversioned purl."""
+    """Map a package URL string to (ecosystem, package name, version), or None.
+
+    Unsupported types, malformed identities, and unversioned URLs return None. Names and versions
+    are URL-decoded and normalised for the supported ecosystem.
+
+    >>> parse_purl('pkg:pypi/typing_extensions@4.9.0')
+    ('PyPI', 'typing-extensions', '4.9.0')"""
     m = re.fullmatch(r"pkg:([A-Za-z][A-Za-z0-9.+-]*)/([^?#]+)(?:\?[^#]*)?(?:#.*)?", purl.strip())
     if not m:
         return None
@@ -53,7 +60,10 @@ def parse_purl(purl: str) -> tuple[str, str, str] | None:
 
 
 def load(raw: bytes) -> object:
-    """JSON bytes -> document; SPDX tag-value and XML get a pointed message instead of a JSON error."""
+    """Decode raw JSON bytes into a Python object.
+
+    Raise SbomError for invalid JSON or encoding, XML, or SPDX tag-value input.
+    Format and component validation belongs to parse()."""
     try:
         return json.loads(raw)
     except ValueError:  # JSONDecodeError and UnicodeDecodeError
@@ -107,7 +117,12 @@ def _spdx_purls(doc: dict):
 
 
 def parse(doc: object) -> tuple[list[tuple[str, str, str]], dict]:
-    """-> (unique (ecosystem, name, version) triples, counts). Raises SbomError for anything that isn't CycloneDX 1.4-1.6 or SPDX 2.2/2.3 JSON."""
+    """Return sorted unique package triples and mapping counts from a decoded SBOM.
+
+    doc must be a CycloneDX 1.4-1.6 or SPDX 2.2/2.3 dictionary. Counts include components,
+    mapped entries before deduplication, unique_packages, and skipped entries by reason.
+    Unsupported package URLs are counted and skipped. Raise SbomError for unsupported
+    documents, malformed component structures, over 50,000 components, or depth above 64."""
     if not isinstance(doc, dict):
         raise SbomError("Not a CycloneDX or SPDX JSON document")
     if doc.get("bomFormat") == "CycloneDX":

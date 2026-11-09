@@ -31,10 +31,15 @@ class SSOError(Exception):
 
 
 def b64(b: bytes) -> str:
+    """Return URL-safe base64 for bytes b, without trailing padding."""
     return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
 
 
 class Oidc:
+    """OIDC code-flow client with ten-minute discovery and signing-key caches.
+
+    http is an optional httpx.Client for transport injection. Without it, requests use guarded_client().
+    Public flow methods raise SSOError with a short error code for expected provider failures."""
     def __init__(self, http: httpx.Client | None = None):
         self.http = http or guarded_client()
         self._disc: dict[str, tuple[float, dict]] = {}
@@ -49,6 +54,9 @@ class Oidc:
             raise SSOError("idp_unreachable") from e
 
     def discover(self, issuer: str) -> dict:
+        """Return the cached or fetched discovery dictionary for the exact issuer URL.
+
+        Raise SSOError for an unreachable provider, an issuer mismatch, or non-HTTPS endpoint fields."""
         hit = self._disc.get(issuer)
         if hit and time.monotonic() - hit[0] < CACHE_SECONDS:
             return hit[1]
@@ -61,7 +69,10 @@ class Oidc:
         return doc
 
     def start(self, issuer: str, client_id: str, redirect_uri: str) -> tuple[str, dict]:
-        """Returns (IdP URL, server-side flow state)."""
+        """Return (authorisation URL, flow dictionary) for issuer, client_id, and redirect_uri strings.
+
+        The flow contains state, nonce, PKCE verifier, and a monotonic expiry. The caller must
+        store it privately and enforce state and expiry before finish(). Discovery failures raise SSOError."""
         verifier, state, nonce = secrets.token_urlsafe(48), secrets.token_urlsafe(24), secrets.token_urlsafe(24)
         q = {
             "response_type": "code", "client_id": client_id, "redirect_uri": redirect_uri, "scope": "openid email profile",
@@ -87,7 +98,12 @@ class Oidc:
         raise SSOError("unknown_key")
 
     def finish(self, issuer: str, client_id: str, client_secret: str, redirect_uri: str, code: str, flow: dict) -> dict:
-        """Exchange the code and return validated id_token claims (signature, iss, aud, exp, nonce)."""
+        """Exchange an authorisation code and return validated ID-token claims.
+
+        issuer, client_id, client_secret, and redirect_uri identify the configured client.
+        code is the callback code; flow is the private state returned by start(). The caller
+        checks callback state and expiry. This method checks signature, issuer, audience, expiry,
+        required claims, and nonce. Raise SSOError for provider, exchange, or token failures."""
         doc = self.discover(issuer)
         try:
             r = self.http.post(doc["token_endpoint"], data={
@@ -129,12 +145,18 @@ def _fernet() -> Fernet:
 
 
 def seal(secret: str) -> str:
+    """Encrypt secret text using configured Vault transit or the local Fernet key; return tagged ciphertext.
+
+    Local key I/O and Vault errors propagate. The local key is created on first use."""
     if keys.vault_enabled():
         return keys.vault().encrypt(secret)  # "vault:v1:..."; the key never leaves Vault
     return "fernet:" + _fernet().encrypt(secret.encode()).decode()
 
 
 def unseal(stored: str | None) -> str | None:
+    """Decrypt tagged stored ciphertext, or return None for an empty value.
+
+    Raise SSOError for untagged plaintext. Invalid ciphertext, local key I/O, and Vault errors propagate."""
     if not stored:
         return None
     if stored.startswith("vault:"):
@@ -151,6 +173,9 @@ def unseal(stored: str | None) -> str | None:
 
 
 def domain_token(org_id: str, domain: str) -> str:
+    """Return a stable 32-character ownership token bound to org_id and domain strings.
+
+    Uses Vault HMAC or the local secret key, creating the local key if needed. Backend errors propagate."""
     if keys.vault_enabled():
         return hashlib.sha256(keys.vault().hmac(f"{org_id}:{domain}".encode()).encode()).hexdigest()[:32]
     _fernet()  # makes sure the server key exists
@@ -173,4 +198,8 @@ def txt_records(name: str) -> list[str]:
 
 
 def domain_verified(org_id: str, domain: str, lookup=txt_records) -> bool:
+    """Return whether lookup finds this organisation's exact ownership TXT value for domain.
+
+    lookup accepts a DNS name and returns a list of TXT strings; its default suppresses DNS failures.
+    Errors from a custom lookup or the token backend propagate."""
     return f"nimstead-verify={domain_token(org_id, domain)}" in lookup(f"_nimstead-verify.{domain}")

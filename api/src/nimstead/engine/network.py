@@ -37,12 +37,14 @@ ECOSYSTEM = external.ECOSYSTEM  # "External": the same ecosystem external.scan o
 
 
 class Safety(StrEnum):
+    """Probe safety classification used to exclude disruptive checks while safe mode is enabled."""
     PROBE = "probe"          # one read-only request/response exchange (R10.4: no writes, no lasting effect)
     DISRUPTIVE = "disruptive"  # could disturb the target: never run while safe mode is on
 
 
 @dataclass(frozen=True)
 class Budget:
+    """Network concurrency and time limits: per-host workers, per-endpoint connections, and timeouts in seconds."""
     per_host: int = 8          # endpoints probed at once (R2.3)
     per_endpoint: int = 1      # connections to one (ip, port) at once; declarable down to one (R2.3, T26)
     deadline: float = 8.0      # seconds a single endpoint's checks may take, enforced by the engine (R2.4)
@@ -118,6 +120,7 @@ VERSION_RULES = (
 
 
 def content_version() -> str:
+    """Return a short hash identifier for configured service ports, TLS warning age, and rule identifiers."""
     body = json.dumps({"services": sorted(external.SERVICES), "tls_warn": external.EXPIRY_WARN_DAYS,
                        "web": [r.id for r in WEB_RULES], "version": [r.cve for r in VERSION_RULES]}, sort_keys=True)
     return f"net.{hashlib.sha256(body.encode()).hexdigest()[:12]}"
@@ -127,6 +130,7 @@ def content_version() -> str:
 
 @dataclass
 class Endpoint:
+    """Observed port state with optional greeting bytes, TLS facts, reflection, and timeout indicators."""
     port: int
     state: str               # open | closed | filtered
     banner: bytes = b""
@@ -140,6 +144,10 @@ BANNER_PORTS = (21, 22, 25, 110, 143, 2121, 2222)  # where a greeting is worth r
 
 
 class Prober:
+    """Budgeted network observer for host and pinned IP strings.
+
+    budget defaults to Budget(); safe_mode refuses disruptive web rules. The caller must prove
+    scope before creating or using a Prober; use run() for the ownership-checked entry point."""
     def __init__(self, host: str, ip: str, budget: Budget | None = None, safe_mode: bool = True):
         self.host, self.ip, self.budget, self.safe_mode = host, ip, budget or Budget(), safe_mode
         self._sems: dict[int, threading.Semaphore] = defaultdict(lambda: threading.Semaphore(self.budget.per_endpoint))
@@ -220,6 +228,9 @@ class Prober:
         return e
 
     def observe(self) -> dict[int, Endpoint]:
+        """Probe configured service, TLS, HTTP, and banner ports; return port-to-Endpoint observations.
+
+        Uses the per-host worker limit. Socket failures become observations; invalid budgets can raise ValueError."""
         ports = sorted(set(external.SERVICES) | {external.TLS_PORT, 80, *BANNER_PORTS})
         with ThreadPoolExecutor(max_workers=self.budget.per_host) as pool:
             return {e.port: e for e in pool.map(self._probe_port, ports)}
@@ -338,6 +349,9 @@ def _versions(endpoints: dict[int, Endpoint]) -> list[Verdict]:
 
 
 def evaluate(prober: Prober, endpoints: dict[int, Endpoint]) -> list[Verdict]:
+    """Return sorted verdicts from prober and port-to-Endpoint observations.
+
+    Web rules may perform further requests through prober; this is not a pure in-memory evaluation."""
     out = _exposed(endpoints) + _tls(endpoints, prober.host) + _web(prober, endpoints) + _versions(endpoints)
     return sorted(out, key=lambda v: (v.outcome != Outcome.VULNERABLE, v.product, v.check))
 
@@ -414,6 +428,10 @@ def _headline(verdicts: list[Verdict], host_lost: bool) -> dict:
 
 
 def build_report(host: str, ip: str, verdicts: list[Verdict], endpoints: dict[int, Endpoint], skipped: list[str], host_lost: bool) -> dict:
+    """Return the network scan report for host, pinned ip, verdicts, and port observations.
+
+    skipped lists omitted checks; host_lost marks complete loss of reachability. The report includes
+    coverage, hashes, content version, and an observation timestamp; it does not persist anything."""
     cv = content_version()
     return {"host": host, "os": f"external target {ip}", "agent_version": None, "inventory_read_at": datetime.now(UTC).isoformat(timespec="seconds"),
             "engine_version": NET_ENGINE_VERSION, "content_version": cv,

@@ -15,6 +15,10 @@ PINNED = Path(__file__).resolve().parents[1] / "agent" / "windows-runtime.json"
 
 
 def main(out: str) -> int:
+    """Download pinned Windows runtime ZIPs into directory string out; return 0 after all hashes match.
+
+    Reject non-python.org sources or mismatched hashes with SystemExit. Network, JSON, and I/O
+    errors propagate. Earlier successful archives remain if a later download fails."""
     rt = json.loads(PINNED.read_text())["runtimes"]
     Path(out).mkdir(parents=True, exist_ok=True)
     for arch, r in sorted(rt.items()):

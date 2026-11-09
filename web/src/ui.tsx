@@ -51,6 +51,7 @@ const STATUS_CLASS: Record<JobStatus, string> = {
   // outlined only, so a deliberate cancel never looks like a success
   not_fixed: "bg-now-bg text-now-fg", aborted: "bg-now-bg text-now-fg", cancelled: "border-dashed !border-line-strong bg-transparent text-muted",
 };
+/** Render a job status with its visible label and status styling. */
 export const StatusPill = ({ status }: { status: JobStatus }) => (
   <span className={clsx("inline-flex items-center gap-1.5 whitespace-nowrap border border-line px-2 py-0.5 text-xs font-medium", STATUS_CLASS[status])}>
     {status === "succeeded" ? <Check aria-hidden className="size-3" /> : <span aria-hidden className="size-1.5 bg-current" />}{JOB_STATUS_LABEL[status]}
@@ -67,6 +68,7 @@ export function Tag({ children, tone = "muted", why, className }: { children: Re
   );
 }
 
+/** Render the known-exploited badge with its CISA explanation. */
 export const KevBadge = () => <Tag tone="now" why="Listed in CISA's Known Exploited Vulnerabilities catalog">KEV</Tag>;
 
 const Skeleton = ({ className }: { className?: string }) => <div aria-hidden className={clsx("skeleton", className)} />;
@@ -160,6 +162,7 @@ export function errorLead(error: Error): string {
   return "Couldn't load this.";
 }
 
+/** Render an error explanation and invoke retry when the user requests another attempt. */
 export function ErrorState({ error, retry }: { error: Error; retry: () => void }) {
   return (
     <div role="alert" className="flex flex-col items-start gap-3 border border-line bg-surface p-5">
@@ -170,6 +173,7 @@ export function ErrorState({ error, retry }: { error: Error; retry: () => void }
   );
 }
 
+/** Render title, optional explanatory children, and an optional action for an empty result. */
 export function EmptyState({ title, children, action }: { title: string; children?: ReactNode; action?: ReactNode }) {
   return (
     <div className="flex flex-col items-start gap-3 border border-dashed border-line-strong px-5 py-8">
@@ -180,6 +184,7 @@ export function EmptyState({ title, children, action }: { title: string; childre
   );
 }
 
+/** Render labelled text with a clipboard action and copy-result feedback. */
 export function CopyBlock({ label, text }: { label: string; text: string }) {
   const [done, setDone] = useState(false);
   const copy = async () => {

@@ -178,6 +178,10 @@ def _headline(verdicts: list[Verdict], inv: Inventory) -> dict:
 
 
 def build(inv: Inventory, content: Content, verdicts: list[Verdict]) -> dict:
+    """Return a report dictionary from Inventory inv, Content content, and the resulting verdicts.
+
+    Includes hashes, findings grouped by install, incomplete checks, attack paths, and coverage.
+    Inputs must follow the engine models; unknown reason codes and malformed data can raise KeyError."""
     per_install: Counter = Counter((v.family, v.product, v.instance, v.grade) for v in verdicts if v.outcome == Outcome.NOT_VULNERABLE)
     return {"host": inv.hostname, "kind": inv.kind, "os": inv.os_name, "agent_version": inv.agent_version, "inventory_read_at": inv.collected_at,
             "engine_version": ENGINE_VERSION, "content_version": content.version, "inventory_sha256": inv.sha256(), "verdicts_sha256": digest(verdicts),

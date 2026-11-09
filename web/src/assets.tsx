@@ -12,6 +12,7 @@ type AssetPatch = Partial<Pick<Asset, "criticality" | "internet_facing" | "direc
 const LEVELS: Criticality[] = ["low", "medium", "high", "critical"];
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
+/** Render the asset inventory with URL filters, bulk edits, and host details. */
 export function AssetsPage() {
   useTitle("Assets");
   const qc = useQueryClient();
@@ -471,6 +472,7 @@ function MachineDrawer({ a, onClose, children }: { a: Asset | null; onClose: () 
   );
 }
 
+/** Summarise agents needing attention from assets; onShow optionally opens the relevant view. */
 export function AgentUpdateSummary({ assets, onShow }: { assets: Asset[]; onShow?: () => void }) {
   const groups = new Map<string, { failed: boolean; hosts: string[] }>();
   for (const a of assets) {
@@ -506,6 +508,7 @@ export function AgentUpdateSummary({ assets, onShow }: { assets: Asset[]; onShow
   );
 }
 
+/** Render asset a and editable details; invoke onPatch/onDelete for mutations and display saved/error/undo state. */
 export function AssetRow({ a, onPatch, onDelete, saved, error, inDrawer, undo }: { a: Asset; onPatch: (p: AssetPatch) => void; onDelete: () => void; saved?: boolean; error?: string; inDrawer?: boolean; undo?: () => void }) {
   const admin = useIsAdmin();
   const open = PRIORITIES.filter((p) => a.open_by_priority[p]);

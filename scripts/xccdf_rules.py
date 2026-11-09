@@ -125,6 +125,9 @@ RIGHT_EXCEPTION = [re.compile(p, re.I) for p in (
 
 
 def field(line: str, label: str) -> str | None:
+    """Return the value following label in line, or None if the full line does not match.
+
+    Both inputs are strings; label is inserted as a regular-expression fragment."""
     m = re.fullmatch(rf"\s*{label}\s*:?\s*(.*?)\s*", line, re.I)
     return m.group(1) if m else None
 
@@ -217,6 +220,9 @@ def registry_rule(text: str) -> tuple[dict | None, str]:
     return ({**rule, "no_core": True} if no_core else rule), ""
 
 def audit_rule(text: str) -> tuple[dict | None, str]:
+    """Return (audit-rule dictionary, empty reason) for recognised audit-policy check text.
+
+    Return (None, reason string) if the setting or a condition is not understood."""
     hits = re.findall(r"^\s*(.+?) >> (.+?) - (Success|Failure)\s*$", text, re.M)
     if len(hits) != 1 or (guid := AUDIT.get(hits[0][1])) is None:
         return None, "audit requirement not understood"
@@ -308,6 +314,7 @@ def rights_rule(text: str) -> tuple[dict | None, str]:
 
 
 def unknown_sentences(text: str) -> list[str]:
+    """Return sentence fragments in check text that do not match the accepted informational patterns."""
     parts = [p.strip() for p in re.split(r"(?<=[.:])\s+", re.sub(r"\b(Note|Warning):\s*|\s+", " ", text)) if p.strip(" .")]
     return [p for p in parts if not any(i.fullmatch(p) for i in INFO)]
 
@@ -323,6 +330,9 @@ def apply_id_scope(rule: dict, stig_id: str) -> dict | None:
 
 
 def classify(text: str, stig_id: str) -> tuple[dict | None, str]:
+    """Return (rule dictionary or None, reason string) for check text and its STIG identifier.
+
+    Select registry, audit, or user-rights parsing and refuse conflicting applicability."""
     if re.search(r"Registry Hive", text):
         rule, why = registry_rule(text)
     elif re.search(r"AuditPol", text):
@@ -337,6 +347,10 @@ def classify(text: str, stig_id: str) -> tuple[dict | None, str]:
 
 
 def load_benchmark(path: str) -> ET.Element:
+    """Parse an XCCDF file at path into an XML Element.
+
+    Raise SystemExit for excessive size or DOCTYPE/entity declarations. File I/O and XML
+    parse errors propagate; no external resources are fetched."""
     with open(path, "rb") as f:
         raw = f.read(MAX_XML + 1)
     if len(raw) > MAX_XML:
@@ -347,6 +361,11 @@ def load_benchmark(path: str) -> ET.Element:
 
 
 def build(root: ET.Element, ident: str, name: str, os_re: str, source: str, source_sha256: str) -> tuple[dict, list[tuple[str, str]]]:
+    """Return (baseline dictionary, list of manual-rule reasons) from an XCCDF root Element.
+
+    ident and name label the baseline; os_re selects host OS names. source and source_sha256
+    record provenance. Unsupported checks remain manual. Malformed benchmark structures can
+    raise attribute or key errors; the caller reviews the output before shipping it."""
     info = next((p.text or "" for p in root.findall(NS + "plain-text") if p.get("id") == "release-info"), "")
     release = re.search(r"Release: (\d+) Benchmark Date: (.+)", info)
     version = f"V{root.findtext(NS + 'version')}R{release.group(1) if release else '?'}"
@@ -380,6 +399,9 @@ def agent_list(paths: list[str]) -> dict:
 
 
 def main() -> int:
+    """Parse command-line arguments and write a baseline JSON file or print an agent collection list.
+
+    Return 0 on success. Parsing, benchmark, JSON, and file errors propagate or exit nonzero."""
     ap = argparse.ArgumentParser()
     ap.add_argument("xccdf", nargs="?")
     ap.add_argument("--id")

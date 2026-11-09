@@ -26,6 +26,9 @@ SLA_LABEL = {"fix-now": "fix now", "next": "next", "planned": "routine", "low": 
 
 
 def sla_days(org: Org) -> dict:
+    """Return priority-to-day deadlines by overlaying org.sla_days on defaults.
+
+    Unknown priorities are ignored; values must convert to int or conversion errors propagate."""
     return {**SLA_DAYS, **{k: int(v) for k, v in (org.sla_days or {}).items() if k in SLA_DAYS}}
 
 
@@ -65,6 +68,7 @@ LEDGER_COLS = (LedgerEntry.seq, LedgerEntry.ts, LedgerEntry.kind, LedgerEntry.su
 
 
 def entry_dict(e) -> dict:
+    """Return the serializable ledger fields of ORM row or SQLAlchemy result row e."""
     return {"seq": e.seq, "ts": e.ts, "kind": e.kind, "subject": e.subject, "data": e.data, "prev_hash": e.prev_hash, "hash": e.hash}
 
 
@@ -139,6 +143,9 @@ def _cp_file(org_id: str) -> Path:
 
 
 def load_checkpoints(org_id: str) -> list[dict]:
+    """Return checkpoint dictionaries for org_id from S3 or the local JSONL file.
+
+    A missing local file returns []; malformed JSON, file I/O, and S3 errors propagate."""
     if keys.s3_enabled():
         return keys.s3_load_checkpoints(org_id)
     f = _cp_file(org_id)
@@ -146,6 +153,9 @@ def load_checkpoints(org_id: str) -> list[dict]:
 
 
 def checkpoint_valid(cp: dict) -> bool:
+    """Return whether checkpoint cp verifies under the current signing key.
+
+    Missing org_id, seq, hash, or ts raises KeyError. Signature and key-access failures return False."""
     body = {k: cp[k] for k in ("org_id", "seq", "hash", "ts")}
     try:
         signing_key().public_key().verify(base64.b64decode(cp["sig"]), canonical(body))
@@ -195,10 +205,14 @@ def signing_key() -> Ed25519PrivateKey:
 
 
 def fingerprint(pem: bytes) -> str:
+    """Return the SHA-256 hex fingerprint of the raw public key in PEM bytes pem.
+
+    Invalid or incompatible public-key encodings propagate cryptography errors."""
     return verify_pack.fingerprint(pem)
 
 
 def public_pem(key: Ed25519PrivateKey) -> bytes:
+    """Return PEM SubjectPublicKeyInfo bytes from an Ed25519 private key or compatible Vault adapter."""
     return key.public_key().public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
 
 
@@ -382,14 +396,20 @@ Fingerprint of the key that signed this pack (compare, don't trust): {fp}
 
 
 def verifier_source() -> str:
+    """Return the installed offline verifier source as UTF-8 text; file I/O errors propagate."""
     return Path(verify_pack.__file__).read_text(encoding="utf-8")
 
 
 def verifier_sha256() -> str:
+    """Return the SHA-256 hex digest of verifier_source() encoded as UTF-8."""
     return hashlib.sha256(verifier_source().encode()).hexdigest()
 
 
 def pack_zip(pack: dict) -> bytes:
+    """Sign pack and return ZIP bytes containing JSON, signature, public key, and instructions.
+
+    pack is the dictionary from build_pack(). This function does not independently validate the
+    ledger. JSON encoding and signing/storage backend errors propagate."""
     key = signing_key()
     body = canonical(pack)
     sig = base64.b64encode(key.sign(body)).decode()
@@ -403,5 +423,8 @@ def pack_zip(pack: dict) -> bytes:
 
 
 def default_period(days: int = 90) -> tuple[datetime, datetime]:
+    """Return naive UTC (start, end) datetimes spanning days before the current time.
+
+    days defaults to 90 and is passed to timedelta without range validation."""
     end = datetime.now(UTC).replace(tzinfo=None)
     return end - timedelta(days=days), end

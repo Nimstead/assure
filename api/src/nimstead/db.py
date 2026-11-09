@@ -12,18 +12,22 @@ DB_URL = os.environ.get("NIMSTEAD_DB", "sqlite:///./nimstead.db")
 
 
 def now() -> datetime:
+    """Return the current UTC datetime without timezone metadata, matching stored timestamp columns."""
     return datetime.now(UTC).replace(tzinfo=None)
 
 
 def new_id() -> str:
+    """Return a random UUID4 as a 32-character hexadecimal identifier."""
     return uuid.uuid4().hex
 
 
 class Base(DeclarativeBase):
+    """SQLAlchemy declarative base; dict and list annotations map to JSON columns."""
     type_annotation_map = {dict: JSON, list: JSON}
 
 
 class Org(Base):
+    """Tenant identity and policy, including remediation, SSO, notifications, and evidence deadlines."""
     __tablename__ = "org"
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     name: Mapped[str] = mapped_column(String(200))
@@ -52,6 +56,7 @@ class Org(Base):
 
 
 class User(Base):
+    """Organisation member with role, authentication origin, password hash, and encrypted MFA state."""
     __tablename__ = "user"
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     org_id: Mapped[str] = mapped_column(ForeignKey("org.id"), index=True)
@@ -66,6 +71,7 @@ class User(Base):
 
 
 class WebSession(Base):
+    """Hashed browser-session token with user identity, absolute expiry, and last-use timestamp."""
     __tablename__ = "web_session"
     token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("user.id"), index=True)
@@ -87,6 +93,7 @@ class ApiToken(Base):
 
 
 class EnrollToken(Base):
+    """Hashed enrolment credential with tenant, expiry, revocation, and sandbox assignment."""
     __tablename__ = "enroll_token"
     token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
     org_id: Mapped[str] = mapped_column(ForeignKey("org.id"), index=True)
@@ -97,6 +104,7 @@ class EnrollToken(Base):
 
 
 class Asset(Base):
+    """Tenant-owned host, application, or external target and its collection/remediation state."""
     __tablename__ = "asset"
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     org_id: Mapped[str] = mapped_column(ForeignKey("org.id"), index=True)
@@ -129,6 +137,7 @@ class Asset(Base):
 
 
 class InstalledPackage(Base):
+    """One observed package for an asset, including its source and collection origin."""
     __tablename__ = "installed_package"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     asset_id: Mapped[str] = mapped_column(ForeignKey("asset.id", ondelete="CASCADE"), index=True)
@@ -165,6 +174,7 @@ class DirectoryComputer(Base):
 
 
 class Kev(Base):
+    """CISA known-exploited vulnerability metadata keyed by CVE."""
     __tablename__ = "kev"
     cve: Mapped[str] = mapped_column(String(30), primary_key=True)
     date_added: Mapped[str] = mapped_column(String(10))
@@ -173,6 +183,7 @@ class Kev(Base):
 
 
 class Epss(Base):
+    """FIRST exploitation probability and percentile keyed by CVE."""
     __tablename__ = "epss"
     cve: Mapped[str] = mapped_column(String(30), primary_key=True)
     score: Mapped[float] = mapped_column(Float)
@@ -189,6 +200,7 @@ class Cvss(Base):
 
 
 class Finding(Base):
+    """Tenant-owned vulnerability result with package identity, priority, lifecycle, and evidence fields."""
     __tablename__ = "finding"
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     org_id: Mapped[str] = mapped_column(ForeignKey("org.id"), index=True)
@@ -216,6 +228,10 @@ class Finding(Base):
 
 
 def make_engine(url: str = DB_URL):
+    """Return a SQLAlchemy Engine for database URL string url.
+
+    SQLite connections enforce foreign keys and create model tables for development/tests.
+    PostgreSQL requires Alembic migrations. Database connection and schema errors propagate."""
     kw = {"connect_args": {"check_same_thread": False}} if url.startswith("sqlite") else {}
     engine = create_engine(url, **kw)
     if url.startswith("sqlite"):  # enforce foreign keys like Postgres does, so dev and tests catch the same bugs
@@ -226,6 +242,9 @@ def make_engine(url: str = DB_URL):
 
 
 def make_sessionmaker(url: str = DB_URL):
+    """Return a SQLAlchemy session factory for URL string url with expire_on_commit=False.
+
+    Uses make_engine(), including its SQLite schema creation. Callers close sessions and commit writes."""
     return sessionmaker(make_engine(url), expire_on_commit=False)
 
 
@@ -262,6 +281,7 @@ class LedgerEntry(Base):
 
 
 class RemediationJob(Base):
+    """Persisted fix plan and execution state, including approval, package scope, result versions, and step log."""
     __tablename__ = "remediation_job"
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     org_id: Mapped[str] = mapped_column(ForeignKey("org.id"), index=True)

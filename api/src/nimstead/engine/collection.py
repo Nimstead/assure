@@ -33,10 +33,12 @@ _APP_SOURCE = {eco: (src, label) for src, eco, label in AGENT_APPS}
 
 
 def linux(ecosystem: str) -> bool:
+    """Return whether ecosystem has a supported Linux distribution prefix."""
     return (ecosystem or "").split(":")[0] in LINUX
 
 
 def manager(ecosystem: str) -> str:
+    """Return dpkg, apk, or rpm for the ecosystem prefix; unknown prefixes fall back to rpm."""
     return _MANAGER.get(ecosystem.split(":")[0], "rpm")
 
 
@@ -59,6 +61,7 @@ def valid_document(doc) -> bool:
 
 @dataclass(frozen=True)
 class Source:
+    """Collection-source result: name, state, observed count, error, and optional reason codes."""
     name: str
     state: str
     count: int = 0
@@ -69,6 +72,10 @@ class Source:
 
 @dataclass(frozen=True)
 class Install:
+    """One product instance to evaluate, with candidate advisory keys and collection provenance.
+
+    version is the comparison version; instance and observed identify the reading. read_directly
+    controls confidence, comparable marks refused versions, and kernel distinguishes running kernels."""
     family: str
     ecosystem: str
     keys: tuple[str, ...]  # candidate product keys, the first with advisories wins
@@ -83,6 +90,10 @@ class Install:
 
 @dataclass
 class Inventory:
+    """Normalised host or application inventory with packages, facts, and collection status.
+
+    document holds the agent collection report; received records whether inventory arrived.
+    kind distinguishes hosts from SBOM applications; sbom holds upload counts and receipt metadata."""
     hostname: str = ""
     os_name: str = ""
     ecosystem: str = ""
@@ -97,6 +108,10 @@ class Inventory:
 
     @classmethod
     def from_doc(cls, doc: dict) -> Inventory:
+        """Return an Inventory from agent document dictionary doc.
+
+        Drop package entries without string names/versions; discard invalid collection metadata.
+        The presence of the packages key determines received, even for an empty list."""
         pkgs = [p for p in doc.get("packages") or [] if isinstance(p, dict) and isinstance(p.get("name"), str) and isinstance(p.get("version"), str)]
         sent = doc.get("collection")
         return cls(str(doc.get("hostname") or ""), str(doc.get("os_name") or ""), str(doc.get("ecosystem") or ""), str(doc.get("agent_version") or ""),
@@ -105,6 +120,9 @@ class Inventory:
 
     @classmethod
     def from_asset(cls, asset: Asset, pkgs: list[InstalledPackage], sbom: dict | None = None) -> Inventory:
+        """Return an Inventory from an Asset, its InstalledPackage rows pkgs, and optional SBOM metadata.
+
+        Sort packages for stable hashing and retain the distinction between agent and SBOM origins."""
         return cls(asset.hostname, asset.os_name, asset.ecosystem, asset.agent_version,
                    asset.last_inventory_at.isoformat() + "Z" if asset.last_inventory_at else None, asset.facts or {},
                    [{"ecosystem": p.ecosystem, "name": p.name, "version": p.version, "source": p.source,
@@ -114,11 +132,13 @@ class Inventory:
                    asset.collection, asset.last_inventory_at is not None, asset.kind or "host", sbom)
 
     def to_doc(self) -> dict:
+        """Return the serializable inventory dictionary used in reports and content hashes."""
         return {"hostname": self.hostname, "os_name": self.os_name, "ecosystem": self.ecosystem, "agent_version": self.agent_version,
                 "collected_at": self.collected_at, "facts": self.facts, "collection": self.document, "packages": self.packages,
                 **({"kind": self.kind} if self.kind != "host" else {}), **({"sbom": self.sbom} if self.sbom else {})}
 
     def sha256(self) -> str:
+        """Return the SHA-256 hex digest of the sorted-key JSON inventory document."""
         return hashlib.sha256(json.dumps(self.to_doc(), sort_keys=True, default=str).encode()).hexdigest()
 
     @property
@@ -132,6 +152,7 @@ class Inventory:
 
     @property
     def sbom_rows(self) -> int:
+        """Return the number of package rows whose origin is sbom."""
         return sum(p.get("origin") == "sbom" for p in self.packages)
 
     def source(self, name: str) -> Source:
@@ -162,12 +183,17 @@ class Inventory:
         return got
 
     def source_count(self, name: str) -> int:
+        """Return the agent-declared count for source name, or zero when absent.
+
+        This count alone does not establish that collection succeeded; use source() for that."""
         return ((self.document or {}).get("sources", {}).get(name) or {}).get("count", 0)
 
     def worst(self, *names: str) -> Source:
+        """Return the least complete Source among names; no names raises ValueError."""
         return max((self.source(n) for n in names), key=lambda s: _RANK[s.state])
 
     def sources(self) -> list[Source]:
+        """Return source results for this inventory, including SBOM status when applicable."""
         names = [] if self.kind == "application" else (sorted((self.document or {}).get("sources", {}))
                                                          or (LINUX_SOURCES if linux(self.ecosystem) else WINDOWS_SOURCES))
         return [self.source(n) for n in names] + ([self.source("sbom")] if self.kind == "application" or self.sbom_rows else [])

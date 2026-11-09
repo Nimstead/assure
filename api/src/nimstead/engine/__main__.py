@@ -1,4 +1,7 @@
-"""`python -m nimstead.engine INVENTORY.json --db URL [--json]`: judge an agent's `collect` output and print the report. Reads the database, never writes it."""
+"""`python -m nimstead.engine INVENTORY.json --db URL [--json]`: judge collected inventory.
+
+Evaluation reads advisory data without saving findings. SQLite setup can create missing tables.
+"""
 
 import argparse
 import json
@@ -10,6 +13,11 @@ from nimstead.engine.collection import Inventory
 
 
 def main(argv=None) -> int:
+    """Parse optional argv, read an inventory JSON file, evaluate it, and print text or JSON.
+
+    Return 0 on success or 2 for unreadable/invalid inventory input. argparse exits for invalid
+    arguments; database and evaluation errors propagate. Evaluation does not save findings,
+    but opening a SQLite database can create missing tables."""
     ap = argparse.ArgumentParser(prog="nimstead.engine", description="Judge an inventory and print what was concluded and why.")
     ap.add_argument("inventory", help="the JSON an agent's `collect` prints")
     ap.add_argument("--db", default=DB_URL, help="database holding the advisories (default: NIMSTEAD_DB)")

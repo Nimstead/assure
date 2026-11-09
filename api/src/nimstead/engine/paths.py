@@ -111,6 +111,7 @@ def _path(kind: str, stages: list[str], ways: dict) -> dict:
 
 
 def render(paths: list[dict]) -> list[str]:
+    """Return display lines for attack-path dictionaries from build(), or [] when paths is empty."""
     if not paths:
         return []
     out = ["", "How these combine (attack paths)"]

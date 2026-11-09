@@ -42,6 +42,7 @@ def _named(name: str, source: str | None) -> bool:
 
 def app_assessed(name: str, source: str | None, version: str) -> bool:
     # the name decides for most apps (1,000 hosts x 150 apps: 1.7 s a page load when every version was its own cache entry)
+    """Return whether Windows app name, publisher source, and version match a curated product identity."""
     return _named(name, source) and bool(winapps.identify(name, source, version) or msproducts.from_winapp(name, source, version))
 
 

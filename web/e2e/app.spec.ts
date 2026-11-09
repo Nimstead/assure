@@ -520,7 +520,7 @@ test("findings: act on a selection, save a view, use the drawer's keys, and land
   const dlg = page.getByRole("alertdialog");
   await dlg.getByLabel("Reason").fill("Isolated test host, no inbound access");
   await dlg.getByRole("button", { name: "Accept risk" }).click();
-  await expect(page.getByText("2 findings accepted for 90 days.")).toBeVisible();
+  await expect(page.locator("main").getByText("2 findings accepted for 90 days.")).toBeVisible();  // not the sr-only live region, which says it too
   // a saved view comes back from the palette
   await page.getByRole("button", { name: "Save view" }).click();
   await page.getByLabel("Name for this view").fill("Test host");

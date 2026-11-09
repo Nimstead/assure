@@ -108,22 +108,31 @@ def engine_findings() -> bool:
     return os.environ.get("NIMSTEAD_ENGINE_FINDINGS", "1") != "0"
 
 
+def _linux_eol(key: tuple) -> bool:
+    """A Linux release's end of support (`EOL:<distro>-<release>`), which only the engine judges (DECISIONS 85). Windows and app
+    end of support share the `EOL:` prefix but come from host_checks, so the distro's name tells them apart."""
+    return key[0] == lifecycle.ECOSYSTEM and key[2].startswith(tuple(f"EOL:{p}-" for p in lifecycle.DISTRO_EOL.values()))
+
+
 def _engine(s: Session, asset: Asset, pkgs: list, matches: list, seen: set, prior: list, cache: dict, keep: bool) -> tuple[list, list]:
     """The engine decides what opens (phase 3): for the slice it judges, a VULNERABLE verdict opens a finding, a verdict
     that proves it absent drops rescan's match, and no decision (an old agent, a blocked source) leaves rescan's match as it
-    was. rescan's own loop is the shadow: a difference neither side explains goes to the ledger once per host per rescan.
-    Returns (matches, ledger rows to append). If the engine fails, rescan's matches stand: findings never vanish on a crash."""
+    was. rescan's own loop is the shadow: a difference neither side explains goes to the ledger once per new inventory
+    (`keep`), not on every hourly re-match. Returns (matches, ledger rows to append). If the engine fails, rescan's matches
+    open and nothing closes: a crash isn't evidence of a fix (R4.6)."""
     from nimstead import engine
     from nimstead.engine import parity
     from nimstead.engine.model import Outcome
     try:
         verdicts, c, p = engine.judge(s, asset, pkgs, seen, prior, cache, keep)
     except Exception:
-        log.exception("engine failed on %s; findings from rescan's own matching", asset.hostname)
+        log.exception("engine failed on %s; findings from rescan's own matching, none closed", asset.hostname)
+        seen.update(prior)
         return matches, []
     rows = [("engine_disagrees", {"host": asset.hostname, "agree": p["agree"], "count": len(p["unexplained"]),
-                                  "unexplained": p["unexplained"][:20]})] if p["unexplained"] else []
+                                  "unexplained": p["unexplained"][:20]})] if p["unexplained"] and keep else []
     if not engine_findings():
+        seen.update(k for k in prior if _linux_eol(k))  # only the engine judges these: switching it off isn't evidence of a fix
         return matches, rows
     by_key: dict[tuple, list] = defaultdict(list)
     for v in verdicts:
@@ -138,7 +147,7 @@ def _engine(s: Session, asset: Asset, pkgs: list, matches: list, seen: set, prio
         out.append(m)
     for key, vs in sorted(by_key.items()):
         v = next((v for v in vs if v.outcome == Outcome.VULNERABLE), None)
-        linux_eol = key[0] == lifecycle.ECOSYSTEM and key[2].startswith("EOL:")  # DECISIONS 85: only the engine judges a Linux release's support
+        linux_eol = _linux_eol(key)
         if v is None or key in seen or not (parity.in_slice(key[0]) or linux_eol):
             continue
         seen.add(key)

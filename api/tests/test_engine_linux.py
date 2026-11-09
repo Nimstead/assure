@@ -356,3 +356,36 @@ def test_an_old_agent_without_a_collection_document_keeps_rescans_findings(env, 
     on = set(_open(s, _host(c, old, name="old-1")))
     monkeypatch.setenv("NIMSTEAD_ENGINE_FINDINGS", "0")
     assert on == set(_open(s, _host(c, old, name="old-2"))) == {"CVE-2026-1", "CVE-2026-7"}
+
+
+def test_an_engine_crash_or_the_switch_never_closes_what_only_the_engine_opened(env, monkeypatch):
+    from nimstead.scan import rescan
+    s = seed(env)
+    c = user(env)
+    aid = _host(c, OLD, eco="Debian:11")
+    assert "EOL:debian-11" in _open(s, aid)
+
+    def boom(*a):
+        raise RuntimeError("engine bug")
+    with monkeypatch.context() as m:
+        m.setattr(engine, "judge", boom)
+        rescan(s, s.get(Asset, aid), inventory_received=False, cache={})
+    assert "EOL:debian-11" in _open(s, aid)  # a crash isn't evidence of a fix (R4.6)
+    monkeypatch.setenv("NIMSTEAD_ENGINE_FINDINGS", "0")
+    rescan(s, s.get(Asset, aid), inventory_received=False, cache={})
+    assert "EOL:debian-11" in _open(s, aid)  # nor is switching the engine off
+    kinds = [e["kind"] for e in c.get("/api/evidence/ledger").json()["entries"]]
+    assert "finding_resolved" not in kinds
+
+
+def test_a_disagreement_goes_to_the_ledger_per_new_inventory_not_per_hourly_rematch(env, monkeypatch):
+    from nimstead.engine.model import Verdict
+    from nimstead.scan import rescan
+    s = seed(env)
+    c = user(env)
+    monkeypatch.setattr(engine, "judge", _fake([Verdict("CVE-2026-5/openssl", "distro", DEB, "openssl", Outcome.VULNERABLE, vuln_id="CVE-2026-5",
+                                                         version="3.5.1-1+deb13u1")]))
+    aid = _host(c, ldoc(*SSL))
+    for _ in range(3):
+        rescan(s, s.get(Asset, aid), inventory_received=False, cache={})
+    assert [e["kind"] for e in c.get("/api/evidence/ledger").json()["entries"]].count("engine_disagrees") == 1

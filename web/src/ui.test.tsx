@@ -121,7 +121,7 @@ it("assets say once why agents are outdated and what happens next; each row keep
   ] as Asset[]} />);
   expect(screen.getByText(/failed its self-test/)).toBeInTheDocument();
   // the same reason is said once, naming every machine it applies to
-  expect(screen.getAllByText(/can't update itself. Rerun the install command/)).toHaveLength(1);
+  expect(screen.getAllByText(/cannot use automatic updates from this server/)).toHaveLength(1);
   expect(screen.getByText("2 machines:")).toBeInTheDocument();
   expect(screen.getByText("web-2,")).toHaveClass("whitespace-nowrap");  // names wrap whole, never mid-name
   summary.unmount();

@@ -112,7 +112,12 @@ def migration_state(s: Session) -> str:
 
 
 def agent_update_status(a: Asset, paused: bool, release: bool) -> str:
-    """What happens to this host's agent next: current | updating | failed | paused | off (host opted out) | reinstall."""
+    """Return a UI classification from stored asset a, paused flag and release availability.
+
+    Equal served/reported versions are current before other checks. False auto_update
+    is off; missing capability or signed release is reinstall. Otherwise paused wins,
+    then a recorded error means failed, else updating. This does not prove a newer
+    channel-eligible release or predict the next run. Source/file errors can propagate."""
     if a.agent_version == latest_agent_version():
         return "current"
     if not a.auto_update:

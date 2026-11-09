@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { useState, type ReactNode } from "react";
 import { afterEach, vi } from "vitest";
 import { SsoSection } from "./integrations";
-import { ApiError, meQ, type Action, type Asset, type Finding, type Job, type Settings } from "./lib";
+import { ApiError, assetsQ, meQ, type Action, type Asset, type Finding, type Job, type Settings } from "./lib";
 import { ActionCard } from "./home";
 import { AssetRow, AttackPaths, Baselines, baselineSummary, filterAssets, NotAssessed } from "./assets";
 import { Palette } from "./shell";
@@ -176,6 +176,18 @@ it("onboarding shows troubleshooting when no report arrives", async () => {
   expect(screen.getAllByText("doctor").length).toBeGreaterThan(0);
   expect(screen.getByText("/var/lib/nimstead/agent.log")).toBeInTheDocument();
   expect(screen.getByText("C:\\ProgramData\\Nimstead\\agent.log")).toBeInTheDocument();
+});
+
+it("onboarding list growth does not claim that this machine reported inventory", async () => {
+  serve({ "GET /api/assets": [] });
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  qc.setQueryData(meQ.queryKey, ME);
+  qc.setQueryData(assetsQ.queryKey, []);
+  render(<QueryClientProvider client={qc}><Onboarding /></QueryClientProvider>);
+  await screen.findByRole("button", { name: "Create install command" });
+  await act(async () => { qc.setQueryData(assetsQ.queryKey, [{ ...HOST, id: "sbom", hostname: "Application", kind: "application" }]); });
+  expect(await screen.findByRole("heading", { name: "A new asset is visible" })).toBeInTheDocument();
+  expect(screen.getByText(/confirm that it is this machine/)).toBeInTheDocument();
 });
 
 it("TOTP setup draws a QR code of the otpauth URI, dark on white in any theme", () => {
@@ -351,7 +363,7 @@ it("the palette never dead-ends: any text offers a findings search, and the list
 });
 
 it("error states say what kind of problem it is", () => {
-  expect(errorLead(new ApiError(0, "x"))).toMatch(/Can't reach the server/);
+  expect(errorLead(new ApiError(0, "x"))).toMatch(/Couldn't complete the request/);
   expect(errorLead(new ApiError(403, "x"))).toMatch(/don't have access/);
   expect(errorLead(new ApiError(502, "x"))).toMatch(/server had a problem/);
 });

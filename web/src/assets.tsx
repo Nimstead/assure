@@ -477,7 +477,11 @@ function MachineDrawer({ a, onClose, children }: { a: Asset | null; onClose: () 
   );
 }
 
-/** Summarise agents needing attention from assets; onShow optionally opens the relevant view. */
+/** Render update-reason groups from assets, excluding current/updating states.
+ * Equal reason text shares a group. Unavailable-update reasons can combine version
+ * counts. onShow adds an Assets link and runs on click. Do not query or mutate assets.
+ * Require router context for links. Unknown runtime states or malformed assets can throw.
+ */
 export function AgentUpdateSummary({ assets, onShow }: { assets: Asset[]; onShow?: () => void }) {
   const groups = new Map<string, { failed: boolean; hosts: string[] }>();
   for (const a of assets) {
@@ -488,13 +492,13 @@ export function AgentUpdateSummary({ assets, onShow }: { assets: Asset[]; onShow
     groups.set(why, g);
   }
   if (!groups.size) return null;
-  // one reason for most hosts (an old agent that predates self-update) is said once, with the versions
-  const reinstall = [...groups].filter(([why]) => /can't update itself/.test(why));
+  // Combine version-specific unavailable-update reasons without inferring why the server returned that state.
+  const reinstall = [...groups].filter(([why]) => /cannot use automatic updates/.test(why));
   if (reinstall.length > 1) {
     const hosts = reinstall.flatMap(([, g]) => g.hosts);
     const versions = assets.filter((a) => hosts.includes(a.hostname)).reduce<Record<string, number>>((n, a) => ({ ...n, [a.agent_version ?? "?"]: (n[a.agent_version ?? "?"] ?? 0) + 1 }), {});
     for (const [why] of reinstall) groups.delete(why);
-    groups.set(`Agents ${Object.entries(versions).map(([v, n]) => `${v} (${n})`).join(", ")} predate self-update. Rerun the install command on each once; the enrolment is kept, and later versions update automatically.`, { failed: false, hosts });
+    groups.set(`Agents ${Object.entries(versions).map(([v, n]) => `${v} (${n})`).join(", ")} cannot use automatic updates from this server. Check its signed release and local update settings, or use the installation instructions.`, { failed: false, hosts });
   }
   return (
     <ul className="flex flex-col gap-1.5 border border-line-strong bg-surface px-3 py-2 text-sm [&>li]:max-w-[60ch]">

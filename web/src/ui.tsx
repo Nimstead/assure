@@ -11,15 +11,16 @@ export const btnQuiet = clsx(btn, "border border-line-strong bg-surface text-ink
 /** For confirming something that can't be undone: the "fix now" colour, never used for an ordinary primary action. */
 export const btnDanger = clsx(btn, "bg-now-fg text-surface hover:bg-now-fg/85");
 export const input = "min-h-[44px] md:min-h-10 w-full border border-line-strong bg-surface px-3 text-base md:text-sm text-ink placeholder:text-muted";
-/** Filter chips: square, 44px on phones; the selected one gets a full ink border, not only a tint. */
+/** Return selected/unselected filter classes from on; do not add ARIA state or event behavior. */
 export const chip = (on: boolean) => clsx("inline-flex min-h-[44px] md:min-h-8 cursor-pointer items-center gap-1.5 border px-3 text-sm", on ? "border-ink bg-ink font-medium text-accent-ink [&_.text-muted]:text-accent-ink" : "border-line-strong text-muted hover:text-ink");
 export const switchRoot = "relative h-5 w-9 shrink-0 cursor-pointer rounded-full bg-line-strong data-[state=checked]:bg-accent disabled:opacity-50";
 export const switchThumb = "block size-4 translate-x-0.5 rounded-full bg-surface transition-transform data-[state=checked]:translate-x-[18px]";
 export const dialogBox = "fixed left-1/2 top-[15vh] z-[51] w-[min(30rem,calc(100%-2rem))] -translate-x-1/2 border border-line bg-surface p-5 shadow-[0_24px_48px_-12px_var(--shadow)]";
 
-/**
- * Radix returns focus only to a Dialog.Trigger; ours open from state, so this hands focus back to whatever opened the
- * dialog (DECISIONS 48). Pass `initial` to start focus somewhere other than the first focusable element.
+/** Return Radix autofocus handlers that remember the opener at open time.
+ * initial optionally supplies a requested first-focus element. A connected opener
+ * receives a close-time focus request. Otherwise allow Radix's default behavior.
+ * Require a browser DOM. Do not guarantee focus on hidden/disabled/unfocusable nodes.
  */
 export function useReturnFocus(initial?: RefObject<HTMLElement | null>) {
   const opener = useRef<HTMLElement | null>(null);
@@ -34,7 +35,9 @@ export function useReturnFocus(initial?: RefObject<HTMLElement | null>) {
   };
 }
 
-/** Colour is never the only signal: dot + text label. */
+/** Render typed priority's label/style and optional raw count, including zero.
+ * No scoring, formatting or unknown-priority fallback occurs. No I/O occurs.
+ */
 export function PriorityPill({ priority, count }: { priority: Priority; count?: number }) {
   return (
     <span className={clsx("inline-flex items-center gap-1.5 whitespace-nowrap px-2 py-0.5 text-xs font-medium", PRIORITY_CLASS[priority])}>
@@ -51,14 +54,19 @@ const STATUS_CLASS: Record<JobStatus, string> = {
   // outlined only, so a deliberate cancel never looks like a success
   not_fixed: "bg-now-bg text-now-fg", aborted: "bg-now-bg text-now-fg", cancelled: "border-dashed !border-line-strong bg-transparent text-muted",
 };
-/** Render a job status with its visible label and status styling. */
+/** Render status using the shared label/style map, without fetching job state.
+ * Unknown runtime statuses have no label fallback. Success refers to a job, not all findings.
+ */
 export const StatusPill = ({ status }: { status: JobStatus }) => (
   <span className={clsx("inline-flex items-center gap-1.5 whitespace-nowrap border border-line px-2 py-0.5 text-xs font-medium", STATUS_CLASS[status])}>
     {status === "succeeded" ? <Check aria-hidden className="size-3" /> : <span aria-hidden className="size-1.5 bg-current" />}{JOB_STATUS_LABEL[status]}
   </span>
 );
 
-/** Small bordered label. `why` is read to screen readers and shown on hover; say anything that matters visibly too. */
+/** Render children with tone classes (default muted) and optional className.
+ * why becomes title text and a screen-reader-only suffix. It is not visible body
+ * help on touch devices. The caller supplies essential visible explanations.
+ */
 export function Tag({ children, tone = "muted", why, className }: { children: ReactNode; tone?: "muted" | "now" | "ink" | "warn"; why?: string; className?: string }) {
   return (
     <span title={why} className={clsx("inline-flex shrink-0 items-center gap-1 px-1.5 py-px text-xs font-semibold tracking-wide",
@@ -68,12 +76,15 @@ export function Tag({ children, tone = "muted", why, className }: { children: Re
   );
 }
 
-/** Render the known-exploited badge with its CISA explanation. */
+/** Render the static KEV label/explanation without checking a feed or accepting props. */
 export const KevBadge = () => <Tag tone="now" why="Listed in CISA's Known Exploited Vulnerabilities catalog">KEV</Tag>;
 
 const Skeleton = ({ className }: { className?: string }) => <div aria-hidden className={clsx("skeleton", className)} />;
 
-/** Skeleton placeholder with a label for assistive tech. */
+/** Render rows placeholders (default one) with a status label (default Loading…).
+ * className applies to each skeleton. Empty label removes hidden text. rows is not
+ * range-validated; extreme values can fail allocation. No loading request occurs here.
+ */
 export function Loading({ className, rows = 1, label = "Loading…" }: { className?: string; rows?: number; label?: string }) {
   return (
     <div role="status" className="flex flex-col gap-2">
@@ -83,25 +94,34 @@ export function Loading({ className, rows = 1, label = "Loading…" }: { classNa
   );
 }
 
-/** Inline error line. Accepts an Error, a message or nothing (renders nothing). role="alert" is announced as it appears. */
+/** Render truthy error text/message as an alert, with optional prefix/className/id.
+ * Falsey error renders null. Do not interpret status, sanitize meaning or perform I/O.
+ */
 export function Alert({ error, prefix, className, id }: { error: Error | string | null | undefined; prefix?: string; className?: string; id?: string }) {
   if (!error) return null;
   return <p id={id} role="alert" className={clsx("bg-now-bg px-3 py-2 text-sm text-now-fg", className)}>{prefix}{typeof error === "string" ? error : error.message}</p>;
 }
 
-/** Success confirmation. A node that appears already holding text is often not read, so it's announced through the shell's live region (DECISIONS 49). */
+/** Render string children with a check icon and optional className.
+ * On mount/children changes, call announce. A live region must exist for that output.
+ * This presentation does not verify success. Announcement timers are not cancelled here.
+ */
 export function Done({ children, className }: { children: string; className?: string }) {
   useEffect(() => announce(children), [children]);
   return <p className={clsx("inline-flex items-center gap-1.5 text-sm text-ink", className)}><Check className="size-4" aria-hidden />{children}</p>;
 }
 
-/** A bordered note that appears after something happened ("Check your email…"), announced like Done. */
+/** Render string children as a bordered note with optional className.
+ * Announce on mount/children changes when a live region exists. No request occurs.
+ */
 export function Notice({ children, className }: { children: string; className?: string }) {
   useEffect(() => announce(children), [children]);
   return <p className={clsx("border border-line-strong bg-surface px-3 py-2 text-sm", className)}>{children}</p>;
 }
 
-/** The two live regions Done, Notice and page changes speak through; the shell has them, signed-out pages render their own. */
+/** Render empty polite live and assertive live-alert regions, without props or requests.
+ * Mount one pair per page so announce can locate unique IDs.
+ */
 export const LiveRegions = () => (
   <>
     <div id="live" role="status" aria-live="polite" className="sr-only" />
@@ -109,7 +129,12 @@ export const LiveRegions = () => (
   </>
 );
 
-/** Label + control + hint + error. The control (a single element child) is given aria-invalid and aria-describedby. */
+/** Render label/children, optional hint/error and wrapper className.
+ * A valid React element child is cloned with aria-invalid/aria-describedby, replacing
+ * existing values. Arrays/text pass unchanged. Custom controls must forward these
+ * props to their input. The caller supplies suitable labelable content.
+ * Error text uses an alert role. This component does not validate or manage input state.
+ */
 export function Field({ label, hint, error, children, className }: { label: string; hint?: string; error?: string | null; children: ReactNode; className?: string }) {
   const id = useId();
   const described = [hint && `${id}-hint`, error && `${id}-error`].filter(Boolean).join(" ") || undefined;
@@ -128,7 +153,14 @@ export function Field({ label, hint, error, children, className }: { label: stri
   );
 }
 
-/** The one confirmation pattern for destructive or high-stakes actions. Focus returns to whatever opened it. */
+/** Render a controlled Radix alert dialog from open/onOpenChange.
+ * title/description name the decision; children adds content. confirmLabel and optional
+ * pendingLabel/cancelLabel customize buttons. destructive changes confirmation styling.
+ * pending disables confirmation only; cancellation remains available. error renders
+ * an alert. onConfirm is called without awaiting or automatically closing the dialog.
+ * The parent owns request state, result handling and open state. Focus restoration
+ * uses useReturnFocus. Require a browser DOM; no network request occurs here.
+ */
 export function ConfirmDialog({ open, onOpenChange, title, description, children, confirmLabel, pendingLabel, cancelLabel = "Cancel", destructive, pending, error, onConfirm }: {
   open: boolean; onOpenChange: (o: boolean) => void; title: string; description: ReactNode; children?: ReactNode;
   confirmLabel: string; pendingLabel?: string; cancelLabel?: string; destructive?: boolean; pending?: boolean; error?: Error | string | null; onConfirm: () => void;
@@ -153,16 +185,21 @@ export function ConfirmDialog({ open, onOpenChange, title, description, children
   );
 }
 
-/** What went wrong, in words that fit the cause, then the raw detail. */
+/** Return a display lead from Error type/status, without reading its message.
+ * Only ApiError instances receive status-specific copy: 0, 401/403, or >=500.
+ * Other cases use generic load-failure text. No I/O or mutation occurs.
+ */
 export function errorLead(error: Error): string {
   if (!(error instanceof ApiError)) return "Couldn't load this.";
-  if (error.status === 0) return "Can't reach the server. Check your connection and try again.";
+  if (error.status === 0) return "Couldn't complete the request. Check the input and connection, then try again.";
   if (error.status === 401 || error.status === 403) return "You don't have access to this.";
   if (error.status >= 500) return "The server had a problem. Try again in a moment.";
   return "Couldn't load this.";
 }
 
-/** Render an error explanation and invoke retry when the user requests another attempt. */
+/** Render errorLead(error), raw error.message and a Try again button calling retry.
+ * The parent owns retry/pending behavior. No request or promise handling occurs here.
+ */
 export function ErrorState({ error, retry }: { error: Error; retry: () => void }) {
   return (
     <div role="alert" className="flex flex-col items-start gap-3 border border-line bg-surface p-5">
@@ -173,7 +210,9 @@ export function ErrorState({ error, retry }: { error: Error; retry: () => void }
   );
 }
 
-/** Render title, optional explanatory children, and an optional action for an empty result. */
+/** Render title, optional paragraph children, and optional action without requests.
+ * The caller supplies paragraph-compatible children and any action behavior.
+ */
 export function EmptyState({ title, children, action }: { title: string; children?: ReactNode; action?: ReactNode }) {
   return (
     <div className="flex flex-col items-start gap-3 border border-dashed border-line-strong px-5 py-8">
@@ -184,7 +223,11 @@ export function EmptyState({ title, children, action }: { title: string; childre
   );
 }
 
-/** Render labelled text with a clipboard action and copy-result feedback. */
+/** Render label/text and a button calling navigator.clipboard.writeText(text).
+ * Success shows Copied and status text for two seconds. Clipboard failures are
+ * suppressed without error feedback; text remains selectable. Repeated copy timers
+ * are independent and not cleared on unmount. Require a browser DOM/clipboard for copying.
+ */
 export function CopyBlock({ label, text }: { label: string; text: string }) {
   const [done, setDone] = useState(false);
   const copy = async () => {

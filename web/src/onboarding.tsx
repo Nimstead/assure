@@ -7,7 +7,10 @@ import clsx from "clsx";
 import { adminGate, api, assetsQ, installCommands, useIsAdmin, useTitle } from "./lib";
 import { Alert, btnPrimary, CopyBlock } from "./ui";
 
-/** Pure view so the rendered commands can be tested without a network. */
+/** Render enrolment command text from trusted origin/token, with clipboard controls.
+ * Command generation performs no request or shell escaping. CopyBlock owns clipboard
+ * attempts and silent failures. Require a browser DOM. Do not run installation here.
+ */
 export function InstallCommands({ origin, token }: { origin: string; token: string }) {
   const c = installCommands(origin, token);
   return (
@@ -15,7 +18,7 @@ export function InstallCommands({ origin, token }: { origin: string; token: stri
       <CopyBlock label="Linux, one line" text={c.curl} />
       <div className="flex flex-col gap-1.5">
         <CopyBlock label="Windows, in an Administrator PowerShell" text={c.windows} />
-        <p className="text-xs text-muted [overflow-wrap:anywhere]">Needs Python 3 installed for all users first: <code className="font-mono">winget install Python.Python.3.13 --scope machine</code></p>
+        <p className="text-xs text-muted [overflow-wrap:anywhere]">The installer supplies and verifies a pinned Python runtime. No separate Python installation is required.</p>
       </div>
       <CopyBlock label="Or with Python directly" text={c.python} />
     </div>
@@ -31,7 +34,15 @@ type Kind = (typeof KINDS)[number]["value"];
 /** Shown after this long without a first report: most first-run problems are one of these. */
 export const TROUBLESHOOT_AFTER_MS = 120_000;
 
-/** Guide an admin through choosing a host type, generating an enrolment token, and waiting for inventory. */
+/** Render browser enrolment under router/QueryClient context, without props.
+ * Query assets and role. Require a host-type choice before the admin-gated token POST.
+ * Read the token from mutation data without writing browser storage. Poll assets every three seconds after token
+ * creation while visible, until total count grows beyond its first observed count.
+ * Any asset-list growth can trigger the final view, even before token creation;
+ * it does not identify this token's host or establish an inventory report.
+ * A two-minute timer exposes troubleshooting. Query failures are not rendered here;
+ * token mutation errors are. Cleanup cancels the troubleshooting timer.
+ */
 export function Onboarding() {
   useTitle("Add a machine");
   const qc = useQueryClient();
@@ -64,8 +75,8 @@ export function Onboarding() {
           <circle cx="12" cy="12" r="10" strokeOpacity=".25" />
           <path className="draw" d="M7.5 12.5l3 3 6-6.5" />
         </svg>
-        <h1 className="text-2xl font-semibold">{assets.data?.at(-1)?.hostname ?? "Your machine"} is connected</h1>
-        <p className="text-muted">Its software is being checked now.</p>
+        <h1 className="text-2xl font-semibold">A new asset is visible</h1>
+        <p className="text-muted">Review Assets to confirm that it is this machine and that its first inventory arrived.</p>
         <Link to="/" onClick={() => void qc.invalidateQueries()} className={clsx(btnPrimary, "no-underline")}>Go to Fix first <ArrowRight className="size-4" aria-hidden /></Link>
       </div>
     );
@@ -76,7 +87,7 @@ export function Onboarding() {
     <div className="mx-auto max-w-2xl py-6 md:py-12">
       <h1 className="text-3xl font-semibold">{first ? "Add your first machine" : "Add a machine"}</h1>
       <p className="mt-2 max-w-prose text-muted">
-        Nimstead reads the list of installed software on a machine, then matches it against known vulnerabilities. It never scans your network or guesses from banners. It takes about a minute.
+        This installation collects the machine's software inventory for advisory matching. Collection time depends on the host and enabled collectors.
       </p>
       <div className="mt-8 border border-line bg-surface p-5 md:p-6">
         {token.data ? (
@@ -93,7 +104,7 @@ export function Onboarding() {
                 <ul className="mt-2 list-disc space-y-1 pl-5">
                   <li>The command finished without an error on the machine. If it printed one, that's the place to start.</li>
                   <li>The machine can reach <code className="font-mono">{window.location.origin}</code> (firewall, proxy, or a name it can't resolve).</li>
-                  <li>On Windows, Python 3 is installed for all users and the PowerShell window was opened as Administrator.</li>
+                  <li>On Windows, the PowerShell window was opened as Administrator and the installer's runtime verification succeeded.</li>
                   <li>Run the agent's <code className="font-mono">doctor</code> command on the machine, as root or Administrator. It checks the server, proxy, clock, schedule and disk, and says how to fix each failure.</li>
                   <li>The agent's log is <code className="font-mono">/var/lib/nimstead/agent.log</code> on Linux and <code className="font-mono">C:\ProgramData\Nimstead\agent.log</code> on Windows.</li>
                   <li>The <a className="underline" href="https://github.com/Nimstead/assure/blob/main/docs/install.md#troubleshooting" target="_blank" rel="noopener noreferrer">install guide</a> has the exact <code className="font-mono">doctor</code> command, and covers proxies and HTTPS.</li>

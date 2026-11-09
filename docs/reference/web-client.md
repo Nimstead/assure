@@ -1,6 +1,6 @@
 # Web client reference
 
-The Assure web client uses React, TanStack Router, and TanStack Query. TypeScript interfaces describe expected data. They do not validate API responses at runtime. This page defines the reviewed settings and remediation interfaces.
+The Assure web client uses React, TanStack Router, and TanStack Query. TypeScript interfaces describe selected expected data. They do not validate API responses at runtime or enumerate every server field. This page covers shared helpers/UI components and the reviewed settings/remediation interfaces.
 
 ## Component context
 
@@ -8,7 +8,7 @@ Query components require a `QueryClientProvider`. Route links, navigation, and r
 
 Client admin controls do not replace server authorization. `useIsAdmin()` returns true only when cached `/api/me` data says `admin=true`. Missing data produces false. `adminGate(false)` keeps a button focusable, marks it unavailable, and replaces its click handler. It must be spread after the button's own props.
 
-`api<T>()` parses JSON without validating `T`. HTTP/network failures become `ApiError`; successful JSON parse failures can propagate separately. Rendering assumes typed shapes. Malformed dates, package fields, or nested values can cause render failures.
+`api<T>()` parses JSON without validating `T`. HTTP, network, and request-preparation failures become `ApiError`. Successful JSON parse failures can propagate separately. Rendering assumes typed shapes. Malformed dates, package fields, or nested values can cause render failures.
 
 ## Settings components
 
@@ -85,6 +85,154 @@ Asset search is a case-insensitive substring across hostname, OS name, and agent
 
 These helpers perform no requests and preserve input array order. They assume typed nested values. Invalid filters or malformed values can throw. Package objects and asset objects remain shared with callers.
 
+## Request and query helpers
+
+`api<T>(path,init)` uses browser `fetch`. It expects a same-origin path but does not refuse absolute or cross-origin URLs. Browser defaults determine credential handling. The helper supplies no timeout, abort signal, retry, or independent origin check.
+
+Only truthy bodies are sent. Strings pass verbatim; other truthy values use `JSON.stringify`. False, zero, empty text, null, and undefined send no body or JSON header. Serialization failures also become `ApiError` with status zero. That status does not establish a network failure.
+
+Non-success HTTP responses become `ApiError` with the response status. Detail text uses a string `detail` or the first validation message and its last location field. Other shapes use generic status text. HTTP 204 returns undefined. Other successful responses must parse as JSON.
+
+`ApiError(status,message)` preserves both arguments without validation. Its inherited `name` remains `Error`. UI error handling uses `instanceof`, not that name.
+
+| Query | Key and endpoint |
+| --- | --- |
+| `coverageQ` | `coverage` → `/api/coverage` |
+| `jobsQ` | `jobs` → `/api/remediation/jobs` |
+| `kbFleetQ` | `kb-fleet` → `/api/windows-updates` |
+| `kbHostsQ(r)` | `kb-fleet`, KB, product → KB detail with encoded product query |
+| `settingsQ` | `settings` → `/api/settings` |
+| `meQ` | `me` → `/api/me`. Five-minute stale time, retry disabled |
+| `aiStatusQ` | `ai-status` → `/api/ai/status`. Five-minute stale time, retry disabled |
+| `summaryQ` | `summary` → `/api/summary` |
+| `assetsQ` | `assets` → `/api/assets` |
+
+These definitions build query options rather than subscribe or fetch by themselves. Caller/provider options govern other cache and retry behavior. `kbHostsQ` encodes product text but interpolates the KB directly. Query response types do not perform validation.
+
+`refresh(qc,what)` invalidates query prefixes and returns a promise for all invalidations:
+
+| Change group | Invalidated prefixes |
+| --- | --- |
+| `jobs` | jobs, summary, ledger, kb-fleet |
+| `findings` | findings, finding, summary, ledger |
+| `assets` | assets, findings, finding, summary, ledger, jobs, kb-fleet |
+| `people` | users, api-tokens, enroll-tokens, ledger |
+
+This helper does not replace cached data itself. It does not invalidate unrelated prefixes such as coverage or settings. QueryClient behavior determines active refetches and errors.
+
+## Findings URL and AI helpers
+
+`parseFilters(raw)` accepts string-valued search data. It copies query, asset, and drawer ID text unchanged. Priority names are case-sensitive and untrimmed. Repeated recognized priorities remain repeated.
+
+| URL key | Default and interpretation |
+| --- | --- |
+| `q`, `asset`, `f` | Empty text. `f` becomes the open drawer ID |
+| `priority` | Empty list. Comma-separated recognized priority names |
+| `fixable` | True unless exact `0` |
+| `kev`, `overdue` | True only for exact `1` |
+| `status` | `open`. Other accepted values are `resolved` and `accepted` |
+| `sort` | `score`. Other values are `package`, `host`, `vuln`, `newest` |
+| `group` | Empty. Other values are `vuln` and `package` |
+
+Unknown enum values fall back. Unrecognized keys are ignored. Invalid runtime value types can throw.
+
+`filtersToSearch(f)` returns an object with undefined default fields. It canonicalizes priorities to unique `fix-now,next,planned,low` order. This normalization is not an exact inverse for every raw URL. It does not URL-encode values itself.
+
+`filtersToApi(f,list=true)` returns an encoded query. It always includes status. The default adds `limit=500`, `view=list`, and nondefault sort. `list=false` omits those controls. Asset becomes `asset_id`. False booleans, drawer ID, and grouping state are omitted. Priority order is preserved.
+
+`looksLikeQuestion(t)` tests for a final question mark or at least four whitespace-separated tokens. `aiFilterToPatch(a)` always sets query, priority, KEV, and fixable values. Missing text/list becomes empty, and flags use truthiness. Only a recognized status is included. Missing/invalid status therefore leaves that field out of the patch. Duplicate valid priorities remain.
+
+These helpers neither call an AI provider nor validate a complete AI response. The [AI reference](optional-ai.md) defines server/provider behavior.
+
+## Formatting and recorded evidence
+
+| Helper | Contract |
+| --- | --- |
+| `priorityOf(score,kev)` | KEV or score ≥75: fix-now. Scores ≥50: next, ≥25: planned, otherwise low. No range validation |
+| `parseUtc(s)` | Append `Z` unless a UTC/numeric offset suffix exists. Invalid text produces an invalid Date |
+| `relativeTime(s,now)` | English rounded elapsed time. `now` is Unix milliseconds. Invalid dates/nonfinite values can raise RangeError |
+| `plural(n,one,many=one+"s")` | English-formatted count. Singular only for exact one |
+| `pct(x)` | `<1%` below 0.01, otherwise rounded `x*100`. No range validation |
+| `humaniseKind(k)` | Replace underscores, trim, capitalize first character. Preserve repeated internal spaces |
+| `sbomSummary(r)` | Mapping/finding summary. Skipped equals components minus mapped, without validating consistency |
+| `fixLabel(f)` | Nonnull recorded fixed version, otherwise ecosystem action or no-fix-recorded text |
+| `whyMatched(f)` | Format recorded match text, with at most three advisory IDs. Do not re-evaluate evidence or compare versions |
+
+Relative time uses fixed units: 30-day months and 365-day years. Under 45 rounded seconds displays `just now`. These are elapsed approximations, not calendar differences.
+
+`updateSource(f)` describes reported Windows update facts. Explicit `wsus=null` selects Windows Update. Deferral-only facts produce no text. A success date beginning `1601-` means no prior install. Other dates use relative formatting. The function does not probe the host.
+
+Agent labels use the server's classification. `updating` does not prove a newer channel-eligible release. `reinstall` can mean missing local capability or no served signed release. A failed self-test can delay retry for 24 hours. These labels do not predict a successful next run.
+
+`groupJobs(jobs)` returns all configured groups with new arrays and shared job objects. Unknown statuses belong to no group. `isActiveJob(j)` selects approved/dispatched/verifying. `jobAnchor(id)` prefixes text with `job-` without encoding or validation.
+
+`installCommands(origin,token)` returns curl, direct-Python, and PowerShell text without execution. Inputs must be a trusted server origin and generated token. The helper does not escape shell input or normalize URLs. Direct Python assumes the agent file exists. Environment assignments do not independently guarantee caller logging or process privacy.
+
+## Browser hooks, announcements and saved views
+
+| Interface | Behavior |
+| --- | --- |
+| `useTitle(title)` | React effect sets the product document title. No restoration on cleanup |
+| `useHashScroll(ready)` | On mount/ready changes, decode the hash, scroll, and request focus. Missing targets are ignored without retry |
+| `announce(text,assertive=false)` | Clear `live` or `live-alert`, then set text after 30 ms. Missing document/region is ignored |
+| `themeChoice()` | Read light/dark from the document dataset, otherwise system. Do not read storage or media preferences |
+| `setTheme(t)` | Update dataset and storage key `theme`. System removes overrides. Storage errors are suppressed after the DOM change |
+| `savedViews()` | Read `nimstead:findings-views`, retaining only entries with string names |
+| `saveViews(views)` | JSON-store data, then dispatch `nimstead-views`. Suppress serialization, storage and event errors |
+
+Browser hooks require a DOM. Hash changes alone do not repeat the scroll effect. Invalid percent escapes can raise URIError. The caller must make the target focusable.
+
+Announcement timers are independent and are not cancelled on unmount. An earlier message can appear during a later call's delay. Each page needs unique live-region IDs.
+
+Saved views belong to the browser storage, without account scoping. Only names are validated; search data can be missing or malformed. Read/parse failure returns an empty list. A storage write can succeed even if the subsequent event fails.
+
+## Enrolment components
+
+`InstallCommands({origin,token})` renders the trusted command text through CopyBlock. It makes no network request or installation attempt. The Windows installer supplies its pinned runtime. A separate Python installation is not required for that route.
+
+`Onboarding()` requires router/query context and reads the asset list and current role. A host-type choice enables the admin-gated enrolment-token request. Token text comes from mutation data. The component does not write it to browser storage.
+
+After token creation, the asset query polls every three seconds while the tab is visible. A two-minute timer exposes troubleshooting. Query failures are not displayed by this component. Token request failures are displayed.
+
+The final view uses total asset-count growth from the first observed list. An unrelated asset can trigger it, even before token creation. It does not prove that this token enrolled a host or that inventory arrived. The displayed instruction requires verification on Assets. The troubleshooting timer is cancelled during effect cleanup.
+
+## Shared UI components
+
+These components render trusted typed props. They do not validate API data or establish server permissions.
+
+| Export | Props and behavior |
+| --- | --- |
+| `chip(on)` | Selected/unselected class string. No event handling or ARIA state |
+| `PriorityPill({priority,count})` | Priority text/style and optional raw count, including zero |
+| `StatusPill({status})` | Shared job label/style. Unknown runtime status has no label fallback |
+| `Tag({children,tone,why,className})` | Tone defaults to muted. Why becomes title and hidden suffix, not visible touch help |
+| `KevBadge()` | Static KEV explanation, without a feed check |
+| `Loading({className,rows,label})` | Default one skeleton and hidden Loading label. Class applies to skeletons. Empty label suppresses hidden text |
+| `Alert({error,prefix,className,id})` | Truthy string or Error message as an alert. Falsey input renders nothing |
+| `Done({children,className})` | String text with check icon. Announce on mount/text changes without verifying success |
+| `Notice({children,className})` | Bordered string text with the same announcement mechanism |
+| `LiveRegions()` | Empty polite/assertive regions with unique IDs expected by announce |
+| `Field({label,hint,error,children,className})` | Label, child, hint and error. Clone a valid element with replacement ARIA properties |
+| `ErrorState({error,retry})` | Status-based lead, raw message, and a button invoking retry |
+| `EmptyState({title,children,action})` | Title, paragraph-compatible child content, and caller-owned action |
+| `CopyBlock({label,text})` | Selectable text and clipboard button. Success feedback lasts two seconds |
+
+Loading row counts are not range-validated. Extreme values can fail allocation. Priority/status/style helpers assume supported values. Class constants supply presentation; an ARIA-disabled class does not itself prevent clicks.
+
+Field replaces existing `aria-invalid` and `aria-describedby` values. Arrays/text children remain unchanged. Custom controls must forward the cloned props to their input. The component neither validates nor stores the field value.
+
+`errorLead(error)` gives status-specific text only for ApiError instances: zero, 401/403, or ≥500. Other errors use generic load-failure text. It does not inspect the message to prove a cause.
+
+Clipboard failure is suppressed without an error message. Text remains selectable. Copy timers are independent and not cleared on unmount. Repeated copy success can have overlapping feedback timers.
+
+### Confirmation and focus contracts
+
+`ConfirmDialog` takes controlled `open`/`onOpenChange`, title, description, confirmation label, and `onConfirm`. Optional props add children, pending/cancel labels, destructive styling, pending state, and error feedback.
+
+Confirmation invokes the callback without awaiting it or automatically closing the dialog. Pending disables confirmation only. Cancellation remains available and requests a parent state change. The parent owns requests, result handling, and cancellation consequences.
+
+`useReturnFocus(initial?)` supplies Radix open/close autofocus handlers. It remembers the active opener and requests focus on an optional initial element. Closing requests focus on a still-connected opener. Otherwise Radix handles the fallback. Hidden, disabled, or unfocusable targets can prevent the intended focus result.
+
 ## Related
 
 - [Remediation jobs and policy](remediation-jobs.md)
@@ -92,3 +240,5 @@ These helpers perform no requests and preserve input array order. They assume ty
 - Source: [`settings.tsx`](../../web/src/settings.tsx), [`remediation.tsx`](../../web/src/remediation.tsx), and [`planfix.tsx`](../../web/src/planfix.tsx)
 - Shared transport and queries: [`lib.ts`](../../web/src/lib.ts)
 - Asset filtering: [`assets.tsx`](../../web/src/assets.tsx)
+- Shared components: [`ui.tsx`](../../web/src/ui.tsx)
+- Enrolment view: [`onboarding.tsx`](../../web/src/onboarding.tsx)

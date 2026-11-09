@@ -84,6 +84,18 @@ This batch passed 190 focused tests and 46 subchecks, with ten Windows-only skip
 
 70 web tests, type checks and production build passed. Playwright MCP used local fixture responses, rejected writes, and inspected desktop/mobile UI. The complete CLI end-to-end suite was not rerun. This evidence does not establish production application deployment or host execution.
 
+## Shared web and enrolment review
+
+| Source | Review scope | Evidence and corrections | Status |
+| --- | --- | --- | --- |
+| `web/src/lib.ts` | All exported callables/classes, query definitions, display constants and UI-selected type declarations | Reviewed transport/error parsing, falsey bodies, status-zero serialization errors, filters/AI normalization, fixed elapsed-time units, scoring/formatting, DOM hooks, storage, live regions and invalidations. Corrected overstatements and nullable cached error type. Boundary tests pass | Reviewed |
+| `web/src/ui.tsx` | All exports and internal helper behavior | Reviewed props/defaults, status styles, ARIA replacement, controlled dialog callbacks, pending cancellation, focus requests, announcements and silent clipboard errors. Types and new component checks pass | Reviewed |
+| `web/src/onboarding.tsx` | InstallCommands, Onboarding, constants and effects | Reviewed trusted command interpolation, role/token request, polling, baseline count, timeout cleanup and query-error display limits. Corrected bundled-runtime prerequisites and count-growth proof claims. An unrelated application asset test verifies the limit | Reviewed |
+| `web/src/assets.tsx` | AgentUpdateSummary, plus earlier named filter/help scopes | Reviewed reason grouping, combined version counts, link callback and invalid-state behavior. Corrected the assumption that every reinstall state means an old agent. Other exports remain pending | Partial |
+| `api/src/nimstead/app.py` | agent_update_status, plus earlier named scopes | Reviewed classification precedence and absence of newer-version/channel proof. A fake served-version test verifies newer reported agents and missing-release states. Other unnamed handlers remain pending | Partial |
+
+79 web tests and 30 API/documentation tests passed, with 46 subchecks. Browser checks used generated fixture text and intercepted all local API requests. Production application deployment, native clipboard behavior, host installation and the full CLI end-to-end suite were not exercised.
+
 The full SQLite suite passed 1611 tests with 59 skips at the start of this batch. The later targeted evidence/key checks passed 23 tests. The new field/summary assertions subsequently passed in a 27-test evidence/documentation run. All three executable docstrings passed. Skipped platform/oracle cases are not newly verified real-host proofs.
 
 The engine batch passed 105 engine/documentation tests and 46 subchecks. Two Windows PowerShell parsing cases were skipped on this host. Reference field assertions supplement the source review and do not prove every possible runtime value.

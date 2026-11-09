@@ -203,3 +203,15 @@ All 70 web tests, TypeScript checks and the production build passed with Node22.
 The 73-article wiki build and six site tests passed. The first build stalled during generated-directory cleanup. A process sample identified directory scanning. The generated output was preserved in `/private/tmp`, then a clean build passed. Source behavior was not changed to bypass the check.
 
 No production Assure application was deployed or mutated. The repository contains the reviewed UI copy. Wiki publication includes its supporting reference and corrected operator guide. Remaining web exports, agent/tool contracts, unnamed API handlers and final editorial/example review remain pending.
+
+## Shared web and enrolment checkpoint
+
+Reviewed every public helper/type/query declaration in `lib.ts`, every shared component/hook in `ui.tsx`, and the enrolment view. Expanded the existing web reference with transport, filter normalization, formatting, storage, DOM, query, clipboard, confirmation and focus contracts. Added accurate JSDoc and corrected selected API-shape comments.
+
+Corrected network-only status-zero claims, exact URL-inverse claims, calendar-unit wording, unconditional focus/clipboard feedback, agent retry/eligibility text and separate Windows Python prerequisites. Enrolment now describes asset-count growth without claiming that the intended machine reported inventory. The underlying count heuristic is explicitly documented.
+
+79 web tests, TypeScript checks and the production build passed. New checks cover request serialization, falsey bodies, invalid JSON, priority normalization, invalid dates, name-only saved views, ARIA replacement, pending cancellation and unrelated asset growth. A 30-test API/documentation run and 46 subchecks passed, including agent-label precedence/eligibility limits. Ruff and whole-repository presence/link checks passed.
+
+Playwright MCP used local fixtures to verify agent-group/retry wording, the Windows runtime instruction, silent clipboard refusal, asset-count completion wording, and desktop/mobile reference layout and anchors. No real enrolment token, clipboard write, host installation or production mutation occurred. The 73-article build and six site tests passed.
+
+The remaining asset, home, findings, evidence, access/integration, auth and shell exports still need their own reviews. Remaining agent/tool/API and final editorial/example reviews also keep full compliance unproven.

@@ -15,6 +15,19 @@ from nimstead.app import create_app
 from nimstead.db import make_engine, now
 
 
+def test_agent_update_labels_do_not_establish_upgrade_eligibility(monkeypatch):
+    import nimstead.app as appmod
+    from nimstead.db import Asset
+
+    monkeypatch.setattr(appmod, "latest_agent_version", lambda: "0.6.7")
+    asset = Asset(agent_version="999.0.0", auto_update=True)
+    assert appmod.agent_update_status(asset, paused=False, release=True) == "updating"
+    assert appmod.agent_update_status(asset, paused=False, release=False) == "reinstall"
+    asset.agent_version = "0.6.7"
+    asset.auto_update = False
+    assert appmod.agent_update_status(asset, paused=True, release=False) == "current"
+
+
 @pytest.fixture
 def gh(env, tmp_path, monkeypatch):
     """Release dir in tmp, the check switched on, running 0.3.0 on the preview channel, a fake GitHub with signed

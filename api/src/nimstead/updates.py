@@ -4,8 +4,8 @@ agents need.
 Run by the hourly feed update. Once a day it looks at the recent GitHub releases and picks the newest one this server's
 channel takes (NIMSTEAD_UPDATE_CHANNEL: preview, beta or stable, default stable; a server takes its channel and anything
 more stable, DECISIONS 33), judged by the channel in the release's signed manifest, never by GitHub's labels. Each org
-hears once per new version. Every run it also fetches release.json + its signature for the running version if they're missing, so agents
-can update themselves (the server only relays them; agents check the signature against the keys they pin). Applying an
+hears once per new version. Enabled runs also attempt release/runtime cache refresh for agent distribution. A matching
+manifest cache can skip a fetch without checking its signature file. Agents verify relayed files against pinned keys. Applying an
 update is deploy/update.sh's job on the Docker host, never the server's: the server can't rebuild itself.
 It also fetches the Windows agent's bundled Python zips the signed manifest names (`python-embed-<arch>.zip`, kept only
 on a SHA-256 match). NIMSTEAD_UPDATE_CHECK=0 turns all of this off (offline installs: copy release.json, its .sig and
@@ -44,7 +44,9 @@ def channel() -> str:
 
 
 def release_channel(rel: dict) -> str:
-    """A manifest signed before channels existed (0.3.0) counts as preview."""
+    """Return a recognized channel from manifest dictionary rel, otherwise preview.
+
+    Missing, unknown or incompatible channel values use the fallback. Does not verify signatures."""
     return rel.get("channel") if rel.get("channel") in CHANNELS else "preview"
 
 
@@ -91,7 +93,14 @@ def _write(name: str, data: dict | bytes) -> None:
 
 
 def status() -> dict:
-    """What Settings shows: running version, newest release, and the last deploy/update.sh result."""
+    """Return running/channel/latest fields and the last updater result from local cache.
+
+    Fields are version, channel, running_channel, latest, latest_url, latest_channel,
+    update_available, checked and last_update. Latest data is ignored when its
+    for_channel differs. Update availability compares three-component version tuples.
+    This function does not verify the cached signature, request releases or apply updates.
+    Missing/unreadable/invalid JSON files act as empty data. Valid JSON with the wrong
+    shape can raise AttributeError or TypeError. Package/backend errors can propagate."""
     latest, running = _read("latest.json"), current_version()
     if latest.get("for_channel") != channel():  # the channel changed since the last check: that answer no longer applies
         latest = {}
@@ -113,7 +122,14 @@ def _get(client: httpx.Client, url: str, limit: int = MAX_FILE) -> httpx.Respons
 def newest_for_channel(client: httpx.Client, running: str, ch: str) -> dict:
     """The newest release above `running` whose signed manifest is for `ch` or a more stable channel; {} if none.
     Releases whose manifest is missing, unsigned or for another version are skipped (a release still waiting for its
-    signing approval has no manifest yet)."""
+    signing approval has no manifest yet).
+
+    client is caller-owned. running is a three-component version string. Invalid
+    running versions return {} after the listing request. ch must name a supported
+    channel. Inspect one page of 30 nondraft numeric tags, highest first. A result
+    has version, url and channel. Per-release HTTP/size failures are skipped.
+    Listing HTTP, JSON/shape and unsupported-channel errors can propagate. The server
+    signature check does not validate every agent-manifest field. No files are written."""
     from nimstead.app import verify_manifest  # the keys pinned in the agent this server serves
     page = _get(client, f"https://api.github.com/repos/{REPO}/releases?per_page=30", MAX_LIST).json()
     tags = sorted({str(r.get("tag_name")) for r in page if isinstance(r, dict) and not r.get("draft")
@@ -131,9 +147,14 @@ def newest_for_channel(client: httpx.Client, running: str, ch: str) -> dict:
 
 
 def fetch_release_files(client: httpx.Client) -> bool:
-    """release.json + .sig for the running version, if missing, left over from the previous version, or signed for a less
-    proven channel than this server's (a promotion re-signs the same tag, and agents installed on this channel refuse the
-    older signature). True when new files were stored."""
+    """Fetch the running release's manifest/signature through caller-owned HTTP client.
+
+    Return True when files were stored, False otherwise. A matching cached version
+    with an eligible channel skips fetching without checking its signature file.
+    HTTP/size failures log and return False. Identical manifest bytes also return False,
+    even if the fetched signature differs. Store signature first, then manifest,
+    using separate atomic file replacements. This step does not verify either file.
+    Filesystem, malformed cache and other unhandled client errors propagate."""
     running = current_version()
     cached = _read("release.json")
     if not running or (cached.get("version") == running and takes(channel(), release_channel(cached))):
@@ -160,8 +181,14 @@ def runtime_file(arch: str) -> Path:
 
 
 def fetch_runtimes(client: httpx.Client) -> list[str]:
-    """The Windows agent's bundled Python zips named by the running release's verified manifest (plan decision 9).
-    A zip is kept only if its SHA-256 is the signed one; agents check it again. Returns the arches fetched now."""
+    """Return architecture names fetched now from the cached manifest through HTTP client.
+
+    client remains caller-owned. Verify the cached manifest signature, then use its
+    version and runtime entries, without checking the server's running version.
+    Keep each zip only on a SHA-256 match. Matching local files are skipped.
+    Missing/unreadable manifest files return []. Download HTTP/size/hash failures
+    skip that architecture. Missing manifest fields, filesystem and other backend
+    errors can propagate. Does not validate or unpack archive contents."""
     from nimstead.app import verify_manifest
     try:
         manifest, sig = (release_dir() / "release.json").read_bytes(), (release_dir() / "release.json.sig").read_text().strip()
@@ -191,7 +218,11 @@ def check(s: Session, client: httpx.Client | None = None) -> dict:
 
     s is the database Session; client optionally supplies an httpx.Client and remains caller-owned.
     Return a result dictionary, or a skipped reason when update checks are disabled. Discovery HTTP
-    errors are returned as error text; storage and other unhandled backend errors propagate."""
+    errors are returned as error text. Storage and other unhandled backend errors propagate.
+    Normal fields are release_files_fetched, runtimes_fetched, latest and alerted.
+    A failed discovery can replace latest with error. Files change and notifications
+    can be queued through s. This function does not explicitly commit s. Malformed
+    cached timestamps can fail before the discovery-error handler."""
     if os.environ.get("NIMSTEAD_UPDATE_CHECK", "1") == "0":
         return {"skipped": "NIMSTEAD_UPDATE_CHECK=0"}
     own = client is None

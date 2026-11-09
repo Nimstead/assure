@@ -1,10 +1,11 @@
 """Windows configuration findings (plan T10, T36, T37; decisions 11, 4): "patched but not protected" and the hardening
 settings attackers exploit directly. The agent reads a closed list of values (agent PS_HOST -> facts["config"]); this
-module turns them into findings (ecosystem "WinConfig"). A value the agent couldn't read (null) is "can't tell":
-no finding, never "fine". Defaults that changed with Windows versions are encoded where the finding depends on them.
+module turns them into findings (ecosystem "WinConfig"). Most unknown values produce no finding, while specific
+default/policy checks also report missing or null values. No finding does not establish a successful assessment.
+Defaults that changed with Windows versions are encoded where the finding depends on them.
 
-Findings tied to a CVE carry the CVE id and are scored like any other CVE (KEV, EPSS, CVSS); the rest carry their own
-score and reason. Each says what was read and what to change.
+Some CVE-linked checks use the generic scorer. Other checks, including some CVE-linked ones, carry their own Risk.
+Each finding says what was read and what to change.
 """
 
 from datetime import UTC, datetime
@@ -29,7 +30,12 @@ FIREWALL_SAYS = {"off": "with the firewall off on at least one profile", "allowe
 
 def reachable_listeners(facts: dict) -> list[tuple[tuple[str, ...], str]]:
     """(curated product key prefixes, the reason to show) for each listener a matching product's priority can rest on. A port
-    the firewall blocks, or whose state couldn't be read, raises nothing."""
+    the firewall blocks, or whose state couldn't be read, raises nothing.
+
+    facts.listening is a list of dictionaries with integer port, process name and
+    firewall off/allowed. Names use the curated LISTENERS map case-insensitively.
+    Return all matching rows without deduplication. Does not test network access,
+    validate port ranges or exclude bool-as-int values. Malformed facts can raise AttributeError."""
     rows = facts.get("listening")
     out = []
     for r in rows if isinstance(rows, list) else []:
@@ -46,7 +52,16 @@ def _expired(cert: dict, today) -> bool:
 
 
 def evaluate(facts: dict, os_version: str = "", today=None) -> list[dict]:
-    """[{package, version, vuln_id, summary, score/priority/reasons (own risk) or None (score as a CVE)}]."""
+    """Return configuration finding dictionaries from host facts without I/O or persistence.
+
+    facts.config supplies settings. installation_type/domain_role select host roles,
+    machine_certs supplies certificate facts, and os_version supplies the Windows
+    build. today is an optional date, defaulting to current UTC for certificate expiry.
+    A missing/nondictionary config returns [] before certificate checks.
+    Rows contain package/version/vuln_id/summary and optional Risk object under risk.
+    They do not contain top-level score/priority/reasons. Values/summaries truncate at
+    100/1000 characters. Unknown/default handling varies by rule. Malformed trusted
+    nested values can raise attribute, type, value or overflow errors."""
     c = facts.get("config")
     if not isinstance(c, dict):
         return []

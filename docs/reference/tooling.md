@@ -8,6 +8,7 @@ Run development commands from the repository root unless a command says otherwis
 | --- | --- |
 | `python scripts/check_docs.py` | Check public documentation presence and local Markdown links |
 | `python scripts/check_docs.py --report` | Also regenerate the documentation coverage table |
+| `(cd api && uv run python ../scripts/export_api_docs.py --check)` | Refuse stale endpoint and OpenAPI exports; omit `--check` to refresh them |
 | `(cd api && uv run ruff check src tests ../agent ../sandbox ../scripts)` | Run the repository's Python lint rules |
 | `(cd api && uv run pytest -q)` | Run API, agent, and tool tests against SQLite by default |
 | `(cd web && npm run lint)` | Type-check web exports and their typed usage |
@@ -16,6 +17,50 @@ Run development commands from the repository root unless a command says otherwis
 | `(cd web && npm run e2e)` | Run the configured browser tests; install Playwright Chromium first |
 
 Set `NIMSTEAD_TEST_PG_URL` to a disposable PostgreSQL server to run the API suite with PostgreSQL. The fixtures create and drop test databases. Use the same PostgreSQL configuration as CI when reproducing CI failures.
+
+## Documentation checker contracts
+
+`scripts/check_docs.py` uses its file location to select the repository root. It requires Git and the Python standard library. It checks documentation presence and recognized local links. It does not establish prose accuracy, example execution, or Diataxis completeness.
+
+| Function | Inputs, output and limits |
+| --- | --- |
+| `python_symbols(tree)` | Parsed module AST to `(name,present)` pairs. Direct public module/class bodies and `app` HTTP decorators are counted. Conditional definitions can be omitted. Top-level public routes can count twice |
+| `coverage()` | Repository paths to symbol/presence pairs. Reads Python with AST and web exports with the repository's declaration regex. No writes |
+| `documentation_paths()` | Sorted existing tracked/unignored Markdown paths from Git. Excludes ignored output, not every historical record |
+| `markdown_anchors(source)` | Text to recognized heading/HTML anchor set. Duplicate headings receive numeric suffixes. This is an approximate parser |
+| `link_problems()` | List of recognized missing destinations/headings. Local filesystem checks only. No remote requests |
+| `report(rows)` | Coverage pairs to Markdown. Counts supplied rows, including duplicates. No source validation or writes |
+| `main()` | CLI prints results and returns 0/1. `--report` writes before link checks, even if later checks fail |
+
+Web presence requires an adjacent documentation block. Type declarations, query objects and re-exports are outside the callable check. It does not inspect whether the comment explains parameters or errors.
+
+Link recognition includes selected Markdown links, images, reference definitions and quoted HTML attributes. It excludes the implemented triple-backtick code pattern. Other fence syntax and space-containing Markdown targets are not fully supported. Heading-like code can affect the approximate anchor set.
+
+URL query strings do not affect target existence. Non-Markdown fragments receive no anchor validation. Directories count as existing destinations. Git, parsing, URL, decoding and filesystem errors can propagate. A zero result applies to these recognized forms only.
+
+## Runtime download helper
+
+`scripts/fetch_runtimes.py OUT_DIR` reads `agent/windows-runtime.json`. It creates the output directory and processes runtime keys in sorted order. The initial URL must start with `https://www.python.org/ftp/python/`. Redirect handling belongs to urllib. The helper does not independently validate the final response origin.
+
+`main(out: str)` returns zero after all hashes match. Each request passes `timeout=120` to urlopen. The helper reads the whole archive into memory without an explicit size cap. SHA-256 comparison occurs before that archive is written.
+
+Output names are `python-embed-KEY.zip`, with the key from the pin document. Matching downloads overwrite existing files. Writes are not atomic. A hash mismatch preserves that file's previous bytes. Earlier successful files remain if a later entry fails.
+
+An initial URL refusal or hash mismatch raises SystemExit. Malformed pin documents, network failures and filesystem errors propagate. A missing CLI output argument raises IndexError. This helper does not sign a release or verify an agent manifest.
+
+## API export helper
+
+`scripts/export_api_docs.py` requires the locked API environment. `render()` returns text for `docs/reference/openapi.json` and `docs/reference/api-endpoints.md`. It creates an in-memory SQLite app and closes its temporary HTTP client. It does not invoke endpoints or make provider/feed requests.
+
+The catalog includes only APIRoute objects included in OpenAPI. Paths and methods are sorted. Summaries use the first description line. Source links use endpoint code line numbers. JSON keys are sorted and both outputs end with a newline.
+
+Authentication inference uses direct dependency function names plus explicit special-case labels. Selected response schemas, media types and parser limits are maintained in this exporter. Other schemas come from FastAPI. This does not validate actual response data or run an OpenAPI linter.
+
+`main()` reads `--check`. Check mode compares exact output text, prints stale paths, and returns one for missing/different files. It performs no writes. Write mode overwrites schema then catalog. Parent directories must exist. Writes are not atomic, so an earlier output can change before a later failure.
+
+App initialization, schema generation, missing attributes and filesystem errors can propagate. Invalid CLI arguments use argparse SystemExit. A successful export does not prove endpoint behavior, exhaustive error lists, or complete response contracts.
+
+See [baseline conversion](baseline-authoring.md) for the XCCDF tool's inputs, generated fields and refusal limits.
 
 ## Operational entry points
 
@@ -45,6 +90,10 @@ Set `NIMSTEAD_TEST_PG_URL` to a disposable PostgreSQL server to run the API suit
 | Evidence and integration services | `evidence`, `verify_pack`, `keys`, `notify`, `ai` |
 
 The [coverage table](documentation-coverage.md) links to each documented source file. Type annotations define input/output types; docstrings explain contracts, side effects, and important failure modes. The project does not promise a stable Python SDK before 1.0.
+
+The [feed reference](feed-sync.md) defines command results, source selection, commit boundaries, and failure handling.
+
+The [web client reference](web-client.md) defines reviewed component props, route/query behavior, callbacks, failures and display-helper limits.
 
 ## Sandbox proofs
 

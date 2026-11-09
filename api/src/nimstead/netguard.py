@@ -1,4 +1,4 @@
-"""Outbound-request SSRF guard: https only, public addresses only. Used for webhooks and the OIDC client."""
+"""Outbound HTTPS guard for webhooks and OIDC, with an explicit development-only private-address bypass."""
 
 import ipaddress
 import logging
@@ -12,7 +12,9 @@ log = logging.getLogger(__name__)
 
 
 def private_targets_allowed() -> bool:
-    """Dev/integration-test only: NIMSTEAD_ALLOW_PRIVATE_TARGETS=1 lets webhooks and the IdP live on a private network."""
+    """Return whether NIMSTEAD_ALLOW_PRIVATE_TARGETS is exactly "1".
+
+    Log a warning on each true result. This bypass is for development and integration tests."""
     if os.environ.get("NIMSTEAD_ALLOW_PRIVATE_TARGETS") == "1":
         log.warning("NIMSTEAD_ALLOW_PRIVATE_TARGETS=1: SSRF protection for private addresses is OFF (never in production)")
         return True
@@ -34,7 +36,15 @@ def is_public(a: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
 
 
 def check_public_url(url: str, resolve: bool = True) -> list[str]:
-    """Raise ValueError unless url is https and (after DNS resolution) every address is public. Returns the addresses."""
+    """Validate HTTPS url and return its checked address strings, preserving resolver order.
+
+    url must have a hostname and no nonempty embedded credentials. With resolve=False,
+    hostname URLs return [] without a DNS lookup or an address check. Literal IPs are
+    checked in either mode. Otherwise every resolved address must pass is_public,
+    unless the explicit development switch allows non-public addresses.
+
+    Raise ValueError for malformed/refused URLs, failed resolution, or an empty
+    address list. DNS uses the system resolver without an explicit deadline."""
     u = urlsplit(url)
     if u.scheme != "https" or not u.hostname or u.username or u.password:
         raise ValueError("URL must be https without embedded credentials")
@@ -73,7 +83,8 @@ def guarded_client(timeout: float = 5.0) -> httpx.Client:
     # checked for one name could otherwise be reused for another name on the same address without a new TLS check.
     """Return an HTTPS client with DNS pinning, no redirects, and no connection reuse.
 
-    timeout is the request timeout in seconds. The caller must close the returned httpx.Client.
+    timeout sets HTTPX operation timeouts in seconds. It does not bound the system DNS lookup.
+    The caller must close the returned httpx.Client.
     Requests can raise ValueError for refused targets or httpx transport errors."""
     transport = GuardedTransport(limits=httpx.Limits(max_keepalive_connections=0))
     return httpx.Client(transport=transport, timeout=timeout, follow_redirects=False)

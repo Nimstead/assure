@@ -15,7 +15,13 @@ def in_slice(ecosystem: str) -> bool:
 
 
 def compare(verdicts: list[Verdict], findings: list[tuple[str, str, str]]) -> dict:
-    """`findings`: (ecosystem, package, vuln_id) that rescan has open on this inventory."""
+    """Compare engine verdicts with rescan findings for the same inventory.
+
+    findings contains (ecosystem, package, vuln_id) tuples. Duplicate identities
+    count once. Return agree (intersection count), outside_this_slice (ecosystem
+    counts), explained/unexplained difference lists, and ok (no unexplained rows).
+    ok can be true with explained differences. Does not modify inputs or findings.
+    Unknown reason codes and malformed identities can raise KeyError or TypeError."""
     by_key: dict[tuple, list[Verdict]] = defaultdict(list)
     product_reason: dict[tuple, str] = {}  # a verdict on a whole product (no vulnerability): why none of its CVEs were judged
     for v in verdicts:

@@ -12,6 +12,8 @@ Assure accepts raw JSON at `POST /api/assets/{asset_id}/sbom`. The body is the d
 | Package identity | Supported package URL with a version |
 | Unsupported formats | XML and SPDX tag-value are rejected |
 
+The parser checks supported format/version markers and component/container limits. It does not validate every field against the complete upstream SBOM schemas.
+
 ## Package URL mapping
 
 | purl type | Advisory ecosystem | Name handling |
@@ -39,7 +41,16 @@ SPDX uses the first `externalRefs` entry whose `referenceType` is `purl`. If tha
 | `skipped.no_purl` | Missing, empty, or non-string package URL |
 | `skipped.unsupported_or_invalid_purl` | Unsupported type, malformed identity, or missing version |
 
-The HTTP response also includes the scan result. Finding counts depend on the advisories loaded on the server.
+The HTTP response also includes two integer scan results:
+
+| Field | Meaning |
+| --- | --- |
+| `open` | Currently matched finding identities in this rescan, including accepted findings that still match |
+| `resolved` | Existing open or accepted findings newly marked resolved by this rescan |
+
+These counts are not pagination totals for the Findings screen. Available advisories and collection completeness affect the result.
+
+For credential precedence, last_seen updates and job-verification differences, see [SBOM authentication and effects](assets-api.md#sbom-authentication-and-effects).
 
 ## Replacement and errors
 

@@ -16,6 +16,8 @@ Confidence describes the strength of evidence for a conclusion. Severity describ
 
 Distribution packages use the distribution's version rules and source package identities. This matters when a vendor backports a fix without adopting the upstream version number. Windows and application checks use the matching rules and coverage available for those products.
 
+Stored findings follow the engine's verdicts. A `vulnerable` verdict opens a finding. A finding closes only on evidence: `not-vulnerable` at the installed version, or `not-applicable` because the product is gone with its list read in full, or because no live advisory carries its identity any more. Otherwise it stays open, and its reasons say why. Agents without a collection document, and checks outside the engine's slice such as settings and drivers, keep the earlier rule of closing when a match disappears. The [finding reference](../reference/findings.md#reassessment-and-resolution) defines the rules and their limits.
+
 ## Priority helps order work
 
 Risk scoring combines known exploitation, EPSS likelihood, CVSS impact, asset criticality, exposure, and fix availability. Known exploitation takes precedence. The score includes reasons so an operator can understand its ordering.
@@ -28,7 +30,7 @@ A detection does not authorise a change. The host must opt into remediation, the
 
 Plans constrain the packages a job may change. Canary execution and health checks reduce the scope of a failed change. Rollback has platform-specific limits; some application updates require explicit approval because they cannot be undone.
 
-A completed package command is not sufficient proof of a fix. The next inventory must show the finding is gone. An incomplete reassessment can leave a finding open.
+A completed package command is not sufficient proof of a fix. The next inventory must show that the vulnerable version is gone. If that inventory can't be read in full, the finding stays open and says why.
 
 ## Evidence preserves the record
 

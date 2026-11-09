@@ -17,6 +17,11 @@ from nimstead import winapps  # noqa: E402
 
 
 def identified(node, out: set) -> None:
+    """Add first identified-list values from nested dictionaries/lists to mutable set out.
+
+    node is decoded run data. Values are coerced to strings. No file I/O occurs.
+    Unsupported leaf types are ignored. Cyclic containers can raise RecursionError.
+    """
     if isinstance(node, dict):
         if isinstance(node.get("identified"), list) and node["identified"]:
             out.add(str(node["identified"][0]))
@@ -28,6 +33,13 @@ def identified(node, out: set) -> None:
 
 
 def derive() -> dict[str, tuple[str, list[str]]]:
+    """Return curated keys mapped to (historical evidence label, sorted run filenames).
+
+    Read sandbox/last_run_win*.json under ROOT. Derive proven from reported flags
+    or changed identified versions. Otherwise retain real name observations.
+    Keys with neither observation are omitted. No files are written by this function.
+    File, JSON and malformed nested-data errors propagate. Labels do not rerun VMs.
+    """
     proven, real = {}, {}
     for f in sorted((ROOT / "sandbox").glob("last_run_win*.json")):
         data = json.loads(f.read_text(encoding="utf-8"))

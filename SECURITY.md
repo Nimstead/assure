@@ -32,4 +32,4 @@ The threat model, and the residual risks we accept, are in [DECISIONS.md](DECISI
 
 ## Supported versions
 
-Security fixes go into the newest release of each channel (stable, beta, preview); agents and `deploy/update.sh` pick them up from there (docs/install.md). Older releases aren't patched: update to the newest one on your channel. How a compromised or bad release is handled: [docs/release-keys.md](docs/release-keys.md).
+Security fixes go into the newest release of each channel (stable, beta, preview); agents and `deploy/update.sh` pick them up from there (docs/install.md). Older releases aren't patched: update to the newest one on your channel. How a compromised or bad release is handled: [release recovery](docs/how-to/recover-release.md).

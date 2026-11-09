@@ -115,3 +115,9 @@ def test_the_engine_agrees_with_osv_oracle(d, version, want):
         content = Content.make({(eco, name): d["records"]}, feeds={eco})
     got = {v.vuln_id for v in evaluate(inv, content) if v.outcome == Outcome.VULNERABLE and not v.vuln_id.startswith("EOL:")}
     assert got == {canonical_id(r) for r in d["records"] if r["id"] in want}
+
+
+def test_clip_budget_excludes_the_appended_ellipsis():
+    from nimstead.match import clip
+    assert clip("abcdefgh", 5) == "abcde…"
+    assert len(clip("abcdefgh", 5)) == 6

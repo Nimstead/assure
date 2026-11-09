@@ -87,6 +87,8 @@ def test_log4shell_found_then_resolved_and_ledger(maven_env):
     r = put(c, a["id"], doc)
     assert r.status_code == 200, r.text
     assert r.json()["components"] == 3 and r.json()["mapped"] == 2 and r.json()["open"] >= 1
+    assert set(r.json()) == {"components", "mapped", "unique_packages", "skipped", "open", "resolved"}
+    assert set(r.json()["skipped"]) == {"no_purl", "unsupported_or_invalid_purl"}
     ids = {f["vuln_id"]: f for f in c.get("/api/findings", params={"asset_id": a["id"]}).json()}
     assert "CVE-2021-44228" in ids and ids["CVE-2021-44228"]["package"] == "org.apache.logging.log4j:log4j-core"
     assert ids["CVE-2021-44228"]["fixed_version"] == "2.15.0"
@@ -94,6 +96,13 @@ def test_log4shell_found_then_resolved_and_ledger(maven_env):
     s = sessionmaker(make_engine(maven_env))()
     e = s.scalars(select(LedgerEntry).where(LedgerEntry.kind == "sbom_received")).one()
     assert e.data["sha256"] == hashlib.sha256(doc).hexdigest() and e.data["mapped"] == 2 and e.data["components"] == 3
+
+    # The rescan's "open" counter includes accepted findings that still match.
+    accepted = ids["CVE-2021-44228"]["id"]
+    assert c.post(f"/api/findings/{accepted}/accept", json={"reason": "Test accepted risk for this build", "days": 30}).status_code == 200
+    repeated = put(c, a["id"], doc).json()
+    assert repeated["open"] == r.json()["open"]
+    assert accepted not in {f["id"] for f in c.get("/api/findings", params={"asset_id": a["id"]}).json()}
 
     # a fixed version in the next upload resolves it
     assert put(c, a["id"], bom(comp("pkg:maven/org.apache.logging.log4j/log4j-core@2.17.1"))).status_code == 200

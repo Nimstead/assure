@@ -338,7 +338,9 @@ def _web(prober: Prober, endpoints: dict[int, Endpoint]) -> list[Verdict]:
             out.append(Verdict(outcome=Outcome.UNDETERMINED, reason="soft-404", detail=f"a missing path returned HTTP {cst} with a body", **base))
             continue
         st, body = prober._http_get(rule.port, rule.path, deadline)
-        if st == 200 and rule.marker.search(body) and body != cbody:  # a flaw-specific marker, and different from the control
+        if st is None:  # no response (timeout, reset): nothing was observed, so it can't be called fixed (R4.6)
+            out.append(Verdict(outcome=Outcome.UNDETERMINED, reason="host-lost", detail="the request got no HTTP response", **base))
+        elif st == 200 and rule.marker.search(body) and body != cbody:  # a flaw-specific marker, and different from the control
             out.append(Verdict(outcome=Outcome.VULNERABLE, grade=Grade.REASONABLE, cvss=rule.cvss, cvss_source="Nimstead", summary=rule.summary,
                                observed=f"HTTP {st}, {len(body)} bytes matching the marker", source="HTTP GET", detail=_RAISE_REMOTE, **base))
         else:

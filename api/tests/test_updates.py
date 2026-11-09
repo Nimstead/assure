@@ -1,5 +1,6 @@
 """Platform updates: /api/health, the daily release check, fetching signed release files, alerts (DECISIONS 32)."""
 
+import hashlib
 import json
 from datetime import timedelta
 
@@ -135,6 +136,24 @@ def test_check_off_makes_no_requests(gh, monkeypatch):
     s, client, state, sent, d = gh
     monkeypatch.setenv("NIMSTEAD_UPDATE_CHECK", "0")
     assert "skipped" in updates.check(s, client) and state["calls"] == []
+
+
+def test_runtime_fetch_uses_the_cached_manifest_version(gh):
+    _, _, _, _, d = gh
+    d.mkdir(parents=True)
+    body = b"hash-matching runtime fixture"
+    (d / "release.json").write_text(json.dumps({"version": "0.2.9", "runtimes": {
+        "amd64": {"version": "3.15.2", "sha256": hashlib.sha256(body).hexdigest()}}}))
+    (d / "release.json.sig").write_text("ok")
+    calls = []
+
+    def handler(request):
+        calls.append(request.url.path)
+        return httpx.Response(200, content=body)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        assert updates.fetch_runtimes(client) == ["amd64"]
+    assert calls == ["/Nimstead/assure/releases/download/v0.2.9/python-embed-amd64.zip"]
 
 
 def test_failed_update_is_alerted_once_and_rollback_failure_is_urgent(gh):

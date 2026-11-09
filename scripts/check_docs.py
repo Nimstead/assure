@@ -6,6 +6,7 @@ Run from any directory: python scripts/check_docs.py [--report]. Uses only the P
 import argparse
 import ast
 import re
+import subprocess
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
@@ -21,7 +22,10 @@ LINK = re.compile(r"(?<!!)\[[^\]\n]+\]\(([^\s)]+)(?:\s+\"[^\"]*\")?\)|!\[[^\]\n]
 def python_symbols(tree: ast.Module) -> list[tuple[str, bool]]:
     """Return public module/class symbols and decorated HTTP handlers with their docstring presence.
 
-    tree is a parsed module. Private names and function-local implementation helpers are excluded.
+    tree is a parsed module. Return (qualified name, docstring-present) pairs.
+    Traverse direct public module/class bodies, not conditional definitions or function bodies.
+    Separately include app.get/post/put/patch/delete decorated functions at any depth.
+    A top-level public route can appear twice. No AST mutation or I/O occurs.
     """
     rows = []
 
@@ -47,6 +51,9 @@ def coverage() -> dict[str, list[tuple[str, bool]]]:
 
     Python uses the AST. Web declarations follow this repository's one-line exported declaration style;
     re-exports, type-only declarations, constants, and query-option objects are not callable definitions.
+    Return a new dictionary keyed by repository-relative paths. Web presence requires an
+    adjacent block ending in */ with a preceding /** marker. It does not inspect content.
+    Filesystem, decode and Python syntax errors propagate. No files are written.
     """
     out = {}
     for folder in PYTHON_ROOTS:
@@ -54,7 +61,7 @@ def coverage() -> dict[str, list[tuple[str, bool]]]:
             rows = python_symbols(ast.parse(path.read_text()))
             if rows:
                 out[str(path.relative_to(ROOT))] = rows
-    for path in sorted((ROOT / "web/src").glob("*")):
+    for path in sorted((ROOT / "web/src").rglob("*")):
         if path.suffix not in {".ts", ".tsx"} or ".test." in path.name or path.name == "setup-tests.ts":
             continue
         source = path.read_text()
@@ -68,34 +75,73 @@ def coverage() -> dict[str, list[tuple[str, bool]]]:
     return out
 
 
-def link_problems() -> list[str]:
-    """Return missing local Markdown link targets in maintained documentation; remote links are not fetched.
+def documentation_paths() -> list[Path]:
+    """Return tracked and unignored Markdown paths in ROOT, including new documentation.
 
-    Anchors are checked for simple Markdown headings. Code fences are excluded; HTML attributes and
-    reference-style links are outside this check, so it supplements editorial review.
+    Git defines repository membership, so installed dependencies and ignored build output do
+    not enter the documentation inventory. Return sorted existing file paths with duplicates removed.
+    Git, filesystem and decoding errors propagate. No remote data is requested.
+    """
+    files = subprocess.check_output(
+        ["git", "ls-files", "--cached", "-z", "--", "*.md"], cwd=ROOT,
+    ).decode().split("\0")
+    return sorted({ROOT / name for name in files if name and (ROOT / name).is_file()})
+
+
+def markdown_anchors(source: str) -> set[str]:
+    """Return GitHub-style heading slugs and explicit HTML anchors from Markdown source.
+
+    Duplicate headings receive numbered suffixes. This handles the repository's heading
+    syntax; it is not a complete Markdown parser. source is the full text string.
+    Backtick/tilde fences and inline markup are not fully parsed. Heading-like code can
+    contribute anchors. Return a new set without I/O or source mutation.
+    """
+    anchors = set(re.findall(r'<[^>]+(?:id|name)=["\']([^"\']+)["\']', source))
+    counts = {}
+    for heading in re.findall(r"^#{1,6} (.+)$", source, re.M):
+        heading = re.sub(r"<[^>]*>", "", heading).strip().rstrip("#").strip()
+        slug = re.sub(r"[^\w\- ]", "", heading.lower()).replace(" ", "-")
+        number = counts.get(slug, 0)
+        anchors.add(slug + (f"-{number}" if number else ""))
+        counts[slug] = number + 1
+    return anchors
+
+
+def link_problems() -> list[str]:
+    """Return broken local Markdown/HTML destinations throughout repository documentation.
+
+    Check same-page and cross-file anchors. Remote links are not fetched. Fenced code is
+    excluded only for the implemented triple-backtick pattern. Reference definitions and
+    quoted HTML href/src attributes are checked as destinations. Query strings are ignored.
+    Non-Markdown fragment targets receive existence checks only. Directories count as existing.
+    Recognition is regex-based and incomplete, including space-containing Markdown targets.
+    Git, filesystem, decoding and malformed-URL errors can propagate. No files are written.
     """
     problems = []
-    paths = [*ROOT.glob("*.md"), *ROOT.glob("api/*.md"), *ROOT.glob("docs/**/*.md"), *ROOT.glob("sandbox/*.md")]
-    for path in sorted(paths):
+    for path in documentation_paths():
         source = re.sub(r"^```.*?^```[^\n]*", "", path.read_text(), flags=re.M | re.S)
-        for match in LINK.finditer(source):
-            target = match[1] or match[2]
+        targets = [match[1] or match[2] for match in LINK.finditer(source)]
+        targets += re.findall(r'^\s*\[[^]\n]+\]:\s*<?([^\s>]+)>?', source, re.M)
+        targets += re.findall(r'(?:href|src)=["\']([^"\']+)["\']', source)
+        for target in targets:
             url = urlsplit(target.strip("<>"))
-            if url.scheme or url.netloc or not url.path:
+            if url.scheme or url.netloc:
                 continue
-            local = (path.parent / unquote(url.path)).resolve()
+            local = (path.parent / unquote(url.path)).resolve() if url.path else path
             if not local.exists():
                 problems.append(f"{path.relative_to(ROOT)}: missing {target}")
             elif url.fragment and local.suffix == ".md":
-                headings = re.findall(r"^#{1,6} (.+)$", local.read_text(), re.M)
-                anchors = {re.sub(r"[^\w\- ]", "", h.lower()).replace(" ", "-") for h in headings}
-                if unquote(url.fragment) not in anchors:
+                if unquote(url.fragment) not in markdown_anchors(local.read_text()):
                     problems.append(f"{path.relative_to(ROOT)}: missing heading {target}")
     return problems
 
 
 def report(rows: dict[str, list[tuple[str, bool]]]) -> str:
-    """Return the Markdown coverage table for path-to-symbol results from coverage()."""
+    """Return the Markdown coverage table for rows from coverage().
+
+    rows maps repository paths to (symbol name, documentation-present) pairs.
+    Count every supplied pair, including duplicates, and sort paths in the output.
+    No source checks, validation or writes occur. Malformed input can raise errors."""
     total = sum(len(symbols) for symbols in rows.values())
     documented = sum(ok for symbols in rows.values() for _, ok in symbols)
     lines = ["# Documentation coverage", "", f"Documented callable/class declarations: **{documented}/{total}**.", "",
@@ -108,7 +154,8 @@ def report(rows: dict[str, list[tuple[str, bool]]]) -> str:
              "[tooling guide](tooling.md) provide context. Sandbox entry points also have module documentation.", "",
              "This metric checks documentation presence. It does not prove complete parameter, error, or behavioural accuracy. "
              "Review the contract against the implementation when changing it. The web check recognises the declaration "
-             "style used here; update it if exports change syntax.", "",
+             "style used here; update it if exports change syntax. "
+             "[Checker contracts](tooling.md#documentation-checker-contracts) describe counting and link-recognition limits.", "",
              "## Files", "", "| File | Documented | Total |", "| --- | ---: | ---: |"]
     for path, symbols in sorted(rows.items()):
         lines.append(f"| [{path}](../../{path}) | {sum(ok for _, ok in symbols)} | {len(symbols)} |")
@@ -116,7 +163,12 @@ def report(rows: dict[str, list[tuple[str, bool]]]) -> str:
 
 
 def main() -> int:
-    """Check coverage and links, optionally write the report, and return 1 for any gap or 0 on success."""
+    """Read CLI arguments, print recognized coverage/link problems and return 0 or 1.
+
+    --report writes the coverage Markdown before link checks, including when checks fail.
+    Argument errors use argparse SystemExit. Git, parsing and filesystem errors propagate.
+    A zero result establishes recognized presence/links, not semantic completeness.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--report", action="store_true", help="write docs/reference/documentation-coverage.md")
     args = parser.parse_args()

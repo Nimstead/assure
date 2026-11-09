@@ -1,12 +1,16 @@
 """The engine's network-service slice: a remote prober producing verdicts with evidence, grades, negative controls, a
-catch-all suppression, budgets and safe mode (spec sections 10, 14; T22, T23, T25, T26, T8). Scope is proven before any
-packet (tested in test_external.py, which gates external.scan through the same external.prove_scope)."""
+catch-all suppression, budgets and safe mode (spec sections 10, 14; T22, T23, T25, T26, T8). Scope proof precedes service
+probes; the proof itself uses network requests (external.scan shares external.prove_scope)."""
 
 import re
 import socketserver
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
+from pathlib import Path
+
+import pytest
 
 from nimstead import external
 from nimstead.engine import network as net
@@ -186,3 +190,44 @@ def test_report_renders_in_the_engine_format():
     text = report.render(r)
     assert "VULNERABLE" in r["headline"]["text"] and "Redis" in text and "Coverage" in text
     assert r["content_version"].startswith("net.")
+
+
+def test_run_refuses_before_creating_the_service_prober(monkeypatch):
+    def refuse(*_):
+        raise external.ScanRefused("proof failed")
+
+    monkeypatch.setattr(external, "prove_scope", refuse)
+    monkeypatch.setattr(net, "Prober", lambda *_: pytest.fail("service prober created before scope passed"))
+    with pytest.raises(external.ScanRefused, match="proof failed"):
+        net.run(None, None)
+
+
+def test_no_http_response_is_undetermined_never_not_vulnerable(monkeypatch):
+    """A timeout or reset observes nothing: calling it not vulnerable would let it close a real finding (R4.6)."""
+    p = _Prober()
+    monkeypatch.setattr(p, "_http_get", lambda *_: (None, b""))
+    verdicts = net._web(p, endpoints({80: Endpoint(80, "open")}))
+    assert verdicts and all((v.outcome, v.reason) == (Outcome.UNDETERMINED, "host-lost") for v in verdicts)
+
+
+def test_content_identifier_does_not_hash_rule_bodies(monkeypatch):
+    before = net.content_version()
+    monkeypatch.setattr(net, "WEB_RULES", tuple(replace(r, summary="changed summary", marker=re.compile(b"changed")) for r in net.WEB_RULES))
+    assert net.content_version() == before
+
+
+def test_network_report_and_scan_fields_are_documented():
+    root = Path(__file__).resolve().parents[2] / "docs" / "reference"
+    text = (root / "network-engine.md").read_text() + (root / "scan-report.md").read_text()
+    eps = endpoints({6379: Endpoint(6379, "open"), 21: Endpoint(21, "filtered")})
+    vs = net._exposed(eps) + net._tls(eps, "www.example.com")
+    r = net.build_report("www.example.com", "203.0.113.9", vs, eps, [], False)
+    rows = [r, r["coverage"], *r["coverage"]["sources"], *r["coverage"]["families"].values(),
+            *r["vulnerable"], *r["not_vulnerable"], *r["undetermined"]]
+    for row in rows:
+        for key in row:
+            assert f"`{key}`" in text
+    assert not ({"kind", "applications", "attack_paths"} & r.keys())
+    normal = (root / "external-scans.md").read_text()
+    for port, (cid, *_rest) in external.SERVICES.items():
+        assert f"| {port} |" in normal and f"`{cid}`" in normal

@@ -84,6 +84,17 @@ def test_agent_verifies_what_ci_signs_and_nothing_else(tmp_path):
     assert agent.main(["verify-release", str(tmp_path / "r.json"), str(tmp_path / "r.sig")]) == 1  # shipped agent pins no test key
 
 
+def test_server_signature_check_does_not_apply_agent_field_validation(monkeypatch):
+    import nimstead.app as appmod
+    k = Ed25519PrivateKey.generate()
+    manifest = b'{"note":"signed but not an agent release"}'
+    sig = base64.b64encode(k.sign(manifest)).decode()
+    monkeypatch.setattr(appmod, "release_keys", lambda: [pub(k)])
+    assert appmod.verify_manifest(manifest, sig) == {"note": "signed but not an agent release"}
+    with pytest.raises(agent.AgentError, match="malformed"):
+        agent.verify_release(manifest, sig, [pub(k)])
+
+
 # --- the agent's update step --------------------------------------------------------------------------------------
 
 class FakeServer:

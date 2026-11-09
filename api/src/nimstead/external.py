@@ -299,7 +299,8 @@ def scan(s: Session, asset: Asset, lookup=None, run_checks=None) -> dict:
     dictionaries, skipped strings); default uses checks(). Caller checks ownership.
     Return address, open (unique observed issue count), resolved (new transitions),
     and skipped. Accepted observed findings stay accepted. Unseen open/accepted
-    findings resolve, including when a check is omitted or a port is filtered.
+    findings resolve, including when a port is filtered, except one whose check this
+    scan skipped (legacy TLS): an untested check isn't evidence of a fix.
     On success update asset.last_seen and commit all pending session changes.
     ScanRefused and other scope/probe/database errors propagate. Refusal can itself
     commit through prove_scope(). No automatic rollback handles later exceptions."""
@@ -323,8 +324,9 @@ def scan(s: Session, asset: Asset, lookup=None, run_checks=None) -> dict:
         f.summary, f.cvss, f.epss, f.kev = c["summary"], c["cvss"], None, False
         f.score, f.priority, f.reasons, f.last_seen = r.score, r.priority, r.reasons, t
     resolved = 0
+    untested = {"NIM-TLS-LEGACY"} if any(x.startswith("legacy TLS") for x in skipped) else set()  # tls_findings' only skip
     for vid, f in existing.items():
-        if vid not in seen and f.status in ("open", "accepted"):
+        if vid not in seen and vid not in untested and f.status in ("open", "accepted"):
             f.status, f.resolved_at = "resolved", t
             resolved += 1
             events.append(("finding_resolved", f))

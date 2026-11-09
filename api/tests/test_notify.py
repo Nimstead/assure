@@ -2,18 +2,20 @@
 
 import json
 import time
+from datetime import timedelta
+from pathlib import Path
 
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.orm import sessionmaker
 from test_api import INV
 from test_remediate import add_host, plan, setup
 
 from nimstead import netguard, notify
 from nimstead.app import create_app
-from nimstead.db import Asset, Kev, RemediationJob, make_engine, now
+from nimstead.db import Asset, Kev, Notification, Org, RemediationJob, make_engine, now
 from nimstead.scan import rescan
 
 HOOK = "https://hooks.slack.com/services/T000/B000/XXXX"
@@ -354,6 +356,18 @@ def test_private_targets_only_with_explicit_dev_switch(monkeypatch):
         netguard.check_public_url("http://127.0.0.1:9443/hook")  # https is still required
 
 
+def test_url_check_without_dns_is_not_a_public_address_proof(monkeypatch):
+    monkeypatch.delenv("NIMSTEAD_ALLOW_PRIVATE_TARGETS", raising=False)
+
+    def unexpected_dns(*args, **kwargs):
+        raise AssertionError("resolve=False must not call DNS")
+
+    monkeypatch.setattr(netguard.socket, "getaddrinfo", unexpected_dns)
+    assert netguard.check_public_url("https://internal.example/", resolve=False) == []
+    with pytest.raises(ValueError, match="private or non-public"):
+        netguard.check_public_url("https://127.0.0.1/", resolve=False)
+
+
 def test_failed_channel_not_hidden_by_a_working_one(env, sent):
     from sqlalchemy import select
 
@@ -405,3 +419,39 @@ def test_guarded_client_never_reuses_a_connection():
     """The pool is keyed by the IP the guard rewrote the URL to, so a kept-alive connection verified for one hostname
     could serve another hostname on that IP without a new certificate check."""
     assert netguard.guarded_client()._transport._pool._max_keepalive_connections == 0
+
+
+def test_retry_window_applies_to_the_failed_attempt_not_original_event(env, sent):
+    configured(env)
+    with sessionmaker(make_engine(env))() as s:
+        oid = s.scalar(select(Org.id))
+        s.add_all([
+            Notification(org_id=oid, kind="test", channel="webhook", ok=False, text="old event", attempt=1,
+                         retried=True, ts=now() - timedelta(hours=25)),
+            Notification(org_id=oid, kind="test", channel="webhook", ok=False, text="old event", attempt=2,
+                         retried=False, ts=now() - timedelta(hours=2)),
+        ])
+        s.commit()
+        assert notify.retry_failed(s) == 1
+        notify.flush()
+        assert s.scalar(select(Notification.attempt).where(Notification.ok.is_(True))) == 3
+    assert len(sent) == 1
+
+
+def test_notification_reference_and_schema_cover_recent_sample(env, sent):
+    c = configured(env)
+    with sessionmaker(make_engine(env))() as s:
+        oid = s.scalar(select(Org.id))
+        s.add(Notification(org_id=oid, kind="old", channel="webhook", ok=False, text="old failure"))
+        s.flush()
+        s.add_all(Notification(org_id=oid, kind="new", channel="email", ok=True, text="recent success") for _ in range(5))
+        s.commit()
+    out = c.get("/api/settings/notifications").json()
+    assert len(out["recent"]) == 5 and not out["last_delivery_failed"]
+    root = Path(__file__).resolve().parents[2] / "docs" / "reference"
+    schema = json.loads((root / "openapi.json").read_text())["components"]["schemas"]["NotificationSettings"]
+    assert set(out) == set(schema["properties"]) == set(schema["required"])
+    recent_fields = set(schema["properties"]["recent"]["items"]["properties"])
+    reference = (root / "notifications.md").read_text()
+    assert all(f"`{key}`" in reference for key in set(out) | recent_fields)
+    assert all(set(row) == recent_fields for row in out["recent"])

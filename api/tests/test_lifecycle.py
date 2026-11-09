@@ -145,3 +145,5 @@ def test_sync_eol_keeps_stored_cycles_on_failure(env):
                                       ("SUSE:Linux Enterprise Server 15 SP6", ("sles", "15.6")), ("openSUSE:Tumbleweed", None), ("Debian", None), ("PyPI", None)])
 def test_a_linux_release_maps_to_its_end_of_support_cycle(eco, want):
     assert lifecycle.distro_cycle(eco) == want
+
+

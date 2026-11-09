@@ -3900,7 +3900,7 @@ def doctor(insecure_http=False, run=sh, read=_read_config, fetch=_server_reply, 
         except AgentError as e:
             raise _DoctorFail(str(e), "Rerun enroll with --proxy http://host:port.") from None
         if not url:
-            return "no explicit proxy selected; environment or existing process settings can still apply"
+            return "no explicit proxy selected. Environment or existing process settings can still apply"
         u = urllib.parse.urlsplit(url)
         try:
             connect((u.hostname, u.port or (443 if u.scheme == "https" else 80)), 10).close()

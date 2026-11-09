@@ -351,13 +351,14 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
     scan = (asset.facts or {}).get("driver_scan")
     drivers_complete = isinstance(scan, dict) and scan.get("complete") is True
     blocked = unread(asset.collection)  # the latest report's: the hourly re-match reads the same short list
-    index = _closing_index(verdicts)
+    index = None  # built on the first finding that needs a closing decision: most rescans close none
     for key, f in existing.items():
         if key[0] == windrivers.ECOSYSTEM and not drivers_complete:  # a scan that failed or stopped early proves nothing is gone
             continue
         if key[0] in blocked:  # e.g. Uninstall access denied: the apps' findings stay as they were until a full read
             continue
         if key not in seen and f.status in ("open", "accepted"):
+            index = index or _closing_index(verdicts)
             if (why := _held_open(key, index, asset)) is not None:  # phase 4: in the engine's slice, only evidence closes (R4.6)
                 f.reasons = [r for r in f.reasons or [] if not r.startswith("Still open: ")] + [f"Still open: {why}"]
                 continue

@@ -233,14 +233,16 @@ def _carry_forward(verdicts: list[Verdict], prior, inv: Inventory | None = None)
     uninstall, a dropped SBOM component, a distro or Windows upgrade), which is not-applicable, `removed`."""
     answered = {(v.ecosystem, v.product, v.vuln_id) for v in verdicts if v.vuln_id}
     gone = {(v.ecosystem, v.product) for v in verdicts if v.outcome == Outcome.NOT_APPLICABLE}
-    held = None  # built only when a finding has no answer: most scans answer every one
+    held, full = None, {}  # each built only when needed: most scans answer every finding, and an old agent's sources are never read in full
     out = []
     for eco, product, vuln in sorted(set(prior)):
         if (eco in ("Windows", msproducts.ECOSYSTEM, winapps.ECOSYSTEM, *sbom.ECOSYSTEMS) or linux(eco)) and (eco, product, vuln) not in answered and (eco, product) not in gone:
             family = {"Windows": "os", msproducts.ECOSYSTEM: "microsoft", winapps.ECOSYSTEM: "app"}.get(eco, "application" if eco in sbom.ECOSYSTEMS else "distro")
-            if inv and held is None:
+            if inv and eco not in full:
+                full[eco] = _read_in_full(inv, eco)
+            if full.get(eco) and held is None:
                 held = {(i.ecosystem, k) for i in (*installs(inv), *app_installs(inv)) for k in i.keys}
-            if inv and (eco, product) not in held and _read_in_full(inv, eco):
+            if full.get(eco) and (eco, product) not in held:
                 out.append(Verdict(f"{vuln}/{product}", family, eco, product, Outcome.NOT_APPLICABLE, vuln_id=vuln, reason="removed"))
             else:
                 out.append(Verdict(f"{vuln}/{product}", family, eco, product, Outcome.UNDETERMINED, vuln_id=vuln, grade=Grade.UNVERIFIED, reason="not-reassessed"))

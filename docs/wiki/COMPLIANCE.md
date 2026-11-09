@@ -247,3 +247,13 @@ Corrected claims about every recorded event, fresh full-chain verification, fixe
 80 web tests, type checks and the production build passed. 28 evidence/documentation tests and 46 subchecks passed. Existing assertions now check the qualified integrity and change-evidence text. Ruff, repository presence/links, the 74-article build and six site tests passed. The reference and how-to prose received humanizer and STE-style review.
 
 Playwright MCP verified report/ledger separation, category URL state, period-specific download links, resolution sample wording and mobile layout with refused-write local fixtures. No production pack, signature, restore or remediation was created. The complete CLI end-to-end suite was not rerun. Remaining access/integration, auth/shell, agent/tool/API and final editorial/example reviews still prevent a full compliance claim.
+
+## Access, integrations and authentication checkpoint
+
+Reviewed all exports and private helpers in people, integrations and authentication modules. Added parameter/context/error contracts for QR, MFA, recovery-code, account, user, token, SSO, notification and authentication components. The developer reference separates lookup contracts from two new how-to guides: API token lifecycle and authenticator setup/replacement. Existing SSO and alert guides now describe saved-state behavior and delivery limits.
+
+Corrected claims that QR secrets never leave the browser, invitations/tests prove delivery, every Fix now finding is KEV, or SSO password access always has confirmed alert delivery. Role promotion now states its session effect and distinguishes password-admin MFA. Auth reset acknowledgement preserves account-existence and delivery uncertainty.
+
+81 web tests, type checks and the production build passed. 103 focused API/SSO/notification/documentation tests and 46 subchecks passed. The 76-article build and six site tests passed. Repository checks report 632 documented public declarations and no local link problems. New reference/how-to prose received humanizer and STE-style review.
+
+Playwright MCP verified saved-domain verification without lost unsaved issuer edits, test acknowledgement without a settings save, mobile settings, both new task guides and their section anchors. All API writes used local fixtures. No identity provider, SMTP delivery, real credential creation, MFA change or production account was changed. The complete CLI end-to-end suite was not rerun. Remaining shell/entry, agent/tool/API contracts and final editorial/example reviews still prevent a full compliance claim.

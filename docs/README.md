@@ -26,6 +26,8 @@ Choose the procedure for your task.
 - [Scan an external target](how-to/scan-external-target.md)
 - [Scan Windows without an agent](how-to/remote-windows.md)
 - [Configure single sign-on](how-to/configure-sso.md)
+- [Create a read-only API token](how-to/create-api-token.md)
+- [Set up or replace an authenticator](how-to/configure-mfa.md)
 - [Configure alerts](how-to/configure-alerts.md)
 - [Export evidence for a reviewer](how-to/export-evidence.md)
 - [Verify an evidence pack](how-to/verify-evidence.md)

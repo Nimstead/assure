@@ -132,3 +132,13 @@ The finding/database batch passed 106 focused tests and 46 subchecks, with two W
 | `api/src/nimstead/evidence.py` | Rechecked generated control evidence against existing metric predicates | Corrected report-timestamp and universal execution/rollback wording. Preserved statuses, metrics and signatures. Existing evidence tests include the revised authorization-evidence qualification | Reviewed |
 
 80 web tests and 28 evidence/documentation tests passed, with 46 subchecks. Playwright MCP verified local fixture period/category requests and mobile layout. Native production downloads and complete CLI end-to-end execution remain unverified.
+
+## Access, integrations and authentication review
+
+| Source | Review scope | Evidence and corrections | Status |
+| --- | --- | --- | --- |
+| `web/src/people.tsx` | All six exports and private helpers | Reviewed local QR encoding, code validation versus verification, callback/state lifetime, cached identity, password/session effects, role confirmations, invitation acknowledgement and displayed token lifetime. Added props, request and error contracts | Reviewed |
+| `web/src/integrations.tsx` | SsoSection, NotificationsSection and domain/list helpers | Reviewed uncontrolled form remounts, retained edits, write-only fields, stored-domain verification, saved-state tests, one-shot refresh, errors and delivery uncertainty | Reviewed |
+| `web/src/auth.tsx` | SignInPage, SignUpPage and shared state/error helpers | Reviewed server-selected branches, credential/MFA/recovery state, native SSO submission, reset acknowledgement, URL notices and trusted answer shapes | Reviewed |
+
+81 web tests and 103 focused API tests passed, with 46 subchecks. Browser evidence uses intercepted fixtures, not real provider or email operations. Current API implementation supports these web contracts. Full remaining handler/schema review remains a separate requirement.

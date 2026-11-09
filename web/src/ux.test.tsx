@@ -4,7 +4,7 @@ import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState, type ReactNode } from "react";
 import { afterEach, vi } from "vitest";
-import { SsoSection } from "./integrations";
+import { NotificationsSection, SsoSection } from "./integrations";
 import { ApiError, assetsQ, meQ, type Action, type Asset, type Finding, type Job, type Settings } from "./lib";
 import { ActionCard } from "./home";
 import { AssetRow, AttackPaths, Baselines, baselineSummary, filterAssets, NotAssessed } from "./assets";
@@ -555,4 +555,11 @@ it("package display validates only name and shares accepted package objects", ()
   expect(result).not.toBe(source);
   expect(result[0]).toBe(entry);
   expect(jobPackages({ packages: "not an array" })).toEqual([]);
+});
+
+it("notification test acknowledgement does not claim delivery", async () => {
+  serve({ "GET /api/settings/notifications": { webhook_set: true, webhook_host: "example.com", webhook_format: "json", emails: [], emails_confirmed: [], email_available: false, recent: [] }, "POST /api/settings/notifications/test": { queued: true } });
+  wrap(<NotificationsSection />);
+  await userEvent.click(await screen.findByRole("button", { name: "Send test alert" }));
+  expect(await screen.findByText(/Test request accepted. Delivery is not confirmed/)).toBeInTheDocument();
 });

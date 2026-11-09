@@ -1,6 +1,6 @@
 # Web client reference
 
-The Assure web client uses React, TanStack Router, and TanStack Query. TypeScript interfaces describe selected expected data. They do not validate API responses at runtime or enumerate every server field. This page covers shared helpers, UI components, enrolment, and the reviewed Assets, Fix first, Findings, Evidence, settings, and remediation pages.
+The Assure web client uses React, TanStack Router, and TanStack Query. TypeScript interfaces describe selected expected data. They do not validate API responses at runtime or enumerate every server field. This page covers shared helpers, UI components, enrolment, and the reviewed Assets, Fix first, Findings, Evidence, access, authentication, settings, and remediation pages.
 
 ## Component context
 
@@ -198,6 +198,68 @@ Subject text uses selected event strings, deduplicates them, and falls back to t
 Pack and verifier downloads use native links. HTTP or download errors do not appear in component query errors. The public-key query exposes retry but stays fresh indefinitely after success. Key rotation can require a reload or explicit query invalidation before new signing material appears.
 
 The pack omits its verifier. Fingerprint and verifier-hash text can be copied with the shared copy control. A separate trusted channel remains necessary to establish the key and verifier identity.
+
+## Access and integration components
+
+These components require a query provider. Navigation also requires the router. The Settings parent shows admin sections only to admins. The sections themselves rely on server authorization for writes. API response types do not validate runtime values.
+
+| Export | Props and behavior |
+| --- | --- |
+| `QrCode` | `text: string`. Encodes a caller-supplied URI as local SVG, with a two-module border and fixed dark-on-white colours. Encoder errors propagate |
+| `MfaEnrol` | `setup: MfaSetup`, `onCode(code,current?)`, `pending: boolean`, optional `extra: boolean`. Displays setup material and submits untrimmed codes |
+| `RecoveryCodes` | `codes: string[]`. Displays newline-separated strings. The caller controls visibility and lifetime. Server verification enforces one-time use |
+| `AccountSection` | No props. Renders password/MFA controls for password-origin accounts and session revocation for either origin |
+| `UsersSection` | No props. Lists organisation users and provides invitation, role and removal controls |
+| `ApiTokensSection` | No props. Lists token metadata, displays newly created secrets locally, and confirms revocation |
+| `SsoSection` | No props. Loads OIDC settings and provides save and domain-verification controls |
+| `NotificationsSection` | No props. Loads saved notification settings and provides save, recipient status and test controls |
+
+### Authenticator and account state
+
+`MfaSetup` contains `secret`, `uri` and encrypted `setup` strings from the server. The QR encoder makes no third-party image request. This does not mean the secret originates in the browser. The URI, secret and recovery codes remain visible while their components remain mounted.
+
+`MfaEnrol` requires a new code matching six or seven digits/spaces through native validation. This is not verification of a six-digit TOTP. `extra` adds a required current-code input for replacement. `pending` disables submission but leaves inputs editable. The caller handles requests, failures and removal of setup state.
+
+`AccountSection` renders nothing without cached current-user data. It has no separate current-user error panel. Successful setup confirmation removes setup state, stores the returned recovery codes and invalidates current-user data. Existing recovery codes can remain displayed while a new setup begins.
+
+Password success resets the form. The server retains the current session, removes other sessions and revokes tokens created by that user. This component does not refresh the token list after password success. Session revocation requires confirmation, clears the query client on success, and navigates to sign-in. It does not end the identity provider's own sessions.
+
+### People and API tokens
+
+Exact email comparison hides role/removal buttons on the current user's row. Other rows require confirmation. Successful changes refresh people-related queries. The server preserves at least one admin. Promotion ends the promoted user's existing sessions. Demotion revokes their tokens. Removal deletes their user access while retaining ledger events.
+
+Invitation success resets its form and displays an acknowledgement. It does not prove delivery or membership. Existing accounts, mail quotas and SMTP delivery can affect the result. A new invitation link lasts 24 hours. Invited users choose their own password.
+
+Token names use a required native input with a 100-character limit and no client trimming. Duration choices are 30, 90 and 365 days, default 90. A cached MFA flag adds the code input. The server checks current authorization and credentials regardless of the displayed fields.
+
+Creation clears the previous displayed secret before its request starts. A failed subsequent request does not restore that secret. Success stores the new secret locally and resets the form. It remains visible until another submission or unmount. Revocation requires confirmation and clears its target on success. Both operations refresh people-related queries. List failures expose retry. Mutation errors remain in their forms/dialogs.
+
+### SSO and notification forms
+
+Both forms use uncontrolled fields and a dirty flag. Their own successful save remounts the form from stored values. Other query updates preserve unsaved edits. Initial load failures expose retry. Save errors remain visible.
+
+SSO sends issuer, client ID, domains and required state. Empty secret input omits the secret field. Domain text splits on commas/whitespace without client deduplication. Server limits and normalization still apply. Empty issuer disables the configuration on the server.
+
+Domain verification updates the SSO cache separately. It does not submit unsaved form edits or invalidate the ledger query. The server verifies pending stored domains. A successful response can still contain unverified domains.
+
+Notification save sends comma/whitespace-separated recipient entries. Empty webhook input omits that field to retain the saved URL. The removal checkbox sends an empty string. New-recipient confirmation depends on SMTP configuration and quota. Saving unchanged unconfirmed addresses does not resend confirmation.
+
+Test alert uses saved server settings, including when the form has unsaved edits. Its button uses saved webhook/confirmed-recipient flags. Success schedules one notification-query invalidation after 1500ms. There is no delivery poll or timer cleanup. This acknowledgement does not prove durable enqueue or delivery. The last-delivery label uses only the newest of at most five recorded attempts.
+
+## Authentication pages
+
+| Export | Contract |
+| --- | --- |
+| `SignInPage` | No props. Password sign-in, MFA/recovery states, reset requests and native SSO form |
+| `SignUpPage` | No props. Shared authentication state machine in signup mode |
+
+The pages require query/router providers and browser DOM. Signup requires an organisation name of at most 200 characters and a password of at least 12 characters. Server validation also imposes its own limits. The client retains submitted credentials in local state for a subsequent MFA request.
+
+Successful API answers select email acknowledgement, sign-in navigation, MFA requirement, setup or recovery-code display. Recovery codes remain until the person selects Continue. Ordinary entry clears query data and navigates home. A successful response shape is trusted. Navigation itself does not verify that a session exists.
+
+The MFA Back button clears its state and request errors. It does not erase the stored credentials. Local state disappears when the component unmounts. Request failures render alerts. These pages do not implement independent rate limits or MFA verification.
+
+Reset acknowledgement does not establish account existence or email delivery. An issued reset link lasts one hour. The native SSO form submits Work email to `/api/auth/sso/start` and follows server redirects. Known `sso_error` values receive specific text. Unknown values receive a generic failure message. Arbitrary `reset` or `created` query flags can display notices without proving those events occurred.
 
 ## Remediation components
 

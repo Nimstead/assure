@@ -91,6 +91,20 @@
     "product": "assure"
   },
   {
+    "source": "docs/how-to/create-api-token.md",
+    "slug": "how-to/create-api-token",
+    "title": "Create a read-only API token",
+    "group": "How-to guides",
+    "product": "assure"
+  },
+  {
+    "source": "docs/how-to/configure-mfa.md",
+    "slug": "how-to/configure-mfa",
+    "title": "Set up or replace an authenticator",
+    "group": "How-to guides",
+    "product": "assure"
+  },
+  {
     "source": "docs/how-to/configure-alerts.md",
     "slug": "how-to/configure-alerts",
     "title": "Configure alerts",

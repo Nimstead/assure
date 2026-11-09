@@ -7,7 +7,8 @@ Send operational alerts to a webhook or confirmed email recipients. You need an 
 1. Open the alert settings in **Settings**.
 2. Enter an HTTPS webhook URL and select the receiver's format.
 3. Save the settings.
-4. Send a test notification and confirm it arrives at the destination.
+4. Select **Send test alert**.
+5. Confirm the message at the destination.
 
 The saved webhook secret is not displayed again. Leave its field unchanged to retain it. Select **Remove webhook on save** to remove it.
 
@@ -35,3 +36,5 @@ Saving an unchanged unconfirmed address does not send another confirmation. The 
 Keep at least one verified alert destination before you enable automatic remediation.
 
 See [notification reference](../reference/notifications.md) for formats, retry windows, monitoring grace, and failure limits.
+
+Test requests use saved settings. Save form edits before a test. The UI refreshes recent results once after a short delay. Reload the settings if delivery completes later.

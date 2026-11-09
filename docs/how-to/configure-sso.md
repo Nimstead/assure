@@ -14,10 +14,14 @@ Connect an OpenID Connect identity provider to your organisation. You need an As
 
 ## Test before enforcement
 
-Sign in through the provider in a separate browser session. Confirm that the user joins the intended organisation and has the intended role.
+Sign in through the provider in a separate browser session. Confirm that the user joins the intended organisation and has the intended role. New SSO users start as members. Existing users retain their stored role.
 
-Only then enable **Require SSO**. It disables password sign-in for non-admins. Admin password sign-ins remain available as break-glass access and are recorded and alerted.
+Only then enable **Require SSO**. It disables password sign-in for non-admins. Admin password sign-ins remain available as break-glass access and are recorded with an alert attempt.
 
 If verification fails, check the exact TXT name and value, then allow DNS propagation before retrying. If provider sign-in fails, check the issuer and exact redirect URI. Keep the existing admin session open until the new sign-in works.
 
 Leave the issuer empty to disable the SSO configuration. The [configuration reference](../configuration.md#single-sign-on) describes the DNS resolver option.
+
+Domain verification uses saved domains. Save a changed domain list before **Verify domains**. Verification does not submit unsaved form edits.
+
+If you disable SSO, keep a working password-admin account available. SSO-origin users have no local password sign-in. Recheck the intended sign-in route after the change.

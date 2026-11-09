@@ -4,6 +4,8 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+## [0.7.6] - 2026-11-09 (preview)
+
 ### Changed
 - Findings open from the detection engine's verdicts (phase 3 of `tasks/plan-engine-findings.md`, DECISIONS 123). Where the engine judged a vulnerability, its verdict decides; where it couldn't (an old agent, a source that failed), the previous matching stands. A difference between the two goes to the evidence ledger as `engine_disagrees`. `NIMSTEAD_ENGINE_FINDINGS=0` restores the previous matching.
 - Linux hosts past their release's end of support now get a fix-now finding, as Windows hosts already do.

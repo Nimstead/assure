@@ -93,3 +93,9 @@ class ApiReference(unittest.TestCase):
                          [{"SessionCookie": []}, {"AgentToken": []}, {"UploadToken": []}])
         self.assertEqual(schema["paths"]["/api/agent/jobs"]["get"]["security"], [{"AgentToken": []}])
         self.assertEqual(schema["paths"]["/api/agent/enroll"]["post"]["x-authentication"], "Enrolment token in JSON body")
+
+        upload = schema["paths"]["/api/assets/{asset_id}/sbom"]["post"]
+        self.assertTrue(upload["requestBody"]["required"])
+        self.assertEqual(upload["requestBody"]["x-parser-limits"]["body_bytes"], 10 * 1024 * 1024)
+        self.assertEqual(set(upload["responses"]["200"]["content"]["application/json"]["schema"]["properties"]),
+                         {"components", "mapped", "unique_packages", "skipped", "open", "resolved"})

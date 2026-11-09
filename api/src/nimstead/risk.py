@@ -16,7 +16,9 @@ CRITICALITY = {"low": 0.6, "medium": 0.8, "high": 1.0, "critical": 1.15}
 
 @dataclass
 class Risk:
-    """Risk result: integer score from 0 to 100, priority label, and a list of plain-text reasons."""
+    """Risk result: integer score from 0 to 100, priority label, and plain-text reasons.
+
+    This is a data container; its constructor does not enforce those bounds."""
     score: int  # 0-100
     priority: str  # fix-now | next | planned | low
     reasons: list[str] = field(default_factory=list)
@@ -42,7 +44,9 @@ def _vector_score(kind: str, vector: str):
 def cvss_base(severity: list[dict] | None) -> float | None:
     """Return the highest supported CVSS base score from OSV severity dictionaries, or None.
 
-    Malformed vector strings are ignored; only CVSS_V3 and CVSS_V4 are evaluated."""
+    severity is a list of dictionaries with type and score keys, or None. Only CVSS_V3 and
+    CVSS_V4 string vectors are evaluated. Missing, unsupported and malformed vectors are
+    ignored; malformed list-entry structures can raise AttributeError."""
     scores = [v for s in severity or [] if isinstance(s.get("score"), str)
               and (v := _vector_score(s.get("type"), s["score"])) is not None]
     return float(max(scores)) if scores else None
@@ -73,7 +77,8 @@ def context(r: Risk, *, kev: bool, ransomware: bool = False, public_exploit: boo
     kev, ransomware, public_exploit, and exploit_db are boolean signals. msrc is optional
     Microsoft threat metadata; roles lists installed Windows features; listening is an optional
     exposure explanation. Known exploitation is never reduced for an absent role.
-    The input Risk is not mutated; unchanged results reuse it."""
+    Signals are trusted rather than cross-validated. Empty or absent roles do not establish
+    that a feature is absent. The input Risk is not mutated; unchanged results reuse it."""
     msrc = msrc or {}
     s, reasons = r.score, list(r.reasons)
     if ransomware:
@@ -123,11 +128,13 @@ def score(
         cvss (float | None): Base impact score from 0 to 10, or unavailable (uses 5).
         criticality (str): low, medium, high, or critical; unknown names use the medium weight.
         internet_facing (bool): Whether the asset is exposed to the internet.
-        fix_available (bool): Whether a fix exists; false reduces the non-KEV score.
+        fix_available (bool): Whether a fix exists; false reduces the raw score. KEV retains its 90-point floor.
         likelihood (float | None): Alternative 0-to-1 estimate when EPSS is absent.
         likelihood_reason (str | None): Explanation for that alternative estimate.
 
-    Inputs are trusted internal values; ranges are not validated here. Negative EPSS is unsupported.
+    Inputs are trusted finite internal values; ranges are not validated here. Negative EPSS is unsupported.
+    If EPSS and alternative likelihood are absent, the likelihood factor defaults to 0.1.
+    Invalid numeric values can propagate arithmetic or rounding errors.
 
     >>> score(kev=True, epss=None, cvss=None).priority
     'fix-now'"""

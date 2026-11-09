@@ -8,6 +8,14 @@ SBOM support covers CycloneDX and SPDX JSON with supported, versioned package UR
 
 Windows third-party application matching uses a curated catalogue. Other applications remain inventory. Advisory delays and incorrect upstream ranges can affect results.
 
+## Version ordering
+
+The Alpine comparator treats dotted numeric components as integers. It does not implement fractional ordering for leading-zero components.
+
+The Pub comparator uses the shared SemVer function and ignores build metadata. Versions that differ only in that metadata compare as equal. These limits can affect matching even when collection completes.
+
+Use the [version comparison reference](../reference/version-comparison.md) for comparator selection and accepted forms.
+
 ## Remote checks
 
 External scans perform TCP connections and TLS handshakes. They do not exploit services, inspect UDP, or derive remote CVEs from banners. Address selection and TLS-port limits make this a focused exposure check.

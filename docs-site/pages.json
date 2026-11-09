@@ -383,5 +383,19 @@
     "title": "Evidence responses and pack format",
     "group": "Reference",
     "product": "assure"
+  },
+  {
+    "source": "docs/reference/version-comparison.md",
+    "slug": "reference/version-comparison",
+    "title": "Version comparison reference",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/risk-score.md",
+    "slug": "reference/risk-score",
+    "title": "Priority score reference",
+    "group": "Reference",
+    "product": "assure"
   }
 ]

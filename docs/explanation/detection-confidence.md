@@ -19,3 +19,5 @@ Windows products can have separate servicing branches. Third-party applications 
 Confidence concerns the quality of the evidence. Severity concerns impact. Priority concerns what an operator should address first. Known exploitation, exposure, and asset importance can change priority without changing the underlying version evidence.
 
 Use the [outcome reference](../reference/scan-outcomes.md) when reading reports and the [troubleshooting guide](../how-to/troubleshoot-scans.md) when collection is incomplete.
+
+The [priority score reference](../reference/risk-score.md) defines the generic calculation and context adjustments.

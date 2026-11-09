@@ -11,7 +11,9 @@ from pathlib import Path
 
 import httpx
 from fastapi.routing import APIRoute
-from nimstead.app import SESSION_COOKIE, create_app
+
+from nimstead.app import MAX_BODY, SESSION_COOKIE, create_app
+from nimstead.sbom import MAX_COMPONENTS, MAX_DEPTH, SPDX_VERSIONS, SPEC_VERSIONS
 
 ROOT = Path(__file__).resolve().parents[1]
 SPECIAL_AUTH = {
@@ -46,7 +48,7 @@ def render() -> dict[str, str]:
     }
     lines = ["# HTTP endpoint catalog", "",
              "Use the [OpenAPI JSON](openapi.json) for typed parameters, request models, defaults, and declared response schemas.", "",
-             "The export adds server and authentication metadata to FastAPI’s schema. Request and response definitions come from the app.", "",
+             "The export adds server, authentication, and raw SBOM-handler metadata to FastAPI’s schema. Other request and response definitions come from the app.", "",
              "Authentication labels describe entry requirements. Organisation ownership, roles, origin checks, quotas, "
              "and operation-specific state checks still apply. See [HTTP API reference](http-api.md).", "",
              "Empty response schemas do not define a stable response contract. Inspect the linked handler and its tests "
@@ -83,6 +85,23 @@ def render() -> dict[str, str]:
                 # Body tokens and SSO cookies are described separately; no HTTP auth scheme represents them.
                 operation["security"] = []
             operation["x-authentication"] = auth
+            if route.path == "/api/assets/{asset_id}/sbom":
+                operation["requestBody"] = {
+                    "required": True,
+                    "description": "Raw CycloneDX or SPDX JSON, not multipart. Parser limits apply; this is not the complete upstream SBOM schema.",
+                    "content": {"application/json": {"schema": {"type": "object"}}},
+                    "x-parser-limits": {"body_bytes": MAX_BODY, "components": MAX_COMPONENTS, "cyclonedx_component_depth": MAX_DEPTH,
+                                        "cyclonedx_versions": sorted(SPEC_VERSIONS), "spdx_versions": sorted(SPDX_VERSIONS)},
+                }
+                counts = {name: {"type": "integer", "minimum": 0}
+                          for name in ("components", "mapped", "unique_packages", "open", "resolved")}
+                counts["skipped"] = {"type": "object", "required": ["no_purl", "unsupported_or_invalid_purl"],
+                                     "properties": {name: {"type": "integer", "minimum": 0}
+                                                    for name in ("no_purl", "unsupported_or_invalid_purl")},
+                                     "additionalProperties": False}
+                operation["responses"]["200"] = {"description": "Inventory mapping and rescan counts; see the SBOM reference for count semantics.",
+                                                 "content": {"application/json": {"schema": {"type": "object", "properties": counts,
+                                                                                          "required": list(counts), "additionalProperties": False}}}}
             summary = operation.get("description", operation.get("summary", "")).split("\n", 1)[0].replace("|", "\\|")
             source = f"../../api/src/nimstead/app.py#L{route.endpoint.__code__.co_firstlineno}"
             lines.append(f"| `{method}` | [`{route.path}`]({source}) | {auth} | {summary} |")

@@ -1,10 +1,10 @@
 """Version comparators, one per packaging ecosystem.
 
 Accuracy here is the whole product: a wrong comparison is either a false
-positive (noise) or a missed vulnerability. Each comparator follows the
-reference implementation of its ecosystem (dpkg, rpmvercmp, apk-tools,
-semver 2.0, PEP 440). Unknown ecosystems return None from `comparator_for`
-so callers refuse to guess.
+positive (noise) or a missed vulnerability. Comparators implement ecosystem-specific ordering.
+Known limits include Alpine leading-zero components and Pub build metadata. A comparator
+is not a general package-version validator. Unknown ecosystems return None from
+`comparator_for` so callers refuse to guess.
 """
 
 import re
@@ -75,7 +75,8 @@ def _dpkg_split(v: str) -> tuple[int, str, str]:
 def dpkg_cmp(a: str, b: str) -> int:
     """Compare version strings a and b using Debian epoch, upstream version, and revision rules.
 
-    Return -1, 0, or 1 when a is older, equivalent, or newer, respectively."""
+    Return -1, 0, or 1 when a is older, equivalent, or newer, respectively.
+    This comparator is permissive rather than a package-version syntax validator."""
     ea, ua, ra = _dpkg_split(a)
     eb, ub, rb = _dpkg_split(b)
     if ea != eb:
@@ -92,7 +93,8 @@ def _alnum(c: str) -> bool:
 def rpmvercmp(a: str, b: str) -> int:
     """Compare version strings a and b using RPM segment rules, including tilde and caret, without splitting epoch or release.
 
-    Return -1, 0, or 1 when a is older, equivalent, or newer, respectively."""
+    Return -1, 0, or 1 when a is older, equivalent, or newer, respectively.
+    This comparator is permissive rather than a package-version syntax validator."""
     if a == b:
         return 0
     i = j = 0
@@ -159,7 +161,8 @@ def _rpm_split(v: str) -> tuple[int, str, str | None]:
 def rpm_cmp(a: str, b: str) -> int:
     """Compare version strings a and b using RPM epoch/version/release rules; omit release comparison when either release is missing.
 
-    Return -1, 0, or 1 when a is older, equivalent, or newer, respectively."""
+    Return -1, 0, or 1 when a is older, equivalent, or newer, respectively.
+    This comparator is permissive rather than a package-version syntax validator."""
     ea, va, ra = _rpm_split(a)
     eb, vb, rb = _rpm_split(b)
     if ea != eb:
@@ -192,6 +195,7 @@ def _apk_key(v: str):
 def apk_cmp(a: str, b: str) -> int:
     """Compare version strings a and b using Alpine numeric, letter, suffix, and revision ordering.
 
+    Dotted numeric components are integers; fractional leading-zero ordering is not implemented.
     Return -1, 0, or 1 when a is older, equivalent, or newer, respectively.
     Raise ValueError when either input cannot be parsed by this comparator."""
     na, la, sa, ra = _apk_key(a)
@@ -562,10 +566,25 @@ _BY_PREFIX: dict[str, Cmp] = {
 def comparator_for(ecosystem: str) -> Cmp | None:
     """Return a two-string comparator for an OSV ecosystem, or None when unsupported.
 
-    The prefix before the first colon selects the comparator; callers must handle None explicitly."""
+    ecosystem is case-sensitive. The prefix before the first colon selects the comparator;
+    release suffixes do not prove advisory coverage. Callers must handle None explicitly.
+
+    >>> comparator_for('Conda') is None
+    True
+    >>> comparator_for('Pub')('1.0.0+1', '1.0.0+2')
+    0
+    >>> comparator_for('Alpine')('1.01', '1.1')
+    0"""
     return _BY_PREFIX.get(ecosystem.split(":", 1)[0])
 
 
 def sort_key(cmp: Cmp):
-    """Return a sorting-key wrapper for cmp, a callable taking two version strings and returning their order."""
+    """Return a sorting-key wrapper for cmp, a two-string comparison callable.
+
+    cmp returns a negative value, zero, or a positive value for ascending order. Exceptions
+    from cmp propagate when the wrapper compares values, not when the wrapper is created.
+
+    >>> sorted(['1.0', '0.9'], key=sort_key(semver_cmp))
+    ['0.9', '1.0']
+    """
     return cmp_to_key(cmp)

@@ -93,3 +93,13 @@ The new evidence reference names ZIP members, root fields, nested finding/asset/
 This batch passed 27 targeted evidence/documentation tests, the evidence/key tests, all three executable docstrings, link checks and the 55-article site build. The full SQLite run passed 1611 tests with 59 skips; skipped cases do not establish fresh platform proofs.
 
 A further temporal check confirms that finding `status` is current while `resolved_at` is limited by the selected period. The reference states this distinction explicitly. All 22 evidence tests passed after that addition. The refreshed OpenAPI export passed Redocly validation without warnings.
+
+## Matching and priority checkpoint
+
+Version, matching, risk and SBOM public contracts were reviewed against source. `clip` can return n+1 characters after its ellipsis. No-fix adjustment can lower a KEV score while retaining its 90-point floor. Those prose overstatements were corrected without changing behavior.
+
+The version reference names every dispatched ecosystem, input/refusal behavior, supported matcher events, and the Alpine/Pub limits. The priority reference defines the generic formula and context adjustments, without treating the score as a probability or claiming every platform check uses it.
+
+The SBOM reference now describes all six root response fields, including that `open` counts matching identities even when risk is accepted. The exported OpenAPI declares the raw JSON body, parser limits and successful counter response; it does not pretend to implement complete upstream SBOM schemas.
+
+321 focused tests and 46 subchecks passed, including the accepted-count assertion. All six executable docstrings passed. Redocly validation passed without warnings. Remaining modules and endpoint responses still require review.

@@ -249,3 +249,12 @@ def test_composer_version_cannot_backtrack_catastrophically():
     with pytest.raises(ValueError):
         composer_cmp("1.0-beta" + "1" * 40 + "x", "1.0")
     assert time.monotonic() - t < 1
+
+
+def test_reference_names_every_dispatched_ecosystem():
+    from pathlib import Path
+
+    from nimstead.versions import _BY_PREFIX
+
+    reference = (Path(__file__).resolve().parents[2] / "docs/reference/version-comparison.md").read_text()
+    assert all(f"`{name}`" in reference for name in _BY_PREFIX)

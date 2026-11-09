@@ -2,7 +2,7 @@
 
 Use the [OpenAPI JSON](openapi.json) for typed parameters, request models, defaults, and declared response schemas.
 
-The export adds server and authentication metadata to FastAPI’s schema. Request and response definitions come from the app.
+The export adds server, authentication, and raw SBOM-handler metadata to FastAPI’s schema. Other request and response definitions come from the app.
 
 Authentication labels describe entry requirements. Organisation ownership, roles, origin checks, quotas, and operation-specific state checks still apply. See [HTTP API reference](http-api.md).
 

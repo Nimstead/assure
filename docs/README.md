@@ -48,6 +48,8 @@ Find commands, settings, formats, and limits.
 - [Configuration](configuration.md)
 - [Supported platforms](reference/platforms.md)
 - [Agent command reference](reference/agent-cli.md)
+- [Version comparison reference](reference/version-comparison.md)
+- [Priority score reference](reference/risk-score.md)
 - [HTTP endpoint catalog](reference/api-endpoints.md)
 - [HTTP API reference](reference/http-api.md)
 - [SBOM input reference](reference/sbom.md)

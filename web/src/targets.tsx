@@ -18,7 +18,7 @@ export function ExternalTargets({ targets, onDelete }: { targets: Asset[]; onDel
   return (
     <section aria-labelledby="ext-h" className="flex flex-col gap-3">
       <h2 id="ext-h" className="text-lg font-semibold">External targets</h2>
-      <p className="text-sm text-muted">
+      <p className="max-w-prose text-sm text-muted">
         Checks exposed risky services (RDP, SMB, Telnet, databases, Docker API…) and TLS (expired, expiring or untrusted certificates, TLS 1.0/1.1).
         TCP connects and TLS handshakes only; nothing is logged into or exploited. We only scan hosts you prove you own.
       </p>

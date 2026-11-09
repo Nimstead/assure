@@ -88,6 +88,7 @@ export function AccountSection() {
           <h4 className="text-sm font-semibold">Change password</h4>
           {/* said before, not only after: it has consequences beyond this device */}
           <p className="text-sm text-muted">Changing it signs out your other devices and revokes the API tokens you created.</p>
+          <input type="text" name="username" autoComplete="username" value={me.email} readOnly hidden />
           <Field label="Current password"><input className={input} name="current" type="password" required autoComplete="current-password" /></Field>
           <Field label="New password" hint="At least 12 characters."><input className={input} name="new" type="password" required minLength={12} autoComplete="new-password" /></Field>
           {me.mfa && <Field label="Authenticator code"><input className={input} name="code" required autoComplete="one-time-code" /></Field>}

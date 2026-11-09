@@ -2,17 +2,17 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { afterEach, vi } from "vitest";
 import { SsoSection } from "./integrations";
 import { ApiError, meQ, type Action, type Asset, type Finding, type Job, type Settings } from "./lib";
 import { ActionCard } from "./home";
-import { AssetRow, AttackPaths, Baselines, baselineSummary, NotAssessed } from "./assets";
+import { AssetRow, AttackPaths, Baselines, baselineSummary, filterAssets, NotAssessed } from "./assets";
 import { Palette } from "./shell";
 import { Done, errorLead } from "./ui";
 import { Onboarding, TROUBLESHOOT_AFTER_MS } from "./onboarding";
 import { ApiTokensSection, QrCode, UsersSection } from "./people";
-import { JobCard, KbFleet } from "./remediation";
+import { JobCard, KbFleet, machineContext, stepState } from "./remediation";
 import { AcceptRisk, FindingsPage } from "./findings";
 import { EvidencePage } from "./evidence";
 import { SettingsPage } from "./settings";
@@ -460,5 +460,54 @@ it("Evidence: the ledger note counts the whole ledger, and says how much of it t
     "GET /api/evidence/public-key": { pem: "", fingerprint_sha256: "ab", verifier_sha256: "cd" } });
   wrap(<EvidencePage />);
   expect(await screen.findByText(/Latest 50 of 900 entries, newest first\./)).toBeInTheDocument();
-  expect(await screen.findByText(/holds 40 of them/)).toBeInTheDocument();
+  expect(await screen.findByText(/holds all 40 entries of that period/)).toBeInTheDocument();
+});
+
+it("a step that fell back is shown as recovered, not as a plain pass", () => {
+  expect(stepState({ step: "archive copy of openssl=3.5 not available (superseded); rebuilding", ok: true })).toBe("recovered");
+  expect(stepState({ step: "upgrade", ok: true })).toBe("passed");
+  expect(stepState({ step: "billing-api.service active after change", ok: false })).toBe("failed");
+});
+
+it("a plan awaiting approval lists the packages it changes, and self-approval is flagged", () => {
+  serve({});
+  const r = wrap(<ul><JobCard job={{ ...job("planned"), summary: "Upgrade acl to fix 1 vulnerability on web-1 (fixed in 2.4.0-1)", packages: [{ name: "acl", from: "2.3.1-4" }] }} onApprove={() => {}} /></ul>);
+  expect(screen.getByRole("list", { name: "Packages this fix changes" })).toHaveTextContent(/acl 2.3.1-4 → 2.4.0-1 or the repository's newer/);
+  r.unmount();
+  wrap(<ul><JobCard job={{ ...job("succeeded"), approved_by: "a@b.c" }} /></ul>);
+  expect(screen.getByText("Self-approved")).toBeInTheDocument();
+});
+
+it("the machine list searches, filters and sorts the fleet", () => {
+  const base = { kind: "host", os_name: "Debian 13", criticality: "medium", internet_facing: false, sandbox: false, ring: 1, health_units: [], open_by_priority: {}, last_seen: "2026-01-02T00:00:00" };
+  const fleet = [
+    { ...base, id: "1", hostname: "db-prod-01", criticality: "critical", open_by_priority: { low: 40 } },
+    { ...base, id: "2", hostname: "web-prod-01", open_by_priority: { "fix-now": 1 }, internet_facing: true },
+    { ...base, id: "3", hostname: "web-dev-02", not_reporting: true, last_seen: "2025-12-01T00:00:00" },
+  ] as unknown as Asset[];
+  expect(filterAssets(fleet, "", [], "", "urgent").map((a) => a.id)).toEqual(["2", "1", "3"]);  // one fix-now outranks 40 low
+  expect(filterAssets(fleet, "web", [], "", "name").map((a) => a.id)).toEqual(["3", "2"]);
+  expect(filterAssets(fleet, "", ["quiet"], "", "urgent").map((a) => a.id)).toEqual(["3"]);
+  expect(filterAssets(fleet, "", [], "critical", "urgent").map((a) => a.id)).toEqual(["1"]);
+  expect(filterAssets(fleet, "", [], "", "seen")[0]!.id).toBe("3");
+});
+
+it("closing the palette hands focus back to what opened it", async () => {
+  serve({});
+  function Harness() {
+    const [open, setOpen] = useState(false);
+    return <><button onClick={() => setOpen(true)}>Search</button><Palette open={open} onOpenChange={setOpen} signOut={() => {}} nextTheme={() => {}} /></>;
+  }
+  wrap(<Harness />);
+  const opener = screen.getByRole("button", { name: "Search" });
+  await userEvent.click(opener);
+  await waitFor(() => expect(screen.getByRole("combobox")).toHaveFocus());
+  await userEvent.keyboard("{Escape}");
+  await waitFor(() => expect(opener).toHaveFocus());
+});
+
+it("the approval names the target machine's criticality, ring, kind and health checks", () => {
+  const a = { hostname: "db-1", criticality: "critical", ring: 0, sandbox: false, health_units: ["postgresql"] } as unknown as Asset;
+  expect(machineContext(a)).toBe("db-1 · critical criticality · canary (fixed first) · production · health checks: postgresql");
+  expect(machineContext(undefined)).toBeUndefined();
 });

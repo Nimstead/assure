@@ -1,15 +1,16 @@
-import { useEffect, useRef, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { Fragment, memo, startTransition, useCallback, useDeferredValue, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Dialog, Switch } from "radix-ui";
-import { AppWindow, ArrowRight, Plus, Trash2, Upload } from "lucide-react";
-import { adminGate, AGENT_UPDATE, api, refresh, assetsQ, coverageQ, filtersToSearch, parseFilters, parseUtc, plural, PRIORITIES, relativeTime, sbomSummary, updateSource, useIsAdmin, useTitle, type Asset, type Criticality, type SbomResult } from "./lib";
-import { Alert, btnPrimary, btnQuiet, ConfirmDialog, CopyBlock, dialogBox, Done, EmptyState, ErrorState, Field, input, Loading, PriorityPill, switchRoot, switchThumb, Tag } from "./ui";
+import { AppWindow, ArrowRight, Plus, Search, SlidersHorizontal, Trash2, Upload, X } from "lucide-react";
+import { adminGate, AGENT_UPDATE, api, refresh, assetsQ, coverageQ, filtersToSearch, parseFilters, parseUtc, plural, PRIORITIES, PRIORITY_LABEL, relativeTime, sbomSummary, updateSource, useIsAdmin, useTitle, type AgentUpdate, type Asset, type Criticality, type SbomResult } from "./lib";
+import { Alert, btnPrimary, btnQuiet, chip, ConfirmDialog, CopyBlock, dialogBox, Done, EmptyState, ErrorState, Field, input, Loading, PriorityPill, switchRoot, switchThumb, Tag, useReturnFocus } from "./ui";
 import clsx from "clsx";
 import { ExternalTargets } from "./targets";
 
 type AssetPatch = Partial<Pick<Asset, "criticality" | "internet_facing" | "directory_source" | "ring" | "health_units">>;
 const LEVELS: Criticality[] = ["low", "medium", "high", "critical"];
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 export function AssetsPage() {
   useTitle("Assets");
@@ -30,15 +31,15 @@ export function AssetsPage() {
       if (ctx?.prev) qc.setQueryData<Asset[]>(assetsQ.queryKey, (a) => a?.map((x) => (x.id === id ? ctx.prev! : x)));
       setFailed({ id, message: e.message });
     },
-    onSuccess: (_d, { id }) => setSaved(id),
+    onSuccess: (_d, { id }, ctx) => { setSaved(id); setLast(ctx?.prev ? { id, prev: ctx.prev } : null); },
     // Context changes re-score findings, so everything derived from them is stale.
     onSettled: () => refresh(qc, "assets"),
   });
 
   const [target, setTarget] = useState<Asset | null>(null);
-  const [saved, setSaved] = useState("");  // the asset whose last change saved: it says so, and that findings were re-ranked
+  const [saved, setSaved] = useState("");
+  const [last, setLast] = useState<{ id: string; prev: Asset } | null>(null);  // the last single change, for Undo
   const [failed, setFailed] = useState<{ id: string; message: string } | null>(null);  // shown on that row, not the page top
-  const admin = useIsAdmin();
   const del = useMutation({
     mutationFn: (id: string) => api(`/api/assets/${id}`, { method: "DELETE" }),
     onSuccess: () => { setTarget(null); void refresh(qc, "assets"); },
@@ -66,21 +67,9 @@ export function AssetsPage() {
             Machines show up here once they report in.
           </EmptyState>
         ) : (
-          <section aria-labelledby="machines-h" className="flex flex-col gap-3">
-            <h2 id="machines-h" className="text-lg font-semibold">Machines and applications</h2>
-            {admin && (
-              <p className="max-w-prose text-sm text-muted">
-                <strong className="font-medium text-ink">Ring:</strong> canary machines get a fix first; broad machines wait until a canary has stayed healthy.{" "}
-                <strong className="font-medium text-ink">Health units:</strong> systemd units checked before and after a fix, saved when you leave the field.
-              </p>
-            )}
-            <AgentUpdateSummary assets={q.data.filter((a) => a.kind === "host")} />
-            <ul className="flex flex-col divide-y divide-line overflow-hidden border border-line bg-surface">
-              {q.data.filter((a) => a.kind !== "external").map((a) => <AssetRow key={a.id} a={a} saved={saved === a.id && !patch.isPending}
-                error={failed?.id === a.id ? failed.message : undefined}
-                onPatch={(p) => { setSaved(""); setFailed(null); patch.mutate({ id: a.id, ...p }); }} onDelete={() => { del.reset(); setTarget(a); }} />)}
-            </ul>
-          </section>
+          <MachineList assets={q.data.filter((a) => a.kind !== "external")} saved={patch.isPending ? "" : saved} failed={failed}
+            undo={last ? () => { const { id, prev } = last; setLast(null); patch.mutate({ id, criticality: prev.criticality, internet_facing: prev.internet_facing, ring: prev.ring, health_units: prev.health_units }); } : undefined}
+            onPatch={(id, p) => { setSaved(""); setFailed(null); patch.mutate({ id, ...p }); }} onDelete={(a) => { del.reset(); setTarget(a); }} />
         )}
       {q.data && <ExternalTargets targets={q.data.filter((a) => a.kind === "external")} onDelete={(a) => { del.reset(); setTarget(a); }} />}
       <ConfirmDialog open={!!target} onOpenChange={(o) => !o && setTarget(null)} title={`Delete ${target?.hostname}?`}
@@ -105,7 +94,7 @@ function Unmanaged() {
       <h2 id="unmanaged" className="text-base font-semibold">{rows.length} Windows computer{rows.length === 1 ? "" : "s"} in {domains} {rows.length === 1 ? "has" : "have"} no agent</h2>
       <p className="text-sm text-muted">Enabled in Active Directory and signed in within 30 days, but not reporting here, so nothing about them is checked.{eos ? ` ${eos} run Windows that no longer gets security updates.` : ""}</p>
       <details className="text-sm">
-        <summary className="min-h-[44px] cursor-pointer py-2 md:min-h-0">Show them</summary>
+        <summary className="tap cursor-pointer py-2">Show them</summary>
         <ul className="mt-2 flex flex-col gap-1">
           {rows.slice(0, 200).map((r) => <li key={r.domain + r.name} className="break-all"><span className="font-medium">{r.name}</span> · {r.os || "unknown OS"}{r.end_of_support && <span className="text-now-fg"> · {r.end_of_support}: out of support</span>}</li>)}
         </ul>
@@ -133,7 +122,7 @@ function BaselineHostRow({ h }: { h: BaselineHost }) {
   return (
     <li>
       <details className="text-sm" onToggle={(e) => setOpen(e.currentTarget.open)}>
-        <summary className="min-h-[44px] cursor-pointer break-words py-2 md:min-h-0"><span className="font-medium">{h.hostname}</span>: {baselineSummary(h)}</summary>
+        <summary className="tap cursor-pointer break-words py-2"><span className="font-medium">{h.hostname}</span>: {baselineSummary(h)}</summary>
         {q.isLoading && <Loading />}
         <Alert error={q.error} />
         <ul className="mt-2 flex flex-col gap-2">
@@ -167,7 +156,7 @@ export function Baselines() {
           </ul>
         </div>
       ))}
-      <a href="/api/baselines.csv" className="flex min-h-[44px] items-center text-sm md:min-h-0">Download as CSV</a>
+      <a href="/api/baselines.csv" className="flex tap items-center text-sm">Download as CSV</a>
     </section>
   );
 }
@@ -202,7 +191,7 @@ export function AttackPaths() {
         </div>
       ))}
       <details className="text-sm">
-        <summary className="min-h-[44px] cursor-pointer py-2 md:min-h-0">Paths on each host ({withPaths.length})</summary>
+        <summary className="tap cursor-pointer py-2">Paths on each host ({withPaths.length})</summary>
         <ul className="mt-2 flex flex-col gap-2">
           {withPaths.map(([id, h]) => h.paths.map((p) => (
             <li key={id + p.kind} className="break-words border-t border-line pt-2">
@@ -226,7 +215,7 @@ export function NotAssessed() {
       <h2 id="not-assessed" className="text-base font-semibold">{plural(only, "installed app")} {only === 1 ? "isn't" : "aren't"} checked for vulnerabilities</h2>
       <p className="max-w-prose text-sm text-muted">{plural(assessed, "install")} of known apps {assessed === 1 ? "is" : "are"} checked. The rest are listed but never matched, because a wrong guess is worse than saying so. Many are runtimes and drivers, but no finding for them doesn't mean they're safe.</p>
       <details className="text-sm">
-        <summary className="min-h-[44px] cursor-pointer py-2 md:min-h-0">Show them, most common first</summary>
+        <summary className="tap cursor-pointer py-2">Show them, most common first</summary>
         <ul className="mt-2 flex flex-col gap-1">
           {rows.map((r) => <li key={`${r.name}|${r.publisher}`} className="break-words"><span className="font-medium">{r.name}</span>{r.publisher && ` · ${r.publisher}`} · {plural(r.hosts, "machine")}</li>)}
         </ul>
@@ -235,7 +224,254 @@ export function NotAssessed() {
   );
 }
 
-export function AgentUpdateSummary({ assets }: { assets: Asset[] }) {
+type Sort = "urgent" | "name" | "seen";
+const FILTERS = { quiet: "Not reporting", agent: "Agent outdated", canary: "Canary", facing: "Internet-facing", test: "Test machine" } as const;
+type Filter = keyof typeof FILTERS;
+const FILTER_HELP: Record<Filter, string> = {
+  quiet: "No report for over 14 hours: findings may be out of date", agent: "The agent can't update itself; rerun its install command once",
+  canary: "Canary machines get a fix first; the rest wait until a canary has stayed healthy", facing: "Reachable from the internet: its findings rank higher",
+  test: "Test machines are the only ones fixes may change until production remediation is on",
+};
+const MATCH: Record<Filter, (a: Asset) => boolean> = {
+  quiet: (a) => !!a.not_reporting, agent: (a) => !!a.agent_update && !["current", "updating"].includes(a.agent_update),
+  canary: (a) => a.kind === "host" && a.ring === 0, facing: (a) => a.internet_facing, test: (a) => a.sandbox,
+};
+const WEIGHT: Record<string, number> = { "fix-now": 1e9, next: 1e6, planned: 1e3, low: 1 };
+const urgency = (a: Asset) => Object.entries(a.open_by_priority).reduce((n, [p, c]) => n + (WEIGHT[p] ?? 0) * (c ?? 0), 0);
+const PAGE = 40;
+
+/** Search, filter and sort the fleet (pure, so it can be tested). */
+export function filterAssets(assets: Asset[], text: string, on: Filter[], crit: Criticality | "", sort: Sort) {
+  const t = text.trim().toLowerCase();
+  const rows = assets.filter((a) => (!t || `${a.hostname} ${a.os_name} ${a.agent_version ?? ""}`.toLowerCase().includes(t))
+    && on.every((f) => MATCH[f](a)) && (!crit || a.criticality === crit));
+  return rows.sort(sort === "name" ? (x, y) => x.hostname.localeCompare(y.hostname)
+    : sort === "seen" ? (x, y) => x.last_seen.localeCompare(y.last_seen) : (x, y) => urgency(y) - urgency(x) || x.hostname.localeCompare(y.hostname));
+}
+
+/** The fleet as one line per machine; editing happens in a drawer, or for several at once through the bulk bar. */
+function MachineList({ assets, saved, failed, onPatch, onDelete, undo }: {
+  assets: Asset[]; saved: string; failed: { id: string; message: string } | null; onPatch: (id: string, p: AssetPatch) => void; onDelete: (a: Asset) => void; undo?: () => void;
+}) {
+  const admin = useIsAdmin();
+  // ?show=quiet,agent and ?machine=<id> make a filtered list or one machine's drawer linkable (the palette uses them)
+  const sp = useSearch({ strict: false }) as { show?: string; machine?: string; q?: string; crit?: string; sort?: string };
+  const navigate = useNavigate();
+  const [text, setText] = useState(sp.q ?? "");
+  const [on, setOn] = useState<Filter[]>(() => (sp.show ?? "").split(",").filter((f): f is Filter => f in FILTERS));
+  useEffect(() => { if (sp.show) setOn(sp.show.split(",").filter((f): f is Filter => f in FILTERS)); }, [sp.show]);
+  const [crit, setCrit] = useState<Criticality | "">(() => (LEVELS as string[]).includes(sp.crit ?? "") ? sp.crit as Criticality : "");
+  const [sort, setSort] = useState<Sort>(() => (["urgent", "name", "seen"].includes(sp.sort ?? "") ? sp.sort as Sort : "urgent"));
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [shown, setShown] = useState(PAGE);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const editing = sp.machine ?? null;
+  const setEditing = (id: string | null) => void navigate({ to: "/assets", search: (s: Record<string, unknown>) => ({ ...s, machine: id ?? undefined }), resetScroll: false });
+  const open = useCallback((id: string) => void navigate({ to: "/assets", search: (s: Record<string, unknown>) => ({ ...s, machine: id }), resetScroll: false }), [navigate]);
+  const typed = useDeferredValue(text);  // the list catches up after the keystroke, never blocking it
+  // the list's state lives in the URL too, so Back, refresh and a shared link keep it
+  useEffect(() => {
+    void navigate({ to: "/assets", replace: true, resetScroll: false,
+      search: (s: Record<string, unknown>) => ({ ...s, q: typed || undefined, show: on.join(",") || undefined, crit: crit || undefined, sort: sort === "urgent" ? undefined : sort }) });
+  }, [typed, on, crit, sort, navigate]);
+  const fleetwideAgent = assets.filter(MATCH.agent).length > assets.length / 2;  // said once in the banner, not on every row
+  const rows = useMemo(() => filterAssets(assets, typed, on, crit, sort), [assets, typed, on, crit, sort]);
+  const pick = useCallback((id: string, v: boolean) => setPicked((s) => { const n = new Set(s); if (v) n.add(id); else n.delete(id); return n; }), []);
+  const counts = useMemo(() => Object.fromEntries((Object.keys(FILTERS) as Filter[]).map((f) => [f, assets.filter(MATCH[f]).length])) as Record<Filter, number>, [assets]);
+  const toggle = (f: Filter) => startTransition(() => { setOn((o) => (o.includes(f) ? o.filter((x) => x !== f) : [...o, f])); setShown(PAGE); });
+  const visible = rows.slice(0, shown);
+  const pickedRows = assets.filter((a) => picked.has(a.id));
+  const apps = pickedRows.filter((a) => a.kind !== "host").length;
+  const allPicked = rows.length > 0 && rows.every((a) => picked.has(a.id));
+  const [staged, setStaged] = useState<AssetPatch>({});
+  const [applied, setApplied] = useState<{ text: string; undo: { id: string; p: AssetPatch }[] } | null>(null);
+  const describe = (p: AssetPatch) => [p.criticality && `criticality ${p.criticality}`, p.ring !== undefined && `ring ${p.ring === 0 ? "canary" : "broad"}`,
+    p.internet_facing !== undefined && (p.internet_facing ? "internet-facing" : "not internet-facing")].filter(Boolean).join(", ");
+  const apply = () => {
+    // what each machine had before, so the whole change can be undone
+    const undo = pickedRows.map((a) => ({ id: a.id, p: Object.fromEntries(Object.keys(staged).map((k) => [k, a[k as keyof AssetPatch]])) as AssetPatch }));
+    // ring and health units mean nothing for an application (no agent runs fixes there)
+    const forRow = (a: Asset) => (a.kind === "host" ? staged : { ...staged, ring: undefined });
+    pickedRows.forEach((a) => { const p = forRow(a); if (describe(p)) onPatch(a.id, p); });
+    setApplied({ text: `Set ${describe(staged)} on ${plural(pickedRows.length, "machine")}.`, undo });
+    setStaged({});
+  };
+  const current = assets.find((a) => a.id === editing) ?? null;
+  const bar = useRef<HTMLDivElement>(null);
+  const barOpen = admin && picked.size > 0;
+  useEffect(() => {
+    const root = document.documentElement;
+    if (barOpen && bar.current) root.style.setProperty("--bulk-bar", `${bar.current.offsetHeight + 8}px`);
+    return () => { root.style.removeProperty("--bulk-bar"); };
+  }, [barOpen]);
+  const clear = () => { setText(""); setOn([]); setCrit(""); setShown(PAGE); };
+  return (
+    <section aria-labelledby="machines-h" className="flex flex-col gap-3">
+      <h2 id="machines-h" className="sr-only">Machines and applications</h2>
+      <AgentUpdateSummary assets={assets.filter((a) => a.kind === "host")} onShow={() => { setOn(["agent"]); setShown(PAGE); }} />
+      <div className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button className={clsx(chip(on.length > 0 || !!crit), "md:hidden")} aria-expanded={filtersOpen} aria-controls="asset-filters" onClick={() => setFiltersOpen((x) => !x)}>
+            <SlidersHorizontal className="size-4" aria-hidden />Filters ({on.length + Number(!!crit)})
+          </button>
+          <label className="relative min-w-0 flex-1 basis-64">
+            <span className="sr-only">Search assets</span>
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden />
+            <input type="search" className={clsx(input, "pl-9")} placeholder="Search by name, OS or agent version" value={text} onChange={(e) => { setText(e.target.value); setShown(PAGE); }} />
+          </label>
+          <div id="asset-filters" className={clsx("w-full flex-wrap items-center gap-2 md:flex md:w-auto", filtersOpen ? "flex" : "hidden")}>
+          <label className="flex items-center gap-2 text-sm">
+            <span className="text-muted">Criticality</span>
+            <select className={clsx(input, "w-auto capitalize md:min-h-9")} value={crit} onChange={(e) => setCrit(e.target.value as Criticality | "")}>
+              <option value="">Any</option>{LEVELS.map((l) => <option key={l} value={l}>{cap(l)}</option>)}
+            </select>
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <span className="text-muted">Sort</span>
+            <select className={clsx(input, "w-auto md:min-h-9")} value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
+              <option value="urgent">Most urgent first</option><option value="name">Name</option><option value="seen">Longest since last report</option>
+            </select>
+          </label>
+          </div>
+        </div>
+        <div role="group" aria-label="Show only" className={clsx("flex-wrap gap-2 md:flex", filtersOpen ? "flex" : "hidden")}>
+          {(Object.keys(FILTERS) as Filter[]).filter((f) => counts[f] > 0 || on.includes(f)).map((f) => (
+            <button key={f} title={FILTER_HELP[f]} className={chip(on.includes(f))} aria-pressed={on.includes(f)} onClick={() => toggle(f)}>{FILTERS[f]}<span className="num text-muted">{counts[f].toLocaleString()}</span></button>
+          ))}
+        </div>
+      </div>
+      <div className="flex min-h-[44px] flex-wrap items-center gap-x-4 gap-y-2 md:min-h-9">
+        <p className="num text-sm text-muted" role="status">{rows.length === assets.length ? plural(assets.length, "asset") : `${rows.length.toLocaleString()} of ${plural(assets.length, "asset")}`}</p>
+        {admin && rows.length > 0 && (
+          <label className="flex tap cursor-pointer items-center gap-2 text-sm">
+            <input type="checkbox" className="size-4 accent-[var(--ink)]" checked={allPicked} onChange={() => startTransition(() => setPicked(allPicked ? new Set() : new Set(rows.map((a) => a.id))))} />
+            Select all {rows.length.toLocaleString()}{rows.length === assets.length ? "" : " matching"}{rows.length > shown ? `, including ${(rows.length - shown).toLocaleString()} not shown yet` : ""}
+          </label>
+        )}
+      </div>
+      {admin && picked.size > 0 && (
+        <div role="region" aria-label="Change selected machines" ref={bar} className="fixed inset-x-2 bottom-[calc(var(--tabbar-h,3.5rem)+0.5rem)] z-10 flex max-h-[40dvh] flex-wrap items-center gap-x-4 gap-y-2 overflow-y-auto border border-ink bg-surface px-3 py-2 text-sm shadow-[0_6px_16px_var(--shadow)] md:bottom-4 md:left-[calc(var(--sidebar-w)+1.5rem)] md:right-6">
+          <SlidersHorizontal className="size-4" aria-hidden /><strong className="num font-semibold">{picked.size} selected</strong>
+          <label className="flex w-full items-center gap-2 sm:w-auto"><span className="text-muted">Criticality</span>
+            <select className={clsx(input, "min-w-0 flex-1 capitalize sm:w-auto sm:flex-none md:min-h-9")} value={staged.criticality ?? ""} onChange={(e) => setStaged((s) => ({ ...s, criticality: (e.target.value || undefined) as Criticality | undefined }))}>
+              <option value="">Unchanged</option>{LEVELS.map((l) => <option key={l} value={l}>{cap(l)}</option>)}
+            </select></label>
+          {apps > 0 && <span className="w-full text-muted">{plural(apps, "application")} selected: ring doesn't apply to {apps === 1 ? "it" : "them"}.</span>}
+          <label className="flex w-full items-center gap-2 sm:w-auto"><span className="text-muted">Ring</span>
+            <select className={clsx(input, "min-w-0 flex-1 sm:w-auto sm:flex-none md:min-h-9")} value={staged.ring ?? ""} onChange={(e) => setStaged((s) => ({ ...s, ring: e.target.value === "" ? undefined : Number(e.target.value) as 0 | 1 }))}>
+              <option value="">Unchanged</option><option value="0">Canary</option><option value="1">Broad</option>
+            </select></label>
+          <label className="flex w-full items-center gap-2 sm:w-auto"><span className="text-muted">Internet-facing</span>
+            <select className={clsx(input, "min-w-0 flex-1 sm:w-auto sm:flex-none md:min-h-9")} value={staged.internet_facing === undefined ? "" : staged.internet_facing ? "yes" : "no"} onChange={(e) => setStaged((s) => ({ ...s, internet_facing: e.target.value === "" ? undefined : e.target.value === "yes" }))}>
+              <option value="">Unchanged</option><option value="yes">Yes</option><option value="no">No</option>
+            </select></label>
+          <div className="ml-auto flex gap-2">
+            <button className={btnQuiet} onClick={() => { setPicked(new Set()); setStaged({}); }}>Clear selection</button>
+            <button className={btnPrimary} disabled={!describe(staged)} onClick={apply}>Apply to {plural(picked.size, apps ? "asset" : "machine")}</button>
+          </div>
+        </div>
+      )}
+      {applied && (
+        <div className="flex flex-wrap items-center gap-3">
+          <Done className="text-muted">{applied.text}</Done>
+          <button className={btnQuiet} onClick={() => { applied.undo.forEach((u) => onPatch(u.id, u.p)); setApplied(null); }}>Undo</button>
+        </div>
+      )}
+      {rows.length === 0 ? (
+        <EmptyState title="No machines match" action={<button className={btnQuiet} onClick={clear}>Clear search and filters</button>}>
+          Nothing matches {text ? `“${text}”` : "these filters"}.
+        </EmptyState>
+      ) : (
+        <div className="flex flex-col">
+        {/* the count columns say what they count once, at the top */}
+        <div aria-hidden className="hidden items-end justify-end gap-x-4 px-3 pb-1 text-xs text-muted lg:flex">
+          <span className="grid grid-cols-[repeat(4,minmax(0,6.5rem))_2.25rem] gap-1 text-center">{PRIORITIES.map((p) => <span key={p}>{PRIORITY_LABEL[p]}</span>)}<span /></span>
+        </div>
+        <ul className="flex flex-col divide-y divide-line border border-line bg-surface">
+          {visible.map((a) => <MachineLine key={a.id} a={a} picked={picked.has(a.id)} saved={saved === a.id} onPick={pick} onOpen={open} quietAgent={fleetwideAgent} />)}
+        </ul>
+        </div>
+      )}
+      {barOpen && <div aria-hidden style={{ height: "var(--bulk-bar, 6rem)" }} />}
+      {rows.length > shown && <button className={clsx(btnQuiet, "self-start")} onClick={() => setShown((n) => n + PAGE * 5)}>{rows.length - shown <= PAGE * 5 ? `Show the other ${rows.length - shown}` : `Show ${PAGE * 5} more (${rows.length - shown} left)`}</button>}
+      <MachineDrawer a={current} onClose={() => setEditing(null)}>
+        {current && <AssetRow a={current} saved={saved === current.id} inDrawer undo={saved === current.id ? undo : undefined} error={failed?.id === current.id ? failed.message : undefined}
+          onPatch={(p) => onPatch(current.id, p)} onDelete={() => { setEditing(null); onDelete(current); }} />}
+      </MachineDrawer>
+    </section>
+  );
+}
+
+/** One line per machine: name, state, where it stands. Its settings live in the drawer. */
+const MachineLine = memo(function MachineLine({ a, picked, saved, onPick, onOpen, quietAgent }: { a: Asset; picked: boolean; saved: boolean; onPick: (id: string, v: boolean) => void; onOpen: (id: string) => void; quietAgent?: boolean }) {
+  const admin = useIsAdmin();
+  return (
+    <li className={clsx("flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2", picked && "bg-accent-soft")}>
+      {/* the label is the 44px target on phones */}
+      {admin && <label className="-my-2 -ml-3 flex tap min-w-[44px] shrink-0 cursor-pointer items-center justify-center md:min-w-0 md:ml-0 md:my-0">
+        <input type="checkbox" className="size-4 accent-[var(--ink)]" checked={picked} onChange={(e) => onPick(a.id, e.target.checked)} aria-label={`Select ${a.hostname}`} />
+      </label>}
+      <div className="min-w-[min(12rem,100%)] flex-1 basis-56">
+        <div className="flex flex-wrap items-center gap-x-2">
+          <button className="tap cursor-pointer text-left font-semibold underline decoration-line-strong underline-offset-4 hover:decoration-ink" onClick={() => onOpen(a.id)}>
+            <span className="break-all">{a.hostname}</span><span className="sr-only">: details and settings</span>
+          </button>
+          {a.not_reporting && <Tag tone="now">Not reporting</Tag>}
+          {a.agent_update && !["current", "updating"].includes(a.agent_update) && (!quietAgent || a.agent_update === "failed") && <Tag tone={a.agent_update === "failed" ? "now" : "muted"}>{AGENT_UPDATE[a.agent_update as Exclude<AgentUpdate, "current">].label}</Tag>}
+          {a.sandbox && <Tag>Test machine</Tag>}
+          {saved && <Done className="text-muted">Saved</Done>}
+        </div>
+        <p className="truncate text-sm text-muted">
+          {a.kind === "application" ? "Application (SBOM)" : a.os_name || "Unknown OS"} · <span className="capitalize">{a.criticality}</span>
+          {a.kind === "host" && a.ring === 0 && " · canary"}{a.internet_facing && " · internet-facing"} · seen <time dateTime={parseUtc(a.last_seen).toISOString()} title={parseUtc(a.last_seen).toLocaleString()}>{relativeTime(a.last_seen)}</time>
+        </p>
+      </div>
+      <PriorityLinks a={a} columns />
+    </li>
+  );
+});
+
+/** A machine's open findings by priority, each a link to them; `columns` lines them up across rows of a list. */
+function PriorityLinks({ a, columns }: { a: Asset; columns?: boolean }) {
+  const open = PRIORITIES.filter((p) => a.open_by_priority[p]);
+  return (
+    <div className={clsx("flex flex-wrap items-center gap-1.5", columns && "md:justify-end lg:grid lg:grid-cols-[repeat(4,minmax(0,6.5rem))_2.25rem] lg:gap-1")}>
+      {open.length === 0 ? <span className={clsx("text-sm text-muted", columns && "lg:col-span-4")}>No open findings</span> : PRIORITIES.map((p) => a.open_by_priority[p] ? (
+        <Link key={p} to="/findings" search={filtersToSearch({ ...parseFilters({}), asset: a.id, priority: [p], fixable: false })} className="inline-flex tap items-center no-underline">
+          <PriorityPill priority={p} count={a.open_by_priority[p]} />
+        </Link>
+      ) : columns ? <span key={p} aria-hidden className="hidden text-center text-muted lg:block">–</span> : null)}
+      {open.length > 0 && (
+        <Link to="/findings" search={filtersToSearch({ ...parseFilters({}), asset: a.id, fixable: false })} aria-label={`View findings for ${a.hostname}`} className="inline-flex size-[44px] items-center justify-center text-muted hover:bg-sunken hover:text-ink md:size-9"><ArrowRight className="size-4" aria-hidden /></Link>
+      )}
+    </div>
+  );
+}
+
+function MachineDrawer({ a, onClose, children }: { a: Asset | null; onClose: () => void; children: ReactNode }) {
+  const title = useRef<HTMLHeadingElement>(null);
+  const focus = useReturnFocus(title);
+  return (
+    <Dialog.Root open={!!a} onOpenChange={(o) => !o && onClose()}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="overlay" />
+        <Dialog.Content className="drawer p-5 md:p-6" aria-describedby={undefined} {...focus}>
+          <div className="flex items-start justify-between gap-3">
+            <Dialog.Title ref={title} tabIndex={-1} className="break-all text-lg font-semibold">{a?.hostname}</Dialog.Title>
+            <Dialog.Close className={clsx(btnQuiet, "size-[44px] shrink-0 !px-0 md:size-9")} aria-label="Close"><X className="size-4" aria-hidden /></Dialog.Close>
+          </div>
+          <ul className="-mx-4">{children}</ul>
+          <p className="max-w-[60ch] text-sm text-muted">
+            <strong className="font-medium text-ink">Ring:</strong> canary machines get a fix first; broad machines wait until a canary has stayed healthy.{" "}
+            <strong className="font-medium text-ink">Health units:</strong> systemd units checked before and after a fix, saved when you leave the field.
+          </p>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
+export function AgentUpdateSummary({ assets, onShow }: { assets: Asset[]; onShow?: () => void }) {
   const groups = new Map<string, { failed: boolean; hosts: string[] }>();
   for (const a of assets) {
     if (!a.agent_update || ["current", "updating"].includes(a.agent_update)) continue;
@@ -245,18 +481,32 @@ export function AgentUpdateSummary({ assets }: { assets: Asset[] }) {
     groups.set(why, g);
   }
   if (!groups.size) return null;
+  // one reason for most hosts (an old agent that predates self-update) is said once, with the versions
+  const reinstall = [...groups].filter(([why]) => /can't update itself/.test(why));
+  if (reinstall.length > 1) {
+    const hosts = reinstall.flatMap(([, g]) => g.hosts);
+    const versions = assets.filter((a) => hosts.includes(a.hostname)).reduce<Record<string, number>>((n, a) => ({ ...n, [a.agent_version ?? "?"]: (n[a.agent_version ?? "?"] ?? 0) + 1 }), {});
+    for (const [why] of reinstall) groups.delete(why);
+    groups.set(`Agents ${Object.entries(versions).map(([v, n]) => `${v} (${n})`).join(", ")} predate self-update. Rerun the install command on each once; the enrolment is kept, and later versions update automatically.`, { failed: false, hosts });
+  }
   return (
-    <ul className="flex flex-col gap-1.5 border border-line-strong bg-surface px-3 py-2 text-sm">
+    <ul className="flex flex-col gap-1.5 border border-line-strong bg-surface px-3 py-2 text-sm [&>li]:max-w-[60ch]">
       {[...groups].map(([why, g]) => (
-        <li key={why} className={clsx("break-words", g.failed && "text-now-fg")}>
-          <strong className="font-semibold">{g.hosts.join(", ")}:</strong> {why}
+        <li key={why} className={clsx(g.failed && "text-now-fg")}>
+          <strong className="font-semibold">{plural(g.hosts.length, "machine")}:</strong> {why}
+          {onShow && <> <Link to="/assets" search={{ show: "agent" }} onClick={onShow} className="font-medium underline">List them</Link></>}
+          <details className="mt-1">
+            <summary className="tap w-fit cursor-pointer py-2 text-muted md:py-0">Show which</summary>
+            {/* names never break mid-word: each wraps as a whole */}
+            <p className="mt-1">{g.hosts.map((h, i) => <Fragment key={h}><span className="whitespace-nowrap">{h}{i < g.hosts.length - 1 && ","}</span>{" "}</Fragment>)}</p>
+          </details>
         </li>
       ))}
     </ul>
   );
 }
 
-export function AssetRow({ a, onPatch, onDelete, saved, error }: { a: Asset; onPatch: (p: AssetPatch) => void; onDelete: () => void; saved?: boolean; error?: string }) {
+export function AssetRow({ a, onPatch, onDelete, saved, error, inDrawer, undo }: { a: Asset; onPatch: (p: AssetPatch) => void; onDelete: () => void; saved?: boolean; error?: string; inDrawer?: boolean; undo?: () => void }) {
   const admin = useIsAdmin();
   const open = PRIORITIES.filter((p) => a.open_by_priority[p]);
   const host = a.kind === "host";
@@ -264,29 +514,22 @@ export function AssetRow({ a, onPatch, onDelete, saved, error }: { a: Asset; onP
     <li className="flex flex-col gap-3 p-4">
       <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
       <div className="min-w-0 flex-1 basis-60">
-        <h3 className="flex flex-wrap items-center gap-2 text-base font-semibold"><span className="min-w-0 break-all" title={a.hostname}>{a.hostname}</span>
+        <div className="flex flex-wrap items-center gap-2"><h3 className={inDrawer ? "sr-only" : "min-w-0 break-all text-base font-semibold"} title={a.hostname}>{a.hostname}</h3>
           {a.sandbox && <Tag why="Test machine: the only kind automated fixes may change until production remediation is turned on">Test machine</Tag>}
-          {a.not_reporting && <Tag tone="now" why="No report for over 14 hours, so findings may be out of date. Check the host is running and the agent's timer or scheduled task.">Not reporting</Tag>}
-          {a.agent_update && a.agent_update !== "current" && <Tag tone={a.agent_update === "failed" ? "now" : "muted"}>{AGENT_UPDATE[a.agent_update].label}</Tag>}</h3>
+          {a.not_reporting && <Tag tone="now" why={`Last report ${relativeTime(a.last_seen)}, so findings may be out of date. Check the host is running and the agent's timer or scheduled task.`}>Not reporting</Tag>}
+          {a.agent_update && a.agent_update !== "current" && <Tag tone={a.agent_update === "failed" ? "now" : "muted"}>{AGENT_UPDATE[a.agent_update].label}</Tag>}</div>
         <p className="truncate text-sm text-muted">
           {a.kind === "application" ? "Application (SBOM)" : a.os_name || "Unknown OS"}{a.agent_version && ` · agent ${a.agent_version}`} · seen <time dateTime={parseUtc(a.last_seen).toISOString()} title={parseUtc(a.last_seen).toLocaleString()}>{relativeTime(a.last_seen)}</time>
         </p>
-        {a.not_reporting && <p className="mt-1 text-xs text-now-fg">No report for over 14 hours, so findings may be out of date.</p>}
+        {a.not_reporting && <p className="mt-1 text-xs text-now-fg">Last report {relativeTime(a.last_seen)}, so findings may be out of date.</p>}
         {a.apps && a.apps.inventory_only > 0 && <p className="mt-1 text-xs text-muted">{a.apps.assessed === 0 ? `None of its ${plural(a.apps.inventory_only, "installed app")} could be checked.` : `${a.apps.assessed} of ${a.apps.assessed + a.apps.inventory_only} installed apps checked; the rest are listed only.`}</p>}
         {a.facts?.os_unmatched && <p className="mt-1 text-xs text-muted">OS not matched to Microsoft's fixes: {a.facts.os_unmatched}. Apps and end of support are still checked.</p>}
         {a.facts?.pending_reboot && <p className="mt-1 text-xs text-next-fg">Updates are installed and waiting for a restart: findings close after it.</p>}
         {updateSource(a.facts) && <p className="mt-1 text-xs text-muted">{updateSource(a.facts)}</p>}
+        {inDrawer && a.agent_update && a.agent_update !== "current" && <p className="mt-2 text-sm">{AGENT_UPDATE[a.agent_update].why(a)} <Link to="/add" className="font-medium underline">Install command</Link></p>}
+        {inDrawer && open.length > 0 && <p className="mt-2 text-sm"><Link to="/findings" search={filtersToSearch({ ...parseFilters({}), asset: a.id, group: "package" })} className="inline-flex tap items-center font-medium underline">Fixes for this machine, by package</Link></p>}
       </div>
-      <div className="flex flex-wrap items-center gap-1.5">
-        {open.length === 0 ? <span className="text-sm text-muted">No open findings</span> : open.map((p) => (
-          <Link key={p} to="/findings" search={filtersToSearch({ ...parseFilters({}), asset: a.id, priority: [p], fixable: false })} className="inline-flex min-h-[44px] items-center no-underline md:min-h-0">
-            <PriorityPill priority={p} count={a.open_by_priority[p]} />
-          </Link>
-        ))}
-        {open.length > 0 && (
-          <Link to="/findings" search={filtersToSearch({ ...parseFilters({}), asset: a.id })} aria-label={`View findings for ${a.hostname}`} className="inline-flex size-[44px] items-center justify-center text-muted hover:bg-sunken hover:text-ink md:size-9"><ArrowRight className="size-4" aria-hidden /></Link>
-        )}
-      </div>
+      <PriorityLinks a={a} />
       </div>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         {/* The API only lets admins change these; everyone else reads them (as in Settings). */}
@@ -299,17 +542,17 @@ export function AssetRow({ a, onPatch, onDelete, saved, error }: { a: Asset; onP
         <label className="flex items-center gap-2 text-sm">
           <span className="whitespace-nowrap text-muted">Criticality</span>
           <select className={clsx(input, "w-auto capitalize md:min-h-9")} value={a.criticality} onChange={(e) => onPatch({ criticality: e.target.value as Criticality })}>
-            {LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
+            {LEVELS.map((l) => <option key={l} value={l}>{cap(l)}</option>)}
           </select>
         </label>
-        <label className="flex min-h-[44px] cursor-pointer items-center gap-2 whitespace-nowrap text-sm md:min-h-0">
+        <label className="flex tap cursor-pointer items-center gap-2 whitespace-nowrap text-sm">
           <Switch.Root checked={a.internet_facing} onCheckedChange={(internet_facing) => onPatch({ internet_facing })} className={switchRoot}>
             <Switch.Thumb className={switchThumb} />
           </Switch.Root>
           Internet-facing
         </label>
         {a.kind === "host" && (a.directory_source || (typeof a.facts?.domain_role === "number" && a.facts.domain_role >= 1)) && (
-          <label className="flex min-h-[44px] cursor-pointer items-center gap-2 whitespace-nowrap text-sm md:min-h-0"
+          <label className="flex tap cursor-pointer items-center gap-2 whitespace-nowrap text-sm"
             title="Only this machine's agent may send the domain's computer list (with --ad-discovery); any other host is refused">
             <Switch.Root checked={!!a.directory_source} onCheckedChange={(directory_source) => onPatch({ directory_source })} className={switchRoot}>
               <Switch.Thumb className={switchThumb} />
@@ -327,8 +570,9 @@ export function AssetRow({ a, onPatch, onDelete, saved, error }: { a: Asset; onP
         </>}
         <SbomUpload a={a} />
         {saved && <Done className="text-muted">Saved. Findings re-ranked.</Done>}
+        {saved && undo && <button className={btnQuiet} onClick={undo}>Undo</button>}
         <button className={clsx(btnQuiet, "ml-auto px-3 md:px-2.5")} onClick={onDelete} title={`Delete ${a.hostname}`} {...adminGate(admin)}>
-          <Trash2 className="size-4" aria-hidden /><span className="md:sr-only">Delete</span><span className="sr-only"> {a.hostname}</span>
+          <Trash2 className="size-4" aria-hidden /><span className={inDrawer ? undefined : "md:sr-only"}>Delete</span><span className="sr-only"> {a.hostname}</span>
         </button>
       </div>
       <Alert error={error} prefix="Couldn't save that change: " />
@@ -338,6 +582,7 @@ export function AssetRow({ a, onPatch, onDelete, saved, error }: { a: Asset; onP
 
 /** Comma-separated systemd units checked before and after a fix; saved on blur / Enter. */
 function HealthUnits({ a, onPatch }: { a: Asset; onPatch: (p: AssetPatch) => void }) {
+  const hint = useId();
   const saved = a.health_units.join(", ");
   const [text, setText] = useState(saved);
   useEffect(() => setText(saved), [saved]);  // re-sync after a save or a rollback
@@ -349,8 +594,8 @@ function HealthUnits({ a, onPatch }: { a: Asset; onPatch: (p: AssetPatch) => voi
     <label className="flex items-center gap-2 text-sm">
       <span className="whitespace-nowrap text-muted">Health units</span>
       <input className={clsx(input, "w-40 md:min-h-9")} value={text} placeholder="nginx, sshd" onChange={(e) => setText(e.target.value)} onBlur={commit}
-        onKeyDown={(e) => e.key === "Enter" && commit()} aria-describedby="health-units-hint" />
-      <span id="health-units-hint" className="sr-only">systemd units checked before and after a fix; saved when you leave the field</span>
+        onKeyDown={(e) => e.key === "Enter" && commit()} aria-describedby={hint} />
+      <span id={hint} className="sr-only">systemd units checked before and after a fix; saved when you leave the field</span>
     </label>
   );
 }

@@ -78,7 +78,7 @@ test("sign up, enrol a sandbox host, plan and approve a fix, see evidence", asyn
 
   // Findings + drawer
   await page.getByRole("link", { name: "Findings", exact: true }).first().click();
-  const rows = page.getByRole("row").filter({ hasText: "openssl" });
+  const rows = page.getByRole("row").filter({ hasText: "openssl" }).filter({ hasText: "sbx-1" });
   await expect(rows.first()).toBeVisible();
   await rows.first().click();
   const drawer = page.getByRole("dialog");
@@ -91,7 +91,7 @@ test("sign up, enrol a sandbox host, plan and approve a fix, see evidence", asyn
   await expect(page.getByRole("heading", { name: "Needs approval" })).toBeVisible();
 
   // Approve
-  await page.getByRole("button", { name: /^Approve/ }).click();
+  await page.getByRole("button", { name: /^Review and approve/ }).click();
   const dlg = page.getByRole("alertdialog");
   await expect(dlg.getByText("Approve this fix?")).toBeVisible();
   await dlg.getByRole("button", { name: "Approve and run" }).click();
@@ -360,10 +360,28 @@ test("a member (read-only) sees no controls the API would refuse, and every page
     }
     await load(page, PAGES[2]);
     await expect(page.getByText(/Read-only\./)).toBeVisible();
-    await expect(page.locator("main").getByRole("combobox")).toHaveCount(0);  // criticality and ring are text, not selects
+    // the list's only selects are its own filters; no bulk selection, and the machine drawer shows criticality and ring as text
+    await expect(page.locator("main").getByRole("checkbox")).toHaveCount(0);
+    await page.locator("main ul li button").first().click();
+    await expect(page.getByRole("dialog").getByRole("combobox")).toHaveCount(0);
+    await page.keyboard.press("Escape");
     await expect(page.locator("main").getByRole("switch")).toHaveCount(0);
     await context.close();
   }
+});
+
+test("navigating to a page that loads on demand moves focus to its heading and names it, on the first visit too", async ({ browser }) => {
+  const { context, page } = await ctx(browser, 1440, "light");
+  await page.goto("/findings");
+  await expect(page.locator("h1")).toHaveText("Findings");
+  for (const name of ["Assets", "Settings", "Evidence", "Remediation"]) {
+    await page.locator("aside nav").getByRole("link", { name, exact: true }).focus();
+    await page.keyboard.press("Enter");
+    await expect(page.locator("h1")).toBeFocused();
+    await expect(page.locator("h1")).toHaveText(name);
+    await expect(page.locator("#live")).toHaveText(name);  // the new page, not the one being left
+  }
+  await context.close();
 });
 
 test("keyboard: choosing on the trust ladder saves nothing; findings open with Enter and close with Escape", async ({ browser }) => {
@@ -486,4 +504,42 @@ test("screenshots at 1440 and 375", async ({ browser }) => {
     }
     await context.close();
   }
+});
+
+test("findings: act on a selection, save a view, use the drawer's keys, and land somewhere useful from a bad link", async ({ browser }) => {
+  const { context, page } = await ctx(browser, 1440, "light");
+  await page.goto("/findings?q=sbx-1&fixable=0");
+  const rows = page.getByRole("row").filter({ hasText: "sbx-1" });
+  await expect(rows.first()).toBeVisible();
+  // select two, accept them with one reason: the bar says what happened and the list moves on
+  await rows.nth(0).getByRole("checkbox").check();
+  await rows.nth(1).getByRole("checkbox").check();
+  const bar = page.getByRole("region", { name: "Act on selected findings" });
+  await expect(bar.getByText("2 findings selected")).toBeVisible();
+  await bar.getByRole("button", { name: "Accept risk…" }).click();
+  const dlg = page.getByRole("alertdialog");
+  await dlg.getByLabel("Reason").fill("Isolated test host, no inbound access");
+  await dlg.getByRole("button", { name: "Accept risk" }).click();
+  await expect(page.getByText("2 findings accepted for 90 days.")).toBeVisible();
+  // a saved view comes back from the palette
+  await page.getByRole("button", { name: "Save view" }).click();
+  await page.getByLabel("Name for this view").fill("Test host");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page.goto("/");
+  await page.keyboard.press("Control+k");
+  await page.getByRole("combobox").fill("test host");
+  await page.getByRole("option", { name: /View: Test host/ }).click();
+  await expect(page).toHaveURL(/q=sbx-1/);
+  // drawer: "a" opens Accept risk
+  await page.getByRole("row").filter({ hasText: "sbx-1" }).first().getByRole("button").last().click();
+  const drawer = page.getByRole("dialog");
+  await expect(drawer.getByRole("heading", { name: "Why it matched" })).toBeVisible();
+  await page.keyboard.press("a");
+  await expect(drawer.getByLabel("Reason")).toBeVisible();
+  // a link to a finding that's gone, and an address that matches nothing
+  await page.goto("/findings?f=does-not-exist");
+  await expect(page.getByRole("dialog").getByRole("heading", { name: "This finding no longer exists" })).toBeVisible();
+  await page.goto("/no-such-page");
+  await expect(page.getByRole("heading", { name: "There's no page here" })).toBeVisible();
+  await context.close();
 });

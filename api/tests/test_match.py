@@ -84,3 +84,11 @@ def test_an_incomparable_version_is_logged_not_silent(caplog):
     with caplog.at_level("WARNING", logger="nimstead.match"):
         assert match_package(Package("p", "1.0"), "PyPI", [{"id": "GHSA-bad", "aliases": [], "affected": aff}]) == []
     assert "GHSA-bad" in caplog.text
+
+
+def test_advisory_text_is_cut_at_a_word_with_an_ellipsis():
+    from nimstead.match import clip
+    assert clip("short text") == "short text"
+    long = "word " * 60
+    out = clip(long)
+    assert len(out) <= 201 and out.endswith("word…") and "  " not in out

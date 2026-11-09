@@ -6,16 +6,16 @@ import { announce, ApiError, JOB_STATUS_LABEL, PRIORITY_CLASS, PRIORITY_LABEL, t
 
 // 44px tall on phones (touch), 36px from md up.
 export const btn = "inline-flex min-h-[44px] md:min-h-9 items-center justify-center gap-2 px-3.5 text-sm font-medium transition-colors disabled:opacity-50 aria-disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed aria-disabled:cursor-not-allowed";
-export const btnPrimary = clsx(btn, "bg-accent text-accent-ink hover:brightness-110");
+export const btnPrimary = clsx(btn, "bg-accent text-accent-ink hover:bg-accent/80 disabled:border disabled:border-line-strong disabled:bg-transparent disabled:text-muted disabled:opacity-100");
 export const btnQuiet = clsx(btn, "border border-line-strong bg-surface text-ink hover:bg-sunken");
 /** For confirming something that can't be undone: the "fix now" colour, never used for an ordinary primary action. */
-export const btnDanger = clsx(btn, "bg-now-fg text-surface hover:brightness-110");
-export const input = "min-h-[44px] md:min-h-10 w-full border border-line-strong bg-surface px-3 text-sm text-ink placeholder:text-muted";
+export const btnDanger = clsx(btn, "bg-now-fg text-surface hover:bg-now-fg/85");
+export const input = "min-h-[44px] md:min-h-10 w-full border border-line-strong bg-surface px-3 text-base md:text-sm text-ink placeholder:text-muted";
 /** Filter chips: square, 44px on phones; the selected one gets a full ink border, not only a tint. */
-export const chip = (on: boolean) => clsx("inline-flex min-h-[44px] md:min-h-8 cursor-pointer items-center gap-1.5 border px-3 text-sm", on ? "border-ink bg-accent-soft font-medium" : "border-line-strong text-muted hover:text-ink");
+export const chip = (on: boolean) => clsx("inline-flex min-h-[44px] md:min-h-8 cursor-pointer items-center gap-1.5 border px-3 text-sm", on ? "border-ink bg-ink font-medium text-accent-ink [&_.text-muted]:text-accent-ink" : "border-line-strong text-muted hover:text-ink");
 export const switchRoot = "relative h-5 w-9 shrink-0 cursor-pointer rounded-full bg-line-strong data-[state=checked]:bg-accent disabled:opacity-50";
 export const switchThumb = "block size-4 translate-x-0.5 rounded-full bg-surface transition-transform data-[state=checked]:translate-x-[18px]";
-export const dialogBox = "fixed left-1/2 top-[15vh] z-[51] w-[min(30rem,calc(100%-2rem))] -translate-x-1/2 border border-line bg-surface p-5 shadow-2xl";
+export const dialogBox = "fixed left-1/2 top-[15vh] z-[51] w-[min(30rem,calc(100%-2rem))] -translate-x-1/2 border border-line bg-surface p-5 shadow-[0_24px_48px_-12px_var(--shadow)]";
 
 /**
  * Radix returns focus only to a Dialog.Trigger; ours open from state, so this hands focus back to whatever opened the
@@ -47,21 +47,21 @@ export function PriorityPill({ priority, count }: { priority: Priority; count?: 
 
 const STATUS_CLASS: Record<JobStatus, string> = {
   planned: "bg-next-bg text-next-fg", approved: "bg-planned-bg text-planned-fg", dispatched: "bg-planned-bg text-planned-fg", verifying: "bg-planned-bg text-planned-fg",
-  succeeded: "bg-accent-soft text-ink", failed: "bg-now-bg text-now-fg", rolled_back: "bg-now-bg text-now-fg", rollback_failed: "bg-now-bg text-now-fg",
+  succeeded: "!border-ink bg-surface text-ink", failed: "bg-now-bg text-now-fg", rolled_back: "bg-now-bg text-now-fg", rollback_failed: "bg-now-bg text-now-fg",
   // outlined only, so a deliberate cancel never looks like a success
   not_fixed: "bg-now-bg text-now-fg", aborted: "bg-now-bg text-now-fg", cancelled: "border-dashed !border-line-strong bg-transparent text-muted",
 };
 export const StatusPill = ({ status }: { status: JobStatus }) => (
   <span className={clsx("inline-flex items-center gap-1.5 whitespace-nowrap border border-line px-2 py-0.5 text-xs font-medium", STATUS_CLASS[status])}>
-    <span aria-hidden className="size-1.5 bg-current" />{JOB_STATUS_LABEL[status]}
+    {status === "succeeded" ? <Check aria-hidden className="size-3" /> : <span aria-hidden className="size-1.5 bg-current" />}{JOB_STATUS_LABEL[status]}
   </span>
 );
 
 /** Small bordered label. `why` is read to screen readers and shown on hover; say anything that matters visibly too. */
-export function Tag({ children, tone = "muted", why, className }: { children: ReactNode; tone?: "muted" | "now" | "ink"; why?: string; className?: string }) {
+export function Tag({ children, tone = "muted", why, className }: { children: ReactNode; tone?: "muted" | "now" | "ink" | "warn"; why?: string; className?: string }) {
   return (
-    <span title={why} className={clsx("inline-flex shrink-0 items-center gap-1 border px-1.5 py-px text-[11px] font-semibold tracking-wide",
-      tone === "now" ? "border-now-fg text-now-fg" : tone === "ink" ? "border-ink text-ink" : "border-line-strong text-muted", className)}>
+    <span title={why} className={clsx("inline-flex shrink-0 items-center gap-1 px-1.5 py-px text-xs font-semibold tracking-wide",
+      tone === "now" ? "bg-now-bg text-now-fg" : tone === "warn" ? "bg-warn-bg text-warn-fg" : tone === "ink" ? "bg-accent-soft text-ink" : "bg-sunken text-muted", className)}>
       {children}{why && <span className="sr-only">: {why}</span>}
     </span>
   );
@@ -194,7 +194,7 @@ export function CopyBlock({ label, text }: { label: string; text: string }) {
           {done ? "Copied" : "Copy"}
         </button>
       </div>
-      <pre tabIndex={0} className="overflow-x-auto bg-sunken p-3 font-mono text-[13px] leading-relaxed whitespace-pre-wrap break-all select-all"><code>{text}</code></pre>
+      <pre tabIndex={0} className="text-mono overflow-x-auto bg-sunken p-3 font-mono leading-relaxed whitespace-pre-wrap break-all select-all"><code>{text}</code></pre>
       <span role="status" className="sr-only">{done ? "Copied to clipboard" : ""}</span>
     </div>
   );

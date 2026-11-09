@@ -33,6 +33,14 @@ it("approve dialog states exactly what will happen", () => {
   expect(screen.getByRole("button", { name: "Approve and run" })).toBeEnabled();
 });
 
+it("approving your own plan says so before you approve", () => {
+  const r = render(<ApproveDialog job={{ summary: "Upgrade openssl", hostname: "web-1" }} ownPlan onOpenChange={() => {}} onConfirm={() => {}} />);
+  expect(screen.getByText(/You planned this fix\. Approving it yourself is recorded as self-approved/)).toBeInTheDocument();
+  r.unmount();
+  render(<ApproveDialog job={{ summary: "Upgrade openssl", hostname: "web-1" }} onOpenChange={() => {}} onConfirm={() => {}} />);
+  expect(screen.queryByText(/You planned this fix/)).not.toBeInTheDocument();
+});
+
 it("settings show when the last alert delivery failed", async () => {
   const body = { webhook_set: true, webhook_host: "hooks.slack.com", webhook_format: "slack", emails: [], email_available: false, last_delivery_failed: true,
     recent: [{ ts: new Date().toISOString(), kind: "remediation_rolled_back", channel: "webhook", urgent: false, ok: false, error: "RuntimeError: webhook returned HTTP 500" }] };
@@ -115,7 +123,8 @@ it("assets say once why agents are outdated and what happens next; each row keep
   expect(screen.getByText(/failed its self-test/)).toBeInTheDocument();
   // the same reason is said once, naming every machine it applies to
   expect(screen.getAllByText(/can't update itself. Rerun the install command/)).toHaveLength(1);
-  expect(screen.getByText("web-2, web-3:")).toBeInTheDocument();
+  expect(screen.getByText("2 machines:")).toBeInTheDocument();
+  expect(screen.getByText("web-2,")).toHaveClass("whitespace-nowrap");  // names wrap whole, never mid-name
   summary.unmount();
   row({ agent_update: "current" });
   expect(screen.queryByText(/Agent (outdated|update)/)).not.toBeInTheDocument();

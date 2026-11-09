@@ -1,17 +1,20 @@
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { CircleCheck, CircleMinus, CircleX, Download, ShieldAlert, ShieldCheck } from "lucide-react";
+import { CircleAlert, CircleCheck, CircleMinus, CircleX, Download, ShieldAlert, ShieldCheck } from "lucide-react";
 import clsx from "clsx";
-import { api, filtersToSearch, humaniseKind, parseFilters, parseUtc, plural, relativeTime, useTitle, type ControlStatus, type EvidenceReport, type LedgerEntry } from "./lib";
+import { api, assetsQ, filtersToSearch, jobsQ, humaniseKind, parseFilters, parseUtc, plural, relativeTime, summaryQ, useTitle, type ControlStatus, type EvidenceReport, type LedgerEntry } from "./lib";
 import { btnPrimary, CopyBlock, ErrorState, input, Loading } from "./ui";
 
 const LEDGER_SHOWN = 50;
+/** Below this many fixes in the period, a "Met" timeliness control is said to rest on little evidence. */
+const SMALL_SAMPLE = 5;
+const LEDGER_GROUPS = [["", "Everything"], ["decisions", "Decisions"], ["fixes", "Fixes"], ["detections", "Detections"], ["access", "Sign-ins and access"]] as const;
 
 /** What a ledger entry is about, from its own data: "CVE-2024-1234 · openssl · web-1" rather than an 8-character id. */
 function ledgerSubject(e: LedgerEntry): string {
   const d = e.data ?? {};
   const str = (k: string) => (typeof d[k] === "string" ? (d[k] as string) : "");
-  const parts = [str("vuln_id"), str("package") || str("action").split("|")[1] || "", str("host") || str("hostname") || str("name") || str("email")].filter(Boolean);
+  const parts = [str("vuln_id"), str("package") || str("action").split("|")[1] || "", str("host") || str("hostname") || str("name") || str("email"), str("by") && `by ${str("by")}`].filter(Boolean);
   return parts.length ? [...new Set(parts)].join(" · ") : e.subject.slice(0, 8);
 }
 
@@ -25,6 +28,8 @@ const STATUS: Record<ControlStatus, { label: string; className: string; Icon: ty
   // Nothing to assess is said plainly, never shown as a pass (DECISIONS 45).
   no_activity: { label: "No activity in period", className: "border-line-strong text-muted", Icon: CircleMinus },
 };
+// met on the period's own terms, with something that would worry an auditor now: not a clean pass
+const EXCEPTED = { label: "Met", className: "border-warn-fg bg-warn-bg text-warn-fg", Icon: CircleAlert };
 const date = (s: string) => parseUtc(s).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 
 /** `period` comes from the URL (?period=30), so a link or reload keeps it. */
@@ -33,9 +38,12 @@ export function EvidencePage() {
   const { period } = useSearch({ strict: false }) as { period?: string };
   const navigate = useNavigate();
   const days = PERIODS.includes(Number(period)) ? Number(period) : 90;
-  const setDays = (d: number) => navigate({ to: "/evidence", search: d === 90 ? {} : { period: String(d) }, replace: true });
-  const report = useQuery({ queryKey: ["evidence-report", days], queryFn: () => api<EvidenceReport>(`/api/evidence/report?days=${days}`) });
-  const ledger = useQuery({ queryKey: ["ledger"], queryFn: () => api<{ problems: string[]; entries: LedgerEntry[]; total: number }>(`/api/evidence/ledger?limit=${LEDGER_SHOWN}`) });
+  const setDays = (d: number) => navigate({ to: "/evidence", search: (s: Record<string, unknown>) => ({ ...s, period: d === 90 ? undefined : String(d) }), replace: true, resetScroll: false });
+  const report = useQuery({ queryKey: ["evidence-report", days], queryFn: () => api<EvidenceReport>(`/api/evidence/report?days=${days}&summary=true`) });
+  const group = (useSearch({ strict: false }) as { show?: string }).show ?? "";
+  const setGroup = (g: string) => navigate({ to: "/evidence", search: (s: Record<string, unknown>) => ({ ...s, show: g || undefined }), replace: true, resetScroll: false });
+  const ledger = useQuery({ queryKey: ["ledger", group], queryFn: () => api<{ problems: string[]; entries: LedgerEntry[]; total: number }>(`/api/evidence/ledger?limit=${LEDGER_SHOWN}${group ? `&group=${group}` : ""}`),
+    placeholderData: (p) => p });
 
   return (
     <div className="flex flex-col gap-8">
@@ -59,10 +67,14 @@ export function EvidencePage() {
       <section aria-labelledby="ledger">
         <h2 id="ledger" className="text-lg font-semibold">Ledger</h2>
         {/* say what's shown: the page promises every decision, and the full chain is in the signed pack */}
-        <p className="mb-3 mt-1 text-sm text-muted">
-          {ledger.data && ledger.data.total > LEDGER_SHOWN ? `Latest ${LEDGER_SHOWN} of ${ledger.data.total.toLocaleString()} entries, newest first.` : "Newest first."}
-          {report.data && ` The signed pack for the last ${days} days holds ${report.data.ledger.entries.toLocaleString()} of them, with every checkpoint.`}
+        <p role="status" className="mb-3 mt-1 text-sm text-muted">
+          {ledger.data && ledger.data.total > LEDGER_SHOWN ? `Latest ${LEDGER_SHOWN} of ${ledger.data.total.toLocaleString()} ${group ? "matching " : ""}entries, newest first.` : "Newest first."}
+          {report.data && ` The signed pack for the last ${days} days holds all ${report.data.ledger.entries.toLocaleString()} entries of that period, with every checkpoint.`}
         </p>
+        <div role="group" aria-label="Show" className="mb-3 inline-flex flex-wrap border border-line-strong bg-surface p-0.5">
+          {LEDGER_GROUPS.map(([g, label]) => <button key={g} aria-pressed={group === g} onClick={() => setGroup(g)}
+            className={clsx("min-h-[44px] cursor-pointer px-3 text-sm md:min-h-8", group === g ? "bg-ink font-medium text-accent-ink" : "text-muted hover:text-ink")}>{label}</button>)}
+        </div>
         {ledger.isPending ? <Loading className="h-40" label="Loading ledger…" /> : ledger.error ? <ErrorState error={ledger.error} retry={() => ledger.refetch()} /> : <LedgerView problems={ledger.data.problems} entries={ledger.data.entries} />}
       </section>
     </div>
@@ -94,7 +106,7 @@ function ReportView({ r, days }: { r: EvidenceReport; days: number }) {
             <span className={m.overdue_open > 0 ? "text-now-fg" : undefined}>{m.overdue_open}</span>
             {m.overdue_open > 0 && (
               <Link to="/findings" search={filtersToSearch({ ...parseFilters({}), overdue: true, fixable: false })}
-                className="inline-flex min-h-[44px] items-center text-sm font-medium text-accent underline md:min-h-0">
+                className="inline-flex tap items-center text-sm font-medium text-accent underline">
                 View {plural(m.overdue_open, "finding")}
               </Link>
             )}
@@ -105,20 +117,21 @@ function ReportView({ r, days }: { r: EvidenceReport; days: number }) {
       <section aria-labelledby="controls">
         <h2 id="controls" className="text-lg font-semibold">Control status</h2>
         <p className="mb-3 mt-1 text-sm text-muted">
-          {counts.met ?? 0} met · {counts.not_met ?? 0} not met · {counts.no_activity ?? 0} with no activity in this period
+          {r.controls.filter((c) => c.status === "met" && !c.exceptions).length} met · {r.controls.filter((c) => c.status === "met" && c.exceptions).length} met with exceptions · {counts.not_met ?? 0} not met · {counts.no_activity ?? 0} with no activity in this period
         </p>
+        <Exceptions resolved={m.resolved} />
         <ul className="grid gap-2 md:grid-cols-2">
           {r.controls.map((c) => {
-            const st = STATUS[c.status] ?? STATUS.not_met;
+            const st = c.status === "met" && c.exceptions ? EXCEPTED : STATUS[c.status] ?? STATUS.not_met;
             return (
               <li key={c.framework + c.control} className="flex flex-col border border-line bg-surface p-4">
                 <p className="text-sm text-muted">{c.framework}</p>
                 <h3 className="font-semibold">{c.control}</h3>
                 <p className="mt-1 text-sm">{c.requirement}</p>
                 <p className={clsx("mt-3 inline-flex w-fit items-center gap-1.5 border px-2 py-0.5 text-xs font-medium", st.className)}>
-                  <st.Icon className="size-3.5" aria-hidden />{st.label}
+                  <st.Icon className="size-3.5" aria-hidden />{st.label}{c.status === "met" && !!c.exceptions && `, with ${plural(c.exceptions, "exception")}`}
                 </p>
-                <p className="mt-2 font-mono text-[13px] text-ink">{c.evidence}</p>
+                <p className="mt-2 text-sm text-ink">{c.evidence}</p>
               </li>
             );
           })}
@@ -132,6 +145,27 @@ function ReportView({ r, days }: { r: EvidenceReport; days: number }) {
         <SigningKey />
       </section>
     </>
+  );
+}
+
+/** What a "Met" doesn't say: how little it may rest on, and what is wrong right now. */
+function Exceptions({ resolved }: { resolved: number }) {
+  const s = useQuery(summaryQ).data;
+  const now = s?.open_by_priority["fix-now"] ?? 0;
+  const quiet = s?.hosts_not_reporting ?? 0;
+  if (resolved >= SMALL_SAMPLE && !now && !quiet) return null;
+  return (
+    <div className="mb-3 flex flex-col gap-1 border border-line-strong bg-surface px-3 py-2 text-sm">
+      {resolved < SMALL_SAMPLE && <p>Timeliness controls here rest on {plural(resolved, "fix", "fixes")} in this period, too few to show a trend. Read “Met” as “nothing late so far”.</p>}
+      {(now > 0 || quiet > 0) && (
+        <p>Right now:{" "}
+          {now > 0 && <Link to="/findings" search={filtersToSearch({ ...parseFilters({}), priority: ["fix-now"], fixable: false })} className="font-medium underline">{plural(now, "Fix now finding")} open</Link>}
+          {now > 0 && quiet > 0 && ", "}
+          {quiet > 0 && <Link to="/assets" className="font-medium underline">{plural(quiet, "machine")} not reporting</Link>}.
+          {" "}Controls are judged on the period, so these may not show above yet.
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -151,7 +185,11 @@ function SigningKey() {
   );
 }
 
+const FAILED_KIND = /rolled_back|failed|aborted|not_fixed|revoked|guessing|break_glass/;
+
 function LedgerView({ problems, entries }: { problems: string[]; entries: LedgerEntry[] }) {
+  // entries name their subject by id (a job, a machine): say which machine
+  const jobHost = new Map([...(useQuery(jobsQ).data ?? []).map((j) => [j.id, j.hostname] as const), ...(useQuery(assetsQ).data ?? []).map((a) => [a.id, a.hostname] as const)]);
   return (
     <div className="flex flex-col gap-3">
       {problems.length === 0 ? (
@@ -166,11 +204,13 @@ function LedgerView({ problems, entries }: { problems: string[]; entries: Ledger
       {entries.length === 0 ? <p className="text-sm text-muted">Nothing recorded yet.</p> : (
         <ol className="flex flex-col divide-y divide-line overflow-hidden border border-line bg-surface">
           {entries.map((e) => (
-            <li key={e.seq} className="flex flex-wrap items-baseline gap-x-4 gap-y-0.5 px-4 py-2.5 text-sm">
-              <span className="min-w-0 flex-1 basis-48 font-medium">{humaniseKind(e.kind)}</span>
-              <span className="min-w-0 break-all text-xs text-muted" title={e.subject}><span className="sr-only">About </span>{ledgerSubject(e)}</span>
+            <li key={e.seq} className={clsx("flex flex-wrap items-baseline gap-x-4 gap-y-0.5 px-4 py-2.5 text-sm", FAILED_KIND.test(e.kind) && "bg-now-bg")}>
+              <span className="min-w-0 flex-1 basis-48 font-medium">{e.kind.startsWith("remediation_")
+                ? <Link to="/remediation" hash={`job-${e.subject}`} className="text-ink underline decoration-line-strong hover:decoration-ink">{humaniseKind(e.kind)}</Link>
+                : humaniseKind(e.kind)}</span>
+              <span className="min-w-0 break-all text-sm text-muted" title={e.subject}><span className="sr-only">About </span>{[jobHost.get(e.subject), ledgerSubject(e)].filter(Boolean).join(" · ")}</span>
               <code className="font-mono text-xs text-muted" title={e.hash}><span className="sr-only">Hash </span>{e.hash.slice(0, 10)}</code>
-              <time className="w-24 text-right text-muted" dateTime={parseUtc(e.ts).toISOString()} title={parseUtc(e.ts).toLocaleString()}>{relativeTime(e.ts)}</time>
+              <time className="text-right text-muted" dateTime={parseUtc(e.ts).toISOString()} title={relativeTime(e.ts)}>{parseUtc(e.ts).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}</time>
             </li>
           ))}
         </ol>

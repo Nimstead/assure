@@ -3,10 +3,8 @@ import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRootRoute, createRoute, createRouter, lazyRouteComponent, Outlet, RouterProvider } from "@tanstack/react-router";
 import "./index.css";
-import { AssetsPage } from "./assets";
 import { FindingsPage } from "./findings";
 import { Home } from "./home";
-import { RemediationPage } from "./remediation";
 import { Shell } from "./shell";
 import type { RawSearch } from "./lib";
 
@@ -16,17 +14,27 @@ const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 15
 const SignIn = lazyRouteComponent(() => import("./auth"), "SignInPage");
 const SignUp = lazyRouteComponent(() => import("./auth"), "SignUpPage");
 
-const root = createRootRoute({ component: Outlet });
+function NotFound() {
+  return (
+    <main id="main" className="mx-auto flex max-w-xl flex-col gap-4 px-4 py-16">
+      <h1 className="text-3xl font-semibold">There's no page here</h1>
+      <p className="text-muted">The address may be mistyped, or the page moved. Your data is unaffected.</p>
+      <p className="flex flex-wrap gap-4"><a href="/" className="font-medium underline">Go to Fix first</a><a href="/findings" className="font-medium underline">Findings</a><a href="/assets" className="font-medium underline">Assets</a></p>
+    </main>
+  );
+}
+
+const root = createRootRoute({ component: Outlet, notFoundComponent: NotFound });
 const signin = createRoute({ getParentRoute: () => root, path: "/signin", component: SignIn });
 const signup = createRoute({ getParentRoute: () => root, path: "/signup", component: SignUp });
 const shell = createRoute({ getParentRoute: () => root, id: "app", component: Shell });
 const home = createRoute({ getParentRoute: () => shell, path: "/", component: Home });
 const add = createRoute({ getParentRoute: () => shell, path: "/add", component: lazyRouteComponent(() => import("./onboarding"), "Onboarding") });
-const assets = createRoute({ getParentRoute: () => shell, path: "/assets", component: AssetsPage });
-const remediation = createRoute({ getParentRoute: () => shell, path: "/remediation", component: RemediationPage });
+const assets = createRoute({ getParentRoute: () => shell, path: "/assets", component: lazyRouteComponent(() => import("./assets"), "AssetsPage") });
+const remediation = createRoute({ getParentRoute: () => shell, path: "/remediation", component: lazyRouteComponent(() => import("./remediation"), "RemediationPage") });
 const evidence = createRoute({
   getParentRoute: () => shell, path: "/evidence",
-  validateSearch: (raw: Record<string, unknown>): { period?: string } => (raw.period ? { period: String(raw.period) } : {}),
+  validateSearch: (raw: Record<string, unknown>): { period?: string; show?: string } => ({ ...(raw.period ? { period: String(raw.period) } : {}), ...(raw.show ? { show: String(raw.show) } : {}) }),
   component: lazyRouteComponent(() => import("./evidence"), "EvidencePage"),
 });
 const settings = createRoute({ getParentRoute: () => shell, path: "/settings", component: lazyRouteComponent(() => import("./settings"), "SettingsPage") });

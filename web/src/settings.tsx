@@ -50,10 +50,10 @@ function SectionBar() {
     return () => io.disconnect();
   }, []);
   return (
-    <nav aria-label="Settings sections" className="sticky top-[53px] z-[5] -mx-4 border-y border-line bg-bg md:top-0 md:mx-0">
+    <nav aria-label="Settings sections" className="sticky top-[var(--header-h,53px)] z-[5] -mx-4 border-y border-line bg-bg md:top-0 md:mx-0">
       <div className="flex gap-1 overflow-x-auto px-4 py-1.5 [scrollbar-width:none] md:px-0 [&::-webkit-scrollbar]:hidden">
         {GROUPS.map((g) => (
-          <a key={g.id} href={`#${g.id}`} aria-current={current === g.id ? "location" : undefined}
+          <a key={g.id} href={`#${g.id}`} aria-current={current === g.id ? "location" : undefined} onClick={() => setCurrent(g.id)} onFocus={(e) => e.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" })}
             className="inline-flex min-h-[44px] shrink-0 items-center px-3 text-sm text-muted no-underline hover:bg-sunken hover:text-ink aria-[current]:font-medium aria-[current]:text-ink aria-[current]:shadow-[inset_0_-2px_0_var(--ink)] md:min-h-9">
             {g.title}
           </a>
@@ -137,12 +137,12 @@ export function SettingsPage() {
           <h3 id="ladder" className="text-lg font-semibold">Trust ladder</h3>
           {!admin ? <p className="text-sm"><strong className="font-semibold">{MODES.find((m) => m.value === s.remediation_mode)?.title}.</strong> {MODES.find((m) => m.value === s.remediation_mode)?.body} <span className="text-muted">Only organisation admins can change this.</span></p> : <>
             {/* Choosing only selects; nothing is saved until Save, so arrowing through the radios can't switch on Auto. */}
-            <RadioGroup.Root aria-labelledby="ladder" value={mode ?? s.remediation_mode} onValueChange={(v) => { save.reset(); setMode(v as Settings["remediation_mode"]); }} className="grid w-full gap-2 md:grid-cols-3">
+            <RadioGroup.Root aria-labelledby="ladder" value={mode ?? s.remediation_mode} onValueChange={(v) => { save.reset(); setMode(v as Settings["remediation_mode"]); }} className="grid w-full grid-cols-[minmax(0,1fr)] gap-2 md:grid-cols-3">
               {MODES.map((m) => (
                 <RadioGroup.Item key={m.value} value={m.value} className="group flex cursor-pointer flex-col items-start gap-1.5 border border-line-strong bg-surface p-4 text-left hover:border-ink data-[state=checked]:border-ink data-[state=checked]:bg-accent-soft data-[state=checked]:shadow-[inset_0_0_0_1px_var(--ink)]">
                   <span className="flex w-full items-center justify-between gap-2 font-semibold">
                     <span className="flex items-center gap-2">
-                      <span aria-hidden className="grid size-4 shrink-0 place-items-center border border-ink"><span className="size-2 bg-ink group-data-[state=unchecked]:hidden" /></span>
+                      <span aria-hidden className="grid size-4 shrink-0 place-items-center rounded-full border border-ink"><span className="size-2 rounded-full bg-ink group-data-[state=unchecked]:hidden" /></span>
                       {m.title}
                     </span>
                     {m.value === s.remediation_mode && <Tag tone="ink">Current</Tag>}
@@ -211,7 +211,7 @@ export function SettingsPage() {
           )}
           {!admin ? <p className="text-sm">Agent updates are <strong className="font-semibold">{s.agent_updates_paused ? "paused" : "on"}</strong>. <span className="text-muted">Only organisation admins can change this.</span></p> : (
             <div className="flex flex-wrap items-center gap-3">
-              <label className="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm md:min-h-0">
+              <label className="flex tap cursor-pointer items-center gap-2 text-sm">
                 <Switch.Root checked={s.agent_updates_paused} disabled={save.isPending} onCheckedChange={(agent_updates_paused) => save.mutate({ agent_updates_paused })} className={switchRoot}>
                   <Switch.Thumb className={switchThumb} />
                 </Switch.Root>
@@ -260,6 +260,8 @@ function MaintenanceSection({ s, admin, pending, onSave, saved, error }: { s: Se
   const h = Number(hours), d = Number(deadline);
   const ok = !on || (days.length > 0 && /^([01]\d|2[0-3]):[0-5]\d$/.test(start) && Number.isInteger(h) && h >= 1 && h <= 24);
   const dOk = Number.isInteger(d) && d >= 1 && d <= 168;
+  // like every other Save here: enabled only once something changed
+  const dirty = on !== !!w || d !== s.reboot_deadline_hours || (on && (days.join() !== (w?.days ?? []).join() || start !== w?.start || h !== w?.hours));
   const describe = (x: MaintenanceWindow | null) => x ? `${x.days.map((i) => DAYS[i]).join(", ")} from ${x.start} for ${x.hours} h (${x.tz})` : "any time";
   return (
     <section aria-labelledby="window" className="flex flex-col items-start gap-3">
@@ -267,18 +269,18 @@ function MaintenanceSection({ s, admin, pending, onSave, saved, error }: { s: Se
       <p className="max-w-prose text-sm text-muted">Approved fixes start only inside this window, and servers restart only inside it; a machine's own window on the Assets page overrides it. Someone signed in to a workstation is told and can put the restart off for up to the deadline below. Nodes of one failover cluster, and one domain's controllers, are always fixed one at a time.</p>
       {!admin ? <p className="text-sm">Fixes run <strong className="font-semibold">{describe(w)}</strong>; restarts can be put off for {s.reboot_deadline_hours} hours. <span className="text-muted">Only organisation admins can change this.</span></p> : (
         <form className="flex flex-col items-start gap-3" onSubmit={(e) => { e.preventDefault(); if (ok && dOk) onSave({ maintenance_window: on ? { days, start, hours: h, tz } : {}, reboot_deadline_hours: d }); }}>
-          <label className="flex min-h-[44px] items-center gap-2 text-sm md:min-h-0"><input type="checkbox" checked={on} onChange={(e) => setOn(e.target.checked)} /> Only run fixes inside a window</label>
+          <label className="flex tap items-center gap-2 text-sm"><input type="checkbox" checked={on} onChange={(e) => setOn(e.target.checked)} /> Only run fixes inside a window</label>
           {on && <fieldset className="flex flex-wrap gap-2" aria-label="Days">{DAYS.map((name, i) => (
-            <label key={name} className="flex min-h-[44px] items-center gap-1 text-sm md:min-h-0"><input type="checkbox" checked={days.includes(i)} onChange={(e) => setDays(e.target.checked ? [...days, i].sort() : days.filter((x) => x !== i))} /> {name}</label>))}
+            <label key={name} className="flex tap items-center gap-1 text-sm"><input type="checkbox" checked={days.includes(i)} onChange={(e) => setDays(e.target.checked ? [...days, i].sort() : days.filter((x) => x !== i))} /> {name}</label>))}
           </fieldset>}
           {on && <div className="flex flex-wrap gap-3">
             <Field label={`Starts (${tz})`} className="w-40"><input className={input} type="time" value={start} onChange={(e) => setStart(e.target.value)} /></Field>
             <Field label="Length (hours)" hint="1 to 24." error={Number.isInteger(h) && h >= 1 && h <= 24 ? null : "Enter whole hours from 1 to 24."} className="w-40"><input className={input} type="number" min={1} max={24} value={hours} onChange={(e) => setHours(e.target.value)} /></Field>
           </div>}
-          <Field label="Restart deadline (hours)" hint="How long a signed-in user can put off a restart, 1 to 168." error={dOk ? null : "Enter whole hours from 1 to 168."} className="w-56">
+          <Field label="Restart deadline (hours)" hint="How long a signed-in user can put off a restart, 1 to 168." error={dOk ? null : "Enter whole hours from 1 to 168."} className="w-full max-w-56">
             <input className={input} type="number" min={1} max={168} value={deadline} onChange={(e) => setDeadline(e.target.value)} />
           </Field>
-          <button className={btnPrimary} disabled={!ok || !dOk || pending}>{pending ? "Saving…" : "Save"}</button>
+          <button className={btnPrimary} disabled={!ok || !dOk || pending || !dirty}>{pending ? "Saving…" : "Save"}</button>
           {saved}{error}
         </form>)}
     </section>
@@ -295,7 +297,7 @@ export function PlatformSection({ p }: { p: Settings["platform"] }) {
         {p.update_available ? <> · <a href={p.latest_url ?? undefined} className="font-medium text-accent underline">{p.latest} ({p.latest_channel}) is available</a></> : p.checked ? <span className="text-muted"> · up to date</span> : null}
       </p>
       <p className="max-w-prose text-sm text-muted">
-        Follows the <strong className="font-semibold text-ink">{p.channel}</strong> channel{p.channel === "stable" ? "" : p.channel === "beta" ? " (beta and stable releases)" : " (every release, earliest first)"}. Set <code className="bg-sunken px-1">NIMSTEAD_UPDATE_CHANNEL</code> to preview, beta or stable in <code className="bg-sunken px-1">.env</code> on the server.
+        Follows the <strong className="font-semibold text-ink">{p.channel}</strong> channel{p.channel === "stable" ? "" : p.channel === "beta" ? " (beta and stable releases)" : " (every release, earliest first)"}. Set <code className="break-all bg-sunken px-1">NIMSTEAD_UPDATE_CHANNEL</code> to preview, beta or stable in <code className="bg-sunken px-1">.env</code> on the server.
       </p>
       {p.update_available && <p className="max-w-prose text-sm text-muted">Install it on the Docker host with <code className="bg-sunken px-1">deploy/update.sh</code>. It checks the release signature, backs up the database, and rolls back automatically if the new version doesn't come up healthy.</p>}
       {last && (
@@ -331,7 +333,7 @@ function TokensSection() {
                 <li key={t.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 text-sm">
                   <code className="font-mono text-xs">{t.id}</code>
                   {t.sandbox && <Tag>Test machines</Tag>}
-                  <span className="min-w-0 flex-1 text-muted">
+                  <span className="min-w-[8rem] flex-1 text-muted">
                     {t.revoked ? "Revoked" : expired ? "Expired " : "Expires "}
                     {!t.revoked && <time dateTime={parseUtc(t.expires).toISOString()} title={parseUtc(t.expires).toLocaleString()}>{relativeTime(t.expires)}</time>}
                   </span>

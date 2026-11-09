@@ -25,10 +25,11 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.concurrency import run_in_threadpool
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import Integer, and_, delete, func, or_, select
+from sqlalchemy import Integer, and_, case, delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from nimstead import ai, engine, evidence, external, lifecycle, mfa, notify, remediate, sbom, sso, updates, winbaseline, windrivers
@@ -238,6 +239,15 @@ def csp(index: Path) -> str:
             "object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
 
 
+class HashedAssets(StaticFiles):
+    """Vite names every built file by its content hash, so a browser may keep it for good."""
+    async def get_response(self, path, scope):
+        res = await super().get_response(path, scope)
+        if res.status_code == 200:
+            res.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return res
+
+
 def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None, dns_lookup=None) -> FastAPI:
     oidc = sso.Oidc(oidc_http)
     Sessions = make_sessionmaker(db_url) if db_url else make_sessionmaker()
@@ -247,6 +257,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     allowed_origins = {o for o in os.environ.get("NIMSTEAD_ALLOWED_ORIGINS", "").split(",") if o}
     policy = csp(WEB_DIST / "index.html")
     app.add_middleware(BodyLimit)  # first, so innermost: routes read the body through it directly, not via a task group
+    # findings lists and the JS bundle shrink 5-10x; event streams are skipped by Starlette. BREACH needs a private value
+    # reflected next to attacker-chosen text in one response, which these JSON bodies don't carry (no CSRF tokens in bodies)
+    app.add_middleware(GZipMiddleware, minimum_size=1024)
 
     @app.middleware("http")
     async def guard(request: Request, call_next):
@@ -1238,6 +1251,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             "id": f.id, "asset_id": f.asset_id, "hostname": hostname, "ecosystem": f.ecosystem,
             "package": f.package, "installed_version": f.installed_version, "fixed_version": f.fixed_version,
             "setting_fix": f.ecosystem == "WinConfig" and f.package in remediate.CONFIG_FIXES,
+            "plannable": remediate.fix_path(f.ecosystem, f.package)["plannable"],  # the same rule Home's recommended fixes use
             # how far the curated rule behind a Windows app finding was proven on a real VM (W13; sandbox/winapps_evidence.py)
             "rule_evidence": (WINAPP_EVIDENCE.get(f.package, ("pattern",))[0] if f.ecosystem == "WinApp" else None),
             "vuln_id": f.vuln_id, "advisory_ids": f.advisory_ids, "summary": f.summary, "cvss": f.cvss,
@@ -1254,12 +1268,15 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         kev: bool | None = None
         overdue: bool | None = None  # open and past its deadline
 
-    def with_due(s: Session, org_id: str, f: FindingFilter, limit: int | None = None):
+    def with_due(s: Session, org_id: str, f: FindingFilter, limit: int | None = None, sort: str = "score", offset: int = 0):
         """find() plus each finding's deadline; the overdue filter needs the SLA history, so it's applied here."""
-        sla_at, t, n = evidence.sla_history(s, org_id), now(), 0
-        for x, h in find(s, org_id, f, None if f.overdue else limit):
+        sla_at, t, n, skip = evidence.sla_history(s, org_id), now(), 0, offset if f.overdue else 0
+        for x, h in find(s, org_id, f, None if f.overdue else limit, sort, 0 if f.overdue else offset):
             due = due_of(x, sla_at)
             if f.overdue and not (due and due < t):
+                continue
+            if skip:
+                skip -= 1
                 continue
             yield x, h, due
             n += 1
@@ -1267,8 +1284,46 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                 return
 
     @app.get("/api/findings")
-    def list_findings(user: CurrentUser, s: DB, f: Annotated[FindingFilter, Query()], limit: int = Query(500, ge=1, le=5000)):
-        return [finding_json(x, h, due) for x, h, due in with_due(s, user.org_id, f, limit)]
+    def list_findings(user: CurrentUser, s: DB, f: Annotated[FindingFilter, Query()], limit: int = Query(500, ge=1, le=5000),
+                      sort: Literal["score", "package", "host", "vuln", "newest"] = "score", view: Literal["full", "list"] = "full",
+                      offset: int = Query(0, ge=0)):
+        rows = with_due(s, user.org_id, f, limit, sort, offset)
+        if view == "list":  # what the table shows (one reason); the drawer fetches the rest by id
+            return [{"id": x.id, "asset_id": x.asset_id, "hostname": h, "ecosystem": x.ecosystem, "package": x.package, "installed_version": x.installed_version,
+                     "fixed_version": x.fixed_version, "vuln_id": x.vuln_id, "kev": x.kev, "score": x.score, "priority": x.priority,
+                     "reasons": x.reasons[:1]} for x, h, _ in rows]
+        return [finding_json(x, h, due) for x, h, due in rows]
+
+    @app.get("/api/findings/count")
+    def count_findings(user: CurrentUser, s: DB, f: Annotated[FindingFilter, Query()]):
+        """How many match, so a capped list can say how many it isn't showing."""
+        if f.overdue:  # the deadline is worked out per finding
+            return {"total": sum(1 for _ in with_due(s, user.org_id, f))}
+        return {"total": s.scalar(select(func.count()).select_from(find_stmt(user.org_id, f).subquery()))}
+
+    PRIORITY_RANK = {"fix-now": 0, "next": 1, "planned": 2, "low": 3}
+
+    @app.get("/api/findings/groups")
+    def group_findings(user: CurrentUser, s: DB, f: Annotated[FindingFilter, Query()], by: Literal["vuln", "package"] = "vuln"):
+        """One row per vulnerability or package across the fleet, worst first (the overdue filter isn't applied here)."""
+        sub = find_stmt(user.org_id, f).subquery()
+        k = sub.c.vuln_id if by == "vuln" else sub.c.package
+        rank = func.min(case(*((sub.c.priority == p, n) for p, n in PRIORITY_RANK.items()), else_=9))
+        rows = s.execute(
+            select(k, func.count(), func.count(sub.c.asset_id.distinct()), func.max(sub.c.score), func.max(case((sub.c.kev, 1), else_=0)),
+                   rank, func.max(sub.c.fixed_version), func.count(sub.c.package.distinct()), func.min(sub.c.package), func.min(sub.c.vuln_id),
+                   func.count(sub.c.vuln_id.distinct()), func.min(sub.c.ecosystem), func.count(sub.c.ecosystem.distinct()))
+            .group_by(k, *([] if by == "vuln" else [sub.c.ecosystem]))
+            .order_by(rank, func.max(sub.c.score).desc(), func.count().desc()).limit(500)).all()
+        names = {n: p for p, n in PRIORITY_RANK.items()}
+        highest: dict = {}  # (key, ecosystem) -> the fix that clears every finding in it, as Home picks
+        for key, eco, v in s.execute(select(k, sub.c.ecosystem, sub.c.fixed_version).where(sub.c.fixed_version.is_not(None)).distinct()):
+            cmp = comparator_for(eco)
+            cur = highest.get((key, eco))
+            highest[(key, eco)] = v if cur is None or (cmp(v, cur) > 0 if cmp else v > cur) else cur
+        return [{"key": r[0], "findings": r[1], "hosts": r[2], "score": r[3], "kev": bool(r[4]), "priority": names.get(r[5], "low"),
+                 "fixed_version": highest.get((r[0], r[11])) if r[12] == 1 else None, "packages": r[7], "package": r[8], "vuln_id": r[9], "vulns": r[10],
+                 "ecosystem": r[11] if r[12] == 1 else None} for r in rows]  # one distro's rows, or (by vulnerability) several
 
     CSV_COLUMNS = ["hostname", "package", "installed_version", "fixed_version", "vuln_id", "priority", "score", "cvss", "epss",
                    "kev", "status", "first_seen", "last_seen", "resolved_at", "summary"]
@@ -1298,7 +1353,15 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         return StreamingResponse(rows(), media_type="text/csv",
                                  headers={"Content-Disposition": f'attachment; filename="nimstead-findings-{f.status}.csv"'})
 
-    def find(s: Session, org_id: str, f: FindingFilter, limit: int | None = None):
+    SORTS = {"score": (Finding.score.desc(),), "package": (Finding.package, Finding.score.desc()), "host": (Asset.hostname, Finding.score.desc()),
+             "vuln": (Finding.vuln_id, Finding.score.desc()), "newest": (Finding.first_seen.desc(), Finding.score.desc())}
+
+    def find(s: Session, org_id: str, f: FindingFilter, limit: int | None = None, sort: str = "score", offset: int = 0):
+        stmt = find_stmt(org_id, f).order_by(*SORTS[sort], Asset.hostname, Finding.id).offset(offset)  # ties read by host, then stay put
+        return s.execute(stmt.limit(limit) if limit else stmt, execution_options={"yield_per": 1000})
+
+    def find_stmt(org_id: str, f: FindingFilter):
+        """The filtered findings with their host's name, unordered."""
         status, priority, asset_id, q, fixable, kev = f.status, f.priority, f.asset_id, f.q, f.fixable, f.kev
         stmt = (
             select(Finding, Asset.hostname).join(Asset, Asset.id == Finding.asset_id)
@@ -1317,15 +1380,21 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         if q:
             like = f"%{q.lower()}%"
             stmt = stmt.where(func.lower(Finding.package).like(like) | func.lower(Finding.vuln_id).like(like) | func.lower(Asset.hostname).like(like))
-        stmt = stmt.order_by(Finding.score.desc())
-        return s.execute(stmt.limit(limit) if limit else stmt, execution_options={"yield_per": 1000})
+        return stmt
 
     @app.get("/api/findings/{finding_id}")
     def get_finding(finding_id: str, user: CurrentUser, s: DB):
         f = s.get(Finding, finding_id)
         if not f or f.org_id != user.org_id:
             raise HTTPException(404, "Finding not found")
-        return finding_json(f, s.get(Asset, f.asset_id).hostname, due_of(f, evidence.sla_history(s, user.org_id)))
+        out = finding_json(f, s.get(Asset, f.asset_id).hostname, due_of(f, evidence.sla_history(s, user.org_id)))
+        fixes = s.scalars(select(Finding.fixed_version).where(Finding.asset_id == f.asset_id, Finding.ecosystem == f.ecosystem,
+                                                              Finding.package == f.package, Finding.status == "open")).all()
+        cmp = comparator_for(f.ecosystem)
+        known = [v for v in fixes if v]
+        # the highest fix clears them all, as on Home
+        out["package_fix"] = {"version": max(known, key=functools.cmp_to_key(cmp)) if cmp else sorted(known)[-1], "open": len(fixes)} if known else None
+        return out
 
     class Accept(BaseModel):
         reason: str = Field(min_length=10, max_length=2000)
@@ -1360,6 +1429,18 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             accept(s, user, f, body, everywhere=True)
         s.commit()
         return {"accepted": len(rows)}
+
+    class AcceptMany(Accept):
+        ids: list[str] = Field(min_length=1, max_length=1000)
+
+    @app.post("/api/findings/accept-many")
+    def accept_many(body: AcceptMany, user: Admin, s: DB):
+        """One reason for a selection of findings (each recorded on its own); ones already closed or not yours are skipped."""
+        rows = s.scalars(select(Finding).where(Finding.org_id == user.org_id, Finding.id.in_(set(body.ids)), Finding.status == "open")).all()
+        for f in rows:
+            accept(s, user, f, body)
+        s.commit()
+        return {"accepted": len(rows), "skipped": len(set(body.ids)) - len(rows)}
 
     class Revoke(BaseModel):
         reason: str = Field(min_length=3, max_length=2000)
@@ -1854,12 +1935,25 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     # --- evidence ----------------------------------------------------------
 
+    # the ledger page's "show" filter: entry kinds by what a reviewer is looking for
+    LEDGER_GROUPS = {
+        "decisions": ("finding_accepted", "finding_acceptance_revoked", "remediation_planned", "remediation_approved", "remediation_cancelled",
+                      "policy_changed", "asset_context_changed", "asset_deleted"),
+        "fixes": ("remediation_%",),
+        "detections": ("finding_opened", "finding_reopened", "finding_resolved", "inventory_received", "sbom_received", "external_scan%"),
+        "access": ("%login%", "password_%", "mfa_%", "user_%", "sessions_revoked", "api_token_%", "enroll_token_%", "sso_%"),
+    }
+
     @app.get("/api/evidence/ledger")
-    def ledger(user: CurrentUser, s: DB, limit: int = Query(100, ge=1, le=1000)):
-        rows = s.scalars(select(LedgerEntry).where(LedgerEntry.org_id == user.org_id).order_by(LedgerEntry.seq.desc()).limit(limit))
+    def ledger(user: CurrentUser, s: DB, limit: int = Query(100, ge=1, le=1000),
+               group: Literal["decisions", "fixes", "detections", "access"] | None = None):
+        q = select(LedgerEntry).where(LedgerEntry.org_id == user.org_id)
+        if group:
+            q = q.where(or_(*(LedgerEntry.kind.like(k) if "%" in k else LedgerEntry.kind == k for k in LEDGER_GROUPS[group])))
+        rows = s.scalars(q.order_by(LedgerEntry.seq.desc()).limit(limit))
         # full=False: only what's new since the last check (a full one runs at least hourly)
         return {"problems": evidence.verify_chain(s, user.org_id, full=False), "entries": [evidence.entry_dict(e) for e in rows],
-                "total": s.scalar(select(func.count()).select_from(LedgerEntry).where(LedgerEntry.org_id == user.org_id))}
+                "total": s.scalar(select(func.count()).select_from(q.subquery()))}
 
     @app.get("/api/evidence/public-key")
     def evidence_public_key():
@@ -1873,9 +1967,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         return Response(evidence.verifier_source(), media_type="text/x-python")
 
     @app.get("/api/evidence/report")
-    def evidence_report(user: CurrentUser, s: DB, days: int = Query(90, ge=1, le=730)):
+    def evidence_report(user: CurrentUser, s: DB, days: int = Query(90, ge=1, le=730), summary: bool = False):
         pack = evidence.build_pack(s, user.org_id, *evidence.default_period(days), with_entries=False)
         pack["ledger"] = {"head_hash": pack["ledger"]["head_hash"], "entries": pack["ledger"]["entries"]}  # a count: the page lists them
+        if summary:  # the Evidence page shows metrics and controls; every finding and asset (megabytes on a fleet) is for the pack
+            pack.pop("findings", None)
+            pack.pop("assets", None)
         return pack
 
     @app.get("/api/evidence/pack")
@@ -1966,7 +2063,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     # Built web UI (cd web && npm run build): one process serves everything. SPA routes fall back to index.html.
     if WEB_DIST.is_dir():
-        app.mount("/assets", StaticFiles(directory=WEB_DIST / "assets"), name="assets")
+        app.mount("/assets", HashedAssets(directory=WEB_DIST / "assets"), name="assets")
 
         @app.get("/{path:path}", include_in_schema=False)
         def spa(path: str):

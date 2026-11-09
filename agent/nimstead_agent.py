@@ -32,7 +32,7 @@ import urllib.parse
 import urllib.request
 import zipfile
 
-AGENT_VERSION = "0.6.5"  # the server reads this line to flag outdated agents; bump on every agent change
+AGENT_VERSION = "0.6.6"  # the server reads this line to flag outdated agents; bump on every agent change
 # Ed25519 public keys (hex) allowed to sign releases (DECISIONS 31): primary (GitHub Actions) and offline backup.
 # The server only relays signed releases, so it can withhold an update but never forge one. Empty = never self-update.
 RELEASE_KEYS = ["a91fa6539c6c2593009fc71b1c1fba341b5685ba7bc97c127c068b1d732b21d2", "2438f2ccebab5bf26edf9e21a8aa8f09abd1861f52fbe0d6641b28b90f8b0e5a"]  # noqa: E501
@@ -1568,8 +1568,8 @@ class Job:
 
     def rollback(self):
         for path, digest in self.artefacts:
-            self.step("rollback artefact intact " + os.path.basename(path), ok=os.path.exists(path) and _sha256(path) == digest,
-                      output="sha256 mismatch or missing")
+            intact = os.path.exists(path) and _sha256(path) == digest
+            self.step("rollback artefact intact " + os.path.basename(path), ok=intact, output="" if intact else "sha256 mismatch or missing")
         if self.mgr == "apt":
             self.step("rollback install", ["dpkg", "-i", *[p for p, _ in self.artefacts]])
         elif getattr(self, "snap_pre", None):

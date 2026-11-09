@@ -2,9 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DropdownMenu } from "radix-ui";
-import { FileCheck2, ListChecks, LogOut, Monitor, MoreHorizontal, Moon, Plus, Search, Server, Settings, ShieldAlert, Sun, Wrench, type LucideIcon } from "lucide-react";
+import { CircleHelp, FileCheck2, ListChecks, LogOut, Monitor, MoreHorizontal, Moon, Plus, Search, Server, Settings, ShieldAlert, Sun, Wrench, type LucideIcon } from "lucide-react";
 import clsx from "clsx";
-import { ADMIN_ONLY_ID, announce, api, ApiError, assetsQ, filtersToSearch, meQ, NEXT_THEME, parseFilters, setTheme, THEME_LABEL, themeChoice, type Finding, type ThemeChoice } from "./lib";
+import { savedViews, ADMIN_ONLY_ID, announce, api, ApiError, assetsQ, filtersToSearch, meQ, NEXT_THEME, parseFilters, setTheme, THEME_LABEL, themeChoice, type Finding, type ThemeChoice } from "./lib";
 import { ErrorState, LiveRegions, Loading, useReturnFocus } from "./ui";
 
 export const Logo = () => (
@@ -26,6 +26,7 @@ const NAV: { to: NavTo; label: string; icon: LucideIcon }[] = [
 // Phones: triage → fix → prove in the tab bar (auditors reach Evidence in one tap); configuration lives under "More".
 const TAB_ROUTES: NavTo[] = ["/", "/findings", "/remediation", "/evidence"];
 const TABS = NAV.filter((n) => TAB_ROUTES.includes(n.to));
+const DOCS = "https://github.com/Nimstead/assure/tree/main/docs";
 const MORE = NAV.filter((n) => !TAB_ROUTES.includes(n.to));
 // Keyboard/pointer highlight that reads at ≥3:1 on any surface, not just a tint.
 const highlight = "outline-none data-[highlighted]:shadow-[inset_0_0_0_2px_var(--ink)]";
@@ -46,13 +47,16 @@ function useSignOut() {
 function useFocusOnNavigate() {
   const path = useRouterState({ select: (r) => r.location.pathname });
   const first = useRef(true);
+  // read while rendering the new path, before the new page's own effects run: the old page's title is still set
+  const before = useMemo(() => document.title, [path]);
   useEffect(() => {
     if (first.current) { first.current = false; return; }
     if (location.hash) return;  // a #target (a job, a settings section) takes focus itself (useHashScroll)
     let tries = 0, raf = 0;
     const go = () => {
-      const h1 = document.querySelector<HTMLElement>("main h1");
-      if (!h1 && tries++ < 120) { raf = requestAnimationFrame(go); return; }
+      // a lazy page's chunk may still be loading, with the old page's h1 on screen: wait for the new page's title
+      const h1 = document.title !== before ? document.querySelector<HTMLElement>("main h1") : null;
+      if (!h1 && tries++ < 180) { raf = requestAnimationFrame(go); return; }
       if (h1 && !h1.closest("[role=dialog],[role=alertdialog]") && !document.querySelector("[role=dialog],[role=alertdialog]")) {
         h1.tabIndex = -1;
         h1.focus({ preventScroll: true });
@@ -61,7 +65,7 @@ function useFocusOnNavigate() {
     };
     raf = requestAnimationFrame(go);
     return () => cancelAnimationFrame(raf);
-  }, [path]);
+  }, [path, before]);
 }
 
 function useTheme() {
@@ -83,18 +87,42 @@ export function Shell() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setPaletteOpen((o) => !o); }
+      // "/" jumps to the page's search box, as in most tools, unless you're typing somewhere
+      else if (e.key === "/" && !(e.target instanceof HTMLElement && e.target.closest("input, textarea, select, [contenteditable]"))) {
+        const box = document.querySelector<HTMLInputElement>('main input[type="search"]');
+        if (box) { e.preventDefault(); box.focus(); }
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // the phone header's real height, for things that stick under it (it grows with the text size)
+  const header = useRef<HTMLElement>(null);
+  const tabbar = useRef<HTMLElement>(null);
+  const [large, setLarge] = useState(false);
+  useEffect(() => {
+    const el = header.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      document.documentElement.style.setProperty("--header-h", `${el.offsetHeight}px`);
+      // the header is 53px at default text; well past that, five tab labels can't fit side by side
+      setLarge(el.offsetHeight > 72);
+    });
+    ro.observe(el);
+    // the tab bar's real height (safe-area inset included), for what floats above it
+    const tb = tabbar.current;
+    const rt = tb ? new ResizeObserver(() => document.documentElement.style.setProperty("--tabbar-h", `${tb.offsetHeight}px`)) : null;
+    if (tb) rt!.observe(tb);
+    return () => { ro.disconnect(); rt?.disconnect(); };
+  }, [me.data]);  // the header renders once the account has loaded
   if (me.error instanceof ApiError && me.error.status === 401) return <Navigate to="/signin" />;
   if (me.isPending) return <div className="p-8"><Loading className="h-8 w-48" /></div>;
   if (me.error) return <div className="p-8"><ErrorState error={me.error} retry={() => me.refetch()} /></div>;
 
   const iconBtn = "inline-flex size-[44px] cursor-pointer items-center justify-center text-muted hover:bg-sunken hover:text-ink";
   return (
-    <div className="min-h-dvh md:grid md:grid-cols-[15rem_1fr]">
+    <div className="min-h-dvh md:grid md:grid-cols-[var(--sidebar-w)_minmax(0,1fr)]">
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-50 focus:bg-surface focus:px-3 focus:py-2">Skip to content</a>
       {/* One place that says things (DECISIONS 49): polite for "Saved" and page changes, assertive for failures. */}
       <LiveRegions />
@@ -110,7 +138,10 @@ export function Shell() {
             <Plus className="size-4" aria-hidden />Add machine
           </Link>
         </nav>
-        <div className="mt-auto flex flex-col gap-1 border-t border-line pt-3">
+        <a href={DOCS} target="_blank" rel="noopener noreferrer" className="mt-auto flex min-h-9 items-center gap-3 px-3 text-sm text-muted no-underline hover:bg-sunken hover:text-ink">
+          <CircleHelp className="size-4" aria-hidden />Help<span className="sr-only"> (opens in a new tab)</span>
+        </a>
+        <div className="flex flex-col gap-1 border-t border-line pt-3">
           <p className="truncate px-2 text-sm font-medium">{me.data.org}</p>
           <p className="truncate px-2 text-xs text-muted">{me.data.email}</p>
           <div className="mt-1 flex items-center">
@@ -120,7 +151,7 @@ export function Shell() {
         </div>
       </aside>
 
-      <header className="sticky top-0 z-10 flex items-center justify-between border-b border-line bg-surface px-4 py-1 md:hidden">
+      <header ref={header} className="sticky top-0 z-10 flex items-center justify-between border-b border-line bg-surface px-4 py-1 md:hidden">
         <Link to="/" className="inline-flex min-h-[44px] items-center no-underline"><Logo /></Link>
         <div className="flex">
           <button className={iconBtn} onClick={() => setPaletteOpen(true)} aria-label="Search"><Search className="size-5" aria-hidden /></button>
@@ -128,7 +159,7 @@ export function Shell() {
         </div>
       </header>
 
-      <main id="main" className="mx-auto w-full max-w-6xl px-4 pb-28 pt-6 md:px-8 md:pb-12 md:pt-8">
+      <main id="main" className="mx-auto w-full min-w-0 max-w-6xl px-4 pb-28 pt-6 md:px-8 md:pb-12 md:pt-8">
         {!me.data.admin && (
           <p id={ADMIN_ONLY_ID} className="mb-6 border border-line-strong bg-surface px-3 py-2 text-sm text-muted">
             <strong className="font-semibold text-ink">Read-only.</strong> You can see everything here; ask an organisation admin to change anything.
@@ -137,9 +168,9 @@ export function Shell() {
         <Outlet />
       </main>
 
-      <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-10 grid grid-cols-5 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] md:hidden">
-        {TABS.map((n) => <NavLink key={n.to} {...n} tab />)}
-        <MoreMenu signOut={() => signOut.mutate()} />
+      <nav ref={tabbar} aria-label="Main" className={clsx("fixed inset-x-0 bottom-0 z-10 grid border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] md:hidden", large ? "grid-cols-3" : "grid-cols-5")}>
+        {(large ? TABS.slice(0, 2) : TABS).map((n) => <NavLink key={n.to} {...n} tab />)}
+        <MoreMenu signOut={() => signOut.mutate()} extra={large ? TABS.slice(2) : []} />
       </nav>
 
       <Palette open={paletteOpen} onOpenChange={setPaletteOpen} signOut={() => signOut.mutate()} nextTheme={next} />
@@ -150,27 +181,27 @@ export function Shell() {
 function NavLink({ to, label, icon: Icon, tab }: (typeof NAV)[number] & { tab?: boolean }) {
   return (
     <Link to={to} activeOptions={{ exact: to === "/" }} activeProps={{ "aria-current": "page", className: tab ? "!text-ink font-semibold shadow-[inset_0_2px_0_var(--ink)]" : "bg-accent-soft !text-ink font-medium shadow-[inset_2px_0_0_var(--ink)]" }}
-      className={clsx("flex items-center text-sm text-muted no-underline", tab ? "min-h-14 flex-col justify-center gap-0.5 text-xs" : "min-h-9 gap-3 px-3 hover:bg-sunken hover:text-ink")}>
-      <Icon className="size-4" aria-hidden />{label}
+      className={clsx("flex items-center text-sm text-muted no-underline", tab ? "min-h-14 min-w-0 flex-col justify-center gap-0.5 px-0.5 text-xs [&>span]:max-w-full [&>span]:text-center [&>span]:leading-tight [&>span]:line-clamp-2" : "min-h-9 gap-3 px-3 hover:bg-sunken hover:text-ink")}>
+      <Icon className="size-4 shrink-0" aria-hidden /><span>{label}</span>
     </Link>
   );
 }
 
-function MoreMenu({ signOut }: { signOut: () => void }) {
+function MoreMenu({ signOut, extra }: { signOut: () => void; extra: typeof NAV }) {
   const navigate = useNavigate();
   const path = useRouterState({ select: (r) => r.location.pathname });
   // On a page that lives under More, the tab says so, like the others do for theirs.
-  const here = [...MORE.map((m) => m.to as string), "/add"].includes(path);
+  const here = [...extra, ...MORE].map((m) => m.to as string).concat("/add").includes(path);
   const item = clsx("flex min-h-[44px] cursor-pointer items-center gap-3 px-3 text-sm", highlight);
   return (
-    <DropdownMenu.Root>
+    <DropdownMenu.Root modal={false}>
       <DropdownMenu.Trigger className={clsx("flex min-h-14 cursor-pointer flex-col items-center justify-center gap-0.5 text-xs text-muted data-[state=open]:text-ink",
         here && "!text-ink font-semibold shadow-[inset_0_2px_0_var(--ink)]")}>
         <MoreHorizontal className="size-4" aria-hidden />More{here && <span className="sr-only"> (current page is in here)</span>}
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
-        <DropdownMenu.Content side="top" align="end" sideOffset={8} className="z-[51] min-w-48 border border-line bg-surface p-1.5 shadow-2xl">
-          {MORE.map(({ to, label, icon: Icon }) => (
+        <DropdownMenu.Content side="top" align="end" sideOffset={8} className="z-[51] min-w-48 border border-line bg-surface p-1.5 shadow-[0_24px_48px_-12px_var(--shadow)]">
+          {[...extra, ...MORE].map(({ to, label, icon: Icon }) => (
             <DropdownMenu.Item key={to} onSelect={() => void navigate({ to })} className={item}>
               <Icon className="size-4" aria-hidden />{label}
             </DropdownMenu.Item>
@@ -208,7 +239,7 @@ export function Palette({ open, onOpenChange, signOut, nextTheme }: { open: bool
   const query = useDebounced(term, 150);
   const found = useQuery({
     queryKey: ["palette", query],
-    queryFn: () => api<Finding[]>(`/api/findings?${new URLSearchParams({ q: query, limit: "6" })}`),
+    queryFn: () => api<Finding[]>(`/api/findings?${new URLSearchParams({ q: query, limit: "30", view: "list" })}`),
     enabled: open && query.length > 1,
   });
 
@@ -221,19 +252,30 @@ export function Palette({ open, onOpenChange, signOut, nextTheme }: { open: bool
       { id: "remediation", label: "Go to Remediation", run: done(() => navigate({ to: "/remediation" })) },
       { id: "evidence", label: "Go to Evidence", run: done(() => navigate({ to: "/evidence" })) },
       { id: "settings", label: "Go to Settings", run: done(() => navigate({ to: "/settings" })) },
+      { id: "approve", label: "Fixes waiting for approval", run: done(() => navigate({ to: "/remediation" })) },
+      { id: "fixnow", label: "Fix now findings", run: done(() => navigate({ to: "/findings", search: filtersToSearch({ ...parseFilters({}), priority: ["fix-now"], fixable: false }) })) },
+      { id: "quiet", label: "Machines not reporting", run: done(() => navigate({ to: "/assets", search: { show: "quiet" } })) },
       { id: "add", label: "Add a machine", run: done(() => navigate({ to: "/add" })) },
       { id: "theme", label: "Change theme (system, light, dark)", run: done(nextTheme) },
+      { id: "help", label: "Help: documentation", hint: "opens a new tab", run: done(() => window.open(DOCS, "_blank", "noopener")) },
       { id: "out", label: "Sign out", run: done(signOut) },
-    ].filter((c) => c.label.toLowerCase().includes(term.toLowerCase()));
-    const hits: Cmd[] = (query === term ? found.data ?? [] : []).map((f) => ({
-      id: f.id, label: `${f.vuln_id}  ${f.package}`, hint: f.hostname,
+    ].filter((c) => { const t = term.toLowerCase(); return !t || c.label.toLowerCase().includes(t) || c.label.toLowerCase().split(/\W+/).some((w) => w.startsWith(t.slice(0, 4)) && t.length >= 3); });
+    const seen = new Map<string, { f: Finding; hosts: number }>();
+    for (const f of query === term ? found.data ?? [] : []) { const k = `${f.vuln_id}|${f.package}`; const e = seen.get(k); if (e) e.hosts++; else seen.set(k, { f, hosts: 1 }); }
+    const hits: Cmd[] = [...seen.values()].slice(0, 8).map(({ f, hosts }) => ({
+      id: f.id, label: `${f.vuln_id}  ${f.package}`, hint: hosts > 1 ? `${hosts} hosts` : f.hostname,
       run: done(() => navigate({ to: "/findings", search: filtersToSearch({ ...parseFilters({}), fixable: false, q: term, open: f.id }) })),
     }));
     // Hosts come from the already-cached asset list: no extra request, and a host is one jump from its findings.
     const hosts: Cmd[] = term.length > 1 ? (assets.data ?? []).filter((a) => a.kind !== "external" && a.hostname.toLowerCase().includes(term.toLowerCase())).slice(0, 5)
-      .map((a) => ({ id: `host-${a.id}`, label: `Host: ${a.hostname}`, hint: "findings", run: done(() => navigate({ to: "/findings", search: filtersToSearch({ ...parseFilters({}), asset: a.id, fixable: false }) })) })) : [];
+      .flatMap((a) => [
+        { id: `host-${a.id}`, label: `Host: ${a.hostname}`, hint: "findings", run: done(() => navigate({ to: "/findings", search: filtersToSearch({ ...parseFilters({}), asset: a.id, fixable: false }) })) },
+        { id: `machine-${a.id}`, label: `Machine: ${a.hostname}`, hint: "settings", run: done(() => navigate({ to: "/assets", search: { machine: a.id } })) },
+      ]) : [];
+    const views: Cmd[] = savedViews().filter((v) => !term || v.name.toLowerCase().includes(term.toLowerCase()))
+      .map((v) => ({ id: `view-${v.name}`, label: `View: ${v.name}`, hint: "saved", run: done(() => navigate({ to: "/findings", search: v.search })) }));
     const all: Cmd[] = term ? [{ id: "search", label: `Search findings for "${term}"`, run: done(() => navigate({ to: "/findings", search: filtersToSearch({ ...parseFilters({}), q: term }) })) }] : [];
-    return [...hosts, ...hits, ...all, ...pages];
+    return term ? [...pages, ...views, ...hosts, ...hits, ...all] : [...views, ...pages];
   }, [found.data, assets.data, term, query, navigate, onOpenChange, signOut, nextTheme]);
 
   useEffect(() => setActiveId(""), [term]);
@@ -251,15 +293,15 @@ export function Palette({ open, onOpenChange, signOut, nextTheme }: { open: bool
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="overlay" />
-        <Dialog.Content aria-describedby={undefined} {...focus} className="fixed z-[51] left-1/2 top-[12vh] w-[min(36rem,calc(100%-2rem))] -translate-x-1/2 overflow-hidden border border-line bg-surface shadow-2xl">
+        <Dialog.Content aria-describedby={undefined} {...focus} className="fixed z-[51] left-1/2 top-[12vh] w-[min(36rem,calc(100%-2rem))] -translate-x-1/2 overflow-hidden border border-line bg-surface shadow-[0_24px_48px_-12px_var(--shadow)]">
           <Dialog.Title className="sr-only">Command palette</Dialog.Title>
           <input
-            autoFocus role="combobox" aria-expanded={cmds.length > 0} aria-controls="palette-list" aria-activedescendant={cmds[active] ? `cmd-${cmds[active].id}` : undefined}
+            role="combobox" aria-expanded={cmds.length > 0} aria-controls="palette-list" aria-activedescendant={cmds[active] ? `cmd-${cmds[active].id}` : undefined}
             aria-label="Jump to a page or search findings" placeholder="Jump to a page or search findings…"
             className="min-h-12 w-full border-b border-line bg-transparent px-4 text-base outline-none placeholder:text-muted focus:border-ink focus:shadow-[inset_0_-1px_0_var(--ink)]" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={onKey}
           />
           {cmds.length > 0 ? (
-            <ul id="palette-list" role="listbox" aria-label="Results" className="max-h-80 overflow-y-auto p-1.5">
+            <ul id="palette-list" role="listbox" aria-label="Results" className="max-h-[60vh] overflow-y-auto p-1.5">
               {cmds.map((c, i) => (
                 <li key={c.id} id={`cmd-${c.id}`} role="option" aria-selected={i === active} data-highlighted={i === active ? "" : undefined} onMouseMove={() => setActiveId(c.id)} onClick={c.run}
                   className={clsx("flex min-h-[44px] cursor-pointer items-center justify-between gap-3 px-3 text-sm", highlight, i === active && "bg-accent-soft")}>
@@ -268,6 +310,7 @@ export function Palette({ open, onOpenChange, signOut, nextTheme }: { open: bool
               ))}
             </ul>
           ) : <p id="palette-list" className="px-3 py-6 text-center text-sm text-muted">Nothing matches.</p>}
+          <p className="hidden border-t border-line px-4 py-2 text-xs text-muted md:block">Keys: <kbd>/</kbd> search the page · <kbd>j</kbd> <kbd>k</kbd> next and previous finding · <kbd>p</kbd> plan fix · <kbd>a</kbd> accept risk · <kbd>Esc</kbd> close or clear</p>
           <p role="status" className="sr-only">{term ? `${cmds.length} result${cmds.length === 1 ? "" : "s"}` : ""}</p>
         </Dialog.Content>
       </Dialog.Portal>

@@ -16,8 +16,10 @@ The wiki extends Nimstead's Plain Sight identity, observed on nimstead.systems a
 
 A compact masthead, persistent documentation rail, calm reading column, and on-page outline. The homepage is a product directory with Assure first and Pulse second. Each product exposes four clearly described reading modes. Product navigation stays visible above the selected product’s article groups. Search can cover all products or one selected product. No marketing hero or invented proof metrics.
 
-Desktop retains navigation and outline. Tablet hides the outline. Mobile places navigation in an explicit expandable section, preserving access without JavaScript. Search is a separate page with live results, a clear loading state, and recoverable errors. Theme follows the system unless selected explicitly.
+Desktop retains navigation and outline. Tablet and mobile replace the outline with an “On this page” disclosure. Mobile places navigation in an explicit expandable section, preserving access without JavaScript. Search is a separate page with live results, a clear loading state, and recoverable errors. Theme follows the system unless selected explicitly.
 
 ## Interaction and access
 
 44px controls, visible keyboard focus, skip link, semantic landmarks, current-page labels, native details and select controls, scrollable code and tables, reduced-motion support, print layout. Copy feedback is announced. Search terms remain local to the browser.
+
+Operational Assure articles identify their source commit near the introduction, with release comparison guidance. Live search keeps the query and product in the URL so results survive navigation. Common backup phrases share a normalized search term, with title starts ranked first.

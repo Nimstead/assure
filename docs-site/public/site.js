@@ -31,15 +31,20 @@ if (input) {
   if ([...product.options].some(option=>option.value === requestedProduct)) product.value = requestedProduct;
   let index;
   input.value = new URLSearchParams(location.search).get('q') || '';
+  const normalize = text => text.toLowerCase().replace(/\bback[ -]?ups?\b/g, 'backup');
   const render = () => {
+    const params = new URLSearchParams();
+    if (input.value) params.set('q', input.value);
+    if (product.value) params.set('product', product.value);
+    history.replaceState(null, '', '/search/' + (params.size ? '?' + params : ''));
     if (!index) return;
-    const query = input.value.trim().toLocaleLowerCase();
+    const query = normalize(input.value.trim());
     results.replaceChildren();
     if (!query) { status.textContent = 'Search by task, command, setting, or error message.'; return; }
     const terms = query.split(/\s+/);
-    const matches = index.filter(p=>!product.value || p.product === product.value).map(p => ({...p, score: terms.reduce((s,t) => s + (p.title.toLowerCase().includes(t) ? 12 : 0) + (p.text.toLowerCase().includes(t) ? 1 : 0), 0)}))
-      .filter(p => terms.every(t => (p.product + ' ' + p.title + ' ' + p.text).toLowerCase().includes(t)))
-      .sort((a,b) => b.score - a.score).slice(0,30);
+    const matches = index.filter(p=>!product.value || p.product === product.value).map(p => ({...p, score: (normalize(p.title).startsWith(query) ? 24 : 0) + terms.reduce((s,t) => s + (normalize(p.title).includes(t) ? 12 : 0) + (normalize(p.text).includes(t) ? 1 : 0), 0)}))
+      .filter(p => terms.every(t => normalize(p.product + ' ' + p.title + ' ' + p.text).includes(t)))
+      .sort((a,b) => b.score - a.score || (a.group === 'How-to guides' ? -1 : 0) - (b.group === 'How-to guides' ? -1 : 0)).slice(0,30);
     status.textContent = matches.length ? `${matches.length} ${matches.length === 1 ? 'page' : 'pages'} found.` : 'No pages found. Try a shorter term, such as “backup”, “SSO”, or “token”.';
     for (const page of matches) {
       const li = document.createElement('li');
@@ -54,7 +59,7 @@ if (input) {
   };
   input.addEventListener('input', render);
   product.addEventListener('change', render);
-  form.addEventListener('submit', event => { event.preventDefault(); history.replaceState(null,'',`/search/?q=${encodeURIComponent(input.value)}${product.value ? `&product=${encodeURIComponent(product.value)}` : ''}`); render(); });
+  form.addEventListener('submit', event => { event.preventDefault(); render(); });
   status.textContent = 'Loading the documentation index…';
   fetch('/search-index.json').then(r => { if (!r.ok) throw Error(); return r.json(); }).then(data => { index = data; render(); })
     .catch(() => { status.textContent = 'The search index could not load. Reload this page, or use the contents navigation.'; });

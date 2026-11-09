@@ -38,3 +38,11 @@ test('search identifies products and Pulse navigation does not mix Assure guides
   assert.doesNotMatch(html, /href="\/how-to\/restore\/"/);
   assert.match(readFileSync('dist/search/index.html', 'utf8'), /id="search-product"/);
 });
+
+ test('operational articles expose source applicability and mobile section links', () => {
+  const html = readFileSync('dist/how-to/deploy-server/index.html', 'utf8');
+  assert.match(html, /Describes Assure source <a href="https:\/\/github.com\/Nimstead\/assure\/tree\/[a-f0-9]{40}">/);
+  assert.match(html, /compare its version/);
+  const contents = html.match(/<details class="local-contents">([\s\S]*?)<\/details>/)[1];
+  assert.match(contents, /href="#start-the-services"/);
+});

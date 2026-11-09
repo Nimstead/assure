@@ -8,6 +8,24 @@ permissions:
   contents: read  # nothing here writes to the repository
 
 jobs:
+  docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: docs-site
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: docs-site/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      - run: npm audit --audit-level=moderate
+
   api:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -34,6 +52,8 @@ jobs:
       - run: uv python install 3.14
       - run: uv sync --locked
       - run: uv run ruff check src tests ../agent ../sandbox ../scripts
+        if: matrix.db == 'sqlite'
+      - run: uv run python ../scripts/export_api_docs.py --check
         if: matrix.db == 'sqlite'
       - run: uv run python ../scripts/check_docs.py
         if: matrix.db == 'sqlite'

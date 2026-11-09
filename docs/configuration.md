@@ -1,6 +1,6 @@
 # Configuration
 
-Nimstead Assure is configured with environment variables. With Docker Compose, put them in `.env` (see [`.env.example`](../.env.example)); anything not already listed in [`compose.yaml`](../compose.yaml) goes under `x-app: environment:` there, so the app and the feed updater both get it.
+Nimstead Assure is configured with environment variables. With Docker Compose, put configured variables in `.env` (see [`.env.example`](../.env.example)). Add variables absent from [`compose.yaml`](../compose.yaml) under its `x-app: environment:` section. Both the app and feed updater then receive them.
 
 ## Server
 
@@ -11,8 +11,8 @@ Nimstead Assure is configured with environment variables. With Docker Compose, p
 | `NIMSTEAD_SECURE_COOKIES` | `1` | `0` allows sign-in over plain HTTP from a non-localhost address. Development only. |
 | `NIMSTEAD_ALLOWED_ORIGINS` | none | Extra comma-separated origins allowed to make changes (the same origin always is). |
 | `NIMSTEAD_INVENTORY_MIN_SECONDS` | `30` | Minimum gap between two inventories from one agent. |
-| `NIMSTEAD_UPDATE_CHANNEL` | `stable` | Which releases this server takes: `stable`, `beta` (beta and stable) or `preview` (everything, earliest). Read by **Settings → This server** and `deploy/update.sh`, and judged by the channel signed into each release, never GitHub's labels. There's no stable release yet: trial installs set `preview`. |
-| `NIMSTEAD_UPDATE_CHECK` | `1` | `0` stops the hourly feed run from asking GitHub for new releases and fetching the signed release files agents update from. Offline installs: copy `release.json` and `release.json.sig` from the release page into `NIMSTEAD_RELEASE_DIR` instead. |
+| `NIMSTEAD_UPDATE_CHANNEL` | `stable` | Which releases this server takes: `stable`, `beta` (beta and stable) or `preview` (everything, earliest). Read by **Settings → This server** and `deploy/update.sh`, and judged by the channel signed into each release, never GitHub's labels. Select `preview` only for installations that should receive early releases. |
+| `NIMSTEAD_UPDATE_CHECK` | `1` | `0` disables release discovery, distribution-file fetches, and update alerts in the feed updater. Offline distribution requires the manifest/signature and any named runtime archives. See [platform updates](reference/platform-updates.md). |
 | `NIMSTEAD_RELEASE_DIR` | `./release` (`/data/release` in Docker) | Signed release files, the release check's state and `deploy/update.sh`'s last result. Agents only update when this holds a release signed for the agent the server serves. |
 | `FORWARDED_ALLOW_IPS` | `127.0.0.1` | Read by uvicorn: the reverse proxy whose `X-Forwarded-For` is trusted, so sign-in throttling sees real client addresses. |
 | `NIMSTEAD_BIND` | `127.0.0.1` | Compose only: the host address the app's port listens on. Keep it on loopback behind your HTTPS proxy; `0.0.0.0` lets anyone on the network reach it, including to create the first account. |
@@ -59,6 +59,8 @@ Each host must also opt in locally (`--allow-remediation` at install). The serve
 
 Webhook and email recipients are set by an admin in **Settings**.
 
+See [notification reference](reference/notifications.md) for consent, payloads, retries, and transport limits. An unauthenticated `smtp://` connection can send message content without TLS when the server does not advertise STARTTLS.
+
 ## Single sign-on
 
 Set up in **Settings** by an org admin, not with environment variables. Register `<NIMSTEAD_PUBLIC_URL>/api/auth/sso/callback` at your identity provider. Each email domain must be proven with a DNS TXT record before it routes sign-ins.
@@ -71,9 +73,12 @@ Set up in **Settings** by an org admin, not with environment variables. Register
 
 | Variable | Default | What it does |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | none | Turns on plain-English explanations and natural-language search. Nothing is sent to Anthropic without it. |
-| `NIMSTEAD_AI` | on when a key is set | `0` turns the features off even with a key. |
-| `NIMSTEAD_AI_MODEL` | `claude-opus-5-5` | Model used. |
+| `ANTHROPIC_API_KEY` | none | Enables explanations and natural-language search. Either this key or `ANTHROPIC_AUTH_TOKEN` enables requests. |
+| `ANTHROPIC_AUTH_TOKEN` | none | Alternative Anthropic credential that also enables AI requests. |
+| `NIMSTEAD_AI` | on when either credential is set | Exactly `0` disables AI calls even with credentials. |
+| `NIMSTEAD_AI_MODEL` | `claude-opus-5-5` | Model name read at module import. Restart the API after a change. |
+
+See [optional AI reference](reference/optional-ai.md) for transmitted fields, response formats, limits, and failures.
 
 ## Development only
 

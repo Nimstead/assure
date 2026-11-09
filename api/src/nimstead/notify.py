@@ -1,7 +1,8 @@
 """Failure alerts: webhook (Slack-compatible or generic JSON) and optional SMTP email, sent off the request path.
 
-notify() reads the org's settings, hands delivery to a background thread and returns. Every attempt is
-recorded in the notification table (ok/failed + error) so a dead webhook shows up in Settings.
+notify() reads/decrypts settings and queues delivery in a process-local thread pool.
+Delivery attempts try to record outcomes independently; storage failures are logged.
+This is not a durable outbox or a guarantee of delivery/recording.
 """
 
 import json
@@ -36,13 +37,19 @@ def smtp_configured() -> bool:
 
 
 def webhook_url(org: Org) -> str | None:
-    """Sealed at rest; a URL saved before sealing existed is used as-is until seal_legacy() runs."""
+    """Return Org org's decrypted webhook URL, legacy plaintext, or None/empty value.
+
+    Recognize fernet:/vault: prefixes. Vault unsealing can perform synchronous I/O.
+    Key-backend/decryption and incompatible attribute errors propagate."""
     u = org.notify_webhook_url
     return sso.unseal(u) if u and u.startswith(("fernet:", "vault:")) else u
 
 
 def seal_legacy(s: Session) -> int:
-    """Seal webhook URLs stored in plaintext by older versions. Runs with the hourly feed update."""
+    """Seal nonnull legacy webhook values through Session s and commit all pending changes.
+
+    Return the number selected for sealing. Already prefixed values are skipped.
+    Database, malformed stored-value and key-backend errors propagate without rollback."""
     n = 0
     for org in s.scalars(select(Org).where(Org.notify_webhook_url.is_not(None))):
         if not org.notify_webhook_url.startswith(("fernet:", "vault:")):
@@ -52,7 +59,10 @@ def seal_legacy(s: Session) -> int:
 
 
 def recipients(org: Org) -> list[str]:
-    """Only addresses whose owner confirmed: an admin can't make the server mail arbitrary people."""
+    """Return configured Org org email strings also present in its confirmed list.
+
+    Membership is case-sensitive. Preserve order/duplicates from notify_emails.
+    Does not send or verify ownership again. Uninitialized/incompatible lists can raise TypeError."""
     return [e for e in org.notify_emails if e in org.notify_emails_confirmed]
 
 
@@ -64,7 +74,12 @@ def confirm_token(org_id: str, email: str) -> str:
 
 
 def send_confirmation(bind, org_id: str, email: str, link: str) -> None:
-    """Fixed text plus a link to this server: nothing the requesting admin wrote reaches the recipient."""
+    """Queue fixed confirmation text and caller-supplied link to email for org_id.
+
+    bind is a SQLAlchemy engine/connection binding for delivery records. Strings
+    are not validated here. This intentionally bypasses the confirmed-recipient list.
+    Returns before delivery. Queue-submission errors propagate. Email failures are
+    recorded best effort by the worker. Confirmation mail is not automatically retried."""
     text = ("confirm you want to receive security alerts\n\n"
             "This address was added to receive Nimstead security alerts. If you expected this, confirm here:\n"
             f"{link}\n\nIf you didn't, ignore this email: no alerts are sent until the address is confirmed.")
@@ -89,7 +104,12 @@ ACCOUNT_EMAILS = {
 def send_account_email(email: str, purpose: str, link: str) -> None:
     """Account email sent to the address itself (sign-up link, "already has an account", invitation, password reset), so
     whoever asked sees the same response either way and can't use it to test addresses. Failures are logged, not recorded
-    per org (a sign-up has no org yet)."""
+    per org (a sign-up has no org yet).
+
+    email/link are caller-supplied strings. purpose selects signup, exists, invite
+    or reset text. Unknown purpose raises KeyError before submission. Queue errors
+    propagate. Worker send failures are logged without an organisation delivery row.
+    No automatic retry occurs here. Returns None before the send completes."""
     text = ACCOUNT_EMAILS[purpose].format(link=link)
 
     def send():
@@ -103,7 +123,13 @@ def send_account_email(email: str, purpose: str, link: str) -> None:
 
 
 def notify(s: Session, org_id: str, kind: str, text: str, urgent: bool = False) -> None:
-    """Best-effort and non-blocking: never raises, never waits on the network. No config -> no-op."""
+    """Best-effort queue of kind/text for org_id using Session s and urgent flag.
+
+    Missing organisation/destinations produces no job. Settings queries and webhook
+    unsealing occur synchronously, possibly including Vault I/O. Delivery uses the
+    background pool and independent sessions. Catch/log ordinary lookup, decryption
+    and queue errors. Does not explicitly commit s. Reads can autoflush its changes.
+    Returns None without confirming enqueue, successful delivery or outcome storage."""
     try:
         org = s.get(Org, org_id)
         if not org:
@@ -158,7 +184,14 @@ def _in_server_grace(state_file: Path) -> bool:
 def alert_silent_hosts(s: Session, state_file: Path | None = None) -> int:
     """One alert per org per run, naming each host that has newly stopped reporting; the next inventory clears a host's
     marker. Held back for one report cycle after the server itself was down, so an outage doesn't page about every host.
-    Returns the number of hosts newly flagged."""
+    Returns the number of hosts newly flagged.
+
+    s supplies persisted host rows. state_file optionally overrides monitor.json.
+    Eligible hosts reported inventory before and have last_seen older than 14 hours.
+    A recorded monitor gap over two hours starts seven hours of grace. Missing state
+    does not itself establish a gap. File writes are best effort. Flagging/commit
+    occurs even when no alert destination is configured. Commit all pending changes.
+    Database and incompatible stored-state errors can propagate."""
     if _in_server_grace(state_file or _monitor_state()):
         return 0
     by_org: dict[str, list[Asset]] = {}
@@ -184,7 +217,13 @@ KEEP_DELIVERIES = timedelta(days=90)
 
 def retry_failed(s: Session) -> int:
     """Re-send failed deliveries (up to MAX_ATTEMPTS within RETRY_WINDOW) to the org's current targets. Hourly, so it also
-    drops delivery records older than KEEP_DELIVERIES: Settings shows the last few, and a dead webhook adds rows every hour."""
+    drops delivery records older than KEEP_DELIVERIES: Settings shows the last few, and a dead webhook adds rows every hour.
+
+    Return failed rows queued now, not successful sends. s is the caller's Session.
+    The 24-hour window applies to each failed attempt row, not original event age.
+    Use current channel targets. Email confirmations do not retry. Mark originals
+    retried and commit all pending changes, independently of background completion.
+    Queue/database/decryption failures propagate without automatic rollback."""
     s.execute(delete(Notification).where(Notification.ts < now() - KEEP_DELIVERIES))
     n = 0
     for row in s.scalars(select(Notification).where(Notification.ok.is_(False), Notification.retried.is_(False),
@@ -204,7 +243,10 @@ def retry_failed(s: Session) -> int:
 
 
 def flush() -> None:
-    """Wait for queued deliveries (tests, graceful shutdown)."""
+    """Wait for the current snapshot of pending futures, with no timeout.
+
+    New jobs submitted during this wait are not guaranteed to be included. Does not
+    return delivery outcomes. An unhandled worker-future exception can propagate."""
     for f in list(_pending):
         f.result()
 

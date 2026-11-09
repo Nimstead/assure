@@ -94,7 +94,7 @@ test("sign up, enrol a sandbox host, plan and approve a fix, see evidence", asyn
   await page.getByRole("button", { name: /^Review and approve/ }).click();
   const dlg = page.getByRole("alertdialog");
   await expect(dlg.getByText("Approve this fix?")).toBeVisible();
-  await dlg.getByRole("button", { name: "Approve and run" }).click();
+  await dlg.getByRole("button", { name: "Approve fix" }).click();
   await expect(page.getByRole("heading", { name: "In progress" })).toBeVisible();
   await expect(page.getByText("Approved, waiting for host")).toBeVisible();
 
@@ -102,7 +102,7 @@ test("sign up, enrol a sandbox host, plan and approve a fix, see evidence", asyn
   await page.getByRole("link", { name: "Fix first", exact: true }).first().click();
   await expect(page.locator("h1")).toBeFocused();  // focus follows navigation to the new page's heading
   const action = page.getByRole("listitem").filter({ hasText: /Upgrade\s+openssl/ });
-  await expect(action.getByRole("button", { name: /Plan fix for 1 more host/ })).toBeVisible();
+  await expect(action.getByRole("button", { name: /Plan fix for 1 more asset/ })).toBeVisible();
   await action.getByRole("link", { name: /View fix/ }).click();
   await expect(page).toHaveURL(/\/remediation#job-/);
   const card = page.locator(`li#${new URL(page.url()).hash.slice(1)}`);
@@ -112,7 +112,7 @@ test("sign up, enrol a sandbox host, plan and approve a fix, see evidence", asyn
   // The finding drawer says a fix is in progress instead of offering another
   await page.goto("/findings?q=openssl");
   await page.getByRole("row").filter({ hasText: "sbx-1" }).first().click();
-  await expect(page.getByRole("dialog").getByText("Fix in progress:")).toBeVisible();
+  await expect(page.getByRole("dialog").getByText("Existing fix:")).toBeVisible();
   await expect(page.getByRole("dialog").getByRole("button", { name: /Plan fix/ })).toHaveCount(0);
   await page.keyboard.press("Escape");
 
@@ -135,7 +135,7 @@ test("sign up, enrol a sandbox host, plan and approve a fix, see evidence", asyn
 
   // Evidence
   await page.getByRole("link", { name: "Evidence", exact: true }).first().click();
-  await expect(page.getByText(/Chain verified/)).toBeVisible();
+  await expect(page.getByText(/No ledger integrity problems reported/)).toBeVisible();
   await expect(page.getByRole("heading", { name: "Control status" })).toBeVisible();
   await expect(page.getByText(/Give auditors these separately from the pack/)).toBeVisible();
   await expect(page.getByText("Verifier script SHA-256")).toBeVisible();
@@ -266,7 +266,7 @@ for (const width of [1440, 375] as const) {
       await load(page, SETTINGS);
       await page.getByRole("radio", { name: /^Auto/ }).click();
       await page.locator("section[aria-labelledby=ladder]").getByRole("button", { name: "Save" }).click();
-      await expect(page.getByRole("alertdialog", { name: /without asking/ })).toBeVisible();
+      await expect(page.getByRole("alertdialog", { name: /automatic approval for eligible fixes/ })).toBeVisible();
       await axe(page, `auto confirm @${width} ${scheme}`);
       await page.keyboard.press("Escape");
       const revoke = page.locator("section[aria-labelledby=tokens]").getByRole("button", { name: /^Revoke/ }).first();
@@ -359,7 +359,7 @@ test("a member (read-only) sees no controls the API would refuse, and every page
       await axe(page, `member ${p.name} @${width}`);
     }
     await load(page, PAGES[2]);
-    await expect(page.getByText(/Read-only\./)).toBeVisible();
+    await expect(page.getByText(/Member access\./)).toBeVisible();
     // the list's only selects are its own filters; no bulk selection, and the machine drawer shows criticality and ring as text
     await expect(page.locator("main").getByRole("checkbox")).toHaveCount(0);
     await page.locator("main ul li button").first().click();
@@ -469,8 +469,8 @@ test("apps the curated rules don't cover are said, on Assets, and pass axe (W1)"
     headers: { Authorization: `Bearer ${a.agent_key}` } });
   expect(r.ok()).toBe(true);
   await page.goto("/assets");
-  const section = page.getByRole("region", { name: "2 installed apps aren't checked for vulnerabilities" });
-  await expect(section.getByText("1 install of known apps is checked.", { exact: false })).toBeVisible();
+  const section = page.getByRole("region", { name: "2 Windows app entries have no supported mapping" });
+  await expect(section.getByText("1 entry has a supported product mapping or runtime fact.", { exact: false })).toBeVisible();
   await section.getByText("Show them, most common first").click();
   await expect(section.getByText("Acme Widget")).toBeVisible();
   for (const [width, scheme] of [[1440, "light"], [375, "dark"]] as const) {

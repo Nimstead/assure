@@ -26,7 +26,7 @@ class SbomError(ValueError):
 def parse_purl(purl: str) -> tuple[str, str, str] | None:
     """Map a package URL string to (ecosystem, package name, version), or None.
 
-    Unsupported types, malformed identities, and unversioned URLs return None. Names and versions
+    purl must be a string. Unsupported package types, unusable identities, and unversioned URLs return None. Names and versions
     are URL-decoded and normalised for the supported ecosystem.
 
     >>> parse_purl('pkg:pypi/typing_extensions@4.9.0')
@@ -63,7 +63,8 @@ def load(raw: bytes) -> object:
     """Decode raw JSON bytes into a Python object.
 
     Raise SbomError for invalid JSON or encoding, XML, or SPDX tag-value input.
-    Format and component validation belongs to parse()."""
+    Supported-format and component validation belongs to parse(). Neither function applies
+    the HTTP body-size limit or validates every field against an upstream SBOM schema."""
     try:
         return json.loads(raw)
     except ValueError:  # JSONDecodeError and UnicodeDecodeError

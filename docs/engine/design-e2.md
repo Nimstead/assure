@@ -1,5 +1,7 @@
 # Engine, first slice: an end-to-end Windows scan (E2)
 
+Design record for the first engine slice. Requirements and acceptance targets here are not a statement that every feature is implemented. Use [current operator explanations](../explanation/inventory-to-evidence.md) and [recorded proof status](../../STATUS.md) for those questions.
+
 Requirements are in `spec-detection.md` (R and T numbers refer to it). The boundary is in DECISIONS 79: whoever builds this works from these two documents plus Microsoft, NVD and vendor sources, and doesn't open the reference scanner.
 
 ## What it must show

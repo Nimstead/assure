@@ -1,3 +1,9 @@
+/** Browser entry point: mount the router inside StrictMode and a query provider.
+ * Requires an existing #root element. Missing mount target throws.
+ * Search values are plain strings. Duplicate URL keys retain their last value.
+ * Query defaults are staleTime=15000ms, no focus refetch and one retry.
+ * Individual query options can override these defaults.
+ */
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -18,7 +24,7 @@ function NotFound() {
   return (
     <main id="main" className="mx-auto flex max-w-xl flex-col gap-4 px-4 py-16">
       <h1 className="text-3xl font-semibold">There's no page here</h1>
-      <p className="text-muted">The address may be mistyped, or the page moved. Your data is unaffected.</p>
+      <p className="text-muted">The address may be mistyped, or the page moved. Use a link below to continue.</p>
       <p className="flex flex-wrap gap-4"><a href="/" className="font-medium underline">Go to Fix first</a><a href="/findings" className="font-medium underline">Findings</a><a href="/assets" className="font-medium underline">Assets</a></p>
     </main>
   );

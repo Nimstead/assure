@@ -8,14 +8,20 @@ import { Alert, btnPrimary, btnQuiet, ConfirmDialog, EmptyState, ErrorState, Loa
 const CANCELLABLE: Job["status"][] = ["planned", "approved"];
 const AGAIN: Job["status"][] = ["failed", "rolled_back", "rollback_failed", "not_fixed"];
 
-/** The packages a job changes, as the plan recorded them ({name, from, to?}). */
+/** Return array entries in j.packages that are objects with a string name, otherwise [].
+ * Only name is validated. Optional from/to/kb values pass through without validation.
+ * Return a new array with shared package objects. Do not mutate j or perform I/O.
+ */
 export function jobPackages(j: { packages?: unknown }): { name: string; from?: string; to?: string; kb?: string }[] {
   return Array.isArray(j.packages) ? j.packages.filter((p): p is { name: string } => !!p && typeof p === "object" && typeof (p as { name?: unknown }).name === "string") : [];
 }
 
 // shortcut: agents (<= 0.6.6) report a step that fell back and then succeeded as ok, recognised by its wording; send a `warn` flag from the agent if more appear.
 const RECOVERED = /not available|rebuilding|rebuilt from|retry \d/i;
-/** Return failed for a false result, recovered for recognised fallback text, or passed otherwise. */
+/** Classify step s for display: false ok wins, then fallback wording, then passed.
+ * Inspect step/output with the RECOVERED regex. Wording alone is not execution evidence.
+ * Invalid runtime string types can throw. No mutation or I/O occurs.
+ */
 export const stepState = (s: { step: string; ok: boolean; output?: string }) => (!s.ok ? "failed" : RECOVERED.test(s.step) || RECOVERED.test(s.output ?? "") ? "recovered" : "passed");
 
 function PackageList({ job }: { job: { packages?: unknown; summary?: string } }) {
@@ -27,13 +33,18 @@ function PackageList({ job }: { job: { packages?: unknown; summary?: string } })
     <ul className="mt-2 flex flex-col gap-0.5 text-sm" aria-label="Packages this fix changes">
       {pkgs.map((p) => (
         <li key={p.name} className="break-words"><span className="font-medium">{p.name}</span>{" "}
-          <span className="font-mono text-muted">{p.kb ? p.kb : <>{p.from ?? "?"} → {p.to ?? (target ? `${target} or the repository's newer` : "the newest fixed version")}</>}</span></li>
+          <span className="font-mono text-muted">{p.kb ? p.kb : <>{p.from ?? "?"} → {p.to ?? (target ? `${target} or the repository's newer` : "the repository candidate")}</>}</span></li>
       ))}
     </ul>
   );
 }
 
-/** Render grouped remediation jobs and poll while execution or verification remains active. */
+/** Render remediation under router and QueryClient providers, without props.
+ * Query jobs, current user and assets. Poll jobs every three seconds while an
+ * approved/dispatched/verifying row exists. Planned-only jobs do not trigger polling.
+ * Approval/cancellation POST through controlled dialogs; refresh job-derived queries on success.
+ * Render query/mutation errors locally. Server authorization and execution gates remain authoritative.
+ */
 export function RemediationPage() {
   useTitle("Remediation");
   const qc = useQueryClient();
@@ -58,11 +69,11 @@ export function RemediationPage() {
     <div className="flex flex-col gap-8">
       <header>
         <h1 className="text-3xl font-semibold">Remediation</h1>
-        <p className="mt-1 max-w-prose text-muted">Every fix is planned first, approved by a person (unless you enable auto), and only counted as done once the next inventory proves the vulnerability is gone.</p>
+        <p className="mt-1 max-w-prose text-muted">Fixes need a plan and human or eligible policy approval. Review inventory and remaining findings after execution. A Windows stepping job can succeed before the final fix.</p>
       </header>
       {q.isPending ? <Loading className="h-24" rows={3} label="Loading fixes…" />
         : q.error ? <ErrorState error={q.error} retry={() => q.refetch()} />
-        : groups.length === 0 ? <EmptyState title="No fixes planned yet">Use “Plan fix” on a recommended fix or a finding. Nothing changes on a machine until you approve it.</EmptyState>
+        : groups.length === 0 ? <EmptyState title="No fixes planned yet">Use “Plan fix” on a recommended fix or a finding. Eligible fixes can receive policy approval in Auto mode.</EmptyState>
         : groups.map((g) => (
           <section key={g.key} aria-labelledby={`g-${g.key}`}>
             <h2 id={`g-${g.key}`} className="mb-3 flex items-center gap-2 text-lg font-semibold">{g.title}<span className="sr-only">: </span><span className="num border border-line px-2 text-sm font-medium text-muted">{g.jobs.length}</span></h2>
@@ -75,13 +86,17 @@ export function RemediationPage() {
       <ApproveDialog job={target} context={machineContext(assets.data?.find((a) => a.id === target?.asset_id))} onOpenChange={(o) => !o && setTarget(null)} pending={approve.isPending} ownPlan={!!target && target.created_by === me}
         error={approve.error?.message} onConfirm={() => target && approve.mutate(target)} />
       <ConfirmDialog open={!!cancelling} onOpenChange={(o) => !o && setCancelling(null)} title="Cancel this fix?"
-        description={<><strong className="font-semibold">{cancelling?.summary}</strong>. No machine has picked it up yet, so nothing has changed on {cancelling?.hostname}. You can plan it again later.</>}
+        description={<><strong className="font-semibold">{cancelling?.summary}</strong>. Cancellation succeeds only before dispatch. A job already sent to {cancelling?.hostname} cannot be cancelled here. You can plan a cancelled fix again later.</>}
         confirmLabel="Cancel fix" cancelLabel="Keep it" pendingLabel="Cancelling…" pending={cancel.isPending} error={cancel.error} onConfirm={() => cancelling && cancel.mutate(cancelling.id)} />
     </div>
   );
 }
 
-/** "October 2026 cumulative KB…: 41 of 50 hosts", opening to the rest and why each hasn't got it. Nothing to show on a fleet with no Windows. */
+/** Query cumulative-update groups and render counts with expandable host details.
+ * No props. Require router/QueryClient context. Empty or pending data renders nothing;
+ * errors render a retry action. Opening a row enables its KB/product detail query.
+ * Counts and rollout suggestions come from stored server state, not a new scan.
+ */
 export function KbFleet() {
   const q = useQuery(kbFleetQ);
   if (q.error) return <ErrorState error={q.error} retry={() => q.refetch()} />;
@@ -139,7 +154,12 @@ function KbFleetRow({ row: r }: { row: KbRow }) {
   );
 }
 
-/** Render job state, packages, steps, and optional approval/cancellation actions. */
+/** Render job with status, package scope, step log and errors under app providers.
+ * onApprove/onCancel are optional parent actions, exposed only for eligible states
+ * with a client admin gate. Dependency refusals can POST a replacement plan directly.
+ * Replan errors render locally; success refreshes job-derived queries. job is not mutated.
+ * Optional package fields are not fully validated. Invalid dates/shapes can throw during render.
+ */
 export function JobCard({ job: j, onApprove, onCancel }: { job: Job; onApprove?: () => void; onCancel?: () => void }) {
   const admin = useIsAdmin();
   const steps = j.steps ?? [];
@@ -189,7 +209,7 @@ export function JobCard({ job: j, onApprove, onCancel }: { job: Job; onApprove?:
           <button className={btnQuiet} onClick={() => replan.mutate()} disabled={replan.isPending || replan.isSuccess} {...adminGate(admin)}>
             <Wrench className="size-4" aria-hidden />{replan.isSuccess ? "Planned" : `Plan again including ${deps.join(", ")}`}
           </button>
-          <span className="text-sm text-muted">They'll be saved and rolled back together with {pkg}.</span>
+          <span className="text-sm text-muted">Review the new plan's dependency scope and recovery limits.</span>
           <Alert error={replan.error} />
         </div>
       )}
@@ -219,32 +239,43 @@ export function JobCard({ job: j, onApprove, onCancel }: { job: Job; onApprove?:
   );
 }
 
-/** Pure view (no network) so the copy can be tested. */
-/** "build-runner-01 · critical · canary · test machine · health checks: nginx": what the approver should know about the target. */
-export const machineContext = (a?: Asset) => a && [a.hostname, `${a.criticality} criticality`, a.ring === 0 ? "canary (fixed first)" : "broad ring",
+/** Return a host-context string from a, or undefined when a is absent.
+ * Include hostname, criticality, ring, sandbox and health-unit text without validation.
+ * Do not fetch or mutate a. Malformed health_units can throw.
+ */
+export const machineContext = (a?: Asset) => a && [a.hostname, `${a.criticality} criticality`, a.ring === 0 ? "canary ring" : "broad ring",
   a.sandbox ? "test machine" : "production", a.health_units.length ? `health checks: ${a.health_units.join(", ")}` : "no health checks set"].join(" · ");
 
-/** Render a controlled approval dialog with package scope, host context, and forward-only acknowledgement. */
+/** Render a controlled approval dialog; job=null closes it.
+ * job supplies summary/hostname and optional package/manager/forward-only metadata.
+ * onOpenChange requests parent open state; onConfirm invokes the parent's approval action.
+ * pending disables confirmation and error displays parent failure text. ownPlan/context
+ * add review information. This component makes no request or server-policy decision.
+ * Requires the app's dialog/browser environment. Invalid package shapes can throw during render.
+ */
 export function ApproveDialog({ job, onOpenChange, onConfirm, pending, error, ownPlan, context }: {
   job: (Pick<Job, "summary" | "hostname"> & { forward_only?: boolean; packages?: unknown; manager?: string }) | null; onOpenChange: (o: boolean) => void; onConfirm: () => void; pending?: boolean; error?: string; ownPlan?: boolean; context?: string;
 }) {
   const fwd = !!job?.forward_only;
   return (
     <ConfirmDialog open={!!job} onOpenChange={onOpenChange} title={fwd ? "Approve a fix that can't be undone?" : "Approve this fix?"} description={<><strong className="font-semibold">{job?.summary}</strong>.</>}
-      confirmLabel={fwd ? "Approve: it can't be undone" : "Approve and run"} pendingLabel="Approving…" destructive={fwd} pending={pending} error={error} onConfirm={onConfirm}>
+      confirmLabel={fwd ? "Approve: it can't be undone" : "Approve fix"} pendingLabel="Approving…" destructive={fwd} pending={pending} error={error} onConfirm={onConfirm}>
       {context && <p className="mt-2 text-sm text-muted">{context}</p>}
       {job && <PackageList job={job} />}
       {ownPlan && <p className="mt-3 border border-now-fg p-3 text-sm">You planned this fix. Approving it yourself is recorded as self-approved: no second person checked the change (SOC 2 CC8.1).</p>}
-      {fwd ? <p className="mt-3 border border-now-fg p-3 text-sm">This app's installer can't go back to the version it replaces, so if the new version breaks something there is no automatic rollback. The machine's health checks still run and a failure is reported. Approving records that you accepted this.</p>
+      {fwd ? <p className="mt-3 border border-now-fg p-3 text-sm">This is a forward-only change with no automatic rollback. Configured health checks still apply. A failed change can require manual recovery. Approving records your acceptance of that limit.</p>
         : <p className="mt-3 border border-line p-3 text-sm">{APPROVE_COPY}</p>}
     </ConfirmDialog>
   );
 }
 
-/** The agent's refusal as a sentence a person reads; the raw text stays one click away for support. */
+/** Return a dependency-refusal explanation for matching error text, otherwise null.
+ * Parse case-sensitive "would also change:" text through dependenciesNeeded.
+ * This is a display heuristic, not proof that a host made no changes. No I/O occurs.
+ */
 export function plainRefusal(error: string): string | null {
   const deps = dependenciesNeeded(error);
-  if (deps.length) return `Nothing was changed. The upgrade would also have changed ${deps.join(", ")}, which wasn't in the plan, so the machine refused it.`;
+  if (deps.length) return `The report says the upgrade would also change ${deps.join(", ")}, outside the approved plan. Review the machine's report below.`;
   return null;
 }
 

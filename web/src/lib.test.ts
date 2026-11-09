@@ -27,7 +27,7 @@ describe("findings filters <-> URL", () => {
     expect(fixLabel({ fixed_version: null, ecosystem: "Lifecycle" })).toBe("move to a supported version");
     expect(fixLabel({ fixed_version: null, ecosystem: "External" })).toBe("close or restrict it");
     expect(fixLabel({ fixed_version: null, ecosystem: "WinDriver" })).toBe("update or remove the driver");
-    expect(fixLabel({ fixed_version: null, ecosystem: "Debian:12" })).toBe("no fix yet");
+    expect(fixLabel({ fixed_version: null, ecosystem: "Debian:12" })).toBe("no fix recorded");
     expect(fixLabel({ fixed_version: "1.2", ecosystem: "Debian:12" })).toBe("1.2");
   });
   it("defaults to open + fixable only with a clean URL", () => {

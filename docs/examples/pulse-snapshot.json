@@ -1,0 +1,53 @@
+{
+  "format": "nimstead-pulse",
+  "version": 1,
+  "generated": "2026-11-08T18:59:13+00:00",
+  "deadlinesIncluded": false,
+  "sources": {
+    "nvd": "2026-11-08T03:02:57.5196699Z",
+    "kev": "2026.11.06",
+    "epss": "2026-11-08",
+    "epssModel": "v2026.06.15"
+  },
+  "findings": [
+    {
+      "id": "CVE-2021-44228",
+      "state": "found",
+      "epss": 0.99999,
+      "cvss": 10,
+      "severity": "CRITICAL",
+      "vendor": "Apache",
+      "product": "Log4j2",
+      "kev": true,
+      "ransomware": true,
+      "kevAdded": "2021-12-10",
+      "kevDue": ""
+    },
+    {
+      "id": "CVE-2024-3400",
+      "state": "found",
+      "epss": 0.99999,
+      "cvss": 10,
+      "severity": "CRITICAL",
+      "vendor": "Palo Alto Networks",
+      "product": "PAN-OS",
+      "kev": true,
+      "ransomware": true,
+      "kevAdded": "2024-04-12",
+      "kevDue": ""
+    },
+    {
+      "id": "CVE-2099-99999",
+      "state": "missing",
+      "epss": null,
+      "cvss": null,
+      "severity": "",
+      "vendor": "",
+      "product": "",
+      "kev": false,
+      "ransomware": false,
+      "kevAdded": "",
+      "kevDue": ""
+    }
+  ]
+}

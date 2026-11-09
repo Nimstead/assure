@@ -28,7 +28,12 @@ ARCHES = ("amd64", "arm64", "win32")
 
 
 def load_runtimes(text: str) -> dict:
-    """{arch: {version, sha256}} for release.json from the pinned runtime file; refuses anything malformed."""
+    """Return architecture-to-version/hash metadata parsed from pinned runtime JSON text.
+
+    text must define a three-component decimal version and exactly amd64, arm64, and win32 archives.
+    Each URL must match the official Python embeddable-runtime URL for that version.
+    Invalid JSON raises JSONDecodeError. Invalid metadata raises SystemExit.
+    """
     d = json.loads(text)
     v = d.get("version") if isinstance(d, dict) else None
     rt = d.get("runtimes") if isinstance(d, dict) else None
@@ -57,7 +62,9 @@ def release_manifest(tag: str, commit: str, agent_bytes: bytes, platform_version
 
     tag must be vX.Y.Z and match platform_version; commit is a full lowercase 40-character SHA.
     agent_bytes must contain AGENT_VERSION. channel defaults to preview; runtimes is an optional
-    already-validated architecture dictionary. Invalid release metadata raises SystemExit."""
+    already-validated architecture dictionary. Empty runtimes is omitted. This function
+    does not validate runtime entries. Invalid release metadata raises SystemExit.
+    Incompatible argument types or nonserializable runtime values can raise TypeError."""
     if channel not in CHANNELS:
         raise SystemExit(f"channel must be one of {', '.join(CHANNELS)}, not {channel!r}")
     if not re.fullmatch(r"v\d+\.\d+\.\d+", tag):
@@ -79,8 +86,10 @@ def release_manifest(tag: str, commit: str, agent_bytes: bytes, platform_version
 def main(argv=None) -> int:
     """Run keygen or sign with optional argument list argv; return 0 on success.
 
+    argv is a list of argument strings, or None to use sys.argv[1:].
     keygen writes a private key outside the repository. sign reads NIMSTEAD_RELEASE_KEY and
-    writes a manifest/signature pair only for a pinned key. Invalid arguments or refused metadata
+    requires its public hex to occur in agent source text. It does not parse the key list.
+    Invalid arguments or refused metadata
     raise SystemExit; file, key-decoding, and cryptography errors propagate."""
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)

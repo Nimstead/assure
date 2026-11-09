@@ -16,6 +16,8 @@ Confidence describes the strength of evidence for a conclusion. Severity describ
 
 Distribution packages use the distribution's version rules and source package identities. This matters when a vendor backports a fix without adopting the upstream version number. Windows and application checks use the matching rules and coverage available for those products.
 
+Stored findings and the engine report remain separate paths. Findings can resolve when a match disappears, subject to specific collection guards. The report can still describe an incomplete reassessment. A resolved workflow state therefore needs its scan and feed context before it supports a repair claim. The [finding reference](../reference/findings.md#reassessment-and-resolution) defines the current guards and limits.
+
 ## Priority helps order work
 
 Risk scoring combines known exploitation, EPSS likelihood, CVSS impact, asset criticality, exposure, and fix availability. Known exploitation takes precedence. The score includes reasons so an operator can understand its ordering.

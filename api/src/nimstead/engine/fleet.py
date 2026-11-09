@@ -69,7 +69,15 @@ def _refine(ways: list[dict], base: str, fa: dict, fb: dict) -> list[dict]:
 
 
 def build(hosts: list[dict]) -> dict:
-    """hosts: [{id, hostname, facts, os_version, report (latest stored engine report, or None), internet_facing}]."""
+    """Return hosts, edges, truncated and chains from stored reports and current facts.
+
+    hosts contains dictionaries with unique id, hostname, facts, os_version, report
+    (latest stored engine report or None), and internet_facing. Inputs must follow
+    engine model shapes. No scan, database query or input mutation occurs here.
+    Edges stop at 2000 and set truncated when a further edge is found. Return up
+    to 50 starting-host chains, each with shortest-hop reachability. No separate
+    flag signals chain truncation. Malformed fields can raise KeyError, TypeError
+    or ValueError. An inferred edge does not prove exploitation or network access."""
     judged = [h for h in hosts if h.get("report") and "attack_paths" in h["report"]]
     gives = {}
     for h in judged:

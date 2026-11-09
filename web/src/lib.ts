@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { queryOptions, useQuery, type QueryClient } from "@tanstack/react-query";
 
-// ---- types (mirror api/src/nimstead/app.py) ---------------------------------
+// ---- UI-selected API shapes; these declarations do not validate JSON or enumerate every server field ----
 export const PRIORITIES = ["fix-now", "next", "planned", "low"] as const;
 export type Priority = (typeof PRIORITIES)[number];
 export type Status = "open" | "resolved" | "accepted";
@@ -13,7 +13,11 @@ export interface HostFacts {
   [k: string]: unknown;
 }
 
-/** Where a Windows host gets its updates from, in one line, or "" when the agent hasn't said (plan T12). */
+/** Format reported update facts f without probing the host; absent source evidence returns "".
+ * Explicit wsus=null selects Windows Update. Deferral-only facts produce no text.
+ * A 1601-prefixed success date means no prior install. Other dates use relativeTime.
+ * Invalid nested values/dates can throw. Do not mutate f.
+ */
 export function updateSource(f?: HostFacts): string {
   if (!f || (f.wsus === undefined && !f.last_update_success)) return "";
   const from = f.wsus ? `Updates from WSUS (${f.wsus})` : "Updates from Windows Update";
@@ -36,41 +40,43 @@ export interface Asset {
 // What happens to a host's agent next (app.py agent_update_status)
 export type AgentUpdate = "current" | "updating" | "failed" | "paused" | "off" | "reinstall";
 export const AGENT_UPDATE: Record<Exclude<AgentUpdate, "current">, { label: string; why: (a: Asset) => string }> = {
-  updating: { label: "Agent updating", why: (a) => `Agent ${a.agent_version} will replace itself with this server's signed release at its next run.` },
-  failed: { label: "Agent update failed", why: (a) => `${a.agent_update_error ?? "The last self-update failed."} The agent kept running ${a.agent_version} and will try again at its next run.` },
+  updating: { label: "Agent release differs", why: (a) => `The server offers a different signed release from agent ${a.agent_version}. The host checks version and channel eligibility at its next run.` },
+  failed: { label: "Agent update failed", why: (a) => `${a.agent_update_error ?? "The last self-update failed."} The last reported agent version is ${a.agent_version}. A failed self-test can delay retry for 24 hours.` },
   paused: { label: "Agent update paused", why: () => "Agent updates are paused for your organisation (Settings)." },
-  off: { label: "Agent outdated", why: () => "Automatic updates are switched off on this host. Rerun the install command to update it; the enrolment is kept." },
-  reinstall: { label: "Agent outdated", why: (a) => `${a.agent_version ? `Agent ${a.agent_version}` : "This agent"} can't update itself. Rerun the install command on this host once; the enrolment is kept, and later versions update automatically.` },
+  off: { label: "Agent outdated", why: () => "Automatic updates are switched off on this host. Use the installation instructions to update it, and check its local update setting afterward." },
+  reinstall: { label: "Agent outdated", why: (a) => `${a.agent_version ? `Agent ${a.agent_version}` : "This agent"} cannot use automatic updates from this server. Check its signed release and local update settings, or use the installation instructions.` },
 };
 export interface Coverage { assessed: number; inventory_only: number; not_assessed: { name: string; publisher: string | null; hosts: number }[] }
 export const coverageQ = { queryKey: ["coverage"], queryFn: () => api<Coverage>("/api/coverage") };
 export interface SbomResult { components: number; mapped: number; unique_packages: number; skipped: Record<string, number>; open: number; resolved: number }
-/** Return a display summary of mapped, unique, skipped, open, and resolved counts in r. */
+/** Format r's mapping/finding counts; skipped equals components minus mapped.
+ * Do not sum r.skipped or validate count consistency/ranges. No I/O or mutation occurs.
+ */
 export const sbomSummary = (r: SbomResult) =>
   `${r.mapped} of ${r.components} components recognised (${r.unique_packages} unique packages), ${r.components - r.mapped} skipped. ${r.open} open finding${r.open === 1 ? "" : "s"}, ${r.resolved} resolved.`;
 export interface Finding {
   id: string; asset_id: string; hostname: string; ecosystem: string; package: string;
   installed_version: string; fixed_version: string | null; setting_fix: boolean; plannable?: boolean;
-  /** Drawer only: the upgrade that clears every open finding for this package on this host. */
+  /** Drawer only: highest recorded fixed version across eligible open package findings, not a fresh repair proof. */
   package_fix?: { version: string; open: number } | null; vuln_id: string; advisory_ids: string[];
   rule_evidence?: "proven" | "real name" | "pattern" | null;
   summary: string | null; cvss: number | null; epss: number | null; kev: boolean; score: number;
   priority: Priority; reasons: string[]; status: Status; first_seen: string; last_seen: string;
   resolved_at: string | null;
-  /** Deadline from the SLA in force when it was first detected (ISO date); null once resolved or accepted. */
+  /** UTC deadline using historical SLA days and current priority; null for nonopen findings or omitted deadline calculation. */
   due: string | null;
 }
 export interface Action {
   /** fixed_version is null for a setting, which `summary` then describes. */
   ecosystem: string; package: string; fixed_version: string | null; hosts: string[]; asset_ids: string[]; vulns: string[];
   kev: boolean; max_score: number; summary: string | null;
-  /** How it gets fixed: the same rules plan and approve apply. person_only is never approved by the trust ladder. */
+  /** Server path classification. person_only excludes the action from normal automatic planning. */
   fix: string | null; plannable: boolean; person_only: boolean; forward_only: boolean;
-  /** A fix already in flight for this package, if any: link to it rather than planning another. */
+  /** One active job in the server-selected rows, or null. This is not a complete active-job list. */
   job: { id: string; status: JobStatus } | null;
-  /** Machines with that fix in flight; the rest can still be planned. */
+  /** Asset IDs represented by active jobs in selected rows. Other IDs still face normal planning guards. */
   busy_asset_ids: string[];
-  /** The newest failed attempt for this package, so Home doesn't offer the same plan blind. */
+  /** Newest nonactive selected attempt only when classified as a failure, otherwise null. */
   last_attempt: { id: string; status: JobStatus; error: string | null } | null;
 }
 export interface Summary {
@@ -94,16 +100,18 @@ const JOB_GROUPS = [
   { key: "done", title: "Done", statuses: ["succeeded", "cancelled"] },
 ] as const;
 export const JOB_STATUS_LABEL: Record<JobStatus, string> = {
-  planned: "Awaiting approval", approved: "Approved, waiting for host", dispatched: "Running on host", verifying: "Verifying",
-  succeeded: "Fixed and verified", failed: "Failed", rolled_back: "Rolled back", rollback_failed: "Rollback failed",
+  planned: "Awaiting approval", approved: "Approved, waiting for host", dispatched: "Sent to host", verifying: "Verifying",
+  succeeded: "Job succeeded", failed: "Failed", rolled_back: "Rolled back", rollback_failed: "Rollback failed",
   not_fixed: "Applied, still vulnerable", aborted: "Aborted", cancelled: "Cancelled",
 };
-/** Return the configured job groups with matching jobs, preserving each group's input order. */
+/** Return all configured groups with new job arrays, preserving input order and shared job objects.
+ * Unknown status values appear in no group. Do not mutate jobs or query the server.
+ */
 export const groupJobs = (jobs: Job[]) =>
   JOB_GROUPS.map((g) => ({ ...g, jobs: jobs.filter((j) => (g.statuses as readonly string[]).includes(j.status)) }));
 /** A job no one has finished with yet (remediate.py ACTIVE): one per package per machine. */
 export const ACTIVE_JOB_STATUSES: readonly JobStatus[] = ["planned", "approved", "dispatched", "verifying"];
-/** Running somewhere, so worth polling. */
+/** Return whether j.status is approved/dispatched/verifying; planned is not polled. */
 export const isActiveJob = (j: Pick<Job, "status">) => j.status !== "planned" && ACTIVE_JOB_STATUSES.includes(j.status);
 /** One cumulative update across the fleet (remediate.kb_fleet). The hosts and the plan come from kbHostsQ. */
 export interface KbRow { kb: string; product: string; title: string; released: string | null; build: string; hosts: number; fixed: number; plan_note: string | null }
@@ -115,12 +123,14 @@ export const kbHostsQ = (r: Pick<KbRow, "kb" | "product">) => queryOptions({
   queryFn: () => api<KbRow & { missing: KbHost[]; plan_asset_ids: string[] }>(`/api/windows-updates/${r.kb}?product=${encodeURIComponent(r.product)}`),
 });
 export const jobsQ = queryOptions({ queryKey: ["jobs"], queryFn: () => api<Job[]>("/api/remediation/jobs") });
-/** Address of a job card on the Remediation page. */
+/** Return job- plus id for a card anchor, without encoding or validation. */
 export const jobAnchor = (id: string) => `job-${id}`;
 
-export const APPROVE_COPY = "Saves a rollback copy of each package, upgrades, checks health, rolls back automatically on failure. Success is confirmed by the next inventory.";
+export const APPROVE_COPY = "Approval lets the host receive this plan when dispatch gates allow. The agent checks its prerequisites and uses the plan's recovery path where available. Review the next inventory and any remaining findings after execution.";
 
-/** "remediation_not_fixed" -> "Remediation not fixed". */
+/** Replace underscores in string k, trim outer whitespace and capitalize its first character.
+ * Empty text returns "". Interior repeated spaces remain. No I/O occurs.
+ */
 export const humaniseKind = (k: string) => { const t = k.replace(/_/g, " ").trim(); return t.charAt(0).toUpperCase() + t.slice(1); };
 
 export interface LedgerEntry { seq: number; ts: string; kind: string; subject: string; hash: string; prev_hash: string; data: Record<string, unknown> }
@@ -138,13 +148,13 @@ export interface Settings {
   agent_updates_paused: boolean; signed_agent_release: boolean; platform: Platform; sla_days: Record<Priority, number>;
   maintenance_window: MaintenanceWindow | null; reboot_deadline_hours: number;
 }
-/** When fixes may run (plan T40): days 0-6 = Monday-Sunday, start "HH:MM" local to tz, length in hours. */
+/** Dispatch window: days 0-6 = Monday-Sunday, local start HH:MM and elapsed-hour length. */
 export interface MaintenanceWindow { days: number[]; start: string; hours: number; tz: string }
 // updates.status(): last_update is what deploy/update.sh last did on the Docker host
 export interface Platform {
   version: string; latest: string | null; latest_url: string | null; update_available: boolean; checked: string | null;
   channel: "preview" | "beta" | "stable"; running_channel: "preview" | "beta" | "stable" | null; latest_channel: string | null;
-  last_update: { outcome: "updated" | "rolled_back" | "rollback_failed" | "refused"; from?: string; to?: string; error?: string; at?: string } | null;
+  last_update: { outcome: "updated" | "rolled_back" | "rollback_failed" | "refused"; from?: string; to?: string; error?: string | null; at?: string } | null;
 }
 export interface SsoSettings {
   issuer: string; client_id: string; client_secret_set: boolean; domains: string[]; required: boolean; redirect_uri: string;
@@ -157,16 +167,20 @@ export interface NotifySettings {
 export const settingsQ = queryOptions({ queryKey: ["settings"], queryFn: () => api<Settings>("/api/settings") });
 
 // ---- api ---------------------------------------------------------------------
-/** API failure with HTTP status and display message. Status 0 represents a network failure. */
+/** Error subclass with public status and supplied message; name remains Error.
+ * Constructor does not validate either value. api also uses status 0 for request-preparation failures.
+ */
 export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }
 
-/** Send a same-origin JSON request using the browser's session cookie.
- * @param path API URL path.
+/** Request and parse JSON through browser fetch, without runtime response validation.
+ * @param path Expected same-origin API path; absolute/cross-origin URLs are not refused here.
  * @param init Optional method and body; strings are sent verbatim, other truthy bodies are JSON-encoded.
  * @returns Parsed JSON typed as T, or undefined for HTTP 204. The generic does not validate the response.
- * @throws ApiError for network failure (status 0) or a non-success HTTP response; JSON parse errors propagate.
+ * @throws ApiError for fetch or request-serialization failure (status 0), or non-success HTTP status.
+ * Successful response JSON errors propagate separately. Fetch defaults govern credentials.
+ * No explicit timeout, abort signal, retry, or origin validation is supplied.
  */
 export async function api<T>(path: string, init?: { method?: string; body?: unknown }): Promise<T> {
   let res: Response;
@@ -177,7 +191,7 @@ export async function api<T>(path: string, init?: { method?: string; body?: unkn
       body: init?.body ? (typeof init.body === "string" ? init.body : JSON.stringify(init.body)) : undefined,
     });
   } catch {
-    throw new ApiError(0, "Can't reach the server. Check your connection and try again.");
+    throw new ApiError(0, "Couldn't complete the request. Check the input and connection, then try again.");
   }
   if (!res.ok) throw new ApiError(res.status, await errorMessage(res));
   return res.status === 204 ? (undefined as T) : res.json();
@@ -204,19 +218,26 @@ export const PRIORITY_CLASS: Record<Priority, string> = {
   planned: "bg-planned-bg text-planned-fg", low: "bg-low-bg text-low-fg",  // one fill ramp, Fix now darkest to Low none
 };
 
-/** Same thresholds as api/src/nimstead/risk.py. */
+/** Classify score using 75/50/25 thresholds, with kev overriding to fix-now.
+ * Do not validate score ranges; NaN falls to low. No I/O or mutation occurs.
+ */
 export function priorityOf(score: number, kev: boolean): Priority {
   return kev || score >= 75 ? "fix-now" : score >= 50 ? "next" : score >= 25 ? "planned" : "low";
 }
 
 // ---- formatting ----------------------------------------------------------------
-/** API timestamps are naive UTC (no zone suffix); treat them as UTC. */
+/** Parse string s as Date, appending Z unless it ends in Z or a numeric UTC offset.
+ * Invalid timestamp text returns Invalid Date. This helper does not validate or throw for ordinary bad date text.
+ */
 export function parseUtc(s: string): Date {
   return new Date(/(Z|[+-]\d\d:?\d\d)$/i.test(s) ? s : s + "Z");
 }
 
 const rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
-/** Format UTC timestamp s relative to now (Unix milliseconds), using English calendar units. Invalid dates can raise RangeError. */
+/** Format timestamp s relative to now (Unix milliseconds), using English rounded elapsed units.
+ * Months are 30 days and years 365 days, not calendar arithmetic. Under 45 rounded
+ * seconds is "just now". Invalid dates/nonfinite now can raise RangeError.
+ */
 export function relativeTime(s: string, now = Date.now()): string {
   const sec = Math.round((parseUtc(s).getTime() - now) / 1000);
   if (Math.abs(sec) < 45) return "just now";
@@ -231,27 +252,36 @@ export const plural = (n: number, one: string, many = one + "s") => `${n.toLocal
 /** Format ratio x as a rounded percentage, using <1% below 0.01. The input is not range-checked. */
 export const pct = (x: number) => (x < 0.01 ? "<1%" : `${Math.round(x * 100)}%`);
 
-/** What to move to. Settings, end of support and exposures never have a fixed version, and "no fix yet" would be untrue. */
+/** Return f.fixed_version when nonnull, otherwise an ecosystem action or "no fix recorded".
+ * An empty fixed-version string is retained. No advisory lookup, comparison or mutation occurs.
+ */
 export function fixLabel(f: Pick<Finding, "fixed_version" | "ecosystem">): string {
-  return f.fixed_version ?? ({ WinConfig: "change the setting", Lifecycle: "move to a supported version", External: "close or restrict it", WinDriver: "update or remove the driver" } as Record<string, string>)[f.ecosystem] ?? "no fix yet";
+  return f.fixed_version ?? ({ WinConfig: "change the setting", Lifecycle: "move to a supported version", External: "close or restrict it", WinDriver: "update or remove the driver" } as Record<string, string>)[f.ecosystem] ?? "no fix recorded";
 }
 
-/** "Installed A < fixed B per DSA-1" sentence parts. */
+/** Format finding f's recorded match explanation without re-evaluating versions or evidence.
+ * Special ecosystems use fixed wording. Ordinary rows name at most three advisory IDs,
+ * otherwise vuln_id. Missing fixed_version describes missing recorded fix data.
+ * Invalid array/string inputs can throw. No I/O or mutation occurs.
+ */
 export function whyMatched(f: Pick<Finding, "installed_version" | "fixed_version" | "advisory_ids" | "vuln_id"> & { ecosystem?: string }): string {
   if (f.ecosystem === "WinConfig") return `Found ${f.installed_version} on this host.`;
   if (f.ecosystem === "Lifecycle") return `Installed ${f.installed_version}, which is past its end of support.`;
   if (f.ecosystem === "External") return "Seen from outside by an external scan.";
   if (f.ecosystem === "WinDriver") return `This exact file (SHA-256 ${f.installed_version}) is listed by LOLDrivers.`;
-  if (!f.fixed_version) return `Installed ${f.installed_version}. No fixed version has been published yet.`;
+  if (!f.fixed_version) return `Installed ${f.installed_version}. No fixed version is recorded for this finding.`;
   const src = f.advisory_ids.length ? f.advisory_ids.slice(0, 3).join(", ") : f.vuln_id;
   return `Installed ${f.installed_version} < fixed ${f.fixed_version} per ${src}`;
 }
 
-/** Return Linux, direct-Python, and PowerShell enrolment commands for origin and token.
- * Inputs must be the trusted server origin and generated token; this helper does not escape arbitrary shell input. */
+/** Return curl/python/windows command strings for trusted origin and generated token.
+ * Interpolate inputs without shell escaping or URL normalization. Do not execute commands.
+ * Inputs must be trusted. The direct-Python command assumes the agent file is present.
+ * The strings use environment variables; the helper does not control caller process/log handling.
+ */
 export function installCommands(origin: string, token: string) {
   return {
-    // the token goes in the environment (export is a shell builtin), never argv: ps and sudo logs show every argument
+    // Use environment assignments in the displayed commands; execution/logging belongs to the caller.
     curl: `export NIMSTEAD_TOKEN=${token}; curl -fsSL ${origin.startsWith("https://") ? "--proto '=https' " : ""}${origin}/install.sh | sudo --preserve-env=NIMSTEAD_TOKEN sh; unset NIMSTEAD_TOKEN`,
     python: `export NIMSTEAD_TOKEN=${token}; python3 nimstead_agent.py enroll --server ${origin} && python3 nimstead_agent.py report; unset NIMSTEAD_TOKEN`,
     windows: `$env:NIMSTEAD_TOKEN = "${token}"; irm ${origin}/install.ps1 | iex`,
@@ -271,7 +301,11 @@ export type FindingGroup = "" | "vuln" | "package";
 export interface FindingGroupRow { key: string; findings: number; hosts: number; score: number; kev: boolean; priority: Priority; fixed_version: string | null; packages: number; package: string; vuln_id: string; vulns: number; ecosystem: string | null }
 export type RawSearch = Record<string, string | undefined>;
 
-/** Defaults: open findings, fixable only (noise reduction). Unknown values fall back to defaults. */
+/** Parse raw string search values with open/fixable/score/ungrouped defaults.
+ * Only fixable=0 disables that flag; kev/overdue require exact 1. Priority names
+ * are case-sensitive, untrimmed, and can repeat. Copy q/asset/f text unchanged.
+ * Unknown enum values fall back. Ignore other keys. Invalid runtime value types can throw.
+ */
 export function parseFilters(raw: RawSearch): FindingsFilters {
   const status = (["open", "resolved", "accepted"] as const).find((s) => s === raw.status) ?? "open";
   const priority = (raw.priority ?? "").split(",").filter((p): p is Priority => (PRIORITIES as readonly string[]).includes(p));
@@ -280,7 +314,11 @@ export function parseFilters(raw: RawSearch): FindingsFilters {
   return { q: raw.q ?? "", priority, fixable: raw.fixable !== "0", kev: raw.kev === "1", status, asset: raw.asset ?? "", open: raw.f ?? "", overdue: raw.overdue === "1", sort, group };
 }
 
-/** Inverse of parseFilters: only non-default values reach the URL. */
+/** Return a RawSearch object with undefined default fields for typed filters f.
+ * Canonicalize priorities to unique PRIORITIES order, dropping unknown entries.
+ * This is normalization, not an exact inverse for every raw URL. No encoding,
+ * input mutation or I/O occurs. Malformed priority values can throw.
+ */
 export function filtersToSearch(f: FindingsFilters): RawSearch {
   return {
     q: f.q || undefined,
@@ -296,10 +334,13 @@ export function filtersToSearch(f: FindingsFilters): RawSearch {
   };
 }
 
-/** Query string sent to /api/findings. */
 /** Rows per page of the findings list; more load as it scrolls. */
 export const FINDINGS_CAP = 500;
-/** The filters only (no paging, sort or view): what /api/findings/count and /groups take too. */
+/** Return URL-encoded server filters from f, with list controls when list=true.
+ * Always include status. The default adds limit=500/view=list and nondefault sort.
+ * list=false omits those controls. Map asset to asset_id; omit false booleans and
+ * UI open/group state. Preserve priority order. No validation, mutation or I/O occurs.
+ */
 export function filtersToApi(f: FindingsFilters, list = true): string {
   const p = new URLSearchParams({ status: f.status });
   if (list) { p.set("limit", String(FINDINGS_CAP)); p.set("view", "list"); if (f.sort !== "score") p.set("sort", f.sort); }
@@ -316,10 +357,16 @@ export function filtersToApi(f: FindingsFilters, list = true): string {
 export interface AiFilter { q?: string | null; priority?: string[] | null; status?: string | null; fixable?: boolean | null; kev?: boolean | null }
 export const aiStatusQ = queryOptions({ queryKey: ["ai-status"], queryFn: () => api<{ enabled: boolean }>("/api/ai/status"), staleTime: 5 * 60_000, retry: false });
 
-/** Looks like a question rather than a package/CVE search. */
+/** Return whether trimmed t ends in ? or has at least four whitespace-separated tokens.
+ * This is a text heuristic, not natural-language validation. No I/O occurs.
+ */
 export const looksLikeQuestion = (t: string) => t.trim().endsWith("?") || t.trim().split(/\s+/).length >= 4;
 
-/** Turn an AI filter into the patch applied to the URL filters. Unknown values are ignored. */
+/** Return a URL-filter patch from a, without validating the full runtime shape.
+ * Always set q/priority/kev/fixable. Missing text/priority becomes empty; flags use
+ * truthiness. Include status only when recognized, so an invalid status is omitted.
+ * Keep duplicate recognized priorities. Invalid runtime arrays can throw. No I/O occurs.
+ */
 export function aiFilterToPatch(a: AiFilter): Partial<FindingsFilters> {
   const priority = (a.priority ?? []).filter((p): p is Priority => (PRIORITIES as readonly string[]).includes(p));
   const status = (["open", "resolved", "accepted"] as const).find((s) => s === a.status);
@@ -338,7 +385,10 @@ const STALE = {
 export const refresh = (qc: QueryClient, what: keyof typeof STALE) =>
   Promise.all(STALE[what].map((k) => qc.invalidateQueries({ queryKey: [k] })));
 
-/** Says something through the shell's live regions (DECISIONS 49). Cleared first so the same words are read again. */
+/** Clear the selected live region, then set text after 30 ms.
+ * assertive selects live-alert instead of live. Missing document/region is a no-op.
+ * Timers are independent. An earlier message can appear during a later call's delay.
+ */
 export function announce(text: string, assertive = false) {
   const el = typeof document === "undefined" ? null : document.getElementById(assertive ? "live-alert" : "live");
   if (!el) return;
@@ -346,12 +396,18 @@ export function announce(text: string, assertive = false) {
   setTimeout(() => { el.textContent = text; }, 30);
 }
 
-/** Set the browser document title to the page title plus the product name whenever title changes. */
+/** Set the document title from title plus product name in a React effect.
+ * Require a browser DOM. Re-run when title changes, without restoring an old title on cleanup.
+ */
 export function useTitle(title: string) {
   useEffect(() => { document.title = `${title} · Nimstead Assure`; }, [title]);
 }
 
-/** Lazy pages render their anchors only after their data loads, so the browser's own #hash jump finds nothing: do it then. */
+/** On mount/ready changes, scroll to and request focus on the decoded hash target.
+ * Require browser location/document. Missing targets are ignored without retry.
+ * Hash changes alone do not rerun this effect. Invalid percent escapes throw URIError.
+ * The caller must make targets focusable. No tabindex or history changes are made.
+ */
 export function useHashScroll(ready: boolean) {
   useEffect(() => {
     if (!ready || !location.hash) return;
@@ -363,12 +419,17 @@ export function useHashScroll(ready: boolean) {
 }
 
 export type ThemeChoice = "system" | "light" | "dark";
-/** "system" follows prefers-color-scheme; index.html's inline script applies a stored choice before first paint. */
+/** Read light/dark from the document dataset, otherwise return system.
+ * Require a browser DOM. Do not read storage or the system preference here.
+ */
 export const themeChoice = (): ThemeChoice => {
   const t = document.documentElement.dataset.theme;
   return t === "light" || t === "dark" ? t : "system";
 };
-/** Apply theme t to the document and persist it when storage is available; system removes the override. */
+/** Apply typed theme t to the document dataset and persist it under theme.
+ * system removes both overrides. Suppress storage errors after the DOM change.
+ * Require a browser DOM. Do not validate unexpected runtime strings or emit an event.
+ */
 export function setTheme(t: ThemeChoice) {
   if (t === "system") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = t;
   try { if (t === "system") localStorage.removeItem("theme"); else localStorage.setItem("theme", t); } catch { /* storage blocked */ }
@@ -395,7 +456,10 @@ export const adminGate = (admin: boolean) => (admin ? {} : {
 export const summaryQ = queryOptions({ queryKey: ["summary"], queryFn: () => api<Summary>("/api/summary") });
 export const assetsQ = queryOptions({ queryKey: ["assets"], queryFn: () => api<Asset[]>("/api/assets") });
 
-/** Packages a refused dry run said the fix also needs ("would also change: musl, libcrypto3"). */
+/** Parse case-sensitive dependency text in error, treating null/undefined as empty.
+ * Read the first would-also-change clause until newline/semicolon. Split/trim commas,
+ * retain duplicate nonempty names and perform no package validation. No I/O occurs.
+ */
 export function dependenciesNeeded(error: string | null | undefined): string[] {
   const m = /would also change: ([^\n;]+)/.exec(error ?? "");
   return m?.[1] ? m[1].split(",").map((s) => s.trim()).filter(Boolean) : [];
@@ -405,11 +469,17 @@ export function dependenciesNeeded(error: string | null | undefined): string[] {
 // shortcut: saved in this browser only (localStorage); store them per user on the server if teams need to share them
 export interface SavedView { name: string; search: RawSearch }
 const VIEWS_KEY = "nimstead:findings-views";
-/** Read named findings views from localStorage; return [] when storage or JSON is unavailable. Only names are validated. */
+/** Return named JSON entries from localStorage's nimstead:findings-views, otherwise [].
+ * Validate only each name's string type; search shapes can be absent or malformed.
+ * Storage/parse failures are suppressed. Views belong to this browser, not an account.
+ */
 export function savedViews(): SavedView[] {
   try { const v = JSON.parse(localStorage.getItem(VIEWS_KEY) ?? "[]"); return Array.isArray(v) ? v.filter((x) => x && typeof x.name === "string") : []; } catch { return []; }
 }
-/** Persist views and dispatch nimstead-views so listeners refresh; storage failures are ignored. */
+/** JSON-store views and then dispatch nimstead-views on window.
+ * Suppress serialization/storage/event errors and return undefined. A storage write
+ * can succeed before an event failure. No schema validation or server request occurs.
+ */
 export function saveViews(views: SavedView[]) {
   try { localStorage.setItem(VIEWS_KEY, JSON.stringify(views)); window.dispatchEvent(new Event("nimstead-views")); } catch { /* private mode: views just don't persist */ }
 }

@@ -5,7 +5,14 @@ import clsx from "clsx";
 import { adminGate, api, jobAnchor, refresh, useIsAdmin, type Job } from "./lib";
 import { Alert, btnQuiet } from "./ui";
 
-/** Plans a fix for one package on the given machines (one job each). */
+/** Render an admin-gated batch-plan action under router and QueryClient providers.
+ * ecosystem/pkg identify the action and assetIds is sent unchanged to the server.
+ * hosts defaults to assetIds.length and affects accessible text only. label/className
+ * customize presentation. On click, POST batch plans and refresh job-derived queries
+ * after success or failure. Any returned per-asset errors show one deduplicated error;
+ * partial jobs remain created. Full success navigates to Remediation with an optional first-job anchor only while
+ * the current pathname still equals its click-time value. This does not approve jobs.
+ */
 export function PlanFixButton({ ecosystem, pkg, assetIds, hosts = assetIds.length, label = "Plan fix", className }: { ecosystem: string; pkg: string; assetIds: string[]; hosts?: number; label?: string; className?: string }) {
   const admin = useIsAdmin();
   const qc = useQueryClient();
@@ -28,7 +35,7 @@ export function PlanFixButton({ ecosystem, pkg, assetIds, hosts = assetIds.lengt
     <div className={clsx("flex flex-col items-start gap-1.5", className)}>
       <button className={btnQuiet} disabled={plan.isPending} onClick={() => plan.mutate(location.pathname)} {...adminGate(admin)}>
         <Wrench className="size-4" aria-hidden />{plan.isPending ? "Planning…" : label}
-        <span className="sr-only"> for {pkg}{hosts > 1 ? ` on ${hosts} hosts` : ""}</span>
+        <span className="sr-only"> for {pkg}{hosts > 1 ? ` on ${hosts} assets` : ""}</span>
       </button>
       <Alert error={plan.error} className="max-w-sm" />
     </div>

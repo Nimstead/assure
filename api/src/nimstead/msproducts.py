@@ -2,7 +2,7 @@
 DECISIONS 51, 53). An explicit allowlist on both sides, never a pattern that admits whatever MSRC adds:
 
 - feed side, `key_for`: an MSRC product name (+ one fixed build) -> a stable product key, or None;
-- host side, `targets`: what the agent reports -> the product keys to compare with, or [].
+- host side, `targets`: what the agent reports -> candidate keys and version, or None.
 
 The agent reports raw facts (ecosystem `Microsoft`: ".NET runtime", ".NET SDK", ".NET Framework", "ASP.NET Core", "SQL Server", "Exchange Server",
 "SharePoint Server", "Defender platform", "Defender engine", or a Store package family), and Uninstall-key entries
@@ -25,7 +25,16 @@ STORE_PACKAGES = tuple(STORE)  # the agent queries exactly these (it holds its o
 
 
 def norm(v: str) -> str | None:
-    """'15.02.1748.053' -> '15.2.1748.53', 'v4.04' -> '4.4', '30.104.13001.0.' -> '30.104.13001.0'; non-numeric -> None."""
+    """Normalize dotted numeric version string v, or return None for unsupported text.
+
+    Trim whitespace, a lowercase v prefix and trailing dots. Require at least two
+    decimal components, then remove leading zeros through integer conversion.
+    This does not validate a product's release line. Incompatible nonstrings or
+    excessively long numeric components can raise AttributeError or ValueError.
+
+    >>> norm('v15.02.1748.053.')
+    '15.2.1748.53'
+    """
     v = (v or "").strip().removeprefix("v").rstrip(".")
     return ".".join(str(int(x)) for x in v.split(".")) if re.fullmatch(r"\d+(\.\d+)+", v) else None
 
@@ -93,7 +102,11 @@ _FEED = [(re.compile(p), f) for p, f in FEED]
 
 
 def key_for(msrc_name: str, fixed: str) -> tuple[str, str] | None:
-    """(key, normalised fixed build) for an allowlisted MSRC product, or None."""
+    """Return (key, normalized fixed version) for allowlisted MSRC product msrc_name.
+
+    fixed is the vendor build string. Product patterns match fully and case-sensitively,
+    first match wins. Unsupported products/builds return None. Does not query feeds.
+    Incompatible strings or extreme numeric values can propagate type/conversion errors."""
     b = norm(fixed)
     if not b:
         return None
@@ -118,12 +131,19 @@ _UNINSTALL = [(re.compile(n), re.compile(p), f) for n, p, f in UNINSTALL]
 
 
 def names_product(name: str, publisher: str | None) -> bool:
-    """Whether an allowlisted Uninstall entry's name and publisher match, before its version is read (from_winapp's test)."""
+    """Return whether Uninstall name/publisher strings match the Microsoft allowlist.
+
+    Both matches are full and case-sensitive. None publisher acts as empty text.
+    Does not inspect a version or trim input. Incompatible types can raise TypeError."""
     return any(n.fullmatch(name) and p.fullmatch(publisher or "") for n, p, _ in _UNINSTALL)
 
 
 def from_winapp(name: str, publisher: str | None, version: str) -> tuple[str, str] | None:
-    """An Uninstall-key entry that is an allowlisted Microsoft product: (key, normalised version)."""
+    """Return (key, normalized version) for Uninstall name/publisher/version strings.
+
+    Require a normalized version and full case-sensitive allowlist matches.
+    Unsupported products, publishers or tracks return None. No mutation or I/O occurs.
+    Incompatible types or extreme numbers can propagate normalization/pattern errors."""
     v = norm(version)
     if not v:
         return None
@@ -135,7 +155,13 @@ def from_winapp(name: str, publisher: str | None, version: str) -> tuple[str, st
 
 
 def targets(name: str, version: str, os_product: str | None, source: str | None = None) -> tuple[tuple[str, ...], str] | None:
-    """An agent-reported Microsoft fact -> (candidate keys, first with advisories wins; normalised version)."""
+    """Return (candidate-key tuple, normalized version) for Microsoft fact name/version.
+
+    os_product optionally supplies the host MSRC product name. source means the
+    .NET Framework registry Release value or the Office channel, depending on name.
+    Store packages try an OS-specific key before the generic key. Unsupported names,
+    builds or missing required context return None. Does not select advisories itself.
+    Incompatible inputs or extreme numbers can propagate normalization/attribute errors."""
     v = norm(version)
     if not v:
         return None

@@ -25,7 +25,15 @@ const STATUSES: Status[] = ["open", "resolved", "accepted"];
 // phones have no "/" key to speak of
 const COARSE = typeof matchMedia !== "undefined" && matchMedia("(pointer: coarse), (max-width: 47.99em)").matches;
 
-/** Render paginated, sortable findings using URL search filters, grouping, selection, and the finding drawer. */
+/** Render findings with URL filters, grouped queries, loaded-row selection and a drawer.
+ * @param search Raw router search values normalized by parseFilters. Requires router/query providers.
+ * Text changes replace the URL after 250ms. AI questions wait for explicit submission.
+ * Individual rows use offset pages. Group queries and counts have independent cache/error state.
+ * Selection clears when the serialized list query changes. Select-all covers loaded rows only.
+ * Admin bulk actions and acceptance issue API mutations and invalidate related query families.
+ * Request failures appear in their relevant views. Optional query failures can hide controls.
+ * Typed API shapes are trusted. Malformed rows or dates can cause rendering errors.
+ */
 export function FindingsPage({ search }: { search: RawSearch }) {
   useTitle("Findings");
   const f = parseFilters(search);
@@ -254,7 +262,7 @@ function Results({ rows, total, more, f, noAssets, onClear, onClearText, onShowU
 }) {
   if (rows.length > 0) return <Table rows={rows} total={total ?? rows.length} more={more} sort={f.sort} onPick={onPick} onSort={onSort ?? (() => {})} picked={picked} onPickRow={onPickRow} onPickAll={onPickAll} />;
   if (noAssets) {
-    return <EmptyState title="No machines yet" action={<Link to="/add" className={clsx(btnQuiet, "no-underline")}>Add a machine <ArrowRight className="size-4" aria-hidden /></Link>}>Findings appear once a machine reports its installed software.</EmptyState>;
+    return <EmptyState title="No machines yet" action={<Link to="/add" className={clsx(btnQuiet, "no-underline")}>Add a machine <ArrowRight className="size-4" aria-hidden /></Link>}>Enrol a machine or add an application, then assess its reported inventory.</EmptyState>;
   }
   const narrowed = !!(f.kev || f.overdue || f.priority.length || f.asset);
   const filtered = f.q || narrowed || f.fixable || f.status !== "open";
@@ -268,7 +276,7 @@ function Results({ rows, total, more, f, noAssets, onClear, onClearText, onShowU
           {(narrowed || (f.q && f.fixable)) && <button className={btnQuiet} onClick={() => { onClear(); onShowUnfixable(); }}>Clear everything</button>}
         </div>
       ) : undefined}>
-      {f.status === "open" && !filtered ? "Everything reported is clean." : why.length ? `Narrowed by ${why.join(", ")}.` : "Try another status."}
+      {f.status === "open" && !filtered ? "No open findings match this view. Review scan completeness and coverage separately." : why.length ? `Narrowed by ${why.join(", ")}.` : "Try another status."}
     </EmptyState>
   );
 }
@@ -411,7 +419,7 @@ function FindingDrawer({ id, ids = [], onMove, onClose }: { id: string; ids?: st
           {q.isPending ? <Loading className="h-20" rows={3} label="Loading finding…" />
             : q.error instanceof ApiError && q.error.status === 404 ? (
               <EmptyState title="This finding no longer exists" action={<Dialog.Close className={btnQuiet}>Back to the list</Dialog.Close>}>
-                It was probably resolved by a later inventory, or its machine was removed. The evidence ledger keeps its history.
+                This finding is unavailable to the current organisation. Its asset may have been removed. Resolution alone does not remove a finding record.
               </EmptyState>
             ) : q.error ? <ErrorState error={q.error} retry={() => q.refetch()} /> : <FindingDetail f={q.data} />}
         </Dialog.Content>
@@ -432,7 +440,7 @@ function FindingDetail({ f }: { f: Finding }) {
     <div>
       <div className="flex flex-wrap items-center gap-2"><PriorityPill priority={f.priority} />{f.kev && <KevBadge />}<span className="num text-sm text-muted">Score {f.score}/100</span></div>
       <details className="mt-1 text-sm text-muted"><summary className="flex tap w-fit cursor-pointer items-center">How the score works</summary>
-        <p className="mt-1 max-w-prose">0 to 100, from the advisory's severity, how likely it is to be exploited in the next 30 days (EPSS), whether it is being exploited now (KEV), and this machine's criticality and exposure. Fix now is 80 or more, or any KEV.</p></details>
+        <p className="mt-1 max-w-prose">0 to 100, from the advisory's severity, how likely it is to be exploited in the next 30 days (EPSS), whether it appears in the known exploited vulnerabilities catalogue (KEV), and this machine's criticality and exposure. Fix now is 80 or more, or any KEV.</p></details>
       {f.due && <Due due={f.due} />}
       {f.summary && <p className="mt-3 max-w-prose text-sm">{f.summary}{f.summary.length >= 200 && !/[.!?…]$/.test(f.summary) && "…"}</p>}
       {ai && <Explain key={f.id} id={f.id} />}
@@ -441,7 +449,7 @@ function FindingDetail({ f }: { f: Finding }) {
       <p className="break-words text-sm"><strong className="break-all font-semibold">{f.package}</strong> on <strong className="break-all font-semibold">{f.hostname}</strong></p>
       <p className="text-mono mt-1 break-words bg-sunken p-3 font-mono">{whyMatched(f)}</p>
       {f.fixed_version && (f.package_fix && f.package_fix.open > 1
-        ? <p className="mt-2 text-sm text-muted">Fix: upgrade {f.package} to {f.package_fix.version} or later. That clears all {f.package_fix.open} open findings for {f.package} on this host; {f.fixed_version} fixes only this one.</p>
+        ? <p className="mt-2 text-sm text-muted">Fix: upgrade {f.package} to {f.package_fix.version} or later. That version covers the recorded fixes for {f.package_fix.open} open findings on this asset. Verify the result after a new inventory.</p>
         : <p className="mt-2 text-sm text-muted">Fix: upgrade {f.package} to {f.fixed_version} or later.</p>)}
       {f.rule_evidence && <p className="mt-2 text-sm text-muted">{RULE_EVIDENCE[f.rule_evidence]}</p>}
 
@@ -452,7 +460,7 @@ function FindingDetail({ f }: { f: Finding }) {
       <dl className="num grid grid-cols-3 gap-3 text-sm">
         <div><dt className="text-muted">CVSS</dt><dd className="font-medium">{f.cvss ?? "n/a"}</dd></div>
         <div><dt className="text-muted">EPSS (30 days)</dt><dd className="font-medium">{f.epss === null ? "n/a" : pct(f.epss)}</dd></div>
-        <div><dt className="text-muted">Known exploited</dt><dd className="font-medium">{f.kev ? "Yes (KEV)" : "No"}</dd></div>
+        <div><dt className="text-muted">Known exploited</dt><dd className="font-medium">{f.kev ? "Yes (KEV)" : "Not listed in KEV"}</dd></div>
       </dl>
 
       {ids.length > 0 && <H>Advisories</H>}
@@ -470,8 +478,8 @@ function FindingDetail({ f }: { f: Finding }) {
         <>
           <H>Act on it <span className="ml-2 hidden text-xs font-normal text-muted md:inline">keys: p then Enter plan · a accept · j k next/previous</span></H>
           {job && <FixInProgress job={job} />}
-          {f.fixed_version && f.plannable === false && <p className="mb-3 text-sm text-muted">Nimstead can't plan this one: update it with its own updater or by policy.</p>}
-          {refused && f.plannable !== false && <p className="mb-3 text-sm text-muted">This is a production machine, and production remediation is off on this server, so a fix can't be planned here yet. <Link to="/settings" hash="remediation" className="font-medium text-ink underline">How to turn it on</Link></p>}
+          {f.fixed_version && f.plannable === false && <p className="mb-3 text-sm text-muted">No supported plan is available for this finding. Review the product's update procedure or configuration policy.</p>}
+          {refused && f.plannable !== false && <p className="mb-3 text-sm text-muted">Production remediation is off on this server. This view hides its plan control for this asset. <Link to="/settings" hash="remediation" className="font-medium text-ink underline">How to turn it on</Link></p>}
           <div className="flex flex-wrap items-start gap-2">
             {(f.fixed_version || f.setting_fix) && !job && f.plannable !== false && !refused && <span data-act="plan"><PlanFixButton ecosystem={f.ecosystem} pkg={f.package} assetIds={[f.asset_id]} /></span>}
             <span data-act="accept" className="contents"><AcceptRisk f={f} /></span>
@@ -513,7 +521,7 @@ function useJobFor(f: Finding) {
 function FixInProgress({ job }: { job: Job }) {
   return (
     <p className="mb-3 flex flex-wrap items-center gap-2 border border-line-strong p-3 text-sm">
-      <span className="font-medium">Fix in progress:</span><StatusPill status={job.status} />
+      <span className="font-medium">Existing fix:</span><StatusPill status={job.status} />
       <Link to="/remediation" hash={jobAnchor(job.id)} className="inline-flex tap items-center font-medium text-accent underline">View this fix</Link>
     </p>
   );
@@ -540,7 +548,15 @@ function RevokeAcceptance({ id }: { id: string }) {
   );
 }
 
-/** Render risk-acceptance controls for finding f; successful changes invalidate related queries. */
+/** Render single-finding or current-vulnerability acceptance controls.
+ * @param f Finding identity, vulnerability ID and host label. Requires a query provider.
+ * Cached admin state gates the opening button. The server authorizes each POST.
+ * The form trims the reason, requires ten characters, and offers 30, 90 or 180 days.
+ * The API enforces its own upper limits. The default duration is 90 days.
+ * The optional scope accepts currently open matches, including other packages and assets.
+ * Success invalidates finding-related queries. The component does not close/reset its form.
+ * API errors remain visible. Acceptance expiry depends on later reassessment.
+ */
 export function AcceptRisk({ f }: { f: Finding }) {
   const admin = useIsAdmin();
   const qc = useQueryClient();
@@ -559,7 +575,7 @@ export function AcceptRisk({ f }: { f: Finding }) {
   const ok = reason.trim().length >= 10;
   return (
     <form className="w-full border border-line-strong p-3" onSubmit={(e) => { e.preventDefault(); setTried(true); if (ok) accept.mutate(); }}>
-      <p className="text-sm text-muted">Accepting hides this finding for a limited time, then it comes back for review. Your reason, your name and the expiry are recorded in the tamper-evident evidence ledger and shown to auditors.</p>
+      <p className="text-sm text-muted">Acceptance moves this finding to Accepted. After expiry, reassessment can reopen it if the match remains. The evidence ledger records your reason, identity and duration.</p>
       <Field label="Reason" hint="At least 10 characters. Auditors will read it." error={tried && !ok ? "Say why in at least 10 characters." : null} className="mt-3">
         <textarea autoFocus rows={3} className={clsx(input, "py-2")} value={reason} onChange={(e) => setReason(e.target.value)} />
       </Field>
@@ -664,7 +680,7 @@ function BulkBar({ rows, onClear, onDone }: { rows: Finding[]; onClear: () => vo
       {result && <p role="status" className="w-full text-muted">{result}</p>}
       <Alert error={plan.error ?? null} className="w-full" />
       <ConfirmDialog open={accepting} onOpenChange={setAccepting} title={`Accept the risk of ${plural(rows.length, "finding")}?`}
-        description="Each is hidden for the period you choose, then comes back for review. Your reason, your name and the expiry are recorded for each in the evidence ledger."
+        description="Acceptance moves eligible open findings to Accepted. After expiry, reassessment can reopen a matching finding. The evidence ledger records your reason, identity and duration."
         confirmLabel="Accept risk" pendingLabel="Saving…" pending={accept.isPending} error={accept.error} onConfirm={() => { if (reason.trim().length >= 10) accept.mutate(); }}>
         <Field label="Reason" hint="At least 10 characters. Auditors will read it." className="mt-3">
           <textarea rows={3} className={clsx(input, "py-2")} value={reason} onChange={(e) => setReason(e.target.value)} />

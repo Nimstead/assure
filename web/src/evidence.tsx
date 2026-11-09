@@ -32,7 +32,17 @@ const STATUS: Record<ControlStatus, { label: string; className: string; Icon: ty
 const EXCEPTED = { label: "Met", className: "border-warn-fg bg-warn-bg text-warn-fg", Icon: CircleAlert };
 const date = (s: string) => parseUtc(s).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 
-/** `period` comes from the URL (?period=30), so a link or reload keeps it. */
+/** Render report indicators, recent ledger rows and evidence download links.
+ * Requires router/query providers and browser DOM. There are no props.
+ * URL period accepts 30, 90 or 365 days, otherwise 90. URL show selects ledger group.
+ * Report and ledger requests are independent. Period does not filter the ledger list.
+ * Both URL controls replace history and preserve other search fields without resetting scroll.
+ * Main request failures expose retry. Optional summary/job/asset failures omit context.
+ * Downloads are native links. Their errors do not become component query errors.
+ * The public-key query stays fresh indefinitely in this query client.
+ * API shapes and dates are trusted. Malformed values can cause render failures.
+ * Server integrity results can reuse cached verification. This view performs no cryptography.
+ */
 export function EvidencePage() {
   useTitle("Evidence");
   const { period } = useSearch({ strict: false }) as { period?: string };
@@ -50,7 +60,7 @@ export function EvidencePage() {
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-3xl font-semibold">Evidence</h1>
-          <p className="mt-1 max-w-prose text-muted">What you can show an auditor: how each control is doing, and a tamper-evident record of every detection, fix and decision.</p>
+          <p className="mt-1 max-w-prose text-muted">Review computed control indicators and recorded ledger events. These do not certify compliance or complete host coverage.</p>
         </div>
         <label className="flex items-center gap-2 text-sm">
           <span className="text-muted">Period</span>
@@ -66,10 +76,10 @@ export function EvidencePage() {
 
       <section aria-labelledby="ledger">
         <h2 id="ledger" className="text-lg font-semibold">Ledger</h2>
-        {/* say what's shown: the page promises every decision, and the full chain is in the signed pack */}
+        {/* The list and period report are separate snapshots. */}
         <p role="status" className="mb-3 mt-1 text-sm text-muted">
           {ledger.data && ledger.data.total > LEDGER_SHOWN ? `Latest ${LEDGER_SHOWN} of ${ledger.data.total.toLocaleString()} ${group ? "matching " : ""}entries, newest first.` : "Newest first."}
-          {report.data && ` The signed pack for the last ${days} days holds all ${report.data.ledger.entries.toLocaleString()} entries of that period, with every checkpoint.`}
+          {report.data && ` The report counts ${report.data.ledger.entries.toLocaleString()} ledger entries in its ${days}-day period. The pack is generated separately at download.`}
         </p>
         <div role="group" aria-label="Show" className="mb-3 inline-flex flex-wrap border border-line-strong bg-surface p-0.5">
           {LEDGER_GROUPS.map(([g, label]) => <button key={g} aria-pressed={group === g} onClick={() => setGroup(g)}
@@ -156,7 +166,7 @@ function Exceptions({ resolved }: { resolved: number }) {
   if (resolved >= SMALL_SAMPLE && !now && !quiet) return null;
   return (
     <div className="mb-3 flex flex-col gap-1 border border-line-strong bg-surface px-3 py-2 text-sm">
-      {resolved < SMALL_SAMPLE && <p>Timeliness controls here rest on {plural(resolved, "fix", "fixes")} in this period, too few to show a trend. Read “Met” as “nothing late so far”.</p>}
+      {resolved < SMALL_SAMPLE && <p>The report includes {plural(resolved, "resolved finding")} in this period. Fewer than five resolutions provide limited trend evidence. Review each control's own counts and exceptions.</p>}
       {(now > 0 || quiet > 0) && (
         <p>Right now:{" "}
           {now > 0 && <Link to="/findings" search={filtersToSearch({ ...parseFilters({}), priority: ["fix-now"], fixable: false })} className="font-medium underline">{plural(now, "Fix now finding")} open</Link>}
@@ -193,7 +203,7 @@ function LedgerView({ problems, entries }: { problems: string[]; entries: Ledger
   return (
     <div className="flex flex-col gap-3">
       {problems.length === 0 ? (
-        <p role="status" className="flex items-center gap-2 border border-line-strong bg-surface px-3 py-2 text-sm font-medium"><ShieldCheck className="size-4" aria-hidden />Chain verified. Every entry links unbroken back to the first.</p>
+        <p role="status" className="flex items-center gap-2 border border-line-strong bg-surface px-3 py-2 text-sm font-medium"><ShieldCheck className="size-4" aria-hidden />No ledger integrity problems reported. The server can reuse a verified prefix for up to one hour.</p>
       ) : (
         // stored state, shown plainly rather than announced on every visit (as settings' last update is)
         <div className="bg-now-bg px-3 py-2 text-sm text-now-fg">
@@ -201,7 +211,7 @@ function LedgerView({ problems, entries }: { problems: string[]; entries: Ledger
           <ul className="mt-1 list-disc pl-6">{problems.slice(0, 5).map((p) => <li key={p}>{p}</li>)}</ul>
         </div>
       )}
-      {entries.length === 0 ? <p className="text-sm text-muted">Nothing recorded yet.</p> : (
+      {entries.length === 0 ? <p className="text-sm text-muted">No ledger entries match this category.</p> : (
         <ol className="flex flex-col divide-y divide-line overflow-hidden border border-line bg-surface">
           {entries.map((e) => (
             <li key={e.seq} className={clsx("flex flex-wrap items-baseline gap-x-4 gap-y-0.5 px-4 py-2.5 text-sm", FAILED_KIND.test(e.kind) && "bg-now-bg")}>

@@ -1,37 +1,51 @@
-# Release keys: rotation and a bad release
+# Release key reference
 
-Every release is a `release.json` (version, agent SHA-256, commit, channel) signed with Ed25519 (DECISIONS 31–33). Agents and
-`deploy/update.sh` accept only manifests signed by a key in `RELEASE_KEYS` at the top of `agent/nimstead_agent.py`:
+Assure release manifests use Ed25519 signatures. The pinned verification keys are raw public-key bytes encoded as hexadecimal text, not SHA-256 fingerprints.
 
-| Key | Fingerprint | Where it lives |
-|---|---|---|
-| Primary | `a91fa653…` | `NIMSTEAD_RELEASE_KEY` secret of the GitHub `release` environment (owner approval, `v*` tags only) |
-| Backup | `2438f2cc…` | Offline, in the owner's password manager. Used only for the steps below |
+| Role | Pinned public key | Private-key custody |
+| --- | --- | --- |
+| Primary | `a91fa6539c6c2593009fc71b1c1fba341b5685ba7bc97c127c068b1d732b21d2` | `NIMSTEAD_RELEASE_KEY` in the GitHub `release` environment |
+| Backup | `2438f2ccebab5bf26edf9e21a8aa8f09abd1861f52fbe0d6641b28b90f8b0e5a` | Offline in the owner's password manager |
 
-What signing guarantees: a server, a mirror or a GitHub login can't make an agent run code nobody signed, can't push an older
-agent than the one a host runs, and can't hand a host a release from a less proven channel than it chose. What it can't do: stop
-a compromised server from **withholding** releases. Nothing an agent fetches through its server can, so a fix reaches hosts only
-through servers that relay it.
+The authoritative key list is `RELEASE_KEYS` in [the agent](../agent/nimstead_agent.py). Agents and `deploy/update.sh` accept manifests only under pinned keys.
+
+## Signed fields
+
+`release.json` binds the version, agent version, agent SHA-256, commit, release channel, and supplied runtime hashes. `release.json.sig` contains the base64 Ed25519 signature over the exact manifest bytes.
+
+| Field | Agent verifier contract |
+| --- | --- |
+| `version` | Required three-component decimal version string |
+| `agent_version` | Required three-component decimal agent version string |
+| `agent_sha256` | Required 64-character lowercase hexadecimal hash |
+| `commit` | Required 40-character lowercase hexadecimal commit |
+| `channel` | Optional. Eligibility uses `preview`, `beta`, or `stable`. Missing or unrecognized values act as preview |
+| `runtimes` | Optional, absent or `null` for older releases. When present and nonnull, a nonempty architecture map |
+
+Runtime keys can be `amd64`, `arm64`, or `win32`. Each entry requires a three-component decimal `version` and 64-character lowercase hexadecimal `sha256`. The agent accepts a subset of architectures. Unknown manifest and runtime-entry fields remain available after verification.
+
+Hash and commit shape checks use `str(value)`. They do not strictly enforce JSON string types. Later update hash comparisons still need the actual string value.
+
+The signing tool validates its pinned runtime source separately. It requires all three architectures and their exact Python.org download URLs. The signed manifest contains runtime versions and hashes, without those URLs.
+
+The signer emits sorted-key JSON without separator spaces. Verification covers the exact bytes, so whitespace changes invalidate the signature. The agent verifier then validates the required fields. Channel eligibility and anti-rollback checks occur during update selection, rather than signature verification alone.
+
+The server's `verify_manifest()` checks only signature validity and a JSON object root. Its `signed_release()` additionally compares the served agent's hash. These helpers do not perform the agent's full field validation or compare the platform commit/version.
+
+The signing CLI checks whether the signing public key's hexadecimal text occurs in agent source. This guard does not parse `RELEASE_KEYS`. Maintainers must check that the key is in the actual pinned list.
+
+See [platform update reference](reference/platform-updates.md) for cache files, fetch limits, status fields, and relay behavior.
+
+A signature does not force a server to relay a release. An already compromised host also remains outside the signature's protection. Read [signed updates](explanation/signed-updates.md) for the trust boundaries.
 
 ## A release is bad (bug or vulnerability, key still safe)
 
-1. Fix it and tag the next version. The Release workflow signs it (preview); promote it to the channel the bad one reached.
-2. Agents take the fix at their next run (strictly newer always wins); servers alert admins once and `deploy/update.sh` installs it.
-3. Say in the release notes and `SECURITY.md` advisory which versions are affected. A host can't be pushed back to the bad
-   version afterwards (anti-rollback).
+Use [recover from a bad release](how-to/recover-release.md#replace-a-bad-release).
 
 ## The primary key leaked or might have
 
-1. Generate a new key on an offline machine: `python scripts/sign_release.py keygen <dir outside the repo>`.
-2. In a release PR, replace the primary key in `RELEASE_KEYS` with the new public key; keep the backup key.
-3. Sign that release with the **backup** key (agents in the field pin it), run locally:
-   `NIMSTEAD_RELEASE_KEY=<backup> python -I scripts/sign_release.py sign --tag vX.Y.Z --commit <sha> --channel stable --out signed`,
-   then upload `signed/` to the GitHub release by hand.
-4. Store the new private key as `NIMSTEAD_RELEASE_KEY` in the `release` environment and delete the old secret; generate a new
-   backup the same way and put it in the password manager.
-5. Releases signed by the leaked key after it leaked: treat as bad releases (above). Agents updated to the rotated release no
-   longer accept the old key.
+Use [rotate the primary key](how-to/recover-release.md#rotate-a-primary-key).
 
 ## The backup key leaked
 
-Same as above, but sign the rotation release with the primary key through the normal workflow, replacing the backup key.
+Use [rotate the backup key](how-to/recover-release.md#rotate-a-backup-key).

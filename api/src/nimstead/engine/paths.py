@@ -57,7 +57,12 @@ def _grade(*grades: str | None) -> str:
 
 
 def build(inv: Inventory, content: Content, verdicts: list[Verdict]) -> list[dict]:
-    """The host's attack paths, strongest first: at most one from the network and one from a foothold already on it."""
+    """Return correlated attack paths from Inventory inv, Content content and verdicts.
+
+    Linux and application inventories return []. Windows uses vulnerable verdicts
+    plus host settings. Return at most one network path, then one foothold path.
+    Each stage shows at most five ways, with its full count. Does not scan or
+    modify inputs. Malformed internal models can raise KeyError, TypeError or ValueError."""
     if inv.is_linux or inv.kind == "application":
         return []  # shortcut: Windows settings are what make most chains here; Linux needs its own settings facts first
     facts_grade = Grade.CONFIRMED.value if inv.source("host_facts").state == "ok" else Grade.UNVERIFIED.value
@@ -111,7 +116,10 @@ def _path(kind: str, stages: list[str], ways: dict) -> dict:
 
 
 def render(paths: list[dict]) -> list[str]:
-    """Return display lines for attack-path dictionaries from build(), or [] when paths is empty."""
+    """Return display lines for attack-path dictionaries from build(), or [] when paths is empty.
+
+    Does not escape terminal controls or write output. The enclosing report renderer
+    handles escaping. Malformed dictionaries can raise KeyError or TypeError."""
     if not paths:
         return []
     out = ["", "How these combine (attack paths)"]

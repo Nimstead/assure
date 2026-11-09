@@ -72,7 +72,11 @@ AGENT_FILE = Path(os.environ.get("NIMSTEAD_AGENT_FILE", Path(__file__).parents[3
 
 @functools.cache
 def latest_agent_version() -> str:
-    """The version of the agent this server hands out; any host reporting something else is outdated."""
+    """Return the first quoted AGENT_VERSION assignment found in served source.
+
+    Read AGENT_FILE as UTF-8. Missing/unreadable files or no match return empty text.
+    The result is process-cached, including an empty result. Decode errors propagate.
+    A version mismatch alone does not establish that a host is older."""
     try:
         m = re.search(r'^AGENT_VERSION = "([^"]+)"', AGENT_FILE.read_text(encoding="utf-8"), re.M)
     except OSError:
@@ -104,7 +108,11 @@ def migration_head() -> str:
 
 
 def migration_state(s: Session) -> str:
-    """head | behind | unmanaged (a SQLite dev database made with create_all has no alembic_version table)."""
+    """Return head, behind or unmanaged from Session s's schema state.
+
+    Missing alembic_version means unmanaged on any backend. Otherwise compare the
+    first selected version with process-cached migration_head. No migration runs.
+    Database/configuration errors propagate. This is not a full schema inspection."""
     from sqlalchemy import inspect, text
     if not inspect(s.get_bind()).has_table("alembic_version"):
         return "unmanaged"
@@ -112,7 +120,12 @@ def migration_state(s: Session) -> str:
 
 
 def agent_update_status(a: Asset, paused: bool, release: bool) -> str:
-    """What happens to this host's agent next: current | updating | failed | paused | off (host opted out) | reinstall."""
+    """Return a UI classification from stored asset a, paused flag and release availability.
+
+    Equal served/reported versions are current before other checks. False auto_update
+    is off; missing capability or signed release is reinstall. Otherwise paused wins,
+    then a recorded error means failed, else updating. This does not prove a newer
+    channel-eligible release or predict the next run. Source/file errors can propagate."""
     if a.agent_version == latest_agent_version():
         return "current"
     if not a.auto_update:
@@ -125,7 +138,11 @@ def agent_update_status(a: Asset, paused: bool, release: bool) -> str:
 
 
 def verify_manifest(manifest: bytes, sig: str) -> dict | None:
-    """The manifest's fields if a key pinned in the served agent signed these exact bytes, else None."""
+    """Return a JSON dictionary signed over exact manifest bytes by a served-agent key.
+
+    sig is strict base64 text. Invalid base64/JSON, nonobject JSON or unmatched
+    signatures return None. Does not validate required fields, versions, hashes,
+    channels or runtimes. AGENT_FILE read/decoding and incompatible argument errors propagate."""
     try:
         raw_sig, rel = base64.b64decode(sig.strip(), validate=True), json.loads(manifest)
     except ValueError:
@@ -143,7 +160,10 @@ def verify_manifest(manifest: bytes, sig: str) -> dict | None:
 
 def signed_release() -> dict | None:
     """{release, sig} when RELEASE_DIR holds a manifest signed by a pinned key for exactly the agent served here, else None.
-    Agents verify it themselves; checking here only keeps the Assets page honest about who will update."""
+    Agents verify it themselves. This helper only checks relay eligibility.
+    release is the exact manifest decoded as text and sig is stripped base64 text.
+    Missing/unreadable files return None. This does not compare the platform version,
+    commit or channel. Decoding, key-backend and unexpected cryptography errors propagate."""
     try:
         manifest, sig = (RELEASE_DIR / "release.json").read_bytes(), (RELEASE_DIR / "release.json.sig").read_text().strip()
         agent_sha = hashlib.sha256(AGENT_FILE.read_bytes()).hexdigest()
@@ -197,7 +217,10 @@ def sha(token: str) -> str:
 
 
 def client_key(request: Request) -> str:
-    """The client address for throttling; IPv6 by /64, the block one host or customer usually gets."""
+    """Return request client text for rate keys, grouping parsed IPv6 addresses by /64.
+
+    Missing client yields ?. Invalid address text is retained. Proxy-header trust
+    belongs to server configuration. No independent network identity check occurs."""
     ip = request.client.host if request.client else "?"  # behind a proxy: uvicorn --proxy-headers --forwarded-allow-ips
     try:
         a = ipaddress.ip_address(ip)
@@ -213,7 +236,13 @@ class TooLarge(HTTPException):
 
 
 class BodyLimit:
-    """Caps every request body at MAX_BODY as it's read, chunked or not: Content-Length alone can be left out."""
+    """ASGI body-size guard around a supplied application.
+
+    Reject declared Content-Length above MAX_BODY before dispatch. Otherwise count
+    body bytes only as the downstream app calls receive, raising TooLarge on excess.
+    Unread streamed bodies are not independently drained/validated. Non-HTTP scopes
+    pass through. Invalid Content-Length or downstream errors can propagate.
+    """
 
     def __init__(self, app):
         self.app = app
@@ -236,7 +265,12 @@ class BodyLimit:
 
 
 def csp(index: Path) -> str:
-    """The SPA's policy; its one inline script (the theme, before first paint) is allowed by hash."""
+    """Return the response CSP with hashes of exact attribute-free inline scripts.
+
+    index is a UTF-8 HTML Path. OSError uses no hashes. Decode errors propagate.
+    Regex recognizes only literal <script> blocks, not scripts with attributes.
+    The policy allows inline styles and data images. It does not set form-action.
+    create_app captures this result, so later index changes do not refresh it."""
     try:
         inline = re.findall(r"<script>(.*?)</script>", index.read_text(encoding="utf-8"), re.S)
     except OSError:
@@ -248,7 +282,11 @@ def csp(index: Path) -> str:
 
 
 class HashedAssets(StaticFiles):
-    """Vite names every built file by its content hash, so a browser may keep it for good."""
+    """StaticFiles subclass assigning immutable caching to every successful response.
+
+    Caller must supply a directory whose successful paths are safe to cache for a
+    year. The subclass does not itself require hashed filenames.
+    """
     async def get_response(self, path, scope):
         """Return the static-file response for path and ASGI scope, adding one-year immutable caching on success.
 
@@ -260,18 +298,17 @@ class HashedAssets(StaticFiles):
 
 
 def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None, dns_lookup=None) -> FastAPI:
-    """Build the FastAPI application and register its routes and middleware.
+    """Construct FastAPI routes, middleware and captured database/OIDC context.
 
-    Args:
-        db_url (str | None): Database URL override; None uses NIMSTEAD_DB or the SQLite default.
-        oidc_http (httpx.Client | None): Optional caller-owned OIDC transport for tests.
-        dns_lookup (Callable | None): Optional DNS TXT lookup accepting a name and returning strings.
+    db_url is a truthy database URL override, otherwise normal configuration applies.
+    SQLite setup creates tables. PostgreSQL needs migrations separately. oidc_http
+    is an optional caller-owned client. dns_lookup supplies TXT name-to-string-list
+    observations. No app shutdown hook closes a supplied client here.
 
-    Returns:
-        FastAPI: Application with its database session factory captured by route dependencies.
-
-    Database and configuration errors propagate. SQLite creates tables; PostgreSQL must already
-    be migrated. Swagger UI is opt-in, while /api/openapi.json is always available."""
+    Capture docs enablement, allowed origins, CSP and static-directory availability
+    at creation. Other module constants were read at import. Database, configuration,
+    decoding and static-mount failures can propagate. Swagger UI is opt-in, while
+    /api/openapi.json remains public. Constructing the app does not deploy it."""
     oidc = sso.Oidc(oidc_http)
     Sessions = make_sessionmaker(db_url) if db_url else make_sessionmaker()
     # Swagger UI runs scripts from a CDN on this origin, so it's opt-in; /api/openapi.json is always there for tools
@@ -286,6 +323,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.middleware("http")
     async def guard(request: Request, call_next):
+        """Apply optional write-Origin checks, then add response security headers.
+
+        request/call_next are the middleware inputs. An Origin-bearing unsafe method
+        needs an exact request-origin or configured allowlist match. Refusal returns
+        JSON 403 before downstream/header decoration. Otherwise use setdefault for
+        headers, with CSP omitted on opted-in docs paths. Handler errors propagate.
+        This is not authentication or independent proxy-origin verification."""
         origin = request.headers.get("origin")
         if request.method not in ("GET", "HEAD", "OPTIONS") and origin:
             same = origin == f"{request.url.scheme}://{request.headers.get('host', '')}"
@@ -309,6 +353,17 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     DB = Annotated[Session, Depends(db)]
 
     def current_user(request: Request, s: DB) -> User:
+        """Return the user authenticated by an eligible nmt_ bearer or session cookie.
+
+        request supplies credentials/method and s is the Session. An exact Bearer
+        nmt_ prefix takes precedence over cookies. Require a nonexpired token whose
+        creator remains an admin in its organisation, and GET/HEAD method. Other
+        headers fall through to cookie lookup. Invalid credentials return 401 and
+        token writes 403. Session absolute/idle expiry also returns 401.
+
+        Refresh last-use state after five minutes and commit all pending changes.
+        This GET dependency can therefore write. Missing related users and database
+        errors can propagate. No live identity-provider validation occurs."""
         auth = request.headers.get("authorization", "")
         if auth.startswith("Bearer nmt_"):  # an org API token: read-only, acts as the admin who made it
             t = s.get(ApiToken, sha(auth.removeprefix("Bearer ")))
@@ -334,6 +389,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     CurrentUser = Annotated[User, Depends(current_user)]
 
     def admin_user(request: Request, user: CurrentUser) -> User:
+        """Require an admin browser user and configured local MFA when applicable.
+
+        request carries the API-token marker and user comes from current_user.
+        Refuse nonadmins/tokens with 403. Password-origin admins without a stored
+        authenticator are refused unless open-signup mode is enabled. This checks
+        configuration, not a fresh code or provider MFA assertion."""
         if not user.admin or getattr(request.state, "api_token", False):  # tokens read; admin pages and changes need a person
             raise HTTPException(403, "Only organisation admins can change this")
         if user.origin == "password" and not user.totp_secret and not open_signup():  # whatever path made the session
@@ -343,6 +404,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     Admin = Annotated[User, Depends(admin_user)]
 
     def signed_in(request: Request, user: CurrentUser) -> User:
+        """Return current_user when authenticated by a browser session.
+
+        request carries the API-token marker. Refuse organisation API tokens with
+        HTTP 403. No admin-role or fresh-authentication requirement is added."""
         if getattr(request.state, "api_token", False):
             raise HTTPException(403, "Sign in to do this")
         return user
@@ -350,6 +415,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     Person = Annotated[User, Depends(signed_in)]  # a signed-in browser, never an API token
 
     def start_session(s: Session, user: User, resp: Response) -> None:
+        """Create a hashed user session, commit s, then set its raw cookie on resp.
+
+        user supplies the identity. Use the configured absolute lifetime and
+        HttpOnly/Strict/optional Secure attributes. No previous session is revoked.
+        Commit includes caller changes. Cookie/response failure does not undo it."""
         token = secrets.token_urlsafe(32)
         s.add(WebSession(token_hash=sha(token), user_id=user.id, expires=now() + timedelta(days=SESSION_DAYS)))
         s.commit()
@@ -359,10 +429,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/install.sh")
     def install_sh(request: Request):
-        """Return the Linux installer with this server URL and release channel substituted.
+        """Return Linux installer text with server origin and current channel substituted.
 
-        Operation-specific HTTP errors: 400. See detail in the response.
-        Authentication and request-validation errors also apply where required."""
+        request supplies fallback base URL unless NIMSTEAD_PUBLIC_URL is truthy.
+        Require the configured HTTP(S) hostname/port pattern or return 400. Paths,
+        trailing slash and IPv6 literals are outside that pattern. No host install
+        occurs. File/channel errors propagate. No user authentication is required."""
         server = os.environ.get("NIMSTEAD_PUBLIC_URL") or str(request.base_url).rstrip("/")
         if not re.fullmatch(r"https?://[A-Za-z0-9.\-]+(:\d{1,5})?", server):  # substituted into shell: strict
             raise HTTPException(400, "Server URL is not safe to embed; set NIMSTEAD_PUBLIC_URL")
@@ -371,10 +443,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/install.ps1")
     def install_ps1(request: Request):
-        """Return the PowerShell installer with this server URL and release channel substituted.
+        """Return PowerShell installer text with server origin/channel substituted.
 
-        Operation-specific HTTP errors: 400. See detail in the response.
-        Authentication and request-validation errors also apply where required."""
+        request supplies fallback base URL unless NIMSTEAD_PUBLIC_URL is truthy.
+        Require the same strict HTTP(S) origin pattern as install_sh, otherwise 400.
+        File/channel errors propagate. No installation or authentication occurs here."""
         server = os.environ.get("NIMSTEAD_PUBLIC_URL") or str(request.base_url).rstrip("/")
         if not re.fullmatch(r"https?://[A-Za-z0-9.\-]+(:\d{1,5})?", server):  # substituted into a script: strict
             raise HTTPException(400, "Server URL is not safe to embed; set NIMSTEAD_PUBLIC_URL")
@@ -383,12 +456,20 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/agent/nimstead_agent.py")
     def agent_file():
-        """Return the Python agent source served by this checkout."""
+        """Return AGENT_FILE bytes as text/x-python without user authentication.
+
+        This endpoint does not independently verify a manifest or source signature.
+        File errors propagate. Callers verify distribution bytes through the signed
+        manifest workflow rather than treating a successful download as trust."""
         return Response(AGENT_FILE.read_bytes(), media_type="text/x-python")
 
     @app.get("/agent/runtime/{arch}.zip")
     def agent_runtime(arch: str):
-        """The Windows agent's bundled Python, only as the signed release names it (plan decision 9)."""
+        """Return application/zip runtime bytes for arch: amd64, arm64 or win32.
+
+        No authentication is required. Require signed_release(), a matching runtime
+        entry and the stored file's signed SHA-256. Missing/unsupported/mismatched
+        runtimes return 404. Malformed signed runtime data can raise server errors."""
         rt = (json.loads(rel["release"]).get("runtimes") or {}) if (rel := signed_release()) else {}
         if arch not in rt or arch not in ("amd64", "arm64", "win32"):
             raise HTTPException(404, "No signed runtime for this architecture on this server")
@@ -414,7 +495,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         setup: str | None = Field(None, max_length=1000)  # from a {"mfa": "setup"} answer: confirms enrolment with code
 
     def over_limit(s: Session, key: str, limit: int, seconds: int = RATE_WINDOW) -> bool:
-        """Record one attempt under key; True if that makes more than limit within the window. In the DB: holds across workers."""
+        """Record an attempt and return whether prior count is at least limit.
+
+        s is the Session. key selects the quota and seconds its counting window.
+        Housekeeping always removes attempts older than RATE_WINDOW. Add a row and
+        commit all pending changes even when refusing. Not an atomic reservation.
+        Database failures propagate. Callers choose HTTP errors and retry behavior."""
         s.execute(delete(AuthFailure).where(AuthFailure.ts < now() - timedelta(seconds=RATE_WINDOW)))  # housekeeping
         n = s.scalar(select(func.count()).select_from(AuthFailure).where(AuthFailure.key == key,
                                                                          AuthFailure.ts > now() - timedelta(seconds=seconds)))
@@ -423,6 +509,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         return n >= limit
 
     def create_account(s: Session, email: str, org_name: str, password_hash: str) -> User:
+        """Create/flush an organisation and password-admin User, returning that user.
+
+        s owns the transaction. email/org_name/password_hash are trusted prepared
+        values. Append org_created evidence without an explicit commit. Uniqueness,
+        database and evidence errors propagate. No session or email is created."""
         org = Org(name=org_name)
         s.add(org)
         s.flush()
@@ -433,11 +524,20 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         return user
 
     def public_base(request: Request) -> str:
+        """Return NIMSTEAD_PUBLIC_URL or request.base_url without trailing slashes.
+
+        The environment value is not independently URL-validated here. Proxy/Host
+        configuration determines the fallback origin."""
         return (os.environ.get("NIMSTEAD_PUBLIC_URL") or str(request.base_url)).rstrip("/")
 
     def email_link(s: Session, request: Request, email: str, purpose: str, org_name: str = "", org_id: str | None = None) -> None:
-        """Email a single-use link that lets the address owner choose a password (sign-up, invitation or reset).
-        A newer link replaces older ones of the same kind for that address."""
+        """Commit a pending account link, then request best-effort account mail.
+
+        s/request provide storage and base URL. email/purpose/org_name/org_id select
+        the operation. Replace same-email/purpose/organisation links. Reset expires
+        after RESET_LINK_HOURS, others after SIGNUP_LINK_HOURS. Store only a token
+        hash. Commit caller changes before mail. Failure does not restore older
+        links or prove delivery. Storage/URL preparation errors can propagate."""
         token = secrets.token_urlsafe(32)
         same_org = PendingSignup.org_id == org_id if org_id else PendingSignup.org_id.is_(None)  # one org can't cancel another's invite
         s.execute(delete(PendingSignup).where(PendingSignup.email == email, PendingSignup.purpose == purpose, same_org))
@@ -450,13 +550,18 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/auth/signup", status_code=201)
     def signup(body: Signup, request: Request, resp: Response, s: DB):
-        """Create the first organisation account or send a later signup confirmation email.
+        """Create a first/development admin or acknowledge an email signup request.
 
-        First-account setup requires a password. Later production signups return check_email;
-        open-signup development mode can establish a session immediately.
+        body supplies email, organisation name and optional password. Enforce the
+        client signup quota before branch selection. First-user bootstrap requires
+        a password and returns email/org/next=signin with 201, without a session.
+        Open-signup mode returns email/org with 201 and a new session.
 
-        Operation-specific HTTP errors: 403, 409, 422, 429. See detail in the response.
-        Authentication and request-validation errors also apply where required."""
+        Later production signup requires SMTP configuration. Return 202 with
+        status=check_email/email for existing or new addresses. Address quota can
+        suppress mail. New pending links replace earlier matching links. Quota and
+        link writes commit before delivery. HTTP 403/409/422/429 refusals and storage,
+        hashing or evidence failures can occur. Acknowledgement is not delivery."""
         if over_limit(s, "signup:" + client_key(request), SIGNUP_MAX_PER_HOUR):
             raise HTTPException(429, "Too many sign-ups from this address; try again in an hour")
         email = body.email.lower()
@@ -489,7 +594,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/auth/password/reset", status_code=202)
     def request_reset(body: ResetReq, request: Request, s: DB):
-        """Same answer whether or not the address has an account; the link goes to the address itself."""
+        """Return 202 status=check_email/email for a reset request.
+
+        body.email is normalized to lowercase. Enforce client quota, then require
+        SMTP configuration. Only existing password users below the address quota
+        receive a pending-link attempt. Unknown/SSO accounts keep the same success
+        shape. Quota checks commit. HTTP 403/429 and storage/backend errors can
+        occur. No password or session changes here. Mail receipt is not guaranteed."""
         if over_limit(s, "reset:" + client_key(request), RESET_MAX_PER_HOUR):
             raise HTTPException(429, "Too many reset requests from this address; try again in an hour")
         if not notify.smtp_configured():
@@ -501,11 +612,20 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         return {"status": "check_email", "email": email}
 
     def failures(s: Session, key: str) -> int:
+        """Count matching AuthFailure rows in the current LOGIN_WINDOW using Session s.
+
+        key is exact text. No row deletion or explicit commit occurs. Query errors
+        propagate and autoflush can expose pending changes."""
         since = now() - timedelta(seconds=LOGIN_WINDOW)
         return s.scalar(select(func.count()).select_from(AuthFailure).where(AuthFailure.key == key, AuthFailure.ts > since))
 
     def second_factor(s: Session, user: User, given: str | None) -> bool:
-        """A current TOTP code (each works once) or an unused recovery code (spent)."""
+        """Validate and stage consumption of a TOTP step or recovery code for user.
+
+        Refresh/lock the row through s. given is optional code text. Return True
+        and mutate last-step/recovery hashes on success, otherwise False. Recovery
+        use appends evidence. Caller commits consumption. PostgreSQL row locking
+        differs from SQLite. Secret/backend, evidence and data errors can propagate."""
         s.refresh(user, with_for_update=True)  # PostgreSQL: two requests with the same code can't both pass
         step = mfa.verify(sso.unseal(user.totp_secret), given or "", user.totp_last_step)
         if step:
@@ -519,12 +639,22 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         return False
 
     def mfa_setup(user: User) -> dict:
+        """Return setup, secret and uri for a new temporary authenticator proposal.
+
+        user supplies ID/email. Seal the secret/expiry into setup. No user mutation
+        or commit occurs. Backend/encoding errors propagate. The secret is sensitive."""
         secret = mfa.new_secret()
         blob = sso.seal(json.dumps({"uid": user.id, "secret": secret, "exp": (now() + timedelta(seconds=MFA_SETUP_SECONDS)).isoformat()}))
         return {"setup": blob, "secret": secret, "uri": mfa.uri(secret, user.email)}
 
     def finish_mfa_setup(s: Session, user: User, blob: str, given: str | None) -> list[str] | None:
-        """Saves the secret from a setup blob if the code proves the authenticator has it; returns new recovery codes."""
+        """Stage a setup secret and return new plaintext recovery codes, otherwise None.
+
+        s/user own persistence. blob supplies sealed setup and given its TOTP code.
+        Catch unseal/JSON failures as None. Check user/expiry/code, then replace
+        stored secret, last step and recovery hashes and append evidence. Caller
+        commits. Invalid decoded shapes/dates and backend/evidence errors can raise.
+        This helper does not independently verify an existing authenticator."""
         try:
             d = json.loads(sso.unseal(blob))
         except Exception:  # tampered, foreign or undecryptable
@@ -541,13 +671,18 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/auth/login")
     def login(body: Login, request: Request, resp: Response, s: DB):
-        """Authenticate a password user and complete or request two-step sign-in.
+        """Return a password-login branch, creating a session only after required MFA.
 
-        A successful password check can return mfa=required or mfa=setup without a session.
-        The caller must complete the requested step before treating the user as signed in.
+        body supplies email/password and optional code/setup. request selects rate
+        keys. resp receives the session cookie and s commits state/evidence.
+        Missing MFA returns required or setup without a session. Setup completion
+        adds one-time recovery_codes to email. A normal success returns email.
 
-        Operation-specific HTTP errors: 401, 403, 429. See detail in the response.
-        Authentication and request-validation errors also apply where required."""
+        Wrong passwords/codes commit failure counters and can request an alert.
+        Required SSO refuses nonadmin password login, while admin break-glass
+        records evidence and an alert attempt. MFA consumption commits with session
+        creation. Return 401/403/429 for refusals. Malformed stored credentials,
+        backend, evidence and database errors can propagate after earlier commits."""
         ip = client_key(request)
         keys = ["email:" + body.email.lower(), "email+ip:" + body.email.lower() + "|" + ip, "ip:" + ip]
         per_ip = failures(s, keys[2])
@@ -615,7 +750,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/auth/logout", status_code=204)
     def logout(request: Request, resp: Response, s: DB):
-        """Delete the current server-side session, clear its browser cookie, and return no content."""
+        """Return 204 after deleting the cookie-selected session when present.
+
+        request supplies the cookie, s commits deletion and resp clears the cookie.
+        No current-user dependency or global revocation is required. Storage errors
+        can prevent cookie clearing. Other sessions and bearer tokens remain."""
         if token := request.cookies.get(SESSION_COOKIE):
             s.execute(delete(WebSession).where(WebSession.token_hash == sha(token)))
             s.commit()
@@ -623,17 +762,21 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/me")
     def me(user: CurrentUser, s: DB):
-        """Return the current user email, organisation, admin role, login origin, and MFA status.
+        """Return email/org/admin/origin/mfa/recovery_codes_left for current_user.
 
-        Requires a user session or a read-only organisation API token. API tokens cannot use write methods."""
+        A session or eligible read token is accepted. MFA describes a stored local
+        secret, not provider MFA or a fresh challenge. s reads organisation state.
+        Authentication/database errors can occur, including dependency commits."""
         return {"email": user.email, "org": s.get(Org, user.org_id).name, "admin": user.admin, "origin": user.origin,
                 "mfa": bool(user.totp_secret), "recovery_codes_left": len(user.recovery_codes)}
 
     @app.post("/api/me/sessions/revoke", status_code=204)
     def sign_out_everywhere(user: Person, resp: Response, s: DB):
-        """Revoke all sessions for the current user, clear this cookie, and return no content.
+        """Delete this user's WebSession and ApiToken rows, commit, then clear cookie.
 
-        Requires a browser session; organisation API tokens are refused."""
+        user requires a browser session, not a fresh code. Append revocation
+        evidence through s. Return 204. Agent/upload/enrolment credentials remain.
+        Evidence/storage/response errors can occur after partial effects."""
         for model in (WebSession, ApiToken):  # recovering from a stolen session: tokens it could have made go too
             s.execute(delete(model).where(model.user_id == user.id))
         evidence.append(s, user.org_id, "sessions_revoked", user.id, {"by": user.email})
@@ -647,12 +790,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/me/password", status_code=204)
     def change_password(body: PasswordChange, request: Request, user: Person, s: DB):
-        """Change a password after verifying the current password and required authenticator code.
+        """Return 204 after a password-origin user's credential update.
 
-        Requires a browser session; organisation API tokens are refused.
-
-        Operation-specific HTTP errors: 403, 409, 429. See detail in the response.
-        Authentication and request-validation errors also apply where required."""
+        body supplies current/new passwords and optional second factor. user needs
+        a browser session. Commit quota before verification. Preserve only the
+        current cookie's session and delete all creator API tokens. Append evidence
+        and commit the new hash/code consumption. SSO users return 409, wrong
+        credentials 403, rate refusal 429. Backend/storage errors can propagate."""
         if user.origin != "password":
             raise HTTPException(409, "You sign in with single sign-on; change your password with your identity provider")
         if over_limit(s, "pwchange:" + user.id, LOGIN_MAX_FAILURES, LOGIN_WINDOW):
@@ -672,12 +816,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/me/mfa/setup")
     def start_mfa(user: Person):
-        """Return a temporary encrypted setup token, secret, and authenticator URI for a password user.
+        """Return setup/secret/uri for a browser-authenticated password user.
 
-        Requires a browser session; organisation API tokens are refused.
-
-        Operation-specific HTTP errors: 409. See detail in the response.
-        Authentication and request-validation errors also apply where required."""
+        SSO-origin users return HTTP 409. This creates a proposal without changing
+        stored MFA or requiring the current password/code. Backend errors propagate."""
         if user.origin != "password":
             raise HTTPException(409, "You sign in with single sign-on; your identity provider handles MFA")
         return mfa_setup(user)
@@ -689,12 +831,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/me/mfa")
     def confirm_mfa(body: MfaConfirm, user: Person, s: DB):
-        """Confirm or replace the authenticator and return newly generated one-time recovery codes.
+        """Return recovery_codes after staging and committing an authenticator setup.
 
-        Requires a browser session; organisation API tokens are refused.
-
-        Operation-specific HTTP errors: 403, 422, 429. See detail in the response.
-        Authentication and request-validation errors also apply where required."""
+        body supplies setup/new code and optional current_code. user needs a browser
+        session. Commit quota first. Existing MFA requires a valid current factor.
+        Setup success replaces secret/recovery hashes and appends evidence. Existing
+        sessions/API tokens remain. Return 403/422/429 for refusal. Backend/shape,
+        evidence and storage errors can propagate."""
         if over_limit(s, "mfa:" + user.id, LOGIN_MAX_FAILURES, LOGIN_WINDOW):
             raise HTTPException(429, "Too many attempts; try again in 15 minutes")
         if user.totp_secret and not second_factor(s, user, body.current_code):
@@ -711,9 +854,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/enroll-tokens", status_code=201)
     def create_enroll_token(user: Admin, s: DB, body: TokenReq | None = None):
-        """Create an expiring enrolment token and return its secret once, with ID and expiry.
+        """Return token/id/expires once for a new enrolment credential, with HTTP 201.
 
-        Requires an organisation admin browser session; API tokens are refused."""
+        user needs an admin browser session. Optional body.sandbox defaults False.
+        Store a hash and configured expiry, append evidence and commit. No extra
+        code challenge occurs here. Later response loss does not undo creation."""
         token = "nme_" + secrets.token_urlsafe(24)
         et = EnrollToken(token_hash=sha(token), org_id=user.org_id, sandbox=bool(body and body.sandbox),
                          expires=now() + timedelta(days=ENROLL_TOKEN_DAYS))
@@ -724,21 +869,22 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/enroll-tokens")
     def list_enroll_tokens(user: CurrentUser, s: DB):
-        """Return enrolment-token metadata for this organisation without token secrets.
+        """Return id/created/expires/revoked/sandbox rows, newest created first.
 
-        Requires a user session or a read-only organisation API token. API tokens cannot use write methods."""
+        user requires a session or eligible read token. s selects this organisation.
+        Secrets are omitted. No pagination/filter excludes expired or revoked rows.
+        Display IDs are twelve-character hash prefixes, not collision-free identities."""
         rows = s.scalars(select(EnrollToken).where(EnrollToken.org_id == user.org_id).order_by(EnrollToken.created.desc()))
         return [{"id": e.token_hash[:12], "created": e.created, "expires": e.expires, "revoked": e.revoked, "sandbox": e.sandbox}
                 for e in rows]
 
     @app.delete("/api/enroll-tokens/{token_id}", status_code=204)
     def revoke_enroll_token(token_id: str, user: Admin, s: DB):
-        """Revoke the enrolment token identified by its displayed hash prefix; return no content.
+        """Mark one matching organisation enrolment token revoked and return 204.
 
-        Requires an organisation admin browser session; API tokens are refused.
-
-        Operation-specific HTTP errors: 404. See detail in the response.
-        Authentication and request-validation errors also apply where required."""
+        token_id must have length twelve and match a stored hash prefix. user needs
+        an admin browser session. Append evidence/commit even if already revoked.
+        Missing match returns 404. Issued agent keys remain valid independently."""
         et = s.scalar(select(EnrollToken).where(EnrollToken.org_id == user.org_id, EnrollToken.token_hash.startswith(token_id[:12], autoescape=True),
                                                 func.length(token_id) == 12))
         if not et:
@@ -750,22 +896,33 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     # --- people: users, invitations, API tokens -------------------------------
 
     def user_json(u: User) -> dict:
+        """Return id/email/admin/origin/mfa/created from User u, without secrets.
+
+        mfa reflects a stored local authenticator, not identity-provider state."""
         return {"id": u.id, "email": u.email, "admin": u.admin, "origin": u.origin, "mfa": bool(u.totp_secret), "created": u.created}
 
     def org_user(s: Session, admin: User, user_id: str) -> User:
+        """Look up user_id's first 32 characters and return the User in admin's org.
+
+        s supplies storage. Missing or differently owned users raise HTTP 404.
+        This lookup does not itself require admin.admin or validate suffix text."""
         u = s.get(User, user_id[:32])
         if not u or u.org_id != admin.org_id:
             raise HTTPException(404, "User not found")
         return u
 
     def last_admin(s: Session, u: User) -> bool:
+        """Return whether u is an admin and its organisation has at most one admin.
+
+        s counts current stored rows. This query alone is not a concurrency lock."""
         return u.admin and s.scalar(select(func.count()).select_from(User).where(User.org_id == u.org_id, User.admin)) <= 1
 
     @app.get("/api/users")
     def list_users(user: Admin, s: DB):
-        """Return organisation member records ordered by email.
+        """Return organisation user_json records sorted by email, without pagination.
 
-        Requires an organisation admin browser session; API tokens are refused."""
+        user requires an admin browser session. s queries storage. Authentication,
+        database and malformed stored-data errors can propagate."""
         return [user_json(u) for u in s.scalars(select(User).where(User.org_id == user.org_id).order_by(User.email))]
 
     class UserPatch(BaseModel):
@@ -773,12 +930,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.patch("/api/users/{user_id}")
     def update_user(user_id: str, body: UserPatch, user: Admin, s: DB):
-        """Change an organisation member's admin role while preserving at least one admin.
+        """Set a member's admin flag and return user_json, preserving one admin.
 
-        Requires an organisation admin browser session; API tokens are refused.
-
-        Operation-specific HTTP errors: 409. See detail in the response.
-        Authentication and request-validation errors also apply where required."""
+        user needs an admin browser session. Lock the organisation where supported.
+        user_id lookup truncates to 32 characters. Promotion deletes old browser
+        sessions. Demotion deletes API tokens but retains browser sessions. Unchanged
+        roles do not append evidence/commit here. Missing user returns 404, last-admin
+        demotion 409. Database/evidence errors can propagate."""
         s.get(Org, user.org_id, with_for_update=True)  # PostgreSQL: two admins demoting each other can't leave none
         u = org_user(s, user, user_id)
         if not body.admin and last_admin(s, u):
@@ -793,12 +951,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.delete("/api/users/{user_id}", status_code=204)
     def remove_user(user_id: str, user: Admin, s: DB):
-        """Remove an organisation member and their access while preserving at least one admin.
+        """Delete a member and their sessions/API tokens, append evidence and return 204.
 
-        Requires an organisation admin browser session; API tokens are refused.
-
-        Operation-specific HTTP errors: 409. See detail in the response.
-        Authentication and request-validation errors also apply where required."""
+        user needs an admin browser session. Lock organisation where supported and
+        truncate user_id lookup to 32 characters. Missing user returns 404 and the
+        last admin returns 409. Commit deletes/evidence. Other asset credentials are
+        not selected here. Database/evidence errors can propagate."""
         s.get(Org, user.org_id, with_for_update=True)
         u = org_user(s, user, user_id)
         if last_admin(s, u):
@@ -814,7 +972,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/users/invite", status_code=202)
     def invite_user(body: Invite, request: Request, user: Admin, s: DB):
-        """Same answer whether or not the address already has an account (anywhere): the address owner gets the next step."""
+        """Return 202 status=invited/email after an invitation request.
+
+        body.email is lowercased. user needs an admin browser session. Require SMTP,
+        enforce organisation quota, append evidence and commit. Address quota can
+        suppress mail. Existing accounts receive a sign-in message rather than
+        membership transfer. New addresses receive a scoped invitation link. Return
+        403/429 on configuration/quota refusal. Mail acknowledgement is not delivery."""
         if not notify.smtp_configured():
             raise HTTPException(403, "Inviting by email needs SMTP (NIMSTEAD_SMTP_URL). With single sign-on, people join by signing in.")
         if over_limit(s, "invite:" + user.org_id, INVITE_MAX_PER_HOUR):
@@ -836,14 +1000,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/tokens", status_code=201)
     def create_api_token(body: TokenNew, user: Admin, s: DB):
-        """Create a read-only organisation API token and return its secret once.
+        """Return token/id/name/expires once for a read-only credential, with HTTP 201.
 
-        Password users must supply the required current authenticator code.
-
-        Requires an organisation admin browser session; API tokens are refused.
-
-        Operation-specific HTTP errors: 403, 429. See detail in the response.
-        Authentication and request-validation errors also apply where required."""
+        body supplies name/days and optional code. user needs an admin browser
+        session. If a local authenticator exists, commit quota then require a valid
+        current factor. Store a hash, creator, expiry and evidence, then commit.
+        The token acts as its still-admin creator on eligible GET/HEAD routes.
+        Return 403/429 on code/quota refusal. Backend/storage errors can propagate."""
         if user.totp_secret:
             if over_limit(s, "mfa-token:" + user.id, LOGIN_MAX_FAILURES, LOGIN_WINDOW):
                 raise HTTPException(429, "Too many attempts; try again in 15 minutes")
@@ -859,9 +1022,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/tokens")
     def list_api_tokens(user: Admin, s: DB):
-        """Return organisation API-token metadata and creator emails without token secrets.
+        """Return organisation token metadata/creator email, newest created first.
 
-        Requires an organisation admin browser session; API tokens are refused."""
+        user needs an admin browser session. s joins creators. Fields are id, name,
+        created_by, created, expires and last_used. Secrets are omitted. Expired rows
+        remain listed. Twelve-character displayed hash prefixes can collide."""
         rows = s.execute(select(ApiToken, User.email).join(User, User.id == ApiToken.user_id)
                          .where(ApiToken.org_id == user.org_id).order_by(ApiToken.created.desc()))
         return [{"id": t.token_hash[:12], "name": t.name, "created_by": e, "created": t.created, "expires": t.expires,
@@ -869,12 +1034,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.delete("/api/tokens/{token_id}", status_code=204)
     def revoke_api_token(token_id: str, user: Admin, s: DB):
-        """Delete the API token identified by its displayed hash prefix; return no content.
+        """Delete one matching organisation API-token hash prefix and return 204.
 
-        Requires an organisation admin browser session; API tokens are refused.
-
-        Operation-specific HTTP errors: 404. See detail in the response.
-        Authentication and request-validation errors also apply where required."""
+        token_id must have length twelve. user needs an admin browser session.
+        Missing match returns 404. Append evidence and commit. A prefix collision
+        is not independently disambiguated. Storage/evidence errors can propagate."""
         t = s.scalar(select(ApiToken).where(ApiToken.org_id == user.org_id, ApiToken.token_hash.startswith(token_id[:12], autoescape=True),
                                             func.length(token_id) == 12))
         if not t:
@@ -891,14 +1055,15 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/agent/enroll", status_code=201)
     def agent_enroll(body: Enroll, s: DB):
-        # Owning the enrol token and running the agent on the host is the proof of control:
-        # only enrolled assets are ever scanned.
-        """Exchange an enrolment token for a new asset ID and asset-specific agent key.
+        # The enrolment token authorizes asset creation, without independent host attestation.
+        """Create a new host asset and return asset_id plus its one-time agent_key.
 
-        The token is supplied in the JSON body; it must be valid, unexpired, and not revoked.
-
-        Operation-specific HTTP errors: 403, 429. See detail in the response.
-        Authentication and request-validation errors also apply where required."""
+        body supplies a valid enrolment token, hostname and optional OS text. No
+        hostname deduplication or host-side attestation occurs. Every accepted call
+        creates another asset. Inherit sandbox from the token. Store a key hash.
+        Commit asset/evidence before returning the raw key. A later client failure
+        does not remove that enrolment. Token/rate/asset limits return 403 or 429.
+        Database, evidence and key errors can propagate. No browser session is needed."""
         et = s.get(EnrollToken, sha(body.token))
         if not et or et.revoked or (et.expires and et.expires < now()):
             raise HTTPException(403, "Invalid, expired or revoked enrolment token")
@@ -915,6 +1080,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         return {"asset_id": asset.id, "agent_key": key}
 
     def room_for_asset(s: Session, org_id: str) -> None:
+        """Refuse when the current organisation asset count reaches the configured limit.
+
+        s is the Session and org_id selects all asset kinds. Raise HTTP 403 at the
+        limit. This query is not a reservation or a concurrency-safe quota lock."""
         if s.scalar(select(func.count()).select_from(Asset).where(Asset.org_id == org_id)) >= MAX_ASSETS_PER_ORG:
             raise HTTPException(403, f"This organisation has reached its limit of {MAX_ASSETS_PER_ORG} assets "
                                      "(NIMSTEAD_MAX_ASSETS_PER_ORG); delete unused ones or ask your Nimstead administrator")
@@ -937,6 +1106,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         collection: dict | None = None  # checked by engine's valid_document: closed and bounded. None: agent older than this
 
     def facts_ok(f: dict) -> bool:
+        """Return whether a facts dictionary passes structural and JSON-length bounds.
+
+        Check root size/keys, nested list/dictionary depth/count, string lengths
+        and scalar types. No per-fact semantic validation occurs. The final limit
+        uses json.dumps character length, not encoded HTTP bytes. Serialization
+        and invalid direct input errors can propagate."""
         def plain(v, depth=0):
             if v is None or isinstance(v, (bool, int, float)):
                 return True
@@ -950,6 +1125,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         return len(f) <= 64 and all(isinstance(k, str) and len(k) <= 64 for k in f) and plain(f) and len(json.dumps(f)) <= 64_000
 
     def current_agent(s: DB, authorization: Annotated[str | None, Header()] = None) -> Asset:
+        """Return the host whose stored key hash matches exact Bearer authorization.
+
+        s is the request Session. Reject absent/wrong scheme, unknown key and
+        non-host assets with HTTP 401. This lookup checks no agent freshness,
+        local consent or current enrolment-token validity. Database errors propagate."""
         if not authorization or not authorization.startswith("Bearer "):
             raise HTTPException(401, "Missing agent key")
         asset = s.scalar(select(Asset).where(Asset.agent_key_hash == sha(authorization.removeprefix("Bearer "))))
@@ -958,7 +1138,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         return asset
 
     def store_scan_report(asset_id: str, scanned: tuple | None) -> None:
-        """After the response: the engine's report, stored for the fleet's attack paths (DECISIONS 98). Never fails the inventory."""
+        """Attempt engine report persistence in a new Session after inventory response.
+
+        asset_id selects a surviving asset. scanned optionally supplies the previous
+        engine result tuple. Catch/log ordinary query/evaluation/storage errors inside
+        the context. Session construction/entry/exit can still raise. This task is
+        not a durable queue and can fail after inventory already committed."""
         with Sessions() as s:
             try:
                 if a := s.get(Asset, asset_id):
@@ -968,14 +1153,20 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/agent/inventory")
     def agent_inventory(body: Inventory, s: DB, asset: Annotated[Asset, Depends(current_agent)], tasks: BackgroundTasks):
-        """Replace this agent's inventory, rescan the asset, and return scan results.
+        """Update stored host metadata, rescan and return open/resolved counts.
 
-        Collection metadata and facts are validated; per-asset and organisation quotas apply.
+        body supplies validated inventory fields. asset is the authenticated host.
+        Enforce per-host interval and organisation attempt rate. The latter check
+        commits its quota record before later processing. Invalid collection
+        metadata becomes null. Missing facts retain previous facts. Invalid facts
+        retain previous facts and can mark host_facts failed when collection exists.
 
-        Requires this asset's agent bearer key.
-
-        Operation-specific HTTP errors: 429. See detail in the response.
-        Authentication and request-validation errors also apply where required."""
+        Replace agent-origin package rows unless a declared package_db source is
+        non-ok or has zero count. Other reports, including no collection document,
+        can replace with an empty list. Preserve SBOM rows. Rescan can commit before
+        job verification/policy work. Commit again before background report storage.
+        A later error can follow earlier persistence. Return 429 for rate refusal.
+        Stored-data, database, evidence and mapper errors can propagate."""
         if asset.last_inventory_at and now() - asset.last_inventory_at < timedelta(seconds=INVENTORY_MIN_SECONDS):
             raise HTTPException(429, f"Inventory already received; send at most one every {INVENTORY_MIN_SECONDS}s")
         if over_limit(s, "inventory:" + asset.org_id, ORG_INVENTORY_MAX_PER_HOUR):  # many fake hosts can't bypass the per-host limit
@@ -1021,7 +1212,16 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/agent/directory")
     def agent_directory(body: Directory, s: DB, asset: Annotated[Asset, Depends(current_agent)]):
-        """Computer objects an opted-in agent read from its domain (plan T43); replaces that domain's list for the org."""
+        """Replace the organisation's entire stored directory list with this agent's body.
+
+        Require directory_source on the authenticated asset and permit 24 uploads
+        per asset per hour. Normalize domain/name text and deduplicate names.
+        The caller supplies observations. Enabled status is not independently checked.
+        Store last_logon without timezone information or offset conversion.
+        The quota attempt commits before replacement. Successful replacement commits
+        all rows and returns computers count. Other flagged sources can also replace
+        this list. Permission/quota failures are 403/429. Invalid stored/database data
+        can propagate errors."""
         if not asset.directory_source:  # any other host's key acts only on its own asset (DECISIONS 27, 102)
             raise HTTPException(403, "An admin has to choose this machine as the directory source on the Assets page first")
         if over_limit(s, "directory:" + asset.id, 24):
@@ -1041,7 +1241,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/directory/unmanaged")
     def unmanaged_computers(user: CurrentUser, s: DB, format: str | None = None):
-        """Enabled computers seen in their domain in the last 30 days that have no enrolled agent (plan T43)."""
+        """Return recent stored directory observations without an enrolled short-name match.
+
+        Require a session or eligible read token. Use a 30-day last_logon cutoff,
+        excluding missing logons. Compare host short names across the organisation,
+        without requiring a matching domain. Source enabled status is trusted.
+        Return six fields per row, or six-column CSV only for format=csv. No new
+        directory query or explicit commit occurs. Stored-data/database errors propagate."""
         hosts = {h.lower().split(".")[0] for h in s.scalars(select(Asset.hostname).where(Asset.org_id == user.org_id, Asset.kind == "host"))}
         cutoff = now() - timedelta(days=30)
         rows = [c for c in s.scalars(select(DirectoryComputer).where(DirectoryComputer.org_id == user.org_id).order_by(DirectoryComputer.name))
@@ -1065,7 +1271,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/baselines")
     def baseline_fleet(user: CurrentUser, s: DB):
-        """How Windows hosts compare with the automated part of a baseline (DECISIONS 75). A reference, never a conformance result."""
+        """Return baselines/hosts/no_baseline for the caller's stored Windows host facts.
+
+        Select kind=host and ecosystem=Windows. Host summaries omit rules.
+        Aggregate outcome counts sum hosts. automated/manual describe each baseline's size.
+        No new collection or finding changes occur. Requires a session or eligible
+        read-only token. Bundled-rule and incompatible stored-fact errors propagate."""
         hosts, fleet, none = [], {}, 0
         for a in windows_hosts(s, user.org_id):
             r = winbaseline.evaluate(a.os_name, a.facts)
@@ -1084,6 +1295,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     @app.get("/api/baselines.csv")
     def export_baselines(user: CurrentUser, s: DB):
         """Stream the organisation's baseline results as spreadsheet-safe CSV.
+
+        Emit BASELINE_COLUMNS for automated rules and explicit manual rows. Read
+        stored Windows hosts through a separate Session. Omit unmatched hosts.
+        Share a 30/hour organisation export quota with findings CSV and commit the
+        quota attempt. Strings use csv_safe's formula-prefix guard.
 
         Requires a user session or a read-only organisation API token. API tokens cannot use write methods.
 
@@ -1118,6 +1334,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def baseline_host(asset_id: str, user: CurrentUser, s: DB):
         """Return the Windows baseline evaluation for an organisation-owned host.
 
+        asset_id must identify an owned host with an OS-name baseline match. Return
+        asset_id/hostname plus result counts and automated rule rows. No refresh,
+        persistence or conformance certification occurs.
+
         Requires a user session or a read-only organisation API token. API tokens cannot use write methods.
 
         Operation-specific HTTP errors: 404. See detail in the response.
@@ -1135,6 +1355,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         # paused is unsigned on purpose: it can only withhold an update, which the server could do anyway
         """Return the organisation's update pause flag and any valid signed release for the served agent.
 
+        Return paused plus optional release/sig strings. paused is unsigned and
+        can withhold an update. No release/sig fields appear when signed_release()
+        returns None. This helper does not enforce the agent's channel or anti-rollback rules.
+
         Requires this asset's agent bearer key."""
         return {"paused": s.get(Org, asset.org_id).agent_updates_paused, **(signed_release() or {})}
 
@@ -1142,7 +1366,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def agent_jobs(s: DB, asset: Annotated[Asset, Depends(current_agent)]):
         """Dispatch eligible approved jobs to this agent and return their execution plans.
 
-        Polling can change job state; host opt-in, maintenance windows, and canary gates apply.
+        Polling sweeps timeouts and commits job changes. Maintenance, production,
+        mode and policy-canary gates apply. Local opt-in is the agent's responsibility.
 
         Requires this asset's agent bearer key."""
         return remediate.dispatch(s, asset)
@@ -1162,7 +1387,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def agent_job_report(job_id: str, body: JobReport, s: DB, asset: Annotated[Asset, Depends(current_agent)], tasks: BackgroundTasks):
         """Record an outcome for a job owned by this agent and return its resulting status.
 
-        An applied update enters verification; inventory must establish whether it fixed the finding.
+        Applied enters verifying. Inventory normally judges findings, with a separate
+        Windows stepping-success path. Commit before optional background step planning.
+        Aborted reports with offered updates can fetch MSRC data after the response.
 
         Requires this asset's agent bearer key.
 
@@ -1186,6 +1413,14 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     LIST_FACTS = ("os_unmatched", "pending_reboot", "wsus", "wufb_quality_deferral_days", "last_update_success", "domain_role", "edition_id", "esu")
 
     def asset_json(a: Asset, counts: dict, paused: bool = False, release: bool | None = None, apps: dict | None = None) -> dict:
+        """Return common and kind-specific fields for database Asset a.
+
+        counts supplies open_by_priority without recalculation. Optional apps is
+        included only when truthy. paused/release control host update classification.
+        An omitted release probes signed distribution availability for hosts. Host
+        facts retain LIST_FACTS names only. Non-host rows omit host metadata.
+        No database write occurs. Source/cache/key and malformed-value errors can
+        propagate. Callers can pass empty counts/default policy context."""
         if release is None and a.kind == "host":
             release = signed_release() is not None
         return {
@@ -1207,6 +1442,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def list_assets(user: CurrentUser, s: DB):
         """Return organisation assets with finding counts, agent status, and application coverage.
 
+        Sort by hostname. Kind-specific metadata comes from asset_json. Application
+        coverage counts mapping capability, not completed verdicts. No collection
+        occurs. Signed-release/cache, mapper and database errors can propagate.
+
         Requires a user session or a read-only organisation API token. API tokens cannot use write methods."""
         rows = s.execute(
             select(Finding.asset_id, Finding.priority, func.count())
@@ -1223,7 +1462,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/coverage")
     def coverage(user: CurrentUser, s: DB):
-        """How much of the fleet's Windows software is checked at all, so a clean result can't be misread."""
+        """Return assessed/inventory_only mapping counts and at most 200 unmatched groups.
+
+        Require a session or eligible read token. Count stored WinApp rows, not
+        completed checks or available advisories. Group unmatched names/publishers
+        by distinct asset IDs, ordered by descending count then name. No explicit
+        commit or new collection occurs. Mapper/database errors propagate."""
         per_asset, missed = app_coverage(s, user.org_id)
         top = sorted(missed.items(), key=lambda m: (-len(m[1]), m[0][0]))[:200]
         return {"assessed": sum(a["assessed"] for a in per_asset.values()),
@@ -1231,6 +1475,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                 "not_assessed": [{"name": n, "publisher": p, "hosts": len(ids)} for (n, p), ids in top]}
 
     def owned_asset(s: Session, user: User, asset_id: str) -> Asset:
+        """Return asset_id from Session s when it belongs to user's organisation.
+
+        Missing or differently owned assets raise HTTP 404. No kind or write-role
+        check occurs here. Database errors propagate."""
         a = s.get(Asset, asset_id)
         if not a or a.org_id != user.org_id:
             raise HTTPException(404, "Asset not found")
@@ -1238,9 +1486,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.delete("/api/assets/{asset_id}", status_code=204)
     def delete_asset(asset_id: str, user: Admin, s: DB):
-        """Delete an organisation-owned asset and its associated rows; append the deletion to the ledger.
+        """Delete an owned asset and its findings, packages, jobs and scan records.
 
-        Requires an organisation admin browser session; API tokens are refused."""
+        asset_id selects any owned kind. user requires an admin browser session.
+        Append deletion evidence, delete rows and commit. Return HTTP 204 without
+        a body. The ledger remains. This does not stop a resident agent or dispatched
+        host process. Missing/unowned assets return 404. Storage/evidence errors
+        can propagate."""
         a = owned_asset(s, user, asset_id)
         evidence.append(s, user.org_id, "asset_deleted", a.id, {"by": user.email, "hostname": a.hostname})
         for model in (Finding, InstalledPackage, RemediationJob, ScanRecord):
@@ -1250,12 +1502,21 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/assets/{asset_id}/scan-report")
     def asset_scan_report(asset_id: str, user: CurrentUser, s: DB):
-        """Every check's verdict on this host's stored inventory (nimstead/engine). Findings still open and close through rescan."""
+        """Return the grouped engine report for asset_id's stored inventory.
+
+        Requires a session or eligible read-only token. Ownership failure returns 404.
+        May create a retained ScanRecord and commit the session, even though this is GET.
+        Retains five records per asset. Findings still open and close through rescan."""
         return engine.asset_report(s, owned_asset(s, user, asset_id))
 
     @app.get("/api/attack-paths")
     def attack_paths(user: CurrentUser, s: DB):
-        """Which hosts an attacker who gets into one can reach next, from each host's latest stored scan report (engine/fleet.py)."""
+        """Return organisation fleet paths from latest stored reports and current host facts.
+
+        Requires a session or eligible read-only token. Does not rescan assets.
+        The organisation limit is 120 reads per hour, with 429 on refusal.
+        Response has hosts, edges, truncated and chains. At most 2000 edges and
+        50 chain starts are returned. This GET commits its usage counter."""
         if over_limit(s, "attack-paths:" + user.org_id, 120):  # a whole-fleet read: shared server, so bounded per organisation
             raise HTTPException(429, "Attack paths were read too often this hour; try again later")
         s.commit()
@@ -1281,12 +1542,17 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.patch("/api/assets/{asset_id}")
     def update_asset(asset_id: str, body: AssetPatch, user: Admin, s: DB):
-        """Update an owned asset's editable context, ring, health checks, or maintenance settings.
+        """Update owned asset context, rescan and return an asset record.
 
-        Requires an organisation admin browser session; API tokens are refused.
+        body supplies optional context/ring/services/window fields. Null values are
+        omitted. Empty health_units clears that list. Empty window stores null to
+        inherit organisation policy. Even an empty patch appends evidence/rescans.
+        Return empty open_by_priority rather than recalculated totals. Optional app
+        coverage is absent. Host update classification uses default paused=False.
 
-        Operation-specific HTTP errors: 422. See detail in the response.
-        Authentication and request-validation errors also apply where required."""
+        Requires an admin browser session. Ownership failure returns 404. Invalid
+        services/windows return 422. Rescan can commit before response construction,
+        whose source/cache reads can still fail. Other storage/evidence errors propagate."""
         a = owned_asset(s, user, asset_id)
         if body.health_units and not all(remediate.SAFE_NAME.match(u) for u in body.health_units):
             raise HTTPException(422, "Invalid systemd unit name")
@@ -1308,6 +1574,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         criticality: Literal["low", "medium", "high", "critical"] = "medium"
 
     def owned_target(s: Session, user: User, target_id: str) -> Asset:
+        """Return an owned external asset from s for user and target_id.
+
+        Reuse owned_asset and refuse other kinds with HTTP 404. No proof request
+        or scan occurs. Database errors propagate."""
         a = owned_asset(s, user, target_id)
         if a.kind != "external":
             raise HTTPException(404, "Not an external target")
@@ -1317,11 +1587,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def create_target(body: TargetNew, user: Admin, s: DB):
         """Create an external target for a public DNS hostname and return its asset record.
 
-        Creation does not prove ownership or authorise a scan.
+        body contains hostname and optional criticality. Normalize hostname case,
+        whitespace and trailing dots. Return the asset record with TXT/path proof fields.
+        Creation commits the asset and ledger event without proving ownership or authorising a scan.
 
         Requires an organisation admin browser session; API tokens are refused.
 
-        Operation-specific HTTP errors: 409, 422. See detail in the response.
+        Operation-specific HTTP errors: 403 for asset quota, 409 for duplicate, 422 for invalid hostname.
         Authentication and request-validation errors also apply where required."""
         host = body.hostname.strip().lower().rstrip(".")
         if not external.HOSTNAME.fullmatch(host):
@@ -1344,9 +1616,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def verify_target(target_id: str, user: Admin, s: DB):
         """Verify DNS and address ownership for an external target and return its asset record.
 
+        target_id identifies an owned external asset. Performs DNS and HTTP(S) proof
+        requests against the first checked address. On first success, commit verification
+        and its ledger event. Return the asset record with proof fields.
+
         Requires an organisation admin browser session; API tokens are refused.
 
-        Operation-specific HTTP errors: 409. See detail in the response.
+        Operation-specific HTTP errors: 404 for unavailable target or 409 for failed proof/address checks.
         Authentication and request-validation errors also apply where required."""
         a = owned_target(s, user, target_id)
         value = external.txt_value(a.org_id, a.hostname)
@@ -1368,9 +1644,14 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def scan_target(target_id: str, user: Admin, s: DB):
         """Recheck ownership, scan the external target, and return its findings result.
 
+        target_id identifies an owned external asset. Return address, open observed
+        issue count, newly resolved count, and skipped descriptions. The scan can
+        commit findings/ledger changes. Scope refusal can also commit a proof event.
+
         Requires an organisation admin browser session; API tokens are refused.
 
-        Operation-specific HTTP errors: 409, 429. See detail in the response.
+        Operation-specific HTTP errors: 404 for unavailable target, 409 for scope refusal,
+        or 429 for more than ten manual scans per organisation per hour.
         Authentication and request-validation errors also apply where required."""
         a = owned_target(s, user, target_id)
         if over_limit(s, "extscan:" + user.org_id, EXTSCAN_MAX_PER_HOUR):  # bounds what a tenant can aim at a DNS name it controls
@@ -1387,9 +1668,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/assets", status_code=201)
     def create_application(body: AppNew, user: Admin, s: DB):
-        """Create an application asset and return its asset record plus a one-time upload_token.
+        """Create an application asset and return its record plus upload_token.
 
-        Requires an organisation admin browser session; API tokens are refused."""
+        body supplies name/context. user requires an admin browser session. No name
+        deduplication occurs. The one-time nmu_ token is stored as a hash and permits
+        this asset's SBOM uploads. Enforce the current asset-count quota with 403
+        on refusal. Commit asset/evidence before returning. Later response loss
+        does not undo creation. Storage/evidence errors can propagate."""
         room_for_asset(s, user.org_id)
         token ="nmu_" + secrets.token_urlsafe(32)  # CI upload token: SBOM endpoint only, rejected by every agent endpoint
         a = Asset(org_id=user.org_id, hostname=body.name, kind="application", criticality=body.criticality,
@@ -1402,14 +1687,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/assets/{asset_id}/sbom")
     async def upload_sbom(asset_id: str, request: Request, s: DB):
-        """Replace this asset's SBOM packages and return mapping counts and scan results.
+        """Read raw CycloneDX/SPDX JSON and return parser plus rescan counts.
 
-        Send raw CycloneDX or SPDX JSON, not multipart data. Authenticate with the asset's own
-        upload/agent bearer key or an admin session. The body limit is 10 MiB. Wrong keys return
-        401; malformed documents return 422. Agent-origin package rows remain unchanged.
-
-        Operation-specific HTTP errors: 413. See detail in the response.
-        Authentication and request-validation errors also apply where required."""
+        asset_id selects the asset. request supplies bytes and either its bearer
+        key or an admin session. Read before authentication, with a 10MiB streamed
+        cap and HTTP 413 on excess. Preserve agent-origin rows. Defer parse/store
+        work to ingest_sbom. Invalid formats return 422, wrong keys 401. Other
+        authentication/ownership failures and storage/evidence errors can occur."""
         raw = b""
         async for chunk in request.stream():  # cap chunked bodies too, which the middleware can't see
             raw += chunk
@@ -1418,6 +1702,18 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         return await run_in_threadpool(ingest_sbom, asset_id, request, raw, s)
 
     def ingest_sbom(asset_id: str, request: Request, raw: bytes, s: Session) -> dict:
+        """Authenticate, replace SBOM-origin rows and return mapping/rescan counts.
+
+        asset_id selects the destination. request supplies headers/session, raw is
+        the full document and s is the Session. Exact Bearer headers take precedence
+        over any browser session. Match any asset's stored key, then require its ID.
+        Otherwise require an admin session and owned asset.
+
+        Parse before replacing. Empty valid inventory clears SBOM rows. Update
+        last_seen for any kind, retain agent rows and append a raw-byte digest event.
+        Rescan commits storage. It receives inventory_received=False and does not
+        perform the agent job-verification/automatic-planning sequence here. Parse
+        failures return 422. Other errors can propagate after earlier effects."""
         auth = request.headers.get("authorization", "")
         if auth.startswith("Bearer "):  # the asset's own key / upload token, for that asset only
             a = s.scalar(select(Asset).where(Asset.agent_key_hash == sha(auth.removeprefix("Bearer "))))
@@ -1442,10 +1738,17 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     # --- findings ----------------------------------------------------------
 
     def due_of(f: Finding, sla_at) -> datetime | None:
-        """Deadline for an open finding: first seen + the deadline for its priority in force then (as evidence packs count it)."""
+        """Return first_seen plus the historical SLA days for the finding's current priority.
+
+        sla_at resolves the policy at first_seen. Nonopen findings return None.
+        Unknown priority uses 180 days. Incompatible timestamps/policy values propagate errors."""
         return f.first_seen + timedelta(days=sla_at(f.first_seen).get(f.priority, 180)) if f.status == "open" else None
 
     def finding_json(f: Finding, hostname: str, due: datetime | None = None) -> dict:
+        """Return a full finding row with caller-supplied hostname and optional deadline.
+
+        accepted_until is omitted. Without due, the returned due field is None even
+        for an open finding. Does not query or change f. Model/plan-helper errors propagate."""
         return {
             "due": due.isoformat() if due else None,
             "id": f.id, "asset_id": f.asset_id, "hostname": hostname, "ecosystem": f.ecosystem,
@@ -1502,7 +1805,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/findings/count")
     def count_findings(user: CurrentUser, s: DB, f: Annotated[FindingFilter, Query()]):
-        """How many match, so a capped list can say how many it isn't showing."""
+        """Return {total: integer} for the caller's findings matching query filters f.
+
+        Includes the overdue=true predicate without list pagination. Requires a user
+        session or eligible read-only API token. Does not expire accepted findings."""
         if f.overdue:  # the deadline is worked out per finding
             return {"total": sum(1 for _ in with_due(s, user.org_id, f))}
         return {"total": s.scalar(select(func.count()).select_from(find_stmt(user.org_id, f).subquery()))}
@@ -1511,7 +1817,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/findings/groups")
     def group_findings(user: CurrentUser, s: DB, f: Annotated[FindingFilter, Query()], by: Literal["vuln", "package"] = "vuln"):
-        """One row per vulnerability or package across the fleet, worst first (the overdue filter isn't applied here)."""
+        """Return up to 500 grouped finding rows for the caller's organisation.
+
+        f supplies filters, but overdue is ignored. by defaults to vuln; package
+        groups also separate ecosystems. Sort worst priority, score, then count.
+        fixed_version is the highest known fix only for a single ecosystem. It
+        does not prove every grouped issue has a fix. Version comparison errors can
+        propagate. Requires a session or eligible read-only API token."""
         sub = find_stmt(user.org_id, f).subquery()
         k = sub.c.vuln_id if by == "vuln" else sub.c.package
         rank = func.min(case(*((sub.c.priority == p, n) for p, n in PRIORITY_RANK.items()), else_=9))
@@ -1537,6 +1849,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     @app.get("/api/findings.csv")
     def export_findings(user: CurrentUser, s: DB, f: Annotated[FindingFilter, Query()]):
         """Stream all matching findings as CSV, escaping spreadsheet formula prefixes.
+
+        f supplies filters, including overdue=true. No list pagination applies.
+        Streams through a separate Session with CSV_COLUMNS in fixed order.
+        Adds a leading apostrophe to string cells beginning =, +, -, @, tab or CR.
+        Shares a 30/hour organisation export quota with baseline CSV and commits
+        that quota attempt. The response is text/csv with an attachment filename.
 
         Requires a user session or a read-only organisation API token. API tokens cannot use write methods.
 
@@ -1598,6 +1916,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def get_finding(finding_id: str, user: CurrentUser, s: DB):
         """Return an owned finding with full detail, package context, and its remediation deadline.
 
+        finding_id identifies an owned finding in any status. package_fix describes
+        known fixed versions among currently open findings for its asset/ecosystem/package,
+        or None. It is not a guarantee that all those findings have fixes.
+        Version comparison errors can propagate.
+
         Requires a user session or a read-only organisation API token. API tokens cannot use write methods.
 
         Operation-specific HTTP errors: 404. See detail in the response.
@@ -1622,6 +1945,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def accept_finding(finding_id: str, body: Accept, user: Admin, s: DB):
         """Record time-limited risk acceptance with a reason and return the updated finding.
 
+        finding_id can identify any owned status. body has a reason of 10–2000
+        characters and days from 1–365, default 90. Commit acceptance and ledger
+        event. Existing resolved_at is retained. The full row omits accepted_until.
+
         Requires an organisation admin browser session; API tokens are refused.
 
         Operation-specific HTTP errors: 404. See detail in the response.
@@ -1645,7 +1972,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/findings/accept")
     def accept_everywhere(body: AcceptEverywhere, user: Admin, s: DB):
-        """One decision for one vulnerability on every host it's open on now (each recorded; new hosts aren't covered)."""
+        """Accept currently open findings for body.vuln_id in the admin's organisation.
+
+        body also supplies the acceptance reason/days. Return {accepted: count},
+        commit each decision's ledger entry, or return 404 when none are open.
+        New hosts are not covered. Requires an admin browser session."""
         rows = s.scalars(select(Finding).where(Finding.org_id == user.org_id, Finding.vuln_id == body.vuln_id, Finding.status == "open")).all()
         if not rows:
             raise HTTPException(404, "No open findings for that vulnerability")
@@ -1659,7 +1990,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/findings/accept-many")
     def accept_many(body: AcceptMany, user: Admin, s: DB):
-        """One reason for a selection of findings (each recorded on its own); ones already closed or not yours are skipped."""
+        """Accept the admin's open findings among body.ids, with reason and expiry days.
+
+        ids has 1–1000 strings; duplicate IDs count once. Skip unavailable or nonopen
+        findings. Return accepted/skipped unique-ID counts and commit ledger entries,
+        even when no rows match. Requires an organisation admin browser session."""
         rows = s.scalars(select(Finding).where(Finding.org_id == user.org_id, Finding.id.in_(set(body.ids)), Finding.status == "open")).all()
         for f in rows:
             accept(s, user, f, body)
@@ -1672,6 +2007,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     @app.post("/api/findings/{finding_id}/revoke-acceptance")
     def revoke_acceptance(finding_id: str, body: Revoke, user: Admin, s: DB):
         """Reopen an accepted finding with a recorded reason and return its updated detail.
+
+        finding_id must identify an accepted owned finding. body.reason has 3–2000
+        characters. Commit status=open, accepted_until=None and the ledger event.
+        Existing resolved_at is retained. The returned full row has due=None; a
+        subsequent detail/list GET computes the deadline.
 
         Requires an organisation admin browser session; API tokens are refused.
 
@@ -1691,6 +2031,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     # --- remediation -------------------------------------------------------
 
     def job_json(j: RemediationJob, hostname: str) -> dict:
+        """Return 17 public fields for job j with caller-supplied hostname.
+
+        Lists/dictionaries are shared until response serialization. No query or commit
+        occurs. Incompatible model/package values can raise errors."""
         return {
             "id": j.id, "asset_id": j.asset_id, "hostname": hostname, "status": j.status, "manager": j.manager,
             "action_key": j.action_key, "packages": j.packages, "finding_ids": j.finding_ids, "summary": j.summary,
@@ -1711,7 +2055,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
         Requires an organisation admin browser session; API tokens are refused.
 
-        Operation-specific HTTP errors: 409. See detail in the response.
+        Commit the plan and evidence before returning 17 job fields. Local consent,
+        mode and production approval gates are not planning prerequisites.
+        Operation-specific HTTP errors: 404 for an unavailable asset, 409 for plan refusal.
         Authentication and request-validation errors also apply where required."""
         a = owned_asset(s, user, body.asset_id)
         try:
@@ -1728,7 +2074,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/remediation/jobs/batch", status_code=201)
     def create_jobs(body: PlanMany, user: Admin, s: DB):
-        """One fix on many machines in one request ("plan the rest"): each plan is its own commit, so one refusal keeps the others."""
+        """Return jobs/errors after one action is planned across 1..5000 requested assets.
+
+        Requires an admin browser session. Deduplicate asset IDs in request order.
+        Commit each successful plan. Ownership/RemediationError refusals roll back
+        that iteration and add asset_id/error text. Other errors can stop the request
+        after earlier commits. HTTP 201 can contain only errors. No approval occurs."""
         jobs, errors = [], []
         for aid in dict.fromkeys(body.asset_ids):
             try:
@@ -1745,7 +2096,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def list_jobs(user: CurrentUser, s: DB, status: str | None = None):
         """Return up to 500 recent jobs, optionally filtered by comma-separated status names.
 
-        Sweeps stale jobs first and includes maintenance-window wait information for approved jobs.
+        Sweep and commit stale jobs first. status text is split on commas without
+        trimming or enum validation. Sort by updated descending. Approved rows add
+        waits_for_window as a UTC timestamp or null. Other rows omit that field.
 
         Requires a user session or a read-only organisation API token. API tokens cannot use write methods."""
         remediate.sweep(s, user.org_id)
@@ -1767,6 +2120,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def windows_updates(user: CurrentUser, s: DB):
         """Return Windows update groups across this organisation without the per-host detail lists.
 
+        Sweep and commit timeouts first. Return eight fields per summary row.
+        Stored host/build coverage and rollout suggestions are not a new scan.
+
         Requires a user session or a read-only organisation API token. API tokens cannot use write methods."""
         remediate.sweep(s, user.org_id)
         return [{k: v for k, v in r.items() if k not in ("missing", "plan_asset_ids")} for r in remediate.kb_fleet(s, user.org_id)]
@@ -1774,6 +2130,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     @app.get("/api/windows-updates/{kb}")
     def windows_update_hosts(kb: str, user: CurrentUser, s: DB, product: str = Query(max_length=255)):
         """Return host-level detail for a Windows KB and exact product query.
+
+        Sweep and commit timeouts first. Return ten fields, including missing hosts
+        and suggested plan_asset_ids. Only the three newest groups per product are
+        eligible for lookup. No collection or approval occurs.
 
         Requires a user session or a read-only organisation API token. API tokens cannot use write methods.
 
@@ -1838,6 +2198,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def get_settings(user: CurrentUser, s: DB):
         """Return organisation policy, deadlines, agent update status, and server release status.
 
+        Nine fields include cached platform data and the production permission flag.
+        Reading signed-agent/cache metadata can perform local I/O and raise errors.
+
         Requires a user session or a read-only organisation API token. API tokens cannot use write methods."""
         o = s.get(Org, user.org_id)
         return {"remediation_mode": o.remediation_mode, "canary_soak_hours": o.canary_soak_hours, "sla_days": evidence.sla_days(o),
@@ -1849,6 +2212,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     @app.patch("/api/settings")
     def update_settings(body: Policy, user: Admin, s: DB):
         """Update organisation policy, record the decision, and return current settings.
+
+        Omitted/null fields keep existing values. An empty maintenance_window clears
+        the organisation window. SLA keys merge with existing policy. Commit all
+        changes before the settings response, whose cache/key lookup can still fail.
 
         Requires an organisation admin browser session; API tokens are refused.
 
@@ -1871,6 +2238,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     # --- OIDC single sign-on -------------------------------------------------
 
     def sso_org(s: Session, email: str | None, org_id: str | None) -> Org | None:
+        """Return an SSO-enabled organisation selected by ID or verified email domain.
+
+        s supplies storage. Truthy org_id takes precedence without domain lookup.
+        Otherwise scan enabled organisations and select the first verified domain
+        match. Missing configuration returns None. No proof/provider call occurs."""
         if org_id:
             o = s.get(Org, org_id)
             return o if o and o.sso_issuer else None
@@ -1880,9 +2252,16 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                      if domain and domain in o.sso_verified_domains), None)
 
     def sso_redirect_uri(request: Request) -> str:
+        """Return configured/fallback public origin plus the fixed callback path.
+
+        request.base_url supplies fallback. No independent origin validation occurs."""
         return (os.environ.get("NIMSTEAD_PUBLIC_URL") or str(request.base_url)).rstrip("/") + "/api/auth/sso/callback"
 
     def sso_fail(reason: str) -> RedirectResponse:
+        """Return a 303 sign-in redirect with reason and delete the scoped SSO cookie.
+
+        reason is interpolated into the query. No pending database flow is removed
+        here. Caller supplies a known error label."""
         resp = RedirectResponse(f"/signin?sso_error={reason}", status_code=303)
         resp.delete_cookie(SSO_COOKIE, path="/api/auth/sso")
         return resp
@@ -1891,9 +2270,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     async def sso_start(request: Request, s: DB):
         # POST from the sign-in form, never a GET: the Origin check refuses a flow started by another site, which could
         # otherwise sign a victim's browser into an attacker's org (login CSRF) or bounce them to any URL (open redirect).
-        """Read the SSO start form and begin the configured organisation's authorisation-code flow.
+        """Parse URL-encoded email/org from a POST and return an SSO redirect.
 
-        Returns a redirect; configuration and validation failures redirect with sso_error."""
+        request body uses first values and replacement decoding. Overlong email/org
+        returns a not_configured redirect. sso_begin executes in a worker thread.
+        The shared origin guard applies when Origin is supplied. Body/backend
+        errors can propagate. This request does not itself create a user session."""
         form = parse_qs((await request.body()).decode(errors="replace"))
         email, org = (form.get("email") or [None])[0], (form.get("org") or [None])[0]
         if (email and len(email) > 320) or (org and len(org) > 32):
@@ -1901,6 +2283,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         return await run_in_threadpool(sso_begin, request, s, email, org)
 
     def sso_begin(request: Request, s: Session, email: str | None, org: str | None):
+        """Create and commit one pending OIDC flow, then return its provider redirect.
+
+        request/s supply origin/storage. email/org select configuration. Require
+        client credentials and verified domains. Catch SSOError as sign-in redirects.
+        Store state/nonce/verifier and set a scoped HttpOnly/Lax flow cookie. A new
+        browser flow replaces that cookie. Backend/storage errors can propagate."""
         o = sso_org(s, email, org)
         if not o or not (o.sso_client_id and o.sso_client_secret and o.sso_verified_domains):
             return sso_fail("not_configured")
@@ -1920,10 +2308,14 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/auth/sso/callback")
     def sso_callback(request: Request, s: DB, code: str | None = None, state: str | None = None, error: str | None = None):
-        """Validate the pending SSO flow and provider identity, then establish a session.
+        """Consume a pending flow and return a success or sign-in error redirect.
 
-        Failures redirect to sign-in with an sso_error code. A provider callback alone is not proof
-        of a completed login; state, nonce, email verification, and allowed domain are checked."""
+        request supplies the flow cookie and code/state/error query parameters.
+        Delete/commit any found pending row before cookie, expiry or provider checks.
+        Require verified email and a configured verified domain. Refuse identities
+        already attached elsewhere. New SSO users are members. Existing same-org
+        users retain role and origin. Commit evidence/new session before response.
+        SSOError becomes a redirect. Other backend/storage/claim errors can propagate."""
         pending = s.get(PendingLogin, state) if state else None
         if pending:  # single use, whatever happens next
             s.delete(pending)
@@ -1970,6 +2362,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         required: bool = False
 
     def sso_json(o: Org, request: Request) -> dict:
+        """Return issuer/client_id/secret-set/domains/required/redirect/domain-check fields.
+
+        o supplies saved configuration and request supplies public-origin fallback.
+        Checks describe stored verification, not fresh DNS. Secret plaintext is
+        omitted. TXT token generation can invoke the key backend and raise."""
         return {"issuer": o.sso_issuer or "", "client_id": o.sso_client_id or "", "client_secret_set": bool(o.sso_client_secret),
                 "domains": o.sso_domains, "required": o.sso_required, "redirect_uri": sso_redirect_uri(request),
                 "domain_checks": [{"domain": d, "verified": d in o.sso_verified_domains, "txt_name": f"_nimstead-verify.{d}",
@@ -1977,7 +2374,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/settings/sso/verify")
     def verify_sso_domains(request: Request, user: Admin, s: DB):
-        """Check each pending domain's DNS TXT record; only verified domains route SSO sign-ins."""
+        """Check only unverified, unclaimed saved domains and return sso_json.
+
+        request/user/s provide origin, admin browser identity and storage. Preserve
+        previously verified domains without a new DNS check. Commit new verifications
+        and evidence when any pass. Existing verification can survive removed TXT.
+        No live provider-login test occurs. Backend/storage errors can propagate."""
         o = s.get(Org, user.org_id)
         taken = {d for other in s.scalars(select(Org).where(Org.id != o.id)) for d in other.sso_verified_domains}
         newly = [d for d in o.sso_domains
@@ -1990,19 +2392,22 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/settings/sso")
     def get_sso(request: Request, user: Admin, s: DB):
-        """Return SSO configuration with domain-verification instructions, without exposing its stored secret.
+        """Return saved SSO fields and proof instructions for an admin browser user.
 
-        Requires an organisation admin browser session; API tokens are refused."""
+        request supplies public-origin fallback and s supplies organisation storage.
+        Secret presence does not prove provider connectivity. Backend errors can raise."""
         return sso_json(s.get(Org, user.org_id), request)
 
     @app.put("/api/settings/sso")
     def put_sso(body: SSOConfig, request: Request, user: Admin, s: DB):
-        """Validate and save SSO configuration and return the current domain-verification state.
+        """Replace saved SSO configuration and return sso_json after commit.
 
-        Requires an organisation admin browser session; API tokens are refused.
-
-        Operation-specific HTTP errors: 409, 422. See detail in the response.
-        Authentication and request-validation errors also apply where required."""
+        body defaults matter: omitted/empty issuer disables SSO and clears its
+        credentials/domains. Otherwise require a public issuer shape, client ID,
+        existing/new secret and domains. Empty/null client_secret retains the old
+        secret. Keep verification for domains still configured. Conflicting verified
+        claims return 409, invalid fields 422. user needs an admin browser session.
+        Secret/evidence/storage/response failures can occur after earlier commits."""
         o = s.get(Org, user.org_id)
         issuer, domains = body.issuer.strip(), sorted({d.strip().lower() for d in body.domains if d.strip()})
         if not issuer:
@@ -2054,12 +2459,22 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def get_notifications(user: Admin, s: DB):
         """Return webhook/email configuration, confirmation state, and recent notification outcomes.
 
+        recent contains at most five latest delivery rows overall. Failure status
+        uses the latest row per channel within that sample. Webhook URL is not returned.
+        Secret unsealing can perform synchronous backend I/O and propagate failures.
+
         Requires an organisation admin browser session; API tokens are refused."""
         return notify_json(s.get(Org, user.org_id), s)
 
     @app.put("/api/settings/notifications")
     def put_notifications(body: NotifyConfig, request: Request, user: Admin, s: DB):
         """Save notification settings and request confirmation for newly added email recipients.
+
+        body.webhook_url None keeps the URL, empty removes it. Format None keeps
+        the format. emails None keeps recipients; [] clears them. Normalize email
+        case and duplicates, retain confirmations for remaining addresses, and commit
+        settings/ledger changes. Added recipients request mail only when SMTP is
+        configured and the 20/hour confirmation quota permits. Delivery is not guaranteed.
 
         Requires an organisation admin browser session; API tokens are refused.
 
@@ -2105,7 +2520,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/notify/confirm")
     def confirm_page(s: DB, org: str = "", email: str = "", token: str = ""):
-        """Return the email-alert consent form for a valid confirmation link, otherwise HTML 404."""
+        """Return an email-alert consent form for query org/email/token, or HTML 404 on failed proof.
+
+        The GET does not confirm consent. Tokens have no time-based expiry here.
+        Their validity depends on the configured address and secret-key backend.
+        Incompatible proof values or backend/database failures can propagate."""
         if not confirmable(s, org, email, token):
             return Response(CONFIRM_INVALID, 404, media_type="text/html")
         # a button, not an automatic confirm: mail scanners open links on their own
@@ -2114,7 +2533,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/notify/confirm")
     def confirm_email(s: DB, org: str = "", email: str = "", token: str = ""):
-        """Confirm the linked email recipient and return HTML confirmation, or HTML 404 for an invalid link."""
+        """Confirm query org/email/token and return HTML 200, or HTML 404 when invalid.
+
+        Query email is lowercased and must remain configured. Repeated confirmation
+        is valid. First confirmation commits the recipient list and ledger event.
+        No session is required. Key-backend and database failures can propagate."""
         o = confirmable(s, org, email, token)
         if not o:
             return Response(CONFIRM_INVALID, 404, media_type="text/html")
@@ -2130,6 +2553,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                    "invite": ("Join {org} on Nimstead", "Join"), "reset": ("Choose a new Nimstead password", "Set password")}
 
     def link_form(p: PendingSignup, org: Org | None, error: str = "") -> str:
+        """Return escaped password-selection HTML for pending signup p and optional org.
+
+        error is escaped message text. Purpose selects a fixed title/button.
+        Rendering consumes no token or session. Unknown purpose/data errors can raise."""
         title, button = LINK_TITLES[p.purpose]
         org = org.name if org else ""
         err = f"<p role=alert style='color:#b0122c'>{html.escape(error)}</p>" if error else ""
@@ -2141,6 +2568,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             f"<button>{button}</button></form>")
 
     def pending_link(s: Session, token: str) -> tuple[PendingSignup | None, Org | None]:
+        """Return (pending record,optional organisation) for hashed token in Session s.
+
+        Missing/expired records return (None,None), without deletion. No token
+        consumption or commit occurs. Invalid types/storage errors can propagate."""
         p = s.get(PendingSignup, sha(token))
         if not p or p.expires < now():
             return None, None
@@ -2148,7 +2579,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/auth/signup/confirm")
     def signup_confirm_page(s: DB, token: str = ""):
-        """Return the password-selection form for a valid signup, invitation, or reset token; otherwise HTML 404."""
+        """Return password-selection HTML for a valid link, otherwise HTML 404.
+
+        s selects query token. GET does not consume it or establish a session.
+        Backend/storage/rendering errors can propagate."""
         p, org = pending_link(s, token)
         if not p:
             return Response(CONFIRM_INVALID, 404, media_type="text/html")
@@ -2156,14 +2590,25 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/auth/signup/confirm")
     async def signup_confirm(request: Request, s: DB, token: str = ""):
-        """Consume a confirmation form and choose a password for signup, invitation, or password reset.
+        """Parse the first form password and complete the query token's account link.
 
-        The token is in the query string and password is form-encoded. Invalid links and invalid
-        passwords are reported by the confirmation flow; no browser session is granted here."""
+        request supplies replacement-decoded URL-encoded data and s supplies storage.
+        Invalid link/password returns HTML 404/422. Signup/reset success redirects
+        to sign-in without a session. Invitation success creates a member session.
+        Processing runs in a worker thread. Backend/storage errors can propagate."""
         form = parse_qs((await request.body()).decode(errors="replace"))
         return await run_in_threadpool(finish_link, s, token, (form.get("password") or [""])[0])
 
     def finish_link(s: Session, token: str, password: str):
+        """Complete pending token with password, returning HTML or a 303 redirect.
+
+        s supplies storage. Invalid/expired link returns 404. Password length outside
+        12..200 returns 422 without consuming the link. Then stage token deletion.
+        Reset updates a password user, revokes sessions/API tokens and redirects to
+        sign-in. Signup creates a new admin/org and redirects to sign-in. Invitation
+        creates a member/session when its org still exists. Existing users return
+        409 with token consumption. MFA secrets remain unchanged. Commit failures,
+        hashing/evidence/backend errors can propagate. Concurrent use is not locked."""
         p, org = pending_link(s, token)
         if not p:
             return Response(CONFIRM_INVALID, 404, media_type="text/html")
@@ -2201,7 +2646,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/settings/notifications/test", status_code=202)
     def test_notification(user: Admin, s: DB):
-        """Queue a test notification for the organisation and return queued=true with HTTP 202.
+        """Attempt a test notification and return queued=true with HTTP 202.
+
+        This acknowledges the request, not durable enqueue or delivery. Missing
+        destinations and suppressed queue errors can still produce queued=true.
+        The five/hour organisation quota records and commits each attempt.
 
         Requires an organisation admin browser session; API tokens are refused.
 
@@ -2216,12 +2665,19 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/ai/status")
     def ai_status(user: CurrentUser):
-        """Return whether the optional AI service is configured and enabled.
+        """Return enabled configuration Boolean without a provider request.
 
-        Requires a user session or a read-only organisation API token. API tokens cannot use write methods."""
+        user needs a session or eligible read token. This is configuration presence,
+        not provider reachability. Environment/backend errors can propagate."""
         return {"enabled": ai.enabled()}
 
     def ai_budget(s: Session, user: User) -> None:
+        """Commit enabled AI attempt quotas for user and its organisation through s.
+
+        Disabled configuration returns immediately. Check user before organisation,
+        with short-circuit refusal. User refusal therefore records no organisation
+        attempt. Each reached counter commits, including refused attempts. Raise
+        HTTP 429 on excess. This is not a provider-call or cache-miss count."""
         if not ai.enabled():
             return
         if over_limit(s, "ai:" + user.id, AI_MAX_PER_USER_HOUR) or over_limit(s, "ai-org:" + user.org_id, AI_MAX_PER_ORG_HOUR):
@@ -2229,12 +2685,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/ai/explain/{finding_id}")
     def ai_explain(finding_id: str, user: CurrentUser, s: DB):
-        """Return an AI explanation and model name for an owned finding, subject to AI usage quotas.
+        """Return text/model for finding_id's owned detail through ai.explain.
 
-        Requires a user session or a read-only organisation API token. API tokens cannot use write methods.
-
-        Operation-specific HTTP errors: 503. See detail in the response.
-        Authentication and request-validation errors also apply where required."""
+        user requires a session. s resolves the finding and commits enabled quotas
+        before cache/provider work. Missing finding returns 404. AIUnavailable maps
+        to 503 and quota refusal to 429. Other data/backend errors propagate.
+        Model names configured policy, not necessarily a provider fallback model."""
         f = get_finding(finding_id, user, s)
         ai_budget(s, user)
         try:
@@ -2247,12 +2703,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/ai/search")
     def ai_search(body: AskReq, user: CurrentUser, s: DB):
-        """Return a validated findings filter from the submitted natural-language text, subject to AI usage quotas.
+        """Return five validated filter fields from body.text via ai.parse_search.
 
-        Requires a user session or a read-only organisation API token. API tokens cannot use write methods.
-
-        Operation-specific HTTP errors: 503. See detail in the response.
-        Authentication and request-validation errors also apply where required."""
+        user requires a session. s commits enabled attempt quotas before provider
+        work. The caller applies the returned filters separately. AIUnavailable maps
+        to 503 and quota refusal to 429. Other backend/data errors propagate."""
         ai_budget(s, user)
         try:
             return ai.parse_search(body.text).model_dump()
@@ -2273,12 +2728,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     @app.get("/api/evidence/ledger")
     def ledger(user: CurrentUser, s: DB, limit: int = Query(100, ge=1, le=1000),
                group: Literal["decisions", "fixes", "detections", "access"] | None = None):
-        """Return recent ledger entries, matching total, and integrity problems for the organisation.
+        """Return problems, newest entries and matching total for the user's ledger.
 
-        limit ranges from 1 to 1000; group optionally selects a category. Integrity checking may
-        reuse a verified prefix, with a full verification at least hourly.
-
-        Requires a user session or a read-only organisation API token. API tokens cannot use write methods."""
+        user needs a session or eligible read token. s queries the organisation.
+        limit is 1..1000, default 100. Optional group selects fixed category patterns.
+        Integrity uses cached-prefix verification with periodic full checks. It is
+        not scoped to the category/limit. Read and total queries are separate.
+        Database/checkpoint/backend or malformed stored-data errors can propagate."""
         q = select(LedgerEntry).where(LedgerEntry.org_id == user.org_id)
         if group:
             q = q.where(or_(*(LedgerEntry.kind.like(k) if "%" in k else LedgerEntry.kind == k for k in LEDGER_GROUPS[group])))
@@ -2289,22 +2745,30 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/evidence/public-key")
     def evidence_public_key():
-        """Publish this out of band (website, contract, auditor email); auditors verify packs against it, not the copy in the zip."""
+        """Return pem, fingerprint_sha256 and verifier_sha256 without authentication.
+
+        signing_key can create a local key or call the configured backend. Hashes
+        identify returned public key/verifier bytes. This response is not its own
+        independent trust channel. File/key/backend/encoding errors propagate."""
         pem = evidence.public_pem(evidence.signing_key())
         return {"pem": pem.decode(), "fingerprint_sha256": evidence.fingerprint(pem), "verifier_sha256": evidence.verifier_sha256()}
 
     @app.get("/api/evidence/verify.py")
     def evidence_verifier():
-        """The offline verifier, published here (and by hash next to the key) rather than inside the pack it checks."""
+        """Return current offline verifier source as text/x-python, without authentication.
+
+        Source read/decoding errors propagate. Download success alone does not
+        establish a separately trusted hash or key fingerprint."""
         return Response(evidence.verifier_source(), media_type="text/x-python")
 
     @app.get("/api/evidence/report")
     def evidence_report(user: CurrentUser, s: DB, days: int = Query(90, ge=1, le=730), summary: bool = False):
-        """Return the evidence report for the requested trailing days.
+        """Return current evidence data for trailing days, default 90 and range 1..730.
 
-        summary=true omits ledger entries; days ranges from 1 to 730 and defaults to 90.
-
-        Requires a user session or a read-only organisation API token. API tokens cannot use write methods."""
+        user needs a session or eligible read token and s supplies stored records.
+        Both modes use an integer ledger entry count with head_hash only. summary
+        omits assets/findings. This does not sign or independently verify the full
+        ledger here. Database, checkpoint and malformed stored-data errors propagate."""
         pack = evidence.build_pack(s, user.org_id, *evidence.default_period(days), with_entries=False)
         pack["ledger"] = {"head_hash": pack["ledger"]["head_hash"], "entries": pack["ledger"]["entries"]}  # a count: the page lists them
         if summary:  # the Evidence page shows metrics and controls; every finding and asset (megabytes on a fleet) is for the pack
@@ -2316,15 +2780,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def evidence_pack(user: CurrentUser, s: DB, days: int = Query(90, ge=1, le=730)):
         # the chain since the last full check (one runs at least hourly, and whenever an anchor moved), then every entry the
         # pack holds, re-hashed as it is built: reading and hashing the whole ledger twice was most of a pack's time
-        """Return a signed ZIP evidence pack for the requested trailing days.
+        """Return an application/zip evidence attachment for trailing days, default 90.
 
-        Refuse with 409 if ledger verification fails before signing. The ZIP includes JSON,
-        signature, public key, and instructions; the trusted fingerprint must arrive separately.
-
-        Requires a user session or a read-only organisation API token. API tokens cannot use write methods.
-
-        Operation-specific HTTP errors: 409. See detail in the response.
-        Authentication and request-validation errors also apply where required."""
+        user needs a session or eligible read token. s verifies cached/new ledger
+        integrity, creates a checkpoint and builds/signs period data. Verify included
+        entries again before signing. Integrity refusals return 409. Checkpoint/key
+        side effects can precede later failures. The ZIP's key is not an independent
+        trust anchor. Database/file/key/backend errors can propagate."""
         if problems := evidence.verify_chain(s, user.org_id, full=False):
             raise HTTPException(409, f"Ledger integrity check failed; refusing to sign: {problems[:3]}")
         evidence.checkpoint(s, user.org_id)
@@ -2337,7 +2799,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/.well-known/security.txt", include_in_schema=False)
     def security_txt():
-        """RFC 9116. Reports about this software go to Nimstead; an operator can add their own contact first."""
+        """Return public text security contacts, policy URL and a generated expiry.
+
+        Optional NIMSTEAD_SECURITY_CONTACT precedes the fixed Nimstead contact.
+        Expiry is midnight UTC 180 calendar days after now's date. No value validation
+        or independent RFC-conformance check occurs. No user data is queried."""
         contacts = [c for c in (os.environ.get("NIMSTEAD_SECURITY_CONTACT", ""), "mailto:security@nimstead.systems") if c]
         expires = (now() + timedelta(days=180)).strftime("%Y-%m-%dT00:00:00Z")  # regenerated on every request
         body = "".join(f"Contact: {c}\n" for c in contacts) + (
@@ -2346,8 +2812,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/health", include_in_schema=False)
     def health(s: DB):
-        """For Docker's healthcheck and deploy/update.sh: no auth, no tenant data. 503 unless the database answers and
-        its schema is at this release's migration head."""
+        """Return public deployment-health JSON with 200 or 503, without authentication.
+
+        s first queries the database, then migration state. Head or unmanaged counts
+        as healthy. Behind returns 503 with migrations. Query/migration exceptions
+        return 503 with db=unavailable and no migrations field. Session dependency
+        failures can occur before this catch. Version lookup/response errors can
+        propagate. This is not a complete service/dependency health assessment."""
         try:
             s.execute(select(1))
             at = migration_state(s)
@@ -2360,9 +2831,18 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/summary")
     def summary(user: CurrentUser, s: DB):
-        """Return fleet counts, priority totals, recommended upgrades, and jobs needing attention.
+        """Return asset/priority counts, up to ten actions and twenty attention jobs.
 
-        Requires a user session or a read-only organisation API token. API tokens cannot use write methods."""
+        user requires a session or eligible read token. Sweep/commit job timeouts
+        first. Rank open fixable groups by KEV, maximum score and distinct CVE count.
+        Select a highest stored fix using ecosystem ordering or lexical fallback.
+        Inspect at most fifty recent jobs per action. Include active/failed attempt
+        hints and fix-path classification without creating a plan.
+
+        Host attention uses stored last_seen and current update classifications.
+        Asset count includes all kinds. This GET can write timeout state. Queries
+        are not one atomic snapshot. Comparator, source/cache, storage and evidence
+        failures can propagate after the sweep commit."""
         remediate.sweep(s, user.org_id)
         is_open = (Finding.org_id == user.org_id, Finding.status == "open")
         # A setting has no fixed version, but one the agent can change is a fix like any other
@@ -2416,10 +2896,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
         @app.get("/{path:path}", include_in_schema=False)
         def spa(path: str):
-            """Return the SPA index with no-cache headers, or 404 for unknown API paths.
+            """Return the captured web directory's index with no-cache, except api/ paths.
 
-            Operation-specific HTTP errors: 404. See detail in the response.
-            Authentication and request-validation errors also apply where required."""
+            path is the fallback route text. Unknown api/ paths return HTTP 404.
+            Other missing-file routes can return the SPA index rather than a file
+            404. File errors propagate. Registered only when WEB_DIST exists during
+            app creation. No API authentication is added here."""
             if path.startswith("api/"):
                 raise HTTPException(404, "Not found")
             return FileResponse(WEB_DIST / "index.html", headers={"Cache-Control": "no-cache"})

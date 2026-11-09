@@ -1,6 +1,7 @@
-"""End of support: a curated, dated table (plan decision 5), not a live feed. A wrong date is a wrong security claim,
-so every row names its Microsoft Lifecycle source and `CHECKED` records when the table was last reviewed;
-tests/test_lifecycle.py fails while a date within 60 days of today hasn't been reviewed in the last 30.
+"""Lifecycle checks: a dated Microsoft table plus helpers for feed-supplied application and Linux cycles.
+
+Microsoft rows name their Lifecycle sources. CHECKED records the table's review date.
+tests/test_lifecycle.py guards near-term table freshness. External cycle data is supplied by the caller.
 
 Findings use ecosystem "Lifecycle" and vuln_id "EOL:<key>": one per unsupported product on a host.
 """
@@ -17,7 +18,9 @@ LC = "https://learn.microsoft.com/lifecycle/products/"
 
 @dataclass(frozen=True)
 class Row:
-    """Lifecycle record with stable key, display label, final support date, source URL, and optional ESU end date."""
+    """Lifecycle record with stable key, display label, final support date, source URL, and optional ESU end date.
+
+    end/esu_end are date objects. Direct construction does not validate dates or their ordering."""
     key: str  # stable id, part of the finding's vuln_id
     label: str
     end: date  # last day of security updates (the date Microsoft names)
@@ -104,7 +107,11 @@ ENT_EDU = re.compile(r"^(Enterprise|EnterpriseN|Education|EducationN|IoTEnterpri
 
 
 def windows_row(product: str, edition: str) -> Row | None:
-    """The lifecycle row for an MSRC product name + the registry EditionID, or None if we can't say exactly."""
+    """Return the curated Row for MSRC product and registry edition strings, or None.
+
+    Mappings are case-sensitive and limited to listed releases. Some shared release
+    rows do not require a recognized edition. No feed lookup or date comparison occurs.
+    Incompatible argument types can raise TypeError or AttributeError."""
     m = re.match(r"Windows (10|11)(?: Version (\w+))? for ", product)
     if m:
         os_, ver = m.group(1), (m.group(2) or "1507").lower()
@@ -137,7 +144,12 @@ WIN11_BUILDS = {"22631": "23H2", "26100": "24H2", "26200": "25H2"}
 
 
 def directory_row(os_name: str, os_version: str) -> Row | None:
-    """Lifecycle row from Active Directory's operatingSystem / operatingSystemVersion ("10.0 (19045)"), or None."""
+    """Return a curated Row from directory os_name/os_version strings, or None.
+
+    Read the build from parentheses, as in "10.0 (19045)". Enterprise/Education
+    names select that family; other client names default to Professional. LTSC
+    names select EnterpriseS. This is an inference from directory text, not proof
+    of the installed edition. Incompatible values can raise TypeError or AttributeError."""
     m = re.search(r"\((\d+)\)", os_version or "")
     build = m[1] if m else ""
     for prefix, key in (("Windows 7", "win7"), ("Windows 8.1", "win81"), ("Windows Server 2008", "ws2008")):
@@ -154,7 +166,12 @@ def directory_row(os_name: str, os_version: str) -> Row | None:
 
 
 def verdict(row: Row, esu: bool | None, today: date) -> tuple[str, str] | None:
-    """(severity, text) for a host on `row`, or None while it is supported and not ending soon."""
+    """Return (ending/ended, text) for lifecycle Row row at supplied date today.
+
+    Truthy esu selects an available ESU end date through that final day. Otherwise
+    use row.end. Ending starts within WARN_DAYS (90), including the final day.
+    Ended starts the next day. Return None before the warning interval.
+    Inputs are not validated. Incompatible dates can raise TypeError."""
     if esu and row.esu_end and today <= row.esu_end:
         return None if (row.esu_end - today).days > WARN_DAYS else (
             "ending", f"{row.label}: Extended Security Updates end on {row.esu_end:%Y-%m-%d}")
@@ -167,7 +184,11 @@ def verdict(row: Row, esu: bool | None, today: date) -> tuple[str, str] | None:
 
 
 def microsoft_row(p) -> Row | None:
-    """Lifecycle row for an agent-reported Microsoft fact or a Microsoft Uninstall entry (msproducts.py's inputs)."""
+    """Return a curated Row for package-like p with ecosystem/name/version/source attributes.
+
+    Accept supported Microsoft facts or Microsoft-published WinApp entries. Unknown
+    mappings return None. No date comparison or I/O occurs. Missing or incompatible
+    attributes can raise AttributeError, TypeError or ValueError."""
     v = p.version or ""
     parts = v.split(".")
     if p.ecosystem == "Microsoft" and p.name in (".NET runtime", "ASP.NET Core") and len(parts) >= 2 and parts[0].isdigit():
@@ -188,7 +209,12 @@ def microsoft_row(p) -> Row | None:
 
 
 def m365_line(p, oldest: dict) -> tuple[str, str] | None:
-    """(key, text) for Click-to-Run on a version line older than every line its channel still gets builds on (office.sync)."""
+    """Return (key, text) for an older Click-to-Run version line, or None.
+
+    p supplies source (channel URL/GUID) and version (16.0.build.revision).
+    oldest maps Office channel labels to minimum supported build-line integers.
+    Unknown/perpetual channels, unreadable versions and nonolder lines return None.
+    No I/O occurs. Missing attributes or incompatible data can raise AttributeError or TypeError."""
     from nimstead.office import CHANNELS
     ch = CHANNELS.get((p.source or "").rstrip("/").rsplit("/", 1)[-1].lower())
     m = re.fullmatch(r"16\.0\.(\d+)\.\d+", p.version or "")
@@ -198,7 +224,12 @@ def m365_line(p, oldest: dict) -> tuple[str, str] | None:
 
 
 def app_verdict(key: str, version: str, eol: dict, today: date) -> tuple[str, str] | None:
-    """A curated third-party app on a release cycle endoflife.date says has ended: (severity, text)."""
+    """Return (ended, text) for a curated app key/version at date today, or None.
+
+    eol maps product names to cycle-to-date/boolean dictionaries. Prefer the curated
+    cycle mapping, then major-only fallback. True or an ISO date before today means
+    ended. Unknown, missing, future and false values return None, without proving
+    support. Invalid dates or incompatible nested values can raise ValueError or TypeError."""
     product, cycle_of = APP_EOL.get(key, (None, None))
     if not product or not (cycles := eol.get(product)):
         return None
@@ -212,7 +243,11 @@ def app_verdict(key: str, version: str, eol: dict, today: date) -> tuple[str, st
 
 
 def distro_cycle(ecosystem: str) -> tuple[str, str] | None:
-    """(endoflife.date product, release cycle) for a Linux advisory ecosystem, or None (rolling, or not a distro we map)."""
+    """Return (feed product, release cycle) for Linux ecosystem string, or None.
+
+    Normalize Alpine's v prefix, openSUSE Leap names and SUSE service packs.
+    Rolling/unmapped distributions or missing release parts return None. This
+    maps identities without checking feed data. Incompatible values can raise AttributeError."""
     name, _, rest = ecosystem.partition(":")
     product = DISTRO_EOL.get(name)
     if not product or not rest:
@@ -228,7 +263,12 @@ def distro_cycle(ecosystem: str) -> tuple[str, str] | None:
 
 
 def parse_thunderbird(versions: dict) -> dict:
-    """Mozilla patches only the newest release and the newest ESR, so every other major below the release has ended."""
+    """Infer ended major cycles from versions' latest release and ESR strings.
+
+    Require LATEST_THUNDERBIRD_VERSION and THUNDERBIRD_ESR. Return {major: True}
+    for majors from 1 below latest, excluding the ESR major. This is the configured
+    inference, not a complete support-policy lookup. Missing keys raise KeyError.
+    Noninteger or unexpected major ordering raises ValueError."""
     latest, esr = (int(str(versions[k]).split(".")[0]) for k in ("LATEST_THUNDERBIRD_VERSION", "THUNDERBIRD_ESR"))
     if not 1 < esr <= latest:
         raise ValueError(f"Thunderbird versions: unexpected {latest}, {esr}")
@@ -236,7 +276,12 @@ def parse_thunderbird(versions: dict) -> dict:
 
 
 def parse_eol(cycles) -> dict:
-    """endoflife.date's cycles -> {cycle: ISO date | True | False}; ValueError on an unexpected shape."""
+    """Return {cycle: date-string/True/False} from a nonempty list of cycle dictionaries.
+
+    Each cycle is a string, and eol is a boolean or YYYY-MM-DD-shaped string.
+    Date shape is checked without calendar validation. Duplicate cycles use the
+    last value. Root/field shape failures raise ValueError. Nondictionary entries
+    can raise AttributeError. Other incompatible inputs can raise TypeError."""
     if not isinstance(cycles, list) or not cycles:
         raise ValueError("endoflife.date: expected a non-empty list of cycles")
     out = {}
@@ -249,8 +294,14 @@ def parse_eol(cycles) -> dict:
 
 
 def findings(packages: list, facts: dict, today: date, eol: dict | None = None) -> list[dict]:
-    """Lifecycle findings for one host: [{package, version, vuln_id, summary, ended}]. `eol`: endoflife.date cycles
-    by product for curated third-party apps (feeds.sync_eol)."""
+    """Return lifecycle finding dictionaries for package-like packages and host facts.
+
+    Packages need ecosystem/name/version/source attributes. today is a date.
+    eol optionally maps app products to cycles and m365-lines to channel build lines.
+    Return package, version, vuln_id, summary, ended boolean and source URL per row.
+    Deduplicate by lifecycle identity, not package instance. Unknown support mappings
+    produce no row. Does not query or persist. Malformed attributes, dates and nested
+    input values can raise AttributeError, ValueError or TypeError."""
     out = []
     products = [(p.name, p.version) for p in packages if p.ecosystem == "Windows"]
     if facts.get("os_product"):  # an OS named but not CVE-matchable (Server 2012/R2)

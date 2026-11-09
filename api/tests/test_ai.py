@@ -63,3 +63,32 @@ def test_search_output_is_validated(env, fake):
 def test_refusal_surfaces_cleanly(env, fake):
     fake("", stop="refusal")
     assert user(env).post("/api/ai/search", json={"text": "hello"}).status_code == 503
+
+
+def test_auth_token_also_enables_ai_and_disable_switch_wins(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "test-token")
+    monkeypatch.delenv("NIMSTEAD_AI", raising=False)
+    assert ai.enabled()
+    monkeypatch.setenv("NIMSTEAD_AI", "0")
+    assert not ai.enabled()
+
+
+def test_search_local_defaults_extra_keys_and_input_limit(fake):
+    fc = fake('{"q": "openssl", "ignored": "not retained"}')
+    assert ai.parse_search("x" * 600).model_dump() == {
+        "q": "openssl", "priority": [], "status": "open", "fixable": None, "kev": None}
+    assert fc.calls[0]["messages"][0]["content"] == "x" * 500
+
+
+def test_explanation_selects_fields_without_redacting_values(fake):
+    fc = fake("Provider answer")
+    finding = {"vuln_id": "CVE-2099-99999", "package": "package-with-host-context",
+               "installed_version": "1", "fixed_version": None, "kev": False,
+               "epss": None, "cvss": None, "priority": "low",
+               "reasons": ["context-host-name"], "hostname": "excluded-host-name", "summary": "a" * 1600}
+    assert ai.explain(finding) == "Provider answer"
+    request = fc.calls[0]["messages"][0]["content"]
+    assert "excluded-host-name" not in request and "context-host-name" in request
+    assert "a" * 1500 in request and "a" * 1501 not in request
+    assert "no fix available yet" in request

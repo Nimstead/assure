@@ -1,5 +1,7 @@
 # Detection Engine Specification
 
+Requirements reference for independent engine design. Requirement numbers describe targets, not guarantees of released behavior. Use [scan outcomes](../reference/scan-outcomes.md) and [coverage limits](../explanation/coverage-limits.md) for the current user-facing contract.
+
 **Purpose.** This document specifies what an independent vulnerability detection engine must do. It is organised around the problems such an engine has to solve. It contains no source code, rule text or identifiers from any other product.
 
 **How to read it.** Each section gives the problem, then **Requirements** (R-numbers) and, where useful, **Trade-offs**. Content is general engineering principle or public practice, with an independent source where one exists. Items marked *needs an independent source* state a problem only, with no solution given. Numbers, thresholds and timeouts are left to the implementers to choose and measure. Section 12 is a test list.

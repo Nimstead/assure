@@ -1,0 +1,16 @@
+[
+  {
+    "id": "assure",
+    "name": "Assure",
+    "summary": "Deploy on your infrastructure. Assess your inventory, approve fixes, and verify the evidence.",
+    "repo": "https://github.com/Nimstead/assure",
+    "url": "https://nimstead.systems/assure/"
+  },
+  {
+    "id": "pulse",
+    "name": "Pulse",
+    "summary": "Understand the public vulnerability landscape. Triage CVE lists privately in your browser.",
+    "repo": "https://github.com/Nimstead/pulse",
+    "url": "https://pulse.nimstead.systems"
+  }
+]

@@ -8,7 +8,11 @@ import { Alert, btnPrimary, btnQuiet, ConfirmDialog, CopyBlock, Done, ErrorState
 
 const fd = (e: FormEvent<HTMLFormElement>) => { e.preventDefault(); return new FormData(e.currentTarget); };
 
-/** The otpauth:// URI as a QR code, drawn in the page: the secret never leaves the browser (DECISIONS 47). */
+/** Encode text as a local SVG QR code without a third-party QR request.
+ * @param text Authenticator URI supplied by the caller, normally from the server.
+ * Uses a two-module border and dark modules on white in both themes.
+ * No input validation or error boundary is provided. Encoder errors propagate.
+ */
 export function QrCode({ text }: { text: string }) {
   const { size, data } = encode(text, { border: 2 });
   const d = data.flatMap((row, y) => row.map((on, x) => (on ? `M${x} ${y}h1v1h-1z` : ""))).join("");
@@ -20,7 +24,14 @@ export function QrCode({ text }: { text: string }) {
   );
 }
 
-/** Shows the key to add to an authenticator app and asks for its first code. */
+/** Display an authenticator setup and submit entered codes to the caller.
+ * @param setup Server-issued secret, URI and encrypted setup token. Values are trusted.
+ * @param onCode Receives the untrimmed new code and optional current/recovery code.
+ * @param pending Disables the submit button. Inputs remain editable.
+ * @param extra Truthy requests a current code before replacement. Defaults to false.
+ * Native validation requires a new code of six or seven digits/spaces.
+ * The caller performs verification, request/error handling and setup lifecycle management.
+ */
 export function MfaEnrol({ setup, onCode, pending, extra }: { setup: MfaSetup; onCode: (code: string, current?: string) => void; pending: boolean; extra?: boolean }) {
   return (
     <form className="flex flex-col gap-3" onSubmit={(e) => { const f = fd(e); onCode(String(f.get("code")), extra ? String(f.get("current")) : undefined); }}>
@@ -42,7 +53,11 @@ export function MfaEnrol({ setup, onCode, pending, extra }: { setup: MfaSetup; o
   );
 }
 
-/** Display one-time recovery codes and their copy action; callers must supply the newly issued list. */
+/** Display recovery-code strings joined by newlines with the shared copy control.
+ * @param codes Newly issued list supplied by the caller. This view does not consume codes.
+ * Values remain visible while mounted. The caller controls removal and secret lifetime.
+ * Copy failure can be silent. Server verification enforces one-time use.
+ */
 export function RecoveryCodes({ codes }: { codes: string[] }) {
   return (
     <div role="status" className="flex flex-col gap-2 border border-line-strong p-4">
@@ -52,7 +67,13 @@ export function RecoveryCodes({ codes }: { codes: string[] }) {
   );
 }
 
-/** Render password, MFA, and session-revocation controls for the signed-in person. */
+/** Render account password, MFA and session controls. No props.
+ * Requires query/router providers. Missing cached me data renders nothing.
+ * Password-origin users see password and authenticator controls. SSO users do not.
+ * MFA confirmation retains recovery codes locally and invalidates me after success.
+ * Password success resets its form. Session revocation clears all query data and navigates.
+ * Mutation failures render alerts. The server authorizes and verifies credentials.
+ */
 export function AccountSection() {
   const me = useQuery(meQ).data;
   const qc = useQueryClient();
@@ -77,7 +98,7 @@ export function AccountSection() {
         <div className="flex w-full max-w-md flex-col gap-3">
           <h4 className="text-sm font-semibold">Two-step sign-in</h4>
           <p className="text-sm text-muted">
-            {me.mfa ? `On. ${me.recovery_codes_left} recovery code${me.recovery_codes_left === 1 ? "" : "s"} left.` : "Off. Admins must use it; everyone else can."}
+            {me.mfa ? `On. ${me.recovery_codes_left} recovery code${me.recovery_codes_left === 1 ? "" : "s"} left.` : "Off. Password admins normally must use it. Open-signup development mode relaxes this requirement."}
           </p>
           {codes.length > 0 && <RecoveryCodes codes={codes} />}
           {setup ? <MfaEnrol setup={setup} extra={me.mfa} pending={confirm.isPending} onCode={(code, current_code) => confirm.mutate({ code, current_code })} />
@@ -107,7 +128,13 @@ export function AccountSection() {
   );
 }
 
-/** Render admin controls for organisation members and invitations. */
+/** Render member rows, invitations and confirmed role/removal mutations. No props.
+ * Requires a query provider. The parent restricts this section to admins.
+ * Exact email comparison hides self controls. Server checks protect the last admin.
+ * Successful writes refresh people-related queries. Invitation success resets its form.
+ * List failures expose retry. Mutation failures remain in the form or confirmation dialog.
+ * Invitation acknowledgement does not prove delivery or account creation.
+ */
 export function UsersSection() {
   const qc = useQueryClient();
   const me = useQuery(meQ).data;
@@ -144,19 +171,26 @@ export function UsersSection() {
         title={ask?.kind === "remove" ? `Remove ${ask.u.email}?` : ask?.u.admin ? `Make ${ask.u.email} a member?` : `Make ${ask?.u.email} an admin?`}
         description={ask?.kind === "remove" ? "They're signed out at once and their API tokens stop working. The evidence ledger keeps what they did."
           : ask?.u.admin ? "They'll keep read access but can't change policy, approve fixes or manage people. API tokens they created stop working."
-          : "They'll be able to change policy, approve fixes and manage people. Admins must use two-step sign-in."}
+          : "They'll be able to change policy, approve fixes and manage people. Existing sessions end. Password admins must complete two-step sign-in."}
         confirmLabel={ask?.kind === "remove" ? "Remove" : ask?.u.admin ? "Make member" : "Make admin"} destructive={ask?.kind === "remove"} pendingLabel="Saving…" />
       <form className="flex flex-wrap items-end gap-3" onSubmit={(e) => { const f = fd(e); invite.mutate(String(f.get("email")), { onSuccess: () => (e.target as HTMLFormElement).reset() }); }}>
         <Field label="Invite by email" className="w-full sm:w-72"><input className={input} name="email" type="email" required autoComplete="off" placeholder="colleague@company.com" /></Field>
         <button className={btnPrimary} disabled={invite.isPending}>{invite.isPending ? "Sending…" : "Send invitation"}</button>
       </form>
       <Alert error={invite.error} />
-      {invite.isSuccess && <Done>Invitation sent. They choose their own password from the link (valid 24 hours).</Done>}
+      {invite.isSuccess && <Done>Invitation request accepted. Delivery is not confirmed. A new invitation link, if issued, is valid for 24 hours.</Done>}
     </section>
   );
 }
 
-/** Render admin controls to create, list, and revoke read-only API tokens; show new secrets once. */
+/** Render organisation token metadata, creation and confirmed revocation. No props.
+ * Requires a query provider. Parent visibility and server authorization enforce admin access.
+ * Creation sends name, numeric duration and optional code. Choices are 30/90/365 days.
+ * Default duration is 90. Native name length is 1–100 without trimming.
+ * The new secret stays in local state until another submission or unmount.
+ * A new submission clears the previous secret before its request completes.
+ * Successful writes refresh people queries. List errors expose retry. Mutation errors render.
+ */
 export function ApiTokensSection() {
   const qc = useQueryClient();
   const me = useQuery(meQ).data;

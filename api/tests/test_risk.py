@@ -79,3 +79,10 @@ def test_msrc_context_reads_the_real_cvrf_shape():
          "Threats": [{"Type": 1, "Description": {"Value": "Publicly Disclosed:No;Exploited:Yes;Latest Software Release:Exploitation Detected"}}]}
     assert msrc_context(v) == {"tag": "Role: DNS Server", "exploited": True, "disclosed": False, "exploitability": "Exploitation Detected"}
     assert msrc_context({}) == {}
+
+
+def test_no_fix_can_lower_kev_score_but_preserves_floor():
+    inputs = dict(kev=True, epss=1.0, cvss=10, criticality="critical", internet_facing=True)
+    assert score(**inputs, fix_available=True).score == 100
+    result = score(**inputs, fix_available=False)
+    assert result.score == 90 and result.priority == "fix-now"

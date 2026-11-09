@@ -183,7 +183,12 @@ def domain_token(org_id: str, domain: str) -> str:
 
 
 def txt_records(name: str) -> list[str]:
-    """Public DNS by default; NIMSTEAD_DNS_SERVER=host:port pins a resolver (split-horizon setups, integration tests)."""
+    """Return decoded TXT record strings for DNS name, or an empty list on lookup failure.
+
+    name is the complete DNS query name. The system resolver is the default.
+    NIMSTEAD_DNS_SERVER=host:port selects an explicit resolver and TCP transport.
+    Each request has a five-second lifetime. Resolver, configuration, and decoding failures
+    are suppressed, so an empty result does not distinguish absence from a failed lookup."""
     try:
         if server := os.environ.get("NIMSTEAD_DNS_SERVER"):
             host, _, port = server.partition(":")
@@ -198,7 +203,9 @@ def txt_records(name: str) -> list[str]:
 
 
 def domain_verified(org_id: str, domain: str, lookup=txt_records) -> bool:
-    """Return whether lookup finds this organisation's exact ownership TXT value for domain.
+    """Return whether lookup finds the ownership TXT value for org_id and domain.
+
+    org_id is the organisation identifier; domain is the email domain to prove.
 
     lookup accepts a DNS name and returns a list of TXT strings; its default suppresses DNS failures.
     Errors from a custom lookup or the token backend propagate."""

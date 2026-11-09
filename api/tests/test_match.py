@@ -92,3 +92,9 @@ def test_advisory_text_is_cut_at_a_word_with_an_ellipsis():
     long = "word " * 60
     out = clip(long)
     assert len(out) <= 201 and out.endswith("word…") and "  " not in out
+
+
+def test_clip_budget_excludes_the_appended_ellipsis():
+    from nimstead.match import clip
+    assert clip("abcdefgh", 5) == "abcde…"
+    assert len(clip("abcdefgh", 5)) == 6

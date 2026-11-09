@@ -6,7 +6,13 @@ import { Alert, btnPrimary, btnQuiet, Done, ErrorState, Field, input, Loading, N
 
 const list = (s: string) => s.split(/[\s,]+/).filter(Boolean);
 
-/** Render admin SSO configuration, domain verification, and required-SSO controls. */
+/** Render saved OIDC settings, domain verification and an uncontrolled edit form.
+ * No props. Requires a query provider. Parent visibility and server checks restrict admins.
+ * Load errors expose retry. Save/verify errors render beside their controls.
+ * A successful save updates sso cache, invalidates ledger and remounts the form.
+ * Other query updates preserve unsaved edits. Empty secret input omits that field.
+ * Domain lists split on commas/whitespace. Server normalization and limits still apply.
+ */
 export function SsoSection() {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["sso"], queryFn: () => api<SsoSettings>("/api/settings/sso"), retry: false });
@@ -46,7 +52,7 @@ export function SsoSection() {
         </Field>
         <label className="flex items-start gap-2 text-sm">
           <input type="checkbox" name="required" defaultChecked={s.required} className="mt-1 size-4" />
-          <span><span className="font-medium">Require SSO</span><br /><span className="text-muted">Password sign-in is switched off for everyone except admins, whose password sign-ins are recorded and alerted as break-glass.</span></span>
+          <span><span className="font-medium">Require SSO</span><br /><span className="text-muted">Password sign-in is disabled for non-admins. Successful admin password sign-ins are recorded as break-glass and trigger an alert attempt.</span></span>
         </label>
         <div className="flex flex-wrap items-center gap-3"><button className={btnPrimary} disabled={save.isPending || !dirty}>{save.isPending ? "Saving…" : "Save SSO settings"}</button>{save.isSuccess && <Done>Saved</Done>}</div>
         <Alert error={save.error} prefix="Couldn't save: " />
@@ -96,7 +102,14 @@ function DomainChecks({ checks }: { checks: SsoSettings["domain_checks"] }) {
   );
 }
 
-/** Render admin webhook/email configuration, recipient confirmation, and test-notification controls. */
+/** Render saved notification state, editable settings and a test request. No props.
+ * Requires a query provider. Parent visibility and server checks restrict admins.
+ * Successful save updates cache, invalidates ledger and remounts the form.
+ * Blank webhook input retains its stored value. Removal sends an empty string.
+ * Test uses saved settings, not unsaved fields. Acknowledgement schedules one cache refresh
+ * after 1500ms. There is no delivery poll or timeout cleanup here.
+ * Load failures expose retry. Save/test failures render separately. Delivery is not guaranteed.
+ */
 export function NotificationsSection() {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["notifications"], queryFn: () => api<NotifySettings>("/api/settings/notifications"), retry: false });
@@ -128,7 +141,7 @@ export function NotificationsSection() {
     <section aria-labelledby="failure-alerts" className="flex flex-col gap-3">
       <h3 id="failure-alerts" className="text-lg font-semibold">Failure alerts</h3>
       <p className="max-w-prose text-sm text-muted">
-        Get told when a fix is rolled back, fails or doesn't take, and when a new fix-now vulnerability (known exploited) appears. One message per machine, not one per CVE.
+        Get told when a fix is rolled back, fails or doesn't take, and when new Fix now findings appear. Fix now includes score-based and KEV priorities. Alerts can group findings by machine.
       </p>
       {/* stored state, shown plainly: it isn't announced on every visit */}
       {last && !last.ok && (
@@ -148,7 +161,7 @@ export function NotificationsSection() {
             <option value="json">Generic JSON (kind, urgent, text)</option>
           </select>
         </Field>
-        <Field label="Email recipients" hint={s.email_available ? "Comma or space separated. Each new address gets a confirmation email and receives alerts only after confirming." : "Email isn't set up on this server (NIMSTEAD_SMTP_URL and NIMSTEAD_SMTP_FROM), so these won't be sent."}>
+        <Field label="Email recipients" hint={s.email_available ? "Comma or space separated. New addresses require confirmation. A confirmation email is attempted when server settings and quota permit." : "Email isn't set up on this server (NIMSTEAD_SMTP_URL and NIMSTEAD_SMTP_FROM), so these won't be sent."}>
           <input className={input} name="emails" type="text" defaultValue={s.emails.join(", ")} autoComplete="off" />
         </Field>
         {s.emails.some((e) => !s.emails_confirmed.includes(e)) && (
@@ -166,7 +179,7 @@ export function NotificationsSection() {
         </div>
         <Alert error={save.error} prefix="Couldn't save: " />
         <Alert error={test.error} prefix="Test alert not sent: " />
-        {test.isSuccess && <Done>Test alert sent. Its delivery result appears above in a moment.</Done>}
+        {test.isSuccess && <Done>Test request accepted. Delivery is not confirmed. Check the destination and recent delivery results.</Done>}
       </form>
     </section>
   );

@@ -1,4 +1,8 @@
-"""Turn an asset's inventory into findings, and close findings the inventory proves fixed."""
+"""Match stored inventory to findings and resolve absent identities subject to collection guards.
+
+This persistence path is separate from the engine's evidence-qualified verdict report.
+An absent match is not a universal proof of repair or complete collection.
+"""
 
 import functools
 import hashlib
@@ -25,7 +29,13 @@ READ_FROM = {"Windows": ("windows_build",), winapps.ECOSYSTEM: ("uninstall", "us
 
 
 def unread(collection: dict | None) -> set[str]:
-    """Finding ecosystems whose sources the agent says it couldn't read in full (failed, partial, or an empty Uninstall list)."""
+    """Return Windows finding ecosystems blocked by collection source declarations.
+
+    collection is an agent metadata dictionary or None. Explicit failed/partial
+    sources block their READ_FROM ecosystems. A present uninstall source without
+    a truthy count also blocks. Missing documents/sources do not block. This does
+    not apply the engine's count-consistency or Linux/application source rules.
+    Malformed nested values can raise AttributeError. Does not change collection."""
     sources = (collection or {}).get("sources") or {}
 
     def bad(name):
@@ -42,7 +52,11 @@ def _named(name: str, source: str | None) -> bool:
 
 def app_assessed(name: str, source: str | None, version: str) -> bool:
     # the name decides for most apps (1,000 hosts x 150 apps: 1.7 s a page load when every version was its own cache entry)
-    """Return whether Windows app name, publisher source, and version match a curated product identity."""
+    """Return whether Windows app name, publisher source and version map to a curated identity.
+
+    This tests mapping capability, not loaded advisories, complete collection or an
+    actual check result. Source/name lookup uses a process cache. Mapper errors from
+    incompatible values propagate. Does not query or mutate data."""
     return _named(name, source) and bool(winapps.identify(name, source, version) or msproducts.from_winapp(name, source, version))
 
 
@@ -51,14 +65,24 @@ _RUNTIME = re.compile(r"Microsoft (?:(?P<asp>ASP\.NET Core)|Windows Desktop Runt
 
 
 def runtime_fact(name: str) -> tuple[str, str] | None:
-    """(fact name, version) the same host reports for this Uninstall entry, if it's a .NET runtime."""
+    """Return (fact name, version) represented by Uninstall name string, or None.
+
+    Full-match supported Microsoft runtime display names. The result names .NET
+    runtime or ASP.NET Core and its three-component version. Does not verify that
+    the host sent the fact. Incompatible nonstrings can raise TypeError."""
     m = _RUNTIME.fullmatch(name)
     return ("ASP.NET Core" if m["asp"] else ".NET runtime", m["v"]) if m else None
 
 
 def app_coverage(s: Session, org_id: str) -> tuple[dict[str, dict], dict[tuple[str, str | None], set[str]]]:
     """Windows apps we check against those we only list: counts per asset, and the assets holding each unchecked app. A runtime
-    counts as checked only when its host also reports the matching fact at that version: that fact is what the server checks."""
+    counts as checked only when its host also reports the matching fact at that version: that fact is what the server checks.
+
+    Query Session s for organisation org_id. Return (per_asset, missed): per_asset
+    maps asset IDs to assessed/inventory_only integer counts. missed maps (name,
+    publisher) to asset-ID sets. Counts describe identity mapping, not advisory
+    availability or completed verdicts. Assets without WinApp rows are absent.
+    Does not commit. Queries can autoflush caller changes. Database/mapper errors propagate."""
     per_asset: dict[str, dict] = defaultdict(lambda: {"assessed": 0, "inventory_only": 0})
     missed: dict[tuple[str, str | None], set[str]] = defaultdict(set)
     base = (select(InstalledPackage.asset_id, InstalledPackage.name, InstalledPackage.source, InstalledPackage.version)
@@ -75,14 +99,22 @@ def app_coverage(s: Session, org_id: str) -> tuple[dict[str, dict], dict[tuple[s
 
 
 def cve_ids(m: Match) -> list[str]:
-    """Every CVE one match stands for: a distro fix record (RLSA, DSA) names several, and the finding carries the lowest."""
+    """Return sorted unique m.vuln_id plus CVE-prefixed record ID/aliases/upstream values.
+
+    The main identity is included even when it is not a CVE. m must be a Match
+    with compatible record fields. Does not change it. Malformed records or ID
+    values can raise AttributeError or TypeError."""
     r = m.record
     return sorted({m.vuln_id, *(i for i in (r.get("id", ""), *r.get("aliases", []), *r.get("upstream", [])) if i.startswith("CVE-"))})
 
 
 def hotpatch_track(hot: list[dict], version: str) -> tuple[set[str], list[dict]] | None:
     """A host whose build is a hotpatch build is on the hotpatch track: (CVEs with a hotpatch fix, those records).
-    Every other host is compared with cumulative builds only, the stricter answer (DECISIONS 52)."""
+    Every other host is compared with cumulative builds only, the stricter answer (DECISIONS 52).
+    Recognition checks the last event in each record's first affected/range entry
+    for fixed equal to version. On any hit, return all supplied records unchanged
+    and all their aliases. Does not validate dates or runtime hotpatch activation.
+    Missing/nondictionary nested fields can raise KeyError, IndexError or TypeError."""
     if not any(r["affected"][0]["ranges"][0]["events"][-1].get("fixed") == version for r in hot):
         return None
     return {a for r in hot for a in r["aliases"]}, hot
@@ -90,7 +122,12 @@ def hotpatch_track(hot: list[dict], version: str) -> tuple[set[str], list[dict]]
 
 def host_checks(pkgs: list, facts: dict, today, eol: dict | None = None, drivers: dict | None = None) -> list[dict]:
     """Findings from the host's own state rather than an advisory: end of support (lifecycle.py), Windows
-    configuration (winconfig.py) and listed driver files (windrivers.py). `risk` None = score it as the CVE it names (KEV, EPSS, CVSS)."""
+    configuration (winconfig.py) and listed driver files (windrivers.py). `risk` None = score it as the CVE it names (KEV, EPSS, CVSS).
+
+    pkgs contains package-like objects. facts is host metadata, today is a date,
+    eol contains lifecycle cycles and drivers maps exact file hashes to metadata.
+    Return component finding dictionaries plus ecosystem and optional Risk objects.
+    No query or persistence occurs. Component validation/date/type errors propagate."""
     out = []
     for x in lifecycle.findings(pkgs, facts, today, eol):
         out.append({**x, "ecosystem": lifecycle.ECOSYSTEM, "risk": risk.Risk(
@@ -117,7 +154,21 @@ def _shadow(s: Session, asset: Asset, pkgs: list, seen: set, prior: list) -> Non
 
 
 def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dict | None = None) -> dict:
-    """`cache`: decoded advisory records by (ecosystem, package), shared across hosts within one feed-update pass."""
+    """Update findings for Asset asset from stored package rows through Session s.
+
+    Caller checks tenant ownership. inventory_received controls receipt logging and
+    engine shadow evaluation, not whether matching/resolution occurs. Optional cache
+    is mutated with advisory, match, lifecycle, driver and exploit entries. Share it
+    only within one feed-update pass while those inputs remain unchanged.
+
+    Commit finding/ledger changes and all other pending session changes. Return open
+    (unique seen identities, including accepted) and resolved (new transitions).
+    Matching resolved findings reopen. Matching expired acceptances reopen. Unseen
+    open/accepted findings resolve unless unread() or incomplete driver collection
+    blocks their ecosystem. Missing collection metadata does not itself block this.
+    External assets instead delegate to external.rescore() without network checks.
+    Queue one notification for newly fix-now open findings after commit. Database,
+    malformed input and matching errors propagate without automatic rollback."""
     if asset.kind == "external":  # no inventory: findings come from external.scan(); only re-score here
         from nimstead import external
         return external.rescore(s, asset)

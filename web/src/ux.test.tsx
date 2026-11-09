@@ -4,15 +4,15 @@ import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState, type ReactNode } from "react";
 import { afterEach, vi } from "vitest";
-import { SsoSection } from "./integrations";
-import { ApiError, meQ, type Action, type Asset, type Finding, type Job, type Settings } from "./lib";
+import { NotificationsSection, SsoSection } from "./integrations";
+import { ApiError, assetsQ, meQ, type Action, type Asset, type Finding, type Job, type Settings } from "./lib";
 import { ActionCard } from "./home";
 import { AssetRow, AttackPaths, Baselines, baselineSummary, filterAssets, NotAssessed } from "./assets";
 import { Palette } from "./shell";
 import { Done, errorLead } from "./ui";
 import { Onboarding, TROUBLESHOOT_AFTER_MS } from "./onboarding";
 import { ApiTokensSection, QrCode, UsersSection } from "./people";
-import { JobCard, KbFleet, machineContext, stepState } from "./remediation";
+import { JobCard, KbFleet, machineContext, stepState, jobPackages, PlanFixButton } from "./remediation";
 import { AcceptRisk, FindingsPage } from "./findings";
 import { EvidencePage } from "./evidence";
 import { SettingsPage } from "./settings";
@@ -67,9 +67,9 @@ it("trust ladder: choosing only selects; Auto needs a confirmation naming the ma
 
   const save = within(ladder.parentElement!).getByRole("button", { name: "Save" });
   await userEvent.click(save);
-  const dialog = await screen.findByRole("alertdialog", { name: "Let Nimstead fix machines without asking?" });
-  expect(dialog).toHaveTextContent("your 3 machines");
-  expect(dialog).toHaveTextContent("1 canary machine first");
+  const dialog = await screen.findByRole("alertdialog", { name: "Allow automatic approval for eligible fixes?" });
+  expect(dialog).toHaveTextContent("Your fleet has 3 machines");
+  expect(dialog).toHaveTextContent("including 1 canary machine");
   expect(calls.filter((c) => c.method === "PATCH")).toHaveLength(0);
   await userEvent.click(within(dialog).getByRole("button", { name: "Switch to Auto" }));
   await waitFor(() => expect(calls.find((c) => c.method === "PATCH")?.body).toEqual({ remediation_mode: "auto" }));
@@ -178,6 +178,18 @@ it("onboarding shows troubleshooting when no report arrives", async () => {
   expect(screen.getByText("C:\\ProgramData\\Nimstead\\agent.log")).toBeInTheDocument();
 });
 
+it("onboarding list growth does not claim that this machine reported inventory", async () => {
+  serve({ "GET /api/assets": [] });
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  qc.setQueryData(meQ.queryKey, ME);
+  qc.setQueryData(assetsQ.queryKey, []);
+  render(<QueryClientProvider client={qc}><Onboarding /></QueryClientProvider>);
+  await screen.findByRole("button", { name: "Create install command" });
+  await act(async () => { qc.setQueryData(assetsQ.queryKey, [{ ...HOST, id: "sbom", hostname: "Application", kind: "application" }]); });
+  expect(await screen.findByRole("heading", { name: "A new asset is visible" })).toBeInTheDocument();
+  expect(screen.getByText(/confirm that it is this machine/)).toBeInTheDocument();
+});
+
 it("TOTP setup draws a QR code of the otpauth URI, dark on white in any theme", () => {
   render(<QrCode text="otpauth://totp/Nimstead:a%40example.com?secret=JBSWY3DPEHPK3PXP&issuer=Nimstead" />);
   const img = screen.getByRole("img", { name: "QR code for your authenticator app" });
@@ -224,7 +236,7 @@ it("Home: a setting fix reads as a setting, says a person approves it, and plans
   wrap(<ol><ActionCard a={{ ...ACTION, ecosystem: "WinConfig", package: "wdigest", fixed_version: null, vulns: ["CFG:wdigest"], summary: "WDigest keeps passwords in memory.", fix: "winconfig", person_only: true }} /></ol>);
   expect(screen.getByText(/Change setting/)).toHaveTextContent("Change setting wdigest");
   expect(screen.getByText("WDigest keeps passwords in memory.")).toBeInTheDocument();
-  expect(screen.getByText(/Fixes 1 finding on 2 hosts/)).toBeInTheDocument();
+  expect(screen.getByText(/Targets 1 finding type across 2 assets/)).toBeInTheDocument();
   expect(screen.getByText(/A person approves this one/)).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: /Plan fix/ }));
   await waitFor(() => expect(calls.filter((c) => c.method === "POST")).toHaveLength(1));  // both hosts in one request
@@ -234,7 +246,7 @@ it("Home: a setting fix reads as a setting, says a person approves it, and plans
 it("Home: a winget fix says it can't be undone; a product with no fix path offers no plan", () => {
   serve({});
   const r = wrap(<ol><ActionCard a={{ ...ACTION, ecosystem: "WinApp", package: "7-zip:7-zip", fix: "winget", person_only: true, forward_only: true }} /></ol>);
-  expect(screen.getByText(/A person approves this one.*can't be undone/)).toBeInTheDocument();
+  expect(screen.getByText(/A person approves this one.*No automatic rollback is available/)).toBeInTheDocument();
   r.unmount();
   wrap(<ol><ActionCard a={{ ...ACTION, ecosystem: "Microsoft", package: "SQL Server", fix: "winget", plannable: false, person_only: true }} /></ol>);
   expect(screen.queryByRole("button", { name: /Plan fix/ })).not.toBeInTheDocument();
@@ -245,7 +257,13 @@ it("Home: a fix in flight on one host still lets you plan the others", () => {
   serve({});
   wrap(<ol><ActionCard a={{ ...ACTION, busy_asset_ids: ["a1"], job: { id: "j1", status: "approved" } }} /></ol>);
   expect(screen.getByRole("link", { name: /View fix/ })).toHaveAttribute("href", "/remediation#job-j1");
-  expect(screen.getByRole("button", { name: /Plan fix for 1 more host/ })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Plan fix for 1 more asset/ })).toBeInTheDocument();
+});
+
+it("Home: recommendation counts use asset identities even when hostnames coincide", () => {
+  serve({});
+  wrap(<ol><ActionCard a={{ ...ACTION, hosts: ["shared-name"] }} /></ol>);
+  expect(screen.getByText(/Targets 1 vulnerability across 2 assets/)).toBeInTheDocument();
 });
 
 it("Home: after an aborted attempt that needs more packages, it points to the job instead of re-planning blind", () => {
@@ -331,13 +349,13 @@ it("the palette keeps the highlighted command when late results arrive, and find
   wrap(<Palette open onOpenChange={() => {}} signOut={() => {}} nextTheme={() => {}} />);
   const box = screen.getByRole("combobox");
   await userEvent.type(box, "go");
-  await screen.findByRole("option", { name: /Host: go-web-1/ });
+  await screen.findByRole("option", { name: /Asset: go-web-1/ });
   await userEvent.keyboard("{ArrowDown}{ArrowDown}");
   const chosen = box.getAttribute("aria-activedescendant");
   expect(chosen).toBeTruthy();
   await waitFor(() => expect(release).not.toBeNull());  // the debounced findings search has been sent
-  await act(async () => { release!(new Response(JSON.stringify([{ id: "f1", vuln_id: "CVE-1", package: "go", hostname: "h" }]), { status: 200 })); });
-  await screen.findByRole("option", { name: /CVE-1/ });
+  await act(async () => { release!(new Response(JSON.stringify([{ id: "f1", vuln_id: "CVE-1", package: "go", hostname: "h" }, { id: "f2", vuln_id: "CVE-1", package: "go", hostname: "h" }]), { status: 200 })); });
+  expect(await screen.findByRole("option", { name: /CVE-1/ })).toHaveTextContent("2 findings");
   expect(box.getAttribute("aria-activedescendant")).toBe(chosen);  // a new row arriving above didn't move the highlight
 });
 
@@ -351,7 +369,7 @@ it("the palette never dead-ends: any text offers a findings search, and the list
 });
 
 it("error states say what kind of problem it is", () => {
-  expect(errorLead(new ApiError(0, "x"))).toMatch(/Can't reach the server/);
+  expect(errorLead(new ApiError(0, "x"))).toMatch(/Couldn't complete the request/);
   expect(errorLead(new ApiError(403, "x"))).toMatch(/don't have access/);
   expect(errorLead(new ApiError(502, "x"))).toMatch(/server had a problem/);
 });
@@ -365,10 +383,10 @@ it("a token without an expiry says so instead of crashing Settings", async () =>
 it("Assets: says which installed apps weren't checked, and a host with none checked says so", async () => {
   serve({ "GET /api/coverage": { assessed: 1, inventory_only: 3, not_assessed: [{ name: "Acme Widget", publisher: "Acme", hosts: 2 }] } });
   wrap(<NotAssessed />);
-  expect(await screen.findByRole("heading", { name: "3 installed apps aren't checked for vulnerabilities" })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "3 Windows app entries have no supported mapping" })).toBeInTheDocument();
   expect(screen.getByText("Acme Widget")).toBeInTheDocument();
   wrap(<ul><AssetRow a={{ ...HOST, apps: { assessed: 0, inventory_only: 2 } }} onPatch={() => {}} onDelete={() => {}} /></ul>);
-  expect(screen.getByText("None of its 2 installed apps could be checked.")).toBeInTheDocument();
+  expect(screen.getByText("None of its 2 installed app entries has a supported mapping.")).toBeInTheDocument();
 });
 
 it("Assets: nothing shows when every installed app was checked", async () => {
@@ -385,10 +403,10 @@ it("Assets: attack paths say how sure, where to cut each edge, and nothing shows
                                               c: { hostname: "new-1", judged: false, paths: [] } },
                                      chains: [{ start: "a", why_start: "a path from the network", reach: [{ host: "b", hops: ["b"], grade: "reasonable", fix_on_host: ["CFG:remote-uac"] }] }] } });
   wrap(<AttackPaths />);
-  expect(await screen.findByText(/From ws-1 \(a path from the network\), an attacker can reach 1 other host/)).toBeInTheDocument();
-  expect(screen.getByText(/ws-1 → srv-1 · how sure: reasonable · cut it on srv-1: CFG:remote-uac/)).toBeInTheDocument();
+  expect(await screen.findByText(/Possible paths from ws-1 \(a path from the network\) to 1 other host/)).toBeInTheDocument();
+  expect(screen.getByText(/ws-1 → srv-1 · evidence grade: reasonable · review on srv-1: CFG:remote-uac/)).toBeInTheDocument();
   expect(screen.getByText(/1 host hasn't been judged yet/)).toBeInTheDocument();
-  expect(screen.getByText(/Break it: fix 1 way of getting in \(CFG:rdp-nla\)/)).toBeInTheDocument();
+  expect(screen.getByText(/Suggested interruption: getting in, 1 way \(CFG:rdp-nla\)/)).toBeInTheDocument();
 });
 
 it("Assets: no attack paths, no section", async () => {
@@ -415,6 +433,7 @@ it("Findings: Accept risk opens its form, asks for a reason and records the acce
   const calls = serve({ "POST /api/findings/f1/accept": {} });
   wrap(<AcceptRisk f={{ id: "f1", vuln_id: "CVE-1" } as Finding} />);
   await userEvent.click(screen.getByRole("button", { name: "Accept risk" }));  // used to throw: a hook after the early return
+  expect(screen.getByText(/After expiry, reassessment can reopen it if the match remains/)).toBeInTheDocument();
   const reason = screen.getByRole("textbox", { name: /Reason/ });
   await userEvent.type(reason, "isolated lab box, no network");
   await userEvent.click(screen.getByRole("button", { name: /^Accept/ }));
@@ -448,7 +467,7 @@ it("Findings: the drawer finds a fix in progress among active jobs only, however
   serve({ "GET /api/findings": [f], "GET /api/assets": [{ id: "a1", hostname: "web-1", kind: "host" }], "GET /api/findings/f1": f,
     "GET /api/remediation/jobs": [{ id: "j1", asset_id: "a1", action_key: "Debian:12|openssl", status: "planned" }] });
   wrap(<FindingsPage search={{ f: "f1" }} />);
-  expect(await screen.findByText("Fix in progress:")).toBeInTheDocument();
+  expect(await screen.findByText("Existing fix:")).toBeInTheDocument();
   const urls = vi.mocked(fetch).mock.calls.map(([u]) => String(u)).filter((u) => u.startsWith("/api/remediation/jobs"));
   expect(urls).toEqual(["/api/remediation/jobs?status=planned,approved,dispatched,verifying"]);
 });
@@ -460,7 +479,8 @@ it("Evidence: the ledger note counts the whole ledger, and says how much of it t
     "GET /api/evidence/public-key": { pem: "", fingerprint_sha256: "ab", verifier_sha256: "cd" } });
   wrap(<EvidencePage />);
   expect(await screen.findByText(/Latest 50 of 900 entries, newest first\./)).toBeInTheDocument();
-  expect(await screen.findByText(/holds all 40 entries of that period/)).toBeInTheDocument();
+  expect(await screen.findByText(/report counts 40 ledger entries/)).toBeInTheDocument();
+  expect(await screen.findByText(/server can reuse a verified prefix/)).toBeInTheDocument();
 });
 
 it("a step that fell back is shown as recovered, not as a plain pass", () => {
@@ -508,6 +528,38 @@ it("closing the palette hands focus back to what opened it", async () => {
 
 it("the approval names the target machine's criticality, ring, kind and health checks", () => {
   const a = { hostname: "db-1", criticality: "critical", ring: 0, sandbox: false, health_units: ["postgresql"] } as unknown as Asset;
-  expect(machineContext(a)).toBe("db-1 · critical criticality · canary (fixed first) · production · health checks: postgresql");
+  expect(machineContext(a)).toBe("db-1 · critical criticality · canary ring · production · health checks: postgresql");
   expect(machineContext(undefined)).toBeUndefined();
+});
+
+it("batch planning exposes partial refusal and refreshes the jobs already created", async () => {
+  const calls = serve({ "POST /api/remediation/jobs/batch": {
+    jobs: [{ id: "created" }], errors: [{ asset_id: "two", error: "Already in progress" }, { asset_id: "three", error: "Already in progress" }],
+  } });
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  qc.setQueryData(meQ.queryKey, ME);
+  const invalidate = vi.spyOn(qc, "invalidateQueries");
+  render(<QueryClientProvider client={qc}><PlanFixButton ecosystem="Debian:12" pkg="openssl" assetIds={["one", "two", "three"]} /></QueryClientProvider>);
+  await userEvent.click(screen.getByRole("button", { name: /Plan fix\s*for openssl/ }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Already in progress");
+  expect(screen.getByRole("alert").textContent?.match(/Already in progress/g)).toHaveLength(1);
+  expect(calls.find((c) => c.method === "POST")?.body).toEqual({ asset_ids: ["one", "two", "three"], ecosystem: "Debian:12", package: "openssl" });
+  await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ["jobs"] }));
+});
+
+it("package display validates only name and shares accepted package objects", () => {
+  const entry = { name: "openssl", from: 42, to: { unexpected: true } };
+  const source = [entry, null, { name: 7 }, "openssl"];
+  const result = jobPackages({ packages: source });
+  expect(result).toEqual([entry]);
+  expect(result).not.toBe(source);
+  expect(result[0]).toBe(entry);
+  expect(jobPackages({ packages: "not an array" })).toEqual([]);
+});
+
+it("notification test acknowledgement does not claim delivery", async () => {
+  serve({ "GET /api/settings/notifications": { webhook_set: true, webhook_host: "example.com", webhook_format: "json", emails: [], emails_confirmed: [], email_available: false, recent: [] }, "POST /api/settings/notifications/test": { queued: true } });
+  wrap(<NotificationsSection />);
+  await userEvent.click(await screen.findByRole("button", { name: "Send test alert" }));
+  expect(await screen.findByText(/Test request accepted. Delivery is not confirmed/)).toBeInTheDocument();
 });

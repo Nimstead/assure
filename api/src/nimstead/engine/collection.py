@@ -43,7 +43,17 @@ def manager(ecosystem: str) -> str:
 
 
 def valid_document(doc) -> bool:
-    """Bounded and closed. Something else is dropped by the API, never the packages with it, and reads as not reported."""
+    """Return whether doc meets the collection-metadata shape and serialized-length limits.
+
+    Require version equal to 1 and 1–16 sources. Source names match [a-z_]{1,40}.
+    Source entries allow only state/count/error/code/exit fields. States are ok,
+    partial, failed or off. Count defaults to zero and ranges through 10,000,000.
+    Optional error has at most 300 characters, code is None/access-denied, and exit
+    is an integer from -1024 through 1024. Count and exit reject booleans.
+
+    Root extra keys are accepted. The default json.dumps result must fit 4000
+    characters (not UTF-8 bytes). Non-JSON or circular root extras can raise
+    TypeError or ValueError. This function does not validate package rows."""
     if not (isinstance(doc, dict) and doc.get("v") == DOC_VERSION and isinstance(doc.get("sources"), dict) and 0 < len(doc["sources"]) <= 16):
         return False
     for name, s in doc["sources"].items():
@@ -61,7 +71,10 @@ def valid_document(doc) -> bool:
 
 @dataclass(frozen=True)
 class Source:
-    """Collection-source result: name, state, observed count, error, and optional reason codes."""
+    """Collection-source result: name, state, declared count, error and optional codes.
+
+    code is the agent error code. reason is the engine's incomplete-check reason.
+    Construction does not validate field values."""
     name: str
     state: str
     count: int = 0
@@ -75,7 +88,8 @@ class Install:
     """One product instance to evaluate, with candidate advisory keys and collection provenance.
 
     version is the comparison version; instance and observed identify the reading. read_directly
-    controls confidence, comparable marks refused versions, and kernel distinguishes running kernels."""
+    controls confidence, comparable marks refused versions, and kernel distinguishes running kernels.
+    Construction does not validate fields. keys must be nonempty for evaluation."""
     family: str
     ecosystem: str
     keys: tuple[str, ...]  # candidate product keys, the first with advisories wins
@@ -93,7 +107,8 @@ class Inventory:
     """Normalised host or application inventory with packages, facts, and collection status.
 
     document holds the agent collection report; received records whether inventory arrived.
-    kind distinguishes hosts from SBOM applications; sbom holds upload counts and receipt metadata."""
+    kind distinguishes hosts from SBOM applications. sbom holds upload counts and receipt metadata.
+    Direct construction does not validate nested data. Mutable mappings/lists remain shared."""
     hostname: str = ""
     os_name: str = ""
     ecosystem: str = ""
@@ -111,7 +126,10 @@ class Inventory:
         """Return an Inventory from agent document dictionary doc.
 
         Drop package entries without string names/versions; discard invalid collection metadata.
-        The presence of the packages key determines received, even for an empty list."""
+        The presence of the packages key determines received, even for an empty list.
+        This reads agent documents, not arbitrary to_doc() round trips: kind and sbom
+        are not restored. Retained package dictionaries and facts remain shared.
+        Noniterable packages or nonserializable collection metadata can raise TypeError."""
         pkgs = [p for p in doc.get("packages") or [] if isinstance(p, dict) and isinstance(p.get("name"), str) and isinstance(p.get("version"), str)]
         sent = doc.get("collection")
         return cls(str(doc.get("hostname") or ""), str(doc.get("os_name") or ""), str(doc.get("ecosystem") or ""), str(doc.get("agent_version") or ""),
@@ -122,7 +140,9 @@ class Inventory:
     def from_asset(cls, asset: Asset, pkgs: list[InstalledPackage], sbom: dict | None = None) -> Inventory:
         """Return an Inventory from an Asset, its InstalledPackage rows pkgs, and optional SBOM metadata.
 
-        Sort packages for stable hashing and retain the distinction between agent and SBOM origins."""
+        Sort packages for stable hashing and retain the distinction between agent and SBOM origins.
+        Does not query or write. Asset facts and collection metadata remain shared.
+        Rows and asset must have compatible populated attributes. Attribute/type errors propagate."""
         return cls(asset.hostname, asset.os_name, asset.ecosystem, asset.agent_version,
                    asset.last_inventory_at.isoformat() + "Z" if asset.last_inventory_at else None, asset.facts or {},
                    [{"ecosystem": p.ecosystem, "name": p.name, "version": p.version, "source": p.source,
@@ -132,7 +152,10 @@ class Inventory:
                    asset.collection, asset.last_inventory_at is not None, asset.kind or "host", sbom)
 
     def to_doc(self) -> dict:
-        """Return the serializable inventory dictionary used in reports and content hashes."""
+        """Return the inventory dictionary used for stored records and inventory hashes.
+
+        Nested facts, packages and collection metadata remain shared. received is not
+        serialized. Non-host kind and nonempty sbom metadata are included when present."""
         return {"hostname": self.hostname, "os_name": self.os_name, "ecosystem": self.ecosystem, "agent_version": self.agent_version,
                 "collected_at": self.collected_at, "facts": self.facts, "collection": self.document, "packages": self.packages,
                 **({"kind": self.kind} if self.kind != "host" else {}), **({"sbom": self.sbom} if self.sbom else {})}
@@ -156,7 +179,13 @@ class Inventory:
         return sum(p.get("origin") == "sbom" for p in self.packages)
 
     def source(self, name: str) -> Source:
-        """Known with a value, known absent, or unknown (R3.2): a source nobody reported is unknown, never empty."""
+        """Return collection status for source name, with consistency checks and a reason.
+
+        Missing names return not-reported. Empty uninstall/package_db lists become
+        failed. Counts above received rows become partial for supported sources.
+        SBOM status comes from upload metadata/rows rather than the agent document.
+        Unknown names are allowed. Malformed directly constructed metadata can raise
+        KeyError or TypeError. Does not change the inventory."""
         if name == "sbom":  # an upload is read whole or refused whole (sbom.parse); what it couldn't name is counted in `self.sbom`
             if self.sbom is None and not self.sbom_rows:
                 return Source(name, NOT_REPORTED, reason="no-sbom", error="no SBOM has been uploaded")
@@ -243,7 +272,9 @@ def _runs(mgr: str, name: str, version: str, release: str) -> bool:
 
 def linux_installs(inv: Inventory) -> list[Install]:
     """One install per source package and version: binaries built together are judged once, a half-finished upgrade twice (T19).
-    Matched by source name and version, as distro advisories are (DECISIONS 3, 84); without a source version, the binary's own."""
+    Matched by source name and version, as distro advisories are (DECISIONS 3, 84); without a source version, the binary's own.
+    inv supplies packages, ecosystem and kernel facts. This maps rows without checking
+    collection status. Does not modify inv. Malformed package rows can raise KeyError or TypeError."""
     eco, mgr, running = normalize_ecosystem(inv.ecosystem), manager(inv.ecosystem), inv.facts.get("kernel_release")
     groups: dict[tuple[str, str], list[str]] = {}
     kernels, live = set(), set()
@@ -269,7 +300,10 @@ def linux_installs(inv: Inventory) -> list[Install]:
 
 def app_installs(inv: Inventory) -> list[Install]:
     """Software outside the OS package manager, one install per place it was found (T19): an SBOM's components, and what the agent's
-    opt-in scans read from each install's own metadata. Files the package manager owns don't arrive: the agent leaves them to it (R7.9)."""
+    opt-in scans read from each install's own metadata. Files the package manager owns don't arrive: the agent leaves them to it (R7.9).
+    inv supplies packages and SBOM receipt metadata. Deduplicate by ecosystem, instance
+    and source, then sort. This does not verify upstream file ownership or collection
+    success. Does not modify inv. Malformed rows can raise KeyError or TypeError."""
     out = {}
     for p in inv.packages:
         eco, name, ver = p.get("ecosystem"), p["name"], p["version"]
@@ -288,7 +322,11 @@ def app_installs(inv: Inventory) -> list[Install]:
 
 
 def installs(inv: Inventory) -> list[Install]:
-    """Every install the engine judges, one per instance (R3.5, T19). What neither curated map knows is inventory and is never compared."""
+    """Return curated Windows or distribution installs from Inventory inv, sorted by identity.
+
+    Language packages and SBOM components use app_installs() separately. Unknown
+    Windows products remain inventory. This does not check collection success or
+    modify inv. Malformed package values can raise KeyError, TypeError or ValueError."""
     if linux(inv.ecosystem):
         return linux_installs(inv)
     os_product = next((p["name"] for p in inv.packages if p.get("ecosystem") == "Windows"), None)

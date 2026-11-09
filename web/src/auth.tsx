@@ -16,9 +16,19 @@ const SSO_ERRORS: Record<string, string> = {
 };
 const ssoError = (code: string | null) => code && (SSO_ERRORS[code] ?? "Single sign-on failed. Try again or ask your administrator.");
 
-/** Render password/SSO sign-in, including MFA and recovery states. */
+/** Render password sign-in, reset requests, MFA and a native SSO form. No props.
+ * Requires query/router providers and browser DOM. Credentials/setup remain in local state.
+ * API answers select MFA, recovery-code or navigation states. Responses are not validated.
+ * Request failures render alerts. SSO redirects use query error codes with generic fallback.
+ * Reset acknowledgement does not establish account existence or message delivery.
+ */
 export const SignInPage = () => <AuthPage mode="signin" />;
-/** Render organisation signup and the email-confirmation or first-account flow. */
+/** Render organisation signup using the shared authentication state machine. No props.
+ * Requires query/router providers. Native inputs require organisation/email/password.
+ * First-account, emailed signup and development flows depend on the server response.
+ * Email acknowledgement renders a notice. next=signin navigates to MFA sign-in.
+ * Successful entry clears query data. Client navigation alone does not establish a session.
+ */
 export const SignUpPage = () => <AuthPage mode="signup" />;
 
 function AuthPage({ mode }: { mode: "signin" | "signup" }) {
@@ -94,7 +104,7 @@ function AuthPage({ mode }: { mode: "signin" | "signup" }) {
       <div>
         <h1 className="text-2xl font-semibold">{signup ? "Create your account" : "Welcome back"}</h1>
         <p className="mt-1 text-sm text-muted">
-          {signup ? "Find out what to fix first on your machines, in a few minutes." : "Sign in to see what needs fixing."}
+          {signup ? "Create an organisation account, then connect your assets for assessment." : "Sign in to see what needs fixing."}
         </p>
       </div>
       <form onSubmit={submit} className="flex flex-col gap-4">
@@ -123,7 +133,7 @@ function AuthPage({ mode }: { mode: "signin" | "signup" }) {
           </Field>
           <button className={btnQuiet} disabled={reset.isPending}>Send reset link</button>
           <Alert error={reset.error} />
-          {reset.data && <Notice>{`If ${reset.data.email} has a password account, a link to reset it is on its way (valid 1 hour).`}</Notice>}
+          {reset.data && <Notice>{`If ${reset.data.email} has a password account, a reset email may be issued when quota permits. Any issued link is valid for 1 hour.`}</Notice>}
         </form>
       ) : <button className="-ml-2 inline-flex min-h-[44px] cursor-pointer items-center self-start px-2 text-sm text-accent underline" onClick={() => setForgot(true)}>Forgot password?</button>)}
       {!signup && (

@@ -1,0 +1,597 @@
+[
+  {
+    "source": "docs/tutorials/first-sbom.md",
+    "slug": "tutorials/first-sbom",
+    "title": "Read your first SBOM",
+    "group": "Tutorials",
+    "product": "assure"
+  },
+  {
+    "source": "docs/how-to/deploy-server.md",
+    "slug": "how-to/deploy-server",
+    "title": "Deploy with Docker Compose",
+    "group": "How-to guides",
+    "product": "assure"
+  },
+  {
+    "source": "docs/how-to/configure-https.md",
+    "slug": "how-to/configure-https",
+    "title": "Configure HTTPS",
+    "group": "How-to guides",
+    "product": "assure"
+  },
+  {
+    "source": "docs/how-to/enrol-linux.md",
+    "slug": "how-to/enrol-linux",
+    "title": "Enrol a Linux machine",
+    "group": "How-to guides",
+    "product": "assure"
+  },
+  {
+    "source": "docs/how-to/enrol-windows.md",
+    "slug": "how-to/enrol-windows",
+    "title": "Enrol a Windows machine",
+    "group": "How-to guides",
+    "product": "assure"
+  },
+  {
+    "source": "docs/how-to/deploy-group-policy.md",
+    "slug": "how-to/deploy-group-policy",
+    "title": "Deploy through Group Policy",
+    "group": "How-to guides",
+    "product": "assure"
+  },
+  {
+    "source": "docs/how-to/review-findings.md",
+    "slug": "how-to/review-findings",
+    "title": "Review and triage findings",
+    "group": "How-to guides",
+    "product": "assure"
+  },
+  {
+    "source": "docs/how-to/change-asset-context.md",
+    "slug": "how-to/change-asset-context",
+    "title": "Change asset context",
+    "group": "How-to guides",
+    "product": "assure"
+  },
+  {
+    "source": "docs/how-to/enable-remediation.md",
+    "slug": "how-to/enable-remediation",
+    "title": "Enable remediation safely",
+    "group": "How-to guides",
+    "product": "assure"
+  },
+  {
+    "source": "docs/how-to/upload-sbom.md",
+    "slug": "how-to/upload-sbom",
+    "title": "Upload an SBOM from CI",
+    "group": "How-to guides",
+    "product": "assure"
+  },
+  {
+    "source": "docs/how-to/scan-external-target.md",
+    "slug": "how-to/scan-external-target",
+    "title": "Scan an external target",
+    "group": "How-to guides",
+    "product": "assure"
+  },
+  {
+    "source": "docs/how-to/remote-windows.md",
+    "slug": "how-to/remote-windows",
+    "title": "Scan Windows without an agent",
+    "group": "How-to guides",
+    "product": "assure"
+  },
+  {
+    "source": "docs/how-to/configure-sso.md",
+    "slug": "how-to/configure-sso",
+    "title": "Configure single sign-on",
+    "group": "How-to guides",
+    "product": "assure"
+  },
+  {
+    "source": "docs/how-to/create-api-token.md",
+    "slug": "how-to/create-api-token",
+    "title": "Create a read-only API token",
+    "group": "How-to guides",
+    "product": "assure"
+  },
+  {
+    "source": "docs/how-to/configure-mfa.md",
+    "slug": "how-to/configure-mfa",
+    "title": "Set up or replace an authenticator",
+    "group": "How-to guides",
+    "product": "assure"
+  },
+  {
+    "source": "docs/how-to/configure-alerts.md",
+    "slug": "how-to/configure-alerts",
+    "title": "Configure alerts",
+    "group": "How-to guides",
+    "product": "assure"
+  },
+  {
+    "source": "docs/how-to/export-evidence.md",
+    "slug": "how-to/export-evidence",
+    "title": "Export evidence for a reviewer",
+    "group": "How-to guides",
+    "product": "assure"
+  },
+  {
+    "source": "docs/how-to/verify-evidence.md",
+    "slug": "how-to/verify-evidence",
+    "title": "Verify an evidence pack",
+    "group": "How-to guides",
+    "product": "assure"
+  },
+  {
+    "source": "docs/how-to/verify-agent-release.md",
+    "slug": "how-to/verify-agent-release",
+    "title": "Verify an agent release",
+    "group": "How-to guides",
+    "product": "assure"
+  },
+  {
+    "source": "docs/how-to/upgrade-server.md",
+    "slug": "how-to/upgrade-server",
+    "title": "Upgrade the server",
+    "group": "How-to guides",
+    "product": "assure"
+  },
+  {
+    "source": "docs/how-to/back-up.md",
+    "slug": "how-to/back-up",
+    "title": "Back up Assure",
+    "group": "How-to guides",
+    "product": "assure"
+  },
+  {
+    "source": "docs/how-to/restore.md",
+    "slug": "how-to/restore",
+    "title": "Restore a backup",
+    "group": "How-to guides",
+    "product": "assure"
+  },
+  {
+    "source": "docs/how-to/troubleshoot-scans.md",
+    "slug": "how-to/troubleshoot-scans",
+    "title": "Troubleshoot a missing or incomplete scan",
+    "group": "How-to guides",
+    "product": "assure"
+  },
+  {
+    "source": "docs/how-to/remove-agent.md",
+    "slug": "how-to/remove-agent",
+    "title": "Remove an agent",
+    "group": "How-to guides",
+    "product": "assure"
+  },
+  {
+    "source": "docs/how-to/run-without-docker.md",
+    "slug": "how-to/run-without-docker",
+    "title": "Run without Docker",
+    "group": "How-to guides",
+    "product": "assure"
+  },
+  {
+    "source": "CONTRIBUTING.md",
+    "slug": "how-to/contribute",
+    "title": "Contribute to Assure",
+    "group": "How-to guides",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/notifications.md",
+    "slug": "reference/notifications",
+    "title": "Notification reference",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/windows-checks.md",
+    "slug": "reference/windows-checks",
+    "title": "Windows settings and baseline reference",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/findings.md",
+    "slug": "reference/findings",
+    "title": "Finding API and state reference",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/database.md",
+    "slug": "reference/database",
+    "title": "Database model reference",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/platform-updates.md",
+    "slug": "reference/platform-updates",
+    "title": "Platform update reference",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/lifecycle.md",
+    "slug": "reference/lifecycle",
+    "title": "Lifecycle reference",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/external-scans.md",
+    "slug": "reference/external-scans",
+    "title": "External scan reference",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/network-engine.md",
+    "slug": "reference/network-engine",
+    "title": "Network engine reference",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/scan-report.md",
+    "slug": "reference/scan-report",
+    "title": "Scan report format",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/inventory-format.md",
+    "slug": "reference/inventory-format",
+    "title": "Inventory and collection metadata",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/fleet-paths.md",
+    "slug": "reference/fleet-paths",
+    "title": "Fleet attack-path format",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/optional-ai.md",
+    "slug": "reference/optional-ai",
+    "title": "Optional AI",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/configuration.md",
+    "slug": "reference/configuration",
+    "title": "Configuration",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/platforms.md",
+    "slug": "reference/platforms",
+    "title": "Supported platforms",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/agent-cli.md",
+    "slug": "reference/agent-cli",
+    "title": "Agent command reference",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/agent-core.md",
+    "slug": "reference/agent-core",
+    "title": "Agent collection and transport",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/http-api.md",
+    "slug": "reference/http-api",
+    "title": "HTTP API reference",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/sbom.md",
+    "slug": "reference/sbom",
+    "title": "SBOM input reference",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/scan-outcomes.md",
+    "slug": "reference/scan-outcomes",
+    "title": "Scan outcomes",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/remediation-modes.md",
+    "slug": "reference/remediation-modes",
+    "title": "Remediation modes",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/release-keys.md",
+    "slug": "reference/release-keys",
+    "title": "Release keys",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/tooling.md",
+    "slug": "reference/tooling",
+    "title": "Developer tools and repository map",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/glossary.md",
+    "slug": "reference/glossary",
+    "title": "Glossary",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/explanation/architecture.md",
+    "slug": "explanation/architecture",
+    "title": "Deployment architecture",
+    "group": "Explanation",
+    "product": "assure"
+  },
+  {
+    "source": "docs/explanation/inventory-to-evidence.md",
+    "slug": "explanation/inventory-to-evidence",
+    "title": "From inventory to evidence",
+    "group": "Explanation",
+    "product": "assure"
+  },
+  {
+    "source": "docs/explanation/detection-confidence.md",
+    "slug": "explanation/detection-confidence",
+    "title": "Detection confidence and incomplete scans",
+    "group": "Explanation",
+    "product": "assure"
+  },
+  {
+    "source": "docs/explanation/remediation-safety.md",
+    "slug": "explanation/remediation-safety",
+    "title": "How remediation limits a change",
+    "group": "Explanation",
+    "product": "assure"
+  },
+  {
+    "source": "docs/explanation/signed-updates.md",
+    "slug": "explanation/signed-updates",
+    "title": "Why agent updates are signed",
+    "group": "Explanation",
+    "product": "assure"
+  },
+  {
+    "source": "docs/explanation/evidence-trust.md",
+    "slug": "explanation/evidence-trust",
+    "title": "What an evidence signature proves",
+    "group": "Explanation",
+    "product": "assure"
+  },
+  {
+    "source": "docs/explanation/coverage-limits.md",
+    "slug": "explanation/coverage-limits",
+    "title": "Coverage and known limits",
+    "group": "Explanation",
+    "product": "assure"
+  },
+  {
+    "source": "docs/pulse/tutorials/first-triage.md",
+    "slug": "pulse/tutorials/first-triage",
+    "title": "Read your first Pulse triage",
+    "group": "Tutorials",
+    "product": "pulse"
+  },
+  {
+    "source": "docs/pulse/how-to/analyse-list.md",
+    "slug": "pulse/how-to/analyse-list",
+    "title": "Analyse your CVE list",
+    "group": "How-to guides",
+    "product": "pulse"
+  },
+  {
+    "source": "docs/pulse/how-to/snapshots.md",
+    "slug": "pulse/how-to/snapshots",
+    "title": "Save and compare snapshots",
+    "group": "How-to guides",
+    "product": "pulse"
+  },
+  {
+    "source": "docs/pulse/how-to/handover.md",
+    "slug": "pulse/how-to/handover",
+    "title": "Prepare an analyst handover",
+    "group": "How-to guides",
+    "product": "pulse"
+  },
+  {
+    "source": "docs/pulse/how-to/run-locally.md",
+    "slug": "pulse/how-to/run-locally",
+    "title": "Run Pulse locally",
+    "group": "How-to guides",
+    "product": "pulse"
+  },
+  {
+    "source": "docs/pulse/reference/data-sources.md",
+    "slug": "pulse/reference/data-sources",
+    "title": "Data sources and signals",
+    "group": "Reference",
+    "product": "pulse"
+  },
+  {
+    "source": "docs/pulse/reference/snapshots.md",
+    "slug": "pulse/reference/snapshots",
+    "title": "Snapshot contents and limits",
+    "group": "Reference",
+    "product": "pulse"
+  },
+  {
+    "source": "docs/pulse/explanation/privacy.md",
+    "slug": "pulse/explanation/privacy",
+    "title": "How private list analysis works",
+    "group": "Explanation",
+    "product": "pulse"
+  },
+  {
+    "source": "docs/pulse/explanation/pulse-and-assure.md",
+    "slug": "pulse/explanation/pulse-and-assure",
+    "title": "How Pulse and Assure fit together",
+    "group": "Explanation",
+    "product": "pulse"
+  },
+  {
+    "source": "docs/how-to/prepare-production.md",
+    "slug": "how-to/prepare-production",
+    "title": "Prepare a production deployment",
+    "group": "How-to guides",
+    "product": "assure"
+  },
+  {
+    "source": "docs/how-to/release-assure.md",
+    "slug": "how-to/release-assure",
+    "title": "Release Assure",
+    "group": "How-to guides",
+    "product": "assure"
+  },
+  {
+    "source": "docs/how-to/recover-release.md",
+    "slug": "how-to/recover-release",
+    "title": "Recover from a bad release or signing-key leak",
+    "group": "How-to guides",
+    "product": "assure"
+  },
+  {
+    "source": "docs/how-to/configure-windows-update-proxy.md",
+    "slug": "how-to/configure-windows-update-proxy",
+    "title": "Check Windows Update access through a proxy",
+    "group": "How-to guides",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/api-endpoints.md",
+    "slug": "reference/api-endpoints",
+    "title": "HTTP endpoint catalog",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/evidence-format.md",
+    "slug": "reference/evidence-format",
+    "title": "Evidence responses and pack format",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/version-comparison.md",
+    "slug": "reference/version-comparison",
+    "title": "Version comparison reference",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/risk-score.md",
+    "slug": "reference/risk-score",
+    "title": "Priority score reference",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/windows-apps.md",
+    "slug": "reference/windows-apps",
+    "title": "Windows application mapping reference",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/feed-sync.md",
+    "slug": "reference/feed-sync",
+    "title": "Feed synchronisation reference",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/remediation-jobs.md",
+    "slug": "reference/remediation-jobs",
+    "title": "Remediation job reference",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/web-client.md",
+    "slug": "reference/web-client",
+    "title": "Web client reference",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/how-to/generate-baseline.md",
+    "slug": "how-to/generate-baseline",
+    "title": "Generate a baseline for review",
+    "group": "How-to guides",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/baseline-authoring.md",
+    "slug": "reference/baseline-authoring",
+    "title": "Baseline conversion reference",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/agent-app-scans.md",
+    "slug": "reference/agent-app-scans",
+    "title": "Agent application metadata scans",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/how-to/collect-application-metadata.md",
+    "slug": "how-to/collect-application-metadata",
+    "title": "Collect application package metadata",
+    "group": "How-to guides",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/agent-windows.md",
+    "slug": "reference/agent-windows",
+    "title": "Windows and remote collection",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/agent-jobs.md",
+    "slug": "reference/agent-jobs",
+    "title": "Agent job execution",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/assets-api.md",
+    "slug": "reference/assets-api",
+    "title": "Asset and inventory API",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/authentication.md",
+    "slug": "reference/authentication",
+    "title": "Authentication and account API",
+    "group": "Reference",
+    "product": "assure"
+  }
+]

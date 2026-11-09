@@ -1,15 +1,11 @@
-"""Remediation: plans, the trust ladder, canary gating and outcome verification.
+"""Server-side remediation planning, approval, dispatch and recorded verification.
 
-Safety model:
-- The server never sends shell. A job is a closed, validated description
-  ("upgrade these packages with apt"); the agent maps it to fixed argv lists.
-- The agent saves a rollback artefact for every package *before* changing
-  anything and aborts if it cannot. Irreversible changes are never made.
-- Success is decided by the next inventory, not by the agent's say-so.
-- Every transition is written to the evidence ledger; failures surface in the
-  UI summary and never disappear.
-- Dev guard: until NIMSTEAD_ALLOW_PRODUCTION_REMEDIATION=1, only assets
-  flagged sandbox can receive jobs.
+Jobs describe package/configuration operations rather than shell commands. Some
+changes are forward-only and require human acknowledgement. Inventory normally
+determines success, with a separate Windows stepping-success path.
+Approval/dispatch enforce the production guard. Local execution consent belongs
+to the agent. Most helpers leave commits to callers, but sweep, dispatch and
+successful step planning commit caller-session changes.
 """
 
 import os
@@ -50,12 +46,16 @@ MANUAL_ONLY = ("winget", "winconfig")  # setting changes can break old clients: 
 
 
 def servicing(job: RemediationJob) -> bool:
-    """A Windows step through a servicing stack update: it can't be removed, so like winget it's forward-only and a person's call (DECISIONS 105)."""
+    """Return whether job is Windows with a first package whose servicing value is True.
+
+    Does not inspect update manifests. Malformed package values can raise field/type errors."""
     return job.manager == "windows" and bool(job.packages) and job.packages[0].get("servicing") is True
 
 
 def forward_only(job: RemediationJob) -> bool:
-    """Return whether job uses a non-rollback manager or is a servicing update that cannot be undone."""
+    """Return whether job uses a FORWARD_ONLY manager or meets servicing(job).
+
+    This is a plan classification, not an independent rollback capability probe."""
     return job.manager in FORWARD_ONLY or servicing(job)
 SAFE_PRODUCT = re.compile(r"^(?:\.NET Framework 4[0-9.]* on )?Windows [A-Za-z0-9 .()-]{1,120}\Z")  # \Z: $ also matches before a final newline
 SAFE_KB = re.compile(r"^[0-9]{6,8}\Z")
@@ -77,7 +77,9 @@ class RemediationError(Exception):
 
 
 def production_allowed() -> bool:
-    """Return whether the server explicitly allows remediation outside sandbox assets."""
+    """Return whether NIMSTEAD_ALLOW_PRODUCTION_REMEDIATION equals exact text 1.
+
+    Read the environment on each call. No database or local-host opt-in is checked."""
     return os.environ.get("NIMSTEAD_ALLOW_PRODUCTION_REMEDIATION") == "1"
 
 
@@ -90,10 +92,15 @@ def _log(s: Session, job: RemediationJob, kind: str, **data) -> None:
 
 def windows_kbs(s: Session, product: str, cves: list[str], ecosystem: str = "Windows", step: dict | None = None,
                 umbrella: str | None = None) -> dict:
-    """The cumulative update that reaches the highest fixed build fixes them all: {"kb", "to"}, plus "alt" (the
-    hotpatch KB and build) when every CVE also has a hotpatch fix. The agent installs whichever one Windows Update
-    offers this host, so the plan doesn't need to know whether it is hotpatch-enrolled (DECISIONS 52). step: the
-    earlier cumulative {"kb", "to"} Windows Update offered this host instead (plan_step), carried as "alt"."""
+    """Return kb/to and optional alt from stored advisories in Session s.
+
+    product and ecosystem select rows. cves must all have valid numeric KB fixes.
+    Choose each CVE's lowest fixed build, then the highest among those choices.
+    umbrella supplies an alternative KB at the target build. Otherwise step supplies
+    an earlier kb/to pair. Otherwise use complete hotpatch coverage or an older
+    cumulative candidate. step is returned by reference, without full validation.
+    Raise RemediationError for missing coverage or an invalid step relationship.
+    Field, comparator and database errors propagate. No explicit commit occurs."""
     def best(package):
         out = {}
         for rec in s.scalars(select(Advisory.record).where(Advisory.ecosystem == ecosystem, Advisory.package == package)):
@@ -194,9 +201,14 @@ def _aims(job: RemediationJob):
 
 
 def kb_fleet(s: Session, org_id: str) -> list[dict]:
-    """Per product, its newest cumulative updates: how many of the org's hosts have each, judged by the build they last
-    reported, and for the rest why not, from their jobs and facts. A host on the hotpatch track has an update when none of
-    its CVEs is still on the host (DECISIONS 52)."""
+    """Return up to three cumulative-update rows per product for org_id in Session s.
+
+    Use stored Windows host package rows with numeric versions, advisories, findings
+    and jobs. A recognized hotpatch build also counts fixed when no open/accepted
+    CVE overlaps the update. Missing-host notes and rollout suggestions are derived
+    observations, not collection or approval. See the remediation reference for fields.
+    Rows sort by release text and missing count, descending. No explicit commit or
+    timeout sweep occurs here. Invalid stored shapes/dates and database errors propagate."""
     hosts: dict[str, list[tuple[Asset, str]]] = defaultdict(list)
     for a, product, version in s.execute(select(Asset, InstalledPackage.name, InstalledPackage.version)
                                          .join(InstalledPackage, InstalledPackage.asset_id == Asset.id)
@@ -267,8 +279,11 @@ def kb_fleet(s: Session, org_id: str) -> list[dict]:
 
 
 def fix_path(ecosystem: str, package: str) -> dict:
-    """What fixing this action means, as plan and approve treat it: which path, whether plan() would take it, and whether
-    a person must approve it (auto_remediate skips these) or accept that it can't be undone."""
+    """Return fix/plannable/person_only/forward_only for ecosystem and package strings.
+
+    Use the top-level manager and closed product/setting maps. This classifies an
+    action without checking findings, permissions, asset state or rollback artifacts.
+    Invalid string types propagate errors. No I/O occurs."""
     from nimstead.office import PREFIX as OFFICE
     base = MANAGERS.get(ecosystem.split(":", 1)[0])
     fix, plannable = base, base is not None
@@ -282,8 +297,15 @@ def fix_path(ecosystem: str, package: str) -> dict:
 
 def plan(s: Session, asset: Asset, ecosystem: str, package: str, created_by: str, include: list[str] | None = None,
          step: dict | None = None) -> RemediationJob:
-    """include: extra installed packages the dry run said the fix also needs (e.g. musl for openssl).
-    They join the plan, so they are snapshotted and rolled back with it. step: see windows_kbs."""
+    """Create, flush, ledger and return a planned job for asset in Session s.
+
+    ecosystem/package select open fixable findings. created_by labels the creator.
+    include adds installed dependency names and their source siblings for ordinary
+    package managers. Windows uses windows_kbs with optional earlier step.
+    WinApp/Microsoft/WinConfig delegate and ignore include/step. Active duplicate
+    actions, absent findings, unsupported managers or invalid packages raise
+    RemediationError. Other field/comparator/database errors propagate.
+    Planning does not enforce approval gates or local consent. The caller commits."""
     manager = MANAGERS.get(ecosystem.split(":", 1)[0])
     if not manager:
         raise RemediationError(f"Automatic remediation is not supported for {ecosystem} packages")
@@ -338,8 +360,12 @@ def _proven_upgrade(p: dict, proven: dict, cmp) -> bool:
 
 
 def proves(canary: RemediationJob, job: RemediationJob) -> bool:
-    """Did this canary run what the job would install? A job naming a KB installs that KB whatever it's pinned to, so the
-    canary must have reached its build. Any other job is pinned to what the canary reached, or to none (DECISIONS 74)."""
+    """Return whether canary result versions satisfy job's KB package targets.
+
+    Every KB package needs a valid upgrade reaching its to build. Non-KB packages
+    impose no test here, so their absence from result_versions can still return True.
+    Neither job status, action identity nor soak is checked here. Invalid model or
+    comparator input can raise errors. No I/O or mutation occurs."""
     proven = canary.result_versions or {}
     cmp = comparator_for(job.action_key.split("|", 1)[0])
     return all(not p.get("kb") or (_proven_upgrade(p, proven, cmp) and cmp(str(proven[p["name"]]), str(p["to"])) >= 0)
@@ -347,7 +373,13 @@ def proves(canary: RemediationJob, job: RemediationJob) -> bool:
 
 
 def canary_ok(s: Session, org: Org, job: RemediationJob) -> tuple[bool, str]:
-    """Broad-ring auto changes need the same action to have succeeded on a canary and soaked, with no failures anywhere."""
+    """Return (allowed, reason) for policy approval of job under org in Session s.
+
+    Same-action HALTS block rollout, except KB failures below this target.
+    Require a current ring-0 asset with a succeeded, sufficiently old job that
+    proves(job). Aborted/cancelled jobs are not HALTS. This helper does not check
+    mode, local consent or production permission. No explicit commit occurs.
+    Stored-data, comparator and database errors propagate."""
     same = s.scalars(select(RemediationJob).where(RemediationJob.org_id == org.id, RemediationJob.action_key == job.action_key)).all()
     # a Windows action key spans every month: a failed September job halts September's rollout, not October's (as kb_fleet)
     target = job.packages[0].get("to") if job.packages and job.packages[0].get("kb") else None
@@ -370,7 +402,10 @@ def approve(s: Session, job: RemediationJob, by: str, policy: bool = False, forw
 
     by identifies the approver. policy=True applies automatic approval and canary restrictions;
     forward_only_ack records explicit acceptance of a non-rollback change. Raise RemediationError
-    for invalid state or policy. The caller commits, releasing the organisation row lock."""
+    for invalid state or policy. Human approval does not require canary soak.
+    policy=True does not itself require auto mode. Local consent is not checked.
+    The caller commits, releasing the organisation row lock. Database, evidence
+    and incompatible model errors propagate after possible session mutation."""
     asset = s.get(Asset, job.asset_id)
     org = s.get(Org, job.org_id, with_for_update=True)  # PostgreSQL: two admins approving at once can't both pass the check
     s.flush()
@@ -396,8 +431,15 @@ def approve(s: Session, job: RemediationJob, by: str, policy: bool = False, forw
 
 def plan_windows_app(s: Session, asset: Asset, ecosystem: str, package: str, findings: list, created_by: str,
                      umbrella: str | None = None) -> RemediationJob:
-    """winget (curated apps, Edge, VS Code: forward-only), office (Click-to-Run, rolls back to the build it found) or
-    winconfig (one setting from the agent's closed list, rolled back to the value it found). Plan T17, T21, T22, T38."""
+    """Create, flush, ledger and return a Windows application/configuration plan in s.
+
+    asset identifies ownership. ecosystem/package select the path. findings supplies
+    the caller-selected rows, and created_by labels the creator. Choose winconfig,
+    Windows .NET KB, Office or closed-list winget. umbrella supplies an alternative
+    .NET KB. This direct helper does not check active duplicates or finding state.
+    Unsupported settings/products or invalid versions raise RemediationError.
+    Empty findings and malformed model/comparator/database data can raise other errors.
+    Approval gates are separate. The caller commits."""
     from nimstead.office import PREFIX as OFFICE
     if ecosystem == "WinConfig":
         check = package
@@ -429,7 +471,10 @@ def plan_windows_app(s: Session, asset: Asset, ecosystem: str, package: str, fin
 
 
 def cancel(s: Session, job: RemediationJob, by: str) -> RemediationJob:
-    """Withdraw a fix no agent holds yet. Dispatched or later may already be running on the host, so those are refused."""
+    """Cancel planned/approved job in Session s, ledger actor by, and return job.
+
+    Other statuses raise RemediationError. The caller commits. Evidence/database
+    errors propagate. This helper neither stops a host process nor changes other jobs."""
     if job.status not in ("planned", "approved"):
         raise RemediationError(f"Job is {job.status}; only planned or approved fixes that no machine has picked up can be cancelled")
     job.status, job.error = "cancelled", f"Cancelled by {by}"
@@ -438,7 +483,12 @@ def cancel(s: Session, job: RemediationJob, by: str) -> RemediationJob:
 
 
 def auto_remediate(s: Session, asset: Asset) -> None:
-    """Called after each inventory. In auto mode, plan fixable actions and approve those the policy allows."""
+    """Plan/approve eligible open fixed-version actions for asset in Session s.
+
+    Do nothing outside auto mode. Skip MANUAL_ONLY base managers, including Office
+    and Microsoft application paths. Broad rings attempt canary pinning after approval.
+    Suppress RemediationError per action. Other errors propagate. Pending mutations
+    are not rolled back here. The caller commits all changes."""
     org = s.get(Org, asset.org_id)
     if org.remediation_mode != "auto":
         return
@@ -459,7 +509,12 @@ def auto_remediate(s: Session, asset: Asset) -> None:
 
 
 def pin_to_canary(s: Session, job: RemediationJob) -> None:
-    """Broad ring installs exactly the versions the canary proved, not whatever the repo has now."""
+    """Replace eligible non-KB package targets in job using a canary found through s.
+
+    Select the newest same-action succeeded job on a current ring-0 asset with
+    nonnull result_versions. This helper does not recheck soak or proves().
+    Missing/invalid/non-upgrade versions leave existing targets unchanged, possibly
+    unpinned. Comparator/database errors propagate. The caller commits."""
     canary = s.scalar(select(RemediationJob).join(Asset, Asset.id == RemediationJob.asset_id).where(
         RemediationJob.org_id == job.org_id, RemediationJob.action_key == job.action_key,
         RemediationJob.status == "succeeded", Asset.ring == 0, RemediationJob.result_versions.is_not(None),
@@ -470,7 +525,12 @@ def pin_to_canary(s: Session, job: RemediationJob) -> None:
 
 
 def sweep(s: Session, org_id: str) -> None:
-    """Fail dispatched jobs whose agent went silent. Runs on every jobs/summary read, so it can't be skipped."""
+    """Fail timed-out dispatched jobs for org_id in s and commit all pending changes.
+
+    Ordinary timeout is two hours since updated. Windows also waits the current
+    organisation restart deadline (fallback 24 hours) plus four hours. Failure logs
+    update the timestamp and can submit alerts. Later timeout reports remain eligible.
+    Database/evidence errors propagate. This helper does not stop the host process."""
     stale = now() - DISPATCH_TIMEOUT
     for job in s.scalars(select(RemediationJob).where(RemediationJob.org_id == org_id, RemediationJob.status == "dispatched",
                                                       RemediationJob.updated < stale)):
@@ -483,7 +543,12 @@ def sweep(s: Session, org_id: str) -> None:
 
 
 def valid_window(w) -> bool:
-    """A maintenance window: {days: [0-6] (Monday=0), start: "HH:MM", hours: 1-24, tz: IANA name}."""
+    """Return whether w has exact days/start/hours/tz keys and accepted values.
+
+    days is a nonempty list of integers 0..6, excluding booleans. Duplicates pass.
+    start is HH:MM. hours is an integer 1..24, including True as 1.
+    tz must resolve through ZoneInfo. Ordinary invalid values return False.
+    No mutation occurs. Exceptional timezone backend errors can propagate."""
     if not (isinstance(w, dict) and set(w) == {"days", "start", "hours", "tz"} and isinstance(w["days"], list) and w["days"]
             and all(isinstance(d, int) and not isinstance(d, bool) and 0 <= d <= 6 for d in w["days"])
             and isinstance(w["start"], str) and re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", w["start"])
@@ -497,7 +562,12 @@ def valid_window(w) -> bool:
 
 
 def window_state(w: dict | None, when: datetime | None = None) -> tuple[bool, datetime | None]:
-    """(inside the window now, when the current one ends or else the next one starts, UTC). None = any time."""
+    """Return (inside, end-or-next-start) for window w at naive UTC datetime when.
+
+    when defaults to now(). Any falsey w means (True, None). Assume a valid window.
+    Start in local wall time, then measure hours in elapsed UTC time. Returned
+    datetimes are naive UTC. End boundaries are exclusive. Invalid fields/zones
+    and aware datetimes can raise errors. No I/O beyond timezone lookup occurs."""
     if not w:
         return True, None
     tz = ZoneInfo(w["tz"])
@@ -514,7 +584,11 @@ def window_state(w: dict | None, when: datetime | None = None) -> tuple[bool, da
 
 
 def serial_group(asset: Asset) -> str | None:
-    """Hosts that must not restart together (plan T42): one failover cluster, or one domain's controllers."""
+    """Return a lowercase cluster:/dc: grouping key from asset facts, or None.
+
+    A truthy cluster takes precedence. Otherwise integer domain_role >=4 with a
+    truthy domain forms a DC group. Values are not independently verified.
+    Invalid facts types can raise errors. No storage changes occur."""
     f = asset.facts or {}
     if f.get("cluster"):
         return f"cluster:{str(f['cluster']).lower()}"
@@ -524,7 +598,15 @@ def serial_group(asset: Asset) -> str | None:
 
 
 def dispatch(s: Session, asset: Asset) -> list[dict]:
-    """Hand approved jobs to the agent, re-checking every gate at the last moment."""
+    """Return eligible execution dictionaries for asset and mark them dispatched in s.
+
+    First sweep/commit timeouts. Then check the effective maintenance window,
+    production guard, suggest-mode switch and policy broad-ring canary state.
+    Apply Windows host/group sequencing. Local execution consent is not checked.
+    Plans contain id/manager/packages/health_units and optional Windows reboot_by.
+    Commit all pending changes after processing. An outside-window return skips
+    that final commit but follows the earlier sweep commit. Stored-data, evidence,
+    timezone and database errors propagate. No host process is started here."""
     sweep(s, asset.org_id)
     org = s.get(Org, asset.org_id, with_for_update=True)  # PostgreSQL: two group members polling at once read "free" in turn
     out = []
@@ -581,7 +663,11 @@ def report(s: Session, job: RemediationJob, outcome: str, steps: list[dict], err
     s is the Session; outcome must be in AGENT_OUTCOMES. steps holds step dictionaries, error
     is optional text, and versions maps package names to installed versions. Values are bounded
     before storage. An applied outcome enters verifying until inventory confirms the fix.
-    Raise RemediationError for an unknown outcome or a job not awaiting a report."""
+    Steps keep at most 200 entries with step/output text limited to 200/2000 chars.
+    Error text is limited to 2000 chars. Truthy version values become 200-char
+    strings, with 200-char keys and no count bound in this direct helper.
+    Timeout-failed jobs also accept late reports. Raise RemediationError for an
+    unknown outcome or other state. Invalid nested data/evidence errors propagate."""
     if outcome not in AGENT_OUTCOMES:
         raise RemediationError(f"Unknown outcome {outcome!r}")
     late = job.status == "failed" and job.error in (TIMEOUT_ERROR, WIN_TIMEOUT_ERROR)  # agent came back after the timeout: keep the truth
@@ -603,7 +689,13 @@ def _stepped(job: RemediationJob) -> str | None:
 
 
 def verify(s: Session, asset: Asset) -> None:
-    """After a fresh inventory: a job succeeded only if its findings are now resolved."""
+    """Update verifying jobs for asset from stored finding state in Session s.
+
+    Open/accepted findings normally mean not_fixed. A Windows alternative build
+    present in any reported version value instead permits stepped success while
+    findings remain. No matching open/accepted rows means success, including missing
+    finding rows. The caller must establish inventory freshness and commit.
+    Evidence, stored-data and database errors propagate after possible mutation."""
     for job in s.scalars(select(RemediationJob).where(RemediationJob.asset_id == asset.id, RemediationJob.status == "verifying")):
         # accepted is not fixed: accepting a risk mid-verification must not turn the job into a success (or a canary proof)
         still_open = [f.vuln_id for f in s.scalars(select(Finding).where(Finding.id.in_(job.finding_ids),
@@ -714,9 +806,16 @@ def _plan_dotnet_umbrella(s: Session, job: RemediationJob, offered: list) -> Rem
 
 
 def plan_step(s: Session, job: RemediationJob | None, offered, client=None) -> RemediationJob | None:
-    """Windows Update offered this host none of an aborted job's KBs. If it offers an earlier cumulative update for the same
-    product, plan (never approve) a job that steps through it: the KB's build comes from MSRC, fetching the month the title
-    names when the KB is unknown (DECISIONS 95). offered is the host's word: only KB numbers and title months are read."""
+    """Return a new planned step for an aborted Windows job in s, or None.
+
+    offered must be a list. Read at most ten KB/title dictionaries and 300 title
+    characters. Numeric KBs and YYYY-MM title prefixes select stored MSRC builds
+    or up to three attempted month fetches per organisation per 24 hours.
+    client optionally supplies those feed requests. Select an earlier cumulative,
+    a narrowly eligible forward-only servicing step, or a .NET umbrella alternative.
+    No approval occurs. Fetch quota records and successful plans commit all pending
+    changes. Invalid/ineligible offers usually return None. Unhandled field,
+    evidence and database errors can propagate after earlier commits."""
     p = job.packages[0] if job and job.status == "aborted" and job.manager == "windows" and job.packages else {}
     product, cur, target = str(p.get("name", "")), str(p.get("from", "")), str(p.get("to", ""))
     if not SAFE_PRODUCT.match(product) or not isinstance(offered, list):

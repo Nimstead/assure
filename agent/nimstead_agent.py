@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Nimstead agent: reports installed packages to the server. Single file, stdlib only, Python 3.9+.
 
-  nimstead_agent.py enroll --server https://host --token TOKEN
+  nimstead_agent.py enroll --server https://host  # set NIMSTEAD_TOKEN first
   nimstead_agent.py report
-  nimstead_agent.py collect          # print inventory JSON, no network
+  nimstead_agent.py collect          # print inventory JSON, no server upload
   nimstead_agent.py remediate        # run approved jobs (host must opt in at enroll)
-  nimstead_agent.py doctor           # check this host's setup and say how to fix it; changes nothing
+  nimstead_agent.py doctor           # report setup diagnostics without repairs or agent-key upload
 """
 
 import argparse
@@ -45,9 +45,12 @@ class AgentError(Exception):
 
 
 def config_path():
-    """Return the platform-specific configuration filename as a string.
+    """Return the configuration path string for the current process platform and identity.
 
-    Windows uses ProgramData; root on Linux uses /etc; other Linux users use their home directory."""
+    Windows uses ProgramData/Nimstead/agent.json. Other platforms use /etc/nimstead/agent.json
+    for effective UID zero, otherwise ~/.config/nimstead/agent.json. No existence, ownership
+    or path validation occurs. Environment/identity/path errors can propagate. No writes occur.
+    """
     if os.name == "nt":
         return os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "Nimstead", "agent.json")
     if os.geteuid() == 0:
@@ -58,7 +61,13 @@ def config_path():
 # ---- collection -------------------------------------------------------------
 
 def parse_os_release(text):
-    """Parse os-release text into a string dictionary, removing surrounding quotes and ignoring comments."""
+    """Parse string text into an os-release key/value dictionary without evaluating shell syntax.
+
+    Split each line at its first equals sign. Ignore lines starting exactly with #.
+    Strip key/value whitespace and edge quote characters. Later duplicate keys replace earlier
+    ones. Escapes, interpolation and semantic validity are not checked. Invalid types can raise.
+    No I/O or input mutation occurs.
+    """
     out = {}
     for line in text.splitlines():
         k, sep, v = line.partition("=")
@@ -68,7 +77,13 @@ def parse_os_release(text):
 
 
 def ecosystem_from_os_release(text):
-    """OSV ecosystem string, or '' if the distro/release is not one we can match."""
+    """Map declared os-release text to an advisory ecosystem string, or empty string.
+
+    Require VERSION_ID even for Tumbleweed. Recognize exact case-sensitive IDs for Debian,
+    Ubuntu, Alpine, Rocky, AlmaLinux, Leap, Tumbleweed and dotted-version SLES. Do not infer
+    ID_LIKE derivatives, validate version syntax or check feed availability. Parser errors
+    propagate. No I/O occurs.
+    """
     r = parse_os_release(text)
     ver = r.get("VERSION_ID", "")
     distro = r.get("ID", "")
@@ -96,10 +111,13 @@ def ecosystem_from_os_release(text):
 
 
 def parse_dpkg(text):
-    """Return package dictionaries from tab-separated dpkg-query text.
+    """Return package dictionaries from tab-separated dpkg-query string text.
 
-    Expect name, binary version, source name, source version, and status columns. Keep installed,
-    held-installed, and trigger-pending packages; skip malformed or unpacked entries."""
+    Keep rows with at least five fields whose status second character is i, W or t.
+    Use binary name/version, source-name fallback, and source_version only when nonempty and
+    unequal to binary version. Extra fields are ignored. Short/status-excluded rows are skipped.
+    Do not deduplicate or validate field contents. Invalid types can raise. No I/O occurs.
+    """
     pkgs = []
     for line in text.splitlines():
         f = line.split("\t")
@@ -113,9 +131,13 @@ def parse_dpkg(text):
 
 
 def parse_rpm(text):
-    """Return package dictionaries from tab-separated RPM name, epoch/version/release, and source-RPM text.
+    """Return package dictionaries from tab-separated RPM query string text.
 
-    Skip short rows and gpg-pubkey entries. Preserve epochs and derive source names from .src.rpm filenames."""
+    Require at least three fields and exclude gpg-pubkey. Keep supplied version text verbatim.
+    Derive source name from .src.rpm by removing the last two hyphen-separated components.
+    Otherwise use the binary name. Extra fields are ignored. No source_version is produced.
+    Do not deduplicate or validate names/versions. Invalid types can raise. No I/O occurs.
+    """
     pkgs = []
     for line in text.splitlines():
         f = line.split("\t")
@@ -133,9 +155,13 @@ def parse_rpm(text):
 
 
 def parse_apk(text):
-    """Return package dictionaries from apk installed-database text.
+    """Return package dictionaries from blank-line-separated apk database string text.
 
-    Read P (name), V (version), and optional o (origin) fields; skip blocks without name/version."""
+    Read first P, V and o field occurrences per block. Keep blocks with parsed P/V keys.
+    Use o as source or fall back to P. Two-character empty fields are not parsed.
+    Whitespace values are retained. No semantic validation, deduplication or I/O occurs.
+    Invalid types can raise errors.
+    """
     pkgs = []
     for block in text.split("\n\n"):
         d = {}
@@ -148,7 +174,12 @@ def parse_apk(text):
 
 
 def _query(cmd, timeout=600):
-    """(exit status, stdout, stderr) of a read-only query; None when it couldn't run. Its status is reported, not just its output (R7.2)."""
+    """Run command argv cmd with timeout seconds, default 600, and return status/stdout/stderr.
+
+    Use captured text with replacement decoding and LC_ALL=C. OSError/TimeoutExpired become
+    (None, empty stdout, error text). Other errors propagate. No shell is requested. The
+    caller chooses the command. This runner does not independently enforce read-only behavior.
+    """
     try:
         p = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=timeout, env=dict(os.environ, LC_ALL="C"))
         return p.returncode, p.stdout, p.stderr
@@ -165,8 +196,17 @@ REBOOT_FLAG = "/run/reboot-required"
 
 
 def package_db(query=_query, apk_db=APK_DB, which=shutil.which):
-    """(packages, collection line): the package database read directly in a fixed format. A cut-short or failed read says so;
-    an empty one is sent as read, and the server calls it a failure (DECISIONS 80)."""
+    """Return (package list, collection-source dict) from a local package database.
+
+    query accepts argv and optional timeout and returns (status,stdout,stderr). apk_db names
+    the installed database. which probes executable names. Defaults read the local system.
+    Prefer an existing apk_db, then dpkg-query, then rpm. No distro consistency check occurs.
+    Retain parseable rows after command failure. Count malformed line/block shapes separately.
+    Nonzero/None command status overrides that warning, using the final stderr line.
+    Return numeric exit when available. Empty successful reads remain state=ok,count=0.
+    File OSError becomes a source problem. Decode, callback, type and parser errors can
+    propagate. This helper performs no upload or package changes.
+    """
     if os.path.exists(apk_db):
         try:
             with open(apk_db) as f:
@@ -193,7 +233,12 @@ def package_db(query=_query, apk_db=APK_DB, which=shutil.which):
 
 
 def reboot_pending(query=_query, which=shutil.which, exists=os.path.exists):
-    """True or False only where the distro says so; None when it doesn't (no flag mechanism installed)."""
+    """Return a reported restart Boolean or None using injected query/which/exists callbacks.
+
+    If NOTIFY_REBOOT exists, use REBOOT_FLAG existence without command fallback. Otherwise
+    needs-restarting -r uses timeout=120. Status zero means false, one true, others None.
+    No available mechanism returns None. Callback errors propagate. No restart is performed.
+    """
     if exists(NOTIFY_REBOOT):
         return exists(REBOOT_FLAG)
     if which("needs-restarting"):  # dnf-utils / yum-utils: exit 1 means a reboot is needed
@@ -203,7 +248,16 @@ def reboot_pending(query=_query, which=shutil.which, exists=os.path.exists):
 
 
 def collect_linux(query=_query, files=OS_RELEASE, apk_db=APK_DB, which=shutil.which, kernel=None, reboot=None):
-    """What the host is, its packages and how far the read got (R7.1, R7.2, R4.3). An unknown platform is reported, never silence."""
+    """Return a base Linux inventory dictionary from local files and package queries.
+
+    query/which are package callbacks. files is an ordered os-release path sequence. Use its
+    first existing path, even if unreadable. apk_db selects the optional apk database.
+    Truthy kernel overrides os.uname().release. Truthy reboot is called with query and which.
+    Return os_name, ecosystem, agent_version, facts, collection and packages. Add ecosystem to
+    each package and retain unmatched-platform metadata instead of refusing the inventory.
+    No upload or host package changes occur. OS-release OSError becomes a source problem.
+    Decode, callback, parser and malformed-value errors can propagate.
+    """
     text, problem = "", "no os-release file"
     for path in files:
         if os.path.exists(path):
@@ -1218,17 +1272,17 @@ def esu_active(product, run=None):
 
 
 def collect():
-    """Return this host's base inventory dictionary using the Windows or Linux collector.
+    """Return base inventory from collect_windows on Windows, otherwise collect_linux.
 
-    Reads host state and runs platform inventory commands; collection errors follow the selected collector."""
+    Uses platform files/commands. Does not enable optional application scans or upload data.
+    The selected collector determines partial results and propagated errors.
+    """
     return collect_windows() if os.name == "nt" else collect_linux()
 
 
 # ---- remediation ------------------------------------------------------------
-# The server sends a closed job description; every command below is a fixed argv
-# template filled with validated names. Rollback packages are saved before any
-# change, and any failure after a change triggers rollback. Nothing is silent:
-# every step is reported back and lands in the evidence ledger.
+# Manager-specific handlers validate job fields and record attempted steps.
+# Rollback availability depends on the manager and result. Reporting has separate failure paths.
 
 SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9+._-]{0,200}\Z")  # \Z: $ also matches before a final newline
 SAFE_VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+~:_^-]{0,200}\Z")
@@ -1238,8 +1292,13 @@ APT_CACHE = "/var/cache/apt/archives"
 
 
 def sh(cmd, cwd=None, timeout=1800):
-    """Default runner: (returncode, full output). Never raises for a failing command. Steps keep only the tail;
-    parsers (zypper's XML dry run runs to tens of KB with package descriptions) need all of it."""
+    """Run command argv cmd in optional cwd with timeout seconds, default 1800.
+
+    Return (status,combined stdout/stderr) as replacement-decoded text. Set LC_ALL=C and
+    DEBIAN_FRONTEND=noninteractive. A command's nonzero status is returned, not raised.
+    OSError/TimeoutExpired become status 127 and error text. Other argument/runtime errors
+    propagate. Output is captured without a size cap. The caller controls command effects.
+    """
     env = dict(os.environ, DEBIAN_FRONTEND="noninteractive", LC_ALL="C")
     try:
         p = subprocess.run(cmd, cwd=cwd, env=env, capture_output=True, text=True, errors="replace", timeout=timeout)
@@ -1910,7 +1969,11 @@ class WinAppJob:
 
 
 def free_bytes(path):
-    """Free space on the filesystem that holds path (or would, once created)."""
+    """Return free bytes from disk_usage at path or its first existing directory ancestor.
+
+    No writes occur. Relative nonexistent paths can terminate at an empty ancestor and fail.
+    Filesystem and argument errors propagate. This is available space, not a reservation.
+    """
     while not os.path.isdir(path) and os.path.dirname(path) != path:
         path = os.path.dirname(path)
     return shutil.disk_usage(path).free
@@ -1948,7 +2011,14 @@ _agent_key = None
 
 
 def log_event(text):
-    """Add one line to the local log. Never raises and never prints: a logging failure must not stop a run."""
+    """Append a bounded UTC-stamped log line for text when global logging is enabled.
+
+    Stringify text, redact the saved agent key/environment token and token-pattern matches,
+    collapse whitespace, and keep 2000 payload characters. Rotate one previous file before
+    append when the current file is at least 1MiB. Create the log directory as needed.
+    Suppress OSError, ValueError and TypeError. Other failures can propagate. Redaction is not
+    a general secret detector, and rotation is not an exact two-file byte cap. Return None.
+    """
     if not _log_on:
         return
     try:
@@ -2272,14 +2342,22 @@ def clause_tail(text, n=300):
 
 
 def wu(script):
-    """A Windows Update script searching this host's configured source, or Microsoft Update when the host opted in."""
+    """Return script text with its WU_SOURCE placeholder replaced from process state.
+
+    script is a string. Exact WU_SOURCE=microsoft inserts the ServerSelection=2 fragment.
+    Other values insert empty text. No query is executed or configuration changed.
+    Missing placeholders leave text unchanged. Invalid types can raise errors.
+    """
     return script.replace("%WU_SOURCE%", "$q.ServerSelection = 2" if WU_SOURCE == "microsoft" else "")
 
 
 def ps(run, script, **kw):
     """Invoke PowerShell through callable run and return its (exit code, output) result.
 
-    script is PowerShell text; keyword arguments pass through to run. Runner errors propagate."""
+    script is unvalidated PowerShell text. Build a fixed powershell argv with no profile,
+    noninteractive mode and ExecutionPolicy Bypass. Keyword arguments pass through to run.
+    Runner errors and command effects belong to the supplied callable. No result validation
+    or independent timeout/output bound is added here."""
     return run(["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script], **kw)
 
 
@@ -2765,8 +2843,13 @@ SAFE_PROXY = re.compile(r"^https?://[A-Za-z0-9.\-\[\]:]{1,255}\Z")
 
 
 def winhttp_proxy(run=None):
-    """The machine-wide WinHTTP proxy (what Windows Update uses as SYSTEM), or None. `netsh` prints either one
-    host:port or per-scheme entries; only an https= entry or a single host:port is used."""
+    """Return the first usable machine WinHTTP proxy string, or None.
+
+    run defaults to sh and accepts argv. Parse netsh's first label/value line only on status
+    zero. For per-scheme text, choose an exact https= entry. Prefix bare targets with http://.
+    This helper does not validate the returned URL or change the opener. Callback/type errors
+    can propagate. The command reads local proxy configuration.
+    """
     rc, out = (run or sh)(["netsh", "winhttp", "show", "proxy"])
     m = re.search(r"(?m)^[ \t]*[^:\r\n]+:[ \t]*(\S+)", out) if rc == 0 else None  # first "label: value" line: labels are localised
     if not m:
@@ -2778,8 +2861,14 @@ def winhttp_proxy(run=None):
 
 
 def use_proxy(url, run=None):
-    """Send every server call through `url` (the enrol --proxy), else the WinHTTP proxy on Windows. TLS stays end to
-    end (CONNECT); plain-http servers are refused through a proxy, so the agent key never crosses it in clear."""
+    """Select proxy string url or machine WinHTTP fallback on Windows and return it or None.
+
+    run is the optional WinHTTP command callback. A selected URL must match SAFE_PROXY or
+    AgentError is raised. Selection replaces process-global _proxy and _opener, with redirects
+    disabled. No selection returns None without resetting an earlier opener/proxy.
+    Initial default openers can use environment proxy settings. No persistent settings are
+    written. Callback/type/opener-construction errors can propagate.
+    """
     global _opener, _proxy
     url = url or (winhttp_proxy(run) if os.name == "nt" else None)
     if not url:
@@ -2792,7 +2881,14 @@ def use_proxy(url, run=None):
 
 
 class run_lock:
-    """Single remediation run at a time (cron/timer overlap)."""
+    """Context manager for a nonblocking process run lock in a state directory.
+
+    Optional class/instance dir selects a path. Otherwise use platform default state storage.
+    Entering creates parents, opens/truncates agent.lock and tries the platform advisory lock.
+    OSError becomes AgentError. Failed entry can retain an open handle until object cleanup.
+    Successful exit closes the handle and does not suppress exceptions. The file remains.
+    This only coordinates callers that acquire this same lock. It does not guard every command.
+    """
     dir = None  # default: the agent's state folder
 
     def __enter__(self):
@@ -2818,7 +2914,17 @@ class run_lock:
 
 
 def post(server, path, body, insecure_http, key=None, raw=False, limit=MAX_AGENT_BYTES):
-    """POST JSON, or GET when body is None; raw=True returns the response bytes (capped) instead of parsed JSON."""
+    """Request server+path using the process opener and return parsed JSON or raw bytes.
+
+    server is an HTTPS origin string, or HTTP when insecure_http is true. A selected _proxy
+    still refuses HTTP. path is concatenated after trailing server slashes are removed.
+    body=None uses GET, otherwise POST with JSON. Truthy key supplies Bearer authorization.
+    raw returns bytes. limit defaults to 5MiB and should be a nonnegative integer. Read one
+    extra byte to detect excess. Arguments and JSON responses receive no schema validation.
+    Pass timeout=60 to the opener. Default redirects are disabled. Empty JSON bodies become {}.
+    HTTP/URL/OSError and response decode/value errors become AgentError. Request preparation
+    and serialization errors can propagate separately. No retry or request-body cap exists.
+    """
     if not server.startswith("https://") and not (insecure_http and server.startswith("http://")):
         raise AgentError(f"refusing non-HTTPS server {server!r} (use --insecure-http for local dev)")
     if _proxy and not server.startswith("https://"):
@@ -3073,9 +3179,12 @@ def _smoke_test(path, python=None):
 
 
 def load_config():
-    """Return the saved configuration dictionary and activate its proxy, update source, and log redaction key.
+    """Read the platform configuration JSON, apply proxy state and return its decoded value.
 
-    Raise AgentError for unreadable or invalid JSON; malformed configuration structure can raise other errors."""
+    Expected shape is a dictionary, but it is not validated. Set global Windows update source
+    and agent-key redaction state after proxy selection. File OSError/JSON ValueError become
+    AgentError. Proxy, structure and other errors can propagate. No file writes occur.
+    """
     try:
         with open(config_path()) as f:
             cfg = json.load(f)
@@ -3089,10 +3198,13 @@ def load_config():
 
 
 def save_config(cfg):
-    """Write configuration dictionary cfg with restricted permissions and return its filename.
+    """Write configuration cfg as JSON and return the platform path string.
 
-    Lock down the Windows state directory before writing. Raise AgentError for file I/O failure;
-    serialization and directory-security errors propagate."""
+    Secure the Windows directory first. Create parents, truncate/create the file, serialize,
+    then chmod to 0600. Existing content can be lost on failure. Writes are not atomic.
+    File OSError becomes AgentError. JSON/type and directory-security errors can propagate.
+    This does not enrol an asset or validate cfg. Windows ACL behavior belongs to its helper.
+    """
     p = config_path()
     if os.name == "nt":  # chmod is a no-op on Windows and ProgramData is open to all users: lock it before the key lands
         secure_windows_dir(d=os.path.dirname(p))
@@ -3343,16 +3455,27 @@ _update_error = None  # this run's self-update failure, reported with the invent
 
 def inventory(cfg):
     # auto_update None = can't (no pinned keys), so the server asks for a reinstall rather than blaming an opt-out
-    """Return the base inventory plus update status and opt-in scans configured in dictionary cfg.
+    """Return collected inventory with local update state and optional configured scans.
 
-    Reads host state; errors follow the underlying collectors. Does not itself upload the result."""
+    cfg is a dictionary of local flags/roots. auto_update uses its truthy/default value when
+    release keys exist, otherwise None. update_error uses this process's last update result.
+    with_apps adds optional data and can mutate the collected nested dictionaries. Errors
+    follow collectors/scanners. This helper performs no upload.
+    """
     inv = {**collect(), "auto_update": bool(cfg.get("auto_update", True)) if RELEASE_KEYS else None, "update_error": _update_error}
     return with_apps(inv, cfg)
 
 
 def with_apps(inv, cfg):
-    """Software outside the package manager, from the local opt-in scans only (enroll --scan-jars, --scan-apps; the server can't turn
-    them on). Each says in the collection document what it read, and `off` when it didn't run, so off reads as not assessed (DECISIONS 92)."""
+    """Extend and return the same inventory dictionary inv using local configuration cfg.
+
+    Truthy scan_jars/scan_apps enable metadata scans. app_roots supplies extra application
+    roots. Ownership lookup runs when either scan is enabled. No package code is executed.
+    Replace inv.packages with a combined list. Add scan facts and mutate existing collection
+    sources when that mapping exists. Disabled sources receive off/count=0 lines.
+    Do not synthesize a missing collection mapping. Scanner/type/key errors can propagate.
+    No upload occurs. Callback/scanner contracts determine partial coverage.
+    """
     lines = {k: {"state": "off", "count": 0} for k in ("java_archives", "python_packages", "npm_packages")}
     pkgs, facts = [], {}
     if cfg.get("scan_jars") or cfg.get("scan_apps"):
@@ -3737,8 +3860,21 @@ def _server_reply(url):
 
 def doctor(insecure_http=False, run=sh, read=_read_config, fetch=_server_reply, connect=socket.create_connection, now=time.time,
            disk=free_bytes, exists=os.path.exists, windows=None, state_dir=None, systemd=None, version=None):
-    """Print ok or FAIL (with one line on how to fix it) for each check; returns the exit code. Only reads: no lockdown,
-    no agent key sent, no log written."""
+    """Print diagnostic results and return 1 if a check fails, otherwise 0.
+
+    insecure_http permits the local-development HTTP health check. run accepts command argv
+    and runner keywords. read() supplies a config dictionary. fetch(url) returns status/Date.
+    connect(address,timeout) returns a closable socket. now() supplies epoch seconds. disk(path)
+    returns free bytes and exists(path) checks paths. Defaults use local tools/files/network.
+    windows selects Windows checks, otherwise os.name decides. state_dir overrides the state
+    folder. systemd overrides detection. version overrides the runtime major/minor sequence.
+    Check config readability, selected proxy, health, clock, schedule, disk and runtime. Windows
+    adds ACL and Update-service checks. A missing systemd environment skips cron verification.
+    Print per-check exceptions and continue. Do not repair state, send an agent key or write
+    an agent log. Process proxy selection and network/read commands still occur. Injected
+    callbacks control their own side effects. Success does not authenticate the saved key
+    or prove inventory, update, scheduling execution or remediation success.
+    """
     windows = os.name == "nt" if windows is None else windows
     state = state_dir or (os.path.dirname(WIN_STATE) if windows else "/var/lib/nimstead")
     as_admin = "Administrator" if windows else "root"
@@ -3764,7 +3900,7 @@ def doctor(insecure_http=False, run=sh, read=_read_config, fetch=_server_reply, 
         except AgentError as e:
             raise _DoctorFail(str(e), "Rerun enroll with --proxy http://host:port.") from None
         if not url:
-            return "none: connects directly"
+            return "no explicit proxy selected; environment or existing process settings can still apply"
         u = urllib.parse.urlsplit(url)
         try:
             connect((u.hostname, u.port or (443 if u.scheme == "https" else 80)), 10).close()
@@ -3901,10 +4037,14 @@ def _update_then_rerun(a, argv):
 
 
 def main(argv=None):
-    """Run the CLI with optional argument list argv and return its exit status.
+    """Run CLI arguments argv, or sys.argv[1:] when None, and return a normal command status.
 
-    Logs completion or unexpected failure and disables logging afterwards. Commands can change
-    packages, scheduling, and local state; see each subcommand. Unexpected exceptions propagate."""
+    Commands select collection, enrolment, reporting, scheduling, updates and host changes.
+    AgentError inside dispatch prints an error and returns 1. Selected job/problem outcomes
+    return 2. Argparse SystemExit and unexpected errors can propagate. Logging records normal
+    completion or unexpected Exception where enabled, then finally disables the logging flag.
+    This does not imply every command or failure writes a log. See agent-cli.md for scope.
+    """
     global _log_on
     try:
         rc = _main(argv)
@@ -3918,18 +4058,25 @@ def main(argv=None):
 
 
 def app_flags(p):
-    """Add opt-in Python/npm collection options to argparse parser p; return None."""
+    """Add scan-apps and repeatable app-root arguments to parser p in place; return None.
+
+    p is an argparse-compatible parser. Existing-option conflicts and parser errors propagate.
+    This helper defines options only. It does not inspect roots or enable collection.
+    """
     p.add_argument("--scan-apps", action="store_true",
                    help="also read Python and npm packages' own metadata (site-packages, node_modules) in the usual install folders "
-                        "and under each --app-root, within a 2-minute budget; nothing is run")
+                        "and under each --app-root, within a 2-minute budget")
     p.add_argument("--app-root", action="append", default=[], metavar="DIR",
                    help="with --scan-apps: a folder holding virtualenvs or projects, searched 8 levels deep (repeatable)")
 
 
 def app_roots(a):
-    """Return at most 20 absolute application-root paths from argparse Namespace a.
+    """Return absolute paths for the first 20 app_root strings in argparse Namespace a.
 
-    Raise AgentError if app_root is supplied without scan_apps."""
+    Require scan_apps when app_root is nonempty, otherwise raise AgentError. Extra roots are
+    silently omitted. Do not expand tildes, check existence or deduplicate. Current-directory
+    and malformed-namespace/path errors can propagate. No filesystem writes occur.
+    """
     if a.app_root and not a.scan_apps:
         raise AgentError("--app-root needs --scan-apps")
     return [os.path.abspath(r) for r in a.app_root[:20]]
@@ -3964,7 +4111,7 @@ def _main(argv):
     co = sub.add_parser("collect", help="print this host's inventory; the opt-in scans run only if named here")
     co.add_argument("--scan-jars", action="store_true", help="include Java libraries on local disks")
     app_flags(co)
-    sub.add_parser("doctor", help="check this host's setup and print how to fix each failure; changes nothing")
+    sub.add_parser("doctor", help="check this host's setup without repairs or agent-key upload")
     sr = sub.add_parser("scan-remote", help="Windows: scan other hosts with no agent, over PowerShell remoting, as you (no stored credentials)")
     sr.add_argument("--server", help="report here; NIMSTEAD_TOKEN enrols hosts the first time")
     sr.add_argument("--print", action="store_true", dest="print_only", help="print each host's inventory instead of reporting it")
@@ -3975,9 +4122,9 @@ def _main(argv):
     un.add_argument("--yes", action="store_true", help="confirm")
     sc = sub.add_parser("schedule", help="install or update this host's systemd timers / scheduled tasks")
     sc.add_argument("--if-changed", action="store_true", help="only if this agent's schedule differs from the installed one")
-    rj = sub.add_parser("run-job", help="run one job read as JSON from stdin, print the result JSON (no network; sandbox testing)")
+    rj = sub.add_parser("run-job", help="run one JSON job from stdin without Assure API reporting (manager commands can use network; sandbox testing)")
     rj.add_argument("--yes", action="store_true", help="confirm: this changes installed packages on this host")
-    sub.add_parser("resume-job", help="Windows: continue the pending job after its reboot (no network)")
+    sub.add_parser("resume-job", help="Windows: continue the pending job after reboot without Assure API reporting")
     vr = sub.add_parser("verify-release", help="check a release manifest's signature against the pinned keys; print it if valid")
     vr.add_argument("manifest")
     vr.add_argument("sig")
@@ -4022,7 +4169,7 @@ def _main(argv):
                 raise AgentError("uninstall removes the agent and its key from this host; pass --yes to confirm")
             for r in uninstall():
                 print(f"removed {r}")
-            print("Nimstead agent uninstalled. Delete this host on the Assets page to remove its findings and history.")
+            print("Nimstead agent uninstalled. Delete this host on the Assets page to remove its findings, inventory, reports and jobs. Ledger events remain.")
         elif a.cmd == "schedule":
             cfg = load_config()
             if not (a.if_changed and cfg.get("schedule_version") == SCHEDULE_VERSION):

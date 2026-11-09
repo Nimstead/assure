@@ -281,3 +281,15 @@ Executed all five new how-to command blocks against a local synthetic benchmark.
 The site builds 78 articles with valid local links/anchors and six passing site tests. Playwright MCP verified both new pages at desktop/mobile widths and their mobile section links without overflow. Prose received humanizer and STE-style review. No Windows assessment, upstream benchmark download or shipped baseline change occurred.
 
 Every counted public callable in scripts/ now has a named semantic review. Remaining agent interfaces, API handler/schema gaps, sandbox/web helper contracts and final root/reference/explanation/example review still keep the goal open.
+
+## Agent core, transport and dispatch checkpoint
+
+Reviewed Linux collection/parsers, config read/write, request/proxy/lock helpers, runners, logging, diagnostics and CLI dispatch. Expanded their parameter, return, mutation and error contracts. Added a separate developer reference while retaining command lookup and operator procedures in their own pages.
+
+Corrected reinstallation/enrolment identity claims. Direct enrolment creates a new server asset before later local validation/saving. Current installers invoke that path. Existing-host directory/remediation guides now preserve configuration and asset identity when changing local flags. Diagnostics no longer claims that no proxy selection means direct traffic. CLI help distinguishes absence of Assure reporting from manager network use. Uninstall output now states that ledger events remain.
+
+Offline assertions verified retained package rows after a failed query, destructive config-save failure, retained process proxy, doctor success without a saved key, enrolment before local refusal, and serialization before a request. CLI help executed. The focused suite passed 138 tests and 53 subchecks, with six Windows-only skips. Its loopback update test initially hit sandbox socket restrictions, then passed with local-network permission. The real file swap and smoke collection used only an owned temporary agent and ephemeral test signing key. Ruff and repository presence/link checks passed.
+
+The site builds 79 articles with six passing site tests. Playwright MCP verified the new reference and mobile diagnostic anchors without page overflow. Reference/how-to prose received humanizer and STE-style review. No production enrolment, host configuration edit, package change or agent release occurred.
+
+The agent review remains partial. Windows/remote collection, optional scan internals, job classes and remaining schedule/security/update helpers still need named completion. API gaps, sandbox/helpers and final editorial/example review also remain open.

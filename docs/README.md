@@ -54,6 +54,7 @@ Find commands, settings, formats, and limits.
 - [Lifecycle reference](reference/lifecycle.md)
 - [Platform update reference](reference/platform-updates.md)
 - [Agent command reference](reference/agent-cli.md)
+- [Agent collection and transport](reference/agent-core.md)
 - [Version comparison reference](reference/version-comparison.md)
 - [Priority score reference](reference/risk-score.md)
 - [Optional AI reference](reference/optional-ai.md)

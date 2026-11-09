@@ -162,3 +162,14 @@ The finding/database batch passed 106 focused tests and 46 subchecks, with two W
 | `scripts/xccdf_rules.py` | All 14 public functions, pattern maps and CLI paths | Reviewed numeric forms, regex labels, dispatch precedence, registry/audit/rights records, role reconciliation, byte-size/XML limits, direct-child traversal, provenance labels, collection-list deduplication, output writes and manual-success cases | Reviewed |
 
 71 baseline/documentation tests and 53 subchecks passed, with one native PowerShell syntax skip. Five guide blocks executed against an owned local fixture and verified documented output boundaries. No production files, hosts or benchmark feeds changed. All counted public Python callables under scripts/ now have review records. This does not complete remaining application, agent, sandbox or editorial/example requirements.
+
+## Agent core and CLI review
+
+| Source subset in agent/nimstead_agent.py | Review scope | Status |
+| --- | --- | --- |
+| config_path, parse_os_release, ecosystem_from_os_release, parse_dpkg, parse_rpm, parse_apk, package_db, reboot_pending, collect_linux, collect | Reviewed exact ID mapping, permissive row shapes, source precedence, retained partial rows, empty-success status, injected callbacks, inventory fields and error boundaries. Windows collector internals remain separate | Named subset reviewed |
+| load_config, save_config, winhttp_proxy, use_proxy, post, run_lock | Reviewed trusted config shape, process globals, truncate-before-serialization, retained proxy state, initial/default opener behavior, no redirects, request/response boundaries and advisory lock lifecycle | Named subset reviewed |
+| sh, ps, wu, free_bytes, log_event | Reviewed runner effects/statuses, source-fragment replacement, ancestor failures, conditional logs, rotation/redaction limits and propagated exceptions | Named subset reviewed |
+| inventory, with_apps, doctor, main, app_flags, app_roots and private dispatch/query helpers | Reviewed local opt-ins, shared-object mutation, all diagnostic predicates/callbacks, CLI argument/status paths, update handoff, enrolment ordering, optional directory reporting and setup side effects | Named subset reviewed |
+
+138 focused tests and 53 subchecks passed. Six native Windows cases were skipped. Offline counterexamples establish the documented partial/failure limits. Loopback update exercised a temporary signed agent and a read-only smoke collection. No production key, enrolment, config file or release was changed. Remaining agent functions/methods retain partial status until their own review.

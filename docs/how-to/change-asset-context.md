@@ -53,8 +53,15 @@ You also need local administrator access to configure the agent's directory opti
 
 1. Open the intended Windows host's details drawer.
 2. Enable **Directory source** when the control is available.
-3. Configure the agent's `--ad-discovery` option. See the [agent command reference](../reference/agent-cli.md).
-4. After a report, inspect the directory-observation section on Assets.
+3. On the host, retain a protected copy of its existing agent.json configuration.
+4. Set ad_discovery to true in that existing JSON file with an elevated editor.
+5. Save valid JSON while preserving its asset ID, key and all other fields.
+6. Run the agent's report command.
+7. Inspect the directory-observation section on Assets.
+
+The Windows configuration is normally C:\ProgramData\Nimstead\agent.json. Keep its contents protected because they include the agent key. Restore the protected copy if an edit makes the configuration unreadable.
+
+For a first enrolment, --ad-discovery records this option. Do not enrol an existing host again solely to change it. That creates a new asset. See the [agent command reference](../reference/agent-cli.md).
 
 The flag permits directory uploads from that host. More than one host can hold it. Each accepted upload replaces the organisation's entire stored directory list. Select collectors with that replacement behavior in mind.
 

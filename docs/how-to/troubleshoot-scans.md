@@ -16,17 +16,19 @@ On Windows, run in elevated PowerShell:
 & (Resolve-Path "$env:ProgramFiles\Nimstead\runtime\*\python.exe")[0] -I "$env:ProgramFiles\Nimstead\nimstead_agent.py" doctor
 ```
 
-`doctor` changes nothing and does not send the agent key. Each check prints `ok` or `FAIL` with recovery advice. A failure returns a nonzero exit status. A stopped Windows Update service is normal; a disabled service fails the check.
+`doctor` performs no repair and does not send the agent key. It can configure its process proxy and make a health request. Each check prints `ok` or `FAIL` with recovery advice. A failure returns a nonzero exit status. A stopped Windows Update service is normal. A disabled service fails the check.
 
 ## A machine is not reporting
 
 1. Check the asset's last report time. Assure marks a machine as not reporting after 14 hours.
 2. Run the agent's `doctor` command on the machine. Use the platform-specific command above.
-3. Resolve each `FAIL` result. Check the configured server address, proxy, clock, schedule, disk space, and permissions as indicated.
+3. Resolve failures relevant to delivery. Check the server address, proxy, clock, schedule and permissions as indicated.
 4. Inspect the local agent log: `/var/lib/nimstead/agent.log` on Linux or `C:\ProgramData\Nimstead\agent.log` on Windows. Root or administrator access is required.
 5. Run the enrolled agent's `report` command with its normal service privileges. Confirm that the asset's last report time advances.
 
-Do not enrol the machine repeatedly to diagnose a network failure. Keep its existing state and key while checking connectivity.
+Do not enrol the machine repeatedly to diagnose a network failure. Keep its existing state and key while checking connectivity. Direct enrolment and the current installers create a new asset.
+
+A diagnostics pass does not authenticate the saved key or confirm inventory delivery. Non-systemd cron schedules are not checked. Windows Update and disk checks also cover remediation prerequisites. The report command does not use doctor as a gate. Use the report and asset-time checks above to verify delivery.
 
 ## A scan is incomplete
 

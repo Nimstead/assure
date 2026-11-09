@@ -8,6 +8,14 @@ Permit Assure to apply approved changes to a test host. You need an organisation
 2. Enrol disposable hosts with **Test machines** selected. Production changes remain disabled unless `NIMSTEAD_ALLOW_PRODUCTION_REMEDIATION=1` is set on the server.
 3. In **Settings → Trust ladder**, select **Approve** and save. This requires a person to approve each planned fix.
 
+## Opt in an existing host
+
+For an already enrolled test host, retain a protected copy of its agent.json file. Find its path in the [configuration reference](../reference/agent-core.md#configuration-and-state). Set allow_remediation to true in that existing JSON file. Preserve the asset ID, key and all other fields.
+
+Run that agent's schedule command with its normal service privileges to add the job timer/task. Confirm the configuration remains readable with doctor, then verify the expected schedule. Do not reenrol solely to change this flag. Enrolment creates another asset.
+
+Restore the protected copy if the configuration edit fails. Setting this flag does not change the server's production-execution restriction or convert a production asset into a test asset.
+
 ## Define health checks
 
 On **Assets**, enter the important services under **Health units**, such as `nginx, postgresql`. Use the actual service names on that host.

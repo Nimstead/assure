@@ -287,6 +287,13 @@
     "product": "assure"
   },
   {
+    "source": "docs/reference/agent-core.md",
+    "slug": "reference/agent-core",
+    "title": "Agent collection and transport",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
     "source": "docs/reference/http-api.md",
     "slug": "reference/http-api",
     "title": "HTTP API reference",

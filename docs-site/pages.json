@@ -579,5 +579,12 @@
     "title": "Agent job execution",
     "group": "Reference",
     "product": "assure"
+  },
+  {
+    "source": "docs/reference/assets-api.md",
+    "slug": "reference/assets-api",
+    "title": "Asset and inventory API",
+    "group": "Reference",
+    "product": "assure"
   }
 ]

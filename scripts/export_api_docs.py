@@ -122,9 +122,51 @@ def render() -> dict[str, str]:
                      "plan_asset_ids": {"type": "array", "items": {"type": "string"}}}
     schema["components"]["schemas"]["WindowsUpdateDetail"] = {
         "type": "object", "properties": update_detail, "required": list(update_detail), "additionalProperties": False}
+    asset_fields = {name: {"type": "string"} for name in ("id", "hostname", "os_name", "ecosystem", "kind", "criticality", "first_seen", "last_seen")}
+    asset_fields |= {name: {"type": "boolean"} for name in ("internet_facing", "directory_source", "sandbox")}
+    asset_fields |= {"ring": {"type": "integer"}, "health_units": {"type": "array", "items": {"type": "string"}},
+                     "open_by_priority": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}}}
+    app_counts = {"type": "object", "properties": {name: {"type": "integer", "minimum": 0} for name in ("assessed", "inventory_only")},
+                  "required": ["assessed", "inventory_only"], "additionalProperties": False}
+    host_fields = {name: {"type": "string"} for name in ("agent_version", "agent_update")}
+    host_fields |= {name: {"type": "boolean"} for name in ("agent_outdated", "not_reporting")}
+    host_fields |= {"agent_update_error": {"type": ["string", "null"]}, "facts": {"type": "object"},
+                    "maintenance_window": {"type": ["object", "null"]}}
+    external_fields = {name: {"type": "string"} for name in ("txt_name", "txt_value", "proof_path")}
+    external_fields |= {"verified": {"type": "boolean"}, "verified_at": {"type": ["string", "null"]}}
+    for name, kind, extra in (("HostAsset", "host", host_fields), ("ApplicationAsset", "application", {}),
+                               ("ExternalAsset", "external", external_fields)):
+        fields = {**asset_fields, **extra, "kind": {"const": kind, "type": "string"}, "apps": app_counts}
+        schema["components"]["schemas"][name] = {"type": "object", "properties": fields,
+                                                   "required": [*asset_fields, *extra], "additionalProperties": False}
+    schema["components"]["schemas"]["AssetRow"] = {"oneOf": [{"$ref": f"#/components/schemas/{name}"}
+                                                                            for name in ("HostAsset", "ApplicationAsset", "ExternalAsset")]}
+    created_fields = {**schema["components"]["schemas"]["ApplicationAsset"]["properties"], "upload_token": {"type": "string"}}
+    schema["components"]["schemas"]["CreatedApplication"] = {"type": "object", "properties": created_fields,
+                                                               "required": [*asset_fields, "upload_token"], "additionalProperties": False}
+    coverage_fields = {name: {"type": "integer", "minimum": 0} for name in ("assessed", "inventory_only")}
+    coverage_fields["not_assessed"] = {"type": "array", "maxItems": 200, "items": {"type": "object", "properties": {
+        "name": {"type": "string"}, "publisher": {"type": ["string", "null"]}, "hosts": {"type": "integer", "minimum": 0}},
+        "required": ["name", "publisher", "hosts"], "additionalProperties": False}}
+    action_fields = {name: {"type": "string"} for name in ("ecosystem", "package")}
+    action_fields |= {name: {"type": ["string", "null"]} for name in ("fixed_version", "summary", "fix")}
+    action_fields |= {name: {"type": "array", "items": {"type": "string"}} for name in ("hosts", "asset_ids", "busy_asset_ids", "vulns")}
+    action_fields |= {name: {"type": "boolean"} for name in ("kev", "plannable", "person_only", "forward_only")}
+    action_fields["max_score"] = {"type": "integer"}
+    for name, fields in (("job", {"id": {"type": "string"}, "status": {"type": "string"}}),
+                         ("last_attempt", {"id": {"type": "string"}, "status": {"type": "string"}, "error": {"type": ["string", "null"]}})):
+        action_fields[name] = {"type": ["object", "null"], "properties": fields, "required": list(fields), "additionalProperties": False}
+    summary_fields = {name: {"type": "integer", "minimum": 0} for name in ("assets", "hosts_not_reporting", "agents_need_attention")}
+    summary_fields |= {"open_by_priority": asset_fields["open_by_priority"],
+                       "top_actions": {"type": "array", "maxItems": 10, "items": {"$ref": "#/components/schemas/SummaryAction"}},
+                       "attention": {"type": "array", "maxItems": 20, "items": {"$ref": "#/components/schemas/RemediationJob"}}}
+    for name, fields in (("ApplicationCoverage", coverage_fields), ("SummaryAction", action_fields), ("FleetSummary", summary_fields),
+                         ("AgentEnrolment", {"asset_id": {"type": "string"}, "agent_key": {"type": "string"}}),
+                         ("InventoryResult", {name: {"type": "integer", "minimum": 0} for name in ("open", "resolved")})):
+        schema["components"]["schemas"][name] = {"type": "object", "properties": fields, "required": list(fields), "additionalProperties": False}
     lines = ["# HTTP endpoint catalog", "",
              "Use the [OpenAPI JSON](openapi.json) for typed parameters, request models, defaults, and declared response schemas.", "",
-             "The export adds server/authentication metadata and selected contracts: findings, remediation, policy, Windows updates, baselines, notifications, CSV, SBOM, external-scan counters, agent manifest and distribution files. Other definitions come from the app.", "",
+             "The export adds server/authentication metadata and selected contracts: assets, inventory, fleet summary, findings, remediation, policy, Windows updates, baselines, notifications, CSV, SBOM, external-scan counters, agent manifest and distribution files. Other definitions come from the app.", "",
              "Authentication labels describe entry requirements. Organisation ownership, roles, origin checks, quotas, "
              "and operation-specific state checks still apply. See [HTTP API reference](http-api.md).", "",
              "Empty response schemas do not define a stable response contract. Inspect the linked handler and its tests "
@@ -161,6 +203,26 @@ def render() -> dict[str, str]:
                 # Body tokens and SSO cookies are described separately; no HTTP auth scheme represents them.
                 operation["security"] = []
             operation["x-authentication"] = auth
+            asset_response = None
+            asset_status = "200"
+            if route.path == "/api/assets":
+                if method == "GET":
+                    asset_response = {"type": "array", "items": {"$ref": "#/components/schemas/AssetRow"}}
+                else:
+                    asset_response, asset_status = {"$ref": "#/components/schemas/CreatedApplication"}, "201"
+            elif route.path == "/api/assets/{asset_id}" and method == "PATCH":
+                asset_response = {"$ref": "#/components/schemas/AssetRow"}
+            elif route.path == "/api/targets" or route.path == "/api/targets/{target_id}/verify":
+                asset_response = {"$ref": "#/components/schemas/ExternalAsset"}
+                asset_status = "201" if route.path == "/api/targets" else "200"
+            elif route.path in {"/api/coverage", "/api/summary", "/api/agent/enroll", "/api/agent/inventory"}:
+                response_name = {"/api/coverage": "ApplicationCoverage", "/api/summary": "FleetSummary",
+                                 "/api/agent/enroll": "AgentEnrolment", "/api/agent/inventory": "InventoryResult"}[route.path]
+                asset_response = {"$ref": f"#/components/schemas/{response_name}"}
+                asset_status = "201" if route.path == "/api/agent/enroll" else "200"
+            if asset_response:
+                operation["responses"][asset_status] = {"description": "Asset/inventory contract; see assets-api.md for state and count semantics.",
+                                                       "content": {"application/json": {"schema": asset_response}}}
             remediation_schema = None
             response_status = "200"
             if route.path == "/api/remediation/jobs":

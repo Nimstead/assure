@@ -6,7 +6,9 @@ The server uses FastAPI. Its schema is available at `/api/openapi.json`. Set `NI
 
 The live schema describes typed request parameters and request models. Many routes return dictionaries without response models, so their schema does not fully describe response fields. Use the route implementation and its tests when a response schema is empty.
 
-The [endpoint catalog](api-endpoints.md) lists every operation. The [exported OpenAPI JSON](openapi.json) provides lookup without a running server. The export adds authentication metadata and selected contracts: SBOM, external-scan counters, agent manifest, and distribution files. Its SBOM object schema does not replace the full upstream format schemas. Prefer your installed server’s schema when its version differs.
+The [endpoint catalog](api-endpoints.md) lists every operation. The [exported OpenAPI JSON](openapi.json) provides lookup without a running server. The export adds authentication metadata and selected contracts: assets, inventory, fleet summary, SBOM, external-scan counters, agent manifest, and distribution files. Its SBOM object schema does not replace the full upstream format schemas. Prefer your installed server’s schema when its version differs.
+
+The [asset and inventory reference](assets-api.md) defines asset variants, replacement behavior, enrolment results and fleet summary fields.
 
 ## Credentials
 

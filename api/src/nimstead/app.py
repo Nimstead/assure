@@ -72,7 +72,11 @@ AGENT_FILE = Path(os.environ.get("NIMSTEAD_AGENT_FILE", Path(__file__).parents[3
 
 @functools.cache
 def latest_agent_version() -> str:
-    """The version of the agent this server hands out; any host reporting something else is outdated."""
+    """Return the first quoted AGENT_VERSION assignment found in served source.
+
+    Read AGENT_FILE as UTF-8. Missing/unreadable files or no match return empty text.
+    The result is process-cached, including an empty result. Decode errors propagate.
+    A version mismatch alone does not establish that a host is older."""
     try:
         m = re.search(r'^AGENT_VERSION = "([^"]+)"', AGENT_FILE.read_text(encoding="utf-8"), re.M)
     except OSError:
@@ -907,14 +911,15 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/agent/enroll", status_code=201)
     def agent_enroll(body: Enroll, s: DB):
-        # Owning the enrol token and running the agent on the host is the proof of control:
-        # only enrolled assets are ever scanned.
-        """Exchange an enrolment token for a new asset ID and asset-specific agent key.
+        # The enrolment token authorizes asset creation, without independent host attestation.
+        """Create a new host asset and return asset_id plus its one-time agent_key.
 
-        The token is supplied in the JSON body; it must be valid, unexpired, and not revoked.
-
-        Operation-specific HTTP errors: 403, 429. See detail in the response.
-        Authentication and request-validation errors also apply where required."""
+        body supplies a valid enrolment token, hostname and optional OS text. No
+        hostname deduplication or host-side attestation occurs. Every accepted call
+        creates another asset. Inherit sandbox from the token. Store a key hash.
+        Commit asset/evidence before returning the raw key. A later client failure
+        does not remove that enrolment. Token/rate/asset limits return 403 or 429.
+        Database, evidence and key errors can propagate. No browser session is needed."""
         et = s.get(EnrollToken, sha(body.token))
         if not et or et.revoked or (et.expires and et.expires < now()):
             raise HTTPException(403, "Invalid, expired or revoked enrolment token")
@@ -931,6 +936,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         return {"asset_id": asset.id, "agent_key": key}
 
     def room_for_asset(s: Session, org_id: str) -> None:
+        """Refuse when the current organisation asset count reaches the configured limit.
+
+        s is the Session and org_id selects all asset kinds. Raise HTTP 403 at the
+        limit. This query is not a reservation or a concurrency-safe quota lock."""
         if s.scalar(select(func.count()).select_from(Asset).where(Asset.org_id == org_id)) >= MAX_ASSETS_PER_ORG:
             raise HTTPException(403, f"This organisation has reached its limit of {MAX_ASSETS_PER_ORG} assets "
                                      "(NIMSTEAD_MAX_ASSETS_PER_ORG); delete unused ones or ask your Nimstead administrator")
@@ -953,6 +962,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         collection: dict | None = None  # checked by engine's valid_document: closed and bounded. None: agent older than this
 
     def facts_ok(f: dict) -> bool:
+        """Return whether a facts dictionary passes structural and JSON-length bounds.
+
+        Check root size/keys, nested list/dictionary depth/count, string lengths
+        and scalar types. No per-fact semantic validation occurs. The final limit
+        uses json.dumps character length, not encoded HTTP bytes. Serialization
+        and invalid direct input errors can propagate."""
         def plain(v, depth=0):
             if v is None or isinstance(v, (bool, int, float)):
                 return True
@@ -966,6 +981,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         return len(f) <= 64 and all(isinstance(k, str) and len(k) <= 64 for k in f) and plain(f) and len(json.dumps(f)) <= 64_000
 
     def current_agent(s: DB, authorization: Annotated[str | None, Header()] = None) -> Asset:
+        """Return the host whose stored key hash matches exact Bearer authorization.
+
+        s is the request Session. Reject absent/wrong scheme, unknown key and
+        non-host assets with HTTP 401. This lookup checks no agent freshness,
+        local consent or current enrolment-token validity. Database errors propagate."""
         if not authorization or not authorization.startswith("Bearer "):
             raise HTTPException(401, "Missing agent key")
         asset = s.scalar(select(Asset).where(Asset.agent_key_hash == sha(authorization.removeprefix("Bearer "))))
@@ -984,14 +1004,20 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/agent/inventory")
     def agent_inventory(body: Inventory, s: DB, asset: Annotated[Asset, Depends(current_agent)], tasks: BackgroundTasks):
-        """Replace this agent's inventory, rescan the asset, and return scan results.
+        """Update stored host metadata, rescan and return open/resolved counts.
 
-        Collection metadata and facts are validated; per-asset and organisation quotas apply.
+        body supplies validated inventory fields. asset is the authenticated host.
+        Enforce per-host interval and organisation attempt rate. The latter check
+        commits its quota record before later processing. Invalid collection
+        metadata becomes null. Missing facts retain previous facts. Invalid facts
+        retain previous facts and can mark host_facts failed when collection exists.
 
-        Requires this asset's agent bearer key.
-
-        Operation-specific HTTP errors: 429. See detail in the response.
-        Authentication and request-validation errors also apply where required."""
+        Replace agent-origin package rows unless a declared package_db source is
+        non-ok or has zero count. Other reports, including no collection document,
+        can replace with an empty list. Preserve SBOM rows. Rescan can commit before
+        job verification/policy work. Commit again before background report storage.
+        A later error can follow earlier persistence. Return 429 for rate refusal.
+        Stored-data, database, evidence and mapper errors can propagate."""
         if asset.last_inventory_at and now() - asset.last_inventory_at < timedelta(seconds=INVENTORY_MIN_SECONDS):
             raise HTTPException(429, f"Inventory already received; send at most one every {INVENTORY_MIN_SECONDS}s")
         if over_limit(s, "inventory:" + asset.org_id, ORG_INVENTORY_MAX_PER_HOUR):  # many fake hosts can't bypass the per-host limit
@@ -1238,6 +1264,14 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     LIST_FACTS = ("os_unmatched", "pending_reboot", "wsus", "wufb_quality_deferral_days", "last_update_success", "domain_role", "edition_id", "esu")
 
     def asset_json(a: Asset, counts: dict, paused: bool = False, release: bool | None = None, apps: dict | None = None) -> dict:
+        """Return common and kind-specific fields for database Asset a.
+
+        counts supplies open_by_priority without recalculation. Optional apps is
+        included only when truthy. paused/release control host update classification.
+        An omitted release probes signed distribution availability for hosts. Host
+        facts retain LIST_FACTS names only. Non-host rows omit host metadata.
+        No database write occurs. Source/cache/key and malformed-value errors can
+        propagate. Callers can pass empty counts/default policy context."""
         if release is None and a.kind == "host":
             release = signed_release() is not None
         return {
@@ -1292,6 +1326,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                 "not_assessed": [{"name": n, "publisher": p, "hosts": len(ids)} for (n, p), ids in top]}
 
     def owned_asset(s: Session, user: User, asset_id: str) -> Asset:
+        """Return asset_id from Session s when it belongs to user's organisation.
+
+        Missing or differently owned assets raise HTTP 404. No kind or write-role
+        check occurs here. Database errors propagate."""
         a = s.get(Asset, asset_id)
         if not a or a.org_id != user.org_id:
             raise HTTPException(404, "Asset not found")
@@ -1299,9 +1337,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.delete("/api/assets/{asset_id}", status_code=204)
     def delete_asset(asset_id: str, user: Admin, s: DB):
-        """Delete an organisation-owned asset and its associated rows; append the deletion to the ledger.
+        """Delete an owned asset and its findings, packages, jobs and scan records.
 
-        Requires an organisation admin browser session; API tokens are refused."""
+        asset_id selects any owned kind. user requires an admin browser session.
+        Append deletion evidence, delete rows and commit. Return HTTP 204 without
+        a body. The ledger remains. This does not stop a resident agent or dispatched
+        host process. Missing/unowned assets return 404. Storage/evidence errors
+        can propagate."""
         a = owned_asset(s, user, asset_id)
         evidence.append(s, user.org_id, "asset_deleted", a.id, {"by": user.email, "hostname": a.hostname})
         for model in (Finding, InstalledPackage, RemediationJob, ScanRecord):
@@ -1351,12 +1393,17 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.patch("/api/assets/{asset_id}")
     def update_asset(asset_id: str, body: AssetPatch, user: Admin, s: DB):
-        """Update an owned asset's editable context, ring, health checks, or maintenance settings.
+        """Update owned asset context, rescan and return an asset record.
 
-        Requires an organisation admin browser session; API tokens are refused.
+        body supplies optional context/ring/services/window fields. Null values are
+        omitted. Empty health_units clears that list. Empty window stores null to
+        inherit organisation policy. Even an empty patch appends evidence/rescans.
+        Return empty open_by_priority rather than recalculated totals. Optional app
+        coverage is absent. Host update classification uses default paused=False.
 
-        Operation-specific HTTP errors: 422. See detail in the response.
-        Authentication and request-validation errors also apply where required."""
+        Requires an admin browser session. Ownership failure returns 404. Invalid
+        services/windows return 422. Rescan can commit before response construction,
+        whose source/cache reads can still fail. Other storage/evidence errors propagate."""
         a = owned_asset(s, user, asset_id)
         if body.health_units and not all(remediate.SAFE_NAME.match(u) for u in body.health_units):
             raise HTTPException(422, "Invalid systemd unit name")
@@ -1378,6 +1425,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         criticality: Literal["low", "medium", "high", "critical"] = "medium"
 
     def owned_target(s: Session, user: User, target_id: str) -> Asset:
+        """Return an owned external asset from s for user and target_id.
+
+        Reuse owned_asset and refuse other kinds with HTTP 404. No proof request
+        or scan occurs. Database errors propagate."""
         a = owned_asset(s, user, target_id)
         if a.kind != "external":
             raise HTTPException(404, "Not an external target")
@@ -1468,9 +1519,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/assets", status_code=201)
     def create_application(body: AppNew, user: Admin, s: DB):
-        """Create an application asset and return its asset record plus a one-time upload_token.
+        """Create an application asset and return its record plus upload_token.
 
-        Requires an organisation admin browser session; API tokens are refused."""
+        body supplies name/context. user requires an admin browser session. No name
+        deduplication occurs. The one-time nmu_ token is stored as a hash and permits
+        this asset's SBOM uploads. Enforce the current asset-count quota with 403
+        on refusal. Commit asset/evidence before returning. Later response loss
+        does not undo creation. Storage/evidence errors can propagate."""
         room_for_asset(s, user.org_id)
         token ="nmu_" + secrets.token_urlsafe(32)  # CI upload token: SBOM endpoint only, rejected by every agent endpoint
         a = Asset(org_id=user.org_id, hostname=body.name, kind="application", criticality=body.criticality,
@@ -1483,14 +1538,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/assets/{asset_id}/sbom")
     async def upload_sbom(asset_id: str, request: Request, s: DB):
-        """Replace this asset's SBOM packages and return mapping counts and scan results.
+        """Read raw CycloneDX/SPDX JSON and return parser plus rescan counts.
 
-        Send raw CycloneDX or SPDX JSON, not multipart data. Authenticate with the asset's own
-        upload/agent bearer key or an admin session. The body limit is 10 MiB. Wrong keys return
-        401; malformed documents return 422. Agent-origin package rows remain unchanged.
-
-        Operation-specific HTTP errors: 413. See detail in the response.
-        Authentication and request-validation errors also apply where required."""
+        asset_id selects the asset. request supplies bytes and either its bearer
+        key or an admin session. Read before authentication, with a 10MiB streamed
+        cap and HTTP 413 on excess. Preserve agent-origin rows. Defer parse/store
+        work to ingest_sbom. Invalid formats return 422, wrong keys 401. Other
+        authentication/ownership failures and storage/evidence errors can occur."""
         raw = b""
         async for chunk in request.stream():  # cap chunked bodies too, which the middleware can't see
             raw += chunk
@@ -1499,6 +1553,18 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         return await run_in_threadpool(ingest_sbom, asset_id, request, raw, s)
 
     def ingest_sbom(asset_id: str, request: Request, raw: bytes, s: Session) -> dict:
+        """Authenticate, replace SBOM-origin rows and return mapping/rescan counts.
+
+        asset_id selects the destination. request supplies headers/session, raw is
+        the full document and s is the Session. Exact Bearer headers take precedence
+        over any browser session. Match any asset's stored key, then require its ID.
+        Otherwise require an admin session and owned asset.
+
+        Parse before replacing. Empty valid inventory clears SBOM rows. Update
+        last_seen for any kind, retain agent rows and append a raw-byte digest event.
+        Rescan commits storage. It receives inventory_received=False and does not
+        perform the agent job-verification/automatic-planning sequence here. Parse
+        failures return 422. Other errors can propagate after earlier effects."""
         auth = request.headers.get("authorization", "")
         if auth.startswith("Bearer "):  # the asset's own key / upload token, for that asset only
             a = s.scalar(select(Asset).where(Asset.agent_key_hash == sha(auth.removeprefix("Bearer "))))
@@ -2535,9 +2601,18 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/summary")
     def summary(user: CurrentUser, s: DB):
-        """Return fleet counts, priority totals, recommended upgrades, and jobs needing attention.
+        """Return asset/priority counts, up to ten actions and twenty attention jobs.
 
-        Requires a user session or a read-only organisation API token. API tokens cannot use write methods."""
+        user requires a session or eligible read token. Sweep/commit job timeouts
+        first. Rank open fixable groups by KEV, maximum score and distinct CVE count.
+        Select a highest stored fix using ecosystem ordering or lexical fallback.
+        Inspect at most fifty recent jobs per action. Include active/failed attempt
+        hints and fix-path classification without creating a plan.
+
+        Host attention uses stored last_seen and current update classifications.
+        Asset count includes all kinds. This GET can write timeout state. Queries
+        are not one atomic snapshot. Comparator, source/cache, storage and evidence
+        failures can propagate after the sweep commit."""
         remediate.sweep(s, user.org_id)
         is_open = (Finding.org_id == user.org_id, Finding.status == "open")
         # A setting has no fixed version, but one the agent can change is a fix like any other

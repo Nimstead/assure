@@ -50,6 +50,8 @@ The HTTP response also includes two integer scan results:
 
 These counts are not pagination totals for the Findings screen. Available advisories and collection completeness affect the result.
 
+For credential precedence, last_seen updates and job-verification differences, see [SBOM authentication and effects](assets-api.md#sbom-authentication-and-effects).
+
 ## Replacement and errors
 
 Each successful upload replaces all packages with origin `sbom` for that asset. Agent-collected packages remain. An empty valid document clears the SBOM inventory, so upload the complete inventory for each build.

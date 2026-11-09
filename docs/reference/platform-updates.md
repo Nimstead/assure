@@ -102,3 +102,10 @@ An eligible manifest for the same agent version can still update its Windows run
 - [Release manifest and keys](../release-keys.md)
 - [Why agent updates are signed](../explanation/signed-updates.md)
 - Source: [`updates.py`](../../api/src/nimstead/updates.py), [`sign_release.py`](../../scripts/sign_release.py), and the update functions in [`nimstead_agent.py`](../../agent/nimstead_agent.py)
+
+
+## Agent helper contracts
+
+The single-file agent's ed25519_verify(pub,msg,sig) checks point encodings, scalar bounds and the verification equation. Public key and signature must be bytes of length 32 and 64. Invalid shapes return false. Invalid message types can raise TypeError. This helper does not select trusted keys or reject every low-order/subgroup case. Release verification supplies pinned keys separately.
+
+version_tuple(v) accepts an exact three-component numeric string and returns integer components, otherwise null. Leading zeros and Unicode decimal digits are accepted. It has no SemVer suffix support. Very long integer text can raise ValueError.

@@ -3087,7 +3087,14 @@ _ED_BASE = _ed_decode((4 * pow(5, _P - 2, _P) % _P).to_bytes(32, "little"))
 
 
 def ed25519_verify(pub, msg, sig):
-    """True only for a valid signature by pub over msg; never raises on malformed input."""
+    """Return the Ed25519 verification equation result for pub, msg and sig.
+
+    pub/sig must be bytes of length 32/64, otherwise return False. Reject invalid
+    point encodings and scalar S >= L. msg must support byte concatenation and is
+    not bounded here. Invalid message types can raise TypeError after key/signature
+    shape checks. No low-order/subgroup rejection or public-key trust selection
+    occurs. Release verification supplies pinned public keys separately.
+    """
     if not (isinstance(pub, bytes) and isinstance(sig, bytes)) or len(pub) != 32 or len(sig) != 64:
         return False
     a, r = _ed_decode(pub), _ed_decode(sig[:32])
@@ -3215,7 +3222,12 @@ def post(server, path, body, insecure_http, key=None, raw=False, limit=MAX_AGENT
 
 
 def version_tuple(v):
-    """Return a three-integer tuple for a major.minor.patch string, otherwise None."""
+    """Return three integer components for an exact major.minor.patch string.
+
+    Other values return None. Leading zeros and Unicode decimal digits are
+    accepted by the regex/int conversion. No SemVer suffixes or numeric bounds
+    are enforced. Extremely long integer text can raise ValueError.
+    """
     m = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", v) if isinstance(v, str) else None
     return tuple(int(x) for x in m.groups()) if m else None
 

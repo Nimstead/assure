@@ -84,6 +84,22 @@
         "title": "AcceptMany",
         "type": "object"
       },
+      "AgentEnrolment": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_key": {
+            "type": "string"
+          },
+          "asset_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset_id",
+          "agent_key"
+        ],
+        "type": "object"
+      },
       "AgentJobPlan": {
         "additionalProperties": false,
         "properties": {
@@ -146,6 +162,143 @@
           "name"
         ],
         "title": "AppNew",
+        "type": "object"
+      },
+      "ApplicationAsset": {
+        "additionalProperties": false,
+        "properties": {
+          "apps": {
+            "additionalProperties": false,
+            "properties": {
+              "assessed": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "inventory_only": {
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "assessed",
+              "inventory_only"
+            ],
+            "type": "object"
+          },
+          "criticality": {
+            "type": "string"
+          },
+          "directory_source": {
+            "type": "boolean"
+          },
+          "ecosystem": {
+            "type": "string"
+          },
+          "first_seen": {
+            "type": "string"
+          },
+          "health_units": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "internet_facing": {
+            "type": "boolean"
+          },
+          "kind": {
+            "const": "application",
+            "type": "string"
+          },
+          "last_seen": {
+            "type": "string"
+          },
+          "open_by_priority": {
+            "additionalProperties": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "os_name": {
+            "type": "string"
+          },
+          "ring": {
+            "type": "integer"
+          },
+          "sandbox": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "hostname",
+          "os_name",
+          "ecosystem",
+          "kind",
+          "criticality",
+          "first_seen",
+          "last_seen",
+          "internet_facing",
+          "directory_source",
+          "sandbox",
+          "ring",
+          "health_units",
+          "open_by_priority"
+        ],
+        "type": "object"
+      },
+      "ApplicationCoverage": {
+        "additionalProperties": false,
+        "properties": {
+          "assessed": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "inventory_only": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "not_assessed": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "hosts": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "publisher": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "name",
+                "publisher",
+                "hosts"
+              ],
+              "type": "object"
+            },
+            "maxItems": 200,
+            "type": "array"
+          }
+        },
+        "required": [
+          "assessed",
+          "inventory_only",
+          "not_assessed"
+        ],
         "type": "object"
       },
       "ApproveReq": {
@@ -260,6 +413,19 @@
         },
         "title": "AssetPatch",
         "type": "object"
+      },
+      "AssetRow": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/HostAsset"
+          },
+          {
+            "$ref": "#/components/schemas/ApplicationAsset"
+          },
+          {
+            "$ref": "#/components/schemas/ExternalAsset"
+          }
+        ]
       },
       "BaselineAggregate": {
         "additionalProperties": false,
@@ -491,6 +657,100 @@
         ],
         "type": "object"
       },
+      "CreatedApplication": {
+        "additionalProperties": false,
+        "properties": {
+          "apps": {
+            "additionalProperties": false,
+            "properties": {
+              "assessed": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "inventory_only": {
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "assessed",
+              "inventory_only"
+            ],
+            "type": "object"
+          },
+          "criticality": {
+            "type": "string"
+          },
+          "directory_source": {
+            "type": "boolean"
+          },
+          "ecosystem": {
+            "type": "string"
+          },
+          "first_seen": {
+            "type": "string"
+          },
+          "health_units": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "internet_facing": {
+            "type": "boolean"
+          },
+          "kind": {
+            "const": "application",
+            "type": "string"
+          },
+          "last_seen": {
+            "type": "string"
+          },
+          "open_by_priority": {
+            "additionalProperties": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "os_name": {
+            "type": "string"
+          },
+          "ring": {
+            "type": "integer"
+          },
+          "sandbox": {
+            "type": "boolean"
+          },
+          "upload_token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "hostname",
+          "os_name",
+          "ecosystem",
+          "kind",
+          "criticality",
+          "first_seen",
+          "last_seen",
+          "internet_facing",
+          "directory_source",
+          "sandbox",
+          "ring",
+          "health_units",
+          "open_by_priority",
+          "upload_token"
+        ],
+        "type": "object"
+      },
       "Directory": {
         "properties": {
           "computers": {
@@ -585,6 +845,119 @@
           "hostname"
         ],
         "title": "Enroll",
+        "type": "object"
+      },
+      "ExternalAsset": {
+        "additionalProperties": false,
+        "properties": {
+          "apps": {
+            "additionalProperties": false,
+            "properties": {
+              "assessed": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "inventory_only": {
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "assessed",
+              "inventory_only"
+            ],
+            "type": "object"
+          },
+          "criticality": {
+            "type": "string"
+          },
+          "directory_source": {
+            "type": "boolean"
+          },
+          "ecosystem": {
+            "type": "string"
+          },
+          "first_seen": {
+            "type": "string"
+          },
+          "health_units": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "internet_facing": {
+            "type": "boolean"
+          },
+          "kind": {
+            "const": "external",
+            "type": "string"
+          },
+          "last_seen": {
+            "type": "string"
+          },
+          "open_by_priority": {
+            "additionalProperties": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "os_name": {
+            "type": "string"
+          },
+          "proof_path": {
+            "type": "string"
+          },
+          "ring": {
+            "type": "integer"
+          },
+          "sandbox": {
+            "type": "boolean"
+          },
+          "txt_name": {
+            "type": "string"
+          },
+          "txt_value": {
+            "type": "string"
+          },
+          "verified": {
+            "type": "boolean"
+          },
+          "verified_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "hostname",
+          "os_name",
+          "ecosystem",
+          "kind",
+          "criticality",
+          "first_seen",
+          "last_seen",
+          "internet_facing",
+          "directory_source",
+          "sandbox",
+          "ring",
+          "health_units",
+          "open_by_priority",
+          "txt_name",
+          "txt_value",
+          "proof_path",
+          "verified",
+          "verified_at"
+        ],
         "type": "object"
       },
       "FindingCompact": {
@@ -993,6 +1366,53 @@
         ],
         "type": "object"
       },
+      "FleetSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "agents_need_attention": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "assets": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "attention": {
+            "items": {
+              "$ref": "#/components/schemas/RemediationJob"
+            },
+            "maxItems": 20,
+            "type": "array"
+          },
+          "hosts_not_reporting": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "open_by_priority": {
+            "additionalProperties": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "top_actions": {
+            "items": {
+              "$ref": "#/components/schemas/SummaryAction"
+            },
+            "maxItems": 10,
+            "type": "array"
+          }
+        },
+        "required": [
+          "assets",
+          "hosts_not_reporting",
+          "agents_need_attention",
+          "open_by_priority",
+          "top_actions",
+          "attention"
+        ],
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1004,6 +1424,130 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HostAsset": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_outdated": {
+            "type": "boolean"
+          },
+          "agent_update": {
+            "type": "string"
+          },
+          "agent_update_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "agent_version": {
+            "type": "string"
+          },
+          "apps": {
+            "additionalProperties": false,
+            "properties": {
+              "assessed": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "inventory_only": {
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "assessed",
+              "inventory_only"
+            ],
+            "type": "object"
+          },
+          "criticality": {
+            "type": "string"
+          },
+          "directory_source": {
+            "type": "boolean"
+          },
+          "ecosystem": {
+            "type": "string"
+          },
+          "facts": {
+            "type": "object"
+          },
+          "first_seen": {
+            "type": "string"
+          },
+          "health_units": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "internet_facing": {
+            "type": "boolean"
+          },
+          "kind": {
+            "const": "host",
+            "type": "string"
+          },
+          "last_seen": {
+            "type": "string"
+          },
+          "maintenance_window": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "not_reporting": {
+            "type": "boolean"
+          },
+          "open_by_priority": {
+            "additionalProperties": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "os_name": {
+            "type": "string"
+          },
+          "ring": {
+            "type": "integer"
+          },
+          "sandbox": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "hostname",
+          "os_name",
+          "ecosystem",
+          "kind",
+          "criticality",
+          "first_seen",
+          "last_seen",
+          "internet_facing",
+          "directory_source",
+          "sandbox",
+          "ring",
+          "health_units",
+          "open_by_priority",
+          "agent_version",
+          "agent_update",
+          "agent_outdated",
+          "not_reporting",
+          "agent_update_error",
+          "facts",
+          "maintenance_window"
+        ],
         "type": "object"
       },
       "Inventory": {
@@ -1086,6 +1630,24 @@
           "packages"
         ],
         "title": "Inventory",
+        "type": "object"
+      },
+      "InventoryResult": {
+        "additionalProperties": false,
+        "properties": {
+          "open": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "resolved": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "open",
+          "resolved"
+        ],
         "type": "object"
       },
       "Invite": {
@@ -2013,6 +2575,138 @@
         "title": "Signup",
         "type": "object"
       },
+      "SummaryAction": {
+        "additionalProperties": false,
+        "properties": {
+          "asset_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "busy_asset_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "ecosystem": {
+            "type": "string"
+          },
+          "fix": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fixed_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "forward_only": {
+            "type": "boolean"
+          },
+          "hosts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "job": {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "status"
+            ],
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "kev": {
+            "type": "boolean"
+          },
+          "last_attempt": {
+            "additionalProperties": false,
+            "properties": {
+              "error": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "id": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "status",
+              "error"
+            ],
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "max_score": {
+            "type": "integer"
+          },
+          "package": {
+            "type": "string"
+          },
+          "person_only": {
+            "type": "boolean"
+          },
+          "plannable": {
+            "type": "boolean"
+          },
+          "summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vulns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "ecosystem",
+          "package",
+          "fixed_version",
+          "summary",
+          "fix",
+          "hosts",
+          "asset_ids",
+          "busy_asset_ids",
+          "vulns",
+          "kev",
+          "plannable",
+          "person_only",
+          "forward_only",
+          "max_score",
+          "job",
+          "last_attempt"
+        ],
+        "type": "object"
+      },
       "TargetNew": {
         "properties": {
           "criticality": {
@@ -2463,7 +3157,7 @@
     },
     "/api/agent/enroll": {
       "post": {
-        "description": "Exchange an enrolment token for a new asset ID and asset-specific agent key.\n\nThe token is supplied in the JSON body; it must be valid, unexpired, and not revoked.\n\nOperation-specific HTTP errors: 403, 429. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
+        "description": "Create a new host asset and return asset_id plus its one-time agent_key.\n\nbody supplies a valid enrolment token, hostname and optional OS text. No\nhostname deduplication or host-side attestation occurs. Every accepted call\ncreates another asset. Inherit sandbox from the token. Store a key hash.\nCommit asset/evidence before returning the raw key. A later client failure\ndoes not remove that enrolment. Token/rate/asset limits return 403 or 429.\nDatabase, evidence and key errors can propagate. No browser session is needed.",
         "operationId": "agent_enroll_api_agent_enroll_post",
         "requestBody": {
           "content": {
@@ -2479,10 +3173,12 @@
           "201": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/AgentEnrolment"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Asset/inventory contract; see assets-api.md for state and count semantics."
           },
           "422": {
             "content": {
@@ -2502,7 +3198,7 @@
     },
     "/api/agent/inventory": {
       "post": {
-        "description": "Replace this agent's inventory, rescan the asset, and return scan results.\n\nCollection metadata and facts are validated; per-asset and organisation quotas apply.\n\nRequires this asset's agent bearer key.\n\nOperation-specific HTTP errors: 429. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
+        "description": "Update stored host metadata, rescan and return open/resolved counts.\n\nbody supplies validated inventory fields. asset is the authenticated host.\nEnforce per-host interval and organisation attempt rate. The latter check\ncommits its quota record before later processing. Invalid collection\nmetadata becomes null. Missing facts retain previous facts. Invalid facts\nretain previous facts and can mark host_facts failed when collection exists.\n\nReplace agent-origin package rows unless a declared package_db source is\nnon-ok or has zero count. Other reports, including no collection document,\ncan replace with an empty list. Preserve SBOM rows. Rescan can commit before\njob verification/policy work. Commit again before background report storage.\nA later error can follow earlier persistence. Return 429 for rate refusal.\nStored-data, database, evidence and mapper errors can propagate.",
         "operationId": "agent_inventory_api_agent_inventory_post",
         "parameters": [
           {
@@ -2536,10 +3232,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryResult"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Asset/inventory contract; see assets-api.md for state and count semantics."
           },
           "422": {
             "content": {
@@ -2898,10 +3596,15 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AssetRow"
+                  },
+                  "type": "array"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Asset/inventory contract; see assets-api.md for state and count semantics."
           }
         },
         "security": [
@@ -2916,7 +3619,7 @@
         "x-authentication": "Session or read-only API token"
       },
       "post": {
-        "description": "Create an application asset and return its asset record plus a one-time upload_token.\n\nRequires an organisation admin browser session; API tokens are refused.",
+        "description": "Create an application asset and return its record plus upload_token.\n\nbody supplies name/context. user requires an admin browser session. No name\ndeduplication occurs. The one-time nmu_ token is stored as a hash and permits\nthis asset's SBOM uploads. Enforce the current asset-count quota with 403\non refusal. Commit asset/evidence before returning. Later response loss\ndoes not undo creation. Storage/evidence errors can propagate.",
         "operationId": "create_application_api_assets_post",
         "requestBody": {
           "content": {
@@ -2932,10 +3635,12 @@
           "201": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedApplication"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Asset/inventory contract; see assets-api.md for state and count semantics."
           },
           "422": {
             "content": {
@@ -2959,7 +3664,7 @@
     },
     "/api/assets/{asset_id}": {
       "delete": {
-        "description": "Delete an organisation-owned asset and its associated rows; append the deletion to the ledger.\n\nRequires an organisation admin browser session; API tokens are refused.",
+        "description": "Delete an owned asset and its findings, packages, jobs and scan records.\n\nasset_id selects any owned kind. user requires an admin browser session.\nAppend deletion evidence, delete rows and commit. Return HTTP 204 without\na body. The ledger remains. This does not stop a resident agent or dispatched\nhost process. Missing/unowned assets return 404. Storage/evidence errors\ncan propagate.",
         "operationId": "delete_asset_api_assets__asset_id__delete",
         "parameters": [
           {
@@ -2996,7 +3701,7 @@
         "x-authentication": "Admin browser session"
       },
       "patch": {
-        "description": "Update an owned asset's editable context, ring, health checks, or maintenance settings.\n\nRequires an organisation admin browser session; API tokens are refused.\n\nOperation-specific HTTP errors: 422. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
+        "description": "Update owned asset context, rescan and return an asset record.\n\nbody supplies optional context/ring/services/window fields. Null values are\nomitted. Empty health_units clears that list. Empty window stores null to\ninherit organisation policy. Even an empty patch appends evidence/rescans.\nReturn empty open_by_priority rather than recalculated totals. Optional app\ncoverage is absent. Host update classification uses default paused=False.\n\nRequires an admin browser session. Ownership failure returns 404. Invalid\nservices/windows return 422. Rescan can commit before response construction,\nwhose source/cache reads can still fail. Other storage/evidence errors propagate.",
         "operationId": "update_asset_api_assets__asset_id__patch",
         "parameters": [
           {
@@ -3023,10 +3728,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/AssetRow"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Asset/inventory contract; see assets-api.md for state and count semantics."
           },
           "422": {
             "content": {
@@ -3050,7 +3757,7 @@
     },
     "/api/assets/{asset_id}/sbom": {
       "post": {
-        "description": "Replace this asset's SBOM packages and return mapping counts and scan results.\n\nSend raw CycloneDX or SPDX JSON, not multipart data. Authenticate with the asset's own\nupload/agent bearer key or an admin session. The body limit is 10 MiB. Wrong keys return\n401; malformed documents return 422. Agent-origin package rows remain unchanged.\n\nOperation-specific HTTP errors: 413. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
+        "description": "Read raw CycloneDX/SPDX JSON and return parser plus rescan counts.\n\nasset_id selects the asset. request supplies bytes and either its bearer\nkey or an admin session. Read before authentication, with a 10MiB streamed\ncap and HTTP 413 on excess. Preserve agent-origin rows. Defer parse/store\nwork to ingest_sbom. Invalid formats return 422, wrong keys 401. Other\nauthentication/ownership failures and storage/evidence errors can occur.",
         "operationId": "upload_sbom_api_assets__asset_id__sbom_post",
         "parameters": [
           {
@@ -3693,10 +4400,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationCoverage"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Asset/inventory contract; see assets-api.md for state and count semantics."
           }
         },
         "security": [
@@ -5928,16 +6637,18 @@
     },
     "/api/summary": {
       "get": {
-        "description": "Return fleet counts, priority totals, recommended upgrades, and jobs needing attention.\n\nRequires a user session or a read-only organisation API token. API tokens cannot use write methods.",
+        "description": "Return asset/priority counts, up to ten actions and twenty attention jobs.\n\nuser requires a session or eligible read token. Sweep/commit job timeouts\nfirst. Rank open fixable groups by KEV, maximum score and distinct CVE count.\nSelect a highest stored fix using ecosystem ordering or lexical fallback.\nInspect at most fifty recent jobs per action. Include active/failed attempt\nhints and fix-path classification without creating a plan.\n\nHost attention uses stored last_seen and current update classifications.\nAsset count includes all kinds. This GET can write timeout state. Queries\nare not one atomic snapshot. Comparator, source/cache, storage and evidence\nfailures can propagate after the sweep commit.",
         "operationId": "summary_api_summary_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/FleetSummary"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Asset/inventory contract; see assets-api.md for state and count semantics."
           }
         },
         "security": [
@@ -5970,10 +6681,12 @@
           "201": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ExternalAsset"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Asset/inventory contract; see assets-api.md for state and count semantics."
           },
           "422": {
             "content": {
@@ -6090,10 +6803,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ExternalAsset"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Asset/inventory contract; see assets-api.md for state and count semantics."
           },
           "422": {
             "content": {

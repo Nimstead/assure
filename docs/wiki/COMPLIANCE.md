@@ -329,3 +329,16 @@ The contracts now distinguish preparation effects, command success, observed ver
 181 focused tests and 53 subchecks passed, with two native Windows skips. Eight offline counterexamples passed. An initial API counterexample used a nonexistent job and returned 404. A real dispatched fixture then established HTTP 409 for the servicing state's unsupported failed outcome. The final documentation reflects its rejected-record disposition. No real enrolment, package operation or restart occurred. Executable AST comparison confirms documentation-only agent edits.
 
 Repository checks report 632 public declarations, no undocumented declarations and no recognized link errors. Ruff, API export freshness, the 83-article build and six site tests pass. Playwright MCP verifies local desktop/mobile lookup, recovery steps, search and anchors. New prose received humanizer and STE-style review. Remaining unnamed agent/API interfaces, sandbox/helpers and final editorial/example review still prevent a whole-repository completion claim.
+
+
+## Asset API response and retention checkpoint
+
+Added a source-backed asset/inventory API reference. It separates common/host/external response fields and defines creation, context updates, deletion, enrolment, inventory retention, SBOM side effects and fleet summary fields. Added ten response schemas and route bindings to the deterministic export. The schema now contains 57 definitions for 83 operations.
+
+Corrected cached agent-version ordering implications and low-level verifier error guarantees. Asset patch responses provide empty finding counts and default pause context. Missing/invalid facts can preserve older facts. Partial or empty declared Linux package coverage can preserve older package rows. SBOM uploads update last_seen but follow a different job-verification path. These limitations now appear next to their API contracts.
+
+153 tests and 53 subchecks passed. The signed-update loopback test required network permission after a sandbox binding refusal. Four new API contract tests verify response fields and replacement/credential/evidence boundaries with temporary databases. Four agent-helper assertions verify message errors, subgroup-policy omission and numeric parsing. Executable AST comparison confirms app/agent behavior is unchanged.
+
+Ruff, generated export freshness and repository presence/links pass. Redocly validates the schema with 27 warnings, principally undeclared 4xx responses and license metadata. The 84-article build and six site tests pass. Playwright MCP verifies the local reference, schema, search and mobile anchors without overflow. New reference prose received humanizer and STE-style review.
+
+Other API handler/response gaps, sandbox/web helper contracts and final repository/site editorial and example checks still keep the objective open. Presence coverage and partial schema expansion do not establish full compliance.

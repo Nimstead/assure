@@ -20,7 +20,7 @@ Restore the protected copy if the configuration edit fails. Setting this flag do
 
 On **Assets**, enter the important services under **Health units**, such as `nginx, postgresql`. Use the actual service names on that host.
 
-After a change, the agent checks those services. A failed health check triggers rollback where the plan supports it.
+After a change, the agent checks those services. After a successful application handler, a later failed health check attempts recovery where available. Earlier handler failures can leave partial changes without automatic undo.
 
 ## Review and approve a fix
 
@@ -35,6 +35,17 @@ If a Windows stepping job succeeds with findings still open, review the next pro
 Plans that cannot be undone require explicit acknowledgement. Do not assume every application update has a rollback.
 
 To withdraw a plan before dispatch, cancel it on **Remediation**. Cancellation is available only for planned or approved jobs. A dispatched job can already run on the host. Use the host's recovery procedure if execution fails.
+
+## Inspect a failed execution
+
+1. Inspect the job steps and the host before another attempt.
+2. Treat aborted and No changes made text as insufficient proof that the host remained unchanged.
+3. Check application versions, registry values or Windows update state for the affected action.
+4. Preserve local outcome files and failed recovery artifacts for investigation.
+5. Use the host recovery procedure when automatic undo was unavailable or incomplete.
+6. Confirm host health and current inventory before another plan.
+
+Do not delete pending Windows state or recovery copies as a routine retry. The [agent execution reference](../reference/agent-jobs.md) identifies their limits.
 
 Keep **Auto** disabled until you have observed successful changes and failure recovery on test hosts. For its behaviour, read [remediation modes](../reference/remediation-modes.md) and [remediation safety](../explanation/remediation-safety.md).
 

@@ -572,5 +572,12 @@
     "title": "Windows and remote collection",
     "group": "Reference",
     "product": "assure"
+  },
+  {
+    "source": "docs/reference/agent-jobs.md",
+    "slug": "reference/agent-jobs",
+    "title": "Agent job execution",
+    "group": "Reference",
+    "product": "assure"
   }
 ]

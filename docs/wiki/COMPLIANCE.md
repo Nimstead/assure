@@ -318,3 +318,14 @@ Corrected exact client-product, guaranteed hive cleanup, universal partial-failu
 62 focused tests and 53 subchecks passed, with eight native Windows skips. Eight offline boundary checks passed and executable AST comparison confirms documentation-only agent edits. The site builds 82 articles with valid local links/anchors and six passing tests. Playwright MCP verified desktop/mobile lookup, task steps, local anchors and search. Prose received humanizer and STE-style review. The local preview required loopback permission after sandbox socket binding failed. No real Windows registry mount, remoting session, host enrolment or agent release occurred.
 
 The whole-repository audit remains in progress. Remaining job classes, agent/API contracts, sandbox/helper interfaces and final editorial/example review still require evidence.
+
+
+## Agent execution and recovery checkpoint
+
+Added a developer reference for Linux package jobs, Windows application/settings jobs, cumulative update phases, report retries and restart requests. Updated the operator recovery procedure and conceptual safety page without mixing their primary reader jobs. Expanded source docstrings and removed unsupported exact-image, exhaustive dry-run and never-raises claims.
+
+The contracts now distinguish preparation effects, command success, observed versions, selected service health, host recovery and server reporting. Aborted application/install paths can follow host changes. Undo closures exist only after successful handler completion. Linux applied results do not independently assert target attainment. Windows state can clear before terminal record creation. Saved outcome writes are non-atomic and sanitized filenames can collide.
+
+181 focused tests and 53 subchecks passed, with two native Windows skips. Eight offline counterexamples passed. An initial API counterexample used a nonexistent job and returned 404. A real dispatched fixture then established HTTP 409 for the servicing state's unsupported failed outcome. The final documentation reflects its rejected-record disposition. No real enrolment, package operation or restart occurred. Executable AST comparison confirms documentation-only agent edits.
+
+Repository checks report 632 public declarations, no undocumented declarations and no recognized link errors. Ruff, API export freshness, the 83-article build and six site tests pass. Playwright MCP verifies local desktop/mobile lookup, recovery steps, search and anchors. New prose received humanizer and STE-style review. Remaining unnamed agent/API interfaces, sandbox/helpers and final editorial/example review still prevent a whole-repository completion claim.

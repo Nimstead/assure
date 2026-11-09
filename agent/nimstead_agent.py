@@ -1442,11 +1442,17 @@ _INFO_FILES = ("preinst", "postinst", "prerm", "postrm", "config", "templates", 
 
 
 def repack_deb(run, name, version, arch, outdir, info_dir=DPKG_INFO, root="/"):
-    """Rebuild the installed package from its files and dpkg metadata (what dpkg-repack does).
+    """Build a recovery .deb from live installed files and selected dpkg metadata.
 
-    Used only when no pristine .deb of the installed version exists anywhere (it has usually been
-    superseded in the archive). Captures the package exactly as installed, including locally edited
-    conffiles, so a rollback restores the real prior state. Returns (path, note)."""
+    run supplies commands. name/version/arch identify the package. outdir must
+    exist. info_dir and root override metadata and file sources for trusted tests.
+    Return (archive path, copied/absent-path note). Copy regular files, directories
+    and links. Skip absent/special paths. This is not an atomic or exact host image.
+
+    Raise StepFailed for metadata/version/build checks. Filesystem and runner
+    errors propagate. Some failures leave the build directory or output archive.
+    Neither argument paths nor installed-file contents are independently trusted
+    here. The caller validates job identities before using this helper."""
     qual = f"{name}:{arch}" if os.path.exists(os.path.join(info_dir, f"{name}:{arch}.list")) else name
     rc, control = run(["dpkg-query", "-s", qual])
     if rc != 0:
@@ -1503,7 +1509,11 @@ def repack_deb(run, name, version, arch, outdir, info_dir=DPKG_INFO, root="/"):
 
 
 def apk_owned(db_text, names):
-    """Paths owned by the named packages, from apk's installed database (F: dir, R: file within it)."""
+    """Return listed paths for package names in an APK installed-database string.
+
+    Match P fields exactly against names. F sets the current directory and R adds
+    a file below it. Preserve duplicates/order. No normalization, filesystem access
+    or traversal validation occurs. Invalid input types can raise."""
     out = []
     for block in db_text.split("\n\n"):
         lines = block.splitlines()
@@ -1524,7 +1534,12 @@ ZYPPER_SECTIONS = ("to-install", "to-upgrade", "to-downgrade", "to-remove", "to-
 
 
 def dnf_touched(out, sections=DNF_SECTIONS):
-    """Package names in a dnf4 transaction table (sections between the header and 'Transaction Summary')."""
+    """Return names parsed from selected English dnf4 transaction-table sections.
+
+    out is text. sections defaults to DNF_SECTIONS. Stop at Transaction Summary.
+    Recognized headings toggle selection. Indented rows contribute their first
+    token. This parser does not prove the complete transaction or validate names.
+    Unexpected table formats can omit changes."""
     names, section = set(), False
     for ln in out.splitlines():
         s = ln.strip()
@@ -1539,7 +1554,11 @@ def dnf_touched(out, sections=DNF_SECTIONS):
 
 
 def zypper_touched(xml, sections=ZYPPER_SECTIONS):
-    """Package names in a `zypper --xmlout ... --dry-run` install summary."""
+    """Return package names from selected zypper XML transaction sections.
+
+    xml is trusted local command output. sections defaults to ZYPPER_SECTIONS.
+    Parse from the first <stream when present. Missing solvable names can add
+    None. Malformed XML raises ParseError. No schema validation occurs."""
     import xml.etree.ElementTree as ET
     names = set()
     # local root-run zypper output, not network input; the agent is stdlib-only so defusedxml isn't available
@@ -1554,12 +1573,17 @@ TOOLS = {"apt": "apt-get", "apk": "apk", "dnf": "dnf", "zypper": "zypper"}
 
 
 class Job:
-    """One remediation job: plan check, dry run, rollback artefact, change, health check, rollback on failure.
+    """Linux package execution with in-process recovery metadata.
 
-    apt: rollback = the old .deb (archive copy, or rebuilt from the installed files).
-    apk / dnf: neither keeps old builds, so rollback = snapshot of every file the planned packages own plus
-    the package database. Sound because the dry run proves the transaction touches only those packages.
-    Maintainer-script side effects (e.g. a restarted service) are not snapshotted; health checks cover them."""
+    job supplies manager, packages, health_units and optional settle_seconds.
+    run supplies commands. Filesystem paths and fail_after_apply are trusted
+    local overrides. Constructors can raise on malformed job fields. Direct use
+    does not enforce server approval, local consent or process locking.
+
+    execute returns an outcome/steps/error tuple. Recovery covers selected package
+    files/databases or a snapper pair. Manager-script effects, other filesystems
+    and incomplete dry-run parsing can exceed that scope. There is no durable
+    Linux phase journal for resumption after process failure."""
 
     def __init__(self, job, run=sh, rollback_root=ROLLBACK_ROOT, apt_cache=APT_CACHE, dpkg_info=DPKG_INFO, root="/",
                  fail_after_apply=False):
@@ -1575,7 +1599,9 @@ class Job:
         self.fail_after_apply = fail_after_apply  # sandbox fault injection (run-job only; never from the server)
 
     def path(self, p):
-        """Return string path p interpreted below this job's filesystem root."""
+        """Join p after stripping leading slashes below self.root.
+
+        This is lexical joining, without traversal containment or link checks."""
         return os.path.join(self.root, p.lstrip("/"))
 
     def step(self, name, cmd=None, ok=None, output="", cwd=None):
@@ -1594,9 +1620,11 @@ class Job:
     # --- state --------------------------------------------------------------
 
     def versions(self):
-        """Return planned-package names mapped to installed version strings, or None when unreadable.
+        """Return planned names mapped to observed installed versions or None.
 
-        For RPM, multiple installed versions are treated as unreadable rather than selecting one."""
+        APK read failure acts as an empty database. Apt preserves successful text.
+        RPM requires exactly one whitespace token. No target-version assertion is
+        made. Malformed package data and runner errors can propagate."""
         out = {}
         if self.mgr == "apk":
             try:
@@ -1652,7 +1680,11 @@ class Job:
         self.restarts = {u: self.restart_count(u) for u in self.units}
 
     def newer(self, to, cur):
-        """The package manager's own ordering (rpm-based managers refuse downgrades themselves; the dry run checks too)."""
+        """Compare target to current with dpkg/apk for those managers.
+
+        to/cur are version strings. RPM managers return True without comparison.
+        Their dry-run parsing supplies a separate downgrade check. Runner errors
+        propagate. Command failure returns False for dpkg/apk."""
         if self.mgr == "apt":
             return self.run(["dpkg", "--compare-versions", to, "gt", cur])[0] == 0
         if self.mgr == "apk":
@@ -1672,7 +1704,10 @@ class Job:
             self.snap_post = out.strip()
 
     def targets(self):
-        """Package specs to install: pinned to a canary-proven version when the server provides one."""
+        """Return manager-specific install specs from planned names and optional to.
+
+        Dnf uses name-version. Other managers use name=version. An absent/falsey
+        target leaves the name unpinned. No canary or version validation occurs here."""
         if self.mgr == "dnf":
             return [f"{p['name']}-{p['to']}" if p.get("to") else p["name"] for p in self.pkgs]
         return [f"{p['name']}={p['to']}" if p.get("to") else p["name"] for p in self.pkgs]
@@ -1680,7 +1715,11 @@ class Job:
     # --- dry run ------------------------------------------------------------
 
     def simulate(self):
-        """Dry-run the transaction; refuse if it would touch anything outside the plan (rollback couldn't undo it)."""
+        """Run the manager dry run and refuse parsed extra packages or downgrades.
+
+        Only parsed names are compared with the plan. Empty/incomplete parsed
+        sets can pass. Dnf requires Transaction Summary even for Nothing to do.
+        Command/parser failures raise. Host metadata/cache changes can occur."""
         down = set()  # apt: --only-upgrade, and pins are compared with dpkg before this (newer_than_installed)
         if self.mgr == "apt":
             out = self.step("simulate upgrade", ["apt-get", "-s", "install", "--only-upgrade", "--no-remove", *self.targets()])
@@ -1719,8 +1758,7 @@ class Job:
         if self.mgr == "apt":
             return self._save_debs()
         if self.mgr == "zypper" and self.snapper_ok():
-            # btrfs + snapper: a pre/post snapshot pair captures EVERYTHING the change does to the root filesystem,
-            # including what the packages' install scripts touch outside their own files
+            # Snapper recovery covers its configured snapshot scope, which can omit other mounts/subvolumes.
             rc, out = self.run(["snapper", "-c", "root", "create", "--type", "pre", "--print-number",
                                 "--cleanup-algorithm", "number", "--description", f"nimstead job {os.path.basename(self.dir)}"])
             self.step("snapper pre-change snapshot", ok=rc == 0 and out.strip().isdigit(), output=out)
@@ -1847,14 +1885,25 @@ class Job:
         self.health("after rollback")
 
     def discard_rollback(self, outcome):
-        """After the outcome is saved: the copy has done its job. A failed rollback keeps it for whoever repairs the host.
-        Only a folder this run made: a job id reused by a server can't delete a copy an earlier job kept."""
+        """Attempt removal of this run's recovery directory unless rollback_failed.
+
+        outcome is a status string. Existing directories not created by this object
+        are preserved. rmtree errors are ignored. The caller decides when to call."""
         if outcome != "rollback_failed" and getattr(self, "made_dir", False):
             shutil.rmtree(self.dir, ignore_errors=True)
 
     def execute(self):
-        """Returns (outcome, steps, error). outcome: applied | rolled_back | rollback_failed | aborted."""
-        try:  # prechecks: a failure here means nothing was changed
+        """Return (applied|rolled_back|rollback_failed|aborted,steps,error).
+
+        Validate identities, query versions, check services/space, refresh metadata,
+        parse a dry run and save recovery state. Pre-apply errors return aborted,
+        possibly after cache, directory or snapshot effects. After apply begins,
+        ordinary exceptions trigger a rollback attempt. BaseException propagates.
+
+        Applied requires command/database/service checks, but does not independently
+        require result_versions to reach targets. Empty health units skip service
+        checks. Restart counters and a settling delay are limited observations."""
+        try:  # preparation can refresh caches and leave recovery files even before apply
             ok = (self.mgr in TOOLS and bool(self.pkgs)
                   and all(SAFE_NAME.match(str(p.get("name", ""))) and SAFE_VERSION.match(str(p.get("from", ""))) for p in self.pkgs)
                   and all(SAFE_VERSION.match(str(p["to"])) for p in self.pkgs if p.get("to"))
@@ -1898,7 +1947,7 @@ class Job:
 
 # ---- Windows apps and settings (plan T17, T21, T38) ---------------------------------------------------------------
 # Closed maps held here, never sent by the server: a job names only a key from them and versions (strict regexes), so a
-# compromised server can only move a curated app to a newer published build, or apply one of these exact settings.
+# local maps restrict selected identities/settings. Handlers still rely on manager output and can partly fail.
 WINGET_IDS = {  # curated product key (server: winapps.py / msproducts.py) -> winget package id
     "google:chrome": "Google.Chrome", "mozilla:firefox": "Mozilla.Firefox", "mozilla:firefox_esr": "Mozilla.Firefox.ESR",
     "7-zip:7-zip": "7zip.7zip", "notepad-plus-plus:notepad++": "Notepad++.Notepad++", "videolan:vlc_media_player": "VideoLAN.VLC",
@@ -1954,9 +2003,16 @@ PS_VCLIBS = PS_WINDOWSAPP_FILE.replace("%PKG%", "Microsoft.VCLibs.140.00.UWPDesk
 
 
 class WinAppJob:
-    """manager winget | office | winconfig. Same contract as Job.execute: (outcome, steps, error).
-    winget is forward-only (most installers can't go back): the server only hands it out after a person approved that.
-    office rolls back to the build it found; winconfig restores the value it found."""
+    """Execute one allowlisted winget, Office or registry-setting action.
+
+    job supplies manager/packages/health_units. run supplies commands.
+    fail_after_apply is a local test override. Direct use checks no server approval
+    or local consent. execute returns (outcome,steps,error).
+
+    Undo closures exist only after a handler returns successfully. Handler errors
+    can return aborted after host changes, without undo. Office/settings recovery
+    is in memory only. Winget has no undo. Services are sampled, not exhaustively
+    tested. Invalid input/runner shapes can fail during construction or execution."""
 
     def __init__(self, job, run=sh, fail_after_apply=False):
         self.run, self.steps, self.mgr = run, [], job.get("manager")
@@ -1992,10 +2048,13 @@ class WinAppJob:
                 and (self.mgr == "winconfig" or (SAFE_BUILD.match(str(p.get("from", ""))) and SAFE_BUILD.match(str(p.get("to", ""))))))
 
     def execute(self):
-        """Execute the approved Windows application or configuration change and check service health.
+        """Return (outcome,steps,error) for one Windows application/setting action.
 
-        Return (outcome string, step list, error text or None). Attempt rollback where an undo action
-        exists; a failed forward-only change returns rollback_failed. Changes this host."""
+        Validate shape, compare numeric planned versions and check services before
+        invoking the handler. A handler exception returns aborted, even if it
+        already changed the host. Undo exists only after handler success. Later
+        service/test failure attempts that undo or reports rollback_failed for
+        winget. A successful undo does not repeat health or version verification."""
         try:
             self.step("job validated", ok=self.valid(), output="" if self.valid() else "unknown product or setting, or invalid version")
             p = self.pkgs[0]
@@ -2163,9 +2222,24 @@ OUTCOME_DIR = (os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "N
 
 
 def run_jobs(server, key, insecure_http, run=sh, outcome_dir=None, win_state=None, ran=None, **job_kw):
-    """Execute jobs, persisting every outcome before reporting so none is lost if the report fails.
-    Unsent outcomes from earlier runs are retried first. The id of every job that ran is appended to `ran`.
-    Returns (number of jobs not applied or not reported, whether a reboot is needed to continue a Windows job)."""
+    """Retry saved reports, execute fetched jobs and return (problem_count,reboot_needed).
+
+    server/key/insecure_http supply post credentials/options. run supplies host
+    commands. outcome_dir and win_state override local paths. job_kw reaches only
+    Linux Job construction. ran receives IDs after outcome writes, including
+    malformed jobs. Direct calls do not check configuration consent or lock state.
+
+    Retry sorted outcome JSON files first. Persist each terminal report before its
+    immediate send attempt. Writes truncate in place and can fail. Corrupt files
+    become .invalid. Reports rejected with detected 404/409 become .rejected.
+    Other AgentError reports remain for retry. Other I/O/shape errors can propagate.
+
+    Count failed outcomes, report errors and invalid records separately, so the
+    count is not a distinct-job total. Windows pending state can return early.
+    Applied Windows results clear state before the outcome write. Some failures
+    can therefore lose that local result. Earlier host effects are not undone by
+    reporting failure. Linux recovery copies are discarded after record returns,
+    even when the immediate upload failed, except after rollback_failed."""
     outcome_dir = outcome_dir or OUTCOME_DIR
     win_state = win_state or WIN_STATE
     os.makedirs(outcome_dir, mode=0o700, exist_ok=True)
@@ -2370,8 +2444,12 @@ PERMANENT_COMPANIONS = {("ServicingStackUpdate", "MainOS"), ("SafeOSDU", "WinRE"
 
 
 def removable(pkgs):
-    """(ok, detail) for the packages Windows Update will install. Rollback removes only the new cumulative package, so
-    that must not be permanent; every companion must be readable and either removable or a known permanent companion."""
+    """Return (allowed,detail) for trusted downloaded-package manifest dictionaries.
+
+    Require exactly one CumulativeUpdate reason with permanent is False. Other
+    packages must be nonpermanent or a configured permanent companion. Companion
+    parts can remain after rollback. This predicate does not execute removal or
+    prove runtime recovery. Invalid outer/nested types can raise."""
     main = [p for p in pkgs if p.get("reason") == "CumulativeUpdate"]
     if len(main) != 1:
         return False, f"expected one cumulative update package, found {len(main)}: {json.dumps(pkgs)[:600]}"
@@ -2442,8 +2520,11 @@ WU_SOURCE = None  # "microsoft": search Microsoft Update directly, not WSUS (enr
 
 
 def offered_instead(out):
-    """PS_FIND's second line as [{kb, title}], at most 10, anything malformed dropped. The server reads only the KB and the
-    title's month and decides from Microsoft's own data whether it's a step; this agent still installs only a KB a job names."""
+    """Parse offered-update JSON text to at most ten {kb,title} rows.
+
+    Consider only the first ten raw list entries. Keep dictionary entries with
+    SAFE_KB text. Convert KB/title to strings and clip titles to 200 characters.
+    Invalid JSON or a non-list returns []. Unexpected input types can raise."""
     try:
         items = json.loads(out)
     except ValueError:
@@ -2453,7 +2534,11 @@ def offered_instead(out):
 
 
 def clause_tail(text, n=300):
-    """The end of a long output from a clause boundary: a cut mid-word read "failed: is active" on a real abort."""
+    """Return stripped text, or an ellipsis plus a suffix near a clause boundary.
+
+    text is stringified. n defaults to 300. Long output uses its final n characters,
+    possibly dropping through an early semicolon-space. The ellipsis can make the
+    result longer than n. Invalid n types can raise."""
     t = str(text).strip()
     if len(t) <= n:
         return t
@@ -2483,7 +2568,10 @@ def ps(run, script, **kw):
 
 
 def boot_time():
-    """When this machine last booted (epoch seconds), from the tick counter; 0 where unknown."""
+    """Return estimated boot epoch seconds from time.time minus GetTickCount64.
+
+    Non-Windows returns zero. Windows uses ctypes and propagates platform/API
+    errors. The estimate is not an immutable boot identifier."""
     if os.name != "nt":
         return 0
     import ctypes
@@ -2502,7 +2590,11 @@ def windows_build():
 
 
 def netfx_build(run=sh):
-    """The file version MSRC's .NET Framework fixes are stated in; a .NET update doesn't change the Windows build."""
+    """Return the first token of Framework64 mscorlib.dll file-version output.
+
+    run defaults to sh. Require command success and a four-part numeric prefix.
+    The remaining token is not fully validated. Raise AgentError for failed or
+    unmatched output. Runner errors propagate. This reads a fixed 64-bit path."""
     rc, out = ps(run, r"(Get-Item (Join-Path $env:windir 'Microsoft.NET\Framework64\v4.0.30319\mscorlib.dll')).VersionInfo.FileVersion")
     if rc != 0 or not re.match(r"\d+\.\d+\.\d+\.\d+", out.strip()):
         raise AgentError(f"couldn't read the .NET Framework version: {out.strip()[-200:]}")
@@ -2510,7 +2602,18 @@ def netfx_build(run=sh):
 
 
 class WinJob:
-    """Phases: start -> (reboot) -> verify -> done | rollback -> (reboot) -> rolled_back. State lives in WIN_STATE."""
+    """Windows update state machine with ordinary JSON persistence across boots.
+
+    job starts state or None loads state_path. run/build/booted supply host probes.
+    settle, fail_after_apply and retry_wait are trusted local test overrides.
+    New state retains the job object. Loaded state receives partial validation.
+    Invalid arguments, state, files and runner results can raise.
+
+    advance returns a report or pending_reboot. Phases are start, verify and
+    rolled_back_pending. Direct use checks neither approval nor local consent.
+    Recovery is best effort and can leave companion packages or cluster effects.
+    JSON writes are not atomic. A terminal result clears state before returning
+    its product version, so later failures can lose resumable state."""
 
     def __init__(self, job=None, run=sh, state_path=WIN_STATE, build=windows_build, settle=None, fail_after_apply=False,
                  retry_wait=60, booted=None):
@@ -2536,7 +2639,12 @@ class WinJob:
             self.build = lambda: netfx_build(self.run)
 
     def valid(self):
-        """Return whether persisted job state has recognised phases and bounded, safe fields for execution."""
+        """Return whether selected persisted execution fields pass local predicates.
+
+        Validate recognized phases, product/KB/build patterns, selected types,
+        service names and settle 0..900. The job object, step contents, baseline
+        states and every nested field are not comprehensively validated. Date
+        text checks shape only. TypeError/AttributeError return False."""
         s = self.s
         try:
             return bool(
@@ -2561,7 +2669,11 @@ class WinJob:
 
     # -- plumbing
     def save(self):
-        """Write this Windows job's JSON state, creating its parent directory; I/O errors propagate."""
+        """Create the parent directory and truncate/write current state as JSON.
+
+        Inherits existing folder permissions, without an independent ACL check.
+        Writes are non-atomic. Filesystem/serialization failures can leave partial
+        state and propagate."""
         os.makedirs(os.path.dirname(self.state_path), exist_ok=True)
         with open(self.state_path, "w") as f:
             json.dump(self.s, f)  # inherits the locked-down folder ACL (secure_windows_dir)
@@ -2578,7 +2690,11 @@ class WinJob:
             raise StepFailed(f"{name} failed: {clause_tail(output)}")
 
     def _resume_cluster(self):
-        """Bring a drained cluster node back (after success, rollback or a failed start); recorded, never raises."""
+        """Attempt cluster resume when marked paused and not already resumed.
+
+        Record command status without checking final Up state. Runner errors can
+        propagate. A zero command status sets resumed even with unexpected output.
+        """
         if self.s.get("cluster") and not self.s.get("resumed"):
             rc, out = ps(self.run, PS_CLUSTER_RESUME)
             self.s["resumed"] = rc == 0
@@ -2602,9 +2718,10 @@ class WinJob:
         return {"outcome": "pending_reboot", "steps": self.s["steps"], "error": None, "versions": None}
 
     def restarted(self):
-        """Whether the machine has booted since the job started waiting. Seen for real (Windows 11 VM): after a DISM
-        removal with /norestart no reboot-pending flag is set, and a job poll that judged the rollback before the restart
-        found the new build still running and reported ROLLBACK FAILED."""
+        """Return True when the estimated boot time differs by over 120 seconds.
+
+        Absent saved boot also returns True. booted supplies an epoch estimate.
+        This heuristic can miss smaller differences or accept clock changes."""
         return self.s.get("boot") is None or abs(self.booted() - self.s["boot"]) > 120
 
     def rollups(self):
@@ -2618,8 +2735,12 @@ class WinJob:
         return {k: v for k, v in ROLLUP.findall(out.replace("\r", "")) if ("DotNetRollup" in k) == netfx}
 
     def health(self, when):
-        """Running now, and no crash or unexpected stop logged for it since the change (DECISIONS 29 for Windows,
-        plan T13): a service that dies and is restarted by its recovery actions can read "Running" when sampled."""
+        """Check selected services and selected SCM crash/stop events via run.
+
+        when labels steps. Wait for automatic services using PS_SERVICE_UP. When
+        changed_at is truthy, query events since max(change time,last boot).
+        Non-running state, crash text or failed query raises StepFailed. Empty
+        units skip checks. Other runner errors propagate."""
         since = self.s.get("changed_at")
         for u in self.s["units"]:
             rc, out = ps(self.run, PS_SERVICE_UP.replace("%SVC%", u), timeout=SERVICE_UP_WAIT + 60)
@@ -2632,7 +2753,14 @@ class WinJob:
 
     # -- phases
     def advance(self):
-        """Run until finished or until a reboot is needed. Returns a report dict (outcome may be pending_reboot)."""
+        """Advance state to a terminal report or pending_reboot.
+
+        Verify/rollback phases first wait for the boot-time heuristic. Start errors
+        attempt aborted results. Verify errors attempt removal, except servicing
+        steps return failed. Rollback-phase errors attempt rollback_failed results.
+        Recovery/result errors can still propagate. Host effects can precede any
+        outcome, including aborted. Returned failed is not accepted by the current
+        agent-report endpoint."""
         phase = self.s["phase"]
         if phase in ("verify", "rolled_back_pending") and not self.restarted():
             return {"outcome": "pending_reboot", "steps": self.s["steps"], "error": None, "versions": None}  # judge nothing yet
@@ -2764,7 +2892,9 @@ class WinJob:
         return self._verify()
 
     def ssu(self):
-        """This run installs the job's servicing stack step: the server marked it so, and it's the KB Windows Update offered."""
+        """Return whether servicing is truthy and current KB equals the alt KB.
+
+        This is state classification only. Manifest/hotfix checks occur elsewhere."""
         s = self.s
         return bool(s.get("servicing") and s.get("alt") and s["kb"] == s["alt"].get("kb"))
 
@@ -2827,9 +2957,19 @@ class WinJob:
 
 
 def restart_for_update(run=None, state_path=None, client=None, now=None):
-    """The restart a Windows job needs (plan T41). Servers restart now: the job was only handed out inside the
-    maintenance window. A workstation with someone signed in is told and may put it off until the job's deadline
-    (reboot_by), reminded at most hourly; then it restarts with a 15-minute warning. Returns ("now"|"later", message)."""
+    """Load validated pending Windows state and return (now|later,message).
+
+    run defaults to sh and state_path to WIN_STATE. client overrides workstation
+    detection. now supplies epoch seconds, with falsey values using current time.
+    Explorer-process count approximates signed-in users. A client with such users
+    waits until reboot_by, with at most hourly msg attempts. Notification status
+    is ignored and the attempt time is saved.
+
+    Otherwise request shutdown /r with 900 seconds when users are detected,
+    60 seconds otherwise. Return now after command acceptance, not an actual boot.
+    This helper does not check the maintenance window or phase eligibility beyond
+    WinJob validation. Missing/deformed state, invalid calendar dates and runner
+    errors can propagate. Failed shutdown status raises AgentError."""
     run, state_path = run or sh, state_path or WIN_STATE
     w = WinJob(run=run, state_path=state_path)
     if client is None:
@@ -2886,7 +3026,10 @@ def ad_computers(run=None):
 
 
 def windows_version_key(v):
-    """Return dotted numeric version v as an integer tuple for ordering; malformed components raise ValueError."""
+    """Return tuple(int(component)) for every dotted component of str(v).
+
+    Preserve tuple length for lexicographic comparison. No padding, nonnegative
+    check or build grammar validation occurs. Malformed components raise ValueError."""
     return tuple(int(x) for x in str(v).split("."))
 
 

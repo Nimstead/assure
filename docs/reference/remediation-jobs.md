@@ -2,6 +2,8 @@
 
 Remediation jobs describe approved package or configuration operations. Server planning, host execution, and finding verification are separate stages. A stored job does not establish local consent or successful repair.
 
+For local execution, recovery artifacts and report retry behavior, see [agent job execution](agent-jobs.md).
+
 ## HTTP operations
 
 Read operations accept user sessions or eligible read-only organisation API tokens. Job creation, approval, cancellation, and policy changes require an admin browser session. Agent operations require the asset's bearer key. Ownership, origin, and two-step authentication rules also apply.

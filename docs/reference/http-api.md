@@ -34,6 +34,8 @@ Sessions expire after 14 days or 12 hours of inactivity. Activity timestamps upd
 | `/api/findings/count` | Total matching findings |
 | `/api/findings/groups` | Findings grouped by vulnerability or package; at most 500 groups |
 | `/api/findings.csv` | Stream findings as CSV |
+| `/api/baselines`, `/api/baselines/{asset_id}`, `/api/baselines.csv` | [Stored Windows baseline results](windows-checks.md#baseline-results-and-api) |
+| `/api/settings/notifications*`, `/api/notify/confirm` | [Alert settings, test requests, and email consent](notifications.md) |
 | `/api/remediation/jobs` | List jobs and plan a package fix |
 | `/api/evidence/*` | Ledger, reports, signed packs, public key, and verifier |
 | `/api/health` | Unauthenticated deployment health check; excluded from OpenAPI |

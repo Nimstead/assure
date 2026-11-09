@@ -59,6 +59,8 @@ Each host must also opt in locally (`--allow-remediation` at install). The serve
 
 Webhook and email recipients are set by an admin in **Settings**.
 
+See [notification reference](reference/notifications.md) for consent, payloads, retries, and transport limits. An unauthenticated `smtp://` connection can send message content without TLS when the server does not advertise STARTTLS.
+
 ## Single sign-on
 
 Set up in **Settings** by an org admin, not with environment variables. Register `<NIMSTEAD_PUBLIC_URL>/api/auth/sso/callback` at your identity provider. Each email domain must be proven with a DNS TXT record before it routes sign-ins.

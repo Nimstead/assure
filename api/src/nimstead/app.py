@@ -1076,7 +1076,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/baselines")
     def baseline_fleet(user: CurrentUser, s: DB):
-        """How Windows hosts compare with the automated part of a baseline (DECISIONS 75). A reference, never a conformance result."""
+        """Return baselines/hosts/no_baseline for the caller's stored Windows host facts.
+
+        Select kind=host and ecosystem=Windows. Host summaries omit rules.
+        Aggregate outcome counts sum hosts. automated/manual describe each baseline's size.
+        No new collection or finding changes occur. Requires a session or eligible
+        read-only token. Bundled-rule and incompatible stored-fact errors propagate."""
         hosts, fleet, none = [], {}, 0
         for a in windows_hosts(s, user.org_id):
             r = winbaseline.evaluate(a.os_name, a.facts)
@@ -1095,6 +1100,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     @app.get("/api/baselines.csv")
     def export_baselines(user: CurrentUser, s: DB):
         """Stream the organisation's baseline results as spreadsheet-safe CSV.
+
+        Emit BASELINE_COLUMNS for automated rules and explicit manual rows. Read
+        stored Windows hosts through a separate Session. Omit unmatched hosts.
+        Share a 30/hour organisation export quota with findings CSV and commit the
+        quota attempt. Strings use csv_safe's formula-prefix guard.
 
         Requires a user session or a read-only organisation API token. API tokens cannot use write methods.
 
@@ -1128,6 +1138,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     @app.get("/api/baselines/{asset_id}")
     def baseline_host(asset_id: str, user: CurrentUser, s: DB):
         """Return the Windows baseline evaluation for an organisation-owned host.
+
+        asset_id must identify an owned host with an OS-name baseline match. Return
+        asset_id/hostname plus result counts and automated rule rows. No refresh,
+        persistence or conformance certification occurs.
 
         Requires a user session or a read-only organisation API token. API tokens cannot use write methods.
 
@@ -2133,12 +2147,22 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def get_notifications(user: Admin, s: DB):
         """Return webhook/email configuration, confirmation state, and recent notification outcomes.
 
+        recent contains at most five latest delivery rows overall. Failure status
+        uses the latest row per channel within that sample. Webhook URL is not returned.
+        Secret unsealing can perform synchronous backend I/O and propagate failures.
+
         Requires an organisation admin browser session; API tokens are refused."""
         return notify_json(s.get(Org, user.org_id), s)
 
     @app.put("/api/settings/notifications")
     def put_notifications(body: NotifyConfig, request: Request, user: Admin, s: DB):
         """Save notification settings and request confirmation for newly added email recipients.
+
+        body.webhook_url None keeps the URL, empty removes it. Format None keeps
+        the format. emails None keeps recipients; [] clears them. Normalize email
+        case and duplicates, retain confirmations for remaining addresses, and commit
+        settings/ledger changes. Added recipients request mail only when SMTP is
+        configured and the 20/hour confirmation quota permits. Delivery is not guaranteed.
 
         Requires an organisation admin browser session; API tokens are refused.
 
@@ -2184,7 +2208,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/notify/confirm")
     def confirm_page(s: DB, org: str = "", email: str = "", token: str = ""):
-        """Return the email-alert consent form for a valid confirmation link, otherwise HTML 404."""
+        """Return an email-alert consent form for query org/email/token, or HTML 404 on failed proof.
+
+        The GET does not confirm consent. Tokens have no time-based expiry here.
+        Their validity depends on the configured address and secret-key backend.
+        Incompatible proof values or backend/database failures can propagate."""
         if not confirmable(s, org, email, token):
             return Response(CONFIRM_INVALID, 404, media_type="text/html")
         # a button, not an automatic confirm: mail scanners open links on their own
@@ -2193,7 +2221,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/notify/confirm")
     def confirm_email(s: DB, org: str = "", email: str = "", token: str = ""):
-        """Confirm the linked email recipient and return HTML confirmation, or HTML 404 for an invalid link."""
+        """Confirm query org/email/token and return HTML 200, or HTML 404 when invalid.
+
+        Query email is lowercased and must remain configured. Repeated confirmation
+        is valid. First confirmation commits the recipient list and ledger event.
+        No session is required. Key-backend and database failures can propagate."""
         o = confirmable(s, org, email, token)
         if not o:
             return Response(CONFIRM_INVALID, 404, media_type="text/html")
@@ -2280,7 +2312,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/settings/notifications/test", status_code=202)
     def test_notification(user: Admin, s: DB):
-        """Queue a test notification for the organisation and return queued=true with HTTP 202.
+        """Attempt a test notification and return queued=true with HTTP 202.
+
+        This acknowledges the request, not durable enqueue or delivery. Missing
+        destinations and suppressed queue errors can still produce queued=true.
+        The five/hour organisation quota records and commits each attempt.
 
         Requires an organisation admin browser session; API tokens are refused.
 

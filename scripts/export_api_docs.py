@@ -62,9 +62,28 @@ def render() -> dict[str, str]:
     group_fields |= {"kev": {"type": "boolean"}, "fixed_version": {"type": ["string", "null"]}, "ecosystem": {"type": ["string", "null"]}}
     for name, fields in (("FindingRow", finding_fields), ("FindingCompact", compact_fields), ("FindingDetail", detail_fields), ("FindingGroup", group_fields)):
         schema["components"]["schemas"][name] = {"type": "object", "properties": fields, "required": list(fields), "additionalProperties": False}
+    rule_fields = {name: {"type": "string"} for name in ("id", "v", "severity", "status", "setting", "expected", "found", "note")}
+    baseline_fields = {name: {"type": "string"} for name in ("baseline_id", "name", "version", "date")}
+    baseline_fields |= {name: {"type": "integer", "minimum": 0} for name in ("automated", "manual", "pass", "fail", "not_assessed", "not_applicable")}
+    baseline_detail = {**baseline_fields, "asset_id": {"type": "string"}, "hostname": {"type": "string"},
+                       "rules": {"type": "array", "items": {"$ref": "#/components/schemas/BaselineRule"}}}
+    baseline_summary = {**baseline_fields, **{name: {"type": "string"} for name in ("asset_id", "hostname", "last_seen")}}
+    baseline_aggregate = {name: baseline_fields[name] for name in baseline_fields if name != "date"}
+    baseline_aggregate["hosts"] = {"type": "integer", "minimum": 0}
+    notification_fields = {name: {"type": "boolean"} for name in ("webhook_set", "email_available", "last_delivery_failed")}
+    notification_fields |= {"webhook_host": {"type": ["string", "null"]}, "webhook_format": {"type": "string"}}
+    notification_fields |= {name: {"type": "array", "items": {"type": "string"}} for name in ("emails", "emails_confirmed")}
+    delivery_fields = {name: {"type": "string"} for name in ("ts", "kind", "channel")}
+    delivery_fields |= {name: {"type": "boolean"} for name in ("urgent", "ok")}
+    delivery_fields["error"] = {"type": ["string", "null"]}
+    notification_fields["recent"] = {"type": "array", "maxItems": 5, "items": {"type": "object", "properties": delivery_fields,
+                                                                            "required": list(delivery_fields), "additionalProperties": False}}
+    for name, fields in (("BaselineRule", rule_fields), ("BaselineDetail", baseline_detail), ("BaselineHostSummary", baseline_summary),
+                         ("BaselineAggregate", baseline_aggregate), ("NotificationSettings", notification_fields)):
+        schema["components"]["schemas"][name] = {"type": "object", "properties": fields, "required": list(fields), "additionalProperties": False}
     lines = ["# HTTP endpoint catalog", "",
              "Use the [OpenAPI JSON](openapi.json) for typed parameters, request models, defaults, and declared response schemas.", "",
-             "The export adds server/authentication metadata and selected contracts: findings, CSV, SBOM, external-scan counters, agent manifest and distribution files. Other definitions come from the app.", "",
+             "The export adds server/authentication metadata and selected contracts: findings, baselines, notifications, CSV, SBOM, external-scan counters, agent manifest and distribution files. Other definitions come from the app.", "",
              "Authentication labels describe entry requirements. Organisation ownership, roles, origin checks, quotas, "
              "and operation-specific state checks still apply. See [HTTP API reference](http-api.md).", "",
              "Empty response schemas do not define a stable response contract. Inspect the linked handler and its tests "
@@ -118,6 +137,28 @@ def render() -> dict[str, str]:
             if finding_schema:
                 operation["responses"]["200"] = {"description": "Finding result; see findings.md for row variants, filters and state semantics.",
                                                  "content": {"application/json": {"schema": finding_schema}}}
+            if route.path in {"/api/settings/notifications", "/api/baselines/{asset_id}"}:
+                response_type = "NotificationSettings" if route.path.startswith("/api/settings") else "BaselineDetail"
+                operation["responses"]["200"] = {"description": "Stored configuration/result fields; see the corresponding reference for limits.",
+                                                 "content": {"application/json": {"schema": {"$ref": f"#/components/schemas/{response_type}"}}}}
+            if route.path == "/api/baselines":
+                fields = {"baselines": {"type": "array", "items": {"$ref": "#/components/schemas/BaselineAggregate"}},
+                          "hosts": {"type": "array", "items": {"$ref": "#/components/schemas/BaselineHostSummary"}},
+                          "no_baseline": {"type": "integer", "minimum": 0}}
+                operation["responses"]["200"] = {"description": "Baseline summaries and aggregated stored-host outcomes, not conformance certification.",
+                                                 "content": {"application/json": {"schema": {"type": "object", "properties": fields,
+                                                                                          "required": list(fields), "additionalProperties": False}}}}
+            if route.path == "/api/settings/notifications/test":
+                operation["responses"]["202"] = {"description": "Request acknowledged; does not establish durable enqueue or delivery.",
+                                                 "content": {"application/json": {"schema": {"type": "object", "required": ["queued"],
+                                                                                          "properties": {"queued": {"type": "boolean", "const": True}},
+                                                                                          "additionalProperties": False}}}}
+            if route.path == "/api/notify/confirm":
+                for status, description in (("200", "Consent form or confirmation HTML."), ("404", "Invalid confirmation link HTML.")):
+                    operation["responses"][status] = {"description": description, "content": {"text/html": {"schema": {"type": "string"}}}}
+            if route.path == "/api/baselines.csv":
+                operation["responses"]["200"] = {"description": "CSV attachment with automated and explicit manual rule rows.",
+                                                 "content": {"text/csv": {"schema": {"type": "string"}}}}
             if route.path == "/api/findings.csv":
                 operation["responses"]["200"] = {"description": "CSV attachment in the documented column order, without list pagination.",
                                                  "content": {"text/csv": {"schema": {"type": "string"}}},

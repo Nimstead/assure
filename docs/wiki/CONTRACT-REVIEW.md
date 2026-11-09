@@ -40,6 +40,17 @@ This record distinguishes semantic review from docstring-presence coverage. A ro
 | `api/src/nimstead/app.py` | Finding read/group/count/CSV and acceptance handlers, plus all earlier named scopes | Reviewed every finding response/filter, historical-policy/current-priority deadline, group/detail fix selection, acceptance variants, quota commits and CSV fields. Exported schemas match actual response field sets | Partial: other handlers remain |
 | Other production, agent, web and tool interfaces | Presence coverage exists | Semantic parameter/error review is not yet complete. Existing tests supplement but do not replace that review | Pending |
 
+## Notification and Windows review
+
+| Source | Review scope | Evidence and corrections | Status |
+| --- | --- | --- | --- |
+| `api/src/nimstead/notify.py` | All public delivery, consent/account mail, retry, migration, flush and monitor functions | Reviewed synchronous lookup and Vault I/O, process-local queue, transport versus storage outcomes, redirect handling, per-attempt retry age, consent exclusion and monitor grace. Fake transport and database tests confirm limits | Reviewed |
+| `api/src/nimstead/winbaseline.py` | All public bundle loading, host selection, registry identifier, applicability and evaluation functions | Reviewed shared cached data, ordered OS matching, type predicates, applicability overrides, automated/manual counts and result fields. Actual response fields match the reference and schemas | Reviewed |
+| `api/src/nimstead/winconfig.py` | evaluate and reachable_listeners, including configuration/certificate helpers | Reviewed missing/default inputs, host context, Risk objects, certificate prerequisites and curated listener heuristics. Added missing-config and certificate gating checks | Reviewed |
+| `api/src/nimstead/app.py` | Baseline list/detail/CSV and notification settings/test/consent handlers | Reviewed fixed responses, permissions, quotas, commits, consent proof and the five-row delivery sample. Other unnamed handlers remain pending | Partial |
+
+This batch passed 190 focused tests and 46 subchecks, with ten Windows-only skips. Test transports do not establish production SMTP delivery or native Windows collector behavior.
+
 The full SQLite suite passed 1611 tests with 59 skips at the start of this batch. The later targeted evidence/key checks passed 23 tests. The new field/summary assertions subsequently passed in a 27-test evidence/documentation run. All three executable docstrings passed. Skipped platform/oracle cases are not newly verified real-host proofs.
 
 The engine batch passed 105 engine/documentation tests and 46 subchecks. Two Windows PowerShell parsing cases were skipped on this host. Reference field assertions supplement the source review and do not prove every possible runtime value.

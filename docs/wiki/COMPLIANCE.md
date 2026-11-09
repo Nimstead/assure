@@ -159,3 +159,13 @@ The export now describes full/compact/detail/group responses, count and acceptan
 A new regression confirms that feed absence can resolve an identity while its package remains installed. Another confirms that rescan commits other caller-session changes. SQLite checks verify constructor/insert defaults, foreign keys, explicit commit and JSON mutation behavior.
 
 106 focused tests and 46 subchecks passed, with two Windows-only parser skips. Seven executable docstrings, Ruff and Redocly passed. The site builds 67 articles and its six tests pass. PostgreSQL migration behavior is not newly established by the SQLite-specific checks. Remaining modules, response contracts and final editorial review still prevent a full compliance claim.
+
+## Notifications and Windows checks checkpoint
+
+Reviewed notification delivery, consent, retries and silent-host monitoring, plus Windows configuration and bundled-baseline evaluation. Added separate lookup pages and expanded the related API response schemas. The alert task guide now includes the consent button and a procedure for requesting another confirmation.
+
+Corrected claims about durable queueing, retry age, redirect errors, null configuration values and manual baseline results. A test acknowledgement can occur without destinations. Recent delivery state uses only five rows. Windows checks can report default-policy problems from missing values. Baseline manual counts do not represent evaluated rules.
+
+190 focused tests and 46 subchecks passed. Ten Windows-only parser checks were skipped. Executable docstrings, Ruff, Redocly, the 69-article build and six site tests passed. Repository coverage reports 632 declarations, none undocumented, and no local link problems.
+
+Playwright MCP verified readable selected-product navigation in both themes, backup search ranking, query/filter restoration, mobile section anchors and source applicability. SMTP delivery and native Windows collection were not exercised. Other modules, response contracts and the final editorial review remain pending.

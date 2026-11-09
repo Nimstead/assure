@@ -161,6 +161,20 @@
     "product": "assure"
   },
   {
+    "source": "docs/reference/notifications.md",
+    "slug": "reference/notifications",
+    "title": "Notification reference",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/windows-checks.md",
+    "slug": "reference/windows-checks",
+    "title": "Windows settings and baseline reference",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
     "source": "docs/reference/findings.md",
     "slug": "reference/findings",
     "title": "Finding API and state reference",

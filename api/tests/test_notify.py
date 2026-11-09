@@ -266,7 +266,7 @@ def test_unconfirmed_recipients_get_no_alerts(env, sent, monkeypatch):
     notify.flush()
     FakeSMTP.sent.clear()
     c.put("/api/settings/notifications", json={"emails": ["victim@example.org"]})  # saving again doesn't re-send
-    assert c.post("/api/settings/notifications/test").status_code == 202
+    assert c.post("/api/settings/notifications/test").status_code == 409  # an unconfirmed address is no destination
     _, h, jid = dispatched_job(c)
     report(c, h, jid, "rollback_failed", "phishing text")
     assert [m for m in FakeSMTP.sent if not isinstance(m, tuple)] == []
@@ -419,6 +419,25 @@ def test_guarded_client_never_reuses_a_connection():
     """The pool is keyed by the IP the guard rewrote the URL to, so a kept-alive connection verified for one hostname
     could serve another hostname on that IP without a new certificate check."""
     assert netguard.guarded_client()._transport._pool._max_keepalive_connections == 0
+
+
+def test_test_alert_without_a_destination_is_refused(env, monkeypatch):
+    c = setup(env)
+    submitted = []
+    monkeypatch.setattr(notify, "_submit", lambda *args: submitted.append(args))
+    r = c.post("/api/settings/notifications/test")
+    assert r.status_code == 409 and "destination" in r.json()["detail"]
+    assert submitted == []
+
+
+def test_webhook_redirect_is_a_failed_delivery_and_not_followed(env, sent):
+    c = configured(env)
+    sent.behaviour["fn"] = lambda req: httpx.Response(302, headers={"Location": "https://other.example/"})
+    assert c.post("/api/settings/notifications/test").status_code == 202
+    notify.flush()
+    assert len(sent) == 1
+    out = c.get("/api/settings/notifications").json()
+    assert not out["recent"][0]["ok"] and out["last_delivery_failed"]
 
 
 def test_retry_window_applies_to_the_failed_attempt_not_original_event(env, sent):

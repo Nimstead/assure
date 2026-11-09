@@ -108,7 +108,7 @@ Single acceptance and revocation retain an existing `resolved_at` value. Read `s
 
 ## Reassessment and resolution
 
-`rescan()` reassesses stored inventory, updates risk signals, and commits finding/ledger changes. Its `open` result counts all seen identities, including accepted findings. `resolved` counts new transitions to resolved.
+`rescan()` reassesses stored inventory, updates risk signals, and commits finding/ledger changes. The commit includes the caller's pending changes on purpose: the report, context and SBOM endpoints and the hourly feed run stage their own writes and ledger entries and rely on it. Its `open` result counts all seen identities, including accepted findings. `resolved` counts new transitions to resolved.
 
 Since 0.7.6 the detection engine's verdicts decide which identities are seen, inside the engine's slice: the Windows OS, Microsoft products, curated Windows apps, distribution packages, language packages and SBOM components (DECISIONS 123). A `vulnerable` verdict makes an identity seen. A verdict proving it absent removes it. Where the engine has no decision, for example an agent without a collection document or a source that failed, the earlier matching's answer stands. Since 0.7.7 an identity in the slice that isn't seen resolves only on evidence (DECISIONS 124).
 

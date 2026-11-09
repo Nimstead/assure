@@ -28,7 +28,7 @@ from nimstead.match import Package, canonical_id, match_package, normalize_ecosy
 from nimstead.scan import HOTPATCH, hotpatch_track
 from nimstead.versions import comparator_for
 
-ENGINE_VERSION = "3"  # 2: Linux, 3: applications outside the package manager
+ENGINE_VERSION = "4"  # 2: Linux, 3: applications outside the package manager, 4: a CVSS of 0 counts in verdicts_sha256
 # what each package manager would install (Debian policy 5.6.12, RPM's EVR as the agent sends it, apk-tools' own rule)
 _DISTRO_VERSION = {"dpkg": re.compile(r"(\d+:)?\d[A-Za-z0-9.+~-]*(?<!-)"), "rpm": re.compile(r"(\d+:)?[A-Za-z0-9._+~^]+-[A-Za-z0-9._+~^]+"),
                    "apk": re.compile(r"\d.*")}

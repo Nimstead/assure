@@ -275,19 +275,29 @@ def parse_thunderbird(versions: dict) -> dict:
     return {str(m): True for m in range(1, latest) if m != esr}
 
 
+def _iso_date(v) -> bool:
+    if not (isinstance(v, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", v)):
+        return False
+    try:
+        date.fromisoformat(v)
+    except ValueError:
+        return False
+    return True
+
+
 def parse_eol(cycles) -> dict:
     """Return {cycle: date-string/True/False} from a nonempty list of cycle dictionaries.
 
-    Each cycle is a string, and eol is a boolean or YYYY-MM-DD-shaped string.
-    Date shape is checked without calendar validation. Duplicate cycles use the
-    last value. Root/field shape failures raise ValueError. Nondictionary entries
-    can raise AttributeError. Other incompatible inputs can raise TypeError."""
+    Each cycle is a string, and eol is a boolean or a YYYY-MM-DD calendar date.
+    Duplicate cycles use the last value. Root, entry and field failures (including
+    an impossible date such as 2026-99-99) raise ValueError, so the feed run keeps
+    the stored cycles rather than storing one app_verdict can't read."""
     if not isinstance(cycles, list) or not cycles:
         raise ValueError("endoflife.date: expected a non-empty list of cycles")
     out = {}
     for c in cycles:
         eol = c.get("eol") if isinstance(c, dict) else None
-        if not isinstance(c.get("cycle"), str) or not (isinstance(eol, bool) or (isinstance(eol, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", eol))):
+        if not isinstance(c, dict) or not isinstance(c.get("cycle"), str) or not (isinstance(eol, bool) or _iso_date(eol)):
             raise ValueError(f"endoflife.date: unexpected cycle {str(c)[:200]}")
         out[c["cycle"]] = eol
     return out

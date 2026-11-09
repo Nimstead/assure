@@ -122,11 +122,14 @@ def migration_state(s: Session) -> str:
 def agent_update_status(a: Asset, paused: bool, release: bool) -> str:
     """Return a UI classification from stored asset a, paused flag and release availability.
 
-    Equal served/reported versions are current before other checks. False auto_update
+    A reported version equal to or newer than the served one is current before other
+    checks (agents only ever move to a strictly newer release). False auto_update
     is off; missing capability or signed release is reinstall. Otherwise paused wins,
     then a recorded error means failed, else updating. This does not prove a newer
     channel-eligible release or predict the next run. Source/file errors can propagate."""
-    if a.agent_version == latest_agent_version():
+    served = latest_agent_version()
+    mine, theirs = updates.vtuple(a.agent_version or ""), updates.vtuple(served)
+    if a.agent_version == served or (mine and theirs and mine > theirs):
         return "current"
     if not a.auto_update:
         return "off" if a.auto_update is False else "reinstall"  # None: agent too old to update itself
@@ -2646,19 +2649,22 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/settings/notifications/test", status_code=202)
     def test_notification(user: Admin, s: DB):
-        """Attempt a test notification and return queued=true with HTTP 202.
+        """Queue a test notification to the saved destinations and return queued=true with HTTP 202.
 
-        This acknowledges the request, not durable enqueue or delivery. Missing
-        destinations and suppressed queue errors can still produce queued=true.
-        The five/hour organisation quota records and commits each attempt.
+        This acknowledges submission to the background sender, not delivery: the outcome
+        appears in the recent deliveries shortly after. With no usable destination (no
+        webhook, and no confirmed recipient with SMTP configured) or a failed submission
+        it returns 409 and sends nothing. The five/hour organisation quota records and
+        commits each attempt.
 
         Requires an organisation admin browser session; API tokens are refused.
 
-        Operation-specific HTTP errors: 429. See detail in the response.
+        Operation-specific HTTP errors: 409, 429. See detail in the response.
         Authentication and request-validation errors also apply where required."""
         if over_limit(s, "notify-test:" + user.org_id, TEST_ALERT_MAX_PER_HOUR):
             raise HTTPException(429, f"At most {TEST_ALERT_MAX_PER_HOUR} test alerts an hour")
-        notify.notify(s, user.org_id, "test", f"Test alert from Nimstead, requested by {user.email}")
+        if not notify.notify(s, user.org_id, "test", f"Test alert from Nimstead, requested by {user.email}"):
+            raise HTTPException(409, "No alert destination to test: save a webhook, or confirm a recipient on a server with SMTP configured")
         return {"queued": True}
 
     # --- AI (optional) -----------------------------------------------------

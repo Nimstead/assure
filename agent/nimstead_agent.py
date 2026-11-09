@@ -32,7 +32,7 @@ import urllib.parse
 import urllib.request
 import zipfile
 
-AGENT_VERSION = "0.6.8"  # the server reads this line to flag outdated agents; bump on every agent change
+AGENT_VERSION = "0.6.9"  # the server reads this line to flag outdated agents; bump on every agent change
 # Ed25519 public keys (hex) allowed to sign releases (DECISIONS 31): primary (GitHub Actions) and offline backup.
 # The server only relays signed releases, so it can withhold an update but never forge one. Empty = never self-update.
 RELEASE_KEYS = ["a91fa6539c6c2593009fc71b1c1fba341b5685ba7bc97c127c068b1d732b21d2", "2438f2ccebab5bf26edf9e21a8aa8f09abd1861f52fbe0d6641b28b90f8b0e5a"]  # noqa: E501
@@ -3235,6 +3235,11 @@ def version_tuple(v):
 RUNTIME_ARCH = {"AMD64": "amd64", "ARM64": "arm64", "X86": "win32"}  # platform.machine() -> the release's runtime name
 
 
+def _hex(v, n):
+    """Whether v is a string of exactly n lowercase hex digits (a JSON number of digits is not)."""
+    return isinstance(v, str) and re.fullmatch(f"[0-9a-f]{{{n}}}", v) is not None
+
+
 def verify_release(manifest, sig_b64, keys=None):
     """Return validated manifest fields after exact-byte Ed25519 verification.
 
@@ -3256,12 +3261,12 @@ def verify_release(manifest, sig_b64, keys=None):
         raise AgentError("release signature doesn't match any pinned release key")
     rel = json.loads(manifest)
     if not (isinstance(rel, dict) and version_tuple(rel.get("version")) and version_tuple(rel.get("agent_version"))
-            and re.fullmatch(r"[0-9a-f]{64}", str(rel.get("agent_sha256"))) and re.fullmatch(r"[0-9a-f]{40}", str(rel.get("commit")))):
+            and _hex(rel.get("agent_sha256"), 64) and _hex(rel.get("commit"), 40)):
         raise AgentError("signed release manifest is malformed")
     rt = rel.get("runtimes")  # the Windows agent's bundled Python (absent before 0.6.0)
     if rt is not None and not (isinstance(rt, dict) and rt and all(
             a in RUNTIME_ARCH.values() and isinstance(r, dict) and version_tuple(r.get("version"))
-            and re.fullmatch(r"[0-9a-f]{64}", str(r.get("sha256"))) for a, r in rt.items())):
+            and _hex(r.get("sha256"), 64) for a, r in rt.items())):
         raise AgentError("signed release manifest has a malformed runtimes entry")
     return rel
 

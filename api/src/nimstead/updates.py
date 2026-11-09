@@ -4,8 +4,9 @@ agents need.
 Run by the hourly feed update. Once a day it looks at the recent GitHub releases and picks the newest one this server's
 channel takes (NIMSTEAD_UPDATE_CHANNEL: preview, beta or stable, default stable; a server takes its channel and anything
 more stable, DECISIONS 33), judged by the channel in the release's signed manifest, never by GitHub's labels. Each org
-hears once per new version. Enabled runs also attempt release/runtime cache refresh for agent distribution. A matching
-manifest cache can skip a fetch without checking its signature file. Agents verify relayed files against pinned keys. Applying an
+hears once per new version. Enabled runs also attempt release/runtime cache refresh for agent distribution. Only a
+manifest whose signature checks against a pinned key is stored, or lets a cached copy skip a fetch. Agents verify relayed
+files against pinned keys again. Applying an
 update is deploy/update.sh's job on the Docker host, never the server's: the server can't rebuild itself.
 It also fetches the Windows agent's bundled Python zips the signed manifest names (`python-embed-<arch>.zip`, kept only
 on a SHA-256 match). NIMSTEAD_UPDATE_CHECK=0 turns all of this off (offline installs: copy release.json, its .sig and
@@ -92,20 +93,31 @@ def _write(name: str, data: dict | bytes) -> None:
     tmp.replace(d / name)
 
 
+def _verified_cache() -> dict:
+    """The cached release.json when release.json.sig beside it is a pinned key's signature over it, else {}."""
+    from nimstead.app import verify_manifest
+    try:
+        manifest, sig = (release_dir() / "release.json").read_bytes(), (release_dir() / "release.json.sig").read_text()
+    except (OSError, ValueError):
+        return {}
+    return verify_manifest(manifest, sig) or {}
+
+
 def status() -> dict:
     """Return running/channel/latest fields and the last updater result from local cache.
 
     Fields are version, channel, running_channel, latest, latest_url, latest_channel,
     update_available, checked and last_update. Latest data is ignored when its
     for_channel differs. Update availability compares three-component version tuples.
-    This function does not verify the cached signature, request releases or apply updates.
+    running_channel comes only from a cached manifest whose signature verifies, else None.
+    This function does not request releases or apply updates.
     Missing/unreadable/invalid JSON files act as empty data. Valid JSON with the wrong
     shape can raise AttributeError or TypeError. Package/backend errors can propagate."""
     latest, running = _read("latest.json"), current_version()
     if latest.get("for_channel") != channel():  # the channel changed since the last check: that answer no longer applies
         latest = {}
     newer = vtuple(latest.get("version") or "") and vtuple(running) and vtuple(latest["version"]) > vtuple(running)
-    mine = _read("release.json")
+    mine = _verified_cache()
     return {"version": running, "channel": channel(), "running_channel": release_channel(mine) if mine.get("version") == running else None,
             "latest": latest.get("version"), "latest_url": latest.get("url"), "latest_channel": latest.get("channel"),
             "update_available": bool(newer), "checked": latest.get("checked"), "last_update": _read("update-status.json") or None}
@@ -149,14 +161,15 @@ def newest_for_channel(client: httpx.Client, running: str, ch: str) -> dict:
 def fetch_release_files(client: httpx.Client) -> bool:
     """Fetch the running release's manifest/signature through caller-owned HTTP client.
 
-    Return True when files were stored, False otherwise. A matching cached version
-    with an eligible channel skips fetching without checking its signature file.
-    HTTP/size failures log and return False. Identical manifest bytes also return False,
-    even if the fetched signature differs. Store signature first, then manifest,
-    using separate atomic file replacements. This step does not verify either file.
-    Filesystem, malformed cache and other unhandled client errors propagate."""
+    Return True when files were stored, False otherwise. A verified cached manifest for
+    the running version with an eligible channel skips fetching. HTTP/size failures log
+    and return False, as does a fetched pair whose signature doesn't verify or whose
+    manifest names another version (nothing is stored). Bytes identical to a verified
+    cached manifest also return False. Store signature first, then manifest, using
+    separate atomic file replacements. Filesystem and other unhandled client errors propagate."""
+    from nimstead.app import verify_manifest
     running = current_version()
-    cached = _read("release.json")
+    cached = _verified_cache()
     if not running or (cached.get("version") == running and takes(channel(), release_channel(cached))):
         return False
     base = f"https://github.com/{REPO}/releases/download/v{running}/"
@@ -165,11 +178,14 @@ def fetch_release_files(client: httpx.Client) -> bool:
     except (httpx.HTTPError, ValueError) as e:
         log.info("no signed release files for v%s yet: %s", running, e)
         return False
-    d = release_dir()
-    if (d / "release.json").exists() and (d / "release.json").read_bytes() == manifest:
+    rel = verify_manifest(manifest, sig.decode(errors="replace"))
+    if not rel or rel.get("version") != running:
+        log.warning("release files for v%s not stored: signature doesn't verify or names another version", running)
+        return False
+    if cached and (release_dir() / "release.json").read_bytes() == manifest:
         return False  # not promoted since the last look
     _write("release.json.sig", sig)
-    _write("release.json", manifest)  # the server checks the signature before relaying (app.signed_release)
+    _write("release.json", manifest)  # app.signed_release checks the signature again before relaying
     return True
 
 
@@ -189,12 +205,7 @@ def fetch_runtimes(client: httpx.Client) -> list[str]:
     Missing/unreadable manifest files return []. Download HTTP/size/hash failures
     skip that architecture. Missing manifest fields, filesystem and other backend
     errors can propagate. Does not validate or unpack archive contents."""
-    from nimstead.app import verify_manifest
-    try:
-        manifest, sig = (release_dir() / "release.json").read_bytes(), (release_dir() / "release.json.sig").read_text().strip()
-    except OSError:
-        return []
-    rel = verify_manifest(manifest, sig) or {}
+    rel = _verified_cache()
     got = []
     for arch, r in (rel.get("runtimes") or {}).items():
         f = runtime_file(arch)

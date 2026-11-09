@@ -13,7 +13,7 @@ This GET can create a scan record and commit the database session. The server de
 | `os` | Reported operating-system name |
 | `agent_version` | Reported agent version |
 | `inventory_read_at` | Collection timestamp, or `null` |
-| `engine_version` | Evaluator version string, currently `3` |
+| `engine_version` | Evaluator version string, currently `4` |
 | `content_version` | Selected advisory-content identifier |
 | `inventory_sha256` | SHA-256 hex digest of the stored inventory representation |
 | `verdicts_sha256` | SHA-256 hex digest of the ordered verdict representation |
@@ -119,7 +119,7 @@ A way has `what`, `ref`, `grade`, and `kev`. Vulnerability-based ways also have 
 
 The inventory digest hashes `json.dumps(inventory.to_doc(), sort_keys=True, default=str)`. Package-list order affects the hash. The server sorts stored package rows before it creates this representation.
 
-The verdict digest hashes `json.dumps([v.as_dict() for v in verdicts], sort_keys=True)`. Verdict order affects the hash. The evaluator sorts its results before report generation.
+The verdict digest hashes `json.dumps([v.as_dict() for v in verdicts], sort_keys=True)`. `as_dict()` omits only `None` and `False` fields, so a CVSS of 0 hashes differently from no score (engine 4; engine 3 dropped zeros). Verdict order affects the hash. The evaluator sorts its results before report generation.
 
 The content identifier has a newest `modified` prefix, or `none`, followed by a dot and 12 SHA-256 hex characters. The hash includes the application version, selected records, KEV, CVSS, feed coverage, package universe, and lifecycle data. It identifies inputs without retaining a full advisory archive. Reproduction also requires the same inventory, prior-finding identities, and evaluator implementation.
 

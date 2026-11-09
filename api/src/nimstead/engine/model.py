@@ -99,8 +99,8 @@ class Verdict:
     summary: str | None = None
 
     def as_dict(self) -> dict:
-        """Return verdict fields as a dictionary, omitting values equal to None or False."""
-        return {k: v for k, v in asdict(self).items() if v not in (None, False)}
+        """Return verdict fields as a dictionary, omitting None and False (not 0: CVSS 0.0 is a score, unlike no score)."""
+        return {k: v for k, v in asdict(self).items() if v is not None and v is not False}
 
     @property
     def proves_absent(self) -> bool:

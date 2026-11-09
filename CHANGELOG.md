@@ -4,6 +4,32 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+## [0.7.5] - 2026-11-09 (preview)
+
+**Agent 0.6.6.** No database migration. A UI review at fleet scale (a demo of 206 machines and 44k findings), run as rounds of Impeccable critique and audit with fixes between them. axe finds no violations at 1440 and 375 in light and dark.
+
+### Added
+- **Bulk actions on Findings**: select findings, then plan one fix per package on every selected machine, or accept the risk with one reason. Each acceptance is its own ledger entry (`POST /api/findings/accept-many`).
+- **Saved views** on Findings, also in the Ctrl K palette. They're kept in the browser.
+- **Findings**: sortable, sticky headers; grouping by vulnerability or package (split by distro, naming the version that clears the group); the true total; pages of 500 rows loaded as you scroll; j/k, p (then Enter) and a in the finding drawer.
+- **Assets**: one line per machine with search, filters and sort kept in the URL, bulk edit with Undo, and each machine's settings in a drawer.
+- **Remediation**: Review and approve lists each package and its target version, names the target machine, and warns before you approve your own plan. Steps that fell back show as recovered; a jump link focuses the failed step.
+- **Evidence**: a summary-only report (`?summary=true`), ledger filters, a note when a control rests on few fixes, and "Met, with exceptions" for self-approved changes and machines not reporting.
+- An in-app page for unknown addresses, and a clear message for links to findings that no longer exist.
+
+### Changed
+- **API responses are gzip-compressed**, and content-hashed web assets are cached for a year.
+- `GET /api/findings` takes `sort`, `offset` and `view=list` (the table's columns only); new `/api/findings/count` and `/api/findings/groups`.
+- Text follows the browser's text size (the root was pinned to 15px); the smallest text is 12px.
+- Plan fix offers only machines the server will change while production remediation is off.
+
+### Fixed
+- **The agent reported "sha256 mismatch or missing" on a rollback artefact check that passed** (agent 0.6.6).
+- Grouped views compared versions as text ("2.9" above "2.18").
+- Advisory text was cut mid-word.
+- Keyboard focus was lost after the command palette closed, and on the first visit to a page that loads on demand.
+- Focused controls could hide under the phone tab bar.
+
 ## [0.7.4] - 2026-11-08 (preview)
 
 **Agent 0.6.5.** One database migration (two columns on assets), applied on start; run `deploy/update.sh`. Fixes from a full code audit. Every fix has a test that fails without it; API suites pass on SQLite and PostgreSQL, and the platform-update lab passes including its rollback.

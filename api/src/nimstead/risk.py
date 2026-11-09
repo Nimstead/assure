@@ -133,7 +133,7 @@ def score(
     if internet_facing:
         reasons.append("Internet-facing asset")
     if criticality in ("high", "critical"):
-        reasons.append(f"{criticality.capitalize()}-criticality asset")
+        reasons.append(f"Asset criticality: {criticality}")
     if fix_available:
         reasons.append("Fix available")
     else:

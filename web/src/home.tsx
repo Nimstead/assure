@@ -1,8 +1,8 @@
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, CheckCircle2, TriangleAlert } from "lucide-react";
-import { dependenciesNeeded, coverageQ, filtersToSearch, jobAnchor, JOB_STATUS_LABEL, parseFilters, plural, PRIORITIES, PRIORITY_LABEL, priorityOf, summaryQ, useTitle, type Action } from "./lib";
-import { PlanFixButton } from "./remediation";
+import { assetsQ, dependenciesNeeded, coverageQ, settingsQ, filtersToSearch, jobAnchor, JOB_STATUS_LABEL, parseFilters, plural, PRIORITIES, PRIORITY_LABEL, priorityOf, summaryQ, useTitle, type Action } from "./lib";
+import { PlanFixButton } from "./planfix";
 import { ErrorState, KevBadge, Loading, PriorityPill, StatusPill } from "./ui";
 import clsx from "clsx";
 import { lazy, Suspense } from "react";
@@ -15,6 +15,7 @@ const tile = (p: string, n: number) => (p === "fix-now" && n > 0 ? "text-now-fg"
 export function Home() {
   const q = useQuery(summaryQ);
   const coverage = useQuery(coverageQ);
+  const settings = useQuery(settingsQ);
   useTitle(q.data?.assets === 0 ? "Add a machine" : "Fix first");
 
   if (q.isPending) return <HomeSkeleton />;
@@ -24,39 +25,44 @@ export function Home() {
 
   const total = PRIORITIES.reduce((n, p) => n + (s.open_by_priority[p] ?? 0), 0);
   const unchecked = coverage.data?.inventory_only ?? 0;
+  const prodLocked = settings.data?.production_remediation_allowed === false;
   return (
     <div className="flex flex-col gap-8">
       <header>
         <h1 className="text-3xl font-semibold">Fix first</h1>
         <p className="mt-1 text-muted">
           {total === 0
-            ? `No open findings across ${plural(s.assets, "machine")}.${unchecked ? ` Installed apps not checked: ${unchecked}, listed on Assets.` : ""}`
-            : `${plural(total, "open finding")} across ${plural(s.assets, "machine")}. These fixes clear the most risk.`}
+            ? `No open findings across ${plural(s.assets, "asset")}.${unchecked ? ` Installed apps not checked: ${unchecked}, listed on Assets.` : ""}`
+            : `${plural(total, "open finding")} across ${plural(s.assets, "asset")}. These fixes clear the most risk.`}
         </p>
       </header>
 
+      {(s.attention.length > 0 || s.hosts_not_reporting > 0 || s.agents_need_attention > 0) && (
+      <div className="flex flex-col divide-y divide-line border border-line-strong bg-surface">
       {s.attention.length > 0 && (
-        <section aria-labelledby="attention" className="border border-line-strong bg-surface p-4">
+        <section aria-labelledby="attention" className="p-4">
           <h2 id="attention" className="flex items-center gap-2 font-semibold"><TriangleAlert className="size-4" aria-hidden />{plural(s.attention.length, "fix", "fixes")} need{s.attention.length === 1 ? "s" : ""} a look</h2>
           <ul className="mt-2 flex flex-col gap-1.5 text-sm">
             {s.attention.slice(0, 5).map((j) => (
               <li key={j.id} className="flex flex-wrap items-center gap-x-2 gap-y-1"><StatusPill status={j.status} />
-                <Link to="/remediation" hash={jobAnchor(j.id)} className="min-w-0 break-words text-ink underline decoration-line-strong hover:decoration-ink">{j.summary}</Link></li>
+                <Link to="/remediation" hash={jobAnchor(j.id)} className="inline-flex tap min-w-0 items-center break-words text-ink underline decoration-line-strong hover:decoration-ink">{j.summary}</Link></li>
             ))}
           </ul>
-          <Link to="/remediation" className="mt-1 inline-flex min-h-[44px] items-center gap-1.5 text-sm font-medium text-accent underline md:min-h-0">Review in Remediation <ArrowRight className="size-4" aria-hidden /></Link>
+          <Link to="/remediation" className="mt-1 inline-flex tap items-center gap-1.5 text-sm font-medium text-accent underline">Review in Remediation <ArrowRight className="size-4" aria-hidden /></Link>
         </section>
       )}
 
       {(s.hosts_not_reporting > 0 || s.agents_need_attention > 0) && (
-        <section aria-labelledby="fleet" className="border border-line-strong bg-surface p-4">
+        <section aria-labelledby="fleet" className="p-4">
           <h2 id="fleet" className="flex items-center gap-2 font-semibold"><TriangleAlert className="size-4" aria-hidden />Machines need a look</h2>
           <ul className="mt-2 flex flex-col gap-1 text-sm">
             {s.hosts_not_reporting > 0 && <li>{plural(s.hosts_not_reporting, "machine")} stopped reporting, so {s.hosts_not_reporting === 1 ? "its" : "their"} findings may be out of date.</li>}
-            {s.agents_need_attention > 0 && <li>{plural(s.agents_need_attention, "agent")} can't update {s.agents_need_attention === 1 ? "itself" : "themselves"}; Assets says why and what to do.</li>}
+            {s.agents_need_attention > 0 && <li>{plural(s.agents_need_attention, "agent")} {s.agents_need_attention === 1 ? "is" : "are"} outdated and can't update {s.agents_need_attention === 1 ? "itself" : "themselves"}; Assets says why and what to do.</li>}
           </ul>
-          <Link to="/assets" className="mt-1 inline-flex min-h-[44px] items-center gap-1.5 text-sm font-medium text-accent underline md:min-h-0">Review in Assets <ArrowRight className="size-4" aria-hidden /></Link>
+          <Link to="/assets" className="mt-1 inline-flex tap items-center gap-1.5 text-sm font-medium text-accent underline">Review in Assets <ArrowRight className="size-4" aria-hidden /></Link>
         </section>
+      )}
+      </div>
       )}
 
       <ul className="grid grid-cols-2 gap-2 sm:grid-cols-4" aria-label="Open findings by priority">
@@ -65,9 +71,10 @@ export function Home() {
             <Link
               to="/findings"
               search={filtersToSearch({ ...parseFilters({}), priority: [p], fixable: false })}
-              className="flex flex-col border border-line bg-surface px-3.5 py-2.5 no-underline hover:border-line-strong"
+              className="group relative flex flex-col border border-line bg-surface px-3.5 py-2.5 no-underline hover:border-ink"
             >
-              <span className={clsx("num text-2xl font-semibold", tile(p, s.open_by_priority[p] ?? 0))}>{s.open_by_priority[p] ?? 0}</span>
+              <ArrowRight aria-hidden className="absolute right-3 top-3 size-4 text-muted group-hover:text-ink" />
+              <span className={clsx("num text-2xl font-semibold", tile(p, s.open_by_priority[p] ?? 0))}>{(s.open_by_priority[p] ?? 0).toLocaleString()}</span>
               <span className="text-sm text-muted">{PRIORITY_LABEL[p]}</span>
             </Link>
           </li>
@@ -76,6 +83,7 @@ export function Home() {
 
       <section aria-labelledby="actions">
         <h2 id="actions" className="mb-3 text-lg font-semibold">Recommended fixes</h2>
+        {prodLocked && <p className="-mt-1 mb-3 max-w-prose text-sm text-muted">Production remediation is off on this server, so these can only be planned for test machines. <Link to="/settings" hash="remediation" className="font-medium text-ink underline">How to turn it on</Link></p>}
         {s.top_actions.length === 0 ? (
           <div className="flex items-start gap-3 border border-dashed border-line-strong p-5">
             <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-accent" aria-hidden />
@@ -94,7 +102,11 @@ export function Home() {
 }
 
 export function ActionCard({ a }: { a: Action }) {
-  const free = a.asset_ids.filter((id) => !a.busy_asset_ids.includes(id));
+  const prodOk = useQuery(settingsQ).data?.production_remediation_allowed ?? true;  // unknown: let the API say no
+  const sandbox = new Set((useQuery(assetsQ).data ?? []).filter((x) => x.sandbox).map((x) => x.id));
+  const idle = a.asset_ids.filter((id) => !a.busy_asset_ids.includes(id));
+  const free = prodOk ? idle : idle.filter((id) => sandbox.has(id));
+  const held = idle.length - free.length;  // production machines this server won't change yet
   const failed = a.last_attempt && !a.job ? a.last_attempt : null;
   // A failure that named extra packages is re-planned from its job card ("Plan again including …"), never blind from here.
   const needsMore = failed ? dependenciesNeeded(failed.error).length > 0 : false;
@@ -104,8 +116,9 @@ export function ActionCard({ a }: { a: Action }) {
         <p className="text-base">
           {a.fixed_version ? <>
             Upgrade <strong className="break-all font-semibold">{a.package}</strong> to{" "}
-            <code className="break-all bg-sunken px-1.5 py-0.5 font-mono text-[13px]">{a.fixed_version}</code>
+            <code className="text-mono break-all bg-sunken px-1.5 py-0.5 font-mono">{a.fixed_version}</code>
           </> : <>Change setting <strong className="break-all font-semibold">{a.package}</strong></>}
+          {" "}<span className="text-sm text-muted">{a.ecosystem}</span>
         </p>
         {a.summary && <p className="mt-1 max-w-prose break-words text-sm text-muted">{a.summary}</p>}
         <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm text-muted">
@@ -132,7 +145,7 @@ export function ActionCard({ a }: { a: Action }) {
         <span className="flex flex-wrap items-start gap-x-4 gap-y-2">
         {a.plannable && free.length > 0 && !needsMore && (
           <PlanFixButton ecosystem={a.ecosystem} pkg={a.package} assetIds={free}
-            label={a.job ? `Plan fix for ${plural(free.length, "more host")}` : failed ? "Plan fix again" : "Plan fix"} />
+            label={a.job ? `Plan fix for ${plural(free.length, "more host")}` : failed ? "Plan fix again" : held ? `Plan fix on ${plural(free.length, "test machine")}` : "Plan fix"} />
         )}
         <Link
           to="/findings"

@@ -357,3 +357,87 @@ def test_one_fix_for_several_cves_is_ranked_by_the_worst_of_them(env):
     [f] = [f for f in c.get("/api/findings").json() if f["package"] == "zlib"]
     assert f["vuln_id"] == "CVE-2030-1" and f["kev"] and f["epss"] == 0.9 and f["priority"] == "fix-now"
     assert "CVE-2030-2, CVE-2030-3" in f["summary"]
+
+
+def test_findings_sort_count_list_view_and_groups(env):
+    c = user(env)
+    a = enrol(c)
+    c.post("/api/agent/inventory", json=INV, headers={"Authorization": f"Bearer {a['agent_key']}"})
+    full = c.get("/api/findings").json()
+    assert c.get("/api/findings/count").json() == {"total": len(full)}
+    assert c.get("/api/findings/count", params={"q": "requests"}).json()["total"] == sum(f["package"] == "requests" for f in full)
+    by_pkg = c.get("/api/findings", params={"sort": "package"}).json()
+    assert [f["package"] for f in by_pkg] == sorted(f["package"] for f in full)
+    slim = c.get("/api/findings", params={"view": "list", "limit": 2}).json()
+    assert len(slim) == 2 and "summary" not in slim[0] and len(slim[0]["reasons"]) <= 1 and slim[0]["id"] == full[0]["id"]
+    groups = c.get("/api/findings/groups", params={"by": "package"}).json()
+    assert {g["key"] for g in groups} == {f["package"] for f in full}
+    assert sum(g["findings"] for g in groups) == len(full) and all(g["vulns"] <= g["findings"] for g in groups) and groups[0]["priority"] == "fix-now" and groups[0]["hosts"] == 1
+    assert all(g["ecosystem"] for g in groups)  # a package is grouped per distro, so its fixed version is that distro's
+    assert {g["ecosystem"] for g in groups if g["key"] == "requests"} == {"PyPI"}
+    from nimstead.versions import comparator_for  # the group names the fix that clears all of it, by version order, not text order
+    for g in groups:
+        cmp = comparator_for(g["ecosystem"])
+        assert all(cmp(g["fixed_version"], f["fixed_version"]) >= 0 for f in full if f["package"] == g["key"] and f["fixed_version"])
+    vulns = c.get("/api/findings/groups", params={"by": "vuln", "q": "requests"}).json()
+    assert all(g["package"] == "requests" for g in vulns)
+
+
+def test_large_responses_are_compressed_and_the_evidence_page_gets_a_summary(env):
+    c = user(env)
+    a = enrol(c)
+    c.post("/api/agent/inventory", json=INV, headers={"Authorization": f"Bearer {a['agent_key']}"})
+    r = c.get("/api/findings", headers={"Accept-Encoding": "gzip"})
+    assert r.headers.get("content-encoding") == "gzip" and r.json()  # the client decodes it
+    full = c.get("/api/evidence/report").json()
+    brief = c.get("/api/evidence/report", params={"summary": "true"}).json()
+    assert full["findings"] and "findings" not in brief and "assets" not in brief
+    assert brief["controls"] == full["controls"] and brief["metrics"] == full["metrics"]
+
+
+def test_ledger_filters_by_what_a_reviewer_looks_for(env):
+    c = user(env)
+    a = enrol(c)
+    c.post("/api/agent/inventory", json=INV, headers={"Authorization": f"Bearer {a['agent_key']}"})
+    every = c.get("/api/evidence/ledger").json()
+    found = c.get("/api/evidence/ledger", params={"group": "detections"}).json()
+    access = c.get("/api/evidence/ledger", params={"group": "access"}).json()
+    assert found["entries"] and all(e["kind"] in ("finding_opened", "inventory_received") for e in found["entries"])
+    assert all(e["kind"] not in ("finding_opened", "inventory_received") for e in access["entries"])
+    assert found["total"] + access["total"] <= every["total"] and not found["problems"]
+    assert c.get("/api/evidence/ledger", params={"group": "nope"}).status_code == 422
+
+
+def test_the_drawer_names_the_upgrade_that_clears_the_package_on_the_host(env):
+    c = user(env)
+    a = enrol(c)
+    c.post("/api/agent/inventory", json=INV, headers={"Authorization": f"Bearer {a['agent_key']}"})
+    rows = [f for f in c.get("/api/findings").json() if f["package"] == "openssl"]
+    one = c.get(f"/api/findings/{rows[0]['id']}").json()
+    assert one["package_fix"]["open"] == len(rows)
+    from nimstead.versions import comparator_for  # the same dpkg ordering the server uses
+    cmp = comparator_for("Debian:12")
+    assert all(cmp(one["package_fix"]["version"], f["fixed_version"]) >= 0 for f in rows if f["fixed_version"])
+
+
+def test_findings_page_by_offset_in_a_stable_order_with_only_the_table_columns(env):
+    c = user(env)
+    a = enrol(c)
+    c.post("/api/agent/inventory", json=INV, headers={"Authorization": f"Bearer {a['agent_key']}"})
+    every = [f["id"] for f in c.get("/api/findings").json()]
+    pages = [c.get("/api/findings", params={"view": "list", "limit": 5, "offset": o}).json() for o in range(0, len(every) + 5, 5)]
+    assert [f["id"] for p in pages for f in p] == every  # no gaps or repeats across pages
+    assert set(pages[0][0]) == {"id", "asset_id", "hostname", "ecosystem", "package", "installed_version", "fixed_version", "vuln_id", "kev", "score", "priority", "reasons"}
+
+
+def test_accept_a_selection_records_each_and_skips_what_isnt_open(env):
+    c = user(env)
+    a = enrol(c)
+    c.post("/api/agent/inventory", json=INV, headers={"Authorization": f"Bearer {a['agent_key']}"})
+    ids = [f["id"] for f in c.get("/api/findings").json()][:3]
+    r = c.post("/api/findings/accept-many", json={"ids": [*ids, "nope"], "reason": "Compensating control: WAF rule", "days": 30})
+    assert r.json() == {"accepted": 3, "skipped": 1}
+    assert {f["id"] for f in c.get("/api/findings", params={"status": "accepted"}).json()} == set(ids)
+    assert c.post("/api/findings/accept-many", json={"ids": ids, "reason": "short", "days": 30}).status_code == 422
+    kinds = [e["kind"] for e in c.get("/api/evidence/ledger").json()["entries"]]
+    assert kinds.count("finding_accepted") == 3  # one ledger entry per finding, as a single accept writes

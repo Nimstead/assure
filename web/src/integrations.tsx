@@ -16,6 +16,7 @@ export function SsoSection() {
   // The form is rebuilt only after its own save (to show what was stored and clear the write-only secret), never when
   // other data changes, e.g. "Verify domains", so unsaved edits survive.
   const [version, setVersion] = useState(0);
+  const [dirty, setDirty] = useState(false);  // like every Save in Settings: enabled once something changed
   if (q.isPending) return <Loading className="h-40" />;
   if (q.error) return <ErrorState error={q.error} retry={() => q.refetch()} />;
   const s = q.data;
@@ -25,15 +26,15 @@ export function SsoSection() {
     save.mutate({
       issuer: f.get("issuer"), client_id: f.get("client_id"), client_secret: f.get("client_secret") || undefined,
       domains: list(String(f.get("domains"))), required: f.get("required") === "on",
-    }, { onSuccess: () => setVersion((v) => v + 1) });
+    }, { onSuccess: () => { setVersion((v) => v + 1); setDirty(false); } });
   };
   return (
     <section aria-labelledby="sso" className="flex flex-col gap-3">
       <h3 id="sso" className="text-lg font-semibold">Single sign-on (OIDC)</h3>
       <p className="max-w-prose text-sm text-muted">
-        Let people sign in with your identity provider. Register this redirect URI there: <code className="font-mono text-xs text-ink">{s.redirect_uri}</code>. People whose email is on an allowed domain get an account here the first time they sign in. Leave the issuer empty to switch SSO off.
+        Let people sign in with your identity provider. Register this redirect URI there: <code className="break-all font-mono text-xs text-ink">{s.redirect_uri}</code>. People whose email is on an allowed domain get an account here the first time they sign in. Leave the issuer empty to switch SSO off.
       </p>
-      <form key={version} onSubmit={submit} onChange={() => save.reset()} className="grid max-w-xl gap-4">
+      <form key={version} onSubmit={submit} onChange={() => { save.reset(); setDirty(true); }} className="grid max-w-xl gap-4">
         <Field label="Issuer URL"><input className={input} name="issuer" type="url" defaultValue={s.issuer} placeholder="https://login.example.com" autoComplete="off" /></Field>
         <Field label="Client ID"><input className={input} name="client_id" defaultValue={s.client_id} autoComplete="off" /></Field>
         <Field label="Client secret" hint={s.client_secret_set ? "A secret is saved and never shown again. Leave blank to keep it." : "Stored on the server; it can't be read back."}>
@@ -46,7 +47,7 @@ export function SsoSection() {
           <input type="checkbox" name="required" defaultChecked={s.required} className="mt-1 size-4" />
           <span><span className="font-medium">Require SSO</span><br /><span className="text-muted">Password sign-in is switched off for everyone except admins, whose password sign-ins are recorded and alerted as break-glass.</span></span>
         </label>
-        <div className="flex flex-wrap items-center gap-3"><button className={btnPrimary} disabled={save.isPending}>{save.isPending ? "Saving…" : "Save SSO settings"}</button>{save.isSuccess && <Done>Saved</Done>}</div>
+        <div className="flex flex-wrap items-center gap-3"><button className={btnPrimary} disabled={save.isPending || !dirty}>{save.isPending ? "Saving…" : "Save SSO settings"}</button>{save.isSuccess && <Done>Saved</Done>}</div>
         <Alert error={save.error} prefix="Couldn't save: " />
       </form>
       {s.domain_checks.length > 0 && <DomainChecks checks={s.domain_checks} />}
@@ -108,6 +109,7 @@ export function NotificationsSection() {
   });
   const [removing, setRemoving] = useState(false);
   const [version, setVersion] = useState(0);  // rebuilt only after its own save, as in SsoSection
+  const [dirty, setDirty] = useState(false);
   if (q.isPending) return <Loading className="h-40" />;
   if (q.error) return <ErrorState error={q.error} retry={() => q.refetch()} />;
   const s = q.data;
@@ -118,7 +120,7 @@ export function NotificationsSection() {
     save.mutate({
       webhook_url: removing ? "" : String(f.get("webhook_url") || "") || undefined, webhook_format: f.get("webhook_format"),
       emails: list(String(f.get("emails"))),
-    }, { onSuccess: () => { setVersion((v) => v + 1); setRemoving(false); } });
+    }, { onSuccess: () => { setVersion((v) => v + 1); setRemoving(false); setDirty(false); } });
   };
   return (
     <section aria-labelledby="failure-alerts" className="flex flex-col gap-3">
@@ -134,7 +136,7 @@ export function NotificationsSection() {
         </p>
       )}
       {last?.ok && <p className="text-sm text-muted">Last delivery succeeded {relativeTime(last.ts)} ({last.channel}).</p>}
-      <form key={version} onSubmit={submit} onChange={() => save.reset()} className="grid max-w-xl gap-4">
+      <form key={version} onSubmit={submit} onChange={() => { save.reset(); setDirty(true); }} className="grid max-w-xl gap-4">
         <Field label="Webhook URL" hint={s.webhook_set ? `Saved for ${s.webhook_host}. Enter a new URL to replace it.` : "https only. Slack incoming webhooks work as they are."}>
           <input className={input} name="webhook_url" type="url" autoComplete="off" placeholder={s.webhook_set ? "Unchanged" : "https://hooks.slack.com/services/…"} disabled={removing} />
         </Field>
@@ -151,13 +153,13 @@ export function NotificationsSection() {
           <p className="text-sm text-muted">Waiting for confirmation: {s.emails.filter((e) => !s.emails_confirmed.includes(e)).join(", ")}</p>
         )}
         <div className="flex flex-wrap items-center gap-2">
-          <button className={btnPrimary} disabled={save.isPending}>{save.isPending ? "Saving…" : "Save alert settings"}</button>
+          <button className={btnPrimary} disabled={save.isPending || (!dirty && !removing)}>{save.isPending ? "Saving…" : "Save alert settings"}</button>
           {save.isSuccess && <Done>Saved</Done>}
           <button type="button" className={btnQuiet} disabled={test.isPending || (!s.webhook_set && !(s.emails_confirmed.length && s.email_available))} onClick={() => test.mutate()}>
             {test.isPending ? "Sending…" : "Send test alert"}
           </button>
           {s.webhook_set && (
-            <label className="flex min-h-[44px] items-center gap-2 text-sm md:min-h-0"><input type="checkbox" checked={removing} onChange={(e) => setRemoving(e.target.checked)} className="size-4" />Remove webhook on save</label>
+            <label className="flex tap items-center gap-2 text-sm"><input type="checkbox" checked={removing} onChange={(e) => setRemoving(e.target.checked)} className="size-4" />Remove webhook on save</label>
           )}
         </div>
         <Alert error={save.error} prefix="Couldn't save: " />

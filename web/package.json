@@ -1,7 +1,7 @@
 {
   "name": "nimstead-web",
   "private": true,
-  "version": "0.7.4",
+  "version": "0.7.5",
   "license": "FSL-1.1-ALv2",
   "type": "module",
   "scripts": {

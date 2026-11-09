@@ -49,7 +49,9 @@ export const sbomSummary = (r: SbomResult) =>
   `${r.mapped} of ${r.components} components recognised (${r.unique_packages} unique packages), ${r.components - r.mapped} skipped. ${r.open} open finding${r.open === 1 ? "" : "s"}, ${r.resolved} resolved.`;
 export interface Finding {
   id: string; asset_id: string; hostname: string; ecosystem: string; package: string;
-  installed_version: string; fixed_version: string | null; setting_fix: boolean; vuln_id: string; advisory_ids: string[];
+  installed_version: string; fixed_version: string | null; setting_fix: boolean; plannable?: boolean;
+  /** Drawer only: the upgrade that clears every open finding for this package on this host. */
+  package_fix?: { version: string; open: number } | null; vuln_id: string; advisory_ids: string[];
   rule_evidence?: "proven" | "real name" | "pattern" | null;
   summary: string | null; cvss: number | null; epss: number | null; kev: boolean; score: number;
   priority: Priority; reasons: string[]; status: Status; first_seen: string; last_seen: string;
@@ -119,7 +121,7 @@ export const APPROVE_COPY = "Saves a rollback copy of each package, upgrades, ch
 export const humaniseKind = (k: string) => { const t = k.replace(/_/g, " ").trim(); return t.charAt(0).toUpperCase() + t.slice(1); };
 
 export interface LedgerEntry { seq: number; ts: string; kind: string; subject: string; hash: string; prev_hash: string; data: Record<string, unknown> }
-export interface Control { framework: string; control: string; requirement: string; status: ControlStatus; evidence: string }
+export interface Control { framework: string; control: string; requirement: string; status: ControlStatus; evidence: string; exceptions?: number }
 /** "no_activity": a timeliness control with nothing fixed or changed in the period and nothing overdue (DECISIONS 45). */
 export type ControlStatus = "met" | "not_met" | "no_activity";
 export interface EvidenceReport {
@@ -190,7 +192,7 @@ async function errorMessage(res: Response): Promise<string> {
 export const PRIORITY_LABEL: Record<Priority, string> = { "fix-now": "Fix now", next: "Next", planned: "Routine", low: "Low" };
 export const PRIORITY_CLASS: Record<Priority, string> = {
   "fix-now": "bg-now-bg text-now-fg", next: "bg-next-bg text-next-fg",
-  planned: "bg-planned-bg text-planned-fg shadow-[inset_0_0_0_1px_var(--line-strong)]", low: "bg-low-bg text-low-fg",  // planned sits on the surface colour, so it gets an outline
+  planned: "bg-planned-bg text-planned-fg", low: "bg-low-bg text-low-fg",  // one fill ramp, Fix now darkest to Low none
 };
 
 /** Same thresholds as api/src/nimstead/risk.py. */
@@ -247,14 +249,21 @@ export interface FindingsFilters {
   q: string; priority: Priority[]; fixable: boolean; kev: boolean; status: Status; asset: string; open: string;
   /** Open and past its deadline (as evidence packs count it). */
   overdue: boolean;
+  sort: FindingSort; group: FindingGroup;
 }
+export type FindingSort = "score" | "package" | "host" | "vuln" | "newest";
+export type FindingGroup = "" | "vuln" | "package";
+/** One vulnerability or package across the fleet (GET /api/findings/groups). */
+export interface FindingGroupRow { key: string; findings: number; hosts: number; score: number; kev: boolean; priority: Priority; fixed_version: string | null; packages: number; package: string; vuln_id: string; vulns: number; ecosystem: string | null }
 export type RawSearch = Record<string, string | undefined>;
 
 /** Defaults: open findings, fixable only (noise reduction). Unknown values fall back to defaults. */
 export function parseFilters(raw: RawSearch): FindingsFilters {
   const status = (["open", "resolved", "accepted"] as const).find((s) => s === raw.status) ?? "open";
   const priority = (raw.priority ?? "").split(",").filter((p): p is Priority => (PRIORITIES as readonly string[]).includes(p));
-  return { q: raw.q ?? "", priority, fixable: raw.fixable !== "0", kev: raw.kev === "1", status, asset: raw.asset ?? "", open: raw.f ?? "", overdue: raw.overdue === "1" };
+  const sort = (["score", "package", "host", "vuln", "newest"] as const).find((s) => s === raw.sort) ?? "score";
+  const group = (["vuln", "package"] as const).find((g) => g === raw.group) ?? "";
+  return { q: raw.q ?? "", priority, fixable: raw.fixable !== "0", kev: raw.kev === "1", status, asset: raw.asset ?? "", open: raw.f ?? "", overdue: raw.overdue === "1", sort, group };
 }
 
 /** Inverse of parseFilters: only non-default values reach the URL. */
@@ -268,14 +277,18 @@ export function filtersToSearch(f: FindingsFilters): RawSearch {
     asset: f.asset || undefined,
     f: f.open || undefined,
     overdue: f.overdue ? "1" : undefined,
+    sort: f.sort === "score" ? undefined : f.sort,
+    group: f.group || undefined,
   };
 }
 
 /** Query string sent to /api/findings. */
-// shortcut: the list is capped rather than paged; the page says when it's hit and CSV export has everything.
-export const FINDINGS_CAP = 5000;
-export function filtersToApi(f: FindingsFilters): string {
-  const p = new URLSearchParams({ status: f.status, limit: String(FINDINGS_CAP) });
+/** Rows per page of the findings list; more load as it scrolls. */
+export const FINDINGS_CAP = 500;
+/** The filters only (no paging, sort or view): what /api/findings/count and /groups take too. */
+export function filtersToApi(f: FindingsFilters, list = true): string {
+  const p = new URLSearchParams({ status: f.status });
+  if (list) { p.set("limit", String(FINDINGS_CAP)); p.set("view", "list"); if (f.sort !== "score") p.set("sort", f.sort); }
   if (f.q) p.set("q", f.q);
   if (f.priority.length) p.set("priority", f.priority.join(","));
   if (f.asset) p.set("asset_id", f.asset);
@@ -369,4 +382,15 @@ export const assetsQ = queryOptions({ queryKey: ["assets"], queryFn: () => api<A
 export function dependenciesNeeded(error: string | null | undefined): string[] {
   const m = /would also change: ([^\n;]+)/.exec(error ?? "");
   return m?.[1] ? m[1].split(",").map((s) => s.trim()).filter(Boolean) : [];
+}
+
+// ---- saved views ------------------------------------------------------------------
+// shortcut: saved in this browser only (localStorage); store them per user on the server if teams need to share them
+export interface SavedView { name: string; search: RawSearch }
+const VIEWS_KEY = "nimstead:findings-views";
+export function savedViews(): SavedView[] {
+  try { const v = JSON.parse(localStorage.getItem(VIEWS_KEY) ?? "[]"); return Array.isArray(v) ? v.filter((x) => x && typeof x.name === "string") : []; } catch { return []; }
+}
+export function saveViews(views: SavedView[]) {
+  try { localStorage.setItem(VIEWS_KEY, JSON.stringify(views)); window.dispatchEvent(new Event("nimstead-views")); } catch { /* private mode: views just don't persist */ }
 }

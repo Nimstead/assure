@@ -36,10 +36,12 @@ describe("findings filters <-> URL", () => {
     expect(filtersToSearch(f)).toEqual({ q: undefined, priority: undefined, fixable: undefined, status: undefined, asset: undefined, f: undefined });
   });
   it("round-trips non-default state", () => {
-    const raw = { q: "openssl", priority: "fix-now,next", fixable: "0", status: "resolved", asset: "a1", f: "x9", kev: "1", overdue: "1" };
+    const raw = { q: "openssl", priority: "fix-now,next", fixable: "0", status: "resolved", asset: "a1", f: "x9", kev: "1", overdue: "1", sort: "host", group: "vuln" };
     const f = parseFilters(raw);
-    expect(f).toEqual({ q: "openssl", priority: ["fix-now", "next"], fixable: false, kev: true, status: "resolved", asset: "a1", open: "x9", overdue: true });
+    expect(f).toEqual({ q: "openssl", priority: ["fix-now", "next"], fixable: false, kev: true, status: "resolved", asset: "a1", open: "x9", overdue: true, sort: "host", group: "vuln" });
     expect(new URLSearchParams(filtersToApi(f)).get("overdue")).toBe("true");
+    expect(new URLSearchParams(filtersToApi(f)).get("sort")).toBe("host");
+    expect(new URLSearchParams(filtersToApi(f, false)).has("limit")).toBe(false);  // count and groups take the filters only
     expect(filtersToSearch(f)).toEqual(raw);
   });
   it("ignores junk and builds the API query", () => {
@@ -106,5 +108,15 @@ describe("updateSource (plan T12)", () => {
     expect(updateSource(undefined)).toBe("");
     // Windows' zero date, from a real VM that had never installed an update
     expect(updateSource({ wsus: null, last_update_success: "1601-01-01T00:00:00.0000000" })).toBe("Updates from Windows Update · nothing installed through it yet");
+  });
+});
+
+describe("saved views", () => {
+  it("round-trip through this browser's storage and survive junk", async () => {
+    const { savedViews, saveViews } = await import("./lib");
+    localStorage.setItem("nimstead:findings-views", "not json");
+    expect(savedViews()).toEqual([]);
+    saveViews([{ name: "KEV", search: { kev: "1" } }]);
+    expect(savedViews()).toEqual([{ name: "KEV", search: { kev: "1" } }]);
   });
 });

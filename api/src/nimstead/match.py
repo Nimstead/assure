@@ -19,6 +19,12 @@ log = logging.getLogger(__name__)
 
 
 @functools.lru_cache(maxsize=4096)  # once per distinct case, and bounded: the hourly re-match repeats them all
+
+def clip(text: str, n: int = 200) -> str:
+    """At most n characters, cut at a word with an ellipsis rather than mid-word."""
+    text = " ".join(text.split())
+    return text if len(text) <= n else text[:n].rsplit(" ", 1)[0].rstrip(",;:") + "…"
+
 def _incomparable(ecosystem: str, name: str, version: str, advisory: str, error: str) -> None:
     log.warning("%s %s %s: not compared with %s (%s), so not matched", ecosystem, name, version, advisory, error)
 
@@ -120,6 +126,6 @@ def match_package(pkg: Package, ecosystem: str, records: list[dict]) -> list[Mat
                 if fixed and (m.fixed is None or cmp(fixed, m.fixed) < 0):
                     m.fixed = fixed
             else:
-                by_id[cid] = Match(cid, [rec["id"]], fixed, rec.get("summary") or rec.get("details", "")[:200], rec)
+                by_id[cid] = Match(cid, [rec["id"]], fixed, rec.get("summary") or clip(rec.get("details", "")), rec)
             break
     return list(by_id.values())

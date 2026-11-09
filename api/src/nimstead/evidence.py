@@ -223,7 +223,9 @@ def _controls(m: dict, sla: dict) -> list[dict]:
          "status": st(scanned and sla_ok),
          "evidence": f"{m['assets_reporting']}/{m['assets']} assets assessed in period; {m['overdue_open']} findings past SLA"},
         {"framework": "NIST SP 800-53 Rev. 5", "control": "RA-5", "requirement": "Vulnerability monitoring and scanning",
-         "status": st(scanned), "evidence": f"{m['assets_reporting']}/{m['assets']} assets reported inventory in period"},
+         "status": st(scanned), "exceptions": m.get("assets_silent_now", 0),
+         "evidence": f"{m['assets_reporting']}/{m['assets']} assets reported inventory in period"
+                     + (f"; {m['assets_silent_now']} not reporting now" if m.get("assets_silent_now") else "")},
         {"framework": "NIST SP 800-53 Rev. 5", "control": "SI-2", "requirement": "Flaw remediation within organisation-defined time periods",
          "status": timely(sla_ok, m["resolved"]), "evidence": f"{m['resolved_within_sla']}/{m['resolved']} fixes within the organisation's SLA in force when each was detected (now: {', '.join(f'{SLA_LABEL.get(p, p)} {d} days' for p, d in sla.items())})"
                      + (f"; deadlines changed {m['sla_changes']} times in the period (sla_changes)" if m.get("sla_changes") else "")},
@@ -233,12 +235,13 @@ def _controls(m: dict, sla: dict) -> list[dict]:
         {"framework": "SOC 2 (TSC 2017)", "control": "CC7.1", "requirement": "Detection and monitoring procedures identify susceptibilities to newly discovered vulnerabilities",
          "status": st(scanned and sla_ok), "evidence": f"{m['assets_reporting']}/{m['assets']} assets assessed in period against continuously updated advisories; {m['overdue_open']} findings past SLA"},
         {"framework": "SOC 2 (TSC 2017)", "control": "CC8.1", "requirement": "Changes are authorised, tested and approved before implementation",
-         "status": timely(m["changes"] == m["changes_authorised"], m["changes"]),
-         "evidence": f"{m['changes_authorised']}/{m['changes']} remediation changes in period approved by a named person or the recorded auto policy; each dry-run checked, health-checked and rolled back on failure"},
+         "status": timely(m["changes"] == m["changes_authorised"], m["changes"]), "exceptions": m.get("changes_self_approved", 0),
+         "evidence": f"{m['changes_authorised']}/{m['changes']} remediation changes in period approved by a named person or the recorded auto policy; each dry-run checked, health-checked and rolled back on failure"
+                     + (f". {m['changes_self_approved']} of them approved by the person who planned them, with no second approver" if m.get("changes_self_approved") else "")},
         {"framework": "NIS2 Directive", "control": "Art. 21(2)(e)", "requirement": "Vulnerability handling in network and information systems maintenance",
          "status": st(scanned and sla_ok), "evidence": f"{m['assets_reporting']}/{m['assets']} assets assessed; {m['resolved_within_sla']}/{m['resolved']} fixes within SLA"},
         {"framework": "CIS Controls v8.1", "control": "7.3 / 7.4", "requirement": "Automated OS and application patch management",
-         "status": timely(sla_ok, m["resolved"]), "evidence": f"Mean time to remediate: {m['mttr_days']} days" if m["mttr_days"] is not None else "Mean time to remediate: no fixes in period"},
+         "status": timely(sla_ok, m["resolved"]), "evidence": (f"Mean time to remediate: {m['mttr_days']} days" if m["mttr_days"] >= 1 else "Mean time to remediate: under a day") if m["mttr_days"] is not None else "Mean time to remediate: no fixes in period"},
     ]
 
 
@@ -301,11 +304,13 @@ def build_pack(s: Session, org_id: str, start: datetime, end: datetime, with_ent
     m["findings_without_ledger_record"] = sum(1 for f in findings if f.id not in opened)
     m["assets"] = len(assets)
     m["assets_reporting"] = sum(1 for a in assets if start <= a.last_seen <= end or a.last_seen > end)
+    m["assets_silent_now"] = sum(1 for a in assets if a.kind == "host" and a.last_seen < end - timedelta(hours=14))  # as Assets' "not reporting"
     m["mttr_days"] = round(sum(ttr) / len(ttr), 1) if ttr else None
-    ran = s.execute(select(RemediationJob.approved_by).where(RemediationJob.org_id == org_id, RemediationJob.updated >= start,
+    ran = s.execute(select(RemediationJob.approved_by, RemediationJob.created_by).where(RemediationJob.org_id == org_id, RemediationJob.updated >= start,
                                                              RemediationJob.updated <= end,
-                                                             RemediationJob.status.not_in(("planned", "cancelled")))).scalars().all()
-    m["changes"], m["changes_authorised"] = len(ran), sum(1 for by in ran if by)
+                                                             RemediationJob.status.not_in(("planned", "cancelled")))).all()
+    m["changes"], m["changes_authorised"] = len(ran), sum(1 for by, _ in ran if by)
+    m["changes_self_approved"] = sum(1 for by, made in ran if by and by == made)  # no second person checked it (CC8.1)
     # fixes approved as forward-only (no automatic rollback, plan T22), listed apart so an auditor sees each one
     forward_only = [{"job": j.id, "host": host.get(j.asset_id, "?"), "summary": j.summary, "approved_by": j.approved_by,
                      "status": j.status, "updated": j.updated.isoformat()} for j in s.scalars(select(RemediationJob).where(

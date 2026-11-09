@@ -105,4 +105,47 @@ A pass does not prove authenticated inventory delivery, advisory coverage, actua
 
 `app_flags(p)` adds scan-apps and repeatable app-root options to the parser in place. `app_roots(a)` requires scan_apps when roots are present. It retains the first 20 paths and applies abspath without tilde expansion, existence checks or deduplication.
 
+## Scheduling and filesystem cleanup
+
+| Interface | Inputs and effects |
+| --- | --- |
+| `is_link(path)` | Current symlink/reparse check. Missing/inaccessible paths return false |
+| `remove_link(path)` | Choose rmdir/remove after directory detection. Platform/link-type errors propagate |
+| `secure_windows_dir(run=sh,d=None)` | Apply owner/ACL changes and attempt selected child cleanup. Defaults to state directory |
+| `schedule_units(cfg)` | Return systemd filename/text mapping without installation |
+| `schedule_windows_script(cfg)` | Return registration PowerShell without execution |
+| `schedule(cfg,run=sh,unit_dir=SYSTEMD_DIR,systemd=None)` | Install Windows/systemd schedule or return cron instructions |
+| `uninstall(run=sh,unit_dir=SYSTEMD_DIR,state_dirs=None,agent_path=None)` | Attempt local removal and return recorded/deferred paths. No server deletion |
+
+### Schedule definitions
+
+| Platform | Main run | Opt-in job poll |
+| --- | --- | --- |
+| systemd | OnBootSec=5min, OnUnitActiveSec=6h, RandomizedDelaySec=15min | Boot 2min, interval 15min, random delay 2min |
+| Windows | Periodic start after 5min, interval 6h, random delay 30min. Separate startup trigger without added delay | Start after 2min, interval 15min, random delay 2min |
+
+Main runs use remediate when allow_remediation is true, otherwise report. Polls use remediate --if-jobs. Windows requests priority 7, StartWhenAvailable and IgnoreNew. Linux templates do not set nice. Scheduling does not guarantee immediate execution after approval.
+
+Builders trust server/python fields. Argument quoting handles spaces, not arbitrary shell/task syntax. Windows installation checks a lexical Program Files prefix. It does not independently validate executable ACLs, provenance or resolved targets.
+
+Systemd expects its unit directory to exist. Files are written sequentially before reload/enable commands. Failure can leave changed files or active tasks. There is no rollback. Obsolete job-timer disable status is ignored.
+
+Successful Windows/systemd installation saves schedule_version afterwards. Saving can fail after tasks changed. Non-systemd returns instructions without installing cron entries or saving that version. CLI --if-changed checks the saved version only, not live state.
+
+### Windows state directory
+
+The helper can remove a linked state root, create the directory, and change root/descendant owners and ACLs. It reads original child owners before its recursive owner reset. It then attempts removal of links and entries with untrusted recorded owners.
+
+The cleanup list records selected paths. Ignored directory-removal errors mean those paths are not guaranteed absent. Earlier ACL/deletion effects remain after a later failure. Checked command failures become AgentError. Filesystem, runner and listing errors can propagate.
+
+Paths and command output must be trusted. Point-in-time checks are not isolation proofs against concurrent changes. Preserve owner/ACL state when editing configuration. A newly created file with an untrusted owner can be selected for cleanup.
+
+### Uninstallation limits
+
+Windows refuses whenever its pending state file exists. Scheduler unregister/disable status is not checked. Cron entries are not managed. Verify actual schedule removal separately.
+
+Falsey state_dirs/agent_path select defaults. Nonlinked state directories are removed recursively. Linked state-directory roots are skipped. Agent/current backup/new files and selected runtimes receive separate cleanup. Some unit deletion errors precede the progress-error wrapper.
+
+The running Windows runtime uses an unmonitored detached cleanup attempt. A deferred path label does not prove completion. Earlier removals remain after failure. This helper does not change server assets or ledger events.
+
 Related: [agent commands](agent-cli.md), [scan troubleshooting](../how-to/troubleshoot-scans.md), [source](../../agent/nimstead_agent.py).

@@ -37,3 +37,5 @@ Plans that cannot be undone require explicit acknowledgement. Do not assume ever
 To withdraw a plan before dispatch, cancel it on **Remediation**. Cancellation is available only for planned or approved jobs. A dispatched job can already run on the host. Use the host's recovery procedure if execution fails.
 
 Keep **Auto** disabled until you have observed successful changes and failure recovery on test hosts. For its behaviour, read [remediation modes](../reference/remediation-modes.md) and [remediation safety](../explanation/remediation-safety.md).
+
+On Windows, preserve the configuration file owner and ACLs during edits. See [state-directory cleanup](../reference/agent-core.md#windows-state-directory) before replacing a file.

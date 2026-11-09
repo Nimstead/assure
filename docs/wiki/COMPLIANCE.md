@@ -293,3 +293,17 @@ Offline assertions verified retained package rows after a failed query, destruct
 The site builds 79 articles with six passing site tests. Playwright MCP verified the new reference and mobile diagnostic anchors without page overflow. Reference/how-to prose received humanizer and STE-style review. No production enrolment, host configuration edit, package change or agent release occurred.
 
 The agent review remains partial. Windows/remote collection, optional scan internals, job classes and remaining schedule/security/update helpers still need named completion. API gaps, sandbox/helpers and final editorial/example review also remain open.
+
+## Application scans, scheduling and cleanup checkpoint
+
+Reviewed all optional Java/Python/npm metadata scan helpers and their private traversal/read paths. Added a developer reference with exact default globs, returned fields, ownership heuristics, exclusions and budget limits. Added a separate how-to for changing existing-host collection flags and verifying the report without another enrolment.
+
+Corrected complete-scan, hard-deadline and link/mount exclusion implications. Java can skip bad archives while complete remains true. Application thresholds can apply after an entire folder. Direct install roots can bypass discovery exclusions. The reference distinguishes these limits from a negative assessment.
+
+Reviewed filesystem checks, Windows state cleanup, schedule generation/installation and uninstall. Corrected guaranteed immediate execution and universal schedule/removal claims. Non-systemd Linux receives instructions without cron installation. Linux jitter is 15 minutes, Windows periodic jitter 30 minutes. Returned cleanup paths can remain after ignored errors. Operator guides now require verification and preserve configuration ownership/ACLs.
+
+117 focused tests and 53 subchecks passed, with six native Windows skips. Temporary assertions verified skipped/missing archives with complete=true, direct-root mount-filter bypass, post-folder package truncation, non-systemd no-op, partial unit writes, ignored scheduler stop failures and selected cleanup paths still present. Commands used fake runners and owned directories. Ruff and repository presence/links passed.
+
+The 81-article site build and six site tests passed. Playwright MCP verified desktop/mobile task/reference layouts and mobile anchors without page overflow. New prose received humanizer and STE-style review. No production scanner opt-in, scheduler, ACL, uninstall or agent release changed.
+
+The previous publication returned success while old content remained live. Reapplying its exact saved version was followed by successful source-hash and new-page checks. Publication evidence therefore includes rendered content, not only deployment status. Remaining Windows/remote collection, job classes, other agent/API contracts, sandbox/helpers and final editorial/example review keep the goal active.

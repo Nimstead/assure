@@ -3231,7 +3231,11 @@ Walk '%DIR%'
 
 
 def is_link(path):
-    """Symlink or junction (any reparse point): something to remove, never to follow."""
+    """Return whether current lstat identifies path as a symlink or Windows reparse point.
+
+    OSError, including missing/inaccessible paths, returns False. Other errors propagate.
+    This is a point-in-time check, not a lock on a later path operation. No writes occur.
+    """
     try:
         st = os.lstat(path)
     except OSError:
@@ -3240,16 +3244,28 @@ def is_link(path):
 
 
 def remove_link(path):
-    """Remove path using rmdir for a directory or remove otherwise; filesystem errors propagate."""
+    """Remove path using rmdir when isdir is true, otherwise remove; return None.
+
+    Directory detection can follow the target. The removal call and platform determine whether
+    it succeeds for that link type. No target contents are recursively deleted by this helper.
+    Filesystem/type errors propagate. The caller supplies the path and guards its ownership.
+    """
     (os.rmdir if os.path.isdir(path) else os.remove)(path)  # removes the link itself, not what it points at
 
 
 def secure_windows_dir(run=sh, d=None):
-    """ProgramData lets every user create files and folders, including this folder before the agent is installed, and a
-    file planted in it would be read by the SYSTEM task (a pending job decides what runs after a reboot). So, in order:
-    take the folder (Administrators own it, every explicit ACE dropped, then only SYSTEM and Administrators have access),
-    list what's inside, give all of it to Administrators, then remove links and anything a non-admin created.
-    Nothing outside the folder is ever touched. Returns the paths removed."""
+    """Apply Windows state-directory ownership/ACL commands and attempt selected child cleanup.
+
+    run accepts argv and PowerShell runner keywords, returning (status,output). d defaults to
+    WIN_STATE's parent. Remove a linked root, create the directory, set/reset root ownership
+    and ACLs, read original descendant owners, then reset descendant ownership/ACLs.
+    Attempt removal of listed links and entries whose recorded owners are outside TRUSTED_OWNERS.
+    Return selected cleanup paths. Ignored directory-removal errors mean this is not proof
+    that every path disappeared. Earlier ACL/deletion effects remain after a later failure.
+    Nonzero command status raises AgentError. Filesystem, malformed listing and runner errors
+    can propagate. Listing/point-in-time path guards are not a general filesystem isolation
+    proof. The supplied runner and directory must be trusted. No rollback occurs.
+    """
     d = d or os.path.dirname(WIN_STATE)
     if is_link(d):  # our folder itself planted as a junction would aim the lockdown, and our files, somewhere else
         remove_link(d)
@@ -3285,7 +3301,7 @@ def secure_windows_dir(run=sh, d=None):
             shutil.rmtree(path, ignore_errors=True) if os.path.isdir(path) else os.remove(path)
         removed.append(path)
     for path in removed:
-        print(f"removed {path}: not created by SYSTEM or Administrators", file=sys.stderr)
+        print(f"cleanup attempted for {path}: link or untrusted recorded owner", file=sys.stderr)
     return removed
 
 
@@ -3308,8 +3324,15 @@ def _join(args):
 
 
 def schedule_units(cfg):
-    """systemd units: inventory every 6 hours (remediate on opted-in hosts, which re-reports too), and on opted-in
-    hosts a 15-minute poll that only fetches approved jobs, so a fix starts within minutes of approval."""
+    """Return filename-to-text systemd unit definitions from trusted configuration cfg.
+
+    Expect server and optional python/allow_remediation fields. Use the configured interpreter
+    or sys.executable and this agent's absolute path. Main command is remediate when opted in,
+    otherwise report. Main timer uses 5min boot delay, 6h activation interval and 15min jitter.
+    Opt-in adds a 2min boot/15min interval job poll with 2min jitter and --if-jobs.
+    No files are written or services enabled. Template/type/key errors can propagate.
+    Argument quoting handles spaces only, not arbitrary shell/systemd input syntax.
+    """
     cmd = _join(_agent_cmd(cfg))
     verb = "remediate" if cfg.get("allow_remediation") else "report"
     units = {"nimstead-agent.service": _SERVICE.format(desc="Nimstead agent", cmd=f"{cmd} {verb}"),
@@ -3327,8 +3350,15 @@ def _ps_quote(v):
 
 
 def schedule_windows_script(cfg):
-    """SYSTEM scheduled tasks: every 6 hours and at startup (so an update that needed a restart is finished and reported
-    right after it), plus the 15-minute job poll on opted-in hosts."""
+    """Return PowerShell registration text for SYSTEM tasks from trusted cfg.
+
+    Use the selected interpreter and agent arguments. Main task combines startup and a
+    repeating 6h trigger starting after 5min, with 30min periodic random delay. Startup has
+    no added delay. Opt-in adds a 15min job poll starting after 2min with 2min random delay.
+    Settings request priority 7, StartWhenAvailable and IgnoreNew. Without opt-in, remove the
+    old jobs task. No task is created until the caller executes the text. Quoting is limited
+    by the argument builder. Config/type errors can propagate.
+    """
     py, *args = _agent_cmd(cfg)
     base = _join(args)
     verb = "remediate" if cfg.get("allow_remediation") else "report"
@@ -3358,7 +3388,18 @@ def _in_program_files(exe):
 
 
 def schedule(cfg, run=sh, unit_dir=SYSTEMD_DIR, systemd=None):
-    """Install (or update) this host's schedule and return what was done. Records SCHEDULE_VERSION in the config."""
+    """Install a schedule from cfg and return a status/instruction string.
+
+    run accepts argv/runner keywords. unit_dir defaults to SYSTEMD_DIR and must exist for unit
+    writes. systemd=None detects systemctl plus /run/systemd/system on non-Windows.
+    Windows checks the interpreter's lexical Program Files prefix, then invokes registration.
+    Non-systemd returns cron instructions without installation or a config-version write.
+    Systemd writes units sequentially, reloads and enables timers. Removing old jobs units
+    ignores a disable command's status. Successful Windows/systemd paths save schedule_version.
+    No rollback or atomic multi-file update exists. Command refusal becomes AgentError where
+    checked. Filesystem/runner/config errors can propagate after partial installation.
+    Success does not prove task execution, health or a completed fix.
+    """
     remediation = bool(cfg.get("allow_remediation"))
     poll = ", approved fixes checked every 15 minutes" if remediation else ""
     if os.name == "nt":
@@ -3398,7 +3439,18 @@ def schedule(cfg, run=sh, unit_dir=SYSTEMD_DIR, systemd=None):
 
 
 def uninstall(run=sh, unit_dir=SYSTEMD_DIR, state_dirs=None, agent_path=None):
-    """Remove the schedule, config, key, saved outcomes and rollback copies, and the agent itself. Returns what was removed."""
+    """Attempt local agent/schedule/state cleanup and return recorded removed/deferred paths.
+
+    run accepts argv/runner keywords. unit_dir selects systemd units. state_dirs and agent_path
+    use platform defaults when falsey. Windows refuses whenever WIN_STATE exists, before
+    cleanup. Scheduler unregister/disable return codes are not checked. Cron is not managed.
+    Remove nonlinked state directories, agent files and selected runtime directories. The
+    running Windows runtime uses an unmonitored detached cleanup attempt. Its returned label
+    is not proof of completion. Unit/task removals are not all represented in the result list.
+    No server asset or ledger deletion occurs. Side effects are not rolled back. Some cleanup
+    OSError becomes AgentError with progress text. Earlier unit/runner errors can propagate
+    separately. Call only with trusted installation paths and appropriate privileges.
+    """
     if os.name == "nt" and os.path.exists(WIN_STATE):
         raise AgentError("a Windows update is waiting for its restart; uninstall after it has finished and reported")
     if os.name == "nt":
@@ -3510,7 +3562,12 @@ def _where(path):
 
 
 def net_mounts():
-    """Return mountpoint strings for recognised network filesystems in /proc/mounts, or [] on I/O failure."""
+    """Return mountpoint strings for recognized network filesystem rows in /proc/mounts.
+
+    NET_FS is a finite allowlist. Escaped mountpoint text is not decoded. OSError returns an
+    empty list. Decode/type errors can propagate. This is not complete network-mount discovery.
+    No writes or network requests occur.
+    """
     try:
         with open("/proc/mounts") as f:
             return [ln.split()[1] for ln in f if len(ln.split()) > 2 and ln.split()[2] in NET_FS]
@@ -3526,7 +3583,11 @@ MAX_NESTED = 50 * 1024 * 1024
 
 
 def local_roots():
-    """Fixed local drives on Windows, / elsewhere (network mounts are skipped while walking)."""
+    """Return slash on non-Windows, otherwise fixed-drive roots from C through Z.
+
+    Windows uses GetDriveTypeW through ctypes. Exclude A/B and nonfixed drive types.
+    No mount/link validation occurs here. Platform/API errors can propagate. No writes occur.
+    """
     if os.name != "nt":
         return ["/"]
     import ctypes
@@ -3534,6 +3595,12 @@ def local_roots():
 
 
 def _poms(z, where, out):
+    """Add validated Maven coordinate/version/location tuples from ZipFile z to out.
+
+    where is the location label. Read matching pom.properties entries with declared size at
+    most 64KiB. Later duplicate properties win. Skip listed read/ZIP/key errors. Other failures
+    can propagate. No extraction or package execution occurs.
+    """
     for n in z.namelist():
         if (m := POM.search(n)) and z.getinfo(n).file_size <= 64 * 1024:  # no zip bomb in a properties file
             try:
@@ -3562,9 +3629,19 @@ def _seen_filesystem(d, devs, top=False):
 
 
 def scan_jars(roots, max_seconds=300, max_files=500_000, mounts=None, owned=lambda p: False):
-    """([Maven packages], summary). Stops at the time or file budget and says so; never follows links or enters
-    network mounts. One package per file it was found in (T19), named in its `source`; a jar the OS package manager
-    owns is left to it (R7.9) and counted."""
+    """Return (Maven package dictionaries, scan summary) from root path strings.
+
+    max_seconds defaults to 300 and max_files to 500000. Budgets are checked between file
+    entries, not during traversal, ZIP I/O or nested parsing. mounts=None reads net_mounts.
+    owned(path) excludes known OS-owned archives. Keep locations in source, truncated to 255
+    characters. Deduplicate by full coordinate/version/location before output truncation.
+    Read jar/war/ear metadata and one nested jar level. Declared nested size is limited to
+    50MiB and pom.properties size to 64KiB. Prune observed child links and selected path/mount
+    patterns, without guaranteeing isolation for caller roots or changing filesystem paths.
+    Summary complete means no budget stop. Unreadable/corrupt archives and walk failures can
+    be skipped without making it false. Unexpected callback/ZIP/type errors can propagate.
+    No archive extraction, package execution, host writes or upload occurs.
+    """
     if mounts is None:
         mounts = net_mounts()
     start, files, found, partial, skipped, devs = time.time(), 0, {}, None, 0, set()
@@ -3626,9 +3703,15 @@ RPM_TREES = re.compile(r"/usr/lib(?:64)?/python3[^/]*/site-packages/|/usr/(?:sha
 
 
 def package_owned(dpkg_info=DPKG_INFO, apk_db=APK_DB, which=shutil.which, nt=os.name == "nt"):
-    """(path -> True when the OS package manager owns it, problem). The package manager wins (spec R7.9): what it installed is
-    judged against the distribution's advisories, which know its backports. dpkg's and apk's own file lists are read as files.
-    shortcut: rpm by location, so a `pip install --prefix /usr` there is left to rpm; read rpm's database once it's readable without rpm."""
+    """Return (ownership predicate, optional problem string) for package metadata paths.
+
+    dpkg_info and apk_db select local file lists. which detects rpm. nt defaults to the
+    platform value captured at import and returns an always-false predicate when true.
+    Prefer apk data, then dpkg lists, then an RPM_TREES location heuristic. Keep selected
+    metadata/archive paths only. Predicate tests exact path or its package.json child.
+    OSError returns the partial known set plus a problem. No query verifies RPM ownership.
+    Type/other errors can propagate. No package changes or uploads occur.
+    """
     if nt:
         return (lambda p: False), None
     owned = set()
@@ -3655,7 +3738,12 @@ def package_owned(dpkg_info=DPKG_INFO, apk_db=APK_DB, which=shutil.which, nt=os.
 
 
 def regular(path):
-    """A plain file, not followed: a FIFO a user planted in a scanned folder would block the root agent's open() for good."""
+    """Return whether lstat currently identifies path as a regular file.
+
+    OSError returns False, including missing paths. Symlink/FIFO entries return False.
+    The check does not bind a later open or prevent concurrent replacement. Other errors
+    can propagate. No file contents are read or changed.
+    """
     try:
         return stat.S_ISREG(os.lstat(path).st_mode)
     except OSError:
@@ -3663,7 +3751,13 @@ def regular(path):
 
 
 def _dist_meta(path):
-    """(PEP 503 name, version) from a core-metadata file's headers (METADATA, PKG-INFO), or None."""
+    """Return normalized Python name/version from local metadata path, or None.
+
+    Require a current regular-file check. Read at most 65536 text characters with replacement
+    decoding. Accept exact Name/Version headers before the first blank line, with first values
+    winning. Normalize name separators/case and validate declared shapes, not installed state.
+    Listed I/O problems return None. Paths can change after checks. No code is executed.
+    """
     if not regular(path):
         return None
     try:
@@ -3685,6 +3779,12 @@ def _dist_meta(path):
 
 
 def _package_json(path):
+    """Return validated npm name/version strings from path, otherwise None.
+
+    Require a current regular-file and at-most-1MiB size check, then json.load the file.
+    This is not a race-free read cap. OSError/ValueError return None. Recursion and unexpected
+    errors can propagate. No package code is executed and installed/runtime state is not proved.
+    """
     if not regular(path):
         return None
     try:
@@ -3805,9 +3905,21 @@ def _app_dirs(roots, b, mounts, missing, known):
 
 def scan_apps(roots, owned=lambda p: False, problems=(), seconds=APP_MAX_SECONDS, entries=APP_MAX_ENTRIES, max_packages=APP_MAX_PACKAGES,
               mounts=None, known=None):
-    """([PyPI and npm packages, each with where it is in `source`], python line, npm line, summary). Reads only: the well-known install
-    folders (`known`: their globs) and the configured roots, bounded in depth, entries, file size, packages and time, and says where it
-    stopped (DECISIONS 92)."""
+    """Return packages, Python source line, npm source line and summary for metadata scans.
+
+    roots is a sequence of extra paths. owned(path) excludes known OS-owned metadata.
+    problems supplies shared warning strings. seconds/entries share one discovery/scan budget,
+    default 120/300000. max_packages defaults to 20000 and caps the returned sorted list.
+    The package threshold is checked after a folder, not each install. Internal work can exceed
+    it. mounts=None uses net_mounts. known is a pair of Python/npm glob sequences or defaults.
+    Recognized/default or direct install-folder roots can bypass discovery walk exclusions.
+    Extra-root discovery depth is eight. Nested node_modules depth uses NPM_MAX_DEPTH=6.
+    Metadata reads, directory listing and callbacks are not hard wall-clock bounded.
+    Return source lines using retained package counts, unread counts, budget stops and shared
+    problems. Summary reports owned/folders/entries/seconds and at most 20 root labels.
+    Do not execute discovered application code, write host files or upload. Callback/type,
+    recursion and unexpected filesystem errors can propagate. Inputs are not mutated.
+    """
     b, missing = _Budget(seconds, entries), [*problems]
     py_dirs, npm_dirs = _app_dirs(roots, b, net_mounts() if mounts is None else mounts, missing, known)
     out, st, stopped = {}, {"PyPI": {"unread": 0, "owned": 0}, "npm": {"unread": 0, "owned": 0}}, {}
@@ -3825,7 +3937,7 @@ def scan_apps(roots, owned=lambda p: False, problems=(), seconds=APP_MAX_SECONDS
                           "seconds": int(time.time() - b.start), "roots": [r[-300:] for r in roots[:20]]}
 
 
-# ---- doctor: reads this host and changes nothing (DECISIONS 69) ---------------------
+# ---- doctor: setup diagnostics without repairs or agent-key upload ----------------
 MAX_CLOCK_SKEW = 300  # seconds
 PS_DOCTOR_TASKS = "Get-ScheduledTask | Where-Object TaskName -like 'Nimstead *' | ForEach-Object { $_.TaskName + '|' + $_.State }"
 PS_DOCTOR_WU = "$s = Get-Service -Name wuauserv -ErrorAction Stop; $s.Status.ToString() + '|' + $s.StartType"
@@ -4065,7 +4177,7 @@ def app_flags(p):
     """
     p.add_argument("--scan-apps", action="store_true",
                    help="also read Python and npm packages' own metadata (site-packages, node_modules) in the usual install folders "
-                        "and under each --app-root, within a 2-minute budget")
+                        "and under each --app-root, with a 2-minute soft budget")
     p.add_argument("--app-root", action="append", default=[], metavar="DIR",
                    help="with --scan-apps: a folder holding virtualenvs or projects, searched 8 levels deep (repeatable)")
 
@@ -4099,7 +4211,7 @@ def _main(argv):
     en.add_argument("--ad-discovery", action="store_true",
                     help="Windows, domain member: also report the domain's enabled computers, to list those with no agent")
     en.add_argument("--scan-jars", action="store_true",
-                    help="also look for Java libraries (jar/war/ear) on local disks at each report, within a 5-minute budget")
+                    help="also look for Java libraries (jar/war/ear) on local disks at each report, with a 5-minute soft budget")
     app_flags(en)
     en.add_argument("--no-auto-update", action="store_true",
                     help="never replace this agent with newer signed releases (default: update automatically)")

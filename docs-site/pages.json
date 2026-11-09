@@ -551,5 +551,19 @@
     "title": "Baseline conversion reference",
     "group": "Reference",
     "product": "assure"
+  },
+  {
+    "source": "docs/reference/agent-app-scans.md",
+    "slug": "reference/agent-app-scans",
+    "title": "Agent application metadata scans",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/how-to/collect-application-metadata.md",
+    "slug": "how-to/collect-application-metadata",
+    "title": "Collect application package metadata",
+    "group": "How-to guides",
+    "product": "assure"
   }
 ]

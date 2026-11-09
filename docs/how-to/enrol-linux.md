@@ -14,7 +14,7 @@ curl -fsSL --proto '=https' https://assure.example.com/install.sh | sudo --prese
 unset NIMSTEAD_TOKEN
 ```
 
-Replace the example server and token with the values from Assure. The installer registers the host and configures a systemd timer.
+Replace the example server and token with the values from Assure. The installer registers the host and configures systemd timers when available. Otherwise it prints cron instructions. Install those entries through your normal scheduler before relying on periodic reports.
 
 4. Open the asset record. Confirm the hostname and recent report time.
 5. Review the scan outcomes before you act on findings.

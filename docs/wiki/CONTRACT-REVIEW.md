@@ -173,3 +173,13 @@ The finding/database batch passed 106 focused tests and 46 subchecks, with two W
 | inventory, with_apps, doctor, main, app_flags, app_roots and private dispatch/query helpers | Reviewed local opt-ins, shared-object mutation, all diagnostic predicates/callbacks, CLI argument/status paths, update handoff, enrolment ordering, optional directory reporting and setup side effects | Named subset reviewed |
 
 138 focused tests and 53 subchecks passed. Six native Windows cases were skipped. Offline counterexamples establish the documented partial/failure limits. Loopback update exercised a temporary signed agent and a read-only smoke collection. No production key, enrolment, config file or release was changed. Remaining agent functions/methods retain partial status until their own review.
+
+## Optional scans, scheduling and removal review
+
+| Source subset in agent/nimstead_agent.py | Scope and verified boundaries | Status |
+| --- | --- | --- |
+| net_mounts, local_roots, scan_jars, package_owned, regular, scan_apps | Reviewed default/excess roots, partial ownership, all metadata readers, traversal/budget checks, output clipping, error suppression, shared source statuses, counters and locations. Counterexamples verify weak complete flags and bypassed discovery guards | Named subset reviewed |
+| is_link, remove_link, secure_windows_dir | Reviewed current-entry checks, removal method choice, owner/ACL command ordering, recorded owner use, path checks, partial effects, ignored directory failures and cleanup result limits | Named subset reviewed |
+| schedule_units, schedule_windows_script, schedule, uninstall and private command/quote/path helpers | Reviewed exact timers/triggers, trusted config quoting, lexical interpreter check, ignored status paths, sequential writes, config-version ordering, cron omission, pending-state refusal, deferred runtime removal and partial failures | Named subset reviewed |
+
+117 tests and 53 subchecks passed, with six Windows-only skips. Offline filesystem fixtures verify the named failure effects without a real scheduler or ACL command. Native Windows registration, removal and security behavior remain unexercised here. Agent job classes, Windows/remote collectors and other unnamed interfaces remain pending.

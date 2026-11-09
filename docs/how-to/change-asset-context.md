@@ -74,3 +74,5 @@ The flag permits directory uploads from that host. More than one host can hold i
 A context change rescans stored inventory. It does not establish a fresh host observation. Missing findings and supported product mappings do not independently establish safety.
 
 See the [web client reference](../reference/web-client.md) for filter, selection, and request behavior.
+
+On Windows, preserve the configuration file owner and ACLs during edits. See [state-directory cleanup](../reference/agent-core.md#windows-state-directory) before replacing a file.

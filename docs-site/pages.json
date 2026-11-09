@@ -1,0 +1,242 @@
+[
+  {
+    "source": "docs/tutorials/first-sbom.md",
+    "slug": "tutorials/first-sbom",
+    "title": "Read your first SBOM",
+    "group": "Tutorials"
+  },
+  {
+    "source": "docs/how-to/deploy-server.md",
+    "slug": "how-to/deploy-server",
+    "title": "Deploy with Docker Compose",
+    "group": "How-to guides"
+  },
+  {
+    "source": "docs/how-to/configure-https.md",
+    "slug": "how-to/configure-https",
+    "title": "Configure HTTPS",
+    "group": "How-to guides"
+  },
+  {
+    "source": "docs/how-to/enrol-linux.md",
+    "slug": "how-to/enrol-linux",
+    "title": "Enrol a Linux machine",
+    "group": "How-to guides"
+  },
+  {
+    "source": "docs/how-to/enrol-windows.md",
+    "slug": "how-to/enrol-windows",
+    "title": "Enrol a Windows machine",
+    "group": "How-to guides"
+  },
+  {
+    "source": "docs/how-to/deploy-group-policy.md",
+    "slug": "how-to/deploy-group-policy",
+    "title": "Deploy through Group Policy",
+    "group": "How-to guides"
+  },
+  {
+    "source": "docs/how-to/review-findings.md",
+    "slug": "how-to/review-findings",
+    "title": "Review and triage findings",
+    "group": "How-to guides"
+  },
+  {
+    "source": "docs/how-to/enable-remediation.md",
+    "slug": "how-to/enable-remediation",
+    "title": "Enable remediation safely",
+    "group": "How-to guides"
+  },
+  {
+    "source": "docs/how-to/upload-sbom.md",
+    "slug": "how-to/upload-sbom",
+    "title": "Upload an SBOM from CI",
+    "group": "How-to guides"
+  },
+  {
+    "source": "docs/how-to/scan-external-target.md",
+    "slug": "how-to/scan-external-target",
+    "title": "Scan an external target",
+    "group": "How-to guides"
+  },
+  {
+    "source": "docs/how-to/remote-windows.md",
+    "slug": "how-to/remote-windows",
+    "title": "Scan Windows without an agent",
+    "group": "How-to guides"
+  },
+  {
+    "source": "docs/how-to/configure-sso.md",
+    "slug": "how-to/configure-sso",
+    "title": "Configure single sign-on",
+    "group": "How-to guides"
+  },
+  {
+    "source": "docs/how-to/configure-alerts.md",
+    "slug": "how-to/configure-alerts",
+    "title": "Configure alerts",
+    "group": "How-to guides"
+  },
+  {
+    "source": "docs/how-to/export-evidence.md",
+    "slug": "how-to/export-evidence",
+    "title": "Export evidence for a reviewer",
+    "group": "How-to guides"
+  },
+  {
+    "source": "docs/how-to/verify-evidence.md",
+    "slug": "how-to/verify-evidence",
+    "title": "Verify an evidence pack",
+    "group": "How-to guides"
+  },
+  {
+    "source": "docs/how-to/verify-agent-release.md",
+    "slug": "how-to/verify-agent-release",
+    "title": "Verify an agent release",
+    "group": "How-to guides"
+  },
+  {
+    "source": "docs/how-to/upgrade-server.md",
+    "slug": "how-to/upgrade-server",
+    "title": "Upgrade the server",
+    "group": "How-to guides"
+  },
+  {
+    "source": "docs/how-to/back-up.md",
+    "slug": "how-to/back-up",
+    "title": "Back up Assure",
+    "group": "How-to guides"
+  },
+  {
+    "source": "docs/how-to/restore.md",
+    "slug": "how-to/restore",
+    "title": "Restore a backup",
+    "group": "How-to guides"
+  },
+  {
+    "source": "docs/how-to/troubleshoot-scans.md",
+    "slug": "how-to/troubleshoot-scans",
+    "title": "Troubleshoot a missing or incomplete scan",
+    "group": "How-to guides"
+  },
+  {
+    "source": "docs/how-to/remove-agent.md",
+    "slug": "how-to/remove-agent",
+    "title": "Remove an agent",
+    "group": "How-to guides"
+  },
+  {
+    "source": "docs/how-to/run-without-docker.md",
+    "slug": "how-to/run-without-docker",
+    "title": "Run without Docker",
+    "group": "How-to guides"
+  },
+  {
+    "source": "CONTRIBUTING.md",
+    "slug": "how-to/contribute",
+    "title": "Contribute to Assure",
+    "group": "How-to guides"
+  },
+  {
+    "source": "docs/configuration.md",
+    "slug": "reference/configuration",
+    "title": "Configuration",
+    "group": "Reference"
+  },
+  {
+    "source": "docs/reference/platforms.md",
+    "slug": "reference/platforms",
+    "title": "Supported platforms",
+    "group": "Reference"
+  },
+  {
+    "source": "docs/reference/agent-cli.md",
+    "slug": "reference/agent-cli",
+    "title": "Agent command reference",
+    "group": "Reference"
+  },
+  {
+    "source": "docs/reference/http-api.md",
+    "slug": "reference/http-api",
+    "title": "HTTP API reference",
+    "group": "Reference"
+  },
+  {
+    "source": "docs/reference/sbom.md",
+    "slug": "reference/sbom",
+    "title": "SBOM input reference",
+    "group": "Reference"
+  },
+  {
+    "source": "docs/reference/scan-outcomes.md",
+    "slug": "reference/scan-outcomes",
+    "title": "Scan outcomes",
+    "group": "Reference"
+  },
+  {
+    "source": "docs/reference/remediation-modes.md",
+    "slug": "reference/remediation-modes",
+    "title": "Remediation modes",
+    "group": "Reference"
+  },
+  {
+    "source": "docs/release-keys.md",
+    "slug": "reference/release-keys",
+    "title": "Release keys",
+    "group": "Reference"
+  },
+  {
+    "source": "docs/reference/tooling.md",
+    "slug": "reference/tooling",
+    "title": "Developer tools and repository map",
+    "group": "Reference"
+  },
+  {
+    "source": "docs/reference/glossary.md",
+    "slug": "reference/glossary",
+    "title": "Glossary",
+    "group": "Reference"
+  },
+  {
+    "source": "docs/explanation/architecture.md",
+    "slug": "explanation/architecture",
+    "title": "Deployment architecture",
+    "group": "Explanation"
+  },
+  {
+    "source": "docs/explanation/inventory-to-evidence.md",
+    "slug": "explanation/inventory-to-evidence",
+    "title": "From inventory to evidence",
+    "group": "Explanation"
+  },
+  {
+    "source": "docs/explanation/detection-confidence.md",
+    "slug": "explanation/detection-confidence",
+    "title": "Detection confidence and incomplete scans",
+    "group": "Explanation"
+  },
+  {
+    "source": "docs/explanation/remediation-safety.md",
+    "slug": "explanation/remediation-safety",
+    "title": "How remediation limits a change",
+    "group": "Explanation"
+  },
+  {
+    "source": "docs/explanation/signed-updates.md",
+    "slug": "explanation/signed-updates",
+    "title": "Why agent updates are signed",
+    "group": "Explanation"
+  },
+  {
+    "source": "docs/explanation/evidence-trust.md",
+    "slug": "explanation/evidence-trust",
+    "title": "What an evidence signature proves",
+    "group": "Explanation"
+  },
+  {
+    "source": "docs/explanation/coverage-limits.md",
+    "slug": "explanation/coverage-limits",
+    "title": "Coverage and known limits",
+    "group": "Explanation"
+  }
+]

@@ -1,5 +1,7 @@
 # Assure documentation
 
+The searchable wiki is at [docs.nimstead.systems](https://docs.nimstead.systems). Its source and build instructions are in [docs-site](../docs-site/README.md).
+
 Choose a page for what you need to do. These guides describe the code in this checkout; release-specific proof and limitations are in [STATUS](../STATUS.md).
 
 ## Learn

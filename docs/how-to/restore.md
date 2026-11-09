@@ -20,6 +20,6 @@ docker compose run --rm --no-deps -T --user root -v "$HOME/nimstead-data:/restor
 docker compose up -d
 ```
 
-Then open **Evidence**: *Chain verified* means the ledger matches its signed checkpoints, and the key fingerprint should be the one your auditor has.
+Then open **Evidence** and check for ledger integrity problems. The server can reuse a verified prefix for up to one hour. Compare the key fingerprint with the one your auditor has.
 
 Confirm that agents report again and compare the evidence fingerprint with your trusted copy. If it differs, stop the handover to auditors and check that you restored the matching data volume. See [backups](back-up.md) for checkpoint and history limits.

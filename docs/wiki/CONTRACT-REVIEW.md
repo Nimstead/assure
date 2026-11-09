@@ -123,3 +123,12 @@ The finding/database batch passed 106 focused tests and 46 subchecks, with two W
 | `web/src/findings.tsx` | FindingsPage, AcceptRisk and all private helpers | Reviewed URL debounce/AI race limits, independent query errors, virtual loaded rows, group-to-substring navigation, partial sequential plans, skipped acceptance count, drawer identity/shortcuts, active jobs, browser saved views and status effects. Corrected unsupported outcome claims | Reviewed |
 
 80 web tests, type checks, production build, repository presence/links, 74-article build and six site tests passed. Playwright MCP verified local fixture drawer text and mobile task anchors. No production mutation or complete CLI end-to-end run occurred.
+
+## Evidence web review
+
+| Source | Review scope | Evidence and corrections | Status |
+| --- | --- | --- | --- |
+| `web/src/evidence.tsx` | EvidencePage and all private helpers | Reviewed period/category URL state, independent queries, placeholder rows, status counts, low samples, current-summary fallbacks, download failures, infinite key cache, optional subject labels and cached server integrity. Corrected unsupported integrity/completeness claims | Reviewed |
+| `api/src/nimstead/evidence.py` | Rechecked generated control evidence against existing metric predicates | Corrected report-timestamp and universal execution/rollback wording. Preserved statuses, metrics and signatures. Existing evidence tests include the revised authorization-evidence qualification | Reviewed |
+
+80 web tests and 28 evidence/documentation tests passed, with 46 subchecks. Playwright MCP verified local fixture period/category requests and mobile layout. Native production downloads and complete CLI end-to-end execution remain unverified.

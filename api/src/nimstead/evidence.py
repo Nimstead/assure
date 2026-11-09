@@ -274,11 +274,11 @@ def _controls(m: dict, sla: dict) -> list[dict]:
          "evidence": f"{m['ce_in_scope_resolved_in_14d']}/{m['ce_in_scope_resolved']} in-scope fixes within 14 days; {m['ce_in_scope_overdue']} open past 14 days"},
         {"framework": "ISO/IEC 27001:2022", "control": "A.8.8", "requirement": "Management of technical vulnerabilities",
          "status": st(scanned and sla_ok),
-         "evidence": f"{m['assets_reporting']}/{m['assets']} assets assessed in period; {m['overdue_open']} findings past SLA"},
+         "evidence": f"{m['assets_reporting']}/{m['assets']} assets with a report timestamp in or after the period; {m['overdue_open']} findings past SLA"},
         {"framework": "NIST SP 800-53 Rev. 5", "control": "RA-5", "requirement": "Vulnerability monitoring and scanning",
          "status": st(scanned), "exceptions": m.get("assets_silent_now", 0),
-         "evidence": f"{m['assets_reporting']}/{m['assets']} assets reported inventory in period"
-                     + (f"; {m['assets_silent_now']} not reporting now" if m.get("assets_silent_now") else "")},
+         "evidence": f"{m['assets_reporting']}/{m['assets']} assets with a report timestamp in or after the period"
+                     + (f"; {m['assets_silent_now']} not reporting at the period end" if m.get("assets_silent_now") else "")},
         {"framework": "NIST SP 800-53 Rev. 5", "control": "SI-2", "requirement": "Flaw remediation within organisation-defined time periods",
          "status": timely(sla_ok, m["resolved"]), "evidence": f"{m['resolved_within_sla']}/{m['resolved']} fixes within the organisation's SLA in force when each was detected (now: {', '.join(f'{SLA_LABEL.get(p, p)} {d} days' for p, d in sla.items())})"
                      + (f"; deadlines changed {m['sla_changes']} times in the period (sla_changes)" if m.get("sla_changes") else "")},
@@ -286,13 +286,13 @@ def _controls(m: dict, sla: dict) -> list[dict]:
          "status": st(m["critical_overdue_30d"] == 0),
          "evidence": f"{m['critical_overdue_30d']} critical findings open longer than 30 days (measured from first detection, not the vendor's release date)"},
         {"framework": "SOC 2 (TSC 2017)", "control": "CC7.1", "requirement": "Detection and monitoring procedures identify susceptibilities to newly discovered vulnerabilities",
-         "status": st(scanned and sla_ok), "evidence": f"{m['assets_reporting']}/{m['assets']} assets assessed in period against continuously updated advisories; {m['overdue_open']} findings past SLA"},
+         "status": st(scanned and sla_ok), "evidence": f"{m['assets_reporting']}/{m['assets']} assets with a report timestamp in or after the period, assessed against stored advisories; {m['overdue_open']} findings past SLA"},
         {"framework": "SOC 2 (TSC 2017)", "control": "CC8.1", "requirement": "Changes are authorised, tested and approved before implementation",
          "status": timely(m["changes"] == m["changes_authorised"], m["changes"]), "exceptions": m.get("changes_self_approved", 0),
-         "evidence": f"{m['changes_authorised']}/{m['changes']} remediation changes in period approved by a named person or the recorded auto policy; each dry-run checked, health-checked and rolled back on failure"
+         "evidence": f"{m['changes_authorised']}/{m['changes']} remediation jobs updated in period have an approver recorded. This count does not prove execution, health checks or rollback"
                      + (f". {m['changes_self_approved']} of them approved by the person who planned them, with no second approver" if m.get("changes_self_approved") else "")},
         {"framework": "NIS2 Directive", "control": "Art. 21(2)(e)", "requirement": "Vulnerability handling in network and information systems maintenance",
-         "status": st(scanned and sla_ok), "evidence": f"{m['assets_reporting']}/{m['assets']} assets assessed; {m['resolved_within_sla']}/{m['resolved']} fixes within SLA"},
+         "status": st(scanned and sla_ok), "evidence": f"{m['assets_reporting']}/{m['assets']} assets with a report timestamp in or after the period; {m['resolved_within_sla']}/{m['resolved']} fixes within SLA"},
         {"framework": "CIS Controls v8.1", "control": "7.3 / 7.4", "requirement": "Automated OS and application patch management",
          "status": timely(sla_ok, m["resolved"]), "evidence": (f"Mean time to remediate: {m['mttr_days']} days" if m["mttr_days"] >= 1 else "Mean time to remediate: under a day") if m["mttr_days"] is not None else "Mean time to remediate: no fixes in period"},
     ]

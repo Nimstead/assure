@@ -479,7 +479,8 @@ it("Evidence: the ledger note counts the whole ledger, and says how much of it t
     "GET /api/evidence/public-key": { pem: "", fingerprint_sha256: "ab", verifier_sha256: "cd" } });
   wrap(<EvidencePage />);
   expect(await screen.findByText(/Latest 50 of 900 entries, newest first\./)).toBeInTheDocument();
-  expect(await screen.findByText(/holds all 40 entries of that period/)).toBeInTheDocument();
+  expect(await screen.findByText(/report counts 40 ledger entries/)).toBeInTheDocument();
+  expect(await screen.findByText(/server can reuse a verified prefix/)).toBeInTheDocument();
 });
 
 it("a step that fell back is shown as recovered, not as a plain pass", () => {

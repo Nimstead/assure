@@ -237,3 +237,13 @@ Corrected universal-cleanliness, resolution-causes-404, immediate-expiry and gua
 80 web tests, type checks and the production build passed. The acceptance test also checks the reassessment qualification. Repository checks report 632 public declarations, none undocumented, and no local link problems. The 74-article build and six site tests passed. Prose received the reference/how-to humanizer and STE-style passes.
 
 Playwright MCP verified the revised drawer, acceptance qualification, KEV text, mobile layout and new task-section anchor. API requests used local fixtures and writes were refused. Production acceptance, remediation and the complete CLI end-to-end suite were not exercised. Evidence, access/integration, auth and shell exports, remaining agent/tool/API contracts, and final editorial/example review remain pending.
+
+## Evidence web checkpoint
+
+Reviewed EvidencePage and every private display/query helper. The developer reference now specifies URL defaults, independent period/category queries, stale data, optional context, native downloads, cached signing material and trusted response shapes. The export how-to includes downloaded-result verification and export/key recovery. The restore guide uses the current integrity-status text.
+
+Corrected claims about every recorded event, fresh full-chain verification, fixed pack counts, empty organisation history and low-sample repair proof. Generated control evidence no longer promises universal dry runs, health checks or rollback. Inventory text states the implemented current report-timestamp condition. Calculations and authorization behavior remain unchanged.
+
+80 web tests, type checks and the production build passed. 28 evidence/documentation tests and 46 subchecks passed. Existing assertions now check the qualified integrity and change-evidence text. Ruff, repository presence/links, the 74-article build and six site tests passed. The reference and how-to prose received humanizer and STE-style review.
+
+Playwright MCP verified report/ledger separation, category URL state, period-specific download links, resolution sample wording and mobile layout with refused-write local fixtures. No production pack, signature, restore or remediation was created. The complete CLI end-to-end suite was not rerun. Remaining access/integration, auth/shell, agent/tool/API and final editorial/example reviews still prevent a full compliance claim.

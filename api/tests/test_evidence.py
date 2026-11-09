@@ -255,6 +255,8 @@ def test_control_evidence_is_plain_text():
     m = defaultdict(int, mttr_days=None)
     for c in evidence._controls(m, evidence.SLA_DAYS):
         assert "None" not in c["evidence"] and "{" not in c["evidence"], c
+        if c["control"] == "CC8.1":
+            assert "does not prove execution, health checks or rollback" in c["evidence"]
 
 
 def test_org_sla_and_new_framework_mappings_are_in_the_pack(env):

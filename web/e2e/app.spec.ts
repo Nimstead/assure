@@ -135,7 +135,7 @@ test("sign up, enrol a sandbox host, plan and approve a fix, see evidence", asyn
 
   // Evidence
   await page.getByRole("link", { name: "Evidence", exact: true }).first().click();
-  await expect(page.getByText(/Chain verified/)).toBeVisible();
+  await expect(page.getByText(/No ledger integrity problems reported/)).toBeVisible();
   await expect(page.getByRole("heading", { name: "Control status" })).toBeVisible();
   await expect(page.getByText(/Give auditors these separately from the pack/)).toBeVisible();
   await expect(page.getByText("Verifier script SHA-256")).toBeVisible();

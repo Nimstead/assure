@@ -103,6 +103,8 @@ Each record has `framework`, `control`, `requirement`, `status`, and `evidence` 
 
 These are Assure's computed indicators. Read the declared basis and time window before using them in a wider review.
 
+Inventory indicators use current asset report timestamps in or after the selected period. They do not establish complete collection or an actual scan within that period. Change authorization counts jobs with a recorded approver. It does not establish execution, health checks, rollback, or independent approval.
+
 ## Ledger variants
 
 Ledger entry records contain `seq` (integer), `ts`, `kind`, `subject`, `prev_hash`, `hash` (strings), and `data` (event-specific JSON). Entries in a pack are oldest first.

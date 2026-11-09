@@ -1,6 +1,6 @@
 # Web client reference
 
-The Assure web client uses React, TanStack Router, and TanStack Query. TypeScript interfaces describe selected expected data. They do not validate API responses at runtime or enumerate every server field. This page covers shared helpers, UI components, enrolment, and the reviewed Assets, Fix first, Findings, settings, and remediation pages.
+The Assure web client uses React, TanStack Router, and TanStack Query. TypeScript interfaces describe selected expected data. They do not validate API responses at runtime or enumerate every server field. This page covers shared helpers, UI components, enrolment, and the reviewed Assets, Fix first, Findings, Evidence, settings, and remediation pages.
 
 ## Component context
 
@@ -156,6 +156,48 @@ The default POST accepts the supplied finding ID. Optional vulnerability scope a
 Acceptance moves findings to Accepted. Expiry alone does not change read responses. Later reassessment can reopen an expired finding if its match remains. Revocation submits a trimmed reason of at least three characters and refreshes related queries.
 
 Saved views omit the drawer ID. A trimmed nonempty name replaces a stored view with that name. The input permits 60 characters. Equality compares sorted serialized search entries. Storage failure can still produce success feedback. Views belong to browser storage, not the organisation's server account.
+
+## Evidence components
+
+`EvidencePage()` has no props. It requires query/router providers and a browser DOM. The component displays server results and performs no independent cryptographic verification.
+
+### URL state and requests
+
+| Input or query | Contract |
+| --- | --- |
+| `period` | URL text converted to a number. Supported values are 30, 90 and 365. Other values use 90 |
+| `show` | Raw URL ledger group. Buttons offer Everything, Decisions, Fixes, Detections and Sign-ins and access. The server rejects invalid groups |
+| Report | `/api/evidence/report?days=DAYS&summary=true`, keyed by period |
+| Ledger | `/api/evidence/ledger?limit=50` with optional group, keyed by group |
+| Current exceptions | Shared summary query, independent of the report period |
+| Ledger context | Shared jobs and assets queries supply optional subject labels |
+| Signing material | Public-key query supplies fingerprint and verifier hash, with infinite stale time |
+
+Period and category controls replace history, preserve other URL fields, and preserve scroll. The period does not filter the ledger list. The report and ledger can describe different request times. The download creates another snapshot.
+
+Main report and ledger failures expose retry. The ledger keeps previous data during category changes without a dedicated stale-data indicator. Counts and rows can temporarily describe the previous category. Optional summary/job/asset failures omit context without a dedicated error panel.
+
+### Report display
+
+Statuses use `met`, `not_met` and `no_activity`. A met control with a truthy exception count uses warning styling. Unknown statuses use the not-met style. Aggregate counts still use the raw status. These indicators do not independently certify a framework requirement.
+
+Mean resolution time displays `n/a` for null, `under a day` below one, otherwise the supplied day value. It describes included finding resolutions, not necessarily successful remediation jobs.
+
+Fewer than five resolved findings triggers a sample-size note. Current Fix now and silent-host counts come from the summary query. A failed summary query defaults both to zero. The absence of this warning does not prove that the current fleet has no exceptions.
+
+The overdue link selects open, overdue findings and disables Fixable only. Results are current and can differ from the report snapshot.
+
+### Ledger and downloads
+
+The ledger displays at most 50 newest matching events across its whole history. Its total is the matching count before that limit. An empty category does not imply an empty organisation ledger.
+
+An empty server `problems` list produces the integrity-status message. Server checks can reuse a verified prefix for up to one hour. A nonempty list displays only its first five problems. The pack endpoint checks integrity before signing and rehashes its exact period entries.
+
+Subject text uses selected event strings, deduplicates them, and falls back to the first eight subject characters. Optional cached asset/job labels can add a hostname. Remediation events link to their job anchor. Highlighted failure kinds use a regular-expression heuristic. Neither label nor colour independently proves an outcome.
+
+Pack and verifier downloads use native links. HTTP or download errors do not appear in component query errors. The public-key query exposes retry but stays fresh indefinitely after success. Key rotation can require a reload or explicit query invalidation before new signing material appears.
+
+The pack omits its verifier. Fingerprint and verifier-hash text can be copied with the shared copy control. A separate trusted channel remains necessary to establish the key and verifier identity.
 
 ## Remediation components
 

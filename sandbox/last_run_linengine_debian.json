@@ -1,7 +1,7 @@
 [
   {
     "step": "creating sandbox distro",
-    "name": "nimstead-sbx-4922678b",
+    "name": "nimstead-sbx-3bbf6473",
     "distro": "Debian"
   },
   {
@@ -23,6 +23,18 @@
           "state": "ok",
           "count": 164,
           "exit": 0
+        },
+        "java_archives": {
+          "state": "off",
+          "count": 0
+        },
+        "python_packages": {
+          "state": "off",
+          "count": 0
+        },
+        "npm_packages": {
+          "state": "off",
+          "count": 0
         }
       }
     },
@@ -35,9 +47,9 @@
   },
   {
     "step": "feeds",
-    "kev": 1766,
+    "kev": 1772,
     "osv": {
-      "inserted": 61037,
+      "inserted": 61603,
       "updated": 0,
       "skipped": 0
     },
@@ -69,16 +81,30 @@
       "tomcat": 9,
       "ubuntu": 45
     },
-    "seconds": 11
+    "seconds": 17
   },
   {
     "step": "report",
     "headline": {
       "status": "vulnerable",
-      "text": "VULNERABLE: 292 vulnerabilities across 36 installs. 1 checks couldn't be determined."
+      "text": "VULNERABLE: 297 vulnerabilities across 37 installs. 1 checks couldn't be determined."
     },
     "coverage": {
       "sources": [
+        {
+          "name": "java_archives",
+          "label": "Java archives",
+          "state": "off",
+          "count": 0,
+          "error": null
+        },
+        {
+          "name": "npm_packages",
+          "label": "npm packages",
+          "state": "off",
+          "count": 0,
+          "error": null
+        },
         {
           "name": "os_release",
           "label": "Platform (os-release)",
@@ -92,24 +118,51 @@
           "state": "ok",
           "count": 164,
           "error": null
+        },
+        {
+          "name": "python_packages",
+          "label": "Python packages",
+          "state": "off",
+          "count": 0,
+          "error": null
         }
       ],
       "families": {
         "distro": {
           "label": "Distribution packages",
-          "attempted": 5122,
-          "determined": 5121,
+          "attempted": 5148,
+          "determined": 5147,
           "outcomes": {
-            "not-applicable": 3426,
-            "not-vulnerable": 1403,
+            "not-applicable": 3446,
+            "not-vulnerable": 1404,
             "undetermined": 1,
-            "vulnerable": 292
+            "vulnerable": 297
           }
+        },
+        "application": {
+          "label": "Applications outside the package manager",
+          "attempted": 0,
+          "determined": 0,
+          "outcomes": {}
         }
       },
+      "applications": {
+        "installs": 0,
+        "judged": 0,
+        "vulnerable": 0,
+        "no_advisory": 0,
+        "left_to_package_manager": 0,
+        "sbom_components_not_assessed": 0,
+        "not_looked_for": [
+          "Python packages",
+          "npm packages",
+          "Java archives"
+        ]
+      },
       "statements": [
-        "Distribution packages: 1 of 5,122 checks couldn't be determined.",
-        "Livepatch, services still running replaced libraries, and software outside the package manager (Java archives included) aren't judged by this report yet. Kernels installed but not running are judged, and marked so."
+        "Distribution packages: 1 of 5,148 checks couldn't be determined.",
+        "Not looked for on this host, so not assessed: Python packages, npm packages, Java archives (the agent's opt-in scans are off, or it predates them).",
+        "Livepatch, services still running replaced libraries, and software outside the package manager other than Python and npm packages and Java archives (vendored binaries, containers, self-installed tools) aren't judged by this report yet. Kernels installed but not running are judged, and marked so."
       ]
     },
     "undetermined": [
@@ -196,8 +249,8 @@
       {
         "instance": "expat 2.7.1-2",
         "grade": "confirmed",
-        "count": 33,
-        "no_fix": 5,
+        "count": 34,
+        "no_fix": 6,
         "no_fix_planned": 0,
         "known_exploited": 0,
         "observed": "2.7.1-2 (dpkg database: libexpat1)",
@@ -262,13 +315,13 @@
       {
         "instance": "zlib 1:1.3.dfsg+really1.3.1-1",
         "grade": "confirmed",
-        "count": 2,
-        "no_fix": 2,
+        "count": 3,
+        "no_fix": 0,
         "no_fix_planned": 0,
         "known_exploited": 0,
         "observed": "1:1.3.dfsg+really1.3.1-1 (dpkg database: zlib1g 1:1.3.dfsg+really1.3.1-1+b1)",
-        "expected": "no fixed version published",
-        "action": "No fix is published yet"
+        "expected": "at least 1:1.3.dfsg+really1.3.1-1+deb13u1",
+        "action": "Update to 1:1.3.dfsg+really1.3.1-1+deb13u1 or later"
       },
       {
         "instance": "pcre2 10.46-1~deb13u1",
@@ -315,10 +368,21 @@
         "action": "No fix is published yet"
       },
       {
+        "instance": "apt 3.0.3",
+        "grade": "confirmed",
+        "count": 2,
+        "no_fix": 1,
+        "no_fix_planned": 1,
+        "known_exploited": 0,
+        "observed": "3.0.3 (dpkg database: apt, apt-utils, libapt-pkg7.0)",
+        "expected": "at least 3.0.4",
+        "action": "Update to 3.0.4 or later"
+      },
+      {
         "instance": "gcc-14 14.2.0-19",
         "grade": "confirmed",
-        "count": 5,
-        "no_fix": 5,
+        "count": 6,
+        "no_fix": 6,
         "no_fix_planned": 0,
         "known_exploited": 0,
         "observed": "14.2.0-19 (dpkg database: gcc-14-base, libgcc-s1, libstdc++6)",
@@ -403,6 +467,17 @@
         "action": "No fix is published yet"
       },
       {
+        "instance": "dbus 1.16.2-2",
+        "grade": "confirmed",
+        "count": 1,
+        "no_fix": 1,
+        "no_fix_planned": 0,
+        "known_exploited": 0,
+        "observed": "1.16.2-2 (dpkg database: dbus, dbus-bin, dbus-daemon, dbus-session-bus-common, dbus-system-bus-common and 1 more)",
+        "expected": "no fixed version published",
+        "action": "No fix is published yet"
+      },
+      {
         "instance": "coreutils 9.7-3",
         "grade": "confirmed",
         "count": 4,
@@ -469,17 +544,6 @@
         "action": "No fix is published yet"
       },
       {
-        "instance": "apt 3.0.3",
-        "grade": "confirmed",
-        "count": 1,
-        "no_fix": 1,
-        "no_fix_planned": 1,
-        "known_exploited": 0,
-        "observed": "3.0.3 (dpkg database: apt, apt-utils, libapt-pkg7.0)",
-        "expected": "no fixed version published",
-        "action": "No fix is published yet"
-      },
-      {
         "instance": "shadow 1:4.17.4-2",
         "grade": "confirmed",
         "count": 2,
@@ -524,11 +588,11 @@
         "action": "No fix is published yet"
       }
     ],
-    "vulnerable_installs": 36,
-    "not_applicable": 3426,
-    "content_version": "2026-11-03.2cd8a1ce6fa1",
-    "inventory_sha256": "2cea0aabb7e4569afffc17f25b83b419ba2e0ccee508639177ec9cb37f7a34b3",
-    "verdicts_sha256": "02b082e6a7f5aa5387795a6b2bda6b5ca531e658b8910bd0ca75199c91f983d4"
+    "vulnerable_installs": 37,
+    "not_applicable": 3446,
+    "content_version": "2026-11-08.8e4e016d6d1a",
+    "inventory_sha256": "a3b3c75891bedb4764e5e3ece91b90068a05873945181790506988fe3530c512",
+    "verdicts_sha256": "b988b0517280a0c4d1ec7743224d7cd7db56aaaf710ae4712f3ce4d918ea4832"
   },
   {
     "step": "binaries versioned unlike their source",
@@ -708,12 +772,17 @@
   },
   {
     "step": "parity with rescan",
-    "findings": 292,
-    "agree": 292,
+    "findings": 297,
+    "agree": 297,
     "outside_this_slice": {},
     "explained": 0,
     "explained_by": [],
     "explained_examples": [],
+    "unexplained": []
+  },
+  {
+    "step": "rescan's loop against the engine (engine_disagrees)",
+    "entries": 0,
     "unexplained": []
   },
   {
@@ -730,7 +799,7 @@
     },
     "headline": {
       "status": "not-assessed",
-      "text": "NOT ASSESSED: this host's patch state wasn't determined, so this is not a clean result. 3,786 checks couldn't be determined."
+      "text": "NOT ASSESSED: this host's patch state wasn't determined, so this is not a clean result. 3,811 checks couldn't be determined."
     },
     "undetermined": [
       {
@@ -740,7 +809,7 @@
         "why": "the list of what's installed came back empty, which isn't plausible on a working system",
         "source_said": "read to its end, with nothing in it",
         "what_to_do": "Treat it as a failed read: run the agent's `collect` on the host and look at it",
-        "count": 3494,
+        "count": 3514,
         "examples": [
           "389-ds-base",
           "7zip",
@@ -756,7 +825,7 @@
         "why": "a finding was open on this, and this scan has no evidence either way",
         "source_said": null,
         "what_to_do": "It stays open. Fix what stopped the scan, then scan again",
-        "count": 292,
+        "count": 297,
         "examples": [
           "CVE-2005-1119",
           "CVE-2005-2541",
@@ -766,8 +835,8 @@
         ]
       }
     ],
-    "findings_before": 292,
-    "findings_after": 292,
+    "findings_before": 297,
+    "findings_after": 297,
     "packages_kept": 164
   },
   {
@@ -787,6 +856,6 @@
   },
   {
     "step": "sandbox destroyed",
-    "name": "nimstead-sbx-4922678b"
+    "name": "nimstead-sbx-3bbf6473"
   }
 ]

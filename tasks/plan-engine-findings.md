@@ -29,8 +29,11 @@ findings from comes from the engine's VULNERABLE verdicts instead of its own mat
    Linux host's language packages got no verdict at all when its package read wasn't documented.
 2. **Shadow on real hosts** (owner's call how long): run with the shadow on through one preview release. Any disagreement
    on a real host is a bug in one side, fixed with a test before going on.
+   **Status (2026-11-09):** no real hosts exist yet; the owner counts the clean sandbox and VM runs as this phase (DECISIONS 123).
 3. **Switch opening** (S): `rescan` opens findings from the engine's VULNERABLE verdicts. Its own matching loop stays as the
    shadow, so the comparison runs the other way round for one release.
+   **Status (2026-11-09):** built (DECISIONS 123). Where the engine has no decision, `rescan`'s match stands. Linux end of
+   support opens a finding. The engine shares the hourly pass's cache, so it runs there too. `NIMSTEAD_ENGINE_FINDINGS=0` turns it off.
 4. **Switch closing** (S): a finding closes only on a NOT_VULNERABLE verdict for it. A CAN'T TELL verdict leaves it open and
    says why on the finding ("the agent couldn't read X"). This is the one behaviour change customers see: fewer false
    "fixed" closures when a collector fails.

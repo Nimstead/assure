@@ -1,7 +1,7 @@
 [
   {
     "step": "creating sandbox distro",
-    "name": "nimstead-sbx-393d2fdd",
+    "name": "nimstead-sbx-46354406",
     "distro": "AlmaLinux-9"
   },
   {
@@ -23,6 +23,18 @@
           "state": "ok",
           "count": 207,
           "exit": 0
+        },
+        "java_archives": {
+          "state": "off",
+          "count": 0
+        },
+        "python_packages": {
+          "state": "off",
+          "count": 0
+        },
+        "npm_packages": {
+          "state": "off",
+          "count": 0
         }
       }
     },
@@ -35,9 +47,9 @@
   },
   {
     "step": "feeds",
-    "kev": 1766,
+    "kev": 1772,
     "osv": {
-      "inserted": 26342,
+      "inserted": 26735,
       "updated": 0,
       "skipped": 0
     },
@@ -69,16 +81,30 @@
       "tomcat": 9,
       "ubuntu": 45
     },
-    "seconds": 5
+    "seconds": 10
   },
   {
     "step": "report",
     "headline": {
       "status": "vulnerable",
-      "text": "VULNERABLE: 53 vulnerabilities across 31 installs. 1 checks couldn't be determined."
+      "text": "VULNERABLE: 54 vulnerabilities across 31 installs. 1 checks couldn't be determined."
     },
     "coverage": {
       "sources": [
+        {
+          "name": "java_archives",
+          "label": "Java archives",
+          "state": "off",
+          "count": 0,
+          "error": null
+        },
+        {
+          "name": "npm_packages",
+          "label": "npm packages",
+          "state": "off",
+          "count": 0,
+          "error": null
+        },
         {
           "name": "os_release",
           "label": "Platform (os-release)",
@@ -92,24 +118,51 @@
           "state": "ok",
           "count": 207,
           "error": null
+        },
+        {
+          "name": "python_packages",
+          "label": "Python packages",
+          "state": "off",
+          "count": 0,
+          "error": null
         }
       ],
       "families": {
         "distro": {
           "label": "Distribution packages",
-          "attempted": 3185,
-          "determined": 3184,
+          "attempted": 3186,
+          "determined": 3185,
           "outcomes": {
             "not-applicable": 2986,
             "not-vulnerable": 145,
             "undetermined": 1,
-            "vulnerable": 53
+            "vulnerable": 54
           }
+        },
+        "application": {
+          "label": "Applications outside the package manager",
+          "attempted": 0,
+          "determined": 0,
+          "outcomes": {}
         }
       },
+      "applications": {
+        "installs": 0,
+        "judged": 0,
+        "vulnerable": 0,
+        "no_advisory": 0,
+        "left_to_package_manager": 0,
+        "sbom_components_not_assessed": 0,
+        "not_looked_for": [
+          "Python packages",
+          "npm packages",
+          "Java archives"
+        ]
+      },
       "statements": [
-        "Distribution packages: 1 of 3,185 checks couldn't be determined.",
-        "Livepatch, services still running replaced libraries, and software outside the package manager (Java archives included) aren't judged by this report yet. Kernels installed but not running are judged, and marked so."
+        "Distribution packages: 1 of 3,186 checks couldn't be determined.",
+        "Not looked for on this host, so not assessed: Python packages, npm packages, Java archives (the agent's opt-in scans are off, or it predates them).",
+        "Livepatch, services still running replaced libraries, and software outside the package manager other than Python and npm packages and Java archives (vendored binaries, containers, self-installed tools) aren't judged by this report yet. Kernels installed but not running are judged, and marked so."
       ]
     },
     "undetermined": [
@@ -240,13 +293,13 @@
       {
         "instance": "glibc 0:2.34-266.el9_8",
         "grade": "confirmed",
-        "count": 4,
+        "count": 5,
         "no_fix": 0,
         "no_fix_planned": 0,
         "known_exploited": 0,
         "observed": "0:2.34-266.el9_8 (rpm database: glibc, glibc-common, glibc-gconv-extra, glibc-langpack-en)",
-        "expected": "at least 2.34-283.el9_8",
-        "action": "Update to 2.34-283.el9_8 or later"
+        "expected": "at least 2.34-284.el9_8.4",
+        "action": "Update to 2.34-284.el9_8.4 or later"
       },
       {
         "instance": "gnutls 0:3.8.10-3.el9",
@@ -471,18 +524,28 @@
     ],
     "vulnerable_installs": 31,
     "not_applicable": 2986,
-    "content_version": "2026-10-30.03d65b977b6d",
-    "inventory_sha256": "8f4b3fee200c197a8fb00242464045798982d512803e343585fdf2a7d7d5299c",
-    "verdicts_sha256": "c497bb52c2688be7e082ff6265f292b77732387706f38c743d09b0dd0a321cd7"
+    "content_version": "2026-11-06.f0c3ca540106",
+    "inventory_sha256": "12db71902cab300210cf4996ae2e1ddc23e6b083c20fb81c55fffdb73e3b4859",
+    "verdicts_sha256": "92484ade716539ec4cb5c990d9e616a57c3819f61982d6c44892e47442cd1bbd"
+  },
+  {
+    "step": "binaries versioned unlike their source",
+    "count": 0,
+    "examples": []
   },
   {
     "step": "parity with rescan",
-    "findings": 53,
-    "agree": 53,
+    "findings": 54,
+    "agree": 54,
     "outside_this_slice": {},
     "explained": 0,
     "explained_by": [],
     "explained_examples": [],
+    "unexplained": []
+  },
+  {
+    "step": "rescan's loop against the engine (engine_disagrees)",
+    "entries": 0,
     "unexplained": []
   },
   {
@@ -499,7 +562,7 @@
     },
     "headline": {
       "status": "not-assessed",
-      "text": "NOT ASSESSED: this host's patch state wasn't determined, so this is not a clean result. 3,094 checks couldn't be determined."
+      "text": "NOT ASSESSED: this host's patch state wasn't determined, so this is not a clean result. 3,095 checks couldn't be determined."
     },
     "undetermined": [
       {
@@ -525,7 +588,7 @@
         "why": "a finding was open on this, and this scan has no evidence either way",
         "source_said": null,
         "what_to_do": "It stays open. Fix what stopped the scan, then scan again",
-        "count": 53,
+        "count": 54,
         "examples": [
           "CVE-2024-34459",
           "CVE-2025-13151",
@@ -535,8 +598,8 @@
         ]
       }
     ],
-    "findings_before": 53,
-    "findings_after": 53,
+    "findings_before": 54,
+    "findings_after": 54,
     "packages_kept": 207
   },
   {
@@ -548,6 +611,7 @@
       "end of support judged": true,
       "the running WSL kernel isn't called clean": true,
       "every finding rescan opened is a verdict or explained": true,
+      "a binary versioned unlike its source is judged by the source version, never its own": true,
       "same inventory and content, same verdicts": true,
       "a failed package database read is reported as one": true,
       "and isn't clean, names the package database, keeps the last list and closes nothing": true
@@ -555,6 +619,6 @@
   },
   {
     "step": "sandbox destroyed",
-    "name": "nimstead-sbx-393d2fdd"
+    "name": "nimstead-sbx-46354406"
   }
 ]

@@ -635,3 +635,18 @@ def test_a_finding_whose_advisory_was_withdrawn_or_re_keyed_closes_while_the_app
     v = one(vs, vuln_id="GHSA-old-id")
     assert (v.outcome, v.reason) == (Outcome.NOT_APPLICABLE, "withdrawn")
     assert one(vs, vuln_id="CVE-2026-9").outcome == Outcome.VULNERABLE
+
+
+def test_the_per_pass_memo_never_gives_one_host_another_hosts_verdicts():
+    """The hourly pass shares one Content (and its memo) across every host: an install judged on one host is reused on the
+    next only when everything the judgement reads is the same. Each variant must match what a fresh memo gives it."""
+    recs = (msrc("CVE-2026-1", "10.0.26200.7100"), msrc("CVE-2026-2", "10.0.26200.6000"))
+    hosts = [doc(app("7-Zip 19.00 (x64)", "19.00")),
+             doc(app("7-Zip 19.00 (x64)", "19.00"), facts={"pending_reboot": True}),
+             doc(app("7-Zip 19.00 (x64)", "19.00"), facts={"pending_reboot": None}),
+             doc(app("7-Zip 19.00 (x64)", "19.00"), sources={"uninstall": {"state": "partial", "count": 2, "error": "cut short"}})]
+    shared = content(*recs, apps=[nvd("CVE-2026-9", "20.00")])
+    together = [run(d, shared) for d in hosts]
+    alone = [run(d, content(*recs, apps=[nvd("CVE-2026-9", "20.00")])) for d in hosts]
+    assert together == alone
+    assert len({tuple(vs) for vs in alone}) == len(hosts)  # the hosts really differ, so a key that missed one would show

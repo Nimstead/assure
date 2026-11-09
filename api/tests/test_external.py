@@ -94,7 +94,7 @@ def test_a_legacy_tls_finding_stays_open_when_this_scan_couldnt_test_legacy_tls(
     c.post(f"/api/targets/{t['id']}/verify")
     monkeypatch.setattr(external, "checks", fake_checks(["NIM-TLS-LEGACY"]))
     c.post(f"/api/targets/{t['id']}/scan")
-    monkeypatch.setattr(external, "checks", lambda *_: ([], ["legacy TLS (this server's OpenSSL can't offer TLS 1.0/1.1)"]))
+    monkeypatch.setattr(external, "checks", lambda *_: ([], [external.LEGACY_SKIP]))
     r = c.post(f"/api/targets/{t['id']}/scan").json()
     assert r["resolved"] == 0 and [f["vuln_id"] for f in c.get("/api/findings").json()] == ["NIM-TLS-LEGACY"]
     monkeypatch.setattr(external, "checks", lambda *_: ([], []))  # tested, and not accepted any more

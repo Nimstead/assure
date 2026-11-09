@@ -37,6 +37,9 @@ jobs:
         if: matrix.db == 'sqlite'
       - run: uv run python ../scripts/check_docs.py
         if: matrix.db == 'sqlite'
+      # the API reference docs.nimstead.systems publishes is generated from the code: fail if it's stale
+      - run: uv run python ../scripts/export_api_docs.py --check
+        if: matrix.db == 'sqlite'
       - run: uv run pytest -q --durations=10 -o faulthandler_timeout=120  # a hung test dumps every thread's stack
 
   audit:

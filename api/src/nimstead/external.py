@@ -48,6 +48,7 @@ SERVICES = {
 }
 TLS_PORT = 443
 EXPIRY_WARN_DAYS = 14
+LEGACY_SKIP = "legacy TLS (this server's OpenSSL can't offer TLS 1.0/1.1)"  # scan() keeps NIM-TLS-LEGACY open when it sees this
 PROOF_PATH = "/.well-known/nimstead-verify.txt"
 PROOF_PORTS = ((443, True), (80, False))  # (port, TLS)
 
@@ -223,7 +224,7 @@ def tls_findings(host: str, t: dict) -> tuple[list[dict], list[str]]:
     if t["legacy"] is True:
         found.append(_tls("NIM-TLS-LEGACY", 5.3, "TLS 1.0/1.1 are still accepted; allow TLS 1.2 and 1.3 only."))
     elif t["legacy"] is None and t["trusted"] is not None:
-        skipped.append("legacy TLS (this server's OpenSSL can't offer TLS 1.0/1.1)")
+        skipped.append(LEGACY_SKIP)
     return found, skipped
 
 
@@ -324,7 +325,7 @@ def scan(s: Session, asset: Asset, lookup=None, run_checks=None) -> dict:
         f.summary, f.cvss, f.epss, f.kev = c["summary"], c["cvss"], None, False
         f.score, f.priority, f.reasons, f.last_seen = r.score, r.priority, r.reasons, t
     resolved = 0
-    untested = {"NIM-TLS-LEGACY"} if any(x.startswith("legacy TLS") for x in skipped) else set()  # tls_findings' only skip
+    untested = {"NIM-TLS-LEGACY"} if LEGACY_SKIP in skipped else set()  # an untested check isn't evidence of a fix
     for vid, f in existing.items():
         if vid not in seen and vid not in untested and f.status in ("open", "accepted"):
             f.status, f.resolved_at = "resolved", t

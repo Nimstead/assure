@@ -28,9 +28,9 @@ Successful discovery is cached for 24 hours for the configured channel. A channe
 | `latest.json` | `version`, `url`, `channel`, `for_channel`, `checked`, and optional `alerted` metadata |
 | `update-status.json` | Result written by the deployment updater, with optional notification marker |
 
-`fetch_release_files()` requests files for the running platform version. It skips a cached manifest with the same version and an eligible channel without checking its signature file. It also skips replacement when downloaded manifest bytes are identical, even if the signature differs.
+`fetch_release_files()` requests files for the running platform version. It skips the request only when the cached manifest's signature verifies against a pinned key, its version matches and its channel is eligible; a cached manifest with a missing or bad signature is fetched again. It also skips replacement when downloaded manifest bytes are identical to a verified cached manifest.
 
-The fetch step stores signature and manifest through separate atomic replacements. It does not verify them before storage. Serving and runtime-fetch helpers perform later signature checks. A partial pair can temporarily be unavailable to those helpers.
+The fetch step verifies the downloaded pair before storing anything: a signature that doesn't verify, or a manifest naming another version, stores nothing. It then stores signature and manifest through separate atomic replacements. Serving and runtime-fetch helpers check the signature again. A partial pair can temporarily be unavailable to those helpers.
 
 `fetch_runtimes()` uses the signed cached manifest's version, which can differ from the running platform version. It preserves an existing archive only when its SHA-256 matches. A fetched archive also requires a matching signed hash before storage. This step does not unpack or inspect archive programs.
 
@@ -56,7 +56,7 @@ The settings response includes a `platform` object from `updates.status()`:
 | --- | --- |
 | `version` | Installed `nimstead` distribution version, or empty string without package metadata |
 | `channel` | Normalized server channel |
-| `running_channel` | Channel from the cached manifest when its version matches the installed version, otherwise `null` |
+| `running_channel` | Channel from the cached manifest when its signature verifies and its version matches the installed version, otherwise `null` |
 | `latest` | Cached discovered release version, or `null` |
 | `latest_url` | Cached release-page URL, or `null` |
 | `latest_channel` | Cached signed channel label, or `null` |
@@ -64,7 +64,7 @@ The settings response includes a `platform` object from `updates.status()`:
 | `checked` | Cached check timestamp, or `null` |
 | `last_update` | Nonempty `update-status.json` data, or `null` |
 
-A different `for_channel` hides cached latest-release fields. Status does not fetch releases or validate cached signatures. `running_channel` describes cache data, rather than a verified claim about the installed checkout.
+A different `for_channel` hides cached latest-release fields. Status does not fetch releases. `running_channel` comes only from a cached manifest whose signature verifies; it names the channel the running version was signed for, not a check of the installed checkout itself.
 
 The deployment script writes `last_update` fields `outcome`, `from`, `to`, `error`, and `at`. Outcomes are `updated`, `refused`, `rolled_back`, or `rollback_failed`. `error` is text or `null`. `at` is a UTC timestamp without a timezone suffix. Notification handling can add boolean `alerted`. Other file fields pass through unchanged.
 

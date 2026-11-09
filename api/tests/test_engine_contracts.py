@@ -11,7 +11,7 @@ from nimstead.engine import fleet, report
 from nimstead.engine.collection import Inventory, valid_document
 from nimstead.engine.content import Content
 from nimstead.engine.evaluate import evaluate
-from nimstead.engine.model import REASONS
+from nimstead.engine.model import REASONS, Outcome, Verdict
 
 REFERENCE = Path(__file__).resolve().parents[2] / "docs" / "reference"
 
@@ -80,3 +80,8 @@ def test_agent_document_loader_is_not_an_application_round_trip():
     assert loaded.kind == "host" and loaded.sbom is None and loaded.received
 
 
+def test_a_cvss_of_zero_is_kept_in_the_verdict_and_its_digest():
+    zero = Verdict("a", "os", "Windows", "a", Outcome.VULNERABLE, cvss=0)
+    unscored = Verdict("a", "os", "Windows", "a", Outcome.VULNERABLE)
+    assert zero.as_dict()["cvss"] == 0 and "cvss" not in unscored.as_dict() and "kev" not in zero.as_dict()
+    assert report.digest([zero]) != report.digest([unscored])

@@ -190,7 +190,10 @@ def _engine(s: Session, asset: Asset, pkgs: list, matches: list, seen: set, prio
 
 
 def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dict | None = None) -> dict:
-    """`cache`: decoded advisory records by (ecosystem, package), shared across hosts within one feed-update pass."""
+    """`cache`: decoded advisory records by (ecosystem, package), shared across hosts within one feed-update pass.
+
+    Commits s, including the caller's pending changes: callers stage their own writes and ledger entries (a new
+    package list, a context change, an SBOM) and rely on this commit to land them with the findings they caused."""
     if asset.kind == "external":  # no inventory: findings come from external.scan(); only re-score here
         from nimstead import external
         return external.rescore(s, asset)

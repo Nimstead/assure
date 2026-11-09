@@ -10,7 +10,7 @@ These operations require an organisation admin browser session. API tokens are r
 | --- | --- |
 | `GET /api/settings/notifications` | Current configuration and recent outcomes |
 | `PUT /api/settings/notifications` | Save settings, record the change, and request newly added recipients' confirmation mail |
-| `POST /api/settings/notifications/test` | HTTP `202` with `queued=true` after an attempted notification. Five attempts per organisation per hour |
+| `POST /api/settings/notifications/test` | HTTP `202` with `queued=true` once a delivery job is submitted. HTTP `409` when there is no usable destination (no webhook, and no confirmed recipient with SMTP configured) or submission failed. Five attempts per organisation per hour, refused ones included |
 
 | PUT field | Meaning |
 | --- | --- |
@@ -58,7 +58,7 @@ Account mail also uses fixed templates: `signup`, `exists`, `invite`, and `reset
 
 Urgent messages prepend `URGENT: ` to text. Slack text escapes `&`, `<`, and `>` to suppress link/mention markup. A non-Slack format supplied directly to the internal helper uses the JSON payload.
 
-HTTP 4xx/5xx responses count as transport failures. Redirect responses do not follow redirects and are not classified as errors by this helper. A receiver's successful HTTP response does not prove that a person saw the alert.
+Any response other than 2xx counts as a failed delivery. Redirects are not followed, so a 3xx means the alert never reached the receiver and is recorded as failed (and retried). A receiver's successful HTTP response does not prove that a person saw the alert.
 
 The default client has HTTPX operation timeouts and no connection reuse. System DNS resolution has no explicit deadline. An injected test client can use different transport behavior.
 
@@ -78,7 +78,7 @@ Failed, un-retried rows younger than 24 hours can retry while their attempt numb
 
 Retry submission marks the old row retried and commits independently of completion. The returned retry count measures queued rows, not successful sends. Confirmation mail is excluded from email retries. Retry processing also removes delivery records older than 90 days.
 
-`notify()` can wait for database lookup or key unsealing, including Vault I/O, before queue submission. It suppresses ordinary lookup/decryption/queue exceptions. A `None` return does not prove queueing. The test endpoint still returns `queued=true` after this path, including when no destinations exist.
+`notify()` can wait for database lookup or key unsealing, including Vault I/O, before queue submission. It suppresses ordinary lookup/decryption/queue exceptions. It returns `True` when a delivery job was submitted and `False` when there was no organisation, no destination, or a suppressed failure; `True` does not prove delivery. The test endpoint answers 409 on `False`.
 
 `flush()` waits for a snapshot of current pending futures without a timeout. Jobs submitted afterward need not be included. It does not return delivery outcomes.
 

@@ -7,6 +7,13 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 ### Fixed
 - A network web check that gets no HTTP response (a timeout or reset) is now undetermined (`host-lost`) instead of not vulnerable, so it can't close a real finding.
 - An external target's legacy-TLS finding no longer resolves when a scan couldn't test legacy TLS (the scanner's OpenSSL can't offer TLS 1.0/1.1).
+- A webhook that answers with a redirect (3xx) is now a failed delivery, and retried, instead of counting as delivered: redirects aren't followed, so the alert never reached the receiver.
+- **Send test alert** with no usable destination is refused (HTTP 409) instead of answering `queued=true` and sending nothing.
+- A host whose agent is newer than the one this server serves shows as current, not "updating": agents only move to a newer release.
+- The server stores release files only after their signature checks, a cached manifest with a missing or bad signature is fetched again instead of skipping the fetch, and the running channel in Settings comes only from a verified manifest.
+- An end-of-life date from endoflife.date that isn't a real date (`2026-99-99`) is refused when fetched, keeping the stored cycles, instead of breaking lifecycle checks later.
+- A CVSS score of 0 is kept in a verdict's record, so it no longer hashes the same as no score. The detection engine's version is now 4.
+- Agent 0.6.9: a signed release manifest whose `agent_sha256` or `commit` is a JSON number instead of a hex string is refused as malformed.
 
 ### Changed
 - Evidence packs describe their controls more exactly. The reporting control counts assets with a report in or after the period. CC8.1 counts changes with an approver recorded, which doesn't prove execution, health checks or rollback. The basis notes that a resolution can reflect changed observations or advisory data. Older packs still verify.

@@ -453,7 +453,7 @@ Relative time uses fixed units: 30-day months and 365-day years. Under 45 rounde
 
 `updateSource(f)` describes reported Windows update facts. Explicit `wsus=null` selects Windows Update. Deferral-only facts produce no text. A success date beginning `1601-` means no prior install. Other dates use relative formatting. The function does not probe the host.
 
-Agent labels use the server's classification. `updating` does not prove a newer channel-eligible release. `reinstall` can mean missing local capability or no served signed release. A failed self-test can delay retry for 24 hours. These labels do not predict a successful next run.
+Agent labels use the server's classification. A host reporting the served agent version or a newer one is `current`. `updating` does not prove a newer channel-eligible release. `reinstall` can mean missing local capability or no served signed release. A failed self-test can delay retry for 24 hours. These labels do not predict a successful next run.
 
 `groupJobs(jobs)` returns all configured groups with new arrays and shared job objects. Unknown statuses belong to no group. `isActiveJob(j)` selects approved/dispatched/verifying. `jobAnchor(id)` prefixes text with `job-` without encoding or validation.
 

@@ -11,7 +11,8 @@ from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from test_api import INV, enrol, user
 
-from nimstead.db import Base, Finding, InstalledPackage, Org, make_sessionmaker
+from nimstead.db import Asset, Base, Finding, InstalledPackage, Org, make_sessionmaker
+from nimstead.scan import rescan
 
 REFERENCE = Path(__file__).resolve().parents[2] / "docs" / "reference"
 
@@ -66,6 +67,21 @@ def test_single_acceptance_can_follow_resolution_and_revoke_retains_timestamp(en
     revoked = c.post(f"/api/findings/{fid}/revoke-acceptance", json={"reason": "Reassess this result"}).json()
     assert revoked["status"] == "open" and revoked["resolved_at"] == resolved["resolved_at"]
     assert revoked["due"] is None and c.get(f"/api/findings/{fid}").json()["due"] is not None
+
+
+def test_rescan_commits_the_callers_pending_changes(env):
+    """Intended: callers stage writes and ledger entries (a package list, a context change, an SBOM) and rely on
+    rescan's commit to land them with the findings they caused."""
+    _, a, _ = _host(env)
+    factory = make_sessionmaker(env)
+    with factory() as s:
+        asset = s.get(Asset, a["asset_id"])
+        oid = asset.org_id
+        s.get(Org, oid).name = "Staged by the caller"
+        rescan(s, asset, inventory_received=False)
+    with factory() as s:
+        assert s.get(Org, oid).name == "Staged by the caller"
+    factory.kw["bind"].dispose()
 
 
 def test_csv_columns_match_reference(env):

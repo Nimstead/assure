@@ -147,3 +147,9 @@ def test_a_linux_release_maps_to_its_end_of_support_cycle(eco, want):
     assert lifecycle.distro_cycle(eco) == want
 
 
+def test_an_impossible_end_date_is_refused_when_parsed():
+    """The feed run keeps the stored cycles on ValueError, so app_verdict never meets a date it can't read."""
+    for bad in ([{"cycle": "x", "eol": "2026-99-99"}], [{"cycle": "x", "eol": "2026-02-30"}], [None]):
+        with pytest.raises(ValueError):
+            lifecycle.parse_eol(bad)
+    assert lifecycle.parse_eol([{"cycle": "x", "eol": "2024-02-29"}]) == {"x": "2024-02-29"}

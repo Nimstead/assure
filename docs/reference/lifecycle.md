@@ -41,9 +41,9 @@ A truthy ESU fact selects the configured ESU final day through that date. The fu
 
 ## External cycle data
 
-`parse_eol(cycles)` accepts a nonempty list of dictionaries. Each needs a string `cycle` and an `eol` boolean or `YYYY-MM-DD`-shaped string. It returns a cycle-to-value dictionary. Duplicate cycle names use the last value.
+`parse_eol(cycles)` accepts a nonempty list of dictionaries. Each needs a string `cycle` and an `eol` boolean or `YYYY-MM-DD` calendar date. It returns a cycle-to-value dictionary. Duplicate cycle names use the last value.
 
-The parser checks date shape without calendar validity. An impossible date can pass this parser and fail later date conversion. Root or field validation failures raise `ValueError`. A nondictionary list entry can raise `AttributeError`.
+An impossible date such as `2026-99-99`, a nondictionary entry, and any other root or field failure raise `ValueError`, so the feed run keeps that product's stored cycles and `app_verdict` never meets a date it cannot read.
 
 `app_verdict(key, version, eol, today)` returns an ended result for true lifecycle flags or dates before `today`. It prefers the configured major/minor cycle, then falls back to a major-only cycle. Missing, false, future, and unknown cycle values return `None`. This helper produces no 90-day warning.
 

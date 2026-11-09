@@ -22,7 +22,7 @@ The saved webhook secret is not displayed again. Leave its field unchanged to re
 
 Unconfirmed recipients do not receive alerts. If a test fails, inspect its error and the server logs. Check SMTP credentials, TLS, and outbound network access before retrying.
 
-Confirm the test at the destination. HTTP 202 and `queued=true` do not establish successful delivery. Settings shows only the five latest recorded attempts.
+Confirm the test at the destination. HTTP 202 and `queued=true` mean the alert was handed to the background sender, not that it arrived; with no usable destination the request is refused with HTTP 409 and nothing is sent. Settings shows only the five latest recorded attempts.
 
 ## Request another confirmation
 

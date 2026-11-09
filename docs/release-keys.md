@@ -24,7 +24,7 @@ The authoritative key list is `RELEASE_KEYS` in [the agent](../agent/nimstead_ag
 
 Runtime keys can be `amd64`, `arm64`, or `win32`. Each entry requires a three-component decimal `version` and 64-character lowercase hexadecimal `sha256`. The agent accepts a subset of architectures. Unknown manifest and runtime-entry fields remain available after verification.
 
-Hash and commit shape checks use `str(value)`. They do not strictly enforce JSON string types. Later update hash comparisons still need the actual string value.
+Hash and commit values must be JSON strings: a number of the right digits is refused as malformed (agent 0.6.9 and later).
 
 The signing tool validates its pinned runtime source separately. It requires all three architectures and their exact Python.org download URLs. The signed manifest contains runtime versions and hashes, without those URLs.
 

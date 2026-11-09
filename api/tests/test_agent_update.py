@@ -95,6 +95,16 @@ def test_server_signature_check_does_not_apply_agent_field_validation(monkeypatc
         agent.verify_release(manifest, sig, [pub(k)])
 
 
+def test_agent_refuses_a_signed_manifest_with_numeric_hash_or_commit():
+    """A JSON number of digits isn't a hex string: str() must not launder it through the shape check."""
+    k = Ed25519PrivateKey.generate()
+    _, manifest, _ = signed(k, b'AGENT_VERSION = "0.9.0"\n')
+    for field, n in (("agent_sha256", 64), ("commit", 40)):
+        raw = json.dumps({**json.loads(manifest), field: int("1" * n)}).encode()
+        with pytest.raises(agent.AgentError, match="malformed"):
+            agent.verify_release(raw, base64.b64encode(k.sign(raw)).decode(), [pub(k)])
+
+
 # --- the agent's update step --------------------------------------------------------------------------------------
 
 class FakeServer:

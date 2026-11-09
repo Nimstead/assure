@@ -122,29 +122,32 @@ def send_account_email(email: str, purpose: str, link: str) -> None:
     f.add_done_callback(_pending.discard)
 
 
-def notify(s: Session, org_id: str, kind: str, text: str, urgent: bool = False) -> None:
+def notify(s: Session, org_id: str, kind: str, text: str, urgent: bool = False) -> bool:
     """Best-effort queue of kind/text for org_id using Session s and urgent flag.
 
     Missing organisation/destinations produces no job. Settings queries and webhook
     unsealing occur synchronously, possibly including Vault I/O. Delivery uses the
     background pool and independent sessions. Catch/log ordinary lookup, decryption
     and queue errors. Does not explicitly commit s. Reads can autoflush its changes.
-    Returns None without confirming enqueue, successful delivery or outcome storage."""
+    Return True when a delivery job was submitted (not that it was delivered or its outcome stored), False when the
+    organisation is missing, has no destination, or submission failed."""
     try:
         org = s.get(Org, org_id)
         if not org:
-            return
+            return False
         targets = []
         if url := webhook_url(org):
             targets.append(("webhook", url, org.notify_webhook_format))
         if recipients(org) and smtp_configured():
             targets.append(("email", recipients(org), ""))
         if not targets:
-            return
+            return False
         # ponytail: in-process queue; failed attempts are persisted and retried by retry_failed() (hourly feed run)
         _submit(s.get_bind(), org_id, kind, text, urgent, targets, 1)
+        return True
     except Exception:
         log.exception("could not queue notification")
+        return False
 
 
 def _submit(bind, org_id, kind, text, urgent, targets, attempt):
@@ -282,7 +285,7 @@ def _send_webhook(url: str, fmt: str, kind: str, text: str, urgent: bool) -> Non
     client = http_client or guarded_client()
     try:
         r = client.post(url, json=body)
-        if r.is_error:
+        if not r.is_success:  # redirects aren't followed (guarded_client), so a 3xx never reached the receiver
             raise RuntimeError(f"webhook returned HTTP {r.status_code}")
     finally:
         if http_client is None:

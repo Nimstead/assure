@@ -10159,7 +10159,7 @@
     },
     "/api/settings/notifications/test": {
       "post": {
-        "description": "Attempt a test notification and return queued=true with HTTP 202.\n\nThis acknowledges the request, not durable enqueue or delivery. Missing\ndestinations and suppressed queue errors can still produce queued=true.\nThe five/hour organisation quota records and commits each attempt.\n\nRequires an organisation admin browser session; API tokens are refused.\n\nOperation-specific HTTP errors: 429. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
+        "description": "Queue a test notification to the saved destinations and return queued=true with HTTP 202.\n\nThis acknowledges submission to the background sender, not delivery: the outcome\nappears in the recent deliveries shortly after. With no usable destination (no\nwebhook, and no confirmed recipient with SMTP configured) or a failed submission\nit returns 409 and sends nothing. The five/hour organisation quota records and\ncommits each attempt.\n\nRequires an organisation admin browser session; API tokens are refused.\n\nOperation-specific HTTP errors: 409, 429. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
         "operationId": "test_notification_api_settings_notifications_test_post",
         "responses": {
           "202": {

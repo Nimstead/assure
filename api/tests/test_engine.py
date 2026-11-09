@@ -468,7 +468,7 @@ def test_a_scan_is_recorded_once_with_what_explains_it_and_can_be_replayed(env):
     assert c.get(f"/api/assets/{aid}/scan-report").json() == first
     s.expire_all()
     [rec] = s.scalars(select(ScanRecord).where(ScanRecord.asset_id == aid)).all()
-    assert rec.content_version == first["content_version"] and rec.verdicts_sha256 == first["verdicts_sha256"] and rec.engine_version == "3"
+    assert rec.content_version == first["content_version"] and rec.verdicts_sha256 == first["verdicts_sha256"] and rec.engine_version == "4"
     inv = Inventory.from_doc(rec.inventory)
     assert inv.sha256() == rec.inventory_sha256
     replay = evaluate(inv, engine.content.load(s, inv), engine.prior_findings(s, s.get(Asset, aid)))

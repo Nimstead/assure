@@ -15,6 +15,18 @@ from nimstead.app import create_app
 from nimstead.db import make_engine, now
 
 
+def test_an_agent_newer_than_the_one_served_is_current_not_updating(monkeypatch):
+    """Agents only move to a strictly newer release, so a host ahead of this server (a newer build) stays as it is."""
+    import nimstead.app as appmod
+    from nimstead.db import Asset
+
+    monkeypatch.setattr(appmod, "latest_agent_version", lambda: "0.6.7")
+    asset = Asset(agent_version="0.10.0", auto_update=True)  # numerically newer, not just a different string
+    assert appmod.agent_update_status(asset, paused=False, release=True) == "current"
+    asset.agent_version = "0.6.6"
+    assert appmod.agent_update_status(asset, paused=False, release=True) == "updating"
+
+
 @pytest.fixture
 def gh(env, tmp_path, monkeypatch):
     """Release dir in tmp, the check switched on, running 0.3.0 on the preview channel, a fake GitHub with signed
@@ -219,6 +231,7 @@ def test_a_promoted_release_reaches_a_server_that_cached_its_preview_signature(g
     monkeypatch.setenv("NIMSTEAD_UPDATE_CHANNEL", "stable")
     d.mkdir(parents=True)
     (d / "release.json").write_text(json.dumps({"version": "0.3.0", "channel": "preview"}))  # as GitHub serves it
+    (d / "release.json.sig").write_text("ok")
     assert updates.check(s, client)["release_files_fetched"] is False  # not promoted yet: same bytes, nothing stored
     state["releases"]["v0.3.0"] = ("stable", "ok")
     assert updates.check(s, client)["release_files_fetched"]
@@ -234,3 +247,29 @@ def test_a_stable_release_behind_five_previews_is_still_found(gh, monkeypatch):
     state["releases"] = {"v0.3.0": ("preview", "ok"), "v0.4.0": ("stable", "ok"), **{f"v0.5.{i}": ("preview", "ok") for i in range(6)}}
     updates.check(s, client)
     assert updates.status()["latest"] == "0.4.0"
+
+
+def test_a_cached_manifest_without_its_signature_is_fetched_again(gh):
+    _, client, _, _, d = gh
+    d.mkdir(parents=True)
+    (d / "release.json").write_text('{"version": "0.3.0", "channel": "preview"}')  # GitHub's exact bytes, but no .sig
+    assert updates.fetch_release_files(client)
+    assert (d / "release.json.sig").read_text() == "ok"
+
+
+def test_release_files_whose_signature_fails_are_not_stored(gh):
+    _, client, state, _, d = gh
+    state["releases"]["v0.3.0"] = ("preview", "forged")
+    assert updates.fetch_release_files(client) is False
+    assert not (d / "release.json").exists() and not (d / "release.json.sig").exists()
+
+
+def test_running_channel_shows_only_from_a_verified_cache(gh):
+    _, _, _, _, d = gh
+    d.mkdir(parents=True)
+    (d / "release.json").write_text('{"version":"0.3.0","channel":"stable"}')
+    assert updates.status()["running_channel"] is None  # no signature
+    (d / "release.json.sig").write_text("forged")
+    assert updates.status()["running_channel"] is None
+    (d / "release.json.sig").write_text("ok")
+    assert updates.status()["running_channel"] == "stable"

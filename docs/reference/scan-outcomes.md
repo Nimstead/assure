@@ -43,6 +43,8 @@ A grade can be absent. SBOM-derived component verdicts have an unverified ceilin
 | `policy-excluded` | Review the local opt-in scan policy |
 | `sbom-unmapped` | Supply supported package URLs for the omitted components |
 | `not-reassessed` | Correct the scan blocker. This scan has no evidence to resolve the prior finding |
+| `removed` | None: the product is no longer installed, and the list that would show it was read in full. The finding resolves |
+| `withdrawn` | None: no live advisory for the product carries this identity any more (withdrawn, or filed again under another ID). The finding resolves |
 | `port-filtered` | Check external firewall behavior. Timeout does not prove a closed port |
 | `timed-out` | Repeat the check after the target or time-budget issue is resolved |
 | `host-lost` | Restore target reachability and repeat the scan |

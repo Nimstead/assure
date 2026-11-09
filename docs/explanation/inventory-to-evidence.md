@@ -16,7 +16,7 @@ Confidence describes the strength of evidence for a conclusion. Severity describ
 
 Distribution packages use the distribution's version rules and source package identities. This matters when a vendor backports a fix without adopting the upstream version number. Windows and application checks use the matching rules and coverage available for those products.
 
-Stored findings and the engine report remain separate paths. Findings can resolve when a match disappears, subject to specific collection guards. The report can still describe an incomplete reassessment. A resolved workflow state therefore needs its scan and feed context before it supports a repair claim. The [finding reference](../reference/findings.md#reassessment-and-resolution) defines the current guards and limits.
+Stored findings follow the engine's verdicts. A `vulnerable` verdict opens a finding. A finding closes only on evidence: `not-vulnerable` at the installed version, or `not-applicable` because the product is gone with its list read in full, or because no live advisory carries its identity any more. Otherwise it stays open, and its reasons say why. Agents without a collection document, and checks outside the engine's slice such as settings and drivers, keep the earlier rule of closing when a match disappears. The [finding reference](../reference/findings.md#reassessment-and-resolution) defines the rules and their limits.
 
 ## Priority helps order work
 

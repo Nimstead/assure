@@ -41,6 +41,8 @@ A diagnostics pass does not authenticate the saved key or confirm inventory deli
 
 A scan with no findings can still have incomplete checks. Confirm the scan report's outcomes and reasons before treating the host as assessed.
 
-If a finding unexpectedly resolves, inspect the matching feed and collection state. A missing match can change finding status without proof of repair. Compare the [resolution guards](../reference/findings.md#reassessment-and-resolution) before closing the investigation.
+If a finding you fixed stays open, read its reasons. A line starting `Still open:` says what the last scan couldn't establish. Correct that, then report again; the finding resolves once a scan reads the source in full.
+
+If a finding unexpectedly resolves, check whether it's in the engine's slice. Inside it, a resolution needs evidence. Outside it (settings, drivers), and for agents without a collection document, a missing match can still change a finding's status without proof of repair. Compare the [resolution rules](../reference/findings.md#reassessment-and-resolution) before closing the investigation.
 
 Related: [agent commands](../reference/agent-cli.md), [inventory to evidence](../explanation/inventory-to-evidence.md).

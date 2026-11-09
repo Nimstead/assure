@@ -108,22 +108,26 @@ Single acceptance and revocation retain an existing `resolved_at` value. Read `s
 
 ## Reassessment and resolution
 
-`rescan()` matches stored inventory, updates risk signals, and commits finding/ledger changes. Its `open` result counts all seen identities, including accepted findings. `resolved` counts new transitions to resolved.
+`rescan()` reassesses stored inventory, updates risk signals, and commits finding/ledger changes. Its `open` result counts all seen identities, including accepted findings. `resolved` counts new transitions to resolved.
+
+Since 0.7.6 the detection engine's verdicts decide which identities are seen, inside the engine's slice: the Windows OS, Microsoft products, curated Windows apps, distribution packages, language packages and SBOM components (DECISIONS 123). A `vulnerable` verdict makes an identity seen. A verdict proving it absent removes it. Where the engine has no decision, for example an agent without a collection document or a source that failed, the earlier matching's answer stands. Since 0.7.7 an identity in the slice that isn't seen resolves only on evidence (DECISIONS 124).
 
 | Existing state and observation | Result |
 | --- | --- |
 | Resolved identity matches again | Open, with `resolved_at` cleared |
 | Accepted identity matches after its nonnull expiry timestamp | Open, with acceptance cleared |
 | Accepted identity still matches before expiry | Accepted |
-| Open/accepted identity is absent and its collection guard does not block | Resolved |
+| Open/accepted identity in the engine's slice is absent, and the engine proves it absent (`not-vulnerable`, or `not-applicable`: product gone with its list read in full, `removed`; no live advisory carries the identity, `withdrawn`) | Resolved |
+| Open/accepted identity in the engine's slice is absent, with no such proof | Unchanged; a `Still open: …` reason says why |
+| Open/accepted identity outside the slice (settings, drivers, end of support), or from an agent without a collection document, is absent and its collection guard does not block | Resolved |
 
 Read APIs do not expire acceptance. Expiry is applied to matching identities during reassessment. A blocked or otherwise unreassessed identity can retain its previous state.
 
 The expiry rule requires a stored acceptance timestamp. An accepted row without that timestamp is not reopened by this rule.
 
-Resolution guards cover explicit failed/partial Windows source declarations and empty Uninstall counts. Driver findings also require `driver_scan.complete=true` before absent identities resolve. Missing collection documents/sources do not themselves block resolution. This helper does not apply the engine's full Linux/application collection rules.
+Outside the slice, resolution guards cover explicit failed/partial Windows source declarations and empty Uninstall counts, and driver findings also require `driver_scan.complete=true` before absent identities resolve. There, a feed change or a missing match can still resolve a finding without proof of a repair.
 
-Feed changes or missing advisory matches can therefore resolve a finding without proof of a successful repair. `inventory_received=false` suppresses receipt logging and engine-shadow evaluation; it still permits matching and resolution. External assets instead rescore their open findings through the separate external path.
+A version fixed by hand on a distribution release past end of support resolves: end of support stops new advisories, it doesn't undo a fix. If the engine fails on a host, that reassessment opens from the earlier matching and resolves nothing. `NIMSTEAD_ENGINE_FINDINGS=0` restores the earlier rule everywhere. The earlier matching still runs on every reassessment as a check, and each new inventory where the two differ without explanation adds one `engine_disagrees` ledger entry. `inventory_received=false` (the hourly re-match and re-scoring) suppresses receipt logging and those entries; it still opens and resolves findings. External assets instead rescore their open findings through the separate external path.
 
 Inventory receipts are logged when the package digest changes, or after one day without a receipt. The digest covers sorted ecosystem/name/version/source tuples, with source version when present. It excludes package origin and host facts. Finding transition events remain separate ledger records.
 

@@ -23,21 +23,26 @@ Nimstead Assure scans your Linux and Windows machines and your applications' dep
 - **Says how sure it is.** Every check on a host gets a verdict and a confidence, and the scan report says what stopped any check from concluding instead of calling the host clean. It also shows how a host's weaknesses chain into a compromise, from getting in to reaching the next machine, and the single fix that breaks each chain.
 - **Covers your applications too.** Upload a CycloneDX or SPDX SBOM from CI, and PyPI, npm, Maven, NuGet, RubyGems, Go, crates.io, Packagist, Hex and Pub packages are matched the same way.
 - **Tells you what to fix first.** CISA KEV first, then EPSS likelihood, CVSS, how critical the machine is and whether it faces the internet, with a plain-English reason for every score. The home screen shows *upgrades* ("openssl → fixes 12 vulnerabilities on 3 hosts"), not a wall of CVEs.
-- **Fixes things without surprises.** You approve a fix. It goes to canary machines first, with a dry run that refuses anything outside the plan, a rollback copy taken before every change, health checks after, and automatic rollback if they fail. A fix only counts once the next inventory shows the vulnerability is gone.
+- **Works at fleet scale.** Findings page through tens of thousands of rows, sort by any column, and group by vulnerability or package. Select findings to plan the fix on every machine they're on, or accept the risk with one recorded reason. Save filter sets as views, search everything with Ctrl K, and step through findings with the keyboard. Assets has search, filters and bulk edit.
+- **Fixes things without surprises.** You approve a fix, after seeing every package it changes and the machine it runs on. It goes to canary machines first, with a dry run that refuses anything outside the plan, a rollback copy taken before every change, health checks after, and automatic rollback if they fail. A fix only counts once the next inventory shows the vulnerability is gone.
 - **Proves the work.** Every detection, fix and decision lands in a hash-chained ledger with signed off-database checkpoints. Ed25519-signed evidence packs map to Cyber Essentials, ISO 27001 A.8.8, NIST RA-5/SI-2, PCI DSS 6.3.3 and CIS 7, and verify offline against a pinned key fingerprint.
 - **Watches your edge.** Internet hosts you prove you own (DNS TXT) are checked for exposed risky services and weak TLS.
 - **Keeps itself current, safely.** Agents update themselves only from releases signed by the Nimstead release key, which your server never holds, so a compromised server can't push code to your machines. The server tells you when a release is out, and `deploy/update.sh` installs it with a database backup and automatic rollback. Machines that stop reporting are flagged.
 - **Fits your organisation.** OIDC single sign-on with verified domains, admin and read-only roles, webhook and email alerts for failed fixes and new urgent findings, keys in Vault and checkpoints in object-locked S3.
 
-Every screenshot here is from a real run ([`sandbox/demo.py`](sandbox/demo.py)): five disposable Linux machines (Ubuntu 24.04, Debian 13, AlmaLinux 9, Alpine 3.21) running the real agent, real vulnerability feeds, an application SBOM, and real fixes on those machines.
+Every screenshot here is from a real run ([`sandbox/demo.py`](sandbox/demo.py)): five disposable Linux machines (Ubuntu 24.04, Debian 13, AlmaLinux 9, Alpine 3.21) running the real agent, real vulnerability feeds, an application SBOM, and real fixes on those machines. The fleet view below is the same demo grown to 206 machines by cloning those real inventories.
 
 | A fix verified, a fix rolled back when it broke a service, and one the dry run refused | Why a finding matched, and why it's ranked there |
 |---|---|
-| ![Remediation: acl awaiting approval; openssl on Alpine refused because it would also change musl; openssl on Debian rolled back after billing-api.service kept restarting; brotli on Ubuntu fixed and verified](docs/images/remediation-1440.png) | ![Log4Shell (CVE-2021-44228) on billing-service: installed 2.14.1, fixed 2.15.0, ranked by CISA KEV, CVSS 10, internet-facing and high criticality](docs/images/findings-1440.png) |
+| ![Remediation: acl awaiting approval with each package's from and to versions; openssl on Alpine refused because it would also change musl, with Plan again including musl; openssl on Debian rolled back after billing-api.service kept restarting, with advice before planning it again; both marked self-approved](docs/images/remediation-1440.png) | ![Log4Shell (CVE-2021-44228) on billing-service: installed 2.14.1, fixed 2.15.0, with 2.25.4 named as the upgrade that clears all seven open findings; ranked by CISA KEV, CVSS 10, internet-facing and high criticality](docs/images/findings-1440.png) |
 
-| Every machine, its ring and its health checks | Controls an auditor can check | Light and dark, down to phone width |
+| Every machine, filtered and sorted by urgency | Controls an auditor can check | Light and dark, down to phone width |
 |---|---|---|
-| ![Assets: five Linux machines running agent 0.2.0 and an application, with criticality, canary and broad rings and health units](docs/images/assets-1440.png) | ![Evidence: Cyber Essentials, ISO 27001, NIST, PCI DSS and CIS control status](docs/images/evidence-1440.png) | ![Fix first in dark mode at 375px](docs/images/home-375-dark.png) |
+| ![Assets: five Linux machines and an application with search, filters, sort and open findings by priority; ring and health checks are set in each machine's drawer](docs/images/assets-1440.png) | ![Evidence: Cyber Essentials, ISO 27001, NIST, PCI DSS, SOC 2 and CIS control status, with a note that the period rests on one fix and RA-5 met with five machines not reporting now](docs/images/evidence-1440.png) | ![Fix first in dark mode at 375px](docs/images/home-375-dark.png) |
+
+| 44,000 findings on 206 machines: three selected, one upgrade to plan across all of them |
+|---|
+| ![Findings at fleet scale: 16,854 fixable results with sortable columns, a saved-view button and three brotli findings selected; the bar at the bottom offers Accept risk and Plan 1 fix on 3 machines](docs/images/findings-fleet-1440.png) |
 
 ## Get started
 

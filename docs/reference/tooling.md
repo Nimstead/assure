@@ -18,6 +18,36 @@ Run development commands from the repository root unless a command says otherwis
 
 Set `NIMSTEAD_TEST_PG_URL` to a disposable PostgreSQL server to run the API suite with PostgreSQL. The fixtures create and drop test databases. Use the same PostgreSQL configuration as CI when reproducing CI failures.
 
+## Documentation checker contracts
+
+`scripts/check_docs.py` uses its file location to select the repository root. It requires Git and the Python standard library. It checks documentation presence and recognized local links. It does not establish prose accuracy, example execution, or Diataxis completeness.
+
+| Function | Inputs, output and limits |
+| --- | --- |
+| `python_symbols(tree)` | Parsed module AST to `(name,present)` pairs. Direct public module/class bodies and `app` HTTP decorators are counted. Conditional definitions can be omitted. Top-level public routes can count twice |
+| `coverage()` | Repository paths to symbol/presence pairs. Reads Python with AST and web exports with the repository's declaration regex. No writes |
+| `documentation_paths()` | Sorted existing tracked/unignored Markdown paths from Git. Excludes ignored output, not every historical record |
+| `markdown_anchors(source)` | Text to recognized heading/HTML anchor set. Duplicate headings receive numeric suffixes. This is an approximate parser |
+| `link_problems()` | List of recognized missing destinations/headings. Local filesystem checks only. No remote requests |
+| `report(rows)` | Coverage pairs to Markdown. Counts supplied rows, including duplicates. No source validation or writes |
+| `main()` | CLI prints results and returns 0/1. `--report` writes before link checks, even if later checks fail |
+
+Web presence requires an adjacent documentation block. Type declarations, query objects and re-exports are outside the callable check. It does not inspect whether the comment explains parameters or errors.
+
+Link recognition includes selected Markdown links, images, reference definitions and quoted HTML attributes. It excludes the implemented triple-backtick code pattern. Other fence syntax and space-containing Markdown targets are not fully supported. Heading-like code can affect the approximate anchor set.
+
+URL query strings do not affect target existence. Non-Markdown fragments receive no anchor validation. Directories count as existing destinations. Git, parsing, URL, decoding and filesystem errors can propagate. A zero result applies to these recognized forms only.
+
+## Runtime download helper
+
+`scripts/fetch_runtimes.py OUT_DIR` reads `agent/windows-runtime.json`. It creates the output directory and processes runtime keys in sorted order. The initial URL must start with `https://www.python.org/ftp/python/`. Redirect handling belongs to urllib. The helper does not independently validate the final response origin.
+
+`main(out: str)` returns zero after all hashes match. Each request passes `timeout=120` to urlopen. The helper reads the whole archive into memory without an explicit size cap. SHA-256 comparison occurs before that archive is written.
+
+Output names are `python-embed-KEY.zip`, with the key from the pin document. Matching downloads overwrite existing files. Writes are not atomic. A hash mismatch preserves that file's previous bytes. Earlier successful files remain if a later entry fails.
+
+An initial URL refusal or hash mismatch raises SystemExit. Malformed pin documents, network failures and filesystem errors propagate. A missing CLI output argument raises IndexError. This helper does not sign a release or verify an agent manifest.
+
 ## Operational entry points
 
 | Path | Interface and effects |
@@ -49,7 +79,7 @@ The [coverage table](documentation-coverage.md) links to each documented source 
 
 The [feed reference](feed-sync.md) defines command results, source selection, commit boundaries, and failure handling.
 
-The [web client reference](web-client.md) defines reviewed settings/remediation component props, query behavior, and display-helper limits.
+The [web client reference](web-client.md) defines reviewed component props, route/query behavior, callbacks, failures and display-helper limits.
 
 ## Sandbox proofs
 

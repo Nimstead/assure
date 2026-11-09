@@ -349,13 +349,13 @@ it("the palette keeps the highlighted command when late results arrive, and find
   wrap(<Palette open onOpenChange={() => {}} signOut={() => {}} nextTheme={() => {}} />);
   const box = screen.getByRole("combobox");
   await userEvent.type(box, "go");
-  await screen.findByRole("option", { name: /Host: go-web-1/ });
+  await screen.findByRole("option", { name: /Asset: go-web-1/ });
   await userEvent.keyboard("{ArrowDown}{ArrowDown}");
   const chosen = box.getAttribute("aria-activedescendant");
   expect(chosen).toBeTruthy();
   await waitFor(() => expect(release).not.toBeNull());  // the debounced findings search has been sent
-  await act(async () => { release!(new Response(JSON.stringify([{ id: "f1", vuln_id: "CVE-1", package: "go", hostname: "h" }]), { status: 200 })); });
-  await screen.findByRole("option", { name: /CVE-1/ });
+  await act(async () => { release!(new Response(JSON.stringify([{ id: "f1", vuln_id: "CVE-1", package: "go", hostname: "h" }, { id: "f2", vuln_id: "CVE-1", package: "go", hostname: "h" }]), { status: 200 })); });
+  expect(await screen.findByRole("option", { name: /CVE-1/ })).toHaveTextContent("2 findings");
   expect(box.getAttribute("aria-activedescendant")).toBe(chosen);  // a new row arriving above didn't move the highlight
 });
 

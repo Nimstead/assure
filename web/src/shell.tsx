@@ -4,10 +4,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DropdownMenu } from "radix-ui";
 import { CircleHelp, FileCheck2, ListChecks, LogOut, Monitor, MoreHorizontal, Moon, Plus, Search, Server, Settings, ShieldAlert, Sun, Wrench, type LucideIcon } from "lucide-react";
 import clsx from "clsx";
-import { savedViews, ADMIN_ONLY_ID, announce, api, ApiError, assetsQ, filtersToSearch, meQ, NEXT_THEME, parseFilters, setTheme, THEME_LABEL, themeChoice, type Finding, type ThemeChoice } from "./lib";
+import { savedViews, ADMIN_ONLY_ID, announce, api, ApiError, assetsQ, filtersToSearch, meQ, NEXT_THEME, parseFilters, plural, setTheme, THEME_LABEL, themeChoice, type Finding, type ThemeChoice } from "./lib";
 import { ErrorState, LiveRegions, Loading, useReturnFocus } from "./ui";
 
-/** Render the Assure wordmark. */
+/** Render the Assure text wordmark as a span. No props, state or requests. */
 export const Logo = () => (
   // product lockup: company in ExtraBold, product word in Regular; the seal belongs to the company mark only
   <span className="text-xl leading-none tracking-[-0.045em] text-ink">
@@ -27,7 +27,7 @@ const NAV: { to: NavTo; label: string; icon: LucideIcon }[] = [
 // Phones: triage → fix → prove in the tab bar (auditors reach Evidence in one tap); configuration lives under "More".
 const TAB_ROUTES: NavTo[] = ["/", "/findings", "/remediation", "/evidence"];
 const TABS = NAV.filter((n) => TAB_ROUTES.includes(n.to));
-const DOCS = "https://github.com/Nimstead/assure/tree/main/docs";
+const DOCS = "https://docs.nimstead.systems/assure/";
 const MORE = NAV.filter((n) => !TAB_ROUTES.includes(n.to));
 // Keyboard/pointer highlight that reads at ≥3:1 on any surface, not just a tint.
 const highlight = "outline-none data-[highlighted]:shadow-[inset_0_0_0_2px_var(--ink)]";
@@ -42,8 +42,8 @@ function useSignOut() {
 }
 
 /**
- * After a route change, move focus to the new page's h1 and say its title, so keyboard and screen-reader users don't
- * stay on a link that's gone (WCAG 2.4.3). Pages load lazily and their h1 can follow their data, so wait for it briefly.
+ * Attempt focus on a new page heading after pathname changes. Wait for a changed title
+ * and heading for at most 180 animation frames. Initial, hash and dialog states can skip focus.
  */
 function useFocusOnNavigate() {
   const path = useRouterState({ select: (r) => r.location.pathname });
@@ -77,7 +77,14 @@ function useTheme() {
 const ThemeIcon = ({ theme, className }: { theme: ThemeChoice; className: string }) =>
   theme === "system" ? <Monitor className={className} aria-hidden /> : theme === "dark" ? <Moon className={className} aria-hidden /> : <Sun className={className} aria-hidden />;
 
-/** Render authenticated navigation, shared live regions, command palette, and the current route. */
+/** Render session-aware navigation, shared live regions, palette and nested route. No props.
+ * Requires router/query providers and browser DOM. me HTTP 401 redirects to sign-in.
+ * Pending identity renders loading. Other identity failures expose retry.
+ * Cached identity controls member messaging. Server authorization remains authoritative.
+ * Keyboard handlers and size observers are installed with cleanup. Theme choice updates DOM/storage.
+ * Path changes attempt heading focus for up to 180 animation frames, except initial/hash routes.
+ * Logout clears query data and navigates on success or failure, without a failure panel.
+ */
 export function Shell() {
   const me = useQuery(meQ);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -164,7 +171,7 @@ export function Shell() {
       <main id="main" className="mx-auto w-full min-w-0 max-w-6xl px-4 pb-28 pt-6 md:px-8 md:pb-12 md:pt-8">
         {!me.data.admin && (
           <p id={ADMIN_ONLY_ID} className="mb-6 border border-line-strong bg-surface px-3 py-2 text-sm text-muted">
-            <strong className="font-semibold text-ink">Read-only.</strong> You can see everything here; ask an organisation admin to change anything.
+            <strong className="font-semibold text-ink">Member access.</strong> Organisation policy and fleet changes require an admin. Your account controls remain available.
           </p>
         )}
         <Outlet />
@@ -230,11 +237,21 @@ function useDebounced<T>(value: T, ms: number) {
   return v;
 }
 
-/** Render the controlled command/search palette. onOpenChange closes it; signOut and nextTheme run the supplied actions. */
+/** Render a controlled command palette with navigation and partial finding/asset results.
+ * @param open Enables asset and debounced finding queries while true.
+ * @param onOpenChange Receives dialog state and false before a command runs.
+ * @param signOut Callback invoked by the sign-out command. Errors are not handled here.
+ * @param nextTheme Callback invoked by the theme command.
+ * Requires router/query providers and browser DOM. Text clears after close.
+ * Finding search waits 150ms and at least two characters, then requests up to 30 rows.
+ * Results group by vulnerability/package and show at most eight groups and five assets.
+ * Query failures have no error panel. Cached results and typed values are trusted.
+ * Explicit highlight follows command ID while present. Missing IDs fall back to first command.
+ */
 export function Palette({ open, onOpenChange, signOut, nextTheme }: { open: boolean; onOpenChange: (o: boolean) => void; signOut: () => void; nextTheme: () => void }) {
   const navigate = useNavigate();
   const [text, setText] = useState("");
-  // The highlight follows a command, not a position: results that arrive late can't change what Enter runs.
+  // Explicit selection follows a command ID. Missing/default IDs use the first result.
   const [activeId, setActiveId] = useState("");
   const term = text.trim();
   const assets = useQuery({ ...assetsQ, enabled: open });
@@ -255,7 +272,7 @@ export function Palette({ open, onOpenChange, signOut, nextTheme }: { open: bool
       { id: "remediation", label: "Go to Remediation", run: done(() => navigate({ to: "/remediation" })) },
       { id: "evidence", label: "Go to Evidence", run: done(() => navigate({ to: "/evidence" })) },
       { id: "settings", label: "Go to Settings", run: done(() => navigate({ to: "/settings" })) },
-      { id: "approve", label: "Fixes waiting for approval", run: done(() => navigate({ to: "/remediation" })) },
+      { id: "approve", label: "Review fix approvals", run: done(() => navigate({ to: "/remediation" })) },
       { id: "fixnow", label: "Fix now findings", run: done(() => navigate({ to: "/findings", search: filtersToSearch({ ...parseFilters({}), priority: ["fix-now"], fixable: false }) })) },
       { id: "quiet", label: "Machines not reporting", run: done(() => navigate({ to: "/assets", search: { show: "quiet" } })) },
       { id: "add", label: "Add a machine", run: done(() => navigate({ to: "/add" })) },
@@ -266,14 +283,14 @@ export function Palette({ open, onOpenChange, signOut, nextTheme }: { open: bool
     const seen = new Map<string, { f: Finding; hosts: number }>();
     for (const f of query === term ? found.data ?? [] : []) { const k = `${f.vuln_id}|${f.package}`; const e = seen.get(k); if (e) e.hosts++; else seen.set(k, { f, hosts: 1 }); }
     const hits: Cmd[] = [...seen.values()].slice(0, 8).map(({ f, hosts }) => ({
-      id: f.id, label: `${f.vuln_id}  ${f.package}`, hint: hosts > 1 ? `${hosts} hosts` : f.hostname,
+      id: f.id, label: `${f.vuln_id}  ${f.package}`, hint: hosts > 1 ? plural(hosts, "finding") : f.hostname,
       run: done(() => navigate({ to: "/findings", search: filtersToSearch({ ...parseFilters({}), fixable: false, q: term, open: f.id }) })),
     }));
-    // Hosts come from the already-cached asset list: no extra request, and a host is one jump from its findings.
+    // The asset query can refresh on open. Non-external assets include application records.
     const hosts: Cmd[] = term.length > 1 ? (assets.data ?? []).filter((a) => a.kind !== "external" && a.hostname.toLowerCase().includes(term.toLowerCase())).slice(0, 5)
       .flatMap((a) => [
-        { id: `host-${a.id}`, label: `Host: ${a.hostname}`, hint: "findings", run: done(() => navigate({ to: "/findings", search: filtersToSearch({ ...parseFilters({}), asset: a.id, fixable: false }) })) },
-        { id: `machine-${a.id}`, label: `Machine: ${a.hostname}`, hint: "settings", run: done(() => navigate({ to: "/assets", search: { machine: a.id } })) },
+        { id: `host-${a.id}`, label: `Asset: ${a.hostname}`, hint: "findings", run: done(() => navigate({ to: "/findings", search: filtersToSearch({ ...parseFilters({}), asset: a.id, fixable: false }) })) },
+        { id: `machine-${a.id}`, label: `Asset context: ${a.hostname}`, hint: "settings", run: done(() => navigate({ to: "/assets", search: { machine: a.id } })) },
       ]) : [];
     const views: Cmd[] = savedViews().filter((v) => !term || v.name.toLowerCase().includes(term.toLowerCase()))
       .map((v) => ({ id: `view-${v.name}`, label: `View: ${v.name}`, hint: "saved", run: done(() => navigate({ to: "/findings", search: v.search })) }));
@@ -313,7 +330,7 @@ export function Palette({ open, onOpenChange, signOut, nextTheme }: { open: bool
               ))}
             </ul>
           ) : <p id="palette-list" className="px-3 py-6 text-center text-sm text-muted">Nothing matches.</p>}
-          <p className="hidden border-t border-line px-4 py-2 text-xs text-muted md:block">Keys: <kbd>/</kbd> search the page · <kbd>j</kbd> <kbd>k</kbd> next and previous finding · <kbd>p</kbd> plan fix · <kbd>a</kbd> accept risk · <kbd>Esc</kbd> close or clear</p>
+          <p className="hidden border-t border-line px-4 py-2 text-xs text-muted md:block">Keys: <kbd>/</kbd> search the page · <kbd>j</kbd> <kbd>k</kbd> next and previous finding · <kbd>p</kbd> focus Plan fix · <kbd>a</kbd> accept risk · <kbd>Esc</kbd> close or clear</p>
           <p role="status" className="sr-only">{term ? `${cmds.length} result${cmds.length === 1 ? "" : "s"}` : ""}</p>
         </Dialog.Content>
       </Dialog.Portal>

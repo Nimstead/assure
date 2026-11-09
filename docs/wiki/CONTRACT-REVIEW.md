@@ -142,3 +142,14 @@ The finding/database batch passed 106 focused tests and 46 subchecks, with two W
 | `web/src/auth.tsx` | SignInPage, SignUpPage and shared state/error helpers | Reviewed server-selected branches, credential/MFA/recovery state, native SSO submission, reset acknowledgement, URL notices and trusted answer shapes | Reviewed |
 
 81 web tests and 103 focused API tests passed, with 46 subchecks. Browser evidence uses intercepted fixtures, not real provider or email operations. Current API implementation supports these web contracts. Full remaining handler/schema review remains a separate requirement.
+
+## Shell, route and checker review
+
+| Source | Review scope | Evidence and corrections | Status |
+| --- | --- | --- | --- |
+| `web/src/shell.tsx` | Logo, Shell, Palette and every private helper | Reviewed identity branches, callbacks, logout settlement, DOM observers, theme state, focus limits, mobile menus, debounce, partial results, row counts, ID selection and saved-view memoization. Corrected member/help/count/key labels | Reviewed |
+| `web/src/main.tsx` | Mount, query defaults, all routes and search conversion | Reviewed missing root failure, public versus shell routes, lazy imports, not-found rendering, route search validators, duplicate URL keys and String serialization | Reviewed |
+| `scripts/check_docs.py` | All public functions and internal traversal/recognition | Reviewed AST scope, duplicate counts, adjacent web comments, Git inventory, approximate anchors, recognized link forms, error propagation, report generation and write-before-failure order | Reviewed |
+| `scripts/fetch_runtimes.py` | main and CLI entry | Reviewed pin lookup, sorted keys, initial URL prefix, redirects, memory reads, pre-write hashing, overwrite/partial-write limits, retained earlier output and propagated errors | Reviewed |
+
+81 web tests, six documentation tests and 46 subchecks passed. Offline assertions establish the named checker/download limits. Playwright MCP verifies controlled local navigation and mobile behavior. All current web exported callables now have named review records. API-export/XCCDF tooling, agent/API and final editorial/example requirements remain open.

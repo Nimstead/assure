@@ -10,7 +10,7 @@ Python coverage includes public module functions, classes, public methods, and H
 
 Private helpers, function-local helpers, request-model fields, type-only declarations, test fixtures, migrations, and sandbox harness internals are not public callable interfaces. Their types, inline comments, tests, and [tooling guide](tooling.md) provide context. Sandbox entry points also have module documentation.
 
-This metric checks documentation presence. It does not prove complete parameter, error, or behavioural accuracy. Review the contract against the implementation when changing it. The web check recognises the declaration style used here; update it if exports change syntax.
+This metric checks documentation presence. It does not prove complete parameter, error, or behavioural accuracy. Review the contract against the implementation when changing it. The web check recognises the declaration style used here; update it if exports change syntax. [Checker contracts](tooling.md#documentation-checker-contracts) describe counting and link-recognition limits.
 
 ## Files
 

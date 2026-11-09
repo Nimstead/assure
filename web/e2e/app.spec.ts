@@ -359,7 +359,7 @@ test("a member (read-only) sees no controls the API would refuse, and every page
       await axe(page, `member ${p.name} @${width}`);
     }
     await load(page, PAGES[2]);
-    await expect(page.getByText(/Read-only\./)).toBeVisible();
+    await expect(page.getByText(/Member access\./)).toBeVisible();
     // the list's only selects are its own filters; no bulk selection, and the machine drawer shows criticality and ring as text
     await expect(page.locator("main").getByRole("checkbox")).toHaveCount(0);
     await page.locator("main ul li button").first().click();

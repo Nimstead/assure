@@ -15,6 +15,17 @@ For an unexpected finding, compare the reported version and the advisory's affec
 
 Use [scan troubleshooting](troubleshoot-scans.md) for incomplete data. Read [scan outcomes](../reference/scan-outcomes.md) and [detection confidence](../explanation/detection-confidence.md) to interpret negative results.
 
+## Find a record quickly
+
+1. Press Ctrl K or Cmd K to open the command palette.
+2. Enter a package, vulnerability ID or asset name.
+3. Select a finding suggestion to open its drawer.
+4. Confirm its asset and vulnerability identity before a decision.
+
+An **Asset:** result opens that asset's findings. An **Asset context:** result opens its context drawer. Suggestions are partial. Use the Findings filters for a complete review.
+
+The final **Search findings for** command uses Fixable only by default. Clear that filter if you need findings without a fixed version. A failed suggestion request does not remove this search command.
+
 ## Accept a documented risk
 
 You need an organisation admin browser session. Acceptance changes triage status. It does not repair the asset.

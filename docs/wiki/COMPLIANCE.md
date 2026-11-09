@@ -257,3 +257,15 @@ Corrected claims that QR secrets never leave the browser, invitations/tests prov
 81 web tests, type checks and the production build passed. 103 focused API/SSO/notification/documentation tests and 46 subchecks passed. The 76-article build and six site tests passed. Repository checks report 632 documented public declarations and no local link problems. New reference/how-to prose received humanizer and STE-style review.
 
 Playwright MCP verified saved-domain verification without lost unsaved issuer edits, test acknowledgement without a settings save, mobile settings, both new task guides and their section anchors. All API writes used local fixtures. No identity provider, SMTP delivery, real credential creation, MFA change or production account was changed. The complete CLI end-to-end suite was not rerun. Remaining shell/entry, agent/tool/API contracts and final editorial/example reviews still prevent a full compliance claim.
+
+## Shell, routes and checker checkpoint
+
+Reviewed all shell exports, private hooks, command construction and route-entry configuration. Added reference contracts for identity failures, mobile tab changes, theme state, focus attempts, keyboard scope, query defaults, URL serialization and palette result limits. The triage how-to now includes palette steps. Help opens the public Assure wiki. Member messaging preserves access to personal account controls. Group hints count returned findings rather than hosts.
+
+Reviewed every public documentation-checker function and the release runtime-download helper. Expanded their parameters, return values, write ordering and error contracts. The coverage report now links to recognition limits. The runtime helper checks initial URL prefixes and body hashes, without its own final-origin check or atomic writes. No tool runtime behavior changed.
+
+81 web tests, type checks and the production build passed. Six documentation tests and 46 subchecks passed. Ruff passed under the repository's API configuration. Repository checks report 632 declarations and no recognized link problems. The site builds 76 articles and six site tests pass. Prose received reference/how-to humanizer and STE-style review.
+
+Offline assertions verified retained earlier runtime output after a later mismatch, preserved previous bytes for the refused target, duplicate route counting and approximate fenced headings. No network download occurred. Playwright MCP verified member text, public Help, finding-row counts, application suggestions, failed-logout navigation and both mobile tab arrangements. API requests used local fixtures. The full CLI end-to-end suite and production session revocation were not exercised.
+
+Every exported callable in the current web source now has a recorded semantic review. This does not complete the goal. Remaining work includes the agent's other public interfaces, API handler/schema gaps, API-export/XCCDF tools, remaining sandbox entry contracts, and the final root/reference/explanation/example audit. Browser fixture checks do not replace native-host or deployment evidence.

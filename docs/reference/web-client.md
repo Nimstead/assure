@@ -261,6 +261,61 @@ The MFA Back button clears its state and request errors. It does not erase the s
 
 Reset acknowledgement does not establish account existence or email delivery. An issued reset link lasts one hour. The native SSO form submits Work email to `/api/auth/sso/start` and follows server redirects. Known `sso_error` values receive specific text. Unknown values receive a generic failure message. Arbitrary `reset` or `created` query flags can display notices without proving those events occurred.
 
+## Shell and route entry
+
+| Export or entry | Contract |
+| --- | --- |
+| `Logo()` | No props. Renders the Assure text wordmark as a span, without requests or state |
+| `Shell()` | No props. Requires router/query providers and browser DOM. Renders identity-aware navigation, live regions, nested route and palette |
+| `Palette` | Controlled `open`, `onOpenChange(open)`, `signOut()` and `nextTheme()` props. Requires router/query providers and browser DOM |
+| `main.tsx` | Mounts StrictMode, QueryClientProvider and RouterProvider at `#root`. A missing mount element throws |
+
+### Identity, navigation and theme
+
+Shell requests current-user data. HTTP 401 redirects to sign-in. Pending data renders loading. Other errors expose retry. Cached identity controls member messaging. Server authorization remains authoritative. Members retain their own account controls, while organisation administration requires an admin.
+
+Desktop navigation exposes the six main pages and Add machine. Mobile tabs normally show Fix first, Findings, Remediation and Evidence. More contains Assets, Settings, Add machine and sign-out. A measured header above 72 pixels moves Remediation and Evidence into More. Without ResizeObserver, the normal tab arrangement remains.
+
+Size observers update root header/tab-height CSS variables and disconnect on cleanup. They do not restore earlier variable values. Theme controls cycle System, Light and Dark. Their local state initializes from the document dataset. It does not subscribe to external theme or storage changes.
+
+Help opens the Assure wiki in a new tab. Palette help uses `window.open`, which browsers can block. Logout clears query data and navigates to sign-in even when its request fails. The shell has no logout-failure panel. A failed request can leave the server session valid.
+
+### Keyboard and focus behavior
+
+| Key | Scope and effect |
+| --- | --- |
+| Ctrl/Cmd K | Shell toggles the palette, including from text inputs |
+| `/` | Shell attempts focus on the first main search input unless the target is an input, textarea, select or editable element |
+| Up/Down | Palette moves within commands, with clamping rather than wraparound |
+| Enter | Palette invokes the active command after requesting close |
+| `j` / `k` | Finding drawer moves through loaded finding IDs |
+| `p` | Finding drawer focuses Plan fix without submission |
+| `a` | Finding drawer opens available acceptance controls |
+
+Shell heading focus runs only after pathname changes. It skips initial mount and hash routes. It waits up to 180 animation frames for a changed title and main heading. Open dialogs prevent heading focus. Title announcement can still occur without successful focus. Search-only changes do not trigger this hook.
+
+### Palette result scope and failures
+
+Opening enables the shared asset query, which can refresh stale data. Finding search waits 150ms after trimmed text changes and requires at least two characters. It requests at most 30 open findings without the UI's default fixable-only restriction.
+
+Finding suggestions group returned rows by vulnerability ID/package, across ecosystems. At most eight groups appear. A multiple-result hint counts returned finding rows, not distinct hosts or all matches. Each suggestion opens the first row's drawer with Fixable only disabled.
+
+Asset suggestions match hostname text case-insensitively. Up to five non-external assets produce findings and context commands. Applications also qualify. These are partial suggestions from the loaded asset list, not an exhaustive server search.
+
+Commands also include pages, theme, help, sign-out and browser saved views. Saved views are read during command recomputation. The palette does not subscribe to saved-view change events. A text change forces recomputation. Its approval-review command opens Remediation without an approval-only filter.
+
+Any nonempty term offers a final findings-search command. That command uses the normal fixable-only default. Results can therefore differ from the unfiltered suggestions. Finding/asset errors have no dedicated error panel. The search command remains available despite failed suggestions.
+
+An explicit highlight follows command ID while that ID remains present. A missing or unset ID falls back to the first command. Late results can therefore change the default choice. Closing clears text. Callback promises are not awaited or handled by the palette. The parent controls actual dialog closure and callback errors.
+
+### Router configuration
+
+Routes `/signin` and `/signup` are outside Shell. Nested routes are `/`, `/add`, `/assets`, `/findings`, `/remediation`, `/evidence` and `/settings`. Unknown routes render navigation links. Route existence does not itself authenticate a session.
+
+The query client defaults to 15-second freshness, one retry and no refetch on window focus. Individual query definitions can override these defaults. The router enables intent preloading. Most secondary pages load through lazy component imports.
+
+Search parsing uses URLSearchParams and keeps the last value for repeated keys. Serialization omits undefined and empty strings. Other values pass through String, including null, booleans and numbers. Findings retains nonnull search entries as strings. Evidence retains only truthy period/show entries as strings. Components apply their own additional normalization.
+
 ## Remediation components
 
 | Export | Inputs and behavior |

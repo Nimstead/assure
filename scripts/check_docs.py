@@ -22,7 +22,10 @@ LINK = re.compile(r"(?<!!)\[[^\]\n]+\]\(([^\s)]+)(?:\s+\"[^\"]*\")?\)|!\[[^\]\n]
 def python_symbols(tree: ast.Module) -> list[tuple[str, bool]]:
     """Return public module/class symbols and decorated HTTP handlers with their docstring presence.
 
-    tree is a parsed module. Private names and function-local implementation helpers are excluded.
+    tree is a parsed module. Return (qualified name, docstring-present) pairs.
+    Traverse direct public module/class bodies, not conditional definitions or function bodies.
+    Separately include app.get/post/put/patch/delete decorated functions at any depth.
+    A top-level public route can appear twice. No AST mutation or I/O occurs.
     """
     rows = []
 
@@ -48,6 +51,9 @@ def coverage() -> dict[str, list[tuple[str, bool]]]:
 
     Python uses the AST. Web declarations follow this repository's one-line exported declaration style;
     re-exports, type-only declarations, constants, and query-option objects are not callable definitions.
+    Return a new dictionary keyed by repository-relative paths. Web presence requires an
+    adjacent block ending in */ with a preceding /** marker. It does not inspect content.
+    Filesystem, decode and Python syntax errors propagate. No files are written.
     """
     out = {}
     for folder in PYTHON_ROOTS:
@@ -73,7 +79,8 @@ def documentation_paths() -> list[Path]:
     """Return tracked and unignored Markdown paths in ROOT, including new documentation.
 
     Git defines repository membership, so installed dependencies and ignored build output do
-    not enter the documentation inventory. Git failures raise CalledProcessError.
+    not enter the documentation inventory. Return sorted existing file paths with duplicates removed.
+    Git, filesystem and decoding errors propagate. No remote data is requested.
     """
     files = subprocess.check_output(
         ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", "*.md"], cwd=ROOT,
@@ -85,7 +92,9 @@ def markdown_anchors(source: str) -> set[str]:
     """Return GitHub-style heading slugs and explicit HTML anchors from Markdown source.
 
     Duplicate headings receive numbered suffixes. This handles the repository's heading
-    syntax; it is not a complete Markdown parser.
+    syntax; it is not a complete Markdown parser. source is the full text string.
+    Backtick/tilde fences and inline markup are not fully parsed. Heading-like code can
+    contribute anchors. Return a new set without I/O or source mutation.
     """
     anchors = set(re.findall(r'<[^>]+(?:id|name)=["\']([^"\']+)["\']', source))
     counts = {}
@@ -102,7 +111,11 @@ def link_problems() -> list[str]:
     """Return broken local Markdown/HTML destinations throughout repository documentation.
 
     Check same-page and cross-file anchors. Remote links are not fetched. Fenced code is
-    excluded; reference definitions and HTML href/src attributes are checked as destinations.
+    excluded only for the implemented triple-backtick pattern. Reference definitions and
+    quoted HTML href/src attributes are checked as destinations. Query strings are ignored.
+    Non-Markdown fragment targets receive existence checks only. Directories count as existing.
+    Recognition is regex-based and incomplete, including space-containing Markdown targets.
+    Git, filesystem, decoding and malformed-URL errors can propagate. No files are written.
     """
     problems = []
     for path in documentation_paths():
@@ -126,7 +139,9 @@ def link_problems() -> list[str]:
 def report(rows: dict[str, list[tuple[str, bool]]]) -> str:
     """Return the Markdown coverage table for rows from coverage().
 
-    rows maps repository paths to (symbol name, documentation-present) pairs."""
+    rows maps repository paths to (symbol name, documentation-present) pairs.
+    Count every supplied pair, including duplicates, and sort paths in the output.
+    No source checks, validation or writes occur. Malformed input can raise errors."""
     total = sum(len(symbols) for symbols in rows.values())
     documented = sum(ok for symbols in rows.values() for _, ok in symbols)
     lines = ["# Documentation coverage", "", f"Documented callable/class declarations: **{documented}/{total}**.", "",
@@ -139,7 +154,8 @@ def report(rows: dict[str, list[tuple[str, bool]]]) -> str:
              "[tooling guide](tooling.md) provide context. Sandbox entry points also have module documentation.", "",
              "This metric checks documentation presence. It does not prove complete parameter, error, or behavioural accuracy. "
              "Review the contract against the implementation when changing it. The web check recognises the declaration "
-             "style used here; update it if exports change syntax.", "",
+             "style used here; update it if exports change syntax. "
+             "[Checker contracts](tooling.md#documentation-checker-contracts) describe counting and link-recognition limits.", "",
              "## Files", "", "| File | Documented | Total |", "| --- | ---: | ---: |"]
     for path, symbols in sorted(rows.items()):
         lines.append(f"| [{path}](../../{path}) | {sum(ok for _, ok in symbols)} | {len(symbols)} |")
@@ -147,7 +163,12 @@ def report(rows: dict[str, list[tuple[str, bool]]]) -> str:
 
 
 def main() -> int:
-    """Check coverage and links, optionally write the report, and return 1 for any gap or 0 on success."""
+    """Read CLI arguments, print recognized coverage/link problems and return 0 or 1.
+
+    --report writes the coverage Markdown before link checks, including when checks fail.
+    Argument errors use argparse SystemExit. Git, parsing and filesystem errors propagate.
+    A zero result establishes recognized presence/links, not semantic completeness.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--report", action="store_true", help="write docs/reference/documentation-coverage.md")
     args = parser.parse_args()

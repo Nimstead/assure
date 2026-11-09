@@ -17,14 +17,21 @@ PINNED = Path(__file__).resolve().parents[1] / "agent" / "windows-runtime.json"
 def main(out: str) -> int:
     """Download pinned Windows runtime ZIPs into directory string out; return 0 after all hashes match.
 
-    Reject non-python.org sources or mismatched hashes with SystemExit. Network, JSON, and I/O
-    errors propagate. Earlier successful archives remain if a later download fails."""
+    Read the fixed repository PINNED JSON and create out before processing sorted runtime keys.
+    Require each initial URL to start with https://www.python.org/ftp/python/.
+    urllib handles redirects. This helper does not independently verify the final origin.
+    Pass timeout=120 to urlopen and read each complete body into memory without a size cap.
+    Hash bytes before writing python-embed-KEY.zip. Existing files can be overwritten.
+    Writes are not atomic. A mismatch leaves that existing file untouched.
+    Raise SystemExit for the initial URL check or a hash mismatch. JSON/schema, network,
+    filesystem and argument-type errors propagate. Earlier writes remain after later failure.
+    The CLI requires its first positional argument. Missing it raises IndexError."""
     rt = json.loads(PINNED.read_text())["runtimes"]
     Path(out).mkdir(parents=True, exist_ok=True)
     for arch, r in sorted(rt.items()):
         if not r["url"].startswith("https://www.python.org/ftp/python/"):
             raise SystemExit(f"{arch}: runtime must come from python.org")
-        with urllib.request.urlopen(r["url"], timeout=120) as resp:  # noqa: S310 - https python.org only, checked above
+        with urllib.request.urlopen(r["url"], timeout=120) as resp:  # noqa: S310 - initial URL prefix checked above
             body = resp.read()
         got = hashlib.sha256(body).hexdigest()
         if got != r["sha256"]:

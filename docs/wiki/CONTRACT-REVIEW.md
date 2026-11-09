@@ -183,3 +183,14 @@ The finding/database batch passed 106 focused tests and 46 subchecks, with two W
 | schedule_units, schedule_windows_script, schedule, uninstall and private command/quote/path helpers | Reviewed exact timers/triggers, trusted config quoting, lexical interpreter check, ignored status paths, sequential writes, config-version ordering, cron omission, pending-state refusal, deferred runtime removal and partial failures | Named subset reviewed |
 
 117 tests and 53 subchecks passed, with six Windows-only skips. Offline filesystem fixtures verify the named failure effects without a real scheduler or ACL command. Native Windows registration, removal and security behavior remain unexercised here. Agent job classes, Windows/remote collectors and other unnamed interfaces remain pending.
+
+
+## Windows and remote collection review
+
+| Source subset in agent/nimstead_agent.py | Scope and verified boundaries | Status |
+| --- | --- | --- |
+| msrc_product_name, windows_apps, offline_user_apps, collect_windows and private registry readers | Reviewed server lookup/client inference, value defaults, enumeration errors, clipping/deduplication, source predicates, temporary hive effects and ignored unload status | Named subset reviewed |
+| RemoteReg, Key and all adapter methods, collect_remote, scan_remote | Reviewed shared mappings, partial winreg compatibility, script files, architecture fallback, separate snapshots, trusted shapes, exact cache identity, truncate writes, enrolment/upload order and caught/propagated errors | Reviewed |
+| windows_microsoft, baseline_id, last_json, windows_baseline_facts, windows_host_facts, windows_drivers, esu_active, ad_computers and associated fixed scripts | Reviewed product selection, observation/inference limits, script caps, policy exports, filtered facts, weak complete flags, directory records and error boundaries | Named subset reviewed |
+
+62 focused tests and 53 subchecks passed. Eight native Windows tests were skipped. Eight offline boundary checks establish inferred client labels, unclassified enumeration endings, discarded driver rows with complete=true, last-JSON failure selection, adapter behavior, X86-to-AMD64 fallback, ignored unload status and invalid cache shapes. Executable AST matches the previous commit. Playwright MCP verified the new reference, operator procedure, mobile anchors and search through an owned local preview. Native registry, WinRM, PowerShell exports and production report keys were not exercised. Job classes, remaining agent/API contracts, sandbox/helpers and final editorial/example review remain open.

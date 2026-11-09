@@ -287,9 +287,12 @@ _MSRC_ARCH = {"AMD64": "x64-based", "X86": "32-bit", "ARM64": "ARM64-based"}
 
 
 def msrc_product_name(build, display_version, installation_type, machine):
-    """MSRC product name for this OS, or '' if we cannot name it exactly (refuse to guess).
+    """Return a constructed MSRC-style OS label, or an empty string.
 
-    Insider and other unlisted builds are unmapped: the host still reports apps and says why (collect_windows)."""
+    build is an integer. Server installation types use the fixed build table.
+    Clients require display_version and a recognized machine string. Build thresholds
+    select Windows 10 or 11. Client labels are not checked against the MSRC catalog.
+    Invalid argument types can raise AttributeError or TypeError."""
     if installation_type.startswith("Server"):
         name = _SERVER_BY_BUILD.get(build)
         return name + (" (Server Core installation)" if installation_type == "Server Core" else "") if name else ""
@@ -316,17 +319,25 @@ def _read_problem(where, e):
 
 
 def _list_ended(e):
-    """winreg ends every enumeration with an OSError; only ERROR_NO_MORE_ITEMS means the list was read to its end."""
+    """Accept enumeration end for winerror 259 or an OSError without winerror.
+
+    Other winerror values indicate a read problem. An error without winerror can
+    therefore terminate enumeration without a recorded problem."""
     return getattr(e, "winerror", None) in (None, 259)
 
 
 def windows_apps(reg, users=None, problems=None):
-    """Installed apps from the registry Uninstall keys: HKLM 64-bit and 32-bit views, then every loaded user hive
-    (per-user installs such as VS Code (User); the agent runs as SYSTEM, whose own HKCU has none), then HKCU.
-    Profiles of users who aren't signed in are read by offline_user_apps. `users`: only these HKU keys.
-    `reg` is the winreg module (or a fake). Skips SystemComponent=1 and entries without a name or version.
-    The publisher travels in `source`; the server decides which apps it can match (curated map only).
-    `problems` gets a line for each read that failed, as against a key that simply isn't there (R4.3)."""
+    """Return sorted WinApp rows from registry Uninstall entries.
+
+    reg supplies the winreg interface. Default scope is both HKLM views, loaded
+    SID-shaped HKU keys and HKCU. A supplied users iterable limits scope to those
+    HKU keys. Offline profiles require offline_user_apps.
+
+    Deduplicate clipped name/version/publisher triples. Skip SystemComponent=1
+    and missing or blank string names/versions. Publisher becomes source or None.
+    Append detected key/enumeration errors to the supplied problems list. Missing
+    keys and individual value-read errors are ignored. Partial rows survive these
+    errors. Malformed adapter values and unexpected callback errors can propagate."""
     seen, out = set(), []
     problems = problems if problems is not None else []
     if users is not None:
@@ -380,10 +391,17 @@ PROFILES = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList"
 
 
 def offline_user_apps(reg, run=None, loaded=None, problems=None):
-    """Per-user apps of profiles whose hive isn't loaded (users not signed in): each NTUSER.DAT is loaded under a
-    temporary HKU key, its Uninstall key read with windows_apps, and unloaded at once, also on error, so a user signing
-    in a moment later still gets their own profile. Needs SYSTEM or an elevated admin; otherwise nothing is read,
-    and `problems` says which profiles."""
+    """Return WinApp rows from eligible unloaded profile hives.
+
+    reg supplies winreg. run defaults to sh and receives reg load/unload argv.
+    loaded supplies already loaded hive names, otherwise enumerate HKU. Append
+    detected read/load problems to the supplied problems list.
+
+    Skip loaded/nonmatching SIDs, absent NTUSER.DAT files and linked profile
+    directories. Each successful load uses a deterministic temporary HKU name.
+    A finally block attempts unload, but ignores its returned status. A hive can
+    remain mounted. Runner/filesystem errors can propagate, including from unload.
+    No global deduplication combines rows from different profiles."""
     run = run or sh
     problems = problems if problems is not None else []
     loaded = set(loaded if loaded is not None else _subkeys(reg, reg.HKEY_USERS, "", problems))
@@ -436,7 +454,20 @@ def _subkeys(reg, root, path, problems=None):
 
 
 def collect_windows(winreg=None, run=None, machine=None, dotnet_dirs=None):
-    """This host, or with the arguments another one over PowerShell remoting (collect_remote)."""
+    """Return Windows inventory, facts, packages and per-source collection status.
+
+    Omitted winreg imports the local module and enables offline hive reads.
+    Any supplied adapter selects remote semantics and skips offline hives.
+    run supplies most commands. Offline hive load/unload still uses sh.
+    machine overrides the local architecture.
+    dotnet_dirs supplies runtime directory names for windows_microsoft.
+
+    Read OS values, then Microsoft products, host facts, drivers and applications.
+    Concatenate package groups without global deduplication. Missing modern UBR
+    marks partial collection but uses revision zero. Client OS labels are inferred.
+    Detected source failures preserve other rows, but malformed registry values,
+    unexpected runner errors and invalid nested JSON can abort the collection.
+    Local collection can temporarily mount hives and create policy export files."""
     remote = winreg is not None
     if not remote:
         import winreg
@@ -508,7 +539,7 @@ def _source(count, problem=None, failed=False):
 
 
 # ---- agentless: an admin scans hosts from their own machine, as themselves. PowerShell remoting carries their identity,
-# so no credential is typed, stored or sent to the server (DECISIONS 65). What comes back is treated like any agent's report.
+# without a separate Windows password prompt. Report keys are cached locally (DECISIONS 65). What comes back is treated like any agent's report.
 PS_REMOTE_DUMP = r"""
 $ErrorActionPreference = 'SilentlyContinue'
 $keys = [ordered]@{}
@@ -545,12 +576,20 @@ SAFE_HOSTNAME = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,252})\Z")
 
 
 class RemoteReg:
-    """The part of winreg the collectors use, over a dump of another host's registry."""
+    """Partial in-memory winreg adapter over a trusted remote dump.
+
+    keys is retained by reference and must use lowercased full paths. denied is
+    copied to a set without normalization. No live registry handles or ACL checks
+    exist. Nested values/subkey lists remain shared with the supplied mapping.
+    """
     HKEY_LOCAL_MACHINE, HKEY_USERS, HKEY_CURRENT_USER = "hkey_local_machine", "hkey_users", "hkey_current_user"
     KEY_READ, KEY_WOW64_64KEY, KEY_WOW64_32KEY = 0, 0x100, 0x200
 
     class Key:
-        """In-memory registry key from a remote collection, with path, values, and subkey names."""
+        """Collected path and shared values/subkeys, defaulting falsey fields to empty.
+
+        Context entry returns this object. Exit returns False and closes no handle.
+        """
         def __init__(self, path, d):
             self.path, self.values, self.subkeys = path, d.get("values") or {}, d.get("subkeys") or []
 
@@ -567,7 +606,9 @@ class RemoteReg:
         """Return a collected registry Key under root and path strings, respecting the 32-bit view flag.
 
         root may also be a Key. reserved is accepted for winreg compatibility. Raise PermissionError
-        for denied paths or FileNotFoundError for paths absent from the collected snapshot."""
+        for exactly listed denied paths or FileNotFoundError for absent paths.
+        Only path is lowercased. The 32-bit flag rewrites an initial software path.
+        Other access bits are ignored. Malformed mapping/key shapes can raise."""
         base = root.path if isinstance(root, self.Key) else root
         path = path.lower()
         if access & self.KEY_WOW64_32KEY and path.startswith("software\\"):
@@ -580,28 +621,50 @@ class RemoteReg:
         return self.Key(full, self.keys[full])
 
     def EnumKey(self, k, i):
-        """Return subkey name at index i of Key or hive string k; raise OSError past the last entry."""
+        """Return subkey at integer i from Key order or sorted derived hive names.
+
+        Derived hive names are uppercase. Raise OSError at/past the end. Negative
+        indices retain Python list behavior, including IndexError when too small.
+        """
         subs = k.subkeys if isinstance(k, self.Key) else sorted({x[len(k) + 1:].split("\\")[0].upper() for x in self.keys if x.startswith(k + "\\")})  # a hive
         if i >= len(subs):
             raise OSError("no more")
         return subs[i]
 
     def EnumValue(self, k, i):
-        """Return (name, value, 1) at index i of collected Key k; raise OSError past the last value."""
+        """Return (name, value, 1) in dictionary order from collected Key k.
+
+        The type value 1 is a placeholder. Raise OSError at/past the end. Negative
+        indices retain Python list behavior, including IndexError when too small.
+        """
         items = list(k.values.items())
         if i >= len(items):
             raise OSError("no more")
         return (*items[i], 1)
 
     def QueryValueEx(self, k, name):
-        """Return (value, 1) for name in collected Key k; raise OSError when absent."""
+        """Return (value, 1) for exact case-sensitive name in collected Key k.
+
+        The type value 1 is a placeholder. Raise OSError when absent. This adapter
+        does not implement Windows registry value-name case insensitivity.
+        """
         if name not in k.values:
             raise OSError(name)
         return k.values[name], 1
 
 
 def collect_remote(host, run=None):
-    """(hostname, inventory) of another Windows host, read with the same collectors as an agent."""
+    """Return (reported_hostname, inventory) through PowerShell remoting to host.
+
+    host must match SAFE_HOSTNAME or AgentError is raised before execution.
+    run defaults to sh. Each call writes a temporary UTF-8 BOM script, executes
+    Invoke-Command and attempts file removal. The initial dump has timeout 600.
+
+    A failed dump or invalid outer keys/dirs shape raises AgentError. Nested values
+    remain trusted. Only AMD64 and ARM64 are recognized. Other architecture text
+    falls back to AMD64. Later checks use separate remote calls, with no atomic
+    snapshot. Offline profiles are skipped. Runner, file and shape errors can
+    propagate. Temporary-file removal can also raise."""
     if not SAFE_HOSTNAME.match(host):
         raise AgentError(f"not a host name: {host!r}")
     run = run or sh
@@ -635,8 +698,21 @@ def collect_remote(host, run=None):
 
 
 def scan_remote(server, hosts, token, insecure_http=False, keys_path=None, run=None, post_fn=None):
-    """Enrol each host once as an asset with no agent, then report its inventory. One host failing doesn't stop the rest.
-    Keys go in the admin's own profile: each can only report that one host's inventory."""
+    """Collect and report hosts sequentially, returning {input_host: error} failures.
+
+    server is the exact cache key and reporting URL. token enrols cache misses.
+    insecure_http passes through to post. keys_path defaults to the current user's
+    .nimstead-remote-scan.json. run supplies collection commands and post_fn replaces
+    post. Keys use lowercased reported hostnames and exact server strings.
+
+    Unreadable/invalid JSON starts an empty cache. A new asset's key is saved before
+    inventory upload. Cache writes truncate in place. Mode 0600 applies at creation,
+    without repairing existing permissions or creating parent directories.
+
+    AgentError, OSError, KeyError and subprocess.SubprocessError are recorded per
+    host. Other failures, including invalid cache shapes, can abort the loop.
+    Earlier server/local effects remain. Repeated input failures overwrite a key.
+    Existing keys are reused without automatic re-enrolment or credential repair."""
     keys_path = keys_path or os.path.join(os.path.expanduser("~"), ".nimstead-remote-scan.json")
     send = post_fn or post
     try:
@@ -718,8 +794,18 @@ def _dirs(path):
 
 
 def windows_microsoft(reg, run=None, dotnet_dirs=None):
-    """(packages, problem): .NET and ASP.NET Core runtimes, SQL Server instances, Exchange, SharePoint, Store apps and
-    Defender, as ecosystem "Microsoft" facts. A PowerShell failure costs only those facts, never the inventory."""
+    """Return (Microsoft package rows, problem string or None) from fixed sources.
+
+    reg supplies winreg. run defaults to sh. dotnet_dirs(path) supplies directory
+    names, otherwise use local directories. Select the newest numeric runtime
+    patch per major/minor and SDK patch per feature band. This does not prove
+    an application's selected runtime. Rows include Office, SQL, selected Store
+    families, Defender, Exchange, SharePoint and .NET Framework when observed.
+
+    Deduplicate name/version/source triples. Clip versions to 100 characters.
+    Detected directory/registry failures append problems. Failed PowerShell output
+    retains earlier rows. Individual unreported read errors can still omit facts.
+    Malformed nested values and unexpected runner errors can abort collection."""
     out, seen, problems = [], set(), []
 
     def folders(path):
@@ -737,7 +823,7 @@ def windows_microsoft(reg, run=None, dotnet_dirs=None):
             seen.add(item)
             out.append({"ecosystem": "Microsoft", "name": name, "version": item[1], "source": source})
     # .NET from the runtime folders themselves (the registry keeps versions long uninstalled). Only the newest patch
-    # of each major.minor: by default .NET runs every app on the latest patch installed, so older ones don't run.
+    # of each major.minor. This is a collection heuristic, not proof of an application's runtime selection.
     pf, pf86 = os.environ.get("ProgramFiles", r"C:\Program Files"), os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
     for root, arch in ((ntpath.join(pf, "dotnet"), "native"), (ntpath.join(pf, "dotnet", "x64"), "x64"), (ntpath.join(pf86, "dotnet"), "x86")):
         for fx, name in (("Microsoft.NETCore.App", ".NET runtime"), ("Microsoft.AspNetCore.App", "ASP.NET Core")):
@@ -790,7 +876,7 @@ def windows_microsoft(reg, run=None, dotnet_dirs=None):
 
 
 # Host state the server evaluates (winconfig.py, plan T10-T12, T36, T37, T42): a closed list read from fixed places.
-# The server never names a registry path or setting; it only reads what this script reports. Unreadable = null.
+# The server never names a registry path or setting. Some failed reads become null, others false or empty.
 PS_HOST = r"""
 $ErrorActionPreference = 'SilentlyContinue'
 function Reg($path, $name) { $v = (Get-ItemProperty -LiteralPath "Registry::$path" -Name $name -ErrorAction SilentlyContinue).$name; if ($null -eq $v) { $null } else { $v } }
@@ -1152,12 +1238,19 @@ BASELINE_MAX_BYTES = 20_000  # the server drops a whole report's facts over 64 K
 
 
 def baseline_id(entry):
-    """Short and stable, so the report stays small and old agents keep matching newer rule tables."""
+    """Return the first eight hex digits of SHA-256 for lowercased UTF-8 entry.
+
+    entry is a registry path/value string. This 32-bit identifier is not a
+    collision-free identity or a security signature. Invalid types can raise."""
     return hashlib.sha256(entry.lower().encode()).hexdigest()[:8]
 
 
 def last_json(out):
-    """The last line that is a JSON object: a tool's error text after it (seen for real: auditpol's, on Windows 11) isn't the answer."""
+    """Decode the last output line whose first character is an opening brace.
+
+    out is command-output text. Ignore later lines without that prefix. An invalid
+    selected JSON line raises ValueError without trying an earlier object. Leading
+    spaces on an interior line prevent selection. Raise ValueError if none matches."""
     for line in reversed(out.strip().splitlines()):
         if line.startswith("{"):
             return json.loads(line)
@@ -1165,8 +1258,18 @@ def last_json(out):
 
 
 def windows_baseline_facts(run=None):
-    """{"reg": {id: value or null}, "audit": {guid: 0-3}, "rights": {constant: [SID]}} for the closed lists above, or None.
-    Only what's on those lists is kept. Whatever isn't in the answer reads "not assessed" on the server."""
+    """Return filtered reg/audit/rights facts, or None for failed/oversize output.
+
+    run defaults to sh and executes PS_BASELINE, including temporary policy exports.
+    Registry keys use baseline_id. Keep null, non-bool integers and strings clipped
+    to 100 characters. Only configured audit GUIDs and rights survive. Audit values
+    use membership in 0..3, which also accepts equal Boolean/numeric values.
+    Rights permit at most 30 SID-shaped strings or question-mark placeholders.
+
+    Missing entries stay absent. Null registry values remain explicit. Above
+    20,000 serialized characters, drop all rights and check again. This check uses
+    json.dumps length, not the encoded request size. Unexpected runner errors
+    propagate. Missing facts do not prove a successful benchmark assessment."""
     rc, out = ps(run or sh, PS_BASELINE)
     try:
         d = last_json(out) if rc == 0 else None
@@ -1192,7 +1295,12 @@ def windows_baseline_facts(run=None):
 
 
 def windows_host_facts(run=None):
-    """Facts from PS_HOST, or ({}, problem). Only the keys in HOST_FACTS are kept."""
+    """Return (host facts, None), or ({}, problem) for failed PS_HOST output.
+
+    run defaults to sh. Copy only HOST_FACTS keys without validating their nested
+    values. Missing keys become None. Add a baseline from a separate command when
+    available. An absent baseline alone does not produce a problem string.
+    Output can mix observations and approximations. Runner errors can propagate."""
     rc, out = ps(run or sh, PS_HOST)
     try:
         d = last_json(out) if rc == 0 else None
@@ -1241,9 +1349,16 @@ SAFE_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 
 
 def windows_drivers(run=None):
-    """([driver rows as packages], summary). `complete` false: not everything was read, so a driver missing from the rows
-    proves nothing and the server keeps its findings open. A file over the size cap can't break that: a listed hash means
-    a listed size, so one seen before would still be under it."""
+    """Return (WinDriver package rows, scan summary) from PS_DRIVERS via run or sh.
+
+    Failed/invalid/empty outer output returns no rows and complete=False. Validate
+    each row's shape, filename length and lowercase SHA-256. Source is loaded only
+    for literal True, otherwise on disk. Invalid rows are silently discarded.
+
+    For a nonempty raw driver list, complete requires unreadable==0 and stopped
+    is False. It does not count rejected rows or too_large. A complete result can
+    therefore contain zero packages or omit oversized files. Summary counters are
+    copied without type validation. Unexpected runner errors propagate."""
     rc, out = ps(run or sh, PS_DRIVERS)
     try:
         d = json.loads(out.strip().splitlines()[-1]) if rc == 0 else None
@@ -1264,7 +1379,13 @@ PS_ESU = ("@(Get-CimInstance SoftwareLicensingProduct -Filter \"LicenseStatus=1 
 
 
 def esu_active(product, run=None):
-    """True/False whether an Extended Security Updates licence is active, None where ESU doesn't apply or can't be read."""
+    """Return an ESU licence-name observation as True, False or None.
+
+    product must match the configured Windows 10 22H2/Server 2012 prefix. Otherwise
+    return None without execution. run defaults to sh. Successful digit output
+    means whether an active licensing product with ESU in its name was found.
+    Failed/unparseable output returns None. Runner errors propagate. This does not
+    establish that a specific security update is available or installed."""
     if not product or not ESU_PRODUCTS.match(product):
         return None
     rc, out = ps(run or sh, PS_ESU)
@@ -2747,9 +2868,13 @@ ConvertTo-Json -Compress -InputObject ([ordered]@{ domain = "$((Get-CimInstance 
 
 
 def ad_computers(run=None):
-    """Return domain and computer-list metadata read through PowerShell, using optional runner run.
+    """Return the PowerShell domain/computers object using run or sh.
 
-    Raise AgentError if the command fails or its output lacks the expected domain and computers."""
+    PS_AD_COMPUTERS queries enabled computer objects in the current domain, with
+    page size 1000 and size limit 20000. These are directory records, not a live
+    host scan. Parse the last stdout line. Require a truthy domain and computers
+    list, without validating row shapes or proving the directory result complete.
+    Failed command/outer shape raises AgentError. Runner errors can propagate."""
     rc, out = ps(run or sh, PS_AD_COMPUTERS)
     try:
         d = json.loads(out.strip().splitlines()[-1]) if rc == 0 else None

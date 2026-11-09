@@ -565,5 +565,12 @@
     "title": "Collect application package metadata",
     "group": "How-to guides",
     "product": "assure"
+  },
+  {
+    "source": "docs/reference/agent-windows.md",
+    "slug": "reference/agent-windows",
+    "title": "Windows and remote collection",
+    "group": "Reference",
+    "product": "assure"
   }
 ]

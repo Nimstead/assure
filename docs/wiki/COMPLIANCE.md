@@ -307,3 +307,14 @@ Reviewed filesystem checks, Windows state cleanup, schedule generation/installat
 The 81-article site build and six site tests passed. Playwright MCP verified desktop/mobile task/reference layouts and mobile anchors without page overflow. New prose received humanizer and STE-style review. No production scanner opt-in, scheduler, ACL, uninstall or agent release changed.
 
 The previous publication returned success while old content remained live. Reapplying its exact saved version was followed by successful source-hash and new-page checks. Publication evidence therefore includes rendered content, not only deployment status. Remaining Windows/remote collection, job classes, other agent/API contracts, sandbox/helpers and final editorial/example review keep the goal active.
+
+
+## Windows and remote collection checkpoint
+
+Separated Windows helper lookup from the operator remote-scan procedure. The new reference documents parameters, returned rows, temporary files/hives, collection status and failure boundaries. The procedure now identifies prerequisites, ordered actions, report verification, cache preservation and recovery.
+
+Corrected exact client-product, guaranteed hive cleanup, universal partial-failure containment and complete driver-list implications. Remote collection uses multiple calls and skips offline profiles. Report keys are credentials cached locally. Missing or invalid cache JSON can cause another enrolment, while wrong-shaped valid JSON can abort the loop. Existing cache permissions are not repaired.
+
+62 focused tests and 53 subchecks passed, with eight native Windows skips. Eight offline boundary checks passed and executable AST comparison confirms documentation-only agent edits. The site builds 82 articles with valid local links/anchors and six passing tests. Playwright MCP verified desktop/mobile lookup, task steps, local anchors and search. Prose received humanizer and STE-style review. The local preview required loopback permission after sandbox socket binding failed. No real Windows registry mount, remoting session, host enrolment or agent release occurred.
+
+The whole-repository audit remains in progress. Remaining job classes, agent/API contracts, sandbox/helper interfaces and final editorial/example review still require evidence.

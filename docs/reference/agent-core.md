@@ -2,6 +2,8 @@
 
 The single-file agent exposes helpers for collection, configuration, requests, diagnostics and CLI dispatch. These contracts describe the current implementation. They do not establish complete host coverage or a successful repair.
 
+For Windows and remote helper contracts, see [Windows and remote collection](agent-windows.md).
+
 ## Linux collection functions
 
 | Interface | Inputs and result |

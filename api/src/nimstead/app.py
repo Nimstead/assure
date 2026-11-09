@@ -108,7 +108,11 @@ def migration_head() -> str:
 
 
 def migration_state(s: Session) -> str:
-    """head | behind | unmanaged (a SQLite dev database made with create_all has no alembic_version table)."""
+    """Return head, behind or unmanaged from Session s's schema state.
+
+    Missing alembic_version means unmanaged on any backend. Otherwise compare the
+    first selected version with process-cached migration_head. No migration runs.
+    Database/configuration errors propagate. This is not a full schema inspection."""
     from sqlalchemy import inspect, text
     if not inspect(s.get_bind()).has_table("alembic_version"):
         return "unmanaged"
@@ -232,7 +236,13 @@ class TooLarge(HTTPException):
 
 
 class BodyLimit:
-    """Caps every request body at MAX_BODY as it's read, chunked or not: Content-Length alone can be left out."""
+    """ASGI body-size guard around a supplied application.
+
+    Reject declared Content-Length above MAX_BODY before dispatch. Otherwise count
+    body bytes only as the downstream app calls receive, raising TooLarge on excess.
+    Unread streamed bodies are not independently drained/validated. Non-HTTP scopes
+    pass through. Invalid Content-Length or downstream errors can propagate.
+    """
 
     def __init__(self, app):
         self.app = app
@@ -255,7 +265,12 @@ class BodyLimit:
 
 
 def csp(index: Path) -> str:
-    """The SPA's policy; its one inline script (the theme, before first paint) is allowed by hash."""
+    """Return the response CSP with hashes of exact attribute-free inline scripts.
+
+    index is a UTF-8 HTML Path. OSError uses no hashes. Decode errors propagate.
+    Regex recognizes only literal <script> blocks, not scripts with attributes.
+    The policy allows inline styles and data images. It does not set form-action.
+    create_app captures this result, so later index changes do not refresh it."""
     try:
         inline = re.findall(r"<script>(.*?)</script>", index.read_text(encoding="utf-8"), re.S)
     except OSError:
@@ -267,7 +282,11 @@ def csp(index: Path) -> str:
 
 
 class HashedAssets(StaticFiles):
-    """Vite names every built file by its content hash, so a browser may keep it for good."""
+    """StaticFiles subclass assigning immutable caching to every successful response.
+
+    Caller must supply a directory whose successful paths are safe to cache for a
+    year. The subclass does not itself require hashed filenames.
+    """
     async def get_response(self, path, scope):
         """Return the static-file response for path and ASGI scope, adding one-year immutable caching on success.
 
@@ -279,18 +298,17 @@ class HashedAssets(StaticFiles):
 
 
 def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None, dns_lookup=None) -> FastAPI:
-    """Build the FastAPI application and register its routes and middleware.
+    """Construct FastAPI routes, middleware and captured database/OIDC context.
 
-    Args:
-        db_url (str | None): Database URL override; None uses NIMSTEAD_DB or the SQLite default.
-        oidc_http (httpx.Client | None): Optional caller-owned OIDC transport for tests.
-        dns_lookup (Callable | None): Optional DNS TXT lookup accepting a name and returning strings.
+    db_url is a truthy database URL override, otherwise normal configuration applies.
+    SQLite setup creates tables. PostgreSQL needs migrations separately. oidc_http
+    is an optional caller-owned client. dns_lookup supplies TXT name-to-string-list
+    observations. No app shutdown hook closes a supplied client here.
 
-    Returns:
-        FastAPI: Application with its database session factory captured by route dependencies.
-
-    Database and configuration errors propagate. SQLite creates tables; PostgreSQL must already
-    be migrated. Swagger UI is opt-in, while /api/openapi.json is always available."""
+    Capture docs enablement, allowed origins, CSP and static-directory availability
+    at creation. Other module constants were read at import. Database, configuration,
+    decoding and static-mount failures can propagate. Swagger UI is opt-in, while
+    /api/openapi.json remains public. Constructing the app does not deploy it."""
     oidc = sso.Oidc(oidc_http)
     Sessions = make_sessionmaker(db_url) if db_url else make_sessionmaker()
     # Swagger UI runs scripts from a CDN on this origin, so it's opt-in; /api/openapi.json is always there for tools
@@ -305,6 +323,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.middleware("http")
     async def guard(request: Request, call_next):
+        """Apply optional write-Origin checks, then add response security headers.
+
+        request/call_next are the middleware inputs. An Origin-bearing unsafe method
+        needs an exact request-origin or configured allowlist match. Refusal returns
+        JSON 403 before downstream/header decoration. Otherwise use setdefault for
+        headers, with CSP omitted on opted-in docs paths. Handler errors propagate.
+        This is not authentication or independent proxy-origin verification."""
         origin = request.headers.get("origin")
         if request.method not in ("GET", "HEAD", "OPTIONS") and origin:
             same = origin == f"{request.url.scheme}://{request.headers.get('host', '')}"
@@ -404,10 +429,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/install.sh")
     def install_sh(request: Request):
-        """Return the Linux installer with this server URL and release channel substituted.
+        """Return Linux installer text with server origin and current channel substituted.
 
-        Operation-specific HTTP errors: 400. See detail in the response.
-        Authentication and request-validation errors also apply where required."""
+        request supplies fallback base URL unless NIMSTEAD_PUBLIC_URL is truthy.
+        Require the configured HTTP(S) hostname/port pattern or return 400. Paths,
+        trailing slash and IPv6 literals are outside that pattern. No host install
+        occurs. File/channel errors propagate. No user authentication is required."""
         server = os.environ.get("NIMSTEAD_PUBLIC_URL") or str(request.base_url).rstrip("/")
         if not re.fullmatch(r"https?://[A-Za-z0-9.\-]+(:\d{1,5})?", server):  # substituted into shell: strict
             raise HTTPException(400, "Server URL is not safe to embed; set NIMSTEAD_PUBLIC_URL")
@@ -416,10 +443,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/install.ps1")
     def install_ps1(request: Request):
-        """Return the PowerShell installer with this server URL and release channel substituted.
+        """Return PowerShell installer text with server origin/channel substituted.
 
-        Operation-specific HTTP errors: 400. See detail in the response.
-        Authentication and request-validation errors also apply where required."""
+        request supplies fallback base URL unless NIMSTEAD_PUBLIC_URL is truthy.
+        Require the same strict HTTP(S) origin pattern as install_sh, otherwise 400.
+        File/channel errors propagate. No installation or authentication occurs here."""
         server = os.environ.get("NIMSTEAD_PUBLIC_URL") or str(request.base_url).rstrip("/")
         if not re.fullmatch(r"https?://[A-Za-z0-9.\-]+(:\d{1,5})?", server):  # substituted into a script: strict
             raise HTTPException(400, "Server URL is not safe to embed; set NIMSTEAD_PUBLIC_URL")
@@ -428,7 +456,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/agent/nimstead_agent.py")
     def agent_file():
-        """Return the Python agent source served by this checkout."""
+        """Return AGENT_FILE bytes as text/x-python without user authentication.
+
+        This endpoint does not independently verify a manifest or source signature.
+        File errors propagate. Callers verify distribution bytes through the signed
+        manifest workflow rather than treating a successful download as trust."""
         return Response(AGENT_FILE.read_bytes(), media_type="text/x-python")
 
     @app.get("/agent/runtime/{arch}.zip")
@@ -1106,7 +1138,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         return asset
 
     def store_scan_report(asset_id: str, scanned: tuple | None) -> None:
-        """After the response: the engine's report, stored for the fleet's attack paths (DECISIONS 98). Never fails the inventory."""
+        """Attempt engine report persistence in a new Session after inventory response.
+
+        asset_id selects a surviving asset. scanned optionally supplies the previous
+        engine result tuple. Catch/log ordinary query/evaluation/storage errors inside
+        the context. Session construction/entry/exit can still raise. This task is
+        not a durable queue and can fail after inventory already committed."""
         with Sessions() as s:
             try:
                 if a := s.get(Asset, asset_id):
@@ -2628,12 +2665,19 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/ai/status")
     def ai_status(user: CurrentUser):
-        """Return whether the optional AI service is configured and enabled.
+        """Return enabled configuration Boolean without a provider request.
 
-        Requires a user session or a read-only organisation API token. API tokens cannot use write methods."""
+        user needs a session or eligible read token. This is configuration presence,
+        not provider reachability. Environment/backend errors can propagate."""
         return {"enabled": ai.enabled()}
 
     def ai_budget(s: Session, user: User) -> None:
+        """Commit enabled AI attempt quotas for user and its organisation through s.
+
+        Disabled configuration returns immediately. Check user before organisation,
+        with short-circuit refusal. User refusal therefore records no organisation
+        attempt. Each reached counter commits, including refused attempts. Raise
+        HTTP 429 on excess. This is not a provider-call or cache-miss count."""
         if not ai.enabled():
             return
         if over_limit(s, "ai:" + user.id, AI_MAX_PER_USER_HOUR) or over_limit(s, "ai-org:" + user.org_id, AI_MAX_PER_ORG_HOUR):
@@ -2641,12 +2685,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/ai/explain/{finding_id}")
     def ai_explain(finding_id: str, user: CurrentUser, s: DB):
-        """Return an AI explanation and model name for an owned finding, subject to AI usage quotas.
+        """Return text/model for finding_id's owned detail through ai.explain.
 
-        finding_id identifies an owned finding. Requires a user session. Read-only API tokens cannot use POST.
-
-        Operation-specific HTTP errors: 404 for an unavailable finding, 429 for quota, or 503 for unusable AI.
-        Authentication and request-validation errors also apply where required."""
+        user requires a session. s resolves the finding and commits enabled quotas
+        before cache/provider work. Missing finding returns 404. AIUnavailable maps
+        to 503 and quota refusal to 429. Other data/backend errors propagate.
+        Model names configured policy, not necessarily a provider fallback model."""
         f = get_finding(finding_id, user, s)
         ai_budget(s, user)
         try:
@@ -2659,12 +2703,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/ai/search")
     def ai_search(body: AskReq, user: CurrentUser, s: DB):
-        """Return a validated findings filter from the submitted natural-language text, subject to AI usage quotas.
+        """Return five validated filter fields from body.text via ai.parse_search.
 
-        body.text contains 2–500 characters. Requires a user session. Read-only API tokens cannot use POST.
-
-        Operation-specific HTTP errors: 429 for quota or 503 for unusable AI.
-        Authentication and request-validation errors also apply where required."""
+        user requires a session. s commits enabled attempt quotas before provider
+        work. The caller applies the returned filters separately. AIUnavailable maps
+        to 503 and quota refusal to 429. Other backend/data errors propagate."""
         ai_budget(s, user)
         try:
             return ai.parse_search(body.text).model_dump()
@@ -2685,12 +2728,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     @app.get("/api/evidence/ledger")
     def ledger(user: CurrentUser, s: DB, limit: int = Query(100, ge=1, le=1000),
                group: Literal["decisions", "fixes", "detections", "access"] | None = None):
-        """Return recent ledger entries, matching total, and integrity problems for the organisation.
+        """Return problems, newest entries and matching total for the user's ledger.
 
-        limit ranges from 1 to 1000; group optionally selects a category. Integrity checking may
-        reuse a verified prefix, with a full verification at least hourly.
-
-        Requires a user session or a read-only organisation API token. API tokens cannot use write methods."""
+        user needs a session or eligible read token. s queries the organisation.
+        limit is 1..1000, default 100. Optional group selects fixed category patterns.
+        Integrity uses cached-prefix verification with periodic full checks. It is
+        not scoped to the category/limit. Read and total queries are separate.
+        Database/checkpoint/backend or malformed stored-data errors can propagate."""
         q = select(LedgerEntry).where(LedgerEntry.org_id == user.org_id)
         if group:
             q = q.where(or_(*(LedgerEntry.kind.like(k) if "%" in k else LedgerEntry.kind == k for k in LEDGER_GROUPS[group])))
@@ -2701,23 +2745,30 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/evidence/public-key")
     def evidence_public_key():
-        """Publish this out of band (website, contract, auditor email); auditors verify packs against it, not the copy in the zip."""
+        """Return pem, fingerprint_sha256 and verifier_sha256 without authentication.
+
+        signing_key can create a local key or call the configured backend. Hashes
+        identify returned public key/verifier bytes. This response is not its own
+        independent trust channel. File/key/backend/encoding errors propagate."""
         pem = evidence.public_pem(evidence.signing_key())
         return {"pem": pem.decode(), "fingerprint_sha256": evidence.fingerprint(pem), "verifier_sha256": evidence.verifier_sha256()}
 
     @app.get("/api/evidence/verify.py")
     def evidence_verifier():
-        """The offline verifier, published here (and by hash next to the key) rather than inside the pack it checks."""
+        """Return current offline verifier source as text/x-python, without authentication.
+
+        Source read/decoding errors propagate. Download success alone does not
+        establish a separately trusted hash or key fingerprint."""
         return Response(evidence.verifier_source(), media_type="text/x-python")
 
     @app.get("/api/evidence/report")
     def evidence_report(user: CurrentUser, s: DB, days: int = Query(90, ge=1, le=730), summary: bool = False):
-        """Return the evidence report for the requested trailing days.
+        """Return current evidence data for trailing days, default 90 and range 1..730.
 
-        days ranges from 1 to 730 and defaults to 90. ledger.entries is an integer count
-        in both modes. summary=true omits the assets and findings arrays.
-
-        Requires a user session or a read-only organisation API token. API tokens cannot use write methods."""
+        user needs a session or eligible read token and s supplies stored records.
+        Both modes use an integer ledger entry count with head_hash only. summary
+        omits assets/findings. This does not sign or independently verify the full
+        ledger here. Database, checkpoint and malformed stored-data errors propagate."""
         pack = evidence.build_pack(s, user.org_id, *evidence.default_period(days), with_entries=False)
         pack["ledger"] = {"head_hash": pack["ledger"]["head_hash"], "entries": pack["ledger"]["entries"]}  # a count: the page lists them
         if summary:  # the Evidence page shows metrics and controls; every finding and asset (megabytes on a fleet) is for the pack
@@ -2729,15 +2780,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def evidence_pack(user: CurrentUser, s: DB, days: int = Query(90, ge=1, le=730)):
         # the chain since the last full check (one runs at least hourly, and whenever an anchor moved), then every entry the
         # pack holds, re-hashed as it is built: reading and hashing the whole ledger twice was most of a pack's time
-        """Return a signed ZIP evidence pack for the requested trailing days.
+        """Return an application/zip evidence attachment for trailing days, default 90.
 
-        Refuse with 409 if ledger verification fails before signing. The ZIP includes JSON,
-        signature, public key, and instructions; the trusted fingerprint must arrive separately.
-
-        Requires a user session or a read-only organisation API token. API tokens cannot use write methods.
-
-        Operation-specific HTTP errors: 409. See detail in the response.
-        Authentication and request-validation errors also apply where required."""
+        user needs a session or eligible read token. s verifies cached/new ledger
+        integrity, creates a checkpoint and builds/signs period data. Verify included
+        entries again before signing. Integrity refusals return 409. Checkpoint/key
+        side effects can precede later failures. The ZIP's key is not an independent
+        trust anchor. Database/file/key/backend errors can propagate."""
         if problems := evidence.verify_chain(s, user.org_id, full=False):
             raise HTTPException(409, f"Ledger integrity check failed; refusing to sign: {problems[:3]}")
         evidence.checkpoint(s, user.org_id)
@@ -2750,7 +2799,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/.well-known/security.txt", include_in_schema=False)
     def security_txt():
-        """RFC 9116. Reports about this software go to Nimstead; an operator can add their own contact first."""
+        """Return public text security contacts, policy URL and a generated expiry.
+
+        Optional NIMSTEAD_SECURITY_CONTACT precedes the fixed Nimstead contact.
+        Expiry is midnight UTC 180 calendar days after now's date. No value validation
+        or independent RFC-conformance check occurs. No user data is queried."""
         contacts = [c for c in (os.environ.get("NIMSTEAD_SECURITY_CONTACT", ""), "mailto:security@nimstead.systems") if c]
         expires = (now() + timedelta(days=180)).strftime("%Y-%m-%dT00:00:00Z")  # regenerated on every request
         body = "".join(f"Contact: {c}\n" for c in contacts) + (
@@ -2759,8 +2812,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/health", include_in_schema=False)
     def health(s: DB):
-        """For Docker's healthcheck and deploy/update.sh: no auth, no tenant data. 503 unless the database answers and
-        its schema is at this release's migration head."""
+        """Return public deployment-health JSON with 200 or 503, without authentication.
+
+        s first queries the database, then migration state. Head or unmanaged counts
+        as healthy. Behind returns 503 with migrations. Query/migration exceptions
+        return 503 with db=unavailable and no migrations field. Session dependency
+        failures can occur before this catch. Version lookup/response errors can
+        propagate. This is not a complete service/dependency health assessment."""
         try:
             s.execute(select(1))
             at = migration_state(s)
@@ -2838,10 +2896,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
         @app.get("/{path:path}", include_in_schema=False)
         def spa(path: str):
-            """Return the SPA index with no-cache headers, or 404 for unknown API paths.
+            """Return the captured web directory's index with no-cache, except api/ paths.
 
-            Operation-specific HTTP errors: 404. See detail in the response.
-            Authentication and request-validation errors also apply where required."""
+            path is the fallback route text. Unknown api/ paths return HTTP 404.
+            Other missing-file routes can return the SPA index rather than a file
+            404. File errors propagate. Registered only when WEB_DIST exists during
+            app creation. No API authentication is added here."""
             if path.startswith("api/"):
                 raise HTTPException(404, "Not found")
             return FileResponse(WEB_DIST / "index.html", headers={"Cache-Control": "no-cache"})

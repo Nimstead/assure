@@ -1,6 +1,110 @@
 {
   "components": {
     "schemas": {
+      "AIExplanation": {
+        "additionalProperties": false,
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "model"
+        ],
+        "type": "object"
+      },
+      "AISearchFilter": {
+        "additionalProperties": false,
+        "description": "Validated search fields, with defaults for omitted values and ignored extra keys.\n\nq is at most 100 characters. Empty priority means all priorities. None for\nfixable or kev means either value. Pydantic's default coercion applies.\nInvalid field types, lengths, or enum values raise ValidationError.",
+        "properties": {
+          "fixable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Fixable"
+          },
+          "kev": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Kev"
+          },
+          "priority": {
+            "items": {
+              "enum": [
+                "fix-now",
+                "next",
+                "planned",
+                "low"
+              ],
+              "type": "string"
+            },
+            "title": "Priority",
+            "type": "array"
+          },
+          "q": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "free-text match on package, CVE id or hostname",
+            "title": "Q"
+          },
+          "status": {
+            "default": "open",
+            "enum": [
+              "open",
+              "resolved",
+              "accepted"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "q",
+          "priority",
+          "status",
+          "fixable",
+          "kev"
+        ],
+        "title": "SearchFilter",
+        "type": "object"
+      },
+      "AIStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "type": "object"
+      },
       "Accept": {
         "properties": {
           "days": {
@@ -336,6 +440,40 @@
           "assessed",
           "inventory_only",
           "not_assessed"
+        ],
+        "type": "object"
+      },
+      "ApplicationInstall": {
+        "additionalProperties": false,
+        "properties": {
+          "ecosystem": {
+            "type": "string"
+          },
+          "grade": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "instance": {
+            "type": "string"
+          },
+          "outcomes": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "product": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ecosystem",
+          "product",
+          "instance",
+          "grade",
+          "outcomes"
         ],
         "type": "object"
       },
@@ -961,6 +1099,18 @@
         "title": "DirectoryEntry",
         "type": "object"
       },
+      "DirectoryReceipt": {
+        "additionalProperties": false,
+        "properties": {
+          "computers": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "computers"
+        ],
+        "type": "object"
+      },
       "Enroll": {
         "properties": {
           "ecosystem": {
@@ -1022,6 +1172,570 @@
           "expires",
           "revoked",
           "sandbox"
+        ],
+        "type": "object"
+      },
+      "EvidenceAsset": {
+        "additionalProperties": false,
+        "properties": {
+          "hostname": {
+            "type": "string"
+          },
+          "last_seen": {
+            "type": "string"
+          },
+          "os": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "hostname",
+          "os",
+          "last_seen"
+        ],
+        "type": "object"
+      },
+      "EvidenceCheckpoint": {
+        "additionalProperties": false,
+        "properties": {
+          "hash": {
+            "type": "string"
+          },
+          "org_id": {
+            "type": "string"
+          },
+          "seq": {
+            "type": "integer"
+          },
+          "sig": {
+            "type": "string"
+          },
+          "ts": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "org_id",
+          "hash",
+          "ts",
+          "sig",
+          "seq"
+        ],
+        "type": "object"
+      },
+      "EvidenceControl": {
+        "additionalProperties": false,
+        "properties": {
+          "control": {
+            "type": "string"
+          },
+          "evidence": {
+            "type": "string"
+          },
+          "exceptions": {
+            "type": "integer"
+          },
+          "framework": {
+            "type": "string"
+          },
+          "requirement": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "framework",
+          "control",
+          "requirement",
+          "status",
+          "evidence"
+        ],
+        "type": "object"
+      },
+      "EvidenceFinding": {
+        "additionalProperties": false,
+        "properties": {
+          "cvss": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "days_open": {
+            "type": "number"
+          },
+          "first_seen": {
+            "type": "string"
+          },
+          "host": {
+            "type": "string"
+          },
+          "kev": {
+            "type": "boolean"
+          },
+          "package": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "string"
+          },
+          "resolved_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sla_days": {
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          },
+          "vuln_id": {
+            "type": "string"
+          },
+          "within_sla": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "vuln_id",
+          "package",
+          "host",
+          "priority",
+          "status",
+          "first_seen",
+          "cvss",
+          "kev",
+          "resolved_at",
+          "days_open",
+          "sla_days",
+          "within_sla"
+        ],
+        "type": "object"
+      },
+      "EvidenceForwardChange": {
+        "additionalProperties": false,
+        "properties": {
+          "approved_by": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "host": {
+            "type": "string"
+          },
+          "job": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "updated": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "job",
+          "host",
+          "summary",
+          "status",
+          "updated",
+          "approved_by"
+        ],
+        "type": "object"
+      },
+      "EvidenceMetrics": {
+        "additionalProperties": false,
+        "properties": {
+          "assets": {
+            "type": "integer"
+          },
+          "assets_reporting": {
+            "type": "integer"
+          },
+          "assets_silent_now": {
+            "type": "integer"
+          },
+          "ce_in_scope_overdue": {
+            "type": "integer"
+          },
+          "ce_in_scope_resolved": {
+            "type": "integer"
+          },
+          "ce_in_scope_resolved_in_14d": {
+            "type": "integer"
+          },
+          "changes": {
+            "type": "integer"
+          },
+          "changes_authorised": {
+            "type": "integer"
+          },
+          "changes_self_approved": {
+            "type": "integer"
+          },
+          "critical_overdue_30d": {
+            "type": "integer"
+          },
+          "findings_without_ledger_record": {
+            "type": "integer"
+          },
+          "forward_only_changes": {
+            "type": "integer"
+          },
+          "mttr_days": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "overdue_open": {
+            "type": "integer"
+          },
+          "resolved": {
+            "type": "integer"
+          },
+          "resolved_within_sla": {
+            "type": "integer"
+          },
+          "sla_changes": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "resolved",
+          "resolved_within_sla",
+          "overdue_open",
+          "ce_in_scope_resolved",
+          "ce_in_scope_resolved_in_14d",
+          "ce_in_scope_overdue",
+          "critical_overdue_30d",
+          "findings_without_ledger_record",
+          "assets",
+          "assets_reporting",
+          "assets_silent_now",
+          "changes",
+          "changes_authorised",
+          "changes_self_approved",
+          "forward_only_changes",
+          "sla_changes",
+          "mttr_days"
+        ],
+        "type": "object"
+      },
+      "EvidencePackDocument": {
+        "additionalProperties": false,
+        "properties": {
+          "assets": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceAsset"
+            },
+            "type": "array"
+          },
+          "basis": {
+            "type": "string"
+          },
+          "controls": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceControl"
+            },
+            "type": "array"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceFinding"
+            },
+            "type": "array"
+          },
+          "format": {
+            "type": "string"
+          },
+          "forward_only_changes": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceForwardChange"
+            },
+            "type": "array"
+          },
+          "generated_at": {
+            "type": "string"
+          },
+          "ledger": {
+            "additionalProperties": false,
+            "properties": {
+              "chain_head": {
+                "additionalProperties": false,
+                "properties": {
+                  "hash": {
+                    "type": "string"
+                  },
+                  "seq": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "seq",
+                  "hash"
+                ],
+                "type": "object"
+              },
+              "checkpoints": {
+                "items": {
+                  "$ref": "#/components/schemas/EvidenceCheckpoint"
+                },
+                "type": "array"
+              },
+              "entries": {
+                "items": {
+                  "$ref": "#/components/schemas/LedgerEntry"
+                },
+                "type": "array"
+              },
+              "head_hash": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "entries",
+              "head_hash",
+              "chain_head",
+              "checkpoints"
+            ],
+            "type": "object"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/EvidenceMetrics"
+          },
+          "organisation": {
+            "type": "string"
+          },
+          "organisation_created": {
+            "type": "string"
+          },
+          "organisation_id": {
+            "type": "string"
+          },
+          "period": {
+            "additionalProperties": false,
+            "properties": {
+              "from": {
+                "type": "string"
+              },
+              "to": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "from",
+              "to"
+            ],
+            "type": "object"
+          },
+          "sla_changes": {
+            "items": {
+              "$ref": "#/components/schemas/EvidencePolicyChange"
+            },
+            "type": "array"
+          },
+          "sla_days": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "verified_domains": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "format",
+          "organisation",
+          "organisation_id",
+          "organisation_created",
+          "generated_at",
+          "basis",
+          "verified_domains",
+          "period",
+          "sla_days",
+          "sla_changes",
+          "metrics",
+          "controls",
+          "forward_only_changes",
+          "assets",
+          "findings",
+          "ledger"
+        ],
+        "type": "object"
+      },
+      "EvidencePolicyChange": {
+        "additionalProperties": false,
+        "properties": {
+          "by": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sla_days": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "ts": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ts",
+          "by",
+          "sla_days"
+        ],
+        "type": "object"
+      },
+      "EvidencePublicKey": {
+        "additionalProperties": false,
+        "properties": {
+          "fingerprint_sha256": {
+            "type": "string"
+          },
+          "pem": {
+            "type": "string"
+          },
+          "verifier_sha256": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "pem",
+          "fingerprint_sha256",
+          "verifier_sha256"
+        ],
+        "type": "object"
+      },
+      "EvidenceReport": {
+        "additionalProperties": false,
+        "properties": {
+          "assets": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceAsset"
+            },
+            "type": "array"
+          },
+          "basis": {
+            "type": "string"
+          },
+          "controls": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceControl"
+            },
+            "type": "array"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceFinding"
+            },
+            "type": "array"
+          },
+          "format": {
+            "type": "string"
+          },
+          "forward_only_changes": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceForwardChange"
+            },
+            "type": "array"
+          },
+          "generated_at": {
+            "type": "string"
+          },
+          "ledger": {
+            "additionalProperties": false,
+            "properties": {
+              "entries": {
+                "type": "integer"
+              },
+              "head_hash": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "entries",
+              "head_hash"
+            ],
+            "type": "object"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/EvidenceMetrics"
+          },
+          "organisation": {
+            "type": "string"
+          },
+          "organisation_created": {
+            "type": "string"
+          },
+          "organisation_id": {
+            "type": "string"
+          },
+          "period": {
+            "additionalProperties": false,
+            "properties": {
+              "from": {
+                "type": "string"
+              },
+              "to": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "from",
+              "to"
+            ],
+            "type": "object"
+          },
+          "sla_changes": {
+            "items": {
+              "$ref": "#/components/schemas/EvidencePolicyChange"
+            },
+            "type": "array"
+          },
+          "sla_days": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "verified_domains": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "format",
+          "organisation",
+          "organisation_id",
+          "organisation_created",
+          "generated_at",
+          "basis",
+          "verified_domains",
+          "period",
+          "sla_days",
+          "sla_changes",
+          "metrics",
+          "controls",
+          "forward_only_changes",
+          "ledger"
         ],
         "type": "object"
       },
@@ -1544,6 +2258,186 @@
         ],
         "type": "object"
       },
+      "FleetChain": {
+        "additionalProperties": false,
+        "properties": {
+          "reach": {
+            "items": {
+              "$ref": "#/components/schemas/FleetReach"
+            },
+            "type": "array"
+          },
+          "start": {
+            "type": "string"
+          },
+          "why_start": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "why_start",
+          "reach"
+        ],
+        "type": "object"
+      },
+      "FleetEdge": {
+        "additionalProperties": false,
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "grade": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "ways": {
+            "items": {
+              "$ref": "#/components/schemas/FleetWay"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "grade",
+          "ways"
+        ],
+        "type": "object"
+      },
+      "FleetHost": {
+        "additionalProperties": false,
+        "properties": {
+          "entry": {
+            "type": "boolean"
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "internet_facing": {
+            "type": "boolean"
+          },
+          "judged": {
+            "type": "boolean"
+          },
+          "paths": {
+            "items": {
+              "$ref": "#/components/schemas/FleetHostPath"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "hostname",
+          "judged",
+          "entry",
+          "internet_facing",
+          "paths"
+        ],
+        "type": "object"
+      },
+      "FleetHostPath": {
+        "additionalProperties": false,
+        "properties": {
+          "break_at": {
+            "$ref": "#/components/schemas/HostPathBreak"
+          },
+          "grade": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": "string"
+          },
+          "start": {
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "start",
+          "grade",
+          "steps",
+          "break_at"
+        ],
+        "type": "object"
+      },
+      "FleetPaths": {
+        "additionalProperties": false,
+        "properties": {
+          "chains": {
+            "items": {
+              "$ref": "#/components/schemas/FleetChain"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/FleetEdge"
+            },
+            "maxItems": 2000,
+            "type": "array"
+          },
+          "hosts": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/FleetHost"
+            },
+            "type": "object"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "hosts",
+          "edges",
+          "truncated",
+          "chains"
+        ],
+        "type": "object"
+      },
+      "FleetReach": {
+        "additionalProperties": false,
+        "properties": {
+          "fix_on_host": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "grade": {
+            "type": "string"
+          },
+          "hops": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "host": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "host",
+          "hops",
+          "grade",
+          "fix_on_host"
+        ],
+        "type": "object"
+      },
       "FleetSummary": {
         "additionalProperties": false,
         "properties": {
@@ -1588,6 +2482,34 @@
           "open_by_priority",
           "top_actions",
           "attention"
+        ],
+        "type": "object"
+      },
+      "FleetWay": {
+        "additionalProperties": false,
+        "properties": {
+          "because": {
+            "type": "string"
+          },
+          "grade": {
+            "type": "string"
+          },
+          "how": {
+            "type": "string"
+          },
+          "port": {
+            "type": "integer"
+          },
+          "via": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "via",
+          "how",
+          "because",
+          "grade",
+          "port"
         ],
         "type": "object"
       },
@@ -1725,6 +2647,212 @@
           "agent_update_error",
           "facts",
           "maintenance_window"
+        ],
+        "type": "object"
+      },
+      "HostAttackPath": {
+        "additionalProperties": false,
+        "properties": {
+          "break_at": {
+            "$ref": "#/components/schemas/HostPathBreak"
+          },
+          "grade": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": "string"
+          },
+          "start": {
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/HostPathStep"
+            },
+            "type": "array"
+          },
+          "then": {
+            "additionalProperties": false,
+            "properties": {
+              "count": {
+                "type": "integer"
+              },
+              "label": {
+                "type": "string"
+              },
+              "ways": {
+                "items": {
+                  "$ref": "#/components/schemas/HostPathWay"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "label",
+              "ways",
+              "count"
+            ],
+            "type": [
+              "object",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "start",
+          "grade",
+          "steps",
+          "then",
+          "break_at"
+        ],
+        "type": "object"
+      },
+      "HostPathBreak": {
+        "additionalProperties": false,
+        "properties": {
+          "fixes": {
+            "type": "integer"
+          },
+          "label": {
+            "type": "string"
+          },
+          "refs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "stage": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "stage",
+          "label",
+          "fixes",
+          "refs"
+        ],
+        "type": "object"
+      },
+      "HostPathStep": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "label": {
+            "type": "string"
+          },
+          "stage": {
+            "type": "string"
+          },
+          "ways": {
+            "items": {
+              "$ref": "#/components/schemas/HostPathWay"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "stage",
+          "label",
+          "ways",
+          "count"
+        ],
+        "type": "object"
+      },
+      "HostPathWay": {
+        "additionalProperties": false,
+        "properties": {
+          "flaws": {
+            "type": "integer"
+          },
+          "grade": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kev": {
+            "type": "boolean"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "what": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "what",
+          "ref",
+          "grade",
+          "kev"
+        ],
+        "type": "object"
+      },
+      "HttpError": {
+        "additionalProperties": false,
+        "properties": {
+          "detail": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "type": "object"
+      },
+      "IncompleteChecks": {
+        "additionalProperties": false,
+        "properties": {
+          "blocked_by": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "count": {
+            "type": "integer"
+          },
+          "examples": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "outcome": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "source_said": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "what_to_do": {
+            "type": "string"
+          },
+          "why": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "outcome",
+          "reason",
+          "why",
+          "what_to_do",
+          "blocked_by",
+          "source_said",
+          "count",
+          "examples"
         ],
         "type": "object"
       },
@@ -1912,6 +3040,69 @@
         "title": "JobReport",
         "type": "object"
       },
+      "LedgerEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "description": "Event-specific ledger payload.",
+            "type": "object"
+          },
+          "hash": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "prev_hash": {
+            "type": "string"
+          },
+          "seq": {
+            "type": "integer"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "ts": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ts",
+          "kind",
+          "subject",
+          "prev_hash",
+          "hash",
+          "seq",
+          "data"
+        ],
+        "type": "object"
+      },
+      "LedgerPage": {
+        "additionalProperties": false,
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/LedgerEntry"
+            },
+            "type": "array"
+          },
+          "problems": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "problems",
+          "entries",
+          "total"
+        ],
+        "type": "object"
+      },
       "Login": {
         "properties": {
           "code": {
@@ -1986,6 +3177,40 @@
           "code"
         ],
         "title": "MfaConfirm",
+        "type": "object"
+      },
+      "NonVulnerableInstall": {
+        "additionalProperties": false,
+        "properties": {
+          "checks": {
+            "type": "integer"
+          },
+          "family": {
+            "type": "string"
+          },
+          "grade": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "instance": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "product": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "family",
+          "product",
+          "instance",
+          "grade",
+          "checks"
+        ],
         "type": "object"
       },
       "NotificationSettings": {
@@ -2720,6 +3945,210 @@
         ],
         "type": "object"
       },
+      "ReportApplications": {
+        "additionalProperties": false,
+        "properties": {
+          "installs": {
+            "type": "integer"
+          },
+          "judged": {
+            "type": "integer"
+          },
+          "left_to_package_manager": {
+            "type": "integer"
+          },
+          "no_advisory": {
+            "type": "integer"
+          },
+          "not_looked_for": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "sbom_components_not_assessed": {
+            "type": "integer"
+          },
+          "vulnerable": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "installs",
+          "judged",
+          "vulnerable",
+          "no_advisory",
+          "left_to_package_manager",
+          "sbom_components_not_assessed",
+          "not_looked_for"
+        ],
+        "type": "object"
+      },
+      "ReportCoverage": {
+        "additionalProperties": false,
+        "properties": {
+          "applications": {
+            "$ref": "#/components/schemas/ReportApplications"
+          },
+          "families": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ReportFamily"
+            },
+            "type": "object"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/ReportSource"
+            },
+            "type": "array"
+          },
+          "statements": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "sources",
+          "families",
+          "applications",
+          "statements"
+        ],
+        "type": "object"
+      },
+      "ReportFamily": {
+        "additionalProperties": false,
+        "properties": {
+          "attempted": {
+            "type": "integer"
+          },
+          "determined": {
+            "type": "integer"
+          },
+          "label": {
+            "type": "string"
+          },
+          "outcomes": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "label",
+          "attempted",
+          "determined",
+          "outcomes"
+        ],
+        "type": "object"
+      },
+      "ReportHeadline": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "text"
+        ],
+        "type": "object"
+      },
+      "ReportSource": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "label": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "label",
+          "state",
+          "count",
+          "error"
+        ],
+        "type": "object"
+      },
+      "ReportVulnerability": {
+        "additionalProperties": false,
+        "properties": {
+          "cvss": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "cvss_source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fixed": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "kb": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kev": {
+            "type": "boolean"
+          },
+          "summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vendor_status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "kev",
+          "cvss",
+          "cvss_source",
+          "fixed",
+          "kb",
+          "summary",
+          "vendor_status"
+        ],
+        "type": "object"
+      },
       "ResetReq": {
         "properties": {
           "email": {
@@ -2852,6 +4281,100 @@
           "required",
           "domains",
           "domain_checks"
+        ],
+        "type": "object"
+      },
+      "ScanReport": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_version": {
+            "type": "string"
+          },
+          "applications": {
+            "items": {
+              "$ref": "#/components/schemas/ApplicationInstall"
+            },
+            "type": "array"
+          },
+          "attack_paths": {
+            "items": {
+              "$ref": "#/components/schemas/HostAttackPath"
+            },
+            "type": "array"
+          },
+          "content_version": {
+            "type": "string"
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/ReportCoverage"
+          },
+          "engine_version": {
+            "type": "string"
+          },
+          "headline": {
+            "$ref": "#/components/schemas/ReportHeadline"
+          },
+          "host": {
+            "type": "string"
+          },
+          "inventory_read_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "inventory_sha256": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "not_applicable": {
+            "type": "integer"
+          },
+          "not_vulnerable": {
+            "items": {
+              "$ref": "#/components/schemas/NonVulnerableInstall"
+            },
+            "type": "array"
+          },
+          "os": {
+            "type": "string"
+          },
+          "undetermined": {
+            "items": {
+              "$ref": "#/components/schemas/IncompleteChecks"
+            },
+            "type": "array"
+          },
+          "verdicts_sha256": {
+            "type": "string"
+          },
+          "vulnerable": {
+            "items": {
+              "$ref": "#/components/schemas/VulnerableInstall"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "host",
+          "kind",
+          "os",
+          "agent_version",
+          "engine_version",
+          "content_version",
+          "inventory_sha256",
+          "verdicts_sha256",
+          "headline",
+          "inventory_read_at",
+          "vulnerable",
+          "undetermined",
+          "not_vulnerable",
+          "not_applicable",
+          "applications",
+          "attack_paths",
+          "coverage"
         ],
         "type": "object"
       },
@@ -3111,6 +4634,41 @@
         "title": "TokenReq",
         "type": "object"
       },
+      "UnmanagedComputer": {
+        "additionalProperties": false,
+        "properties": {
+          "domain": {
+            "type": "string"
+          },
+          "end_of_support": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_logon": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "os": {
+            "type": "string"
+          },
+          "os_version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "domain",
+          "name",
+          "os",
+          "os_version",
+          "last_logon",
+          "end_of_support"
+        ],
+        "type": "object"
+      },
       "UserPatch": {
         "properties": {
           "admin": {
@@ -3194,6 +4752,117 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "VulnerableInstall": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "expected": {
+            "type": "string"
+          },
+          "family": {
+            "type": "string"
+          },
+          "fixed_after_restart": {
+            "type": "integer"
+          },
+          "grade": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "instance": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kernel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "known_exploited": {
+            "type": "integer"
+          },
+          "no_fix": {
+            "type": "integer"
+          },
+          "no_fix_planned": {
+            "type": "integer"
+          },
+          "observed": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pending_reboot": {
+            "type": "boolean"
+          },
+          "product": {
+            "type": "string"
+          },
+          "raise_confidence": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vulnerabilities": {
+            "items": {
+              "$ref": "#/components/schemas/ReportVulnerability"
+            },
+            "type": "array"
+          },
+          "worst_cvss": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "family",
+          "product",
+          "expected",
+          "action",
+          "instance",
+          "grade",
+          "version",
+          "observed",
+          "source",
+          "kernel",
+          "raise_confidence",
+          "fixed_after_restart",
+          "count",
+          "no_fix",
+          "no_fix_planned",
+          "known_exploited",
+          "pending_reboot",
+          "worst_cvss",
+          "vulnerabilities"
+        ],
         "type": "object"
       },
       "WindowsUpdateDetail": {
@@ -3390,6 +5059,10 @@
     }
   },
   "info": {
+    "license": {
+      "name": "FSL-1.1-ALv2",
+      "url": "https://github.com/Nimstead/assure/blob/main/LICENSE.md"
+    },
     "title": "Nimstead",
     "version": "0.1.0"
   },
@@ -3397,7 +5070,7 @@
   "paths": {
     "/agent/nimstead_agent.py": {
       "get": {
-        "description": "Return the Python agent source served by this checkout.",
+        "description": "Return AGENT_FILE bytes as text/x-python without user authentication.\n\nThis endpoint does not independently verify a manifest or source signature.\nFile errors propagate. Callers verify distribution bytes through the signed\nmanifest workflow rather than treating a successful download as trust.",
         "operationId": "agent_file_agent_nimstead_agent_py_get",
         "responses": {
           "200": {
@@ -3409,6 +5082,16 @@
               }
             },
             "description": "Distribution file bytes; see the platform-update reference for verification and availability."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           }
         },
         "security": [],
@@ -3442,6 +5125,26 @@
               }
             },
             "description": "Distribution file bytes; see the platform-update reference for verification and availability."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Unsupported, unavailable or mismatched signed runtime."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           },
           "422": {
             "content": {
@@ -3495,10 +5198,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/DirectoryReceipt"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Source-backed response fields. Consult the matching reference for observation, integrity and persistence limits."
           },
           "401": {
             "content": {
@@ -3509,6 +5214,26 @@
               }
             },
             "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "An Origin-bearing write failed the shared origin check."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           },
           "422": {
             "content": {
@@ -3554,6 +5279,26 @@
               }
             },
             "description": "Asset/inventory contract; see assets-api.md for state and count semantics."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "An Origin-bearing write failed the shared origin check."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           },
           "422": {
             "content": {
@@ -3624,6 +5369,26 @@
             },
             "description": "Missing, expired or invalid credential."
           },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "An Origin-bearing write failed the shared origin check."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -3689,6 +5454,16 @@
               }
             },
             "description": "Missing, expired or invalid credential."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           },
           "422": {
             "content": {
@@ -3781,6 +5556,26 @@
             },
             "description": "Missing, expired or invalid credential."
           },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "An Origin-bearing write failed the shared origin check."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -3870,6 +5665,16 @@
             },
             "description": "Missing, expired or invalid credential."
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -3892,7 +5697,7 @@
     },
     "/api/ai/explain/{finding_id}": {
       "post": {
-        "description": "Return an AI explanation and model name for an owned finding, subject to AI usage quotas.\n\nfinding_id identifies an owned finding. Requires a user session. Read-only API tokens cannot use POST.\n\nOperation-specific HTTP errors: 404 for an unavailable finding, 429 for quota, or 503 for unusable AI.\nAuthentication and request-validation errors also apply where required.",
+        "description": "Return text/model for finding_id's owned detail through ai.explain.\n\nuser requires a session. s resolves the finding and commits enabled quotas\nbefore cache/provider work. Missing finding returns 404. AIUnavailable maps\nto 503 and quota refusal to 429. Other data/backend errors propagate.\nModel names configured policy, not necessarily a provider fallback model.",
         "operationId": "ai_explain_api_ai_explain__finding_id__post",
         "parameters": [
           {
@@ -3909,10 +5714,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/AIExplanation"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Source-backed response fields. Consult the matching reference for observation, integrity and persistence limits."
           },
           "401": {
             "content": {
@@ -3933,6 +5740,16 @@
               }
             },
             "description": "Role, browser-session or local MFA requirement refused the operation."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           },
           "422": {
             "content": {
@@ -3956,7 +5773,7 @@
     },
     "/api/ai/search": {
       "post": {
-        "description": "Return a validated findings filter from the submitted natural-language text, subject to AI usage quotas.\n\nbody.text contains 2\u2013500 characters. Requires a user session. Read-only API tokens cannot use POST.\n\nOperation-specific HTTP errors: 429 for quota or 503 for unusable AI.\nAuthentication and request-validation errors also apply where required.",
+        "description": "Return five validated filter fields from body.text via ai.parse_search.\n\nuser requires a session. s commits enabled attempt quotas before provider\nwork. The caller applies the returned filters separately. AIUnavailable maps\nto 503 and quota refusal to 429. Other backend/data errors propagate.",
         "operationId": "ai_search_api_ai_search_post",
         "requestBody": {
           "content": {
@@ -3972,10 +5789,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/AISearchFilter"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Source-backed response fields. Consult the matching reference for observation, integrity and persistence limits."
           },
           "401": {
             "content": {
@@ -3996,6 +5815,16 @@
               }
             },
             "description": "Role, browser-session or local MFA requirement refused the operation."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           },
           "422": {
             "content": {
@@ -4019,16 +5848,18 @@
     },
     "/api/ai/status": {
       "get": {
-        "description": "Return whether the optional AI service is configured and enabled.\n\nRequires a user session or a read-only organisation API token. API tokens cannot use write methods.",
+        "description": "Return enabled configuration Boolean without a provider request.\n\nuser needs a session or eligible read token. This is configuration presence,\nnot provider reachability. Environment/backend errors can propagate.",
         "operationId": "ai_status_api_ai_status_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/AIStatus"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Source-backed response fields. Consult the matching reference for observation, integrity and persistence limits."
           },
           "401": {
             "content": {
@@ -4039,6 +5870,16 @@
               }
             },
             "description": "Missing, expired or invalid credential."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           }
         },
         "security": [
@@ -4080,6 +5921,16 @@
               }
             },
             "description": "Missing, expired or invalid credential."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           }
         },
         "security": [
@@ -4136,6 +5987,16 @@
               }
             },
             "description": "Role, browser-session or local MFA requirement refused the operation."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           },
           "422": {
             "content": {
@@ -4195,6 +6056,16 @@
               }
             },
             "description": "Role, browser-session or local MFA requirement refused the operation."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           },
           "422": {
             "content": {
@@ -4269,6 +6140,16 @@
               }
             },
             "description": "Role, browser-session or local MFA requirement refused the operation."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           },
           "422": {
             "content": {
@@ -4390,6 +6271,26 @@
             },
             "description": "Inventory mapping and rescan counts; see the SBOM reference for count semantics."
           },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "An Origin-bearing write failed the shared origin check."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -4435,10 +6336,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ScanReport"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Source-backed response fields. Consult the matching reference for observation, integrity and persistence limits."
           },
           "401": {
             "content": {
@@ -4449,6 +6352,16 @@
               }
             },
             "description": "Missing, expired or invalid credential."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           },
           "422": {
             "content": {
@@ -4481,10 +6394,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/FleetPaths"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Source-backed response fields. Consult the matching reference for observation, integrity and persistence limits."
           },
           "401": {
             "content": {
@@ -4495,6 +6410,16 @@
               }
             },
             "description": "Missing, expired or invalid credential."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           }
         },
         "security": [
@@ -4534,6 +6459,26 @@
             },
             "description": "Account contract; see authentication.md for branch and persistence semantics."
           },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "An Origin-bearing write failed the shared origin check."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -4557,6 +6502,26 @@
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "An Origin-bearing write failed the shared origin check."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           }
         },
         "security": [],
@@ -4601,6 +6566,26 @@
               }
             },
             "description": "Acknowledged account-mail request, not proof of delivery."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "An Origin-bearing write failed the shared origin check."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           },
           "422": {
             "content": {
@@ -4666,6 +6651,26 @@
             },
             "description": "Acknowledged account-mail request, not proof of delivery."
           },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "An Origin-bearing write failed the shared origin check."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -4701,11 +6706,33 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {
-                "schema": {}
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Password-selection form or invalid-link HTML."
+          },
+          "404": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Password-selection form or invalid-link HTML."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           },
           "422": {
             "content": {
@@ -4738,14 +6765,6 @@
           }
         ],
         "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
           "303": {
             "description": "Signup/reset redirects to sign-in. Successful invitation can establish a member session.",
             "headers": {
@@ -4756,15 +6775,55 @@
               }
             }
           },
-          "422": {
+          "403": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/HttpError"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "An Origin-bearing write failed the shared origin check."
+          },
+          "404": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Password-selection form or invalid-link HTML."
+          },
+          "409": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Account/link state conflict or invalid password HTML."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
+          },
+          "422": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Account/link state conflict or invalid password HTML."
           }
         },
         "security": [],
@@ -4837,6 +6896,16 @@
               }
             }
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -4867,6 +6936,26 @@
                 }
               }
             }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "An Origin-bearing write failed the shared origin check."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           }
         },
         "security": [],
@@ -4922,6 +7011,16 @@
               }
             },
             "description": "Missing, expired or invalid credential."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           }
         },
         "security": [
@@ -4960,6 +7059,16 @@
               }
             },
             "description": "Missing, expired or invalid credential."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           }
         },
         "security": [
@@ -5010,6 +7119,16 @@
             },
             "description": "Missing, expired or invalid credential."
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -5057,6 +7176,16 @@
               }
             },
             "description": "Missing, expired or invalid credential."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           }
         },
         "security": [
@@ -5097,10 +7226,20 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/UnmanagedComputer"
+                  },
+                  "type": "array"
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Stored unmatched directory rows, or CSV only when format=csv."
           },
           "401": {
             "content": {
@@ -5111,6 +7250,16 @@
               }
             },
             "description": "Missing, expired or invalid credential."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           },
           "422": {
             "content": {
@@ -5162,6 +7311,16 @@
               }
             },
             "description": "Missing, expired or invalid credential."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           }
         },
         "security": [
@@ -5226,6 +7385,16 @@
             },
             "description": "Role, browser-session or local MFA requirement refused the operation."
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -5285,6 +7454,16 @@
             },
             "description": "Role, browser-session or local MFA requirement refused the operation."
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -5307,7 +7486,7 @@
     },
     "/api/evidence/ledger": {
       "get": {
-        "description": "Return recent ledger entries, matching total, and integrity problems for the organisation.\n\nlimit ranges from 1 to 1000; group optionally selects a category. Integrity checking may\nreuse a verified prefix, with a full verification at least hourly.\n\nRequires a user session or a read-only organisation API token. API tokens cannot use write methods.",
+        "description": "Return problems, newest entries and matching total for the user's ledger.\n\nuser needs a session or eligible read token. s queries the organisation.\nlimit is 1..1000, default 100. Optional group selects fixed category patterns.\nIntegrity uses cached-prefix verification with periodic full checks. It is\nnot scoped to the category/limit. Read and total queries are separate.\nDatabase/checkpoint/backend or malformed stored-data errors can propagate.",
         "operationId": "ledger_api_evidence_ledger_get",
         "parameters": [
           {
@@ -5349,10 +7528,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/LedgerPage"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Source-backed response fields. Consult the matching reference for observation, integrity and persistence limits."
           },
           "401": {
             "content": {
@@ -5363,6 +7544,16 @@
               }
             },
             "description": "Missing, expired or invalid credential."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           },
           "422": {
             "content": {
@@ -5389,7 +7580,7 @@
     },
     "/api/evidence/pack": {
       "get": {
-        "description": "Return a signed ZIP evidence pack for the requested trailing days.\n\nRefuse with 409 if ledger verification fails before signing. The ZIP includes JSON,\nsignature, public key, and instructions; the trusted fingerprint must arrive separately.\n\nRequires a user session or a read-only organisation API token. API tokens cannot use write methods.\n\nOperation-specific HTTP errors: 409. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
+        "description": "Return an application/zip evidence attachment for trailing days, default 90.\n\nuser needs a session or eligible read token. s verifies cached/new ledger\nintegrity, creates a checkpoint and builds/signs period data. Verify included\nentries again before signing. Integrity refusals return 409. Checkpoint/key\nside effects can precede later failures. The ZIP's key is not an independent\ntrust anchor. Database/file/key/backend errors can propagate.",
         "operationId": "evidence_pack_api_evidence_pack_get",
         "parameters": [
           {
@@ -5408,11 +7599,24 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {
-                "schema": {}
+              "application/zip": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Signed ZIP containing pack.json matching EvidencePackDocument, plus signature/key/instructions.",
+            "headers": {
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-pack-json-schema": {
+              "$ref": "#/components/schemas/EvidencePackDocument"
+            }
           },
           "401": {
             "content": {
@@ -5423,6 +7627,16 @@
               }
             },
             "description": "Missing, expired or invalid credential."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           },
           "422": {
             "content": {
@@ -5449,16 +7663,28 @@
     },
     "/api/evidence/public-key": {
       "get": {
-        "description": "Publish this out of band (website, contract, auditor email); auditors verify packs against it, not the copy in the zip.",
+        "description": "Return pem, fingerprint_sha256 and verifier_sha256 without authentication.\n\nsigning_key can create a local key or call the configured backend. Hashes\nidentify returned public key/verifier bytes. This response is not its own\nindependent trust channel. File/key/backend/encoding errors propagate.",
         "operationId": "evidence_public_key_api_evidence_public_key_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/EvidencePublicKey"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Source-backed response fields. Consult the matching reference for observation, integrity and persistence limits."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           }
         },
         "security": [],
@@ -5468,7 +7694,7 @@
     },
     "/api/evidence/report": {
       "get": {
-        "description": "Return the evidence report for the requested trailing days.\n\ndays ranges from 1 to 730 and defaults to 90. ledger.entries is an integer count\nin both modes. summary=true omits the assets and findings arrays.\n\nRequires a user session or a read-only organisation API token. API tokens cannot use write methods.",
+        "description": "Return current evidence data for trailing days, default 90 and range 1..730.\n\nuser needs a session or eligible read token and s supplies stored records.\nBoth modes use an integer ledger entry count with head_hash only. summary\nomits assets/findings. This does not sign or independently verify the full\nledger here. Database, checkpoint and malformed stored-data errors propagate.",
         "operationId": "evidence_report_api_evidence_report_get",
         "parameters": [
           {
@@ -5498,10 +7724,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceReport"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Source-backed response fields. Consult the matching reference for observation, integrity and persistence limits."
           },
           "401": {
             "content": {
@@ -5512,6 +7740,16 @@
               }
             },
             "description": "Missing, expired or invalid credential."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           },
           "422": {
             "content": {
@@ -5538,16 +7776,28 @@
     },
     "/api/evidence/verify.py": {
       "get": {
-        "description": "The offline verifier, published here (and by hash next to the key) rather than inside the pack it checks.",
+        "description": "Return current offline verifier source as text/x-python, without authentication.\n\nSource read/decoding errors propagate. Download success alone does not\nestablish a separately trusted hash or key fingerprint.",
         "operationId": "evidence_verifier_api_evidence_verify_py_get",
         "responses": {
           "200": {
             "content": {
-              "application/json": {
-                "schema": {}
+              "text/x-python": {
+                "schema": {
+                  "type": "string"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Offline verifier source bytes."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           }
         },
         "security": [],
@@ -5761,6 +8011,16 @@
             },
             "description": "Missing, expired or invalid credential."
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -5931,6 +8191,16 @@
             },
             "description": "Missing, expired or invalid credential."
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -6008,6 +8278,16 @@
               }
             },
             "description": "Role, browser-session or local MFA requirement refused the operation."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           },
           "422": {
             "content": {
@@ -6088,6 +8368,16 @@
               }
             },
             "description": "Role, browser-session or local MFA requirement refused the operation."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           },
           "422": {
             "content": {
@@ -6257,6 +8547,16 @@
               }
             },
             "description": "Missing, expired or invalid credential."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           },
           "422": {
             "content": {
@@ -6437,6 +8737,16 @@
             },
             "description": "Missing, expired or invalid credential."
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -6495,6 +8805,16 @@
               }
             },
             "description": "Missing, expired or invalid credential."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           },
           "422": {
             "content": {
@@ -6575,6 +8895,16 @@
             },
             "description": "Role, browser-session or local MFA requirement refused the operation."
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -6651,6 +8981,16 @@
             },
             "description": "Role, browser-session or local MFA requirement refused the operation."
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -6695,6 +9035,16 @@
               }
             },
             "description": "Missing, expired or invalid credential."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           }
         },
         "security": [
@@ -6754,6 +9104,16 @@
             },
             "description": "Role, browser-session or local MFA requirement refused the operation."
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -6808,6 +9168,16 @@
               }
             },
             "description": "Role, browser-session or local MFA requirement refused the operation."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           }
         },
         "security": [
@@ -6857,6 +9227,16 @@
             },
             "description": "Role, browser-session or local MFA requirement refused the operation."
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -6904,6 +9284,16 @@
               }
             },
             "description": "Role, browser-session or local MFA requirement refused the operation."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           }
         },
         "security": [
@@ -6972,6 +9362,16 @@
             },
             "description": "Invalid confirmation link HTML."
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -7033,6 +9433,16 @@
             },
             "description": "Consent form or confirmation HTML."
           },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "An Origin-bearing write failed the shared origin check."
+          },
           "404": {
             "content": {
               "text/html": {
@@ -7042,6 +9452,16 @@
               }
             },
             "description": "Invalid confirmation link HTML."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           },
           "422": {
             "content": {
@@ -7105,6 +9525,16 @@
               }
             },
             "description": "Missing, expired or invalid credential."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           },
           "422": {
             "content": {
@@ -7171,6 +9601,16 @@
               }
             },
             "description": "Role, browser-session or local MFA requirement refused the operation."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           },
           "422": {
             "content": {
@@ -7269,6 +9709,16 @@
             },
             "description": "Role, browser-session or local MFA requirement refused the operation."
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -7352,6 +9802,16 @@
             },
             "description": "Role, browser-session or local MFA requirement refused the operation."
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -7418,6 +9878,16 @@
             },
             "description": "Role, browser-session or local MFA requirement refused the operation."
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -7462,6 +9932,16 @@
               }
             },
             "description": "Missing, expired or invalid credential."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           }
         },
         "security": [
@@ -7519,6 +9999,16 @@
             },
             "description": "Role, browser-session or local MFA requirement refused the operation."
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -7573,6 +10063,16 @@
               }
             },
             "description": "Role, browser-session or local MFA requirement refused the operation."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           }
         },
         "security": [
@@ -7626,6 +10126,16 @@
               }
             },
             "description": "Role, browser-session or local MFA requirement refused the operation."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           },
           "422": {
             "content": {
@@ -7691,6 +10201,16 @@
               }
             },
             "description": "Role, browser-session or local MFA requirement refused the operation."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           }
         },
         "security": [
@@ -7736,6 +10256,16 @@
               }
             },
             "description": "Role, browser-session or local MFA requirement refused the operation."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           }
         },
         "security": [
@@ -7789,6 +10319,16 @@
               }
             },
             "description": "Role, browser-session or local MFA requirement refused the operation."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           },
           "422": {
             "content": {
@@ -7844,6 +10384,16 @@
               }
             },
             "description": "Role, browser-session or local MFA requirement refused the operation."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           }
         },
         "security": [
@@ -7879,6 +10429,16 @@
               }
             },
             "description": "Missing, expired or invalid credential."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           }
         },
         "security": [
@@ -7937,6 +10497,16 @@
               }
             },
             "description": "Role, browser-session or local MFA requirement refused the operation."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           },
           "422": {
             "content": {
@@ -8034,6 +10604,16 @@
             },
             "description": "Role, browser-session or local MFA requirement refused the operation."
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -8100,6 +10680,16 @@
             },
             "description": "Role, browser-session or local MFA requirement refused the operation."
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -8157,6 +10747,16 @@
               }
             },
             "description": "Role, browser-session or local MFA requirement refused the operation."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           }
         },
         "security": [
@@ -8210,6 +10810,16 @@
               }
             },
             "description": "Role, browser-session or local MFA requirement refused the operation."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           },
           "422": {
             "content": {
@@ -8270,6 +10880,16 @@
             },
             "description": "Role, browser-session or local MFA requirement refused the operation."
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -8327,6 +10947,16 @@
               }
             },
             "description": "Role, browser-session or local MFA requirement refused the operation."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           }
         },
         "security": [
@@ -8396,6 +11026,16 @@
             },
             "description": "Role, browser-session or local MFA requirement refused the operation."
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -8454,6 +11094,16 @@
               }
             },
             "description": "Role, browser-session or local MFA requirement refused the operation."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           },
           "422": {
             "content": {
@@ -8529,6 +11179,16 @@
             },
             "description": "Role, browser-session or local MFA requirement refused the operation."
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -8576,6 +11236,16 @@
               }
             },
             "description": "Missing, expired or invalid credential."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           }
         },
         "security": [
@@ -8636,6 +11306,16 @@
             },
             "description": "Missing, expired or invalid credential."
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -8661,7 +11341,7 @@
     },
     "/install.ps1": {
       "get": {
-        "description": "Return the PowerShell installer with this server URL and release channel substituted.\n\nOperation-specific HTTP errors: 400. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
+        "description": "Return PowerShell installer text with server origin/channel substituted.\n\nrequest supplies fallback base URL unless NIMSTEAD_PUBLIC_URL is truthy.\nRequire the same strict HTTP(S) origin pattern as install_sh, otherwise 400.\nFile/channel errors propagate. No installation or authentication occurs here.",
         "operationId": "install_ps1_install_ps1_get",
         "responses": {
           "200": {
@@ -8673,6 +11353,26 @@
               }
             },
             "description": "Distribution file bytes; see the platform-update reference for verification and availability."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Unsafe public-origin text cannot be embedded into the installer."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           }
         },
         "security": [],
@@ -8682,7 +11382,7 @@
     },
     "/install.sh": {
       "get": {
-        "description": "Return the Linux installer with this server URL and release channel substituted.\n\nOperation-specific HTTP errors: 400. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
+        "description": "Return Linux installer text with server origin and current channel substituted.\n\nrequest supplies fallback base URL unless NIMSTEAD_PUBLIC_URL is truthy.\nRequire the configured HTTP(S) hostname/port pattern or return 400. Paths,\ntrailing slash and IPv6 literals are outside that pattern. No host install\noccurs. File/channel errors propagate. No user authentication is required.",
         "operationId": "install_sh_install_sh_get",
         "responses": {
           "200": {
@@ -8694,6 +11394,26 @@
               }
             },
             "description": "Distribution file bytes; see the platform-update reference for verification and availability."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Unsafe public-origin text cannot be embedded into the installer."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
           }
         },
         "security": [],

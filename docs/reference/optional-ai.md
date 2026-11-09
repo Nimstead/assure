@@ -20,7 +20,7 @@ An enabled status reports configuration presence. It does not prove that the cre
 
 GET accepts a user session or an eligible read-only organisation token. POST requires a user session. Read-only API tokens cannot use POST.
 
-Enabled POST requests pass through limits of 30 per user and 200 per organisation per hour. The quota check precedes explanation-cache lookup. The status operation does not call the provider.
+Enabled POST requests pass through limits of 30 per user and 200 per organisation per hour. The quota check precedes explanation-cache lookup. It records attempts rather than actual provider calls. User refusal short-circuits the organisation counter. The status operation does not call the provider.
 
 | HTTP status | Condition |
 | --- | --- |

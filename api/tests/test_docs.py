@@ -84,7 +84,7 @@ class ApiReference(unittest.TestCase):
         catalog = generated["docs/reference/api-endpoints.md"]
         self.assertIn("`POST` | [`/api/agent/enroll`", catalog)
         self.assertIn("Asset upload/agent key or admin session", catalog)
-        self.assertIn("Empty response schemas do not define a stable response contract", catalog)
+        self.assertIn("Error responses in OpenAPI are not an exhaustive list of runtime failures", catalog)
 
         schema = json.loads(generated["docs/reference/openapi.json"])
         self.assertEqual(schema["paths"]["/api/assets"]["get"]["security"],
@@ -94,6 +94,18 @@ class ApiReference(unittest.TestCase):
                          [{"SessionCookie": []}, {"AgentToken": []}, {"UploadToken": []}])
         self.assertEqual(schema["paths"]["/api/agent/jobs"]["get"]["security"], [{"AgentToken": []}])
         self.assertEqual(schema["paths"]["/api/agent/enroll"]["post"]["x-authentication"], "Enrolment token in JSON body")
+
+        for path, operations in schema["paths"].items():
+            for method, operation in operations.items():
+                for status, response in operation.get("responses", {}).items():
+                    if status.startswith("2"):
+                        for media, payload in response.get("content", {}).items():
+                            with self.subTest(path=path, method=method, status=status, media=media):
+                                self.assertTrue(payload.get("schema"), "Success payload lacks a schema")
+        for path in ("/api/auth/sso/start", "/api/auth/sso/callback", "/api/auth/signup/confirm"):
+            method = "get" if path.endswith("callback") else "post"
+            self.assertNotIn("200", schema["paths"][path][method]["responses"])
+            self.assertIn("303", schema["paths"][path][method]["responses"])
 
         upload = schema["paths"]["/api/assets/{asset_id}/sbom"]["post"]
         self.assertTrue(upload["requestBody"]["required"])

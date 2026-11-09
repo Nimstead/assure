@@ -405,12 +405,11 @@ def build_pack(s: Session, org_id: str, start: datetime, end: datetime, with_ent
         "verified_domains": sorted(domains),
         "generated_at": datetime.now(UTC).isoformat(),
         "period": {"from": s_iso, "to": e_iso},
-        "basis": ("Findings come from authenticated agent inventories matched against OSV advisories. "
-                  "Time to remediate is measured from first detection to the first inventory showing a fixed version "
-                  "(not from the vendor's release date). "
-                  "Every detection and resolution, every inventory that changed and at least one inventory a day per host "
-                  "are recorded in a SHA-256 hash-chained ledger; "
-                  "this pack is signed with Ed25519."),
+        "basis": ("Findings reflect stored agent, SBOM and external-scan observations evaluated against current detection data. "
+                  "Time to remediate measures first recorded detection to recorded resolution, not the vendor's release date. "
+                  "Resolution can reflect changes in observations or advisory data. "
+                  "The ledger records detections, resolutions and received inventory events under its logging policy. "
+                  "This pack is signed with Ed25519."),
         "sla_days": sla_by_priority,
         "sla_changes": sla_changes,
         "metrics": m,

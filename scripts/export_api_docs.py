@@ -42,6 +42,7 @@ def render() -> dict[str, str]:
     with httpx.Client() as client:
         app = create_app("sqlite://", oidc_http=client)
         schema = app.openapi()
+    schema["info"]["license"] = {"name": "FSL-1.1-ALv2", "url": "https://github.com/Nimstead/assure/blob/main/LICENSE.md"}
     schema["servers"] = [{"url": "/", "description": "The Assure server you operate"}]
     schema["components"]["securitySchemes"] = {
         "SessionCookie": {"type": "apiKey", "in": "cookie", "name": SESSION_COOKIE,
@@ -196,12 +197,101 @@ def render() -> dict[str, str]:
     schema["components"]["schemas"]["SignupCreated"] = {"type": "object", "properties": {
         "email": {"type": "string"}, "org": {"type": "string"}, "next": {"const": "signin"}},
         "required": ["email", "org"], "additionalProperties": False}
+    def record(name, properties, optional=()):
+        """Register a closed response object, except explicitly optional field names."""
+        schema["components"]["schemas"][name] = {"type": "object", "properties": properties,
+                                                   "required": [k for k in properties if k not in optional], "additionalProperties": False}
+        return {"$ref": f"#/components/schemas/{name}"}
+
+    string = {"type": "string"}
+    nullable_text = {"type": ["string", "null"]}
+    integer = {"type": "integer"}
+    boolean = {"type": "boolean"}
+    number_or_null = {"type": ["number", "null"]}
+    strings = {"type": "array", "items": string}
+    counts = {"type": "object", "additionalProperties": integer}
+    record("HttpError", {"detail": string})
+    record("AIStatus", {"enabled": boolean})
+    record("AIExplanation", {"text": string, "model": string})
+    from nimstead.ai import SearchFilter
+    search_filter = SearchFilter.model_json_schema()
+    search_filter.update(required=list(search_filter["properties"]), additionalProperties=False)
+    schema["components"]["schemas"]["AISearchFilter"] = search_filter
+    record("DirectoryReceipt", {"computers": integer})
+    record("UnmanagedComputer", {**{k: string for k in ("domain", "name", "os", "os_version", "last_logon")}, "end_of_support": nullable_text})
+    entry = record("LedgerEntry", {**{k: string for k in ("ts", "kind", "subject", "prev_hash", "hash")},
+                                    "seq": integer, "data": {"type": "object", "description": "Event-specific ledger payload."}})
+    record("LedgerPage", {"problems": strings, "entries": {"type": "array", "items": entry}, "total": integer})
+    record("EvidencePublicKey", {k: string for k in ("pem", "fingerprint_sha256", "verifier_sha256")})
+    finding = record("EvidenceFinding", {**{k: string for k in ("vuln_id", "package", "host", "priority", "status", "first_seen")},
+        "cvss": number_or_null, "kev": boolean, "resolved_at": nullable_text, "days_open": {"type": "number"}, "sla_days": integer, "within_sla": boolean})
+    control = record("EvidenceControl", {**{k: string for k in ("framework", "control", "requirement", "status", "evidence")},
+                                        "exceptions": integer}, optional=("exceptions",))
+    metric_names = ("resolved", "resolved_within_sla", "overdue_open", "ce_in_scope_resolved", "ce_in_scope_resolved_in_14d",
+                    "ce_in_scope_overdue", "critical_overdue_30d", "findings_without_ledger_record", "assets", "assets_reporting",
+                    "assets_silent_now", "changes", "changes_authorised", "changes_self_approved", "forward_only_changes", "sla_changes")
+    metrics = record("EvidenceMetrics", {**{k: integer for k in metric_names}, "mttr_days": number_or_null})
+    asset = record("EvidenceAsset", {k: string for k in ("hostname", "os", "last_seen")})
+    change = record("EvidenceForwardChange", {**{k: string for k in ("job", "host", "summary", "status", "updated")}, "approved_by": nullable_text})
+    policy = record("EvidencePolicyChange", {"ts": string, "by": nullable_text, "sla_days": counts})
+    report_fields = {**{k: string for k in ("format", "organisation", "organisation_id", "organisation_created", "generated_at", "basis")},
+        "verified_domains": strings, "period": {"type": "object", "properties": {"from": string, "to": string},
+                                                "required": ["from", "to"], "additionalProperties": False},
+        "sla_days": counts, "sla_changes": {"type": "array", "items": policy}, "metrics": metrics,
+        "controls": {"type": "array", "items": control}, "forward_only_changes": {"type": "array", "items": change},
+        "assets": {"type": "array", "items": asset}, "findings": {"type": "array", "items": finding},
+        "ledger": {"type": "object", "properties": {"entries": integer, "head_hash": string},
+                   "required": ["entries", "head_hash"], "additionalProperties": False}}
+    record("EvidenceReport", report_fields, optional=("assets", "findings"))
+    checkpoint = record("EvidenceCheckpoint", {**{k: string for k in ("org_id", "hash", "ts", "sig")}, "seq": integer})
+    pack_fields = {**report_fields, "ledger": {"type": "object", "properties": {
+        "entries": {"type": "array", "items": entry}, "head_hash": string,
+        "chain_head": {"type": "object", "properties": {"seq": integer, "hash": string}, "required": ["seq", "hash"], "additionalProperties": False},
+        "checkpoints": {"type": "array", "items": checkpoint}}, "required": ["entries", "head_hash", "chain_head", "checkpoints"], "additionalProperties": False}}
+    record("EvidencePackDocument", pack_fields)
+    way = record("HostPathWay", {"what": string, "ref": string, "grade": nullable_text, "kev": boolean, "flaws": integer}, optional=("flaws",))
+    step = record("HostPathStep", {"stage": string, "label": string, "ways": {"type": "array", "items": way}, "count": integer})
+    break_at = record("HostPathBreak", {"stage": string, "label": string, "fixes": integer, "refs": strings})
+    continuation = {"type": ["object", "null"], "properties": {"label": string, "ways": {"type": "array", "items": way}, "count": integer},
+                    "required": ["label", "ways", "count"], "additionalProperties": False}
+    path = record("HostAttackPath", {"kind": string, "start": string, "grade": nullable_text,
+        "steps": {"type": "array", "items": step}, "then": continuation, "break_at": break_at})
+    vulnerability = record("ReportVulnerability", {"id": string, "kev": boolean, "cvss": number_or_null,
+        **{k: nullable_text for k in ("cvss_source", "fixed", "kb", "summary", "vendor_status")}})
+    vulnerable = record("VulnerableInstall", {**{k: string for k in ("family", "product", "expected", "action")},
+        **{k: nullable_text for k in ("instance", "grade", "version", "observed", "source", "kernel", "raise_confidence")},
+        **{k: integer for k in ("fixed_after_restart", "count", "no_fix", "no_fix_planned", "known_exploited")},
+        "pending_reboot": boolean, "worst_cvss": number_or_null, "vulnerabilities": {"type": "array", "items": vulnerability}})
+    incomplete = record("IncompleteChecks", {**{k: string for k in ("outcome", "reason", "why", "what_to_do")},
+        "blocked_by": nullable_text, "source_said": nullable_text, "count": integer, "examples": strings})
+    not_vulnerable = record("NonVulnerableInstall", {"family": string, "product": string, "instance": nullable_text, "grade": nullable_text, "checks": integer})
+    application = record("ApplicationInstall", {"ecosystem": string, "product": string, "instance": string, "grade": nullable_text, "outcomes": counts})
+    source = record("ReportSource", {**{k: string for k in ("name", "label", "state")}, "count": integer, "error": nullable_text})
+    family = record("ReportFamily", {"label": string, "attempted": integer, "determined": integer, "outcomes": counts})
+    app_coverage = record("ReportApplications", {**{k: integer for k in ("installs", "judged", "vulnerable", "no_advisory", "left_to_package_manager", "sbom_components_not_assessed")},
+                                                "not_looked_for": strings})
+    coverage = record("ReportCoverage", {"sources": {"type": "array", "items": source}, "families": {"type": "object", "additionalProperties": family},
+                                         "applications": app_coverage, "statements": strings})
+    headline = record("ReportHeadline", {"status": string, "text": string})
+    record("ScanReport", {**{k: string for k in ("host", "kind", "os", "agent_version", "engine_version", "content_version", "inventory_sha256", "verdicts_sha256")},
+        "headline": headline,
+        "inventory_read_at": nullable_text, "vulnerable": {"type": "array", "items": vulnerable}, "undetermined": {"type": "array", "items": incomplete},
+        "not_vulnerable": {"type": "array", "items": not_vulnerable}, "not_applicable": integer,
+        "applications": {"type": "array", "items": application}, "attack_paths": {"type": "array", "items": path}, "coverage": coverage})
+    compact_path = record("FleetHostPath", {"kind": string, "start": string, "grade": nullable_text, "steps": strings, "break_at": break_at})
+    host = record("FleetHost", {"hostname": string, "judged": boolean, "entry": boolean, "internet_facing": boolean, "paths": {"type": "array", "items": compact_path}})
+    fleet_way = record("FleetWay", {**{k: string for k in ("via", "how", "because", "grade")}, "port": integer})
+    edge = record("FleetEdge", {"from": string, "to": string, "grade": string, "ways": {"type": "array", "items": fleet_way}})
+    reach = record("FleetReach", {"host": string, "hops": strings, "grade": string, "fix_on_host": strings})
+    chain = record("FleetChain", {"start": string, "why_start": string, "reach": {"type": "array", "items": reach}})
+    record("FleetPaths", {"hosts": {"type": "object", "additionalProperties": host}, "edges": {"type": "array", "maxItems": 2000, "items": edge},
+                          "truncated": boolean, "chains": {"type": "array", "maxItems": 50, "items": chain}})
     lines = ["# HTTP endpoint catalog", "",
              "Use the [OpenAPI JSON](openapi.json) for typed parameters, request models, defaults, and declared response schemas.", "",
-             "The export adds server/authentication metadata and selected contracts: account/authentication, assets, inventory, fleet summary, findings, remediation, policy, Windows updates, baselines, notifications, CSV, SBOM, external-scan counters, agent manifest and distribution files. Other definitions come from the app.", "",
+             "The export adds server/authentication metadata and response contracts for account/authentication, assets, inventory, fleet summary/paths, findings, remediation, policy, Windows updates, baselines, notifications, AI, directory, scan reports, evidence, CSV, SBOM, agent manifests and distribution files. Request definitions come from the app.", "",
              "Authentication labels describe entry requirements. Organisation ownership, roles, origin checks, quotas, "
              "and operation-specific state checks still apply. See [HTTP API reference](http-api.md).", "",
-             "Empty response schemas do not define a stable response contract. Inspect the linked handler and its tests "
+             "The export defines success payloads and selected shared errors. Inspect the linked handler and its tests "
              "for returned dictionary fields. Error responses in OpenAPI are not an exhaustive list of runtime failures.", "",
              "## Operations", "",
              "| Method | Path | Authentication | Purpose |",
@@ -275,6 +365,43 @@ def render() -> dict[str, str]:
             if route.path == "/api/auth/signup/confirm" and method == "POST":
                 operation["responses"]["303"] = {"description": "Signup/reset redirects to sign-in. Successful invitation can establish a member session.",
                     "headers": {"Location": {"schema": {"type": "string"}}}}
+            operation["responses"].setdefault("413", {"description": "Declared request body exceeds the shared limit, or a consumed stream crosses it.",
+                "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HttpError"}}}})
+            if method not in {"GET", "HEAD", "OPTIONS"}:
+                operation["responses"].setdefault("403", {"description": "An Origin-bearing write failed the shared origin check.",
+                    "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HttpError"}}}})
+            report_name = {"/api/ai/status": "AIStatus", "/api/ai/explain/{finding_id}": "AIExplanation", "/api/ai/search": "AISearchFilter",
+                "/api/agent/directory": "DirectoryReceipt", "/api/evidence/ledger": "LedgerPage", "/api/evidence/public-key": "EvidencePublicKey",
+                "/api/evidence/report": "EvidenceReport", "/api/assets/{asset_id}/scan-report": "ScanReport", "/api/attack-paths": "FleetPaths"}.get(route.path)
+            if report_name:
+                operation["responses"]["200"] = {"description": "Source-backed response fields. Consult the matching reference for observation, integrity and persistence limits.",
+                    "content": {"application/json": {"schema": {"$ref": f"#/components/schemas/{report_name}"}}}}
+            if route.path == "/api/directory/unmanaged":
+                operation["responses"]["200"] = {"description": "Stored unmatched directory rows, or CSV only when format=csv.", "content": {
+                    "application/json": {"schema": {"type": "array", "items": {"$ref": "#/components/schemas/UnmanagedComputer"}}},
+                    "text/csv": {"schema": {"type": "string"}}}}
+            if route.path == "/api/evidence/pack":
+                operation["responses"]["200"] = {"description": "Signed ZIP containing pack.json matching EvidencePackDocument, plus signature/key/instructions.",
+                    "x-pack-json-schema": {"$ref": "#/components/schemas/EvidencePackDocument"},
+                    "content": {"application/zip": {"schema": {"type": "string", "format": "binary"}}},
+                    "headers": {"Content-Disposition": {"schema": {"type": "string"}}}}
+            if route.path == "/api/evidence/verify.py":
+                operation["responses"]["200"] = {"description": "Offline verifier source bytes.", "content": {"text/x-python": {"schema": {"type": "string"}}}}
+            if route.path in {"/install.sh", "/install.ps1"}:
+                operation["responses"]["400"] = {"description": "Unsafe public-origin text cannot be embedded into the installer.",
+                    "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HttpError"}}}}
+            if route.path == "/agent/runtime/{arch}.zip":
+                operation["responses"]["404"] = {"description": "Unsupported, unavailable or mismatched signed runtime.",
+                    "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HttpError"}}}}
+            if route.path == "/api/auth/signup/confirm":
+                for status in ("200", "404"):
+                    operation["responses"][status] = {"description": "Password-selection form or invalid-link HTML.",
+                        "content": {"text/html": {"schema": {"type": "string"}}}}
+                if method == "POST":
+                    operation["responses"].pop("200", None)
+                    for status in ("409", "422"):
+                        operation["responses"][status] = {"description": "Account/link state conflict or invalid password HTML.",
+                            "content": {"text/html": {"schema": {"type": "string"}}}}
             asset_response = None
             asset_status = "200"
             if route.path == "/api/assets":

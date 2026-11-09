@@ -12,6 +12,8 @@ Evidence APIs return either JSON lookup/report data or a signed ZIP. These field
 | `GET /api/evidence/report` | Report JSON; `ledger.entries` is an integer count in both summary modes |
 | `GET /api/evidence/pack` | `application/zip` attachment. Returns HTTP 409 if integrity checks refuse signing |
 
+The report text describes stored observations and recorded resolutions. Advisory changes can resolve a finding without a package update. The signed basis states this limit.
+
 The report and pack accept `days` from 1 through 730, default 90. The report also accepts `summary`, default false. With `summary=true`, it omits `assets` and `findings`; it retains metrics and controls.
 
 The ledger accepts `limit` from 1 through 1,000, default 100. Its optional `group` is `decisions`, `fixes`, `detections`, or `access`. Entries are newest first. Organisation session/read-token requirements are in [HTTP API reference](http-api.md).
@@ -119,3 +121,5 @@ Ledger entry records contain `seq` (integer), `ts`, `kind`, `subject`, `prev_has
 Each checkpoint contains `org_id`, `seq`, `hash`, `ts`, and `sig`. Its base64 signature covers canonical JSON of the first four fields. Checkpoints can cover history outside the pack's selected period.
 
 See [verify an evidence pack](../how-to/verify-evidence.md) for the procedure and [evidence trust](../explanation/evidence-trust.md) for the limits.
+
+The public-key endpoint can create a missing local signing key or call the configured key backend. Retrieval can therefore have side effects or fail. The ZIP route can write a checkpoint before a later refusal.

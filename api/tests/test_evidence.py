@@ -406,3 +406,11 @@ def test_evidence_status_is_current_but_resolution_is_limited_by_period(env):
     row = next(row for row in pack["findings"] if row["vuln_id"] == finding.vuln_id and row["package"] == finding.package)
     assert row["status"] == "resolved"
     assert row["resolved_at"] is None
+
+
+def test_basis_describes_resolution_without_assuming_a_package_update(env):
+    c, _ = setup_flow(env)
+    basis = c.get("/api/evidence/report").json()["basis"]
+    assert "agent, SBOM and external-scan observations" in basis
+    assert "Resolution can reflect changes in observations or advisory data" in basis
+    assert "first inventory showing a fixed version" not in basis

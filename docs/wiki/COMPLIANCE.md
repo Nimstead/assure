@@ -1,6 +1,6 @@
 # Documentation compliance audit
 
-Status: in progress. Documentation presence and correct folder names do not establish Diataxis or Code Documenter compliance.
+Status: paused at the user's request to wrap up. The whole-repository audit is incomplete. Documentation presence and correct folder names do not establish Diataxis or Code Documenter compliance.
 
 ## Scope and conventions
 
@@ -355,3 +355,16 @@ Added twelve account response definitions and branch/status bindings, plus share
 99 tests and 53 subchecks pass. Three new fixture tests verify published account fields, MFA/session branches, credential revocation, invitation sessions, saved domain verification and omitted-issuer behavior. App executable AST is unchanged. Ruff, export freshness and repository presence/links pass. The 85-article build and six site tests pass. Playwright MCP verifies desktop/mobile reference, downloaded schema branches, MFA recovery text, search and section anchors. Prose received humanizer and STE-style review. All mail/provider traffic used local fakes.
 
 Remaining app helper/handler gaps, sandbox/web helper contracts and final whole-repository editorial/example review keep this objective active.
+
+
+## Final API batch and requested wrap-up
+
+Completed the remaining AI, directory, grouped report, fleet-path and evidence success schemas. The export contains 109 definitions for 83 operations, with no unspecified success payloads. HTML confirmation and ZIP/Python downloads use their actual media types. Redirect-only account/SSO operations no longer advertise fictitious HTTP 200 responses. Shared consumed-body/origin errors and the repository license metadata are declared.
+
+Corrected deployment-helper, health and background-task guarantees. Unmanaged migration state can pass health. Unread streams are not independently drained. Report storage is best effort. Rewrote the signed evidence basis to include SBOM/external observations and resolution through observation or advisory changes. This changes descriptive report text, not detection decisions or metrics.
+
+87 focused tests and 128 subchecks pass. The updated documentation test checks every success payload has a schema and redirect-only routes omit 200. Fifteen representative API/engine payload variants validate against nested JSON schemas with cached Ajv 2020. They include populated Windows paths, application/Linux reports, evidence summary/full/ZIP documents, directory and AI results. All provider/mail work uses local fixtures. Ruff, export freshness and repository presence/links pass.
+
+Redocly validates with four assessed warnings: three redirect-only operations lack 2xx responses, and the ZIP-member document schema is referenced through a vendor extension. These are documented rather than hidden with invented responses. The 85-article build and six site tests pass. A build stalled in a duplicated generated directory. Its owned process was stopped after diagnosis, and the generated directory was isolated by rename. A clean rebuild passed. Playwright MCP verified the rebuilt HTTP/evidence references, actual download schemas and mobile section links without overflow.
+
+The user requested wrap-up. This checkpoint stops the audit after publication of the current batch. Sandbox/web helper review and the final whole-repository editorial/example completion audit remain outstanding. This status does not assert full Diataxis or Code Documenter compliance.

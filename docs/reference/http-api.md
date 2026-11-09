@@ -6,7 +6,7 @@ The server uses FastAPI. Its schema is available at `/api/openapi.json`. Set `NI
 
 The live schema describes typed request parameters and request models. Many routes return dictionaries without response models, so their schema does not fully describe response fields. Use the route implementation and its tests when a response schema is empty.
 
-The [endpoint catalog](api-endpoints.md) lists every operation. The [exported OpenAPI JSON](openapi.json) provides lookup without a running server. The export adds authentication metadata and selected contracts: assets, inventory, fleet summary, SBOM, external-scan counters, agent manifest, and distribution files. Its SBOM object schema does not replace the full upstream format schemas. Prefer your installed server’s schema when its version differs.
+The [endpoint catalog](api-endpoints.md) lists every operation. The [exported OpenAPI JSON](openapi.json) provides lookup without a running server. The export adds authentication metadata, JSON response definitions and the actual HTML, CSV, ZIP and source-file media types. Its SBOM object schema does not replace the full upstream format schemas. Prefer your installed server’s schema when its version differs.
 
 The [asset and inventory reference](assets-api.md) defines asset variants, replacement behavior, enrolment results and fleet summary fields.
 
@@ -67,7 +67,7 @@ The grouped endpoint does not apply the `overdue` filter. Do not use its results
 | 403 | Role, session type, two-step sign-in, or origin does not permit the operation |
 | 404 | Resource unavailable to this caller; tenant ownership checks can return this status |
 | 409 | Current state refuses the operation, including remediation planning conflicts |
-| 413 | Request body exceeds 10 MiB |
+| 413 | Declared body exceeds 10 MiB, or a consumed request stream crosses the limit |
 | 422 | Request validation failed, or the SBOM is invalid; `detail` can be a validation array or a string |
 | 429 | Rate limit reached; inspect `detail` for the affected operation |
 | 503 | A required service is unavailable; health also returns this when the database or migration check fails |
@@ -77,3 +77,36 @@ Limits vary by operation. Environment-controlled quotas are in [Configuration](.
 Related: [upload an SBOM](../how-to/upload-sbom.md), [verify evidence](../how-to/verify-evidence.md).
 
 See [evidence responses and pack format](evidence-format.md) for ledger, report, ZIP, and metric fields.
+
+
+## Application and deployment helpers
+
+create_app captures allowed origins, CSP, docs enablement and static-directory availability at construction. Some constants are read at module import. Changing an index file does not refresh its captured script hashes until the app is reconstructed.
+
+The body middleware rejects excessive Content-Length before a handler runs. Otherwise it counts bytes only when the handler reads them. It does not independently drain an unread stream. Invalid Content-Length text can raise an error.
+
+The shared write-origin check applies when Origin is present. A refusal can occur before normal response-header decoration. An absent Origin does not independently refuse the write. Authentication remains a separate check.
+
+The API health route is public and excluded from OpenAPI:
+
+| Condition | Status and fields |
+| --- | --- |
+| Database query succeeds, migrations=head or unmanaged | HTTP 200: status=ok, version, db=ok, migrations |
+| Database query succeeds, migrations=behind | HTTP 503: status=error, version, db=ok, migrations |
+| Query/migration helper raises | HTTP 503: status=error, version, db=unavailable. migrations is absent |
+
+Unmanaged means no alembic_version table, rather than a full schema inspection. Session creation can fail before the handler's exception catch. Health does not establish every provider, feed or background task is available.
+
+Static responses marked successful receive one-year immutable caching from HashedAssets. The helper does not itself require hashed filenames. The SPA fallback uses no-cache for its index. Unknown api/ paths return 404. Other missing paths can return the index.
+
+Public security.txt responses contain the configured optional contact before Nimstead's contact and a fresh expiry date. The route does not validate the configured contact value. Installer/source/runtime behavior is in the [distribution reference](platform-updates.md#agent-distribution).
+
+## Schema validation notes
+
+The export declares shared authentication, write-origin and consumed-body errors where applicable. These descriptions do not enumerate every storage, backend or malformed-state failure.
+
+SSO start, SSO callback and successful password-form confirmation use 303 redirects. They have no 2xx success response. Redocly's generic 2xx recommendation warns on these operations. Adding a fictitious 200 response would misdescribe their implementation.
+
+Redocly also reports EvidencePackDocument as unused because it is referenced through a ZIP-member vendor extension. The response body is ZIP bytes. The extension identifies the pack.json member schema.
+
+Event-specific ledger data and map keys remain extensible JSON. Their interpretation is in the linked evidence, report, collection and account references. The schema does not certify observations or enforce host-side behavior.

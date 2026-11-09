@@ -118,7 +118,7 @@ The full, honest list is in [STATUS.md](STATUS.md#not-proven--known-gaps-honest)
 
 ## Documentation
 
-Start with the [documentation index](docs/README.md) for tutorials, task guides, reference, and explanations.
+Start with the [documentation index](docs/README.md) for tutorials, task guides, reference, and explanations. The same documentation is published, with search, at **<https://docs.nimstead.systems/>**. This repository is the source; the site can lag a release.
 
 | | |
 |---|---|

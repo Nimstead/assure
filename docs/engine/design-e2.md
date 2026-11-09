@@ -1,5 +1,7 @@
 # Engine, first slice: an end-to-end Windows scan (E2)
 
+> **Status:** this design is from before the switch. Since 0.7.6 and 0.7.7, findings open from the engine's verdicts and close only on evidence (DECISIONS 123, 124). Where "Today" below describes `scan.rescan` deciding findings, that describes the earlier behaviour.
+
 Requirements are in `spec-detection.md` (R and T numbers refer to it). The boundary is in DECISIONS 79: whoever builds this works from these two documents plus Microsoft, NVD and vendor sources, and doesn't open the reference scanner.
 
 ## What it must show

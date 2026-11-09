@@ -2,6 +2,8 @@
 
 Choose a page for what you need to do. These guides describe the code in this checkout; release-specific proof and limitations are in [STATUS](../STATUS.md).
 
+The documentation is also published, with search and more how-to and reference pages, at <https://docs.nimstead.systems/assure/>. Where the two differ, this checkout describes the code you're running.
+
 ## Learn
 
 - [Read your first SBOM](tutorials/first-sbom.md): turn a small application inventory into package identities, then understand what an upload replaces.

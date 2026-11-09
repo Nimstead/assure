@@ -23,4 +23,8 @@ Do not enrol the machine repeatedly to diagnose a network failure. Keep its exis
 
 A scan with no findings can still have incomplete checks. Confirm the scan report's outcomes and reasons before treating the host as assessed.
 
+## A fixed finding stays open
+
+A finding closes only on evidence that it's fixed or gone. If you fixed it and it's still open, read its reasons. A line starting `Still open:` says what the last scan couldn't establish, for example "a finding was open on this, and this scan has no evidence either way". Correct the cause as in the previous section, then report again. The finding closes once a scan reads the source in full.
+
 Related: [agent commands](../reference/agent-cli.md), [inventory to evidence](../explanation/inventory-to-evidence.md).

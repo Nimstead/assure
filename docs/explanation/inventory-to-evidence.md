@@ -14,6 +14,13 @@ The engine uses five outcomes: `vulnerable`, `not-vulnerable`, `not-applicable`,
 
 Confidence describes the strength of evidence for a conclusion. Severity describes impact. Priority describes what to address first. These values serve different decisions and should not be treated as interchangeable.
 
+The engine's verdicts decide which findings open and close. A `vulnerable` verdict opens a finding. A finding closes only on evidence:
+- `not-vulnerable` at the installed version
+- `not-applicable` because the product is gone and the list that would show it was read in full
+- `not-applicable` because no live advisory carries its identity any more
+
+Otherwise the finding stays open and its reasons say why. Older agents without a collection document keep the earlier rule, where a finding closes once the inventory no longer matches it. The previous matching still runs alongside the engine as a check, and any disagreement goes to the evidence ledger as `engine_disagrees` (DECISIONS 123 and 124).
+
 Distribution packages use the distribution's version rules and source package identities. This matters when a vendor backports a fix without adopting the upstream version number. Windows and application checks use the matching rules and coverage available for those products.
 
 ## Priority helps order work
@@ -28,7 +35,7 @@ A detection does not authorise a change. The host must opt into remediation, the
 
 Plans constrain the packages a job may change. Canary execution and health checks reduce the scope of a failed change. Rollback has platform-specific limits; some application updates require explicit approval because they cannot be undone.
 
-A completed package command is not sufficient proof of a fix. The next inventory must show the finding is gone. An incomplete reassessment can leave a finding open.
+A completed package command is not sufficient proof of a fix. The next inventory must show that the vulnerable version is gone. If that inventory can't be read in full, the finding stays open and says why.
 
 ## Evidence preserves the record
 

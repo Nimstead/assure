@@ -70,6 +70,7 @@ Find commands, settings, formats, and limits.
 - [Network engine reference](reference/network-engine.md)
 - [Evidence responses and pack format](reference/evidence-format.md)
 - [Remediation modes](reference/remediation-modes.md)
+- [Remediation jobs and policy](reference/remediation-jobs.md)
 - [Release keys](release-keys.md)
 - [Developer tools and repository map](reference/tooling.md)
 - [Glossary](reference/glossary.md)

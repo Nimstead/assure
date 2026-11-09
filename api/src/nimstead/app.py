@@ -1171,7 +1171,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def agent_jobs(s: DB, asset: Annotated[Asset, Depends(current_agent)]):
         """Dispatch eligible approved jobs to this agent and return their execution plans.
 
-        Polling can change job state; host opt-in, maintenance windows, and canary gates apply.
+        Polling sweeps timeouts and commits job changes. Maintenance, production,
+        mode and policy-canary gates apply. Local opt-in is the agent's responsibility.
 
         Requires this asset's agent bearer key."""
         return remediate.dispatch(s, asset)
@@ -1191,7 +1192,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def agent_job_report(job_id: str, body: JobReport, s: DB, asset: Annotated[Asset, Depends(current_agent)], tasks: BackgroundTasks):
         """Record an outcome for a job owned by this agent and return its resulting status.
 
-        An applied update enters verification; inventory must establish whether it fixed the finding.
+        Applied enters verifying. Inventory normally judges findings, with a separate
+        Windows stepping-success path. Commit before optional background step planning.
+        Aborted reports with offered updates can fetch MSRC data after the response.
 
         Requires this asset's agent bearer key.
 
@@ -1784,6 +1787,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     # --- remediation -------------------------------------------------------
 
     def job_json(j: RemediationJob, hostname: str) -> dict:
+        """Return 17 public fields for job j with caller-supplied hostname.
+
+        Lists/dictionaries are shared until response serialization. No query or commit
+        occurs. Incompatible model/package values can raise errors."""
         return {
             "id": j.id, "asset_id": j.asset_id, "hostname": hostname, "status": j.status, "manager": j.manager,
             "action_key": j.action_key, "packages": j.packages, "finding_ids": j.finding_ids, "summary": j.summary,
@@ -1804,7 +1811,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
         Requires an organisation admin browser session; API tokens are refused.
 
-        Operation-specific HTTP errors: 409. See detail in the response.
+        Commit the plan and evidence before returning 17 job fields. Local consent,
+        mode and production approval gates are not planning prerequisites.
+        Operation-specific HTTP errors: 404 for an unavailable asset, 409 for plan refusal.
         Authentication and request-validation errors also apply where required."""
         a = owned_asset(s, user, body.asset_id)
         try:
@@ -1821,7 +1830,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/remediation/jobs/batch", status_code=201)
     def create_jobs(body: PlanMany, user: Admin, s: DB):
-        """One fix on many machines in one request ("plan the rest"): each plan is its own commit, so one refusal keeps the others."""
+        """Return jobs/errors after one action is planned across 1..5000 requested assets.
+
+        Requires an admin browser session. Deduplicate asset IDs in request order.
+        Commit each successful plan. Ownership/RemediationError refusals roll back
+        that iteration and add asset_id/error text. Other errors can stop the request
+        after earlier commits. HTTP 201 can contain only errors. No approval occurs."""
         jobs, errors = [], []
         for aid in dict.fromkeys(body.asset_ids):
             try:
@@ -1838,7 +1852,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def list_jobs(user: CurrentUser, s: DB, status: str | None = None):
         """Return up to 500 recent jobs, optionally filtered by comma-separated status names.
 
-        Sweeps stale jobs first and includes maintenance-window wait information for approved jobs.
+        Sweep and commit stale jobs first. status text is split on commas without
+        trimming or enum validation. Sort by updated descending. Approved rows add
+        waits_for_window as a UTC timestamp or null. Other rows omit that field.
 
         Requires a user session or a read-only organisation API token. API tokens cannot use write methods."""
         remediate.sweep(s, user.org_id)
@@ -1860,6 +1876,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def windows_updates(user: CurrentUser, s: DB):
         """Return Windows update groups across this organisation without the per-host detail lists.
 
+        Sweep and commit timeouts first. Return eight fields per summary row.
+        Stored host/build coverage and rollout suggestions are not a new scan.
+
         Requires a user session or a read-only organisation API token. API tokens cannot use write methods."""
         remediate.sweep(s, user.org_id)
         return [{k: v for k, v in r.items() if k not in ("missing", "plan_asset_ids")} for r in remediate.kb_fleet(s, user.org_id)]
@@ -1867,6 +1886,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     @app.get("/api/windows-updates/{kb}")
     def windows_update_hosts(kb: str, user: CurrentUser, s: DB, product: str = Query(max_length=255)):
         """Return host-level detail for a Windows KB and exact product query.
+
+        Sweep and commit timeouts first. Return ten fields, including missing hosts
+        and suggested plan_asset_ids. Only the three newest groups per product are
+        eligible for lookup. No collection or approval occurs.
 
         Requires a user session or a read-only organisation API token. API tokens cannot use write methods.
 
@@ -1931,6 +1954,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def get_settings(user: CurrentUser, s: DB):
         """Return organisation policy, deadlines, agent update status, and server release status.
 
+        Nine fields include cached platform data and the production permission flag.
+        Reading signed-agent/cache metadata can perform local I/O and raise errors.
+
         Requires a user session or a read-only organisation API token. API tokens cannot use write methods."""
         o = s.get(Org, user.org_id)
         return {"remediation_mode": o.remediation_mode, "canary_soak_hours": o.canary_soak_hours, "sla_days": evidence.sla_days(o),
@@ -1942,6 +1968,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     @app.patch("/api/settings")
     def update_settings(body: Policy, user: Admin, s: DB):
         """Update organisation policy, record the decision, and return current settings.
+
+        Omitted/null fields keep existing values. An empty maintenance_window clears
+        the organisation window. SLA keys merge with existing policy. Commit all
+        changes before the settings response, whose cache/key lookup can still fail.
 
         Requires an organisation admin browser session; API tokens are refused.
 

@@ -1,5 +1,7 @@
 # HTTP API reference
 
+The [remediation reference](remediation-jobs.md) defines job, agent-plan, Windows update, and policy response fields.
+
 The server uses FastAPI. Its schema is available at `/api/openapi.json`. Set `NIMSTEAD_API_DOCS=1` in the server environment to enable Swagger UI at `/api/docs`, then restart the app. Swagger UI loads scripts from a CDN; it is disabled by default.
 
 The live schema describes typed request parameters and request models. Many routes return dictionaries without response models, so their schema does not fully describe response fields. Use the route implementation and its tests when a response schema is empty.

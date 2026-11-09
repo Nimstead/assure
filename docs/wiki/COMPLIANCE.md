@@ -179,3 +179,15 @@ Corrected atomic-update and universal-error implications. OSV batches and source
 454 focused tests and 46 subchecks passed. New tests verify partial commits, unrelated session commits, retained scores, fallback precedence, permissive platform text, response fields and historical mapping reproducibility. Ruff, repository link/presence checks, the 71-article build and six site tests passed. No live feed update or Windows installation was performed.
 
 The references received neutral prose and STE-style checks. Remaining remediation, agent, web, tool and endpoint reviews still prevent a full compliance claim.
+
+## Remediation checkpoint
+
+Reviewed every public remediation helper and its planning, canary, scheduling, report, verification, fleet and step-selection implementation. Reviewed related job, agent report, Windows update and policy HTTP handlers. Added the complete job/policy lookup page and exported response schemas. Task and explanation pages retain their separate reader jobs.
+
+Corrected universal rollback, exact canary pinning, host-opt-in dispatch, window-completion and finding-resolution claims. Forward-only changes exist. Non-KB canary proof can lack version evidence. Windows intermediate success can leave findings open, and its direct helper accepts an alternative build from any result-version value. Read operations can commit timeout changes.
+
+153 focused tests and 46 subchecks passed. New assertions compare actual job, plan, policy, fleet and missing-host field sets with the reference/schema. They also verify boolean window hours, naive UTC requirements, closed-window cancellation delay and intermediate-success limits. Ruff, Redocly, repository presence/links, the 72-article build and six site tests passed.
+
+Playwright MCP verified the reference, modes, task guide and explanation at desktop/mobile widths. Section anchors and search work without page overflow. The pending web review must also correct broad canary/automatic-change copy in `settings.tsx` and `assets.tsx` against these documented limits.
+
+No production remediation, host restart or rollback was performed. Agent tests use controlled command runners. Remaining agent, web, tool and unnamed endpoint contracts, plus final editorial/example review, still prevent a full compliance claim.

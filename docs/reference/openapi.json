@@ -84,6 +84,39 @@
         "title": "AcceptMany",
         "type": "object"
       },
+      "AgentJobPlan": {
+        "additionalProperties": false,
+        "properties": {
+          "health_units": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "string"
+          },
+          "manager": {
+            "type": "string"
+          },
+          "packages": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "reboot_by": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "manager",
+          "packages",
+          "health_units"
+        ],
+        "type": "object"
+      },
       "AppNew": {
         "properties": {
           "criticality": {
@@ -1349,6 +1382,56 @@
         "title": "NotifyConfig",
         "type": "object"
       },
+      "OrganisationSettings": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_updates_paused": {
+            "type": "boolean"
+          },
+          "canary_soak_hours": {
+            "type": "integer"
+          },
+          "maintenance_window": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "platform": {
+            "type": "object"
+          },
+          "production_remediation_allowed": {
+            "type": "boolean"
+          },
+          "reboot_deadline_hours": {
+            "type": "integer"
+          },
+          "remediation_mode": {
+            "type": "string"
+          },
+          "signed_agent_release": {
+            "type": "boolean"
+          },
+          "sla_days": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "remediation_mode",
+          "canary_soak_hours",
+          "reboot_deadline_hours",
+          "maintenance_window",
+          "sla_days",
+          "platform",
+          "agent_updates_paused",
+          "signed_agent_release",
+          "production_remediation_allowed"
+        ],
+        "type": "object"
+      },
       "PasswordChange": {
         "properties": {
           "code": {
@@ -1590,6 +1673,240 @@
         "title": "Policy",
         "type": "object"
       },
+      "RemediationJob": {
+        "additionalProperties": false,
+        "properties": {
+          "action_key": {
+            "type": "string"
+          },
+          "approved_by": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "asset_id": {
+            "type": "string"
+          },
+          "created": {
+            "type": "string"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "finding_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "forward_only": {
+            "type": "boolean"
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "manager": {
+            "type": "string"
+          },
+          "packages": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "result_versions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "ok": {
+                  "type": "boolean"
+                },
+                "output": {
+                  "type": "string"
+                },
+                "step": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "step",
+                "ok",
+                "output"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "updated": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "asset_id",
+          "hostname",
+          "status",
+          "manager",
+          "action_key",
+          "summary",
+          "created_by",
+          "created",
+          "updated",
+          "approved_by",
+          "error",
+          "packages",
+          "finding_ids",
+          "forward_only",
+          "steps",
+          "result_versions"
+        ],
+        "type": "object"
+      },
+      "RemediationJobListItem": {
+        "additionalProperties": false,
+        "properties": {
+          "action_key": {
+            "type": "string"
+          },
+          "approved_by": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "asset_id": {
+            "type": "string"
+          },
+          "created": {
+            "type": "string"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "finding_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "forward_only": {
+            "type": "boolean"
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "manager": {
+            "type": "string"
+          },
+          "packages": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "result_versions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "ok": {
+                  "type": "boolean"
+                },
+                "output": {
+                  "type": "string"
+                },
+                "step": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "step",
+                "ok",
+                "output"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "updated": {
+            "type": "string"
+          },
+          "waits_for_window": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "asset_id",
+          "hostname",
+          "status",
+          "manager",
+          "action_key",
+          "summary",
+          "created_by",
+          "created",
+          "updated",
+          "approved_by",
+          "error",
+          "packages",
+          "finding_ids",
+          "forward_only",
+          "steps",
+          "result_versions"
+        ],
+        "type": "object"
+      },
       "ResetReq": {
         "properties": {
           "email": {
@@ -1818,6 +2135,171 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "WindowsUpdateDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "build": {
+            "type": "string"
+          },
+          "fixed": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "hosts": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "kb": {
+            "type": "string"
+          },
+          "missing": {
+            "items": {
+              "$ref": "#/components/schemas/WindowsUpdateHost"
+            },
+            "type": "array"
+          },
+          "plan_asset_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "plan_note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "product": {
+            "type": "string"
+          },
+          "released": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kb",
+          "product",
+          "title",
+          "build",
+          "released",
+          "plan_note",
+          "hosts",
+          "fixed",
+          "missing",
+          "plan_asset_ids"
+        ],
+        "type": "object"
+      },
+      "WindowsUpdateHost": {
+        "additionalProperties": false,
+        "properties": {
+          "asset_id": {
+            "type": "string"
+          },
+          "build": {
+            "type": "string"
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "job": {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "status"
+            ],
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "ring": {
+            "type": "integer"
+          },
+          "why": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset_id",
+          "hostname",
+          "build",
+          "why",
+          "ring",
+          "notes",
+          "job"
+        ],
+        "type": "object"
+      },
+      "WindowsUpdateSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "build": {
+            "type": "string"
+          },
+          "fixed": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "hosts": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "kb": {
+            "type": "string"
+          },
+          "plan_note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "product": {
+            "type": "string"
+          },
+          "released": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kb",
+          "product",
+          "title",
+          "build",
+          "released",
+          "plan_note",
+          "hosts",
+          "fixed"
+        ],
         "type": "object"
       }
     },
@@ -2081,7 +2563,7 @@
     },
     "/api/agent/jobs": {
       "get": {
-        "description": "Dispatch eligible approved jobs to this agent and return their execution plans.\n\nPolling can change job state; host opt-in, maintenance windows, and canary gates apply.\n\nRequires this asset's agent bearer key.",
+        "description": "Dispatch eligible approved jobs to this agent and return their execution plans.\n\nPolling sweeps timeouts and commits job changes. Maintenance, production,\nmode and policy-canary gates apply. Local opt-in is the agent's responsibility.\n\nRequires this asset's agent bearer key.",
         "operationId": "agent_jobs_api_agent_jobs_get",
         "parameters": [
           {
@@ -2105,10 +2587,15 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AgentJobPlan"
+                  },
+                  "type": "array"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Recorded policy/plan result; see remediation-jobs.md for state, verification and commit boundaries."
           },
           "422": {
             "content": {
@@ -2132,7 +2619,7 @@
     },
     "/api/agent/jobs/{job_id}/report": {
       "post": {
-        "description": "Record an outcome for a job owned by this agent and return its resulting status.\n\nAn applied update enters verification; inventory must establish whether it fixed the finding.\n\nRequires this asset's agent bearer key.\n\nOperation-specific HTTP errors: 404, 409. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
+        "description": "Record an outcome for a job owned by this agent and return its resulting status.\n\nApplied enters verifying. Inventory normally judges findings, with a separate\nWindows stepping-success path. Commit before optional background step planning.\nAborted reports with offered updates can fetch MSRC data after the response.\n\nRequires this asset's agent bearer key.\n\nOperation-specific HTTP errors: 404, 409. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
         "operationId": "agent_job_report_api_agent_jobs__job_id__report_post",
         "parameters": [
           {
@@ -2175,10 +2662,21 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "status"
+                  ],
+                  "type": "object"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Recorded policy/plan result; see remediation-jobs.md for state, verification and commit boundaries."
           },
           "422": {
             "content": {
@@ -4880,7 +5378,7 @@
     },
     "/api/remediation/jobs": {
       "get": {
-        "description": "Return up to 500 recent jobs, optionally filtered by comma-separated status names.\n\nSweeps stale jobs first and includes maintenance-window wait information for approved jobs.\n\nRequires a user session or a read-only organisation API token. API tokens cannot use write methods.",
+        "description": "Return up to 500 recent jobs, optionally filtered by comma-separated status names.\n\nSweep and commit stale jobs first. status text is split on commas without\ntrimming or enum validation. Sort by updated descending. Approved rows add\nwaits_for_window as a UTC timestamp or null. Other rows omit that field.\n\nRequires a user session or a read-only organisation API token. API tokens cannot use write methods.",
         "operationId": "list_jobs_api_remediation_jobs_get",
         "parameters": [
           {
@@ -4904,10 +5402,16 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RemediationJobListItem"
+                  },
+                  "maxItems": 500,
+                  "type": "array"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Recorded policy/plan result; see remediation-jobs.md for state, verification and commit boundaries."
           },
           "422": {
             "content": {
@@ -4932,7 +5436,7 @@
         "x-authentication": "Session or read-only API token"
       },
       "post": {
-        "description": "Plan a package fix on an owned asset and return the job without executing it.\n\nRequires an organisation admin browser session; API tokens are refused.\n\nOperation-specific HTTP errors: 409. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
+        "description": "Plan a package fix on an owned asset and return the job without executing it.\n\nRequires an organisation admin browser session; API tokens are refused.\n\nCommit the plan and evidence before returning 17 job fields. Local consent,\nmode and production approval gates are not planning prerequisites.\nOperation-specific HTTP errors: 404 for an unavailable asset, 409 for plan refusal.\nAuthentication and request-validation errors also apply where required.",
         "operationId": "create_job_api_remediation_jobs_post",
         "requestBody": {
           "content": {
@@ -4948,10 +5452,12 @@
           "201": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/RemediationJob"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Recorded policy/plan result; see remediation-jobs.md for state, verification and commit boundaries."
           },
           "422": {
             "content": {
@@ -4975,7 +5481,7 @@
     },
     "/api/remediation/jobs/batch": {
       "post": {
-        "description": "One fix on many machines in one request (\"plan the rest\"): each plan is its own commit, so one refusal keeps the others.",
+        "description": "Return jobs/errors after one action is planned across 1..5000 requested assets.\n\nRequires an admin browser session. Deduplicate asset IDs in request order.\nCommit each successful plan. Ownership/RemediationError refusals roll back\nthat iteration and add asset_id/error text. Other errors can stop the request\nafter earlier commits. HTTP 201 can contain only errors. No approval occurs.",
         "operationId": "create_jobs_api_remediation_jobs_batch_post",
         "requestBody": {
           "content": {
@@ -4991,10 +5497,44 @@
           "201": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "errors": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "asset_id": {
+                            "type": "string"
+                          },
+                          "error": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "asset_id",
+                          "error"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "jobs": {
+                      "items": {
+                        "$ref": "#/components/schemas/RemediationJob"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "jobs",
+                    "errors"
+                  ],
+                  "type": "object"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Recorded policy/plan result; see remediation-jobs.md for state, verification and commit boundaries."
           },
           "422": {
             "content": {
@@ -5052,10 +5592,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/RemediationJob"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Recorded policy/plan result; see remediation-jobs.md for state, verification and commit boundaries."
           },
           "422": {
             "content": {
@@ -5096,10 +5638,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/RemediationJob"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Recorded policy/plan result; see remediation-jobs.md for state, verification and commit boundaries."
           },
           "422": {
             "content": {
@@ -5123,16 +5667,18 @@
     },
     "/api/settings": {
       "get": {
-        "description": "Return organisation policy, deadlines, agent update status, and server release status.\n\nRequires a user session or a read-only organisation API token. API tokens cannot use write methods.",
+        "description": "Return organisation policy, deadlines, agent update status, and server release status.\n\nNine fields include cached platform data and the production permission flag.\nReading signed-agent/cache metadata can perform local I/O and raise errors.\n\nRequires a user session or a read-only organisation API token. API tokens cannot use write methods.",
         "operationId": "get_settings_api_settings_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/OrganisationSettings"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Recorded policy/plan result; see remediation-jobs.md for state, verification and commit boundaries."
           }
         },
         "security": [
@@ -5147,7 +5693,7 @@
         "x-authentication": "Session or read-only API token"
       },
       "patch": {
-        "description": "Update organisation policy, record the decision, and return current settings.\n\nRequires an organisation admin browser session; API tokens are refused.\n\nOperation-specific HTTP errors: 422. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
+        "description": "Update organisation policy, record the decision, and return current settings.\n\nOmitted/null fields keep existing values. An empty maintenance_window clears\nthe organisation window. SLA keys merge with existing policy. Commit all\nchanges before the settings response, whose cache/key lookup can still fail.\n\nRequires an organisation admin browser session; API tokens are refused.\n\nOperation-specific HTTP errors: 422. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
         "operationId": "update_settings_api_settings_patch",
         "requestBody": {
           "content": {
@@ -5163,10 +5709,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/OrganisationSettings"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Recorded policy/plan result; see remediation-jobs.md for state, verification and commit boundaries."
           },
           "422": {
             "content": {
@@ -5829,16 +6377,21 @@
     },
     "/api/windows-updates": {
       "get": {
-        "description": "Return Windows update groups across this organisation without the per-host detail lists.\n\nRequires a user session or a read-only organisation API token. API tokens cannot use write methods.",
+        "description": "Return Windows update groups across this organisation without the per-host detail lists.\n\nSweep and commit timeouts first. Return eight fields per summary row.\nStored host/build coverage and rollout suggestions are not a new scan.\n\nRequires a user session or a read-only organisation API token. API tokens cannot use write methods.",
         "operationId": "windows_updates_api_windows_updates_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WindowsUpdateSummary"
+                  },
+                  "type": "array"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Recorded policy/plan result; see remediation-jobs.md for state, verification and commit boundaries."
           }
         },
         "security": [
@@ -5855,7 +6408,7 @@
     },
     "/api/windows-updates/{kb}": {
       "get": {
-        "description": "Return host-level detail for a Windows KB and exact product query.\n\nRequires a user session or a read-only organisation API token. API tokens cannot use write methods.\n\nOperation-specific HTTP errors: 404. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
+        "description": "Return host-level detail for a Windows KB and exact product query.\n\nSweep and commit timeouts first. Return ten fields, including missing hosts\nand suggested plan_asset_ids. Only the three newest groups per product are\neligible for lookup. No collection or approval occurs.\n\nRequires a user session or a read-only organisation API token. API tokens cannot use write methods.\n\nOperation-specific HTTP errors: 404. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
         "operationId": "windows_update_hosts_api_windows_updates__kb__get",
         "parameters": [
           {
@@ -5882,10 +6435,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/WindowsUpdateDetail"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Recorded policy/plan result; see remediation-jobs.md for state, verification and commit boundaries."
           },
           "422": {
             "content": {

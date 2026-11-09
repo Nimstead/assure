@@ -81,9 +81,43 @@ def render() -> dict[str, str]:
     for name, fields in (("BaselineRule", rule_fields), ("BaselineDetail", baseline_detail), ("BaselineHostSummary", baseline_summary),
                          ("BaselineAggregate", baseline_aggregate), ("NotificationSettings", notification_fields)):
         schema["components"]["schemas"][name] = {"type": "object", "properties": fields, "required": list(fields), "additionalProperties": False}
+    job_fields = {name: {"type": "string"} for name in (
+        "id", "asset_id", "hostname", "status", "manager", "action_key", "summary", "created_by", "created", "updated")}
+    job_fields |= {name: {"type": ["string", "null"]} for name in ("approved_by", "error")}
+    job_fields |= {"packages": {"type": "array", "items": {"type": "object"}},
+                   "finding_ids": {"type": "array", "items": {"type": "string"}}, "forward_only": {"type": "boolean"},
+                   "steps": {"type": "array", "items": {"type": "object", "properties": {
+                       "step": {"type": "string"}, "ok": {"type": "boolean"}, "output": {"type": "string"}},
+                       "required": ["step", "ok", "output"], "additionalProperties": False}},
+                   "result_versions": {"type": ["object", "null"], "additionalProperties": {"type": "string"}}}
+    agent_job = {name: job_fields[name] for name in ("id", "manager", "packages")}
+    agent_job |= {"health_units": {"type": "array", "items": {"type": "string"}}, "reboot_by": {"type": "string"}}
+    update_host = {name: {"type": "string"} for name in ("asset_id", "hostname", "build", "why")}
+    update_host |= {"ring": {"type": "integer"}, "notes": {"type": "array", "items": {"type": "string"}},
+                    "job": {"type": ["object", "null"], "properties": {name: {"type": "string"} for name in ("id", "status")},
+                            "required": ["id", "status"], "additionalProperties": False}}
+    update_fields = {name: {"type": "string"} for name in ("kb", "product", "title", "build")}
+    update_fields |= {name: {"type": ["string", "null"]} for name in ("released", "plan_note")}
+    update_fields |= {name: {"type": "integer", "minimum": 0} for name in ("hosts", "fixed")}
+    settings = {"remediation_mode": {"type": "string"}, "canary_soak_hours": {"type": "integer"},
+                "reboot_deadline_hours": {"type": "integer"}, "maintenance_window": {"type": ["object", "null"]},
+                "sla_days": {"type": "object", "additionalProperties": {"type": "integer"}}, "platform": {"type": "object"}}
+    settings |= {name: {"type": "boolean"} for name in ("agent_updates_paused", "signed_agent_release", "production_remediation_allowed")}
+    for name, fields in (("RemediationJob", job_fields), ("WindowsUpdateHost", update_host),
+                         ("WindowsUpdateSummary", update_fields), ("OrganisationSettings", settings)):
+        schema["components"]["schemas"][name] = {"type": "object", "properties": fields, "required": list(fields), "additionalProperties": False}
+    schema["components"]["schemas"]["RemediationJobListItem"] = {
+        "type": "object", "properties": {**job_fields, "waits_for_window": {"type": ["string", "null"]}},
+        "required": list(job_fields), "additionalProperties": False}
+    schema["components"]["schemas"]["AgentJobPlan"] = {
+        "type": "object", "properties": agent_job, "required": ["id", "manager", "packages", "health_units"], "additionalProperties": False}
+    update_detail = {**update_fields, "missing": {"type": "array", "items": {"$ref": "#/components/schemas/WindowsUpdateHost"}},
+                     "plan_asset_ids": {"type": "array", "items": {"type": "string"}}}
+    schema["components"]["schemas"]["WindowsUpdateDetail"] = {
+        "type": "object", "properties": update_detail, "required": list(update_detail), "additionalProperties": False}
     lines = ["# HTTP endpoint catalog", "",
              "Use the [OpenAPI JSON](openapi.json) for typed parameters, request models, defaults, and declared response schemas.", "",
-             "The export adds server/authentication metadata and selected contracts: findings, baselines, notifications, CSV, SBOM, external-scan counters, agent manifest and distribution files. Other definitions come from the app.", "",
+             "The export adds server/authentication metadata and selected contracts: findings, remediation, policy, Windows updates, baselines, notifications, CSV, SBOM, external-scan counters, agent manifest and distribution files. Other definitions come from the app.", "",
              "Authentication labels describe entry requirements. Organisation ownership, roles, origin checks, quotas, "
              "and operation-specific state checks still apply. See [HTTP API reference](http-api.md).", "",
              "Empty response schemas do not define a stable response contract. Inspect the linked handler and its tests "
@@ -120,6 +154,36 @@ def render() -> dict[str, str]:
                 # Body tokens and SSO cookies are described separately; no HTTP auth scheme represents them.
                 operation["security"] = []
             operation["x-authentication"] = auth
+            remediation_schema = None
+            response_status = "200"
+            if route.path == "/api/remediation/jobs":
+                if method == "GET":
+                    remediation_schema = {"type": "array", "maxItems": 500, "items": {"$ref": "#/components/schemas/RemediationJobListItem"}}
+                else:
+                    remediation_schema, response_status = {"$ref": "#/components/schemas/RemediationJob"}, "201"
+            elif route.path in {"/api/remediation/jobs/{job_id}/approve", "/api/remediation/jobs/{job_id}/cancel"}:
+                remediation_schema = {"$ref": "#/components/schemas/RemediationJob"}
+            elif route.path == "/api/remediation/jobs/batch":
+                response_status = "201"
+                remediation_schema = {"type": "object", "required": ["jobs", "errors"], "additionalProperties": False, "properties": {
+                    "jobs": {"type": "array", "items": {"$ref": "#/components/schemas/RemediationJob"}},
+                    "errors": {"type": "array", "items": {"type": "object", "required": ["asset_id", "error"], "additionalProperties": False,
+                                                         "properties": {name: {"type": "string"} for name in ("asset_id", "error")}}}}}
+            elif route.path == "/api/agent/jobs":
+                remediation_schema = {"type": "array", "items": {"$ref": "#/components/schemas/AgentJobPlan"}}
+            elif route.path == "/api/agent/jobs/{job_id}/report":
+                remediation_schema = {"type": "object", "required": ["status"], "additionalProperties": False,
+                                      "properties": {"status": {"type": "string"}}}
+            elif route.path == "/api/windows-updates":
+                remediation_schema = {"type": "array", "items": {"$ref": "#/components/schemas/WindowsUpdateSummary"}}
+            elif route.path == "/api/windows-updates/{kb}":
+                remediation_schema = {"$ref": "#/components/schemas/WindowsUpdateDetail"}
+            elif route.path == "/api/settings":
+                remediation_schema = {"$ref": "#/components/schemas/OrganisationSettings"}
+            if remediation_schema:
+                operation["responses"][response_status] = {
+                    "description": "Recorded policy/plan result; see remediation-jobs.md for state, verification and commit boundaries.",
+                    "content": {"application/json": {"schema": remediation_schema}}}
             finding_schema = None
             if route.path == "/api/findings":
                 finding_schema = {"anyOf": [{"type": "array", "items": {"$ref": f"#/components/schemas/{row}"}}

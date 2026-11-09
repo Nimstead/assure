@@ -62,6 +62,16 @@ This batch passed 190 focused tests and 46 subchecks, with ten Windows-only skip
 
 454 focused tests and 46 subchecks passed. Feed requests used fake HTTP clients. No production feed database, historical run files or VM installations were changed.
 
+## Remediation review
+
+| Source | Review scope | Evidence and corrections | Status |
+| --- | --- | --- | --- |
+| `api/src/nimstead/remediate.py` | All public classes/functions, constants and helper paths | Reviewed manager maps, plan/approval scope, KB selection, fleet fields, policy canaries, version pinning, timeout commits, window/DST inputs, host/group sequencing, report limits, finding verification and step fetch quotas. Corrected universal rollback, exact pinning and all-findings-resolved claims | Reviewed |
+| `api/src/nimstead/app.py` | Job serialization/create/batch/list/approve/cancel, agent jobs/report, Windows update list/detail, policy GET/PATCH and asset-window update | Reviewed permissions, fixed fields, optional list fields, body/filter limits, per-asset commits, background step work and GET timeout effects. Exported response schemas match actual API fields. Other unnamed handlers remain pending | Partial |
+| `agent/nimstead_agent.py` | Health/settle behavior referenced by remediation-mode prose | Compared Linux, Windows cumulative and Windows application/configuration checks. This is a named subset, not a review of remaining agent contracts | Partial |
+
+153 focused tests and 46 subchecks passed. New checks cover the documented intermediate-success and canary-proof limits. Command-runner tests do not establish production rollback or restart safety.
+
 The full SQLite suite passed 1611 tests with 59 skips at the start of this batch. The later targeted evidence/key checks passed 23 tests. The new field/summary assertions subsequently passed in a 27-test evidence/documentation run. All three executable docstrings passed. Skipped platform/oracle cases are not newly verified real-host proofs.
 
 The engine batch passed 105 engine/documentation tests and 46 subchecks. Two Windows PowerShell parsing cases were skipped on this host. Reference field assertions supplement the source review and do not prove every possible runtime value.

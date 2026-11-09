@@ -4,9 +4,13 @@ Remediation crosses a different trust boundary from collection. A report describ
 
 ## Plans constrain execution
 
-A plan identifies the permitted package changes. If a dependency requires a wider change, the operator must review the expanded plan. A successful package command is only an execution result; subsequent inventory establishes whether the finding is resolved.
+A plan identifies the permitted package changes. If a dependency requires a wider change, the operator must review the expanded plan. A successful package command supplies an execution result. Subsequent inventory normally establishes finding resolution.
 
-Canaries reduce the number of machines exposed to a bad change. Health checks and a soak period supply evidence before broad rollout. These controls reduce risk but do not prove that every application behaviour remained correct.
+Windows can need an earlier update before the final fix becomes available. Assure can record that step as successful while findings remain open. The job and finding therefore answer different questions: whether a permitted step completed, and whether the vulnerability remains recorded.
+
+Canaries reduce the number of machines exposed to a bad change. Health checks and a soak period supply evidence before broad policy rollout. Human approval can proceed without that policy gate.
+
+Version evidence also has limits. KB jobs require reported versions that reach their targets. Other jobs can qualify without complete version reports. Pinning only changes targets when a reported version is a valid upgrade. These controls do not prove that every application behavior remained correct.
 
 ## Rollback has a boundary
 

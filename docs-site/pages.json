@@ -495,5 +495,12 @@
     "title": "Feed synchronisation reference",
     "group": "Reference",
     "product": "assure"
+  },
+  {
+    "source": "docs/reference/remediation-jobs.md",
+    "slug": "reference/remediation-jobs",
+    "title": "Remediation job reference",
+    "group": "Reference",
+    "product": "assure"
   }
 ]

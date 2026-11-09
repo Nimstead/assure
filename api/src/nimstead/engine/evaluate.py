@@ -117,7 +117,17 @@ def _records(i: Install, key: str, c: Content) -> list[dict]:
 
 
 def _judge(inv: Inventory, i: Install, c: Content) -> list[Verdict]:
-    """Every advisory for this product, against this one install."""
+    """Every advisory for this product, against this one install. Once per feed pass for the same install and source state:
+    `c.memo` is the pass's cache, within which a product's records, KEV and CVSS don't change. Callers must not mutate the list."""
+    pending = inv.facts.get("pending_reboot")
+    key = ("engine", "judge", i, inv.source(i.source), pending is None, bool(pending), i.ecosystem in c.feeds)
+    if (out := c.memo.get(key)) is None:
+        # shortcut: holds every distinct install's verdicts for the whole pass, so a fleet with few shared versions costs memory, not time; bound it if a pass's RSS shows up
+        out = c.memo[key] = _judge_once(inv, i, c)
+    return out
+
+
+def _judge_once(inv: Inventory, i: Install, c: Content) -> list[Verdict]:
     read = inv.source(i.source)
     if not i.comparable:
         return [Verdict(f"product:{i.keys[0]}", i.family, i.ecosystem, i.keys[0], Outcome.UNDETERMINED, instance=i.instance, reason="unreadable-version",

@@ -292,3 +292,67 @@ def test_the_digest_is_the_plain_json_hash_and_not_applicable_verdicts_are_share
         assert digest(vs) == hashlib.sha256(json.dumps([v.as_dict() for v in vs], sort_keys=True).encode()).hexdigest()
     curl = [v for v in first + second if v.check == "product:curl"]
     assert len(curl) == 2 and curl[0] is curl[1] and curl[0].outcome == Outcome.NOT_APPLICABLE
+
+
+# ---- phase 3 of tasks/plan-engine-findings.md: the engine's verdicts open findings
+
+def _host(c, inv, name="deb-1", eco=DEB):
+    token = c.post("/api/enroll-tokens").json()["token"]
+    a = c.post("/api/agent/enroll", json={"token": token, "hostname": name, "ecosystem": eco}).json()
+    h = {"Authorization": f"Bearer {a['agent_key']}"}
+    assert c.post("/api/agent/inventory", headers=h, json=inv).status_code == 200
+    return a["asset_id"]
+
+
+def _open(s, aid):
+    s.expire_all()
+    return {f.vuln_id: f for f in s.scalars(select(Finding).where(Finding.asset_id == aid, Finding.status == "open"))}
+
+
+OLD = ldoc(pkg("bash", "5.1-2"), eco="Debian:11", facts={"os_version_id": "11"})  # Debian 11 ended 2026-08-31; read 2026-11-03
+
+
+def test_a_linux_release_past_end_of_support_opens_a_fix_now_finding_and_the_switch_turns_it_off(env, monkeypatch):
+    s = seed(env)
+    c = user(env)
+    monkeypatch.setenv("NIMSTEAD_ENGINE_FINDINGS", "0")
+    aid = _host(c, OLD, eco="Debian:11")
+    assert "EOL:debian-11" not in _open(s, aid)  # the way back: rescan's own matching, which doesn't judge a Linux release
+    monkeypatch.setenv("NIMSTEAD_ENGINE_FINDINGS", "1")
+    from nimstead.scan import rescan
+    rescan(s, s.get(Asset, aid), inventory_received=False, cache={})  # the hourly re-match runs the engine too
+    f = _open(s, aid)["EOL:debian-11"]
+    assert (f.ecosystem, f.package, f.priority, f.score, f.fixed_version) == ("Lifecycle", "debian 11", "fix-now", 90, None)
+    assert "no security updates since 2026-08-31" in f.summary and "Upgrade to a supported release" in f.reasons
+
+
+def _fake(verdicts):
+    from nimstead.engine.parity import compare
+    return lambda s, asset, pkgs, matched, *a: (verdicts, Content.make({}), compare(verdicts, sorted(matched)))
+
+
+def test_the_engine_decides_what_opens_where_it_judged_and_rescan_stands_where_it_didnt(env, monkeypatch):
+    from nimstead.engine.model import Verdict
+    s = seed(env)
+    c = user(env)
+    v = dict(family="distro", ecosystem=DEB, product="openssl")
+    monkeypatch.setattr(engine, "judge", _fake([
+        Verdict("CVE-2026-1/openssl", outcome=Outcome.NOT_VULNERABLE, vuln_id="CVE-2026-1", **v),  # rescan matched it: the engine's evidence wins
+        Verdict("CVE-2026-5/openssl", outcome=Outcome.VULNERABLE, vuln_id="CVE-2026-5", version="3.5.1-1+deb13u1", fixed="3.6.0-1",
+                summary="Flaw CVE-2026-5", **v),  # rescan has no match: opened from the verdict
+    ]))  # CVE-2026-7: rescan matched it and the engine said nothing, so it stands
+    aid = _host(c, ldoc(*SSL))
+    found = _open(s, aid)
+    assert set(found) == {"CVE-2026-5", "CVE-2026-7"}
+    assert (found["CVE-2026-5"].fixed_version, found["CVE-2026-5"].installed_version, found["CVE-2026-5"].package) == ("3.6.0-1", "3.5.1-1+deb13u1", "openssl")
+    (d,) = [e for e in c.get("/api/evidence/ledger").json()["entries"] if e["kind"] == "engine_disagrees"]  # the reverse shadow says so
+    assert {x["vuln_id"] for x in d["data"]["unexplained"]} == {"CVE-2026-1", "CVE-2026-5", "CVE-2026-7"}  # 7: no verdict at all
+
+
+def test_an_old_agent_without_a_collection_document_keeps_rescans_findings(env, monkeypatch):
+    s = seed(env)
+    c = user(env)
+    old = {k: v for k, v in ldoc(*SSL).items() if k != "collection"}
+    on = set(_open(s, _host(c, old, name="old-1")))
+    monkeypatch.setenv("NIMSTEAD_ENGINE_FINDINGS", "0")
+    assert on == set(_open(s, _host(c, old, name="old-2"))) == {"CVE-2026-1", "CVE-2026-7"}

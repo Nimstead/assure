@@ -1,7 +1,8 @@
 """The detection engine's first slice (docs/engine/design-e2.md): collection document -> pure evaluator -> verdicts -> report.
 
 `collection` reads what the agent sent, `content` loads the advisories it applies to, `evaluate` decides, `report` says it,
-`parity` compares it with `scan.rescan`. Findings still open and close through `rescan`: nothing here changes them.
+`parity` compares it with `scan.rescan`'s own loop. `rescan` opens findings from the engine's verdicts (phase 3 of
+tasks/plan-engine-findings.md) and still closes them as before; nothing here writes.
 """
 
 from sqlalchemy import and_, or_, select
@@ -23,15 +24,23 @@ def scan_inventory(s: Session, inv: Inventory, prior=()) -> tuple[list[Verdict],
     return verdicts, report.build(inv, c, verdicts)
 
 
-def shadow(s: Session, asset: Asset, pkgs: list, opened: set, prior: list) -> dict:
-    """Phase 1 of tasks/plan-engine-findings.md: the engine's verdicts on the inventory `rescan` just judged, compared with
-    what it opened (parity.compare). Reads only: findings still open and close through `rescan`."""
+def judge(s: Session, asset: Asset, pkgs: list, matched: set, prior: list, cache: dict | None = None,
+          keep: bool = False) -> tuple[list[Verdict], content.Content, dict]:
+    """(verdicts, content, parity) for the inventory `rescan` is judging; `matched`: the keys rescan's own loop found, compared
+    with the verdicts (parity.compare). Since phase 3 of tasks/plan-engine-findings.md the verdicts decide what opens and the
+    old loop is the shadow. Reads only. `cache`: rescan's per-pass advisories. `keep`: a new inventory, whose report
+    asset_report stores after the response rather than evaluating again."""
     from nimstead.engine import parity
-    inv = Inventory.from_asset(asset, pkgs, sbom_received(s, asset))
-    c = content.load(s, inv)
+    cache = {} if cache is None else cache
+    if ("engine", "sbom_subjects", asset.org_id) not in cache:  # one ledger read per org per pass, not one per host
+        cache["engine", "sbom_subjects", asset.org_id] = set(s.scalars(select(LedgerEntry.subject).where(
+            LedgerEntry.org_id == asset.org_id, LedgerEntry.kind == "sbom_received").distinct()))
+    inv = Inventory.from_asset(asset, pkgs, sbom_received(s, asset) if asset.id in cache["engine", "sbom_subjects", asset.org_id] else None)
+    c = content.load(s, inv, cache)
     verdicts = evaluate(inv, c, prior)
-    s.info[("engine_scan", asset.id)] = (inv, c, verdicts)  # asset_report stores these after the response rather than evaluating again
-    return parity.compare(verdicts, sorted(opened))
+    if keep:
+        s.info[("engine_scan", asset.id)] = (inv, c, verdicts)
+    return verdicts, c, parity.compare(verdicts, sorted(matched))
 
 
 def prior_findings(s: Session, asset: Asset) -> list[tuple[str, str, str]]:

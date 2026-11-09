@@ -4,6 +4,7 @@ import functools
 import hashlib
 import json
 import logging
+import os
 import re
 from collections import defaultdict
 from datetime import timedelta
@@ -13,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from nimstead import evidence, lifecycle, msproducts, risk, sbom, winapps, winconfig, windrivers
 from nimstead.db import Advisory, Asset, Cvss, Epss, Finding, InstalledPackage, Kev, now
-from nimstead.match import Match, Package, match_package, normalize_ecosystem
+from nimstead.match import Match, Package, canonical_id, match_package, normalize_ecosystem
 from nimstead.notify import notify
 
 log = logging.getLogger(__name__)
@@ -102,18 +103,53 @@ def host_checks(pkgs: list, facts: dict, today, eol: dict | None = None, drivers
     return out
 
 
-def _shadow(s: Session, asset: Asset, pkgs: list, seen: set, prior: list) -> None:
-    """The engine beside rescan (tasks/plan-engine-findings.md, phase 1): a difference neither side explains goes to the ledger,
-    once per host per rescan, and never changes a finding. Its failure is logged and never stops rescan."""
+def engine_findings() -> bool:
+    """Phase 3 of tasks/plan-engine-findings.md is on unless NIMSTEAD_ENGINE_FINDINGS=0, the way back to rescan's own matching."""
+    return os.environ.get("NIMSTEAD_ENGINE_FINDINGS", "1") != "0"
+
+
+def _engine(s: Session, asset: Asset, pkgs: list, matches: list, seen: set, prior: list, cache: dict, keep: bool) -> tuple[list, list]:
+    """The engine decides what opens (phase 3): for the slice it judges, a VULNERABLE verdict opens a finding, a verdict
+    that proves it absent drops rescan's match, and no decision (an old agent, a blocked source) leaves rescan's match as it
+    was. rescan's own loop is the shadow: a difference neither side explains goes to the ledger once per host per rescan.
+    Returns (matches, ledger rows to append). If the engine fails, rescan's matches stand: findings never vanish on a crash."""
     from nimstead import engine
+    from nimstead.engine import parity
+    from nimstead.engine.model import Outcome
     try:
-        p = engine.shadow(s, asset, pkgs, seen, prior)
+        verdicts, c, p = engine.judge(s, asset, pkgs, seen, prior, cache, keep)
     except Exception:
-        log.exception("engine shadow failed on %s; findings unaffected", asset.hostname)
-        return
-    if p["unexplained"]:
-        evidence.append(s, asset.org_id, "engine_disagrees", asset.id, {"host": asset.hostname, "agree": p["agree"],
-                                                                          "count": len(p["unexplained"]), "unexplained": p["unexplained"][:20]})
+        log.exception("engine failed on %s; findings from rescan's own matching", asset.hostname)
+        return matches, []
+    rows = [("engine_disagrees", {"host": asset.hostname, "agree": p["agree"], "count": len(p["unexplained"]),
+                                  "unexplained": p["unexplained"][:20]})] if p["unexplained"] else []
+    if not engine_findings():
+        return matches, rows
+    by_key: dict[tuple, list] = defaultdict(list)
+    for v in verdicts:
+        if v.vuln_id:
+            by_key[v.ecosystem, v.product, v.vuln_id].append(v)
+    out = []
+    for m in matches:
+        vs = by_key.get(m[0])
+        if parity.in_slice(m[0][0]) and vs and all(v.proves_absent for v in vs):
+            seen.discard(m[0])  # evidence it's fixed, not silence: closes like any finding inventory no longer shows
+            continue
+        out.append(m)
+    for key, vs in sorted(by_key.items()):
+        v = next((v for v in vs if v.outcome == Outcome.VULNERABLE), None)
+        linux_eol = key[0] == lifecycle.ECOSYSTEM and key[2].startswith("EOL:")  # DECISIONS 85: only the engine judges a Linux release's support
+        if v is None or key in seen or not (parity.in_slice(key[0]) or linux_eol):
+            continue
+        seen.add(key)
+        if linux_eol:
+            rec = {"_risk": (90, "fix-now", [v.summary or key[2], "Upgrade to a supported release"])}  # as Windows end of support (host_checks)
+            out.append((key, key[0], key[1], v.instance or key[1], Match(key[2], [key[2]], None, v.summary or "", rec)))
+            continue
+        recs = [r for r in c.records.get(key[:2], []) if canonical_id(r) == key[2] and not r.get("withdrawn")]
+        out.append((key, key[0], key[1], v.version, Match(key[2], sorted(r["id"] for r in recs) or [key[2]], v.fixed, v.summary or "",
+                                                         recs[0] if recs else {})))
+    return out, rows
 
 
 def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dict | None = None) -> dict:
@@ -207,6 +243,7 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
         rec = {"_risk": (x["risk"].score, x["risk"].priority, x["risk"].reasons)} if x.get("risk") else {}
         matches.append((key, x["ecosystem"], x["package"], x["version"],
                         Match(x["vuln_id"], [x["vuln_id"]], x.get("fixed"), x["summary"], rec)))
+    matches, engine_rows = _engine(s, asset, pkgs, matches, seen, prior, advisories, inventory_received)
     # exploitation and severity context in three queries, not three lookups per CVE
     cves = sorted({c for *_, m in matches for c in cve_ids(m) if c.startswith("CVE-")})
     kevs, ransomware, epss, nvd = set(), set(), {}, {}
@@ -298,7 +335,8 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
             evidence.append(s, asset.org_id, "inventory_received", asset.id, {
                 "hostname": asset.hostname, "packages": len(inv), "inventory_sha256": digest})
             asset.inventory_logged_sha256, asset.inventory_logged_at = digest, t
-        _shadow(s, asset, pkgs, seen, prior)  # new inventories only: on the hourly re-match it made 1,000 hosts take 585 s, not 29 s
+    for kind, data in engine_rows:
+        evidence.append(s, asset.org_id, kind, asset.id, data)
     for kind, f in events:
         evidence.append(s, asset.org_id, kind, f.id, {
             "host": asset.hostname, "vuln_id": f.vuln_id, "package": f.package,

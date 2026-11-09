@@ -526,7 +526,7 @@ def test_the_cli_prints_the_report_and_json(env, tmp_path, capsys):
     assert "isn't an inventory" in capsys.readouterr().err
 
 
-# ---- phase 1 of tasks/plan-engine-findings.md: the engine runs beside rescan and only reports
+# ---- phases 1 and 3 of tasks/plan-engine-findings.md: the engine judges every rescan; rescan's own loop is the shadow
 
 def _disagreements(c):
     return [e for e in c.get("/api/evidence/ledger").json()["entries"] if e["kind"] == "engine_disagrees"]
@@ -543,22 +543,24 @@ def test_a_disagreement_is_one_ledger_entry_and_changes_no_finding(env, monkeypa
     seed(env)
     c = user(env)
     gap = [{"ecosystem": "WinApp", "package": SEVEN, "vuln_id": "CVE-2026-9", "problem": "rescan opened it and the engine has no verdict for it"}]
-    monkeypatch.setattr(engine, "shadow", lambda *a: {"agree": 3, "unexplained": gap})
+    monkeypatch.setattr(engine, "judge", lambda *a: ([], Content.make({}), {"agree": 3, "unexplained": gap}))
     enrolled(c, RICH)
     (d,) = _disagreements(c)
     assert d["data"]["count"] == 1 and d["data"]["unexplained"] == gap and d["data"]["host"] == "lab-1"
-    assert any(f["vuln_id"] == "CVE-2026-9" for f in c.get("/api/findings").json())  # the finding opened as before
+    assert any(f["vuln_id"] == "CVE-2026-9" for f in c.get("/api/findings").json())  # no verdict either way: rescan's match stands
 
 
-def test_a_failing_shadow_never_stops_rescan(env, monkeypatch):
+def test_a_failing_engine_never_stops_rescan_and_its_matches_stand(env, monkeypatch):
     seed(env)
     c = user(env)
+    _, h = enrolled(c, RICH)
+    before = sorted((f["package"], f["vuln_id"]) for f in c.get("/api/findings").json())
 
     def boom(*a):
         raise RuntimeError("engine bug")
-    monkeypatch.setattr(engine, "shadow", boom)
-    enrolled(c, RICH)
-    assert c.get("/api/findings").json() and _disagreements(c) == []
+    monkeypatch.setattr(engine, "judge", boom)
+    assert c.post("/api/agent/inventory", headers=h, json=RICH).status_code == 200  # the same inventory again
+    assert sorted((f["package"], f["vuln_id"]) for f in c.get("/api/findings").json()) == before and before and _disagreements(c) == []
 
 
 def test_parity_explains_a_product_the_engine_wouldnt_judge_as_a_whole():

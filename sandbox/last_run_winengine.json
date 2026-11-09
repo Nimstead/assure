@@ -2,25 +2,25 @@
   {
     "step": "old 7-Zip",
     "version": "24.08",
-    "output": "sh\nStarting package install...\n\n   - \n   \\ \n   | \n   / \n                                                                                                                        \nSuccessfully installed\n"
+    "output": "ler hash\nStarting package install...\n\n   - \n   \\ \n   | \n                                                                                                                        \nSuccessfully installed\n"
   },
   {
     "step": "feeds",
     "msrc": {
       "documents": 2,
       "skipped_documents": 0,
-      "inserted": 48979,
+      "inserted": 30495,
       "updated": 0,
       "skipped": 0
     },
-    "nvd": 60782,
-    "kev": 1766
+    "nvd": 55004,
+    "kev": 1772
   },
   {
     "step": "report",
     "headline": {
       "status": "vulnerable",
-      "text": "VULNERABLE: 1,040 vulnerabilities across 10 installs."
+      "text": "VULNERABLE: 1,038 vulnerabilities across 10 installs."
     },
     "coverage": {
       "sources": [
@@ -28,14 +28,21 @@
           "name": "drivers",
           "label": "Drivers",
           "state": "ok",
-          "count": 437,
+          "count": 439,
           "error": null
         },
         {
           "name": "host_facts",
           "label": "Host facts",
           "state": "ok",
-          "count": 12,
+          "count": 16,
+          "error": null
+        },
+        {
+          "name": "java_archives",
+          "label": "Java archives",
+          "state": "off",
+          "count": 0,
           "error": null
         },
         {
@@ -43,6 +50,20 @@
           "label": "Microsoft products",
           "state": "ok",
           "count": 8,
+          "error": null
+        },
+        {
+          "name": "npm_packages",
+          "label": "npm packages",
+          "state": "off",
+          "count": 0,
+          "error": null
+        },
+        {
+          "name": "python_packages",
+          "label": "Python packages",
+          "state": "off",
+          "count": 0,
           "error": null
         },
         {
@@ -78,27 +99,47 @@
         },
         "microsoft": {
           "label": "Microsoft products",
-          "attempted": 1243,
-          "determined": 1243,
+          "attempted": 824,
+          "determined": 824,
           "outcomes": {
             "not-applicable": 13,
-            "not-vulnerable": 1201,
-            "vulnerable": 29
+            "not-vulnerable": 784,
+            "vulnerable": 27
           }
         },
         "app": {
           "label": "Third-party apps",
-          "attempted": 104,
-          "determined": 104,
+          "attempted": 109,
+          "determined": 109,
           "outcomes": {
-            "not-applicable": 98,
+            "not-applicable": 103,
             "not-vulnerable": 2,
             "vulnerable": 4
           }
+        },
+        "application": {
+          "label": "Applications outside the package manager",
+          "attempted": 0,
+          "determined": 0,
+          "outcomes": {}
         }
       },
+      "applications": {
+        "installs": 0,
+        "judged": 0,
+        "vulnerable": 0,
+        "no_advisory": 0,
+        "left_to_package_manager": 0,
+        "sbom_components_not_assessed": 0,
+        "not_looked_for": [
+          "Python packages",
+          "npm packages",
+          "Java archives"
+        ]
+      },
       "statements": [
-        "End of support, Windows settings, drivers and Java archives aren't judged by this report yet: they stay findings in the normal view."
+        "Not looked for on this host, so not assessed: Python packages, npm packages, Java archives (the agent's opt-in scans are off, or it predates them).",
+        "End of support, Windows settings and drivers aren't judged by this report yet: they stay findings in the normal view. Settings are read here only to show how they combine with vulnerabilities into attack paths."
       ]
     },
     "undetermined": [],
@@ -142,7 +183,7 @@
       {
         "instance": "Microsoft.HEVCVideoExtension 2.4.45.0",
         "grade": "confirmed",
-        "count": 3,
+        "count": 1,
         "known_exploited": 0,
         "observed": "2.4.45.0 (agent reading of Microsoft.HEVCVideoExtension)",
         "expected": "at least 2.4.87.0",
@@ -194,18 +235,23 @@
         "action": "Update to 4.18.26060.3008 or later"
       }
     ],
-    "content_version": "2026-11-02.bd55bd00b9f8",
-    "inventory_sha256": "3bee666ac1a60f8f135875c3c7c5f54c8de74b43870b25983f177e309e7b99ef",
-    "verdicts_sha256": "c21e7957ae30755f54f916d36afe278076c93940fe5ed694eef3f5ee25150742"
+    "content_version": "2026-11-07.9414a5822df2",
+    "inventory_sha256": "54787bb81789bc6de020404d1dfb1094c060a3462b8ea0503273055553a40a3f",
+    "verdicts_sha256": "4f65766d993bba584765cc3d64ce799ad1481ec60a430b105ced5b86bfbf4994"
   },
   {
     "step": "parity with rescan",
-    "findings": 1046,
-    "agree": 1040,
+    "findings": 1047,
+    "agree": 1038,
     "outside_this_slice": {
-      "WinConfig": 6
+      "WinConfig": 9
     },
     "explained": [],
+    "unexplained": []
+  },
+  {
+    "step": "rescan's loop against the engine (engine_disagrees)",
+    "entries": 0,
     "unexplained": []
   },
   {
@@ -223,13 +269,13 @@
       "uninstall": {
         "state": "partial",
         "count": 4,
-        "error": "S-1-5-21-547078760-3483191499-1573513845-500\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall: access denied",
+        "error": "S-1-5-21-830414957-1284455264-2012561117-500\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall: access denied",
         "code": "access-denied"
       },
       "user_hives": {
         "state": "failed",
         "count": 0,
-        "error": "profile S-1-5-21-547078760-3483191499-1573513845-1000: its hive couldn't be loaded"
+        "error": "profile S-1-5-21-830414957-1284455264-2012561117-1000: its hive couldn't be loaded"
       },
       "microsoft_products": {
         "state": "partial",
@@ -238,16 +284,28 @@
       },
       "host_facts": {
         "state": "ok",
-        "count": 12
+        "count": 16
       },
       "drivers": {
         "state": "ok",
-        "count": 437
+        "count": 439
+      },
+      "java_archives": {
+        "state": "off",
+        "count": 0
+      },
+      "python_packages": {
+        "state": "off",
+        "count": 0
+      },
+      "npm_packages": {
+        "state": "off",
+        "count": 0
       }
     },
     "headline": {
       "status": "vulnerable",
-      "text": "VULNERABLE: 1,030 vulnerabilities across 4 installs. 130 checks couldn't be determined."
+      "text": "VULNERABLE: 1,030 vulnerabilities across 4 installs. 133 checks couldn't be determined."
     },
     "undetermined": [
       {
@@ -255,9 +313,9 @@
         "reason": "precondition-unknown",
         "blocked_by": "user_hives",
         "why": "what these checks depend on couldn't be read",
-        "source_said": "profile S-1-5-21-547078760-3483191499-1573513845-1000: its hive couldn't be loaded",
+        "source_said": "profile S-1-5-21-830414957-1284455264-2012561117-1000: its hive couldn't be loaded",
         "what_to_do": "Fix that source on the host, then scan again",
-        "count": 105,
+        "count": 110,
         "examples": [
           "7-zip:7-zip",
           "Azure Connected Machine Agent",
@@ -289,13 +347,13 @@
         "why": "a finding was open on this, and this scan has no evidence either way",
         "source_said": null,
         "what_to_do": "It stays open. Fix what stopped the scan, then scan again",
-        "count": 9,
+        "count": 7,
         "examples": [
           "CVE-2026-105725",
           "CVE-2026-108400",
           "CVE-2026-21413",
-          "CVE-2026-58599",
-          "CVE-2026-58600"
+          "CVE-2026-70343",
+          "CVE-2026-83844"
         ]
       }
     ]

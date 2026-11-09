@@ -153,3 +153,12 @@ The finding/database batch passed 106 focused tests and 46 subchecks, with two W
 | `scripts/fetch_runtimes.py` | main and CLI entry | Reviewed pin lookup, sorted keys, initial URL prefix, redirects, memory reads, pre-write hashing, overwrite/partial-write limits, retained earlier output and propagated errors | Reviewed |
 
 81 web tests, six documentation tests and 46 subchecks passed. Offline assertions establish the named checker/download limits. Playwright MCP verifies controlled local navigation and mobile behavior. All current web exported callables now have named review records. API-export/XCCDF tooling, agent/API and final editorial/example requirements remain open.
+
+## API export and XCCDF review
+
+| Source | Review scope | Evidence and corrections | Status |
+| --- | --- | --- | --- |
+| `scripts/export_api_docs.py` | render, main and all schema/catalog construction | Reviewed temporary app/client, direct-dependency authentication labels, manually selected schemas, omitted routes, deterministic ordering, source lines, exact freshness checks and non-atomic sequential writes | Reviewed |
+| `scripts/xccdf_rules.py` | All 14 public functions, pattern maps and CLI paths | Reviewed numeric forms, regex labels, dispatch precedence, registry/audit/rights records, role reconciliation, byte-size/XML limits, direct-child traversal, provenance labels, collection-list deduplication, output writes and manual-success cases | Reviewed |
+
+71 baseline/documentation tests and 53 subchecks passed, with one native PowerShell syntax skip. Five guide blocks executed against an owned local fixture and verified documented output boundaries. No production files, hosts or benchmark feeds changed. All counted public Python callables under scripts/ now have review records. This does not complete remaining application, agent, sandbox or editorial/example requirements.

@@ -269,3 +269,15 @@ Reviewed every public documentation-checker function and the release runtime-dow
 Offline assertions verified retained earlier runtime output after a later mismatch, preserved previous bytes for the refused target, duplicate route counting and approximate fenced headings. No network download occurred. Playwright MCP verified member text, public Help, finding-row counts, application suggestions, failed-logout navigation and both mobile tab arrangements. API requests used local fixtures. The full CLI end-to-end suite and production session revocation were not exercised.
 
 Every exported callable in the current web source now has a recorded semantic review. This does not complete the goal. Remaining work includes the agent's other public interfaces, API handler/schema gaps, API-export/XCCDF tools, remaining sandbox entry contracts, and the final root/reference/explanation/example audit. Browser fixture checks do not replace native-host or deployment evidence.
+
+## API export and baseline authoring checkpoint
+
+Reviewed both API-export functions and every XCCDF conversion function. Expanded inline contracts for parameters, result fields, parser dispatch, copied provenance, traversal, refusals, writes and propagated errors. The tooling reference now describes exact export/check behavior and its manually maintained schema limits.
+
+Added a baseline conversion reference and a separate how-to for producing a candidate for review. Corrected broad whole-text and XML-validation implications. The builder reads only direct XCCDF 1.1 groups and first rule/check text. It can return an empty/partial table successfully. Supplied hash/regex labels are not verified. Runtime parsing and conversion behavior were preserved.
+
+Executed all five new how-to command blocks against a local synthetic benchmark. Assertions verified source hash, automated/manual counts, collection JSON, preserved regex and omission of nested/additional rules. The shell-example gate now recognizes indented Bash/sh fences and removes their presentation indentation. 71 focused baseline/documentation tests and 53 subchecks passed. One PowerShell-only syntax case was skipped. Ruff, generated-file freshness and Redocly passed. Repository checks report 632 declarations and no recognized link problems.
+
+The site builds 78 articles with valid local links/anchors and six passing site tests. Playwright MCP verified both new pages at desktop/mobile widths and their mobile section links without overflow. Prose received humanizer and STE-style review. No Windows assessment, upstream benchmark download or shipped baseline change occurred.
+
+Every counted public callable in scripts/ now has a named semantic review. Remaining agent interfaces, API handler/schema gaps, sandbox/web helper contracts and final root/reference/explanation/example review still keep the goal open.

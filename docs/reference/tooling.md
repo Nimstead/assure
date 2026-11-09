@@ -48,6 +48,20 @@ Output names are `python-embed-KEY.zip`, with the key from the pin document. Mat
 
 An initial URL refusal or hash mismatch raises SystemExit. Malformed pin documents, network failures and filesystem errors propagate. A missing CLI output argument raises IndexError. This helper does not sign a release or verify an agent manifest.
 
+## API export helper
+
+`scripts/export_api_docs.py` requires the locked API environment. `render()` returns text for `docs/reference/openapi.json` and `docs/reference/api-endpoints.md`. It creates an in-memory SQLite app and closes its temporary HTTP client. It does not invoke endpoints or make provider/feed requests.
+
+The catalog includes only APIRoute objects included in OpenAPI. Paths and methods are sorted. Summaries use the first description line. Source links use endpoint code line numbers. JSON keys are sorted and both outputs end with a newline.
+
+Authentication inference uses direct dependency function names plus explicit special-case labels. Selected response schemas, media types and parser limits are maintained in this exporter. Other schemas come from FastAPI. This does not validate actual response data or run an OpenAPI linter.
+
+`main()` reads `--check`. Check mode compares exact output text, prints stale paths, and returns one for missing/different files. It performs no writes. Write mode overwrites schema then catalog. Parent directories must exist. Writes are not atomic, so an earlier output can change before a later failure.
+
+App initialization, schema generation, missing attributes and filesystem errors can propagate. Invalid CLI arguments use argparse SystemExit. A successful export does not prove endpoint behavior, exhaustive error lists, or complete response contracts.
+
+See [baseline conversion](baseline-authoring.md) for the XCCDF tool's inputs, generated fields and refusal limits.
+
 ## Operational entry points
 
 | Path | Interface and effects |

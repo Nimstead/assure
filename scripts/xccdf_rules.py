@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Turn a DISA STIG XCCDF file into a rule table (api/src/nimstead/baselines/*.json; DECISIONS 75).
 
-The XCCDF is untrusted input, and its text isn't ours to ship: only IDs, severity and the setting facts (registry path, value
-name, expected value) reach the table, and the words shown to people are written by winbaseline.py from those facts. A rule is
-automated only when its whole check text is understood: any sentence not on the lists below makes it "not automated", which
-reads "not assessed". Being wrong costs a false pass or fail, so a rule stays out on any doubt. Review the report it prints.
+Convert recognized direct XCCDF 1.1 groups into setting facts, IDs and severity.
+Unknown check prose normally produces a manual-rule record. Recognition is heuristic,
+not proof of semantic equivalence. Nested groups and additional rules/checks are not traversed.
+Use reviewed benchmark inputs and compare source coverage with the generated table.
+The XML loader has a size cap and literal declaration byte checks, not full input validation.
+winbaseline.py supplies the displayed assessment wording from the generated facts.
 
     python -I scripts/xccdf_rules.py FILE-xccdf.xml --id windows-server-2025 --name "DISA STIG for Windows Server 2025" \\
         --os-re "^Windows Server 2025\\b" --source-sha256 HASH --out api/src/nimstead/baselines/windows-server-2025.json
@@ -127,13 +129,20 @@ RIGHT_EXCEPTION = [re.compile(p, re.I) for p in (
 def field(line: str, label: str) -> str | None:
     """Return the value following label in line, or None if the full line does not match.
 
-    Both inputs are strings; label is inserted as a regular-expression fragment."""
+    Both inputs are strings. label is inserted as an unescaped regex fragment.
+    Matching is case-insensitive and permits optional colon/whitespace. Return captured
+    text without surrounding whitespace. Invalid regex/type inputs can raise errors."""
     m = re.fullmatch(rf"\s*{label}\s*:?\s*(.*?)\s*", line, re.I)
     return m.group(1) if m else None
 
 
 def parse_number(s: str) -> int | None:
-    """0x00000001 (1), or a bare 1. A hex and decimal that disagree are a typo we can't resolve, so None."""
+    """Parse string s as nonnegative decimal or 0x hexadecimal with optional decimal annotation.
+
+    Return int or None for unrecognized text or disagreeing hex/decimal values.
+    No upper bound is imposed. Some Unicode isdigit inputs can raise ValueError.
+    No I/O or input mutation occurs.
+    """
     m = re.fullmatch(r"0x([0-9a-f]+)(?: \((\d+)\))?", s.strip(), re.I)
     if m:
         return int(m.group(1), 16) if not m.group(2) or int(m.group(1), 16) == int(m.group(2)) else None
@@ -141,7 +150,12 @@ def parse_number(s: str) -> int | None:
 
 
 def parse_want(spec: str, extra: list[str]) -> dict | None:
-    """The expected value: {"eq": n} | {"in": [..]} | {"ge": n} | {"le": n, "min": n}, plus "absent_ok". None = not understood."""
+    """Parse expected-value text spec and extra value-line strings into a comparison dict.
+
+    Return eq, in, ge or le, optionally min=1 and absent_ok=True. Ordinary unrecognized
+    text returns None. Range forms ignore extra. Choice forms preserve duplicates/order.
+    Numeric/type errors can propagate. Inputs are not mutated and no I/O occurs.
+    """
     spec = spec.strip()
     want: dict = {}
     if re.search(r"\(or if the Value Name does not exist\)", spec, re.I):
@@ -169,7 +183,10 @@ def registry_rule(text: str) -> tuple[dict | None, str]:
 
     text is the complete XCCDF check-content string. Unknown conditions, unsupported hives,
     multiple values, and ambiguous paths remain manual rather than producing a partial rule.
-    This function does not read the registry or change host settings.
+    Supported types are exact REG_DWORD and selected REG_SZ forms. Populated duplicate
+    hive/path/name fields are refused. A later type field replaces an earlier type.
+    Scope phrases use the declared pattern order. This is not semantic text validation.
+    Numeric/regex/type errors can propagate. No registry access or host changes occur.
     """
     hive = path = name = typ = spec = None
     prose, extra = [], []
@@ -227,7 +244,10 @@ def registry_rule(text: str) -> tuple[dict | None, str]:
 def audit_rule(text: str) -> tuple[dict | None, str]:
     """Return (audit-rule dictionary, empty reason) for recognised audit-policy check text.
 
-    Return (None, reason string) if the setting or a condition is not understood."""
+    text is complete check-content text. Require one exact Success/Failure line and
+    a name in AUDIT. Return scope, audit GUID, label and bit (1 success, 2 failure).
+    Return (None, reason string) for ordinary unsupported shapes/conditions.
+    No audit-policy access or host changes occur. Invalid types can raise errors."""
     hits = re.findall(r"^\s*(.+?) >> (.+?) - (Success|Failure)\s*$", text, re.M)
     if len(hits) != 1 or (guid := AUDIT.get(hits[0][1])) is None:
         return None, "audit requirement not understood"
@@ -248,7 +268,9 @@ def entry_sids(line: str) -> list[str] | None:
     """Return accepted SID alternatives parsed from one user-rights holder line.
 
     line can contain a literal SID, a known group name, or alternatives separated by "or".
-    Domain group identifiers use wildcard suffixes. Return None if any holder is unknown.
+    Domain group identifiers use wildcard suffixes. Preserve input order and duplicates.
+    Literal SID checks validate the implemented text pattern, not every SID semantic rule.
+    Return None if a holder is unknown. Invalid types can raise errors. No I/O occurs.
     """
     out = []
     for part in re.split(r"\s+or\s+", re.sub(r"\s*\(see Note below\)", "", line).strip(" -.\t")):
@@ -271,7 +293,10 @@ def rights_rule(text: str) -> tuple[dict | None, str]:
 
     text must describe one understood right with consistent holder lists and applicability.
     Return (None, refusal reason) for unknown conditions or conflicting console/SID forms.
-    The parser does not inspect or modify the local security policy.
+    Return scope/right with only, require and optional require_domain/exception fields.
+    Known display names map through RIGHT_NAMES. Literal Se-prefixed names also qualify.
+    The parser does not inspect local policy or prove a documented exception exists.
+    Invalid types and regex failures can propagate. Inputs are not mutated.
     """
     right, scope, exception = None, "all", False
     sections: list[dict] = []
@@ -328,7 +353,12 @@ def rights_rule(text: str) -> tuple[dict | None, str]:
 
 
 def unknown_sentences(text: str) -> list[str]:
-    """Return sentence fragments in check text that do not match the accepted informational patterns."""
+    """Normalize text whitespace and return fragments outside the INFO regex patterns.
+
+    Strip recognized Note/Warning prefixes and split after periods/colons plus whitespace.
+    This is a text heuristic, not a sentence/condition parser. No I/O occurs.
+    Invalid input types can raise errors.
+    """
     parts = [p.strip() for p in re.split(r"(?<=[.:])\s+", re.sub(r"\b(Note|Warning):\s*|\s+", " ", text)) if p.strip(" .")]
     return [p for p in parts if not any(i.fullmatch(p) for i in INFO)]
 
@@ -338,7 +368,8 @@ def apply_id_scope(rule: dict, stig_id: str) -> dict | None:
 
     rule is a parsed dictionary containing scope. Return a scoped copy for DC/MS identifiers,
     the original rule for other identifiers, or None for contradictory applicability.
-    A missing scope on a DC/MS rule raises KeyError. The input dictionary is not mutated.
+    A missing scope on a DC/MS rule raises KeyError. Copies are shallow. Other IDs retain
+    the original object without scope validation. No I/O or input mutation occurs.
     """
     part = stig_id.split("-")[1] if stig_id.count("-") >= 2 else ""
     if part == "DC" and rule["scope"] in ("all", "dc"):
@@ -353,7 +384,10 @@ def classify(text: str, stig_id: str) -> tuple[dict | None, str]:
 
     text is complete XCCDF check content. stig_id is the benchmark rule identifier.
 
-    Select registry, audit, or user-rights parsing and refuse conflicting applicability."""
+    Select the first case-sensitive marker: Registry Hive, then AuditPol, then
+    User Rights Assignment. No fallback parser runs after a selected parser refuses.
+    Reconcile recognized rules with the ID's DC/MS segment. Parser/type errors propagate.
+    No I/O occurs and input strings are not changed."""
     if re.search(r"Registry Hive", text):
         rule, why = registry_rule(text)
     elif re.search(r"AuditPol", text):
@@ -370,8 +404,10 @@ def classify(text: str, stig_id: str) -> tuple[dict | None, str]:
 def load_benchmark(path: str) -> ET.Element:
     """Parse an XCCDF file at path into an XML Element.
 
-    Raise SystemExit for excessive size or DOCTYPE/entity declarations. File I/O and XML
-    parse errors propagate; no external resources are fetched."""
+    Read at most MAX_XML+1 bytes. Reject more than 20MiB and literal uppercase
+    DOCTYPE/ENTITY declaration byte patterns with SystemExit. This byte check is not
+    encoding-independent XML validation. No XCCDF namespace/schema validation occurs.
+    File I/O and XML parsing errors propagate. No network requests occur."""
     with open(path, "rb") as f:
         raw = f.read(MAX_XML + 1)
     if len(raw) > MAX_XML:
@@ -385,8 +421,12 @@ def build(root: ET.Element, ident: str, name: str, os_re: str, source: str, sour
     """Return (baseline dictionary, list of manual-rule reasons) from an XCCDF root Element.
 
     ident and name label the baseline; os_re selects host OS names. source and source_sha256
-    record provenance. Unsupported checks remain manual. Malformed benchmark structures can
-    raise attribute or key errors; the caller reviews the output before shipping it."""
+    record caller-supplied provenance without hash verification or regex compilation.
+    Read direct Group children in namespace 1.1 and only each first Rule/check/content.
+    Additional/nested groups, rules and checks are not traversed. Unknown namespace can
+    produce an empty table. Missing release metadata produces V...R? and empty date.
+    Unsupported processed checks enter not_automated and the separate reason list.
+    Malformed structures/types can raise errors. No files or host settings are changed."""
     info = next((p.text or "" for p in root.findall(NS + "plain-text") if p.get("id") == "release-info"), "")
     release = re.search(r"Release: (\d+) Benchmark Date: (.+)", info)
     version = f"V{root.findtext(NS + 'version')}R{release.group(1) if release else '?'}"
@@ -411,7 +451,9 @@ def agent_list(paths: list[str]) -> dict:
 
     paths names local JSON baseline files. Registry keys are deduplicated case-insensitively.
     File errors, invalid JSON, and missing required rule fields propagate to the caller.
-    The result needs review before it becomes the agent's closed collection list.
+    Return reg, audit and rights arrays. Registry spelling comes from its first occurrence
+    in input order. Audit/right deduplication is case-sensitive. No files are written.
+    The function does not validate baseline provenance or semantic correctness.
     """
     reg, audit, rights = {}, set(), set()  # Windows doesn't care about case in a path, and the STIGs spell the same key several ways
     for p in paths:
@@ -427,7 +469,12 @@ def agent_list(paths: list[str]) -> dict:
 def main() -> int:
     """Parse command-line arguments and write a baseline JSON file or print an agent collection list.
 
-    Return 0 on success. Parsing, benchmark, JSON, and file errors propagate or exit nonzero."""
+    --agent-list takes precedence and prints JSON without a baseline write.
+    Conversion copies supplied metadata, validates generated JSON syntax, then overwrites
+    --out. Parent directories must exist. Writes are not atomic. Counts/reasons go to stderr.
+    Zero/partial automation still returns 0. Optional argparse fields are not enforced as
+    required conversion metadata. Missing paths can raise TypeError. Other argument,
+    benchmark, JSON and filesystem errors propagate or exit nonzero."""
     ap = argparse.ArgumentParser()
     ap.add_argument("xccdf", nargs="?")
     ap.add_argument("--id")

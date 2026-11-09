@@ -121,3 +121,5 @@ CSV applies the formula-prefix guard and shares the 30-per-hour organisation quo
 - [Scan outcomes](scan-outcomes.md)
 - [Platform support](platforms.md)
 - Source: [`winconfig.py`](../../api/src/nimstead/winconfig.py), [`winbaseline.py`](../../api/src/nimstead/winbaseline.py), and bundled [Windows 11](../../api/src/nimstead/baselines/windows-11.json) / [Server 2025](../../api/src/nimstead/baselines/windows-server-2025.json) data
+
+Baseline authors: use [generate a baseline for review](../how-to/generate-baseline.md) and the [conversion reference](baseline-authoring.md).

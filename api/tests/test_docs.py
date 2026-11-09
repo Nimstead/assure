@@ -7,6 +7,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import textwrap
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -51,9 +52,9 @@ class DocumentationExamples(unittest.TestCase):
         for path in docs.documentation_paths():
             if "tasks" in path.parts or ".impeccable" in path.parts:
                 continue
-            for number, source in enumerate(re.findall(r"^```(?:bash|sh)\n(.*?)^```", path.read_text(), re.M | re.S)):
+            for number, source in enumerate(re.findall(r"^ {0,3}```(?:bash|sh)\n(.*?)^ {0,3}```", path.read_text(), re.M | re.S)):
                 with self.subTest(path=path.relative_to(docs.ROOT), block=number):
-                    result = subprocess.run(["bash", "-n"], input=source, text=True, capture_output=True)
+                    result = subprocess.run(["bash", "-n"], input=textwrap.dedent(source), text=True, capture_output=True)
                     self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_sbom_tutorial_commands_produce_documented_results(self):

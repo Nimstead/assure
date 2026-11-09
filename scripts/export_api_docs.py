@@ -26,11 +26,18 @@ SPECIAL_AUTH = {
 
 
 def render() -> dict[str, str]:
-    """Return generated repository paths mapped to UTF-8 document contents.
+    """Return two generated repository paths mapped to document text strings.
 
     Build the current FastAPI app with an in-memory database and caller-owned HTTP client.
     The catalog reflects typed parameters and named authentication dependencies. Routes that
-    authenticate inside their body use explicit labels. Schema-generation errors propagate.
+    authenticate inside their body use explicit labels. Only included APIRoute objects enter
+    the sorted catalog. Authentication inference uses direct dependency function names.
+    Add selected manually maintained response schemas, security metadata and parser limits.
+    This does not execute endpoint bodies, validate responses or run a schema linter.
+    JSON output sorts keys. Catalog summaries use the description's first line and source
+    links use endpoint code line numbers. No output files or directories are written here.
+    App initialization reads configuration/static context and creates temporary SQLite tables.
+    HTTP client closure occurs before catalog assembly. App/schema/attribute errors propagate.
     """
     with httpx.Client() as client:
         app = create_app("sqlite://", oidc_http=client)
@@ -287,7 +294,12 @@ def render() -> dict[str, str]:
 def main() -> int:
     """Write API reference outputs, or return 1 for stale files when --check is selected.
 
-    Argument, app/schema, and file errors propagate. The command never deploys the app.
+    Read --check from CLI arguments. Check mode compares exact text, prints stale paths
+    and performs no writes. Missing outputs are stale. Return 0 when no outputs are stale.
+    Write mode overwrites the schema then catalog and returns 0 after both writes.
+    Parent directories must exist. Writes are not atomic. Earlier output can remain changed
+    after a later failure. argparse uses SystemExit for invalid arguments. App/schema and
+    filesystem errors propagate. The command neither deploys the app nor invokes endpoints.
     """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true")

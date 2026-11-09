@@ -530,5 +530,19 @@
     "title": "Web client reference",
     "group": "Reference",
     "product": "assure"
+  },
+  {
+    "source": "docs/how-to/generate-baseline.md",
+    "slug": "how-to/generate-baseline",
+    "title": "Generate a baseline for review",
+    "group": "How-to guides",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/baseline-authoring.md",
+    "slug": "reference/baseline-authoring",
+    "title": "Baseline conversion reference",
+    "group": "Reference",
+    "product": "assure"
   }
 ]

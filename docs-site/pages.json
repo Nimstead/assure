@@ -161,6 +161,27 @@
     "product": "assure"
   },
   {
+    "source": "docs/reference/scan-report.md",
+    "slug": "reference/scan-report",
+    "title": "Scan report format",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/inventory-format.md",
+    "slug": "reference/inventory-format",
+    "title": "Inventory and collection metadata",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/fleet-paths.md",
+    "slug": "reference/fleet-paths",
+    "title": "Fleet attack-path format",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
     "source": "docs/reference/optional-ai.md",
     "slug": "reference/optional-ai",
     "title": "Optional AI",

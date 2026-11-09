@@ -55,6 +55,10 @@ Find commands, settings, formats, and limits.
 - [HTTP API reference](reference/http-api.md)
 - [SBOM input reference](reference/sbom.md)
 - [Scan outcomes](reference/scan-outcomes.md)
+- [Scan report format](reference/scan-report.md)
+- [Inventory and collection metadata](reference/inventory-format.md)
+- [Fleet attack-path format](reference/fleet-paths.md)
+- [Evidence responses and pack format](reference/evidence-format.md)
 - [Remediation modes](reference/remediation-modes.md)
 - [Release keys](release-keys.md)
 - [Developer tools and repository map](reference/tooling.md)
@@ -77,5 +81,3 @@ Read the reasons, trust boundaries, and tradeoffs.
 [Design decisions](../DECISIONS.md), [engine designs](engine/design-e2.md), and [task plans](../tasks/plan.md) retain rationale and planned work. They do not replace current operator instructions.
 
 [Changelog](../CHANGELOG.md) records release changes. [Security](../SECURITY.md) gives the vulnerability-reporting policy.
-
-See [evidence responses and pack format](reference/evidence-format.md) for ledger, report, ZIP, and metric fields.

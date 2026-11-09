@@ -26,6 +26,8 @@ Sessions expire after 14 days or 12 hours of inactivity. Activity timestamps upd
 | `/api/me` | Current signed-in identity |
 | `/api/assets` | List assets; create application assets |
 | `/api/assets/{asset_id}/sbom` | Replace an asset's SBOM inventory |
+| `/api/assets/{asset_id}/scan-report` | [Grouped report](scan-report.md) for stored inventory. Can create a retained scan record |
+| `/api/attack-paths` | [Fleet path correlation](fleet-paths.md) from stored reports and current facts |
 | `/api/agent/*` | Enrolment, inventory, release manifests, jobs, and job reports |
 | `/api/findings` | Filtered findings, with pagination |
 | `/api/findings/count` | Total matching findings |

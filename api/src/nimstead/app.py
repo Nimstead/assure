@@ -1250,12 +1250,21 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/assets/{asset_id}/scan-report")
     def asset_scan_report(asset_id: str, user: CurrentUser, s: DB):
-        """Every check's verdict on this host's stored inventory (nimstead/engine). Findings still open and close through rescan."""
+        """Return the grouped engine report for asset_id's stored inventory.
+
+        Requires a session or eligible read-only token. Ownership failure returns 404.
+        May create a retained ScanRecord and commit the session, even though this is GET.
+        Retains five records per asset. Findings still open and close through rescan."""
         return engine.asset_report(s, owned_asset(s, user, asset_id))
 
     @app.get("/api/attack-paths")
     def attack_paths(user: CurrentUser, s: DB):
-        """Which hosts an attacker who gets into one can reach next, from each host's latest stored scan report (engine/fleet.py)."""
+        """Return organisation fleet paths from latest stored reports and current host facts.
+
+        Requires a session or eligible read-only token. Does not rescan assets.
+        The organisation limit is 120 reads per hour, with 429 on refusal.
+        Response has hosts, edges, truncated and chains. At most 2000 edges and
+        50 chain starts are returned. This GET commits its usage counter."""
         if over_limit(s, "attack-paths:" + user.org_id, 120):  # a whole-fleet read: shared server, so bounded per organisation
             raise HTTPException(429, "Attack paths were read too often this hour; try again later")
         s.commit()

@@ -71,7 +71,9 @@ class Verdict:
     """Immutable conclusion for a check, product, and optional installed instance.
 
     check, family, ecosystem, product, and outcome identify the result. Optional fields carry
-    confidence, blockers, observed/fixed versions, advisory provenance, and risk context."""
+    confidence, blockers, observed/fixed versions, advisory provenance, and risk context.
+    Frozen fields do not imply validation. The constructor accepts incompatible values,
+    which downstream serialization, hashing or report functions can refuse."""
     check: str  # stable: "<vulnerability>/<product>", or "product:<product>" for a whole product
     family: str  # os | microsoft | app (Windows), distro (Linux), application (outside the package manager: language packages, SBOMs)
     ecosystem: str  # advisory ecosystem, as on a Finding
@@ -97,10 +99,16 @@ class Verdict:
     summary: str | None = None
 
     def as_dict(self) -> dict:
-        """Return verdict fields as a dictionary, omitting values equal to None or False."""
+        """Return a new field dictionary, omitting values equal to None or False.
+
+        Equality also omits numeric zero, including cvss=0. Empty strings remain.
+        Outcome and Grade values remain string-enum objects, which JSON emits as strings."""
         return {k: v for k, v in asdict(self).items() if v not in (None, False)}
 
     @property
     def proves_absent(self) -> bool:
-        """Only this may close a finding (R4.6). `rescan` doesn't use it yet: parity first."""
+        """Return true for not-vulnerable or not-applicable outcomes.
+
+        This is an evidence predicate. Reading it does not resolve a finding, and
+        rescan does not use this property to manage finding state."""
         return self.outcome in (Outcome.NOT_VULNERABLE, Outcome.NOT_APPLICABLE)

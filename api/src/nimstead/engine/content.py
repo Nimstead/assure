@@ -1,8 +1,8 @@
 """The detection content one evaluation reads: the existing advisories, as data, with a version that names exactly what was used (T34).
 
-The only module here that touches the database. Advisories change in place with each feed update, so the version is a hash of
-what this host's evaluation consulted, plus the newest date in it so a person can read its age. Same inventory and same
-content version: same verdicts."""
+Advisories change in place with each feed update. The version hashes the selected content and application version,
+with a newest-date prefix. It does not retain the advisory archive. Reproduction also needs the same inventory,
+prior-finding identities and evaluator implementation."""
 
 import hashlib
 import json
@@ -24,7 +24,9 @@ ECOSYSTEMS = ("Windows", msproducts.ECOSYSTEM, winapps.ECOSYSTEM)
 class Content:
     """Detection input snapshot keyed by (ecosystem, product), with KEV, CVSS, feed coverage, and a version.
 
-    universe contains distro packages with advisories; eol optionally holds distro lifecycle data."""
+    universe contains distro packages with advisories. eol optionally maps release cycles
+    to lifecycle dates or flags. frozen prevents field assignment, not nested mutation.
+    Inputs are trusted internal data, without schema or numeric-range validation."""
     records: dict[tuple[str, str], list[dict]]  # (ecosystem, product key) -> OSV-shaped records, sorted by id
     kev: frozenset[str]
     cvss: dict[str, float]  # NVD's, for what the advisory itself doesn't score
@@ -39,7 +41,12 @@ class Content:
 
         records maps (ecosystem, product) tuples to OSV dictionaries with id keys. kev and universe
         are iterables of strings; cvss maps CVEs to scores. feeds overrides inferred loaded ecosystems.
-        eol is optional lifecycle data. Missing record IDs raise KeyError."""
+        eol is optional lifecycle data. A supplied empty feeds iterable stays empty.
+        Version is the newest modified-date prefix plus 12 SHA-256 hex characters.
+        The hash includes the application version and every supplied content field.
+        Lists are sorted into a new records mapping. Record dictionaries, nonempty cvss,
+        and eol remain shared with the caller. Mutation does not refresh the version.
+        Missing record IDs raise KeyError. Incompatible keys or values can raise TypeError."""
         records = {k: sorted(v, key=lambda r: r["id"]) for k, v in records.items()}
         kev, cvss, universe = frozenset(kev), cvss or {}, frozenset(universe)
         feeds = frozenset(feeds if feeds is not None else {e for (e, _), v in records.items() if v})
@@ -52,7 +59,10 @@ class Content:
 def load(s: Session, inv: Inventory) -> Content:
     """Read the advisories and risk metadata needed for Inventory inv from Session s.
 
-    Return Content with feed-coverage and lifecycle metadata. Does not write; database errors propagate."""
+    Return Content with feed-coverage and lifecycle metadata. It contains selected
+    installed-product records, not a complete archive of every loaded advisory.
+    Does not explicitly write or commit. Queries can autoflush caller changes.
+    Database errors and malformed advisory errors propagate."""
     wanted = {(i.ecosystem, k) for i in installs(inv) for k in i.keys}
     wanted |= {(e, k + HOTPATCH) for e, k in wanted if e == "Windows"}
     apps = {(i.ecosystem, i.keys[0]) for i in app_installs(inv)}

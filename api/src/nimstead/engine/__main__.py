@@ -15,6 +15,7 @@ from nimstead.engine.collection import Inventory
 def main(argv=None) -> int:
     """Parse optional argv, read an inventory JSON file, evaluate it, and print text or JSON.
 
+    argv is a list of argument strings, or None to use sys.argv[1:].
     Return 0 on success or 2 for unreadable/invalid inventory input. argparse exits for invalid
     arguments; database and evaluation errors propagate. Evaluation does not save findings,
     but opening a SQLite database can create missing tables."""

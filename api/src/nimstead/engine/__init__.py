@@ -17,7 +17,11 @@ KEEP_RECORDS = 5  # per host; each holds a whole inventory, up to 10 MB (DECISIO
 
 
 def scan_inventory(s: Session, inv: Inventory, prior=()) -> tuple[list[Verdict], dict]:
-    """(verdicts, report) for an inventory, with no change to the database."""
+    """Return (verdicts, report) for Inventory inv using advisory data read through Session s.
+
+    prior contains (ecosystem, package, vuln_id) tuples for existing findings.
+    Does not explicitly write or commit. Session queries can autoflush caller changes.
+    Database, malformed-input and evaluation errors propagate."""
     c = content.load(s, inv)
     verdicts = evaluate(inv, c, prior)
     return verdicts, report.build(inv, c, verdicts)
@@ -25,7 +29,13 @@ def scan_inventory(s: Session, inv: Inventory, prior=()) -> tuple[list[Verdict],
 
 def shadow(s: Session, asset: Asset, pkgs: list, opened: set, prior: list) -> dict:
     """Phase 1 of tasks/plan-engine-findings.md: the engine's verdicts on the inventory `rescan` just judged, compared with
-    what it opened (parity.compare). Reads only: findings still open and close through `rescan`."""
+    what it opened (parity.compare).
+
+    s is the caller's Session and asset is the scanned Asset. pkgs contains its installed
+    rows. opened is a set of (ecosystem, package, vuln_id) tuples; prior contains existing
+    finding tuples. Return the parity dictionary without changing findings or committing.
+    Cache (inventory, content, verdicts) in s.info[("engine_scan", asset.id)].
+    Database and evaluation errors propagate."""
     from nimstead.engine import parity
     inv = Inventory.from_asset(asset, pkgs, sbom_received(s, asset))
     c = content.load(s, inv)
@@ -35,7 +45,11 @@ def shadow(s: Session, asset: Asset, pkgs: list, opened: set, prior: list) -> di
 
 
 def prior_findings(s: Session, asset: Asset) -> list[tuple[str, str, str]]:
-    """Findings open on this host, and those `rescan` closed from this same inventory: it closes on silence, and "fixed" needs evidence (R4.6)."""
+    """Return (ecosystem, package, vuln_id) tuples for Asset asset through Session s.
+
+    Include open/accepted findings and resolved findings with resolved_at at or after
+    asset.last_inventory_at. If that timestamp is absent, use the current time.
+    No ordering is promised. Does not commit. Database errors propagate."""
     since = asset.last_inventory_at or now()
     closed_now = and_(Finding.status == "resolved", Finding.resolved_at >= since)
     return [tuple(r) for r in s.execute(select(Finding.ecosystem, Finding.package, Finding.vuln_id)
@@ -43,15 +57,25 @@ def prior_findings(s: Session, asset: Asset) -> list[tuple[str, str, str]]:
 
 
 def sbom_received(s: Session, asset: Asset) -> dict | None:
-    """The latest SBOM upload's counts, from the ledger it was written to (the rows hold only what it mapped)."""
+    """Return the latest SBOM ledger metadata for Asset asset through Session s, or None.
+
+    Select by organisation, asset ID and descending ledger sequence. The dictionary has
+    received (timestamp truncated to 19 characters), components, mapped, and skipped.
+    Missing count fields return None. Does not commit. Database errors propagate."""
     e = s.scalar(select(LedgerEntry).where(LedgerEntry.org_id == asset.org_id, LedgerEntry.kind == "sbom_received", LedgerEntry.subject == asset.id)
                  .order_by(LedgerEntry.seq.desc()).limit(1))
     return {"received": e.ts[:19], **{k: e.data.get(k) for k in ("components", "mapped", "skipped")}} if e else None
 
 
 def asset_report(s: Session, asset: Asset, scanned: tuple | None = None) -> dict:
-    """The report from the host's stored inventory, and its record: inventory, content version and verdicts, so it can be explained later (T34).
-    `scanned`: (inventory, content, verdicts) shadow() just evaluated for this inventory, so it isn't evaluated twice."""
+    """Return the current report for Asset asset using Session s and retain its scan record.
+
+    scanned is optional (Inventory, Content, list[Verdict]) from shadow(); otherwise load
+    stored packages and evaluate them. The caller must check asset ownership first.
+    Deduplicate records by asset, inventory hash, content version and verdict hash.
+    On insertion, flush, delete records beyond KEEP_RECORDS (five), then commit s.
+    This can commit other pending changes in the session. A duplicate does not commit.
+    Findings are unchanged. Database and evaluation errors propagate."""
     if scanned:
         inv, c, verdicts = scanned
         out = report.build(inv, c, verdicts)

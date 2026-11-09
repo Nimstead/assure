@@ -305,7 +305,14 @@ def _evaluate_linux(inv: Inventory, c: Content, prior) -> list[Verdict]:
 
 
 def evaluate(inv: Inventory, content: Content, prior: tuple | list = ()) -> list[Verdict]:
-    """`prior`: (ecosystem, package, vuln_id) of findings already open on this host."""
+    """Return Verdict objects for Inventory inv against Content content without external I/O.
+
+    prior contains (ecosystem, package, vuln_id) tuples for existing findings. Supported
+    paths carry unanswered identities as not-reassessed. No-inventory and unsupported
+    host-platform exits return one not-run verdict without processing prior.
+    Results use stable family/product/check/instance ordering. Does not change findings.
+    Inputs must follow the internal models. Malformed records or prior tuples can raise
+    KeyError, TypeError or ValueError. The models do not validate all input fields."""
     if inv.kind == "application":  # an SBOM and nothing else
         out = (_applications(inv, content) if inv.source("sbom").state == "ok"
                else [Verdict("product:sbom", "application", "SBOM", "SBOM", Outcome.NOT_RUN, reason="no-sbom")])

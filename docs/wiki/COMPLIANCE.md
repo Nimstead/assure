@@ -111,3 +111,15 @@ Reviewed the public interfaces in `netguard.py` and `ai.py`, plus the AI HTTP ha
 Either Anthropic credential variable enables AI calls. The configuration reference now includes `ANTHROPIC_AUTH_TOKEN`. The new optional AI reference defines selected provider fields, truncation, cache behavior, filter defaults, quotas and errors. Selected text has no general hostname redaction. The configured model name also does not prove which provider fallback produced the answer.
 
 43 AI and notification tests passed. New assertions cover token-only enablement, explicit disablement, search defaults and truncation, explanation field selection, and URL checks without DNS. Provider calls used a fake client. No credential or customer data was sent to Anthropic.
+
+## Detection-engine checkpoint
+
+Reviewed collection, content, evaluator, verdict model, reports, host/fleet paths, parity, database wrappers and CLI interfaces. The module ledger records the scope. Engine network interfaces remain pending.
+
+Added reference pages for inventory/collection metadata, grouped scan reports, and fleet path fields. Expanded the outcome reference to cover every current reason code. These pages define lookup contracts and link to the existing confidence explanation and troubleshooting procedure.
+
+Corrected several broad claims. The install mapper excludes language/SBOM installs handled separately. Collection source entries are closed, but root extra keys are accepted. Content models share nested data, and their identifiers do not retain a full replay archive. The scan-report GET can persist a record and commit the session.
+
+New assertions compare actual report and fleet field names with their references. They also exercise collection root/source boundaries, the agent-loader round-trip limit, shared content mutation, ordered verdict hashes, and numeric-zero omission.
+
+105 focused tests and 46 subchecks passed. Two Windows PowerShell parsing cases were skipped on this host. The 61-article build and six site tests passed. The pending endpoint response and remaining module audits still prevent a full compliance claim.

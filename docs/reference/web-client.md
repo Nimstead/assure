@@ -1,6 +1,6 @@
 # Web client reference
 
-The Assure web client uses React, TanStack Router, and TanStack Query. TypeScript interfaces describe selected expected data. They do not validate API responses at runtime or enumerate every server field. This page covers shared helpers, UI components, enrolment, and the reviewed Assets, Fix first, settings, and remediation pages.
+The Assure web client uses React, TanStack Router, and TanStack Query. TypeScript interfaces describe selected expected data. They do not validate API responses at runtime or enumerate every server field. This page covers shared helpers, UI components, enrolment, and the reviewed Assets, Fix first, Findings, settings, and remediation pages.
 
 ## Component context
 
@@ -103,6 +103,59 @@ The directory-source flag permits that agent's directory uploads when collection
 The directory section shows at most 200 returned rows and offers CSV for the full response. Its source enabled status and timestamps are reported observations. The UI does not independently verify domain membership, current sign-in, or lifecycle entitlement.
 
 For operational steps, use [Change asset context](../how-to/change-asset-context.md).
+
+## Findings components
+
+| Export | Input and behavior |
+| --- | --- |
+| `FindingsPage` | `search: RawSearch`. Normalizes URL filters, requests individual rows/counts or groups, and renders selection, saved views and a drawer |
+| `AcceptRisk` | `f: Finding`. Uses its ID, vulnerability ID and hostname. The caller controls finding status and component lifetime |
+
+### Queries and navigation
+
+Plain text replaces the URL after 250ms. Trailing spaces remain when the URL returns the same trimmed text. A different URL query replaces the input.
+
+Recognized questions wait for Ask or Enter when AI is enabled. An answer applies only while the pathname remains `/findings`. This guard does not compare later text edits. A late answer can replace newer filters on that page.
+
+Individual rows use offset pages of `FINDINGS_CAP`. A full page permits another request. The independent count query excludes sorting. Missing count data falls back to loaded rows. Count failures have no separate error panel.
+
+Grouped mode requests vulnerability or package aggregates. Exactly 500 groups produces `worst 500`. A group click uses its key as substring search and returns to individual rows. It does not preserve exact group identity.
+
+List/group queries retain previous data during filter changes. Their failures expose retry. Optional assets, AI and settings failures can omit labels or controls. Typed response shapes remain unvalidated.
+
+The virtual table renders loaded rows with 12 extra rows around its window. It requests another page near the last 40 loaded rows. CSV exports individual findings with the current filters, including from grouped mode. Server limits still apply.
+
+### Selection and bulk results
+
+Admins can select open individual rows. Select-all covers loaded rows, including rows outside the virtual window. It excludes unloaded matches. A changed serialized list query clears selection. Escape clears selection when no dialog is present.
+
+Bulk planning uses selected rows with fixed versions. It groups by ecosystem/package and deduplicates asset IDs within each group. Configuration fixes without fixed versions do not enter these groups. Server eligibility remains authoritative.
+
+Groups submit sequentially. Responses accumulate job counts and distinct refusal messages. Any jobs cause success to clear selection. Zero jobs retains selection. A transport failure stops later groups. Earlier groups can already have created jobs. Job queries refresh on settlement, including failure.
+
+Bulk acceptance submits selected IDs once. Success displays the accepted count and clears selection. The UI omits the returned skipped count. The server skips unavailable/nonopen rows. Future findings are outside this scope.
+
+### Drawer and evidence
+
+The URL selects the drawer identity. Previous/next and `j`/`k` use loaded individual IDs only. The `a` key opens acceptance controls. The `p` key focuses the plan button without submission. Inputs, textareas and selects suppress shortcuts.
+
+A detail `404` means that the finding is unavailable to the current organisation. Resolution retains its row. Other failures expose retry. Dates and nested fields are trusted and can cause render errors if malformed.
+
+The active-jobs query matches asset ID and ecosystem/package action key. Its existing-fix label includes planned jobs that have not executed. A failed query can omit this label.
+
+A combined package version covers recorded fixes. It does not prove execution or later resolution. KEV absence means absence from that catalogue. Rule-evidence labels describe historical mapping evidence, not proof from this asset.
+
+Known production execution restrictions hide this drawer's plan control for known production assets. Missing settings default to permission. Unknown asset context leaves eligibility to the server. These controls do not establish API planning or execution eligibility.
+
+### Acceptance and saved views
+
+`AcceptRisk` gates its opening button with cached admin state. It trims the reason and requires ten characters. Duration choices are 30, 90 and 180 days. The default is 90. The API enforces upper limits and authorization.
+
+The default POST accepts the supplied finding ID. Optional vulnerability scope accepts currently open matches across the organisation, including other packages/assets. Success invalidates related queries. The component does not close/reset its form. Parent refresh can remove it after a status change. Errors remain visible.
+
+Acceptance moves findings to Accepted. Expiry alone does not change read responses. Later reassessment can reopen an expired finding if its match remains. Revocation submits a trimmed reason of at least three characters and refreshes related queries.
+
+Saved views omit the drawer ID. A trimmed nonempty name replaces a stored view with that name. The input permits 60 characters. Equality compares sorted serialized search entries. Storage failure can still produce success feedback. Views belong to browser storage, not the organisation's server account.
 
 ## Remediation components
 

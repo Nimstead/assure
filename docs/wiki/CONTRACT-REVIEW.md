@@ -115,3 +115,11 @@ The finding/database batch passed 106 focused tests and 46 subchecks, with two W
 | `api/src/nimstead/app.py` | list_assets, coverage, agent_directory and unmanaged_computers, plus earlier named scopes | Reviewed permissions, payload fields, mapping counts, rate-attempt commits, whole-organization replacement, timestamp handling, short-hostname comparison and CSV limits. Other unnamed handlers and response schemas remain pending | Partial |
 
 80 web tests and 331 focused API tests passed, with 46 subchecks. Playwright MCP held two fixture PATCH requests, verified prepared feedback before completion, then verified failed-result display. Mobile Assets, Fix first and wiki pages had no page overflow. This does not prove production application deployment, native collection or the complete CLI end-to-end suite.
+
+## Findings web review
+
+| Source | Review scope | Evidence and corrections | Status |
+| --- | --- | --- | --- |
+| `web/src/findings.tsx` | FindingsPage, AcceptRisk and all private helpers | Reviewed URL debounce/AI race limits, independent query errors, virtual loaded rows, group-to-substring navigation, partial sequential plans, skipped acceptance count, drawer identity/shortcuts, active jobs, browser saved views and status effects. Corrected unsupported outcome claims | Reviewed |
+
+80 web tests, type checks, production build, repository presence/links, 74-article build and six site tests passed. Playwright MCP verified local fixture drawer text and mobile task anchors. No production mutation or complete CLI end-to-end run occurred.

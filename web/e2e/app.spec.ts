@@ -112,7 +112,7 @@ test("sign up, enrol a sandbox host, plan and approve a fix, see evidence", asyn
   // The finding drawer says a fix is in progress instead of offering another
   await page.goto("/findings?q=openssl");
   await page.getByRole("row").filter({ hasText: "sbx-1" }).first().click();
-  await expect(page.getByRole("dialog").getByText("Fix in progress:")).toBeVisible();
+  await expect(page.getByRole("dialog").getByText("Existing fix:")).toBeVisible();
   await expect(page.getByRole("dialog").getByRole("button", { name: /Plan fix/ })).toHaveCount(0);
   await page.keyboard.press("Escape");
 

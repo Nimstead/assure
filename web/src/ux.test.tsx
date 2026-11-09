@@ -433,6 +433,7 @@ it("Findings: Accept risk opens its form, asks for a reason and records the acce
   const calls = serve({ "POST /api/findings/f1/accept": {} });
   wrap(<AcceptRisk f={{ id: "f1", vuln_id: "CVE-1" } as Finding} />);
   await userEvent.click(screen.getByRole("button", { name: "Accept risk" }));  // used to throw: a hook after the early return
+  expect(screen.getByText(/After expiry, reassessment can reopen it if the match remains/)).toBeInTheDocument();
   const reason = screen.getByRole("textbox", { name: /Reason/ });
   await userEvent.type(reason, "isolated lab box, no network");
   await userEvent.click(screen.getByRole("button", { name: /^Accept/ }));
@@ -466,7 +467,7 @@ it("Findings: the drawer finds a fix in progress among active jobs only, however
   serve({ "GET /api/findings": [f], "GET /api/assets": [{ id: "a1", hostname: "web-1", kind: "host" }], "GET /api/findings/f1": f,
     "GET /api/remediation/jobs": [{ id: "j1", asset_id: "a1", action_key: "Debian:12|openssl", status: "planned" }] });
   wrap(<FindingsPage search={{ f: "f1" }} />);
-  expect(await screen.findByText("Fix in progress:")).toBeInTheDocument();
+  expect(await screen.findByText("Existing fix:")).toBeInTheDocument();
   const urls = vi.mocked(fetch).mock.calls.map(([u]) => String(u)).filter((u) => u.startsWith("/api/remediation/jobs"));
   expect(urls).toEqual(["/api/remediation/jobs?status=planned,approved,dispatched,verifying"]);
 });

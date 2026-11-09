@@ -227,3 +227,13 @@ Reviewed asset-list, coverage and directory HTTP handlers. Their documentation n
 80 web tests, TypeScript checks and the production build passed. 331 focused API tests and 46 subchecks passed. Generated API freshness, Ruff and repository presence/link checks passed. The wiki builds 74 articles and its six tests pass. Playwright MCP verified desktop/mobile articles and local fixture UI, including delayed failed bulk requests and their error display.
 
 No production asset, directory collector or Assure application was changed by browser verification. The complete CLI end-to-end suite was not rerun. Remaining findings, evidence, access/integration, auth and shell exports, plus agent/tool/API contracts and final editorial/example review, keep full compliance unproven.
+
+## Findings web checkpoint
+
+Reviewed both Findings exports and their private query, grouping, virtual-table, drawer, planning, acceptance and saved-view helpers. Expanded the developer reference with props, defaults, mutations, failures and partial-result limits. The triage how-to now includes acceptance, verification and recovery without duplicating API field lookup.
+
+Corrected universal-cleanliness, resolution-causes-404, immediate-expiry and guaranteed-package-resolution claims. KEV absence now means that the vulnerability is not listed. A planned job now has an existing-fix label, without implying execution.
+
+80 web tests, type checks and the production build passed. The acceptance test also checks the reassessment qualification. Repository checks report 632 public declarations, none undocumented, and no local link problems. The 74-article build and six site tests passed. Prose received the reference/how-to humanizer and STE-style passes.
+
+Playwright MCP verified the revised drawer, acceptance qualification, KEV text, mobile layout and new task-section anchor. API requests used local fixtures and writes were refused. Production acceptance, remediation and the complete CLI end-to-end suite were not exercised. Evidence, access/integration, auth and shell exports, remaining agent/tool/API contracts, and final editorial/example review remain pending.

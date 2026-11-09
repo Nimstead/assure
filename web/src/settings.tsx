@@ -11,7 +11,7 @@ import { Alert, btnPrimary, btnQuiet, ConfirmDialog, Done, ErrorState, Field, in
 const MODES: { value: Settings["remediation_mode"]; title: string; body: string }[] = [
   { value: "suggest", title: "Suggest", body: "Nimstead recommends upgrades. It never changes a machine; you apply fixes yourself." },
   { value: "approve", title: "Approve", body: "You plan a fix and a person approves each one before anything runs. Every approval is recorded." },
-  { value: "auto", title: "Auto", body: "Fixes are applied without asking, canary machines first. Broad machines wait until a canary has stayed healthy for the soak period; any failure halts the rollout." },
+  { value: "auto", title: "Auto", body: "Eligible fixes receive automatic approval. Broad policy rollout needs a succeeded canary and soak period. Application and setting fixes still need a person." },
 ];
 
 type SettingsPatch = Partial<Pick<Settings, "remediation_mode" | "canary_soak_hours" | "agent_updates_paused" | "sla_days" | "reboot_deadline_hours">> & { maintenance_window?: MaintenanceWindow | Record<string, never> };
@@ -66,7 +66,12 @@ function SectionBar() {
 
 const PRODUCTION_HOW = <>To let fixes run on other machines, set <code className="bg-sunken px-1">NIMSTEAD_ALLOW_PRODUCTION_REMEDIATION=1</code> in <code className="bg-sunken px-1">.env</code> on the server and restart it, once you've watched fixes and rollbacks work on test machines.</>;
 
-/** Render account, organisation policy, integration, and server settings with role-gated mutations. */
+/** Render settings under router and QueryClient providers, without props.
+ * Read policy/me queries and admin-only asset counts. Seed editable fields once per mount.
+ * Save selected policy fields with PATCH; Auto requires a separate confirmation.
+ * Replace cached settings and invalidate the ledger on success. Render request failures locally.
+ * Child account/integration sections own their requests. Client role gates do not replace server authorization.
+ */
 export function SettingsPage() {
   useTitle("Settings");
   const qc = useQueryClient();
@@ -158,8 +163,8 @@ export function SettingsPage() {
               {!confirmAuto && errorHere("remediation_mode")}
             </div>
           </>}
-          <ConfirmDialog open={confirmAuto} onOpenChange={setConfirmAuto} title="Let Nimstead fix machines without asking?"
-            description={<>Fixes will be applied to your {hosts.length} machine{hosts.length === 1 ? "" : "s"} without a person approving each one: {canary} canary machine{canary === 1 ? "" : "s"} first, then everything else once a canary has stayed healthy for {s.canary_soak_hours} hours. Any failure halts the rollout.</>}
+          <ConfirmDialog open={confirmAuto} onOpenChange={setConfirmAuto} title="Allow automatic approval for eligible fixes?"
+            description={<>Your fleet has {hosts.length} machine{hosts.length === 1 ? "" : "s"}, including {canary} canary machine{canary === 1 ? "" : "s"}. Eligible fixes can receive automatic approval. Broad policy rollout requires a succeeded canary and a {s.canary_soak_hours}-hour soak. Some fixes always need a person.</>}
             confirmLabel="Switch to Auto" pendingLabel="Saving…" cancelLabel="Keep current mode" pending={save.isPending} error={save.error} onConfirm={() => save.mutate({ remediation_mode: "auto" })}>
             {!s.production_remediation_allowed && <p className="mt-3 text-sm text-muted">Production remediation is off on this server, so only test machines can be changed.</p>}
           </ConfirmDialog>
@@ -168,7 +173,7 @@ export function SettingsPage() {
         <section aria-labelledby="canary" className="flex flex-col items-start gap-3">
           <h3 id="canary" className="text-lg font-semibold">Canary soak</h3>
           <p className="max-w-prose text-sm text-muted">
-            Each machine is in a ring. <strong className="font-semibold text-ink">Canary</strong> (ring 0) machines get a change first. <strong className="font-semibold text-ink">Broad</strong> (ring 1) machines only get it after a canary has succeeded and stayed healthy for the soak period below. Set rings and health checks per machine on the Assets page.
+            <strong className="font-semibold text-ink">Canary</strong> (ring 0) jobs supply evidence for policy rollout. <strong className="font-semibold text-ink">Broad</strong> (ring 1) policy approval waits for a qualifying canary success and the soak period below. Human approval can proceed separately. Set rings and health checks on Assets.
           </p>
           {!admin ? <p className="text-sm">Soak time: <strong className="font-semibold">{s.canary_soak_hours} hours.</strong> <span className="text-muted">Only organisation admins can change this.</span></p> : <form className="flex flex-wrap items-start gap-3" onSubmit={(e) => { e.preventDefault(); if (hoursOk) save.mutate({ canary_soak_hours: n }); }}>
             <Field label="Soak time (hours)" hint="Whole hours, 1 to 720." error={hoursOk ? null : "Enter whole hours from 1 to 720."} className="w-40">
@@ -202,7 +207,7 @@ export function SettingsPage() {
         <section aria-labelledby="agent-updates" className="flex flex-col items-start gap-3">
           <h3 id="agent-updates" className="text-lg font-semibold">Agent updates</h3>
           <p className="max-w-prose text-sm text-muted">
-            Agents replace themselves with newer releases at their next run. A release is accepted only if it's signed by the Nimstead release key built into the agent, so this server can hold an update back but can't change one. Each agent tests the new version on its host before switching and keeps the old one if the test fails.
+            Agents with automatic updates enabled check for eligible signed releases at their next run. The agent verifies the release signature and channel before an update. It tests the new agent on its host and retains the previous agent if that test fails. Runtime updates have separate checks.
           </p>
           {!s.signed_agent_release && (
             <p className="flex items-start gap-2 border border-line-strong bg-surface p-3 text-sm">
@@ -267,10 +272,10 @@ function MaintenanceSection({ s, admin, pending, onSave, saved, error }: { s: Se
   return (
     <section aria-labelledby="window" className="flex flex-col items-start gap-3">
       <h3 id="window" className="text-lg font-semibold">Maintenance window</h3>
-      <p className="max-w-prose text-sm text-muted">Approved fixes start only inside this window, and servers restart only inside it; a machine's own window on the Assets page overrides it. Someone signed in to a workstation is told and can put the restart off for up to the deadline below. Nodes of one failover cluster, and one domain's controllers, are always fixed one at a time.</p>
-      {!admin ? <p className="text-sm">Fixes run <strong className="font-semibold">{describe(w)}</strong>; restarts can be put off for {s.reboot_deadline_hours} hours. <span className="text-muted">Only organisation admins can change this.</span></p> : (
+      <p className="max-w-prose text-sm text-muted">Approved fixes are dispatched inside the effective window. A machine's window on Assets overrides this one. Execution and restarts can extend beyond it. Signed-in workstation users can defer a restart until the deadline below. Windows sequencing uses reported cluster and domain-controller groups.</p>
+      {!admin ? <p className="text-sm">Dispatch window: <strong className="font-semibold">{describe(w)}</strong>. Signed-in workstation users can defer restarts for up to {s.reboot_deadline_hours} hours. <span className="text-muted">Only organisation admins can change this.</span></p> : (
         <form className="flex flex-col items-start gap-3" onSubmit={(e) => { e.preventDefault(); if (ok && dOk) onSave({ maintenance_window: on ? { days, start, hours: h, tz } : {}, reboot_deadline_hours: d }); }}>
-          <label className="flex tap items-center gap-2 text-sm"><input type="checkbox" checked={on} onChange={(e) => setOn(e.target.checked)} /> Only run fixes inside a window</label>
+          <label className="flex tap items-center gap-2 text-sm"><input type="checkbox" checked={on} onChange={(e) => setOn(e.target.checked)} /> Only dispatch fixes inside a window</label>
           {on && <fieldset className="flex flex-wrap gap-2" aria-label="Days">{DAYS.map((name, i) => (
             <label key={name} className="flex tap items-center gap-1 text-sm"><input type="checkbox" checked={days.includes(i)} onChange={(e) => setDays(e.target.checked ? [...days, i].sort() : days.filter((x) => x !== i))} /> {name}</label>))}
           </fieldset>}
@@ -288,7 +293,10 @@ function MaintenanceSection({ s, admin, pending, onSave, saved, error }: { s: Se
   );
 }
 
-/** Render server version, release channel, and update outcome from platform data p. */
+/** Render cached platform status p without requests or mutation.
+ * p follows Settings.platform; this view does not verify cache signatures or release freshness.
+ * Show known outcome labels, otherwise raw outcome text. Invalid dates/shapes can throw during render.
+ */
 export function PlatformSection({ p }: { p: Settings["platform"] }) {
   const last = p.last_update;
   return (
@@ -296,12 +304,12 @@ export function PlatformSection({ p }: { p: Settings["platform"] }) {
       <h3 id="platform" className="text-lg font-semibold">Version and updates</h3>
       <p className="text-sm">Nimstead Assure <strong className="font-semibold">{p.version || "development build"}</strong>
         {p.running_channel && <span className="text-muted"> ({p.running_channel})</span>}
-        {p.update_available ? <> · <a href={p.latest_url ?? undefined} className="font-medium text-accent underline">{p.latest} ({p.latest_channel}) is available</a></> : p.checked ? <span className="text-muted"> · up to date</span> : null}
+        {p.update_available ? <> · <a href={p.latest_url ?? undefined} className="font-medium text-accent underline">{p.latest} ({p.latest_channel}) is available</a></> : p.checked ? <span className="text-muted"> · no newer release in the cached check</span> : null}
       </p>
       <p className="max-w-prose text-sm text-muted">
-        Follows the <strong className="font-semibold text-ink">{p.channel}</strong> channel{p.channel === "stable" ? "" : p.channel === "beta" ? " (beta and stable releases)" : " (every release, earliest first)"}. Set <code className="break-all bg-sunken px-1">NIMSTEAD_UPDATE_CHANNEL</code> to preview, beta or stable in <code className="bg-sunken px-1">.env</code> on the server.
+        Follows the <strong className="font-semibold text-ink">{p.channel}</strong> channel{p.channel === "stable" ? "" : p.channel === "beta" ? " (beta and stable releases)" : " (preview, beta and stable releases)"}. Set <code className="break-all bg-sunken px-1">NIMSTEAD_UPDATE_CHANNEL</code> to preview, beta or stable in <code className="bg-sunken px-1">.env</code> on the server.
       </p>
-      {p.update_available && <p className="max-w-prose text-sm text-muted">Install it on the Docker host with <code className="bg-sunken px-1">deploy/update.sh</code>. It checks the release signature, backs up the database, and rolls back automatically if the new version doesn't come up healthy.</p>}
+      {p.update_available && <p className="max-w-prose text-sm text-muted">Install it on the Docker host with <code className="bg-sunken px-1">deploy/update.sh</code>. It checks the release signature, backs up the database, and attempts rollback if the new version fails its health check.</p>}
       {last && (
         // Past news, not a live event: plain text, so it isn't announced on every visit.
         <p className={clsx("text-sm", last.outcome === "updated" ? "text-muted" : "bg-now-bg px-3 py-2 text-now-fg")}>

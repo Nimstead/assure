@@ -12,7 +12,7 @@ import { Palette } from "./shell";
 import { Done, errorLead } from "./ui";
 import { Onboarding, TROUBLESHOOT_AFTER_MS } from "./onboarding";
 import { ApiTokensSection, QrCode, UsersSection } from "./people";
-import { JobCard, KbFleet, machineContext, stepState } from "./remediation";
+import { JobCard, KbFleet, machineContext, stepState, jobPackages, PlanFixButton } from "./remediation";
 import { AcceptRisk, FindingsPage } from "./findings";
 import { EvidencePage } from "./evidence";
 import { SettingsPage } from "./settings";
@@ -67,9 +67,9 @@ it("trust ladder: choosing only selects; Auto needs a confirmation naming the ma
 
   const save = within(ladder.parentElement!).getByRole("button", { name: "Save" });
   await userEvent.click(save);
-  const dialog = await screen.findByRole("alertdialog", { name: "Let Nimstead fix machines without asking?" });
-  expect(dialog).toHaveTextContent("your 3 machines");
-  expect(dialog).toHaveTextContent("1 canary machine first");
+  const dialog = await screen.findByRole("alertdialog", { name: "Allow automatic approval for eligible fixes?" });
+  expect(dialog).toHaveTextContent("Your fleet has 3 machines");
+  expect(dialog).toHaveTextContent("including 1 canary machine");
   expect(calls.filter((c) => c.method === "PATCH")).toHaveLength(0);
   await userEvent.click(within(dialog).getByRole("button", { name: "Switch to Auto" }));
   await waitFor(() => expect(calls.find((c) => c.method === "PATCH")?.body).toEqual({ remediation_mode: "auto" }));
@@ -508,6 +508,31 @@ it("closing the palette hands focus back to what opened it", async () => {
 
 it("the approval names the target machine's criticality, ring, kind and health checks", () => {
   const a = { hostname: "db-1", criticality: "critical", ring: 0, sandbox: false, health_units: ["postgresql"] } as unknown as Asset;
-  expect(machineContext(a)).toBe("db-1 · critical criticality · canary (fixed first) · production · health checks: postgresql");
+  expect(machineContext(a)).toBe("db-1 · critical criticality · canary ring · production · health checks: postgresql");
   expect(machineContext(undefined)).toBeUndefined();
+});
+
+it("batch planning exposes partial refusal and refreshes the jobs already created", async () => {
+  const calls = serve({ "POST /api/remediation/jobs/batch": {
+    jobs: [{ id: "created" }], errors: [{ asset_id: "two", error: "Already in progress" }, { asset_id: "three", error: "Already in progress" }],
+  } });
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  qc.setQueryData(meQ.queryKey, ME);
+  const invalidate = vi.spyOn(qc, "invalidateQueries");
+  render(<QueryClientProvider client={qc}><PlanFixButton ecosystem="Debian:12" pkg="openssl" assetIds={["one", "two", "three"]} /></QueryClientProvider>);
+  await userEvent.click(screen.getByRole("button", { name: /Plan fix\s*for openssl/ }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Already in progress");
+  expect(screen.getByRole("alert").textContent?.match(/Already in progress/g)).toHaveLength(1);
+  expect(calls.find((c) => c.method === "POST")?.body).toEqual({ asset_ids: ["one", "two", "three"], ecosystem: "Debian:12", package: "openssl" });
+  await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ["jobs"] }));
+});
+
+it("package display validates only name and shares accepted package objects", () => {
+  const entry = { name: "openssl", from: 42, to: { unexpected: true } };
+  const source = [entry, null, { name: 7 }, "openssl"];
+  const result = jobPackages({ packages: source });
+  expect(result).toEqual([entry]);
+  expect(result).not.toBe(source);
+  expect(result[0]).toBe(entry);
+  expect(jobPackages({ packages: "not an array" })).toEqual([]);
 });

@@ -73,6 +73,7 @@ Find commands, settings, formats, and limits.
 - [Remediation jobs and policy](reference/remediation-jobs.md)
 - [Release keys](release-keys.md)
 - [Developer tools and repository map](reference/tooling.md)
+- [Web client reference](reference/web-client.md)
 - [Glossary](reference/glossary.md)
 
 ## Understand the system

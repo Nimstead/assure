@@ -94,8 +94,8 @@ const JOB_GROUPS = [
   { key: "done", title: "Done", statuses: ["succeeded", "cancelled"] },
 ] as const;
 export const JOB_STATUS_LABEL: Record<JobStatus, string> = {
-  planned: "Awaiting approval", approved: "Approved, waiting for host", dispatched: "Running on host", verifying: "Verifying",
-  succeeded: "Fixed and verified", failed: "Failed", rolled_back: "Rolled back", rollback_failed: "Rollback failed",
+  planned: "Awaiting approval", approved: "Approved, waiting for host", dispatched: "Sent to host", verifying: "Verifying",
+  succeeded: "Job succeeded", failed: "Failed", rolled_back: "Rolled back", rollback_failed: "Rollback failed",
   not_fixed: "Applied, still vulnerable", aborted: "Aborted", cancelled: "Cancelled",
 };
 /** Return the configured job groups with matching jobs, preserving each group's input order. */
@@ -118,7 +118,7 @@ export const jobsQ = queryOptions({ queryKey: ["jobs"], queryFn: () => api<Job[]
 /** Address of a job card on the Remediation page. */
 export const jobAnchor = (id: string) => `job-${id}`;
 
-export const APPROVE_COPY = "Saves a rollback copy of each package, upgrades, checks health, rolls back automatically on failure. Success is confirmed by the next inventory.";
+export const APPROVE_COPY = "Approval lets the host receive this plan when dispatch gates allow. The agent checks its prerequisites and uses the plan's recovery path where available. Review the next inventory and any remaining findings after execution.";
 
 /** "remediation_not_fixed" -> "Remediation not fixed". */
 export const humaniseKind = (k: string) => { const t = k.replace(/_/g, " ").trim(); return t.charAt(0).toUpperCase() + t.slice(1); };

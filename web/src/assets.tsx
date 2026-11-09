@@ -230,7 +230,7 @@ const FILTERS = { quiet: "Not reporting", agent: "Agent outdated", canary: "Cana
 type Filter = keyof typeof FILTERS;
 const FILTER_HELP: Record<Filter, string> = {
   quiet: "No report for over 14 hours: findings may be out of date", agent: "The agent can't update itself; rerun its install command once",
-  canary: "Canary machines get a fix first; the rest wait until a canary has stayed healthy", facing: "Reachable from the internet: its findings rank higher",
+  canary: "Canary jobs supply evidence before broad policy approval; a person can approve separately", facing: "Reachable from the internet: its findings rank higher",
   test: "Test machines are the only ones fixes may change until production remediation is on",
 };
 const MATCH: Record<Filter, (a: Asset) => boolean> = {
@@ -241,7 +241,12 @@ const WEIGHT: Record<string, number> = { "fix-now": 1e9, next: 1e6, planned: 1e3
 const urgency = (a: Asset) => Object.entries(a.open_by_priority).reduce((n, [p, c]) => n + (WEIGHT[p] ?? 0) * (c ?? 0), 0);
 const PAGE = 40;
 
-/** Search, filter and sort the fleet (pure, so it can be tested). */
+/** Return a new filtered/sorted array, sharing Asset objects with assets.
+ * text is a case-insensitive substring of hostname/OS/agent-version text. on combines
+ * named filters with AND. crit optionally requires exact criticality. sort chooses
+ * hostname, oldest lexical last_seen, or weighted priority counts with hostname ties.
+ * Do not mutate input order or perform I/O. Invalid filter keys or shapes can throw.
+ */
 export function filterAssets(assets: Asset[], text: string, on: Filter[], crit: Criticality | "", sort: Sort) {
   const t = text.trim().toLowerCase();
   const rows = assets.filter((a) => (!t || `${a.hostname} ${a.os_name} ${a.agent_version ?? ""}`.toLowerCase().includes(t))
@@ -463,8 +468,8 @@ function MachineDrawer({ a, onClose, children }: { a: Asset | null; onClose: () 
           </div>
           <ul className="-mx-4">{children}</ul>
           <p className="max-w-[60ch] text-sm text-muted">
-            <strong className="font-medium text-ink">Ring:</strong> canary machines get a fix first; broad machines wait until a canary has stayed healthy.{" "}
-            <strong className="font-medium text-ink">Health units:</strong> systemd units checked before and after a fix, saved when you leave the field.
+            <strong className="font-medium text-ink">Ring:</strong> broad policy approval requires qualifying canary success and soak. A person can approve separately.{" "}
+            <strong className="font-medium text-ink">Health units:</strong> systemd units or Windows service names checked for a fix, saved when you leave the field.
           </p>
         </Dialog.Content>
       </Dialog.Portal>

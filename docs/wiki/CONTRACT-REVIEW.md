@@ -72,6 +72,18 @@ This batch passed 190 focused tests and 46 subchecks, with ten Windows-only skip
 
 153 focused tests and 46 subchecks passed. New checks cover the documented intermediate-success and canary-proof limits. Command-runner tests do not establish production rollback or restart safety.
 
+## Web settings and remediation review
+
+| Source | Review scope | Evidence and corrections | Status |
+| --- | --- | --- | --- |
+| `web/src/settings.tsx` | All exports and private form/section helpers | Reviewed provider context, queries, one-time form seeding, policy PATCH/cache effects, local validation, role gates, independent child requests and cached platform display. Corrected Auto/canary/restart/freshness claims | Reviewed |
+| `web/src/remediation.tsx` | All exports and private rendering/query helpers | Reviewed job grouping/polling, package field validation, heuristic step/refusal text, callbacks, parent-controlled dialogs, retry mutations, permissions and rendering errors. Corrected immediate execution, all-findings-resolved and installer-only forward-limit copy | Reviewed |
+| `web/src/planfix.tsx` | PlanFixButton | Reviewed props, unchanged asset list, display-only host count, per-asset errors, partial success, refresh on settlement and pathname-only navigation guard. New partial-error test passes | Reviewed |
+| `web/src/assets.tsx` | filterAssets and remediation help text | Reviewed filter/search/sort and shared-object behavior. Corrected unconditional ring gates and Linux-only service help. Other exports remain pending | Partial |
+| `web/src/lib.ts` | api, role gates, job groups/queries/labels, dependency parsing and refresh | Reviewed typed-versus-runtime boundaries, query scope, no-op roles, invalidation groups and parsing limits. Other utilities remain pending | Partial |
+
+70 web tests, type checks and production build passed. Playwright MCP used local fixture responses, rejected writes, and inspected desktop/mobile UI. The complete CLI end-to-end suite was not rerun. This evidence does not establish production application deployment or host execution.
+
 The full SQLite suite passed 1611 tests with 59 skips at the start of this batch. The later targeted evidence/key checks passed 23 tests. The new field/summary assertions subsequently passed in a 27-test evidence/documentation run. All three executable docstrings passed. Skipped platform/oracle cases are not newly verified real-host proofs.
 
 The engine batch passed 105 engine/documentation tests and 46 subchecks. Two Windows PowerShell parsing cases were skipped on this host. Reference field assertions supplement the source review and do not prove every possible runtime value.

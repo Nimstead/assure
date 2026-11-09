@@ -191,3 +191,15 @@ Corrected universal rollback, exact canary pinning, host-opt-in dispatch, window
 Playwright MCP verified the reference, modes, task guide and explanation at desktop/mobile widths. Section anchors and search work without page overflow. The pending web review must also correct broad canary/automatic-change copy in `settings.tsx` and `assets.tsx` against these documented limits.
 
 No production remediation, host restart or rollback was performed. Agent tests use controlled command runners. Remaining agent, web, tool and unnamed endpoint contracts, plus final editorial/example review, still prevent a full compliance claim.
+
+## Web settings and remediation checkpoint
+
+Reviewed every export in settings, remediation and batch-plan components. Reviewed asset filtering and selected shared request, role, job and invalidation helpers. Expanded JSDoc and added a developer-facing web client reference. The operator guide now uses the actual Remediation navigation label.
+
+Corrected UI copy about automatic eligibility, canary gates, immediate execution, intermediate success, universal rollback, restart windows and cached release freshness. Forward-only wording now covers servicing steps as well as installers. Dependency-refusal text describes the report without independently asserting that no change occurred.
+
+All 70 web tests, TypeScript checks and the production build passed with Node22.22.2. New tests cover partial batch errors/cache refresh and name-only package validation. Existing dialog expectations match the corrected controls. Playwright MCP verified settings and approval dialogs at desktop/mobile widths with local read-only API fixtures. It also verified the new reference, mobile anchors and search.
+
+The 73-article wiki build and six site tests passed. The first build stalled during generated-directory cleanup. A process sample identified directory scanning. The generated output was preserved in `/private/tmp`, then a clean build passed. Source behavior was not changed to bypass the check.
+
+No production Assure application was deployed or mutated. The repository contains the reviewed UI copy. Wiki publication includes its supporting reference and corrected operator guide. Remaining web exports, agent/tool contracts, unnamed API handlers and final editorial/example review remain pending.

@@ -502,5 +502,12 @@
     "title": "Remediation job reference",
     "group": "Reference",
     "product": "assure"
+  },
+  {
+    "source": "docs/reference/web-client.md",
+    "slug": "reference/web-client",
+    "title": "Web client reference",
+    "group": "Reference",
+    "product": "assure"
   }
 ]

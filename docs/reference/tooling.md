@@ -49,6 +49,8 @@ The [coverage table](documentation-coverage.md) links to each documented source 
 
 The [feed reference](feed-sync.md) defines command results, source selection, commit boundaries, and failure handling.
 
+The [web client reference](web-client.md) defines reviewed settings/remediation component props, query behavior, and display-helper limits.
+
 ## Sandbox proofs
 
 [`sandbox/`](../../sandbox) contains real-host and real-service harnesses. Each Python entry point describes its platform and setup in its module docstring. These scripts can create and destroy VMs or WSL distributions, change packages, force failures, and exercise rollback. Read that script's setup before running it on disposable infrastructure.

@@ -94,7 +94,7 @@ test("sign up, enrol a sandbox host, plan and approve a fix, see evidence", asyn
   await page.getByRole("button", { name: /^Review and approve/ }).click();
   const dlg = page.getByRole("alertdialog");
   await expect(dlg.getByText("Approve this fix?")).toBeVisible();
-  await dlg.getByRole("button", { name: "Approve and run" }).click();
+  await dlg.getByRole("button", { name: "Approve fix" }).click();
   await expect(page.getByRole("heading", { name: "In progress" })).toBeVisible();
   await expect(page.getByText("Approved, waiting for host")).toBeVisible();
 
@@ -266,7 +266,7 @@ for (const width of [1440, 375] as const) {
       await load(page, SETTINGS);
       await page.getByRole("radio", { name: /^Auto/ }).click();
       await page.locator("section[aria-labelledby=ladder]").getByRole("button", { name: "Save" }).click();
-      await expect(page.getByRole("alertdialog", { name: /without asking/ })).toBeVisible();
+      await expect(page.getByRole("alertdialog", { name: /automatic approval for eligible fixes/ })).toBeVisible();
       await axe(page, `auto confirm @${width} ${scheme}`);
       await page.keyboard.press("Escape");
       const revoke = page.locator("section[aria-labelledby=tokens]").getByRole("button", { name: /^Revoke/ }).first();

@@ -21,6 +21,7 @@ Choose the procedure for your task.
 - [Deploy through Group Policy](how-to/deploy-group-policy.md)
 - [Review and triage findings](how-to/review-findings.md)
 - [Enable remediation safely](how-to/enable-remediation.md)
+- [Change asset context](how-to/change-asset-context.md)
 - [Upload an SBOM from CI](how-to/upload-sbom.md)
 - [Scan an external target](how-to/scan-external-target.md)
 - [Scan Windows without an agent](how-to/remote-windows.md)

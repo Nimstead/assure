@@ -1037,7 +1037,16 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/agent/directory")
     def agent_directory(body: Directory, s: DB, asset: Annotated[Asset, Depends(current_agent)]):
-        """Computer objects an opted-in agent read from its domain (plan T43); replaces that domain's list for the org."""
+        """Replace the organisation's entire stored directory list with this agent's body.
+
+        Require directory_source on the authenticated asset and permit 24 uploads
+        per asset per hour. Normalize domain/name text and deduplicate names.
+        The caller supplies observations. Enabled status is not independently checked.
+        Store last_logon without timezone information or offset conversion.
+        The quota attempt commits before replacement. Successful replacement commits
+        all rows and returns computers count. Other flagged sources can also replace
+        this list. Permission/quota failures are 403/429. Invalid stored/database data
+        can propagate errors."""
         if not asset.directory_source:  # any other host's key acts only on its own asset (DECISIONS 27, 102)
             raise HTTPException(403, "An admin has to choose this machine as the directory source on the Assets page first")
         if over_limit(s, "directory:" + asset.id, 24):
@@ -1057,7 +1066,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/directory/unmanaged")
     def unmanaged_computers(user: CurrentUser, s: DB, format: str | None = None):
-        """Enabled computers seen in their domain in the last 30 days that have no enrolled agent (plan T43)."""
+        """Return recent stored directory observations without an enrolled short-name match.
+
+        Require a session or eligible read token. Use a 30-day last_logon cutoff,
+        excluding missing logons. Compare host short names across the organisation,
+        without requiring a matching domain. Source enabled status is trusted.
+        Return six fields per row, or six-column CSV only for format=csv. No new
+        directory query or explicit commit occurs. Stored-data/database errors propagate."""
         hosts = {h.lower().split(".")[0] for h in s.scalars(select(Asset.hostname).where(Asset.org_id == user.org_id, Asset.kind == "host"))}
         cutoff = now() - timedelta(days=30)
         rows = [c for c in s.scalars(select(DirectoryComputer).where(DirectoryComputer.org_id == user.org_id).order_by(DirectoryComputer.name))
@@ -1244,6 +1259,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def list_assets(user: CurrentUser, s: DB):
         """Return organisation assets with finding counts, agent status, and application coverage.
 
+        Sort by hostname. Kind-specific metadata comes from asset_json. Application
+        coverage counts mapping capability, not completed verdicts. No collection
+        occurs. Signed-release/cache, mapper and database errors can propagate.
+
         Requires a user session or a read-only organisation API token. API tokens cannot use write methods."""
         rows = s.execute(
             select(Finding.asset_id, Finding.priority, func.count())
@@ -1260,7 +1279,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/coverage")
     def coverage(user: CurrentUser, s: DB):
-        """How much of the fleet's Windows software is checked at all, so a clean result can't be misread."""
+        """Return assessed/inventory_only mapping counts and at most 200 unmatched groups.
+
+        Require a session or eligible read token. Count stored WinApp rows, not
+        completed checks or available advisories. Group unmatched names/publishers
+        by distinct asset IDs, ordered by descending count then name. No explicit
+        commit or new collection occurs. Mapper/database errors propagate."""
         per_asset, missed = app_coverage(s, user.org_id)
         top = sorted(missed.items(), key=lambda m: (-len(m[1]), m[0][0]))[:200]
         return {"assessed": sum(a["assessed"] for a in per_asset.values()),

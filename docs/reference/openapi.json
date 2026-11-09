@@ -2402,7 +2402,7 @@
     },
     "/api/agent/directory": {
       "post": {
-        "description": "Computer objects an opted-in agent read from its domain (plan T43); replaces that domain's list for the org.",
+        "description": "Replace the organisation's entire stored directory list with this agent's body.\n\nRequire directory_source on the authenticated asset and permit 24 uploads\nper asset per hour. Normalize domain/name text and deduplicate names.\nThe caller supplies observations. Enabled status is not independently checked.\nStore last_logon without timezone information or offset conversion.\nThe quota attempt commits before replacement. Successful replacement commits\nall rows and returns computers count. Other flagged sources can also replace\nthis list. Permission/quota failures are 403/429. Invalid stored/database data\ncan propagate errors.",
         "operationId": "agent_directory_api_agent_directory_post",
         "parameters": [
           {
@@ -2892,7 +2892,7 @@
     },
     "/api/assets": {
       "get": {
-        "description": "Return organisation assets with finding counts, agent status, and application coverage.\n\nRequires a user session or a read-only organisation API token. API tokens cannot use write methods.",
+        "description": "Return organisation assets with finding counts, agent status, and application coverage.\n\nSort by hostname. Kind-specific metadata comes from asset_json. Application\ncoverage counts mapping capability, not completed verdicts. No collection\noccurs. Signed-release/cache, mapper and database errors can propagate.\n\nRequires a user session or a read-only organisation API token. API tokens cannot use write methods.",
         "operationId": "list_assets_api_assets_get",
         "responses": {
           "200": {
@@ -3687,7 +3687,7 @@
     },
     "/api/coverage": {
       "get": {
-        "description": "How much of the fleet's Windows software is checked at all, so a clean result can't be misread.",
+        "description": "Return assessed/inventory_only mapping counts and at most 200 unmatched groups.\n\nRequire a session or eligible read token. Count stored WinApp rows, not\ncompleted checks or available advisories. Group unmatched names/publishers\nby distinct asset IDs, ordered by descending count then name. No explicit\ncommit or new collection occurs. Mapper/database errors propagate.",
         "operationId": "coverage_api_coverage_get",
         "responses": {
           "200": {
@@ -3713,7 +3713,7 @@
     },
     "/api/directory/unmanaged": {
       "get": {
-        "description": "Enabled computers seen in their domain in the last 30 days that have no enrolled agent (plan T43).",
+        "description": "Return recent stored directory observations without an enrolled short-name match.\n\nRequire a session or eligible read token. Use a 30-day last_logon cutoff,\nexcluding missing logons. Compare host short names across the organisation,\nwithout requiring a matching domain. Source enabled status is trusted.\nReturn six fields per row, or six-column CSV only for format=csv. No new\ndirectory query or explicit commit occurs. Stored-data/database errors propagate.",
         "operationId": "unmanaged_computers_api_directory_unmanaged_get",
         "parameters": [
           {

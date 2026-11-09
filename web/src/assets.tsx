@@ -12,7 +12,14 @@ type AssetPatch = Partial<Pick<Asset, "criticality" | "internet_facing" | "direc
 const LEVELS: Criticality[] = ["low", "medium", "high", "critical"];
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-/** Render the asset inventory with URL filters, bulk edits, and host details. */
+/** Render Assets under router/QueryClient providers, without props.
+ * Query the asset list and independent directory/path/baseline/coverage sections.
+ * PATCH optimistically replaces one cached row, restores its prior whole row on
+ * failure, and refreshes asset-derived queries on settlement. Save/error markers
+ * track the most recent callbacks. Single Undo resubmits four prior context fields.
+ * DELETE requires confirmation and refreshes on success. Server permissions remain
+ * authoritative. List errors render a retry; child sections own their error behavior.
+ */
 export function AssetsPage() {
   useTitle("Assets");
   const qc = useQueryClient();
@@ -65,7 +72,7 @@ export function AssetsPage() {
         : q.error ? <ErrorState error={q.error} retry={() => q.refetch()} />
         : q.data.every((a) => a.kind === "external") ? (
           <EmptyState title="No machines yet" action={<Link to="/add" className={clsx(btnPrimary, "no-underline")}>Add your first machine</Link>}>
-            Machines show up here once they report in.
+            Enrol a host or add an application to populate this list.
           </EmptyState>
         ) : (
           <MachineList assets={q.data.filter((a) => a.kind !== "external")} saved={patch.isPending ? "" : saved} failed={failed}
@@ -74,13 +81,13 @@ export function AssetsPage() {
         )}
       {q.data && <ExternalTargets targets={q.data.filter((a) => a.kind === "external")} onDelete={(a) => { del.reset(); setTarget(a); }} />}
       <ConfirmDialog open={!!target} onOpenChange={(o) => !o && setTarget(null)} title={`Delete ${target?.hostname}?`}
-        description="Its findings and installed-software list are removed. The evidence ledger keeps the history of what was detected and fixed, so audit records stay intact. This can't be undone."
+        description="This removes its findings, package inventory, scan reports and remediation jobs. Evidence ledger entries remain. This can't be undone."
         confirmLabel="Delete asset" pendingLabel="Deleting…" destructive pending={del.isPending} error={del.error} onConfirm={() => target && del.mutate(target.id)} />
     </div>
   );
 }
 
-/** Agents that can't update themselves, said once for the list, grouped by reason, instead of on every row. */
+/** Directory observations returned for names without a matching enrolled host. */
 interface UnmanagedComputer { domain: string; name: string; os: string; os_version: string; last_logon: string; end_of_support: string | null }
 
 /** Windows computers in Active Directory that have no agent (plan T43); nothing shows until an agent reports a domain. */
@@ -93,7 +100,7 @@ function Unmanaged() {
   return (
     <section aria-labelledby="unmanaged" className="flex flex-col gap-2 border border-line bg-sunken p-4">
       <h2 id="unmanaged" className="text-base font-semibold">{rows.length} Windows computer{rows.length === 1 ? "" : "s"} in {domains} {rows.length === 1 ? "has" : "have"} no agent</h2>
-      <p className="text-sm text-muted">Enabled in Active Directory and signed in within 30 days, but not reporting here, so nothing about them is checked.{eos ? ` ${eos} run Windows that no longer gets security updates.` : ""}</p>
+      <p className="text-sm text-muted">Reported enabled in Active Directory with a logon within 30 days, without a matching enrolled host here.{eos ? ` ${eos} match a stored Windows end-of-support condition.` : ""}</p>
       <details className="text-sm">
         <summary className="tap cursor-pointer py-2">Show them</summary>
         <ul className="mt-2 flex flex-col gap-1">
@@ -109,7 +116,10 @@ interface BaselineCounts { name: string; version: string; automated: number; man
 interface BaselineHost extends BaselineCounts { asset_id: string; hostname: string }
 interface BaselineRule { id: string; severity: string; status: string; setting: string; expected: string; found: string; note: string }
 
-/** "12 of 31 automated checks pass": rules that don't apply to this host aren't counted, and nothing here claims conformance. */
+/** Format c.pass against c.automated minus c.not_applicable, plus failure/unknown counts.
+ * c is trusted BaselineCounts. Do not validate ranges, recount rules or assess manual checks.
+ * No I/O or mutation occurs. Inconsistent input can yield a negative denominator.
+ */
 export function baselineSummary(c: BaselineCounts) {
   return `${c.pass} of ${c.automated - c.not_applicable} checks we can automate pass, ${c.fail} fail, ${c.not_assessed} not assessed`;
 }
@@ -139,7 +149,11 @@ function BaselineHostRow({ h }: { h: BaselineHost }) {
   );
 }
 
-/** Settings compared with published baselines (DECISIONS 75): a reference. Manual checks are never assessed, and it says so. */
+/** Query/display stored baseline summaries under QueryClient context, without props.
+ * Missing/empty host data, including an uncached error, renders null. Host expansion
+ * enables a detail query with local error feedback. Group hosts by name/version.
+ * Manual counts are not evaluated rule rows. No baseline evaluation runs in the client.
+ */
 export function Baselines() {
   const q = useQuery({ queryKey: ["baselines"], queryFn: () => api<{ baselines: (BaselineCounts & { baseline_id: string; hosts: number })[]; hosts: BaselineHost[]; no_baseline: number }>("/api/baselines") });
   const d = q.data;
@@ -167,7 +181,11 @@ interface FleetHost { hostname: string; judged: boolean; paths: PathSummary[] }
 interface Reach { host: string; hops: string[]; grade: string; fix_on_host: string[] }
 interface AttackPathsData { hosts: Record<string, FleetHost>; truncated?: boolean; chains: { start: string; why_start: string; reach: Reach[] }[] }
 
-/** How weaknesses chain on each host and from one host to the next (DECISIONS 97, 98): every step is evidence, and the grade is the weakest one's. */
+/** Query/display stored fleet path inferences under QueryClient context, without props.
+ * Missing data or no host paths/chains renders null, including an uncached failure.
+ * Display server grades, host names, suggested references and truncation text without
+ * recomputing paths or testing access. Invalid nested shapes can throw.
+ */
 export function AttackPaths() {
   const q = useQuery({ queryKey: ["attack-paths"], queryFn: () => api<AttackPathsData>("/api/attack-paths") });
   const d = q.data;
@@ -178,14 +196,14 @@ export function AttackPaths() {
   return (
     <section aria-labelledby="attack-paths" className="flex flex-col gap-2 border border-line bg-sunken p-4">
       <h2 id="attack-paths" className="text-base font-semibold">How these weaknesses combine</h2>
-      <p className="max-w-prose text-sm text-muted">Each step is a vulnerability or a setting read on the host. A path is only as sure as its weakest step, and whether one host can route to another isn't seen, so nothing across hosts is better than reasonable. Each host's part rests on what its own agent reported, so a compromised host could make its own links look worse or better.{unjudged ? ` ${plural(unjudged, "host")} ${unjudged === 1 ? "hasn't" : "haven't"} been judged yet.` : ""}{d.truncated ? " So many hosts link to each other that only the first links are shown: fix the settings named below first." : ""}</p>
+      <p className="max-w-prose text-sm text-muted">Paths infer possible combinations from stored reports and host facts. Grades summarize reported evidence, including identities, listeners and connections. Actual attacker access is not tested. A compromised host can distort its own reported facts.{unjudged ? ` ${plural(unjudged, "host")} ${unjudged === 1 ? "hasn't" : "haven't"} been judged yet.` : ""}{d.truncated ? " The edge limit was reached, so some possible links are omitted." : ""}</p>
       {d.chains.map((c) => (
         <div key={c.start} className="flex flex-col gap-1">
-          <h3 className="text-sm font-semibold">From {name(c.start)} ({c.why_start}), an attacker can reach {plural(c.reach.length, "other host")}</h3>
+          <h3 className="text-sm font-semibold">Possible paths from {name(c.start)} ({c.why_start}) to {plural(c.reach.length, "other host")}</h3>
           <ul className="flex flex-col gap-1 text-sm">
             {c.reach.map((r) => (
               <li key={r.host} className="break-words">
-                <span className="font-medium">{name(r.host)}</span> via {[c.start, ...r.hops].map(name).join(" → ")} · how sure: {r.grade} · cut it on {name(r.host)}: {r.fix_on_host.join(", ")}
+                <span className="font-medium">{name(r.host)}</span> via {[c.start, ...r.hops].map(name).join(" → ")} · evidence grade: {r.grade} · review on {name(r.host)}: {r.fix_on_host.join(", ")}
               </li>
             ))}
           </ul>
@@ -197,7 +215,7 @@ export function AttackPaths() {
           {withPaths.map(([id, h]) => h.paths.map((p) => (
             <li key={id + p.kind} className="break-words border-t border-line pt-2">
               <span className="font-medium">{h.hostname}</span>, {p.start} · how sure: {p.grade}
-              <div className="text-muted">{p.steps.join(" → ")}. Break it: fix {plural(p.break_at.fixes, "way")} of {p.break_at.label.toLowerCase()} ({p.break_at.refs.join(", ")})</div>
+              <div className="text-muted">{p.steps.join(" → ")}. Suggested interruption: {p.break_at.label.toLowerCase()}, {plural(p.break_at.fixes, "way")} ({p.break_at.refs.join(", ")})</div>
             </li>
           )))}
         </ul>
@@ -206,15 +224,19 @@ export function AttackPaths() {
   );
 }
 
-/** Software the curated rules don't cover (DECISIONS 24): listed, never matched, so saying so is part of every clean result. */
+/** Display Windows application identity-mapping coverage from coverageQ, without props.
+ * Missing data or zero inventory_only renders null. Query errors are not displayed.
+ * Counts are reported inventory rows, not completed verdicts or advisory availability.
+ * Require QueryClient context. No client mapping or mutation occurs.
+ */
 export function NotAssessed() {
   const q = useQuery(coverageQ);
   if (!q.data?.inventory_only) return null;
   const { assessed, inventory_only: only, not_assessed: rows } = q.data;
   return (
     <section aria-labelledby="not-assessed" className="flex flex-col gap-2 border border-line bg-sunken p-4">
-      <h2 id="not-assessed" className="text-base font-semibold">{plural(only, "installed app")} {only === 1 ? "isn't" : "aren't"} checked for vulnerabilities</h2>
-      <p className="max-w-prose text-sm text-muted">{plural(assessed, "install")} of known apps {assessed === 1 ? "is" : "are"} checked. The rest are listed but never matched, because a wrong guess is worse than saying so. Many are runtimes and drivers, but no finding for them doesn't mean they're safe.</p>
+      <h2 id="not-assessed" className="text-base font-semibold">{plural(only, "Windows app entry", "Windows app entries")} {only === 1 ? "has" : "have"} no supported mapping</h2>
+      <p className="max-w-prose text-sm text-muted">{plural(assessed, "entry", "entries")} {assessed === 1 ? "has" : "have"} a supported product mapping or runtime fact. A mapping does not establish advisory availability or a completed check. Remaining entries stay inventory-only. Missing findings do not establish safety.</p>
       <details className="text-sm">
         <summary className="tap cursor-pointer py-2">Show them, most common first</summary>
         <ul className="mt-2 flex flex-col gap-1">
@@ -274,8 +296,8 @@ function MachineList({ assets, saved, failed, onPatch, onDelete, undo }: {
   const editing = sp.machine ?? null;
   const setEditing = (id: string | null) => void navigate({ to: "/assets", search: (s: Record<string, unknown>) => ({ ...s, machine: id ?? undefined }), resetScroll: false });
   const open = useCallback((id: string) => void navigate({ to: "/assets", search: (s: Record<string, unknown>) => ({ ...s, machine: id }), resetScroll: false }), [navigate]);
-  const typed = useDeferredValue(text);  // the list catches up after the keystroke, never blocking it
-  // the list's state lives in the URL too, so Back, refresh and a shared link keep it
+  const typed = useDeferredValue(text);  // defer list updates behind the input value
+  // Mirror local filters to the URL. Only truthy show changes are re-read after mount.
   useEffect(() => {
     void navigate({ to: "/assets", replace: true, resetScroll: false,
       search: (s: Record<string, unknown>) => ({ ...s, q: typed || undefined, show: on.join(",") || undefined, crit: crit || undefined, sort: sort === "urgent" ? undefined : sort }) });
@@ -294,12 +316,12 @@ function MachineList({ assets, saved, failed, onPatch, onDelete, undo }: {
   const describe = (p: AssetPatch) => [p.criticality && `criticality ${p.criticality}`, p.ring !== undefined && `ring ${p.ring === 0 ? "canary" : "broad"}`,
     p.internet_facing !== undefined && (p.internet_facing ? "internet-facing" : "not internet-facing")].filter(Boolean).join(", ");
   const apply = () => {
-    // what each machine had before, so the whole change can be undone
+    // Capture prior staged-field values for later Undo requests, without treating the batch as atomic.
     const undo = pickedRows.map((a) => ({ id: a.id, p: Object.fromEntries(Object.keys(staged).map((k) => [k, a[k as keyof AssetPatch]])) as AssetPatch }));
     // ring and health units mean nothing for an application (no agent runs fixes there)
     const forRow = (a: Asset) => (a.kind === "host" ? staged : { ...staged, ring: undefined });
     pickedRows.forEach((a) => { const p = forRow(a); if (describe(p)) onPatch(a.id, p); });
-    setApplied({ text: `Set ${describe(staged)} on ${plural(pickedRows.length, "machine")}.`, undo });
+    setApplied({ text: `Prepared ${describe(staged)} for ${plural(pickedRows.length, "selected asset")}. Review each save result.`, undo });
     setStaged({});
   };
   const current = assets.find((a) => a.id === editing) ?? null;
@@ -517,7 +539,13 @@ export function AgentUpdateSummary({ assets, onShow }: { assets: Asset[]; onShow
   );
 }
 
-/** Render asset a and editable details; invoke onPatch/onDelete for mutations and display saved/error/undo state. */
+/** Render asset a under router/QueryClient context, with callbacks owned by the parent.
+ * Admin controls call onPatch with context changes or onDelete for removal. Health
+ * text commits normalized comma-separated values on blur/Enter. Nonadmins see values.
+ * saved/error/undo supply feedback and optional parent recovery. inDrawer hides the
+ * duplicate heading and adds details. SBOM upload owns its separate request.
+ * Do not mutate a. Invalid dates, fact shapes or update-state keys can throw.
+ */
 export function AssetRow({ a, onPatch, onDelete, saved, error, inDrawer, undo }: { a: Asset; onPatch: (p: AssetPatch) => void; onDelete: () => void; saved?: boolean; error?: string; inDrawer?: boolean; undo?: () => void }) {
   const admin = useIsAdmin();
   const open = PRIORITIES.filter((p) => a.open_by_priority[p]);
@@ -534,9 +562,9 @@ export function AssetRow({ a, onPatch, onDelete, saved, error, inDrawer, undo }:
           {a.kind === "application" ? "Application (SBOM)" : a.os_name || "Unknown OS"}{a.agent_version && ` · agent ${a.agent_version}`} · seen <time dateTime={parseUtc(a.last_seen).toISOString()} title={parseUtc(a.last_seen).toLocaleString()}>{relativeTime(a.last_seen)}</time>
         </p>
         {a.not_reporting && <p className="mt-1 text-xs text-now-fg">Last report {relativeTime(a.last_seen)}, so findings may be out of date.</p>}
-        {a.apps && a.apps.inventory_only > 0 && <p className="mt-1 text-xs text-muted">{a.apps.assessed === 0 ? `None of its ${plural(a.apps.inventory_only, "installed app")} could be checked.` : `${a.apps.assessed} of ${a.apps.assessed + a.apps.inventory_only} installed apps checked; the rest are listed only.`}</p>}
-        {a.facts?.os_unmatched && <p className="mt-1 text-xs text-muted">OS not matched to Microsoft's fixes: {a.facts.os_unmatched}. Apps and end of support are still checked.</p>}
-        {a.facts?.pending_reboot && <p className="mt-1 text-xs text-next-fg">Updates are installed and waiting for a restart: findings close after it.</p>}
+        {a.apps && a.apps.inventory_only > 0 && <p className="mt-1 text-xs text-muted">{a.apps.assessed === 0 ? `None of its ${plural(a.apps.inventory_only, "installed app entry", "installed app entries")} has a supported mapping.` : `${a.apps.assessed} of ${a.apps.assessed + a.apps.inventory_only} installed app entries map to supported identities; the rest are inventory-only.`}</p>}
+        {a.facts?.os_unmatched && <p className="mt-1 text-xs text-muted">OS not matched to Microsoft's fixes: {a.facts.os_unmatched}. Review application and lifecycle coverage separately.</p>}
+        {a.facts?.pending_reboot && <p className="mt-1 text-xs text-next-fg">The host reports a pending restart. Recheck inventory after the restart to judge remaining findings.</p>}
         {updateSource(a.facts) && <p className="mt-1 text-xs text-muted">{updateSource(a.facts)}</p>}
         {inDrawer && a.agent_update && a.agent_update !== "current" && <p className="mt-2 text-sm">{AGENT_UPDATE[a.agent_update].why(a)} <Link to="/add" className="font-medium underline">Install command</Link></p>}
         {inDrawer && open.length > 0 && <p className="mt-2 text-sm"><Link to="/findings" search={filtersToSearch({ ...parseFilters({}), asset: a.id, group: "package" })} className="inline-flex tap items-center font-medium underline">Fixes for this machine, by package</Link></p>}
@@ -565,7 +593,7 @@ export function AssetRow({ a, onPatch, onDelete, saved, error, inDrawer, undo }:
         </label>
         {a.kind === "host" && (a.directory_source || (typeof a.facts?.domain_role === "number" && a.facts.domain_role >= 1)) && (
           <label className="flex tap cursor-pointer items-center gap-2 whitespace-nowrap text-sm"
-            title="Only this machine's agent may send the domain's computer list (with --ad-discovery); any other host is refused">
+            title="Permit this agent to upload a domain computer list when --ad-discovery is enabled">
             <Switch.Root checked={!!a.directory_source} onCheckedChange={(directory_source) => onPatch({ directory_source })} className={switchRoot}>
               <Switch.Thumb className={switchThumb} />
             </Switch.Root>
@@ -592,7 +620,9 @@ export function AssetRow({ a, onPatch, onDelete, saved, error, inDrawer, undo }:
   );
 }
 
-/** Comma-separated systemd units checked before and after a fix; saved on blur / Enter. */
+/** Normalize comma-separated systemd unit/Windows service names on blur/Enter.
+ * The parent owns requests and validation. Empty names are removed; duplicates remain.
+ */
 function HealthUnits({ a, onPatch }: { a: Asset; onPatch: (p: AssetPatch) => void }) {
   const hint = useId();
   const saved = a.health_units.join(", ");
@@ -607,12 +637,12 @@ function HealthUnits({ a, onPatch }: { a: Asset; onPatch: (p: AssetPatch) => voi
       <span className="whitespace-nowrap text-muted">Health units</span>
       <input className={clsx(input, "w-40 md:min-h-9")} value={text} placeholder="nginx, sshd" onChange={(e) => setText(e.target.value)} onBlur={commit}
         onKeyDown={(e) => e.key === "Enter" && commit()} aria-describedby={hint} />
-      <span id={hint} className="sr-only">systemd units checked before and after a fix; saved when you leave the field</span>
+      <span id={hint} className="sr-only">systemd units or Windows service names for health checks; saved when you leave the field</span>
     </label>
   );
 }
 
-/** Creates an agent-less application asset; the one-time upload token lets CI post SBOMs without a login. */
+/** Create an application asset and show its reusable upload secret from the creation response. */
 function AddApplication() {
   const admin = useIsAdmin();
   const qc = useQueryClient();
@@ -634,7 +664,7 @@ function AddApplication() {
           {made ? (
             <>
               <Dialog.Description className="mt-2 text-sm">
-                <strong>{made.name}</strong> was added. Upload its CycloneDX SBOM from the Assets page, or from CI with this token (shown once):
+                <strong>{made.name}</strong> was added. Upload its CycloneDX or SPDX JSON SBOM from Assets, or from CI with this token (shown once):
               </Dialog.Description>
               <div className="mt-3">
                 <CopyBlock label="Upload command for CI" text={`curl -X POST -H "Authorization: Bearer ${made.token}" \\
@@ -644,7 +674,7 @@ function AddApplication() {
             </>
           ) : (
             <form className="mt-3 flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); if (name.trim()) create.mutate(name.trim()); }}>
-              <Dialog.Description className="text-sm text-muted">Software without an agent: findings come from the CycloneDX SBOM you upload.</Dialog.Description>
+              <Dialog.Description className="text-sm text-muted">Software without an agent: findings come from the CycloneDX or SPDX JSON SBOM you upload.</Dialog.Description>
               <Field label="Name" error={create.error?.message}>
                 <input className={input} value={name} onChange={(e) => setName(e.target.value)} maxLength={255} required autoComplete="off" placeholder="billing-service" />
               </Field>
@@ -660,7 +690,12 @@ function AddApplication() {
   );
 }
 
-/** Button -> file picker -> POST of the raw CycloneDX JSON. The result is announced in a live region. */
+/** Render an admin-gated JSON file picker for asset a under QueryClient context.
+ * Read the selected File as text and POST it verbatim to the asset's SBOM endpoint.
+ * Client code does not validate format/size. Server parsing accepts supported
+ * CycloneDX/SPDX JSON. Refresh asset-derived queries on success and display counts.
+ * File/read/request errors render locally. Reset the input so the same file can be retried.
+ */
 export function SbomUpload({ a }: { a: Asset }) {
   const qc = useQueryClient();
   const admin = useIsAdmin();
@@ -679,7 +714,7 @@ export function SbomUpload({ a }: { a: Asset }) {
       <div aria-live="polite" className="max-w-sm text-xs text-muted">
         {up.data && <span role="status">{sbomSummary(up.data)}</span>}
       </div>
-      <Alert error={up.error} prefix="SBOM rejected: " />
+      <Alert error={up.error} prefix="SBOM upload failed: " />
     </div>
   );
 }

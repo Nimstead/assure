@@ -35,7 +35,7 @@ export function PlanFixButton({ ecosystem, pkg, assetIds, hosts = assetIds.lengt
     <div className={clsx("flex flex-col items-start gap-1.5", className)}>
       <button className={btnQuiet} disabled={plan.isPending} onClick={() => plan.mutate(location.pathname)} {...adminGate(admin)}>
         <Wrench className="size-4" aria-hidden />{plan.isPending ? "Planning…" : label}
-        <span className="sr-only"> for {pkg}{hosts > 1 ? ` on ${hosts} hosts` : ""}</span>
+        <span className="sr-only"> for {pkg}{hosts > 1 ? ` on ${hosts} assets` : ""}</span>
       </button>
       <Alert error={plan.error} className="max-w-sm" />
     </div>

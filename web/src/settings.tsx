@@ -272,7 +272,7 @@ function MaintenanceSection({ s, admin, pending, onSave, saved, error }: { s: Se
   return (
     <section aria-labelledby="window" className="flex flex-col items-start gap-3">
       <h3 id="window" className="text-lg font-semibold">Maintenance window</h3>
-      <p className="max-w-prose text-sm text-muted">Approved fixes are dispatched inside the effective window. A machine's window on Assets overrides this one. Execution and restarts can extend beyond it. Signed-in workstation users can defer a restart until the deadline below. Windows sequencing uses reported cluster and domain-controller groups.</p>
+      <p className="max-w-prose text-sm text-muted">Approved fixes are dispatched inside the effective window. An asset-specific window, if configured, overrides this one. Execution and restarts can extend beyond it. Signed-in workstation users can defer a restart until the deadline below. Windows sequencing uses reported cluster and domain-controller groups.</p>
       {!admin ? <p className="text-sm">Dispatch window: <strong className="font-semibold">{describe(w)}</strong>. Signed-in workstation users can defer restarts for up to {s.reboot_deadline_hours} hours. <span className="text-muted">Only organisation admins can change this.</span></p> : (
         <form className="flex flex-col items-start gap-3" onSubmit={(e) => { e.preventDefault(); if (ok && dOk) onSave({ maintenance_window: on ? { days, start, hours: h, tz } : {}, reboot_deadline_hours: d }); }}>
           <label className="flex tap items-center gap-2 text-sm"><input type="checkbox" checked={on} onChange={(e) => setOn(e.target.checked)} /> Only dispatch fixes inside a window</label>

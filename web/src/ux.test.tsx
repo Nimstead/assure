@@ -236,7 +236,7 @@ it("Home: a setting fix reads as a setting, says a person approves it, and plans
   wrap(<ol><ActionCard a={{ ...ACTION, ecosystem: "WinConfig", package: "wdigest", fixed_version: null, vulns: ["CFG:wdigest"], summary: "WDigest keeps passwords in memory.", fix: "winconfig", person_only: true }} /></ol>);
   expect(screen.getByText(/Change setting/)).toHaveTextContent("Change setting wdigest");
   expect(screen.getByText("WDigest keeps passwords in memory.")).toBeInTheDocument();
-  expect(screen.getByText(/Fixes 1 finding on 2 hosts/)).toBeInTheDocument();
+  expect(screen.getByText(/Targets 1 finding type across 2 assets/)).toBeInTheDocument();
   expect(screen.getByText(/A person approves this one/)).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: /Plan fix/ }));
   await waitFor(() => expect(calls.filter((c) => c.method === "POST")).toHaveLength(1));  // both hosts in one request
@@ -246,7 +246,7 @@ it("Home: a setting fix reads as a setting, says a person approves it, and plans
 it("Home: a winget fix says it can't be undone; a product with no fix path offers no plan", () => {
   serve({});
   const r = wrap(<ol><ActionCard a={{ ...ACTION, ecosystem: "WinApp", package: "7-zip:7-zip", fix: "winget", person_only: true, forward_only: true }} /></ol>);
-  expect(screen.getByText(/A person approves this one.*can't be undone/)).toBeInTheDocument();
+  expect(screen.getByText(/A person approves this one.*No automatic rollback is available/)).toBeInTheDocument();
   r.unmount();
   wrap(<ol><ActionCard a={{ ...ACTION, ecosystem: "Microsoft", package: "SQL Server", fix: "winget", plannable: false, person_only: true }} /></ol>);
   expect(screen.queryByRole("button", { name: /Plan fix/ })).not.toBeInTheDocument();
@@ -257,7 +257,13 @@ it("Home: a fix in flight on one host still lets you plan the others", () => {
   serve({});
   wrap(<ol><ActionCard a={{ ...ACTION, busy_asset_ids: ["a1"], job: { id: "j1", status: "approved" } }} /></ol>);
   expect(screen.getByRole("link", { name: /View fix/ })).toHaveAttribute("href", "/remediation#job-j1");
-  expect(screen.getByRole("button", { name: /Plan fix for 1 more host/ })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Plan fix for 1 more asset/ })).toBeInTheDocument();
+});
+
+it("Home: recommendation counts use asset identities even when hostnames coincide", () => {
+  serve({});
+  wrap(<ol><ActionCard a={{ ...ACTION, hosts: ["shared-name"] }} /></ol>);
+  expect(screen.getByText(/Targets 1 vulnerability across 2 assets/)).toBeInTheDocument();
 });
 
 it("Home: after an aborted attempt that needs more packages, it points to the job instead of re-planning blind", () => {
@@ -377,10 +383,10 @@ it("a token without an expiry says so instead of crashing Settings", async () =>
 it("Assets: says which installed apps weren't checked, and a host with none checked says so", async () => {
   serve({ "GET /api/coverage": { assessed: 1, inventory_only: 3, not_assessed: [{ name: "Acme Widget", publisher: "Acme", hosts: 2 }] } });
   wrap(<NotAssessed />);
-  expect(await screen.findByRole("heading", { name: "3 installed apps aren't checked for vulnerabilities" })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "3 Windows app entries have no supported mapping" })).toBeInTheDocument();
   expect(screen.getByText("Acme Widget")).toBeInTheDocument();
   wrap(<ul><AssetRow a={{ ...HOST, apps: { assessed: 0, inventory_only: 2 } }} onPatch={() => {}} onDelete={() => {}} /></ul>);
-  expect(screen.getByText("None of its 2 installed apps could be checked.")).toBeInTheDocument();
+  expect(screen.getByText("None of its 2 installed app entries has a supported mapping.")).toBeInTheDocument();
 });
 
 it("Assets: nothing shows when every installed app was checked", async () => {
@@ -397,10 +403,10 @@ it("Assets: attack paths say how sure, where to cut each edge, and nothing shows
                                               c: { hostname: "new-1", judged: false, paths: [] } },
                                      chains: [{ start: "a", why_start: "a path from the network", reach: [{ host: "b", hops: ["b"], grade: "reasonable", fix_on_host: ["CFG:remote-uac"] }] }] } });
   wrap(<AttackPaths />);
-  expect(await screen.findByText(/From ws-1 \(a path from the network\), an attacker can reach 1 other host/)).toBeInTheDocument();
-  expect(screen.getByText(/ws-1 → srv-1 · how sure: reasonable · cut it on srv-1: CFG:remote-uac/)).toBeInTheDocument();
+  expect(await screen.findByText(/Possible paths from ws-1 \(a path from the network\) to 1 other host/)).toBeInTheDocument();
+  expect(screen.getByText(/ws-1 → srv-1 · evidence grade: reasonable · review on srv-1: CFG:remote-uac/)).toBeInTheDocument();
   expect(screen.getByText(/1 host hasn't been judged yet/)).toBeInTheDocument();
-  expect(screen.getByText(/Break it: fix 1 way of getting in \(CFG:rdp-nla\)/)).toBeInTheDocument();
+  expect(screen.getByText(/Suggested interruption: getting in, 1 way \(CFG:rdp-nla\)/)).toBeInTheDocument();
 });
 
 it("Assets: no attack paths, no section", async () => {

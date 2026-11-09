@@ -49,6 +49,13 @@
     "product": "assure"
   },
   {
+    "source": "docs/how-to/change-asset-context.md",
+    "slug": "how-to/change-asset-context",
+    "title": "Change asset context",
+    "group": "How-to guides",
+    "product": "assure"
+  },
+  {
     "source": "docs/how-to/enable-remediation.md",
     "slug": "how-to/enable-remediation",
     "title": "Enable remediation safely",

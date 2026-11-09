@@ -1,6 +1,6 @@
 # Web client reference
 
-The Assure web client uses React, TanStack Router, and TanStack Query. TypeScript interfaces describe selected expected data. They do not validate API responses at runtime or enumerate every server field. This page covers shared helpers/UI components and the reviewed settings/remediation interfaces.
+The Assure web client uses React, TanStack Router, and TanStack Query. TypeScript interfaces describe selected expected data. They do not validate API responses at runtime or enumerate every server field. This page covers shared helpers, UI components, enrolment, and the reviewed Assets, Fix first, settings, and remediation pages.
 
 ## Component context
 
@@ -24,6 +24,85 @@ Mode selection alone does not save. Auto requires a separate confirmation. Its m
 The maintenance form uses the stored timezone, otherwise the browser timezone or UTC. It validates selected days, `HH:MM`, whole hours 1–24, and restart deadline 1–168. An empty organisation window clears the restriction. [Server window rules](remediation-jobs.md#maintenance-windows-and-policy) define inheritance and timing boundaries.
 
 Platform display uses cache data without signature or freshness checks. A missing newer version means no newer release in that cached check. Unknown update outcomes display their raw text. Last-update messages are historical text, not live alerts.
+
+## Assets and Fix first components
+
+| Export | Inputs and behavior |
+| --- | --- |
+| `Home()` | No props. Read summary, coverage and policy. Zero assets lazy-loads onboarding. Only summary errors render retry |
+| `ActionCard({a})` | Render a server action and select display targets from asset/policy queries. PlanFixButton owns plan requests |
+| `AssetsPage()` | No props. Read assets and independent directory/path/baseline/coverage sections. Own context PATCH and confirmed DELETE |
+| `AssetRow({...})` | Render typed asset and admin/read-only controls. Parent callbacks own context edits and deletion |
+| `baselineSummary(c)` | Format pass against automated minus not-applicable, with fail/unknown counts. No range validation |
+| `Baselines()` | No props. Query stored summaries; host expansion enables detail. Missing/empty host data renders nothing |
+| `AttackPaths()` | No props. Query stored path inferences. Missing data or no paths/chains renders nothing |
+| `NotAssessed()` | No props. Display nonzero inventory-only mapping counts. Missing/zero data renders nothing |
+| `SbomUpload({a})` | Read selected File as text and POST verbatim for asset a. Refresh asset-derived queries after success |
+
+All query components require QueryClient context. Links and route hooks also require the app router. Invalid typed shapes, dates or status keys can throw. The client does not collect host facts or independently evaluate findings.
+
+### Recommendations and optional data
+
+Fix first sums the four recognized priority counts from the summary. It displays at most five supplied attention jobs. Missing coverage defaults to zero inventory-only entries. Missing policy does not block the summary or display a separate error.
+
+ActionCard removes supplied busy IDs from the action's asset IDs. When production permission is known false, it further selects loaded sandbox assets. Unknown policy lets the server decide. Missing asset data can therefore hide controls under a known production restriction.
+
+A selected dependency refusal directs review to its job instead of ordinary retry. An active job can still leave other targets available. Recommendation counts use vulnerability identities and asset IDs. The displayed hostname list can contain fewer entries when names coincide.
+
+Path grades and suggested interruption references come from the server. Cross-host links can carry confirmed grades under the [recorded evidence rules](fleet-paths.md). That grade does not establish current access or a successful attack. Edge truncation and selected routes can omit alternatives.
+
+Coverage counts describe supported identities or matching runtime facts, not completed verdicts or advisory availability. The server supplies at most 200 unmatched name/publisher groups. Baseline manual checks remain unassessed. Baseline hosts group by name/version in the client, not by baseline ID.
+
+Directory, path, baseline, and mapping sections can disappear on an uncached query error. The asset list has a separate retry state. Expanded baseline details show their own errors. A missing optional section does not prove an empty or successful result.
+
+### Asset list URL and selection
+
+| Parameter | State |
+| --- | --- |
+| `q` | Initial search text |
+| `crit` | Initial criticality, otherwise any |
+| `sort` | Initial urgent/name/seen order, otherwise urgent |
+| `show` | Initial filter tokens. Later nonempty values update selected filters |
+| `machine` | Current drawer asset ID |
+
+Local filters replace the URL as they change. Query, criticality, and sort are not fully re-synchronized from later URL changes while mounted. Removing `show` does not independently clear local filter state. Malformed runtime values can fail rendering.
+
+The list starts with forty rows and adds up to two hundred per display action. This is client slicing, not API pagination. Select all includes every matching row, even beyond the displayed slice. Existing selection can retain rows hidden by later filters. A new select-all action replaces selection with the matching set.
+
+### Context requests and recovery
+
+Context edits optimistically update the cached asset row. A failed request restores that row's captured prior object. This protects other rows but can overlap later edits to the same row. Final invalidation refreshes server state.
+
+Bulk edits invoke the parent callback independently per selected asset. Ring changes omit nonhosts. Prepared feedback appears without waiting for every save. There is no atomic transaction or complete per-row aggregate result in this control. Saved/error markers track recent mutation callbacks.
+
+Single-change Undo resubmits prior criticality, exposure, ring, and health units. It omits directory_source. Bulk Undo uses captured values for staged fields, including selections now hidden by filters. Undo creates new requests; it does not reverse a transaction or guarantee success.
+
+Host health text splits commas, trims values and removes empty entries. Duplicates remain. Blur or Enter invokes the callback when normalized text differs. The server validates names/counts. Prop changes re-seed the text, including after rollback.
+
+### AssetRow props
+
+| Prop | Meaning |
+| --- | --- |
+| `a` | Asset snapshot. Objects are not mutated by the row |
+| `onPatch` | Parent callback with context fields |
+| `onDelete` | Parent removal action |
+| `saved`, `error` | Optional parent feedback |
+| `inDrawer` | Hide duplicate heading and show additional context |
+| `undo` | Optional parent recovery callback, displayed after saved feedback |
+
+The row renders read-only context for nonadmins. Admin controls submit through callbacks without a local pending lock. A reported pending restart does not establish that the next inventory will resolve findings. A reported OS mapping gap does not prove other collectors succeeded.
+
+### Applications, uploads and directory observations
+
+Application creation trims a nonempty name, requests an asset, and invalidates the asset list on success. The creation response supplies a reusable upload secret. Closing the dialog clears its local displayed result. It does not revoke the secret.
+
+The displayed CI command uses the current browser origin and returned asset ID/token. It sends raw JSON. Supported server formats are CycloneDX and SPDX. The browser uploader does not validate file size or format. File-read and request failures appear locally, and input reset permits the same file to be retried.
+
+The directory-source flag permits that agent's directory uploads when collection is enabled. Multiple flagged sources can upload. Each accepted upload replaces the organisation's entire stored list. Directory display compares reported short names with enrolled hosts, across domains, using a 30-day logon cutoff. It does not query Active Directory live.
+
+The directory section shows at most 200 returned rows and offers CSV for the full response. Its source enabled status and timestamps are reported observations. The UI does not independently verify domain membership, current sign-in, or lifecycle entitlement.
+
+For operational steps, use [Change asset context](../how-to/change-asset-context.md).
 
 ## Remediation components
 

@@ -102,7 +102,7 @@ test("sign up, enrol a sandbox host, plan and approve a fix, see evidence", asyn
   await page.getByRole("link", { name: "Fix first", exact: true }).first().click();
   await expect(page.locator("h1")).toBeFocused();  // focus follows navigation to the new page's heading
   const action = page.getByRole("listitem").filter({ hasText: /Upgrade\s+openssl/ });
-  await expect(action.getByRole("button", { name: /Plan fix for 1 more host/ })).toBeVisible();
+  await expect(action.getByRole("button", { name: /Plan fix for 1 more asset/ })).toBeVisible();
   await action.getByRole("link", { name: /View fix/ }).click();
   await expect(page).toHaveURL(/\/remediation#job-/);
   const card = page.locator(`li#${new URL(page.url()).hash.slice(1)}`);
@@ -469,8 +469,8 @@ test("apps the curated rules don't cover are said, on Assets, and pass axe (W1)"
     headers: { Authorization: `Bearer ${a.agent_key}` } });
   expect(r.ok()).toBe(true);
   await page.goto("/assets");
-  const section = page.getByRole("region", { name: "2 installed apps aren't checked for vulnerabilities" });
-  await expect(section.getByText("1 install of known apps is checked.", { exact: false })).toBeVisible();
+  const section = page.getByRole("region", { name: "2 Windows app entries have no supported mapping" });
+  await expect(section.getByText("1 entry has a supported product mapping or runtime fact.", { exact: false })).toBeVisible();
   await section.getByText("Show them, most common first").click();
   await expect(section.getByText("Acme Widget")).toBeVisible();
   for (const [width, scheme] of [[1440, "light"], [375, "dark"]] as const) {

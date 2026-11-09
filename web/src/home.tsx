@@ -12,7 +12,12 @@ const Onboarding = lazy(() => import("./onboarding").then((m) => ({ default: m.O
 // Only a non-zero "fix now" carries colour; the rest are ink so a count never reads as disabled.
 const tile = (p: string, n: number) => (p === "fix-now" && n > 0 ? "text-now-fg" : "text-ink");
 
-/** Render fleet priorities and recommended actions, with onboarding when no assets exist. */
+/** Render Fix first under router/QueryClient providers, without props.
+ * Query summary, coverage and policy in parallel. Only summary failures render a
+ * retry state. Zero assets lazy-loads onboarding. Missing coverage/policy does not
+ * block summary display. Counts and rankings use recorded server data, not a new scan.
+ * Recommendations delegate planning to ActionCard. Invalid nested shapes can throw.
+ */
 export function Home() {
   const q = useQuery(summaryQ);
   const coverage = useQuery(coverageQ);
@@ -33,8 +38,8 @@ export function Home() {
         <h1 className="text-3xl font-semibold">Fix first</h1>
         <p className="mt-1 text-muted">
           {total === 0
-            ? `No open findings across ${plural(s.assets, "asset")}.${unchecked ? ` Installed apps not checked: ${unchecked}, listed on Assets.` : ""}`
-            : `${plural(total, "open finding")} across ${plural(s.assets, "asset")}. These fixes clear the most risk.`}
+            ? `No open findings across ${plural(s.assets, "asset")}.${unchecked ? ` Windows app entries without a supported mapping: ${unchecked}, listed on Assets.` : ""}`
+            : `${plural(total, "open finding")} across ${plural(s.assets, "asset")}. Recommendations group recorded findings by package.`}
         </p>
       </header>
 
@@ -58,7 +63,7 @@ export function Home() {
           <h2 id="fleet" className="flex items-center gap-2 font-semibold"><TriangleAlert className="size-4" aria-hidden />Machines need a look</h2>
           <ul className="mt-2 flex flex-col gap-1 text-sm">
             {s.hosts_not_reporting > 0 && <li>{plural(s.hosts_not_reporting, "machine")} stopped reporting, so {s.hosts_not_reporting === 1 ? "its" : "their"} findings may be out of date.</li>}
-            {s.agents_need_attention > 0 && <li>{plural(s.agents_need_attention, "agent")} {s.agents_need_attention === 1 ? "is" : "are"} outdated and can't update {s.agents_need_attention === 1 ? "itself" : "themselves"}; Assets says why and what to do.</li>}
+            {s.agents_need_attention > 0 && <li>{plural(s.agents_need_attention, "agent")} need{s.agents_need_attention === 1 ? "s" : ""} update attention. Assets shows the last reported status and next steps.</li>}
           </ul>
           <Link to="/assets" className="mt-1 inline-flex tap items-center gap-1.5 text-sm font-medium text-accent underline">Review in Assets <ArrowRight className="size-4" aria-hidden /></Link>
         </section>
@@ -84,12 +89,12 @@ export function Home() {
 
       <section aria-labelledby="actions">
         <h2 id="actions" className="mb-3 text-lg font-semibold">Recommended fixes</h2>
-        {prodLocked && <p className="-mt-1 mb-3 max-w-prose text-sm text-muted">Production remediation is off on this server, so these can only be planned for test machines. <Link to="/settings" hash="remediation" className="font-medium text-ink underline">How to turn it on</Link></p>}
+        {prodLocked && <p className="-mt-1 mb-3 max-w-prose text-sm text-muted">This server permits remediation execution only on test machines. <Link to="/settings" hash="remediation" className="font-medium text-ink underline">How to turn it on</Link></p>}
         {s.top_actions.length === 0 ? (
           <div className="flex items-start gap-3 border border-dashed border-line-strong p-5">
             <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-accent" aria-hidden />
             <p className="text-sm text-muted">
-              {total === 0 ? "Everything reported so far is clean. New findings will show up here." : "Nothing here can be fixed by an upgrade or a setting change yet. Review the findings with no fix to mitigate or accept them."}
+              {total === 0 ? "No open findings are recorded. Review collection coverage and report age on Assets." : "No package or supported setting plans are recommended from current data. Review findings for manual mitigation or risk acceptance."}
             </p>
           </div>
         ) : (
@@ -102,7 +107,13 @@ export function Home() {
   );
 }
 
-/** Render upgrade recommendation a with its scope and fix-planning action. */
+/** Render server action a and derive eligible display targets from policy/asset queries.
+ * Exclude supplied busy IDs. A known production lock further limits targets to
+ * loaded sandbox assets; unknown policy permits the server to decide. A selected
+ * dependency refusal hides the ordinary retry button. PlanFixButton owns requests.
+ * Require router/QueryClient context. Do not mutate a or independently validate
+ * plan eligibility. Invalid nested shapes can throw during rendering.
+ */
 export function ActionCard({ a }: { a: Action }) {
   const prodOk = useQuery(settingsQ).data?.production_remediation_allowed ?? true;  // unknown: let the API say no
   const sandbox = new Set((useQuery(assetsQ).data ?? []).filter((x) => x.sandbox).map((x) => x.id));
@@ -127,12 +138,12 @@ export function ActionCard({ a }: { a: Action }) {
           <PriorityPill priority={priorityOf(a.max_score, a.kev)} />
           {a.kev && <KevBadge />}
           <span>
-            Fixes {a.fixed_version ? plural(a.vulns.length, "vulnerability", "vulnerabilities") : plural(a.vulns.length, "finding")} on {plural(a.hosts.length, "host")}
+            Targets {a.fixed_version ? plural(a.vulns.length, "vulnerability", "vulnerabilities") : plural(a.vulns.length, "finding type")} across {plural(a.asset_ids.length, "asset")}
             <span className="hidden md:inline">: {a.hosts.slice(0, 3).join(", ")}{a.hosts.length > 3 && ` +${a.hosts.length - 3}`}</span>
           </span>
         </p>
         {a.plannable
-          ? (a.person_only || a.forward_only) && <p className="mt-1 text-sm text-muted">{a.person_only && "A person approves this one, never the trust ladder."}{a.forward_only && " It can't be undone."}</p>
+          ? (a.person_only || a.forward_only) && <p className="mt-1 text-sm text-muted">{a.person_only && "A person approves this one in the normal workflow."}{a.forward_only && " No automatic rollback is available."}</p>
           : <p className="mt-1 text-sm text-muted">Nimstead can't plan this one: update it with its own updater or by policy.</p>}
       </div>
       <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">
@@ -147,7 +158,7 @@ export function ActionCard({ a }: { a: Action }) {
         <span className="flex flex-wrap items-start gap-x-4 gap-y-2">
         {a.plannable && free.length > 0 && !needsMore && (
           <PlanFixButton ecosystem={a.ecosystem} pkg={a.package} assetIds={free}
-            label={a.job ? `Plan fix for ${plural(free.length, "more host")}` : failed ? "Plan fix again" : held ? `Plan fix on ${plural(free.length, "test machine")}` : "Plan fix"} />
+            label={a.job ? `Plan fix for ${plural(free.length, "more asset")}` : failed ? "Plan fix again" : held ? `Plan fix on ${plural(free.length, "test asset")}` : "Plan fix"} />
         )}
         <Link
           to="/findings"

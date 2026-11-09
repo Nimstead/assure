@@ -105,3 +105,13 @@ The subsequent external/network batch passed 40 tests and 46 subchecks, includin
 The release/platform batch uses fake GitHub responses, ephemeral test signing keys and local update fixtures. No production release, key rotation or runtime rollout was performed.
 
 The finding/database batch passed 106 focused tests and 46 subchecks, with two Windows-only parser skips. Actual response/reference checks cover full, compact, detail and group fields. New tests also verify SQL wildcard/overdue behavior, retained resolution timestamps, CSV guards, feed absence and caller-session commits. SQLite-specific model checks do not replace PostgreSQL migration validation.
+
+## Assets and Fix first review
+
+| Source | Review scope | Evidence and corrections | Status |
+| --- | --- | --- | --- |
+| `web/src/assets.tsx` | All exports and private helpers | Reviewed provider/query context, filters, selection across hidden rows, independent optimistic saves, partial errors, Undo fields, mapping-only coverage, baseline groups, evidence grades, application secrets and raw SBOM uploads. Corrected bulk/restart/path/coverage claims | Reviewed |
+| `web/src/home.tsx` | Home, ActionCard and private rendering | Reviewed query fallbacks, priority totals, eligibility filtering, asset identity counts, target selection and dependency/refusal limits. Duplicate hostname regression passes | Reviewed |
+| `api/src/nimstead/app.py` | list_assets, coverage, agent_directory and unmanaged_computers, plus earlier named scopes | Reviewed permissions, payload fields, mapping counts, rate-attempt commits, whole-organization replacement, timestamp handling, short-hostname comparison and CSV limits. Other unnamed handlers and response schemas remain pending | Partial |
+
+80 web tests and 331 focused API tests passed, with 46 subchecks. Playwright MCP held two fixture PATCH requests, verified prepared feedback before completion, then verified failed-result display. Mobile Assets, Fix first and wiki pages had no page overflow. This does not prove production application deployment, native collection or the complete CLI end-to-end suite.

@@ -215,3 +215,15 @@ Corrected network-only status-zero claims, exact URL-inverse claims, calendar-un
 Playwright MCP used local fixtures to verify agent-group/retry wording, the Windows runtime instruction, silent clipboard refusal, asset-count completion wording, and desktop/mobile reference layout and anchors. No real enrolment token, clipboard write, host installation or production mutation occurred. The 73-article build and six site tests passed.
 
 The remaining asset, home, findings, evidence, access/integration, auth and shell exports still need their own reviews. Remaining agent/tool/API and final editorial/example reviews also keep full compliance unproven.
+
+## Assets and Fix first checkpoint
+
+Reviewed every public Assets and Fix first export and their private helpers. Expanded the web reference with provider context, query failure limits, asset counts, mapping coverage, baseline groups, URL state, selection, callbacks and upload behavior. Added a how-to guide for changing asset context, with separate verification and recovery steps.
+
+Corrected claims about universal cleanliness, attacker access, evidence-grade ceilings, completed Windows checks, restart resolution and immediate bulk-save success. Bulk feedback now says that requests were prepared and asks the operator to review results. A duplicated-hostname regression verifies that recommendations count asset identities.
+
+Reviewed asset-list, coverage and directory HTTP handlers. Their documentation now describes mapping-only counts, organization-wide directory replacement, committed quota attempts, trusted source status, cross-domain short-name matching and timezone removal without conversion.
+
+80 web tests, TypeScript checks and the production build passed. 331 focused API tests and 46 subchecks passed. Generated API freshness, Ruff and repository presence/link checks passed. The wiki builds 74 articles and its six tests pass. Playwright MCP verified desktop/mobile articles and local fixture UI, including delayed failed bulk requests and their error display.
+
+No production asset, directory collector or Assure application was changed by browser verification. The complete CLI end-to-end suite was not rerun. Remaining findings, evidence, access/integration, auth and shell exports, plus agent/tool/API contracts and final editorial/example review, keep full compliance unproven.

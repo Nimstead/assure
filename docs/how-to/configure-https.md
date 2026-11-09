@@ -19,7 +19,7 @@ FORWARDED_ALLOW_IPS=<your proxy's address as the app container sees it>
 
 and run `docker compose up -d` again.
 
-The first account you create sets the server up and is its admin. Later sign-ups (another organisation on the same server) finish from an emailed link, so set up SMTP ([configuration](../configuration.md)) if you need them; colleagues in your own organisation join through single sign-on.
+The first account you create sets the server up and is its admin. Later sign-ups create another organisation through an emailed link. Configure [SMTP](../configuration.md#alerts) if you need these sign-ups. Colleagues in your organisation join through single sign-on.
 
 ## Verify the connection
 

@@ -2,10 +2,26 @@
 
 Use this guide when an enrolled machine stops reporting, or when a scan cannot assess some checks. You need access to the machine and permission to inspect its Assure asset record.
 
+## Run diagnostics
+
+On Linux, run:
+
+```bash
+sudo python3 /usr/local/lib/nimstead/nimstead_agent.py doctor
+```
+
+On Windows, run in elevated PowerShell:
+
+```powershell
+& (Resolve-Path "$env:ProgramFiles\Nimstead\runtime\*\python.exe")[0] -I "$env:ProgramFiles\Nimstead\nimstead_agent.py" doctor
+```
+
+`doctor` changes nothing and does not send the agent key. Each check prints `ok` or `FAIL` with recovery advice. A failure returns a nonzero exit status. A stopped Windows Update service is normal; a disabled service fails the check.
+
 ## A machine is not reporting
 
 1. Check the asset's last report time. Assure marks a machine as not reporting after 14 hours.
-2. Run the agent's `doctor` command on the machine. Use the platform-specific command in [Install: troubleshooting](../install.md#troubleshooting).
+2. Run the agent's `doctor` command on the machine. Use the platform-specific command below.
 3. Resolve each `FAIL` result. Check the configured server address, proxy, clock, schedule, disk space, and permissions as indicated.
 4. Inspect the local agent log: `/var/lib/nimstead/agent.log` on Linux or `C:\ProgramData\Nimstead\agent.log` on Windows. Root or administrator access is required.
 5. Run the enrolled agent's `report` command with its normal service privileges. Confirm that the asset's last report time advances.

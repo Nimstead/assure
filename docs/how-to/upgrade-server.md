@@ -1,23 +1,49 @@
 # Upgrade the server
 
-Use this guide for the Docker Compose installation. You need root access to the host and a recoverable backup.
+Update a Docker Compose installation to an eligible signed release. You need root access to the Docker host and a recoverable [backup](back-up.md).
 
-**Settings → This server** shows your version and says when a newer release is out on your **channel** (alert targets hear about it once). Releases come in three channels: **preview** (earliest, may break), **beta** (feature-complete, being proven) and **stable** (public). `NIMSTEAD_UPDATE_CHANNEL` in `.env` picks one. It defaults to `stable`, and a server also takes anything more stable than its channel. There's no stable release yet, so set `NIMSTEAD_UPDATE_CHANNEL=preview` to follow the current releases.
+## Check the target and checkout
 
-To install the update, run this in the checkout on the Docker host:
+1. Open **Settings → This server** to check the installed version and available update.
+2. Check `NIMSTEAD_UPDATE_CHANNEL` in `.env`. Its default is `stable`. Select `preview` only if you intend to receive early releases.
+3. Check that the checkout has no local changes or untracked files. Ignored files such as `.env` and `backups/` are allowed.
+4. If you run the updater as root, check that root owns every checkout file and that other users cannot write them.
+
+The updater does not use `compose.override.yaml`. Do not rely on that file for this deployment.
+
+## Preview and apply the update
+
+1. From the checkout on the Docker host, inspect the proposed update:
+
+```bash
+sudo deploy/update.sh --dry-run
+```
+
+2. Review the target release and planned effects.
+3. Apply the update:
 
 ```bash
 sudo deploy/update.sh
 ```
 
-It updates only to a release signed by the Nimstead release key, and only if the release tag points at exactly the signed commit. Your checkout must have no local changes or untracked files (`.env`, `backups/` and other ignored files are fine; a `compose.override.yaml` is not used), and when run as root every file in the checkout must be owned by root and not writable by anyone else, because the timer runs this script as root. It builds the new version while the old one keeps serving, then stops the server for a moment to back up a quiet database to `backups/`. It starts the new version (migrations run on start) and waits up to 5 minutes for `/api/health` to answer for it, then restarts the feed updates. If that doesn't happen, it puts the previous version back with the database from the backup. The outcome shows in **Settings**, and a failure alerts. Add `--dry-run` to see what it would do.
+The updater requires a signed release whose tag matches the signed commit. It builds while the old server runs. It then stops the server briefly and saves a quiet database backup in `backups/`.
 
-To install releases on their own each night (03:00–04:00), turn on the timer once:
+The new server applies migrations at startup. The updater waits up to five minutes for `/api/health`, then restarts feed updates. If health fails, it restores the previous version and database backup. A failure sends an alert.
+
+## Verify the result
+
+1. Confirm the version in **Settings → This server**.
+2. Confirm that the feed updater runs.
+3. Check the update outcome in **Settings**.
+
+Agents update from the new release at their next run. If automatic rollback reports a failure, use the [restore procedure](restore.md).
+
+## Enable nightly updates
+
+After you verify a manual update, install the timer if you want automatic updates between 03:00 and 04:00:
 
 ```bash
 sudo deploy/update.sh --install-timer
 ```
 
-Agents then update themselves from the new release at their next run.
-
-Confirm the new version in **Settings → This server** and check that the feed updater runs. If the automatic rollback reports a failure, use the [restore procedure](restore.md).
+For channel eligibility and signature boundaries, see [signed updates](../explanation/signed-updates.md) and [configuration](../configuration.md).

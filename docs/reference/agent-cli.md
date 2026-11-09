@@ -52,4 +52,19 @@ The installer schedules inventory every six hours. Hosts that opt into remediati
 
 Linux logs are in `/var/lib/nimstead/agent.log`; Windows logs are in `C:\ProgramData\Nimstead\agent.log`. Logs rotate to `agent.log.1`. Remote scans save host report keys in `.nimstead-remote-scan.json` in the caller's home directory.
 
-See [Install](../install.md#add-your-first-machine) for supported platforms, service privileges, and installation paths. See [scan troubleshooting](../how-to/troubleshoot-scans.md) for recovery steps.
+See [supported platforms](platforms.md) for platform requirements and runtime paths. See [scan troubleshooting](../how-to/troubleshoot-scans.md) for recovery steps.
+
+
+## Update controls
+
+| Control | Effect |
+| --- | --- |
+| **Settings → Agent updates** | Pause agent updates for the organisation |
+| `enroll --no-auto-update` | Disable updates on one host; it can show **Agent outdated** after later releases |
+| `enroll --channel CHANNEL` | Pin channel eligibility at enrolment; the installer supplies the server channel |
+
+Agents older than 0.2.0 cannot update themselves. Reinstallation preserves enrolment. Agents enrolled before 0.3.0 accept every channel until reinstallation sets their channel.
+
+Scheduled reports use up to 30minutes of jitter. Job checks use up to two minutes. They run at below-normal priority. Logs retain approximately 2MB across `agent.log` and `agent.log.1` and exclude agent keys and enrolment tokens. Root or Administrators can read them.
+
+An enrolment token normally works for 30days and can enrol multiple machines. Revocation prevents further enrolments with it. The server marks hosts as **Not reporting** after 14hours and sends one alert.

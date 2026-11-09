@@ -28,7 +28,12 @@ ARCHES = ("amd64", "arm64", "win32")
 
 
 def load_runtimes(text: str) -> dict:
-    """{arch: {version, sha256}} for release.json from the pinned runtime file; refuses anything malformed."""
+    """Return architecture-to-version/hash metadata parsed from pinned runtime JSON text.
+
+    text must define a semantic version and exactly the amd64, arm64, and win32 archives.
+    Each URL must match the official Python embeddable-runtime URL for that version.
+    Invalid JSON raises JSONDecodeError. Invalid metadata raises SystemExit.
+    """
     d = json.loads(text)
     v = d.get("version") if isinstance(d, dict) else None
     rt = d.get("runtimes") if isinstance(d, dict) else None

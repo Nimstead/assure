@@ -1,6 +1,6 @@
 # Documentation coverage
 
-Documented callable/class declarations: **628/628**.
+Documented callable/class declarations: **630/630**.
 
 Regenerate with `python scripts/check_docs.py --report` from the repository root.
 
@@ -54,7 +54,7 @@ This metric checks documentation presence. It does not prove complete parameter,
 | [api/src/nimstead/winbaseline.py](../../api/src/nimstead/winbaseline.py) | 5 | 5 |
 | [api/src/nimstead/winconfig.py](../../api/src/nimstead/winconfig.py) | 2 | 2 |
 | [api/src/nimstead/windrivers.py](../../api/src/nimstead/windrivers.py) | 2 | 2 |
-| [scripts/check_docs.py](../../scripts/check_docs.py) | 5 | 5 |
+| [scripts/check_docs.py](../../scripts/check_docs.py) | 7 | 7 |
 | [scripts/fetch_runtimes.py](../../scripts/fetch_runtimes.py) | 1 | 1 |
 | [scripts/sign_release.py](../../scripts/sign_release.py) | 4 | 4 |
 | [scripts/xccdf_rules.py](../../scripts/xccdf_rules.py) | 14 | 14 |

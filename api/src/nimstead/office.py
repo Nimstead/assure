@@ -37,19 +37,30 @@ FAMILIES = [(re.compile(r"Microsoft 365 Apps for Enterprise for (32|64)-bit Syst
 
 
 def channels_for(msrc_name: str) -> tuple[str, ...]:
-    """Return Office channel labels matching the MSRC product-name string, or () for an unknown family."""
+    """Return channel labels for the exact MSRC product-family name msrc_name.
+
+    msrc_name is case-sensitive. Unknown families return an empty tuple; this does not
+    infer a channel from a partially matching product label."""
     return next((ch for pat, ch in FAMILIES if pat.fullmatch(msrc_name)), ())
 
 
 def host_key(build: str, channel: str) -> str | None:
-    """Advisory key for a host: its channel (GUID or a CDN URL ending in it) and the build's version line."""
+    """Return the advisory package key for build and channel, or None if either is unknown.
+
+    build must be a 16.0.x.y version string. channel is a known GUID or a CDN URL
+    ending in that GUID. The returned key includes the channel label and x version line."""
     guid = (channel or "").rstrip("/").rsplit("/", 1)[-1].lower()
     m = re.fullmatch(r"16\.0\.(\d+)\.\d+", build or "")
     return f"{PREFIX}{CHANNELS[guid]} {m[1]}" if guid in CHANNELS and m else None
 
 
 def lines(feed) -> dict[str, list[tuple[date, str]]]:
-    """{channelId line: [(available, build)] sorted}; ValueError on any schema change."""
+    """Return date-sorted Office build lists keyed by channel label and version line.
+
+    feed is the decoded nonempty OfficeReleases list. Each channel contains officeVersions
+    with legacyVersion, availabilityDate, and cdnBaseUrl fields. Raise ValueError for invalid
+    shapes, versions, dates, GUID/channel conflicts, or missing required channels. Nested
+    entries must be dictionaries; other values can raise AttributeError. No database is changed."""
     if not isinstance(feed, list) or not feed:
         raise ValueError("OfficeReleases: expected a non-empty list of channels")
     out: dict[str, list[tuple[date, str]]] = {}
@@ -72,8 +83,15 @@ def lines(feed) -> dict[str, list[tuple[date, str]]]:
 
 
 def sync(s: Session, feed, cves: list[dict]) -> int:
-    """Rebuild every Office row from the feed and the Office CVEs MSRC published: cves = [{cve, released (date),
-    channels, title, severity}]. Returns the number of rows."""
+    """Rebuild Office advisories in Session s and return the number of CVE/build rows.
+
+    feed is the decoded OfficeReleases input accepted by lines(). cves contains dictionaries
+    with cve, released (date), modified (text), channels, title, and optional severity.
+    The function deletes prior Office build rows, inserts replacements, updates the oldest
+    supported subscription lines, and flushes s without committing.
+
+    Feed validation fails before deletion. Invalid CVE dictionaries and database failures
+    propagate; the caller must roll back the transaction after any failure."""
     by_line = lines(feed)
     s.execute(delete(Advisory).where(Advisory.ecosystem == ECOSYSTEM, Advisory.package.like(PREFIX + "%")))
     rows = []
@@ -109,7 +127,11 @@ def sync(s: Session, feed, cves: list[dict]) -> int:
 
 
 def stored_cves(s: Session) -> list[dict]:
-    """The Office CVEs sync_msrc kept (package "Office CVE", one row per CVE and MSRC product family)."""
+    """Return Office CVE inputs previously stored by sync_msrc in Session s.
+
+    Each dictionary contains cve, released (date), channels (tuple), title, severity, and
+    modified. The query reads records with package "Office CVE" and does not mutate s.
+    Database errors and malformed stored records, including invalid dates, propagate."""
     out = []
     for rec in s.scalars(select(Advisory.record).where(Advisory.ecosystem == ECOSYSTEM, Advisory.package == "Office CVE")):
         d = rec["database_specific"]

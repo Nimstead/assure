@@ -31,6 +31,6 @@ $env:NIMSTEAD_PROXY = "http://proxy.example:8080"
 
 Otherwise, the agent uses the machine's WinHTTP proxy when available. Inspect it with `netsh winhttp show proxy`.
 
-A proxy for the agent does not configure every Windows Update download path. Review the [Windows proxy guidance](../install.md#add-your-first-machine) before you enable fixes without direct internet access.
+A proxy for the agent does not configure every Windows Update download path. Review the [Windows Update proxy checks](configure-windows-update-proxy.md) before you enable fixes without direct internet access.
 
 For fleet rollout, use [Group Policy deployment](deploy-group-policy.md). For failures, use [scan troubleshooting](troubleshoot-scans.md).

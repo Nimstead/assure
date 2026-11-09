@@ -12,7 +12,10 @@ git clone https://github.com/Nimstead/assure.git && cd assure
 cp .env.example .env
 ```
 
-Edit `.env`: set `POSTGRES_PASSWORD` to a long random value now (it's fixed into the database on first start), and `NIMSTEAD_PUBLIC_URL` to the address your machines will use.
+Edit `.env` before the first start:
+
+1. Set `POSTGRES_PASSWORD` to a long random value. The database fixes this value on its first start.
+2. Set `NIMSTEAD_PUBLIC_URL` to the address your machines will use.
 
 ```bash
 docker compose up -d

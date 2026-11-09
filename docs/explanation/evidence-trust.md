@@ -10,6 +10,6 @@ A public key inside a pack is not, by itself, a trust anchor. Someone who can re
 
 A valid signature establishes integrity under the accepted key. It does not establish that every host reported, every check ran, or every control was satisfied. Coverage and time period remain part of the review.
 
-Restoring an old database can remove later ledger entries. Checkpoints outside that database can reveal the shortening. The warning may describe a legitimate recovery, but the missing period must still be explained.
+Restoring an old database can remove later ledger entries. Checkpoints outside that database can reveal the shortening. With checkpoints in object-locked S3, the Evidence page can show a shortened ledger after an older backup is restored. The warning may describe a legitimate recovery. Use the newest recoverable backup and record the restore for the auditor. The missing period must still be explained.
 
 See [export evidence](../how-to/export-evidence.md), [verify a pack](../how-to/verify-evidence.md), and [restore a backup](../how-to/restore.md).

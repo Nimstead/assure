@@ -6,6 +6,7 @@ Run from any directory: python scripts/check_docs.py [--report]. Uses only the P
 import argparse
 import ast
 import re
+import subprocess
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
@@ -54,7 +55,7 @@ def coverage() -> dict[str, list[tuple[str, bool]]]:
             rows = python_symbols(ast.parse(path.read_text()))
             if rows:
                 out[str(path.relative_to(ROOT))] = rows
-    for path in sorted((ROOT / "web/src").glob("*")):
+    for path in sorted((ROOT / "web/src").rglob("*")):
         if path.suffix not in {".ts", ".tsx"} or ".test." in path.name or path.name == "setup-tests.ts":
             continue
         source = path.read_text()
@@ -68,34 +69,64 @@ def coverage() -> dict[str, list[tuple[str, bool]]]:
     return out
 
 
-def link_problems() -> list[str]:
-    """Return missing local Markdown link targets in maintained documentation; remote links are not fetched.
+def documentation_paths() -> list[Path]:
+    """Return tracked and unignored Markdown paths in ROOT, including new documentation.
 
-    Anchors are checked for simple Markdown headings. Code fences are excluded; HTML attributes and
-    reference-style links are outside this check, so it supplements editorial review.
+    Git defines repository membership, so installed dependencies and ignored build output do
+    not enter the documentation inventory. Git failures raise CalledProcessError.
+    """
+    files = subprocess.check_output(
+        ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", "*.md"], cwd=ROOT,
+    ).decode().split("\0")
+    return sorted({ROOT / name for name in files if name and (ROOT / name).is_file()})
+
+
+def markdown_anchors(source: str) -> set[str]:
+    """Return GitHub-style heading slugs and explicit HTML anchors from Markdown source.
+
+    Duplicate headings receive numbered suffixes. This handles the repository's heading
+    syntax; it is not a complete Markdown parser.
+    """
+    anchors = set(re.findall(r'<[^>]+(?:id|name)=["\']([^"\']+)["\']', source))
+    counts = {}
+    for heading in re.findall(r"^#{1,6} (.+)$", source, re.M):
+        heading = re.sub(r"<[^>]*>", "", heading).strip().rstrip("#").strip()
+        slug = re.sub(r"[^\w\- ]", "", heading.lower()).replace(" ", "-")
+        number = counts.get(slug, 0)
+        anchors.add(slug + (f"-{number}" if number else ""))
+        counts[slug] = number + 1
+    return anchors
+
+
+def link_problems() -> list[str]:
+    """Return broken local Markdown/HTML destinations throughout repository documentation.
+
+    Check same-page and cross-file anchors. Remote links are not fetched. Fenced code is
+    excluded; reference definitions and HTML href/src attributes are checked as destinations.
     """
     problems = []
-    paths = [*ROOT.glob("*.md"), *ROOT.glob("api/*.md"), *ROOT.glob("docs/**/*.md"), *ROOT.glob("sandbox/*.md")]
-    for path in sorted(paths):
+    for path in documentation_paths():
         source = re.sub(r"^```.*?^```[^\n]*", "", path.read_text(), flags=re.M | re.S)
-        for match in LINK.finditer(source):
-            target = match[1] or match[2]
+        targets = [match[1] or match[2] for match in LINK.finditer(source)]
+        targets += re.findall(r'^\s*\[[^]\n]+\]:\s*<?([^\s>]+)>?', source, re.M)
+        targets += re.findall(r'(?:href|src)=["\']([^"\']+)["\']', source)
+        for target in targets:
             url = urlsplit(target.strip("<>"))
-            if url.scheme or url.netloc or not url.path:
+            if url.scheme or url.netloc:
                 continue
-            local = (path.parent / unquote(url.path)).resolve()
+            local = (path.parent / unquote(url.path)).resolve() if url.path else path
             if not local.exists():
                 problems.append(f"{path.relative_to(ROOT)}: missing {target}")
             elif url.fragment and local.suffix == ".md":
-                headings = re.findall(r"^#{1,6} (.+)$", local.read_text(), re.M)
-                anchors = {re.sub(r"[^\w\- ]", "", h.lower()).replace(" ", "-") for h in headings}
-                if unquote(url.fragment) not in anchors:
+                if unquote(url.fragment) not in markdown_anchors(local.read_text()):
                     problems.append(f"{path.relative_to(ROOT)}: missing heading {target}")
     return problems
 
 
 def report(rows: dict[str, list[tuple[str, bool]]]) -> str:
-    """Return the Markdown coverage table for path-to-symbol results from coverage()."""
+    """Return the Markdown coverage table for rows from coverage().
+
+    rows maps repository paths to (symbol name, documentation-present) pairs."""
     total = sum(len(symbols) for symbols in rows.values())
     documented = sum(ok for symbols in rows.values() for _, ok in symbols)
     lines = ["# Documentation coverage", "", f"Documented callable/class declarations: **{documented}/{total}**.", "",

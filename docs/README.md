@@ -1,35 +1,75 @@
 # Assure documentation
 
-The searchable wiki is at [docs.nimstead.systems](https://docs.nimstead.systems). Its source and build instructions are in [docs-site](../docs-site/README.md).
+Choose a page for your reader task. These pages describe the current checkout. Check [STATUS](../STATUS.md) for recorded platform proofs and limits.
 
-Choose a page for what you need to do. These guides describe the code in this checkout; release-specific proof and limitations are in [STATUS](../STATUS.md).
+Use the [searchable wiki](https://docs.nimstead.systems/assure/) or browse below. [Pulse documentation](https://docs.nimstead.systems/pulse/) covers the other current Nimstead product.
 
 ## Learn
 
-- [Read your first SBOM](tutorials/first-sbom.md): turn a small application inventory into package identities, then understand what an upload replaces.
+Follow a safe worked example.
+
+- [Read your first SBOM](tutorials/first-sbom.md)
 
 ## Complete a task
 
-- [Install and operate Assure](install.md): deploy the server, enrol hosts, enable remediation, upgrade, and restore a backup.
-- [Upload an SBOM from CI](how-to/upload-sbom.md): authenticate an application upload and check the result.
-- [Verify an evidence pack](how-to/verify-evidence.md): check a downloaded pack against a trusted fingerprint.
-- [Troubleshoot a missing or incomplete scan](how-to/troubleshoot-scans.md): distinguish reporting failures from incomplete detection.
-- [Contribute](../CONTRIBUTING.md): set up the development environment and run checks.
+Choose the procedure for your task.
+
+- [Deploy with Docker Compose](how-to/deploy-server.md)
+- [Configure HTTPS](how-to/configure-https.md)
+- [Enrol a Linux machine](how-to/enrol-linux.md)
+- [Enrol a Windows machine](how-to/enrol-windows.md)
+- [Deploy through Group Policy](how-to/deploy-group-policy.md)
+- [Review and triage findings](how-to/review-findings.md)
+- [Enable remediation safely](how-to/enable-remediation.md)
+- [Upload an SBOM from CI](how-to/upload-sbom.md)
+- [Scan an external target](how-to/scan-external-target.md)
+- [Scan Windows without an agent](how-to/remote-windows.md)
+- [Configure single sign-on](how-to/configure-sso.md)
+- [Configure alerts](how-to/configure-alerts.md)
+- [Export evidence for a reviewer](how-to/export-evidence.md)
+- [Verify an evidence pack](how-to/verify-evidence.md)
+- [Verify an agent release](how-to/verify-agent-release.md)
+- [Upgrade the server](how-to/upgrade-server.md)
+- [Back up Assure](how-to/back-up.md)
+- [Restore a backup](how-to/restore.md)
+- [Troubleshoot a missing or incomplete scan](how-to/troubleshoot-scans.md)
+- [Remove an agent](how-to/remove-agent.md)
+- [Run without Docker](how-to/run-without-docker.md)
+- [Contribute to Assure](../CONTRIBUTING.md)
+- [Prepare a production deployment](how-to/prepare-production.md)
+- [Release Assure](how-to/release-assure.md)
+- [Recover from a bad release or signing-key leak](how-to/recover-release.md)
+- [Check Windows Update access through a proxy](how-to/configure-windows-update-proxy.md)
 
 ## Look up details
 
-- [HTTP API](reference/http-api.md): authentication, request limits, errors, and the live OpenAPI schema.
-- [Configuration](configuration.md): environment variables and defaults.
-- [Agent commands](reference/agent-cli.md): commands, side effects, and local state.
-- [SBOM input](reference/sbom.md): formats, package URLs, limits, and replacement semantics.
-- [Developer tools](reference/tooling.md): checks, command entry points, and sandbox harnesses.
-- [Documentation coverage](reference/documentation-coverage.md): public interface coverage and its measurement scope.
-- [Release keys](release-keys.md): the keys used to verify agent releases.
+Find commands, settings, formats, and limits.
+
+- [Configuration](configuration.md)
+- [Supported platforms](reference/platforms.md)
+- [Agent command reference](reference/agent-cli.md)
+- [HTTP API reference](reference/http-api.md)
+- [SBOM input reference](reference/sbom.md)
+- [Scan outcomes](reference/scan-outcomes.md)
+- [Remediation modes](reference/remediation-modes.md)
+- [Release keys](release-keys.md)
+- [Developer tools and repository map](reference/tooling.md)
+- [Glossary](reference/glossary.md)
 
 ## Understand the system
 
-- [From inventory to evidence](explanation/inventory-to-evidence.md): how collection, detection, risk, remediation, and evidence relate.
-- [Design decisions](../DECISIONS.md): recorded choices and their rationale.
-- [Detection specification](engine/spec-detection.md), [engine design](engine/design-e2.md), and [attack paths](engine/design-paths.md): detailed engine requirements and design. These documents include planned work; consult source and STATUS for implemented behaviour.
+Read the reasons, trust boundaries, and tradeoffs.
 
-[Changelog](../CHANGELOG.md) records release changes. [Security](../SECURITY.md) describes how to report a vulnerability.
+- [Deployment architecture](explanation/architecture.md)
+- [From inventory to evidence](explanation/inventory-to-evidence.md)
+- [Detection confidence and incomplete scans](explanation/detection-confidence.md)
+- [How remediation limits a change](explanation/remediation-safety.md)
+- [Why agent updates are signed](explanation/signed-updates.md)
+- [What an evidence signature proves](explanation/evidence-trust.md)
+- [Coverage and known limits](explanation/coverage-limits.md)
+
+## Repository records
+
+[Design decisions](../DECISIONS.md), [engine designs](engine/design-e2.md), and [task plans](../tasks/plan.md) retain rationale and planned work. They do not replace current operator instructions.
+
+[Changelog](../CHANGELOG.md) records release changes. [Security](../SECURITY.md) gives the vulnerability-reporting policy.

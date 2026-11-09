@@ -165,7 +165,12 @@ def parse_want(spec: str, extra: list[str]) -> dict | None:
 
 
 def registry_rule(text: str) -> tuple[dict | None, str]:
-    """(rule fields, "") or (None, why it stays manual)."""
+    """Parse registry check text into (rule fields, empty reason), or (None, refusal reason).
+
+    text is the complete XCCDF check-content string. Unknown conditions, unsupported hives,
+    multiple values, and ambiguous paths remain manual rather than producing a partial rule.
+    This function does not read the registry or change host settings.
+    """
     hive = path = name = typ = spec = None
     prose, extra = [], []
     for line in text.splitlines():
@@ -240,7 +245,11 @@ def audit_rule(text: str) -> tuple[dict | None, str]:
 
 
 def entry_sids(line: str) -> list[str] | None:
-    """One accepted holder: "S-1-5-32-544 (Administrators)", "Administrators", "Domain Admins Group", or "A or B" (either will do)."""
+    """Return accepted SID alternatives parsed from one user-rights holder line.
+
+    line can contain a literal SID, a known group name, or alternatives separated by "or".
+    Domain group identifiers use wildcard suffixes. Return None if any holder is unknown.
+    """
     out = []
     for part in re.split(r"\s+or\s+", re.sub(r"\s*\(see Note below\)", "", line).strip(" -.\t")):
         part = part.strip(' "')
@@ -258,7 +267,12 @@ def entry_sids(line: str) -> list[str] | None:
 
 
 def rights_rule(text: str) -> tuple[dict | None, str]:
-    """Both ways a STIG words it (names for the console, SIDs for the file) must agree, or a person reads it."""
+    """Return (user-rights rule, empty reason) from complete XCCDF check text.
+
+    text must describe one understood right with consistent holder lists and applicability.
+    Return (None, refusal reason) for unknown conditions or conflicting console/SID forms.
+    The parser does not inspect or modify the local security policy.
+    """
     right, scope, exception = None, "all", False
     sections: list[dict] = []
     current = target = None
@@ -320,7 +334,12 @@ def unknown_sentences(text: str) -> list[str]:
 
 
 def apply_id_scope(rule: dict, stig_id: str) -> dict | None:
-    """The overview says -DC- rules are for domain controllers and -MS- for the rest; text that disagrees is left to a person."""
+    """Reconcile rule applicability with the domain role encoded in stig_id.
+
+    rule is a parsed dictionary containing scope. Return a scoped copy for DC/MS identifiers,
+    the original rule for other identifiers, or None for contradictory applicability.
+    A missing scope on a DC/MS rule raises KeyError. The input dictionary is not mutated.
+    """
     part = stig_id.split("-")[1] if stig_id.count("-") >= 2 else ""
     if part == "DC" and rule["scope"] in ("all", "dc"):
         return {**rule, "scope": "dc"}
@@ -330,7 +349,9 @@ def apply_id_scope(rule: dict, stig_id: str) -> dict | None:
 
 
 def classify(text: str, stig_id: str) -> tuple[dict | None, str]:
-    """Return (rule dictionary or None, reason string) for check text and its STIG identifier.
+    """Return (rule dictionary or None, reason string) for text and stig_id.
+
+    text is complete XCCDF check content. stig_id is the benchmark rule identifier.
 
     Select registry, audit, or user-rights parsing and refuse conflicting applicability."""
     if re.search(r"Registry Hive", text):
@@ -386,7 +407,12 @@ def build(root: ET.Element, ident: str, name: str, os_re: str, source: str, sour
 
 
 def agent_list(paths: list[str]) -> dict:
-    """The union every baseline reads: the agent ships this, reviewed, and the server can't change it (DECISIONS 7, 27)."""
+    """Return sorted registry, audit, and user-rights collection lists for baseline paths.
+
+    paths names local JSON baseline files. Registry keys are deduplicated case-insensitively.
+    File errors, invalid JSON, and missing required rule fields propagate to the caller.
+    The result needs review before it becomes the agent's closed collection list.
+    """
     reg, audit, rights = {}, set(), set()  # Windows doesn't care about case in a path, and the STIGs spell the same key several ways
     for p in paths:
         with open(p, encoding="utf-8") as f:

@@ -23,3 +23,5 @@ The job log records execution. The next inventory determines whether the finding
 Not every application update can be undone. A plan without rollback needs explicit acknowledgement and must retain that limitation in review.
 
 Related: [enable remediation](../how-to/enable-remediation.md), [remediation safety](../explanation/remediation-safety.md).
+
+On Linux, configured health units must run after a 15-second wait and must not have restarted since the change. On Windows, the service check runs after a 60-second wait and requires each configured service to run.

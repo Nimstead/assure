@@ -1,11 +1,43 @@
 # Verify an agent release
 
-Check the first agent copy against a release signed by Nimstead. You need a trusted existing verifier and the release files.
+Check an agent copy against a release signed by Nimstead. You need a trusted existing verifier and the release files for your server's version.
 
-Updates have to be signed, but the first copy of the agent comes from your server, so a compromised server could hand new machines a modified one (machines already enrolled are unaffected). The install command prints the `agent sha256` it installed. To be sure of a machine, compare it with the signed release:
+The first agent copy comes from the server. Later signature checks do not prove that the first copy was trustworthy. See [signed updates](../explanation/signed-updates.md) for that boundary.
 
-1. From the [GitHub release](https://github.com/Nimstead/assure/releases) your server runs, download `release.json`, `release.json.sig` and `nimstead_agent.py`.
-2. Check the signature with an agent you already trust: `python3 nimstead_agent.py verify-release release.json release.json.sig` prints the manifest only if a pinned Nimstead release key signed it (key fingerprints `a91fa653…` and backup `2438f2cc…`, also in `RELEASE_KEYS` at the top of the agent).
-3. The manifest's `agent_sha256` must equal `sha256sum nimstead_agent.py` and the `agent sha256` the installer printed. On Windows, the `runtime sha256` it printed must equal the manifest's `runtimes.amd64.sha256` (or `arm64` / `win32`). Or skip the installer: copy this verified file to `/usr/local/lib/nimstead/` yourself, then run its `enroll --server https://… --channel stable`, `report` and `schedule` as root, with `NIMSTEAD_TOKEN` set.
+## Verify the signature and files
 
-For complete fingerprints, see [release keys](../release-keys.md). A successful signature check does not remove the need to protect the host and verifier.
+1. Download `release.json`, `release.json.sig`, and `nimstead_agent.py` from the [release](https://github.com/Nimstead/assure/releases) matching your server.
+2. Check the signature with an agent copy you already trust:
+
+```bash
+python3 /path/to/trusted/nimstead_agent.py verify-release release.json release.json.sig
+```
+
+The verifier prints the manifest only if a pinned release key signed it. Compare the trusted verifier's key list with the [release key reference](../release-keys.md).
+
+3. Compute the downloaded agent's hash:
+
+```bash
+sha256sum nimstead_agent.py
+```
+
+4. Compare that hash with the manifest's `agent_sha256`.
+5. Compare the same value with the `agent sha256` printed by the installer.
+6. On Windows, compare the installer's `runtime sha256` with the manifest entry for the installed architecture: `amd64`, `arm64`, or `win32`.
+
+Use the matching `runtimes.ARCH.sha256` entry. A successful signature check alone does not establish that the installed file matches the signed hash.
+
+If verification or a hash comparison fails, stop installation. Obtain the files again through a trusted release source and investigate the mismatch.
+
+## Install the verified Linux file directly
+
+Use this option if you do not want the server's installer to supply the initial agent file.
+
+1. Copy the verified agent to `/usr/local/lib/nimstead/nimstead_agent.py` as root.
+2. Set `NIMSTEAD_TOKEN` in the root process environment to your enrolment token.
+3. Run the verified file's `enroll --server YOUR_HTTPS_URL --channel stable` command as root.
+4. Run its `report` command as root.
+5. Run its `schedule` command as root.
+6. Confirm a recent report in **Assets**.
+
+Replace `YOUR_HTTPS_URL` with your server's origin. Select another channel only if that matches your deployment policy. The [agent reference](../reference/agent-cli.md) defines the command options.

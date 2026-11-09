@@ -1,25 +1,42 @@
 # Back up Assure
 
-Use this procedure on the Docker host. You need access to the database and data volumes.
+Create a database backup and a matching copy of the signing keys and checkpoints. Run these commands from the checkout on the Docker host. You need access to both volumes.
 
-Back up both volumes together: `pg` (the database) and `data` (signing keys and checkpoints). Without the signing key, new evidence packs get a new fingerprint and you'll need to send it to your auditor again. Pause `feeds` meanwhile, because it writes signed checkpoints of the ledger, so the two copies match. Write the backups outside the checkout (`deploy/update.sh` refuses untracked files in it):
+The `pg` volume contains the database. The `data` volume contains signing keys and checkpoints. Preserve both: a replacement signing key changes the evidence fingerprint that your auditor trusts.
+
+## Create the backup
+
+1. Stop the feed updater so it does not write signed checkpoints during the copies:
 
 ```bash
 docker compose stop feeds
 ```
 
+2. Export the database outside the checkout:
+
 ```bash
 docker compose exec -T db pg_dump -U nimstead nimstead > ~/nimstead.sql
 ```
+
+3. Copy the signing material outside the checkout:
 
 ```bash
 docker compose cp app:/data ~/nimstead-data
 ```
 
+4. Restart the feed updater, including if either copy failed:
+
 ```bash
 docker compose start feeds
 ```
 
-Run this at least daily and keep copies off the host. What a restore loses is what changed since the last backup: inventories come back at the agents' next 6-hourly run, but ledger entries made after the backup are gone. With checkpoints in object-locked S3, a restore from before the newest checkpoint shows as a shortened ledger on **Evidence**. That's the tamper evidence doing its job: restore the newest backup, and note the restore in your records for the auditor.
+Keep backups outside the checkout because `deploy/update.sh` refuses untracked files there. Do not treat failed or incomplete copies as a recoverable backup.
 
-Check that both backup outputs exist and are readable by the operator who will restore them. Protect the data backup as a secret because it contains signing keys. Test the [restore procedure](restore.md) on an isolated host.
+## Verify and retain the backup
+
+1. Confirm that both outputs exist and that the restore operator can read them.
+2. Protect the data copy as a secret because it contains signing keys.
+3. Test the [restore procedure](restore.md) on an isolated host.
+4. Repeat the backup at least daily and retain copies off the host.
+
+A restore loses ledger entries after the backup. Inventories return at the agents' next six-hourly report. For checkpoint implications, read [evidence trust](../explanation/evidence-trust.md).

@@ -15,3 +15,17 @@ After verification, the agent tests the new code's inventory on the host before 
 Release channels constrain which signed releases a host accepts. A stable host should not accept a less-proven preview merely because a server offers it.
 
 The signature does not protect an already compromised host from a local administrator. Host permissions, trusted verification tools, and key custody remain necessary.
+
+## Release channels
+
+The server's update channel controls which signed releases it can accept. `stable` is the default. A channel accepts releases at its own level or a more stable level.
+
+| Configured channel | Eligible release channels |
+| --- | --- |
+| preview | preview, beta, stable |
+| beta | beta, stable |
+| stable | stable |
+
+Preview releases are early builds and may break. Beta releases are feature-complete builds under validation. Stable releases are public releases. An available release still needs a valid signature and matching commit. Channel eligibility alone does not establish trust.
+
+Use [the upgrade guide](../how-to/upgrade-server.md) to select and apply an update.

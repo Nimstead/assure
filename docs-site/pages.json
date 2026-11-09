@@ -341,5 +341,33 @@
     "title": "How Pulse and Assure fit together",
     "group": "Explanation",
     "product": "pulse"
+  },
+  {
+    "source": "docs/how-to/prepare-production.md",
+    "slug": "how-to/prepare-production",
+    "title": "Prepare a production deployment",
+    "group": "How-to guides",
+    "product": "assure"
+  },
+  {
+    "source": "docs/how-to/release-assure.md",
+    "slug": "how-to/release-assure",
+    "title": "Release Assure",
+    "group": "How-to guides",
+    "product": "assure"
+  },
+  {
+    "source": "docs/how-to/recover-release.md",
+    "slug": "how-to/recover-release",
+    "title": "Recover from a bad release or signing-key leak",
+    "group": "How-to guides",
+    "product": "assure"
+  },
+  {
+    "source": "docs/how-to/configure-windows-update-proxy.md",
+    "slug": "how-to/configure-windows-update-proxy",
+    "title": "Check Windows Update access through a proxy",
+    "group": "How-to guides",
+    "product": "assure"
   }
 ]

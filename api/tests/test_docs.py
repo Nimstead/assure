@@ -99,3 +99,9 @@ class ApiReference(unittest.TestCase):
         self.assertEqual(upload["requestBody"]["x-parser-limits"]["body_bytes"], 10 * 1024 * 1024)
         self.assertEqual(set(upload["responses"]["200"]["content"]["application/json"]["schema"]["properties"]),
                          {"components", "mapped", "unique_packages", "skipped", "open", "resolved"})
+        scan = schema["paths"]["/api/targets/{target_id}/scan"]["post"]
+        counters = scan["responses"]["200"]["content"]["application/json"]["schema"]
+        self.assertEqual(set(counters["required"]), {"address", "open", "resolved", "skipped"})
+        self.assertEqual(set(counters["properties"]), set(counters["required"]))
+        self.assertFalse(counters["additionalProperties"])
+        self.assertEqual(counters["properties"]["skipped"]["items"], {"type": "string"})

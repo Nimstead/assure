@@ -1326,11 +1326,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def create_target(body: TargetNew, user: Admin, s: DB):
         """Create an external target for a public DNS hostname and return its asset record.
 
-        Creation does not prove ownership or authorise a scan.
+        body contains hostname and optional criticality. Normalize hostname case,
+        whitespace and trailing dots. Return the asset record with TXT/path proof fields.
+        Creation commits the asset and ledger event without proving ownership or authorising a scan.
 
         Requires an organisation admin browser session; API tokens are refused.
 
-        Operation-specific HTTP errors: 409, 422. See detail in the response.
+        Operation-specific HTTP errors: 403 for asset quota, 409 for duplicate, 422 for invalid hostname.
         Authentication and request-validation errors also apply where required."""
         host = body.hostname.strip().lower().rstrip(".")
         if not external.HOSTNAME.fullmatch(host):
@@ -1353,9 +1355,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def verify_target(target_id: str, user: Admin, s: DB):
         """Verify DNS and address ownership for an external target and return its asset record.
 
+        target_id identifies an owned external asset. Performs DNS and HTTP(S) proof
+        requests against the first checked address. On first success, commit verification
+        and its ledger event. Return the asset record with proof fields.
+
         Requires an organisation admin browser session; API tokens are refused.
 
-        Operation-specific HTTP errors: 409. See detail in the response.
+        Operation-specific HTTP errors: 404 for unavailable target or 409 for failed proof/address checks.
         Authentication and request-validation errors also apply where required."""
         a = owned_target(s, user, target_id)
         value = external.txt_value(a.org_id, a.hostname)
@@ -1377,9 +1383,14 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def scan_target(target_id: str, user: Admin, s: DB):
         """Recheck ownership, scan the external target, and return its findings result.
 
+        target_id identifies an owned external asset. Return address, open observed
+        issue count, newly resolved count, and skipped descriptions. The scan can
+        commit findings/ledger changes. Scope refusal can also commit a proof event.
+
         Requires an organisation admin browser session; API tokens are refused.
 
-        Operation-specific HTTP errors: 409, 429. See detail in the response.
+        Operation-specific HTTP errors: 404 for unavailable target, 409 for scope refusal,
+        or 429 for more than ten manual scans per organisation per hour.
         Authentication and request-validation errors also apply where required."""
         a = owned_target(s, user, target_id)
         if over_limit(s, "extscan:" + user.org_id, EXTSCAN_MAX_PER_HOUR):  # bounds what a tenant can aim at a DNS name it controls

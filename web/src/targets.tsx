@@ -6,7 +6,7 @@ import { Alert, btnPrimary, btnQuiet, CopyBlock, Field, input, Tag } from "./ui"
 
 interface ScanResult { address: string; open: number; resolved: number; skipped: string[] }
 
-/** Internet hosts scanned from outside; only ever after a DNS TXT proof of ownership. */
+/** Display targets with DNS/address-proof and scan controls. onDelete starts the caller's deletion flow. */
 export function ExternalTargets({ targets, onDelete }: { targets: Asset[]; onDelete: (a: Asset) => void }) {
   const admin = useIsAdmin();
   const qc = useQueryClient();
@@ -37,7 +37,7 @@ export function ExternalTargets({ targets, onDelete }: { targets: Asset[]; onDel
   );
 }
 
-/** Render external target t with ownership proof, verification, scan, and deletion controls. */
+/** Render external asset t. onDelete delegates deletion to the parent; API mutation errors appear beside controls. */
 export function TargetRow({ t, onDelete }: { t: Asset; onDelete: () => void }) {
   const admin = useIsAdmin();
   const qc = useQueryClient();

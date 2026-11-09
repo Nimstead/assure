@@ -58,6 +58,8 @@ Find commands, settings, formats, and limits.
 - [Scan report format](reference/scan-report.md)
 - [Inventory and collection metadata](reference/inventory-format.md)
 - [Fleet attack-path format](reference/fleet-paths.md)
+- [External scan reference](reference/external-scans.md)
+- [Network engine reference](reference/network-engine.md)
 - [Evidence responses and pack format](reference/evidence-format.md)
 - [Remediation modes](reference/remediation-modes.md)
 - [Release keys](release-keys.md)

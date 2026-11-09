@@ -123,3 +123,15 @@ Corrected several broad claims. The install mapper excludes language/SBOM instal
 New assertions compare actual report and fleet field names with their references. They also exercise collection root/source boundaries, the agent-loader round-trip limit, shared content mutation, ordered verdict hashes, and numeric-zero omission.
 
 105 focused tests and 46 subchecks passed. Two Windows PowerShell parsing cases were skipped on this host. The 61-article build and six site tests passed. The pending endpoint response and remaining module audits still prevent a full compliance claim.
+
+## External and network checkpoint
+
+Reviewed `external.py`, `engine/network.py`, external-target HTTP handlers and both target UI components. The normal scanner and network evaluator now have separate reference pages. The external-target task guide keeps its ordered UI procedure and links to those lookup details.
+
+Corrected pre-packet proof and strict-deadline claims. DNS and address-proof requests precede service checks. Network budgets can overrun before an endpoint is marked timed out. The network content identifier also omits rule bodies and predicates.
+
+The reference documents the normal scanner's absence-based resolution rule, including filtered ports and unavailable TLS observations. Accepted findings remain accepted when observed but can resolve when omitted. It also describes the network web check's current not-vulnerable result after an absent HTTP response. These are implementation limits, not new guarantees.
+
+The exported OpenAPI now includes the four-field external-scan response. Tests cover accepted counters, omission-based resolution, scope refusal before service-prober creation, incomplete web responses, rule-hash limits and documented response fields.
+
+40 external/network/documentation tests and 46 subchecks passed after generated files were refreshed and loopback tests received socket permission. All six executable docstrings passed. Ruff, Redocly and the web TypeScript check passed. The locked web dependency install reported no vulnerabilities. Node22.22.2 satisfies its dependency engine requirements. No public target was scanned.

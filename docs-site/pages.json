@@ -161,6 +161,20 @@
     "product": "assure"
   },
   {
+    "source": "docs/reference/external-scans.md",
+    "slug": "reference/external-scans",
+    "title": "External scan reference",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/network-engine.md",
+    "slug": "reference/network-engine",
+    "title": "Network engine reference",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
     "source": "docs/reference/scan-report.md",
     "slug": "reference/scan-report",
     "title": "Scan report format",

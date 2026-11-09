@@ -4505,7 +4505,7 @@
     },
     "/api/targets": {
       "post": {
-        "description": "Create an external target for a public DNS hostname and return its asset record.\n\nCreation does not prove ownership or authorise a scan.\n\nRequires an organisation admin browser session; API tokens are refused.\n\nOperation-specific HTTP errors: 409, 422. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
+        "description": "Create an external target for a public DNS hostname and return its asset record.\n\nbody contains hostname and optional criticality. Normalize hostname case,\nwhitespace and trailing dots. Return the asset record with TXT/path proof fields.\nCreation commits the asset and ledger event without proving ownership or authorising a scan.\n\nRequires an organisation admin browser session; API tokens are refused.\n\nOperation-specific HTTP errors: 403 for asset quota, 409 for duplicate, 422 for invalid hostname.\nAuthentication and request-validation errors also apply where required.",
         "operationId": "create_target_api_targets_post",
         "requestBody": {
           "content": {
@@ -4548,7 +4548,7 @@
     },
     "/api/targets/{target_id}/scan": {
       "post": {
-        "description": "Recheck ownership, scan the external target, and return its findings result.\n\nRequires an organisation admin browser session; API tokens are refused.\n\nOperation-specific HTTP errors: 409, 429. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
+        "description": "Recheck ownership, scan the external target, and return its findings result.\n\ntarget_id identifies an owned external asset. Return address, open observed\nissue count, newly resolved count, and skipped descriptions. The scan can\ncommit findings/ledger changes. Scope refusal can also commit a proof event.\n\nRequires an organisation admin browser session; API tokens are refused.\n\nOperation-specific HTTP errors: 404 for unavailable target, 409 for scope refusal,\nor 429 for more than ten manual scans per organisation per hour.\nAuthentication and request-validation errors also apply where required.",
         "operationId": "scan_target_api_targets__target_id__scan_post",
         "parameters": [
           {
@@ -4565,10 +4565,42 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "address": {
+                      "description": "Pinned IP selected by the scope check.",
+                      "type": "string"
+                    },
+                    "open": {
+                      "description": "Unique observed issue IDs, including accepted findings.",
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "resolved": {
+                      "description": "Previously open/accepted findings newly resolved by absence.",
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "skipped": {
+                      "description": "Reported scanner limitations; not every missing observation.",
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "address",
+                    "open",
+                    "resolved",
+                    "skipped"
+                  ],
+                  "type": "object"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "External scan counters; see external-scans.md for observation and resolution limits."
           },
           "422": {
             "content": {
@@ -4592,7 +4624,7 @@
     },
     "/api/targets/{target_id}/verify": {
       "post": {
-        "description": "Verify DNS and address ownership for an external target and return its asset record.\n\nRequires an organisation admin browser session; API tokens are refused.\n\nOperation-specific HTTP errors: 409. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
+        "description": "Verify DNS and address ownership for an external target and return its asset record.\n\ntarget_id identifies an owned external asset. Performs DNS and HTTP(S) proof\nrequests against the first checked address. On first success, commit verification\nand its ledger event. Return the asset record with proof fields.\n\nRequires an organisation admin browser session; API tokens are refused.\n\nOperation-specific HTTP errors: 404 for unavailable target or 409 for failed proof/address checks.\nAuthentication and request-validation errors also apply where required.",
         "operationId": "verify_target_api_targets__target_id__verify_post",
         "parameters": [
           {

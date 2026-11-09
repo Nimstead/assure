@@ -48,7 +48,7 @@ def render() -> dict[str, str]:
     }
     lines = ["# HTTP endpoint catalog", "",
              "Use the [OpenAPI JSON](openapi.json) for typed parameters, request models, defaults, and declared response schemas.", "",
-             "The export adds server, authentication, and raw SBOM-handler metadata to FastAPI’s schema. Other request and response definitions come from the app.", "",
+             "The export adds server/authentication metadata, the raw SBOM contract, and external-scan counters to FastAPI’s schema. Other definitions come from the app.", "",
              "Authentication labels describe entry requirements. Organisation ownership, roles, origin checks, quotas, "
              "and operation-specific state checks still apply. See [HTTP API reference](http-api.md).", "",
              "Empty response schemas do not define a stable response contract. Inspect the linked handler and its tests "
@@ -102,6 +102,14 @@ def render() -> dict[str, str]:
                 operation["responses"]["200"] = {"description": "Inventory mapping and rescan counts; see the SBOM reference for count semantics.",
                                                  "content": {"application/json": {"schema": {"type": "object", "properties": counts,
                                                                                           "required": list(counts), "additionalProperties": False}}}}
+            if route.path == "/api/targets/{target_id}/scan":
+                fields = {"address": {"type": "string", "description": "Pinned IP selected by the scope check."},
+                          "open": {"type": "integer", "minimum": 0, "description": "Unique observed issue IDs, including accepted findings."},
+                          "resolved": {"type": "integer", "minimum": 0, "description": "Previously open/accepted findings newly resolved by absence."},
+                          "skipped": {"type": "array", "items": {"type": "string"}, "description": "Reported scanner limitations; not every missing observation."}}
+                operation["responses"]["200"] = {"description": "External scan counters; see external-scans.md for observation and resolution limits.",
+                                                 "content": {"application/json": {"schema": {"type": "object", "properties": fields,
+                                                                                          "required": list(fields), "additionalProperties": False}}}}
             summary = operation.get("description", operation.get("summary", "")).split("\n", 1)[0].replace("|", "\\|")
             source = f"../../api/src/nimstead/app.py#L{route.endpoint.__code__.co_firstlineno}"
             lines.append(f"| `{method}` | [`{route.path}`]({source}) | {auth} | {summary} |")

@@ -4,7 +4,7 @@ The server uses FastAPI. Its schema is available at `/api/openapi.json`. Set `NI
 
 The live schema describes typed request parameters and request models. Many routes return dictionaries without response models, so their schema does not fully describe response fields. Use the route implementation and its tests when a response schema is empty.
 
-The [endpoint catalog](api-endpoints.md) lists every operation. The [exported OpenAPI JSON](openapi.json) provides lookup without a running server. The export adds authentication metadata and the raw SBOM handler’s request/counter contract. Its SBOM object schema does not replace the full upstream format schemas. Prefer your installed server’s schema when its version differs.
+The [endpoint catalog](api-endpoints.md) lists every operation. The [exported OpenAPI JSON](openapi.json) provides lookup without a running server. The export adds authentication metadata, the raw SBOM request/counter contract, and external-scan counters. Its SBOM object schema does not replace the full upstream format schemas. Prefer your installed server’s schema when its version differs.
 
 ## Credentials
 
@@ -28,6 +28,7 @@ Sessions expire after 14 days or 12 hours of inactivity. Activity timestamps upd
 | `/api/assets/{asset_id}/sbom` | Replace an asset's SBOM inventory |
 | `/api/assets/{asset_id}/scan-report` | [Grouped report](scan-report.md) for stored inventory. Can create a retained scan record |
 | `/api/attack-paths` | [Fleet path correlation](fleet-paths.md) from stored reports and current facts |
+| `/api/targets`, `/api/targets/{target_id}/*` | [External target proof and scans](external-scans.md) |
 | `/api/agent/*` | Enrolment, inventory, release manifests, jobs, and job reports |
 | `/api/findings` | Filtered findings, with pagination |
 | `/api/findings/count` | Total matching findings |

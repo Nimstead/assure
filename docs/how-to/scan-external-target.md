@@ -1,16 +1,26 @@
 # Scan an external target
 
-Check exposed services and TLS on a host you control. You need an admin session, DNS control, and access to the web service at the target address.
+Check exposed services and TLS from the Assure server's network vantage point. You need an admin session, DNS control, and control of the target web service.
+
+Keep `NIMSTEAD_ALLOW_PRIVATE_TARGETS` disabled in production. This development switch bypasses the private-address refusal.
 
 1. On **Assets → External targets**, enter the hostname and select **Add target**.
 2. Publish the exact TXT record shown by Assure.
 3. Serve the same value at the displayed `/.well-known/nimstead-verify.txt` path over HTTP or HTTPS.
 4. Select **Verify**. Confirm the target shows **Verified**.
 5. Select **Scan now**.
-6. Review open findings and the **Not checked** list.
+6. Review open findings and any **Not checked** text.
 
-Both proofs are required. DNS ownership alone does not prove control of the scanned server. Targets that resolve to a private address are refused.
+Both proofs are required. DNS ownership alone does not prove control of the scanned server. Keep both proofs available for later scans.
 
-If verification fails, check the public DNS answer and response body at the exact proof path. A target with no web service on port 80 or 443 cannot supply this proof.
+After verification, scheduled feed runs also scan the target. Manual scans are limited to ten per organisation per hour.
 
-The scan performs TCP connections and TLS handshakes. It does not log in, exploit a service, or infer remote CVEs from banners. Read [coverage limits](../explanation/coverage-limits.md) before interpreting a result with no findings.
+If verification fails, check the public DNS answer and the response body at the exact proof path. Return HTTP 200 directly, without a redirect. A target without HTTP on 80 or HTTPS on 443 cannot supply the proof.
+
+If scanning reports lost DNS ownership, restore the TXT record and select **Verify** again. If scanning reports missing address proof, restore the proof response and repeat the scan.
+
+Treat a newly resolved finding as a status change that needs verification. The normal scanner can resolve a finding after a filtered port or unavailable TLS observation. An empty **Not checked** list does not prove all checks succeeded.
+
+The scan performs proof requests, TCP connections, and TLS handshakes. It does not log in, exploit a service, or infer remote CVEs from banners.
+
+See [external scan reference](../reference/external-scans.md) for ports, counters, and address selection. Read [coverage limits](../explanation/coverage-limits.md) before interpreting a result with no findings.

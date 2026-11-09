@@ -586,5 +586,12 @@
     "title": "Asset and inventory API",
     "group": "Reference",
     "product": "assure"
+  },
+  {
+    "source": "docs/reference/authentication.md",
+    "slug": "reference/authentication",
+    "title": "Authentication and account API",
+    "group": "Reference",
+    "product": "assure"
   }
 ]

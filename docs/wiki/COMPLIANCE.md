@@ -342,3 +342,16 @@ Corrected cached agent-version ordering implications and low-level verifier erro
 Ruff, generated export freshness and repository presence/links pass. Redocly validates the schema with 27 warnings, principally undeclared 4xx responses and license metadata. The 84-article build and six site tests pass. Playwright MCP verifies the local reference, schema, search and mobile anchors without overflow. New reference prose received humanizer and STE-style review.
 
 Other API handler/response gaps, sandbox/web helper contracts and final repository/site editorial and example checks still keep the objective open. Presence coverage and partial schema expansion do not establish full compliance.
+
+
+## Authentication and account checkpoint
+
+Added a lookup reference for account/session/token/MFA/SSO contracts. Corrected the confirmation-handler docstring: invitation completion establishes a member session, while signup/reset completion redirects to sign-in. The MFA task guide now treats response loss separately from an explicit validation refusal. It directs readers to inspect state and test the new authenticator before another change.
+
+Reviewed credential precedence, transaction commits during reads/quota checks, pending-link replacement, setup state, role changes and revocation scope. Stored SSO domain verification survives removal of TXT records. SSO configuration PUT defaults can disable the integration when issuer is omitted. The reference makes those limits explicit and keeps operator procedures separate.
+
+Added twelve account response definitions and branch/status bindings, plus shared 401/403 descriptions. The export has 69 definitions for 83 operations. Redocly validates with ten warnings, down from 27. These remaining declarations/metadata warnings are not treated as resolved by the successful validation result.
+
+99 tests and 53 subchecks pass. Three new fixture tests verify published account fields, MFA/session branches, credential revocation, invitation sessions, saved domain verification and omitted-issuer behavior. App executable AST is unchanged. Ruff, export freshness and repository presence/links pass. The 85-article build and six site tests pass. Playwright MCP verifies desktop/mobile reference, downloaded schema branches, MFA recovery text, search and section anchors. Prose received humanizer and STE-style review. All mail/provider traffic used local fakes.
+
+Remaining app helper/handler gaps, sandbox/web helper contracts and final whole-repository editorial/example review keep this objective active.

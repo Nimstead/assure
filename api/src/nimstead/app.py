@@ -213,7 +213,10 @@ def sha(token: str) -> str:
 
 
 def client_key(request: Request) -> str:
-    """The client address for throttling; IPv6 by /64, the block one host or customer usually gets."""
+    """Return request client text for rate keys, grouping parsed IPv6 addresses by /64.
+
+    Missing client yields ?. Invalid address text is retained. Proxy-header trust
+    belongs to server configuration. No independent network identity check occurs."""
     ip = request.client.host if request.client else "?"  # behind a proxy: uvicorn --proxy-headers --forwarded-allow-ips
     try:
         a = ipaddress.ip_address(ip)
@@ -325,6 +328,17 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     DB = Annotated[Session, Depends(db)]
 
     def current_user(request: Request, s: DB) -> User:
+        """Return the user authenticated by an eligible nmt_ bearer or session cookie.
+
+        request supplies credentials/method and s is the Session. An exact Bearer
+        nmt_ prefix takes precedence over cookies. Require a nonexpired token whose
+        creator remains an admin in its organisation, and GET/HEAD method. Other
+        headers fall through to cookie lookup. Invalid credentials return 401 and
+        token writes 403. Session absolute/idle expiry also returns 401.
+
+        Refresh last-use state after five minutes and commit all pending changes.
+        This GET dependency can therefore write. Missing related users and database
+        errors can propagate. No live identity-provider validation occurs."""
         auth = request.headers.get("authorization", "")
         if auth.startswith("Bearer nmt_"):  # an org API token: read-only, acts as the admin who made it
             t = s.get(ApiToken, sha(auth.removeprefix("Bearer ")))
@@ -350,6 +364,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     CurrentUser = Annotated[User, Depends(current_user)]
 
     def admin_user(request: Request, user: CurrentUser) -> User:
+        """Require an admin browser user and configured local MFA when applicable.
+
+        request carries the API-token marker and user comes from current_user.
+        Refuse nonadmins/tokens with 403. Password-origin admins without a stored
+        authenticator are refused unless open-signup mode is enabled. This checks
+        configuration, not a fresh code or provider MFA assertion."""
         if not user.admin or getattr(request.state, "api_token", False):  # tokens read; admin pages and changes need a person
             raise HTTPException(403, "Only organisation admins can change this")
         if user.origin == "password" and not user.totp_secret and not open_signup():  # whatever path made the session
@@ -359,6 +379,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     Admin = Annotated[User, Depends(admin_user)]
 
     def signed_in(request: Request, user: CurrentUser) -> User:
+        """Return current_user when authenticated by a browser session.
+
+        request carries the API-token marker. Refuse organisation API tokens with
+        HTTP 403. No admin-role or fresh-authentication requirement is added."""
         if getattr(request.state, "api_token", False):
             raise HTTPException(403, "Sign in to do this")
         return user
@@ -366,6 +390,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     Person = Annotated[User, Depends(signed_in)]  # a signed-in browser, never an API token
 
     def start_session(s: Session, user: User, resp: Response) -> None:
+        """Create a hashed user session, commit s, then set its raw cookie on resp.
+
+        user supplies the identity. Use the configured absolute lifetime and
+        HttpOnly/Strict/optional Secure attributes. No previous session is revoked.
+        Commit includes caller changes. Cookie/response failure does not undo it."""
         token = secrets.token_urlsafe(32)
         s.add(WebSession(token_hash=sha(token), user_id=user.id, expires=now() + timedelta(days=SESSION_DAYS)))
         s.commit()
@@ -434,7 +463,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         setup: str | None = Field(None, max_length=1000)  # from a {"mfa": "setup"} answer: confirms enrolment with code
 
     def over_limit(s: Session, key: str, limit: int, seconds: int = RATE_WINDOW) -> bool:
-        """Record one attempt under key; True if that makes more than limit within the window. In the DB: holds across workers."""
+        """Record an attempt and return whether prior count is at least limit.
+
+        s is the Session. key selects the quota and seconds its counting window.
+        Housekeeping always removes attempts older than RATE_WINDOW. Add a row and
+        commit all pending changes even when refusing. Not an atomic reservation.
+        Database failures propagate. Callers choose HTTP errors and retry behavior."""
         s.execute(delete(AuthFailure).where(AuthFailure.ts < now() - timedelta(seconds=RATE_WINDOW)))  # housekeeping
         n = s.scalar(select(func.count()).select_from(AuthFailure).where(AuthFailure.key == key,
                                                                          AuthFailure.ts > now() - timedelta(seconds=seconds)))
@@ -443,6 +477,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         return n >= limit
 
     def create_account(s: Session, email: str, org_name: str, password_hash: str) -> User:
+        """Create/flush an organisation and password-admin User, returning that user.
+
+        s owns the transaction. email/org_name/password_hash are trusted prepared
+        values. Append org_created evidence without an explicit commit. Uniqueness,
+        database and evidence errors propagate. No session or email is created."""
         org = Org(name=org_name)
         s.add(org)
         s.flush()
@@ -453,11 +492,20 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         return user
 
     def public_base(request: Request) -> str:
+        """Return NIMSTEAD_PUBLIC_URL or request.base_url without trailing slashes.
+
+        The environment value is not independently URL-validated here. Proxy/Host
+        configuration determines the fallback origin."""
         return (os.environ.get("NIMSTEAD_PUBLIC_URL") or str(request.base_url)).rstrip("/")
 
     def email_link(s: Session, request: Request, email: str, purpose: str, org_name: str = "", org_id: str | None = None) -> None:
-        """Email a single-use link that lets the address owner choose a password (sign-up, invitation or reset).
-        A newer link replaces older ones of the same kind for that address."""
+        """Commit a pending account link, then request best-effort account mail.
+
+        s/request provide storage and base URL. email/purpose/org_name/org_id select
+        the operation. Replace same-email/purpose/organisation links. Reset expires
+        after RESET_LINK_HOURS, others after SIGNUP_LINK_HOURS. Store only a token
+        hash. Commit caller changes before mail. Failure does not restore older
+        links or prove delivery. Storage/URL preparation errors can propagate."""
         token = secrets.token_urlsafe(32)
         same_org = PendingSignup.org_id == org_id if org_id else PendingSignup.org_id.is_(None)  # one org can't cancel another's invite
         s.execute(delete(PendingSignup).where(PendingSignup.email == email, PendingSignup.purpose == purpose, same_org))
@@ -470,13 +518,18 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/auth/signup", status_code=201)
     def signup(body: Signup, request: Request, resp: Response, s: DB):
-        """Create the first organisation account or send a later signup confirmation email.
+        """Create a first/development admin or acknowledge an email signup request.
 
-        First-account setup requires a password. Later production signups return check_email;
-        open-signup development mode can establish a session immediately.
+        body supplies email, organisation name and optional password. Enforce the
+        client signup quota before branch selection. First-user bootstrap requires
+        a password and returns email/org/next=signin with 201, without a session.
+        Open-signup mode returns email/org with 201 and a new session.
 
-        Operation-specific HTTP errors: 403, 409, 422, 429. See detail in the response.
-        Authentication and request-validation errors also apply where required."""
+        Later production signup requires SMTP configuration. Return 202 with
+        status=check_email/email for existing or new addresses. Address quota can
+        suppress mail. New pending links replace earlier matching links. Quota and
+        link writes commit before delivery. HTTP 403/409/422/429 refusals and storage,
+        hashing or evidence failures can occur. Acknowledgement is not delivery."""
         if over_limit(s, "signup:" + client_key(request), SIGNUP_MAX_PER_HOUR):
             raise HTTPException(429, "Too many sign-ups from this address; try again in an hour")
         email = body.email.lower()
@@ -509,7 +562,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/auth/password/reset", status_code=202)
     def request_reset(body: ResetReq, request: Request, s: DB):
-        """Same answer whether or not the address has an account; the link goes to the address itself."""
+        """Return 202 status=check_email/email for a reset request.
+
+        body.email is normalized to lowercase. Enforce client quota, then require
+        SMTP configuration. Only existing password users below the address quota
+        receive a pending-link attempt. Unknown/SSO accounts keep the same success
+        shape. Quota checks commit. HTTP 403/429 and storage/backend errors can
+        occur. No password or session changes here. Mail receipt is not guaranteed."""
         if over_limit(s, "reset:" + client_key(request), RESET_MAX_PER_HOUR):
             raise HTTPException(429, "Too many reset requests from this address; try again in an hour")
         if not notify.smtp_configured():
@@ -521,11 +580,20 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         return {"status": "check_email", "email": email}
 
     def failures(s: Session, key: str) -> int:
+        """Count matching AuthFailure rows in the current LOGIN_WINDOW using Session s.
+
+        key is exact text. No row deletion or explicit commit occurs. Query errors
+        propagate and autoflush can expose pending changes."""
         since = now() - timedelta(seconds=LOGIN_WINDOW)
         return s.scalar(select(func.count()).select_from(AuthFailure).where(AuthFailure.key == key, AuthFailure.ts > since))
 
     def second_factor(s: Session, user: User, given: str | None) -> bool:
-        """A current TOTP code (each works once) or an unused recovery code (spent)."""
+        """Validate and stage consumption of a TOTP step or recovery code for user.
+
+        Refresh/lock the row through s. given is optional code text. Return True
+        and mutate last-step/recovery hashes on success, otherwise False. Recovery
+        use appends evidence. Caller commits consumption. PostgreSQL row locking
+        differs from SQLite. Secret/backend, evidence and data errors can propagate."""
         s.refresh(user, with_for_update=True)  # PostgreSQL: two requests with the same code can't both pass
         step = mfa.verify(sso.unseal(user.totp_secret), given or "", user.totp_last_step)
         if step:
@@ -539,12 +607,22 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         return False
 
     def mfa_setup(user: User) -> dict:
+        """Return setup, secret and uri for a new temporary authenticator proposal.
+
+        user supplies ID/email. Seal the secret/expiry into setup. No user mutation
+        or commit occurs. Backend/encoding errors propagate. The secret is sensitive."""
         secret = mfa.new_secret()
         blob = sso.seal(json.dumps({"uid": user.id, "secret": secret, "exp": (now() + timedelta(seconds=MFA_SETUP_SECONDS)).isoformat()}))
         return {"setup": blob, "secret": secret, "uri": mfa.uri(secret, user.email)}
 
     def finish_mfa_setup(s: Session, user: User, blob: str, given: str | None) -> list[str] | None:
-        """Saves the secret from a setup blob if the code proves the authenticator has it; returns new recovery codes."""
+        """Stage a setup secret and return new plaintext recovery codes, otherwise None.
+
+        s/user own persistence. blob supplies sealed setup and given its TOTP code.
+        Catch unseal/JSON failures as None. Check user/expiry/code, then replace
+        stored secret, last step and recovery hashes and append evidence. Caller
+        commits. Invalid decoded shapes/dates and backend/evidence errors can raise.
+        This helper does not independently verify an existing authenticator."""
         try:
             d = json.loads(sso.unseal(blob))
         except Exception:  # tampered, foreign or undecryptable
@@ -561,13 +639,18 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/auth/login")
     def login(body: Login, request: Request, resp: Response, s: DB):
-        """Authenticate a password user and complete or request two-step sign-in.
+        """Return a password-login branch, creating a session only after required MFA.
 
-        A successful password check can return mfa=required or mfa=setup without a session.
-        The caller must complete the requested step before treating the user as signed in.
+        body supplies email/password and optional code/setup. request selects rate
+        keys. resp receives the session cookie and s commits state/evidence.
+        Missing MFA returns required or setup without a session. Setup completion
+        adds one-time recovery_codes to email. A normal success returns email.
 
-        Operation-specific HTTP errors: 401, 403, 429. See detail in the response.
-        Authentication and request-validation errors also apply where required."""
+        Wrong passwords/codes commit failure counters and can request an alert.
+        Required SSO refuses nonadmin password login, while admin break-glass
+        records evidence and an alert attempt. MFA consumption commits with session
+        creation. Return 401/403/429 for refusals. Malformed stored credentials,
+        backend, evidence and database errors can propagate after earlier commits."""
         ip = client_key(request)
         keys = ["email:" + body.email.lower(), "email+ip:" + body.email.lower() + "|" + ip, "ip:" + ip]
         per_ip = failures(s, keys[2])
@@ -635,7 +718,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/auth/logout", status_code=204)
     def logout(request: Request, resp: Response, s: DB):
-        """Delete the current server-side session, clear its browser cookie, and return no content."""
+        """Return 204 after deleting the cookie-selected session when present.
+
+        request supplies the cookie, s commits deletion and resp clears the cookie.
+        No current-user dependency or global revocation is required. Storage errors
+        can prevent cookie clearing. Other sessions and bearer tokens remain."""
         if token := request.cookies.get(SESSION_COOKIE):
             s.execute(delete(WebSession).where(WebSession.token_hash == sha(token)))
             s.commit()
@@ -643,17 +730,21 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/me")
     def me(user: CurrentUser, s: DB):
-        """Return the current user email, organisation, admin role, login origin, and MFA status.
+        """Return email/org/admin/origin/mfa/recovery_codes_left for current_user.
 
-        Requires a user session or a read-only organisation API token. API tokens cannot use write methods."""
+        A session or eligible read token is accepted. MFA describes a stored local
+        secret, not provider MFA or a fresh challenge. s reads organisation state.
+        Authentication/database errors can occur, including dependency commits."""
         return {"email": user.email, "org": s.get(Org, user.org_id).name, "admin": user.admin, "origin": user.origin,
                 "mfa": bool(user.totp_secret), "recovery_codes_left": len(user.recovery_codes)}
 
     @app.post("/api/me/sessions/revoke", status_code=204)
     def sign_out_everywhere(user: Person, resp: Response, s: DB):
-        """Revoke all sessions for the current user, clear this cookie, and return no content.
+        """Delete this user's WebSession and ApiToken rows, commit, then clear cookie.
 
-        Requires a browser session; organisation API tokens are refused."""
+        user requires a browser session, not a fresh code. Append revocation
+        evidence through s. Return 204. Agent/upload/enrolment credentials remain.
+        Evidence/storage/response errors can occur after partial effects."""
         for model in (WebSession, ApiToken):  # recovering from a stolen session: tokens it could have made go too
             s.execute(delete(model).where(model.user_id == user.id))
         evidence.append(s, user.org_id, "sessions_revoked", user.id, {"by": user.email})
@@ -667,12 +758,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/me/password", status_code=204)
     def change_password(body: PasswordChange, request: Request, user: Person, s: DB):
-        """Change a password after verifying the current password and required authenticator code.
+        """Return 204 after a password-origin user's credential update.
 
-        Requires a browser session; organisation API tokens are refused.
-
-        Operation-specific HTTP errors: 403, 409, 429. See detail in the response.
-        Authentication and request-validation errors also apply where required."""
+        body supplies current/new passwords and optional second factor. user needs
+        a browser session. Commit quota before verification. Preserve only the
+        current cookie's session and delete all creator API tokens. Append evidence
+        and commit the new hash/code consumption. SSO users return 409, wrong
+        credentials 403, rate refusal 429. Backend/storage errors can propagate."""
         if user.origin != "password":
             raise HTTPException(409, "You sign in with single sign-on; change your password with your identity provider")
         if over_limit(s, "pwchange:" + user.id, LOGIN_MAX_FAILURES, LOGIN_WINDOW):
@@ -692,12 +784,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/me/mfa/setup")
     def start_mfa(user: Person):
-        """Return a temporary encrypted setup token, secret, and authenticator URI for a password user.
+        """Return setup/secret/uri for a browser-authenticated password user.
 
-        Requires a browser session; organisation API tokens are refused.
-
-        Operation-specific HTTP errors: 409. See detail in the response.
-        Authentication and request-validation errors also apply where required."""
+        SSO-origin users return HTTP 409. This creates a proposal without changing
+        stored MFA or requiring the current password/code. Backend errors propagate."""
         if user.origin != "password":
             raise HTTPException(409, "You sign in with single sign-on; your identity provider handles MFA")
         return mfa_setup(user)
@@ -709,12 +799,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/me/mfa")
     def confirm_mfa(body: MfaConfirm, user: Person, s: DB):
-        """Confirm or replace the authenticator and return newly generated one-time recovery codes.
+        """Return recovery_codes after staging and committing an authenticator setup.
 
-        Requires a browser session; organisation API tokens are refused.
-
-        Operation-specific HTTP errors: 403, 422, 429. See detail in the response.
-        Authentication and request-validation errors also apply where required."""
+        body supplies setup/new code and optional current_code. user needs a browser
+        session. Commit quota first. Existing MFA requires a valid current factor.
+        Setup success replaces secret/recovery hashes and appends evidence. Existing
+        sessions/API tokens remain. Return 403/422/429 for refusal. Backend/shape,
+        evidence and storage errors can propagate."""
         if over_limit(s, "mfa:" + user.id, LOGIN_MAX_FAILURES, LOGIN_WINDOW):
             raise HTTPException(429, "Too many attempts; try again in 15 minutes")
         if user.totp_secret and not second_factor(s, user, body.current_code):
@@ -731,9 +822,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/enroll-tokens", status_code=201)
     def create_enroll_token(user: Admin, s: DB, body: TokenReq | None = None):
-        """Create an expiring enrolment token and return its secret once, with ID and expiry.
+        """Return token/id/expires once for a new enrolment credential, with HTTP 201.
 
-        Requires an organisation admin browser session; API tokens are refused."""
+        user needs an admin browser session. Optional body.sandbox defaults False.
+        Store a hash and configured expiry, append evidence and commit. No extra
+        code challenge occurs here. Later response loss does not undo creation."""
         token = "nme_" + secrets.token_urlsafe(24)
         et = EnrollToken(token_hash=sha(token), org_id=user.org_id, sandbox=bool(body and body.sandbox),
                          expires=now() + timedelta(days=ENROLL_TOKEN_DAYS))
@@ -744,21 +837,22 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/enroll-tokens")
     def list_enroll_tokens(user: CurrentUser, s: DB):
-        """Return enrolment-token metadata for this organisation without token secrets.
+        """Return id/created/expires/revoked/sandbox rows, newest created first.
 
-        Requires a user session or a read-only organisation API token. API tokens cannot use write methods."""
+        user requires a session or eligible read token. s selects this organisation.
+        Secrets are omitted. No pagination/filter excludes expired or revoked rows.
+        Display IDs are twelve-character hash prefixes, not collision-free identities."""
         rows = s.scalars(select(EnrollToken).where(EnrollToken.org_id == user.org_id).order_by(EnrollToken.created.desc()))
         return [{"id": e.token_hash[:12], "created": e.created, "expires": e.expires, "revoked": e.revoked, "sandbox": e.sandbox}
                 for e in rows]
 
     @app.delete("/api/enroll-tokens/{token_id}", status_code=204)
     def revoke_enroll_token(token_id: str, user: Admin, s: DB):
-        """Revoke the enrolment token identified by its displayed hash prefix; return no content.
+        """Mark one matching organisation enrolment token revoked and return 204.
 
-        Requires an organisation admin browser session; API tokens are refused.
-
-        Operation-specific HTTP errors: 404. See detail in the response.
-        Authentication and request-validation errors also apply where required."""
+        token_id must have length twelve and match a stored hash prefix. user needs
+        an admin browser session. Append evidence/commit even if already revoked.
+        Missing match returns 404. Issued agent keys remain valid independently."""
         et = s.scalar(select(EnrollToken).where(EnrollToken.org_id == user.org_id, EnrollToken.token_hash.startswith(token_id[:12], autoescape=True),
                                                 func.length(token_id) == 12))
         if not et:
@@ -770,22 +864,33 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     # --- people: users, invitations, API tokens -------------------------------
 
     def user_json(u: User) -> dict:
+        """Return id/email/admin/origin/mfa/created from User u, without secrets.
+
+        mfa reflects a stored local authenticator, not identity-provider state."""
         return {"id": u.id, "email": u.email, "admin": u.admin, "origin": u.origin, "mfa": bool(u.totp_secret), "created": u.created}
 
     def org_user(s: Session, admin: User, user_id: str) -> User:
+        """Look up user_id's first 32 characters and return the User in admin's org.
+
+        s supplies storage. Missing or differently owned users raise HTTP 404.
+        This lookup does not itself require admin.admin or validate suffix text."""
         u = s.get(User, user_id[:32])
         if not u or u.org_id != admin.org_id:
             raise HTTPException(404, "User not found")
         return u
 
     def last_admin(s: Session, u: User) -> bool:
+        """Return whether u is an admin and its organisation has at most one admin.
+
+        s counts current stored rows. This query alone is not a concurrency lock."""
         return u.admin and s.scalar(select(func.count()).select_from(User).where(User.org_id == u.org_id, User.admin)) <= 1
 
     @app.get("/api/users")
     def list_users(user: Admin, s: DB):
-        """Return organisation member records ordered by email.
+        """Return organisation user_json records sorted by email, without pagination.
 
-        Requires an organisation admin browser session; API tokens are refused."""
+        user requires an admin browser session. s queries storage. Authentication,
+        database and malformed stored-data errors can propagate."""
         return [user_json(u) for u in s.scalars(select(User).where(User.org_id == user.org_id).order_by(User.email))]
 
     class UserPatch(BaseModel):
@@ -793,12 +898,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.patch("/api/users/{user_id}")
     def update_user(user_id: str, body: UserPatch, user: Admin, s: DB):
-        """Change an organisation member's admin role while preserving at least one admin.
+        """Set a member's admin flag and return user_json, preserving one admin.
 
-        Requires an organisation admin browser session; API tokens are refused.
-
-        Operation-specific HTTP errors: 409. See detail in the response.
-        Authentication and request-validation errors also apply where required."""
+        user needs an admin browser session. Lock the organisation where supported.
+        user_id lookup truncates to 32 characters. Promotion deletes old browser
+        sessions. Demotion deletes API tokens but retains browser sessions. Unchanged
+        roles do not append evidence/commit here. Missing user returns 404, last-admin
+        demotion 409. Database/evidence errors can propagate."""
         s.get(Org, user.org_id, with_for_update=True)  # PostgreSQL: two admins demoting each other can't leave none
         u = org_user(s, user, user_id)
         if not body.admin and last_admin(s, u):
@@ -813,12 +919,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.delete("/api/users/{user_id}", status_code=204)
     def remove_user(user_id: str, user: Admin, s: DB):
-        """Remove an organisation member and their access while preserving at least one admin.
+        """Delete a member and their sessions/API tokens, append evidence and return 204.
 
-        Requires an organisation admin browser session; API tokens are refused.
-
-        Operation-specific HTTP errors: 409. See detail in the response.
-        Authentication and request-validation errors also apply where required."""
+        user needs an admin browser session. Lock organisation where supported and
+        truncate user_id lookup to 32 characters. Missing user returns 404 and the
+        last admin returns 409. Commit deletes/evidence. Other asset credentials are
+        not selected here. Database/evidence errors can propagate."""
         s.get(Org, user.org_id, with_for_update=True)
         u = org_user(s, user, user_id)
         if last_admin(s, u):
@@ -834,7 +940,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/users/invite", status_code=202)
     def invite_user(body: Invite, request: Request, user: Admin, s: DB):
-        """Same answer whether or not the address already has an account (anywhere): the address owner gets the next step."""
+        """Return 202 status=invited/email after an invitation request.
+
+        body.email is lowercased. user needs an admin browser session. Require SMTP,
+        enforce organisation quota, append evidence and commit. Address quota can
+        suppress mail. Existing accounts receive a sign-in message rather than
+        membership transfer. New addresses receive a scoped invitation link. Return
+        403/429 on configuration/quota refusal. Mail acknowledgement is not delivery."""
         if not notify.smtp_configured():
             raise HTTPException(403, "Inviting by email needs SMTP (NIMSTEAD_SMTP_URL). With single sign-on, people join by signing in.")
         if over_limit(s, "invite:" + user.org_id, INVITE_MAX_PER_HOUR):
@@ -856,14 +968,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/tokens", status_code=201)
     def create_api_token(body: TokenNew, user: Admin, s: DB):
-        """Create a read-only organisation API token and return its secret once.
+        """Return token/id/name/expires once for a read-only credential, with HTTP 201.
 
-        Password users must supply the required current authenticator code.
-
-        Requires an organisation admin browser session; API tokens are refused.
-
-        Operation-specific HTTP errors: 403, 429. See detail in the response.
-        Authentication and request-validation errors also apply where required."""
+        body supplies name/days and optional code. user needs an admin browser
+        session. If a local authenticator exists, commit quota then require a valid
+        current factor. Store a hash, creator, expiry and evidence, then commit.
+        The token acts as its still-admin creator on eligible GET/HEAD routes.
+        Return 403/429 on code/quota refusal. Backend/storage errors can propagate."""
         if user.totp_secret:
             if over_limit(s, "mfa-token:" + user.id, LOGIN_MAX_FAILURES, LOGIN_WINDOW):
                 raise HTTPException(429, "Too many attempts; try again in 15 minutes")
@@ -879,9 +990,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/tokens")
     def list_api_tokens(user: Admin, s: DB):
-        """Return organisation API-token metadata and creator emails without token secrets.
+        """Return organisation token metadata/creator email, newest created first.
 
-        Requires an organisation admin browser session; API tokens are refused."""
+        user needs an admin browser session. s joins creators. Fields are id, name,
+        created_by, created, expires and last_used. Secrets are omitted. Expired rows
+        remain listed. Twelve-character displayed hash prefixes can collide."""
         rows = s.execute(select(ApiToken, User.email).join(User, User.id == ApiToken.user_id)
                          .where(ApiToken.org_id == user.org_id).order_by(ApiToken.created.desc()))
         return [{"id": t.token_hash[:12], "name": t.name, "created_by": e, "created": t.created, "expires": t.expires,
@@ -889,12 +1002,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.delete("/api/tokens/{token_id}", status_code=204)
     def revoke_api_token(token_id: str, user: Admin, s: DB):
-        """Delete the API token identified by its displayed hash prefix; return no content.
+        """Delete one matching organisation API-token hash prefix and return 204.
 
-        Requires an organisation admin browser session; API tokens are refused.
-
-        Operation-specific HTTP errors: 404. See detail in the response.
-        Authentication and request-validation errors also apply where required."""
+        token_id must have length twelve. user needs an admin browser session.
+        Missing match returns 404. Append evidence and commit. A prefix collision
+        is not independently disambiguated. Storage/evidence errors can propagate."""
         t = s.scalar(select(ApiToken).where(ApiToken.org_id == user.org_id, ApiToken.token_hash.startswith(token_id[:12], autoescape=True),
                                             func.length(token_id) == 12))
         if not t:
@@ -2089,6 +2201,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     # --- OIDC single sign-on -------------------------------------------------
 
     def sso_org(s: Session, email: str | None, org_id: str | None) -> Org | None:
+        """Return an SSO-enabled organisation selected by ID or verified email domain.
+
+        s supplies storage. Truthy org_id takes precedence without domain lookup.
+        Otherwise scan enabled organisations and select the first verified domain
+        match. Missing configuration returns None. No proof/provider call occurs."""
         if org_id:
             o = s.get(Org, org_id)
             return o if o and o.sso_issuer else None
@@ -2098,9 +2215,16 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                      if domain and domain in o.sso_verified_domains), None)
 
     def sso_redirect_uri(request: Request) -> str:
+        """Return configured/fallback public origin plus the fixed callback path.
+
+        request.base_url supplies fallback. No independent origin validation occurs."""
         return (os.environ.get("NIMSTEAD_PUBLIC_URL") or str(request.base_url)).rstrip("/") + "/api/auth/sso/callback"
 
     def sso_fail(reason: str) -> RedirectResponse:
+        """Return a 303 sign-in redirect with reason and delete the scoped SSO cookie.
+
+        reason is interpolated into the query. No pending database flow is removed
+        here. Caller supplies a known error label."""
         resp = RedirectResponse(f"/signin?sso_error={reason}", status_code=303)
         resp.delete_cookie(SSO_COOKIE, path="/api/auth/sso")
         return resp
@@ -2109,9 +2233,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     async def sso_start(request: Request, s: DB):
         # POST from the sign-in form, never a GET: the Origin check refuses a flow started by another site, which could
         # otherwise sign a victim's browser into an attacker's org (login CSRF) or bounce them to any URL (open redirect).
-        """Read the SSO start form and begin the configured organisation's authorisation-code flow.
+        """Parse URL-encoded email/org from a POST and return an SSO redirect.
 
-        Returns a redirect; configuration and validation failures redirect with sso_error."""
+        request body uses first values and replacement decoding. Overlong email/org
+        returns a not_configured redirect. sso_begin executes in a worker thread.
+        The shared origin guard applies when Origin is supplied. Body/backend
+        errors can propagate. This request does not itself create a user session."""
         form = parse_qs((await request.body()).decode(errors="replace"))
         email, org = (form.get("email") or [None])[0], (form.get("org") or [None])[0]
         if (email and len(email) > 320) or (org and len(org) > 32):
@@ -2119,6 +2246,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         return await run_in_threadpool(sso_begin, request, s, email, org)
 
     def sso_begin(request: Request, s: Session, email: str | None, org: str | None):
+        """Create and commit one pending OIDC flow, then return its provider redirect.
+
+        request/s supply origin/storage. email/org select configuration. Require
+        client credentials and verified domains. Catch SSOError as sign-in redirects.
+        Store state/nonce/verifier and set a scoped HttpOnly/Lax flow cookie. A new
+        browser flow replaces that cookie. Backend/storage errors can propagate."""
         o = sso_org(s, email, org)
         if not o or not (o.sso_client_id and o.sso_client_secret and o.sso_verified_domains):
             return sso_fail("not_configured")
@@ -2138,10 +2271,14 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/auth/sso/callback")
     def sso_callback(request: Request, s: DB, code: str | None = None, state: str | None = None, error: str | None = None):
-        """Validate the pending SSO flow and provider identity, then establish a session.
+        """Consume a pending flow and return a success or sign-in error redirect.
 
-        Failures redirect to sign-in with an sso_error code. A provider callback alone is not proof
-        of a completed login; state, nonce, email verification, and allowed domain are checked."""
+        request supplies the flow cookie and code/state/error query parameters.
+        Delete/commit any found pending row before cookie, expiry or provider checks.
+        Require verified email and a configured verified domain. Refuse identities
+        already attached elsewhere. New SSO users are members. Existing same-org
+        users retain role and origin. Commit evidence/new session before response.
+        SSOError becomes a redirect. Other backend/storage/claim errors can propagate."""
         pending = s.get(PendingLogin, state) if state else None
         if pending:  # single use, whatever happens next
             s.delete(pending)
@@ -2188,6 +2325,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         required: bool = False
 
     def sso_json(o: Org, request: Request) -> dict:
+        """Return issuer/client_id/secret-set/domains/required/redirect/domain-check fields.
+
+        o supplies saved configuration and request supplies public-origin fallback.
+        Checks describe stored verification, not fresh DNS. Secret plaintext is
+        omitted. TXT token generation can invoke the key backend and raise."""
         return {"issuer": o.sso_issuer or "", "client_id": o.sso_client_id or "", "client_secret_set": bool(o.sso_client_secret),
                 "domains": o.sso_domains, "required": o.sso_required, "redirect_uri": sso_redirect_uri(request),
                 "domain_checks": [{"domain": d, "verified": d in o.sso_verified_domains, "txt_name": f"_nimstead-verify.{d}",
@@ -2195,7 +2337,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/settings/sso/verify")
     def verify_sso_domains(request: Request, user: Admin, s: DB):
-        """Check each pending domain's DNS TXT record; only verified domains route SSO sign-ins."""
+        """Check only unverified, unclaimed saved domains and return sso_json.
+
+        request/user/s provide origin, admin browser identity and storage. Preserve
+        previously verified domains without a new DNS check. Commit new verifications
+        and evidence when any pass. Existing verification can survive removed TXT.
+        No live provider-login test occurs. Backend/storage errors can propagate."""
         o = s.get(Org, user.org_id)
         taken = {d for other in s.scalars(select(Org).where(Org.id != o.id)) for d in other.sso_verified_domains}
         newly = [d for d in o.sso_domains
@@ -2208,19 +2355,22 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/settings/sso")
     def get_sso(request: Request, user: Admin, s: DB):
-        """Return SSO configuration with domain-verification instructions, without exposing its stored secret.
+        """Return saved SSO fields and proof instructions for an admin browser user.
 
-        Requires an organisation admin browser session; API tokens are refused."""
+        request supplies public-origin fallback and s supplies organisation storage.
+        Secret presence does not prove provider connectivity. Backend errors can raise."""
         return sso_json(s.get(Org, user.org_id), request)
 
     @app.put("/api/settings/sso")
     def put_sso(body: SSOConfig, request: Request, user: Admin, s: DB):
-        """Validate and save SSO configuration and return the current domain-verification state.
+        """Replace saved SSO configuration and return sso_json after commit.
 
-        Requires an organisation admin browser session; API tokens are refused.
-
-        Operation-specific HTTP errors: 409, 422. See detail in the response.
-        Authentication and request-validation errors also apply where required."""
+        body defaults matter: omitted/empty issuer disables SSO and clears its
+        credentials/domains. Otherwise require a public issuer shape, client ID,
+        existing/new secret and domains. Empty/null client_secret retains the old
+        secret. Keep verification for domains still configured. Conflicting verified
+        claims return 409, invalid fields 422. user needs an admin browser session.
+        Secret/evidence/storage/response failures can occur after earlier commits."""
         o = s.get(Org, user.org_id)
         issuer, domains = body.issuer.strip(), sorted({d.strip().lower() for d in body.domains if d.strip()})
         if not issuer:
@@ -2366,6 +2516,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                    "invite": ("Join {org} on Nimstead", "Join"), "reset": ("Choose a new Nimstead password", "Set password")}
 
     def link_form(p: PendingSignup, org: Org | None, error: str = "") -> str:
+        """Return escaped password-selection HTML for pending signup p and optional org.
+
+        error is escaped message text. Purpose selects a fixed title/button.
+        Rendering consumes no token or session. Unknown purpose/data errors can raise."""
         title, button = LINK_TITLES[p.purpose]
         org = org.name if org else ""
         err = f"<p role=alert style='color:#b0122c'>{html.escape(error)}</p>" if error else ""
@@ -2377,6 +2531,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             f"<button>{button}</button></form>")
 
     def pending_link(s: Session, token: str) -> tuple[PendingSignup | None, Org | None]:
+        """Return (pending record,optional organisation) for hashed token in Session s.
+
+        Missing/expired records return (None,None), without deletion. No token
+        consumption or commit occurs. Invalid types/storage errors can propagate."""
         p = s.get(PendingSignup, sha(token))
         if not p or p.expires < now():
             return None, None
@@ -2384,7 +2542,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/auth/signup/confirm")
     def signup_confirm_page(s: DB, token: str = ""):
-        """Return the password-selection form for a valid signup, invitation, or reset token; otherwise HTML 404."""
+        """Return password-selection HTML for a valid link, otherwise HTML 404.
+
+        s selects query token. GET does not consume it or establish a session.
+        Backend/storage/rendering errors can propagate."""
         p, org = pending_link(s, token)
         if not p:
             return Response(CONFIRM_INVALID, 404, media_type="text/html")
@@ -2392,14 +2553,25 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/auth/signup/confirm")
     async def signup_confirm(request: Request, s: DB, token: str = ""):
-        """Consume a confirmation form and choose a password for signup, invitation, or password reset.
+        """Parse the first form password and complete the query token's account link.
 
-        The token is in the query string and password is form-encoded. Invalid links and invalid
-        passwords are reported by the confirmation flow; no browser session is granted here."""
+        request supplies replacement-decoded URL-encoded data and s supplies storage.
+        Invalid link/password returns HTML 404/422. Signup/reset success redirects
+        to sign-in without a session. Invitation success creates a member session.
+        Processing runs in a worker thread. Backend/storage errors can propagate."""
         form = parse_qs((await request.body()).decode(errors="replace"))
         return await run_in_threadpool(finish_link, s, token, (form.get("password") or [""])[0])
 
     def finish_link(s: Session, token: str, password: str):
+        """Complete pending token with password, returning HTML or a 303 redirect.
+
+        s supplies storage. Invalid/expired link returns 404. Password length outside
+        12..200 returns 422 without consuming the link. Then stage token deletion.
+        Reset updates a password user, revokes sessions/API tokens and redirects to
+        sign-in. Signup creates a new admin/org and redirects to sign-in. Invitation
+        creates a member/session when its org still exists. Existing users return
+        409 with token consumption. MFA secrets remain unchanged. Commit failures,
+        hashing/evidence/backend errors can propagate. Concurrent use is not locked."""
         p, org = pending_link(s, token)
         if not p:
             return Response(CONFIRM_INVALID, 404, media_type="text/html")

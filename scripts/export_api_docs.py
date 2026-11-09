@@ -164,9 +164,41 @@ def render() -> dict[str, str]:
                          ("AgentEnrolment", {"asset_id": {"type": "string"}, "agent_key": {"type": "string"}}),
                          ("InventoryResult", {name: {"type": "integer", "minimum": 0} for name in ("open", "resolved")})):
         schema["components"]["schemas"][name] = {"type": "object", "properties": fields, "required": list(fields), "additionalProperties": False}
+    user_fields = {name: {"type": "string"} for name in ("id", "email", "origin", "created")}
+    user_fields |= {name: {"type": "boolean"} for name in ("admin", "mfa")}
+    me_fields = {name: {"type": "string"} for name in ("email", "org", "origin")}
+    me_fields |= {"admin": {"type": "boolean"}, "mfa": {"type": "boolean"}, "recovery_codes_left": {"type": "integer", "minimum": 0}}
+    setup_fields = {name: {"type": "string"} for name in ("setup", "secret", "uri")}
+    recovery_field = {"type": "array", "items": {"type": "string"}}
+    enrol_fields = {name: {"type": ["string", "null"] if name == "expires" else "string"} for name in ("id", "created", "expires")}
+    enrol_fields |= {"revoked": {"type": "boolean"}, "sandbox": {"type": "boolean"}}
+    token_fields = {name: {"type": "string"} for name in ("id", "name", "created_by", "created")}
+    token_fields |= {name: {"type": ["string", "null"]} for name in ("expires", "last_used")}
+    domain_fields = {name: {"type": "string"} for name in ("domain", "txt_name", "txt_value")}
+    domain_fields["verified"] = {"type": "boolean"}
+    sso_fields = {name: {"type": "string"} for name in ("issuer", "client_id", "redirect_uri")}
+    sso_fields |= {"client_secret_set": {"type": "boolean"}, "required": {"type": "boolean"},
+                   "domains": {"type": "array", "items": {"type": "string"}},
+                   "domain_checks": {"type": "array", "items": {"type": "object", "properties": domain_fields,
+                                                                 "required": list(domain_fields), "additionalProperties": False}}}
+    for name, fields in (("UserRecord", user_fields), ("CurrentIdentity", me_fields), ("AuthenticatorSetup", setup_fields),
+                         ("RecoveryCodes", {"recovery_codes": recovery_field}), ("EnrolmentTokenMetadata", enrol_fields),
+                         ("ApiTokenMetadata", token_fields), ("SSOSettings", sso_fields), ("AuthenticationError", {"detail": {"type": "string"}}),
+                         ("CreatedEnrolmentToken", {name: {"type": "string"} for name in ("id", "token", "expires")}),
+                         ("CreatedApiToken", {name: {"type": "string"} for name in ("id", "token", "name", "expires")})):
+        schema["components"]["schemas"][name] = {"type": "object", "properties": fields, "required": list(fields), "additionalProperties": False}
+    login_success = {"type": "object", "properties": {"email": {"type": "string"}, "recovery_codes": recovery_field},
+                     "required": ["email"], "additionalProperties": False}
+    schema["components"]["schemas"]["PasswordLogin"] = {"oneOf": [login_success,
+        {"type": "object", "properties": {"mfa": {"const": "required"}}, "required": ["mfa"], "additionalProperties": False},
+        {"type": "object", "properties": {**setup_fields, "mfa": {"const": "setup"}},
+         "required": ["mfa", *setup_fields], "additionalProperties": False}]}
+    schema["components"]["schemas"]["SignupCreated"] = {"type": "object", "properties": {
+        "email": {"type": "string"}, "org": {"type": "string"}, "next": {"const": "signin"}},
+        "required": ["email", "org"], "additionalProperties": False}
     lines = ["# HTTP endpoint catalog", "",
              "Use the [OpenAPI JSON](openapi.json) for typed parameters, request models, defaults, and declared response schemas.", "",
-             "The export adds server/authentication metadata and selected contracts: assets, inventory, fleet summary, findings, remediation, policy, Windows updates, baselines, notifications, CSV, SBOM, external-scan counters, agent manifest and distribution files. Other definitions come from the app.", "",
+             "The export adds server/authentication metadata and selected contracts: account/authentication, assets, inventory, fleet summary, findings, remediation, policy, Windows updates, baselines, notifications, CSV, SBOM, external-scan counters, agent manifest and distribution files. Other definitions come from the app.", "",
              "Authentication labels describe entry requirements. Organisation ownership, roles, origin checks, quotas, "
              "and operation-specific state checks still apply. See [HTTP API reference](http-api.md).", "",
              "Empty response schemas do not define a stable response contract. Inspect the linked handler and its tests "
@@ -203,6 +235,46 @@ def render() -> dict[str, str]:
                 # Body tokens and SSO cookies are described separately; no HTTP auth scheme represents them.
                 operation["security"] = []
             operation["x-authentication"] = auth
+            if dependencies & {"admin_user", "signed_in", "current_agent", "current_user"}:
+                operation["responses"].setdefault("401", {"description": "Missing, expired or invalid credential.",
+                    "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AuthenticationError"}}}})
+            if dependencies & {"admin_user", "signed_in"} or ("current_user" in dependencies and method not in {"GET", "HEAD"}):
+                operation["responses"].setdefault("403", {"description": "Role, browser-session or local MFA requirement refused the operation.",
+                    "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AuthenticationError"}}}})
+            account_response = None
+            account_status = "200"
+            account_name = {"/api/me": "CurrentIdentity", "/api/auth/login": "PasswordLogin", "/api/me/mfa/setup": "AuthenticatorSetup",
+                            "/api/me/mfa": "RecoveryCodes", "/api/settings/sso": "SSOSettings", "/api/settings/sso/verify": "SSOSettings"}.get(route.path)
+            if account_name:
+                account_response = {"$ref": f"#/components/schemas/{account_name}"}
+            elif route.path in {"/api/users", "/api/enroll-tokens", "/api/tokens"}:
+                if method == "GET":
+                    account_name = {"/api/users": "UserRecord", "/api/enroll-tokens": "EnrolmentTokenMetadata", "/api/tokens": "ApiTokenMetadata"}[route.path]
+                    account_response = {"type": "array", "items": {"$ref": f"#/components/schemas/{account_name}"}}
+                elif method == "POST":
+                    account_name = {"/api/enroll-tokens": "CreatedEnrolmentToken", "/api/tokens": "CreatedApiToken"}.get(route.path)
+                    if account_name:
+                        account_response, account_status = {"$ref": f"#/components/schemas/{account_name}"}, "201"
+            elif route.path == "/api/users/{user_id}" and method == "PATCH":
+                account_response = {"$ref": "#/components/schemas/UserRecord"}
+            if account_response:
+                operation["responses"][account_status] = {"description": "Account contract; see authentication.md for branch and persistence semantics.",
+                    "content": {"application/json": {"schema": account_response}}}
+            if route.path == "/api/auth/signup":
+                operation["responses"]["201"] = {"description": "First account or development signup. A session exists only in open-signup mode.",
+                    "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SignupCreated"}}}}
+            if route.path in {"/api/auth/signup", "/api/auth/password/reset", "/api/users/invite"}:
+                fields = {"status": {"const": "invited" if route.path == "/api/users/invite" else "check_email"}, "email": {"type": "string"}}
+                operation["responses"]["202"] = {"description": "Acknowledged account-mail request, not proof of delivery.",
+                    "content": {"application/json": {"schema": {"type": "object", "properties": fields,
+                                                               "required": list(fields), "additionalProperties": False}}}}
+            if route.path in {"/api/auth/sso/start", "/api/auth/sso/callback"}:
+                operation["responses"].pop("200", None)
+                operation["responses"]["303"] = {"description": "Provider, home or sign-in error redirect. See authentication.md.",
+                    "headers": {"Location": {"schema": {"type": "string"}}}}
+            if route.path == "/api/auth/signup/confirm" and method == "POST":
+                operation["responses"]["303"] = {"description": "Signup/reset redirects to sign-in. Successful invitation can establish a member session.",
+                    "headers": {"Location": {"schema": {"type": "string"}}}}
             asset_response = None
             asset_status = "200"
             if route.path == "/api/assets":

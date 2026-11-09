@@ -25,3 +25,5 @@ Leave the issuer empty to disable the SSO configuration. The [configuration refe
 Domain verification uses saved domains. Save a changed domain list before **Verify domains**. Verification does not submit unsaved form edits.
 
 If you disable SSO, keep a working password-admin account available. SSO-origin users have no local password sign-in. Recheck the intended sign-in route after the change.
+
+For stored domain verification and callback limits, see [SSO API contracts](../reference/authentication.md#sso-configuration-and-browser-flow).

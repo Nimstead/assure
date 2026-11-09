@@ -31,8 +31,12 @@ Each authenticator time-step code works once. Wait for the next code if the curr
 
 ## Recover from a failed setup
 
-If confirmation fails, read the error and check the authenticator clock. A failed or expired setup does not install its new secret. Request a new setup if the server reports expiry.
+If the server rejects the setup code, read the error and check the authenticator clock. Request a new setup if it reports expiry.
+
+If the response is lost, inspect account state before another change. A successful replacement can commit before the browser receives its recovery codes. Test a separate sign-in with the new authenticator. Preserve your current session until recovery succeeds.
 
 If the old authenticator is unavailable, use an unused recovery code for replacement. If neither is available, contact your operator. A password-reset email does not bypass the existing MFA requirement.
 
 Related: [SSO configuration](configure-sso.md), [web account contracts](../reference/web-client.md#authenticator-and-account-state).
+
+For session and recovery effects, see [authenticator operations](../reference/authentication.md#authenticator-operations-and-account-recovery).

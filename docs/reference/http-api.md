@@ -10,6 +10,8 @@ The [endpoint catalog](api-endpoints.md) lists every operation. The [exported Op
 
 The [asset and inventory reference](assets-api.md) defines asset variants, replacement behavior, enrolment results and fleet summary fields.
 
+For response branches, account recovery and token/SSO effects, see [authentication and account API](authentication.md).
+
 ## Credentials
 
 | Credential | Where it is accepted | Limits |

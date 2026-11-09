@@ -34,3 +34,5 @@ If creation fails, read the displayed error before another attempt. If the secre
 Revocation cannot be reversed. If you replace a live integration token, verify the new credential before revoking the old one.
 
 Creator demotion, removal, password change, or **Sign out everywhere** can also revoke tokens. A password reset revokes them too. Keep the integration's credential owner and expiry in its operational record.
+
+For field limits and credential effects, see [API token contracts](../reference/authentication.md#read-only-organisation-api-tokens).

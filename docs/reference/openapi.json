@@ -133,6 +133,44 @@
         ],
         "type": "object"
       },
+      "ApiTokenMetadata": {
+        "additionalProperties": false,
+        "properties": {
+          "created": {
+            "type": "string"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "expires": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "last_used": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "created_by",
+          "created",
+          "expires",
+          "last_used"
+        ],
+        "type": "object"
+      },
       "AppNew": {
         "properties": {
           "criticality": {
@@ -427,6 +465,38 @@
           }
         ]
       },
+      "AuthenticationError": {
+        "additionalProperties": false,
+        "properties": {
+          "detail": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "type": "object"
+      },
+      "AuthenticatorSetup": {
+        "additionalProperties": false,
+        "properties": {
+          "secret": {
+            "type": "string"
+          },
+          "setup": {
+            "type": "string"
+          },
+          "uri": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "setup",
+          "secret",
+          "uri"
+        ],
+        "type": "object"
+      },
       "BaselineAggregate": {
         "additionalProperties": false,
         "properties": {
@@ -657,6 +727,30 @@
         ],
         "type": "object"
       },
+      "CreatedApiToken": {
+        "additionalProperties": false,
+        "properties": {
+          "expires": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "token",
+          "name",
+          "expires"
+        ],
+        "type": "object"
+      },
       "CreatedApplication": {
         "additionalProperties": false,
         "properties": {
@@ -748,6 +842,59 @@
           "health_units",
           "open_by_priority",
           "upload_token"
+        ],
+        "type": "object"
+      },
+      "CreatedEnrolmentToken": {
+        "additionalProperties": false,
+        "properties": {
+          "expires": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "token",
+          "expires"
+        ],
+        "type": "object"
+      },
+      "CurrentIdentity": {
+        "additionalProperties": false,
+        "properties": {
+          "admin": {
+            "type": "boolean"
+          },
+          "email": {
+            "type": "string"
+          },
+          "mfa": {
+            "type": "boolean"
+          },
+          "org": {
+            "type": "string"
+          },
+          "origin": {
+            "type": "string"
+          },
+          "recovery_codes_left": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "email",
+          "org",
+          "origin",
+          "admin",
+          "mfa",
+          "recovery_codes_left"
         ],
         "type": "object"
       },
@@ -845,6 +992,37 @@
           "hostname"
         ],
         "title": "Enroll",
+        "type": "object"
+      },
+      "EnrolmentTokenMetadata": {
+        "additionalProperties": false,
+        "properties": {
+          "created": {
+            "type": "string"
+          },
+          "expires": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "revoked": {
+            "type": "boolean"
+          },
+          "sandbox": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "created",
+          "expires",
+          "revoked",
+          "sandbox"
+        ],
         "type": "object"
       },
       "ExternalAsset": {
@@ -2027,6 +2205,64 @@
         "title": "PasswordChange",
         "type": "object"
       },
+      "PasswordLogin": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "email": {
+                "type": "string"
+              },
+              "recovery_codes": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "email"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "mfa": {
+                "const": "required"
+              }
+            },
+            "required": [
+              "mfa"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "mfa": {
+                "const": "setup"
+              },
+              "secret": {
+                "type": "string"
+              },
+              "setup": {
+                "type": "string"
+              },
+              "uri": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "mfa",
+              "setup",
+              "secret",
+              "uri"
+            ],
+            "type": "object"
+          }
+        ]
+      },
       "Pkg": {
         "properties": {
           "ecosystem": {
@@ -2233,6 +2469,21 @@
           }
         },
         "title": "Policy",
+        "type": "object"
+      },
+      "RecoveryCodes": {
+        "additionalProperties": false,
+        "properties": {
+          "recovery_codes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "recovery_codes"
+        ],
         "type": "object"
       },
       "RemediationJob": {
@@ -2541,6 +2792,69 @@
         "title": "SSOConfig",
         "type": "object"
       },
+      "SSOSettings": {
+        "additionalProperties": false,
+        "properties": {
+          "client_id": {
+            "type": "string"
+          },
+          "client_secret_set": {
+            "type": "boolean"
+          },
+          "domain_checks": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "domain": {
+                  "type": "string"
+                },
+                "txt_name": {
+                  "type": "string"
+                },
+                "txt_value": {
+                  "type": "string"
+                },
+                "verified": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "domain",
+                "txt_name",
+                "txt_value",
+                "verified"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "domains": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "issuer": {
+            "type": "string"
+          },
+          "redirect_uri": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "issuer",
+          "client_id",
+          "redirect_uri",
+          "client_secret_set",
+          "required",
+          "domains",
+          "domain_checks"
+        ],
+        "type": "object"
+      },
       "Signup": {
         "properties": {
           "email": {
@@ -2573,6 +2887,25 @@
           "org_name"
         ],
         "title": "Signup",
+        "type": "object"
+      },
+      "SignupCreated": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "next": {
+            "const": "signin"
+          },
+          "org": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "org"
+        ],
         "type": "object"
       },
       "SummaryAction": {
@@ -2789,6 +3122,38 @@
           "admin"
         ],
         "title": "UserPatch",
+        "type": "object"
+      },
+      "UserRecord": {
+        "additionalProperties": false,
+        "properties": {
+          "admin": {
+            "type": "boolean"
+          },
+          "created": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "mfa": {
+            "type": "boolean"
+          },
+          "origin": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "origin",
+          "created",
+          "admin",
+          "mfa"
+        ],
         "type": "object"
       },
       "ValidationError": {
@@ -3135,6 +3500,16 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -3239,6 +3614,16 @@
             },
             "description": "Asset/inventory contract; see assets-api.md for state and count semantics."
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -3294,6 +3679,16 @@
               }
             },
             "description": "Recorded policy/plan result; see remediation-jobs.md for state, verification and commit boundaries."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
           },
           "422": {
             "content": {
@@ -3376,6 +3771,16 @@
             },
             "description": "Recorded policy/plan result; see remediation-jobs.md for state, verification and commit boundaries."
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -3455,6 +3860,16 @@
             },
             "description": "Pause flag with optional paired manifest/signature strings."
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -3499,6 +3914,26 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Role, browser-session or local MFA requirement refused the operation."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -3542,6 +3977,26 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Role, browser-session or local MFA requirement refused the operation."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -3574,6 +4029,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
           }
         },
         "security": [
@@ -3605,6 +4070,16 @@
               }
             },
             "description": "Asset/inventory contract; see assets-api.md for state and count semantics."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
           }
         },
         "security": [
@@ -3641,6 +4116,26 @@
               }
             },
             "description": "Asset/inventory contract; see assets-api.md for state and count semantics."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Role, browser-session or local MFA requirement refused the operation."
           },
           "422": {
             "content": {
@@ -3680,6 +4175,26 @@
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Role, browser-session or local MFA requirement refused the operation."
           },
           "422": {
             "content": {
@@ -3734,6 +4249,26 @@
               }
             },
             "description": "Asset/inventory contract; see assets-api.md for state and count semantics."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Role, browser-session or local MFA requirement refused the operation."
           },
           "422": {
             "content": {
@@ -3905,6 +4440,16 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -3940,6 +4485,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
           }
         },
         "security": [
@@ -3956,7 +4511,7 @@
     },
     "/api/auth/login": {
       "post": {
-        "description": "Authenticate a password user and complete or request two-step sign-in.\n\nA successful password check can return mfa=required or mfa=setup without a session.\nThe caller must complete the requested step before treating the user as signed in.\n\nOperation-specific HTTP errors: 401, 403, 429. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
+        "description": "Return a password-login branch, creating a session only after required MFA.\n\nbody supplies email/password and optional code/setup. request selects rate\nkeys. resp receives the session cookie and s commits state/evidence.\nMissing MFA returns required or setup without a session. Setup completion\nadds one-time recovery_codes to email. A normal success returns email.\n\nWrong passwords/codes commit failure counters and can request an alert.\nRequired SSO refuses nonadmin password login, while admin break-glass\nrecords evidence and an alert attempt. MFA consumption commits with session\ncreation. Return 401/403/429 for refusals. Malformed stored credentials,\nbackend, evidence and database errors can propagate after earlier commits.",
         "operationId": "login_api_auth_login_post",
         "requestBody": {
           "content": {
@@ -3972,10 +4527,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PasswordLogin"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Account contract; see authentication.md for branch and persistence semantics."
           },
           "422": {
             "content": {
@@ -3995,7 +4552,7 @@
     },
     "/api/auth/logout": {
       "post": {
-        "description": "Delete the current server-side session, clear its browser cookie, and return no content.",
+        "description": "Return 204 after deleting the cookie-selected session when present.\n\nrequest supplies the cookie, s commits deletion and resp clears the cookie.\nNo current-user dependency or global revocation is required. Storage errors\ncan prevent cookie clearing. Other sessions and bearer tokens remain.",
         "operationId": "logout_api_auth_logout_post",
         "responses": {
           "204": {
@@ -4009,7 +4566,7 @@
     },
     "/api/auth/password/reset": {
       "post": {
-        "description": "Same answer whether or not the address has an account; the link goes to the address itself.",
+        "description": "Return 202 status=check_email/email for a reset request.\n\nbody.email is normalized to lowercase. Enforce client quota, then require\nSMTP configuration. Only existing password users below the address quota\nreceive a pending-link attempt. Unknown/SSO accounts keep the same success\nshape. Quota checks commit. HTTP 403/429 and storage/backend errors can\noccur. No password or session changes here. Mail receipt is not guaranteed.",
         "operationId": "request_reset_api_auth_password_reset_post",
         "requestBody": {
           "content": {
@@ -4025,10 +4582,25 @@
           "202": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "email": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "const": "check_email"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "email"
+                  ],
+                  "type": "object"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Acknowledged account-mail request, not proof of delivery."
           },
           "422": {
             "content": {
@@ -4048,7 +4620,7 @@
     },
     "/api/auth/signup": {
       "post": {
-        "description": "Create the first organisation account or send a later signup confirmation email.\n\nFirst-account setup requires a password. Later production signups return check_email;\nopen-signup development mode can establish a session immediately.\n\nOperation-specific HTTP errors: 403, 409, 422, 429. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
+        "description": "Create a first/development admin or acknowledge an email signup request.\n\nbody supplies email, organisation name and optional password. Enforce the\nclient signup quota before branch selection. First-user bootstrap requires\na password and returns email/org/next=signin with 201, without a session.\nOpen-signup mode returns email/org with 201 and a new session.\n\nLater production signup requires SMTP configuration. Return 202 with\nstatus=check_email/email for existing or new addresses. Address quota can\nsuppress mail. New pending links replace earlier matching links. Quota and\nlink writes commit before delivery. HTTP 403/409/422/429 refusals and storage,\nhashing or evidence failures can occur. Acknowledgement is not delivery.",
         "operationId": "signup_api_auth_signup_post",
         "requestBody": {
           "content": {
@@ -4064,10 +4636,35 @@
           "201": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SignupCreated"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "First account or development signup. A session exists only in open-signup mode."
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "email": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "const": "check_email"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "email"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Acknowledged account-mail request, not proof of delivery."
           },
           "422": {
             "content": {
@@ -4087,7 +4684,7 @@
     },
     "/api/auth/signup/confirm": {
       "get": {
-        "description": "Return the password-selection form for a valid signup, invitation, or reset token; otherwise HTML 404.",
+        "description": "Return password-selection HTML for a valid link, otherwise HTML 404.\n\ns selects query token. GET does not consume it or establish a session.\nBackend/storage/rendering errors can propagate.",
         "operationId": "signup_confirm_page_api_auth_signup_confirm_get",
         "parameters": [
           {
@@ -4126,7 +4723,7 @@
         "x-authentication": "Signup confirmation token"
       },
       "post": {
-        "description": "Consume a confirmation form and choose a password for signup, invitation, or password reset.\n\nThe token is in the query string and password is form-encoded. Invalid links and invalid\npasswords are reported by the confirmation flow; no browser session is granted here.",
+        "description": "Parse the first form password and complete the query token's account link.\n\nrequest supplies replacement-decoded URL-encoded data and s supplies storage.\nInvalid link/password returns HTML 404/422. Signup/reset success redirects\nto sign-in without a session. Invitation success creates a member session.\nProcessing runs in a worker thread. Backend/storage errors can propagate.",
         "operationId": "signup_confirm_api_auth_signup_confirm_post",
         "parameters": [
           {
@@ -4149,6 +4746,16 @@
             },
             "description": "Successful Response"
           },
+          "303": {
+            "description": "Signup/reset redirects to sign-in. Successful invitation can establish a member session.",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "422": {
             "content": {
               "application/json": {
@@ -4167,7 +4774,7 @@
     },
     "/api/auth/sso/callback": {
       "get": {
-        "description": "Validate the pending SSO flow and provider identity, then establish a session.\n\nFailures redirect to sign-in with an sso_error code. A provider callback alone is not proof\nof a completed login; state, nonce, email verification, and allowed domain are checked.",
+        "description": "Consume a pending flow and return a success or sign-in error redirect.\n\nrequest supplies the flow cookie and code/state/error query parameters.\nDelete/commit any found pending row before cookie, expiry or provider checks.\nRequire verified email and a configured verified domain. Refuse identities\nalready attached elsewhere. New SSO users are members. Existing same-org\nusers retain role and origin. Commit evidence/new session before response.\nSSOError becomes a redirect. Other backend/storage/claim errors can propagate.",
         "operationId": "sso_callback_api_auth_sso_callback_get",
         "parameters": [
           {
@@ -4220,13 +4827,15 @@
           }
         ],
         "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
+          "303": {
+            "description": "Provider, home or sign-in error redirect. See authentication.md.",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
               }
-            },
-            "description": "Successful Response"
+            }
           },
           "422": {
             "content": {
@@ -4246,16 +4855,18 @@
     },
     "/api/auth/sso/start": {
       "post": {
-        "description": "Read the SSO start form and begin the configured organisation's authorisation-code flow.\n\nReturns a redirect; configuration and validation failures redirect with sso_error.",
+        "description": "Parse URL-encoded email/org from a POST and return an SSO redirect.\n\nrequest body uses first values and replacement decoding. Overlong email/org\nreturns a not_configured redirect. sso_begin executes in a worker thread.\nThe shared origin guard applies when Origin is supplied. Body/backend\nerrors can propagate. This request does not itself create a user session.",
         "operationId": "sso_start_api_auth_sso_start_post",
         "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
+          "303": {
+            "description": "Provider, home or sign-in error redirect. See authentication.md.",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
               }
-            },
-            "description": "Successful Response"
+            }
           }
         },
         "security": [],
@@ -4301,6 +4912,16 @@
               }
             },
             "description": "Baseline summaries and aggregated stored-host outcomes, not conformance certification."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
           }
         },
         "security": [
@@ -4329,6 +4950,16 @@
               }
             },
             "description": "CSV attachment with automated and explicit manual rule rows."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
           }
         },
         "security": [
@@ -4369,6 +5000,16 @@
             },
             "description": "Stored configuration/result fields; see the corresponding reference for limits."
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -4406,6 +5047,16 @@
               }
             },
             "description": "Asset/inventory contract; see assets-api.md for state and count semantics."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
           }
         },
         "security": [
@@ -4451,6 +5102,16 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -4476,16 +5137,31 @@
     },
     "/api/enroll-tokens": {
       "get": {
-        "description": "Return enrolment-token metadata for this organisation without token secrets.\n\nRequires a user session or a read-only organisation API token. API tokens cannot use write methods.",
+        "description": "Return id/created/expires/revoked/sandbox rows, newest created first.\n\nuser requires a session or eligible read token. s selects this organisation.\nSecrets are omitted. No pagination/filter excludes expired or revoked rows.\nDisplay IDs are twelve-character hash prefixes, not collision-free identities.",
         "operationId": "list_enroll_tokens_api_enroll_tokens_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EnrolmentTokenMetadata"
+                  },
+                  "type": "array"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Account contract; see authentication.md for branch and persistence semantics."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
           }
         },
         "security": [
@@ -4500,7 +5176,7 @@
         "x-authentication": "Session or read-only API token"
       },
       "post": {
-        "description": "Create an expiring enrolment token and return its secret once, with ID and expiry.\n\nRequires an organisation admin browser session; API tokens are refused.",
+        "description": "Return token/id/expires once for a new enrolment credential, with HTTP 201.\n\nuser needs an admin browser session. Optional body.sandbox defaults False.\nStore a hash and configured expiry, append evidence and commit. No extra\ncode challenge occurs here. Later response loss does not undo creation.",
         "operationId": "create_enroll_token_api_enroll_tokens_post",
         "requestBody": {
           "content": {
@@ -4523,10 +5199,32 @@
           "201": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedEnrolmentToken"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Account contract; see authentication.md for branch and persistence semantics."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Role, browser-session or local MFA requirement refused the operation."
           },
           "422": {
             "content": {
@@ -4550,7 +5248,7 @@
     },
     "/api/enroll-tokens/{token_id}": {
       "delete": {
-        "description": "Revoke the enrolment token identified by its displayed hash prefix; return no content.\n\nRequires an organisation admin browser session; API tokens are refused.\n\nOperation-specific HTTP errors: 404. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
+        "description": "Mark one matching organisation enrolment token revoked and return 204.\n\ntoken_id must have length twelve and match a stored hash prefix. user needs\nan admin browser session. Append evidence/commit even if already revoked.\nMissing match returns 404. Issued agent keys remain valid independently.",
         "operationId": "revoke_enroll_token_api_enroll_tokens__token_id__delete",
         "parameters": [
           {
@@ -4566,6 +5264,26 @@
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Role, browser-session or local MFA requirement refused the operation."
           },
           "422": {
             "content": {
@@ -4636,6 +5354,16 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -4685,6 +5413,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
           },
           "422": {
             "content": {
@@ -4764,6 +5502,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
           },
           "422": {
             "content": {
@@ -5003,6 +5751,16 @@
             },
             "description": "Finding result; see findings.md for row variants, filters and state semantics."
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -5163,6 +5921,16 @@
               }
             }
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -5220,6 +5988,26 @@
               }
             },
             "description": "Finding result; see findings.md for row variants, filters and state semantics."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Role, browser-session or local MFA requirement refused the operation."
           },
           "422": {
             "content": {
@@ -5280,6 +6068,26 @@
               }
             },
             "description": "Finding result; see findings.md for row variants, filters and state semantics."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Role, browser-session or local MFA requirement refused the operation."
           },
           "422": {
             "content": {
@@ -5439,6 +6247,16 @@
               }
             },
             "description": "Finding result; see findings.md for row variants, filters and state semantics."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
           },
           "422": {
             "content": {
@@ -5609,6 +6427,16 @@
             },
             "description": "Finding result; see findings.md for row variants, filters and state semantics."
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -5657,6 +6485,16 @@
               }
             },
             "description": "Finding result; see findings.md for row variants, filters and state semantics."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
           },
           "422": {
             "content": {
@@ -5717,6 +6555,26 @@
             },
             "description": "Finding result; see findings.md for row variants, filters and state semantics."
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Role, browser-session or local MFA requirement refused the operation."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -5773,6 +6631,26 @@
             },
             "description": "Finding result; see findings.md for row variants, filters and state semantics."
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Role, browser-session or local MFA requirement refused the operation."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -5795,16 +6673,28 @@
     },
     "/api/me": {
       "get": {
-        "description": "Return the current user email, organisation, admin role, login origin, and MFA status.\n\nRequires a user session or a read-only organisation API token. API tokens cannot use write methods.",
+        "description": "Return email/org/admin/origin/mfa/recovery_codes_left for current_user.\n\nA session or eligible read token is accepted. MFA describes a stored local\nsecret, not provider MFA or a fresh challenge. s reads organisation state.\nAuthentication/database errors can occur, including dependency commits.",
         "operationId": "me_api_me_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentIdentity"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Account contract; see authentication.md for branch and persistence semantics."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
           }
         },
         "security": [
@@ -5821,7 +6711,7 @@
     },
     "/api/me/mfa": {
       "post": {
-        "description": "Confirm or replace the authenticator and return newly generated one-time recovery codes.\n\nRequires a browser session; organisation API tokens are refused.\n\nOperation-specific HTTP errors: 403, 422, 429. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
+        "description": "Return recovery_codes after staging and committing an authenticator setup.\n\nbody supplies setup/new code and optional current_code. user needs a browser\nsession. Commit quota first. Existing MFA requires a valid current factor.\nSetup success replaces secret/recovery hashes and appends evidence. Existing\nsessions/API tokens remain. Return 403/422/429 for refusal. Backend/shape,\nevidence and storage errors can propagate.",
         "operationId": "confirm_mfa_api_me_mfa_post",
         "requestBody": {
           "content": {
@@ -5837,10 +6727,32 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryCodes"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Account contract; see authentication.md for branch and persistence semantics."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Role, browser-session or local MFA requirement refused the operation."
           },
           "422": {
             "content": {
@@ -5864,16 +6776,38 @@
     },
     "/api/me/mfa/setup": {
       "post": {
-        "description": "Return a temporary encrypted setup token, secret, and authenticator URI for a password user.\n\nRequires a browser session; organisation API tokens are refused.\n\nOperation-specific HTTP errors: 409. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
+        "description": "Return setup/secret/uri for a browser-authenticated password user.\n\nSSO-origin users return HTTP 409. This creates a proposal without changing\nstored MFA or requiring the current password/code. Backend errors propagate.",
         "operationId": "start_mfa_api_me_mfa_setup_post",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticatorSetup"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Account contract; see authentication.md for branch and persistence semantics."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Role, browser-session or local MFA requirement refused the operation."
           }
         },
         "security": [
@@ -5887,7 +6821,7 @@
     },
     "/api/me/password": {
       "post": {
-        "description": "Change a password after verifying the current password and required authenticator code.\n\nRequires a browser session; organisation API tokens are refused.\n\nOperation-specific HTTP errors: 403, 409, 429. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
+        "description": "Return 204 after a password-origin user's credential update.\n\nbody supplies current/new passwords and optional second factor. user needs\na browser session. Commit quota before verification. Preserve only the\ncurrent cookie's session and delete all creator API tokens. Append evidence\nand commit the new hash/code consumption. SSO users return 409, wrong\ncredentials 403, rate refusal 429. Backend/storage errors can propagate.",
         "operationId": "change_password_api_me_password_post",
         "requestBody": {
           "content": {
@@ -5902,6 +6836,26 @@
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Role, browser-session or local MFA requirement refused the operation."
           },
           "422": {
             "content": {
@@ -5925,11 +6879,31 @@
     },
     "/api/me/sessions/revoke": {
       "post": {
-        "description": "Revoke all sessions for the current user, clear this cookie, and return no content.\n\nRequires a browser session; organisation API tokens are refused.",
+        "description": "Delete this user's WebSession and ApiToken rows, commit, then clear cookie.\n\nuser requires a browser session, not a fresh code. Append revocation\nevidence through s. Return 204. Agent/upload/enrolment credentials remain.\nEvidence/storage/response errors can occur after partial effects.",
         "operationId": "sign_out_everywhere_api_me_sessions_revoke_post",
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Role, browser-session or local MFA requirement refused the operation."
           }
         },
         "security": [
@@ -6122,6 +7096,16 @@
             },
             "description": "Recorded policy/plan result; see remediation-jobs.md for state, verification and commit boundaries."
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -6167,6 +7151,26 @@
               }
             },
             "description": "Recorded policy/plan result; see remediation-jobs.md for state, verification and commit boundaries."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Role, browser-session or local MFA requirement refused the operation."
           },
           "422": {
             "content": {
@@ -6245,6 +7249,26 @@
             },
             "description": "Recorded policy/plan result; see remediation-jobs.md for state, verification and commit boundaries."
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Role, browser-session or local MFA requirement refused the operation."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -6308,6 +7332,26 @@
             },
             "description": "Recorded policy/plan result; see remediation-jobs.md for state, verification and commit boundaries."
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Role, browser-session or local MFA requirement refused the operation."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -6354,6 +7398,26 @@
             },
             "description": "Recorded policy/plan result; see remediation-jobs.md for state, verification and commit boundaries."
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Role, browser-session or local MFA requirement refused the operation."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -6388,6 +7452,16 @@
               }
             },
             "description": "Recorded policy/plan result; see remediation-jobs.md for state, verification and commit boundaries."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
           }
         },
         "security": [
@@ -6425,6 +7499,26 @@
             },
             "description": "Recorded policy/plan result; see remediation-jobs.md for state, verification and commit boundaries."
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Role, browser-session or local MFA requirement refused the operation."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -6459,6 +7553,26 @@
               }
             },
             "description": "Stored configuration/result fields; see the corresponding reference for limits."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Role, browser-session or local MFA requirement refused the operation."
           }
         },
         "security": [
@@ -6492,6 +7606,26 @@
               }
             },
             "description": "Stored configuration/result fields; see the corresponding reference for limits."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Role, browser-session or local MFA requirement refused the operation."
           },
           "422": {
             "content": {
@@ -6537,6 +7671,26 @@
               }
             },
             "description": "Request acknowledged; does not establish durable enqueue or delivery."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Role, browser-session or local MFA requirement refused the operation."
           }
         },
         "security": [
@@ -6550,16 +7704,38 @@
     },
     "/api/settings/sso": {
       "get": {
-        "description": "Return SSO configuration with domain-verification instructions, without exposing its stored secret.\n\nRequires an organisation admin browser session; API tokens are refused.",
+        "description": "Return saved SSO fields and proof instructions for an admin browser user.\n\nrequest supplies public-origin fallback and s supplies organisation storage.\nSecret presence does not prove provider connectivity. Backend errors can raise.",
         "operationId": "get_sso_api_settings_sso_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SSOSettings"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Account contract; see authentication.md for branch and persistence semantics."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Role, browser-session or local MFA requirement refused the operation."
           }
         },
         "security": [
@@ -6571,7 +7747,7 @@
         "x-authentication": "Admin browser session"
       },
       "put": {
-        "description": "Validate and save SSO configuration and return the current domain-verification state.\n\nRequires an organisation admin browser session; API tokens are refused.\n\nOperation-specific HTTP errors: 409, 422. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
+        "description": "Replace saved SSO configuration and return sso_json after commit.\n\nbody defaults matter: omitted/empty issuer disables SSO and clears its\ncredentials/domains. Otherwise require a public issuer shape, client ID,\nexisting/new secret and domains. Empty/null client_secret retains the old\nsecret. Keep verification for domains still configured. Conflicting verified\nclaims return 409, invalid fields 422. user needs an admin browser session.\nSecret/evidence/storage/response failures can occur after earlier commits.",
         "operationId": "put_sso_api_settings_sso_put",
         "requestBody": {
           "content": {
@@ -6587,10 +7763,32 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SSOSettings"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Account contract; see authentication.md for branch and persistence semantics."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Role, browser-session or local MFA requirement refused the operation."
           },
           "422": {
             "content": {
@@ -6614,16 +7812,38 @@
     },
     "/api/settings/sso/verify": {
       "post": {
-        "description": "Check each pending domain's DNS TXT record; only verified domains route SSO sign-ins.",
+        "description": "Check only unverified, unclaimed saved domains and return sso_json.\n\nrequest/user/s provide origin, admin browser identity and storage. Preserve\npreviously verified domains without a new DNS check. Commit new verifications\nand evidence when any pass. Existing verification can survive removed TXT.\nNo live provider-login test occurs. Backend/storage errors can propagate.",
         "operationId": "verify_sso_domains_api_settings_sso_verify_post",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SSOSettings"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Account contract; see authentication.md for branch and persistence semantics."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Role, browser-session or local MFA requirement refused the operation."
           }
         },
         "security": [
@@ -6649,6 +7869,16 @@
               }
             },
             "description": "Asset/inventory contract; see assets-api.md for state and count semantics."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
           }
         },
         "security": [
@@ -6687,6 +7917,26 @@
               }
             },
             "description": "Asset/inventory contract; see assets-api.md for state and count semantics."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Role, browser-session or local MFA requirement refused the operation."
           },
           "422": {
             "content": {
@@ -6764,6 +8014,26 @@
             },
             "description": "External scan counters; see external-scans.md for observation and resolution limits."
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Role, browser-session or local MFA requirement refused the operation."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -6810,6 +8080,26 @@
             },
             "description": "Asset/inventory contract; see assets-api.md for state and count semantics."
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Role, browser-session or local MFA requirement refused the operation."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -6832,16 +8122,41 @@
     },
     "/api/tokens": {
       "get": {
-        "description": "Return organisation API-token metadata and creator emails without token secrets.\n\nRequires an organisation admin browser session; API tokens are refused.",
+        "description": "Return organisation token metadata/creator email, newest created first.\n\nuser needs an admin browser session. s joins creators. Fields are id, name,\ncreated_by, created, expires and last_used. Secrets are omitted. Expired rows\nremain listed. Twelve-character displayed hash prefixes can collide.",
         "operationId": "list_api_tokens_api_tokens_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ApiTokenMetadata"
+                  },
+                  "type": "array"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Account contract; see authentication.md for branch and persistence semantics."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Role, browser-session or local MFA requirement refused the operation."
           }
         },
         "security": [
@@ -6853,7 +8168,7 @@
         "x-authentication": "Admin browser session"
       },
       "post": {
-        "description": "Create a read-only organisation API token and return its secret once.\n\nPassword users must supply the required current authenticator code.\n\nRequires an organisation admin browser session; API tokens are refused.\n\nOperation-specific HTTP errors: 403, 429. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
+        "description": "Return token/id/name/expires once for a read-only credential, with HTTP 201.\n\nbody supplies name/days and optional code. user needs an admin browser\nsession. If a local authenticator exists, commit quota then require a valid\ncurrent factor. Store a hash, creator, expiry and evidence, then commit.\nThe token acts as its still-admin creator on eligible GET/HEAD routes.\nReturn 403/429 on code/quota refusal. Backend/storage errors can propagate.",
         "operationId": "create_api_token_api_tokens_post",
         "requestBody": {
           "content": {
@@ -6869,10 +8184,32 @@
           "201": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedApiToken"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Account contract; see authentication.md for branch and persistence semantics."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Role, browser-session or local MFA requirement refused the operation."
           },
           "422": {
             "content": {
@@ -6896,7 +8233,7 @@
     },
     "/api/tokens/{token_id}": {
       "delete": {
-        "description": "Delete the API token identified by its displayed hash prefix; return no content.\n\nRequires an organisation admin browser session; API tokens are refused.\n\nOperation-specific HTTP errors: 404. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
+        "description": "Delete one matching organisation API-token hash prefix and return 204.\n\ntoken_id must have length twelve. user needs an admin browser session.\nMissing match returns 404. Append evidence and commit. A prefix collision\nis not independently disambiguated. Storage/evidence errors can propagate.",
         "operationId": "revoke_api_token_api_tokens__token_id__delete",
         "parameters": [
           {
@@ -6912,6 +8249,26 @@
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Role, browser-session or local MFA requirement refused the operation."
           },
           "422": {
             "content": {
@@ -6935,16 +8292,41 @@
     },
     "/api/users": {
       "get": {
-        "description": "Return organisation member records ordered by email.\n\nRequires an organisation admin browser session; API tokens are refused.",
+        "description": "Return organisation user_json records sorted by email, without pagination.\n\nuser requires an admin browser session. s queries storage. Authentication,\ndatabase and malformed stored-data errors can propagate.",
         "operationId": "list_users_api_users_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/UserRecord"
+                  },
+                  "type": "array"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Account contract; see authentication.md for branch and persistence semantics."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Role, browser-session or local MFA requirement refused the operation."
           }
         },
         "security": [
@@ -6958,7 +8340,7 @@
     },
     "/api/users/invite": {
       "post": {
-        "description": "Same answer whether or not the address already has an account (anywhere): the address owner gets the next step.",
+        "description": "Return 202 status=invited/email after an invitation request.\n\nbody.email is lowercased. user needs an admin browser session. Require SMTP,\nenforce organisation quota, append evidence and commit. Address quota can\nsuppress mail. Existing accounts receive a sign-in message rather than\nmembership transfer. New addresses receive a scoped invitation link. Return\n403/429 on configuration/quota refusal. Mail acknowledgement is not delivery.",
         "operationId": "invite_user_api_users_invite_post",
         "requestBody": {
           "content": {
@@ -6974,10 +8356,45 @@
           "202": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "email": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "const": "invited"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "email"
+                  ],
+                  "type": "object"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Acknowledged account-mail request, not proof of delivery."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Role, browser-session or local MFA requirement refused the operation."
           },
           "422": {
             "content": {
@@ -7001,7 +8418,7 @@
     },
     "/api/users/{user_id}": {
       "delete": {
-        "description": "Remove an organisation member and their access while preserving at least one admin.\n\nRequires an organisation admin browser session; API tokens are refused.\n\nOperation-specific HTTP errors: 409. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
+        "description": "Delete a member and their sessions/API tokens, append evidence and return 204.\n\nuser needs an admin browser session. Lock organisation where supported and\ntruncate user_id lookup to 32 characters. Missing user returns 404 and the\nlast admin returns 409. Commit deletes/evidence. Other asset credentials are\nnot selected here. Database/evidence errors can propagate.",
         "operationId": "remove_user_api_users__user_id__delete",
         "parameters": [
           {
@@ -7017,6 +8434,26 @@
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Role, browser-session or local MFA requirement refused the operation."
           },
           "422": {
             "content": {
@@ -7038,7 +8475,7 @@
         "x-authentication": "Admin browser session"
       },
       "patch": {
-        "description": "Change an organisation member's admin role while preserving at least one admin.\n\nRequires an organisation admin browser session; API tokens are refused.\n\nOperation-specific HTTP errors: 409. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
+        "description": "Set a member's admin flag and return user_json, preserving one admin.\n\nuser needs an admin browser session. Lock the organisation where supported.\nuser_id lookup truncates to 32 characters. Promotion deletes old browser\nsessions. Demotion deletes API tokens but retains browser sessions. Unchanged\nroles do not append evidence/commit here. Missing user returns 404, last-admin\ndemotion 409. Database/evidence errors can propagate.",
         "operationId": "update_user_api_users__user_id__patch",
         "parameters": [
           {
@@ -7065,10 +8502,32 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/UserRecord"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Account contract; see authentication.md for branch and persistence semantics."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Role, browser-session or local MFA requirement refused the operation."
           },
           "422": {
             "content": {
@@ -7107,6 +8566,16 @@
               }
             },
             "description": "Recorded policy/plan result; see remediation-jobs.md for state, verification and commit boundaries."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
           }
         },
         "security": [
@@ -7156,6 +8625,16 @@
               }
             },
             "description": "Recorded policy/plan result; see remediation-jobs.md for state, verification and commit boundaries."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
           },
           "422": {
             "content": {

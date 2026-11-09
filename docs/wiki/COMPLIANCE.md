@@ -81,3 +81,15 @@ In the disposable Pulse checkout: Node 22.22.2, locked dependency install, 22 te
 The description-download implementation was inspected; the 40 MB live download was not repeated. Privacy evidence combines observed analysis requests with the implementation, not an assertion about every possible browser environment.
 
 The documented Pulse development server also started successfully. Playwright verified its worked example against the locally generated public data. The wiki example download and mobile snapshot reference passed browser checks.
+
+## Evidence contract checkpoint
+
+The semantic review now has a [module ledger](CONTRACT-REVIEW.md). Evidence, offline verification, key storage and MFA were reviewed against source, with Office and SSO review evidence retained from earlier batches.
+
+The evidence-report docstring incorrectly described `summary=true` as omission of ledger entries. The endpoint always returns an entry count; summary removes asset/finding arrays. The docstring, generated OpenAPI and field reference now match the implementation. A regression assertion checks both response modes.
+
+The new evidence reference names ZIP members, root fields, nested finding/asset/control/ledger fields, every metric, and temporal caveats. A test checks that fixed fields emitted by real API responses appear in the reference. This does not claim every remaining response shape is complete.
+
+This batch passed 27 targeted evidence/documentation tests, the evidence/key tests, all three executable docstrings, link checks and the 55-article site build. The full SQLite run passed 1611 tests with 59 skips; skipped cases do not establish fresh platform proofs.
+
+A further temporal check confirms that finding `status` is current while `resolved_at` is limited by the selected period. The reference states this distinction explicitly. All 22 evidence tests passed after that addition. The refreshed OpenAPI export passed Redocly validation without warnings.

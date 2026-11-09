@@ -47,7 +47,7 @@ Empty response schemas do not define a stable response contract. Inspect the lin
 | `GET` | [`/api/enroll-tokens`](../../api/src/nimstead/app.py#L725) | Session or read-only API token | Return enrolment-token metadata for this organisation without token secrets. |
 | `DELETE` | [`/api/enroll-tokens/{token_id}`](../../api/src/nimstead/app.py#L734) | Admin browser session | Revoke the enrolment token identified by its displayed hash prefix; return no content. |
 | `GET` | [`/api/evidence/ledger`](../../api/src/nimstead/app.py#L2273) | Session or read-only API token | Return recent ledger entries, matching total, and integrity problems for the organisation. |
-| `GET` | [`/api/evidence/pack`](../../api/src/nimstead/app.py#L2315) | Session or read-only API token | Return a signed ZIP evidence pack for the requested trailing days. |
+| `GET` | [`/api/evidence/pack`](../../api/src/nimstead/app.py#L2316) | Session or read-only API token | Return a signed ZIP evidence pack for the requested trailing days. |
 | `GET` | [`/api/evidence/public-key`](../../api/src/nimstead/app.py#L2290) | No user-session dependency | Publish this out of band (website, contract, auditor email); auditors verify packs against it, not the copy in the zip. |
 | `GET` | [`/api/evidence/report`](../../api/src/nimstead/app.py#L2301) | Session or read-only API token | Return the evidence report for the requested trailing days. |
 | `GET` | [`/api/evidence/verify.py`](../../api/src/nimstead/app.py#L2296) | No user-session dependency | The offline verifier, published here (and by hash next to the key) rather than inside the pack it checks. |
@@ -80,7 +80,7 @@ Empty response schemas do not define a stable response contract. Inspect the lin
 | `GET` | [`/api/settings/sso`](../../api/src/nimstead/app.py#L1991) | Admin browser session | Return SSO configuration with domain-verification instructions, without exposing its stored secret. |
 | `PUT` | [`/api/settings/sso`](../../api/src/nimstead/app.py#L1998) | Admin browser session | Validate and save SSO configuration and return the current domain-verification state. |
 | `POST` | [`/api/settings/sso/verify`](../../api/src/nimstead/app.py#L1978) | Admin browser session | Check each pending domain's DNS TXT record; only verified domains route SSO sign-ins. |
-| `GET` | [`/api/summary`](../../api/src/nimstead/app.py#L2361) | Session or read-only API token | Return fleet counts, priority totals, recommended upgrades, and jobs needing attention. |
+| `GET` | [`/api/summary`](../../api/src/nimstead/app.py#L2362) | Session or read-only API token | Return fleet counts, priority totals, recommended upgrades, and jobs needing attention. |
 | `POST` | [`/api/targets`](../../api/src/nimstead/app.py#L1316) | Admin browser session | Create an external target for a public DNS hostname and return its asset record. |
 | `POST` | [`/api/targets/{target_id}/scan`](../../api/src/nimstead/app.py#L1367) | Admin browser session | Recheck ownership, scan the external target, and return its findings result. |
 | `POST` | [`/api/targets/{target_id}/verify`](../../api/src/nimstead/app.py#L1343) | Admin browser session | Verify DNS and address ownership for an external target and return its asset record. |

@@ -376,5 +376,12 @@
     "title": "HTTP endpoint catalog",
     "group": "Reference",
     "product": "assure"
+  },
+  {
+    "source": "docs/reference/evidence-format.md",
+    "slug": "reference/evidence-format",
+    "title": "Evidence responses and pack format",
+    "group": "Reference",
+    "product": "assure"
   }
 ]

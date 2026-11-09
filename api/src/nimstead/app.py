@@ -2302,7 +2302,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def evidence_report(user: CurrentUser, s: DB, days: int = Query(90, ge=1, le=730), summary: bool = False):
         """Return the evidence report for the requested trailing days.
 
-        summary=true omits ledger entries; days ranges from 1 to 730 and defaults to 90.
+        days ranges from 1 to 730 and defaults to 90. ledger.entries is an integer count
+        in both modes. summary=true omits the assets and findings arrays.
 
         Requires a user session or a read-only organisation API token. API tokens cannot use write methods."""
         pack = evidence.build_pack(s, user.org_id, *evidence.default_period(days), with_entries=False)

@@ -2663,7 +2663,7 @@
     },
     "/api/evidence/report": {
       "get": {
-        "description": "Return the evidence report for the requested trailing days.\n\nsummary=true omits ledger entries; days ranges from 1 to 730 and defaults to 90.\n\nRequires a user session or a read-only organisation API token. API tokens cannot use write methods.",
+        "description": "Return the evidence report for the requested trailing days.\n\ndays ranges from 1 to 730 and defaults to 90. ledger.entries is an integer count\nin both modes. summary=true omits the assets and findings arrays.\n\nRequires a user session or a read-only organisation API token. API tokens cannot use write methods.",
         "operationId": "evidence_report_api_evidence_report_get",
         "parameters": [
           {

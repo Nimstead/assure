@@ -74,3 +74,5 @@ Read the reasons, trust boundaries, and tradeoffs.
 [Design decisions](../DECISIONS.md), [engine designs](engine/design-e2.md), and [task plans](../tasks/plan.md) retain rationale and planned work. They do not replace current operator instructions.
 
 [Changelog](../CHANGELOG.md) records release changes. [Security](../SECURITY.md) gives the vulnerability-reporting policy.
+
+See [evidence responses and pack format](reference/evidence-format.md) for ledger, report, ZIP, and metric fields.

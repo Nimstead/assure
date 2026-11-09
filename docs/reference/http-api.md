@@ -62,3 +62,5 @@ The grouped endpoint does not apply the `overdue` filter. Do not use its results
 Limits vary by operation. Environment-controlled quotas are in [Configuration](../configuration.md). Do not retry a refused write blindly; some batch operations commit successful items independently and return errors for the rest.
 
 Related: [upload an SBOM](../how-to/upload-sbom.md), [verify evidence](../how-to/verify-evidence.md).
+
+See [evidence responses and pack format](evidence-format.md) for ledger, report, ZIP, and metric fields.

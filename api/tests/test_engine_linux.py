@@ -389,3 +389,72 @@ def test_a_disagreement_goes_to_the_ledger_per_new_inventory_not_per_hourly_rema
     for _ in range(3):
         rescan(s, s.get(Asset, aid), inventory_received=False, cache={})
     assert [e["kind"] for e in c.get("/api/evidence/ledger").json()["entries"]].count("engine_disagrees") == 1
+
+
+# ---- phase 4 of tasks/plan-engine-findings.md: a finding closes only on evidence
+
+def _post(c, aid_h, inv):
+    assert c.post("/api/agent/inventory", headers=aid_h, json=inv).status_code == 200
+
+
+def _deb_host(c, inv, eco=DEB):
+    token = c.post("/api/enroll-tokens").json()["token"]
+    a = c.post("/api/agent/enroll", json={"token": token, "hostname": "deb-1", "ecosystem": eco}).json()
+    h = {"Authorization": f"Bearer {a['agent_key']}"}
+    _post(c, h, inv)
+    return a["asset_id"], h
+
+
+def test_an_upgrade_past_the_fix_and_a_removal_read_in_full_close_findings(env):
+    s = seed(env)
+    c = user(env)
+    aid, h = _deb_host(c, ldoc(*SSL, pkg("curl", "7.0-1")))
+    assert set(_open(s, aid)) == {"CVE-2026-1", "CVE-2026-3", "CVE-2026-7"}
+    _post(c, h, ldoc(pkg("libssl3t64", "3.5.1-1+deb13u2", "openssl"), pkg("openssl", "3.5.1-1+deb13u2"), pkg("curl", "7.0-1")))
+    assert set(_open(s, aid)) == {"CVE-2026-3", "CVE-2026-7"}  # CVE-2026-1: not vulnerable at the fix
+    _post(c, h, ldoc(*SSL[:0], pkg("libssl3t64", "3.5.1-1+deb13u2", "openssl"), pkg("openssl", "3.5.1-1+deb13u2")))
+    assert set(_open(s, aid)) == {"CVE-2026-7"}  # curl removed, with the package list read in full
+
+
+def test_a_partial_read_closes_nothing_and_says_why_then_a_full_read_closes(env):
+    """A Linux package list read short never replaces the last (DECISIONS 83); a Python package scan cut short did close on silence."""
+    from test_engine_apps import REQUESTS
+    s = seed(env)
+    s.merge(Advisory(id=REQUESTS["id"], ecosystem="PyPI", package="requests", modified=REQUESTS["modified"], record=REQUESTS))
+    s.commit()
+    c = user(env)
+
+    def with_python(state, count, *found):
+        d = ldoc(*SSL)
+        d["packages"] += [{"ecosystem": "PyPI", "name": "requests", "version": v, "source": "/usr/lib/python3/dist-packages"} for v in found]
+        d["collection"]["sources"]["python_packages"] = {"state": state, "count": count}
+        return d
+    aid, h = _deb_host(c, with_python("ok", 1, "2.19.1"))
+    assert "CVE-2018-18074" in _open(s, aid)
+    _post(c, h, with_python("partial", 40))  # the scan stopped before reaching it
+    held = _open(s, aid)
+    assert "CVE-2018-18074" in held and any(r.startswith("Still open: ") for r in held["CVE-2018-18074"].reasons)
+    _post(c, h, with_python("ok", 0))  # read in full: uninstalled
+    assert "CVE-2018-18074" not in _open(s, aid)
+
+
+def test_a_distro_release_upgrade_closes_the_old_releases_findings(env):
+    s = seed(env)
+    old = deb("CVE-2026-11", "openssl", "3.0.17-1~deb12u2", eco="Debian:12")
+    s.merge(Advisory(id=old["id"] + "-12", ecosystem="Debian:12", package="openssl", modified=old["modified"], record=old))
+    s.commit()
+    c = user(env)
+    aid, h = _deb_host(c, ldoc(pkg("openssl", "3.0.11-1~deb12u2"), eco="Debian:12", facts={"os_version_id": "12"}), eco="Debian:12")
+    assert "CVE-2026-11" in _open(s, aid)
+    _post(c, h, ldoc(pkg("openssl", "3.5.1-1+deb13u2")))  # upgraded to Debian 13, past every fix
+    assert "CVE-2026-11" not in _open(s, aid)
+
+
+def test_an_old_agent_without_a_collection_document_still_closes_as_before(env):
+    s = seed(env)
+    c = user(env)
+    old = {k: v for k, v in ldoc(*SSL).items() if k != "collection"}
+    aid, h = _deb_host(c, old)
+    assert set(_open(s, aid)) == {"CVE-2026-1", "CVE-2026-7"}
+    _post(c, h, {**old, "packages": [dict(pkg("bash", "5.2.37-2"), ecosystem=DEB)]})
+    assert _open(s, aid) == {}  # it can't say what it read, so the earlier rule stands; never stuck open

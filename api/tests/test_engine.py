@@ -597,3 +597,17 @@ def test_one_inventory_is_evaluated_once_and_its_record_still_stored(env, monkey
     assert len(calls) == 1
     s = make_sessionmaker(env)()
     assert s.scalar(select(ScanRecord).where(ScanRecord.asset_id == aid)) is not None
+
+
+def test_phase_4_a_windows_feature_update_closes_the_old_builds_findings(env):
+    seed(env)
+    c = user(env)
+    _, h = enrolled(c, RICH)
+    before = {(f["package"], f["vuln_id"]) for f in c.get("/api/findings").json()}
+    assert (W11, "CVE-2026-1") in before
+    newer = copy.deepcopy(RICH)
+    newer["packages"][0]["name"] = "Windows 11 Version 26H1 for x64-based Systems"  # a feature update: another MSRC product
+    assert c.post("/api/agent/inventory", headers=h, json=newer).status_code == 200
+    after = {(f["package"], f["vuln_id"]) for f in c.get("/api/findings").json()}
+    assert not {x for x in after if x[0] == W11}  # windows_build read in full: the old product is gone, not stuck open
+    assert {x for x in before if x[0] != W11} <= after

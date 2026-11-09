@@ -4,6 +4,12 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Changed
+- A finding now closes only on evidence that it's fixed or no longer installed (phase 4 of `tasks/plan-engine-findings.md`, DECISIONS 124). If the agent couldn't read what a finding is about, for example a package scan cut short, the finding stays open and says why. A product that's uninstalled, dropped from an SBOM, or left behind by a distro or Windows upgrade still closes, once the list that would show it was read in full.
+
+### Added
+- A weekly check of the matcher and the detection engine against OSV's live answers (`.github/workflows/oracle.yml`).
+
 ## [0.7.6] - 2026-11-09 (preview)
 
 ### Changed

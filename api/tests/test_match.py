@@ -92,3 +92,26 @@ def test_advisory_text_is_cut_at_a_word_with_an_ellipsis():
     long = "word " * 60
     out = clip(long)
     assert len(out) <= 201 and out.endswith("word…") and "  " not in out
+
+
+@pytest.mark.parametrize("d,version,want", list(_cases()))
+def test_the_engine_agrees_with_osv_oracle(d, version, want):
+    """The same outside answer, through the engine's own path (installs, product keys, grouping by CVE), not only match_package.
+    Parity with rescan can't catch a fault the two share; OSV's own answer can (refreshed weekly by .github/workflows/oracle.yml)."""
+    from nimstead.engine.collection import Inventory, linux
+    from nimstead.engine.content import Content
+    from nimstead.engine.evaluate import evaluate
+    from nimstead.engine.model import Outcome
+    from nimstead.match import normalize_ecosystem
+    eco, name = d["ecosystem"], d["name"]
+    pkg = {"ecosystem": eco, "name": name, "version": version, "source": name if linux(eco) else None}
+    if linux(eco):
+        inv = Inventory.from_doc({"hostname": "oracle", "ecosystem": eco, "agent_version": "0.6.7", "collected_at": "2026-11-09T00:00:00Z", "packages": [pkg],
+                                  "collection": {"v": 1, "sources": {"os_release": {"state": "ok", "count": 1}, "package_db": {"state": "ok", "count": 1, "exit": 0}}}})
+        key = (normalize_ecosystem(eco), name)
+        content = Content.make({key: d["records"]}, feeds={key[0]}, universe={name})
+    else:
+        inv = Inventory(hostname="oracle", kind="application", received=False, packages=[{**pkg, "origin": "sbom"}], sbom={"received": "2026-11-09T00:00:00"})
+        content = Content.make({(eco, name): d["records"]}, feeds={eco})
+    got = {v.vuln_id for v in evaluate(inv, content) if v.outcome == Outcome.VULNERABLE and not v.vuln_id.startswith("EOL:")}
+    assert got == {canonical_id(r) for r in d["records"] if r["id"] in want}

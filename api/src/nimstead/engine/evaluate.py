@@ -10,6 +10,7 @@ from dataclasses import replace
 
 from nimstead import lifecycle, msproducts, risk, sbom, winapps
 from nimstead.engine.collection import (
+    _APP_SOURCE,
     AGENT_APPS,
     MS_FACTS,
     MS_UNINSTALL,
@@ -211,15 +212,38 @@ def _os_blocked(inv: Inventory) -> Verdict:
     return Verdict(outcome=Outcome.NOT_RUN, reason="precondition-unknown", blocker=s.name, detail="the agent says it read the build, but sent no Windows entry", **base)
 
 
-def _carry_forward(verdicts: list[Verdict], prior) -> list[Verdict]:
-    """T7, R4.6: an open finding this scan has no answer for stays open, flagged. Without a positive verdict, nothing is fixed."""
+def _read_in_full(inv: Inventory, eco: str) -> bool:
+    """Whether every source that would list a product of `eco` was read whole this time, so its absence is evidence (R4.6)."""
+    from nimstead.scan import READ_FROM
+    if linux(eco):  # another release of the distro (an upgrade) is gone once the platform and the new package list are both read
+        names = ("package_db",) if eco == normalize_ecosystem(inv.ecosystem) else ("os_release", "package_db")
+    elif eco in READ_FROM:
+        names = READ_FROM[eco]
+    elif eco in sbom.ECOSYSTEMS:
+        names = (*([_APP_SOURCE[eco][0]] if eco in _APP_SOURCE and inv.kind != "application" else []),
+                 *(["sbom"] if inv.kind == "application" or inv.sbom or inv.sbom_rows else []))
+    else:
+        names = ()
+    return bool(names) and all(inv.source(n).state == "ok" for n in names)
+
+
+def _carry_forward(verdicts: list[Verdict], prior, inv: Inventory | None = None) -> list[Verdict]:
+    """T7, R4.6: an open finding this scan has no answer for stays open, flagged. Without a positive verdict, nothing is fixed.
+    The exception is evidence of absence: the product isn't installed and the source that would list it was read whole (an
+    uninstall, a dropped SBOM component, a distro or Windows upgrade), which is not-applicable, `removed`."""
     answered = {(v.ecosystem, v.product, v.vuln_id) for v in verdicts if v.vuln_id}
     gone = {(v.ecosystem, v.product) for v in verdicts if v.outcome == Outcome.NOT_APPLICABLE}
+    held = None  # built only when a finding has no answer: most scans answer every one
     out = []
     for eco, product, vuln in sorted(set(prior)):
         if (eco in ("Windows", msproducts.ECOSYSTEM, winapps.ECOSYSTEM, *sbom.ECOSYSTEMS) or linux(eco)) and (eco, product, vuln) not in answered and (eco, product) not in gone:
             family = {"Windows": "os", msproducts.ECOSYSTEM: "microsoft", winapps.ECOSYSTEM: "app"}.get(eco, "application" if eco in sbom.ECOSYSTEMS else "distro")
-            out.append(Verdict(f"{vuln}/{product}", family, eco, product, Outcome.UNDETERMINED, vuln_id=vuln, grade=Grade.UNVERIFIED, reason="not-reassessed"))
+            if inv and held is None:
+                held = {(i.ecosystem, k) for i in (*installs(inv), *app_installs(inv)) for k in i.keys}
+            if inv and (eco, product) not in held and _read_in_full(inv, eco):
+                out.append(Verdict(f"{vuln}/{product}", family, eco, product, Outcome.NOT_APPLICABLE, vuln_id=vuln, reason="removed"))
+            else:
+                out.append(Verdict(f"{vuln}/{product}", family, eco, product, Outcome.UNDETERMINED, vuln_id=vuln, grade=Grade.UNVERIFIED, reason="not-reassessed"))
     return out
 
 
@@ -310,7 +334,7 @@ def _evaluate_linux(inv: Inventory, c: Content, prior) -> list[Verdict]:
             out = [replace(v, outcome=Outcome.UNDETERMINED, reason="end-of-life", grade=None) if v.outcome == Outcome.NOT_VULNERABLE else v for v in out]
         out.append(eol)
     out += _applications(inv, c, db.state == "ok", db)  # after end of support: a distro's lifecycle says nothing of PyPI's advisories
-    out += _carry_forward(out, prior)
+    out += _carry_forward(out, prior, inv)
     return _sorted(out)
 
 
@@ -319,7 +343,7 @@ def evaluate(inv: Inventory, content: Content, prior: tuple | list = ()) -> list
     if inv.kind == "application":  # an SBOM and nothing else
         out = (_applications(inv, content) if inv.source("sbom").state == "ok"
                else [Verdict("product:sbom", "application", "SBOM", "SBOM", Outcome.NOT_RUN, reason="no-sbom")])
-        return _sorted(out + _carry_forward(out, prior))
+        return _sorted(out + _carry_forward(out, prior, inv))
     if not inv.received:
         if linux(inv.ecosystem):
             return [Verdict("product:platform", "distro", inv.ecosystem, inv.ecosystem, Outcome.NOT_RUN, reason="no-inventory")]
@@ -347,5 +371,5 @@ def evaluate(inv: Inventory, content: Content, prior: tuple | list = ()) -> list
         out.append(_absent_or_blocked(name, "microsoft", msproducts.ECOSYSTEM, name, name in held, ms))
     out = [v for v in out if v]
     out += _applications(inv, content)
-    out += _carry_forward(out, prior)
+    out += _carry_forward(out, prior, inv)
     return _sorted(out)

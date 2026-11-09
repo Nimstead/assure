@@ -611,3 +611,27 @@ def test_phase_4_a_windows_feature_update_closes_the_old_builds_findings(env):
     after = {(f["package"], f["vuln_id"]) for f in c.get("/api/findings").json()}
     assert not {x for x in after if x[0] == W11}  # windows_build read in full: the old product is gone, not stuck open
     assert {x for x in before if x[0] != W11} <= after
+
+
+# ---- review of PR #45: what may close a finding nobody answered
+
+def test_a_per_user_microsoft_app_isnt_removed_while_the_user_hives_went_unread():
+    prior = [("Microsoft", "Visual Studio Code", "CVE-2026-50")]
+    unread = run(doc(sources={"user_hives": {"state": "failed", "count": 0, "error": "NTUSER.DAT locked"}}), content(), prior)
+    assert one(unread, vuln_id="CVE-2026-50").reason == "not-reassessed"
+    assert one(run(doc(), content(), prior), check="product:Visual Studio Code").outcome == Outcome.NOT_APPLICABLE  # every list read: gone
+
+
+def test_os_named_products_and_the_os_itself_arent_removed_when_the_build_wasnt_identified():
+    net = ("Microsoft", ".NET Framework 4.8 on Windows 11 version 23H2", "CVE-2026-51")
+    failed = doc(build=None, sources={"windows_build": {"state": "failed", "count": 0, "error": "access denied"}})
+    assert one(run(failed, content(), [net]), vuln_id="CVE-2026-51").reason == "not-reassessed"
+    unmatched = doc(build=None)  # read, but no MSRC product name: os_unmatched, so no OS row at all
+    assert one(run(unmatched, content(), [("Windows", W11, "CVE-2026-1")]), vuln_id="CVE-2026-1").reason == "not-reassessed"
+
+
+def test_a_finding_whose_advisory_was_withdrawn_or_re_keyed_closes_while_the_app_stays():
+    vs = run(doc(app("7-Zip 19.00 (x64)", "19.00")), content(apps=[nvd("CVE-2026-9", "20.00")]), [("WinApp", SEVEN, "GHSA-old-id")])
+    v = one(vs, vuln_id="GHSA-old-id")
+    assert (v.outcome, v.reason) == (Outcome.NOT_APPLICABLE, "withdrawn")
+    assert one(vs, vuln_id="CVE-2026-9").outcome == Outcome.VULNERABLE

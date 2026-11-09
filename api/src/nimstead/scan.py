@@ -135,7 +135,8 @@ def _held_open(key: tuple, index: tuple[dict, set] | None, asset: Asset) -> str 
     if index is None or not asset.collection or not parity.in_slice(key[0]):
         return None
     answer = index[0].get(key, [])
-    if any(v.proves_absent for v in answer) or key[:2] in index[1]:
+    # "end-of-life": a fixed version judged not vulnerable, held back from the report only because the release gets no more advisories
+    if any(v.proves_absent or v.reason == "end-of-life" for v in answer) or key[:2] in index[1]:
         return None
     reason = next((v.reason for v in answer if v.reason in REASONS), "not-reassessed")
     return REASONS[reason][0]

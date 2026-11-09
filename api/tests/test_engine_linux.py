@@ -458,3 +458,24 @@ def test_an_old_agent_without_a_collection_document_still_closes_as_before(env):
     assert set(_open(s, aid)) == {"CVE-2026-1", "CVE-2026-7"}
     _post(c, h, {**old, "packages": [dict(pkg("bash", "5.2.37-2"), ecosystem=DEB)]})
     assert _open(s, aid) == {}  # it can't say what it read, so the earlier rule stands; never stuck open
+
+
+def test_on_a_release_past_end_of_support_a_package_fixed_by_hand_still_closes(env):
+    s = seed(env)
+    rec = deb("CVE-2026-21", "openssl", "1.1.1w-0+deb11u2", eco="Debian:11")
+    s.merge(Advisory(id=rec["id"] + "-11", ecosystem="Debian:11", package="openssl", modified=rec["modified"], record=rec))
+    s.commit()
+    c = user(env)
+    old = dict(OLD, packages=[dict(pkg("openssl", "1.1.1n-0+deb11u5"), ecosystem="Debian:11")])
+    old["collection"] = {"v": 1, "sources": {"os_release": {"state": "ok", "count": 1}, "package_db": {"state": "ok", "count": 1, "exit": 0}}}
+    aid, h = _deb_host(c, old, eco="Debian:11")
+    assert "CVE-2026-21" in _open(s, aid)
+    _post(c, h, dict(old, packages=[dict(pkg("openssl", "1.1.1w-0+deb11u2"), ecosystem="Debian:11")]))
+    assert "CVE-2026-21" not in _open(s, aid)  # the fix is in: end of support stops new advisories, it doesn't undo this one
+
+
+def test_a_linux_list_read_short_keeps_the_old_app_rows_so_no_app_finding_is_removed():
+    short = ldoc(pkg("bash", "5.2.37-2"), db={"state": "failed", "count": 0, "exit": 2, "error": "dpkg-query exited 2"})
+    short["collection"]["sources"]["python_packages"] = {"state": "ok", "count": 0}
+    v = one(run(short, lcontent(), [("PyPI", "requests", "CVE-2018-18074")]), vuln_id="CVE-2018-18074")
+    assert v.reason == "not-reassessed"  # the server kept the last list, app rows included (DECISIONS 83): absence here proves nothing

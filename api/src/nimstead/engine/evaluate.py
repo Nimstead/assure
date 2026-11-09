@@ -217,20 +217,24 @@ def _read_in_full(inv: Inventory, eco: str) -> bool:
     from nimstead.scan import READ_FROM
     if linux(eco):  # another release of the distro (an upgrade) is gone once the platform and the new package list are both read
         names = ("package_db",) if eco == normalize_ecosystem(inv.ecosystem) else ("os_release", "package_db")
+    elif eco == msproducts.ECOSYSTEM:  # per-user installs come from the user hives; .NET and Store product names carry the OS's
+        names = (*READ_FROM[eco], "user_hives", "windows_build")
     elif eco in READ_FROM:
         names = READ_FROM[eco]
     elif eco in sbom.ECOSYSTEMS:
-        names = (*([_APP_SOURCE[eco][0]] if eco in _APP_SOURCE and inv.kind != "application" else []),
+        agent = eco in _APP_SOURCE and inv.kind != "application"
+        names = (*([_APP_SOURCE[eco][0]] if agent else []), *(["package_db"] if agent and inv.is_linux else []),  # a Linux list read short keeps the old app rows too (DECISIONS 83)
                  *(["sbom"] if inv.kind == "application" or inv.sbom or inv.sbom_rows else []))
     else:
         names = ()
     return bool(names) and all(inv.source(n).state == "ok" for n in names)
 
 
-def _carry_forward(verdicts: list[Verdict], prior, inv: Inventory | None = None) -> list[Verdict]:
+def _carry_forward(verdicts: list[Verdict], prior, inv: Inventory | None = None, c: Content | None = None) -> list[Verdict]:
     """T7, R4.6: an open finding this scan has no answer for stays open, flagged. Without a positive verdict, nothing is fixed.
-    The exception is evidence of absence: the product isn't installed and the source that would list it was read whole (an
-    uninstall, a dropped SBOM component, a distro or Windows upgrade), which is not-applicable, `removed`."""
+    The exceptions are evidence, with the source that would list the product read whole: the product isn't installed (an
+    uninstall, a dropped SBOM component, a distro or Windows upgrade) is not-applicable, `removed`; it is installed, but no live
+    advisory for it carries this id any more (withdrawn, or re-keyed when a GHSA gained a CVE) is not-applicable, `withdrawn`."""
     answered = {(v.ecosystem, v.product, v.vuln_id) for v in verdicts if v.vuln_id}
     gone = {(v.ecosystem, v.product) for v in verdicts if v.outcome == Outcome.NOT_APPLICABLE}
     held, full = None, {}  # each built only when needed: most scans answer every finding, and an old agent's sources are never read in full
@@ -242,8 +246,12 @@ def _carry_forward(verdicts: list[Verdict], prior, inv: Inventory | None = None)
                 full[eco] = _read_in_full(inv, eco)
             if full.get(eco) and held is None:
                 held = {(i.ecosystem, k) for i in (*installs(inv), *app_installs(inv)) for k in i.keys}
-            if full.get(eco) and (eco, product) not in held:
+            os_known = eco != "Windows" or any(e == "Windows" for e, _ in held or ())  # an OS name MSRC doesn't map isn't an upgrade
+            recs = c.records.get((eco, product), []) if c else []
+            if full.get(eco) and (eco, product) not in held and os_known:
                 out.append(Verdict(f"{vuln}/{product}", family, eco, product, Outcome.NOT_APPLICABLE, vuln_id=vuln, reason="removed"))
+            elif full.get(eco) and recs and not any(canonical_id(r) == vuln and not r.get("withdrawn") for r in recs):
+                out.append(Verdict(f"{vuln}/{product}", family, eco, product, Outcome.NOT_APPLICABLE, vuln_id=vuln, reason="withdrawn"))
             else:
                 out.append(Verdict(f"{vuln}/{product}", family, eco, product, Outcome.UNDETERMINED, vuln_id=vuln, grade=Grade.UNVERIFIED, reason="not-reassessed"))
     return out
@@ -336,7 +344,7 @@ def _evaluate_linux(inv: Inventory, c: Content, prior) -> list[Verdict]:
             out = [replace(v, outcome=Outcome.UNDETERMINED, reason="end-of-life", grade=None) if v.outcome == Outcome.NOT_VULNERABLE else v for v in out]
         out.append(eol)
     out += _applications(inv, c, db.state == "ok", db)  # after end of support: a distro's lifecycle says nothing of PyPI's advisories
-    out += _carry_forward(out, prior, inv)
+    out += _carry_forward(out, prior, inv, c)
     return _sorted(out)
 
 
@@ -345,7 +353,7 @@ def evaluate(inv: Inventory, content: Content, prior: tuple | list = ()) -> list
     if inv.kind == "application":  # an SBOM and nothing else
         out = (_applications(inv, content) if inv.source("sbom").state == "ok"
                else [Verdict("product:sbom", "application", "SBOM", "SBOM", Outcome.NOT_RUN, reason="no-sbom")])
-        return _sorted(out + _carry_forward(out, prior, inv))
+        return _sorted(out + _carry_forward(out, prior, inv, content))
     if not inv.received:
         if linux(inv.ecosystem):
             return [Verdict("product:platform", "distro", inv.ecosystem, inv.ecosystem, Outcome.NOT_RUN, reason="no-inventory")]
@@ -373,5 +381,5 @@ def evaluate(inv: Inventory, content: Content, prior: tuple | list = ()) -> list
         out.append(_absent_or_blocked(name, "microsoft", msproducts.ECOSYSTEM, name, name in held, ms))
     out = [v for v in out if v]
     out += _applications(inv, content)
-    out += _carry_forward(out, prior, inv)
+    out += _carry_forward(out, prior, inv, content)
     return _sorted(out)

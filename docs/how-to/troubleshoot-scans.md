@@ -21,7 +21,7 @@ On Windows, run in elevated PowerShell:
 ## A machine is not reporting
 
 1. Check the asset's last report time. Assure marks a machine as not reporting after 14 hours.
-2. Run the agent's `doctor` command on the machine. Use the platform-specific command below.
+2. Run the agent's `doctor` command on the machine. Use the platform-specific command above.
 3. Resolve each `FAIL` result. Check the configured server address, proxy, clock, schedule, disk space, and permissions as indicated.
 4. Inspect the local agent log: `/var/lib/nimstead/agent.log` on Linux or `C:\ProgramData\Nimstead\agent.log` on Windows. Root or administrator access is required.
 5. Run the enrolled agent's `report` command with its normal service privileges. Confirm that the asset's last report time advances.
@@ -38,5 +38,7 @@ Do not enrol the machine repeatedly to diagnose a network failure. Keep its exis
 6. For an unsupported platform or an incomparable version, review the vendor's advisory manually. A repeat scan alone does not add support.
 
 A scan with no findings can still have incomplete checks. Confirm the scan report's outcomes and reasons before treating the host as assessed.
+
+If a finding unexpectedly resolves, inspect the matching feed and collection state. A missing match can change finding status without proof of repair. Compare the [resolution guards](../reference/findings.md#reassessment-and-resolution) before closing the investigation.
 
 Related: [agent commands](../reference/agent-cli.md), [inventory to evidence](../explanation/inventory-to-evidence.md).

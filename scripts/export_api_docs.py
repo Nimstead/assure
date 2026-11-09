@@ -46,9 +46,25 @@ def render() -> dict[str, str]:
         "UploadToken": {"type": "http", "scheme": "bearer", "bearerFormat": "nmu_",
                         "description": "Upload token for the asset named by the request."},
     }
+    finding_fields = {name: {"type": "string"} for name in (
+        "id", "asset_id", "hostname", "ecosystem", "package", "installed_version", "vuln_id", "summary", "priority", "status", "first_seen", "last_seen")}
+    finding_fields |= {name: {"type": ["string", "null"]} for name in ("fixed_version", "rule_evidence", "resolved_at", "due")}
+    finding_fields |= {name: {"type": "boolean"} for name in ("setting_fix", "plannable", "kev")}
+    finding_fields |= {name: {"type": ["number", "null"]} for name in ("cvss", "epss")}
+    finding_fields |= {name: {"type": "array", "items": {"type": "string"}} for name in ("advisory_ids", "reasons")}
+    finding_fields["score"] = {"type": "integer"}
+    compact_fields = {name: finding_fields[name] for name in (
+        "id", "asset_id", "hostname", "ecosystem", "package", "installed_version", "fixed_version", "vuln_id", "kev", "score", "priority", "reasons")}
+    detail_fields = {**finding_fields, "package_fix": {"type": ["object", "null"], "properties": {
+        "version": {"type": "string"}, "open": {"type": "integer", "minimum": 0}}, "required": ["version", "open"], "additionalProperties": False}}
+    group_fields = {name: {"type": "string"} for name in ("key", "priority", "package", "vuln_id")}
+    group_fields |= {name: {"type": "integer", "minimum": 0} for name in ("findings", "hosts", "score", "packages", "vulns")}
+    group_fields |= {"kev": {"type": "boolean"}, "fixed_version": {"type": ["string", "null"]}, "ecosystem": {"type": ["string", "null"]}}
+    for name, fields in (("FindingRow", finding_fields), ("FindingCompact", compact_fields), ("FindingDetail", detail_fields), ("FindingGroup", group_fields)):
+        schema["components"]["schemas"][name] = {"type": "object", "properties": fields, "required": list(fields), "additionalProperties": False}
     lines = ["# HTTP endpoint catalog", "",
              "Use the [OpenAPI JSON](openapi.json) for typed parameters, request models, defaults, and declared response schemas.", "",
-             "The export adds server/authentication metadata and selected response contracts to FastAPI’s schema: SBOM, external-scan counters, agent manifest and distribution files. Other definitions come from the app.", "",
+             "The export adds server/authentication metadata and selected contracts: findings, CSV, SBOM, external-scan counters, agent manifest and distribution files. Other definitions come from the app.", "",
              "Authentication labels describe entry requirements. Organisation ownership, roles, origin checks, quotas, "
              "and operation-specific state checks still apply. See [HTTP API reference](http-api.md).", "",
              "Empty response schemas do not define a stable response contract. Inspect the linked handler and its tests "
@@ -85,6 +101,28 @@ def render() -> dict[str, str]:
                 # Body tokens and SSO cookies are described separately; no HTTP auth scheme represents them.
                 operation["security"] = []
             operation["x-authentication"] = auth
+            finding_schema = None
+            if route.path == "/api/findings":
+                finding_schema = {"anyOf": [{"type": "array", "items": {"$ref": f"#/components/schemas/{row}"}}
+                                            for row in ("FindingRow", "FindingCompact")]}
+            elif route.path == "/api/findings/{finding_id}":
+                finding_schema = {"$ref": "#/components/schemas/FindingDetail"}
+            elif route.path in {"/api/findings/{finding_id}/accept", "/api/findings/{finding_id}/revoke-acceptance"}:
+                finding_schema = {"$ref": "#/components/schemas/FindingRow"}
+            elif route.path == "/api/findings/groups":
+                finding_schema = {"type": "array", "items": {"$ref": "#/components/schemas/FindingGroup"}}
+            elif route.path in {"/api/findings/count", "/api/findings/accept", "/api/findings/accept-many"}:
+                names = ["total"] if route.path.endswith("/count") else ["accepted", "skipped"] if route.path.endswith("accept-many") else ["accepted"]
+                finding_schema = {"type": "object", "properties": {n: {"type": "integer", "minimum": 0} for n in names},
+                                  "required": names, "additionalProperties": False}
+            if finding_schema:
+                operation["responses"]["200"] = {"description": "Finding result; see findings.md for row variants, filters and state semantics.",
+                                                 "content": {"application/json": {"schema": finding_schema}}}
+            if route.path == "/api/findings.csv":
+                operation["responses"]["200"] = {"description": "CSV attachment in the documented column order, without list pagination.",
+                                                 "content": {"text/csv": {"schema": {"type": "string"}}},
+                                                 "headers": {"Content-Disposition": {"schema": {"type": "string"},
+                                                                                     "description": "attachment; filename=nimstead-findings-STATUS.csv"}}}
             media = {"/install.sh": "text/x-shellscript", "/install.ps1": "text/plain",
                      "/agent/nimstead_agent.py": "text/x-python", "/agent/runtime/{arch}.zip": "application/zip"}.get(route.path)
             if media:

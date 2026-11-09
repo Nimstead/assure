@@ -324,6 +324,412 @@
         "title": "Enroll",
         "type": "object"
       },
+      "FindingCompact": {
+        "additionalProperties": false,
+        "properties": {
+          "asset_id": {
+            "type": "string"
+          },
+          "ecosystem": {
+            "type": "string"
+          },
+          "fixed_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "installed_version": {
+            "type": "string"
+          },
+          "kev": {
+            "type": "boolean"
+          },
+          "package": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "string"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "score": {
+            "type": "integer"
+          },
+          "vuln_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "asset_id",
+          "hostname",
+          "ecosystem",
+          "package",
+          "installed_version",
+          "fixed_version",
+          "vuln_id",
+          "kev",
+          "score",
+          "priority",
+          "reasons"
+        ],
+        "type": "object"
+      },
+      "FindingDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "advisory_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "asset_id": {
+            "type": "string"
+          },
+          "cvss": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "due": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ecosystem": {
+            "type": "string"
+          },
+          "epss": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "first_seen": {
+            "type": "string"
+          },
+          "fixed_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "installed_version": {
+            "type": "string"
+          },
+          "kev": {
+            "type": "boolean"
+          },
+          "last_seen": {
+            "type": "string"
+          },
+          "package": {
+            "type": "string"
+          },
+          "package_fix": {
+            "additionalProperties": false,
+            "properties": {
+              "open": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "version",
+              "open"
+            ],
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "plannable": {
+            "type": "boolean"
+          },
+          "priority": {
+            "type": "string"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "resolved_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rule_evidence": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "score": {
+            "type": "integer"
+          },
+          "setting_fix": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "vuln_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "asset_id",
+          "hostname",
+          "ecosystem",
+          "package",
+          "installed_version",
+          "vuln_id",
+          "summary",
+          "priority",
+          "status",
+          "first_seen",
+          "last_seen",
+          "fixed_version",
+          "rule_evidence",
+          "resolved_at",
+          "due",
+          "setting_fix",
+          "plannable",
+          "kev",
+          "cvss",
+          "epss",
+          "advisory_ids",
+          "reasons",
+          "score",
+          "package_fix"
+        ],
+        "type": "object"
+      },
+      "FindingGroup": {
+        "additionalProperties": false,
+        "properties": {
+          "ecosystem": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "findings": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "fixed_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "hosts": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "kev": {
+            "type": "boolean"
+          },
+          "key": {
+            "type": "string"
+          },
+          "package": {
+            "type": "string"
+          },
+          "packages": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "priority": {
+            "type": "string"
+          },
+          "score": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "vuln_id": {
+            "type": "string"
+          },
+          "vulns": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "priority",
+          "package",
+          "vuln_id",
+          "findings",
+          "hosts",
+          "score",
+          "packages",
+          "vulns",
+          "kev",
+          "fixed_version",
+          "ecosystem"
+        ],
+        "type": "object"
+      },
+      "FindingRow": {
+        "additionalProperties": false,
+        "properties": {
+          "advisory_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "asset_id": {
+            "type": "string"
+          },
+          "cvss": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "due": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ecosystem": {
+            "type": "string"
+          },
+          "epss": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "first_seen": {
+            "type": "string"
+          },
+          "fixed_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "installed_version": {
+            "type": "string"
+          },
+          "kev": {
+            "type": "boolean"
+          },
+          "last_seen": {
+            "type": "string"
+          },
+          "package": {
+            "type": "string"
+          },
+          "plannable": {
+            "type": "boolean"
+          },
+          "priority": {
+            "type": "string"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "resolved_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rule_evidence": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "score": {
+            "type": "integer"
+          },
+          "setting_fix": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "vuln_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "asset_id",
+          "hostname",
+          "ecosystem",
+          "package",
+          "installed_version",
+          "vuln_id",
+          "summary",
+          "priority",
+          "status",
+          "first_seen",
+          "last_seen",
+          "fixed_version",
+          "rule_evidence",
+          "resolved_at",
+          "due",
+          "setting_fix",
+          "plannable",
+          "kev",
+          "cvss",
+          "epss",
+          "advisory_ids",
+          "reasons",
+          "score"
+        ],
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -3025,10 +3431,25 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "anyOf": [
+                    {
+                      "items": {
+                        "$ref": "#/components/schemas/FindingRow"
+                      },
+                      "type": "array"
+                    },
+                    {
+                      "items": {
+                        "$ref": "#/components/schemas/FindingCompact"
+                      },
+                      "type": "array"
+                    }
+                  ]
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Finding result; see findings.md for row variants, filters and state semantics."
           },
           "422": {
             "content": {
@@ -3055,7 +3476,7 @@
     },
     "/api/findings.csv": {
       "get": {
-        "description": "Stream all matching findings as CSV, escaping spreadsheet formula prefixes.\n\nRequires a user session or a read-only organisation API token. API tokens cannot use write methods.\n\nOperation-specific HTTP errors: 429. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
+        "description": "Stream all matching findings as CSV, escaping spreadsheet formula prefixes.\n\nf supplies filters, including overdue=true. No list pagination applies.\nStreams through a separate Session with CSV_COLUMNS in fixed order.\nAdds a leading apostrophe to string cells beginning =, +, -, @, tab or CR.\nShares a 30/hour organisation export quota with baseline CSV and commits\nthat quota attempt. The response is text/csv with an attachment filename.\n\nRequires a user session or a read-only organisation API token. API tokens cannot use write methods.\n\nOperation-specific HTTP errors: 429. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
         "operationId": "export_findings_api_findings_csv_get",
         "parameters": [
           {
@@ -3174,11 +3595,21 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {
-                "schema": {}
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "CSV attachment in the documented column order, without list pagination.",
+            "headers": {
+              "Content-Disposition": {
+                "description": "attachment; filename=nimstead-findings-STATUS.csv",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "422": {
             "content": {
@@ -3205,7 +3636,7 @@
     },
     "/api/findings/accept": {
       "post": {
-        "description": "One decision for one vulnerability on every host it's open on now (each recorded; new hosts aren't covered).",
+        "description": "Accept currently open findings for body.vuln_id in the admin's organisation.\n\nbody also supplies the acceptance reason/days. Return {accepted: count},\ncommit each decision's ledger entry, or return 404 when none are open.\nNew hosts are not covered. Requires an admin browser session.",
         "operationId": "accept_everywhere_api_findings_accept_post",
         "requestBody": {
           "content": {
@@ -3221,10 +3652,22 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "accepted": {
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "accepted"
+                  ],
+                  "type": "object"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Finding result; see findings.md for row variants, filters and state semantics."
           },
           "422": {
             "content": {
@@ -3248,7 +3691,7 @@
     },
     "/api/findings/accept-many": {
       "post": {
-        "description": "One reason for a selection of findings (each recorded on its own); ones already closed or not yours are skipped.",
+        "description": "Accept the admin's open findings among body.ids, with reason and expiry days.\n\nids has 1\u20131000 strings; duplicate IDs count once. Skip unavailable or nonopen\nfindings. Return accepted/skipped unique-ID counts and commit ledger entries,\neven when no rows match. Requires an organisation admin browser session.",
         "operationId": "accept_many_api_findings_accept_many_post",
         "requestBody": {
           "content": {
@@ -3264,10 +3707,27 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "accepted": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "skipped": {
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "accepted",
+                    "skipped"
+                  ],
+                  "type": "object"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Finding result; see findings.md for row variants, filters and state semantics."
           },
           "422": {
             "content": {
@@ -3291,7 +3751,7 @@
     },
     "/api/findings/count": {
       "get": {
-        "description": "How many match, so a capped list can say how many it isn't showing.",
+        "description": "Return {total: integer} for the caller's findings matching query filters f.\n\nIncludes the overdue=true predicate without list pagination. Requires a user\nsession or eligible read-only API token. Does not expire accepted findings.",
         "operationId": "count_findings_api_findings_count_get",
         "parameters": [
           {
@@ -3411,10 +3871,22 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "total": {
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "total"
+                  ],
+                  "type": "object"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Finding result; see findings.md for row variants, filters and state semantics."
           },
           "422": {
             "content": {
@@ -3441,7 +3913,7 @@
     },
     "/api/findings/groups": {
       "get": {
-        "description": "One row per vulnerability or package across the fleet, worst first (the overdue filter isn't applied here).",
+        "description": "Return up to 500 grouped finding rows for the caller's organisation.\n\nf supplies filters, but overdue is ignored. by defaults to vuln; package\ngroups also separate ecosystems. Sort worst priority, score, then count.\nfixed_version is the highest known fix only for a single ecosystem. It\ndoes not prove every grouped issue has a fix. Version comparison errors can\npropagate. Requires a session or eligible read-only API token.",
         "operationId": "group_findings_api_findings_groups_get",
         "parameters": [
           {
@@ -3575,10 +4047,15 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FindingGroup"
+                  },
+                  "type": "array"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Finding result; see findings.md for row variants, filters and state semantics."
           },
           "422": {
             "content": {
@@ -3605,7 +4082,7 @@
     },
     "/api/findings/{finding_id}": {
       "get": {
-        "description": "Return an owned finding with full detail, package context, and its remediation deadline.\n\nRequires a user session or a read-only organisation API token. API tokens cannot use write methods.\n\nOperation-specific HTTP errors: 404. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
+        "description": "Return an owned finding with full detail, package context, and its remediation deadline.\n\nfinding_id identifies an owned finding in any status. package_fix describes\nknown fixed versions among currently open findings for its asset/ecosystem/package,\nor None. It is not a guarantee that all those findings have fixes.\nVersion comparison errors can propagate.\n\nRequires a user session or a read-only organisation API token. API tokens cannot use write methods.\n\nOperation-specific HTTP errors: 404. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
         "operationId": "get_finding_api_findings__finding_id__get",
         "parameters": [
           {
@@ -3622,10 +4099,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/FindingDetail"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Finding result; see findings.md for row variants, filters and state semantics."
           },
           "422": {
             "content": {
@@ -3652,7 +4131,7 @@
     },
     "/api/findings/{finding_id}/accept": {
       "post": {
-        "description": "Record time-limited risk acceptance with a reason and return the updated finding.\n\nRequires an organisation admin browser session; API tokens are refused.\n\nOperation-specific HTTP errors: 404. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
+        "description": "Record time-limited risk acceptance with a reason and return the updated finding.\n\nfinding_id can identify any owned status. body has a reason of 10\u20132000\ncharacters and days from 1\u2013365, default 90. Commit acceptance and ledger\nevent. Existing resolved_at is retained. The full row omits accepted_until.\n\nRequires an organisation admin browser session; API tokens are refused.\n\nOperation-specific HTTP errors: 404. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
         "operationId": "accept_finding_api_findings__finding_id__accept_post",
         "parameters": [
           {
@@ -3679,10 +4158,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/FindingRow"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Finding result; see findings.md for row variants, filters and state semantics."
           },
           "422": {
             "content": {
@@ -3706,7 +4187,7 @@
     },
     "/api/findings/{finding_id}/revoke-acceptance": {
       "post": {
-        "description": "Reopen an accepted finding with a recorded reason and return its updated detail.\n\nRequires an organisation admin browser session; API tokens are refused.\n\nOperation-specific HTTP errors: 404, 409. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
+        "description": "Reopen an accepted finding with a recorded reason and return its updated detail.\n\nfinding_id must identify an accepted owned finding. body.reason has 3\u20132000\ncharacters. Commit status=open, accepted_until=None and the ledger event.\nExisting resolved_at is retained. The returned full row has due=None; a\nsubsequent detail/list GET computes the deadline.\n\nRequires an organisation admin browser session; API tokens are refused.\n\nOperation-specific HTTP errors: 404, 409. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
         "operationId": "revoke_acceptance_api_findings__finding_id__revoke_acceptance_post",
         "parameters": [
           {
@@ -3733,10 +4214,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/FindingRow"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Finding result; see findings.md for row variants, filters and state semantics."
           },
           "422": {
             "content": {

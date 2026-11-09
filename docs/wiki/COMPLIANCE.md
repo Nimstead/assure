@@ -13,7 +13,7 @@ The audit covers tracked repository documentation, public Python and web interfa
 | One primary reader job per maintained page | Reviewed both tutorials and the operational guide corpus; revised backup, Group Policy, upgrade, release and recovery procedures | Review every remaining page and root entry point; finish the remaining reference and root-document reviews |
 | Safe tutorial with visible success | Both SBOM Python examples executed and matched the documented output; SBOM doctest passed | Worked example, filter and case record verified in the public product |
 | Task prerequisites, ordered actions, warnings, recovery and verification | Revised three operational guides; retained secrets, rollback and rollout boundaries | Check each other guide against source and its operational environment |
-| Complete, scannable reference | Existing API reference admits missing response schemas | Review parameters, limits, defaults, errors and completeness against implementation |
+| Complete, scannable reference | Source-backed field references and selected exported response schemas. Remaining dictionary responses still lack complete schemas | Review remaining parameters, limits, defaults, errors and completeness against implementation |
 | Explanations develop understanding | Moved channel eligibility and recovery implications out of task narratives | Review every explanation, including Pulse |
 | Reader-first and STE-style English | Revised procedures have shorter steps and separate conditions | Review remaining prose; preserve technical names and uncertainty |
 | All public interfaces documented accurately | Presence checker reports 632/632 declarations. The module ledger records semantic review scope | Inspect remaining parameter descriptions, return contracts and exceptions; presence alone is insufficient |
@@ -147,3 +147,15 @@ Corrected cache fetch, missing-signature repair, runtime-version, strict key-lis
 New cache and lifecycle cases cover unverified cache metadata, stored-before-verification bytes, older cached runtime versions, duplicate cycles and date-shape-only validation. These assertions preserve current behavior while preventing inaccurate documentation claims. The audit does not certify vendor lifecycle dates or perform a production update.
 
 418 focused tests and 46 subchecks passed. One Windows PowerShell parser test was skipped on this host. Seven executable docstrings, Ruff, Redocly, the 65-article build and six site tests passed. Signing tests use generated ephemeral keys. GitHub calls use fake responses, and actual update transport tests use loopback fixtures.
+
+## Finding and database checkpoint
+
+Reviewed all public scan persistence/coverage functions and database declarations/helpers. Reviewed finding list, detail, count, groups, CSV and acceptance handlers. The reference separates persistent finding state from evidence-qualified engine verdicts.
+
+Added complete finding row/group/filter/CSV and acceptance lookup material, plus a database connection/model reference. Corrected misleading tenant-key, plaintext-secret and immutable-model comments. The database reference explains explicit transaction ownership, defaults and JSON replacement behavior.
+
+The export now describes full/compact/detail/group responses, count and acceptance results, and findings CSV. Real API responses match the documented/exported fixed field sets. Tests cover overdue=false, ignored grouped overdue, SQL LIKE wildcards, acceptance after resolution, retained timestamps and CSV formula-prefix guards.
+
+A new regression confirms that feed absence can resolve an identity while its package remains installed. Another confirms that rescan commits other caller-session changes. SQLite checks verify constructor/insert defaults, foreign keys, explicit commit and JSON mutation behavior.
+
+106 focused tests and 46 subchecks passed, with two Windows-only parser skips. Seven executable docstrings, Ruff and Redocly passed. The site builds 67 articles and its six tests pass. PostgreSQL migration behavior is not newly established by the SQLite-specific checks. Remaining modules, response contracts and final editorial review still prevent a full compliance claim.

@@ -1477,10 +1477,17 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     # --- findings ----------------------------------------------------------
 
     def due_of(f: Finding, sla_at) -> datetime | None:
-        """Deadline for an open finding: first seen + the deadline for its priority in force then (as evidence packs count it)."""
+        """Return first_seen plus the historical SLA days for the finding's current priority.
+
+        sla_at resolves the policy at first_seen. Nonopen findings return None.
+        Unknown priority uses 180 days. Incompatible timestamps/policy values propagate errors."""
         return f.first_seen + timedelta(days=sla_at(f.first_seen).get(f.priority, 180)) if f.status == "open" else None
 
     def finding_json(f: Finding, hostname: str, due: datetime | None = None) -> dict:
+        """Return a full finding row with caller-supplied hostname and optional deadline.
+
+        accepted_until is omitted. Without due, the returned due field is None even
+        for an open finding. Does not query or change f. Model/plan-helper errors propagate."""
         return {
             "due": due.isoformat() if due else None,
             "id": f.id, "asset_id": f.asset_id, "hostname": hostname, "ecosystem": f.ecosystem,
@@ -1537,7 +1544,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/findings/count")
     def count_findings(user: CurrentUser, s: DB, f: Annotated[FindingFilter, Query()]):
-        """How many match, so a capped list can say how many it isn't showing."""
+        """Return {total: integer} for the caller's findings matching query filters f.
+
+        Includes the overdue=true predicate without list pagination. Requires a user
+        session or eligible read-only API token. Does not expire accepted findings."""
         if f.overdue:  # the deadline is worked out per finding
             return {"total": sum(1 for _ in with_due(s, user.org_id, f))}
         return {"total": s.scalar(select(func.count()).select_from(find_stmt(user.org_id, f).subquery()))}
@@ -1546,7 +1556,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/findings/groups")
     def group_findings(user: CurrentUser, s: DB, f: Annotated[FindingFilter, Query()], by: Literal["vuln", "package"] = "vuln"):
-        """One row per vulnerability or package across the fleet, worst first (the overdue filter isn't applied here)."""
+        """Return up to 500 grouped finding rows for the caller's organisation.
+
+        f supplies filters, but overdue is ignored. by defaults to vuln; package
+        groups also separate ecosystems. Sort worst priority, score, then count.
+        fixed_version is the highest known fix only for a single ecosystem. It
+        does not prove every grouped issue has a fix. Version comparison errors can
+        propagate. Requires a session or eligible read-only API token."""
         sub = find_stmt(user.org_id, f).subquery()
         k = sub.c.vuln_id if by == "vuln" else sub.c.package
         rank = func.min(case(*((sub.c.priority == p, n) for p, n in PRIORITY_RANK.items()), else_=9))
@@ -1572,6 +1588,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     @app.get("/api/findings.csv")
     def export_findings(user: CurrentUser, s: DB, f: Annotated[FindingFilter, Query()]):
         """Stream all matching findings as CSV, escaping spreadsheet formula prefixes.
+
+        f supplies filters, including overdue=true. No list pagination applies.
+        Streams through a separate Session with CSV_COLUMNS in fixed order.
+        Adds a leading apostrophe to string cells beginning =, +, -, @, tab or CR.
+        Shares a 30/hour organisation export quota with baseline CSV and commits
+        that quota attempt. The response is text/csv with an attachment filename.
 
         Requires a user session or a read-only organisation API token. API tokens cannot use write methods.
 
@@ -1633,6 +1655,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def get_finding(finding_id: str, user: CurrentUser, s: DB):
         """Return an owned finding with full detail, package context, and its remediation deadline.
 
+        finding_id identifies an owned finding in any status. package_fix describes
+        known fixed versions among currently open findings for its asset/ecosystem/package,
+        or None. It is not a guarantee that all those findings have fixes.
+        Version comparison errors can propagate.
+
         Requires a user session or a read-only organisation API token. API tokens cannot use write methods.
 
         Operation-specific HTTP errors: 404. See detail in the response.
@@ -1657,6 +1684,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def accept_finding(finding_id: str, body: Accept, user: Admin, s: DB):
         """Record time-limited risk acceptance with a reason and return the updated finding.
 
+        finding_id can identify any owned status. body has a reason of 10–2000
+        characters and days from 1–365, default 90. Commit acceptance and ledger
+        event. Existing resolved_at is retained. The full row omits accepted_until.
+
         Requires an organisation admin browser session; API tokens are refused.
 
         Operation-specific HTTP errors: 404. See detail in the response.
@@ -1680,7 +1711,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/findings/accept")
     def accept_everywhere(body: AcceptEverywhere, user: Admin, s: DB):
-        """One decision for one vulnerability on every host it's open on now (each recorded; new hosts aren't covered)."""
+        """Accept currently open findings for body.vuln_id in the admin's organisation.
+
+        body also supplies the acceptance reason/days. Return {accepted: count},
+        commit each decision's ledger entry, or return 404 when none are open.
+        New hosts are not covered. Requires an admin browser session."""
         rows = s.scalars(select(Finding).where(Finding.org_id == user.org_id, Finding.vuln_id == body.vuln_id, Finding.status == "open")).all()
         if not rows:
             raise HTTPException(404, "No open findings for that vulnerability")
@@ -1694,7 +1729,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/findings/accept-many")
     def accept_many(body: AcceptMany, user: Admin, s: DB):
-        """One reason for a selection of findings (each recorded on its own); ones already closed or not yours are skipped."""
+        """Accept the admin's open findings among body.ids, with reason and expiry days.
+
+        ids has 1–1000 strings; duplicate IDs count once. Skip unavailable or nonopen
+        findings. Return accepted/skipped unique-ID counts and commit ledger entries,
+        even when no rows match. Requires an organisation admin browser session."""
         rows = s.scalars(select(Finding).where(Finding.org_id == user.org_id, Finding.id.in_(set(body.ids)), Finding.status == "open")).all()
         for f in rows:
             accept(s, user, f, body)
@@ -1707,6 +1746,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     @app.post("/api/findings/{finding_id}/revoke-acceptance")
     def revoke_acceptance(finding_id: str, body: Revoke, user: Admin, s: DB):
         """Reopen an accepted finding with a recorded reason and return its updated detail.
+
+        finding_id must identify an accepted owned finding. body.reason has 3–2000
+        characters. Commit status=open, accepted_until=None and the ledger event.
+        Existing resolved_at is retained. The returned full row has due=None; a
+        subsequent detail/list GET computes the deadline.
 
         Requires an organisation admin browser session; API tokens are refused.
 

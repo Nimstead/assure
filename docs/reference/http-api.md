@@ -42,6 +42,8 @@ Consult the live schema for the complete route list and each request model. Rout
 
 ## Finding pagination
 
+The [finding reference](findings.md) defines every row/group field, filters, CSV columns, acceptance operations, and state transitions.
+
 `GET /api/findings` returns an array. `limit` defaults to 500 and ranges from 1 to 5,000. `offset` starts at 0. Use the same filters with `/api/findings/count` to get `total`.
 
 `sort` accepts `score`, `package`, `host`, `vuln`, or `newest`. `view=full` is the default; `view=list` returns fewer fields and one reason per finding. Changes to findings between requests can change pagination results.

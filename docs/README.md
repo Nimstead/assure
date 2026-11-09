@@ -55,6 +55,8 @@ Find commands, settings, formats, and limits.
 - [Optional AI reference](reference/optional-ai.md)
 - [HTTP endpoint catalog](reference/api-endpoints.md)
 - [HTTP API reference](reference/http-api.md)
+- [Finding API and state reference](reference/findings.md)
+- [Database model reference](reference/database.md)
 - [SBOM input reference](reference/sbom.md)
 - [Scan outcomes](reference/scan-outcomes.md)
 - [Scan report format](reference/scan-report.md)

@@ -161,6 +161,20 @@
     "product": "assure"
   },
   {
+    "source": "docs/reference/findings.md",
+    "slug": "reference/findings",
+    "title": "Finding API and state reference",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/database.md",
+    "slug": "reference/database",
+    "title": "Database model reference",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
     "source": "docs/reference/platform-updates.md",
     "slug": "reference/platform-updates",
     "title": "Platform update reference",

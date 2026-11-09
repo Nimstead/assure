@@ -2,14 +2,16 @@
 
 ## Setup
 
-You need [uv](https://docs.astral.sh/uv/) (it installs Python 3.14) and Node.js 22.
+Run each command below from the repository root. Parentheses keep directory changes inside that command.
+
+You need [uv](https://docs.astral.sh/uv/) (it installs Python 3.14) and Node.js 22.22.2 or later in the Node 22 release line (required by the locked web test dependencies).
 
 ```bash
-cd api && uv sync
+(cd api && uv sync --locked)
 ```
 
 ```bash
-cd web && npm ci && npm run build
+(cd web && npm ci && npm run build)
 ```
 
 Then run the app as in [Install → Without Docker](docs/install.md#without-docker), with `NIMSTEAD_SECURE_COOKIES=0` if you browse from another machine over plain HTTP. For live UI work, `cd web && npm run dev` proxies the API on port 8000.
@@ -17,14 +19,20 @@ Then run the app as in [Install → Without Docker](docs/install.md#without-dock
 ## Before you open a pull request
 
 ```bash
-cd api && uv run ruff check src tests ../agent ../sandbox && uv run pytest -q
+(cd api && uv run ruff check src tests ../agent ../sandbox ../scripts && uv run pytest -q)
 ```
 
 ```bash
-cd web && npm test && npm run e2e
+(cd web && npm test && npm run e2e)
 ```
 
 CI runs the same checks, plus the API suite on PostgreSQL 17. Pull requests are squash-merged, so the PR title becomes the commit message: say what changed and why.
+
+## Documentation
+
+Keep one reader task per page: tutorials teach through doing, how-to guides complete tasks, reference pages define contracts, and explanations give context. Start from the [documentation index](docs/README.md).
+
+Document public Python interfaces and exported web functions in the existing docstring/JSDoc style. Keep parameter types in signatures, describe side effects and failures, and test executable examples. Run `python scripts/check_docs.py --report` after changes; review contracts as well as coverage counts.
 
 ## Releasing
 

@@ -54,18 +54,26 @@ PROOF_PORTS = ((443, True), (80, False))  # (port, TLS)
 
 
 class ScanRefused(Exception):
+    """An external target failed ownership, address, or scan-policy checks."""
     pass
 
 
 def txt_name(host: str) -> str:
+    """Return the ownership TXT record name for host string."""
     return f"_nimstead-verify.{host}"
 
 
 def txt_value(org_id: str, host: str) -> str:
+    """Return the organisation-bound ownership TXT value for org_id and host strings.
+
+    Errors from the configured secret-key backend propagate."""
     return f"nimstead-verify={sso.domain_token(org_id, host)}"
 
 
 def owned(org_id: str, host: str, lookup) -> bool:
+    """Return whether lookup finds the expected ownership TXT value for org_id and host.
+
+    lookup accepts a DNS name and returns TXT strings; custom lookup and key-backend errors propagate."""
     return txt_value(org_id, host) in lookup(txt_name(host))
 
 
@@ -108,6 +116,9 @@ def connect_state(ip: str, port: int, timeout: float = 3.0) -> str:
 
 
 def port_open(ip: str, port: int, timeout: float = 3.0) -> bool:
+    """Return whether a TCP connection to ip:port succeeds within timeout seconds.
+
+    Refusal, timeout, and other socket errors return False; this does not distinguish closed from filtered."""
     return connect_state(ip, port, timeout) == "open"
 
 
@@ -200,6 +211,7 @@ def checks(host: str, ip: str) -> tuple[list[dict], list[str]]:
 
 
 def likelihood_of(check_id: str) -> tuple[float, str]:
+    """Return the configured (likelihood, reason) tuple for the external vulnerability ID check_id."""
     if check_id.startswith("NIM-EXPOSED-"):
         return OPEN_BY_DEFAULT_LIKELIHOOD if check_id.removeprefix("NIM-EXPOSED-") in OPEN_BY_DEFAULT else EXPOSED_LIKELIHOOD
     return TLS_LIKELIHOOD

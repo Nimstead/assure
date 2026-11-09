@@ -37,6 +37,7 @@ FAMILIES = [(re.compile(r"Microsoft 365 Apps for Enterprise for (32|64)-bit Syst
 
 
 def channels_for(msrc_name: str) -> tuple[str, ...]:
+    """Return Office channel labels matching the MSRC product-name string, or () for an unknown family."""
     return next((ch for pat, ch in FAMILIES if pat.fullmatch(msrc_name)), ())
 
 

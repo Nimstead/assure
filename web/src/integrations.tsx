@@ -6,6 +6,7 @@ import { Alert, btnPrimary, btnQuiet, Done, ErrorState, Field, input, Loading, N
 
 const list = (s: string) => s.split(/[\s,]+/).filter(Boolean);
 
+/** Render admin SSO configuration, domain verification, and required-SSO controls. */
 export function SsoSection() {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["sso"], queryFn: () => api<SsoSettings>("/api/settings/sso"), retry: false });
@@ -95,6 +96,7 @@ function DomainChecks({ checks }: { checks: SsoSettings["domain_checks"] }) {
   );
 }
 
+/** Render admin webhook/email configuration, recipient confirmation, and test-notification controls. */
 export function NotificationsSection() {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["notifications"], queryFn: () => api<NotifySettings>("/api/settings/notifications"), retry: false });

@@ -73,6 +73,9 @@ def _dpkg_split(v: str) -> tuple[int, str, str]:
 
 
 def dpkg_cmp(a: str, b: str) -> int:
+    """Compare version strings a and b using Debian epoch, upstream version, and revision rules.
+
+    Return -1, 0, or 1 when a is older, equivalent, or newer, respectively."""
     ea, ua, ra = _dpkg_split(a)
     eb, ub, rb = _dpkg_split(b)
     if ea != eb:
@@ -87,6 +90,9 @@ def _alnum(c: str) -> bool:
 
 
 def rpmvercmp(a: str, b: str) -> int:
+    """Compare version strings a and b using RPM segment rules, including tilde and caret, without splitting epoch or release.
+
+    Return -1, 0, or 1 when a is older, equivalent, or newer, respectively."""
     if a == b:
         return 0
     i = j = 0
@@ -151,6 +157,9 @@ def _rpm_split(v: str) -> tuple[int, str, str | None]:
 
 
 def rpm_cmp(a: str, b: str) -> int:
+    """Compare version strings a and b using RPM epoch/version/release rules; omit release comparison when either release is missing.
+
+    Return -1, 0, or 1 when a is older, equivalent, or newer, respectively."""
     ea, va, ra = _rpm_split(a)
     eb, vb, rb = _rpm_split(b)
     if ea != eb:
@@ -181,6 +190,10 @@ def _apk_key(v: str):
 
 
 def apk_cmp(a: str, b: str) -> int:
+    """Compare version strings a and b using Alpine numeric, letter, suffix, and revision ordering.
+
+    Return -1, 0, or 1 when a is older, equivalent, or newer, respectively.
+    Raise ValueError when either input cannot be parsed by this comparator."""
     na, la, sa, ra = _apk_key(a)
     nb, lb, sb, rb = _apk_key(b)
     for x, y in ((na, nb), (la, lb)):
@@ -199,6 +212,10 @@ _SEMVER_RE = re.compile(r"^v?(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:-([0-9A-Za-z.-]+))?
 
 
 def semver_cmp(a: str, b: str) -> int:
+    """Compare version strings a and b using SemVer precedence, allowing omitted minor/patch components and ignoring build metadata.
+
+    Return -1, 0, or 1 when a is older, equivalent, or newer, respectively.
+    Raise ValueError when either input cannot be parsed by this comparator."""
     ma, mb = _SEMVER_RE.match(a.strip()), _SEMVER_RE.match(b.strip())
     if not ma or not mb:
         raise ValueError(f"invalid semver: {a!r} / {b!r}")
@@ -227,6 +244,10 @@ def semver_cmp(a: str, b: str) -> int:
 # --- PEP 440 (PyPI) --------------------------------------------------------
 
 def pep440_cmp(a: str, b: str) -> int:
+    """Compare version strings a and b using PEP 440 ordering via packaging.version.Version.
+
+    Return -1, 0, or 1 when a is older, equivalent, or newer, respectively.
+    Raise ValueError when either input cannot be parsed by this comparator."""
     try:
         va, vb = Version(a), Version(b)
     except InvalidVersion as e:
@@ -237,6 +258,10 @@ def pep440_cmp(a: str, b: str) -> int:
 # --- Windows OS build (MSRC): 10.0.<build>.<UBR> ------------------------------
 
 def windows_cmp(a: str, b: str) -> int:
+    """Compare version strings a and b using strict dotted numeric Windows build ordering with zero padding.
+
+    Return -1, 0, or 1 when a is older, equivalent, or newer, respectively.
+    Raise ValueError when either input cannot be parsed by this comparator."""
     if not (re.fullmatch(r"\d+(\.\d+)*", a.strip()) and re.fullmatch(r"\d+(\.\d+)*", b.strip())):
         raise ValueError(f"invalid Windows build: {a!r} / {b!r}")
     return appver_cmp(a, b)  # the same dotted-number order; only what's accepted is stricter
@@ -248,6 +273,9 @@ _APPVER = re.compile(r"v?(\d+(?:\.\d+)*)(?: \(\d+\))?")  # "6.2.5 (47209)" -> 6.
 
 
 def appver_parts(v: str) -> list[int]:
+    """Return integer components of dotted version string v.
+
+    Accept an optional leading v and parenthesised build suffix. Raise ValueError for other forms."""
     m = _APPVER.fullmatch(v.strip())
     if not m:
         raise ValueError(f"invalid app version: {v!r}")
@@ -255,6 +283,10 @@ def appver_parts(v: str) -> list[int]:
 
 
 def appver_cmp(a: str, b: str) -> int:
+    """Compare version strings a and b using dotted application versions with zero padding, optional v, and optional parenthesised build.
+
+    Return -1, 0, or 1 when a is older, equivalent, or newer, respectively.
+    Raise ValueError when either input cannot be parsed by this comparator."""
     ta, tb = appver_parts(a), appver_parts(b)
     n = max(len(ta), len(tb))
     ta, tb = ta + [0] * (n - len(ta)), tb + [0] * (n - len(tb))
@@ -365,6 +397,10 @@ def _mvn_cmp_item(l, r) -> int:  # noqa: E741 - l/r as in the reference
 
 
 def maven_cmp(a: str, b: str) -> int:
+    """Compare version strings a and b using Maven ComparableVersion ordering, including qualifier aliases and nested segments.
+
+    Return -1, 0, or 1 when a is older, equivalent, or newer, respectively.
+    Raise ValueError when either input cannot be parsed by this comparator."""
     return _mvn_cmp_item(_mvn_parse(a), _mvn_parse(b))
 
 
@@ -382,6 +418,10 @@ def _nuget_parse(v: str):
 
 
 def nuget_cmp(a: str, b: str) -> int:
+    """Compare version strings a and b using NuGet ordering with up to four numeric parts and case-insensitive prerelease labels.
+
+    Return -1, 0, or 1 when a is older, equivalent, or newer, respectively.
+    Raise ValueError when either input cannot be parsed by this comparator."""
     (na, pa), (nb, pb) = _nuget_parse(a), _nuget_parse(b)
     if na != nb:
         return 1 if na > nb else -1
@@ -419,6 +459,10 @@ def _gem_segments(v: str) -> list:
 
 
 def gem_cmp(a: str, b: str) -> int:
+    """Compare version strings a and b using RubyGems numeric and prerelease segment ordering.
+
+    Return -1, 0, or 1 when a is older, equivalent, or newer, respectively.
+    Raise ValueError when either input cannot be parsed by this comparator."""
     sa, sb = _gem_segments(a), _gem_segments(b)
     for i in range(max(len(sa), len(sb))):
         x, y = (sa[i] if i < len(sa) else 0), (sb[i] if i < len(sb) else 0)
@@ -474,6 +518,10 @@ def _php_part_cmp(a: str, b: str) -> int:
 
 
 def composer_cmp(a: str, b: str) -> int:
+    """Compare version strings a and b using Composer-normalised PHP version ordering, ignoring build metadata.
+
+    Return -1, 0, or 1 when a is older, equivalent, or newer, respectively.
+    Raise ValueError when either input cannot be parsed by this comparator."""
     pa, pb = _php_parts(_composer_normalize(a)), _php_parts(_composer_normalize(b))
     for x, y in zip(pa, pb, strict=False):
         if c := _php_part_cmp(x, y):
@@ -512,9 +560,12 @@ _BY_PREFIX: dict[str, Cmp] = {
 
 
 def comparator_for(ecosystem: str) -> Cmp | None:
-    """Comparator for an OSV ecosystem string such as 'Debian:12' or 'PyPI'."""
+    """Return a two-string comparator for an OSV ecosystem, or None when unsupported.
+
+    The prefix before the first colon selects the comparator; callers must handle None explicitly."""
     return _BY_PREFIX.get(ecosystem.split(":", 1)[0])
 
 
 def sort_key(cmp: Cmp):
+    """Return a sorting-key wrapper for cmp, a callable taking two version strings and returning their order."""
     return cmp_to_key(cmp)

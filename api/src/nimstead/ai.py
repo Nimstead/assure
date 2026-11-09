@@ -20,15 +20,20 @@ FALLBACK_BETA = "server-side-fallback-2026-07-01"
 
 
 class AIUnavailable(Exception):
+    """The optional AI service is disabled, unavailable, or returned an unusable answer."""
     pass
 
 
 def enabled() -> bool:
+    """Return whether AI is not explicitly disabled and an API key or auth token is configured."""
     return os.environ.get("NIMSTEAD_AI") != "0" and bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"))
 
 
 @lru_cache(maxsize=1)
 def client() -> anthropic.Anthropic:
+    """Return the process-cached Anthropic client using SDK environment credentials.
+
+    SDK configuration errors propagate to the caller."""
     return anthropic.Anthropic()
 
 
@@ -66,6 +71,11 @@ Never invent version numbers, CVE ids or facts not present in the input."""
 
 
 def explain(f: dict) -> str:
+    """Return a cached plain-text explanation of finding dictionary f.
+
+    Required keys are vuln_id, package, installed_version, fixed_version, kev, epss, cvss,
+    priority, and reasons; summary is optional. Hostnames are omitted from the request.
+    Raise AIUnavailable for unavailable or unusable service responses, or KeyError for missing facts."""
     facts = {
         "vulnerability": f["vuln_id"], "package": f["package"], "installed_version": f["installed_version"],
         "fixed_version": f["fixed_version"] or "no fix available yet",  # no hostname: one explanation per advisory and context
@@ -116,6 +126,9 @@ SEARCH_SCHEMA = {
 
 
 def parse_search(text: str) -> SearchFilter:
+    """Convert at most the first 500 characters of text into a validated SearchFilter.
+
+    Raise AIUnavailable if the service fails or its answer does not match the filter schema."""
     raw = _call(SEARCH_SYSTEM, text[:500], effort="low", max_tokens=1000, output_format=SEARCH_SCHEMA)
     try:
         return SearchFilter.model_validate(json.loads(raw))

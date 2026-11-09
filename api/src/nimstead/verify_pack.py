@@ -17,21 +17,36 @@ from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat,
 
 
 def canonical(obj) -> bytes:
+    """Return deterministic UTF-8 JSON bytes for a JSON-serializable obj.
+
+    Keys are sorted, separators are compact, and non-ASCII characters remain literal.
+    Unsupported objects raise TypeError."""
     return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
 
 
 def entry_hash(e: dict) -> str:
+    """Return the SHA-256 hex hash of the canonical signed fields in ledger dictionary e.
+
+    Requires seq, ts, kind, subject, data, and prev_hash; missing fields raise KeyError."""
     body = {k: e[k] for k in ("seq", "ts", "kind", "subject", "data", "prev_hash")}
     return hashlib.sha256(canonical(body)).hexdigest()
 
 
 def fingerprint(pubkey_pem: bytes) -> str:
+    """Return the SHA-256 hex digest of the raw public key encoded in pubkey_pem bytes.
+
+    Invalid PEM or a key without raw public-byte support raises a cryptography error."""
     raw = load_pem_public_key(pubkey_pem).public_bytes(Encoding.Raw, PublicFormat.Raw)
     return hashlib.sha256(raw).hexdigest()
 
 
 def verify(pack_bytes: bytes, sig_b64: str, pubkey_pem: bytes, expect_fingerprint=None) -> list:
-    """Returns a list of problems; empty means the pack is authentic, intact and signed by the trusted key."""
+    """Return a list of signature, fingerprint, ledger, and checkpoint problems; [] means verification passed.
+
+    pack_bytes is the exact signed JSON; sig_b64 is its base64 signature string; pubkey_pem is
+    the PEM public key. expect_fingerprint is the independently trusted SHA-256 hex string.
+    An absent fingerprint is a problem. Malformed JSON, missing fields, or an invalid key can
+    raise decoding, KeyError, or cryptography exceptions instead of returning a problem list."""
     problems = []
     if expect_fingerprint is None:
         problems.append("no trusted key fingerprint given (--expect-fingerprint); a signature proves nothing on its own")

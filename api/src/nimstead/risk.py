@@ -16,12 +16,14 @@ CRITICALITY = {"low": 0.6, "medium": 0.8, "high": 1.0, "critical": 1.15}
 
 @dataclass
 class Risk:
+    """Risk result: integer score from 0 to 100, priority label, and a list of plain-text reasons."""
     score: int  # 0-100
     priority: str  # fix-now | next | planned | low
     reasons: list[str] = field(default_factory=list)
 
     @property
     def headline(self) -> str:
+        """Return reasons joined by semicolons for compact display."""
         return "; ".join(self.reasons)
 
 
@@ -38,7 +40,9 @@ def _vector_score(kind: str, vector: str):
 
 
 def cvss_base(severity: list[dict] | None) -> float | None:
-    """Highest base score from OSV `severity` vectors."""
+    """Return the highest supported CVSS base score from OSV severity dictionaries, or None.
+
+    Malformed vector strings are ignored; only CVSS_V3 and CVSS_V4 are evaluated."""
     scores = [v for s in severity or [] if isinstance(s.get("score"), str)
               and (v := _vector_score(s.get("type"), s["score"])) is not None]
     return float(max(scores)) if scores else None
@@ -64,8 +68,12 @@ def _tier(s: int) -> str:
 
 def context(r: Risk, *, kev: bool, ransomware: bool = False, public_exploit: bool = False, exploit_db: bool = False, msrc: dict | None = None,
             roles: list | None = None, listening: str | None = None) -> Risk:
-    """Threat and exposure context on top of score() (plan T11, T39). KEV still overrides everything: a known-exploited
-    CVE is never lowered. Microsoft saying "exploited" counts like KEV before CISA lists it."""
+    """Return r with additional threat and exposure reasons and an adjusted priority.
+
+    kev, ransomware, public_exploit, and exploit_db are boolean signals. msrc is optional
+    Microsoft threat metadata; roles lists installed Windows features; listening is an optional
+    exposure explanation. Known exploitation is never reduced for an absent role.
+    The input Risk is not mutated; unchanged results reuse it."""
     msrc = msrc or {}
     s, reasons = r.score, list(r.reasons)
     if ransomware:
@@ -107,8 +115,22 @@ def score(
     likelihood: float | None = None,
     likelihood_reason: str | None = None,
 ) -> Risk:
-    """`likelihood`/`likelihood_reason`: for findings with no CVE (external exposure checks), a stated estimate
-    instead of EPSS, so the reason shown says where it came from."""
+    """Return a Risk score and reasons from exploitation, impact, and asset context.
+
+    Args:
+        kev (bool): Whether CISA lists known exploitation; forces fix-now and a score of at least 90.
+        epss (float | None): Exploitation probability from 0 to 1, or unavailable.
+        cvss (float | None): Base impact score from 0 to 10, or unavailable (uses 5).
+        criticality (str): low, medium, high, or critical; unknown names use the medium weight.
+        internet_facing (bool): Whether the asset is exposed to the internet.
+        fix_available (bool): Whether a fix exists; false reduces the non-KEV score.
+        likelihood (float | None): Alternative 0-to-1 estimate when EPSS is absent.
+        likelihood_reason (str | None): Explanation for that alternative estimate.
+
+    Inputs are trusted internal values; ranges are not validated here. Negative EPSS is unsupported.
+
+    >>> score(kev=True, epss=None, cvss=None).priority
+    'fix-now'"""
     reasons: list[str] = []
     if kev:
         reasons.append("Exploited in the wild (CISA KEV)")

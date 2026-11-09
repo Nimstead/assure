@@ -86,12 +86,18 @@ RELEASE_DIR = Path(os.environ.get("NIMSTEAD_RELEASE_DIR", Path(__file__).parents
 
 
 def release_keys() -> list[str]:
+    """Return public-key hex strings pinned in the served agent source, or [] if its assignment is absent.
+
+    Reading AGENT_FILE can raise OSError."""
     m = re.search(r"^RELEASE_KEYS = \[(.*)\]", AGENT_FILE.read_text(encoding="utf-8"), re.M)
     return re.findall(r'"([0-9a-f]{64})"', m.group(1)) if m else []
 
 
 @functools.cache
 def migration_head() -> str:
+    """Return the current Alembic migration-head revision from the packaged configuration.
+
+    The result is process-cached. Missing configuration or an invalid revision graph raises an Alembic error."""
     from alembic.config import Config
     from alembic.script import ScriptDirectory
     return ScriptDirectory.from_config(Config(str(Path(__file__).parents[2] / "alembic.ini"))).get_current_head()
@@ -186,6 +192,7 @@ INVENTORY_MIN_SECONDS = int(os.environ.get("NIMSTEAD_INVENTORY_MIN_SECONDS", "30
 
 
 def sha(token: str) -> str:
+    """Return the SHA-256 hex digest of UTF-8 token text for credential lookup."""
     return hashlib.sha256(token.encode()).hexdigest()
 
 
@@ -200,6 +207,7 @@ def client_key(request: Request) -> str:
 
 
 class TooLarge(HTTPException):
+    """HTTP 413 raised when streamed request bytes exceed MAX_BODY."""
     def __init__(self):
         super().__init__(413, "Request body too large")
 
@@ -242,6 +250,9 @@ def csp(index: Path) -> str:
 class HashedAssets(StaticFiles):
     """Vite names every built file by its content hash, so a browser may keep it for good."""
     async def get_response(self, path, scope):
+        """Return the static-file response for path and ASGI scope, adding one-year immutable caching on success.
+
+        Missing-file and other errors follow StaticFiles.get_response()."""
         res = await super().get_response(path, scope)
         if res.status_code == 200:
             res.headers["Cache-Control"] = "public, max-age=31536000, immutable"
@@ -249,6 +260,18 @@ class HashedAssets(StaticFiles):
 
 
 def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None, dns_lookup=None) -> FastAPI:
+    """Build the FastAPI application and register its routes and middleware.
+
+    Args:
+        db_url (str | None): Database URL override; None uses NIMSTEAD_DB or the SQLite default.
+        oidc_http (httpx.Client | None): Optional caller-owned OIDC transport for tests.
+        dns_lookup (Callable | None): Optional DNS TXT lookup accepting a name and returning strings.
+
+    Returns:
+        FastAPI: Application with its database session factory captured by route dependencies.
+
+    Database and configuration errors propagate. SQLite creates tables; PostgreSQL must already
+    be migrated. Swagger UI is opt-in, while /api/openapi.json is always available."""
     oidc = sso.Oidc(oidc_http)
     Sessions = make_sessionmaker(db_url) if db_url else make_sessionmaker()
     # Swagger UI runs scripts from a CDN on this origin, so it's opt-in; /api/openapi.json is always there for tools
@@ -336,6 +359,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/install.sh")
     def install_sh(request: Request):
+        """Return the Linux installer with this server URL and release channel substituted.
+
+        Operation-specific HTTP errors: 400. See detail in the response.
+        Authentication and request-validation errors also apply where required."""
         server = os.environ.get("NIMSTEAD_PUBLIC_URL") or str(request.base_url).rstrip("/")
         if not re.fullmatch(r"https?://[A-Za-z0-9.\-]+(:\d{1,5})?", server):  # substituted into shell: strict
             raise HTTPException(400, "Server URL is not safe to embed; set NIMSTEAD_PUBLIC_URL")
@@ -344,6 +371,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/install.ps1")
     def install_ps1(request: Request):
+        """Return the PowerShell installer with this server URL and release channel substituted.
+
+        Operation-specific HTTP errors: 400. See detail in the response.
+        Authentication and request-validation errors also apply where required."""
         server = os.environ.get("NIMSTEAD_PUBLIC_URL") or str(request.base_url).rstrip("/")
         if not re.fullmatch(r"https?://[A-Za-z0-9.\-]+(:\d{1,5})?", server):  # substituted into a script: strict
             raise HTTPException(400, "Server URL is not safe to embed; set NIMSTEAD_PUBLIC_URL")
@@ -352,6 +383,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/agent/nimstead_agent.py")
     def agent_file():
+        """Return the Python agent source served by this checkout."""
         return Response(AGENT_FILE.read_bytes(), media_type="text/x-python")
 
     @app.get("/agent/runtime/{arch}.zip")
@@ -418,6 +450,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/auth/signup", status_code=201)
     def signup(body: Signup, request: Request, resp: Response, s: DB):
+        """Create the first organisation account or send a later signup confirmation email.
+
+        First-account setup requires a password. Later production signups return check_email;
+        open-signup development mode can establish a session immediately.
+
+        Operation-specific HTTP errors: 403, 409, 422, 429. See detail in the response.
+        Authentication and request-validation errors also apply where required."""
         if over_limit(s, "signup:" + client_key(request), SIGNUP_MAX_PER_HOUR):
             raise HTTPException(429, "Too many sign-ups from this address; try again in an hour")
         email = body.email.lower()
@@ -502,6 +541,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/auth/login")
     def login(body: Login, request: Request, resp: Response, s: DB):
+        """Authenticate a password user and complete or request two-step sign-in.
+
+        A successful password check can return mfa=required or mfa=setup without a session.
+        The caller must complete the requested step before treating the user as signed in.
+
+        Operation-specific HTTP errors: 401, 403, 429. See detail in the response.
+        Authentication and request-validation errors also apply where required."""
         ip = client_key(request)
         keys = ["email:" + body.email.lower(), "email+ip:" + body.email.lower() + "|" + ip, "ip:" + ip]
         per_ip = failures(s, keys[2])
@@ -569,6 +615,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/auth/logout", status_code=204)
     def logout(request: Request, resp: Response, s: DB):
+        """Delete the current server-side session, clear its browser cookie, and return no content."""
         if token := request.cookies.get(SESSION_COOKIE):
             s.execute(delete(WebSession).where(WebSession.token_hash == sha(token)))
             s.commit()
@@ -576,11 +623,17 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/me")
     def me(user: CurrentUser, s: DB):
+        """Return the current user email, organisation, admin role, login origin, and MFA status.
+
+        Requires a user session or a read-only organisation API token. API tokens cannot use write methods."""
         return {"email": user.email, "org": s.get(Org, user.org_id).name, "admin": user.admin, "origin": user.origin,
                 "mfa": bool(user.totp_secret), "recovery_codes_left": len(user.recovery_codes)}
 
     @app.post("/api/me/sessions/revoke", status_code=204)
     def sign_out_everywhere(user: Person, resp: Response, s: DB):
+        """Revoke all sessions for the current user, clear this cookie, and return no content.
+
+        Requires a browser session; organisation API tokens are refused."""
         for model in (WebSession, ApiToken):  # recovering from a stolen session: tokens it could have made go too
             s.execute(delete(model).where(model.user_id == user.id))
         evidence.append(s, user.org_id, "sessions_revoked", user.id, {"by": user.email})
@@ -594,6 +647,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/me/password", status_code=204)
     def change_password(body: PasswordChange, request: Request, user: Person, s: DB):
+        """Change a password after verifying the current password and required authenticator code.
+
+        Requires a browser session; organisation API tokens are refused.
+
+        Operation-specific HTTP errors: 403, 409, 429. See detail in the response.
+        Authentication and request-validation errors also apply where required."""
         if user.origin != "password":
             raise HTTPException(409, "You sign in with single sign-on; change your password with your identity provider")
         if over_limit(s, "pwchange:" + user.id, LOGIN_MAX_FAILURES, LOGIN_WINDOW):
@@ -613,6 +672,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/me/mfa/setup")
     def start_mfa(user: Person):
+        """Return a temporary encrypted setup token, secret, and authenticator URI for a password user.
+
+        Requires a browser session; organisation API tokens are refused.
+
+        Operation-specific HTTP errors: 409. See detail in the response.
+        Authentication and request-validation errors also apply where required."""
         if user.origin != "password":
             raise HTTPException(409, "You sign in with single sign-on; your identity provider handles MFA")
         return mfa_setup(user)
@@ -624,6 +689,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/me/mfa")
     def confirm_mfa(body: MfaConfirm, user: Person, s: DB):
+        """Confirm or replace the authenticator and return newly generated one-time recovery codes.
+
+        Requires a browser session; organisation API tokens are refused.
+
+        Operation-specific HTTP errors: 403, 422, 429. See detail in the response.
+        Authentication and request-validation errors also apply where required."""
         if over_limit(s, "mfa:" + user.id, LOGIN_MAX_FAILURES, LOGIN_WINDOW):
             raise HTTPException(429, "Too many attempts; try again in 15 minutes")
         if user.totp_secret and not second_factor(s, user, body.current_code):
@@ -640,6 +711,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/enroll-tokens", status_code=201)
     def create_enroll_token(user: Admin, s: DB, body: TokenReq | None = None):
+        """Create an expiring enrolment token and return its secret once, with ID and expiry.
+
+        Requires an organisation admin browser session; API tokens are refused."""
         token = "nme_" + secrets.token_urlsafe(24)
         et = EnrollToken(token_hash=sha(token), org_id=user.org_id, sandbox=bool(body and body.sandbox),
                          expires=now() + timedelta(days=ENROLL_TOKEN_DAYS))
@@ -650,12 +724,21 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/enroll-tokens")
     def list_enroll_tokens(user: CurrentUser, s: DB):
+        """Return enrolment-token metadata for this organisation without token secrets.
+
+        Requires a user session or a read-only organisation API token. API tokens cannot use write methods."""
         rows = s.scalars(select(EnrollToken).where(EnrollToken.org_id == user.org_id).order_by(EnrollToken.created.desc()))
         return [{"id": e.token_hash[:12], "created": e.created, "expires": e.expires, "revoked": e.revoked, "sandbox": e.sandbox}
                 for e in rows]
 
     @app.delete("/api/enroll-tokens/{token_id}", status_code=204)
     def revoke_enroll_token(token_id: str, user: Admin, s: DB):
+        """Revoke the enrolment token identified by its displayed hash prefix; return no content.
+
+        Requires an organisation admin browser session; API tokens are refused.
+
+        Operation-specific HTTP errors: 404. See detail in the response.
+        Authentication and request-validation errors also apply where required."""
         et = s.scalar(select(EnrollToken).where(EnrollToken.org_id == user.org_id, EnrollToken.token_hash.startswith(token_id[:12], autoescape=True),
                                                 func.length(token_id) == 12))
         if not et:
@@ -680,6 +763,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/users")
     def list_users(user: Admin, s: DB):
+        """Return organisation member records ordered by email.
+
+        Requires an organisation admin browser session; API tokens are refused."""
         return [user_json(u) for u in s.scalars(select(User).where(User.org_id == user.org_id).order_by(User.email))]
 
     class UserPatch(BaseModel):
@@ -687,6 +773,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.patch("/api/users/{user_id}")
     def update_user(user_id: str, body: UserPatch, user: Admin, s: DB):
+        """Change an organisation member's admin role while preserving at least one admin.
+
+        Requires an organisation admin browser session; API tokens are refused.
+
+        Operation-specific HTTP errors: 409. See detail in the response.
+        Authentication and request-validation errors also apply where required."""
         s.get(Org, user.org_id, with_for_update=True)  # PostgreSQL: two admins demoting each other can't leave none
         u = org_user(s, user, user_id)
         if not body.admin and last_admin(s, u):
@@ -701,6 +793,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.delete("/api/users/{user_id}", status_code=204)
     def remove_user(user_id: str, user: Admin, s: DB):
+        """Remove an organisation member and their access while preserving at least one admin.
+
+        Requires an organisation admin browser session; API tokens are refused.
+
+        Operation-specific HTTP errors: 409. See detail in the response.
+        Authentication and request-validation errors also apply where required."""
         s.get(Org, user.org_id, with_for_update=True)
         u = org_user(s, user, user_id)
         if last_admin(s, u):
@@ -738,6 +836,14 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/tokens", status_code=201)
     def create_api_token(body: TokenNew, user: Admin, s: DB):
+        """Create a read-only organisation API token and return its secret once.
+
+        Password users must supply the required current authenticator code.
+
+        Requires an organisation admin browser session; API tokens are refused.
+
+        Operation-specific HTTP errors: 403, 429. See detail in the response.
+        Authentication and request-validation errors also apply where required."""
         if user.totp_secret:
             if over_limit(s, "mfa-token:" + user.id, LOGIN_MAX_FAILURES, LOGIN_WINDOW):
                 raise HTTPException(429, "Too many attempts; try again in 15 minutes")
@@ -753,6 +859,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/tokens")
     def list_api_tokens(user: Admin, s: DB):
+        """Return organisation API-token metadata and creator emails without token secrets.
+
+        Requires an organisation admin browser session; API tokens are refused."""
         rows = s.execute(select(ApiToken, User.email).join(User, User.id == ApiToken.user_id)
                          .where(ApiToken.org_id == user.org_id).order_by(ApiToken.created.desc()))
         return [{"id": t.token_hash[:12], "name": t.name, "created_by": e, "created": t.created, "expires": t.expires,
@@ -760,6 +869,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.delete("/api/tokens/{token_id}", status_code=204)
     def revoke_api_token(token_id: str, user: Admin, s: DB):
+        """Delete the API token identified by its displayed hash prefix; return no content.
+
+        Requires an organisation admin browser session; API tokens are refused.
+
+        Operation-specific HTTP errors: 404. See detail in the response.
+        Authentication and request-validation errors also apply where required."""
         t = s.scalar(select(ApiToken).where(ApiToken.org_id == user.org_id, ApiToken.token_hash.startswith(token_id[:12], autoescape=True),
                                             func.length(token_id) == 12))
         if not t:
@@ -778,6 +893,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def agent_enroll(body: Enroll, s: DB):
         # Owning the enrol token and running the agent on the host is the proof of control:
         # only enrolled assets are ever scanned.
+        """Exchange an enrolment token for a new asset ID and asset-specific agent key.
+
+        The token is supplied in the JSON body; it must be valid, unexpired, and not revoked.
+
+        Operation-specific HTTP errors: 403, 429. See detail in the response.
+        Authentication and request-validation errors also apply where required."""
         et = s.get(EnrollToken, sha(body.token))
         if not et or et.revoked or (et.expires and et.expires < now()):
             raise HTTPException(403, "Invalid, expired or revoked enrolment token")
@@ -847,6 +968,14 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/agent/inventory")
     def agent_inventory(body: Inventory, s: DB, asset: Annotated[Asset, Depends(current_agent)], tasks: BackgroundTasks):
+        """Replace this agent's inventory, rescan the asset, and return scan results.
+
+        Collection metadata and facts are validated; per-asset and organisation quotas apply.
+
+        Requires this asset's agent bearer key.
+
+        Operation-specific HTTP errors: 429. See detail in the response.
+        Authentication and request-validation errors also apply where required."""
         if asset.last_inventory_at and now() - asset.last_inventory_at < timedelta(seconds=INVENTORY_MIN_SECONDS):
             raise HTTPException(429, f"Inventory already received; send at most one every {INVENTORY_MIN_SECONDS}s")
         if over_limit(s, "inventory:" + asset.org_id, ORG_INVENTORY_MAX_PER_HOUR):  # many fake hosts can't bypass the per-host limit
@@ -954,6 +1083,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/baselines.csv")
     def export_baselines(user: CurrentUser, s: DB):
+        """Stream the organisation's baseline results as spreadsheet-safe CSV.
+
+        Requires a user session or a read-only organisation API token. API tokens cannot use write methods.
+
+        Operation-specific HTTP errors: 429. See detail in the response.
+        Authentication and request-validation errors also apply where required."""
         if over_limit(s, "export:" + user.org_id, EXPORT_MAX_PER_HOUR):  # hosts times rules: each one reads every Windows host's facts
             raise HTTPException(429, f"At most {EXPORT_MAX_PER_HOUR} exports an hour")
         org_id = user.org_id
@@ -981,6 +1116,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/baselines/{asset_id}")
     def baseline_host(asset_id: str, user: CurrentUser, s: DB):
+        """Return the Windows baseline evaluation for an organisation-owned host.
+
+        Requires a user session or a read-only organisation API token. API tokens cannot use write methods.
+
+        Operation-specific HTTP errors: 404. See detail in the response.
+        Authentication and request-validation errors also apply where required."""
         a = s.get(Asset, asset_id)
         if not a or a.org_id != user.org_id or a.kind != "host":
             raise HTTPException(404, "No such host")
@@ -992,10 +1133,18 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     @app.get("/api/agent/manifest")
     def agent_manifest(s: DB, asset: Annotated[Asset, Depends(current_agent)]):
         # paused is unsigned on purpose: it can only withhold an update, which the server could do anyway
+        """Return the organisation's update pause flag and any valid signed release for the served agent.
+
+        Requires this asset's agent bearer key."""
         return {"paused": s.get(Org, asset.org_id).agent_updates_paused, **(signed_release() or {})}
 
     @app.get("/api/agent/jobs")
     def agent_jobs(s: DB, asset: Annotated[Asset, Depends(current_agent)]):
+        """Dispatch eligible approved jobs to this agent and return their execution plans.
+
+        Polling can change job state; host opt-in, maintenance windows, and canary gates apply.
+
+        Requires this asset's agent bearer key."""
         return remediate.dispatch(s, asset)
 
     class JobReport(BaseModel):
@@ -1011,6 +1160,14 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/agent/jobs/{job_id}/report")
     def agent_job_report(job_id: str, body: JobReport, s: DB, asset: Annotated[Asset, Depends(current_agent)], tasks: BackgroundTasks):
+        """Record an outcome for a job owned by this agent and return its resulting status.
+
+        An applied update enters verification; inventory must establish whether it fixed the finding.
+
+        Requires this asset's agent bearer key.
+
+        Operation-specific HTTP errors: 404, 409. See detail in the response.
+        Authentication and request-validation errors also apply where required."""
         job = s.get(RemediationJob, job_id)
         if not job or job.asset_id != asset.id:
             raise HTTPException(404, "Job not found")
@@ -1048,6 +1205,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/assets")
     def list_assets(user: CurrentUser, s: DB):
+        """Return organisation assets with finding counts, agent status, and application coverage.
+
+        Requires a user session or a read-only organisation API token. API tokens cannot use write methods."""
         rows = s.execute(
             select(Finding.asset_id, Finding.priority, func.count())
             .where(Finding.org_id == user.org_id, Finding.status == "open")
@@ -1078,6 +1238,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.delete("/api/assets/{asset_id}", status_code=204)
     def delete_asset(asset_id: str, user: Admin, s: DB):
+        """Delete an organisation-owned asset and its associated rows; append the deletion to the ledger.
+
+        Requires an organisation admin browser session; API tokens are refused."""
         a = owned_asset(s, user, asset_id)
         evidence.append(s, user.org_id, "asset_deleted", a.id, {"by": user.email, "hostname": a.hostname})
         for model in (Finding, InstalledPackage, RemediationJob, ScanRecord):
@@ -1118,6 +1281,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.patch("/api/assets/{asset_id}")
     def update_asset(asset_id: str, body: AssetPatch, user: Admin, s: DB):
+        """Update an owned asset's editable context, ring, health checks, or maintenance settings.
+
+        Requires an organisation admin browser session; API tokens are refused.
+
+        Operation-specific HTTP errors: 422. See detail in the response.
+        Authentication and request-validation errors also apply where required."""
         a = owned_asset(s, user, asset_id)
         if body.health_units and not all(remediate.SAFE_NAME.match(u) for u in body.health_units):
             raise HTTPException(422, "Invalid systemd unit name")
@@ -1146,6 +1315,14 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/targets", status_code=201)
     def create_target(body: TargetNew, user: Admin, s: DB):
+        """Create an external target for a public DNS hostname and return its asset record.
+
+        Creation does not prove ownership or authorise a scan.
+
+        Requires an organisation admin browser session; API tokens are refused.
+
+        Operation-specific HTTP errors: 409, 422. See detail in the response.
+        Authentication and request-validation errors also apply where required."""
         host = body.hostname.strip().lower().rstrip(".")
         if not external.HOSTNAME.fullmatch(host):
             raise HTTPException(422, "Enter a public DNS hostname, e.g. www.example.com")
@@ -1165,6 +1342,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/targets/{target_id}/verify")
     def verify_target(target_id: str, user: Admin, s: DB):
+        """Verify DNS and address ownership for an external target and return its asset record.
+
+        Requires an organisation admin browser session; API tokens are refused.
+
+        Operation-specific HTTP errors: 409. See detail in the response.
+        Authentication and request-validation errors also apply where required."""
         a = owned_target(s, user, target_id)
         value = external.txt_value(a.org_id, a.hostname)
         if not external.owned(a.org_id, a.hostname, dns_lookup or sso.txt_records):
@@ -1183,6 +1366,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/targets/{target_id}/scan")
     def scan_target(target_id: str, user: Admin, s: DB):
+        """Recheck ownership, scan the external target, and return its findings result.
+
+        Requires an organisation admin browser session; API tokens are refused.
+
+        Operation-specific HTTP errors: 409, 429. See detail in the response.
+        Authentication and request-validation errors also apply where required."""
         a = owned_target(s, user, target_id)
         if over_limit(s, "extscan:" + user.org_id, EXTSCAN_MAX_PER_HOUR):  # bounds what a tenant can aim at a DNS name it controls
             raise HTTPException(429, f"At most {EXTSCAN_MAX_PER_HOUR} manual scans an hour; verified targets are also scanned hourly")
@@ -1198,6 +1387,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/assets", status_code=201)
     def create_application(body: AppNew, user: Admin, s: DB):
+        """Create an application asset and return its asset record plus a one-time upload_token.
+
+        Requires an organisation admin browser session; API tokens are refused."""
         room_for_asset(s, user.org_id)
         token ="nmu_" + secrets.token_urlsafe(32)  # CI upload token: SBOM endpoint only, rejected by every agent endpoint
         a = Asset(org_id=user.org_id, hostname=body.name, kind="application", criticality=body.criticality,
@@ -1210,6 +1402,14 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/assets/{asset_id}/sbom")
     async def upload_sbom(asset_id: str, request: Request, s: DB):
+        """Replace this asset's SBOM packages and return mapping counts and scan results.
+
+        Send raw CycloneDX or SPDX JSON, not multipart data. Authenticate with the asset's own
+        upload/agent bearer key or an admin session. The body limit is 10 MiB. Wrong keys return
+        401; malformed documents return 422. Agent-origin package rows remain unchanged.
+
+        Operation-specific HTTP errors: 413. See detail in the response.
+        Authentication and request-validation errors also apply where required."""
         raw = b""
         async for chunk in request.stream():  # cap chunked bodies too, which the middleware can't see
             raw += chunk
@@ -1287,6 +1487,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def list_findings(user: CurrentUser, s: DB, f: Annotated[FindingFilter, Query()], limit: int = Query(500, ge=1, le=5000),
                       sort: Literal["score", "package", "host", "vuln", "newest"] = "score", view: Literal["full", "list"] = "full",
                       offset: int = Query(0, ge=0)):
+        """Return an array of organisation findings matching the query filters.
+
+        limit defaults to 500 (maximum 5000); offset starts at zero. view=list returns a compact
+        row with one reason. Use the count endpoint with the same filters for the matching total.
+
+        Requires a user session or a read-only organisation API token. API tokens cannot use write methods."""
         rows = with_due(s, user.org_id, f, limit, sort, offset)
         if view == "list":  # what the table shows (one reason); the drawer fetches the rest by id
             return [{"id": x.id, "asset_id": x.asset_id, "hostname": h, "ecosystem": x.ecosystem, "package": x.package, "installed_version": x.installed_version,
@@ -1330,6 +1536,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/findings.csv")
     def export_findings(user: CurrentUser, s: DB, f: Annotated[FindingFilter, Query()]):
+        """Stream all matching findings as CSV, escaping spreadsheet formula prefixes.
+
+        Requires a user session or a read-only organisation API token. API tokens cannot use write methods.
+
+        Operation-specific HTTP errors: 429. See detail in the response.
+        Authentication and request-validation errors also apply where required."""
         if over_limit(s, "export:" + user.org_id, EXPORT_MAX_PER_HOUR):  # each one reads a whole tenant's findings
             raise HTTPException(429, f"At most {EXPORT_MAX_PER_HOUR} exports an hour")
         org_id = user.org_id
@@ -1384,6 +1596,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/findings/{finding_id}")
     def get_finding(finding_id: str, user: CurrentUser, s: DB):
+        """Return an owned finding with full detail, package context, and its remediation deadline.
+
+        Requires a user session or a read-only organisation API token. API tokens cannot use write methods.
+
+        Operation-specific HTTP errors: 404. See detail in the response.
+        Authentication and request-validation errors also apply where required."""
         f = s.get(Finding, finding_id)
         if not f or f.org_id != user.org_id:
             raise HTTPException(404, "Finding not found")
@@ -1402,6 +1620,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/findings/{finding_id}/accept")
     def accept_finding(finding_id: str, body: Accept, user: Admin, s: DB):
+        """Record time-limited risk acceptance with a reason and return the updated finding.
+
+        Requires an organisation admin browser session; API tokens are refused.
+
+        Operation-specific HTTP errors: 404. See detail in the response.
+        Authentication and request-validation errors also apply where required."""
         f = s.get(Finding, finding_id)
         if not f or f.org_id != user.org_id:
             raise HTTPException(404, "Finding not found")
@@ -1447,6 +1671,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/findings/{finding_id}/revoke-acceptance")
     def revoke_acceptance(finding_id: str, body: Revoke, user: Admin, s: DB):
+        """Reopen an accepted finding with a recorded reason and return its updated detail.
+
+        Requires an organisation admin browser session; API tokens are refused.
+
+        Operation-specific HTTP errors: 404, 409. See detail in the response.
+        Authentication and request-validation errors also apply where required."""
         f = s.get(Finding, finding_id)
         if not f or f.org_id != user.org_id:
             raise HTTPException(404, "Finding not found")
@@ -1477,6 +1707,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/remediation/jobs", status_code=201)
     def create_job(body: PlanReq, user: Admin, s: DB):
+        """Plan a package fix on an owned asset and return the job without executing it.
+
+        Requires an organisation admin browser session; API tokens are refused.
+
+        Operation-specific HTTP errors: 409. See detail in the response.
+        Authentication and request-validation errors also apply where required."""
         a = owned_asset(s, user, body.asset_id)
         try:
             job = remediate.plan(s, a, body.ecosystem, body.package, user.email, body.include)
@@ -1507,6 +1743,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/remediation/jobs")
     def list_jobs(user: CurrentUser, s: DB, status: str | None = None):
+        """Return up to 500 recent jobs, optionally filtered by comma-separated status names.
+
+        Sweeps stale jobs first and includes maintenance-window wait information for approved jobs.
+
+        Requires a user session or a read-only organisation API token. API tokens cannot use write methods."""
         remediate.sweep(s, user.org_id)
         stmt = (select(RemediationJob, Asset.hostname).join(Asset, Asset.id == RemediationJob.asset_id)
                 .where(RemediationJob.org_id == user.org_id))
@@ -1524,11 +1765,20 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/windows-updates")
     def windows_updates(user: CurrentUser, s: DB):
+        """Return Windows update groups across this organisation without the per-host detail lists.
+
+        Requires a user session or a read-only organisation API token. API tokens cannot use write methods."""
         remediate.sweep(s, user.org_id)
         return [{k: v for k, v in r.items() if k not in ("missing", "plan_asset_ids")} for r in remediate.kb_fleet(s, user.org_id)]
 
     @app.get("/api/windows-updates/{kb}")
     def windows_update_hosts(kb: str, user: CurrentUser, s: DB, product: str = Query(max_length=255)):
+        """Return host-level detail for a Windows KB and exact product query.
+
+        Requires a user session or a read-only organisation API token. API tokens cannot use write methods.
+
+        Operation-specific HTTP errors: 404. See detail in the response.
+        Authentication and request-validation errors also apply where required."""
         remediate.sweep(s, user.org_id)
         row = next((r for r in remediate.kb_fleet(s, user.org_id) if r["kb"] == kb and r["product"] == product), None)
         if not row:
@@ -1540,6 +1790,14 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/remediation/jobs/{job_id}/approve")
     def approve_job(job_id: str, user: Admin, s: DB, body: ApproveReq | None = None):
+        """Approve a planned job and return its detail.
+
+        A change that cannot be rolled back requires forward_only acknowledgement in the body.
+
+        Requires an organisation admin browser session; API tokens are refused.
+
+        Operation-specific HTTP errors: 404, 409. See detail in the response.
+        Authentication and request-validation errors also apply where required."""
         job = s.get(RemediationJob, job_id)
         if not job or job.org_id != user.org_id:
             raise HTTPException(404, "Job not found")
@@ -1552,6 +1810,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/remediation/jobs/{job_id}/cancel")
     def cancel_job(job_id: str, user: Admin, s: DB):
+        """Cancel a job when its current state permits cancellation; return the updated job.
+
+        Requires an organisation admin browser session; API tokens are refused.
+
+        Operation-specific HTTP errors: 404, 409. See detail in the response.
+        Authentication and request-validation errors also apply where required."""
         job = s.get(RemediationJob, job_id)
         if not job or job.org_id != user.org_id:
             raise HTTPException(404, "Job not found")
@@ -1572,6 +1836,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/settings")
     def get_settings(user: CurrentUser, s: DB):
+        """Return organisation policy, deadlines, agent update status, and server release status.
+
+        Requires a user session or a read-only organisation API token. API tokens cannot use write methods."""
         o = s.get(Org, user.org_id)
         return {"remediation_mode": o.remediation_mode, "canary_soak_hours": o.canary_soak_hours, "sla_days": evidence.sla_days(o),
                 "maintenance_window": o.maintenance_window, "reboot_deadline_hours": o.reboot_deadline_hours,
@@ -1581,6 +1848,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.patch("/api/settings")
     def update_settings(body: Policy, user: Admin, s: DB):
+        """Update organisation policy, record the decision, and return current settings.
+
+        Requires an organisation admin browser session; API tokens are refused.
+
+        Operation-specific HTTP errors: 422. See detail in the response.
+        Authentication and request-validation errors also apply where required."""
         o = s.get(Org, user.org_id)
         changes = body.model_dump(exclude_none=True)
         if "sla_days" in changes:  # organisation-defined periods (NIST SI-2): given priorities change, the rest stay
@@ -1618,6 +1891,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     async def sso_start(request: Request, s: DB):
         # POST from the sign-in form, never a GET: the Origin check refuses a flow started by another site, which could
         # otherwise sign a victim's browser into an attacker's org (login CSRF) or bounce them to any URL (open redirect).
+        """Read the SSO start form and begin the configured organisation's authorisation-code flow.
+
+        Returns a redirect; configuration and validation failures redirect with sso_error."""
         form = parse_qs((await request.body()).decode(errors="replace"))
         email, org = (form.get("email") or [None])[0], (form.get("org") or [None])[0]
         if (email and len(email) > 320) or (org and len(org) > 32):
@@ -1644,6 +1920,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/auth/sso/callback")
     def sso_callback(request: Request, s: DB, code: str | None = None, state: str | None = None, error: str | None = None):
+        """Validate the pending SSO flow and provider identity, then establish a session.
+
+        Failures redirect to sign-in with an sso_error code. A provider callback alone is not proof
+        of a completed login; state, nonce, email verification, and allowed domain are checked."""
         pending = s.get(PendingLogin, state) if state else None
         if pending:  # single use, whatever happens next
             s.delete(pending)
@@ -1710,10 +1990,19 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/settings/sso")
     def get_sso(request: Request, user: Admin, s: DB):
+        """Return SSO configuration with domain-verification instructions, without exposing its stored secret.
+
+        Requires an organisation admin browser session; API tokens are refused."""
         return sso_json(s.get(Org, user.org_id), request)
 
     @app.put("/api/settings/sso")
     def put_sso(body: SSOConfig, request: Request, user: Admin, s: DB):
+        """Validate and save SSO configuration and return the current domain-verification state.
+
+        Requires an organisation admin browser session; API tokens are refused.
+
+        Operation-specific HTTP errors: 409, 422. See detail in the response.
+        Authentication and request-validation errors also apply where required."""
         o = s.get(Org, user.org_id)
         issuer, domains = body.issuer.strip(), sorted({d.strip().lower() for d in body.domains if d.strip()})
         if not issuer:
@@ -1763,10 +2052,19 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/settings/notifications")
     def get_notifications(user: Admin, s: DB):
+        """Return webhook/email configuration, confirmation state, and recent notification outcomes.
+
+        Requires an organisation admin browser session; API tokens are refused."""
         return notify_json(s.get(Org, user.org_id), s)
 
     @app.put("/api/settings/notifications")
     def put_notifications(body: NotifyConfig, request: Request, user: Admin, s: DB):
+        """Save notification settings and request confirmation for newly added email recipients.
+
+        Requires an organisation admin browser session; API tokens are refused.
+
+        Operation-specific HTTP errors: 422. See detail in the response.
+        Authentication and request-validation errors also apply where required."""
         o = s.get(Org, user.org_id)
         added = []
         if body.webhook_url is not None:
@@ -1807,6 +2105,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/notify/confirm")
     def confirm_page(s: DB, org: str = "", email: str = "", token: str = ""):
+        """Return the email-alert consent form for a valid confirmation link, otherwise HTML 404."""
         if not confirmable(s, org, email, token):
             return Response(CONFIRM_INVALID, 404, media_type="text/html")
         # a button, not an automatic confirm: mail scanners open links on their own
@@ -1815,6 +2114,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/notify/confirm")
     def confirm_email(s: DB, org: str = "", email: str = "", token: str = ""):
+        """Confirm the linked email recipient and return HTML confirmation, or HTML 404 for an invalid link."""
         o = confirmable(s, org, email, token)
         if not o:
             return Response(CONFIRM_INVALID, 404, media_type="text/html")
@@ -1848,6 +2148,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/auth/signup/confirm")
     def signup_confirm_page(s: DB, token: str = ""):
+        """Return the password-selection form for a valid signup, invitation, or reset token; otherwise HTML 404."""
         p, org = pending_link(s, token)
         if not p:
             return Response(CONFIRM_INVALID, 404, media_type="text/html")
@@ -1855,6 +2156,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/auth/signup/confirm")
     async def signup_confirm(request: Request, s: DB, token: str = ""):
+        """Consume a confirmation form and choose a password for signup, invitation, or password reset.
+
+        The token is in the query string and password is form-encoded. Invalid links and invalid
+        passwords are reported by the confirmation flow; no browser session is granted here."""
         form = parse_qs((await request.body()).decode(errors="replace"))
         return await run_in_threadpool(finish_link, s, token, (form.get("password") or [""])[0])
 
@@ -1896,6 +2201,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/settings/notifications/test", status_code=202)
     def test_notification(user: Admin, s: DB):
+        """Queue a test notification for the organisation and return queued=true with HTTP 202.
+
+        Requires an organisation admin browser session; API tokens are refused.
+
+        Operation-specific HTTP errors: 429. See detail in the response.
+        Authentication and request-validation errors also apply where required."""
         if over_limit(s, "notify-test:" + user.org_id, TEST_ALERT_MAX_PER_HOUR):
             raise HTTPException(429, f"At most {TEST_ALERT_MAX_PER_HOUR} test alerts an hour")
         notify.notify(s, user.org_id, "test", f"Test alert from Nimstead, requested by {user.email}")
@@ -1905,6 +2216,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/ai/status")
     def ai_status(user: CurrentUser):
+        """Return whether the optional AI service is configured and enabled.
+
+        Requires a user session or a read-only organisation API token. API tokens cannot use write methods."""
         return {"enabled": ai.enabled()}
 
     def ai_budget(s: Session, user: User) -> None:
@@ -1915,6 +2229,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/ai/explain/{finding_id}")
     def ai_explain(finding_id: str, user: CurrentUser, s: DB):
+        """Return an AI explanation and model name for an owned finding, subject to AI usage quotas.
+
+        Requires a user session or a read-only organisation API token. API tokens cannot use write methods.
+
+        Operation-specific HTTP errors: 503. See detail in the response.
+        Authentication and request-validation errors also apply where required."""
         f = get_finding(finding_id, user, s)
         ai_budget(s, user)
         try:
@@ -1927,6 +2247,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.post("/api/ai/search")
     def ai_search(body: AskReq, user: CurrentUser, s: DB):
+        """Return a validated findings filter from the submitted natural-language text, subject to AI usage quotas.
+
+        Requires a user session or a read-only organisation API token. API tokens cannot use write methods.
+
+        Operation-specific HTTP errors: 503. See detail in the response.
+        Authentication and request-validation errors also apply where required."""
         ai_budget(s, user)
         try:
             return ai.parse_search(body.text).model_dump()
@@ -1947,6 +2273,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     @app.get("/api/evidence/ledger")
     def ledger(user: CurrentUser, s: DB, limit: int = Query(100, ge=1, le=1000),
                group: Literal["decisions", "fixes", "detections", "access"] | None = None):
+        """Return recent ledger entries, matching total, and integrity problems for the organisation.
+
+        limit ranges from 1 to 1000; group optionally selects a category. Integrity checking may
+        reuse a verified prefix, with a full verification at least hourly.
+
+        Requires a user session or a read-only organisation API token. API tokens cannot use write methods."""
         q = select(LedgerEntry).where(LedgerEntry.org_id == user.org_id)
         if group:
             q = q.where(or_(*(LedgerEntry.kind.like(k) if "%" in k else LedgerEntry.kind == k for k in LEDGER_GROUPS[group])))
@@ -1968,6 +2300,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/evidence/report")
     def evidence_report(user: CurrentUser, s: DB, days: int = Query(90, ge=1, le=730), summary: bool = False):
+        """Return the evidence report for the requested trailing days.
+
+        summary=true omits ledger entries; days ranges from 1 to 730 and defaults to 90.
+
+        Requires a user session or a read-only organisation API token. API tokens cannot use write methods."""
         pack = evidence.build_pack(s, user.org_id, *evidence.default_period(days), with_entries=False)
         pack["ledger"] = {"head_hash": pack["ledger"]["head_hash"], "entries": pack["ledger"]["entries"]}  # a count: the page lists them
         if summary:  # the Evidence page shows metrics and controls; every finding and asset (megabytes on a fleet) is for the pack
@@ -1979,6 +2316,15 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def evidence_pack(user: CurrentUser, s: DB, days: int = Query(90, ge=1, le=730)):
         # the chain since the last full check (one runs at least hourly, and whenever an anchor moved), then every entry the
         # pack holds, re-hashed as it is built: reading and hashing the whole ledger twice was most of a pack's time
+        """Return a signed ZIP evidence pack for the requested trailing days.
+
+        Refuse with 409 if ledger verification fails before signing. The ZIP includes JSON,
+        signature, public key, and instructions; the trusted fingerprint must arrive separately.
+
+        Requires a user session or a read-only organisation API token. API tokens cannot use write methods.
+
+        Operation-specific HTTP errors: 409. See detail in the response.
+        Authentication and request-validation errors also apply where required."""
         if problems := evidence.verify_chain(s, user.org_id, full=False):
             raise HTTPException(409, f"Ledger integrity check failed; refusing to sign: {problems[:3]}")
         evidence.checkpoint(s, user.org_id)
@@ -2014,6 +2360,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/api/summary")
     def summary(user: CurrentUser, s: DB):
+        """Return fleet counts, priority totals, recommended upgrades, and jobs needing attention.
+
+        Requires a user session or a read-only organisation API token. API tokens cannot use write methods."""
         remediate.sweep(s, user.org_id)
         is_open = (Finding.org_id == user.org_id, Finding.status == "open")
         # A setting has no fixed version, but one the agent can change is a fix like any other
@@ -2067,6 +2416,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
         @app.get("/{path:path}", include_in_schema=False)
         def spa(path: str):
+            """Return the SPA index with no-cache headers, or 404 for unknown API paths.
+
+            Operation-specific HTTP errors: 404. See detail in the response.
+            Authentication and request-validation errors also apply where required."""
             if path.startswith("api/"):
                 raise HTTPException(404, "Not found")
             return FileResponse(WEB_DIST / "index.html", headers={"Cache-Control": "no-cache"})

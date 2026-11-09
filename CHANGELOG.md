@@ -4,6 +4,12 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Documentation
+- Add tutorials, task guides, API/agent/SBOM reference, and an explanation of the inventory-to-evidence flow.
+- Document public server, agent, tool, and web interfaces; add a repeatable coverage and local-link check.
+- Correct development command working directories and the minimum Node 22 version required by locked test dependencies.
+- Agent documentation changes its signed bytes; bump the agent to 0.6.7 so a future signed release can distribute it. Collection and remediation logic are unchanged.
+
 ## [0.7.5] - 2026-11-09 (preview)
 
 **Agent 0.6.6.** No database migration. A UI review at fleet scale (a demo of 206 machines and 44k findings), run as rounds of Impeccable critique and audit with fixes between them. axe finds no violations at 1440 and 375 in light and dark.

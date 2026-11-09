@@ -15,6 +15,7 @@ export function jobPackages(j: { packages?: unknown }): { name: string; from?: s
 
 // shortcut: agents (<= 0.6.6) report a step that fell back and then succeeded as ok, recognised by its wording; send a `warn` flag from the agent if more appear.
 const RECOVERED = /not available|rebuilding|rebuilt from|retry \d/i;
+/** Return failed for a false result, recovered for recognised fallback text, or passed otherwise. */
 export const stepState = (s: { step: string; ok: boolean; output?: string }) => (!s.ok ? "failed" : RECOVERED.test(s.step) || RECOVERED.test(s.output ?? "") ? "recovered" : "passed");
 
 function PackageList({ job }: { job: { packages?: unknown; summary?: string } }) {
@@ -32,6 +33,7 @@ function PackageList({ job }: { job: { packages?: unknown; summary?: string } })
   );
 }
 
+/** Render grouped remediation jobs and poll while execution or verification remains active. */
 export function RemediationPage() {
   useTitle("Remediation");
   const qc = useQueryClient();
@@ -137,6 +139,7 @@ function KbFleetRow({ row: r }: { row: KbRow }) {
   );
 }
 
+/** Render job state, packages, steps, and optional approval/cancellation actions. */
 export function JobCard({ job: j, onApprove, onCancel }: { job: Job; onApprove?: () => void; onCancel?: () => void }) {
   const admin = useIsAdmin();
   const steps = j.steps ?? [];
@@ -221,6 +224,7 @@ export function JobCard({ job: j, onApprove, onCancel }: { job: Job; onApprove?:
 export const machineContext = (a?: Asset) => a && [a.hostname, `${a.criticality} criticality`, a.ring === 0 ? "canary (fixed first)" : "broad ring",
   a.sandbox ? "test machine" : "production", a.health_units.length ? `health checks: ${a.health_units.join(", ")}` : "no health checks set"].join(" · ");
 
+/** Render a controlled approval dialog with package scope, host context, and forward-only acknowledgement. */
 export function ApproveDialog({ job, onOpenChange, onConfirm, pending, error, ownPlan, context }: {
   job: (Pick<Job, "summary" | "hostname"> & { forward_only?: boolean; packages?: unknown; manager?: string }) | null; onOpenChange: (o: boolean) => void; onConfirm: () => void; pending?: boolean; error?: string; ownPlan?: boolean; context?: string;
 }) {

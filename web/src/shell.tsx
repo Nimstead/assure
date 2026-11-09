@@ -7,6 +7,7 @@ import clsx from "clsx";
 import { savedViews, ADMIN_ONLY_ID, announce, api, ApiError, assetsQ, filtersToSearch, meQ, NEXT_THEME, parseFilters, setTheme, THEME_LABEL, themeChoice, type Finding, type ThemeChoice } from "./lib";
 import { ErrorState, LiveRegions, Loading, useReturnFocus } from "./ui";
 
+/** Render the Assure wordmark. */
 export const Logo = () => (
   // product lockup: company in ExtraBold, product word in Regular; the seal belongs to the company mark only
   <span className="text-xl leading-none tracking-[-0.045em] text-ink">
@@ -76,6 +77,7 @@ function useTheme() {
 const ThemeIcon = ({ theme, className }: { theme: ThemeChoice; className: string }) =>
   theme === "system" ? <Monitor className={className} aria-hidden /> : theme === "dark" ? <Moon className={className} aria-hidden /> : <Sun className={className} aria-hidden />;
 
+/** Render authenticated navigation, shared live regions, command palette, and the current route. */
 export function Shell() {
   const me = useQuery(meQ);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -228,6 +230,7 @@ function useDebounced<T>(value: T, ms: number) {
   return v;
 }
 
+/** Render the controlled command/search palette. onOpenChange closes it; signOut and nextTheme run the supplied actions. */
 export function Palette({ open, onOpenChange, signOut, nextTheme }: { open: boolean; onOpenChange: (o: boolean) => void; signOut: () => void; nextTheme: () => void }) {
   const navigate = useNavigate();
   const [text, setText] = useState("");

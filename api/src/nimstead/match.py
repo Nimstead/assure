@@ -31,6 +31,7 @@ def _incomparable(ecosystem: str, name: str, version: str, advisory: str, error:
 
 @dataclass(frozen=True)
 class Package:
+    """Installed package identity. name and version are strings; source optionally names the distro source package."""
     name: str  # binary/installed name
     version: str
     source: str | None = None  # source package (distros); falls back to name
@@ -38,6 +39,11 @@ class Package:
 
 @dataclass
 class Match:
+    """One canonical vulnerability match.
+
+    vuln_id is a CVE where available; advisory_ids lists contributing records. fixed is the lowest
+    known fixing version above the installed version, or None. summary is display text; record
+    retains one contributing OSV dictionary for risk and evidence processing."""
     vuln_id: str  # canonical id, CVE where known
     advisory_ids: list[str]
     fixed: str | None  # lowest fixed version above installed, None = no fix yet
@@ -54,6 +60,9 @@ def normalize_ecosystem(eco: str) -> str:
 
 
 def canonical_id(record: dict) -> str:
+    """Return the lexically first CVE among record id, aliases, and upstream IDs, otherwise record["id"].
+
+    record is an OSV dictionary; missing id raises KeyError."""
     ids = [record["id"], *record.get("aliases", []), *record.get("upstream", [])]
     cves = sorted(i for i in ids if i.startswith("CVE-"))
     return cves[0] if cves else record["id"]
@@ -90,7 +99,12 @@ def _fixed_above(version: str, events: list[dict], cmp: Cmp) -> str | None:
 
 
 def match_package(pkg: Package, ecosystem: str, records: list[dict]) -> list[Match]:
-    """Records are OSV entries already filtered to this package name."""
+    """Return deduplicated vulnerability matches for pkg in ecosystem.
+
+    records is a list of OSV dictionaries already selected for the package name. Match the
+    source name when present, using the ecosystem comparator. Withdrawn records and unsupported
+    comparators are skipped. Version-comparison ValueError is logged and skipped, so an empty
+    result alone does not prove the package safe. Malformed record structures may raise KeyError."""
     cmp = comparator_for(ecosystem)
     if cmp is None:
         return []

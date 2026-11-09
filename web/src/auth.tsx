@@ -16,7 +16,9 @@ const SSO_ERRORS: Record<string, string> = {
 };
 const ssoError = (code: string | null) => code && (SSO_ERRORS[code] ?? "Single sign-on failed. Try again or ask your administrator.");
 
+/** Render password/SSO sign-in, including MFA and recovery states. */
 export const SignInPage = () => <AuthPage mode="signin" />;
+/** Render organisation signup and the email-confirmation or first-account flow. */
 export const SignUpPage = () => <AuthPage mode="signup" />;
 
 function AuthPage({ mode }: { mode: "signin" | "signup" }) {

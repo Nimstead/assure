@@ -44,6 +44,7 @@ def load_runtimes(text: str) -> dict:
 
 
 def public_hex(k: Ed25519PrivateKey) -> str:
+    """Return the raw Ed25519 public key of private key k as hexadecimal text."""
     return k.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw).hex()
 
 
@@ -52,6 +53,11 @@ CHANNELS = ("preview", "beta", "stable")  # least to most proven; a server takes
 
 def release_manifest(tag: str, commit: str, agent_bytes: bytes, platform_version: str, channel: str = "preview",
                      runtimes: dict | None = None) -> bytes:
+    """Return canonical JSON manifest bytes binding a release to its commit, agent, channel, and runtimes.
+
+    tag must be vX.Y.Z and match platform_version; commit is a full lowercase 40-character SHA.
+    agent_bytes must contain AGENT_VERSION. channel defaults to preview; runtimes is an optional
+    already-validated architecture dictionary. Invalid release metadata raises SystemExit."""
     if channel not in CHANNELS:
         raise SystemExit(f"channel must be one of {', '.join(CHANNELS)}, not {channel!r}")
     if not re.fullmatch(r"v\d+\.\d+\.\d+", tag):
@@ -71,6 +77,11 @@ def release_manifest(tag: str, commit: str, agent_bytes: bytes, platform_version
 
 
 def main(argv=None) -> int:
+    """Run keygen or sign with optional argument list argv; return 0 on success.
+
+    keygen writes a private key outside the repository. sign reads NIMSTEAD_RELEASE_KEY and
+    writes a manifest/signature pair only for a pinned key. Invalid arguments or refused metadata
+    raise SystemExit; file, key-decoding, and cryptography errors propagate."""
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
     kg = sub.add_parser("keygen")

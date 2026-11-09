@@ -31,6 +31,7 @@ type Kind = (typeof KINDS)[number]["value"];
 /** Shown after this long without a first report: most first-run problems are one of these. */
 export const TROUBLESHOOT_AFTER_MS = 120_000;
 
+/** Guide an admin through choosing a host type, generating an enrolment token, and waiting for inventory. */
 export function Onboarding() {
   useTitle("Add a machine");
   const qc = useQueryClient();

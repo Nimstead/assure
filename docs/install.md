@@ -250,18 +250,18 @@ Then open **Evidence**: *Chain verified* means the ledger matches its signed che
 
 ## Without Docker
 
-You need [uv](https://docs.astral.sh/uv/) and Node.js 22.
+You need [uv](https://docs.astral.sh/uv/) and Node.js 22.22.2 or later in the Node 22 release line. Run each command from the repository root.
 
 ```bash
-cd web && npm ci && npm run build
+(cd web && npm ci && npm run build)
 ```
 
 ```bash
-cd api && uv sync --no-dev && uv run alembic upgrade head
+(cd api && uv sync --locked --no-dev && uv run alembic upgrade head)
 ```
 
 ```bash
-cd api && uv run uvicorn --factory nimstead.app:create_app --host 0.0.0.0 --port 8000 --proxy-headers
+(cd api && uv run uvicorn --factory nimstead.app:create_app --host 0.0.0.0 --port 8000 --proxy-headers)
 ```
 
 Run `cd api && uv run python -m nimstead.feeds update` hourly with cron or a systemd timer. Without `NIMSTEAD_DB` it uses SQLite in the current directory, which is fine for a trial.

@@ -12,6 +12,7 @@ const Onboarding = lazy(() => import("./onboarding").then((m) => ({ default: m.O
 // Only a non-zero "fix now" carries colour; the rest are ink so a count never reads as disabled.
 const tile = (p: string, n: number) => (p === "fix-now" && n > 0 ? "text-now-fg" : "text-ink");
 
+/** Render fleet priorities and recommended actions, with onboarding when no assets exist. */
 export function Home() {
   const q = useQuery(summaryQ);
   const coverage = useQuery(coverageQ);
@@ -101,6 +102,7 @@ export function Home() {
   );
 }
 
+/** Render upgrade recommendation a with its scope and fix-planning action. */
 export function ActionCard({ a }: { a: Action }) {
   const prodOk = useQuery(settingsQ).data?.production_remediation_allowed ?? true;  // unknown: let the API say no
   const sandbox = new Set((useQuery(assetsQ).data ?? []).filter((x) => x.sandbox).map((x) => x.id));

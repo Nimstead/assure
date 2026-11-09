@@ -120,6 +120,10 @@ def sync_osv(session: Session, ecosystems: list[str], client=None, batch: int = 
 
 
 def sync_kev(session: Session, client=None) -> int:
+    """Replace KEV rows from the CISA feed and return the count, committing Session session.
+
+    client optionally supplies the HTTP transport. Empty feeds raise ValueError; transport,
+    JSON/field, and database errors propagate."""
     vulns = json.loads(_get(client, KEV_URL))["vulnerabilities"]
     if not vulns:
         raise ValueError("KEV feed has no entries")
@@ -179,6 +183,10 @@ def sync_winapps(session: Session, cves: list[dict]) -> int:
 
 
 def sync_epss(session: Session, client=None) -> int:
+    """Replace EPSS rows from the compressed CSV feed and return the count, committing Session session.
+
+    client optionally supplies the HTTP transport. Empty data raises ValueError. Parse before
+    replacement; database failures roll back. Download, decompression, and parsing errors propagate."""
     text = gzip.decompress(_get(client, EPSS_URL)).decode()
     lines = (ln for ln in text.splitlines() if not ln.startswith("#"))  # leading "#model_version:..." line
     rows = [{"cve": r["cve"], "score": float(r["epss"]), "percentile": float(r["percentile"])}
@@ -538,6 +546,10 @@ def update_all(session: Session, client=None) -> dict:
 
 
 def main(argv: list[str]) -> int:
+    """Run the feed command in argv and print its result.
+
+    Return 2 for an unsupported command or missing required arguments, otherwise 0. Commands
+    write the configured database and can contact feed providers. Update errors propagate."""
     if not argv or argv[0] not in ("osv", "kev", "epss", "nvd", "msrc", "update") or (argv[0] in ("osv", "nvd") and len(argv) < 2):
         print("usage: python -m nimstead.feeds [update|osv ECOSYSTEM...|nvd YEAR...|modified|kev|epss|msrc [MONTHS]]", file=sys.stderr)
         return 2

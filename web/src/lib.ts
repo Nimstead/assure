@@ -45,6 +45,7 @@ export const AGENT_UPDATE: Record<Exclude<AgentUpdate, "current">, { label: stri
 export interface Coverage { assessed: number; inventory_only: number; not_assessed: { name: string; publisher: string | null; hosts: number }[] }
 export const coverageQ = { queryKey: ["coverage"], queryFn: () => api<Coverage>("/api/coverage") };
 export interface SbomResult { components: number; mapped: number; unique_packages: number; skipped: Record<string, number>; open: number; resolved: number }
+/** Return a display summary of mapped, unique, skipped, open, and resolved counts in r. */
 export const sbomSummary = (r: SbomResult) =>
   `${r.mapped} of ${r.components} components recognised (${r.unique_packages} unique packages), ${r.components - r.mapped} skipped. ${r.open} open finding${r.open === 1 ? "" : "s"}, ${r.resolved} resolved.`;
 export interface Finding {
@@ -97,6 +98,7 @@ export const JOB_STATUS_LABEL: Record<JobStatus, string> = {
   succeeded: "Fixed and verified", failed: "Failed", rolled_back: "Rolled back", rollback_failed: "Rollback failed",
   not_fixed: "Applied, still vulnerable", aborted: "Aborted", cancelled: "Cancelled",
 };
+/** Return the configured job groups with matching jobs, preserving each group's input order. */
 export const groupJobs = (jobs: Job[]) =>
   JOB_GROUPS.map((g) => ({ ...g, jobs: jobs.filter((j) => (g.statuses as readonly string[]).includes(j.status)) }));
 /** A job no one has finished with yet (remediate.py ACTIVE): one per package per machine. */
@@ -107,6 +109,7 @@ export const isActiveJob = (j: Pick<Job, "status">) => j.status !== "planned" &&
 export interface KbRow { kb: string; product: string; title: string; released: string | null; build: string; hosts: number; fixed: number; plan_note: string | null }
 export interface KbHost { asset_id: string; hostname: string; build: string; ring: number; why: string; notes: string[]; job: { id: string; status: JobStatus } | null }
 export const kbFleetQ = queryOptions({ queryKey: ["kb-fleet"], queryFn: () => api<KbRow[]>("/api/windows-updates") });
+/** Build query options for host details keyed by the KB and product in r; API failures reject the query. */
 export const kbHostsQ = (r: Pick<KbRow, "kb" | "product">) => queryOptions({
   queryKey: ["kb-fleet", r.kb, r.product],
   queryFn: () => api<KbRow & { missing: KbHost[]; plan_asset_ids: string[] }>(`/api/windows-updates/${r.kb}?product=${encodeURIComponent(r.product)}`),
@@ -154,11 +157,17 @@ export interface NotifySettings {
 export const settingsQ = queryOptions({ queryKey: ["settings"], queryFn: () => api<Settings>("/api/settings") });
 
 // ---- api ---------------------------------------------------------------------
+/** API failure with HTTP status and display message. Status 0 represents a network failure. */
 export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }
 
-/** A string body is sent as-is (already-serialised JSON, e.g. an uploaded SBOM); anything else is JSON-encoded. */
+/** Send a same-origin JSON request using the browser's session cookie.
+ * @param path API URL path.
+ * @param init Optional method and body; strings are sent verbatim, other truthy bodies are JSON-encoded.
+ * @returns Parsed JSON typed as T, or undefined for HTTP 204. The generic does not validate the response.
+ * @throws ApiError for network failure (status 0) or a non-success HTTP response; JSON parse errors propagate.
+ */
 export async function api<T>(path: string, init?: { method?: string; body?: unknown }): Promise<T> {
   let res: Response;
   try {
@@ -207,6 +216,7 @@ export function parseUtc(s: string): Date {
 }
 
 const rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+/** Format UTC timestamp s relative to now (Unix milliseconds), using English calendar units. Invalid dates can raise RangeError. */
 export function relativeTime(s: string, now = Date.now()): string {
   const sec = Math.round((parseUtc(s).getTime() - now) / 1000);
   if (Math.abs(sec) < 45) return "just now";
@@ -216,7 +226,9 @@ export function relativeTime(s: string, now = Date.now()): string {
   return rtf.format(Math.round(sec / 31536000), "year");
 }
 
+/** Format count n and choose one only for 1; many defaults to the singular text plus s. */
 export const plural = (n: number, one: string, many = one + "s") => `${n.toLocaleString("en")} ${n === 1 ? one : many}`;
+/** Format ratio x as a rounded percentage, using <1% below 0.01. The input is not range-checked. */
 export const pct = (x: number) => (x < 0.01 ? "<1%" : `${Math.round(x * 100)}%`);
 
 /** What to move to. Settings, end of support and exposures never have a fixed version, and "no fix yet" would be untrue. */
@@ -235,6 +247,8 @@ export function whyMatched(f: Pick<Finding, "installed_version" | "fixed_version
   return `Installed ${f.installed_version} < fixed ${f.fixed_version} per ${src}`;
 }
 
+/** Return Linux, direct-Python, and PowerShell enrolment commands for origin and token.
+ * Inputs must be the trusted server origin and generated token; this helper does not escape arbitrary shell input. */
 export function installCommands(origin: string, token: string) {
   return {
     // the token goes in the environment (export is a shell builtin), never argv: ps and sudo logs show every argument
@@ -320,6 +334,7 @@ const STALE = {
   assets: ["assets", "findings", "finding", "summary", "ledger", "jobs", "kb-fleet"],
   people: ["users", "api-tokens", "enroll-tokens", "ledger"],
 } as const;
+/** Invalidate query groups affected by what and return a Promise for all invalidations on qc. */
 export const refresh = (qc: QueryClient, what: keyof typeof STALE) =>
   Promise.all(STALE[what].map((k) => qc.invalidateQueries({ queryKey: [k] })));
 
@@ -331,6 +346,7 @@ export function announce(text: string, assertive = false) {
   setTimeout(() => { el.textContent = text; }, 30);
 }
 
+/** Set the browser document title to the page title plus the product name whenever title changes. */
 export function useTitle(title: string) {
   useEffect(() => { document.title = `${title} · Nimstead Assure`; }, [title]);
 }
@@ -352,6 +368,7 @@ export const themeChoice = (): ThemeChoice => {
   const t = document.documentElement.dataset.theme;
   return t === "light" || t === "dark" ? t : "system";
 };
+/** Apply theme t to the document and persist it when storage is available; system removes the override. */
 export function setTheme(t: ThemeChoice) {
   if (t === "system") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = t;
   try { if (t === "system") localStorage.removeItem("theme"); else localStorage.setItem("theme", t); } catch { /* storage blocked */ }
@@ -388,9 +405,11 @@ export function dependenciesNeeded(error: string | null | undefined): string[] {
 // shortcut: saved in this browser only (localStorage); store them per user on the server if teams need to share them
 export interface SavedView { name: string; search: RawSearch }
 const VIEWS_KEY = "nimstead:findings-views";
+/** Read named findings views from localStorage; return [] when storage or JSON is unavailable. Only names are validated. */
 export function savedViews(): SavedView[] {
   try { const v = JSON.parse(localStorage.getItem(VIEWS_KEY) ?? "[]"); return Array.isArray(v) ? v.filter((x) => x && typeof x.name === "string") : []; } catch { return []; }
 }
+/** Persist views and dispatch nimstead-views so listeners refresh; storage failures are ignored. */
 export function saveViews(views: SavedView[]) {
   try { localStorage.setItem(VIEWS_KEY, JSON.stringify(views)); window.dispatchEvent(new Event("nimstead-views")); } catch { /* private mode: views just don't persist */ }
 }

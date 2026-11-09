@@ -25,6 +25,9 @@ SID_NAMES = {"S-1-5-32-544": "Administrators", "S-1-5-32-545": "Users", "S-1-5-3
 
 @lru_cache(maxsize=1)
 def baselines() -> tuple[dict, ...]:
+    """Return baseline dictionaries from sorted bundled JSON files.
+
+    File I/O and JSON decoding errors propagate; the result is process-cached."""
     return tuple(json.loads(p.read_text(encoding="utf-8")) for p in sorted(DIR.glob("*.json")))
 
 

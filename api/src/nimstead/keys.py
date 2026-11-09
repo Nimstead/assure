@@ -22,14 +22,21 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 
 class KeyError_(Exception):
+    """A Vault request failed; no local-key fallback is attempted."""
     pass
 
 
 def vault_enabled() -> bool:
+    """Return whether both the Vault address and token environment variables are set."""
     return bool(os.environ.get("NIMSTEAD_VAULT_ADDR") and os.environ.get("NIMSTEAD_VAULT_TOKEN"))
 
 
 class Vault:
+    """Vault transit adapter for Ed25519 signatures, encrypted strings, and HMAC.
+
+    http optionally supplies an httpx.Client. Configuration comes from NIMSTEAD_VAULT_* variables;
+    missing required variables raise KeyError. Public operations raise KeyError_ on HTTP error responses;
+    transport, malformed-response, and decoding errors propagate."""
     def __init__(self, http: httpx.Client | None = None):
         self.addr = os.environ["NIMSTEAD_VAULT_ADDR"].rstrip("/")
         self.mount = os.environ.get("NIMSTEAD_VAULT_MOUNT", "transit")
@@ -54,27 +61,35 @@ class Vault:
 
     # -- signing (duck-types cryptography's Ed25519PrivateKey: .sign() and .public_key())
     def sign(self, data: bytes) -> bytes:
+        """Return the raw Ed25519 signature over data bytes using the configured signing key."""
         sig = self._call("POST", f"sign/{self.signing}", {"input": base64.b64encode(data).decode()})["signature"]
         return base64.b64decode(sig.split(":", 2)[2])  # "vault:v1:<base64>"
 
     def public_key(self) -> Ed25519PublicKey:
+        """Return the latest version of the configured signing key as an Ed25519PublicKey."""
         keys = self._call("GET", f"keys/{self.signing}")["keys"]
         latest = keys[str(max(int(v) for v in keys))]
         return Ed25519PublicKey.from_public_bytes(base64.b64decode(latest["public_key"]))
 
     # -- encryption / HMAC for secrets
     def encrypt(self, plaintext: str) -> str:
+        """Return Vault-tagged ciphertext for the plaintext string using the configured secret key."""
         return self._call("POST", f"encrypt/{self.secret}", {"plaintext": base64.b64encode(plaintext.encode()).decode()})["ciphertext"]
 
     def decrypt(self, ciphertext: str) -> str:
+        """Return plaintext text for a Vault-tagged ciphertext string using the configured secret key."""
         return base64.b64decode(self._call("POST", f"decrypt/{self.secret}", {"ciphertext": ciphertext})["plaintext"]).decode()
 
     def hmac(self, data: bytes) -> str:
+        """Return Vault's version-tagged SHA-256 HMAC string for data bytes."""
         return self._call("POST", f"hmac/{self.secret}/sha2-256", {"input": base64.b64encode(data).decode()})["hmac"]
 
 
 @lru_cache(maxsize=1)
 def vault() -> Vault:
+    """Return the process-cached Vault adapter after ensuring both transit keys exist.
+
+    Configuration, permission, network, and response errors propagate; keys are never replaced with local ones."""
     v = Vault()
     v.ensure_keys()
     return v
@@ -83,6 +98,7 @@ def vault() -> Vault:
 # --- WORM checkpoint storage -------------------------------------------------------
 
 def s3_enabled() -> bool:
+    """Return whether NIMSTEAD_CHECKPOINT_S3 names checkpoint storage."""
     return bool(os.environ.get("NIMSTEAD_CHECKPOINT_S3"))
 
 
@@ -99,6 +115,10 @@ def _bucket_prefix() -> tuple[str, str]:
 
 
 def s3_put_checkpoint(org_id: str, cp: dict) -> None:
+    """Store checkpoint dictionary cp under org_id with S3 COMPLIANCE retention.
+
+    cp must include integer seq. Retention days and bucket/prefix come from environment configuration.
+    Returns None; configuration, JSON serialization, and S3 service errors propagate."""
     bucket, prefix = _bucket_prefix()
     days = int(os.environ.get("NIMSTEAD_CHECKPOINT_RETAIN_DAYS", "3650"))
     _s3().put_object(Bucket=bucket, Key=f"{prefix}/{org_id}/{cp['seq']:012d}.json", Body=json.dumps(cp).encode(),
@@ -107,6 +127,9 @@ def s3_put_checkpoint(org_id: str, cp: dict) -> None:
 
 
 def s3_load_checkpoints(org_id: str) -> list[dict]:
+    """Return all checkpoint dictionaries for org_id, sorted by seq, following S3 pagination.
+
+    Configuration, S3 service, and malformed JSON errors propagate."""
     bucket, prefix = _bucket_prefix()
     out, token = [], None
     while True:

@@ -32,7 +32,7 @@ import urllib.parse
 import urllib.request
 import zipfile
 
-AGENT_VERSION = "0.6.6"  # the server reads this line to flag outdated agents; bump on every agent change
+AGENT_VERSION = "0.6.7"  # the server reads this line to flag outdated agents; bump on every agent change
 # Ed25519 public keys (hex) allowed to sign releases (DECISIONS 31): primary (GitHub Actions) and offline backup.
 # The server only relays signed releases, so it can withhold an update but never forge one. Empty = never self-update.
 RELEASE_KEYS = ["a91fa6539c6c2593009fc71b1c1fba341b5685ba7bc97c127c068b1d732b21d2", "2438f2ccebab5bf26edf9e21a8aa8f09abd1861f52fbe0d6641b28b90f8b0e5a"]  # noqa: E501
@@ -40,10 +40,14 @@ MAX_AGENT_BYTES = 5 * 1024 * 1024
 
 
 class AgentError(Exception):
+    """An expected agent configuration, collection, network, or policy failure."""
     pass
 
 
 def config_path():
+    """Return the platform-specific configuration filename as a string.
+
+    Windows uses ProgramData; root on Linux uses /etc; other Linux users use their home directory."""
     if os.name == "nt":
         return os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "Nimstead", "agent.json")
     if os.geteuid() == 0:
@@ -54,6 +58,7 @@ def config_path():
 # ---- collection -------------------------------------------------------------
 
 def parse_os_release(text):
+    """Parse os-release text into a string dictionary, removing surrounding quotes and ignoring comments."""
     out = {}
     for line in text.splitlines():
         k, sep, v = line.partition("=")
@@ -91,6 +96,10 @@ def ecosystem_from_os_release(text):
 
 
 def parse_dpkg(text):
+    """Return package dictionaries from tab-separated dpkg-query text.
+
+    Expect name, binary version, source name, source version, and status columns. Keep installed,
+    held-installed, and trigger-pending packages; skip malformed or unpacked entries."""
     pkgs = []
     for line in text.splitlines():
         f = line.split("\t")
@@ -104,6 +113,9 @@ def parse_dpkg(text):
 
 
 def parse_rpm(text):
+    """Return package dictionaries from tab-separated RPM name, epoch/version/release, and source-RPM text.
+
+    Skip short rows and gpg-pubkey entries. Preserve epochs and derive source names from .src.rpm filenames."""
     pkgs = []
     for line in text.splitlines():
         f = line.split("\t")
@@ -121,6 +133,9 @@ def parse_rpm(text):
 
 
 def parse_apk(text):
+    """Return package dictionaries from apk installed-database text.
+
+    Read P (name), V (version), and optional o (origin) fields; skip blocks without name/version."""
     pkgs = []
     for block in text.split("\n\n"):
         d = {}
@@ -481,6 +496,7 @@ class RemoteReg:
     KEY_READ, KEY_WOW64_64KEY, KEY_WOW64_32KEY = 0, 0x100, 0x200
 
     class Key:
+        """In-memory registry key from a remote collection, with path, values, and subkey names."""
         def __init__(self, path, d):
             self.path, self.values, self.subkeys = path, d.get("values") or {}, d.get("subkeys") or []
 
@@ -494,6 +510,10 @@ class RemoteReg:
         self.keys, self.denied = keys, set(denied)
 
     def OpenKey(self, root, path, reserved=0, access=0):
+        """Return a collected registry Key under root and path strings, respecting the 32-bit view flag.
+
+        root may also be a Key. reserved is accepted for winreg compatibility. Raise PermissionError
+        for denied paths or FileNotFoundError for paths absent from the collected snapshot."""
         base = root.path if isinstance(root, self.Key) else root
         path = path.lower()
         if access & self.KEY_WOW64_32KEY and path.startswith("software\\"):
@@ -506,18 +526,21 @@ class RemoteReg:
         return self.Key(full, self.keys[full])
 
     def EnumKey(self, k, i):
+        """Return subkey name at index i of Key or hive string k; raise OSError past the last entry."""
         subs = k.subkeys if isinstance(k, self.Key) else sorted({x[len(k) + 1:].split("\\")[0].upper() for x in self.keys if x.startswith(k + "\\")})  # a hive
         if i >= len(subs):
             raise OSError("no more")
         return subs[i]
 
     def EnumValue(self, k, i):
+        """Return (name, value, 1) at index i of collected Key k; raise OSError past the last value."""
         items = list(k.values.items())
         if i >= len(items):
             raise OSError("no more")
         return (*items[i], 1)
 
     def QueryValueEx(self, k, name):
+        """Return (value, 1) for name in collected Key k; raise OSError when absent."""
         if name not in k.values:
             raise OSError(name)
         return k.values[name], 1
@@ -1195,6 +1218,9 @@ def esu_active(product, run=None):
 
 
 def collect():
+    """Return this host's base inventory dictionary using the Windows or Linux collector.
+
+    Reads host state and runs platform inventory commands; collection errors follow the selected collector."""
     return collect_windows() if os.name == "nt" else collect_linux()
 
 
@@ -1226,6 +1252,7 @@ INSTALL_TIMEOUT = 7200  # a Windows cumulative update install, in seconds
 
 
 class StepFailed(Exception):
+    """A recorded remediation step failed and execution must stop or enter rollback."""
     pass
 
 
@@ -1368,9 +1395,14 @@ class Job:
         self.fail_after_apply = fail_after_apply  # sandbox fault injection (run-job only; never from the server)
 
     def path(self, p):
+        """Return string path p interpreted below this job's filesystem root."""
         return os.path.join(self.root, p.lstrip("/"))
 
     def step(self, name, cmd=None, ok=None, output="", cwd=None):
+        """Run cmd or record an explicit result, append a bounded step log, and return output text.
+
+        name labels the step; cmd is an optional argument list; cwd is its working directory.
+        Without cmd, ok and output supply the result. Raise StepFailed when the result is false."""
         if cmd is not None:
             rc, output = self.run(cmd, cwd=cwd)
             ok = rc == 0
@@ -1382,6 +1414,9 @@ class Job:
     # --- state --------------------------------------------------------------
 
     def versions(self):
+        """Return planned-package names mapped to installed version strings, or None when unreadable.
+
+        For RPM, multiple installed versions are treated as unreadable rather than selecting one."""
         out = {}
         if self.mgr == "apk":
             try:
@@ -1401,6 +1436,9 @@ class Job:
         return out
 
     def owned_paths(self):
+        """Return the set of file paths owned by the planned APK or RPM packages.
+
+        Raise StepFailed when RPM cannot list files; APK database I/O errors propagate."""
         names = {p["name"] for p in self.pkgs}
         if self.mgr == "apk":
             with open(self.path("/lib/apk/db/installed")) as f:
@@ -1414,6 +1452,9 @@ class Job:
         return paths
 
     def health(self, when):
+        """Check each configured service is active without additional restarts since the recorded baseline.
+
+        when is a label for the step log. Raise StepFailed for an unhealthy service."""
         for u in self.units:
             rc, state = self.run(["systemctl", "is-active", u])  # prints the state, so a failure says why
             # one sample can catch a crash-looping service in its moment of "active": restarts since the mark count too
@@ -1422,10 +1463,12 @@ class Job:
             self.step(f"{u} active {when}", ok=rc == 0 and more <= 0, output=why)
 
     def restart_count(self, u):
+        """Return systemd NRestarts for service-name string u, or zero when its output is not numeric."""
         out = self.run(["systemctl", "show", "-p", "NRestarts", "--value", u])[1].strip()
         return int(out) if out.isdigit() else 0
 
     def mark_restarts(self):
+        """Store the current restart count for each configured health-check service."""
         self.restarts = {u: self.restart_count(u) for u in self.units}
 
     def newer(self, to, cur):
@@ -1438,6 +1481,7 @@ class Job:
         return True
 
     def snapper_ok(self):
+        """Return whether snapper can list the root configuration through the job command runner."""
         rc, out = self.run(["snapper", "-c", "root", "list", "--columns", "number"])
         return rc == 0
 
@@ -1485,6 +1529,10 @@ class Job:
     # --- rollback artefacts -------------------------------------------------
 
     def save_rollback(self):
+        """Create a new rollback directory and save package, filesystem, or snapper recovery state.
+
+        Mutates recovery metadata on this job. Existing directories and I/O errors propagate;
+        failed snapshot commands raise StepFailed. Call before applying the plan."""
         os.makedirs(os.path.dirname(self.dir), mode=0o700, exist_ok=True)
         os.mkdir(self.dir, mode=0o700)  # new, never reused: the precheck refused a job whose folder exists
         self.made_dir = True
@@ -1543,6 +1591,10 @@ class Job:
     # --- change -------------------------------------------------------------
 
     def apply(self):
+        """Upgrade the planned packages, validate the package database where supported, and record versions.
+
+        Changes this host. Requires prechecks and saved rollback state; failed commands or an
+        injected test failure raise StepFailed. Other filesystem errors propagate."""
         if self.mgr == "apt":
             self.step("upgrade", ["apt-get", "install", "-y", "--only-upgrade", "--no-remove",
                                   "-o", "Dpkg::Options::=--force-confold", *self.targets()])
@@ -1567,6 +1619,10 @@ class Job:
             self.step("injected failure (sandbox test)", ok=False, output="--fail-after-apply")
 
     def rollback(self):
+        """Verify and restore saved package/filesystem state, then check versions and service health.
+
+        Changes this host. Raise StepFailed for corrupt recovery artefacts, failed restore commands,
+        version mismatch, or failed health checks. Filesystem errors propagate."""
         for path, digest in self.artefacts:
             intact = os.path.exists(path) and _sha256(path) == digest
             self.step("rollback artefact intact " + os.path.basename(path), ok=intact, output="" if intact else "sha256 mismatch or missing")
@@ -1728,6 +1784,10 @@ class WinAppJob:
         self.inject, self.result_versions = fail_after_apply, None
 
     def step(self, name, cmd=None, ok=None, output="", cwd=None):
+        """Run optional cmd and append a bounded step result; return output text or raise StepFailed.
+
+        name labels the step; cwd is the working directory. Explicit ok overrides the command
+        exit status when supplied; without cmd, ok and output are the recorded result."""
         if cmd is not None:
             rc, output = self.run(cmd, cwd=cwd)
             ok = rc == 0 if ok is None else ok
@@ -1737,17 +1797,25 @@ class WinAppJob:
         return output
 
     def health(self, when):
+        """Wait for each configured Windows service to run and record a step labelled by when.
+
+        Raise StepFailed if a service does not reach Running."""
         for u in self.units:
             rc, out = ps(self.run, PS_SERVICE_UP.replace("%SVC%", u), timeout=SERVICE_UP_WAIT + 60)
             self.step(f"{u} running {when}", ok=rc == 0 and out.strip().splitlines()[-1:] == ["Running"], output=out)
 
     def valid(self):
+        """Return whether the job has one allowlisted product/setting and valid service/version fields."""
         p = self.pkgs[0] if len(self.pkgs) == 1 and isinstance(self.pkgs[0], dict) else {}
         keys = {"winget": WINGET_IDS, "office": {"Microsoft 365 Apps": 1}, "winconfig": CONFIG_FIXES}.get(self.mgr, {})
         return (p.get("name") in keys and all(SAFE_NAME.match(str(u)) for u in self.units)
                 and (self.mgr == "winconfig" or (SAFE_BUILD.match(str(p.get("from", ""))) and SAFE_BUILD.match(str(p.get("to", ""))))))
 
     def execute(self):
+        """Execute the approved Windows application or configuration change and check service health.
+
+        Return (outcome string, step list, error text or None). Attempt rollback where an undo action
+        exists; a failed forward-only change returns rollback_failed. Changes this host."""
         try:
             self.step("job validated", ok=self.valid(), output="" if self.valid() else "unknown product or setting, or invalid version")
             p = self.pkgs[0]
@@ -1835,6 +1903,9 @@ class WinAppJob:
         return undo
 
     def discard_rollback(self, outcome):
+        """No-op compatibility hook; these jobs do not keep Linux-style rollback artefacts.
+
+        outcome is accepted for the shared job interface."""
         pass
 
 
@@ -2206,6 +2277,9 @@ def wu(script):
 
 
 def ps(run, script, **kw):
+    """Invoke PowerShell through callable run and return its (exit code, output) result.
+
+    script is PowerShell text; keyword arguments pass through to run. Runner errors propagate."""
     return run(["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script], **kw)
 
 
@@ -2219,6 +2293,9 @@ def boot_time():
 
 
 def windows_build():
+    """Read and return the Windows registry build as 10.0.CurrentBuild.UBR.
+
+    Requires Windows; registry access and malformed numeric-value errors propagate."""
     import winreg
     with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion", 0,
                         winreg.KEY_READ | winreg.KEY_WOW64_64KEY) as k:
@@ -2260,6 +2337,7 @@ class WinJob:
             self.build = lambda: netfx_build(self.run)
 
     def valid(self):
+        """Return whether persisted job state has recognised phases and bounded, safe fields for execution."""
         s = self.s
         try:
             return bool(
@@ -2284,15 +2362,18 @@ class WinJob:
 
     # -- plumbing
     def save(self):
+        """Write this Windows job's JSON state, creating its parent directory; I/O errors propagate."""
         os.makedirs(os.path.dirname(self.state_path), exist_ok=True)
         with open(self.state_path, "w") as f:
             json.dump(self.s, f)  # inherits the locked-down folder ACL (secure_windows_dir)
 
     def clear(self):
+        """Delete the saved job state if present; filesystem errors propagate."""
         if os.path.exists(self.state_path):
             os.remove(self.state_path)
 
     def step(self, name, ok, output=""):
+        """Append a bounded step with name, boolean ok, and output; raise StepFailed when ok is false."""
         self.s["steps"].append({"step": name, "ok": bool(ok), "output": str(output)[-1500:]})
         if not ok:
             raise StepFailed(f"{name} failed: {clause_tail(output)}")
@@ -2305,6 +2386,10 @@ class WinJob:
             self.s["steps"].append({"step": "cluster node resumed", "ok": rc == 0, "output": str(out)[-1500:]})
 
     def result(self, outcome, error=None):
+        """Resume any paused cluster node, clear job state, and return a terminal result dictionary.
+
+        outcome is the terminal status; error is optional text. Applied results include the observed
+        product build. Recovery, state I/O, and build-reading errors can propagate."""
         self._resume_cluster()
         self.clear()
         return {"outcome": outcome, "steps": self.s["steps"], "error": error,
@@ -2312,6 +2397,7 @@ class WinJob:
                 **({"offered": self.offered} if self.offered and outcome == "aborted" else {})}
 
     def pending(self):
+        """Record the current boot identity, persist state, and return a pending_reboot result dictionary."""
         self.s["boot"] = int(self.booted())  # the restart it waits for is a new boot, not just time passing
         self.save()
         return {"outcome": "pending_reboot", "steps": self.s["steps"], "error": None, "versions": None}
@@ -2323,6 +2409,9 @@ class WinJob:
         return self.s.get("boot") is None or abs(self.booted() - self.s["boot"]) > 120
 
     def rollups(self):
+        """Return relevant Windows or .NET rollup package names mapped to DISM states.
+
+        Run DISM in English; raise StepFailed when the package listing fails."""
         rc, out = self.run(["dism", "/online", "/get-packages", "/format:list", "/english"])
         if rc != 0:
             raise StepFailed("dism /get-packages failed: " + out[-300:])
@@ -2580,6 +2669,9 @@ ConvertTo-Json -Compress -InputObject ([ordered]@{ domain = "$((Get-CimInstance 
 
 
 def ad_computers(run=None):
+    """Return domain and computer-list metadata read through PowerShell, using optional runner run.
+
+    Raise AgentError if the command fails or its output lacks the expected domain and computers."""
     rc, out = ps(run or sh, PS_AD_COMPUTERS)
     try:
         d = json.loads(out.strip().splitlines()[-1]) if rc == 0 else None
@@ -2591,6 +2683,7 @@ def ad_computers(run=None):
 
 
 def windows_version_key(v):
+    """Return dotted numeric version v as an integer tuple for ordering; malformed components raise ValueError."""
     return tuple(int(x) for x in str(v).split("."))
 
 
@@ -2748,6 +2841,7 @@ def post(server, path, body, insecure_http, key=None, raw=False, limit=MAX_AGENT
 
 
 def version_tuple(v):
+    """Return a three-integer tuple for a major.minor.patch string, otherwise None."""
     m = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", v) if isinstance(v, str) else None
     return tuple(int(x) for x in m.groups()) if m else None
 
@@ -2783,6 +2877,7 @@ CHANNELS = ("preview", "beta", "stable")  # least to most proven, as the server'
 
 
 def release_channel(rel):
+    """Return a recognised channel from manifest dictionary rel, defaulting to preview for older manifests."""
     return rel.get("channel") if rel.get("channel") in CHANNELS else "preview"  # manifests from before channels (0.3.0)
 
 
@@ -2945,6 +3040,9 @@ def _smoke_test(path, python=None):
 
 
 def load_config():
+    """Return the saved configuration dictionary and activate its proxy, update source, and log redaction key.
+
+    Raise AgentError for unreadable or invalid JSON; malformed configuration structure can raise other errors."""
     try:
         with open(config_path()) as f:
             cfg = json.load(f)
@@ -2958,6 +3056,10 @@ def load_config():
 
 
 def save_config(cfg):
+    """Write configuration dictionary cfg with restricted permissions and return its filename.
+
+    Lock down the Windows state directory before writing. Raise AgentError for file I/O failure;
+    serialization and directory-security errors propagate."""
     p = config_path()
     if os.name == "nt":  # chmod is a no-op on Windows and ProgramData is open to all users: lock it before the key lands
         secure_windows_dir(d=os.path.dirname(p))
@@ -2993,6 +3095,7 @@ def is_link(path):
 
 
 def remove_link(path):
+    """Remove path using rmdir for a directory or remove otherwise; filesystem errors propagate."""
     (os.rmdir if os.path.isdir(path) else os.remove)(path)  # removes the link itself, not what it points at
 
 
@@ -3207,6 +3310,9 @@ _update_error = None  # this run's self-update failure, reported with the invent
 
 def inventory(cfg):
     # auto_update None = can't (no pinned keys), so the server asks for a reinstall rather than blaming an opt-out
+    """Return the base inventory plus update status and opt-in scans configured in dictionary cfg.
+
+    Reads host state; errors follow the underlying collectors. Does not itself upload the result."""
     inv = {**collect(), "auto_update": bool(cfg.get("auto_update", True)) if RELEASE_KEYS else None, "update_error": _update_error}
     return with_apps(inv, cfg)
 
@@ -3248,6 +3354,7 @@ def _where(path):
 
 
 def net_mounts():
+    """Return mountpoint strings for recognised network filesystems in /proc/mounts, or [] on I/O failure."""
     try:
         with open("/proc/mounts") as f:
             return [ln.split()[1] for ln in f if len(ln.split()) > 2 and ln.split()[2] in NET_FS]
@@ -3761,6 +3868,10 @@ def _update_then_rerun(a, argv):
 
 
 def main(argv=None):
+    """Run the CLI with optional argument list argv and return its exit status.
+
+    Logs completion or unexpected failure and disables logging afterwards. Commands can change
+    packages, scheduling, and local state; see each subcommand. Unexpected exceptions propagate."""
     global _log_on
     try:
         rc = _main(argv)
@@ -3774,6 +3885,7 @@ def main(argv=None):
 
 
 def app_flags(p):
+    """Add opt-in Python/npm collection options to argparse parser p; return None."""
     p.add_argument("--scan-apps", action="store_true",
                    help="also read Python and npm packages' own metadata (site-packages, node_modules) in the usual install folders "
                         "and under each --app-root, within a 2-minute budget; nothing is run")
@@ -3782,6 +3894,9 @@ def app_flags(p):
 
 
 def app_roots(a):
+    """Return at most 20 absolute application-root paths from argparse Namespace a.
+
+    Raise AgentError if app_root is supplied without scan_apps."""
     if a.app_root and not a.scan_apps:
         raise AgentError("--app-root needs --scan-apps")
     return [os.path.abspath(r) for r in a.app_root[:20]]

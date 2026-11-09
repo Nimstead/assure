@@ -5,6 +5,7 @@ from enum import StrEnum
 
 
 class Outcome(StrEnum):
+    """Closed set of check conclusions; absence of evidence is undetermined or not-run, not a negative result."""
     VULNERABLE = "vulnerable"
     NOT_VULNERABLE = "not-vulnerable"  # positive evidence only (R4.2)
     NOT_APPLICABLE = "not-applicable"  # the product affirmatively isn't there
@@ -67,6 +68,10 @@ REASONS = {
 
 @dataclass(frozen=True)
 class Verdict:
+    """Immutable conclusion for a check, product, and optional installed instance.
+
+    check, family, ecosystem, product, and outcome identify the result. Optional fields carry
+    confidence, blockers, observed/fixed versions, advisory provenance, and risk context."""
     check: str  # stable: "<vulnerability>/<product>", or "product:<product>" for a whole product
     family: str  # os | microsoft | app (Windows), distro (Linux), application (outside the package manager: language packages, SBOMs)
     ecosystem: str  # advisory ecosystem, as on a Finding
@@ -92,6 +97,7 @@ class Verdict:
     summary: str | None = None
 
     def as_dict(self) -> dict:
+        """Return verdict fields as a dictionary, omitting values equal to None or False."""
         return {k: v for k, v in asdict(self).items() if v not in (None, False)}
 
     @property

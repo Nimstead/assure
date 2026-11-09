@@ -37,6 +37,7 @@ export function ExternalTargets({ targets, onDelete }: { targets: Asset[]; onDel
   );
 }
 
+/** Render external target t with ownership proof, verification, scan, and deletion controls. */
 export function TargetRow({ t, onDelete }: { t: Asset; onDelete: () => void }) {
   const admin = useIsAdmin();
   const qc = useQueryClient();

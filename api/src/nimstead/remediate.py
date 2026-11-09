@@ -55,6 +55,7 @@ def servicing(job: RemediationJob) -> bool:
 
 
 def forward_only(job: RemediationJob) -> bool:
+    """Return whether job uses a non-rollback manager or is a servicing update that cannot be undone."""
     return job.manager in FORWARD_ONLY or servicing(job)
 SAFE_PRODUCT = re.compile(r"^(?:\.NET Framework 4[0-9.]* on )?Windows [A-Za-z0-9 .()-]{1,120}\Z")  # \Z: $ also matches before a final newline
 SAFE_KB = re.compile(r"^[0-9]{6,8}\Z")
@@ -71,10 +72,12 @@ WIN_TIMEOUT_ERROR = "Agent did not report a result by 4 hours after the restart 
 
 
 class RemediationError(Exception):
+    """A fix cannot be planned, approved, dispatched, or reported under the current policy or state."""
     pass
 
 
 def production_allowed() -> bool:
+    """Return whether the server explicitly allows remediation outside sandbox assets."""
     return os.environ.get("NIMSTEAD_ALLOW_PRODUCTION_REMEDIATION") == "1"
 
 
@@ -363,6 +366,11 @@ def canary_ok(s: Session, org: Org, job: RemediationJob) -> tuple[bool, str]:
 
 
 def approve(s: Session, job: RemediationJob, by: str, policy: bool = False, forward_only_ack: bool = False) -> RemediationJob:
+    """Approve a planned job in Session s and return the mutated RemediationJob.
+
+    by identifies the approver. policy=True applies automatic approval and canary restrictions;
+    forward_only_ack records explicit acceptance of a non-rollback change. Raise RemediationError
+    for invalid state or policy. The caller commits, releasing the organisation row lock."""
     asset = s.get(Asset, job.asset_id)
     org = s.get(Org, job.org_id, with_for_update=True)  # PostgreSQL: two admins approving at once can't both pass the check
     s.flush()
@@ -568,6 +576,12 @@ def dispatch(s: Session, asset: Asset) -> list[dict]:
 
 def report(s: Session, job: RemediationJob, outcome: str, steps: list[dict], error: str | None,
            versions: dict | None = None) -> RemediationJob:
+    """Record an agent outcome on job and return the mutated RemediationJob; the caller commits.
+
+    s is the Session; outcome must be in AGENT_OUTCOMES. steps holds step dictionaries, error
+    is optional text, and versions maps package names to installed versions. Values are bounded
+    before storage. An applied outcome enters verifying until inventory confirms the fix.
+    Raise RemediationError for an unknown outcome or a job not awaiting a report."""
     if outcome not in AGENT_OUTCOMES:
         raise RemediationError(f"Unknown outcome {outcome!r}")
     late = job.status == "failed" and job.error in (TIMEOUT_ERROR, WIN_TIMEOUT_ERROR)  # agent came back after the timeout: keep the truth

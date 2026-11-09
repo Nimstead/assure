@@ -38,6 +38,7 @@ CHANNELS = ("preview", "beta", "stable")  # least to most proven (scripts/sign_r
 
 
 def channel() -> str:
+    """Return the configured release channel; missing or unrecognised values fall back to stable."""
     c = os.environ.get("NIMSTEAD_UPDATE_CHANNEL", "stable").strip().lower()
     return c if c in CHANNELS else "stable"
 
@@ -48,15 +49,20 @@ def release_channel(rel: dict) -> str:
 
 
 def takes(server_channel: str, rel_channel: str) -> bool:
+    """Return whether rel_channel is at least as stable as server_channel.
+
+    Both strings must be preview, beta, or stable; an unknown value raises ValueError."""
     return CHANNELS.index(rel_channel) >= CHANNELS.index(server_channel)
 
 
 def release_dir() -> Path:
+    """Return the Path configured by the application for release files and update status."""
     from nimstead.app import RELEASE_DIR  # one setting, defined beside the endpoint that serves it
     return RELEASE_DIR
 
 
 def current_version() -> str:
+    """Return the installed nimstead distribution version, or an empty string when package metadata is absent."""
     try:
         return version("nimstead")
     except PackageNotFoundError:
@@ -64,6 +70,7 @@ def current_version() -> str:
 
 
 def vtuple(v: str) -> tuple | None:
+    """Parse an optional v prefix and three decimal version components into an integer tuple, or return None."""
     m = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)", v or "")
     return tuple(int(x) for x in m.groups()) if m else None
 
@@ -146,6 +153,9 @@ def fetch_release_files(client: httpx.Client) -> bool:
 
 
 def runtime_file(arch: str) -> Path:
+    """Return the release-directory Path for the Windows runtime archive named by arch.
+
+    arch is expected to be a trusted architecture name; this function does not validate it or read the file."""
     return release_dir() / f"python-embed-{arch}.zip"
 
 
@@ -177,6 +187,11 @@ def fetch_runtimes(client: httpx.Client) -> list[str]:
 
 
 def check(s: Session, client: httpx.Client | None = None) -> dict:
+    """Refresh release files and daily release discovery, and queue update notifications.
+
+    s is the database Session; client optionally supplies an httpx.Client and remains caller-owned.
+    Return a result dictionary, or a skipped reason when update checks are disabled. Discovery HTTP
+    errors are returned as error text; storage and other unhandled backend errors propagate."""
     if os.environ.get("NIMSTEAD_UPDATE_CHECK", "1") == "0":
         return {"skipped": "NIMSTEAD_UPDATE_CHECK=0"}
     own = client is None

@@ -31,6 +31,7 @@ http_client: httpx.Client | None = None
 
 
 def smtp_configured() -> bool:
+    """Return whether both SMTP connection URL and sender address are configured."""
     return bool(os.environ.get("NIMSTEAD_SMTP_URL") and os.environ.get("NIMSTEAD_SMTP_FROM"))
 
 
@@ -56,6 +57,9 @@ def recipients(org: Org) -> list[str]:
 
 
 def confirm_token(org_id: str, email: str) -> str:
+    """Return the organisation-bound confirmation token for email text.
+
+    Uses the configured secret-key backend; backend errors propagate."""
     return sso.domain_token(org_id, "notify-email:" + email)
 
 

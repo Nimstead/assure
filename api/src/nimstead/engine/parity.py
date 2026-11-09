@@ -10,6 +10,7 @@ from nimstead.engine.model import REASONS, Outcome, Verdict
 
 
 def in_slice(ecosystem: str) -> bool:
+    """Return whether ecosystem is covered by the host/application engine parity comparison."""
     return ecosystem in WINDOWS or linux(ecosystem) or ecosystem in sbom.ECOSYSTEMS
 
 

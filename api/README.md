@@ -6,3 +6,6 @@ The Nimstead Assure server: FastAPI and SQLAlchemy, vulnerability feeds, matchin
 - Settings: [docs/configuration.md](../docs/configuration.md)
 - Tests: `uv run pytest -q` (set `NIMSTEAD_TEST_PG_URL` to run them on PostgreSQL)
 - Development: [CONTRIBUTING.md](../CONTRIBUTING.md)
+
+- HTTP API and credentials: [API reference](../docs/reference/http-api.md)
+- Documentation index: [docs/README.md](../docs/README.md)

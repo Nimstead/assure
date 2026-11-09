@@ -8,11 +8,11 @@ web
 
 ## Stack
 
-Inferred for this task: static HTML generated from repository Markdown. A small Node build uses Markdown parsing; the published site needs no server application or database. Editing is through source control. The user has been offered browser editing as an alternative.
+Confirmed user choice: static HTML generated from repository Markdown. A small Node build uses Markdown parsing; the published site needs no server application or database. Editing is through source control.
 
 ## Users
 
-Assure operators who deploy, enrol, investigate, remediate, and recover; developers who integrate the API; reviewers who verify evidence.
+Assure operators who deploy, enrol, investigate, remediate, and recover; developers who integrate the API; reviewers who verify evidence; Pulse readers who investigate public vulnerability trends and privately triage CVE lists.
 
 ## Product Purpose
 
@@ -30,6 +30,6 @@ Preserve Nimstead's existing Plain Sight identity. The current public website an
 
 Repository Markdown, typed Python and TypeScript source, tests, screenshots in docs/images, and public site assets. Historical STATUS entries and design plans are not fresh verification.
 
-## Open Decisions
+## Product Scope
 
-Assure-only scope and Markdown editing are working assumptions pending the user's answers. Do not fabricate documentation for other Nimstead products.
+Confirmed user choice: all Nimstead products, with Assure as the first section. Pulse is the second current product. The root is a company documentation hub. Each product has its own tutorials, guides, reference, and explanations. Search spans products and supports a product filter. Preserve existing Assure article URLs.

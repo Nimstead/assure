@@ -19,3 +19,22 @@ test('article has semantic navigation, correct canonical and working section anc
   assert.match(html, /href="#start-the-services"/);
   assert.ok(html.includes('href="/how-to/configure-https/"'));
 });
+
+test('company home leads with Assure and offers Pulse as a separate product', () => {
+  const html = readFileSync('dist/index.html', 'utf8');
+  assert.match(html, /<h1>Nimstead documentation<\/h1>/);
+  assert.ok(html.indexOf('href="/assure/"') < html.indexOf('href="/pulse/"'));
+  assert.ok(existsSync('dist/assure/index.html'));
+  assert.ok(existsSync('dist/pulse/index.html'));
+});
+
+test('search identifies products and Pulse navigation does not mix Assure guides', () => {
+  const index = JSON.parse(readFileSync('dist/search-index.json', 'utf8'));
+  assert.ok(index.some(p => p.product === 'Assure' && p.url === '/how-to/restore/'));
+  assert.ok(index.some(p => p.product === 'Pulse' && p.url === '/pulse/tutorials/first-triage/'));
+  assert.ok(existsSync('dist/pulse/tutorials/first-triage/index.html'));
+  const html = readFileSync('dist/pulse/tutorials/first-triage/index.html', 'utf8');
+  assert.match(html, /href="\/pulse\/"/);
+  assert.doesNotMatch(html, /href="\/how-to\/restore\/"/);
+  assert.match(readFileSync('dist/search/index.html', 'utf8'), /id="search-product"/);
+});

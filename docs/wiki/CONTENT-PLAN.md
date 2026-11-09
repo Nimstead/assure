@@ -1,15 +1,24 @@
 # Wiki content plan
 
-The public wiki serves people who deploy and operate Assure, developers who integrate it, and reviewers who verify its evidence.
+The public wiki covers all Nimstead products, with Assure first and Pulse second. It serves Assure operators, integration developers and evidence reviewers, plus Pulse readers who investigate vulnerability trends and privately triage CVE lists.
 
 ## Reader journeys
 
 | Type | Reader's job | Pages |
 | --- | --- | --- |
-| Tutorials | Learn with a safe, repeatable example | First SBOM; first local server |
+| Tutorials | Learn with a safe, repeatable example | First SBOM |
 | How-to guides | Complete a specific operational task | Deploy with Compose; configure HTTPS; enrol Linux; enrol Windows; deploy with Group Policy; opt into collection; configure SSO; configure alerts; scan an external target; review findings; approve remediation; upload an SBOM; export and verify evidence; upgrade; back up; restore; troubleshoot; remove an agent; contribute |
 | Reference | Look up a precise contract | Configuration; supported platforms; agent commands; HTTP API; SBOM input; scan outcomes; remediation modes; release keys; developer tools; glossary |
 | Explanation | Understand behaviour and limits | Inventory to evidence; deployment architecture; detection confidence; safe remediation; signed updates; evidence trust; coverage limits |
+
+## Pulse reader journeys
+
+| Type | Reader’s job | Pages |
+| --- | --- | --- |
+| Tutorials | Learn using the worked example | First triage |
+| How-to guides | Complete a specific task | Analyse a CVE list; save and compare snapshots; prepare a handover; run locally |
+| Reference | Look up contracts and limits | Data sources; snapshot contents and limits |
+| Explanation | Understand behaviour and boundaries | Private list analysis; how Pulse and Assure fit together |
 
 ## Source policy
 

@@ -14,7 +14,7 @@ The wiki extends Nimstead's Plain Sight identity, observed on nimstead.systems a
 
 ## Structure
 
-A compact masthead, persistent documentation rail, calm reading column, and on-page outline. The homepage is a directory with four clearly described reading modes. No marketing hero or invented proof metrics.
+A compact masthead, persistent documentation rail, calm reading column, and on-page outline. The homepage is a product directory with Assure first and Pulse second. Each product exposes four clearly described reading modes. Product navigation stays visible above the selected product’s article groups. Search can cover all products or one selected product. No marketing hero or invented proof metrics.
 
 Desktop retains navigation and outline. Tablet hides the outline. Mobile places navigation in an explicit expandable section, preserving access without JavaScript. Search is a separate page with live results, a clear loading state, and recoverable errors. Theme follows the system unless selected explicitly.
 

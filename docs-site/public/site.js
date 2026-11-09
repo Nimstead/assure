@@ -26,6 +26,9 @@ if (input) {
   const results = document.querySelector('#search-results');
   const status = document.querySelector('#search-status');
   const form = document.querySelector('#search-form');
+  const product = document.querySelector('#search-product');
+  const requestedProduct = new URLSearchParams(location.search).get('product');
+  if ([...product.options].some(option=>option.value === requestedProduct)) product.value = requestedProduct;
   let index;
   input.value = new URLSearchParams(location.search).get('q') || '';
   const render = () => {
@@ -34,14 +37,14 @@ if (input) {
     results.replaceChildren();
     if (!query) { status.textContent = 'Search by task, command, setting, or error message.'; return; }
     const terms = query.split(/\s+/);
-    const matches = index.map(p => ({...p, score: terms.reduce((s,t) => s + (p.title.toLowerCase().includes(t) ? 12 : 0) + (p.text.toLowerCase().includes(t) ? 1 : 0), 0)}))
-      .filter(p => terms.every(t => (p.title + ' ' + p.text).toLowerCase().includes(t)))
+    const matches = index.filter(p=>!product.value || p.product === product.value).map(p => ({...p, score: terms.reduce((s,t) => s + (p.title.toLowerCase().includes(t) ? 12 : 0) + (p.text.toLowerCase().includes(t) ? 1 : 0), 0)}))
+      .filter(p => terms.every(t => (p.product + ' ' + p.title + ' ' + p.text).toLowerCase().includes(t)))
       .sort((a,b) => b.score - a.score).slice(0,30);
     status.textContent = matches.length ? `${matches.length} ${matches.length === 1 ? 'page' : 'pages'} found.` : 'No pages found. Try a shorter term, such as “backup”, “SSO”, or “token”.';
     for (const page of matches) {
       const li = document.createElement('li');
       const a = document.createElement('a'); a.href = page.url; a.textContent = page.title;
-      const group = document.createElement('span'); group.textContent = page.group;
+      const group = document.createElement('span'); group.textContent = `${page.product} · ${page.group}`;
       const p = document.createElement('p');
       const at = page.text.toLowerCase().indexOf(terms[0]);
       const start = Math.max(0, at - 65);
@@ -50,7 +53,8 @@ if (input) {
     }
   };
   input.addEventListener('input', render);
-  form.addEventListener('submit', event => { event.preventDefault(); history.replaceState(null,'',`/search/?q=${encodeURIComponent(input.value)}`); render(); });
+  product.addEventListener('change', render);
+  form.addEventListener('submit', event => { event.preventDefault(); history.replaceState(null,'',`/search/?q=${encodeURIComponent(input.value)}${product.value ? `&product=${encodeURIComponent(product.value)}` : ''}`); render(); });
   status.textContent = 'Loading the documentation index…';
   fetch('/search-index.json').then(r => { if (!r.ok) throw Error(); return r.json(); }).then(data => { index = data; render(); })
     .catch(() => { status.textContent = 'The search index could not load. Reload this page, or use the contents navigation.'; });

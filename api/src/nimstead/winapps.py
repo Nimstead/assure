@@ -24,9 +24,11 @@ _ARCH = r"(?:32|64)-bit"
 class Product:
     """Curated Windows application identity and version mapping.
 
-    key names the advisory product; name and optional publisher are full-match patterns. cpes
-    lists alternate NVD identities, version normalises DisplayVersion, branch restricts ranges,
-    and nvd_dashes reconciles registry and NVD patch separators."""
+    key names the advisory product. name and optional publisher are case-sensitive
+    full-match patterns. Empty cpes uses key as the only NVD identity.
+    version maps a registry match and stripped DisplayVersion to numeric text.
+    branch limits start-less ranges to the upper bound's major version.
+    nvd_dashes maps NVD patch separators to dots. Construction does not validate fields."""
     key: str  # advisory package name (vendor:product of the primary CPE)
     name: re.Pattern  # fullmatch on the registry DisplayName
     cpes: tuple[str, ...] = ()  # NVD vendor:product values whose matches feed this key (default: just key)
@@ -199,13 +201,22 @@ _BY_CPE = {c: p for p in PRODUCTS for c in (p.cpes or (p.key,))}
 
 
 def names_product(name: str, publisher: str | None) -> bool:
-    """Whether a curated product's name and publisher patterns match, before its version is read (identify's first test)."""
+    """Return whether stripped name and publisher match a curated identity.
+
+    name is registry DisplayName. publisher is Publisher text or None, treated as empty.
+    Matching is case-sensitive and covers each complete string. No version is checked.
+    Invalid input types can raise AttributeError or TypeError. No I/O occurs."""
     name, publisher = name.strip(), (publisher or "").strip()
     return any(p.name.fullmatch(name) and (not p.publisher or p.publisher.fullmatch(publisher)) for p in PRODUCTS)
 
 
 def identify(name: str, publisher: str | None, version: str) -> tuple[str, str] | None:
-    """(product key, version in NVD's convention) for an installed app, or None (inventory only, never matched)."""
+    """Return (product key, mapped version) for registry name/publisher/version, or None.
+
+    Strip surrounding whitespace and use the first matching Product in PRODUCTS order.
+    A mapped version must pass appver_parts. Mapper ValueError/KeyError returns None
+    without trying later products. Other invalid types or mapper errors propagate.
+    Unrecognised identities return None. No I/O or input mutation occurs."""
     name, publisher = name.strip(), (publisher or "").strip()
     for p in PRODUCTS:
         m = p.name.fullmatch(name)
@@ -295,8 +306,14 @@ def _v5_events(p: Product, v: dict) -> list[dict] | None:
 
 
 def advisories_v5(rec: dict) -> list[tuple[str, dict]]:
-    """[(product key, OSV-shaped record)] from a CVE JSON 5 record's CNA and ADP `affected` entries for curated products.
-    Record ids are "<CVE>-v5" (the CVE is the alias), so NVD's rows for the same CVE replace them (feeds.sync_winapps)."""
+    """Return (product key, OSV-shaped record) pairs from a CVE JSON 5 dictionary rec.
+
+    Read PUBLISHED CNA/ADP affected entries with curated CPEs or exact lowercase
+    vendor/product aliases. Recognised platform text is a permissive regex search.
+    Supported affected numeric ranges become deduplicated ECOSYSTEM events.
+    IDs end in -v5, with the original CVE as alias. Nonpublished or unsupported
+    entries produce no rows. Malformed nested fields can raise KeyError, TypeError,
+    AttributeError or IndexError. No storage, network I/O or input mutation occurs."""
     meta = rec.get("cveMetadata") or {}
     if meta.get("state") != "PUBLISHED":
         return []
@@ -326,9 +343,15 @@ def advisories_v5(rec: dict) -> list[tuple[str, dict]]:
 
 
 def advisories(cve: dict) -> list[tuple[str, dict]]:
-    """[(product key, OSV-shaped record)] for the curated products this CVE's configurations list as vulnerable.
-    Matches where the app is only the non-vulnerable half of an AND, other platforms, pre-releases, classic-track
-    Acrobat and anything with a non-numeric version are dropped. The OS half of an AND is not otherwise required."""
+    """Return (product key, OSV-shaped record) pairs from an NVD CVE dictionary cve.
+
+    Read vulnerable curated application CPEs in immediate configuration nodes.
+    Apply the Windows/Apple, update, target-software and classic-track filters.
+    Numeric exact versions and supported bounded ranges become ECOSYSTEM events.
+    Repeated event lists are deduplicated per product. Empty matches return [].
+    This helper does not inspect vulnStatus or fully evaluate CPE Boolean logic.
+    Malformed fields can raise KeyError, IndexError, TypeError or AttributeError.
+    No storage, network I/O or input mutation occurs."""
     ranges: dict[str, list[list[dict]]] = {}
     for cfg in cve.get("configurations") or []:
         if cfg.get("negate") or not _windows_possible(cfg):

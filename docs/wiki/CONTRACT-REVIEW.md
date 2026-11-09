@@ -51,6 +51,17 @@ This record distinguishes semantic review from docstring-presence coverage. A ro
 
 This batch passed 190 focused tests and 46 subchecks, with ten Windows-only skips. Test transports do not establish production SMTP delivery or native Windows collector behavior.
 
+## Feed and Windows application review
+
+| Source | Review scope | Evidence and corrections | Status |
+| --- | --- | --- | --- |
+| `api/src/nimstead/feeds.py` | All 17 public ingestion, conversion, update and CLI functions, with their helpers | Reviewed feed selection, source shapes, counts, skips, batch/session commits, rollback ownership, retries, buffer limits, optional guards and external/upkeep effects. Corrected atomicity and universal-error claims. Fake-feed tests verify partial commits and retained scores | Reviewed |
+| `api/src/nimstead/winapps.py` | Product and all public identity/NVD/v5 functions, with conversion helpers and the full catalogue | Reviewed exact patterns, first identity selection, version mapping/refusal, major-branch bounds, CPE/regex limits and emitted fields. Tests confirm source precedence and permissive platform matching | Reviewed |
+| `api/src/nimstead/winapps_evidence.py` | Generated EVIDENCE data shape and finding response use | Labels describe historical observations, not current compatibility or remediation guarantees. Regenerated values in memory match stored data | Reviewed |
+| `sandbox/winapps_evidence.py` | identified, derive and command output | Reviewed recursive extraction, proof/version-change rules, file scope, curated filtering, precedence and generated destination. Documented public parameters/errors without rewriting the generated module | Reviewed |
+
+454 focused tests and 46 subchecks passed. Feed requests used fake HTTP clients. No production feed database, historical run files or VM installations were changed.
+
 The full SQLite suite passed 1611 tests with 59 skips at the start of this batch. The later targeted evidence/key checks passed 23 tests. The new field/summary assertions subsequently passed in a 27-test evidence/documentation run. All three executable docstrings passed. Skipped platform/oracle cases are not newly verified real-host proofs.
 
 The engine batch passed 105 engine/documentation tests and 46 subchecks. Two Windows PowerShell parsing cases were skipped on this host. Reference field assertions supplement the source review and do not prove every possible runtime value.

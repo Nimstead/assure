@@ -481,5 +481,19 @@
     "title": "Priority score reference",
     "group": "Reference",
     "product": "assure"
+  },
+  {
+    "source": "docs/reference/windows-apps.md",
+    "slug": "reference/windows-apps",
+    "title": "Windows application mapping reference",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/feed-sync.md",
+    "slug": "reference/feed-sync",
+    "title": "Feed synchronisation reference",
+    "group": "Reference",
+    "product": "assure"
   }
 ]

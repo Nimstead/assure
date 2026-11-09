@@ -18,6 +18,8 @@ The installer supplies the pinned official embeddable Python runtime. It checks 
 
 Windows 8.1 / Server 2012 R2 and older are refused. Third-party application detection uses a curated product catalogue. Unrecognised applications remain inventory and do not gain guessed CVE matches.
 
+The [Windows application reference](windows-apps.md) defines identity, version-range and historical evidence labels. [Feed synchronisation](feed-sync.md) defines source precedence and update boundaries.
+
 ## Windows matching inputs
 
 Microsoft matching uses full, case-sensitive allowlists. Product names and publishers must match the configured patterns. Dotted numeric versions are normalized before track selection. An unsupported identity or required context can produce no mapping.

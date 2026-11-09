@@ -47,6 +47,8 @@ Set `NIMSTEAD_TEST_PG_URL` to a disposable PostgreSQL server to run the API suit
 
 The [coverage table](documentation-coverage.md) links to each documented source file. Type annotations define input/output types; docstrings explain contracts, side effects, and important failure modes. The project does not promise a stable Python SDK before 1.0.
 
+The [feed reference](feed-sync.md) defines command results, source selection, commit boundaries, and failure handling.
+
 ## Sandbox proofs
 
 [`sandbox/`](../../sandbox) contains real-host and real-service harnesses. Each Python entry point describes its platform and setup in its module docstring. These scripts can create and destroy VMs or WSL distributions, change packages, force failures, and exercise rollback. Read that script's setup before running it on disposable infrastructure.

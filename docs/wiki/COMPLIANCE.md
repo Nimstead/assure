@@ -169,3 +169,13 @@ Corrected claims about durable queueing, retry age, redirect errors, null config
 190 focused tests and 46 subchecks passed. Ten Windows-only parser checks were skipped. Executable docstrings, Ruff, Redocly, the 69-article build and six site tests passed. Repository coverage reports 632 declarations, none undocumented, and no local link problems.
 
 Playwright MCP verified readable selected-product navigation in both themes, backup search ranking, query/filter restoration, mobile section anchors and source applicability. SMTP delivery and native Windows collection were not exercised. Other modules, response contracts and the final editorial review remain pending.
+
+## Feed and Windows application checkpoint
+
+Reviewed all public feed helpers and Windows application mapping/conversion interfaces. Added separate lookup pages for source selection, commit boundaries, counts, refusal rules, range conversion, and historical rule evidence. Reviewed the evidence generator without changing its generated data.
+
+Corrected atomic-update and universal-error implications. OSV batches and source stages commit separately. NVD CVEs without scores retain old scores. A rejected NVD record does not remove existing v5 fallback rows. A translated NVD product removes all fallback rows for that CVE. The v5 platform test is a substring search, not a strict platform allowlist.
+
+454 focused tests and 46 subchecks passed. New tests verify partial commits, unrelated session commits, retained scores, fallback precedence, permissive platform text, response fields and historical mapping reproducibility. Ruff, repository link/presence checks, the 71-article build and six site tests passed. No live feed update or Windows installation was performed.
+
+The references received neutral prose and STE-style checks. Remaining remediation, agent, web, tool and endpoint reviews still prevent a full compliance claim.

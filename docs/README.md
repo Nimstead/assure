@@ -59,6 +59,8 @@ Find commands, settings, formats, and limits.
 - [Database model reference](reference/database.md)
 - [Notification reference](reference/notifications.md)
 - [Windows settings and baseline reference](reference/windows-checks.md)
+- [Windows application mapping reference](reference/windows-apps.md)
+- [Feed synchronisation reference](reference/feed-sync.md)
 - [SBOM input reference](reference/sbom.md)
 - [Scan outcomes](reference/scan-outcomes.md)
 - [Scan report format](reference/scan-report.md)

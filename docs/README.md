@@ -47,6 +47,8 @@ Find commands, settings, formats, and limits.
 
 - [Configuration](configuration.md)
 - [Supported platforms](reference/platforms.md)
+- [Lifecycle reference](reference/lifecycle.md)
+- [Platform update reference](reference/platform-updates.md)
 - [Agent command reference](reference/agent-cli.md)
 - [Version comparison reference](reference/version-comparison.md)
 - [Priority score reference](reference/risk-score.md)

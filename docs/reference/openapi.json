@@ -1140,11 +1140,13 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {
-                "schema": {}
+              "text/x-python": {
+                "schema": {
+                  "type": "string"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Distribution file bytes; see the platform-update reference for verification and availability."
           }
         },
         "security": [],
@@ -1154,7 +1156,7 @@
     },
     "/agent/runtime/{arch}.zip": {
       "get": {
-        "description": "The Windows agent's bundled Python, only as the signed release names it (plan decision 9).",
+        "description": "Return application/zip runtime bytes for arch: amd64, arm64 or win32.\n\nNo authentication is required. Require signed_release(), a matching runtime\nentry and the stored file's signed SHA-256. Missing/unsupported/mismatched\nruntimes return 404. Malformed signed runtime data can raise server errors.",
         "operationId": "agent_runtime_agent_runtime__arch__zip_get",
         "parameters": [
           {
@@ -1170,11 +1172,14 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {
-                "schema": {}
+              "application/zip": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Distribution file bytes; see the platform-update reference for verification and availability."
           },
           "422": {
             "content": {
@@ -1476,7 +1481,7 @@
     },
     "/api/agent/manifest": {
       "get": {
-        "description": "Return the organisation's update pause flag and any valid signed release for the served agent.\n\nRequires this asset's agent bearer key.",
+        "description": "Return the organisation's update pause flag and any valid signed release for the served agent.\n\nReturn paused plus optional release/sig strings. paused is unsigned and\ncan withhold an update. No release/sig fields appear when signed_release()\nreturns None. This helper does not enforce the agent's channel or anti-rollback rules.\n\nRequires this asset's agent bearer key.",
         "operationId": "agent_manifest_api_agent_manifest_get",
         "parameters": [
           {
@@ -1500,10 +1505,38 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": false,
+                  "dependentRequired": {
+                    "release": [
+                      "sig"
+                    ],
+                    "sig": [
+                      "release"
+                    ]
+                  },
+                  "properties": {
+                    "paused": {
+                      "description": "Unsigned organisation pause flag.",
+                      "type": "boolean"
+                    },
+                    "release": {
+                      "description": "Exact signed manifest JSON as text, not a nested JSON object.",
+                      "type": "string"
+                    },
+                    "sig": {
+                      "description": "Base64 signature over release bytes.",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "paused"
+                  ],
+                  "type": "object"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Pause flag with optional paired manifest/signature strings."
           },
           "422": {
             "content": {
@@ -5016,11 +5049,13 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {
-                "schema": {}
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Distribution file bytes; see the platform-update reference for verification and availability."
           }
         },
         "security": [],
@@ -5035,11 +5070,13 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {
-                "schema": {}
+              "text/x-shellscript": {
+                "schema": {
+                  "type": "string"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Distribution file bytes; see the platform-update reference for verification and availability."
           }
         },
         "security": [],

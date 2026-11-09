@@ -48,7 +48,7 @@ def render() -> dict[str, str]:
     }
     lines = ["# HTTP endpoint catalog", "",
              "Use the [OpenAPI JSON](openapi.json) for typed parameters, request models, defaults, and declared response schemas.", "",
-             "The export adds server/authentication metadata, the raw SBOM contract, and external-scan counters to FastAPI’s schema. Other definitions come from the app.", "",
+             "The export adds server/authentication metadata and selected response contracts to FastAPI’s schema: SBOM, external-scan counters, agent manifest and distribution files. Other definitions come from the app.", "",
              "Authentication labels describe entry requirements. Organisation ownership, roles, origin checks, quotas, "
              "and operation-specific state checks still apply. See [HTTP API reference](http-api.md).", "",
              "Empty response schemas do not define a stable response contract. Inspect the linked handler and its tests "
@@ -85,6 +85,20 @@ def render() -> dict[str, str]:
                 # Body tokens and SSO cookies are described separately; no HTTP auth scheme represents them.
                 operation["security"] = []
             operation["x-authentication"] = auth
+            media = {"/install.sh": "text/x-shellscript", "/install.ps1": "text/plain",
+                     "/agent/nimstead_agent.py": "text/x-python", "/agent/runtime/{arch}.zip": "application/zip"}.get(route.path)
+            if media:
+                body_schema = {"type": "string", **({"format": "binary"} if media == "application/zip" else {})}
+                operation["responses"]["200"] = {"description": "Distribution file bytes; see the platform-update reference for verification and availability.",
+                                                 "content": {media: {"schema": body_schema}}}
+            if route.path == "/api/agent/manifest":
+                fields = {"paused": {"type": "boolean", "description": "Unsigned organisation pause flag."},
+                          "release": {"type": "string", "description": "Exact signed manifest JSON as text, not a nested JSON object."},
+                          "sig": {"type": "string", "description": "Base64 signature over release bytes."}}
+                operation["responses"]["200"] = {"description": "Pause flag with optional paired manifest/signature strings.",
+                                                 "content": {"application/json": {"schema": {"type": "object", "properties": fields,
+                                                                                          "required": ["paused"], "additionalProperties": False,
+                                                                                          "dependentRequired": {"release": ["sig"], "sig": ["release"]}}}}}
             if route.path == "/api/assets/{asset_id}/sbom":
                 operation["requestBody"] = {
                     "required": True,

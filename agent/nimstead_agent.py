@@ -2850,7 +2850,15 @@ RUNTIME_ARCH = {"AMD64": "amd64", "ARM64": "arm64", "X86": "win32"}  # platform.
 
 
 def verify_release(manifest, sig_b64, keys=None):
-    """The fields of a release manifest signed by a pinned key over these exact bytes; AgentError otherwise."""
+    """Return validated manifest fields after exact-byte Ed25519 verification.
+
+    manifest is bytes and sig_b64 is strict base64 text/bytes. keys optionally
+    supplies public-key hex strings, otherwise RELEASE_KEYS applies. Require version,
+    agent_version, agent_sha256 and commit. Optional runtimes must be a nonempty
+    subset of supported architectures with version/hash fields. Channel is not
+    validated here. Unknown fields remain. Does not read files or fetch updates.
+    Refused signatures/field shapes raise AgentError. Invalid key hex, signed bad
+    JSON and incompatible argument types can propagate ValueError or TypeError."""
     keys = RELEASE_KEYS if keys is None else keys
     if not keys:
         raise AgentError("no release keys are pinned in this agent")
@@ -2882,7 +2890,11 @@ def release_channel(rel):
 
 
 def channel_ok(rel, cfg):
-    """A host takes its channel and anything more proven. Enrolled before channels existed: everything, as then."""
+    """Return whether manifest dictionary rel is eligible for configuration dictionary cfg.
+
+    Missing/unknown channels default to preview for both dictionaries. A host accepts
+    its channel and more stable channels. Does not verify signatures or mutate inputs.
+    Incompatible mappings can raise AttributeError."""
     mine = cfg.get("channel") if cfg.get("channel") in CHANNELS else "preview"
     return CHANNELS.index(release_channel(rel)) >= CHANNELS.index(mine)
 
@@ -2907,8 +2919,19 @@ def _remember_failed(memo, sha):
 def self_update(cfg, insecure_http, path=None, keys=None, smoke=None, memo=None):
     """Replace this agent file with a newer signed release relayed by the server.
 
-    Returns (new_version, None) after an update, (None, None) when there's nothing to do, or (None, reason) when an update
-    was refused or failed; the working agent is then left exactly as it was and the run carries on with it."""
+    cfg supplies server, agent_key and local update/channel choices. insecure_http
+    permits the client's development HTTP mode. path optionally names the agent file,
+    keys overrides public hex keys, smoke(path) returns a problem or None, and memo
+    optionally names the failed-hash cache file. Defaults use this file, pinned keys,
+    a collect subprocess, and failed-updates.json beside configuration.
+
+    Return (new_version, None) on agent replacement, (None, None) for no agent change,
+    or (None, reason) for a handled refusal/failure. Runtime update can precede the
+    agent decision and can change runtime/tasks even without an agent replacement.
+    Verify channel, newer agent version, signature/hash and self-test before replacing
+    the agent. Keep path.prev. A failed self-test delays that hash for 24 hours.
+    Errors within the update attempt become a reason of at most 500 characters.
+    Invalid cfg/path inputs before that protected attempt can still raise errors."""
     if not cfg.get("auto_update", True):
         return None, None
     if os.name == "nt" and os.path.exists(WIN_STATE):  # never swap the agent while a Windows job waits for its reboot
@@ -2972,10 +2995,20 @@ def _runtime_dirs(root):
 
 
 def runtime_update(cfg, rel, insecure_http, run=None, root=None, executable=None, smoke=None, machine=None):
-    """Windows: move to the signed release's runtime when it isn't the one running (also off a system Python), the way
-    the agent replaces itself: hash from the signed manifest, Python Software Foundation signature on every program file,
-    the agent's own `collect` on it, then the scheduled tasks re-registered on it. Never while a Windows job waits for its
-    reboot; never to an older Python. Returns a problem (the host keeps what it had) or None."""
+    """Select/install a Windows runtime from previously verified manifest dictionary rel.
+
+    cfg supplies server and scheduling choices. insecure_http controls development
+    transport. Optional run executes shell commands, root names runtime storage,
+    executable identifies current Python, smoke(agent_path, python_path) tests it,
+    and machine overrides the architecture string (also permits non-Windows tests).
+    Defaults use sh, RUNTIME_ROOT, sys.executable, collect, and platform.machine().
+    Skip missing architectures and pending Windows jobs. Block older Python only
+    when the current executable is already bundled under root. Remove unused old
+    runtime directories, verify bytes/program signatures, self-test and reschedule.
+    Mutate cfg.python on success. Scheduling can persist configuration and task changes.
+    Return None on success/no-op or a problem string on handled failure. Cleanup is
+    not a transaction over task/config changes. Malformed inputs before the protected
+    download/install attempt can raise attribute, type, path or conversion errors."""
     arch = RUNTIME_ARCH.get((machine or platform.machine()).upper())
     want = (rel.get("runtimes") or {}).get(arch)
     if (os.name != "nt" and machine is None) or not want or os.path.exists(WIN_STATE):

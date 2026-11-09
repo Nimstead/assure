@@ -125,7 +125,11 @@ def agent_update_status(a: Asset, paused: bool, release: bool) -> str:
 
 
 def verify_manifest(manifest: bytes, sig: str) -> dict | None:
-    """The manifest's fields if a key pinned in the served agent signed these exact bytes, else None."""
+    """Return a JSON dictionary signed over exact manifest bytes by a served-agent key.
+
+    sig is strict base64 text. Invalid base64/JSON, nonobject JSON or unmatched
+    signatures return None. Does not validate required fields, versions, hashes,
+    channels or runtimes. AGENT_FILE read/decoding and incompatible argument errors propagate."""
     try:
         raw_sig, rel = base64.b64decode(sig.strip(), validate=True), json.loads(manifest)
     except ValueError:
@@ -143,7 +147,10 @@ def verify_manifest(manifest: bytes, sig: str) -> dict | None:
 
 def signed_release() -> dict | None:
     """{release, sig} when RELEASE_DIR holds a manifest signed by a pinned key for exactly the agent served here, else None.
-    Agents verify it themselves; checking here only keeps the Assets page honest about who will update."""
+    Agents verify it themselves. This helper only checks relay eligibility.
+    release is the exact manifest decoded as text and sig is stripped base64 text.
+    Missing/unreadable files return None. This does not compare the platform version,
+    commit or channel. Decoding, key-backend and unexpected cryptography errors propagate."""
     try:
         manifest, sig = (RELEASE_DIR / "release.json").read_bytes(), (RELEASE_DIR / "release.json.sig").read_text().strip()
         agent_sha = hashlib.sha256(AGENT_FILE.read_bytes()).hexdigest()
@@ -388,7 +395,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     @app.get("/agent/runtime/{arch}.zip")
     def agent_runtime(arch: str):
-        """The Windows agent's bundled Python, only as the signed release names it (plan decision 9)."""
+        """Return application/zip runtime bytes for arch: amd64, arm64 or win32.
+
+        No authentication is required. Require signed_release(), a matching runtime
+        entry and the stored file's signed SHA-256. Missing/unsupported/mismatched
+        runtimes return 404. Malformed signed runtime data can raise server errors."""
         rt = (json.loads(rel["release"]).get("runtimes") or {}) if (rel := signed_release()) else {}
         if arch not in rt or arch not in ("amd64", "arm64", "win32"):
             raise HTTPException(404, "No signed runtime for this architecture on this server")
@@ -1134,6 +1145,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def agent_manifest(s: DB, asset: Annotated[Asset, Depends(current_agent)]):
         # paused is unsigned on purpose: it can only withhold an update, which the server could do anyway
         """Return the organisation's update pause flag and any valid signed release for the served agent.
+
+        Return paused plus optional release/sig strings. paused is unsigned and
+        can withhold an update. No release/sig fields appear when signed_release()
+        returns None. This helper does not enforce the agent's channel or anti-rollback rules.
 
         Requires this asset's agent bearer key."""
         return {"paused": s.get(Org, asset.org_id).agent_updates_paused, **(signed_release() or {})}

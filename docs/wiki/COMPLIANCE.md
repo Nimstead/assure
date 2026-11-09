@@ -135,3 +135,15 @@ The reference documents the normal scanner's absence-based resolution rule, incl
 The exported OpenAPI now includes the four-field external-scan response. Tests cover accepted counters, omission-based resolution, scope refusal before service-prober creation, incomplete web responses, rule-hash limits and documented response fields.
 
 40 external/network/documentation tests and 46 subchecks passed after generated files were refreshed and loopback tests received socket permission. All six executable docstrings passed. Ruff, Redocly and the web TypeScript check passed. The locked web dependency install reported no vulnerabilities. Node22.22.2 satisfies its dependency engine requirements. No public target was scanned.
+
+## Release and platform checkpoint
+
+Reviewed public update discovery/cache, lifecycle, Microsoft mapping, driver matching and signing-tool contracts. Reviewed the agent's signature/channel/update entry points as a named subset. Other agent interfaces remain pending.
+
+The release-key reference now defines signed fields and separates the server's signature check from the agent's field validation. Added platform-update and lifecycle lookup pages. The platform reference now describes Microsoft track inputs and exact-hash driver matching. Offline configuration now names required runtime archives.
+
+Corrected cache fetch, missing-signature repair, runtime-version, strict key-list and whole-update rollback implications. The manifest relay and four public distribution files now have exported response contracts. Tests distinguish a signed JSON object from a valid agent manifest and check the verifier's text coercion of hash-shaped values.
+
+New cache and lifecycle cases cover unverified cache metadata, stored-before-verification bytes, older cached runtime versions, duplicate cycles and date-shape-only validation. These assertions preserve current behavior while preventing inaccurate documentation claims. The audit does not certify vendor lifecycle dates or perform a production update.
+
+418 focused tests and 46 subchecks passed. One Windows PowerShell parser test was skipped on this host. Seven executable docstrings, Ruff, Redocly, the 65-article build and six site tests passed. Signing tests use generated ephemeral keys. GitHub calls use fake responses, and actual update transport tests use loopback fixtures.

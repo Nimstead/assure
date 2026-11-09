@@ -18,6 +18,32 @@ The installer supplies the pinned official embeddable Python runtime. It checks 
 
 Windows 8.1 / Server 2012 R2 and older are refused. Third-party application detection uses a curated product catalogue. Unrecognised applications remain inventory and do not gain guessed CVE matches.
 
+## Windows matching inputs
+
+Microsoft matching uses full, case-sensitive allowlists. Product names and publishers must match the configured patterns. Dotted numeric versions are normalized before track selection. An unsupported identity or required context can produce no mapping.
+
+| Product input | Track context |
+| --- | --- |
+| .NET SDK | Major/minor version and SDK feature band |
+| .NET Framework | Registry Release value and Windows product |
+| SQL Server | Major version and configured build threshold for GDR/CU |
+| Exchange Server | First three version components |
+| SharePoint Server | Configured build thresholds |
+| Microsoft 365 Apps | Click-to-Run channel and version line |
+| Curated Store packages | OS-specific key before generic product key |
+
+The [Microsoft mapper](../../api/src/nimstead/msproducts.py) defines the current allowlists and thresholds. [Lifecycle checks](lifecycle.md) use a separate mapping, so advisory coverage and support-deadline coverage can differ.
+
+Driver detection matches the exact reported file hash against verified LOLDrivers entries. A filename alone does not match. Parsed hashes are lowercase, but the finding helper compares the reported value exactly.
+
+| Driver category/state | Base score | Priority |
+| --- | --- | --- |
+| Malicious | 95 | `fix-now` |
+| Vulnerable and reported loaded | 70 | `next` |
+| Vulnerable and other reported state | 45 | `planned` |
+
+Only source text equal to `loaded` selects the loaded state. Other values use the on-disk state. The parser requires at least 1000 unique file hashes. It uses the first entry for duplicate hashes and excludes Authenticode-only samples. See [`windrivers.py`](../../api/src/nimstead/windrivers.py) for parser refusal rules.
+
 ## Limits by operation
 
 - Remote Windows scans collect findings but cannot apply fixes.

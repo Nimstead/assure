@@ -105,3 +105,10 @@ class ApiReference(unittest.TestCase):
         self.assertEqual(set(counters["properties"]), set(counters["required"]))
         self.assertFalse(counters["additionalProperties"])
         self.assertEqual(counters["properties"]["skipped"]["items"], {"type": "string"})
+        manifest = schema["paths"]["/api/agent/manifest"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
+        self.assertEqual(manifest["required"], ["paused"])
+        self.assertEqual(set(manifest["properties"]), {"paused", "release", "sig"})
+        self.assertEqual(manifest["dependentRequired"], {"release": ["sig"], "sig": ["release"]})
+        for path, media in (("/install.sh", "text/x-shellscript"), ("/install.ps1", "text/plain"),
+                            ("/agent/nimstead_agent.py", "text/x-python"), ("/agent/runtime/{arch}.zip", "application/zip")):
+            self.assertEqual(set(schema["paths"][path]["get"]["responses"]["200"]["content"]), {media})

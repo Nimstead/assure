@@ -145,3 +145,12 @@ def test_sync_eol_keeps_stored_cycles_on_failure(env):
                                       ("SUSE:Linux Enterprise Server 15 SP6", ("sles", "15.6")), ("openSUSE:Tumbleweed", None), ("Debian", None), ("PyPI", None)])
 def test_a_linux_release_maps_to_its_end_of_support_cycle(eco, want):
     assert lifecycle.distro_cycle(eco) == want
+
+
+def test_cycle_parser_checks_shape_but_not_calendar_validity():
+    data = lifecycle.parse_eol([{"cycle": "x", "eol": False}, {"cycle": "x", "eol": "2026-99-99"}])
+    assert data == {"x": "2026-99-99"}
+    with pytest.raises(ValueError):
+        lifecycle.app_verdict("nodejs:node.js", "x.0", {"nodejs": data}, date(2026, 11, 9))
+    with pytest.raises(AttributeError):
+        lifecycle.parse_eol([None])

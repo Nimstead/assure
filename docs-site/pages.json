@@ -161,6 +161,20 @@
     "product": "assure"
   },
   {
+    "source": "docs/reference/platform-updates.md",
+    "slug": "reference/platform-updates",
+    "title": "Platform update reference",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
+    "source": "docs/reference/lifecycle.md",
+    "slug": "reference/lifecycle",
+    "title": "Lifecycle reference",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
     "source": "docs/reference/external-scans.md",
     "slug": "reference/external-scans",
     "title": "External scan reference",

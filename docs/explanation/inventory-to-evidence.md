@@ -14,14 +14,9 @@ The engine uses five outcomes: `vulnerable`, `not-vulnerable`, `not-applicable`,
 
 Confidence describes the strength of evidence for a conclusion. Severity describes impact. Priority describes what to address first. These values serve different decisions and should not be treated as interchangeable.
 
-The engine's verdicts decide which findings open and close. A `vulnerable` verdict opens a finding. A finding closes only on evidence:
-- `not-vulnerable` at the installed version
-- `not-applicable` because the product is gone and the list that would show it was read in full
-- `not-applicable` because no live advisory carries its identity any more
-
-Otherwise the finding stays open and its reasons say why. Older agents without a collection document keep the earlier rule, where a finding closes once the inventory no longer matches it. The previous matching still runs alongside the engine as a check, and any disagreement goes to the evidence ledger as `engine_disagrees` (DECISIONS 123 and 124).
-
 Distribution packages use the distribution's version rules and source package identities. This matters when a vendor backports a fix without adopting the upstream version number. Windows and application checks use the matching rules and coverage available for those products.
+
+Stored findings follow the engine's verdicts. A `vulnerable` verdict opens a finding. A finding closes only on evidence: `not-vulnerable` at the installed version, or `not-applicable` because the product is gone with its list read in full, or because no live advisory carries its identity any more. Otherwise it stays open, and its reasons say why. Agents without a collection document, and checks outside the engine's slice such as settings and drivers, keep the earlier rule of closing when a match disappears. The [finding reference](../reference/findings.md#reassessment-and-resolution) defines the rules and their limits.
 
 ## Priority helps order work
 

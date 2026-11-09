@@ -1,5 +1,6 @@
 """The report: what's vulnerable and how sure we are, then what couldn't be determined and what to do about it, then coverage.
-Plain data first (JSON, the API), and a text rendering of that same data. A clean claim is only ever made when everything was read."""
+Plain data first (JSON, the API), and a text rendering of that same data. Headlines summarize verdicts within the report's
+scope; coverage statements identify software and sources outside that conclusion."""
 
 import functools
 import hashlib
@@ -39,7 +40,10 @@ def _verdict_json(v: Verdict) -> str:
 
 
 def digest(verdicts: list[Verdict]) -> str:
-    """sha256 of json.dumps([v.as_dict() ...], sort_keys=True), each verdict serialised once per process."""
+    """Return SHA-256 hex of json.dumps([v.as_dict() for v in verdicts], sort_keys=True).
+
+    List order affects the hash. Each immutable Verdict serialization uses a bounded
+    process cache. Invalid or unhashable model values can raise TypeError."""
     return hashlib.sha256(("[" + ", ".join(map(_verdict_json, verdicts)) + "]").encode()).hexdigest()
 
 
@@ -181,7 +185,9 @@ def build(inv: Inventory, content: Content, verdicts: list[Verdict]) -> dict:
     """Return a report dictionary from Inventory inv, Content content, and the resulting verdicts.
 
     Includes hashes, findings grouped by install, incomplete checks, attack paths, and coverage.
-    Inputs must follow the engine models; unknown reason codes and malformed data can raise KeyError."""
+    Does not persist or change inputs. Inputs must follow the engine models.
+    Unknown reason codes can raise KeyError. Invalid types, grades or version values
+    can raise TypeError or ValueError. Returned groups are summaries, not raw verdicts."""
     per_install: Counter = Counter((v.family, v.product, v.instance, v.grade) for v in verdicts if v.outcome == Outcome.NOT_VULNERABLE)
     return {"host": inv.hostname, "kind": inv.kind, "os": inv.os_name, "agent_version": inv.agent_version, "inventory_read_at": inv.collected_at,
             "engine_version": ENGINE_VERSION, "content_version": content.version, "inventory_sha256": inv.sha256(), "verdicts_sha256": digest(verdicts),
@@ -198,7 +204,12 @@ def _safe(line: str) -> str:
 
 
 def render(r: dict) -> str:
-    """The report as a person reads it."""
+    """Return a multiline text string for report dictionary r from build().
+
+    Show at most five vulnerability IDs and blocker examples per group. Replace
+    C0, DEL and C1 control characters within output lines with question marks.
+    Does not modify r or write output. Missing or incompatible fields can raise
+    KeyError, TypeError or ValueError. JSON report fields retain their original text."""
     who = "Application, from its SBOM (no agent)" if r.get("kind") == "application" else f"{r['os'] or 'Unknown OS'}, agent {r['agent_version'] or 'unknown'}"
     out = [f"Scan report: {r['host'] or 'this host'}", who + (f", inventory read {r['inventory_read_at']}" if r["inventory_read_at"] else ""),
            "", r["headline"]["text"]]

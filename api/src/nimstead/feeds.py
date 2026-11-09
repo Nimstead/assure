@@ -1,4 +1,8 @@
-"""Feed sync into the DB: OSV bulk zips, CISA KEV, FIRST EPSS. Every failure raises; tables are never half-wiped."""
+"""Feed ingestion and scheduled rescans with per-feed or per-batch commits.
+
+Some optional failures are returned or logged. A later failure does not undo earlier
+commits. Callers own the Session and any supplied HTTP client.
+"""
 
 import csv
 import gzip
@@ -43,7 +47,7 @@ def _client(client):
 def _get(client, url: str, limit: int | None = None) -> bytes:
     r = _client(client).get(url)
     r.raise_for_status()
-    if limit and len(r.content) > limit:  # a compromised upstream can't exhaust the server's memory
+    if limit and len(r.content) > limit:  # checked after HTTPX buffers the response
         raise ValueError(f"{url}: larger than {limit} bytes")
     return r.content
 
@@ -73,8 +77,15 @@ def _flush(session, ins: list[dict], upd: list[dict]) -> None:
 
 
 def sync_osv(session: Session, ecosystems: list[str], client=None, batch: int = 5000, only: set[str] | None = None) -> dict:
-    """Upsert Advisory rows from each ecosystem's all.zip. Unchanged `modified` rows are skipped.
-    `only`: keep just these normalized ecosystems (e.g. {"Ubuntu:24.04"}), skipping releases nobody runs."""
+    """Upsert ecosystem ZIPs into Session session and return inserted/updated/skipped counts.
+
+    ecosystems contains top-level directory names. only optionally selects exact
+    normalized ecosystems across each ZIP. An empty set keeps no rows.
+    batch triggers a commit after that many pending rows. Every ZIP also ends with
+    a commit. Unchanged modified text skips content changes. Absent rows remain.
+    client optionally supplies HTTP transport. ZIP bytes stream to a temporary file.
+    Download, ZIP, JSON, field and database errors propagate without an automatic
+    rollback here. Earlier commits survive, including unrelated pending changes."""
     http = _client(client)
     n = {"inserted": 0, "updated": 0, "skipped": 0}
     for top in ecosystems:
@@ -123,7 +134,8 @@ def sync_kev(session: Session, client=None) -> int:
     """Replace KEV rows from the CISA feed and return the count, committing Session session.
 
     client optionally supplies the HTTP transport. Empty feeds raise ValueError; transport,
-    JSON/field, and database errors propagate."""
+    JSON/field, and database errors propagate. Parse rows before replacement.
+    This helper does not roll back a failed transaction. Commit includes other pending changes."""
     vulns = json.loads(_get(client, KEV_URL))["vulnerabilities"]
     if not vulns:
         raise ValueError("KEV feed has no entries")
@@ -136,7 +148,11 @@ def sync_kev(session: Session, client=None) -> int:
 
 
 def nvd_score(cve: dict) -> tuple[float, str] | None:
-    """Prefer CVSS v3.1, then v3.0 (what Cyber Essentials/PCI thresholds use), then v4.0; Primary source first."""
+    """Return (float base score, vector text) from NVD dictionary cve, or None.
+
+    Prefer v3.1, then v3.0, then v4.0. Within a version, prefer the first Primary
+    entry, otherwise the first entry. Missing metrics returns None. Scores are not
+    range-validated. Invalid nested fields or numeric conversion errors propagate."""
     metrics = cve.get("metrics") or {}
     for key in ("cvssMetricV31", "cvssMetricV30", "cvssMetricV40"):
         ms = sorted(metrics.get(key) or [], key=lambda m: m.get("type") != "Primary")
@@ -147,7 +163,14 @@ def nvd_score(cve: dict) -> tuple[float, str] | None:
 
 
 def sync_nvd(session: Session, feeds: list[str], client=None) -> int:
-    """feeds: years ("2024") and/or "modified". Upserts by delete+insert per batch of CVE ids."""
+    """Read NVD feed names into Session session and return scored row count.
+
+    feeds contains year strings and/or modified. client optionally supplies HTTP.
+    Each feed is downloaded and decompressed in memory. Scored CVEs replace Cvss
+    rows in 5000-row SQL batches with one commit per feed. Unscored/absent CVEs
+    keep old scores. Then sync_winapps commits the feed's application advisories.
+    Download, compression, JSON, field and database errors propagate. Prior commits
+    survive, and unrelated session changes can commit before a later failure."""
     # ponytail: whole yearly feed decompressed in memory (~150 MB peak); stream-parse if memory matters
     n = 0
     for feed in feeds:
@@ -164,8 +187,13 @@ def sync_nvd(session: Session, feeds: list[str], client=None) -> int:
 
 
 def sync_winapps(session: Session, cves: list[dict]) -> int:
-    """Curated third-party Windows app advisories (ecosystem WinApp) from NVD CPE configurations; see winapps.py.
-    Replaces every WinApp row of the CVEs given, so a corrected or rejected CVE loses its stale rows."""
+    """Replace supplied NVD CVEs' WinApp rows and return inserted row count.
+
+    session is caller-owned. cves contains NVD CVE dictionaries. Commit each batch
+    of at most 5000 CVEs. Rejected CVEs produce no new rows. A translated NVD row
+    removes all -v5 rows for that CVE, including other products. Rejected or
+    untranslatable CVEs do not remove existing -v5 rows. Malformed input and
+    database errors propagate without rollback. Earlier batches remain committed."""
     n = 0
     for i in range(0, len(cves), 5000):
         batch = cves[i:i + 5000]
@@ -186,7 +214,9 @@ def sync_epss(session: Session, client=None) -> int:
     """Replace EPSS rows from the compressed CSV feed and return the count, committing Session session.
 
     client optionally supplies the HTTP transport. Empty data raises ValueError. Parse before
-    replacement; database failures roll back. Download, decompression, and parsing errors propagate."""
+    replacement. Replacement/database failures roll back all pending session changes.
+    Download, decompression, and parsing errors propagate before that rollback block.
+    A successful commit also includes unrelated pending changes."""
     text = gzip.decompress(_get(client, EPSS_URL)).decode()
     lines = (ln for ln in text.splitlines() if not ln.startswith("#"))  # leading "#model_version:..." line
     rows = [{"cve": r["cve"], "score": float(r["epss"]), "percentile": float(r["percentile"])}
@@ -208,7 +238,12 @@ CVELIST_RELEASES = "https://api.github.com/repos/CVEProject/cvelistV5/releases?p
 
 
 def cvelist_records(session: Session, records: list[dict]) -> int:
-    """Curated-app rows from CVE List v5 records (winapps.advisories_v5), only for CVEs NVD hasn't configured yet."""
+    """Store CVE List v5 dictionaries records in session and return inserted row count.
+
+    Skip IDs without a CVE- prefix or with any existing NVD WinApp row.
+    Otherwise replace all -v5 product rows for the CVE, even with an empty result.
+    Commit once, including unrelated changes. Field, conversion and database errors
+    propagate without rollback. The helper does not fetch or validate a full CVE schema."""
     n = 0
     for rec in records:
         cve = (rec.get("cveMetadata") or {}).get("cveId", "")
@@ -223,8 +258,15 @@ def cvelist_records(session: Session, records: list[dict]) -> int:
 
 
 def sync_cvelist(session: Session, client=None) -> dict:
-    """CVE List v5 hourly delta files (CNA + CISA ADP data) newer than the last one processed; the first run takes
-    only the newest delta (history is NVD's job). State: Advisory row ("CVELIST-STATE", "State")."""
+    """Return deltas/rows counts after available CVE List delta archives reach session.
+
+    client optionally supplies HTTP. Inspect one release-list page with ten entries.
+    First use takes only the newest matching filename. Later uses process filenames
+    newer than State/cvelist's last marker in ascending order. No pagination fills gaps.
+    Archive URLs require the configured GitHub prefix. A 200 MiB compressed limit
+    is checked after download. Uncompressed ZIP content has no aggregate size limit.
+    Commit records before each state marker. HTTP, ZIP, JSON, field and database
+    errors propagate without rollback. Earlier record/marker commits survive."""
     http = _client(client)
     state = session.get(Advisory, ("CVELIST-STATE", "State", "cvelist"))
     last = (state.record if state else {}).get("last", "")
@@ -244,8 +286,13 @@ def sync_cvelist(session: Session, client=None) -> dict:
 
 
 def sync_eol(session: Session, client=None) -> dict:
-    """endoflife.date release cycles for the curated third-party apps lifecycle.APP_EOL names (ecosystem "EOL").
-    A product whose fetch fails or changes shape keeps its stored cycles."""
+    """Return per-product cycle counts or error text after lifecycle fetches into session.
+
+    Read sorted unique APP_EOL and DISTRO_EOL products with optional HTTP client.
+    Thunderbird uses its separate source/parser. HTTPError, ValueError, KeyError
+    and TypeError preserve that product's row and return error text up to 200 chars.
+    Other errors propagate. Commit all successful merges once, including other
+    pending changes. Database errors are not caught or rolled back here."""
     out = {}
     for product in sorted({p for p, _ in lifecycle.APP_EOL.values()} | set(lifecycle.DISTRO_EOL.values())):
         try:
@@ -265,8 +312,12 @@ def sync_eol(session: Session, client=None) -> dict:
 
 
 def sync_office(session: Session, client=None) -> dict:
-    """Click-to-Run Office fixes per channel and version line (office.py), from the Office CVEs sync_msrc kept and
-    Microsoft's OfficeReleases feed. A feed that fails or changes shape keeps the rows already stored."""
+    """Return rows count or error text after OfficeReleases data reaches session.
+
+    client optionally supplies HTTP. Pair the feed with stored Office CVEs through
+    office.sync. HTTPError/ValueError rolls back the entire pending Session and
+    returns error text up to 200 chars. Other field/database errors propagate.
+    Success commits all pending changes. Existing rows survive a handled failure."""
     try:
         r = _client(client).get(office.URL, headers={"Accept": "application/json"})
         r.raise_for_status()
@@ -280,8 +331,12 @@ def sync_office(session: Session, client=None) -> dict:
 
 
 def msrc_context(v: dict) -> dict:
-    """The CVRF component tag (role-aware priority, plan T11) and Microsoft's own exploitation data (T39):
-    "Publicly Disclosed:Yes;Exploited:No;Latest Software Release:Exploitation More Likely"."""
+    """Return selected component/exploitation fields from CVRF vulnerability dictionary v.
+
+    Use the first nonempty Type=7 note as tag (200 chars). The first Type=1 threat
+    containing Exploited: supplies exploited/disclosed booleans and exploitability
+    (60 chars). Only exact Yes text is true. Missing sections omit keys.
+    Invalid nested values can raise field/type errors. No I/O or mutation occurs."""
     out = {}
     if tag := next((n.get("Value") for n in v.get("Notes", []) if n.get("Type") == 7 and n.get("Value")), None):
         out["tag"] = str(tag)[:200]
@@ -296,8 +351,12 @@ def msrc_context(v: dict) -> dict:
 
 
 def sync_metasploit(session: Session, client=None) -> int:
-    """CVEs with a public Metasploit module (plan T39, decision 15), from Rapid7's module metadata. Stored as one row
-    (ecosystem "Exploit"); a fetch or shape problem keeps the stored list."""
+    """Store Metasploit CVE references in session and return unique CVE count.
+
+    client optionally supplies HTTP. Require a metadata dictionary with 1000 entries.
+    Store sorted exact CVE IDs in Exploit/metasploit. No minimum CVE count applies.
+    Check the 100 MiB response limit after download. HTTP, JSON, shape and database
+    errors propagate. Commit includes other pending changes, without rollback here."""
     data = json.loads(_get(client, METASPLOIT_URL, 100 * 2**20))
     if not isinstance(data, dict) or len(data) < 1000:
         raise ValueError("Metasploit metadata: unexpected shape")
@@ -310,8 +369,13 @@ def sync_metasploit(session: Session, client=None) -> int:
 
 
 def sync_exploitdb(session: Session, client=None) -> int:
-    """CVEs with a public exploit on Exploit-DB (DECISIONS 73). Only the CVE ids are kept, as one row (ecosystem "Exploit");
-    denial-of-service proofs don't count. A fetch or format problem raises and keeps the stored list."""
+    """Store Exploit-DB CVE references in session and return unique CVE count.
+
+    client optionally supplies HTTP. Require codes/type CSV columns and at least
+    1000 unique exact CVE IDs. Exclude only rows whose type equals lowercase dos.
+    Store sorted IDs in Exploit/exploitdb. Check 100 MiB after download.
+    HTTP, CSV, shape and database errors propagate without rollback here.
+    Commit includes unrelated pending changes."""
     rows = csv.DictReader(io.StringIO(_get(client, EXPLOITDB_URL, 100 * 2**20).decode("utf-8", "replace"), newline=""))
     if not {"codes", "type"} <= set(rows.fieldnames or ()):
         raise ValueError("Exploit-DB: unexpected columns")
@@ -325,8 +389,12 @@ def sync_exploitdb(session: Session, client=None) -> int:
 
 
 def sync_loldrivers(session: Session, client=None) -> int:
-    """File hashes of vulnerable and malicious drivers (DECISIONS 71), one row (ecosystem "WinDriver"). Raises on a fetch
-    or format problem and leaves the stored row alone."""
+    """Store parsed LOLDrivers hashes in session and return unique hash count.
+
+    client optionally supplies HTTP. Check the 200 MiB limit after download and
+    apply windrivers.parse's validation. Replace WinDriver/loldrivers in one commit,
+    including other pending changes. HTTP, JSON, parser and database errors
+    propagate without rollback here."""
     drivers = windrivers.parse(json.loads(_get(client, windrivers.URL, 200 * 2**20)))
     session.merge(Advisory(id="DRIVERS-loldrivers", ecosystem=windrivers.ECOSYSTEM, package="loldrivers", modified=now().isoformat(),
                            record={"id": "DRIVERS-loldrivers", "drivers": drivers}))
@@ -335,15 +403,17 @@ def sync_loldrivers(session: Session, client=None) -> int:
 
 
 def sync_msrc(session: Session, months: int = 12, client=None, month: str | None = None, apps_months: int = 0) -> dict:
-    """Windows OS advisories from the MSRC CVRF API, stored as OSV-shaped rows (ecosystem Windows, package =
-    MSRC product name, fixed = FixedBuild) so the normal matcher works. Windows 10/11/Server products with a dotted
-    FixedBuild, plus the Microsoft products msproducts.py allowlists (ecosystem Microsoft, package = its key).
-    # ponytail: a month is skipped when its CurrentReleaseDate is already stored on some row; a CVE re-released
-    # in a later month overwrites the older row, which makes that older month re-download. Fine at this scale.
-    month: just that one document (e.g. "2023-Nov"), however old, adding rows and never overwriting any (DECISIONS 95).
-    apps_months: months before `months` read for the allowlisted Microsoft apps only (VS Code, PowerShell...), whose fixes
-    aren't cumulative like Windows', so an app years behind still gets its old CVEs (DECISIONS 114). Each such month is read
-    once (state row "MSRC-APPS-STATE"), adds rows and never overwrites any."""
+    """Return documents/skipped_documents/inserted/updated/skipped MSRC counts in session.
+
+    months selects a 30-day-per-month full-history window. apps_months extends it
+    for allowlisted Microsoft apps only. Optional month selects one indexed ID,
+    such as 2023-Nov, regardless of age. client optionally supplies HTTP transport.
+    Explicit/older app months add missing rows without replacing existing rows.
+    CurrentReleaseDate and MSRC-APPS-STATE supply skip markers. Office CVE rows
+    do not contribute to inserted/updated/skipped counters. Absent rows remain.
+    Each document commits, with a possible separate app-state commit. HTTP transport
+    failures retry up to three times per request. Other HTTP, JSON, field and
+    database errors propagate without rollback. Prior commits survive."""
     http = _client(client)
 
     def get(url):
@@ -459,10 +529,17 @@ def sync_msrc(session: Session, months: int = 12, client=None, month: str | None
 
 
 def update_all(session: Session, client=None) -> dict:
-    """Refresh every feed for the ecosystems actually in use, then re-match every asset.
+    """Refresh selected feeds, rescan assets and run upkeep in session. Return run counts.
 
-    New advisories or exploitation data change findings without waiting for the next
-    agent report. Run from cron/systemd timer (e.g. hourly)."""
+    InstalledPackage ecosystems select OSV and conditional Microsoft/app feeds.
+    KEV, EPSS, modified NVD and exploit metadata run regardless of inventory.
+    client supplies feed HTTP only, not external scan or release transports.
+    Handled feed errors become error dictionaries or omitted optional keys.
+    Rescan failures are isolated per asset. Then checkpoint organisations, seal
+    legacy webhooks, retry alerts, flag silent hosts and check platform releases.
+    Many stages commit all pending changes. Checkpoint/notification upkeep errors
+    and unhandled optional-feed errors can propagate after earlier commits.
+    This is not one atomic transaction. External scans can contact verified targets."""
     in_use = {normalize_ecosystem(e) for e in session.scalars(select(InstalledPackage.ecosystem).distinct())}
     used = sorted({e.split(":", 1)[0] for e in in_use} - {"Windows", "WinApp", msproducts.ECOSYSTEM, windrivers.ECOSYSTEM})  # MSRC and NVD, not OSV
     def guarded(name, fn):  # one feed's outage or schema change keeps its stored rows and must not stop every org's re-match
@@ -549,7 +626,10 @@ def main(argv: list[str]) -> int:
     """Run the feed command in argv and print its result.
 
     Return 2 for an unsupported command or missing required arguments, otherwise 0. Commands
-    write the configured database and can contact feed providers. Update errors propagate."""
+    write the configured database and can contact feed providers. update can also
+    scan external targets and send alerts. Invalid msrc integer text raises ValueError.
+    Extra arguments are ignored by commands that do not use them. Other sync/database
+    errors propagate after any earlier commits. Output is Python repr, not JSON."""
     if not argv or argv[0] not in ("osv", "kev", "epss", "nvd", "msrc", "update") or (argv[0] in ("osv", "nvd") and len(argv) < 2):
         print("usage: python -m nimstead.feeds [update|osv ECOSYSTEM...|nvd YEAR...|modified|kev|epss|msrc [MONTHS]]", file=sys.stderr)
         return 2

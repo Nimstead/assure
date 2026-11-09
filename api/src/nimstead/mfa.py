@@ -20,7 +20,13 @@ def code(secret_b32: str, step: int, digits: int = DIGITS, digest=hashlib.sha1) 
     """Return the zero-padded OTP for base32 secret_b32 and integer counter step.
 
     digits controls the output width; digest is the HMAC hash constructor (SHA-1 by default).
-    Invalid base32 raises binascii.Error; an out-of-range counter raises struct.error."""
+    Invalid base32 raises binascii.Error; an out-of-range counter raises struct.error.
+    Parameters are trusted internal values; digits is not range-validated.
+
+    The example uses a fixed public test secret.
+
+    >>> code('GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ', 1)
+    '287082'"""
     mac = hmac.new(base64.b32decode(secret_b32), struct.pack(">Q", step), digest).digest()
     off = mac[-1] & 0x0F
     return str((struct.unpack(">I", mac[off:off + 4])[0] & 0x7FFFFFFF) % 10 ** digits).zfill(digits)
@@ -49,7 +55,10 @@ def uri(secret_b32: str, email: str) -> str:
 
 
 def recovery_codes(n: int = 10) -> list[str]:
-    """Return n random, single-use recovery-code strings; the caller stores hashes and consumes them."""
+    """Return n random recovery-code strings, or [] when n is nonpositive.
+
+    Each code has 64 random bits. The caller stores hashes and consumes codes after use;
+    this function does not persist or invalidate them."""
     return [f"{secrets.token_hex(4)}-{secrets.token_hex(4)}" for _ in range(n)]  # 64 bits each: sha256 is enough at rest
 
 

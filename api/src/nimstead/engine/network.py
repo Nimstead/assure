@@ -1,11 +1,9 @@
 """The engine's network-service slice: a remote prober inside the engine model (spec sections 14, 10; design-e2.md).
 
-Scope is enforced here before any packet. `external.prove_scope` re-proves ownership of the name and of the address and
-pins the one public IP every connection goes to, including for anything resolved mid-scan (R2.9, DECISIONS 28); there is no
-packet without it. The prober then identifies services by behaviour, not by port number (R10.1), runs declarative probe
-rules each with a mandatory negative control (R10.3), budgets the work (per-host and per-endpoint concurrency, a per-check
-deadline the engine enforces), and refuses disruptive checks in safe mode in a way content can't override (R2.6). Every
-observation becomes a verdict with evidence and a confidence grade.
+run() calls external.prove_scope before service checks. That gate uses DNS and HTTP(S) proof requests, then returns
+the first checked address for subsequent probes. Direct Prober use does not enforce ownership. The prober reads banners,
+runs web-path rules with negative controls, applies worker/exchange limits and time budgets, and refuses disruptive
+web rules in safe mode. Time budgets are not strict wall-clock cancellation deadlines.
 
 Nothing a remote check reads can be `confirmed`: a banner is weak and spoofable and vendors backport (R10.2), so grades
 here ceiling at `reasonable`, and a banner-to-CVE check is `unverified`. Findings still open and close through
@@ -44,10 +42,15 @@ class Safety(StrEnum):
 
 @dataclass(frozen=True)
 class Budget:
-    """Network concurrency and time limits: per-host workers, per-endpoint connections, and timeouts in seconds."""
+    """Network limits: per_host endpoint workers and per_endpoint _exchange connections.
+
+    deadline is the endpoint/web-check time budget in seconds. connect is the TCP
+    operation timeout in seconds. These are not total scan or hard cancellation
+    deadlines. Direct connect/TLS helpers do not use the exchange semaphore.
+    Construction does not validate positive counts or finite timeout values."""
     per_host: int = 8          # endpoints probed at once (R2.3)
     per_endpoint: int = 1      # connections to one (ip, port) at once; declarable down to one (R2.3, T26)
-    deadline: float = 8.0      # seconds a single endpoint's checks may take, enforced by the engine (R2.4)
+    deadline: float = 8.0      # endpoint budget; overruns are recorded after observation returns
     connect: float = 3.0       # TCP connect timeout
 
 
@@ -55,8 +58,14 @@ class Budget:
 
 @dataclass(frozen=True)
 class WebRule:
-    """A declarative active probe (spec section 5, kind 4): request a path, require a flaw-specific marker in the body,
-    and only after a negative control shows the site doesn't answer success for everything (R10.3)."""
+    """A path probe with a flaw-specific bytes marker and a missing-path control.
+
+    A nonempty 2xx control response suppresses path evaluation as soft-404. A failed
+    control request is not itself rejected as an incomplete check.
+
+    id, path and summary are strings. marker is a bytes regex. cvss is the numeric
+    impact score. port defaults to 80 and safety to PROBE. Construction does not
+    validate these fields. Invalid patterns or values can fail during evaluation."""
     id: str
     path: str
     marker: re.Pattern
@@ -81,10 +90,16 @@ def _ssh_tuple(v: str) -> tuple[int, int, int]:
 
 @dataclass(frozen=True)
 class VersionRule:
-    """A banner-to-CVE check for a product whose banner states an upstream version the vendor does NOT backport, so the
-    number means what it says (R10.2). Graded `unverified` regardless: a banner is remote and spoofable, and `why` is what
-    an agent or credentialed reading would raise it with. `distro_tagged` declines when the banner carries a distribution's
-    own build suffix, because then the fix may be backported and the upstream number lies."""
+    """A configured banner-to-CVE check, always graded unverified.
+
+    A banner is remote and spoofable. The verdict detail names the stronger reading
+    needed. distro_tagged declines known distribution suffixes, where fixes may be
+    backported without an upstream version change.
+
+    banner is a bytes regex with named ver and optional tail groups. affected accepts
+    the decoded version string and returns a boolean. fixed, source, summary, fix and
+    rationale are descriptive strings. cvss is numeric. rationale records selection
+    reasoning but is not evaluated. Fields/callbacks are trusted, not validated."""
     cve: str
     product: str
     banner: re.Pattern       # identifies the product and captures group "ver" (and optionally "tail")
@@ -98,8 +113,8 @@ class VersionRule:
     distro_tagged: bool = False
 
 
-# Chosen deliberately (DECISIONS): each ships full-version releases rather than backporting into a fixed package string,
-# so the banner's upstream number maps straight to the advisory range. Still only `unverified`, because a banner is weak.
+# These rules assume an upstream banner maps to an advisory range; rationale records each assumption.
+# Results remain unverified because banners do not establish the installed binary or backport state.
 _DISTRO_SUFFIX = re.compile(rb"(?i)(ubuntu|debian|raspbian|freebsd|\+deb|el\d|\.fc\d)")
 VERSION_RULES = (
     VersionRule("CVE-2011-2523", "vsftpd", re.compile(rb"\(vsFTPd (?P<ver>[0-9.]+)\)"), lambda v: v == "2.3.4", "2.3.5", 9.8,
@@ -120,7 +135,10 @@ VERSION_RULES = (
 
 
 def content_version() -> str:
-    """Return a short hash identifier for configured service ports, TLS warning age, and rule identifiers."""
+    """Return net. plus 12 SHA-256 hex characters for ports, TLS warning age and rule IDs.
+
+    Does not hash rule bodies, regexes, version predicates or service descriptions.
+    It is not a complete implementation fingerprint. Incompatible rule data can raise TypeError."""
     body = json.dumps({"services": sorted(external.SERVICES), "tls_warn": external.EXPIRY_WARN_DAYS,
                        "web": [r.id for r in WEB_RULES], "version": [r.cve for r in VERSION_RULES]}, sort_keys=True)
     return f"net.{hashlib.sha256(body.encode()).hexdigest()[:12]}"
@@ -130,7 +148,11 @@ def content_version() -> str:
 
 @dataclass
 class Endpoint:
-    """Observed port state with optional greeting bytes, TLS facts, reflection, and timeout indicators."""
+    """Observed port state with optional greeting bytes, TLS facts, reflection and timeout indicators.
+
+    port is an integer, state is open/closed/filtered, and banner defaults to empty
+    bytes. tls uses external.tls_probe's dictionary shape or None. tls_wrapped,
+    reflects and timed_out default to false. Construction does not validate values."""
     port: int
     state: str               # open | closed | filtered
     banner: bytes = b""
@@ -146,8 +168,10 @@ BANNER_PORTS = (21, 22, 25, 110, 143, 2121, 2222)  # where a greeting is worth r
 class Prober:
     """Budgeted network observer for host and pinned IP strings.
 
-    budget defaults to Budget(); safe_mode refuses disruptive web rules. The caller must prove
-    scope before creating or using a Prober; use run() for the ownership-checked entry point."""
+    budget defaults to Budget(); safe_mode refuses disruptive web rules. host supplies
+    Host/SNI names and ip is the connection address. The constructor does no I/O or
+    ownership/public-address validation. Use run() for the ownership-checked entry point.
+    Invalid budget values can fail when a semaphore, worker pool or socket is used."""
     def __init__(self, host: str, ip: str, budget: Budget | None = None, safe_mode: bool = True):
         self.host, self.ip, self.budget, self.safe_mode = host, ip, budget or Budget(), safe_mode
         self._sems: dict[int, threading.Semaphore] = defaultdict(lambda: threading.Semaphore(self.budget.per_endpoint))
@@ -230,7 +254,10 @@ class Prober:
     def observe(self) -> dict[int, Endpoint]:
         """Probe configured service, TLS, HTTP, and banner ports; return port-to-Endpoint observations.
 
-        Uses the per-host worker limit. Socket failures become observations; invalid budgets can raise ValueError."""
+        Uses the per-host worker limit and performs network I/O without ownership checks.
+        Endpoints that return after their budget have timed_out=True. Ordinary socket
+        failures become observations. Invalid budgets or unexpected TLS errors can
+        propagate ValueError, TypeError or other helper errors."""
         ports = sorted(set(external.SERVICES) | {external.TLS_PORT, 80, *BANNER_PORTS})
         with ThreadPoolExecutor(max_workers=self.budget.per_host) as pool:
             return {e.port: e for e in pool.map(self._probe_port, ports)}
@@ -351,7 +378,11 @@ def _versions(endpoints: dict[int, Endpoint]) -> list[Verdict]:
 def evaluate(prober: Prober, endpoints: dict[int, Endpoint]) -> list[Verdict]:
     """Return sorted verdicts from prober and port-to-Endpoint observations.
 
-    Web rules may perform further requests through prober; this is not a pure in-memory evaluation."""
+    Web rules may perform further requests through prober. The caller must prove scope
+    before this I/O. endpoints must contain every external.SERVICES port and TLS_PORT.
+    Sort vulnerable verdicts first, then product/check. TLS expiry uses the current
+    clock. Does not persist findings. Missing ports can raise KeyError. Malformed
+    rules, facts or custom predicates can propagate decoding, type or callback errors."""
     out = _exposed(endpoints) + _tls(endpoints, prober.host) + _web(prober, endpoints) + _versions(endpoints)
     return sorted(out, key=lambda v: (v.outcome != Outcome.VULNERABLE, v.product, v.check))
 
@@ -431,7 +462,12 @@ def build_report(host: str, ip: str, verdicts: list[Verdict], endpoints: dict[in
     """Return the network scan report for host, pinned ip, verdicts, and port observations.
 
     skipped lists omitted checks; host_lost marks complete loss of reachability. The report includes
-    coverage, hashes, content version, and an observation timestamp; it does not persist anything."""
+    coverage, hashes, content version, and a current UTC timestamp. Does not persist or
+    probe. host/ip are strings. verdicts and endpoints must follow the engine models.
+    The inventory hash names host/ip/content-version, not the observed endpoint data.
+    Report shape differs from host reports: no kind, applications or attack_paths,
+    and not_vulnerable rows contain only product and grade. Malformed inputs can raise
+    KeyError, TypeError or ValueError."""
     cv = content_version()
     return {"host": host, "os": f"external target {ip}", "agent_version": None, "inventory_read_at": datetime.now(UTC).isoformat(timespec="seconds"),
             "engine_version": NET_ENGINE_VERSION, "content_version": cv,
@@ -442,7 +478,12 @@ def build_report(host: str, ip: str, verdicts: list[Verdict], endpoints: dict[in
 
 
 def parity(verdicts: list[Verdict], external_ids: set[str]) -> dict:
-    """Every finding external.scan opens must be a vulnerable verdict here; the engine-only web and version checks are listed."""
+    """Compare vulnerable verdict IDs with external.scan finding IDs in external_ids.
+
+    Return sorted agree IDs, explained/unexplained difference rows, and ok. Extra
+    NIM-WEB-/CVE- verdicts are explained engine-only checks. ok means no unexplained
+    differences, not exact equality. Does not change inputs. Invalid ID/model types
+    can raise TypeError or AttributeError."""
     vuln = {v.vuln_id for v in verdicts if v.outcome == Outcome.VULNERABLE and v.vuln_id}
     explained, unexplained = [], []
     for fid in sorted(external_ids - vuln):
@@ -458,7 +499,14 @@ def parity(verdicts: list[Verdict], external_ids: set[str]) -> dict:
 # --- entry point (scope proven, then probe) --------------------------------
 
 def run(s, asset, lookup=None, budget: Budget | None = None, safe_mode: bool = True) -> tuple[list[Verdict], dict, Prober]:
-    """Re-prove scope (no packet before it passes), probe, and return (verdicts, report, prober). Raises external.ScanRefused."""
+    """Re-prove scope, probe the pinned address, and return (verdicts, report, Prober).
+
+    s is a SQLAlchemy Session and asset is a verified external Asset. lookup optionally
+    maps DNS names to TXT strings. budget controls observations; safe_mode blocks
+    disruptive web rules. Scope proof performs DNS and HTTP(S) I/O before service checks.
+    external.ScanRefused can follow a committed refusal event or verification reset.
+    Other database, lookup, budget and probe errors propagate. Does not persist the
+    report or change findings. host_lost means every initial endpoint was filtered."""
     ip = external.prove_scope(s, asset, lookup)
     prober = Prober(asset.hostname, ip, budget, safe_mode)
     endpoints = prober.observe()

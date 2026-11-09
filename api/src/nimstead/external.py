@@ -1,13 +1,12 @@
 """Outside-in checks of internet-facing hosts the customer has proven they own.
 
-Ownership is proven twice, when the target is verified and AGAIN before every scan, so a lapsed or transferred name is
-never scanned:
+Ownership is checked at target verification and again before service checks on each scan:
 - the name: a DNS TXT record `_nimstead-verify.<host>` = "nimstead-verify=<per-org token>" (the scheme SSO domains use)
 - the address: the same value served at /.well-known/nimstead-verify.txt by the very address about to be scanned (HTTPS
   on 443 or HTTP on 80). Owning a name proves nothing about the IP it points at: without this a tenant could point a name
   it controls at someone else's server and have us probe it.
-Only public addresses are scanned (never a customer's or our own internal network), and every connection goes to the
-address that was checked. Checks are deliberately few and certain:
+Addresses pass netguard's checks, including its explicit development-only private-address bypass. Service checks use
+the first returned address. Checks cover:
 - dangerous services reachable from the internet (TCP connect only: no logins, no exploits, no payloads)
 - TLS on 443: expired or soon-expiring certificate, untrusted chain, name mismatch, TLS 1.0/1.1 still accepted
 """
@@ -80,7 +79,14 @@ def owned(org_id: str, host: str, lookup) -> bool:
 def address_proven(ip: str, host: str, value: str, ports=PROOF_PORTS, timeout: float = 5.0) -> bool:
     """True if the server at this exact IP serves value at PROOF_PATH for host. Connects to the IP itself (no DNS, no
     redirects). The certificate isn't checked: the per-org secret in the body is the proof, and an expired or
-    self-signed certificate is one of the things the scan exists to report."""
+    self-signed certificate is one of the things the scan exists to report.
+
+    ip, host and value are strings. ports contains (integer port, TLS boolean) pairs,
+    tried in order. timeout is a per-socket-operation limit in seconds, not a total
+    deadline. Accept HTTP 200 with value anywhere in the first 4096 body bytes.
+    Ordinary socket/TLS failures try the next port and eventually return False.
+    Invalid argument types or unexpected TLS configuration errors can propagate.
+    This helper does not check ownership, public addresses or the DNS name."""
     req = f"GET {PROOF_PATH} HTTP/1.1\r\nHost: {host}\r\nUser-Agent: nimstead-verify\r\nConnection: close\r\n\r\n".encode()
     for port, tls in ports:
         try:
@@ -104,8 +110,12 @@ def address_proven(ip: str, host: str, value: str, ports=PROOF_PORTS, timeout: f
 
 
 def connect_state(ip: str, port: int, timeout: float = 3.0) -> str:
-    """'open' (accepted), 'closed' (refused: proof nothing listens), or 'filtered' (timed out/unreachable: a drop, which
-    proves nothing either way). The engine's prober needs the three apart; `port_open` keeps the old true/false meaning."""
+    """Classify TCP connection to ip string and integer port within timeout seconds.
+
+    Return open on success, closed on refusal/reset, or filtered for other OSError
+    failures, including timeout/unreachable. A classification is not a service
+    identity or proof of authentication policy. Invalid arguments can raise TypeError
+    or ValueError. This helper does not validate scan scope."""
     try:
         with socket.create_connection((ip, port), timeout=timeout):
             return "open"
@@ -123,7 +133,16 @@ def port_open(ip: str, port: int, timeout: float = 3.0) -> bool:
 
 
 def tls_probe(ip: str, host: str, port: int = TLS_PORT, timeout: float = 5.0) -> dict:
-    """What a browser would see, plus whether legacy TLS is still accepted. Returns facts, never raises for the host."""
+    """Read TLS trust/expiry facts at ip:port using host for SNI and certificate checks.
+
+    ip/host are strings, port is an integer and timeout is a socket-operation limit
+    in seconds. Return trusted (True/False/None), error (string/None), not_after
+    (Unix timestamp/None), and legacy (True/False/None). None for trusted means no
+    TLS handshake. None for legacy can mean an untestable scanner protocol or an
+    early return before that test. Certificate failures trigger an unverified expiry
+    read. Ordinary socket/TLS errors become facts, but malformed certificates,
+    invalid arguments and unexpected configuration errors can propagate.
+    No ownership validation occurs. Multiple connections can each use timeout."""
     out: dict = {"trusted": True, "error": None, "not_after": None, "legacy": None}
     try:
         ctx = ssl.create_default_context()
@@ -170,14 +189,25 @@ def _accepts_legacy(ip, host, port, timeout) -> bool | None:
 
 
 def exposed_finding(port: int) -> dict:
-    """The finding for a risky service reachable on `port`. One place, so the engine's prober and `scan` can't drift."""
+    """Return configured finding fields for integer port in SERVICES without probing.
+
+    Fields are id, package, cvss, likelihood (probability/reason tuple), and summary.
+    Unknown ports raise KeyError. The label comes from port configuration, not service
+    fingerprinting. This helper supplies both the scanner and engine prober."""
     cid, name, cvss, fix = SERVICES[port]
     return {"id": f"NIM-EXPOSED-{cid}", "package": f"tcp/{port} {name}", "cvss": cvss, "likelihood": likelihood_of(f"NIM-EXPOSED-{cid}"),
             "summary": f"{name} (TCP {port}) is reachable from the internet. {fix}"}
 
 
 def tls_findings(host: str, t: dict) -> tuple[list[dict], list[str]]:
-    """What a TLS probe's facts mean, as findings. Shared by `scan` and the prober so their verdicts agree."""
+    """Return (finding dictionaries, skipped descriptions) for hostname host and TLS facts t.
+
+    t must contain not_after, trusted, error and legacy as returned by tls_probe().
+    Expiry uses the current UTC clock. Finding fields match exposed_finding().
+    Expired certificates suppress the separate untrusted/name issue. Untestable
+    legacy TLS adds a skipped description only when trusted is not None.
+    No network or persistence occurs. Missing fields raise KeyError, incompatible
+    timestamps/types can raise TypeError or ValueError."""
     found, skipped = [], []
     days = (t["not_after"] - datetime.now(UTC).timestamp()) / 86400 if t["not_after"] else None
     if days is not None and days < 0:
@@ -198,7 +228,13 @@ def tls_findings(host: str, t: dict) -> tuple[list[dict], list[str]]:
 
 
 def checks(host: str, ip: str) -> tuple[list[dict], list[str]]:
-    """Run every check. Returns (problems found, checks that couldn't run on this machine)."""
+    """Check configured service ports and TLS on pinned ip, using host for TLS identity.
+
+    host/ip are strings. Return (finding dictionaries, skipped descriptions).
+    Probe SERVICES with eight workers, then TLS_PORT if it accepts a connection.
+    Closed and filtered service ports both omit findings. No web-path or banner-CVE
+    checks run here. Does not validate scope or persist. Unexpected helper failures
+    propagate. Use scan() for ownership checks and finding updates."""
     found, skipped = [], []
     with ThreadPoolExecutor(max_workers=8) as pool:
         open_ports = {p for p, ok in zip(SERVICES, pool.map(lambda p: port_open(ip, p), SERVICES), strict=True) if ok}
@@ -222,9 +258,18 @@ def _tls(cid, cvss, text):
 
 
 def prove_scope(s: Session, asset: Asset, lookup=None) -> str:
-    """The mandatory gate before any packet: re-prove the name and the address, and that it resolves to a public address
-    only. Returns the pinned IP every connection must go to. Raises ScanRefused (recording a lapsed proof) otherwise.
-    Shared by `scan` and the engine's network prober, so scope is enforced in exactly one place (spec R2.9, DECISIONS 28)."""
+    """Return the first checked address for a verified external Asset using Session s.
+
+    lookup optionally accepts a DNS name and returns TXT strings. Default uses
+    sso.txt_records. Recheck DNS ownership, resolve through netguard, then fetch the
+    address proof. DNS and proof requests precede permission for service probes.
+    The netguard development bypass can allow private addresses.
+
+    Raise ScanRefused for wrong asset kind, missing verification, lapsed DNS proof,
+    refused resolution or absent address proof. Lapsed DNS clears verified_at and
+    commits an unverified event. Missing address proof commits a refusal event but
+    retains verified_at. These commits include other pending changes in s.
+    Database, custom lookup and key-backend errors propagate. Caller checks tenant ownership."""
     if asset.kind != "external":
         raise ScanRefused("Only external targets are scanned from outside")
     if asset.verified_at is None:
@@ -248,8 +293,16 @@ def prove_scope(s: Session, asset: Asset, lookup=None) -> str:
 
 
 def scan(s: Session, asset: Asset, lookup=None, run_checks=None) -> dict:
-    """Re-prove ownership of the name and of the address, scan, and open/resolve findings with ledger entries. Raises
-    ScanRefused, probing nothing, if the target isn't (or is no longer) proven or doesn't resolve to public addresses only."""
+    """Re-prove scope, check Asset asset, update findings/ledger and commit Session s.
+
+    lookup follows prove_scope(). Optional run_checks(host, ip) returns (finding
+    dictionaries, skipped strings); default uses checks(). Caller checks ownership.
+    Return address, open (unique observed issue count), resolved (new transitions),
+    and skipped. Accepted observed findings stay accepted. Unseen open/accepted
+    findings resolve, including when a check is omitted or a port is filtered.
+    On success update asset.last_seen and commit all pending session changes.
+    ScanRefused and other scope/probe/database errors propagate. Refusal can itself
+    commit through prove_scope(). No automatic rollback handles later exceptions."""
     ip = prove_scope(s, asset, lookup)
     found, skipped = (run_checks or checks)(asset.hostname, ip)
     t = now()
@@ -292,7 +345,11 @@ def _score(asset: Asset, c: dict):
 
 
 def rescore(s: Session, asset: Asset) -> dict:
-    """Asset context changed (criticality): re-score existing findings without touching the network."""
+    """Rescore open findings for Asset asset in Session s without network I/O.
+
+    Accepted and resolved findings are unchanged. Commit all pending session changes.
+    Return open (rows rescored) and resolved (always zero). Caller checks ownership.
+    Database and malformed score-input errors propagate without automatic rollback."""
     n = 0
     for f in s.scalars(select(Finding).where(Finding.asset_id == asset.id, Finding.status == "open")):
         r = _score(asset, {"cvss": f.cvss, "likelihood": likelihood_of(f.vuln_id)})

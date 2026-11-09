@@ -21,7 +21,15 @@ log = logging.getLogger(__name__)
 @functools.lru_cache(maxsize=4096)  # once per distinct case, and bounded: the hourly re-match repeats them all
 
 def clip(text: str, n: int = 200) -> str:
-    """At most n characters, cut at a word with an ellipsis rather than mid-word."""
+    """Normalize whitespace in text and shorten its prefix to the integer budget n.
+
+    Prefer the last word boundary in the sliced prefix. If no boundary exists, slice the
+    word. Truncation appends an ellipsis, so the result can contain n+1 characters.
+    n is not range-validated. Results are cached by the original text and n arguments.
+
+    >>> clip('abcdefgh', 5)
+    'abcde…'
+    """
     text = " ".join(text.split())
     return text if len(text) <= n else text[:n].rsplit(" ", 1)[0].rstrip(",;:") + "…"
 
@@ -42,17 +50,22 @@ class Match:
     """One canonical vulnerability match.
 
     vuln_id is a CVE where available; advisory_ids lists contributing records. fixed is the lowest
-    known fixing version above the installed version, or None. summary is display text; record
+    candidate fixing version above the installed version from contributing matched ranges, or None.
+    Each advisory contributes its first affected supported range. summary is display text; record
     retains one contributing OSV dictionary for risk and evidence processing."""
     vuln_id: str  # canonical id, CVE where known
     advisory_ids: list[str]
-    fixed: str | None  # lowest fixed version above installed, None = no fix yet
+    fixed: str | None  # minimum candidate from contributing matched ranges, or None
     summary: str
     record: dict = field(repr=False)
 
 
 def normalize_ecosystem(eco: str) -> str:
-    """'Ubuntu:22.04:LTS' -> 'Ubuntu:22.04'. Other ecosystems unchanged."""
+    """Return eco with a trailing Ubuntu LTS component removed.
+
+    eco is an ecosystem string. Only an initial Ubuntu component and final LTS component
+    trigger normalization; other strings are returned unchanged.
+    """
     parts = eco.split(":")
     if parts[0] == "Ubuntu" and parts[-1] == "LTS":
         parts = parts[:-1]
@@ -62,7 +75,8 @@ def normalize_ecosystem(eco: str) -> str:
 def canonical_id(record: dict) -> str:
     """Return the lexically first CVE among record id, aliases, and upstream IDs, otherwise record["id"].
 
-    record is an OSV dictionary; missing id raises KeyError."""
+    record is an OSV dictionary with string id and optional string lists aliases/upstream.
+    Missing id raises KeyError. Invalid nested ID types can propagate AttributeError or TypeError."""
     ids = [record["id"], *record.get("aliases", []), *record.get("upstream", [])]
     cves = sorted(i for i in ids if i.startswith("CVE-"))
     return cves[0] if cves else record["id"]
@@ -104,7 +118,9 @@ def match_package(pkg: Package, ecosystem: str, records: list[dict]) -> list[Mat
     records is a list of OSV dictionaries already selected for the package name. Match the
     source name when present, using the ecosystem comparator. Withdrawn records and unsupported
     comparators are skipped. Version-comparison ValueError is logged and skipped, so an empty
-    result alone does not prove the package safe. Malformed record structures may raise KeyError."""
+    result alone does not prove the package safe. Malformed OSV structures can propagate
+    errors such as KeyError, TypeError, AttributeError or StopIteration. This is not a schema
+    validator. The function does not mutate pkg or the source records."""
     cmp = comparator_for(ecosystem)
     if cmp is None:
         return []

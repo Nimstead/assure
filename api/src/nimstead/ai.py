@@ -1,7 +1,7 @@
 """AI assistance: plain-English finding explanations and natural-language search.
 
 Optional: everything works without it. Enabled when Anthropic credentials are
-configured (ANTHROPIC_API_KEY or another SDK credential source) and
+configured (ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN) and
 NIMSTEAD_AI is not "0". The model never decides or executes anything: it
 explains, or it proposes a filter that we validate against a fixed schema.
 Advisory text is untrusted third-party content and is passed as data.
@@ -74,8 +74,14 @@ def explain(f: dict) -> str:
     """Return a cached plain-text explanation of finding dictionary f.
 
     Required keys are vuln_id, package, installed_version, fixed_version, kev, epss, cvss,
-    priority, and reasons; summary is optional. Hostnames are omitted from the request.
-    Raise AIUnavailable for unavailable or unusable service responses, or KeyError for missing facts."""
+    priority, and reasons. Values must be JSON-serializable. Optional summary must
+    be a string or falsey. Only its first 1500 characters enter the request.
+    The hostname field is not selected. Selected text is not redacted.
+
+    Cache up to 2048 fact/summary combinations in this process. The prompt requests
+    three paragraphs under 140 words, but the result has no fact or word-count check.
+    Raise AIUnavailable for unavailable or unusable service responses, KeyError for
+    missing facts, or TypeError for incompatible values. SDK configuration errors propagate."""
     facts = {
         "vulnerability": f["vuln_id"], "package": f["package"], "installed_version": f["installed_version"],
         "fixed_version": f["fixed_version"] or "no fix available yet",  # no hostname: one explanation per advisory and context
@@ -92,7 +98,11 @@ def _explain_cached(facts_json: str, advisory: str) -> str:
 
 
 class SearchFilter(BaseModel):
-    """The only things a natural-language query can turn into. Validated before use; never SQL."""
+    """Validated search fields, with defaults for omitted values and ignored extra keys.
+
+    q is at most 100 characters. Empty priority means all priorities. None for
+    fixable or kev means either value. Pydantic's default coercion applies.
+    Invalid field types, lengths, or enum values raise ValidationError."""
 
     q: str | None = Field(None, max_length=100, description="free-text match on package, CVE id or hostname")
     priority: list[Literal["fix-now", "next", "planned", "low"]] = Field(default_factory=list)
@@ -128,7 +138,10 @@ SEARCH_SCHEMA = {
 def parse_search(text: str) -> SearchFilter:
     """Convert at most the first 500 characters of text into a validated SearchFilter.
 
-    Raise AIUnavailable if the service fails or its answer does not match the filter schema."""
+    text is a string. Return filters only, without executing a search. Local model
+    validation supplies omitted defaults and ignores extra keys in the JSON answer.
+    Raise AIUnavailable for service failures, invalid JSON, or invalid filter values.
+    SDK configuration errors propagate."""
     raw = _call(SEARCH_SYSTEM, text[:500], effort="low", max_tokens=1000, output_format=SEARCH_SCHEMA)
     try:
         return SearchFilter.model_validate(json.loads(raw))

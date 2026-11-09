@@ -1,6 +1,6 @@
 # Documentation coverage
 
-Documented callable/class declarations: **628/628**.
+Documented callable/class declarations: **632/632**.
 
 Regenerate with `python scripts/check_docs.py --report` from the repository root.
 
@@ -10,7 +10,7 @@ Python coverage includes public module functions, classes, public methods, and H
 
 Private helpers, function-local helpers, request-model fields, type-only declarations, test fixtures, migrations, and sandbox harness internals are not public callable interfaces. Their types, inline comments, tests, and [tooling guide](tooling.md) provide context. Sandbox entry points also have module documentation.
 
-This metric checks documentation presence. It does not prove complete parameter, error, or behavioural accuracy. Review the contract against the implementation when changing it. The web check recognises the declaration style used here; update it if exports change syntax.
+This metric checks documentation presence. It does not prove complete parameter, error, or behavioural accuracy. Review the contract against the implementation when changing it. The web check recognises the declaration style used here; update it if exports change syntax. [Checker contracts](tooling.md#documentation-checker-contracts) describe counting and link-recognition limits.
 
 ## Files
 
@@ -54,7 +54,8 @@ This metric checks documentation presence. It does not prove complete parameter,
 | [api/src/nimstead/winbaseline.py](../../api/src/nimstead/winbaseline.py) | 5 | 5 |
 | [api/src/nimstead/winconfig.py](../../api/src/nimstead/winconfig.py) | 2 | 2 |
 | [api/src/nimstead/windrivers.py](../../api/src/nimstead/windrivers.py) | 2 | 2 |
-| [scripts/check_docs.py](../../scripts/check_docs.py) | 5 | 5 |
+| [scripts/check_docs.py](../../scripts/check_docs.py) | 7 | 7 |
+| [scripts/export_api_docs.py](../../scripts/export_api_docs.py) | 2 | 2 |
 | [scripts/fetch_runtimes.py](../../scripts/fetch_runtimes.py) | 1 | 1 |
 | [scripts/sign_release.py](../../scripts/sign_release.py) | 4 | 4 |
 | [scripts/xccdf_rules.py](../../scripts/xccdf_rules.py) | 14 | 14 |

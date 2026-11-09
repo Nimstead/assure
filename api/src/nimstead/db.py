@@ -1,4 +1,9 @@
-"""Database models. Every tenant-owned row carries org_id."""
+"""SQLAlchemy models and connection factories.
+
+Tenant ownership is direct through org_id or indirect through asset/user foreign keys.
+These models do not apply automatic tenant filters. Callers must scope queries.
+Mapped types, defaults and constraints describe storage, not complete input validation.
+"""
 
 import os
 import uuid
@@ -35,7 +40,7 @@ class Org(Base):
     # Remediation trust ladder: suggest (plans only) -> approve (one click) -> auto (policy-driven, canary first)
     remediation_mode: Mapped[str] = mapped_column(String(20), default="approve")
     canary_soak_hours: Mapped[int] = mapped_column(Integer, default=24)
-    # OIDC single sign-on (all null = off). ponytail: client secret stored plaintext in the DB; encrypt with a KMS/env key when needed
+    # OIDC single sign-on: application writes seal the client secret through sso.seal.
     sso_issuer: Mapped[str | None] = mapped_column(String(500))
     sso_client_id: Mapped[str | None] = mapped_column(String(300))
     sso_client_secret: Mapped[str | None] = mapped_column(String(500))
@@ -116,7 +121,7 @@ class Asset(Base):
     directory_source: Mapped[bool] = mapped_column(Boolean, default=False)  # an admin chose it to send the AD list (DECISIONS 102)
     sandbox: Mapped[bool] = mapped_column(Boolean, default=False)  # disposable test target; remediation dev-guard
     kind: Mapped[str] = mapped_column(String(20), default="host", server_default="host")  # host | application (no agent; SBOM only) | external (outside-in scan)
-    verified_at: Mapped[datetime | None]  # external: ownership proven by DNS TXT (re-checked before every scan)
+    verified_at: Mapped[datetime | None]  # external: DNS/address proof passed; scan entry rechecks both
     ring: Mapped[int] = mapped_column(Integer, default=1)  # 0 = canary: auto-remediation lands here first
     health_units: Mapped[list] = mapped_column(default=list)  # systemd units that must stay active after a change
     agent_key_hash: Mapped[str] = mapped_column(String(64), unique=True)
@@ -150,7 +155,7 @@ class InstalledPackage(Base):
 
 
 class Advisory(Base):
-    """One row per (OSV record, affected package)."""
+    """Feed data keyed by ID, ecosystem and package, including OSV and auxiliary metadata."""
 
     __tablename__ = "advisory"
     id: Mapped[str] = mapped_column(String(100), primary_key=True)
@@ -231,7 +236,9 @@ def make_engine(url: str = DB_URL):
     """Return a SQLAlchemy Engine for database URL string url.
 
     SQLite connections enforce foreign keys and create model tables for development/tests.
-    PostgreSQL requires Alembic migrations. Database connection and schema errors propagate."""
+    PostgreSQL requires Alembic migrations. The default URL is read at module import.
+    SQLite setup connects immediately. Other engines normally connect lazily.
+    The caller owns engine disposal. URL, driver, connection and schema errors propagate."""
     kw = {"connect_args": {"check_same_thread": False}} if url.startswith("sqlite") else {}
     engine = create_engine(url, **kw)
     if url.startswith("sqlite"):  # enforce foreign keys like Postgres does, so dev and tests catch the same bugs
@@ -244,7 +251,10 @@ def make_engine(url: str = DB_URL):
 def make_sessionmaker(url: str = DB_URL):
     """Return a SQLAlchemy session factory for URL string url with expire_on_commit=False.
 
-    Uses make_engine(), including its SQLite schema creation. Callers close sessions and commit writes."""
+    Uses make_engine(), including its SQLite schema creation. Default autoflush applies.
+    The factory owns a new engine binding. Callers close sessions, commit writes and
+    dispose the engine when appropriate. A plain session context does not commit.
+    Engine-creation and later session/database errors propagate."""
     return sessionmaker(make_engine(url), expire_on_commit=False)
 
 
@@ -265,7 +275,10 @@ class ScanRecord(Base):
 
 
 class LedgerEntry(Base):
-    """Append-only, hash-chained evidence. Never updated or deleted by the app."""
+    """Hash-chained evidence written through append-only application operations.
+
+    The model enforces unique organisation/sequence pairs, not database immutability.
+    Direct ORM or SQL writes can alter rows. Verification detects chain inconsistencies."""
 
     __tablename__ = "ledger_entry"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -286,9 +299,9 @@ class RemediationJob(Base):
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     org_id: Mapped[str] = mapped_column(ForeignKey("org.id"), index=True)
     asset_id: Mapped[str] = mapped_column(ForeignKey("asset.id", ondelete="CASCADE"), index=True)
-    # planned -> approved -> dispatched -> succeeded | rolled_back | rollback_failed | aborted | failed
+    # The remediation module defines workflow transitions; the column is not an enum constraint.
     status: Mapped[str] = mapped_column(String(20), default="planned", index=True)
-    manager: Mapped[str] = mapped_column(String(10))  # apt | apk | dnf
+    manager: Mapped[str] = mapped_column(String(10))  # planner-specific package/update/configuration manager
     action_key: Mapped[str] = mapped_column(String(300))  # ecosystem|source package: canary gating groups on this
     packages: Mapped[list]  # [{name, from}] binary packages to upgrade
     finding_ids: Mapped[list]

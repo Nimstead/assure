@@ -16,7 +16,13 @@ _ID = re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")
 
 
 def parse(feed) -> dict[str, list[str]]:
-    """sha256 -> [driver name, category, LOLDrivers id], from entries LOLDrivers marks verified. Raises on a changed format."""
+    """Return lowercase hash -> [driver name, category, entry ID] from feed list.
+
+    Validate every entry's category, sample-list and ID shape, then retain entries
+    whose Verified value string equals TRUE case-insensitively. Accept only file
+    SHA-256 samples. First entry wins for duplicate hashes. Names use the first tag,
+    truncated to 100 characters. Raise ValueError for invalid entries or fewer than
+    MIN_HASHES (1000) unique hashes. Does not fetch or persist the feed."""
     if not isinstance(feed, list):
         raise ValueError("LOLDrivers: not a list")
     out: dict[str, list[str]] = {}
@@ -39,7 +45,14 @@ def parse(feed) -> dict[str, list[str]]:
 
 
 def findings(pkgs: list, listed: dict) -> list[dict]:
-    """One finding per reported driver file whose hash is listed. "Loaded" comes from the agent, nothing is inferred."""
+    """Return findings for package-like pkgs whose WinDriver version exactly matches listed.
+
+    Each package needs ecosystem/name/version/source attributes. listed is parse()'s
+    mapping. source equal to loaded sets the loaded state. Other sources mean on disk.
+    Preserve matched input rows, including duplicates. Each result has package,
+    version, vuln_id, summary (at most 1000 characters), and a Risk object.
+    No I/O or mutation occurs. Missing attributes or malformed entries can raise
+    AttributeError, ValueError or TypeError."""
     out = []
     for p in pkgs:
         hit = listed.get(p.version) if p.ecosystem == ECOSYSTEM else None

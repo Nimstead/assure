@@ -27,22 +27,35 @@ SID_NAMES = {"S-1-5-32-544": "Administrators", "S-1-5-32-545": "Users", "S-1-5-3
 def baselines() -> tuple[dict, ...]:
     """Return baseline dictionaries from sorted bundled JSON files.
 
-    File I/O and JSON decoding errors propagate; the result is process-cached."""
+    File I/O and JSON decoding errors propagate. The tuple is process-cached, but
+    its dictionaries remain mutable/shared. File changes require cache_clear() or
+    restart. No baseline schema validation occurs here. No files returns ()."""
     return tuple(json.loads(p.read_text(encoding="utf-8")) for p in sorted(DIR.glob("*.json")))
 
 
 def for_host(os_name: str | None) -> dict | None:
-    """The baseline for this OS. A second baseline is one more data file; an OS with none gets None, never a near match."""
+    """Return the first cached baseline whose os_re matches os_name from its start.
+
+    None acts as empty text. File order is sorted, not a specificity ranking.
+    Return the shared dictionary or None. Invalid regex/data errors propagate."""
     return next((b for b in baselines() if re.match(b["os_re"], os_name or "")), None)
 
 
 def reg_id(key: str, name: str) -> str:
-    """Same as the agent's baseline_id: what a registry value is called in its report."""
+    """Return eight SHA-256 hex characters for lowercase key|name, encoded as UTF-8.
+
+    key/name are registry strings. This identifier matches the agent's baseline_id.
+    The function does not query the registry or validate paths."""
     return hashlib.sha256(f"{key}|{name}".lower().encode()).hexdigest()[:8]
 
 
 def applies(rule: dict, facts: dict) -> bool | None:
-    """Whether the rule is for this host; None when the facts can't say, which is never judged."""
+    """Return applicability for rule dictionary and host facts: True, False or None.
+
+    no_core excludes Server Core and needs Server for a known applicable install.
+    scope defaults to all, or uses domain_role for dc/member/not_dc/domain.
+    Unknown/invalid roles yield None. Unknown scopes can raise KeyError. Malformed
+    dictionaries can raise AttributeError or TypeError. Does not inspect rule values."""
     if rule.get("no_core"):
         kind = facts.get("installation_type")
         if kind == "Server Core":
@@ -148,7 +161,14 @@ def _judge_right(rule: dict, values: dict, facts: dict) -> tuple[str, str, str, 
 
 
 def evaluate(os_name: str | None, facts: dict | None) -> dict | None:
-    """{baseline fields, pass, fail, not_assessed, not_applicable, manual, rules}, or None when this OS has no baseline."""
+    """Return a baseline result for OS name and stored host facts, or None without a match.
+
+    Non-dictionary facts/baseline values become empty data. Return baseline_id, name,
+    version, date, automated/manual counts, pass/fail/not_assessed/not_applicable
+    counts and rule rows. Rows have id/v/severity/status/setting/expected/found/note.
+    Applicability can replace a value judgment with not applicable/not assessed.
+    Manual rules are counted, not emitted here. Does not create findings, query hosts
+    or persist results. Bundled-data, regex and incompatible value errors propagate."""
     b = for_host(os_name)
     if not b:
         return None

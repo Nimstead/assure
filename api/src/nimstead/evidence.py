@@ -33,8 +33,13 @@ def sla_days(org: Org) -> dict:
 
 
 def sla_history(s: Session, org_id: str):
-    """sla_at(t): the deadlines in force at time t, from the ledger (tamper-evident), so relaxing a deadline later
-    can't turn an old miss into a pass. Shared by evidence packs and the findings list's due dates."""
+    """Return a deadline lookup callable for policy history in Session s for org_id.
+
+    The callable accepts a naive UTC datetime and returns the priority/day mapping in force
+    at that time. It uses defaults before the first policy event. History is read once and
+    ordered by ledger sequence; later policy changes require a new callable. No commit occurs.
+    Database errors and malformed stored timestamps or policy dictionaries propagate.
+    """
     history = [(datetime.fromisoformat(ts).replace(tzinfo=None), {**SLA_DAYS, **d["sla_days"]}) for ts, d in s.execute(
         select(LedgerEntry.ts, LedgerEntry.data).where(LedgerEntry.org_id == org_id, LedgerEntry.kind == "policy_changed")
         .order_by(LedgerEntry.seq)) if "sla_days" in d]
@@ -45,7 +50,13 @@ def sla_history(s: Session, org_id: str):
 
 
 def append(s: Session, org_id: str, kind: str, subject: str, data: dict) -> LedgerEntry:
-    """Add one entry to the org's chain. Caller commits, which releases the org row lock taken here."""
+    """Append and flush a ledger entry for organisation identifier org_id in Session s.
+
+    kind names the event, subject identifies its object, and data contains JSON-serializable
+    event details. Return the new LedgerEntry with its sequence and canonical hash.
+    The caller commits or rolls back. A PostgreSQL organisation-row lock lasts until then.
+    Serialization and database errors propagate; this function does not sign a checkpoint.
+    """
     s.get(Org, org_id, with_for_update=True)  # PostgreSQL: concurrent appends (API workers, the feeds process) queue for seq
     last = s.scalar(select(LedgerEntry).where(LedgerEntry.org_id == org_id).order_by(LedgerEntry.seq.desc()).limit(1))
     e = {
@@ -68,7 +79,11 @@ LEDGER_COLS = (LedgerEntry.seq, LedgerEntry.ts, LedgerEntry.kind, LedgerEntry.su
 
 
 def entry_dict(e) -> dict:
-    """Return the serializable ledger fields of ORM row or SQLAlchemy result row e."""
+    """Return seq, ts, kind, subject, data, prev_hash and hash from ledger row e.
+
+    e can be an ORM LedgerEntry or a result row with those named attributes. Missing
+    attributes raise AttributeError. The returned dictionary omits organisation ownership.
+    """
     return {"seq": e.seq, "ts": e.ts, "kind": e.kind, "subject": e.subject, "data": e.data, "prev_hash": e.prev_hash, "hash": e.hash}
 
 
@@ -78,9 +93,15 @@ FULL_CHECK_EVERY = timedelta(hours=1)
 
 
 def verify_chain(s: Session, org_id: str, full: bool = True) -> list[str]:
-    """Problems with the org's chain and its checkpoints. full=False (the Evidence page) checks only entries after the last
-    passed check, anchored on that entry's stored hash, which any consistent rewrite of earlier history changes; a full
-    check (every row, every checkpoint) still runs at least hourly, and always before a pack is signed."""
+    """Return integrity-problem strings for the ledger of org_id read through Session s.
+
+    full=True checks all entries and off-database checkpoints. full=False may reuse the
+    process-cached verified prefix if its anchor hash is unchanged and its full check is
+    less than an hour old. A changed anchor forces a full check. Successful checks update
+    the cache; failed full checks clear it. The database is not changed or committed.
+    Database, checkpoint storage, malformed-record and serialization errors can propagate.
+    Pack routes also recheck the exact period entries they serialize before signing.
+    """
     done = None if full else _VERIFIED.get(org_id)
     if done and datetime.now(UTC) - done[2] > FULL_CHECK_EVERY:
         done = None
@@ -116,8 +137,13 @@ def verify_chain(s: Session, org_id: str, full: bool = True) -> list[str]:
 
 
 def entry_problems(org_id: str, entries: list[dict]) -> list[str]:
-    """A pack's entries, re-hashed and linked as verify.py will check them, so no altered entry is ever signed. A problem
-    also drops the org's last passed check, so the next one reads the whole chain."""
+    """Return hash/link problems for the ordered ledger dictionaries in entries.
+
+    org_id identifies the cached verification prefix to discard if any problem is found.
+    This checks links between supplied entries, not the complete organisation history.
+    Missing fields and non-serializable data raise errors instead of returning problem text.
+    No database query, checkpoint validation, signing or commit occurs here.
+    """
     problems, prev = [], None
     for e in entries:
         if entry_hash(e) != e["hash"]:
@@ -165,7 +191,14 @@ def checkpoint_valid(cp: dict) -> bool:
 
 
 def checkpoint(s: Session, org_id: str) -> dict | None:
-    """Sign the current head and append it off-database. No-op if the head hasn't moved."""
+    """Return or create the signed head checkpoint for org_id using Session s.
+
+    Return None for an empty ledger. If the latest stored checkpoint has the same sequence,
+    return it unchanged. Otherwise sign org_id, seq, hash and ts, then append to local JSONL
+    or configured S3 storage. The returned dictionary also contains a base64 sig.
+    Database, signing, malformed stored checkpoint and storage errors propagate. The caller
+    owns the database transaction; checkpoint storage is an external side effect.
+    """
     head = s.scalar(select(LedgerEntry).where(LedgerEntry.org_id == org_id).order_by(LedgerEntry.seq.desc()).limit(1))
     if not head:
         return None
@@ -188,8 +221,14 @@ def checkpoint(s: Session, org_id: str) -> dict | None:
 KEY_FILE = Path(os.environ.get("NIMSTEAD_SIGNING_KEY_FILE", "./nimstead-signing.pem"))
 
 
-def signing_key() -> Ed25519PrivateKey:
-    """Vault transit (key never leaves Vault) when configured, else the on-disk dev key."""
+def signing_key() -> Ed25519PrivateKey | keys.Vault:
+    """Return the configured Vault signing adapter or local Ed25519 private key.
+
+    Without Vault, read KEY_FILE or create it with exclusive creation and mode 0600.
+    A concurrent creator's file is loaded instead of overwritten. Missing parent directories,
+    file/PEM errors and Vault configuration/service errors propagate; no fallback follows
+    a Vault failure. The function can create key material on disk.
+    """
     if keys.vault_enabled():
         return keys.vault()  # same .sign() / .public_key() interface
     if KEY_FILE.exists():
@@ -211,7 +250,7 @@ def fingerprint(pem: bytes) -> str:
     return verify_pack.fingerprint(pem)
 
 
-def public_pem(key: Ed25519PrivateKey) -> bytes:
+def public_pem(key: Ed25519PrivateKey | keys.Vault) -> bytes:
     """Return PEM SubjectPublicKeyInfo bytes from an Ed25519 private key or compatible Vault adapter."""
     return key.public_key().public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
 
@@ -235,11 +274,11 @@ def _controls(m: dict, sla: dict) -> list[dict]:
          "evidence": f"{m['ce_in_scope_resolved_in_14d']}/{m['ce_in_scope_resolved']} in-scope fixes within 14 days; {m['ce_in_scope_overdue']} open past 14 days"},
         {"framework": "ISO/IEC 27001:2022", "control": "A.8.8", "requirement": "Management of technical vulnerabilities",
          "status": st(scanned and sla_ok),
-         "evidence": f"{m['assets_reporting']}/{m['assets']} assets assessed in period; {m['overdue_open']} findings past SLA"},
+         "evidence": f"{m['assets_reporting']}/{m['assets']} assets with a report timestamp in or after the period; {m['overdue_open']} findings past SLA"},
         {"framework": "NIST SP 800-53 Rev. 5", "control": "RA-5", "requirement": "Vulnerability monitoring and scanning",
          "status": st(scanned), "exceptions": m.get("assets_silent_now", 0),
-         "evidence": f"{m['assets_reporting']}/{m['assets']} assets reported inventory in period"
-                     + (f"; {m['assets_silent_now']} not reporting now" if m.get("assets_silent_now") else "")},
+         "evidence": f"{m['assets_reporting']}/{m['assets']} assets with a report timestamp in or after the period"
+                     + (f"; {m['assets_silent_now']} not reporting at the period end" if m.get("assets_silent_now") else "")},
         {"framework": "NIST SP 800-53 Rev. 5", "control": "SI-2", "requirement": "Flaw remediation within organisation-defined time periods",
          "status": timely(sla_ok, m["resolved"]), "evidence": f"{m['resolved_within_sla']}/{m['resolved']} fixes within the organisation's SLA in force when each was detected (now: {', '.join(f'{SLA_LABEL.get(p, p)} {d} days' for p, d in sla.items())})"
                      + (f"; deadlines changed {m['sla_changes']} times in the period (sla_changes)" if m.get("sla_changes") else "")},
@@ -247,20 +286,29 @@ def _controls(m: dict, sla: dict) -> list[dict]:
          "status": st(m["critical_overdue_30d"] == 0),
          "evidence": f"{m['critical_overdue_30d']} critical findings open longer than 30 days (measured from first detection, not the vendor's release date)"},
         {"framework": "SOC 2 (TSC 2017)", "control": "CC7.1", "requirement": "Detection and monitoring procedures identify susceptibilities to newly discovered vulnerabilities",
-         "status": st(scanned and sla_ok), "evidence": f"{m['assets_reporting']}/{m['assets']} assets assessed in period against continuously updated advisories; {m['overdue_open']} findings past SLA"},
+         "status": st(scanned and sla_ok), "evidence": f"{m['assets_reporting']}/{m['assets']} assets with a report timestamp in or after the period, assessed against stored advisories; {m['overdue_open']} findings past SLA"},
         {"framework": "SOC 2 (TSC 2017)", "control": "CC8.1", "requirement": "Changes are authorised, tested and approved before implementation",
          "status": timely(m["changes"] == m["changes_authorised"], m["changes"]), "exceptions": m.get("changes_self_approved", 0),
-         "evidence": f"{m['changes_authorised']}/{m['changes']} remediation changes in period approved by a named person or the recorded auto policy; each dry-run checked, health-checked and rolled back on failure"
+         "evidence": f"{m['changes_authorised']}/{m['changes']} remediation jobs updated in period have an approver recorded. This count does not prove execution, health checks or rollback"
                      + (f". {m['changes_self_approved']} of them approved by the person who planned them, with no second approver" if m.get("changes_self_approved") else "")},
         {"framework": "NIS2 Directive", "control": "Art. 21(2)(e)", "requirement": "Vulnerability handling in network and information systems maintenance",
-         "status": st(scanned and sla_ok), "evidence": f"{m['assets_reporting']}/{m['assets']} assets assessed; {m['resolved_within_sla']}/{m['resolved']} fixes within SLA"},
+         "status": st(scanned and sla_ok), "evidence": f"{m['assets_reporting']}/{m['assets']} assets with a report timestamp in or after the period; {m['resolved_within_sla']}/{m['resolved']} fixes within SLA"},
         {"framework": "CIS Controls v8.1", "control": "7.3 / 7.4", "requirement": "Automated OS and application patch management",
          "status": timely(sla_ok, m["resolved"]), "evidence": (f"Mean time to remediate: {m['mttr_days']} days" if m["mttr_days"] >= 1 else "Mean time to remediate: under a day") if m["mttr_days"] is not None else "Mean time to remediate: no fixes in period"},
     ]
 
 
 def build_pack(s: Session, org_id: str, start: datetime, end: datetime, with_entries: bool = True) -> dict:
-    """with_entries=False (the on-screen report): the period's ledger entries are counted, not loaded."""
+    """Build the evidence dictionary for org_id and inclusive period start through end.
+
+    s is the caller-owned Session. start and end are naive UTC datetimes; the function does
+    not validate their order. with_entries=True embeds period ledger dictionaries. False
+    puts an integer count in ledger.entries. Both modes include the period head hash.
+    Return organisation identity, source basis, current assets, findings, metrics, controls,
+    deadline changes, forward-only changes and ledger/checkpoint data. See the evidence
+    format reference for field definitions. No signature, commit or independent chain
+    verification occurs here. Database, checkpoint storage and malformed-record errors propagate.
+    """
     org = s.get(Org, org_id)
     assets = s.scalars(select(Asset).where(Asset.org_id == org_id)).all()
     findings = s.execute(select(Finding.id, Finding.asset_id, Finding.vuln_id, Finding.package, Finding.status, Finding.priority,
@@ -357,12 +405,11 @@ def build_pack(s: Session, org_id: str, start: datetime, end: datetime, with_ent
         "verified_domains": sorted(domains),
         "generated_at": datetime.now(UTC).isoformat(),
         "period": {"from": s_iso, "to": e_iso},
-        "basis": ("Findings come from authenticated agent inventories matched against OSV advisories. "
-                  "Time to remediate is measured from first detection to the first inventory showing a fixed version "
-                  "(not from the vendor's release date). "
-                  "Every detection and resolution, every inventory that changed and at least one inventory a day per host "
-                  "are recorded in a SHA-256 hash-chained ledger; "
-                  "this pack is signed with Ed25519."),
+        "basis": ("Findings reflect stored agent, SBOM and external-scan observations evaluated against current detection data. "
+                  "Time to remediate measures first recorded detection to recorded resolution, not the vendor's release date. "
+                  "Resolution can reflect changes in observations or advisory data. "
+                  "The ledger records detections, resolutions and received inventory events under its logging policy. "
+                  "This pack is signed with Ed25519."),
         "sla_days": sla_by_priority,
         "sla_changes": sla_changes,
         "metrics": m,

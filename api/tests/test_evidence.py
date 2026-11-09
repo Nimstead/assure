@@ -1,8 +1,10 @@
 import hashlib
 import io
 import json
+import re
 import zipfile
 from datetime import timedelta
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select, update
@@ -253,6 +255,8 @@ def test_control_evidence_is_plain_text():
     m = defaultdict(int, mttr_days=None)
     for c in evidence._controls(m, evidence.SLA_DAYS):
         assert "None" not in c["evidence"] and "{" not in c["evidence"], c
+        if c["control"] == "CC8.1":
+            assert "does not prove execution, health checks or rollback" in c["evidence"]
 
 
 def test_org_sla_and_new_framework_mappings_are_in_the_pack(env):
@@ -339,6 +343,14 @@ def test_the_report_counts_the_period_without_loading_it(env):
     counted = evidence.build_pack(s, org_id, *evidence.default_period(30), with_entries=False)["ledger"]
     assert counted["entries"] == len(full["entries"]) > 0 and counted["head_hash"] == full["head_hash"]
     assert c.get("/api/evidence/report", params={"days": 30}).json()["ledger"]["entries"] == counted["entries"]
+    report = c.get("/api/evidence/report", params={"days": 30}).json()
+    summary = c.get("/api/evidence/report", params={"days": 30, "summary": True}).json()
+    assert "assets" in report and "findings" in report
+    assert "assets" not in summary and "findings" not in summary
+    assert isinstance(summary["ledger"]["entries"], int)
+    assert summary["ledger"]["entries"] == report["ledger"]["entries"]
+    assert {"metrics", "controls", "period", "ledger"} <= summary.keys()
+
 
 
 def test_an_unchanged_inventory_is_written_once_a_day(env):
@@ -361,3 +373,44 @@ def test_an_unchanged_inventory_is_written_once_a_day(env):
     s.commit()
     c.post("/api/agent/inventory", json=changed, headers=h)
     assert len(receipts()) == 3  # and the same one again after a day
+
+
+def test_evidence_reference_names_emitted_fixed_fields(env):
+    """New fixed response fields must remain discoverable in the evidence reference."""
+    c, _ = setup_flow(env)
+    reference = (Path(__file__).resolve().parents[2] / "docs/reference/evidence-format.md").read_text()
+    names = set(re.findall(r"`([a-z][a-z0-9_]*)`", reference))
+    report = c.get("/api/evidence/report").json()
+    assert set(report) <= names
+    assert set(report["metrics"]) <= names
+    assert set(report["ledger"]) <= names
+    for control in report["controls"]:
+        assert set(control) <= names
+    for finding in report["findings"]:
+        assert set(finding) <= names
+    assert set(c.get("/api/evidence/public-key").json()) <= names
+
+
+def test_evidence_status_is_current_but_resolution_is_limited_by_period(env):
+    """The reference must distinguish current status from period-limited lifecycle dates."""
+    c, _ = setup_flow(env)
+    s = sessionmaker(make_engine(env))()
+    finding = s.scalar(select(Finding).where(Finding.status == "resolved"))
+    assert finding is not None
+    report_end = now() + timedelta(minutes=1)
+    s.execute(update(LedgerEntry).where(LedgerEntry.subject == finding.id,
+                                      LedgerEntry.kind == "finding_resolved")
+              .values(ts=(report_end + timedelta(days=1)).isoformat()))
+    s.commit()
+    pack = evidence.build_pack(s, finding.org_id, report_end - timedelta(days=90), report_end)
+    row = next(row for row in pack["findings"] if row["vuln_id"] == finding.vuln_id and row["package"] == finding.package)
+    assert row["status"] == "resolved"
+    assert row["resolved_at"] is None
+
+
+def test_basis_describes_resolution_without_assuming_a_package_update(env):
+    c, _ = setup_flow(env)
+    basis = c.get("/api/evidence/report").json()["basis"]
+    assert "agent, SBOM and external-scan observations" in basis
+    assert "Resolution can reflect changes in observations or advisory data" in basis
+    assert "first inventory showing a fixed version" not in basis

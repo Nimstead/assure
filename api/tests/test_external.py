@@ -72,6 +72,35 @@ def test_verified_scan_opens_and_resolves_findings_with_evidence(world, monkeypa
     assert {"external_target_verified", "external_scan", "finding_opened", "finding_resolved"} <= set(kinds)
 
 
+def test_scan_counters_include_accepted_and_omitted_checks_can_resolve_them(world, monkeypatch):
+    c, dns = world
+    t = add(c, dns)
+    c.post(f"/api/targets/{t['id']}/verify")
+    monkeypatch.setattr(external, "checks", fake_checks(["NIM-TLS-EXPIRED"]))
+    c.post(f"/api/targets/{t['id']}/scan")
+    finding = c.get("/api/findings").json()[0]
+    assert c.post(f"/api/findings/{finding['id']}/accept", json={"reason": "Test compensating control", "days": 30}).status_code == 200
+    assert c.post(f"/api/targets/{t['id']}/scan").json()["open"] == 1
+    assert not c.get("/api/findings").json()
+    monkeypatch.setattr(external, "checks", lambda *_: ([], ["legacy TLS unavailable"]))
+    r = c.post(f"/api/targets/{t['id']}/scan").json()
+    assert r["open"] == 0 and r["resolved"] == 1 and r["skipped"] == ["legacy TLS unavailable"]
+    assert c.get("/api/findings", params={"status": "resolved"}).json()[0]["id"] == finding["id"]
+
+
+def test_a_legacy_tls_finding_stays_open_when_this_scan_couldnt_test_legacy_tls(world, monkeypatch):
+    c, dns = world
+    t = add(c, dns)
+    c.post(f"/api/targets/{t['id']}/verify")
+    monkeypatch.setattr(external, "checks", fake_checks(["NIM-TLS-LEGACY"]))
+    c.post(f"/api/targets/{t['id']}/scan")
+    monkeypatch.setattr(external, "checks", lambda *_: ([], ["legacy TLS (this server's OpenSSL can't offer TLS 1.0/1.1)"]))
+    r = c.post(f"/api/targets/{t['id']}/scan").json()
+    assert r["resolved"] == 0 and [f["vuln_id"] for f in c.get("/api/findings").json()] == ["NIM-TLS-LEGACY"]
+    monkeypatch.setattr(external, "checks", lambda *_: ([], []))  # tested, and not accepted any more
+    assert c.post(f"/api/targets/{t['id']}/scan").json()["resolved"] == 1
+
+
 def test_ownership_is_rechecked_before_every_scan(world, monkeypatch):
     c, dns = world
     t = add(c, dns)

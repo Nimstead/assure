@@ -50,7 +50,7 @@ Normal exposed-port and TLS verdicts reuse the external scanner's decision helpe
 
 Built-in web rules request `/.git/config` and `/.env` on HTTP port 80. Each requires HTTP 200, its bytes marker, and a body different from the missing-path control. A successful, nonempty missing-path response produces `soft-404` instead. A failed control request does not itself mark the check incomplete.
 
-Other path responses, including an absent response with no parsed status, currently produce not-vulnerable web verdicts. This result alone does not prove the request succeeded. The HTTP reader is a bounded raw exchange, without redirects or general HTTP body decoding.
+Other parsed responses produce not-vulnerable web verdicts. A request that gets no response at all (a timeout or reset, with no parsed status) is undetermined with reason `host-lost`: nothing was observed, so it can't be called fixed. The HTTP reader is a bounded raw exchange, without redirects or general HTTP body decoding.
 
 Version rules inspect greetings for vsftpd (`CVE-2011-2523`), ProFTPD (`CVE-2015-3306`), and OpenSSH (`CVE-2024-6387`). They can match on any greeting port. Distribution-tagged OpenSSH banners produce `backported`. Reflected controls suppress banner identification with reason `catch-all`.
 

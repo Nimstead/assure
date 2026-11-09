@@ -96,7 +96,7 @@ These likelihoods are configured scoring inputs. They are not measured probabili
 | `resolved` | Number of previously open or accepted findings newly changed to resolved |
 | `skipped` | Strings for reported scanner limitations, principally untestable legacy TLS |
 
-Observed resolved findings reopen. Observed accepted findings remain accepted. A previously open or accepted finding resolves when its ID is absent from the check result.
+Observed resolved findings reopen. Observed accepted findings remain accepted. A previously open or accepted finding resolves when its ID is absent from the check result. The exception is a check the scan skipped: an open legacy-TLS finding stays as it was while legacy TLS couldn't be tested, since an untested check isn't evidence of a fix.
 
 This absence rule also applies when a port is filtered or a TLS check returns no usable facts. A resolved finding therefore does not prove that the service closed or the certificate was repaired. `skipped` is not a complete list of every failed connection or missing observation.
 

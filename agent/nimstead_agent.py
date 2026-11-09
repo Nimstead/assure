@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Nimstead agent: reports installed packages to the server. Single file, stdlib only, Python 3.9+.
 
-  nimstead_agent.py enroll --server https://host --token TOKEN
+  nimstead_agent.py enroll --server https://host  # set NIMSTEAD_TOKEN first
   nimstead_agent.py report
-  nimstead_agent.py collect          # print inventory JSON, no network
+  nimstead_agent.py collect          # print inventory JSON, no server upload
   nimstead_agent.py remediate        # run approved jobs (host must opt in at enroll)
-  nimstead_agent.py doctor           # check this host's setup and say how to fix it; changes nothing
+  nimstead_agent.py doctor           # report setup diagnostics without repairs or agent-key upload
 """
 
 import argparse
@@ -32,7 +32,7 @@ import urllib.parse
 import urllib.request
 import zipfile
 
-AGENT_VERSION = "0.6.7"  # the server reads this line to flag outdated agents; bump on every agent change
+AGENT_VERSION = "0.6.8"  # the server reads this line to flag outdated agents; bump on every agent change
 # Ed25519 public keys (hex) allowed to sign releases (DECISIONS 31): primary (GitHub Actions) and offline backup.
 # The server only relays signed releases, so it can withhold an update but never forge one. Empty = never self-update.
 RELEASE_KEYS = ["a91fa6539c6c2593009fc71b1c1fba341b5685ba7bc97c127c068b1d732b21d2", "2438f2ccebab5bf26edf9e21a8aa8f09abd1861f52fbe0d6641b28b90f8b0e5a"]  # noqa: E501
@@ -45,9 +45,12 @@ class AgentError(Exception):
 
 
 def config_path():
-    """Return the platform-specific configuration filename as a string.
+    """Return the configuration path string for the current process platform and identity.
 
-    Windows uses ProgramData; root on Linux uses /etc; other Linux users use their home directory."""
+    Windows uses ProgramData/Nimstead/agent.json. Other platforms use /etc/nimstead/agent.json
+    for effective UID zero, otherwise ~/.config/nimstead/agent.json. No existence, ownership
+    or path validation occurs. Environment/identity/path errors can propagate. No writes occur.
+    """
     if os.name == "nt":
         return os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "Nimstead", "agent.json")
     if os.geteuid() == 0:
@@ -58,7 +61,13 @@ def config_path():
 # ---- collection -------------------------------------------------------------
 
 def parse_os_release(text):
-    """Parse os-release text into a string dictionary, removing surrounding quotes and ignoring comments."""
+    """Parse string text into an os-release key/value dictionary without evaluating shell syntax.
+
+    Split each line at its first equals sign. Ignore lines starting exactly with #.
+    Strip key/value whitespace and edge quote characters. Later duplicate keys replace earlier
+    ones. Escapes, interpolation and semantic validity are not checked. Invalid types can raise.
+    No I/O or input mutation occurs.
+    """
     out = {}
     for line in text.splitlines():
         k, sep, v = line.partition("=")
@@ -68,7 +77,13 @@ def parse_os_release(text):
 
 
 def ecosystem_from_os_release(text):
-    """OSV ecosystem string, or '' if the distro/release is not one we can match."""
+    """Map declared os-release text to an advisory ecosystem string, or empty string.
+
+    Require VERSION_ID even for Tumbleweed. Recognize exact case-sensitive IDs for Debian,
+    Ubuntu, Alpine, Rocky, AlmaLinux, Leap, Tumbleweed and dotted-version SLES. Do not infer
+    ID_LIKE derivatives, validate version syntax or check feed availability. Parser errors
+    propagate. No I/O occurs.
+    """
     r = parse_os_release(text)
     ver = r.get("VERSION_ID", "")
     distro = r.get("ID", "")
@@ -96,10 +111,13 @@ def ecosystem_from_os_release(text):
 
 
 def parse_dpkg(text):
-    """Return package dictionaries from tab-separated dpkg-query text.
+    """Return package dictionaries from tab-separated dpkg-query string text.
 
-    Expect name, binary version, source name, source version, and status columns. Keep installed,
-    held-installed, and trigger-pending packages; skip malformed or unpacked entries."""
+    Keep rows with at least five fields whose status second character is i, W or t.
+    Use binary name/version, source-name fallback, and source_version only when nonempty and
+    unequal to binary version. Extra fields are ignored. Short/status-excluded rows are skipped.
+    Do not deduplicate or validate field contents. Invalid types can raise. No I/O occurs.
+    """
     pkgs = []
     for line in text.splitlines():
         f = line.split("\t")
@@ -113,9 +131,13 @@ def parse_dpkg(text):
 
 
 def parse_rpm(text):
-    """Return package dictionaries from tab-separated RPM name, epoch/version/release, and source-RPM text.
+    """Return package dictionaries from tab-separated RPM query string text.
 
-    Skip short rows and gpg-pubkey entries. Preserve epochs and derive source names from .src.rpm filenames."""
+    Require at least three fields and exclude gpg-pubkey. Keep supplied version text verbatim.
+    Derive source name from .src.rpm by removing the last two hyphen-separated components.
+    Otherwise use the binary name. Extra fields are ignored. No source_version is produced.
+    Do not deduplicate or validate names/versions. Invalid types can raise. No I/O occurs.
+    """
     pkgs = []
     for line in text.splitlines():
         f = line.split("\t")
@@ -133,9 +155,13 @@ def parse_rpm(text):
 
 
 def parse_apk(text):
-    """Return package dictionaries from apk installed-database text.
+    """Return package dictionaries from blank-line-separated apk database string text.
 
-    Read P (name), V (version), and optional o (origin) fields; skip blocks without name/version."""
+    Read first P, V and o field occurrences per block. Keep blocks with parsed P/V keys.
+    Use o as source or fall back to P. Two-character empty fields are not parsed.
+    Whitespace values are retained. No semantic validation, deduplication or I/O occurs.
+    Invalid types can raise errors.
+    """
     pkgs = []
     for block in text.split("\n\n"):
         d = {}
@@ -148,7 +174,12 @@ def parse_apk(text):
 
 
 def _query(cmd, timeout=600):
-    """(exit status, stdout, stderr) of a read-only query; None when it couldn't run. Its status is reported, not just its output (R7.2)."""
+    """Run command argv cmd with timeout seconds, default 600, and return status/stdout/stderr.
+
+    Use captured text with replacement decoding and LC_ALL=C. OSError/TimeoutExpired become
+    (None, empty stdout, error text). Other errors propagate. No shell is requested. The
+    caller chooses the command. This runner does not independently enforce read-only behavior.
+    """
     try:
         p = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=timeout, env=dict(os.environ, LC_ALL="C"))
         return p.returncode, p.stdout, p.stderr
@@ -165,8 +196,17 @@ REBOOT_FLAG = "/run/reboot-required"
 
 
 def package_db(query=_query, apk_db=APK_DB, which=shutil.which):
-    """(packages, collection line): the package database read directly in a fixed format. A cut-short or failed read says so;
-    an empty one is sent as read, and the server calls it a failure (DECISIONS 80)."""
+    """Return (package list, collection-source dict) from a local package database.
+
+    query accepts argv and optional timeout and returns (status,stdout,stderr). apk_db names
+    the installed database. which probes executable names. Defaults read the local system.
+    Prefer an existing apk_db, then dpkg-query, then rpm. No distro consistency check occurs.
+    Retain parseable rows after command failure. Count malformed line/block shapes separately.
+    Nonzero/None command status overrides that warning, using the final stderr line.
+    Return numeric exit when available. Empty successful reads remain state=ok,count=0.
+    File OSError becomes a source problem. Decode, callback, type and parser errors can
+    propagate. This helper performs no upload or package changes.
+    """
     if os.path.exists(apk_db):
         try:
             with open(apk_db) as f:
@@ -193,7 +233,12 @@ def package_db(query=_query, apk_db=APK_DB, which=shutil.which):
 
 
 def reboot_pending(query=_query, which=shutil.which, exists=os.path.exists):
-    """True or False only where the distro says so; None when it doesn't (no flag mechanism installed)."""
+    """Return a reported restart Boolean or None using injected query/which/exists callbacks.
+
+    If NOTIFY_REBOOT exists, use REBOOT_FLAG existence without command fallback. Otherwise
+    needs-restarting -r uses timeout=120. Status zero means false, one true, others None.
+    No available mechanism returns None. Callback errors propagate. No restart is performed.
+    """
     if exists(NOTIFY_REBOOT):
         return exists(REBOOT_FLAG)
     if which("needs-restarting"):  # dnf-utils / yum-utils: exit 1 means a reboot is needed
@@ -203,7 +248,16 @@ def reboot_pending(query=_query, which=shutil.which, exists=os.path.exists):
 
 
 def collect_linux(query=_query, files=OS_RELEASE, apk_db=APK_DB, which=shutil.which, kernel=None, reboot=None):
-    """What the host is, its packages and how far the read got (R7.1, R7.2, R4.3). An unknown platform is reported, never silence."""
+    """Return a base Linux inventory dictionary from local files and package queries.
+
+    query/which are package callbacks. files is an ordered os-release path sequence. Use its
+    first existing path, even if unreadable. apk_db selects the optional apk database.
+    Truthy kernel overrides os.uname().release. Truthy reboot is called with query and which.
+    Return os_name, ecosystem, agent_version, facts, collection and packages. Add ecosystem to
+    each package and retain unmatched-platform metadata instead of refusing the inventory.
+    No upload or host package changes occur. OS-release OSError becomes a source problem.
+    Decode, callback, parser and malformed-value errors can propagate.
+    """
     text, problem = "", "no os-release file"
     for path in files:
         if os.path.exists(path):
@@ -233,9 +287,12 @@ _MSRC_ARCH = {"AMD64": "x64-based", "X86": "32-bit", "ARM64": "ARM64-based"}
 
 
 def msrc_product_name(build, display_version, installation_type, machine):
-    """MSRC product name for this OS, or '' if we cannot name it exactly (refuse to guess).
+    """Return a constructed MSRC-style OS label, or an empty string.
 
-    Insider and other unlisted builds are unmapped: the host still reports apps and says why (collect_windows)."""
+    build is an integer. Server installation types use the fixed build table.
+    Clients require display_version and a recognized machine string. Build thresholds
+    select Windows 10 or 11. Client labels are not checked against the MSRC catalog.
+    Invalid argument types can raise AttributeError or TypeError."""
     if installation_type.startswith("Server"):
         name = _SERVER_BY_BUILD.get(build)
         return name + (" (Server Core installation)" if installation_type == "Server Core" else "") if name else ""
@@ -262,17 +319,25 @@ def _read_problem(where, e):
 
 
 def _list_ended(e):
-    """winreg ends every enumeration with an OSError; only ERROR_NO_MORE_ITEMS means the list was read to its end."""
+    """Accept enumeration end for winerror 259 or an OSError without winerror.
+
+    Other winerror values indicate a read problem. An error without winerror can
+    therefore terminate enumeration without a recorded problem."""
     return getattr(e, "winerror", None) in (None, 259)
 
 
 def windows_apps(reg, users=None, problems=None):
-    """Installed apps from the registry Uninstall keys: HKLM 64-bit and 32-bit views, then every loaded user hive
-    (per-user installs such as VS Code (User); the agent runs as SYSTEM, whose own HKCU has none), then HKCU.
-    Profiles of users who aren't signed in are read by offline_user_apps. `users`: only these HKU keys.
-    `reg` is the winreg module (or a fake). Skips SystemComponent=1 and entries without a name or version.
-    The publisher travels in `source`; the server decides which apps it can match (curated map only).
-    `problems` gets a line for each read that failed, as against a key that simply isn't there (R4.3)."""
+    """Return sorted WinApp rows from registry Uninstall entries.
+
+    reg supplies the winreg interface. Default scope is both HKLM views, loaded
+    SID-shaped HKU keys and HKCU. A supplied users iterable limits scope to those
+    HKU keys. Offline profiles require offline_user_apps.
+
+    Deduplicate clipped name/version/publisher triples. Skip SystemComponent=1
+    and missing or blank string names/versions. Publisher becomes source or None.
+    Append detected key/enumeration errors to the supplied problems list. Missing
+    keys and individual value-read errors are ignored. Partial rows survive these
+    errors. Malformed adapter values and unexpected callback errors can propagate."""
     seen, out = set(), []
     problems = problems if problems is not None else []
     if users is not None:
@@ -326,10 +391,17 @@ PROFILES = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList"
 
 
 def offline_user_apps(reg, run=None, loaded=None, problems=None):
-    """Per-user apps of profiles whose hive isn't loaded (users not signed in): each NTUSER.DAT is loaded under a
-    temporary HKU key, its Uninstall key read with windows_apps, and unloaded at once, also on error, so a user signing
-    in a moment later still gets their own profile. Needs SYSTEM or an elevated admin; otherwise nothing is read,
-    and `problems` says which profiles."""
+    """Return WinApp rows from eligible unloaded profile hives.
+
+    reg supplies winreg. run defaults to sh and receives reg load/unload argv.
+    loaded supplies already loaded hive names, otherwise enumerate HKU. Append
+    detected read/load problems to the supplied problems list.
+
+    Skip loaded/nonmatching SIDs, absent NTUSER.DAT files and linked profile
+    directories. Each successful load uses a deterministic temporary HKU name.
+    A finally block attempts unload, but ignores its returned status. A hive can
+    remain mounted. Runner/filesystem errors can propagate, including from unload.
+    No global deduplication combines rows from different profiles."""
     run = run or sh
     problems = problems if problems is not None else []
     loaded = set(loaded if loaded is not None else _subkeys(reg, reg.HKEY_USERS, "", problems))
@@ -382,7 +454,20 @@ def _subkeys(reg, root, path, problems=None):
 
 
 def collect_windows(winreg=None, run=None, machine=None, dotnet_dirs=None):
-    """This host, or with the arguments another one over PowerShell remoting (collect_remote)."""
+    """Return Windows inventory, facts, packages and per-source collection status.
+
+    Omitted winreg imports the local module and enables offline hive reads.
+    Any supplied adapter selects remote semantics and skips offline hives.
+    run supplies most commands. Offline hive load/unload still uses sh.
+    machine overrides the local architecture.
+    dotnet_dirs supplies runtime directory names for windows_microsoft.
+
+    Read OS values, then Microsoft products, host facts, drivers and applications.
+    Concatenate package groups without global deduplication. Missing modern UBR
+    marks partial collection but uses revision zero. Client OS labels are inferred.
+    Detected source failures preserve other rows, but malformed registry values,
+    unexpected runner errors and invalid nested JSON can abort the collection.
+    Local collection can temporarily mount hives and create policy export files."""
     remote = winreg is not None
     if not remote:
         import winreg
@@ -454,7 +539,7 @@ def _source(count, problem=None, failed=False):
 
 
 # ---- agentless: an admin scans hosts from their own machine, as themselves. PowerShell remoting carries their identity,
-# so no credential is typed, stored or sent to the server (DECISIONS 65). What comes back is treated like any agent's report.
+# without a separate Windows password prompt. Report keys are cached locally (DECISIONS 65). What comes back is treated like any agent's report.
 PS_REMOTE_DUMP = r"""
 $ErrorActionPreference = 'SilentlyContinue'
 $keys = [ordered]@{}
@@ -491,12 +576,20 @@ SAFE_HOSTNAME = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,252})\Z")
 
 
 class RemoteReg:
-    """The part of winreg the collectors use, over a dump of another host's registry."""
+    """Partial in-memory winreg adapter over a trusted remote dump.
+
+    keys is retained by reference and must use lowercased full paths. denied is
+    copied to a set without normalization. No live registry handles or ACL checks
+    exist. Nested values/subkey lists remain shared with the supplied mapping.
+    """
     HKEY_LOCAL_MACHINE, HKEY_USERS, HKEY_CURRENT_USER = "hkey_local_machine", "hkey_users", "hkey_current_user"
     KEY_READ, KEY_WOW64_64KEY, KEY_WOW64_32KEY = 0, 0x100, 0x200
 
     class Key:
-        """In-memory registry key from a remote collection, with path, values, and subkey names."""
+        """Collected path and shared values/subkeys, defaulting falsey fields to empty.
+
+        Context entry returns this object. Exit returns False and closes no handle.
+        """
         def __init__(self, path, d):
             self.path, self.values, self.subkeys = path, d.get("values") or {}, d.get("subkeys") or []
 
@@ -513,7 +606,9 @@ class RemoteReg:
         """Return a collected registry Key under root and path strings, respecting the 32-bit view flag.
 
         root may also be a Key. reserved is accepted for winreg compatibility. Raise PermissionError
-        for denied paths or FileNotFoundError for paths absent from the collected snapshot."""
+        for exactly listed denied paths or FileNotFoundError for absent paths.
+        Only path is lowercased. The 32-bit flag rewrites an initial software path.
+        Other access bits are ignored. Malformed mapping/key shapes can raise."""
         base = root.path if isinstance(root, self.Key) else root
         path = path.lower()
         if access & self.KEY_WOW64_32KEY and path.startswith("software\\"):
@@ -526,28 +621,50 @@ class RemoteReg:
         return self.Key(full, self.keys[full])
 
     def EnumKey(self, k, i):
-        """Return subkey name at index i of Key or hive string k; raise OSError past the last entry."""
+        """Return subkey at integer i from Key order or sorted derived hive names.
+
+        Derived hive names are uppercase. Raise OSError at/past the end. Negative
+        indices retain Python list behavior, including IndexError when too small.
+        """
         subs = k.subkeys if isinstance(k, self.Key) else sorted({x[len(k) + 1:].split("\\")[0].upper() for x in self.keys if x.startswith(k + "\\")})  # a hive
         if i >= len(subs):
             raise OSError("no more")
         return subs[i]
 
     def EnumValue(self, k, i):
-        """Return (name, value, 1) at index i of collected Key k; raise OSError past the last value."""
+        """Return (name, value, 1) in dictionary order from collected Key k.
+
+        The type value 1 is a placeholder. Raise OSError at/past the end. Negative
+        indices retain Python list behavior, including IndexError when too small.
+        """
         items = list(k.values.items())
         if i >= len(items):
             raise OSError("no more")
         return (*items[i], 1)
 
     def QueryValueEx(self, k, name):
-        """Return (value, 1) for name in collected Key k; raise OSError when absent."""
+        """Return (value, 1) for exact case-sensitive name in collected Key k.
+
+        The type value 1 is a placeholder. Raise OSError when absent. This adapter
+        does not implement Windows registry value-name case insensitivity.
+        """
         if name not in k.values:
             raise OSError(name)
         return k.values[name], 1
 
 
 def collect_remote(host, run=None):
-    """(hostname, inventory) of another Windows host, read with the same collectors as an agent."""
+    """Return (reported_hostname, inventory) through PowerShell remoting to host.
+
+    host must match SAFE_HOSTNAME or AgentError is raised before execution.
+    run defaults to sh. Each call writes a temporary UTF-8 BOM script, executes
+    Invoke-Command and attempts file removal. The initial dump has timeout 600.
+
+    A failed dump or invalid outer keys/dirs shape raises AgentError. Nested values
+    remain trusted. Only AMD64 and ARM64 are recognized. Other architecture text
+    falls back to AMD64. Later checks use separate remote calls, with no atomic
+    snapshot. Offline profiles are skipped. Runner, file and shape errors can
+    propagate. Temporary-file removal can also raise."""
     if not SAFE_HOSTNAME.match(host):
         raise AgentError(f"not a host name: {host!r}")
     run = run or sh
@@ -581,8 +698,21 @@ def collect_remote(host, run=None):
 
 
 def scan_remote(server, hosts, token, insecure_http=False, keys_path=None, run=None, post_fn=None):
-    """Enrol each host once as an asset with no agent, then report its inventory. One host failing doesn't stop the rest.
-    Keys go in the admin's own profile: each can only report that one host's inventory."""
+    """Collect and report hosts sequentially, returning {input_host: error} failures.
+
+    server is the exact cache key and reporting URL. token enrols cache misses.
+    insecure_http passes through to post. keys_path defaults to the current user's
+    .nimstead-remote-scan.json. run supplies collection commands and post_fn replaces
+    post. Keys use lowercased reported hostnames and exact server strings.
+
+    Unreadable/invalid JSON starts an empty cache. A new asset's key is saved before
+    inventory upload. Cache writes truncate in place. Mode 0600 applies at creation,
+    without repairing existing permissions or creating parent directories.
+
+    AgentError, OSError, KeyError and subprocess.SubprocessError are recorded per
+    host. Other failures, including invalid cache shapes, can abort the loop.
+    Earlier server/local effects remain. Repeated input failures overwrite a key.
+    Existing keys are reused without automatic re-enrolment or credential repair."""
     keys_path = keys_path or os.path.join(os.path.expanduser("~"), ".nimstead-remote-scan.json")
     send = post_fn or post
     try:
@@ -664,8 +794,18 @@ def _dirs(path):
 
 
 def windows_microsoft(reg, run=None, dotnet_dirs=None):
-    """(packages, problem): .NET and ASP.NET Core runtimes, SQL Server instances, Exchange, SharePoint, Store apps and
-    Defender, as ecosystem "Microsoft" facts. A PowerShell failure costs only those facts, never the inventory."""
+    """Return (Microsoft package rows, problem string or None) from fixed sources.
+
+    reg supplies winreg. run defaults to sh. dotnet_dirs(path) supplies directory
+    names, otherwise use local directories. Select the newest numeric runtime
+    patch per major/minor and SDK patch per feature band. This does not prove
+    an application's selected runtime. Rows include Office, SQL, selected Store
+    families, Defender, Exchange, SharePoint and .NET Framework when observed.
+
+    Deduplicate name/version/source triples. Clip versions to 100 characters.
+    Detected directory/registry failures append problems. Failed PowerShell output
+    retains earlier rows. Individual unreported read errors can still omit facts.
+    Malformed nested values and unexpected runner errors can abort collection."""
     out, seen, problems = [], set(), []
 
     def folders(path):
@@ -683,7 +823,7 @@ def windows_microsoft(reg, run=None, dotnet_dirs=None):
             seen.add(item)
             out.append({"ecosystem": "Microsoft", "name": name, "version": item[1], "source": source})
     # .NET from the runtime folders themselves (the registry keeps versions long uninstalled). Only the newest patch
-    # of each major.minor: by default .NET runs every app on the latest patch installed, so older ones don't run.
+    # of each major.minor. This is a collection heuristic, not proof of an application's runtime selection.
     pf, pf86 = os.environ.get("ProgramFiles", r"C:\Program Files"), os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
     for root, arch in ((ntpath.join(pf, "dotnet"), "native"), (ntpath.join(pf, "dotnet", "x64"), "x64"), (ntpath.join(pf86, "dotnet"), "x86")):
         for fx, name in (("Microsoft.NETCore.App", ".NET runtime"), ("Microsoft.AspNetCore.App", "ASP.NET Core")):
@@ -736,7 +876,7 @@ def windows_microsoft(reg, run=None, dotnet_dirs=None):
 
 
 # Host state the server evaluates (winconfig.py, plan T10-T12, T36, T37, T42): a closed list read from fixed places.
-# The server never names a registry path or setting; it only reads what this script reports. Unreadable = null.
+# The server never names a registry path or setting. Some failed reads become null, others false or empty.
 PS_HOST = r"""
 $ErrorActionPreference = 'SilentlyContinue'
 function Reg($path, $name) { $v = (Get-ItemProperty -LiteralPath "Registry::$path" -Name $name -ErrorAction SilentlyContinue).$name; if ($null -eq $v) { $null } else { $v } }
@@ -1098,12 +1238,19 @@ BASELINE_MAX_BYTES = 20_000  # the server drops a whole report's facts over 64 K
 
 
 def baseline_id(entry):
-    """Short and stable, so the report stays small and old agents keep matching newer rule tables."""
+    """Return the first eight hex digits of SHA-256 for lowercased UTF-8 entry.
+
+    entry is a registry path/value string. This 32-bit identifier is not a
+    collision-free identity or a security signature. Invalid types can raise."""
     return hashlib.sha256(entry.lower().encode()).hexdigest()[:8]
 
 
 def last_json(out):
-    """The last line that is a JSON object: a tool's error text after it (seen for real: auditpol's, on Windows 11) isn't the answer."""
+    """Decode the last output line whose first character is an opening brace.
+
+    out is command-output text. Ignore later lines without that prefix. An invalid
+    selected JSON line raises ValueError without trying an earlier object. Leading
+    spaces on an interior line prevent selection. Raise ValueError if none matches."""
     for line in reversed(out.strip().splitlines()):
         if line.startswith("{"):
             return json.loads(line)
@@ -1111,8 +1258,18 @@ def last_json(out):
 
 
 def windows_baseline_facts(run=None):
-    """{"reg": {id: value or null}, "audit": {guid: 0-3}, "rights": {constant: [SID]}} for the closed lists above, or None.
-    Only what's on those lists is kept. Whatever isn't in the answer reads "not assessed" on the server."""
+    """Return filtered reg/audit/rights facts, or None for failed/oversize output.
+
+    run defaults to sh and executes PS_BASELINE, including temporary policy exports.
+    Registry keys use baseline_id. Keep null, non-bool integers and strings clipped
+    to 100 characters. Only configured audit GUIDs and rights survive. Audit values
+    use membership in 0..3, which also accepts equal Boolean/numeric values.
+    Rights permit at most 30 SID-shaped strings or question-mark placeholders.
+
+    Missing entries stay absent. Null registry values remain explicit. Above
+    20,000 serialized characters, drop all rights and check again. This check uses
+    json.dumps length, not the encoded request size. Unexpected runner errors
+    propagate. Missing facts do not prove a successful benchmark assessment."""
     rc, out = ps(run or sh, PS_BASELINE)
     try:
         d = last_json(out) if rc == 0 else None
@@ -1138,7 +1295,12 @@ def windows_baseline_facts(run=None):
 
 
 def windows_host_facts(run=None):
-    """Facts from PS_HOST, or ({}, problem). Only the keys in HOST_FACTS are kept."""
+    """Return (host facts, None), or ({}, problem) for failed PS_HOST output.
+
+    run defaults to sh. Copy only HOST_FACTS keys without validating their nested
+    values. Missing keys become None. Add a baseline from a separate command when
+    available. An absent baseline alone does not produce a problem string.
+    Output can mix observations and approximations. Runner errors can propagate."""
     rc, out = ps(run or sh, PS_HOST)
     try:
         d = last_json(out) if rc == 0 else None
@@ -1187,9 +1349,16 @@ SAFE_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 
 
 def windows_drivers(run=None):
-    """([driver rows as packages], summary). `complete` false: not everything was read, so a driver missing from the rows
-    proves nothing and the server keeps its findings open. A file over the size cap can't break that: a listed hash means
-    a listed size, so one seen before would still be under it."""
+    """Return (WinDriver package rows, scan summary) from PS_DRIVERS via run or sh.
+
+    Failed/invalid/empty outer output returns no rows and complete=False. Validate
+    each row's shape, filename length and lowercase SHA-256. Source is loaded only
+    for literal True, otherwise on disk. Invalid rows are silently discarded.
+
+    For a nonempty raw driver list, complete requires unreadable==0 and stopped
+    is False. It does not count rejected rows or too_large. A complete result can
+    therefore contain zero packages or omit oversized files. Summary counters are
+    copied without type validation. Unexpected runner errors propagate."""
     rc, out = ps(run or sh, PS_DRIVERS)
     try:
         d = json.loads(out.strip().splitlines()[-1]) if rc == 0 else None
@@ -1210,7 +1379,13 @@ PS_ESU = ("@(Get-CimInstance SoftwareLicensingProduct -Filter \"LicenseStatus=1 
 
 
 def esu_active(product, run=None):
-    """True/False whether an Extended Security Updates licence is active, None where ESU doesn't apply or can't be read."""
+    """Return an ESU licence-name observation as True, False or None.
+
+    product must match the configured Windows 10 22H2/Server 2012 prefix. Otherwise
+    return None without execution. run defaults to sh. Successful digit output
+    means whether an active licensing product with ESU in its name was found.
+    Failed/unparseable output returns None. Runner errors propagate. This does not
+    establish that a specific security update is available or installed."""
     if not product or not ESU_PRODUCTS.match(product):
         return None
     rc, out = ps(run or sh, PS_ESU)
@@ -1218,17 +1393,17 @@ def esu_active(product, run=None):
 
 
 def collect():
-    """Return this host's base inventory dictionary using the Windows or Linux collector.
+    """Return base inventory from collect_windows on Windows, otherwise collect_linux.
 
-    Reads host state and runs platform inventory commands; collection errors follow the selected collector."""
+    Uses platform files/commands. Does not enable optional application scans or upload data.
+    The selected collector determines partial results and propagated errors.
+    """
     return collect_windows() if os.name == "nt" else collect_linux()
 
 
 # ---- remediation ------------------------------------------------------------
-# The server sends a closed job description; every command below is a fixed argv
-# template filled with validated names. Rollback packages are saved before any
-# change, and any failure after a change triggers rollback. Nothing is silent:
-# every step is reported back and lands in the evidence ledger.
+# Manager-specific handlers validate job fields and record attempted steps.
+# Rollback availability depends on the manager and result. Reporting has separate failure paths.
 
 SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9+._-]{0,200}\Z")  # \Z: $ also matches before a final newline
 SAFE_VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+~:_^-]{0,200}\Z")
@@ -1238,8 +1413,13 @@ APT_CACHE = "/var/cache/apt/archives"
 
 
 def sh(cmd, cwd=None, timeout=1800):
-    """Default runner: (returncode, full output). Never raises for a failing command. Steps keep only the tail;
-    parsers (zypper's XML dry run runs to tens of KB with package descriptions) need all of it."""
+    """Run command argv cmd in optional cwd with timeout seconds, default 1800.
+
+    Return (status,combined stdout/stderr) as replacement-decoded text. Set LC_ALL=C and
+    DEBIAN_FRONTEND=noninteractive. A command's nonzero status is returned, not raised.
+    OSError/TimeoutExpired become status 127 and error text. Other argument/runtime errors
+    propagate. Output is captured without a size cap. The caller controls command effects.
+    """
     env = dict(os.environ, DEBIAN_FRONTEND="noninteractive", LC_ALL="C")
     try:
         p = subprocess.run(cmd, cwd=cwd, env=env, capture_output=True, text=True, errors="replace", timeout=timeout)
@@ -1262,11 +1442,17 @@ _INFO_FILES = ("preinst", "postinst", "prerm", "postrm", "config", "templates", 
 
 
 def repack_deb(run, name, version, arch, outdir, info_dir=DPKG_INFO, root="/"):
-    """Rebuild the installed package from its files and dpkg metadata (what dpkg-repack does).
+    """Build a recovery .deb from live installed files and selected dpkg metadata.
 
-    Used only when no pristine .deb of the installed version exists anywhere (it has usually been
-    superseded in the archive). Captures the package exactly as installed, including locally edited
-    conffiles, so a rollback restores the real prior state. Returns (path, note)."""
+    run supplies commands. name/version/arch identify the package. outdir must
+    exist. info_dir and root override metadata and file sources for trusted tests.
+    Return (archive path, copied/absent-path note). Copy regular files, directories
+    and links. Skip absent/special paths. This is not an atomic or exact host image.
+
+    Raise StepFailed for metadata/version/build checks. Filesystem and runner
+    errors propagate. Some failures leave the build directory or output archive.
+    Neither argument paths nor installed-file contents are independently trusted
+    here. The caller validates job identities before using this helper."""
     qual = f"{name}:{arch}" if os.path.exists(os.path.join(info_dir, f"{name}:{arch}.list")) else name
     rc, control = run(["dpkg-query", "-s", qual])
     if rc != 0:
@@ -1323,7 +1509,11 @@ def repack_deb(run, name, version, arch, outdir, info_dir=DPKG_INFO, root="/"):
 
 
 def apk_owned(db_text, names):
-    """Paths owned by the named packages, from apk's installed database (F: dir, R: file within it)."""
+    """Return listed paths for package names in an APK installed-database string.
+
+    Match P fields exactly against names. F sets the current directory and R adds
+    a file below it. Preserve duplicates/order. No normalization, filesystem access
+    or traversal validation occurs. Invalid input types can raise."""
     out = []
     for block in db_text.split("\n\n"):
         lines = block.splitlines()
@@ -1344,7 +1534,12 @@ ZYPPER_SECTIONS = ("to-install", "to-upgrade", "to-downgrade", "to-remove", "to-
 
 
 def dnf_touched(out, sections=DNF_SECTIONS):
-    """Package names in a dnf4 transaction table (sections between the header and 'Transaction Summary')."""
+    """Return names parsed from selected English dnf4 transaction-table sections.
+
+    out is text. sections defaults to DNF_SECTIONS. Stop at Transaction Summary.
+    Recognized headings toggle selection. Indented rows contribute their first
+    token. This parser does not prove the complete transaction or validate names.
+    Unexpected table formats can omit changes."""
     names, section = set(), False
     for ln in out.splitlines():
         s = ln.strip()
@@ -1359,7 +1554,11 @@ def dnf_touched(out, sections=DNF_SECTIONS):
 
 
 def zypper_touched(xml, sections=ZYPPER_SECTIONS):
-    """Package names in a `zypper --xmlout ... --dry-run` install summary."""
+    """Return package names from selected zypper XML transaction sections.
+
+    xml is trusted local command output. sections defaults to ZYPPER_SECTIONS.
+    Parse from the first <stream when present. Missing solvable names can add
+    None. Malformed XML raises ParseError. No schema validation occurs."""
     import xml.etree.ElementTree as ET
     names = set()
     # local root-run zypper output, not network input; the agent is stdlib-only so defusedxml isn't available
@@ -1374,12 +1573,17 @@ TOOLS = {"apt": "apt-get", "apk": "apk", "dnf": "dnf", "zypper": "zypper"}
 
 
 class Job:
-    """One remediation job: plan check, dry run, rollback artefact, change, health check, rollback on failure.
+    """Linux package execution with in-process recovery metadata.
 
-    apt: rollback = the old .deb (archive copy, or rebuilt from the installed files).
-    apk / dnf: neither keeps old builds, so rollback = snapshot of every file the planned packages own plus
-    the package database. Sound because the dry run proves the transaction touches only those packages.
-    Maintainer-script side effects (e.g. a restarted service) are not snapshotted; health checks cover them."""
+    job supplies manager, packages, health_units and optional settle_seconds.
+    run supplies commands. Filesystem paths and fail_after_apply are trusted
+    local overrides. Constructors can raise on malformed job fields. Direct use
+    does not enforce server approval, local consent or process locking.
+
+    execute returns an outcome/steps/error tuple. Recovery covers selected package
+    files/databases or a snapper pair. Manager-script effects, other filesystems
+    and incomplete dry-run parsing can exceed that scope. There is no durable
+    Linux phase journal for resumption after process failure."""
 
     def __init__(self, job, run=sh, rollback_root=ROLLBACK_ROOT, apt_cache=APT_CACHE, dpkg_info=DPKG_INFO, root="/",
                  fail_after_apply=False):
@@ -1395,7 +1599,9 @@ class Job:
         self.fail_after_apply = fail_after_apply  # sandbox fault injection (run-job only; never from the server)
 
     def path(self, p):
-        """Return string path p interpreted below this job's filesystem root."""
+        """Join p after stripping leading slashes below self.root.
+
+        This is lexical joining, without traversal containment or link checks."""
         return os.path.join(self.root, p.lstrip("/"))
 
     def step(self, name, cmd=None, ok=None, output="", cwd=None):
@@ -1414,9 +1620,11 @@ class Job:
     # --- state --------------------------------------------------------------
 
     def versions(self):
-        """Return planned-package names mapped to installed version strings, or None when unreadable.
+        """Return planned names mapped to observed installed versions or None.
 
-        For RPM, multiple installed versions are treated as unreadable rather than selecting one."""
+        APK read failure acts as an empty database. Apt preserves successful text.
+        RPM requires exactly one whitespace token. No target-version assertion is
+        made. Malformed package data and runner errors can propagate."""
         out = {}
         if self.mgr == "apk":
             try:
@@ -1472,7 +1680,11 @@ class Job:
         self.restarts = {u: self.restart_count(u) for u in self.units}
 
     def newer(self, to, cur):
-        """The package manager's own ordering (rpm-based managers refuse downgrades themselves; the dry run checks too)."""
+        """Compare target to current with dpkg/apk for those managers.
+
+        to/cur are version strings. RPM managers return True without comparison.
+        Their dry-run parsing supplies a separate downgrade check. Runner errors
+        propagate. Command failure returns False for dpkg/apk."""
         if self.mgr == "apt":
             return self.run(["dpkg", "--compare-versions", to, "gt", cur])[0] == 0
         if self.mgr == "apk":
@@ -1492,7 +1704,10 @@ class Job:
             self.snap_post = out.strip()
 
     def targets(self):
-        """Package specs to install: pinned to a canary-proven version when the server provides one."""
+        """Return manager-specific install specs from planned names and optional to.
+
+        Dnf uses name-version. Other managers use name=version. An absent/falsey
+        target leaves the name unpinned. No canary or version validation occurs here."""
         if self.mgr == "dnf":
             return [f"{p['name']}-{p['to']}" if p.get("to") else p["name"] for p in self.pkgs]
         return [f"{p['name']}={p['to']}" if p.get("to") else p["name"] for p in self.pkgs]
@@ -1500,7 +1715,11 @@ class Job:
     # --- dry run ------------------------------------------------------------
 
     def simulate(self):
-        """Dry-run the transaction; refuse if it would touch anything outside the plan (rollback couldn't undo it)."""
+        """Run the manager dry run and refuse parsed extra packages or downgrades.
+
+        Only parsed names are compared with the plan. Empty/incomplete parsed
+        sets can pass. Dnf requires Transaction Summary even for Nothing to do.
+        Command/parser failures raise. Host metadata/cache changes can occur."""
         down = set()  # apt: --only-upgrade, and pins are compared with dpkg before this (newer_than_installed)
         if self.mgr == "apt":
             out = self.step("simulate upgrade", ["apt-get", "-s", "install", "--only-upgrade", "--no-remove", *self.targets()])
@@ -1539,8 +1758,7 @@ class Job:
         if self.mgr == "apt":
             return self._save_debs()
         if self.mgr == "zypper" and self.snapper_ok():
-            # btrfs + snapper: a pre/post snapshot pair captures EVERYTHING the change does to the root filesystem,
-            # including what the packages' install scripts touch outside their own files
+            # Snapper recovery covers its configured snapshot scope, which can omit other mounts/subvolumes.
             rc, out = self.run(["snapper", "-c", "root", "create", "--type", "pre", "--print-number",
                                 "--cleanup-algorithm", "number", "--description", f"nimstead job {os.path.basename(self.dir)}"])
             self.step("snapper pre-change snapshot", ok=rc == 0 and out.strip().isdigit(), output=out)
@@ -1667,14 +1885,25 @@ class Job:
         self.health("after rollback")
 
     def discard_rollback(self, outcome):
-        """After the outcome is saved: the copy has done its job. A failed rollback keeps it for whoever repairs the host.
-        Only a folder this run made: a job id reused by a server can't delete a copy an earlier job kept."""
+        """Attempt removal of this run's recovery directory unless rollback_failed.
+
+        outcome is a status string. Existing directories not created by this object
+        are preserved. rmtree errors are ignored. The caller decides when to call."""
         if outcome != "rollback_failed" and getattr(self, "made_dir", False):
             shutil.rmtree(self.dir, ignore_errors=True)
 
     def execute(self):
-        """Returns (outcome, steps, error). outcome: applied | rolled_back | rollback_failed | aborted."""
-        try:  # prechecks: a failure here means nothing was changed
+        """Return (applied|rolled_back|rollback_failed|aborted,steps,error).
+
+        Validate identities, query versions, check services/space, refresh metadata,
+        parse a dry run and save recovery state. Pre-apply errors return aborted,
+        possibly after cache, directory or snapshot effects. After apply begins,
+        ordinary exceptions trigger a rollback attempt. BaseException propagates.
+
+        Applied requires command/database/service checks, but does not independently
+        require result_versions to reach targets. Empty health units skip service
+        checks. Restart counters and a settling delay are limited observations."""
+        try:  # preparation can refresh caches and leave recovery files even before apply
             ok = (self.mgr in TOOLS and bool(self.pkgs)
                   and all(SAFE_NAME.match(str(p.get("name", ""))) and SAFE_VERSION.match(str(p.get("from", ""))) for p in self.pkgs)
                   and all(SAFE_VERSION.match(str(p["to"])) for p in self.pkgs if p.get("to"))
@@ -1718,7 +1947,7 @@ class Job:
 
 # ---- Windows apps and settings (plan T17, T21, T38) ---------------------------------------------------------------
 # Closed maps held here, never sent by the server: a job names only a key from them and versions (strict regexes), so a
-# compromised server can only move a curated app to a newer published build, or apply one of these exact settings.
+# local maps restrict selected identities/settings. Handlers still rely on manager output and can partly fail.
 WINGET_IDS = {  # curated product key (server: winapps.py / msproducts.py) -> winget package id
     "google:chrome": "Google.Chrome", "mozilla:firefox": "Mozilla.Firefox", "mozilla:firefox_esr": "Mozilla.Firefox.ESR",
     "7-zip:7-zip": "7zip.7zip", "notepad-plus-plus:notepad++": "Notepad++.Notepad++", "videolan:vlc_media_player": "VideoLAN.VLC",
@@ -1774,9 +2003,16 @@ PS_VCLIBS = PS_WINDOWSAPP_FILE.replace("%PKG%", "Microsoft.VCLibs.140.00.UWPDesk
 
 
 class WinAppJob:
-    """manager winget | office | winconfig. Same contract as Job.execute: (outcome, steps, error).
-    winget is forward-only (most installers can't go back): the server only hands it out after a person approved that.
-    office rolls back to the build it found; winconfig restores the value it found."""
+    """Execute one allowlisted winget, Office or registry-setting action.
+
+    job supplies manager/packages/health_units. run supplies commands.
+    fail_after_apply is a local test override. Direct use checks no server approval
+    or local consent. execute returns (outcome,steps,error).
+
+    Undo closures exist only after a handler returns successfully. Handler errors
+    can return aborted after host changes, without undo. Office/settings recovery
+    is in memory only. Winget has no undo. Services are sampled, not exhaustively
+    tested. Invalid input/runner shapes can fail during construction or execution."""
 
     def __init__(self, job, run=sh, fail_after_apply=False):
         self.run, self.steps, self.mgr = run, [], job.get("manager")
@@ -1812,10 +2048,13 @@ class WinAppJob:
                 and (self.mgr == "winconfig" or (SAFE_BUILD.match(str(p.get("from", ""))) and SAFE_BUILD.match(str(p.get("to", ""))))))
 
     def execute(self):
-        """Execute the approved Windows application or configuration change and check service health.
+        """Return (outcome,steps,error) for one Windows application/setting action.
 
-        Return (outcome string, step list, error text or None). Attempt rollback where an undo action
-        exists; a failed forward-only change returns rollback_failed. Changes this host."""
+        Validate shape, compare numeric planned versions and check services before
+        invoking the handler. A handler exception returns aborted, even if it
+        already changed the host. Undo exists only after handler success. Later
+        service/test failure attempts that undo or reports rollback_failed for
+        winget. A successful undo does not repeat health or version verification."""
         try:
             self.step("job validated", ok=self.valid(), output="" if self.valid() else "unknown product or setting, or invalid version")
             p = self.pkgs[0]
@@ -1910,7 +2149,11 @@ class WinAppJob:
 
 
 def free_bytes(path):
-    """Free space on the filesystem that holds path (or would, once created)."""
+    """Return free bytes from disk_usage at path or its first existing directory ancestor.
+
+    No writes occur. Relative nonexistent paths can terminate at an empty ancestor and fail.
+    Filesystem and argument errors propagate. This is available space, not a reservation.
+    """
     while not os.path.isdir(path) and os.path.dirname(path) != path:
         path = os.path.dirname(path)
     return shutil.disk_usage(path).free
@@ -1948,7 +2191,14 @@ _agent_key = None
 
 
 def log_event(text):
-    """Add one line to the local log. Never raises and never prints: a logging failure must not stop a run."""
+    """Append a bounded UTC-stamped log line for text when global logging is enabled.
+
+    Stringify text, redact the saved agent key/environment token and token-pattern matches,
+    collapse whitespace, and keep 2000 payload characters. Rotate one previous file before
+    append when the current file is at least 1MiB. Create the log directory as needed.
+    Suppress OSError, ValueError and TypeError. Other failures can propagate. Redaction is not
+    a general secret detector, and rotation is not an exact two-file byte cap. Return None.
+    """
     if not _log_on:
         return
     try:
@@ -1972,9 +2222,24 @@ OUTCOME_DIR = (os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "N
 
 
 def run_jobs(server, key, insecure_http, run=sh, outcome_dir=None, win_state=None, ran=None, **job_kw):
-    """Execute jobs, persisting every outcome before reporting so none is lost if the report fails.
-    Unsent outcomes from earlier runs are retried first. The id of every job that ran is appended to `ran`.
-    Returns (number of jobs not applied or not reported, whether a reboot is needed to continue a Windows job)."""
+    """Retry saved reports, execute fetched jobs and return (problem_count,reboot_needed).
+
+    server/key/insecure_http supply post credentials/options. run supplies host
+    commands. outcome_dir and win_state override local paths. job_kw reaches only
+    Linux Job construction. ran receives IDs after outcome writes, including
+    malformed jobs. Direct calls do not check configuration consent or lock state.
+
+    Retry sorted outcome JSON files first. Persist each terminal report before its
+    immediate send attempt. Writes truncate in place and can fail. Corrupt files
+    become .invalid. Reports rejected with detected 404/409 become .rejected.
+    Other AgentError reports remain for retry. Other I/O/shape errors can propagate.
+
+    Count failed outcomes, report errors and invalid records separately, so the
+    count is not a distinct-job total. Windows pending state can return early.
+    Applied Windows results clear state before the outcome write. Some failures
+    can therefore lose that local result. Earlier host effects are not undone by
+    reporting failure. Linux recovery copies are discarded after record returns,
+    even when the immediate upload failed, except after rollback_failed."""
     outcome_dir = outcome_dir or OUTCOME_DIR
     win_state = win_state or WIN_STATE
     os.makedirs(outcome_dir, mode=0o700, exist_ok=True)
@@ -2179,8 +2444,12 @@ PERMANENT_COMPANIONS = {("ServicingStackUpdate", "MainOS"), ("SafeOSDU", "WinRE"
 
 
 def removable(pkgs):
-    """(ok, detail) for the packages Windows Update will install. Rollback removes only the new cumulative package, so
-    that must not be permanent; every companion must be readable and either removable or a known permanent companion."""
+    """Return (allowed,detail) for trusted downloaded-package manifest dictionaries.
+
+    Require exactly one CumulativeUpdate reason with permanent is False. Other
+    packages must be nonpermanent or a configured permanent companion. Companion
+    parts can remain after rollback. This predicate does not execute removal or
+    prove runtime recovery. Invalid outer/nested types can raise."""
     main = [p for p in pkgs if p.get("reason") == "CumulativeUpdate"]
     if len(main) != 1:
         return False, f"expected one cumulative update package, found {len(main)}: {json.dumps(pkgs)[:600]}"
@@ -2251,8 +2520,11 @@ WU_SOURCE = None  # "microsoft": search Microsoft Update directly, not WSUS (enr
 
 
 def offered_instead(out):
-    """PS_FIND's second line as [{kb, title}], at most 10, anything malformed dropped. The server reads only the KB and the
-    title's month and decides from Microsoft's own data whether it's a step; this agent still installs only a KB a job names."""
+    """Parse offered-update JSON text to at most ten {kb,title} rows.
+
+    Consider only the first ten raw list entries. Keep dictionary entries with
+    SAFE_KB text. Convert KB/title to strings and clip titles to 200 characters.
+    Invalid JSON or a non-list returns []. Unexpected input types can raise."""
     try:
         items = json.loads(out)
     except ValueError:
@@ -2262,7 +2534,11 @@ def offered_instead(out):
 
 
 def clause_tail(text, n=300):
-    """The end of a long output from a clause boundary: a cut mid-word read "failed: is active" on a real abort."""
+    """Return stripped text, or an ellipsis plus a suffix near a clause boundary.
+
+    text is stringified. n defaults to 300. Long output uses its final n characters,
+    possibly dropping through an early semicolon-space. The ellipsis can make the
+    result longer than n. Invalid n types can raise."""
     t = str(text).strip()
     if len(t) <= n:
         return t
@@ -2272,19 +2548,30 @@ def clause_tail(text, n=300):
 
 
 def wu(script):
-    """A Windows Update script searching this host's configured source, or Microsoft Update when the host opted in."""
+    """Return script text with its WU_SOURCE placeholder replaced from process state.
+
+    script is a string. Exact WU_SOURCE=microsoft inserts the ServerSelection=2 fragment.
+    Other values insert empty text. No query is executed or configuration changed.
+    Missing placeholders leave text unchanged. Invalid types can raise errors.
+    """
     return script.replace("%WU_SOURCE%", "$q.ServerSelection = 2" if WU_SOURCE == "microsoft" else "")
 
 
 def ps(run, script, **kw):
     """Invoke PowerShell through callable run and return its (exit code, output) result.
 
-    script is PowerShell text; keyword arguments pass through to run. Runner errors propagate."""
+    script is unvalidated PowerShell text. Build a fixed powershell argv with no profile,
+    noninteractive mode and ExecutionPolicy Bypass. Keyword arguments pass through to run.
+    Runner errors and command effects belong to the supplied callable. No result validation
+    or independent timeout/output bound is added here."""
     return run(["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script], **kw)
 
 
 def boot_time():
-    """When this machine last booted (epoch seconds), from the tick counter; 0 where unknown."""
+    """Return estimated boot epoch seconds from time.time minus GetTickCount64.
+
+    Non-Windows returns zero. Windows uses ctypes and propagates platform/API
+    errors. The estimate is not an immutable boot identifier."""
     if os.name != "nt":
         return 0
     import ctypes
@@ -2303,7 +2590,11 @@ def windows_build():
 
 
 def netfx_build(run=sh):
-    """The file version MSRC's .NET Framework fixes are stated in; a .NET update doesn't change the Windows build."""
+    """Return the first token of Framework64 mscorlib.dll file-version output.
+
+    run defaults to sh. Require command success and a four-part numeric prefix.
+    The remaining token is not fully validated. Raise AgentError for failed or
+    unmatched output. Runner errors propagate. This reads a fixed 64-bit path."""
     rc, out = ps(run, r"(Get-Item (Join-Path $env:windir 'Microsoft.NET\Framework64\v4.0.30319\mscorlib.dll')).VersionInfo.FileVersion")
     if rc != 0 or not re.match(r"\d+\.\d+\.\d+\.\d+", out.strip()):
         raise AgentError(f"couldn't read the .NET Framework version: {out.strip()[-200:]}")
@@ -2311,7 +2602,18 @@ def netfx_build(run=sh):
 
 
 class WinJob:
-    """Phases: start -> (reboot) -> verify -> done | rollback -> (reboot) -> rolled_back. State lives in WIN_STATE."""
+    """Windows update state machine with ordinary JSON persistence across boots.
+
+    job starts state or None loads state_path. run/build/booted supply host probes.
+    settle, fail_after_apply and retry_wait are trusted local test overrides.
+    New state retains the job object. Loaded state receives partial validation.
+    Invalid arguments, state, files and runner results can raise.
+
+    advance returns a report or pending_reboot. Phases are start, verify and
+    rolled_back_pending. Direct use checks neither approval nor local consent.
+    Recovery is best effort and can leave companion packages or cluster effects.
+    JSON writes are not atomic. A terminal result clears state before returning
+    its product version, so later failures can lose resumable state."""
 
     def __init__(self, job=None, run=sh, state_path=WIN_STATE, build=windows_build, settle=None, fail_after_apply=False,
                  retry_wait=60, booted=None):
@@ -2337,7 +2639,12 @@ class WinJob:
             self.build = lambda: netfx_build(self.run)
 
     def valid(self):
-        """Return whether persisted job state has recognised phases and bounded, safe fields for execution."""
+        """Return whether selected persisted execution fields pass local predicates.
+
+        Validate recognized phases, product/KB/build patterns, selected types,
+        service names and settle 0..900. The job object, step contents, baseline
+        states and every nested field are not comprehensively validated. Date
+        text checks shape only. TypeError/AttributeError return False."""
         s = self.s
         try:
             return bool(
@@ -2362,7 +2669,11 @@ class WinJob:
 
     # -- plumbing
     def save(self):
-        """Write this Windows job's JSON state, creating its parent directory; I/O errors propagate."""
+        """Create the parent directory and truncate/write current state as JSON.
+
+        Inherits existing folder permissions, without an independent ACL check.
+        Writes are non-atomic. Filesystem/serialization failures can leave partial
+        state and propagate."""
         os.makedirs(os.path.dirname(self.state_path), exist_ok=True)
         with open(self.state_path, "w") as f:
             json.dump(self.s, f)  # inherits the locked-down folder ACL (secure_windows_dir)
@@ -2379,7 +2690,11 @@ class WinJob:
             raise StepFailed(f"{name} failed: {clause_tail(output)}")
 
     def _resume_cluster(self):
-        """Bring a drained cluster node back (after success, rollback or a failed start); recorded, never raises."""
+        """Attempt cluster resume when marked paused and not already resumed.
+
+        Record command status without checking final Up state. Runner errors can
+        propagate. A zero command status sets resumed even with unexpected output.
+        """
         if self.s.get("cluster") and not self.s.get("resumed"):
             rc, out = ps(self.run, PS_CLUSTER_RESUME)
             self.s["resumed"] = rc == 0
@@ -2403,9 +2718,10 @@ class WinJob:
         return {"outcome": "pending_reboot", "steps": self.s["steps"], "error": None, "versions": None}
 
     def restarted(self):
-        """Whether the machine has booted since the job started waiting. Seen for real (Windows 11 VM): after a DISM
-        removal with /norestart no reboot-pending flag is set, and a job poll that judged the rollback before the restart
-        found the new build still running and reported ROLLBACK FAILED."""
+        """Return True when the estimated boot time differs by over 120 seconds.
+
+        Absent saved boot also returns True. booted supplies an epoch estimate.
+        This heuristic can miss smaller differences or accept clock changes."""
         return self.s.get("boot") is None or abs(self.booted() - self.s["boot"]) > 120
 
     def rollups(self):
@@ -2419,8 +2735,12 @@ class WinJob:
         return {k: v for k, v in ROLLUP.findall(out.replace("\r", "")) if ("DotNetRollup" in k) == netfx}
 
     def health(self, when):
-        """Running now, and no crash or unexpected stop logged for it since the change (DECISIONS 29 for Windows,
-        plan T13): a service that dies and is restarted by its recovery actions can read "Running" when sampled."""
+        """Check selected services and selected SCM crash/stop events via run.
+
+        when labels steps. Wait for automatic services using PS_SERVICE_UP. When
+        changed_at is truthy, query events since max(change time,last boot).
+        Non-running state, crash text or failed query raises StepFailed. Empty
+        units skip checks. Other runner errors propagate."""
         since = self.s.get("changed_at")
         for u in self.s["units"]:
             rc, out = ps(self.run, PS_SERVICE_UP.replace("%SVC%", u), timeout=SERVICE_UP_WAIT + 60)
@@ -2433,7 +2753,14 @@ class WinJob:
 
     # -- phases
     def advance(self):
-        """Run until finished or until a reboot is needed. Returns a report dict (outcome may be pending_reboot)."""
+        """Advance state to a terminal report or pending_reboot.
+
+        Verify/rollback phases first wait for the boot-time heuristic. Start errors
+        attempt aborted results. Verify errors attempt removal, except servicing
+        steps return failed. Rollback-phase errors attempt rollback_failed results.
+        Recovery/result errors can still propagate. Host effects can precede any
+        outcome, including aborted. Returned failed is not accepted by the current
+        agent-report endpoint."""
         phase = self.s["phase"]
         if phase in ("verify", "rolled_back_pending") and not self.restarted():
             return {"outcome": "pending_reboot", "steps": self.s["steps"], "error": None, "versions": None}  # judge nothing yet
@@ -2565,7 +2892,9 @@ class WinJob:
         return self._verify()
 
     def ssu(self):
-        """This run installs the job's servicing stack step: the server marked it so, and it's the KB Windows Update offered."""
+        """Return whether servicing is truthy and current KB equals the alt KB.
+
+        This is state classification only. Manifest/hotfix checks occur elsewhere."""
         s = self.s
         return bool(s.get("servicing") and s.get("alt") and s["kb"] == s["alt"].get("kb"))
 
@@ -2628,9 +2957,19 @@ class WinJob:
 
 
 def restart_for_update(run=None, state_path=None, client=None, now=None):
-    """The restart a Windows job needs (plan T41). Servers restart now: the job was only handed out inside the
-    maintenance window. A workstation with someone signed in is told and may put it off until the job's deadline
-    (reboot_by), reminded at most hourly; then it restarts with a 15-minute warning. Returns ("now"|"later", message)."""
+    """Load validated pending Windows state and return (now|later,message).
+
+    run defaults to sh and state_path to WIN_STATE. client overrides workstation
+    detection. now supplies epoch seconds, with falsey values using current time.
+    Explorer-process count approximates signed-in users. A client with such users
+    waits until reboot_by, with at most hourly msg attempts. Notification status
+    is ignored and the attempt time is saved.
+
+    Otherwise request shutdown /r with 900 seconds when users are detected,
+    60 seconds otherwise. Return now after command acceptance, not an actual boot.
+    This helper does not check the maintenance window or phase eligibility beyond
+    WinJob validation. Missing/deformed state, invalid calendar dates and runner
+    errors can propagate. Failed shutdown status raises AgentError."""
     run, state_path = run or sh, state_path or WIN_STATE
     w = WinJob(run=run, state_path=state_path)
     if client is None:
@@ -2669,9 +3008,13 @@ ConvertTo-Json -Compress -InputObject ([ordered]@{ domain = "$((Get-CimInstance 
 
 
 def ad_computers(run=None):
-    """Return domain and computer-list metadata read through PowerShell, using optional runner run.
+    """Return the PowerShell domain/computers object using run or sh.
 
-    Raise AgentError if the command fails or its output lacks the expected domain and computers."""
+    PS_AD_COMPUTERS queries enabled computer objects in the current domain, with
+    page size 1000 and size limit 20000. These are directory records, not a live
+    host scan. Parse the last stdout line. Require a truthy domain and computers
+    list, without validating row shapes or proving the directory result complete.
+    Failed command/outer shape raises AgentError. Runner errors can propagate."""
     rc, out = ps(run or sh, PS_AD_COMPUTERS)
     try:
         d = json.loads(out.strip().splitlines()[-1]) if rc == 0 else None
@@ -2683,7 +3026,10 @@ def ad_computers(run=None):
 
 
 def windows_version_key(v):
-    """Return dotted numeric version v as an integer tuple for ordering; malformed components raise ValueError."""
+    """Return tuple(int(component)) for every dotted component of str(v).
+
+    Preserve tuple length for lexicographic comparison. No padding, nonnegative
+    check or build grammar validation occurs. Malformed components raise ValueError."""
     return tuple(int(x) for x in str(v).split("."))
 
 
@@ -2741,7 +3087,14 @@ _ED_BASE = _ed_decode((4 * pow(5, _P - 2, _P) % _P).to_bytes(32, "little"))
 
 
 def ed25519_verify(pub, msg, sig):
-    """True only for a valid signature by pub over msg; never raises on malformed input."""
+    """Return the Ed25519 verification equation result for pub, msg and sig.
+
+    pub/sig must be bytes of length 32/64, otherwise return False. Reject invalid
+    point encodings and scalar S >= L. msg must support byte concatenation and is
+    not bounded here. Invalid message types can raise TypeError after key/signature
+    shape checks. No low-order/subgroup rejection or public-key trust selection
+    occurs. Release verification supplies pinned public keys separately.
+    """
     if not (isinstance(pub, bytes) and isinstance(sig, bytes)) or len(pub) != 32 or len(sig) != 64:
         return False
     a, r = _ed_decode(pub), _ed_decode(sig[:32])
@@ -2765,8 +3118,13 @@ SAFE_PROXY = re.compile(r"^https?://[A-Za-z0-9.\-\[\]:]{1,255}\Z")
 
 
 def winhttp_proxy(run=None):
-    """The machine-wide WinHTTP proxy (what Windows Update uses as SYSTEM), or None. `netsh` prints either one
-    host:port or per-scheme entries; only an https= entry or a single host:port is used."""
+    """Return the first usable machine WinHTTP proxy string, or None.
+
+    run defaults to sh and accepts argv. Parse netsh's first label/value line only on status
+    zero. For per-scheme text, choose an exact https= entry. Prefix bare targets with http://.
+    This helper does not validate the returned URL or change the opener. Callback/type errors
+    can propagate. The command reads local proxy configuration.
+    """
     rc, out = (run or sh)(["netsh", "winhttp", "show", "proxy"])
     m = re.search(r"(?m)^[ \t]*[^:\r\n]+:[ \t]*(\S+)", out) if rc == 0 else None  # first "label: value" line: labels are localised
     if not m:
@@ -2778,8 +3136,14 @@ def winhttp_proxy(run=None):
 
 
 def use_proxy(url, run=None):
-    """Send every server call through `url` (the enrol --proxy), else the WinHTTP proxy on Windows. TLS stays end to
-    end (CONNECT); plain-http servers are refused through a proxy, so the agent key never crosses it in clear."""
+    """Select proxy string url or machine WinHTTP fallback on Windows and return it or None.
+
+    run is the optional WinHTTP command callback. A selected URL must match SAFE_PROXY or
+    AgentError is raised. Selection replaces process-global _proxy and _opener, with redirects
+    disabled. No selection returns None without resetting an earlier opener/proxy.
+    Initial default openers can use environment proxy settings. No persistent settings are
+    written. Callback/type/opener-construction errors can propagate.
+    """
     global _opener, _proxy
     url = url or (winhttp_proxy(run) if os.name == "nt" else None)
     if not url:
@@ -2792,7 +3156,14 @@ def use_proxy(url, run=None):
 
 
 class run_lock:
-    """Single remediation run at a time (cron/timer overlap)."""
+    """Context manager for a nonblocking process run lock in a state directory.
+
+    Optional class/instance dir selects a path. Otherwise use platform default state storage.
+    Entering creates parents, opens/truncates agent.lock and tries the platform advisory lock.
+    OSError becomes AgentError. Failed entry can retain an open handle until object cleanup.
+    Successful exit closes the handle and does not suppress exceptions. The file remains.
+    This only coordinates callers that acquire this same lock. It does not guard every command.
+    """
     dir = None  # default: the agent's state folder
 
     def __enter__(self):
@@ -2818,7 +3189,17 @@ class run_lock:
 
 
 def post(server, path, body, insecure_http, key=None, raw=False, limit=MAX_AGENT_BYTES):
-    """POST JSON, or GET when body is None; raw=True returns the response bytes (capped) instead of parsed JSON."""
+    """Request server+path using the process opener and return parsed JSON or raw bytes.
+
+    server is an HTTPS origin string, or HTTP when insecure_http is true. A selected _proxy
+    still refuses HTTP. path is concatenated after trailing server slashes are removed.
+    body=None uses GET, otherwise POST with JSON. Truthy key supplies Bearer authorization.
+    raw returns bytes. limit defaults to 5MiB and should be a nonnegative integer. Read one
+    extra byte to detect excess. Arguments and JSON responses receive no schema validation.
+    Pass timeout=60 to the opener. Default redirects are disabled. Empty JSON bodies become {}.
+    HTTP/URL/OSError and response decode/value errors become AgentError. Request preparation
+    and serialization errors can propagate separately. No retry or request-body cap exists.
+    """
     if not server.startswith("https://") and not (insecure_http and server.startswith("http://")):
         raise AgentError(f"refusing non-HTTPS server {server!r} (use --insecure-http for local dev)")
     if _proxy and not server.startswith("https://"):
@@ -2841,7 +3222,12 @@ def post(server, path, body, insecure_http, key=None, raw=False, limit=MAX_AGENT
 
 
 def version_tuple(v):
-    """Return a three-integer tuple for a major.minor.patch string, otherwise None."""
+    """Return three integer components for an exact major.minor.patch string.
+
+    Other values return None. Leading zeros and Unicode decimal digits are
+    accepted by the regex/int conversion. No SemVer suffixes or numeric bounds
+    are enforced. Extremely long integer text can raise ValueError.
+    """
     m = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", v) if isinstance(v, str) else None
     return tuple(int(x) for x in m.groups()) if m else None
 
@@ -2850,7 +3236,15 @@ RUNTIME_ARCH = {"AMD64": "amd64", "ARM64": "arm64", "X86": "win32"}  # platform.
 
 
 def verify_release(manifest, sig_b64, keys=None):
-    """The fields of a release manifest signed by a pinned key over these exact bytes; AgentError otherwise."""
+    """Return validated manifest fields after exact-byte Ed25519 verification.
+
+    manifest is bytes and sig_b64 is strict base64 text/bytes. keys optionally
+    supplies public-key hex strings, otherwise RELEASE_KEYS applies. Require version,
+    agent_version, agent_sha256 and commit. Optional runtimes must be a nonempty
+    subset of supported architectures with version/hash fields. Channel is not
+    validated here. Unknown fields remain. Does not read files or fetch updates.
+    Refused signatures/field shapes raise AgentError. Invalid key hex, signed bad
+    JSON and incompatible argument types can propagate ValueError or TypeError."""
     keys = RELEASE_KEYS if keys is None else keys
     if not keys:
         raise AgentError("no release keys are pinned in this agent")
@@ -2882,7 +3276,11 @@ def release_channel(rel):
 
 
 def channel_ok(rel, cfg):
-    """A host takes its channel and anything more proven. Enrolled before channels existed: everything, as then."""
+    """Return whether manifest dictionary rel is eligible for configuration dictionary cfg.
+
+    Missing/unknown channels default to preview for both dictionaries. A host accepts
+    its channel and more stable channels. Does not verify signatures or mutate inputs.
+    Incompatible mappings can raise AttributeError."""
     mine = cfg.get("channel") if cfg.get("channel") in CHANNELS else "preview"
     return CHANNELS.index(release_channel(rel)) >= CHANNELS.index(mine)
 
@@ -2907,8 +3305,19 @@ def _remember_failed(memo, sha):
 def self_update(cfg, insecure_http, path=None, keys=None, smoke=None, memo=None):
     """Replace this agent file with a newer signed release relayed by the server.
 
-    Returns (new_version, None) after an update, (None, None) when there's nothing to do, or (None, reason) when an update
-    was refused or failed; the working agent is then left exactly as it was and the run carries on with it."""
+    cfg supplies server, agent_key and local update/channel choices. insecure_http
+    permits the client's development HTTP mode. path optionally names the agent file,
+    keys overrides public hex keys, smoke(path) returns a problem or None, and memo
+    optionally names the failed-hash cache file. Defaults use this file, pinned keys,
+    a collect subprocess, and failed-updates.json beside configuration.
+
+    Return (new_version, None) on agent replacement, (None, None) for no agent change,
+    or (None, reason) for a handled refusal/failure. Runtime update can precede the
+    agent decision and can change runtime/tasks even without an agent replacement.
+    Verify channel, newer agent version, signature/hash and self-test before replacing
+    the agent. Keep path.prev. A failed self-test delays that hash for 24 hours.
+    Errors within the update attempt become a reason of at most 500 characters.
+    Invalid cfg/path inputs before that protected attempt can still raise errors."""
     if not cfg.get("auto_update", True):
         return None, None
     if os.name == "nt" and os.path.exists(WIN_STATE):  # never swap the agent while a Windows job waits for its reboot
@@ -2972,10 +3381,20 @@ def _runtime_dirs(root):
 
 
 def runtime_update(cfg, rel, insecure_http, run=None, root=None, executable=None, smoke=None, machine=None):
-    """Windows: move to the signed release's runtime when it isn't the one running (also off a system Python), the way
-    the agent replaces itself: hash from the signed manifest, Python Software Foundation signature on every program file,
-    the agent's own `collect` on it, then the scheduled tasks re-registered on it. Never while a Windows job waits for its
-    reboot; never to an older Python. Returns a problem (the host keeps what it had) or None."""
+    """Select/install a Windows runtime from previously verified manifest dictionary rel.
+
+    cfg supplies server and scheduling choices. insecure_http controls development
+    transport. Optional run executes shell commands, root names runtime storage,
+    executable identifies current Python, smoke(agent_path, python_path) tests it,
+    and machine overrides the architecture string (also permits non-Windows tests).
+    Defaults use sh, RUNTIME_ROOT, sys.executable, collect, and platform.machine().
+    Skip missing architectures and pending Windows jobs. Block older Python only
+    when the current executable is already bundled under root. Remove unused old
+    runtime directories, verify bytes/program signatures, self-test and reschedule.
+    Mutate cfg.python on success. Scheduling can persist configuration and task changes.
+    Return None on success/no-op or a problem string on handled failure. Cleanup is
+    not a transaction over task/config changes. Malformed inputs before the protected
+    download/install attempt can raise attribute, type, path or conversion errors."""
     arch = RUNTIME_ARCH.get((machine or platform.machine()).upper())
     want = (rel.get("runtimes") or {}).get(arch)
     if (os.name != "nt" and machine is None) or not want or os.path.exists(WIN_STATE):
@@ -3040,9 +3459,12 @@ def _smoke_test(path, python=None):
 
 
 def load_config():
-    """Return the saved configuration dictionary and activate its proxy, update source, and log redaction key.
+    """Read the platform configuration JSON, apply proxy state and return its decoded value.
 
-    Raise AgentError for unreadable or invalid JSON; malformed configuration structure can raise other errors."""
+    Expected shape is a dictionary, but it is not validated. Set global Windows update source
+    and agent-key redaction state after proxy selection. File OSError/JSON ValueError become
+    AgentError. Proxy, structure and other errors can propagate. No file writes occur.
+    """
     try:
         with open(config_path()) as f:
             cfg = json.load(f)
@@ -3056,10 +3478,13 @@ def load_config():
 
 
 def save_config(cfg):
-    """Write configuration dictionary cfg with restricted permissions and return its filename.
+    """Write configuration cfg as JSON and return the platform path string.
 
-    Lock down the Windows state directory before writing. Raise AgentError for file I/O failure;
-    serialization and directory-security errors propagate."""
+    Secure the Windows directory first. Create parents, truncate/create the file, serialize,
+    then chmod to 0600. Existing content can be lost on failure. Writes are not atomic.
+    File OSError becomes AgentError. JSON/type and directory-security errors can propagate.
+    This does not enrol an asset or validate cfg. Windows ACL behavior belongs to its helper.
+    """
     p = config_path()
     if os.name == "nt":  # chmod is a no-op on Windows and ProgramData is open to all users: lock it before the key lands
         secure_windows_dir(d=os.path.dirname(p))
@@ -3086,7 +3511,11 @@ Walk '%DIR%'
 
 
 def is_link(path):
-    """Symlink or junction (any reparse point): something to remove, never to follow."""
+    """Return whether current lstat identifies path as a symlink or Windows reparse point.
+
+    OSError, including missing/inaccessible paths, returns False. Other errors propagate.
+    This is a point-in-time check, not a lock on a later path operation. No writes occur.
+    """
     try:
         st = os.lstat(path)
     except OSError:
@@ -3095,16 +3524,28 @@ def is_link(path):
 
 
 def remove_link(path):
-    """Remove path using rmdir for a directory or remove otherwise; filesystem errors propagate."""
+    """Remove path using rmdir when isdir is true, otherwise remove; return None.
+
+    Directory detection can follow the target. The removal call and platform determine whether
+    it succeeds for that link type. No target contents are recursively deleted by this helper.
+    Filesystem/type errors propagate. The caller supplies the path and guards its ownership.
+    """
     (os.rmdir if os.path.isdir(path) else os.remove)(path)  # removes the link itself, not what it points at
 
 
 def secure_windows_dir(run=sh, d=None):
-    """ProgramData lets every user create files and folders, including this folder before the agent is installed, and a
-    file planted in it would be read by the SYSTEM task (a pending job decides what runs after a reboot). So, in order:
-    take the folder (Administrators own it, every explicit ACE dropped, then only SYSTEM and Administrators have access),
-    list what's inside, give all of it to Administrators, then remove links and anything a non-admin created.
-    Nothing outside the folder is ever touched. Returns the paths removed."""
+    """Apply Windows state-directory ownership/ACL commands and attempt selected child cleanup.
+
+    run accepts argv and PowerShell runner keywords, returning (status,output). d defaults to
+    WIN_STATE's parent. Remove a linked root, create the directory, set/reset root ownership
+    and ACLs, read original descendant owners, then reset descendant ownership/ACLs.
+    Attempt removal of listed links and entries whose recorded owners are outside TRUSTED_OWNERS.
+    Return selected cleanup paths. Ignored directory-removal errors mean this is not proof
+    that every path disappeared. Earlier ACL/deletion effects remain after a later failure.
+    Nonzero command status raises AgentError. Filesystem, malformed listing and runner errors
+    can propagate. Listing/point-in-time path guards are not a general filesystem isolation
+    proof. The supplied runner and directory must be trusted. No rollback occurs.
+    """
     d = d or os.path.dirname(WIN_STATE)
     if is_link(d):  # our folder itself planted as a junction would aim the lockdown, and our files, somewhere else
         remove_link(d)
@@ -3140,7 +3581,7 @@ def secure_windows_dir(run=sh, d=None):
             shutil.rmtree(path, ignore_errors=True) if os.path.isdir(path) else os.remove(path)
         removed.append(path)
     for path in removed:
-        print(f"removed {path}: not created by SYSTEM or Administrators", file=sys.stderr)
+        print(f"cleanup attempted for {path}: link or untrusted recorded owner", file=sys.stderr)
     return removed
 
 
@@ -3163,8 +3604,15 @@ def _join(args):
 
 
 def schedule_units(cfg):
-    """systemd units: inventory every 6 hours (remediate on opted-in hosts, which re-reports too), and on opted-in
-    hosts a 15-minute poll that only fetches approved jobs, so a fix starts within minutes of approval."""
+    """Return filename-to-text systemd unit definitions from trusted configuration cfg.
+
+    Expect server and optional python/allow_remediation fields. Use the configured interpreter
+    or sys.executable and this agent's absolute path. Main command is remediate when opted in,
+    otherwise report. Main timer uses 5min boot delay, 6h activation interval and 15min jitter.
+    Opt-in adds a 2min boot/15min interval job poll with 2min jitter and --if-jobs.
+    No files are written or services enabled. Template/type/key errors can propagate.
+    Argument quoting handles spaces only, not arbitrary shell/systemd input syntax.
+    """
     cmd = _join(_agent_cmd(cfg))
     verb = "remediate" if cfg.get("allow_remediation") else "report"
     units = {"nimstead-agent.service": _SERVICE.format(desc="Nimstead agent", cmd=f"{cmd} {verb}"),
@@ -3182,8 +3630,15 @@ def _ps_quote(v):
 
 
 def schedule_windows_script(cfg):
-    """SYSTEM scheduled tasks: every 6 hours and at startup (so an update that needed a restart is finished and reported
-    right after it), plus the 15-minute job poll on opted-in hosts."""
+    """Return PowerShell registration text for SYSTEM tasks from trusted cfg.
+
+    Use the selected interpreter and agent arguments. Main task combines startup and a
+    repeating 6h trigger starting after 5min, with 30min periodic random delay. Startup has
+    no added delay. Opt-in adds a 15min job poll starting after 2min with 2min random delay.
+    Settings request priority 7, StartWhenAvailable and IgnoreNew. Without opt-in, remove the
+    old jobs task. No task is created until the caller executes the text. Quoting is limited
+    by the argument builder. Config/type errors can propagate.
+    """
     py, *args = _agent_cmd(cfg)
     base = _join(args)
     verb = "remediate" if cfg.get("allow_remediation") else "report"
@@ -3213,7 +3668,18 @@ def _in_program_files(exe):
 
 
 def schedule(cfg, run=sh, unit_dir=SYSTEMD_DIR, systemd=None):
-    """Install (or update) this host's schedule and return what was done. Records SCHEDULE_VERSION in the config."""
+    """Install a schedule from cfg and return a status/instruction string.
+
+    run accepts argv/runner keywords. unit_dir defaults to SYSTEMD_DIR and must exist for unit
+    writes. systemd=None detects systemctl plus /run/systemd/system on non-Windows.
+    Windows checks the interpreter's lexical Program Files prefix, then invokes registration.
+    Non-systemd returns cron instructions without installation or a config-version write.
+    Systemd writes units sequentially, reloads and enables timers. Removing old jobs units
+    ignores a disable command's status. Successful Windows/systemd paths save schedule_version.
+    No rollback or atomic multi-file update exists. Command refusal becomes AgentError where
+    checked. Filesystem/runner/config errors can propagate after partial installation.
+    Success does not prove task execution, health or a completed fix.
+    """
     remediation = bool(cfg.get("allow_remediation"))
     poll = ", approved fixes checked every 15 minutes" if remediation else ""
     if os.name == "nt":
@@ -3253,7 +3719,18 @@ def schedule(cfg, run=sh, unit_dir=SYSTEMD_DIR, systemd=None):
 
 
 def uninstall(run=sh, unit_dir=SYSTEMD_DIR, state_dirs=None, agent_path=None):
-    """Remove the schedule, config, key, saved outcomes and rollback copies, and the agent itself. Returns what was removed."""
+    """Attempt local agent/schedule/state cleanup and return recorded removed/deferred paths.
+
+    run accepts argv/runner keywords. unit_dir selects systemd units. state_dirs and agent_path
+    use platform defaults when falsey. Windows refuses whenever WIN_STATE exists, before
+    cleanup. Scheduler unregister/disable return codes are not checked. Cron is not managed.
+    Remove nonlinked state directories, agent files and selected runtime directories. The
+    running Windows runtime uses an unmonitored detached cleanup attempt. Its returned label
+    is not proof of completion. Unit/task removals are not all represented in the result list.
+    No server asset or ledger deletion occurs. Side effects are not rolled back. Some cleanup
+    OSError becomes AgentError with progress text. Earlier unit/runner errors can propagate
+    separately. Call only with trusted installation paths and appropriate privileges.
+    """
     if os.name == "nt" and os.path.exists(WIN_STATE):
         raise AgentError("a Windows update is waiting for its restart; uninstall after it has finished and reported")
     if os.name == "nt":
@@ -3310,16 +3787,27 @@ _update_error = None  # this run's self-update failure, reported with the invent
 
 def inventory(cfg):
     # auto_update None = can't (no pinned keys), so the server asks for a reinstall rather than blaming an opt-out
-    """Return the base inventory plus update status and opt-in scans configured in dictionary cfg.
+    """Return collected inventory with local update state and optional configured scans.
 
-    Reads host state; errors follow the underlying collectors. Does not itself upload the result."""
+    cfg is a dictionary of local flags/roots. auto_update uses its truthy/default value when
+    release keys exist, otherwise None. update_error uses this process's last update result.
+    with_apps adds optional data and can mutate the collected nested dictionaries. Errors
+    follow collectors/scanners. This helper performs no upload.
+    """
     inv = {**collect(), "auto_update": bool(cfg.get("auto_update", True)) if RELEASE_KEYS else None, "update_error": _update_error}
     return with_apps(inv, cfg)
 
 
 def with_apps(inv, cfg):
-    """Software outside the package manager, from the local opt-in scans only (enroll --scan-jars, --scan-apps; the server can't turn
-    them on). Each says in the collection document what it read, and `off` when it didn't run, so off reads as not assessed (DECISIONS 92)."""
+    """Extend and return the same inventory dictionary inv using local configuration cfg.
+
+    Truthy scan_jars/scan_apps enable metadata scans. app_roots supplies extra application
+    roots. Ownership lookup runs when either scan is enabled. No package code is executed.
+    Replace inv.packages with a combined list. Add scan facts and mutate existing collection
+    sources when that mapping exists. Disabled sources receive off/count=0 lines.
+    Do not synthesize a missing collection mapping. Scanner/type/key errors can propagate.
+    No upload occurs. Callback/scanner contracts determine partial coverage.
+    """
     lines = {k: {"state": "off", "count": 0} for k in ("java_archives", "python_packages", "npm_packages")}
     pkgs, facts = [], {}
     if cfg.get("scan_jars") or cfg.get("scan_apps"):
@@ -3354,7 +3842,12 @@ def _where(path):
 
 
 def net_mounts():
-    """Return mountpoint strings for recognised network filesystems in /proc/mounts, or [] on I/O failure."""
+    """Return mountpoint strings for recognized network filesystem rows in /proc/mounts.
+
+    NET_FS is a finite allowlist. Escaped mountpoint text is not decoded. OSError returns an
+    empty list. Decode/type errors can propagate. This is not complete network-mount discovery.
+    No writes or network requests occur.
+    """
     try:
         with open("/proc/mounts") as f:
             return [ln.split()[1] for ln in f if len(ln.split()) > 2 and ln.split()[2] in NET_FS]
@@ -3370,7 +3863,11 @@ MAX_NESTED = 50 * 1024 * 1024
 
 
 def local_roots():
-    """Fixed local drives on Windows, / elsewhere (network mounts are skipped while walking)."""
+    """Return slash on non-Windows, otherwise fixed-drive roots from C through Z.
+
+    Windows uses GetDriveTypeW through ctypes. Exclude A/B and nonfixed drive types.
+    No mount/link validation occurs here. Platform/API errors can propagate. No writes occur.
+    """
     if os.name != "nt":
         return ["/"]
     import ctypes
@@ -3378,6 +3875,12 @@ def local_roots():
 
 
 def _poms(z, where, out):
+    """Add validated Maven coordinate/version/location tuples from ZipFile z to out.
+
+    where is the location label. Read matching pom.properties entries with declared size at
+    most 64KiB. Later duplicate properties win. Skip listed read/ZIP/key errors. Other failures
+    can propagate. No extraction or package execution occurs.
+    """
     for n in z.namelist():
         if (m := POM.search(n)) and z.getinfo(n).file_size <= 64 * 1024:  # no zip bomb in a properties file
             try:
@@ -3406,9 +3909,19 @@ def _seen_filesystem(d, devs, top=False):
 
 
 def scan_jars(roots, max_seconds=300, max_files=500_000, mounts=None, owned=lambda p: False):
-    """([Maven packages], summary). Stops at the time or file budget and says so; never follows links or enters
-    network mounts. One package per file it was found in (T19), named in its `source`; a jar the OS package manager
-    owns is left to it (R7.9) and counted."""
+    """Return (Maven package dictionaries, scan summary) from root path strings.
+
+    max_seconds defaults to 300 and max_files to 500000. Budgets are checked between file
+    entries, not during traversal, ZIP I/O or nested parsing. mounts=None reads net_mounts.
+    owned(path) excludes known OS-owned archives. Keep locations in source, truncated to 255
+    characters. Deduplicate by full coordinate/version/location before output truncation.
+    Read jar/war/ear metadata and one nested jar level. Declared nested size is limited to
+    50MiB and pom.properties size to 64KiB. Prune observed child links and selected path/mount
+    patterns, without guaranteeing isolation for caller roots or changing filesystem paths.
+    Summary complete means no budget stop. Unreadable/corrupt archives and walk failures can
+    be skipped without making it false. Unexpected callback/ZIP/type errors can propagate.
+    No archive extraction, package execution, host writes or upload occurs.
+    """
     if mounts is None:
         mounts = net_mounts()
     start, files, found, partial, skipped, devs = time.time(), 0, {}, None, 0, set()
@@ -3470,9 +3983,15 @@ RPM_TREES = re.compile(r"/usr/lib(?:64)?/python3[^/]*/site-packages/|/usr/(?:sha
 
 
 def package_owned(dpkg_info=DPKG_INFO, apk_db=APK_DB, which=shutil.which, nt=os.name == "nt"):
-    """(path -> True when the OS package manager owns it, problem). The package manager wins (spec R7.9): what it installed is
-    judged against the distribution's advisories, which know its backports. dpkg's and apk's own file lists are read as files.
-    shortcut: rpm by location, so a `pip install --prefix /usr` there is left to rpm; read rpm's database once it's readable without rpm."""
+    """Return (ownership predicate, optional problem string) for package metadata paths.
+
+    dpkg_info and apk_db select local file lists. which detects rpm. nt defaults to the
+    platform value captured at import and returns an always-false predicate when true.
+    Prefer apk data, then dpkg lists, then an RPM_TREES location heuristic. Keep selected
+    metadata/archive paths only. Predicate tests exact path or its package.json child.
+    OSError returns the partial known set plus a problem. No query verifies RPM ownership.
+    Type/other errors can propagate. No package changes or uploads occur.
+    """
     if nt:
         return (lambda p: False), None
     owned = set()
@@ -3499,7 +4018,12 @@ def package_owned(dpkg_info=DPKG_INFO, apk_db=APK_DB, which=shutil.which, nt=os.
 
 
 def regular(path):
-    """A plain file, not followed: a FIFO a user planted in a scanned folder would block the root agent's open() for good."""
+    """Return whether lstat currently identifies path as a regular file.
+
+    OSError returns False, including missing paths. Symlink/FIFO entries return False.
+    The check does not bind a later open or prevent concurrent replacement. Other errors
+    can propagate. No file contents are read or changed.
+    """
     try:
         return stat.S_ISREG(os.lstat(path).st_mode)
     except OSError:
@@ -3507,7 +4031,13 @@ def regular(path):
 
 
 def _dist_meta(path):
-    """(PEP 503 name, version) from a core-metadata file's headers (METADATA, PKG-INFO), or None."""
+    """Return normalized Python name/version from local metadata path, or None.
+
+    Require a current regular-file check. Read at most 65536 text characters with replacement
+    decoding. Accept exact Name/Version headers before the first blank line, with first values
+    winning. Normalize name separators/case and validate declared shapes, not installed state.
+    Listed I/O problems return None. Paths can change after checks. No code is executed.
+    """
     if not regular(path):
         return None
     try:
@@ -3529,6 +4059,12 @@ def _dist_meta(path):
 
 
 def _package_json(path):
+    """Return validated npm name/version strings from path, otherwise None.
+
+    Require a current regular-file and at-most-1MiB size check, then json.load the file.
+    This is not a race-free read cap. OSError/ValueError return None. Recursion and unexpected
+    errors can propagate. No package code is executed and installed/runtime state is not proved.
+    """
     if not regular(path):
         return None
     try:
@@ -3649,9 +4185,21 @@ def _app_dirs(roots, b, mounts, missing, known):
 
 def scan_apps(roots, owned=lambda p: False, problems=(), seconds=APP_MAX_SECONDS, entries=APP_MAX_ENTRIES, max_packages=APP_MAX_PACKAGES,
               mounts=None, known=None):
-    """([PyPI and npm packages, each with where it is in `source`], python line, npm line, summary). Reads only: the well-known install
-    folders (`known`: their globs) and the configured roots, bounded in depth, entries, file size, packages and time, and says where it
-    stopped (DECISIONS 92)."""
+    """Return packages, Python source line, npm source line and summary for metadata scans.
+
+    roots is a sequence of extra paths. owned(path) excludes known OS-owned metadata.
+    problems supplies shared warning strings. seconds/entries share one discovery/scan budget,
+    default 120/300000. max_packages defaults to 20000 and caps the returned sorted list.
+    The package threshold is checked after a folder, not each install. Internal work can exceed
+    it. mounts=None uses net_mounts. known is a pair of Python/npm glob sequences or defaults.
+    Recognized/default or direct install-folder roots can bypass discovery walk exclusions.
+    Extra-root discovery depth is eight. Nested node_modules depth uses NPM_MAX_DEPTH=6.
+    Metadata reads, directory listing and callbacks are not hard wall-clock bounded.
+    Return source lines using retained package counts, unread counts, budget stops and shared
+    problems. Summary reports owned/folders/entries/seconds and at most 20 root labels.
+    Do not execute discovered application code, write host files or upload. Callback/type,
+    recursion and unexpected filesystem errors can propagate. Inputs are not mutated.
+    """
     b, missing = _Budget(seconds, entries), [*problems]
     py_dirs, npm_dirs = _app_dirs(roots, b, net_mounts() if mounts is None else mounts, missing, known)
     out, st, stopped = {}, {"PyPI": {"unread": 0, "owned": 0}, "npm": {"unread": 0, "owned": 0}}, {}
@@ -3669,7 +4217,7 @@ def scan_apps(roots, owned=lambda p: False, problems=(), seconds=APP_MAX_SECONDS
                           "seconds": int(time.time() - b.start), "roots": [r[-300:] for r in roots[:20]]}
 
 
-# ---- doctor: reads this host and changes nothing (DECISIONS 69) ---------------------
+# ---- doctor: setup diagnostics without repairs or agent-key upload ----------------
 MAX_CLOCK_SKEW = 300  # seconds
 PS_DOCTOR_TASKS = "Get-ScheduledTask | Where-Object TaskName -like 'Nimstead *' | ForEach-Object { $_.TaskName + '|' + $_.State }"
 PS_DOCTOR_WU = "$s = Get-Service -Name wuauserv -ErrorAction Stop; $s.Status.ToString() + '|' + $s.StartType"
@@ -3704,8 +4252,21 @@ def _server_reply(url):
 
 def doctor(insecure_http=False, run=sh, read=_read_config, fetch=_server_reply, connect=socket.create_connection, now=time.time,
            disk=free_bytes, exists=os.path.exists, windows=None, state_dir=None, systemd=None, version=None):
-    """Print ok or FAIL (with one line on how to fix it) for each check; returns the exit code. Only reads: no lockdown,
-    no agent key sent, no log written."""
+    """Print diagnostic results and return 1 if a check fails, otherwise 0.
+
+    insecure_http permits the local-development HTTP health check. run accepts command argv
+    and runner keywords. read() supplies a config dictionary. fetch(url) returns status/Date.
+    connect(address,timeout) returns a closable socket. now() supplies epoch seconds. disk(path)
+    returns free bytes and exists(path) checks paths. Defaults use local tools/files/network.
+    windows selects Windows checks, otherwise os.name decides. state_dir overrides the state
+    folder. systemd overrides detection. version overrides the runtime major/minor sequence.
+    Check config readability, selected proxy, health, clock, schedule, disk and runtime. Windows
+    adds ACL and Update-service checks. A missing systemd environment skips cron verification.
+    Print per-check exceptions and continue. Do not repair state, send an agent key or write
+    an agent log. Process proxy selection and network/read commands still occur. Injected
+    callbacks control their own side effects. Success does not authenticate the saved key
+    or prove inventory, update, scheduling execution or remediation success.
+    """
     windows = os.name == "nt" if windows is None else windows
     state = state_dir or (os.path.dirname(WIN_STATE) if windows else "/var/lib/nimstead")
     as_admin = "Administrator" if windows else "root"
@@ -3731,7 +4292,7 @@ def doctor(insecure_http=False, run=sh, read=_read_config, fetch=_server_reply, 
         except AgentError as e:
             raise _DoctorFail(str(e), "Rerun enroll with --proxy http://host:port.") from None
         if not url:
-            return "none: connects directly"
+            return "no explicit proxy selected. Environment or existing process settings can still apply"
         u = urllib.parse.urlsplit(url)
         try:
             connect((u.hostname, u.port or (443 if u.scheme == "https" else 80)), 10).close()
@@ -3868,10 +4429,14 @@ def _update_then_rerun(a, argv):
 
 
 def main(argv=None):
-    """Run the CLI with optional argument list argv and return its exit status.
+    """Run CLI arguments argv, or sys.argv[1:] when None, and return a normal command status.
 
-    Logs completion or unexpected failure and disables logging afterwards. Commands can change
-    packages, scheduling, and local state; see each subcommand. Unexpected exceptions propagate."""
+    Commands select collection, enrolment, reporting, scheduling, updates and host changes.
+    AgentError inside dispatch prints an error and returns 1. Selected job/problem outcomes
+    return 2. Argparse SystemExit and unexpected errors can propagate. Logging records normal
+    completion or unexpected Exception where enabled, then finally disables the logging flag.
+    This does not imply every command or failure writes a log. See agent-cli.md for scope.
+    """
     global _log_on
     try:
         rc = _main(argv)
@@ -3885,18 +4450,25 @@ def main(argv=None):
 
 
 def app_flags(p):
-    """Add opt-in Python/npm collection options to argparse parser p; return None."""
+    """Add scan-apps and repeatable app-root arguments to parser p in place; return None.
+
+    p is an argparse-compatible parser. Existing-option conflicts and parser errors propagate.
+    This helper defines options only. It does not inspect roots or enable collection.
+    """
     p.add_argument("--scan-apps", action="store_true",
                    help="also read Python and npm packages' own metadata (site-packages, node_modules) in the usual install folders "
-                        "and under each --app-root, within a 2-minute budget; nothing is run")
+                        "and under each --app-root, with a 2-minute soft budget")
     p.add_argument("--app-root", action="append", default=[], metavar="DIR",
                    help="with --scan-apps: a folder holding virtualenvs or projects, searched 8 levels deep (repeatable)")
 
 
 def app_roots(a):
-    """Return at most 20 absolute application-root paths from argparse Namespace a.
+    """Return absolute paths for the first 20 app_root strings in argparse Namespace a.
 
-    Raise AgentError if app_root is supplied without scan_apps."""
+    Require scan_apps when app_root is nonempty, otherwise raise AgentError. Extra roots are
+    silently omitted. Do not expand tildes, check existence or deduplicate. Current-directory
+    and malformed-namespace/path errors can propagate. No filesystem writes occur.
+    """
     if a.app_root and not a.scan_apps:
         raise AgentError("--app-root needs --scan-apps")
     return [os.path.abspath(r) for r in a.app_root[:20]]
@@ -3919,7 +4491,7 @@ def _main(argv):
     en.add_argument("--ad-discovery", action="store_true",
                     help="Windows, domain member: also report the domain's enabled computers, to list those with no agent")
     en.add_argument("--scan-jars", action="store_true",
-                    help="also look for Java libraries (jar/war/ear) on local disks at each report, within a 5-minute budget")
+                    help="also look for Java libraries (jar/war/ear) on local disks at each report, with a 5-minute soft budget")
     app_flags(en)
     en.add_argument("--no-auto-update", action="store_true",
                     help="never replace this agent with newer signed releases (default: update automatically)")
@@ -3931,7 +4503,7 @@ def _main(argv):
     co = sub.add_parser("collect", help="print this host's inventory; the opt-in scans run only if named here")
     co.add_argument("--scan-jars", action="store_true", help="include Java libraries on local disks")
     app_flags(co)
-    sub.add_parser("doctor", help="check this host's setup and print how to fix each failure; changes nothing")
+    sub.add_parser("doctor", help="check this host's setup without repairs or agent-key upload")
     sr = sub.add_parser("scan-remote", help="Windows: scan other hosts with no agent, over PowerShell remoting, as you (no stored credentials)")
     sr.add_argument("--server", help="report here; NIMSTEAD_TOKEN enrols hosts the first time")
     sr.add_argument("--print", action="store_true", dest="print_only", help="print each host's inventory instead of reporting it")
@@ -3942,9 +4514,9 @@ def _main(argv):
     un.add_argument("--yes", action="store_true", help="confirm")
     sc = sub.add_parser("schedule", help="install or update this host's systemd timers / scheduled tasks")
     sc.add_argument("--if-changed", action="store_true", help="only if this agent's schedule differs from the installed one")
-    rj = sub.add_parser("run-job", help="run one job read as JSON from stdin, print the result JSON (no network; sandbox testing)")
+    rj = sub.add_parser("run-job", help="run one JSON job from stdin without Assure API reporting (manager commands can use network; sandbox testing)")
     rj.add_argument("--yes", action="store_true", help="confirm: this changes installed packages on this host")
-    sub.add_parser("resume-job", help="Windows: continue the pending job after its reboot (no network)")
+    sub.add_parser("resume-job", help="Windows: continue the pending job after reboot without Assure API reporting")
     vr = sub.add_parser("verify-release", help="check a release manifest's signature against the pinned keys; print it if valid")
     vr.add_argument("manifest")
     vr.add_argument("sig")
@@ -3989,7 +4561,7 @@ def _main(argv):
                 raise AgentError("uninstall removes the agent and its key from this host; pass --yes to confirm")
             for r in uninstall():
                 print(f"removed {r}")
-            print("Nimstead agent uninstalled. Delete this host on the Assets page to remove its findings and history.")
+            print("Nimstead agent uninstalled. Delete this host on the Assets page to remove its findings, inventory, reports and jobs. Ledger events remain.")
         elif a.cmd == "schedule":
             cfg = load_config()
             if not (a.if_changed and cfg.get("schedule_version") == SCHEDULE_VERSION):

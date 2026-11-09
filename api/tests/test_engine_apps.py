@@ -298,3 +298,12 @@ def test_a_bind_mount_of_a_filesystem_already_walked_isnt_walked_again(monkeypat
     monkeypatch.setattr(agent.os, "stat", lambda d: type("st", (), {"st_dev": dev[d]}))
     devs = set()
     assert [agent._seen_filesystem(d, devs, d == "/") for d in ("/", "/srv", "/mnt/wslg", "/mnt/wslg/distro", "/data")] == [False, False, False, True, False]
+
+
+def test_phase_4_a_component_dropped_from_a_new_sbom_closes(maven_env):  # noqa: F811
+    c = user(maven_env)
+    a = app_asset(c)
+    assert put(c, a["id"], bom(comp(LOG4J))).status_code == 200
+    assert any(f["vuln_id"] == "CVE-2021-44228" for f in c.get("/api/findings", params={"asset_id": a["id"]}).json())
+    assert put(c, a["id"], bom(comp("pkg:maven/com.google.guava/guava@33.0.0-jre"))).status_code == 200  # log4j-core gone
+    assert not any(f["vuln_id"] == "CVE-2021-44228" for f in c.get("/api/findings", params={"asset_id": a["id"]}).json())

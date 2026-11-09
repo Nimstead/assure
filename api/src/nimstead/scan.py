@@ -114,11 +114,39 @@ def _linux_eol(key: tuple) -> bool:
     return key[0] == lifecycle.ECOSYSTEM and key[2].startswith(tuple(f"EOL:{p}-" for p in lifecycle.DISTRO_EOL.values()))
 
 
-def _engine(s: Session, asset: Asset, pkgs: list, matches: list, seen: set, prior: list, cache: dict, keep: bool) -> tuple[list, list]:
+def _closing_index(verdicts: list | None) -> tuple[dict, set] | None:
+    """The engine's answers by finding key, and the products it found not applicable, built once per rescan for _held_open."""
+    if verdicts is None:
+        return None
+    from nimstead.engine.model import Outcome
+    by_key: dict[tuple, list] = defaultdict(list)
+    for v in verdicts:
+        if v.vuln_id:
+            by_key[v.ecosystem, v.product, v.vuln_id].append(v)
+    return by_key, {(v.ecosystem, v.product) for v in verdicts if not v.vuln_id and v.outcome == Outcome.NOT_APPLICABLE}
+
+
+def _held_open(key: tuple, index: tuple[dict, set] | None, asset: Asset) -> str | None:
+    """Phase 4 of tasks/plan-engine-findings.md: why an in-slice finding rescan no longer matches stays open, or None to close it.
+    Closes on a verdict that proves it absent (not vulnerable, or not applicable: removed, or the product not installed); anything
+    else is no evidence of a fix. An old agent without a collection document keeps the earlier rule: it can't say what it read."""
+    from nimstead.engine import parity
+    from nimstead.engine.model import REASONS
+    if index is None or not asset.collection or not parity.in_slice(key[0]):
+        return None
+    answer = index[0].get(key, [])
+    # "end-of-life": a fixed version judged not vulnerable, held back from the report only because the release gets no more advisories
+    if any(v.proves_absent or v.reason == "end-of-life" for v in answer) or key[:2] in index[1]:
+        return None
+    reason = next((v.reason for v in answer if v.reason in REASONS), "not-reassessed")
+    return REASONS[reason][0]
+
+
+def _engine(s: Session, asset: Asset, pkgs: list, matches: list, seen: set, prior: list, cache: dict, keep: bool) -> tuple[list, list, list | None]:
     """The engine decides what opens (phase 3): for the slice it judges, a VULNERABLE verdict opens a finding, a verdict
     that proves it absent drops rescan's match, and no decision (an old agent, a blocked source) leaves rescan's match as it
     was. rescan's own loop is the shadow: a difference neither side explains goes to the ledger once per new inventory
-    (`keep`), not on every hourly re-match. Returns (matches, ledger rows to append). If the engine fails, rescan's matches
+    (`keep`), not on every hourly re-match. Returns (matches, ledger rows, the verdicts closing reads or None for today's rule). If the engine fails, rescan's matches
     open and nothing closes: a crash isn't evidence of a fix (R4.6)."""
     from nimstead import engine
     from nimstead.engine import parity
@@ -128,12 +156,12 @@ def _engine(s: Session, asset: Asset, pkgs: list, matches: list, seen: set, prio
     except Exception:
         log.exception("engine failed on %s; findings from rescan's own matching, none closed", asset.hostname)
         seen.update(prior)
-        return matches, []
+        return matches, [], None
     rows = [("engine_disagrees", {"host": asset.hostname, "agree": p["agree"], "count": len(p["unexplained"]),
                                   "unexplained": p["unexplained"][:20]})] if p["unexplained"] and keep else []
     if not engine_findings():
         seen.update(k for k in prior if _linux_eol(k))  # only the engine judges these: switching it off isn't evidence of a fix
-        return matches, rows
+        return matches, rows, None
     by_key: dict[tuple, list] = defaultdict(list)
     for v in verdicts:
         if v.vuln_id:
@@ -158,7 +186,7 @@ def _engine(s: Session, asset: Asset, pkgs: list, matches: list, seen: set, prio
         recs = [r for r in c.records.get(key[:2], []) if canonical_id(r) == key[2] and not r.get("withdrawn")]
         out.append((key, key[0], key[1], v.version, Match(key[2], sorted(r["id"] for r in recs) or [key[2]], v.fixed, v.summary or "",
                                                          recs[0] if recs else {})))
-    return out, rows
+    return out, rows, verdicts
 
 
 def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dict | None = None) -> dict:
@@ -252,7 +280,7 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
         rec = {"_risk": (x["risk"].score, x["risk"].priority, x["risk"].reasons)} if x.get("risk") else {}
         matches.append((key, x["ecosystem"], x["package"], x["version"],
                         Match(x["vuln_id"], [x["vuln_id"]], x.get("fixed"), x["summary"], rec)))
-    matches, engine_rows = _engine(s, asset, pkgs, matches, seen, prior, advisories, inventory_received)
+    matches, engine_rows, verdicts = _engine(s, asset, pkgs, matches, seen, prior, advisories, inventory_received)
     # exploitation and severity context in three queries, not three lookups per CVE
     cves = sorted({c for *_, m in matches for c in cve_ids(m) if c.startswith("CVE-")})
     kevs, ransomware, epss, nvd = set(), set(), {}, {}
@@ -324,12 +352,17 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
     scan = (asset.facts or {}).get("driver_scan")
     drivers_complete = isinstance(scan, dict) and scan.get("complete") is True
     blocked = unread(asset.collection)  # the latest report's: the hourly re-match reads the same short list
+    index = None  # built on the first finding that needs a closing decision: most rescans close none
     for key, f in existing.items():
         if key[0] == windrivers.ECOSYSTEM and not drivers_complete:  # a scan that failed or stopped early proves nothing is gone
             continue
         if key[0] in blocked:  # e.g. Uninstall access denied: the apps' findings stay as they were until a full read
             continue
         if key not in seen and f.status in ("open", "accepted"):
+            index = index or _closing_index(verdicts)
+            if (why := _held_open(key, index, asset)) is not None:  # phase 4: in the engine's slice, only evidence closes (R4.6)
+                f.reasons = [r for r in f.reasons or [] if not r.startswith("Still open: ")] + [f"Still open: {why}"]
+                continue
             f.status, f.resolved_at = "resolved", t  # inventory proves the vulnerable version is gone
             resolved += 1
             events.append(("finding_resolved", f))

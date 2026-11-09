@@ -1,7 +1,7 @@
 [
   {
     "step": "creating sandbox distro",
-    "name": "nimstead-sbx-3bbf6473",
+    "name": "nimstead-sbx-d98dd5c4",
     "distro": "Debian"
   },
   {
@@ -49,7 +49,7 @@
     "step": "feeds",
     "kev": 1772,
     "osv": {
-      "inserted": 61603,
+      "inserted": 61604,
       "updated": 0,
       "skipped": 0
     },
@@ -81,7 +81,7 @@
       "tomcat": 9,
       "ubuntu": 45
     },
-    "seconds": 17
+    "seconds": 16
   },
   {
     "step": "report",
@@ -590,8 +590,8 @@
     ],
     "vulnerable_installs": 37,
     "not_applicable": 3446,
-    "content_version": "2026-11-08.8e4e016d6d1a",
-    "inventory_sha256": "a3b3c75891bedb4764e5e3ece91b90068a05873945181790506988fe3530c512",
+    "content_version": "2026-11-08.b74a2d4f4d23",
+    "inventory_sha256": "06f35e106f67cf92a8643ebdd4aa1f3b85d0dc886a67cd07d4c253f06a345519",
     "verdicts_sha256": "b988b0517280a0c4d1ec7743224d7cd7db56aaaf710ae4712f3ce4d918ea4832"
   },
   {
@@ -856,6 +856,6 @@
   },
   {
     "step": "sandbox destroyed",
-    "name": "nimstead-sbx-3bbf6473"
+    "name": "nimstead-sbx-d98dd5c4"
   }
 ]

@@ -50,6 +50,8 @@ REASONS = {
     "sbom-unmapped": ("these SBOM components can't be named in an ecosystem the advisories use, so they weren't assessed",
                       "Generate the SBOM with a package URL (purl) for every component"),
     "not-reassessed": ("a finding was open on this, and this scan has no evidence either way", "It stays open. Fix what stopped the scan, then scan again"),
+    "withdrawn": ("no live advisory for this product carries this id any more: withdrawn, or filed again under another id", "Nothing to do; the finding closes"),
+    "removed": ("it's no longer installed: the list that would show it was read in full", "Nothing to do; the finding closes"),
     # network slice (remote prober)
     "port-filtered": ("the port didn't answer in time, so whether this service is exposed couldn't be determined; a drop is not a closed port",
                       "Check from outside whether a firewall drops it. It is not proven closed, so this isn't a clean result"),

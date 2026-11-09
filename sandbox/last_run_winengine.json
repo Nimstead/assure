@@ -2,7 +2,7 @@
   {
     "step": "old 7-Zip",
     "version": "24.08",
-    "output": "ler hash\nStarting package install...\n\n   - \n   \\ \n   | \n                                                                                                                        \nSuccessfully installed\n"
+    "output": "sh\nStarting package install...\n\n   - \n   \\ \n   | \n   / \n                                                                                                                        \nSuccessfully installed\n"
   },
   {
     "step": "feeds",
@@ -13,7 +13,7 @@
       "updated": 0,
       "skipped": 0
     },
-    "nvd": 55004,
+    "nvd": 55074,
     "kev": 1772
   },
   {
@@ -235,8 +235,8 @@
         "action": "Update to 4.18.26060.3008 or later"
       }
     ],
-    "content_version": "2026-11-07.9414a5822df2",
-    "inventory_sha256": "54787bb81789bc6de020404d1dfb1094c060a3462b8ea0503273055553a40a3f",
+    "content_version": "2026-11-07.3546aae94b5b",
+    "inventory_sha256": "6e8d95d5897d80e8bd362190cf8744f02e47e38dd8ea0e0673daf7fdf047e4c5",
     "verdicts_sha256": "4f65766d993bba584765cc3d64ce799ad1481ec60a430b105ced5b86bfbf4994"
   },
   {

@@ -37,6 +37,8 @@ findings from comes from the engine's VULNERABLE verdicts instead of its own mat
 4. **Switch closing** (S): a finding closes only on a NOT_VULNERABLE verdict for it. A CAN'T TELL verdict leaves it open and
    says why on the finding ("the agent couldn't read X"). This is the one behaviour change customers see: fewer false
    "fixed" closures when a collector fails.
+   **Status (2026-11-09):** built (DECISIONS 124). A prior finding whose product isn't installed, with its listing source read in
+   full, is `removed` (not applicable), so uninstalls and upgrades still close. Old agents keep the earlier rule.
 5. **Remove the old loop** (S), one release after 4 with no disagreements.
 
 ## Risks

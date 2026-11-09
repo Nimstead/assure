@@ -1,7 +1,7 @@
 [
   {
     "step": "creating sandbox distro",
-    "name": "nimstead-sbx-46354406",
+    "name": "nimstead-sbx-4cb48806",
     "distro": "AlmaLinux-9"
   },
   {
@@ -81,7 +81,7 @@
       "tomcat": 9,
       "ubuntu": 45
     },
-    "seconds": 10
+    "seconds": 11
   },
   {
     "step": "report",
@@ -524,8 +524,8 @@
     ],
     "vulnerable_installs": 31,
     "not_applicable": 2986,
-    "content_version": "2026-11-06.f0c3ca540106",
-    "inventory_sha256": "12db71902cab300210cf4996ae2e1ddc23e6b083c20fb81c55fffdb73e3b4859",
+    "content_version": "2026-11-06.2b38a8cf590a",
+    "inventory_sha256": "293e4bf83f2bf2663be1e286f536e39ab5232a424b47b3c7f60fff9dbaf93289",
     "verdicts_sha256": "92484ade716539ec4cb5c990d9e616a57c3819f61982d6c44892e47442cd1bbd"
   },
   {
@@ -619,6 +619,6 @@
   },
   {
     "step": "sandbox destroyed",
-    "name": "nimstead-sbx-46354406"
+    "name": "nimstead-sbx-4cb48806"
   }
 ]

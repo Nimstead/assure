@@ -71,9 +71,12 @@ Set up in **Settings** by an org admin, not with environment variables. Register
 
 | Variable | Default | What it does |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | none | Turns on plain-English explanations and natural-language search. Nothing is sent to Anthropic without it. |
-| `NIMSTEAD_AI` | on when a key is set | `0` turns the features off even with a key. |
-| `NIMSTEAD_AI_MODEL` | `claude-opus-5-5` | Model used. |
+| `ANTHROPIC_API_KEY` | none | Enables explanations and natural-language search. Either this key or `ANTHROPIC_AUTH_TOKEN` enables requests. |
+| `ANTHROPIC_AUTH_TOKEN` | none | Alternative Anthropic credential that also enables AI requests. |
+| `NIMSTEAD_AI` | on when either credential is set | Exactly `0` disables AI calls even with credentials. |
+| `NIMSTEAD_AI_MODEL` | `claude-opus-5-5` | Model name read at module import. Restart the API after a change. |
+
+See [optional AI reference](reference/optional-ai.md) for transmitted fields, response formats, limits, and failures.
 
 ## Development only
 

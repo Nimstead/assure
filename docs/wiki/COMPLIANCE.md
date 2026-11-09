@@ -16,7 +16,7 @@ The audit covers tracked repository documentation, public Python and web interfa
 | Complete, scannable reference | Existing API reference admits missing response schemas | Review parameters, limits, defaults, errors and completeness against implementation |
 | Explanations develop understanding | Moved channel eligibility and recovery implications out of task narratives | Review every explanation, including Pulse |
 | Reader-first and STE-style English | Revised procedures have shorter steps and separate conditions | Review remaining prose; preserve technical names and uncertainty |
-| All public interfaces documented accurately | Presence checker reports 630/630 declarations | Inspect remaining parameter descriptions, return contracts and exceptions; presence alone is insufficient |
+| All public interfaces documented accurately | Presence checker reports 632/632 declarations. The module ledger records semantic review scope | Inspect remaining parameter descriptions, return contracts and exceptions; presence alone is insufficient |
 | Examples tested | SBOM tutorial and doctest passed with standard-library parser | Inventory all code fences and doc examples; execute safe examples and validate environment-dependent procedures appropriately |
 | Repo and site agree | Static build passes internal links and anchors | Publish reviewed changes after content verification, then inspect live pages |
 | Coverage report | docs/reference/documentation-coverage.md describes measurement limits | Refresh final coverage and record contract/example verification separately |
@@ -103,3 +103,11 @@ The version reference names every dispatched ecosystem, input/refusal behavior, 
 The SBOM reference now describes all six root response fields, including that `open` counts matching identities even when risk is accepted. The exported OpenAPI declares the raw JSON body, parser limits and successful counter response; it does not pretend to implement complete upstream SBOM schemas.
 
 321 focused tests and 46 subchecks passed, including the accepted-count assertion. All six executable docstrings passed. Redocly validation passed without warnings. Remaining modules and endpoint responses still require review.
+
+## Outbound request and optional AI checkpoint
+
+Reviewed the public interfaces in `netguard.py` and `ai.py`, plus the AI HTTP handlers. The URL checker skips DNS and address validation for hostname URLs when `resolve=False`. It still checks literal IPs. The docstring now describes this distinction and the resolver timeout boundary.
+
+Either Anthropic credential variable enables AI calls. The configuration reference now includes `ANTHROPIC_AUTH_TOKEN`. The new optional AI reference defines selected provider fields, truncation, cache behavior, filter defaults, quotas and errors. Selected text has no general hostname redaction. The configured model name also does not prove which provider fallback produced the answer.
+
+43 AI and notification tests passed. New assertions cover token-only enablement, explicit disablement, search defaults and truncation, explanation field selection, and URL checks without DNS. Provider calls used a fake client. No credential or customer data was sent to Anthropic.

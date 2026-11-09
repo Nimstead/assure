@@ -2231,9 +2231,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def ai_explain(finding_id: str, user: CurrentUser, s: DB):
         """Return an AI explanation and model name for an owned finding, subject to AI usage quotas.
 
-        Requires a user session or a read-only organisation API token. API tokens cannot use write methods.
+        finding_id identifies an owned finding. Requires a user session. Read-only API tokens cannot use POST.
 
-        Operation-specific HTTP errors: 503. See detail in the response.
+        Operation-specific HTTP errors: 404 for an unavailable finding, 429 for quota, or 503 for unusable AI.
         Authentication and request-validation errors also apply where required."""
         f = get_finding(finding_id, user, s)
         ai_budget(s, user)
@@ -2249,9 +2249,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def ai_search(body: AskReq, user: CurrentUser, s: DB):
         """Return a validated findings filter from the submitted natural-language text, subject to AI usage quotas.
 
-        Requires a user session or a read-only organisation API token. API tokens cannot use write methods.
+        body.text contains 2–500 characters. Requires a user session. Read-only API tokens cannot use POST.
 
-        Operation-specific HTTP errors: 503. See detail in the response.
+        Operation-specific HTTP errors: 429 for quota or 503 for unusable AI.
         Authentication and request-validation errors also apply where required."""
         ai_budget(s, user)
         try:

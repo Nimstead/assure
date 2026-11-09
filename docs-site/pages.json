@@ -161,6 +161,13 @@
     "product": "assure"
   },
   {
+    "source": "docs/reference/optional-ai.md",
+    "slug": "reference/optional-ai",
+    "title": "Optional AI",
+    "group": "Reference",
+    "product": "assure"
+  },
+  {
     "source": "docs/configuration.md",
     "slug": "reference/configuration",
     "title": "Configuration",

@@ -1527,7 +1527,7 @@
     },
     "/api/ai/explain/{finding_id}": {
       "post": {
-        "description": "Return an AI explanation and model name for an owned finding, subject to AI usage quotas.\n\nRequires a user session or a read-only organisation API token. API tokens cannot use write methods.\n\nOperation-specific HTTP errors: 503. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
+        "description": "Return an AI explanation and model name for an owned finding, subject to AI usage quotas.\n\nfinding_id identifies an owned finding. Requires a user session. Read-only API tokens cannot use POST.\n\nOperation-specific HTTP errors: 404 for an unavailable finding, 429 for quota, or 503 for unusable AI.\nAuthentication and request-validation errors also apply where required.",
         "operationId": "ai_explain_api_ai_explain__finding_id__post",
         "parameters": [
           {
@@ -1571,7 +1571,7 @@
     },
     "/api/ai/search": {
       "post": {
-        "description": "Return a validated findings filter from the submitted natural-language text, subject to AI usage quotas.\n\nRequires a user session or a read-only organisation API token. API tokens cannot use write methods.\n\nOperation-specific HTTP errors: 503. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
+        "description": "Return a validated findings filter from the submitted natural-language text, subject to AI usage quotas.\n\nbody.text contains 2\u2013500 characters. Requires a user session. Read-only API tokens cannot use POST.\n\nOperation-specific HTTP errors: 429 for quota or 503 for unusable AI.\nAuthentication and request-validation errors also apply where required.",
         "operationId": "ai_search_api_ai_search_post",
         "requestBody": {
           "content": {

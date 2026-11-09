@@ -354,6 +354,18 @@ def test_private_targets_only_with_explicit_dev_switch(monkeypatch):
         netguard.check_public_url("http://127.0.0.1:9443/hook")  # https is still required
 
 
+def test_url_check_without_dns_is_not_a_public_address_proof(monkeypatch):
+    monkeypatch.delenv("NIMSTEAD_ALLOW_PRIVATE_TARGETS", raising=False)
+
+    def unexpected_dns(*args, **kwargs):
+        raise AssertionError("resolve=False must not call DNS")
+
+    monkeypatch.setattr(netguard.socket, "getaddrinfo", unexpected_dns)
+    assert netguard.check_public_url("https://internal.example/", resolve=False) == []
+    with pytest.raises(ValueError, match="private or non-public"):
+        netguard.check_public_url("https://127.0.0.1/", resolve=False)
+
+
 def test_failed_channel_not_hidden_by_a_working_one(env, sent):
     from sqlalchemy import select
 

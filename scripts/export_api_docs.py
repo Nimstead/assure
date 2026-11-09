@@ -1,0 +1,125 @@
+"""Export API lookup material from FastAPI; run in the locked API environment.
+
+python scripts/export_api_docs.py writes the schema and endpoint catalog.
+python scripts/export_api_docs.py --check refuses stale generated documentation.
+Only an in-memory SQLite database is created. No provider or feed requests are made.
+"""
+
+import argparse
+import json
+from pathlib import Path
+
+import httpx
+from fastapi.routing import APIRoute
+from nimstead.app import SESSION_COOKIE, create_app
+
+ROOT = Path(__file__).resolve().parents[1]
+SPECIAL_AUTH = {
+    "/api/agent/enroll": "Enrolment token in JSON body",
+    "/api/assets/{asset_id}/sbom": "Asset upload/agent key or admin session",
+    "/api/auth/sso/callback": "SSO flow cookie and provider response",
+    "/api/notify/confirm": "Confirmation token",
+    "/api/auth/signup/confirm": "Signup confirmation token",
+}
+
+
+def render() -> dict[str, str]:
+    """Return generated repository paths mapped to UTF-8 document contents.
+
+    Build the current FastAPI app with an in-memory database and caller-owned HTTP client.
+    The catalog reflects typed parameters and named authentication dependencies. Routes that
+    authenticate inside their body use explicit labels. Schema-generation errors propagate.
+    """
+    with httpx.Client() as client:
+        app = create_app("sqlite://", oidc_http=client)
+        schema = app.openapi()
+    schema["servers"] = [{"url": "/", "description": "The Assure server you operate"}]
+    schema["components"]["securitySchemes"] = {
+        "SessionCookie": {"type": "apiKey", "in": "cookie", "name": SESSION_COOKIE,
+                          "description": "Browser session. Role and two-step requirements depend on the operation."},
+        "ReadToken": {"type": "http", "scheme": "bearer", "bearerFormat": "nmt_",
+                      "description": "Organisation token; only accepted on eligible GET/HEAD operations."},
+        "AgentToken": {"type": "http", "scheme": "bearer", "bearerFormat": "nma_",
+                       "description": "Asset-specific agent key."},
+        "UploadToken": {"type": "http", "scheme": "bearer", "bearerFormat": "nmu_",
+                        "description": "Upload token for the asset named by the request."},
+    }
+    lines = ["# HTTP endpoint catalog", "",
+             "Use the [OpenAPI JSON](openapi.json) for typed parameters, request models, defaults, and declared response schemas.", "",
+             "The export adds server and authentication metadata to FastAPI’s schema. Request and response definitions come from the app.", "",
+             "Authentication labels describe entry requirements. Organisation ownership, roles, origin checks, quotas, "
+             "and operation-specific state checks still apply. See [HTTP API reference](http-api.md).", "",
+             "Empty response schemas do not define a stable response contract. Inspect the linked handler and its tests "
+             "for returned dictionary fields. Error responses in OpenAPI are not an exhaustive list of runtime failures.", "",
+             "## Operations", "",
+             "| Method | Path | Authentication | Purpose |",
+             "| --- | --- | --- | --- |"]
+    count = 0
+    for route in sorted((r for r in app.routes if isinstance(r, APIRoute) and r.include_in_schema), key=lambda r: r.path):
+        dependencies = {d.call.__name__ for d in route.dependant.dependencies}
+        for method in sorted(route.methods):
+            operation = schema["paths"][route.path][method.lower()]
+            if "admin_user" in dependencies:
+                auth = "Admin browser session"
+            elif "signed_in" in dependencies:
+                auth = "Browser session; no API token"
+            elif "current_agent" in dependencies:
+                auth = "Asset agent key"
+            elif "current_user" in dependencies:
+                auth = "Session or read-only API token" if method in {"GET", "HEAD"} else "Browser session"
+            else:
+                auth = SPECIAL_AUTH.get(route.path, "No user-session dependency")
+            if "admin_user" in dependencies or "signed_in" in dependencies:
+                operation["security"] = [{"SessionCookie": []}]
+            elif "current_agent" in dependencies:
+                operation["security"] = [{"AgentToken": []}]
+            elif "current_user" in dependencies:
+                operation["security"] = [{"SessionCookie": []}]
+                if method in {"GET", "HEAD"}:
+                    operation["security"].append({"ReadToken": []})
+            elif route.path == "/api/assets/{asset_id}/sbom":
+                operation["security"] = [{"SessionCookie": []}, {"AgentToken": []}, {"UploadToken": []}]
+            else:
+                # Body tokens and SSO cookies are described separately; no HTTP auth scheme represents them.
+                operation["security"] = []
+            operation["x-authentication"] = auth
+            summary = operation.get("description", operation.get("summary", "")).split("\n", 1)[0].replace("|", "\\|")
+            source = f"../../api/src/nimstead/app.py#L{route.endpoint.__code__.co_firstlineno}"
+            lines.append(f"| `{method}` | [`{route.path}`]({source}) | {auth} | {summary} |")
+            count += 1
+    lines += ["", f"The schema contains {count} operations and {len(schema['components']['schemas'])} schema definitions.", "",
+              "## Routes outside the schema", "",
+              "- `GET /api/health`: unauthenticated deployment health; HTTP200 when database and migration checks pass, otherwise503.",
+              "- `GET /.well-known/security.txt`: public security contact policy.",
+              "- Static web assets and the web application's fallback route are not API contracts.", "",
+              "## Refresh this reference", "",
+              "From the repository root with the locked API environment available:", "",
+              "```bash", "(cd api && uv run python ../scripts/export_api_docs.py)", "```", "",
+              "CI checks freshness with `--check`. Compare the schema served by your installed release before integration.", ""]
+    return {"docs/reference/openapi.json": json.dumps(schema, indent=2, sort_keys=True) + "\n",
+            "docs/reference/api-endpoints.md": "\n".join(lines).replace("HTTP200", "HTTP 200").replace("otherwise503", "otherwise 503")}
+
+
+def main() -> int:
+    """Write API reference outputs, or return 1 for stale files when --check is selected.
+
+    Argument, app/schema, and file errors propagate. The command never deploys the app.
+    """
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--check", action="store_true")
+    args = parser.parse_args()
+    stale = []
+    for name, content in render().items():
+        path = ROOT / name
+        if args.check:
+            if not path.exists() or path.read_text() != content:
+                stale.append(name)
+        else:
+            path.write_text(content)
+    for name in stale:
+        print(f"Stale API documentation: {name}")
+    return int(bool(stale))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

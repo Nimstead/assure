@@ -48,6 +48,7 @@ Find commands, settings, formats, and limits.
 - [Configuration](configuration.md)
 - [Supported platforms](reference/platforms.md)
 - [Agent command reference](reference/agent-cli.md)
+- [HTTP endpoint catalog](reference/api-endpoints.md)
 - [HTTP API reference](reference/http-api.md)
 - [SBOM input reference](reference/sbom.md)
 - [Scan outcomes](reference/scan-outcomes.md)

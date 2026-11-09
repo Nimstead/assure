@@ -46,3 +46,13 @@ test('search identifies products and Pulse navigation does not mix Assure guides
   const contents = html.match(/<details class="local-contents">([\s\S]*?)<\/details>/)[1];
   assert.match(contents, /href="#start-the-services"/);
 });
+
+
+test('API lookup includes the downloadable schema and the complete endpoint catalog', () => {
+  const schema = JSON.parse(readFileSync('dist/reference/openapi.json', 'utf8'));
+  assert.equal(schema.openapi, '3.1.0');
+  assert.ok(schema.paths['/api/assets/{asset_id}/sbom'].post);
+  const html = readFileSync('dist/reference/api-endpoints/index.html', 'utf8');
+  assert.match(html, /href="\/reference\/openapi.json"/);
+  assert.match(html, /Asset upload\/agent key or admin session/);
+});

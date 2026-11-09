@@ -41,7 +41,7 @@ No production upgrade, backup, restore or fleet rollout was executed during this
 
 ## Continuation checkpoint
 
-The new task guides and reference migrations are local and not yet published. Both release-key values match the agent source. XCCDF parser docstrings now describe several previously implicit parameters and refusal results. The broad parameter-name scan found many more contracts that need semantic review; it included nested helpers, so it is a review queue rather than a public-interface failure count.
+The task-guide and reference migrations were published from commit fc02cd8 and verified on docs.nimstead.systems. Both release-key values match the agent source. XCCDF parser docstrings now describe several previously implicit parameters and refusal results. The broad parameter-name scan found many more contracts that need semantic review; it included nested helpers, so it is a review queue rather than a public-interface failure count.
 
 The isolated Python environment at `/private/tmp/nimstead-doc-validation` has uv, cryptography50.0.2 and cvss3.6 installed. Both risk and SBOM doctests passed. A release manifest signed by an ephemeral in-memory Ed25519 test key passed the agent verifier; a modified manifest was refused. No production key was used.
 
@@ -58,4 +58,12 @@ Remaining work: finish parameter/error contract audit, strengthen whole-reposito
 - `create_app('sqlite://').openapi()` produced OpenAPI 3.1.0 with 83 operations and 31 schemas. Endpoint/authentication/response completeness still requires the reference audit.
 - Ruff passed with the API project's configuration. An initial invocation from the repository root used different inherited rules; no unrelated style rewrites were applied.
 
-This remains an incomplete compliance assessment. The current task and reference improvements can be published independently of the remaining contract audit.
+This remains an incomplete compliance assessment. The task and reference improvements were published independently of the remaining contract audit.
+
+## Endpoint reference checkpoint
+
+The endpoint catalog now lists all 83 schema operations with handler links and authentication entry requirements. `scripts/export_api_docs.py` produces the catalog and OpenAPI JSON. CI checks both for freshness. The export supplements FastAPI request/response definitions with relative-server and authentication metadata; it does not change authentication behavior.
+
+Redocly CLI validation with the minimal ruleset passes without warnings. Tests cover cookie-only admin writes, optional read tokens on eligible GETs, agent keys, upload alternatives and enrolment body-token labeling. Six documentation tests and six site tests pass. The build contains 54 articles.
+
+Empty dictionary response schemas remain an explicit reference limitation. This catalog does not claim field-complete response models. Public callable parameter/error review and Pulse workflow verification remain active.

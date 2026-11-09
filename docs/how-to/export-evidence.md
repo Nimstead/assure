@@ -9,7 +9,7 @@ Create an evidence pack for independent verification. You need access to your or
 5. Give the reviewer the pack and the [verification procedure](verify-evidence.md).
 6. Send the evidence key fingerprint through a separate trusted channel.
 
-Do not use a fingerprint carried only inside the pack as the trust reference. Obtain it from the established operator or the server's authenticated evidence-key endpoint.
+Do not use a fingerprint carried only inside the pack as the trust reference. Obtain it from the established operator or your operator's established evidence-key endpoint over a trusted connection.
 
 If the ledger reports a shortened or changed history, investigate before sending the pack as a complete record. A restore from an older backup can cause a shortened-history warning.
 

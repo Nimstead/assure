@@ -8,6 +8,7 @@ Run development commands from the repository root unless a command says otherwis
 | --- | --- |
 | `python scripts/check_docs.py` | Check public documentation presence and local Markdown links |
 | `python scripts/check_docs.py --report` | Also regenerate the documentation coverage table |
+| `(cd api && uv run python ../scripts/export_api_docs.py --check)` | Refuse stale endpoint and OpenAPI exports; omit `--check` to refresh them |
 | `(cd api && uv run ruff check src tests ../agent ../sandbox ../scripts)` | Run the repository's Python lint rules |
 | `(cd api && uv run pytest -q)` | Run API, agent, and tool tests against SQLite by default |
 | `(cd web && npm run lint)` | Type-check web exports and their typed usage |

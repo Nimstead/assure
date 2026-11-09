@@ -34,3 +34,5 @@ Do not create a second Sites project for an update. Use the Sites source helper 
 Fonts and favicon are reused from Nimstead's public website. `DESIGN.md` records the reading interface's tokens and behaviour. No analytics, cookies, account system, or browser editing service is added.
 
 Pulse articles live under `docs/pulse/` and cite the maintained Pulse repository. Check its current implementation when changing claims. Existing Assure article routes remain stable; product homes are `/assure/` and `/pulse/`.
+
+The API catalog and `docs/reference/openapi.json` come from `scripts/export_api_docs.py`, run through the locked API environment. Refresh these before building after API changes. API CI checks freshness; the site build publishes the JSON at `/reference/openapi.json`. Empty response schemas retain their documented limitations.

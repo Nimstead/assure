@@ -1,6 +1,7 @@
 """Regression checks for repository-wide documentation validation."""
 
 import importlib.util
+import json
 import os
 import re
 import subprocess
@@ -68,3 +69,27 @@ class DocumentationExamples(unittest.TestCase):
             outputs.append(result.stdout.strip())
         self.assertEqual(outputs[0], expected)
         self.assertEqual(outputs[1], "[]\n{'no_purl': 1, 'unsupported_or_invalid_purl': 0}")
+
+
+class ApiReference(unittest.TestCase):
+    def test_generated_schema_and_catalog_are_current(self):
+        spec = importlib.util.spec_from_file_location("export_api_docs", docs.ROOT / "scripts/export_api_docs.py")
+        exporter = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(exporter)
+        generated = exporter.render()
+        for name, content in generated.items():
+            with self.subTest(path=name):
+                self.assertEqual((docs.ROOT / name).read_text(), content)
+        catalog = generated["docs/reference/api-endpoints.md"]
+        self.assertIn("`POST` | [`/api/agent/enroll`", catalog)
+        self.assertIn("Asset upload/agent key or admin session", catalog)
+        self.assertIn("Empty response schemas do not define a stable response contract", catalog)
+
+        schema = json.loads(generated["docs/reference/openapi.json"])
+        self.assertEqual(schema["paths"]["/api/assets"]["get"]["security"],
+                         [{"SessionCookie": []}, {"ReadToken": []}])
+        self.assertEqual(schema["paths"]["/api/assets"]["post"]["security"], [{"SessionCookie": []}])
+        self.assertEqual(schema["paths"]["/api/assets/{asset_id}/sbom"]["post"]["security"],
+                         [{"SessionCookie": []}, {"AgentToken": []}, {"UploadToken": []}])
+        self.assertEqual(schema["paths"]["/api/agent/jobs"]["get"]["security"], [{"AgentToken": []}])
+        self.assertEqual(schema["paths"]["/api/agent/enroll"]["post"]["x-authentication"], "Enrolment token in JSON body")

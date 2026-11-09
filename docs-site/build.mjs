@@ -19,6 +19,7 @@ const descriptions = ['Learn with a safe, worked example.','Follow steps to comp
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const sourceMap = new Map(pages.map(p => [path.resolve(root,p.source), '/'+p.slug+'/']));
 sourceMap.set(path.resolve(root,'docs/README.md'), '/assure/');
+sourceMap.set(path.resolve(root,'docs/reference/openapi.json'), '/reference/openapi.json');
 const md = new MarkdownIt({html:false, linkify:false});
 const slug = text => text.toLowerCase().replace(/[^\p{L}\p{N}_\- ]/gu,'').replace(/ /g,'-');
 md.renderer.rules.heading_open = (tokens,i,options,env,self) => {
@@ -61,6 +62,8 @@ function layout({title,url,body,description='',group='',headings=[],source=''}) 
 }
 function save(url,html) { const file=path.join(out,url==='404'? '404.html':url,'index.html'); const target=url==='404'?path.join(out,'404.html'):file; mkdirSync(path.dirname(target),{recursive:true});writeFileSync(target,html); }
 rmSync(out,{recursive:true,force:true});mkdirSync(out,{recursive:true});cpSync('public',out,{recursive:true});
+mkdirSync(path.join(out,'reference'),{recursive:true});
+cpSync(path.join(root,'docs/reference/openapi.json'),path.join(out,'reference/openapi.json'));
 cpSync(path.join(root,'docs/examples'),path.join(out,'examples'),{recursive:true});
 const index=[];
 for (const p of pages) {

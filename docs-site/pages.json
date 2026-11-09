@@ -369,5 +369,12 @@
     "title": "Check Windows Update access through a proxy",
     "group": "How-to guides",
     "product": "assure"
+  },
+  {
+    "source": "docs/reference/api-endpoints.md",
+    "slug": "reference/api-endpoints",
+    "title": "HTTP endpoint catalog",
+    "group": "Reference",
+    "product": "assure"
   }
 ]

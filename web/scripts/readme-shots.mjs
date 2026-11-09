@@ -48,7 +48,7 @@ async function shot(p, path, name, ready) {
 }
 
 const desk = await page(1440, 900);
-await shot(desk, "/", "home-1440", (p) => p.getByRole("heading", { name: "Recommended upgrades" }).waitFor());
+await shot(desk, "/", "home-1440", (p) => p.getByRole("heading", { name: "Recommended fixes" }).waitFor());
 await shot(desk, "/remediation", "remediation-1440", (p) => p.getByRole("heading", { name: "Remediation" }).waitFor());
 await shot(desk, "/findings", "findings-1440", async (p) => {
   await p.getByRole("row").filter({ hasText: "CVE-2021-44228" }).first().click();

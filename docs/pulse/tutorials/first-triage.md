@@ -6,7 +6,7 @@ Open Pulse's worked example and learn how to read a CVE list without using any p
 
 Open [Your CVEs](https://pulse.nimstead.systems/watchlist/). The page starts with a fixed example of 14 well-known CVEs. Confirm that it is labelled as a worked example.
 
-If it does not load, select **Show the example again**. Do not paste a real scanner export for this lesson.
+If the example does not load, reload the page. If you previously cleared it, select **Show the example again** when offered. Do not paste a real scanner export for this lesson.
 
 ## Read the coverage
 

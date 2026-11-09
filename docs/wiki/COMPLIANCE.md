@@ -11,12 +11,12 @@ The audit covers tracked repository documentation, public Python and web interfa
 | Requirement | Current evidence | Remaining work |
 | --- | --- | --- |
 | One primary reader job per maintained page | Reviewed both tutorials and the operational guide corpus; revised backup, Group Policy, upgrade, release and recovery procedures | Review every remaining page and root entry point; finish the remaining reference and root-document reviews |
-| Safe tutorial with visible success | Both SBOM Python examples executed and matched the documented output; SBOM doctest passed | Verify Pulse lesson against the running product |
+| Safe tutorial with visible success | Both SBOM Python examples executed and matched the documented output; SBOM doctest passed | Worked example, filter and case record verified in the public product |
 | Task prerequisites, ordered actions, warnings, recovery and verification | Revised three operational guides; retained secrets, rollback and rollout boundaries | Check each other guide against source and its operational environment |
 | Complete, scannable reference | Existing API reference admits missing response schemas | Review parameters, limits, defaults, errors and completeness against implementation |
 | Explanations develop understanding | Moved channel eligibility and recovery implications out of task narratives | Review every explanation, including Pulse |
 | Reader-first and STE-style English | Revised procedures have shorter steps and separate conditions | Review remaining prose; preserve technical names and uncertainty |
-| All public interfaces documented accurately | Presence checker reports 630/630 declarations | Inspect parameter descriptions, return contracts and exceptions; presence alone is insufficient |
+| All public interfaces documented accurately | Presence checker reports 630/630 declarations | Inspect remaining parameter descriptions, return contracts and exceptions; presence alone is insufficient |
 | Examples tested | SBOM tutorial and doctest passed with standard-library parser | Inventory all code fences and doc examples; execute safe examples and validate environment-dependent procedures appropriately |
 | Repo and site agree | Static build passes internal links and anchors | Publish reviewed changes after content verification, then inspect live pages |
 | Coverage report | docs/reference/documentation-coverage.md describes measurement limits | Refresh final coverage and record contract/example verification separately |
@@ -45,7 +45,7 @@ The task-guide and reference migrations were published from commit fc02cd8 and v
 
 The isolated Python environment at `/private/tmp/nimstead-doc-validation` has uv, cryptography50.0.2 and cvss3.6 installed. Both risk and SBOM doctests passed. A release manifest signed by an ephemeral in-memory Ed25519 test key passed the agent verifier; a modified manifest was refused. No production key was used.
 
-Remaining work: finish parameter/error contract audit, strengthen whole-repository checker scope, review all reference and root records, validate code examples and Pulse workflows, run final prose/STE-style checks, publish and inspect the resulting site. The goal remains active.
+Remaining work: finish parameter/error contract audit, strengthen whole-repository checker scope, review all reference and root records, finish remaining example and public-contract verification, run final prose/STE-style checks, publish and inspect the resulting site. The goal remains active.
 
 ## Contract and example verification checkpoint
 
@@ -67,3 +67,17 @@ The endpoint catalog now lists all 83 schema operations with handler links and a
 Redocly CLI validation with the minimal ruleset passes without warnings. Tests cover cookie-only admin writes, optional read tokens on eligible GETs, agent keys, upload alternatives and enrolment body-token labeling. Six documentation tests and six site tests pass. The build contains 54 articles.
 
 Empty dictionary response schemas remain an explicit reference limitation. This catalog does not claim field-complete response models. Public callable parameter/error review and Pulse workflow verification remain active.
+
+## Pulse verification checkpoint
+
+Reviewed the nine Pulse pages against the public product and temporary source checkout 968e465c2ea55375733beb8ea41118a05677a1bc. The parser source is `src/lib/snapshot.ts`; the file-picker byte limit is in `src/views/Watchlist.svelte`.
+
+Playwright verified the 14-CVE worked example, single-CVE filter, case record, text-file analysis, missing-ID coverage, snapshot download/import, same-day comparison, full-list handover despite filtering, Clear/Undo, reload reset, and rejection of an unsupported snapshot version. Test input contained two public CVEs and one nonexistent test ID. The observed analysis made only the five shared index GET requests; selected IDs were absent from the URL.
+
+The snapshot reference now defines root/source/finding fields, ranges, cross-field constraints, byte and character limits, and import behavior. Its example is a public-only downloaded snapshot. The actual Pulse parser accepts it, discards extra properties, and refuses wrong versions, empty lists, duplicate IDs and out-of-range scores. Self-comparison reports no changes and handover preserves all IDs.
+
+In the disposable Pulse checkout: Node 22.22.2, locked dependency install, 22 tests, Svelte/TypeScript checks, complete public-data generation and production build passed. The build also passed six report/sitemap checks. No Pulse source was changed or deployed. npm reported two low-severity dependency advisories; dependency remediation is outside this documentation change.
+
+The description-download implementation was inspected; the 40 MB live download was not repeated. Privacy evidence combines observed analysis requests with the implementation, not an assertion about every possible browser environment.
+
+The documented Pulse development server also started successfully. Playwright verified its worked example against the locally generated public data. The wiki example download and mobile snapshot reference passed browser checks.

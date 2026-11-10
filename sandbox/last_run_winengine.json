@@ -13,8 +13,8 @@
       "updated": 0,
       "skipped": 0
     },
-    "nvd": 55074,
-    "kev": 1772
+    "nvd": 55510,
+    "kev": 1773
   },
   {
     "step": "report",
@@ -235,9 +235,13 @@
         "action": "Update to 4.18.26060.3008 or later"
       }
     ],
-    "content_version": "2026-11-07.3546aae94b5b",
-    "inventory_sha256": "6e8d95d5897d80e8bd362190cf8744f02e47e38dd8ea0e0673daf7fdf047e4c5",
+    "content_version": "2026-11-07.1ae799ac7de8",
+    "inventory_sha256": "2d9ba0ac24ec4522ef9fcbc60de06219ec53cd759a572991f86870876d1f6fa7",
     "verdicts_sha256": "4f65766d993bba584765cc3d64ce799ad1481ec60a430b105ced5b86bfbf4994"
+  },
+  {
+    "step": "database kept",
+    "path": "C:\\Users\\Ciaran\\AppData\\Local\\Temp\\nimstead-wine2e-tam9bkfx\\full.db"
   },
   {
     "step": "parity with rescan",
@@ -247,11 +251,6 @@
       "WinConfig": 9
     },
     "explained": [],
-    "unexplained": []
-  },
-  {
-    "step": "rescan's loop against the engine (engine_disagrees)",
-    "entries": 0,
     "unexplained": []
   },
   {
@@ -305,7 +304,7 @@
     },
     "headline": {
       "status": "vulnerable",
-      "text": "VULNERABLE: 1,030 vulnerabilities across 4 installs. 133 checks couldn't be determined."
+      "text": "VULNERABLE: 1,031 vulnerabilities across 5 installs. 133 checks couldn't be determined."
     },
     "undetermined": [
       {

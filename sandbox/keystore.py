@@ -19,6 +19,7 @@ import time
 import zipfile
 from pathlib import Path
 
+from agentdoc import with_document  # noqa: E402
 from signin import signup  # noqa: E402  first account + its admin's TOTP sign-in
 
 PREFIX = "nimstead-sbx-"
@@ -125,8 +126,8 @@ def main(keep=False) -> int:
         signup(c, {"email": "k@example.com", "password": "keystore-test-pass", "org_name": "K"})
         token = c.post("/api/enroll-tokens").json()["token"]
         a = c.post("/api/agent/enroll", json={"token": token, "hostname": "h", "ecosystem": "Debian:12"}).json()
-        c.post("/api/agent/inventory", headers={"Authorization": f"Bearer {a['agent_key']}"}, json={"ecosystem": "Debian:12", "packages": [
-            {"ecosystem": "Debian:12", "name": "libssl3", "version": "3.0.11-1~deb12u1", "source": "openssl"}]})
+        c.post("/api/agent/inventory", headers={"Authorization": f"Bearer {a['agent_key']}"}, json=with_document({"ecosystem": "Debian:12", "packages": [
+            {"ecosystem": "Debian:12", "name": "libssl3", "version": "3.0.11-1~deb12u1", "source": "openssl"}]}))
 
         # 1) evidence pack signed by Vault, verifies offline against the Vault key's fingerprint
         z = zipfile.ZipFile(io.BytesIO(c.get("/api/evidence/pack").content))

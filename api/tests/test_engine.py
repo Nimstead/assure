@@ -6,6 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import agentdoc
 import pytest
 from sqlalchemy import select
 from test_agent_proxy import agent
@@ -162,13 +163,13 @@ def test_an_old_agent_is_never_clean():
     del d["collection"]
     c = content(msrc("CVE-2026-1", BUILD), apps=[nvd("CVE-2026-9", "20.00")])
     inv = Inventory.from_doc(d)
-    vs = evaluate(inv, c)
-    assert one(vs, vuln_id="CVE-2026-1").grade == Grade.UNVERIFIED
-    assert not [v for v in vs if v.outcome == Outcome.NOT_APPLICABLE]
-    v = one(vs, check="product:google:chrome")
+    vs = evaluate(inv, c, [("Windows", W11, "CVE-2026-1")])
+    assert not [v for v in vs if v.outcome in (Outcome.VULNERABLE, Outcome.NOT_VULNERABLE, Outcome.NOT_APPLICABLE)]  # nothing judged (DECISIONS 125)
+    v = one(vs, check="product:platform")
     assert (v.outcome, v.reason) == (Outcome.NOT_RUN, "no-collection-document")
+    assert one(vs, vuln_id="CVE-2026-1").reason == "not-reassessed"  # an open finding stays open
     r = report.build(inv, c, vs)
-    assert r["headline"]["status"] == "undetermined" and "NOT CLEAN" in r["headline"]["text"]
+    assert r["headline"]["status"] == "not-assessed" and "not a clean result" in r["headline"]["text"]
     assert "doesn't say what it managed to read" in report.render(r)
 
 
@@ -478,18 +479,21 @@ def test_a_scan_is_recorded_once_with_what_explains_it_and_can_be_replayed(env):
     assert not s.scalars(select(ScanRecord)).all()
 
 
-def test_inventory_drops_a_bad_document_but_never_the_packages_and_forgets_the_last_one(env):
+def test_inventory_drops_a_bad_document_but_never_the_packages_and_forgets_the_last_one(env, caplog):
     seed(env)
     c = user(env)
     aid, h = enrolled(c, RICH)
     bad = {**RICH, "collection": {"v": 1, "sources": {"uninstall": {"state": "ok", "count": 1, "error": "x" * 1000}}}}
     assert c.post("/api/agent/inventory", headers=h, json=bad).status_code == 200
+    assert "rejected: nothing is judged" in caplog.text  # an operator can see why the host gets no findings
     body = c.get(f"/api/assets/{aid}/scan-report").json()
-    assert any(g["reason"] == "no-collection-document" for g in body["undetermined"]) and body["vulnerable"]
-    old = {k: v for k, v in RICH.items() if k != "collection"}
-    assert c.post("/api/agent/inventory", headers=h, json=old).status_code == 200
+    assert any(g["reason"] == "no-collection-document" for g in body["undetermined"]) and not body["vulnerable"]
+    assert c.post("/api/agent/inventory", headers=h, json=RICH).status_code == 200
     assert c.get(f"/api/assets/{aid}/scan-report").json()["headline"]["status"] == "vulnerable"
-    assert c.get("/api/findings").json()  # rescan is untouched
+    opened = {f["vuln_id"] for f in c.get("/api/findings").json()}
+    assert c.post("/api/agent/inventory", headers=h, json={**RICH, "collection": None}).status_code == 200  # then an old agent
+    assert c.get(f"/api/assets/{aid}/scan-report").json()["headline"]["status"] == "not-assessed"  # the last document isn't reused
+    assert {f["vuln_id"] for f in c.get("/api/findings").json()} == opened  # nothing closes on silence (DECISIONS 125)
 
 
 def test_stored_facts_that_are_too_big_to_keep_mark_host_facts_failed(env):
@@ -509,7 +513,7 @@ def test_a_host_with_no_inventory_and_a_linux_host_say_so(env):
     aid = c.get("/api/assets").json()[0]["id"]
     body = c.get(f"/api/assets/{aid}/scan-report").json()
     assert body["headline"]["status"] == "not-assessed" and body["undetermined"][0]["reason"] == "no-inventory"
-    vs = evaluate(Inventory.from_doc({"ecosystem": "Debian:12", "packages": []}), Content.make({}))
+    vs = evaluate(Inventory.from_doc(agentdoc.with_document({"ecosystem": "Debian:12", "packages": []})), Content.make({}))
     assert (vs[0].outcome, vs[0].reason) == (Outcome.NOT_RUN, "feed-missing")  # Linux is judged now (test_engine_linux.py)
 
 
@@ -526,29 +530,7 @@ def test_the_cli_prints_the_report_and_json(env, tmp_path, capsys):
     assert "isn't an inventory" in capsys.readouterr().err
 
 
-# ---- phases 1 and 3 of tasks/plan-engine-findings.md: the engine judges every rescan; rescan's own loop is the shadow
-
-def _disagreements(c):
-    return [e for e in c.get("/api/evidence/ledger").json()["entries"] if e["kind"] == "engine_disagrees"]
-
-
-def test_the_engine_shadows_every_rescan_and_agrees_on_a_rich_host(env):
-    seed(env)
-    c = user(env)
-    enrolled(c, RICH)
-    assert _disagreements(c) == []  # Windows, Microsoft and app findings: the engine says vulnerable on each one rescan opened
-
-
-def test_a_disagreement_is_one_ledger_entry_and_changes_no_finding(env, monkeypatch):
-    seed(env)
-    c = user(env)
-    gap = [{"ecosystem": "WinApp", "package": SEVEN, "vuln_id": "CVE-2026-9", "problem": "rescan opened it and the engine has no verdict for it"}]
-    monkeypatch.setattr(engine, "judge", lambda *a: ([], Content.make({}), {"agree": 3, "unexplained": gap}))
-    enrolled(c, RICH)
-    (d,) = _disagreements(c)
-    assert d["data"]["count"] == 1 and d["data"]["unexplained"] == gap and d["data"]["host"] == "lab-1"
-    assert any(f["vuln_id"] == "CVE-2026-9" for f in c.get("/api/findings").json())  # no verdict either way: rescan's match stands
-
+# ---- phase 5 of tasks/plan-engine-findings.md: the engine alone decides what opens in its slice
 
 def test_a_failing_engine_never_stops_rescan_and_its_matches_stand(env, monkeypatch):
     seed(env)
@@ -560,7 +542,7 @@ def test_a_failing_engine_never_stops_rescan_and_its_matches_stand(env, monkeypa
         raise RuntimeError("engine bug")
     monkeypatch.setattr(engine, "judge", boom)
     assert c.post("/api/agent/inventory", headers=h, json=RICH).status_code == 200  # the same inventory again
-    assert sorted((f["package"], f["vuln_id"]) for f in c.get("/api/findings").json()) == before and before and _disagreements(c) == []
+    assert sorted((f["package"], f["vuln_id"]) for f in c.get("/api/findings").json()) == before and before  # a crash closes nothing
 
 
 def test_parity_explains_a_product_the_engine_wouldnt_judge_as_a_whole():

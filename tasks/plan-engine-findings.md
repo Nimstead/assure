@@ -40,6 +40,8 @@ findings from comes from the engine's VULNERABLE verdicts instead of its own mat
    **Status (2026-11-09):** built (DECISIONS 124). A prior finding whose product isn't installed, with its listing source read in
    full, is `removed` (not applicable), so uninstalls and upgrades still close. Old agents keep the earlier rule.
 5. **Remove the old loop** (S), one release after 4 with no disagreements.
+   **Status (2026-11-10):** built (DECISIONS 125). The loop, `engine_disagrees` and `NIMSTEAD_ENGINE_FINDINGS` are gone; an agent
+   without a collection document gets no new findings and its open ones stay open with the reason. Real-host runs before and after agree.
 
 ## Risks
 | Risk | Impact | Mitigation |

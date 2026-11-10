@@ -1,9 +1,11 @@
 """The inventory as the engine reads it: what the agent reported, what it says about how far it got (R3.2, R4.3), and
 which installed things map to which checks. Reads, never decides a verdict. The maps are the existing curated ones."""
 
+import functools
 import hashlib
 import json
 import re
+from collections import Counter
 from dataclasses import dataclass, field
 
 from nimstead import msproducts, sbom, winapps
@@ -169,9 +171,14 @@ class Inventory:
         """A Linux agent's report, even one whose distribution no feed maps (it still says what it read)."""
         return linux(self.ecosystem) or "os_id" in self.facts
 
+    @functools.cached_property
+    def _counts(self) -> Counter:
+        # source() asks once per install: counting the whole list each time made a 600-package host cost 360,000 steps
+        return Counter(p.get("ecosystem") for p in self.packages if p.get("origin") != "sbom")
+
     def _count(self, *ecosystems: str) -> int:
         """What the agent sent: an SBOM's rows are another upload's."""
-        return sum(p.get("ecosystem") in ecosystems and p.get("origin") != "sbom" for p in self.packages)
+        return sum(self._counts[e] for e in ecosystems)
 
     @property
     def sbom_rows(self) -> int:
@@ -185,7 +192,13 @@ class Inventory:
         failed. Counts above received rows become partial for supported sources.
         SBOM status comes from upload metadata/rows rather than the agent document.
         Unknown names are allowed. Malformed directly constructed metadata can raise
-        KeyError or TypeError. Does not change the inventory."""
+        KeyError or TypeError. Answered once per name: evaluate asks for every install."""
+        cached = self.__dict__.setdefault("_sources", {})
+        if (got := cached.get(name)) is None:
+            got = cached[name] = self._source(name)
+        return got
+
+    def _source(self, name: str) -> Source:
         if name == "sbom":  # an upload is read whole or refused whole (sbom.parse); what it couldn't name is counted in `self.sbom`
             if self.sbom is None and not self.sbom_rows:
                 return Source(name, NOT_REPORTED, reason="no-sbom", error="no SBOM has been uploaded")
@@ -325,8 +338,15 @@ def installs(inv: Inventory) -> list[Install]:
     """Return curated Windows or distribution installs from Inventory inv, sorted by identity.
 
     Language packages and SBOM components use app_installs() separately. Unknown
-    Windows products remain inventory. This does not check collection success or
-    modify inv. Malformed package values can raise KeyError, TypeError or ValueError."""
+    Windows products remain inventory. This does not check collection success. Built once
+    per inventory (content.load and evaluate both ask); callers must not mutate the list.
+    Malformed package values can raise KeyError, TypeError or ValueError."""
+    if (out := inv.__dict__.get("_installs")) is None:
+        out = inv.__dict__["_installs"] = _installs(inv)
+    return out
+
+
+def _installs(inv: Inventory) -> list[Install]:
     if linux(inv.ecosystem):
         return linux_installs(inv)
     os_product = next((p["name"] for p in inv.packages if p.get("ecosystem") == "Windows"), None)

@@ -4,7 +4,6 @@ import functools
 import hashlib
 import json
 import logging
-import os
 import re
 from collections import defaultdict
 from datetime import timedelta
@@ -12,9 +11,9 @@ from datetime import timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from nimstead import evidence, lifecycle, msproducts, risk, sbom, winapps, winconfig, windrivers
+from nimstead import evidence, lifecycle, msproducts, risk, winapps, winconfig, windrivers
 from nimstead.db import Advisory, Asset, Cvss, Epss, Finding, InstalledPackage, Kev, now
-from nimstead.match import Match, Package, canonical_id, match_package, normalize_ecosystem
+from nimstead.match import Match, canonical_id
 from nimstead.notify import notify
 
 log = logging.getLogger(__name__)
@@ -103,11 +102,6 @@ def host_checks(pkgs: list, facts: dict, today, eol: dict | None = None, drivers
     return out
 
 
-def engine_findings() -> bool:
-    """Phase 3 of tasks/plan-engine-findings.md is on unless NIMSTEAD_ENGINE_FINDINGS=0, the way back to rescan's own matching."""
-    return os.environ.get("NIMSTEAD_ENGINE_FINDINGS", "1") != "0"
-
-
 def _linux_eol(key: tuple) -> bool:
     """A Linux release's end of support (`EOL:<distro>-<release>`), which only the engine judges (DECISIONS 85). Windows and app
     end of support share the `EOL:` prefix but come from host_checks, so the distro's name tells them apart."""
@@ -129,11 +123,13 @@ def _closing_index(verdicts: list | None) -> tuple[dict, set] | None:
 def _held_open(key: tuple, index: tuple[dict, set] | None, asset: Asset) -> str | None:
     """Phase 4 of tasks/plan-engine-findings.md: why an in-slice finding rescan no longer matches stays open, or None to close it.
     Closes on a verdict that proves it absent (not vulnerable, or not applicable: removed, or the product not installed); anything
-    else is no evidence of a fix. An old agent without a collection document keeps the earlier rule: it can't say what it read."""
+    else is no evidence of a fix. An agent without a collection document can't say what it read, so nothing of it closes."""
     from nimstead.engine import parity
     from nimstead.engine.model import REASONS
-    if index is None or not asset.collection or not parity.in_slice(key[0]):
+    if index is None or not (parity.in_slice(key[0]) or _linux_eol(key)):
         return None
+    if not asset.collection and asset.kind == "host":  # an SBOM application asset has no agent, so no document
+        return REASONS["no-collection-document"][0]
     answer = index[0].get(key, [])
     # "end-of-life": a fixed version judged not vulnerable, held back from the report only because the release gets no more advisories
     if any(v.proves_absent or v.reason == "end-of-life" for v in answer) or key[:2] in index[1]:
@@ -142,51 +138,54 @@ def _held_open(key: tuple, index: tuple[dict, set] | None, asset: Asset) -> str 
     return REASONS[reason][0]
 
 
-def _engine(s: Session, asset: Asset, pkgs: list, matches: list, seen: set, prior: list, cache: dict, keep: bool) -> tuple[list, list, list | None]:
-    """The engine decides what opens (phase 3): for the slice it judges, a VULNERABLE verdict opens a finding, a verdict
-    that proves it absent drops rescan's match, and no decision (an old agent, a blocked source) leaves rescan's match as it
-    was. rescan's own loop is the shadow: a difference neither side explains goes to the ledger once per new inventory
-    (`keep`), not on every hourly re-match. Returns (matches, ledger rows, the verdicts closing reads or None for today's rule). If the engine fails, rescan's matches
-    open and nothing closes: a crash isn't evidence of a fix (R4.6)."""
+def _live_by_id(c, product: tuple) -> dict:
+    """A product's live advisory records by canonical id, built once per feed pass (`c.memo`), not once per finding per host."""
+    if (out := c.memo.get(("scan", "by_id", *product))) is None:
+        out = c.memo["scan", "by_id", *product] = defaultdict(list)
+        for r in c.records.get(product, []):
+            if not r.get("withdrawn"):
+                out[canonical_id(r)].append(r)
+    return out
+
+
+def _engine(s: Session, asset: Asset, pkgs: list, matches: list, seen: set, prior: list, cache: dict, keep: bool) -> tuple[list, dict, list | None]:
+    """The engine decides which findings exist in its slice (Windows OS, Microsoft products, curated apps, distro packages, language
+    packages, SBOMs) and Linux end of support: each VULNERABLE verdict opens one, and nothing else does (phase 5 of
+    tasks/plan-engine-findings.md, DECISIONS 125). Returns (matches, other affected installs by finding key, the verdicts closing
+    reads, or None). If the engine fails, nothing in its slice opens and nothing closes: a crash isn't evidence of a fix (R4.6)."""
     from nimstead import engine
     from nimstead.engine import parity
     from nimstead.engine.model import Outcome
+    matches = list(matches)  # the caller keeps its own list
     try:
-        verdicts, c, p = engine.judge(s, asset, pkgs, seen, prior, cache, keep)
+        verdicts, c = engine.judge(s, asset, pkgs, prior, cache, keep)
     except Exception:
-        log.exception("engine failed on %s; findings from rescan's own matching, none closed", asset.hostname)
+        log.exception("engine failed on %s; no findings opened or closed", asset.hostname)
         seen.update(prior)
-        return matches, [], None
-    rows = [("engine_disagrees", {"host": asset.hostname, "agree": p["agree"], "count": len(p["unexplained"]),
-                                  "unexplained": p["unexplained"][:20]})] if p["unexplained"] and keep else []
-    if not engine_findings():
-        seen.update(k for k in prior if _linux_eol(k))  # only the engine judges these: switching it off isn't evidence of a fix
-        return matches, rows, None
-    by_key: dict[tuple, list] = defaultdict(list)
+        return matches, {}, None
+    vulnerable: dict[tuple, list] = defaultdict(list)
     for v in verdicts:
-        if v.vuln_id:
-            by_key[v.ecosystem, v.product, v.vuln_id].append(v)
-    out = []
-    for m in matches:
-        vs = by_key.get(m[0])
-        if parity.in_slice(m[0][0]) and vs and all(v.proves_absent for v in vs):
-            seen.discard(m[0])  # evidence it's fixed, not silence: closes like any finding inventory no longer shows
-            continue
-        out.append(m)
-    for key, vs in sorted(by_key.items()):
-        v = next((v for v in vs if v.outcome == Outcome.VULNERABLE), None)
+        if v.vuln_id and v.outcome == Outcome.VULNERABLE:
+            vulnerable[v.ecosystem, v.product, v.vuln_id].append(v)
+    also: dict[tuple, dict[str, str | None]] = {}
+    for key, vs in sorted(vulnerable.items()):
         linux_eol = _linux_eol(key)
-        if v is None or key in seen or not (parity.in_slice(key[0]) or linux_eol):
+        if key in seen or not (parity.in_slice(key[0]) or linux_eol):
             continue
         seen.add(key)
         if linux_eol:
+            v = vs[0]
             rec = {"_risk": (90, "fix-now", [v.summary or key[2], "Upgrade to a supported release"])}  # as Windows end of support (host_checks)
-            out.append((key, key[0], key[1], v.instance or key[1], Match(key[2], [key[2]], None, v.summary or "", rec)))
+            matches.append((key, key[0], key[1], v.instance or key[1], Match(key[2], [key[2]], None, v.summary or "", rec)))
             continue
-        recs = [r for r in c.records.get(key[:2], []) if canonical_id(r) == key[2] and not r.get("withdrawn")]
-        out.append((key, key[0], key[1], v.version, Match(key[2], sorted(r["id"] for r in recs) or [key[2]], v.fixed, v.summary or "",
-                                                         recs[0] if recs else {})))
-    return out, rows, verdicts
+        if key[0] in (winapps.ECOSYSTEM, msproducts.ECOSYSTEM):  # the oldest affected install is the finding's row, later ones named in its summary (DECISIONS 73)
+            vs = sorted(vs, key=lambda v: winapps.appver_parts(v.version))
+            also[key] = {o.version: o.fixed for o in vs[1:]}
+        v = vs[0]
+        recs = _live_by_id(c, key[:2]).get(key[2]) or []
+        matches.append((key, key[0], key[1], v.version, Match(key[2], sorted(r["id"] for r in recs) or [key[2]], v.fixed, v.summary or "",
+                                                             recs[0] if recs else {})))
+    return matches, also, verdicts
 
 
 def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dict | None = None) -> dict:
@@ -209,67 +208,8 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
     events: list[tuple[str, Finding]] = []
     fix_now: list[str] = []  # findings that became fix-now in this rescan
 
-    # (package, advisory ecosystem, advisory package name, version to compare). Installed Windows apps are looked up by
-    # the curated product key only; an app the map doesn't know is inventory and never matched.
-    # Microsoft products (msproducts.py) come from Uninstall entries or the agent's own facts; their name is a tuple of
-    # candidate keys, the first with advisories wins (Store apps MSRC lists per OS).
-    os_product = next((p.name for p in pkgs if p.ecosystem == "Windows"), None)
-    targets = []
-    for p in pkgs:
-        eco = normalize_ecosystem(p.ecosystem)
-        if eco == windrivers.ECOSYSTEM:  # judged by exact hash in host_checks, never by name and version
-            continue
-        if eco == winapps.ECOSYSTEM:
-            if hit := winapps.identify(p.name, p.source, p.version):
-                targets.append((p, eco, hit[0], hit[1]))
-            elif ms := msproducts.from_winapp(p.name, p.source, p.version):
-                targets.append((p, msproducts.ECOSYSTEM, (ms[0],), ms[1]))
-        elif eco == msproducts.ECOSYSTEM:
-            if ms := msproducts.targets(p.name, p.version, os_product, p.source):
-                targets.append((p, eco, *ms))
-        elif eco in sbom.ECOSYSTEMS:  # a language package's `source` is where it was found, never another name (DECISIONS 91)
-            targets.append((p, eco, p.name, p.version))
-        else:
-            targets.append((p, eco, p.source or p.name, p.source_version or p.version))  # advisories name source versions (DECISIONS 84)
-    # stable sort: the oldest vulnerable install of an app is the finding's row (one per asset, package and vulnerability), and a
-    # later install still affected is named in its summary. Each is judged, so fixing one of two leaves the finding open (DECISIONS 73)
-    targets.sort(key=lambda t: winapps.appver_parts(t[3]) if t[1] in (winapps.ECOSYSTEM, msproducts.ECOSYSTEM) else [])
-    wanted: dict[str, set[str]] = defaultdict(set)
-    for _, eco, name, _ in targets:
-        wanted[eco].update(name if isinstance(name, tuple) else [name])
-        if eco == "Windows":
-            wanted[eco].add(name + HOTPATCH)
     advisories = cache if cache is not None else {}
-    for eco, names in wanted.items():
-        names_l = sorted(n for n in names if (eco, n) not in advisories)
-        for n in names_l:
-            advisories[(eco, n)] = []
-        for i in range(0, len(names_l), 500):  # stay under SQL parameter limits
-            for pkg, rec in s.execute(select(Advisory.package, Advisory.record)
-                                      .where(Advisory.ecosystem == eco, Advisory.package.in_(names_l[i:i + 500]))):
-                advisories[(eco, pkg)].append(rec)
-
-    matches = []
-    also: dict[tuple, dict[str, str | None]] = defaultdict(dict)  # finding key -> other affected installs of the app, and their fixes
-    for p, eco, name, version in targets:
-        if isinstance(name, tuple):
-            name = next((n for n in name if advisories.get((eco, n))), name[-1])
-        records = advisories.get((eco, name))
-        if eco == "Windows" and (hot := hotpatch_track(advisories.get((eco, name + HOTPATCH)) or [], version)):
-            records = [r for r in records or [] if not set(r["aliases"]) & hot[0]] + hot[1]
-        if not records:
-            continue
-        mkey = ("match", eco, p.name, version, name)  # pure function of these: same answer on every host
-        if (found := advisories.get(mkey)) is None:
-            found = advisories[mkey] = match_package(Package(p.name, version, name), eco, records)
-        for m in found:
-            key = (eco, name, m.vuln_id)
-            if key in seen:  # several binaries from one source package -> one finding
-                if eco in (winapps.ECOSYSTEM, msproducts.ECOSYSTEM):
-                    also[key][version] = m.fixed
-                continue
-            seen.add(key)
-            matches.append((key, eco, name, version, m))
+    matches: list = []
     # findings that aren't advisory matches (end of support, configuration) carry their own score and reasons
     if ("eol",) not in advisories:  # endoflife.date cycles, once per feed-update pass
         advisories[("eol",)] = {pkg: rec["cycles"] for pkg, rec in s.execute(
@@ -283,7 +223,7 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
         rec = {"_risk": (x["risk"].score, x["risk"].priority, x["risk"].reasons)} if x.get("risk") else {}
         matches.append((key, x["ecosystem"], x["package"], x["version"],
                         Match(x["vuln_id"], [x["vuln_id"]], x.get("fixed"), x["summary"], rec)))
-    matches, engine_rows, verdicts = _engine(s, asset, pkgs, matches, seen, prior, advisories, inventory_received)
+    matches, also, verdicts = _engine(s, asset, pkgs, matches, seen, prior, advisories, inventory_received)
     # exploitation and severity context in three queries, not three lookups per CVE
     cves = sorted({c for *_, m in matches for c in cve_ids(m) if c.startswith("CVE-")})
     kevs, ransomware, epss, nvd = set(), set(), {}, {}
@@ -380,8 +320,6 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
             evidence.append(s, asset.org_id, "inventory_received", asset.id, {
                 "hostname": asset.hostname, "packages": len(inv), "inventory_sha256": digest})
             asset.inventory_logged_sha256, asset.inventory_logged_at = digest, t
-    for kind, data in engine_rows:
-        evidence.append(s, asset.org_id, kind, asset.id, data)
     for kind, f in events:
         evidence.append(s, asset.org_id, kind, f.id, {
             "host": asset.hostname, "vuln_id": f.vuln_id, "package": f.package,

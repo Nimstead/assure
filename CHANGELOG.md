@@ -4,6 +4,11 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Changed
+- The detection engine is now the only thing that decides which findings exist for the Windows OS, Microsoft products, curated Windows apps, distribution packages, language packages and SBOMs (phase 5 of `tasks/plan-engine-findings.md`, DECISIONS 125). The earlier matching that ran beside it as a check is removed, with its `engine_disagrees` ledger entries and the `NIMSTEAD_ENGINE_FINDINGS` setting.
+- **Agents older than 0.5.0** (they send no collection document) get no new findings. Their open findings stay open with a "Still open: the agent doesn't say what it managed to read" reason until the agent is updated. Agents from 0.5.0 on are unaffected, unless the server rejects their document as malformed or too long: that host is treated the same way, and the server log gives a warning naming it. Settings, drivers and Windows end-of-support findings are unchanged.
+- If the engine fails on a host, that reassessment opens nothing in its slice and closes nothing.
+
 ## [0.7.8] - 2026-11-10 (preview)
 
 ### Fixed

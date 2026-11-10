@@ -1,8 +1,8 @@
 """The detection engine's first slice (docs/engine/design-e2.md): collection document -> pure evaluator -> verdicts -> report.
 
 `collection` reads what the agent sent, `content` loads the advisories it applies to, `evaluate` decides, `report` says it,
-`parity` compares it with `scan.rescan`'s own loop. `rescan` opens findings from the engine's verdicts (phase 3 of
-tasks/plan-engine-findings.md) and still closes them as before; nothing here writes.
+`parity` compares verdicts with a host's findings. `rescan` opens findings from the engine's verdicts and closes them only on
+its evidence (phases 3-5 of tasks/plan-engine-findings.md); nothing here writes.
 """
 
 from sqlalchemy import and_, or_, select
@@ -24,13 +24,11 @@ def scan_inventory(s: Session, inv: Inventory, prior=()) -> tuple[list[Verdict],
     return verdicts, report.build(inv, c, verdicts)
 
 
-def judge(s: Session, asset: Asset, pkgs: list, matched: set, prior: list, cache: dict | None = None,
-          keep: bool = False) -> tuple[list[Verdict], content.Content, dict]:
-    """(verdicts, content, parity) for the inventory `rescan` is judging; `matched`: the keys rescan's own loop found, compared
-    with the verdicts (parity.compare). Since phase 3 of tasks/plan-engine-findings.md the verdicts decide what opens and the
-    old loop is the shadow. Reads only. `cache`: rescan's per-pass advisories. `keep`: a new inventory, whose report
+def judge(s: Session, asset: Asset, pkgs: list, prior: list, cache: dict | None = None,
+          keep: bool = False) -> tuple[list[Verdict], content.Content]:
+    """(verdicts, content) for the inventory `rescan` is judging: the verdicts decide which findings exist (phase 5 of
+    tasks/plan-engine-findings.md). Reads only. `cache`: rescan's per-pass advisories. `keep`: a new inventory, whose report
     asset_report stores after the response rather than evaluating again."""
-    from nimstead.engine import parity
     cache = {} if cache is None else cache
     if ("engine", "sbom_subjects", asset.org_id) not in cache:  # one ledger read per org per pass, not one per host
         cache["engine", "sbom_subjects", asset.org_id] = set(s.scalars(select(LedgerEntry.subject).where(
@@ -40,7 +38,7 @@ def judge(s: Session, asset: Asset, pkgs: list, matched: set, prior: list, cache
     verdicts = evaluate(inv, c, prior)
     if keep:
         s.info[("engine_scan", asset.id)] = (inv, c, verdicts)
-    return verdicts, c, parity.compare(verdicts, sorted(matched))
+    return verdicts, c
 
 
 def prior_findings(s: Session, asset: Asset) -> list[tuple[str, str, str]]:
@@ -60,7 +58,7 @@ def sbom_received(s: Session, asset: Asset) -> dict | None:
 
 def asset_report(s: Session, asset: Asset, scanned: tuple | None = None) -> dict:
     """The report from the host's stored inventory, and its record: inventory, content version and verdicts, so it can be explained later (T34).
-    `scanned`: (inventory, content, verdicts) shadow() just evaluated for this inventory, so it isn't evaluated twice."""
+    `scanned`: (inventory, content, verdicts) judge() just evaluated for this inventory, so it isn't evaluated twice."""
     if scanned:
         inv, c, verdicts = scanned
         out = report.build(inv, c, verdicts)

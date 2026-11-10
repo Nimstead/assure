@@ -493,8 +493,8 @@ reboot with a 15-minute warning. Never start an install on battery below 50 % or
 (`Suspend-ClusterNode -Drain`) before install and resumed after verify or rollback; a failed drain = "No changes made".
 **Acceptance criteria:**
 - [x] Two nodes of one cluster approved together: the second waits until the first reports (test)
-- [ ] VM (2-node cluster without shared storage, file-share witness): node drained, patched, resumed; roles stayed online — **NOT proven: no cluster in the sandbox**
-- [ ] DC pair: one at a time, both healthy after (VM) — **NOT proven: no domain in the sandbox**
+- [x] VM (2-node cluster without shared storage, file-share witness): node drained, patched, resumed; roles stayed online — **proven in round 2** (`sandbox/last_run_wincluster.json`, 2026-11-06, PASS: never both nodes at once, each drained and resumed, the role online from outside with its longest gap under 90 s)
+- [x] DC pair: one at a time, both healthy after (VM) — **proven in round 2** (`sandbox/last_run_windc.json`, 2026-11-05, W8): never both in flight across 313 samples, NTDS, DNS, Netlogon and KDC running on both and replication working after. The file reads FAIL on one check only: `repadmin` still counted failures from attempts made while the other DC was restarting (the harness now syncs first)
 **Dependencies:** T40, T41 · **Files:** `agent/nimstead_agent.py`, `remediate.py`, `api/tests/test_remediate.py`, `sandbox/wincluster.py` (new)
 
 ### T43: Windows hosts with no agent, from Active Directory  (S)
@@ -518,7 +518,7 @@ Scheduled tasks get a random delay (6-hourly: up to 30 min; job poll: up to 2 mi
 **Dependencies:** none (run before T27) · **Files:** `agent/nimstead_agent.py`, `api/src/nimstead/static/install.ps1`, `api/tests/test_agent_schedule.py`, `docs/install.md`
 
 ## Checkpoint H
-- [ ] 2-node failover cluster and a DC pair patched inside a window, one node at a time (VM run files) — **NOT proven: no cluster or domain VMs**
+- [x] 2-node failover cluster and a DC pair patched inside a window, one node at a time (VM run files) — **proven in round 2**: `last_run_wincluster.json` and `last_run_windc.json` (see T42)
 - [ ] A workstation VM with a signed-in user: notice, deferral, reboot at the deadline, job verified — **partly: see T41: passes on Windows 11; the notice is proven sent, not seen on screen**
 
 ---

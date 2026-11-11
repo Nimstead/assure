@@ -57,6 +57,7 @@ export function AssetsPage() {
       </header>
 
       <Unmanaged />
+      <UnmanagedDevices />
       <AttackPaths />
       <Baselines />
       <NotAssessed />
@@ -101,6 +102,33 @@ function Unmanaged() {
         </ul>
       </details>
       <a href="/api/directory/unmanaged?format=csv" className="text-sm">Download as CSV</a>
+    </section>
+  );
+}
+
+export interface UnmanagedDevice { mac: string; vendor: string; addresses: string[]; seen_by: string[]; first_seen: string; last_seen: string }
+
+/** Devices on the fleet's networks that no agent accounts for, from each agent's own neighbour table (DECISIONS 128). Passive:
+ * nothing is sent to them. Hidden while there are none, like the Active Directory list. */
+export function UnmanagedDevices() {
+  const q = useQuery({ queryKey: ["network-unmanaged"], queryFn: () => api<UnmanagedDevice[]>("/api/network/unmanaged") });
+  const rows = q.data ?? [];
+  if (!rows.length) return null;
+  const named = rows.filter((r) => r.vendor && r.vendor !== "randomised MAC").length;
+  return (
+    <section aria-labelledby="unmanaged-devices" className="flex flex-col gap-2 border border-line bg-sunken p-4">
+      <h2 id="unmanaged-devices" className="text-base font-semibold">{rows.length} device{rows.length === 1 ? "" : "s"} on your networks {rows.length === 1 ? "has" : "have"} no agent</h2>
+      <p className="text-sm text-muted">Seen in the last 30 days in your machines' own network tables; nothing was sent to them to find them, and nothing about them is checked.{named ? ` ${named} named by their network card's maker.` : ""}</p>
+      <details className="text-sm">
+        <summary className="tap cursor-pointer py-2">Show them</summary>
+        <ul className="mt-2 flex flex-col gap-1">
+          {rows.slice(0, 200).map((r) => (
+            <li key={r.mac} className="break-all"><span className="font-medium">{r.addresses.join(", ")}</span> · {r.vendor || "unknown maker"} · {r.mac}
+              <span className="text-muted"> · seen by {r.seen_by.join(", ")} <time dateTime={parseUtc(r.last_seen).toISOString()}>{relativeTime(r.last_seen)}</time></span></li>
+          ))}
+        </ul>
+      </details>
+      <a href="/api/network/unmanaged?format=csv" className="text-sm">Download as CSV</a>
     </section>
   );
 }

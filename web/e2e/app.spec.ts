@@ -366,6 +366,23 @@ test("an external target's last scan report: dropped ports read as not checked, 
   }
 });
 
+test("devices with no agent: listed on Assets from agents' neighbour tables, and it passes axe", async ({ browser }) => {
+  const rows = [{ mac: "bc:ba:c2:11:22:33", vendor: "Hangzhou Hikvision Digital Technology Co.,Ltd.", addresses: ["192.168.1.64", "fe80::beba:c2ff:fe11:2233"], seen_by: ["web-1"],
+                  first_seen: "2026-11-01T00:00:00", last_seen: "2026-11-11T00:00:00" }];
+  for (const width of [1440, 375] as const) {
+    for (const scheme of ["light", "dark"] as const) {
+      const { context, page } = await ctx(browser, width, scheme);
+      await page.route("**/api/network/unmanaged", (route) => route.fulfill({ json: rows }));
+      await page.goto("/assets");
+      const section = page.getByRole("region", { name: "1 device on your networks has no agent" });
+      await section.getByText("Show them").click();
+      await expect(section.getByText(/Hangzhou Hikvision/)).toBeVisible();
+      await axe(page, `unmanaged devices @${width} ${scheme}`);
+      await context.close();
+    }
+  }
+});
+
 test("Baseline view: per host counts, wording that claims no conformance, rules on demand, CSV", async ({ browser }) => {
   const context = await browser.newContext({ storageState: STATE });
   const page = await context.newPage();

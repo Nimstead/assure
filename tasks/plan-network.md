@@ -82,7 +82,7 @@ See `tasks/todo-network.md` for acceptance criteria and verification per task.
 ### Phase 3: devices without an agent (passive)
 - [x] N6: Agent reports its neighbour table on Linux and Windows (M, agent bump)
 - [x] N7: Server merges neighbours into "seen on your network, no agent", named from the OUI registry, with an API and CSV (M)
-- [ ] N8: Assets shows the list beside the AD unmanaged list (S)
+- [x] N8: Assets shows the list beside the AD unmanaged list (S)
 
 ### Checkpoint 3
 - [ ] Real run: two VMs on one virtual network plus one agentless VM; the agentless one is listed with its vendor, the two agents aren't

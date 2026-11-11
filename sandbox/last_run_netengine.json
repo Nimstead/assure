@@ -1,7 +1,7 @@
 [
   {
     "step": "distro up",
-    "name": "nimstead-sbx-net-dfd85a",
+    "name": "nimstead-sbx-net-2aa020",
     "address": "172.25.98.1"
   },
   {
@@ -15,6 +15,7 @@
       "address": "172.25.98.1",
       "open": 3,
       "resolved": 0,
+      "still_open": 0,
       "skipped": []
     }
   },
@@ -60,6 +61,6 @@
   },
   {
     "step": "distro destroyed",
-    "name": "nimstead-sbx-net-dfd85a"
+    "name": "nimstead-sbx-net-2aa020"
   }
 ]

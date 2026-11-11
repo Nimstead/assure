@@ -20,6 +20,7 @@ TMP = Path(tempfile.mkdtemp(prefix="nimstead-perf-"))
 os.environ.update(NIMSTEAD_SECURE_COOKIES="0", NIMSTEAD_INVENTORY_MIN_SECONDS="0", NIMSTEAD_SIGNING_KEY_FILE=str(TMP / "k.pem"),
                   NIMSTEAD_CHECKPOINT_DIR=str(TMP / "cp"))
 
+from agentdoc import with_document  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from signin import signup  # noqa: E402  first account + its admin's TOTP sign-in
 from sqlalchemy import insert  # noqa: E402
@@ -79,7 +80,7 @@ def main():
         vuln = set(names[:VULN_PER_HOST])
         pkgs = [{"ecosystem": ECO, "name": f"pkg{p}", "version": "1.0-1" if p in vuln else "9.0-1", "source": f"pkg{p}"} for p in names]
         t = time.perf_counter()
-        r = c.post("/api/agent/inventory", json={"ecosystem": ECO, "packages": pkgs}, headers={"Authorization": f"Bearer {a['agent_key']}"})
+        r = c.post("/api/agent/inventory", json=with_document({"ecosystem": ECO, "packages": pkgs}), headers={"Authorization": f"Bearer {a['agent_key']}"})
         ingest.append(time.perf_counter() - t)
         assert r.status_code == 200, r.text
         if n % 100 == 99:
@@ -122,7 +123,7 @@ def main():
     for n in range(ASSETS):
         a = c.post("/api/agent/enroll", json={"token": token, "hostname": f"win{n}", "ecosystem": "Windows"}).json()
         build = "10.0.26100.3000" if n % 5 == 0 else "10.0.26100.500"
-        r = c.post("/api/agent/inventory", json={"ecosystem": "Windows", "packages": [{"ecosystem": "Windows", "name": product, "version": build, "source": None}]},
+        r = c.post("/api/agent/inventory", json=with_document({"ecosystem": "Windows", "packages": [{"ecosystem": "Windows", "name": product, "version": build, "source": None}]}),
                    headers={"Authorization": f"Bearer {a['agent_key']}"})
         assert r.status_code == 200, r.text
     rows = timed("GET /api/windows-updates", lambda: c.get("/api/windows-updates").json(), 3)

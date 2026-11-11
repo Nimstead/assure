@@ -1180,6 +1180,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         asset.silent_alerted_at = None
         # never the last report's: it describes the packages arriving now, or says nothing. What doesn't fit is dropped, like facts
         asset.collection = body.collection if valid_document(body.collection) else None
+        if body.collection is not None and asset.collection is None:  # judged like an agent older than 0.5.0 (DECISIONS 125): say why
+            log.warning("collection document from %s (agent %s) rejected: nothing is judged until one fits", asset.hostname, body.agent_version)
         if body.facts is not None:
             if facts_ok(body.facts):  # facts that don't fit are dropped, never the packages with them
                 asset.facts = body.facts
@@ -1197,7 +1199,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             remediate.verify(s, asset)
         remediate.auto_remediate(s, asset)
         s.commit()
-        tasks.add_task(store_scan_report, asset.id, s.info.pop(("engine_scan", asset.id), None))  # rescan's shadow already evaluated it
+        tasks.add_task(store_scan_report, asset.id, s.info.pop(("engine_scan", asset.id), None))  # rescan's engine pass already evaluated it
         return result
 
     class DirectoryEntry(BaseModel):

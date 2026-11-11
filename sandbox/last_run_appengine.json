@@ -1,7 +1,7 @@
 [
   {
     "step": "creating sandbox distro",
-    "name": "nimstead-sbx-3ba8f0c7",
+    "name": "nimstead-sbx-940ba14b",
     "distro": "Debian"
   },
   {
@@ -11,7 +11,7 @@
   {
     "step": "set up",
     "command": "apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3-venv python3-requests nodejs npm cur",
-    "seconds": 87
+    "seconds": 71
   },
   {
     "step": "set up",
@@ -21,7 +21,7 @@
   {
     "step": "set up",
     "command": "python3 -m venv /srv/reports/venv && /srv/reports/venv/bin/pip install -q --disable-pip-version-check requests==2.32.3",
-    "seconds": 3
+    "seconds": 2
   },
   {
     "step": "set up",
@@ -79,7 +79,7 @@
       ]
     },
     "jar_scan": {
-      "files": 62390,
+      "files": 61821,
       "complete": true,
       "owned": 0
     },
@@ -106,14 +106,14 @@
   },
   {
     "step": "feeds",
-    "kev": 1766,
+    "kev": 1773,
     "osv": {
-      "inserted": 61037,
+      "inserted": 61616,
       "updated": 0,
       "skipped": 0
     },
     "apps": {
-      "inserted": 268456,
+      "inserted": 269090,
       "updated": 0,
       "skipped": 442
     },
@@ -145,13 +145,13 @@
       "tomcat": 9,
       "ubuntu": 45
     },
-    "seconds": 41
+    "seconds": 35
   },
   {
     "step": "report",
     "headline": {
       "status": "vulnerable",
-      "text": "VULNERABLE: 1,009 vulnerabilities across 113 installs. 1 checks couldn't be determined."
+      "text": "VULNERABLE: 1,033 vulnerabilities across 114 installs. 1 checks couldn't be determined."
     },
     "applications": [
       {
@@ -265,8 +265,8 @@
         "instance": "lodash 4.17.15 at /srv/web/node_modules/lodash",
         "grade": "reasonable",
         "outcomes": {
-          "not-vulnerable": 4,
-          "vulnerable": 6
+          "not-vulnerable": 5,
+          "vulnerable": 5
         }
       },
       {
@@ -330,13 +330,13 @@
       "families": {
         "distro": {
           "label": "Distribution packages",
-          "attempted": 25412,
-          "determined": 25411,
+          "attempted": 25479,
+          "determined": 25478,
           "outcomes": {
-            "not-applicable": 3294,
-            "not-vulnerable": 21158,
+            "not-applicable": 3314,
+            "not-vulnerable": 21180,
             "undetermined": 1,
-            "vulnerable": 959
+            "vulnerable": 984
           }
         },
         "application": {
@@ -344,8 +344,8 @@
           "attempted": 126,
           "determined": 126,
           "outcomes": {
-            "not-vulnerable": 76,
-            "vulnerable": 50
+            "not-vulnerable": 77,
+            "vulnerable": 49
           }
         }
       },
@@ -359,7 +359,7 @@
         "not_looked_for": []
       },
       "statements": [
-        "Distribution packages: 1 of 25,412 checks couldn't be determined.",
+        "Distribution packages: 1 of 25,479 checks couldn't be determined.",
         "8 found that the package manager owns were left to it and judged as distribution packages.",
         "4 of 18 installs outside the package manager have no published advisory: no known vulnerability, which isn't proof of none.",
         "Livepatch, services still running replaced libraries, and software outside the package manager other than Python and npm packages and Java archives (vendored binaries, containers, self-installed tools) aren't judged by this report yet. Kernels installed but not running are judged, and marked so."
@@ -399,7 +399,7 @@
       {
         "instance": "lodash 4.17.15 at /srv/web/node_modules/lodash",
         "grade": "reasonable",
-        "count": 6,
+        "count": 5,
         "known_exploited": 0,
         "observed": "4.17.15 (npm package metadata in /srv/web/node_modules/lodash)",
         "expected": "at least 4.18.0",
@@ -481,15 +481,19 @@
         ]
       }
     ],
-    "verdicts_sha256": "e8b4cdff9c01c738e5de60fac9cd0ebc64404de84a5765a9b344c0d37256b42a",
-    "content_version": "2026-11-03.3faf51c16c88"
+    "verdicts_sha256": "1ecbeb161441e3165a15163650c170bd6c22f06d8ee9bcc3599de5cfbf37c9f4",
+    "content_version": "2026-11-10.738d2f901a85"
+  },
+  {
+    "step": "database kept",
+    "path": "C:\\Users\\Ciaran\\AppData\\Local\\Temp\\nimstead-sbx-74ngd0k_-full.db"
   },
   {
     "step": "parity with rescan",
-    "findings": 1001,
-    "app_findings": 42,
-    "app_agree": 42,
-    "agree": 1001,
+    "findings": 1025,
+    "app_findings": 41,
+    "app_agree": 41,
+    "agree": 1025,
     "outside_this_slice": {},
     "explained": 0,
     "explained_by": [],
@@ -506,7 +510,7 @@
     },
     "headline": {
       "status": "vulnerable",
-      "text": "VULNERABLE: 1,009 vulnerabilities across 113 installs. 2 checks couldn't be determined."
+      "text": "VULNERABLE: 1,033 vulnerabilities across 114 installs. 2 checks couldn't be determined."
     },
     "undetermined": [
       {
@@ -553,7 +557,7 @@
       }
     ],
     "statements": [
-      "Distribution packages: 1 of 25,412 checks couldn't be determined.",
+      "Distribution packages: 1 of 25,479 checks couldn't be determined.",
       "This host's applications outside the package manager were not assessed.",
       "Not looked for on this host, so not assessed: Python packages, npm packages, Java archives (the agent's opt-in scans are off, or it predates them).",
       "Livepatch, services still running replaced libraries, and software outside the package manager other than Python and npm packages and Java archives (vendored binaries, containers, self-installed tools) aren't judged by this report yet. Kernels installed but not running are judged, and marked so."
@@ -582,10 +586,6 @@
       [
         "lodash",
         "CVE-2025-13465"
-      ],
-      [
-        "lodash",
-        "CVE-2026-2950"
       ],
       [
         "lodash",
@@ -638,9 +638,13 @@
       [
         "pip",
         "CVE-2026-13346"
+      ],
+      [
+        "pip",
+        "CVE-2026-1703"
       ]
     ],
-    "app_findings_still_open": 0
+    "app_findings_still_open": 41
   },
   {
     "step": "SBOM",
@@ -652,12 +656,12 @@
         "no_purl": 1,
         "unsupported_or_invalid_purl": 1
       },
-      "open": 54,
+      "open": 53,
       "resolved": 0
     },
     "headline": {
       "status": "vulnerable",
-      "text": "VULNERABLE: 54 vulnerabilities across 4 installs. 2 checks couldn't be determined."
+      "text": "VULNERABLE: 53 vulnerabilities across 4 installs. 2 checks couldn't be determined."
     },
     "coverage": {
       "sources": [
@@ -676,8 +680,8 @@
           "determined": 192,
           "outcomes": {
             "not-run": 2,
-            "not-vulnerable": 138,
-            "vulnerable": 54
+            "not-vulnerable": 139,
+            "vulnerable": 53
           }
         }
       },
@@ -692,7 +696,7 @@
       },
       "statements": [
         "Applications outside the package manager: 2 of 194 checks couldn't be determined.",
-        "SBOM (received 2026-11-03): An SBOM states what was built, not what's running, so nothing judged from it is better than unverified. 2 of its 6 components weren't assessed.",
+        "SBOM (received 2026-11-10): An SBOM states what was built, not what's running, so nothing judged from it is better than unverified. 2 of its 6 components weren't assessed.",
         "Only components with a package URL in an ecosystem the advisory feeds cover are judged."
       ]
     },
@@ -702,11 +706,11 @@
         "reason": "sbom-unmapped",
         "blocked_by": null,
         "why": "these SBOM components can't be named in an ecosystem the advisories use, so they weren't assessed",
-        "source_said": "1 have no package URL",
+        "source_said": "1 with no package URL",
         "what_to_do": "Generate the SBOM with a package URL (purl) for every component",
         "count": 1,
         "examples": [
-          "1 components"
+          "1 component"
         ]
       },
       {
@@ -714,11 +718,11 @@
         "reason": "sbom-unmapped",
         "blocked_by": null,
         "why": "these SBOM components can't be named in an ecosystem the advisories use, so they weren't assessed",
-        "source_said": "1 have a package URL no advisory feed covers",
+        "source_said": "1 with a package URL no advisory feed covers",
         "what_to_do": "Generate the SBOM with a package URL (purl) for every component",
         "count": 1,
         "examples": [
-          "1 components"
+          "1 component"
         ]
       }
     ],
@@ -742,7 +746,7 @@
       {
         "instance": "lodash 4.17.15",
         "grade": "unverified",
-        "count": 6,
+        "count": 5,
         "expected": "at least 4.18.0",
         "source": "GitHub Advisory Database",
         "raise_confidence": "An SBOM states what was built, not what's running: an agent reading the deployed files would raise this"
@@ -757,12 +761,16 @@
       }
     ],
     "parity": {
-      "findings": 54,
-      "agree": 54,
+      "findings": 53,
+      "agree": 53,
       "explained": 0,
       "unexplained": [],
       "outside_this_slice": {}
     }
+  },
+  {
+    "step": "database kept",
+    "path": "C:\\Users\\Ciaran\\AppData\\Local\\Temp\\nimstead-sbx-74ngd0k_-sbom.db"
   },
   {
     "step": "RESULT: PASS",
@@ -782,6 +790,6 @@
   },
   {
     "step": "sandbox destroyed",
-    "name": "nimstead-sbx-3ba8f0c7"
+    "name": "nimstead-sbx-940ba14b"
   }
 ]

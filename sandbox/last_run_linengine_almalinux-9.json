@@ -1,7 +1,7 @@
 [
   {
     "step": "creating sandbox distro",
-    "name": "nimstead-sbx-4cb48806",
+    "name": "nimstead-sbx-f84307bc",
     "distro": "AlmaLinux-9"
   },
   {
@@ -47,7 +47,7 @@
   },
   {
     "step": "feeds",
-    "kev": 1772,
+    "kev": 1773,
     "osv": {
       "inserted": 26735,
       "updated": 0,
@@ -81,7 +81,7 @@
       "tomcat": 9,
       "ubuntu": 45
     },
-    "seconds": 11
+    "seconds": 8
   },
   {
     "step": "report",
@@ -524,14 +524,18 @@
     ],
     "vulnerable_installs": 31,
     "not_applicable": 2986,
-    "content_version": "2026-11-06.2b38a8cf590a",
-    "inventory_sha256": "293e4bf83f2bf2663be1e286f536e39ab5232a424b47b3c7f60fff9dbaf93289",
+    "content_version": "2026-11-06.4e5c40597f9f",
+    "inventory_sha256": "aeaa3a91038347eaeee58474423b5917f7cada85e5b289c4801d58ea4c3d464a",
     "verdicts_sha256": "92484ade716539ec4cb5c990d9e616a57c3819f61982d6c44892e47442cd1bbd"
   },
   {
     "step": "binaries versioned unlike their source",
     "count": 0,
     "examples": []
+  },
+  {
+    "step": "database kept",
+    "path": "C:\\Users\\Ciaran\\AppData\\Local\\Temp\\nimstead-sbx-uu9cdcd8-full.db"
   },
   {
     "step": "parity with rescan",
@@ -541,11 +545,6 @@
     "explained": 0,
     "explained_by": [],
     "explained_examples": [],
-    "unexplained": []
-  },
-  {
-    "step": "rescan's loop against the engine (engine_disagrees)",
-    "entries": 0,
     "unexplained": []
   },
   {
@@ -619,6 +618,6 @@
   },
   {
     "step": "sandbox destroyed",
-    "name": "nimstead-sbx-4cb48806"
+    "name": "nimstead-sbx-f84307bc"
   }
 ]

@@ -287,7 +287,8 @@ def test_netfx_opens_on_its_own_line_plans_its_kb_and_closes_when_mscorlib_reach
     def report(v, release="533509", os_name="Windows 11 Version 26H2 for x64-based Systems"):
         assert c.post("/api/agent/inventory", headers=h, json={"ecosystem": "Windows", "packages": [
             {"ecosystem": "Windows", "name": os_name, "version": "10.0.26300.9711", "source": None},
-            {"ecosystem": "Microsoft", "name": ".NET Framework", "version": v, "source": release}]}).status_code == 200
+            {"ecosystem": "Microsoft", "name": ".NET Framework", "version": v, "source": release},
+            {"ecosystem": "WinApp", "name": "Contoso Helper", "version": "1.0", "source": "Contoso"}]}).status_code == 200  # an Uninstall list is never empty
         return [f for f in c.get("/api/findings").json() if f["package"].startswith(".NET Framework")]
 
     assert not report("4.8.9999.0", "528449")  # the 4.8 line isn't judged by a 4.8.1 fix

@@ -8,7 +8,18 @@ import { join } from "node:path";
 const STATE = "e2e-data/state.json";
 const SHOTS = "e2e-screenshots";
 const LONG_HOST = "a-very-long-hostname-for-overflow-checks-0123456789-abcdefghijk";
-const inv = (version: string) => ({
+// the collection document a current agent sends (sandbox/agentdoc.py): without one, an inventory opens no findings
+type Inv = { ecosystem: string; packages: { ecosystem: string; [k: string]: unknown }[]; [k: string]: unknown };
+const current = (data: Inv) => {
+  const n = (eco: string) => ({ state: "ok", count: data.packages.filter((p) => p.ecosystem === eco).length });
+  const apps = { python_packages: n("PyPI"), npm_packages: n("npm"), java_archives: n("Maven") };
+  const sources = data.ecosystem === "Windows"
+    ? { windows_build: n("Windows"), uninstall: n("WinApp"), user_hives: { state: "ok", count: 0 }, microsoft_products: n("Microsoft"),
+        host_facts: { state: "ok", count: 1 }, drivers: n("WinDriver") }
+    : { os_release: { state: "ok", count: 1 }, package_db: n(data.ecosystem) };
+  return { ...data, collection: { v: 1, sources: { ...sources, ...apps } } };
+};
+const inv = (version: string) => current({
   ecosystem: "Debian:12",
   packages: ["libssl3", "openssl"].map((name) => ({ ecosystem: "Debian:12", name, version, source: "openssl" })),
 });
@@ -305,7 +316,7 @@ test("Windows updates: who has a KB, why the others don't, and planning the rest
   const tok = await (await page.request.post("/api/enroll-tokens", { data: { sandbox: true } })).json();
   for (const [hostname, build] of [["win-patched", "10.0.26200.9711"], ["win-old", "10.0.26200.6899"]] as const) {
     const a = await (await page.request.post("/api/agent/enroll", { data: { token: tok.token, hostname, ecosystem: "Windows" } })).json();
-    const r = await page.request.post("/api/agent/inventory", { data: { ecosystem: "Windows", packages: [{ ecosystem: "Windows", name: W11, version: build, source: null }] }, headers: { Authorization: `Bearer ${a.agent_key}` } });
+    const r = await page.request.post("/api/agent/inventory", { data: current({ ecosystem: "Windows", packages: [{ ecosystem: "Windows", name: W11, version: build, source: null }] }), headers: { Authorization: `Bearer ${a.agent_key}` } });
     expect(r.ok()).toBe(true);
   }
   await page.goto("/remediation");
@@ -328,7 +339,7 @@ test("Baseline view: per host counts, wording that claims no conformance, rules 
   const page = await context.newPage();
   const tok = await (await page.request.post("/api/enroll-tokens", { data: { sandbox: true } })).json();
   const a = await (await page.request.post("/api/agent/enroll", { data: { token: tok.token, hostname: "stig-srv", ecosystem: "Windows" } })).json();
-  const r = await page.request.post("/api/agent/inventory", { data: { os_name: "Windows Server 2025 Standard 24H2 (AMD64) build 10.0.26100.1", ecosystem: "Windows", packages: [], facts: { domain_role: 3, installation_type: "Server", baseline: { audit: { "{0CCE9215-69AE-11D9-BED3-505054503030}": 1 } } } }, headers: { Authorization: `Bearer ${a.agent_key}` } });
+  const r = await page.request.post("/api/agent/inventory", { data: current({ os_name: "Windows Server 2025 Standard 24H2 (AMD64) build 10.0.26100.1", ecosystem: "Windows", packages: [], facts: { domain_role: 3, installation_type: "Server", baseline: { audit: { "{0CCE9215-69AE-11D9-BED3-505054503030}": 1 } } } }), headers: { Authorization: `Bearer ${a.agent_key}` } });
   expect(r.ok()).toBe(true);
   await page.goto("/assets");
   const section = page.getByRole("region", { name: "Windows settings compared with published baselines" });
@@ -464,8 +475,8 @@ test("apps the curated rules don't cover are said, on Assets, and pass axe (W1)"
   const tok = await (await page.request.post("/api/enroll-tokens", { data: { sandbox: true } })).json();
   const a = await (await page.request.post("/api/agent/enroll", { data: { token: tok.token, hostname: "win-apps", ecosystem: "Windows" } })).json();
   const app = (name: string, source: string, version: string) => ({ ecosystem: "WinApp", name, source, version });
-  const r = await page.request.post("/api/agent/inventory", { data: { ecosystem: "Windows", packages: [
-    app("7-Zip 24.08 (x64)", "Igor Pavlov", "24.08"), app("Acme Widget", "Acme", "1.0"), app("Contoso Helper", "Contoso", "2.3")] },
+  const r = await page.request.post("/api/agent/inventory", { data: current({ ecosystem: "Windows", packages: [
+    app("7-Zip 24.08 (x64)", "Igor Pavlov", "24.08"), app("Acme Widget", "Acme", "1.0"), app("Contoso Helper", "Contoso", "2.3")] }),
     headers: { Authorization: `Bearer ${a.agent_key}` } });
   expect(r.ok()).toBe(true);
   await page.goto("/assets");

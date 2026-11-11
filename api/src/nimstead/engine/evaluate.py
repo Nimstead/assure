@@ -7,6 +7,7 @@ import functools
 import re
 from collections import defaultdict
 from dataclasses import replace
+from operator import attrgetter
 
 from nimstead import lifecycle, msproducts, risk, sbom, winapps
 from nimstead.engine.collection import (
@@ -235,12 +236,16 @@ def _carry_forward(verdicts: list[Verdict], prior, inv: Inventory | None = None,
     The exceptions are evidence, with the source that would list the product read whole: the product isn't installed (an
     uninstall, a dropped SBOM component, a distro or Windows upgrade) is not-applicable, `removed`; it is installed, but no live
     advisory for it carries this id any more (withdrawn, or re-keyed when a GHSA gained a CVE) is not-applicable, `withdrawn`."""
-    answered = {(v.ecosystem, v.product, v.vuln_id) for v in verdicts if v.vuln_id}
+    ids = {vuln for *_, vuln in prior}  # a host has ~20,000 verdicts and a few hundred findings: key only the verdicts that could answer one
+    answered = {(v.ecosystem, v.product, v.vuln_id) for v in verdicts if v.vuln_id in ids}
+    unanswered = sorted(k for k in set(prior) if k not in answered)
+    if not unanswered:
+        return []
     gone = {(v.ecosystem, v.product) for v in verdicts if v.outcome == Outcome.NOT_APPLICABLE}
     held, full = None, {}  # each built only when needed: most scans answer every finding, and an old agent's sources are never read in full
     out = []
-    for eco, product, vuln in sorted(set(prior)):
-        if (eco in ("Windows", msproducts.ECOSYSTEM, winapps.ECOSYSTEM, *sbom.ECOSYSTEMS) or linux(eco)) and (eco, product, vuln) not in answered and (eco, product) not in gone:
+    for eco, product, vuln in unanswered:
+        if (eco in ("Windows", msproducts.ECOSYSTEM, winapps.ECOSYSTEM, *sbom.ECOSYSTEMS) or linux(eco)) and (eco, product) not in gone:
             family = {"Windows": "os", msproducts.ECOSYSTEM: "microsoft", winapps.ECOSYSTEM: "app"}.get(eco, "application" if eco in sbom.ECOSYSTEMS else "distro")
             if inv and eco not in full:
                 full[eco] = _read_in_full(inv, eco)
@@ -319,7 +324,7 @@ def _applications(inv: Inventory, c: Content, agent_read: bool = True, blocked_b
 
 
 def _sorted(verdicts: list[Verdict]) -> list[Verdict]:
-    return sorted(verdicts, key=lambda v: (v.family, v.product, v.check, v.instance or ""))
+    return sorted(verdicts, key=attrgetter("order"))
 
 
 def _evaluate_linux(inv: Inventory, c: Content, prior) -> list[Verdict]:
@@ -343,6 +348,10 @@ def _evaluate_linux(inv: Inventory, c: Content, prior) -> list[Verdict]:
         if eol.outcome == Outcome.VULNERABLE:
             out = [replace(v, outcome=Outcome.UNDETERMINED, reason="end-of-life", grade=None) if v.outcome == Outcome.NOT_VULNERABLE else v for v in out]
         out.append(eol)
+    if inv.source("os_release").state == "ok":  # read in full, another release (an upgrade, or one with no lifecycle) proves an old release's end of support gone
+        ends = tuple(f"EOL:{p}-" for p in lifecycle.DISTRO_EOL.values())
+        out += [Verdict(vuln, "distro", e, product, Outcome.NOT_APPLICABLE, vuln_id=vuln, reason="removed", instance=product)
+                for e, product, vuln in sorted(set(prior)) if e == lifecycle.ECOSYSTEM and vuln.startswith(ends) and vuln != (eol and eol.vuln_id)]
     out += _applications(inv, c, db.state == "ok", db)  # after end of support: a distro's lifecycle says nothing of PyPI's advisories
     out += _carry_forward(out, prior, inv, c)
     return _sorted(out)
@@ -358,6 +367,10 @@ def evaluate(inv: Inventory, content: Content, prior: tuple | list = ()) -> list
         if linux(inv.ecosystem):
             return [Verdict("product:platform", "distro", inv.ecosystem, inv.ecosystem, Outcome.NOT_RUN, reason="no-inventory")]
         return [Verdict("product:windows", "os", "Windows", "Windows", Outcome.NOT_RUN, reason="no-inventory")]
+    if inv.document is None:  # an agent older than 0.5.0 can't say what it read: nothing is judged, open findings stay open (DECISIONS 125)
+        out = [Verdict("product:platform", "distro" if inv.is_linux else "os", inv.ecosystem or "unknown", inv.ecosystem or "unknown",
+                       Outcome.NOT_RUN, reason="no-collection-document")]
+        return _sorted(out + _carry_forward(out, prior, inv, content))
     if linux(inv.ecosystem):
         return _evaluate_linux(inv, content, prior)
     if inv.ecosystem != "Windows":

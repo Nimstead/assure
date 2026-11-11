@@ -1,5 +1,5 @@
-"""Parity with `scan.rescan` on the same inventory (design-e2.md): every finding it opened is a `vulnerable` verdict, and
-every difference is listed with its reason. Anything left in `unexplained` is a bug in one of the two."""
+"""A host's findings against the engine's verdicts on its inventory (design-e2.md): every open finding is a `vulnerable` verdict, and
+every difference is listed with its reason (a finding held open says why). Anything left in `unexplained` is a bug."""
 
 from collections import defaultdict
 

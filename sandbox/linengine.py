@@ -10,6 +10,7 @@ Run from api/:  uv run python ../sandbox/linengine.py --distro Debian|AlmaLinux-
 """
 
 import json
+import shutil
 import sys
 import time
 
@@ -20,7 +21,7 @@ from sqlalchemy import select
 
 from nimstead import engine, feeds  # noqa: E402
 from nimstead.app import create_app  # noqa: E402
-from nimstead.db import Asset, Finding, InstalledPackage, LedgerEntry, make_sessionmaker  # noqa: E402
+from nimstead.db import Asset, Finding, InstalledPackage, make_sessionmaker  # noqa: E402
 from nimstead.engine import parity, report  # noqa: E402
 from nimstead.engine.collection import Inventory, manager, valid_document  # noqa: E402
 
@@ -86,14 +87,12 @@ def main(keep=False) -> int:
              "verdicts": sorted({v.outcome.value for v in verdicts if v.instance == f"{x['source']} {x['source_version']}" and f"{x['name']} {x['version']}" in (v.observed or "")})}
             for x in split[:20]])
         p = parity.compare(verdicts, found)
+        shutil.copy(h.TMP / "nimstead.db", h.TMP.parent / f"{h.TMP.name}-full.db")  # for sandbox/engine_replay.py: the same feeds and inventory judged by another build
+        h.note("database kept", path=str(h.TMP.parent / f"{h.TMP.name}-full.db"))
         h.note("parity with rescan", findings=len(found), agree=p["agree"], outside_this_slice=p["outside_this_slice"], explained=len(p["explained"]),
                explained_by=sorted({x["engine"] for x in p["explained"]}), explained_examples=p["explained"][:20], unexplained=p["unexplained"][:50])
         print(f"Parity: {len(found)} findings, {p['agree']} agree, outside this slice {p['outside_this_slice']}, "
               f"{len(p['explained'])} explained ({', '.join(sorted({x['engine'] for x in p['explained']})) or 'none'}), {len(p['unexplained'])} unexplained", flush=True)
-        with make_sessionmaker(db)() as s:  # phase 3: the engine opens findings and rescan's own loop is the shadow; this is the reverse check
-            rows = [e.data for e in s.scalars(select(LedgerEntry).where(LedgerEntry.kind == "engine_disagrees", LedgerEntry.subject == aid))]
-        h.note("rescan's loop against the engine (engine_disagrees)", entries=len(rows), unexplained=[x for r in rows for x in r['unexplained']][:50])
-        print(f"Reverse shadow: {len(rows)} engine_disagrees entries", flush=True)
 
         broken = failed_read(mgr)
         r = api.post("/api/agent/inventory", headers=auth, json=broken)

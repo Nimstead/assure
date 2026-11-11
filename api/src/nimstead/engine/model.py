@@ -1,5 +1,6 @@
 """The verdict model (spec section 4, docs/engine/design-e2.md): one verdict per check, host and instance, from a closed set."""
 
+import functools
 from dataclasses import asdict, dataclass
 from enum import StrEnum
 
@@ -102,7 +103,12 @@ class Verdict:
         """Return verdict fields as a dictionary, omitting None and False (not 0: CVSS 0.0 is a score, unlike no score)."""
         return {k: v for k, v in asdict(self).items() if v is not None and v is not False}
 
+    @functools.cached_property
+    def order(self) -> tuple:
+        """Report order. Kept on the verdict: most are shared across a feed pass's hosts, each with about 20,000 to sort."""
+        return (self.family, self.product, self.check, self.instance or "")
+
     @property
     def proves_absent(self) -> bool:
-        """Only this may close a finding (R4.6). `rescan` doesn't use it yet: parity first."""
+        """Only this may close a finding (R4.6): `scan._held_open` asks it of each finding rescan no longer matches."""
         return self.outcome in (Outcome.NOT_VULNERABLE, Outcome.NOT_APPLICABLE)

@@ -11,6 +11,7 @@ Run from api/:  uv run python ../sandbox/winengine.py VM_NAME [--keep]   Writes 
 import json
 import os
 import secrets
+import shutil
 import sys
 
 import wine2e as h  # noqa: E402  (reads VM_NAME from argv)
@@ -21,7 +22,7 @@ from signin import signup
 from sqlalchemy import select
 
 from nimstead import engine, feeds  # noqa: E402
-from nimstead.db import Asset, Finding, InstalledPackage, LedgerEntry, make_sessionmaker  # noqa: E402
+from nimstead.db import Asset, Finding, InstalledPackage, make_sessionmaker  # noqa: E402
 from nimstead.engine import parity, report  # noqa: E402
 from nimstead.engine.collection import Inventory, valid_document  # noqa: E402
 
@@ -77,12 +78,10 @@ def main(keep=False) -> int:
         verdicts, again = engine.scan_inventory(s, stored, engine.prior_findings(s, asset))
         found = [(x.ecosystem, x.package, x.vuln_id) for x in s.scalars(select(Finding).where(Finding.asset_id == aid, Finding.status.in_(("open", "accepted"))))]
     p = parity.compare(verdicts, found)
+    shutil.copy(h.TMP / "en.db", h.TMP.parent / f"{h.TMP.name}-full.db")  # for sandbox/engine_replay.py: the same feeds and inventory judged by another build
+    h.note("database kept", path=str(h.TMP.parent / f"{h.TMP.name}-full.db"))
     h.note("parity with rescan", findings=len(found), agree=p["agree"], outside_this_slice=p["outside_this_slice"], explained=p["explained"][:50], unexplained=p["unexplained"][:50])
     print(f"Parity: {len(found)} findings, {p['agree']} agree, outside this slice {p['outside_this_slice']}, {len(p['explained'])} explained, {len(p['unexplained'])} unexplained", flush=True)
-    with db() as s:  # phase 3: the engine opens findings and rescan's own loop is the shadow; this is the reverse check
-        rows = [e.data for e in s.scalars(select(LedgerEntry).where(LedgerEntry.kind == "engine_disagrees", LedgerEntry.subject == aid))]
-    h.note("rescan's loop against the engine (engine_disagrees)", entries=len(rows), unexplained=[x for r in rows for x in r['unexplained']][:50])
-    print(f"Reverse shadow: {len(rows)} engine_disagrees entries", flush=True)
 
     limited = as_standard_user()
     sources = limited["collection"]["sources"]

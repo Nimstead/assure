@@ -58,7 +58,7 @@ def test_partial_inventory_and_missing_facts_retain_prior_data(env):
         assert a.facts == {"pending_reboot": True}
         assert a.collection["sources"]["host_facts"]["state"] == "failed"
         assert len(s.scalars(select(InstalledPackage).where(InstalledPackage.asset_id == a.id)).all()) == len(INV["packages"])
-    assert c.post("/api/agent/inventory", headers=h, json={"packages": []}).status_code == 200
+    assert c.post("/api/agent/inventory", headers=h, json={"packages": [], "collection": None}).status_code == 200  # an agent too old to send one
     with make_sessionmaker(env)() as s:
         a = s.get(Asset, e["asset_id"])
         assert a.facts == {"pending_reboot": True} and a.collection is None

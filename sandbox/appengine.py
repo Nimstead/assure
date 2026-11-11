@@ -12,6 +12,7 @@ Run from api/:  uv run python ../sandbox/appengine.py [--keep]   Writes sandbox/
 """
 
 import json
+import shutil
 import sys
 import time
 
@@ -102,6 +103,8 @@ def main(keep=False) -> int:
         p = parity.compare(verdicts, found)
         apps_found = [f for f in found if f[0] in ("PyPI", "npm", "Maven")]
         apps_agree = len({(v.ecosystem, v.product, v.vuln_id) for v in app_v if v.outcome.value == "vulnerable"} & set(apps_found))
+        shutil.copy(h.TMP / "nimstead.db", h.TMP.parent / f"{h.TMP.name}-full.db")  # for sandbox/engine_replay.py: the same feeds and inventory judged by another build
+        h.note("database kept", path=str(h.TMP.parent / f"{h.TMP.name}-full.db"))
         h.note("parity with rescan", findings=len(found), app_findings=len(apps_found), app_agree=apps_agree, agree=p["agree"],
                outside_this_slice=p["outside_this_slice"], explained=len(p["explained"]), explained_by=sorted({x["engine"] for x in p["explained"]}),
                unexplained=p["unexplained"][:50])
@@ -144,6 +147,8 @@ def main(keep=False) -> int:
                vulnerable=[{k: g[k] for k in ("instance", "grade", "count", "expected", "source", "raise_confidence")} for g in sb["vulnerable"]],
                parity={"findings": len(sb_found), "agree": sp["agree"], "explained": len(sp["explained"]), "unexplained": sp["unexplained"],
                        "outside_this_slice": sp["outside_this_slice"]})
+        shutil.copy(h.TMP / "nimstead.db", h.TMP.parent / f"{h.TMP.name}-sbom.db")  # for sandbox/engine_replay.py: the same feeds and inventory judged by another build
+        h.note("database kept", path=str(h.TMP.parent / f"{h.TMP.name}-sbom.db"))
         print(f"SBOM parity: {len(sb_found)} findings, {sp['agree']} agree, {len(sp['unexplained'])} unexplained", flush=True)
 
         sent = inv["collection"]["sources"]

@@ -1,7 +1,7 @@
 [
   {
     "step": "creating sandbox distro",
-    "name": "nimstead-sbx-d98dd5c4",
+    "name": "nimstead-sbx-299574fb",
     "distro": "Debian"
   },
   {
@@ -47,9 +47,9 @@
   },
   {
     "step": "feeds",
-    "kev": 1772,
+    "kev": 1773,
     "osv": {
-      "inserted": 61604,
+      "inserted": 61616,
       "updated": 0,
       "skipped": 0
     },
@@ -81,13 +81,13 @@
       "tomcat": 9,
       "ubuntu": 45
     },
-    "seconds": 16
+    "seconds": 13
   },
   {
     "step": "report",
     "headline": {
       "status": "vulnerable",
-      "text": "VULNERABLE: 297 vulnerabilities across 37 installs. 1 checks couldn't be determined."
+      "text": "VULNERABLE: 302 vulnerabilities across 37 installs. 1 checks couldn't be determined."
     },
     "coverage": {
       "sources": [
@@ -130,13 +130,13 @@
       "families": {
         "distro": {
           "label": "Distribution packages",
-          "attempted": 5148,
-          "determined": 5147,
+          "attempted": 5153,
+          "determined": 5152,
           "outcomes": {
             "not-applicable": 3446,
             "not-vulnerable": 1404,
             "undetermined": 1,
-            "vulnerable": 297
+            "vulnerable": 302
           }
         },
         "application": {
@@ -160,7 +160,7 @@
         ]
       },
       "statements": [
-        "Distribution packages: 1 of 5,148 checks couldn't be determined.",
+        "Distribution packages: 1 of 5,153 checks couldn't be determined.",
         "Not looked for on this host, so not assessed: Python packages, npm packages, Java archives (the agent's opt-in scans are off, or it predates them).",
         "Livepatch, services still running replaced libraries, and software outside the package manager other than Python and npm packages and Java archives (vendored binaries, containers, self-installed tools) aren't judged by this report yet. Kernels installed but not running are judged, and marked so."
       ]
@@ -216,8 +216,8 @@
       {
         "instance": "python3.13 3.13.5-2+deb13u5",
         "grade": "confirmed",
-        "count": 20,
-        "no_fix": 20,
+        "count": 21,
+        "no_fix": 21,
         "no_fix_planned": 3,
         "known_exploited": 0,
         "observed": "3.13.5-2+deb13u5 (dpkg database: libpython3.13-minimal, libpython3.13-stdlib, python3.13, python3.13-minimal)",
@@ -403,8 +403,8 @@
       {
         "instance": "krb5 1.21.3-5",
         "grade": "confirmed",
-        "count": 8,
-        "no_fix": 6,
+        "count": 12,
+        "no_fix": 10,
         "no_fix_planned": 4,
         "known_exploited": 0,
         "observed": "1.21.3-5 (dpkg database: libgssapi-krb5-2, libk5crypto3, libkrb5-3, libkrb5support0)",
@@ -590,9 +590,9 @@
     ],
     "vulnerable_installs": 37,
     "not_applicable": 3446,
-    "content_version": "2026-11-08.b74a2d4f4d23",
-    "inventory_sha256": "06f35e106f67cf92a8643ebdd4aa1f3b85d0dc886a67cd07d4c253f06a345519",
-    "verdicts_sha256": "b988b0517280a0c4d1ec7743224d7cd7db56aaaf710ae4712f3ce4d918ea4832"
+    "content_version": "2026-11-10.83395a58ed73",
+    "inventory_sha256": "06a2d7aa89cf5801bbbbf7bc6d0bae25d62c13a778b09a3031d651ebada2a92b",
+    "verdicts_sha256": "db53a253d2575ccb60e380bdb229c3d19f0d595ec58e6a7ad5e135ac078072d8"
   },
   {
     "step": "binaries versioned unlike their source",
@@ -771,18 +771,17 @@
     ]
   },
   {
+    "step": "database kept",
+    "path": "C:\\Users\\Ciaran\\AppData\\Local\\Temp\\nimstead-sbx-uqmrb6ae-full.db"
+  },
+  {
     "step": "parity with rescan",
-    "findings": 297,
-    "agree": 297,
+    "findings": 302,
+    "agree": 302,
     "outside_this_slice": {},
     "explained": 0,
     "explained_by": [],
     "explained_examples": [],
-    "unexplained": []
-  },
-  {
-    "step": "rescan's loop against the engine (engine_disagrees)",
-    "entries": 0,
     "unexplained": []
   },
   {
@@ -799,7 +798,7 @@
     },
     "headline": {
       "status": "not-assessed",
-      "text": "NOT ASSESSED: this host's patch state wasn't determined, so this is not a clean result. 3,811 checks couldn't be determined."
+      "text": "NOT ASSESSED: this host's patch state wasn't determined, so this is not a clean result. 3,816 checks couldn't be determined."
     },
     "undetermined": [
       {
@@ -825,7 +824,7 @@
         "why": "a finding was open on this, and this scan has no evidence either way",
         "source_said": null,
         "what_to_do": "It stays open. Fix what stopped the scan, then scan again",
-        "count": 297,
+        "count": 302,
         "examples": [
           "CVE-2005-1119",
           "CVE-2005-2541",
@@ -835,8 +834,8 @@
         ]
       }
     ],
-    "findings_before": 297,
-    "findings_after": 297,
+    "findings_before": 302,
+    "findings_after": 302,
     "packages_kept": 164
   },
   {
@@ -856,6 +855,6 @@
   },
   {
     "step": "sandbox destroyed",
-    "name": "nimstead-sbx-d98dd5c4"
+    "name": "nimstead-sbx-299574fb"
   }
 ]

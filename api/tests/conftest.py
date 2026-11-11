@@ -57,6 +57,24 @@ def env(tmp_path, monkeypatch):
             c.execute(text(f"DROP DATABASE IF EXISTS {url.rsplit('/', 1)[1]} WITH (FORCE)"))
 
 
+sys.path.insert(0, str(Path(__file__).parents[2] / "sandbox"))
+import agentdoc  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _inventories_from_current_agents(monkeypatch):
+    """A hand-written inventory posted without `collection` gets the document a current agent sends (sandbox/agentdoc.py):
+    since engine phase 5 one without it opens nothing. A test of an old agent sends `"collection": None` on purpose."""
+    from fastapi.testclient import TestClient
+    post = TestClient.post
+
+    def posting(self, url, *a, json=None, **kw):
+        if str(url).endswith("/api/agent/inventory") and isinstance(json, dict):
+            json = agentdoc.with_document(json)
+        return post(self, url, *a, json=json, **kw)
+    monkeypatch.setattr(TestClient, "post", posting)
+
+
 @pytest.fixture(autouse=True)
 def _agent_never_touches_this_host(monkeypatch, request, tmp_path):
     """agent.main() locks down the agent's ProgramData folder on Windows: never on the developer's machine. Tests of the

@@ -1,7 +1,7 @@
 [
   {
     "step": "distro up",
-    "name": "nimstead-sbx-net-2aa020",
+    "name": "nimstead-sbx-net-9dc0c8",
     "address": "172.25.98.1"
   },
   {
@@ -13,7 +13,7 @@
     "step": "external.scan (shipped)",
     "result": {
       "address": "172.25.98.1",
-      "open": 3,
+      "open": 4,
       "resolved": 0,
       "still_open": 0,
       "skipped": []
@@ -28,13 +28,27 @@
     "external_findings": [
       "NIM-EXPOSED-REDIS",
       "NIM-TLS-EXPIRED",
-      "NIM-TLS-LEGACY"
+      "NIM-TLS-LEGACY",
+      "NIM-WEB-GIT"
     ]
   },
   {
     "step": "phase 2 verdicts",
     "vsftpd_cve": "vulnerable",
     "catch_all_2121": "undetermined:catch-all"
+  },
+  {
+    "step": "external.scan with banners",
+    "result": {
+      "address": "172.25.98.1",
+      "open": 5,
+      "resolved": 0,
+      "still_open": 0,
+      "skipped": []
+    },
+    "cve_2011_2523_on": [
+      "tcp/2222 vsftpd"
+    ]
   },
   {
     "step": "phase 3 verdicts",
@@ -46,13 +60,8 @@
       "agree": [
         "NIM-EXPOSED-REDIS",
         "NIM-TLS-EXPIRED",
-        "NIM-TLS-LEGACY"
-      ],
-      "explained": [
-        {
-          "id": "NIM-WEB-GIT",
-          "why": "an engine-only remote check (web path or banner version); external.scan doesn't open it yet"
-        }
+        "NIM-TLS-LEGACY",
+        "NIM-WEB-GIT"
       ],
       "unexplained": [],
       "ok": true
@@ -61,6 +70,6 @@
   },
   {
     "step": "distro destroyed",
-    "name": "nimstead-sbx-net-2aa020"
+    "name": "nimstead-sbx-net-9dc0c8"
   }
 ]

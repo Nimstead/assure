@@ -136,6 +136,7 @@ class Asset(Base):
     maintenance_window: Mapped[dict | None]  # overrides the org's (plan T40); None = the org's
     enrolled_by: Mapped[str | None] = mapped_column(String(12))  # enrolment token id, so a leaked token's hosts can be found
     collection: Mapped[dict | None]  # what the agent says it read of its latest inventory (engine/collection.py); None = not reported
+    own_addresses: Mapped[dict | None]  # {"ips", "macs"} of the machine itself (DECISIONS 128): its neighbours' rows for it aren't unmanaged
     # the last inventory written to the ledger: an unchanged one is written at most once a day (DECISIONS 121)
     inventory_logged_sha256: Mapped[str | None] = mapped_column(String(64))
     inventory_logged_at: Mapped[datetime | None]
@@ -176,6 +177,19 @@ class DirectoryComputer(Base):
     os_version: Mapped[str] = mapped_column(String(100), default="")
     last_logon: Mapped[datetime | None]
     seen_at: Mapped[datetime] = mapped_column(default=now)
+
+
+class Neighbour(Base):
+    """An address and MAC one agent's machine had in its own neighbour table (DECISIONS 128): which devices on the
+    fleet's networks have no agent. Dropped 30 days after it was last seen."""
+    __tablename__ = "neighbour"
+    asset_id: Mapped[str] = mapped_column(ForeignKey("asset.id", ondelete="CASCADE"), primary_key=True)
+    ip: Mapped[str] = mapped_column(String(45), primary_key=True)
+    mac: Mapped[str] = mapped_column(String(17), primary_key=True)
+    org_id: Mapped[str] = mapped_column(ForeignKey("org.id"), index=True)
+    interface: Mapped[str] = mapped_column(String(64), default="")
+    first_seen: Mapped[datetime] = mapped_column(default=now)
+    last_seen: Mapped[datetime] = mapped_column(default=now)
 
 
 class Kev(Base):

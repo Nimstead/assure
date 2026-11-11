@@ -2905,6 +2905,9 @@
             ],
             "title": "Facts"
           },
+          "neighbours": {
+            "title": "Neighbours"
+          },
           "os_name": {
             "default": "",
             "maxLength": 255,
@@ -4666,6 +4669,44 @@
           "os_version",
           "last_logon",
           "end_of_support"
+        ],
+        "type": "object"
+      },
+      "UnmanagedDevice": {
+        "additionalProperties": false,
+        "properties": {
+          "addresses": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "first_seen": {
+            "type": "string"
+          },
+          "last_seen": {
+            "type": "string"
+          },
+          "mac": {
+            "type": "string"
+          },
+          "seen_by": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "vendor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "mac",
+          "vendor",
+          "first_seen",
+          "last_seen",
+          "addresses",
+          "seen_by"
         ],
         "type": "object"
       },
@@ -9303,6 +9344,90 @@
         ],
         "summary": "Sign Out Everywhere",
         "x-authentication": "Browser session; no API token"
+      }
+    },
+    "/api/network/unmanaged": {
+      "get": {
+        "description": "Return devices the organisation's agents saw in their own neighbour tables that are none of its agents.\n\nRequire a session or eligible read token. One row per MAC with addresses, vendor, seen_by hostnames and\nfirst/last seen, newest first; rows unseen for 30 days are gone. CSV for format=csv. Nothing is probed.",
+        "operationId": "unmanaged_devices_api_network_unmanaged_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Format"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/UnmanagedDevice"
+                  },
+                  "type": "array"
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Devices in agents' own neighbour tables that are none of the organisation's agents, or CSV only when format=csv."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SessionCookie": []
+          },
+          {
+            "ReadToken": []
+          }
+        ],
+        "summary": "Unmanaged Devices",
+        "x-authentication": "Session or read-only API token"
       }
     },
     "/api/notify/confirm": {

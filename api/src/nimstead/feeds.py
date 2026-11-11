@@ -20,8 +20,8 @@ import httpx
 from sqlalchemy import delete, insert, select, update
 from sqlalchemy.orm import Session
 
-from nimstead import evidence, external, lifecycle, msproducts, notify, office, updates, winapps, windrivers
-from nimstead.db import Advisory, Asset, Cvss, Epss, InstalledPackage, Kev, Org, make_sessionmaker, now
+from nimstead import evidence, external, lifecycle, msproducts, notify, office, oui, updates, winapps, windrivers
+from nimstead.db import Advisory, Asset, Cvss, Epss, InstalledPackage, Kev, Neighbour, Org, make_sessionmaker, now
 from nimstead.match import normalize_ecosystem
 from nimstead.scan import HOTPATCH, rescan
 from nimstead.versions import windows_cmp
@@ -578,6 +578,8 @@ def update_all(session: Session, client=None) -> dict:
             session.rollback()
             log.error("LOLDrivers skipped, kept the stored hashes: %s", e)
             out["loldrivers"] = {"error": str(e)[:200]}
+    if session.scalar(select(Neighbour.ip).limit(1)) is not None:  # names for devices agents saw, once there are any
+        out["oui"] = guarded("MAC vendors", lambda: oui.sync(session, lambda url, limit: _get(client, url, limit)))
     if "WinApp" in in_use:
         out["eol"] = guarded("endoflife.date", lambda: sync_eol(session, client=client))
         try:

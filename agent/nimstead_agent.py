@@ -1404,19 +1404,27 @@ PS_NEIGHBOURS = ("Get-NetNeighbor -State Reachable,Stale,Permanent -ErrorAction 
 _MAC = re.compile(r"^([0-9a-f]{2})[:-]([0-9a-f]{2})[:-]([0-9a-f]{2})[:-]([0-9a-f]{2})[:-]([0-9a-f]{2})[:-]([0-9a-f]{2})$")
 
 
-def neighbour(ip, mac, interface):
-    """One {ip, mac, interface} row, or None for an unusable entry: no MAC, all zeros, broadcast or multicast, or a
-    multicast, broadcast or unspecified address. The MAC comes back lower case with colons."""
+def unicast_mac(mac):
+    """mac lower case with colons, or None if it isn't one device's: unparseable, all zeros, broadcast or multicast."""
     m = _MAC.match(str(mac or "").strip().lower())
+    if not m or int(m[1], 16) & 1 or m.groups() == ("00",) * 6:  # the group bit marks broadcast and multicast MACs
+        return None
+    return ":".join(m.groups())
+
+
+def unicast_ip(ip):
+    """ip as a canonical string (any %zone dropped), or None for multicast, broadcast, unspecified, loopback or unparseable."""
     try:
         addr = ipaddress.ip_address(str(ip).split("%")[0])
     except ValueError:
         return None
-    if not m or int(m[1], 16) & 1 or m.groups() == ("00",) * 6:  # the group bit marks broadcast and multicast MACs
-        return None
-    if addr.is_multicast or addr.is_unspecified or addr.is_loopback or str(addr) == "255.255.255.255":
-        return None
-    return {"ip": str(addr), "mac": ":".join(m.groups()), "interface": str(interface or "")[:64]}
+    return None if addr.is_multicast or addr.is_unspecified or addr.is_loopback or str(addr) == "255.255.255.255" else str(addr)
+
+
+def neighbour(ip, mac, interface):
+    """One {ip, mac, interface} row, or None when either half is unusable (unicast_ip, unicast_mac)."""
+    ip, mac = unicast_ip(ip), unicast_mac(mac)
+    return {"ip": ip, "mac": mac, "interface": str(interface or "")[:64]} if ip and mac else None
 
 
 def parse_proc_arp(text):
@@ -1466,6 +1474,32 @@ def neighbours(run=None, read=None, which=shutil.which, nt=os.name == "nt"):
             rows += parse_ip_neigh(out) if rc == 0 else []
     unique = {(r["ip"], r["mac"]): r for r in rows}
     return list(unique.values())[:NEIGHBOURS_MAX]
+
+
+PS_OWN_ADDRESSES = ("ConvertTo-Json -Compress -InputObject @{ ips = @(Get-NetIPAddress -ErrorAction SilentlyContinue | ForEach-Object IPAddress); "
+                    "macs = @(Get-NetAdapter -ErrorAction SilentlyContinue | ForEach-Object MacAddress) }")
+
+
+def own_addresses(run=None, which=shutil.which, nt=os.name == "nt"):
+    """This machine's own interface addresses and MACs, {"ips": [...], "macs": [...]}, so the server can tell a neighbour
+    that is another managed machine. Unusable entries are dropped (unicast_ip, unicast_mac); at most 64 of each."""
+    ips, macs = [], []
+    try:
+        if nt:
+            rc, out = ps(run or sh, PS_OWN_ADDRESSES, timeout=60)
+            d = json.loads(out) if rc == 0 else {}
+            ips, macs = d.get("ips") or [], d.get("macs") or []
+            ips, macs = [ips] if isinstance(ips, str) else ips, [macs] if isinstance(macs, str) else macs  # one value isn't a list
+        elif which("ip"):
+            rc, out = (run or sh)(["ip", "-j", "addr"], timeout=30)
+            for link in json.loads(out) if rc == 0 else []:
+                macs.append(link.get("address"))
+                ips += [a.get("local") for a in link.get("addr_info") or []]
+    except (ValueError, AttributeError, TypeError):  # output that isn't the JSON shape asked for: say nothing rather than guess
+        ips, macs = [], []
+    ips = list(dict.fromkeys(filter(None, map(unicast_ip, ips))))
+    macs = list(dict.fromkeys(filter(None, map(unicast_mac, macs))))
+    return {"ips": ips[:64], "macs": macs[:64]}
 
 
 def collect():
@@ -3878,7 +3912,7 @@ def inventory(cfg):
     """
     inv = {**collect(), "auto_update": bool(cfg.get("auto_update", True)) if RELEASE_KEYS else None, "update_error": _update_error}
     if cfg.get("neighbours", True):
-        inv["neighbours"] = neighbours()
+        inv["neighbours"] = {"seen": neighbours(), "own": own_addresses()}
     return with_apps(inv, cfg)
 
 

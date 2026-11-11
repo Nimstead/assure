@@ -217,6 +217,7 @@ def test_updated_agent_reruns_the_command_with_the_new_file(monkeypatch, tmp_pat
 def test_inventory_says_whether_this_agent_can_update(monkeypatch):
     monkeypatch.setattr(agent, "collect", lambda: {"packages": []})
     monkeypatch.setattr(agent, "neighbours", lambda: [])
+    monkeypatch.setattr(agent, "own_addresses", lambda: {"ips": [], "macs": []})
     monkeypatch.setattr(agent, "RELEASE_KEYS", [])
     assert agent.inventory({})["auto_update"] is None  # can't: no pinned keys, so the server asks for a reinstall
     monkeypatch.setattr(agent, "RELEASE_KEYS", ["00" * 32])

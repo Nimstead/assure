@@ -75,8 +75,28 @@ def test_unreadable_tables_give_an_empty_list_never_an_error():
     assert agent.neighbours(run=lambda cmd, **k: (1, "Get-NetNeighbor : access denied"), nt=True) == []
 
 
+IP_ADDR = json.dumps([
+    {"ifname": "lo", "address": "00:00:00:00:00:00", "addr_info": [{"local": "127.0.0.1"}, {"local": "::1"}]},
+    {"ifname": "eth0", "address": "52:54:00:ab:cd:ef", "addr_info": [{"local": "192.168.1.20"}, {"local": "fe80::5054:ff:feab:cdef"}]},
+])
+
+
+def test_own_addresses_on_linux_skip_loopback():
+    assert agent.own_addresses(run=lambda cmd, **k: (0, IP_ADDR), which=lambda n: "/usr/sbin/ip", nt=False) == {
+        "ips": ["192.168.1.20", "fe80::5054:ff:feab:cdef"], "macs": ["52:54:00:ab:cd:ef"]}
+    assert agent.own_addresses(run=lambda cmd, **k: (0, "{not json"), which=lambda n: "/usr/sbin/ip", nt=False) == {"ips": [], "macs": []}
+
+
+def test_own_addresses_on_windows_accept_one_value_or_many():
+    out = json.dumps({"ips": ["10.0.0.5", "127.0.0.1"], "macs": "00-15-5D-01-02-03"})
+    assert agent.own_addresses(run=lambda cmd, **k: (0, out), nt=True) == {"ips": ["10.0.0.5"], "macs": ["00:15:5d:01:02:03"]}
+    assert agent.own_addresses(run=lambda cmd, **k: (0, "[]"), nt=True) == {"ips": [], "macs": []}  # a list where a map was asked for
+
+
 def test_the_config_can_turn_it_off(monkeypatch):
     monkeypatch.setattr(agent, "collect", lambda: {"packages": []})
     monkeypatch.setattr(agent, "neighbours", lambda: [{"ip": "10.0.0.1", "mac": "02:00:00:00:00:01", "interface": "eth0"}])
-    assert agent.inventory({})["neighbours"][0]["ip"] == "10.0.0.1"
+    monkeypatch.setattr(agent, "own_addresses", lambda: {"ips": ["10.0.0.2"], "macs": []})
+    sent = agent.inventory({})["neighbours"]
+    assert sent["seen"][0]["ip"] == "10.0.0.1" and sent["own"]["ips"] == ["10.0.0.2"]
     assert "neighbours" not in agent.inventory({"neighbours": False})

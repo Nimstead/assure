@@ -44,6 +44,8 @@ Restart detection prefers the update-notifier mechanism when its notifier file e
 
 `inventory(cfg)` adds local auto_update and process update_error state before optional scans. With no pinned release keys, auto_update is null. Otherwise it uses the configured flag, default true. This is local update state, not proof that a newer release exists.
 
+From agent 0.7.0, `inventory(cfg)` also adds `neighbours`: `{"seen": [...], "own": {"ips": [...], "macs": [...]}}`. `seen` is the machine's own neighbour table: `/proc/net/arp` and `ip -j neigh` on Linux, `Get-NetNeighbor` (Reachable, Stale and Permanent entries) on Windows. Incomplete, failed, broadcast and multicast entries are dropped, MACs are written lower case with colons, and at most 1,024 unique rows are sent. `own` lists the machine's own interface addresses and MACs (`ip -j addr`, or `Get-NetIPAddress` and `Get-NetAdapter`), at most 64 of each, so the server can tell another managed machine from an unmanaged device. Both are read only: nothing is sent on the network. An unreadable table gives an empty list. Set `"neighbours": false` in the agent's configuration file to leave the field out (DECISIONS 128).
+
 `with_apps(inv,cfg)` returns the same inventory object. It replaces the package list, can replace facts, and updates an existing collection-source mapping in place. It does not create that mapping when absent. Local scan_jars/scan_apps flags enable metadata scans. Disabled sources receive off/count-zero entries. No package code is intentionally executed by these metadata collectors.
 
 ## Configuration and state

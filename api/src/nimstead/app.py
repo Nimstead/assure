@@ -15,7 +15,7 @@ import secrets
 from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 import httpx
@@ -32,7 +32,22 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import Integer, and_, case, delete, func, or_, select
 from sqlalchemy.orm import Session
 
-from nimstead import ai, engine, evidence, external, lifecycle, mfa, notify, remediate, sbom, sso, updates, winbaseline, windrivers
+from nimstead import (
+    ai,
+    engine,
+    evidence,
+    external,
+    lifecycle,
+    mfa,
+    neighbours,
+    notify,
+    remediate,
+    sbom,
+    sso,
+    updates,
+    winbaseline,
+    windrivers,
+)
 from nimstead.db import (
     ApiToken,
     Asset,
@@ -42,6 +57,7 @@ from nimstead.db import (
     Finding,
     InstalledPackage,
     LedgerEntry,
+    Neighbour,
     Notification,
     Org,
     PendingLogin,
@@ -1107,6 +1123,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         update_error: str | None = Field(None, max_length=500)
         facts: dict | None = None  # checked by facts_ok: small, flat, plain values
         collection: dict | None = None  # checked by engine's valid_document: closed and bounded. None: agent older than this
+        neighbours: Any = None  # checked row by row by neighbours.store, which drops what doesn't fit; None: agent older than 0.7.0, or off
 
     def facts_ok(f: dict) -> bool:
         """Return whether a facts dictionary passes structural and JSON-length bounds.
@@ -1188,6 +1205,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             elif asset.collection:  # the stored facts are the last report's, and the engine must know
                 asset.collection = {**asset.collection, "sources": {**asset.collection["sources"], "host_facts": {
                     "state": "failed", "count": 0, "error": "these facts were too large for the server, so older ones are stored"}}}
+        neighbours.store(s, asset, body.neighbours)
         db_read = ((asset.collection or {}).get("sources") or {}).get("package_db")
         replaced = not (db_read and (db_read["state"] != "ok" or not db_read.get("count")))  # DECISIONS 83: a Linux list not read in full doesn't replace the last
         if replaced:
@@ -1267,6 +1285,22 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             for r in out:
                 w.writerow([csv_safe(str(r[k] or "")) for k in ("domain", "name", "os", "os_version", "last_logon", "end_of_support")])
             return Response(buf.getvalue(), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=unmanaged-windows.csv"})
+        return out
+
+    @app.get("/api/network/unmanaged")
+    def unmanaged_devices(user: CurrentUser, s: DB, format: str | None = None):
+        """Return devices the organisation's agents saw in their own neighbour tables that are none of its agents.
+
+        Require a session or eligible read token. One row per MAC with addresses, vendor, seen_by hostnames and
+        first/last seen, newest first; rows unseen for 30 days are gone. CSV for format=csv. Nothing is probed."""
+        out = neighbours.unmanaged(s, user.org_id)
+        if format == "csv":
+            buf = io.StringIO()
+            w = csv.writer(buf)
+            w.writerow(["mac", "vendor", "addresses", "seen_by", "first_seen", "last_seen"])
+            for r in out:
+                w.writerow([csv_safe(str(x)) for x in (r["mac"], r["vendor"], " ".join(r["addresses"]), " ".join(r["seen_by"]), r["first_seen"], r["last_seen"])])
+            return Response(buf.getvalue(), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=unmanaged-devices.csv"})
         return out
 
     BASELINE_COLUMNS = ["hostname", "baseline", "version", "rule_id", "vuln_id", "severity", "status", "setting", "expected", "found", "note"]
@@ -1500,7 +1534,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         can propagate."""
         a = owned_asset(s, user, asset_id)
         evidence.append(s, user.org_id, "asset_deleted", a.id, {"by": user.email, "hostname": a.hostname})
-        for model in (Finding, InstalledPackage, RemediationJob, ScanRecord):
+        for model in (Finding, InstalledPackage, Neighbour, RemediationJob, ScanRecord):
             s.execute(delete(model).where(model.asset_id == a.id))
         s.delete(a)
         s.commit()

@@ -123,8 +123,9 @@ def main(keep=False) -> int:
 
         # 1) not proven: refused, nothing probed
         probes = []
-        real_checks = external.checks
-        external.checks = lambda *a: probes.append(a) or real_checks(*a)
+        from nimstead.engine import network
+        real_observe = network.Prober.observe
+        network.Prober.observe = lambda self: probes.append(self.ip) or real_observe(self)
         r1 = c.post(f"/api/targets/{t['id']}/scan")
         note("unverified target", status=r1.status_code, detail=r1.json().get("detail"), probes_sent=len(probes))
         assert r1.status_code == 409 and not probes

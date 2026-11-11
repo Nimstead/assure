@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from nimstead.db import Asset, Finding, InstalledPackage, LedgerEntry, ScanRecord, now
 from nimstead.engine import content, report
 from nimstead.engine.collection import Inventory
-from nimstead.engine.evaluate import ENGINE_VERSION, evaluate
+from nimstead.engine.evaluate import evaluate
 from nimstead.engine.model import Verdict
 
 KEEP_RECORDS = 5  # per host; each holds a whole inventory, up to 10 MB (DECISIONS 101)
@@ -65,13 +65,21 @@ def asset_report(s: Session, asset: Asset, scanned: tuple | None = None) -> dict
     else:
         inv = Inventory.from_asset(asset, s.scalars(select(InstalledPackage).where(InstalledPackage.asset_id == asset.id)).all(), sbom_received(s, asset))
         _, out = scan_inventory(s, inv, prior_findings(s, asset))
-    same = select(ScanRecord.id).where(ScanRecord.asset_id == asset.id, ScanRecord.inventory_sha256 == out["inventory_sha256"],
-                                       ScanRecord.content_version == out["content_version"], ScanRecord.verdicts_sha256 == out["verdicts_sha256"]).limit(1)
-    if not s.scalar(same):  # asking twice about the same inventory and content stores one record
-        s.add(ScanRecord(org_id=asset.org_id, asset_id=asset.id, engine_version=ENGINE_VERSION, content_version=out["content_version"],
-                         inventory_sha256=out["inventory_sha256"], verdicts_sha256=out["verdicts_sha256"], inventory=inv.to_doc(), report=out))
-        s.flush()
-        for old in s.scalars(select(ScanRecord).where(ScanRecord.asset_id == asset.id).order_by(ScanRecord.created.desc(), ScanRecord.id).offset(KEEP_RECORDS)).all():
-            s.delete(old)
+    if record(s, asset, out, inv.to_doc()):
         s.commit()
     return out
+
+
+def record(s: Session, asset: Asset, out: dict, inventory: dict) -> bool:
+    """Store report `out` and what it judged as a ScanRecord, keeping the newest KEEP_RECORDS per asset; no commit.
+    Return False when the same inventory, content and verdicts are already stored (asking twice stores one record)."""
+    same = select(ScanRecord.id).where(ScanRecord.asset_id == asset.id, ScanRecord.inventory_sha256 == out["inventory_sha256"],
+                                       ScanRecord.content_version == out["content_version"], ScanRecord.verdicts_sha256 == out["verdicts_sha256"]).limit(1)
+    if s.scalar(same):
+        return False
+    s.add(ScanRecord(org_id=asset.org_id, asset_id=asset.id, engine_version=out["engine_version"], content_version=out["content_version"],
+                     inventory_sha256=out["inventory_sha256"], verdicts_sha256=out["verdicts_sha256"], inventory=inventory, report=out))
+    s.flush()
+    for old in s.scalars(select(ScanRecord).where(ScanRecord.asset_id == asset.id).order_by(ScanRecord.created.desc(), ScanRecord.id).offset(KEEP_RECORDS)).all():
+        s.delete(old)
+    return True

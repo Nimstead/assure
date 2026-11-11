@@ -14,13 +14,12 @@ the first returned address. Checks cover:
 import re
 import socket
 import ssl
-from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from nimstead import evidence, netguard, risk, sso
+from nimstead import engine, evidence, netguard, risk, sso
 from nimstead.db import Asset, Finding, now
 
 ECOSYSTEM = "External"
@@ -126,13 +125,6 @@ def connect_state(ip: str, port: int, timeout: float = 3.0) -> str:
         return "filtered"
 
 
-def port_open(ip: str, port: int, timeout: float = 3.0) -> bool:
-    """Return whether a TCP connection to ip:port succeeds within timeout seconds.
-
-    Refusal, timeout, and other socket errors return False; this does not distinguish closed from filtered."""
-    return connect_state(ip, port, timeout) == "open"
-
-
 def tls_probe(ip: str, host: str, port: int = TLS_PORT, timeout: float = 5.0) -> dict:
     """Read TLS trust/expiry facts at ip:port using host for SNI and certificate checks.
 
@@ -228,23 +220,13 @@ def tls_findings(host: str, t: dict) -> tuple[list[dict], list[str]]:
     return found, skipped
 
 
-def checks(host: str, ip: str) -> tuple[list[dict], list[str]]:
-    """Check configured service ports and TLS on pinned ip, using host for TLS identity.
+def observe(host: str, ip: str) -> tuple[list, dict]:
+    """Return (verdicts, report) from the engine's prober on pinned ip, using host for TLS and HTTP identity.
 
-    host/ip are strings. Return (finding dictionaries, skipped descriptions).
-    Probe SERVICES with eight workers, then TLS_PORT if it accepts a connection.
-    Closed and filtered service ports both omit findings. No web-path or banner-CVE
-    checks run here. Does not validate scope or persist. Unexpected helper failures
-    propagate. Use scan() for ownership checks and finding updates."""
-    found, skipped = [], []
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        open_ports = {p for p, ok in zip(SERVICES, pool.map(lambda p: port_open(ip, p), SERVICES), strict=True) if ok}
-    found += [exposed_finding(port) for port in sorted(open_ports)]
-    if port_open(ip, TLS_PORT):
-        f, s = tls_findings(host, tls_probe(ip, host))
-        found += f
-        skipped += s
-    return found, skipped
+    One probe pass (DECISIONS 126). Does not validate scope or persist: scan() proves scope first."""
+    from nimstead.engine import network  # network imports this module
+    verdicts, rep, _ = network.probe(host, ip)
+    return verdicts, rep
 
 
 def likelihood_of(check_id: str) -> tuple[float, str]:
@@ -293,20 +275,28 @@ def prove_scope(s: Session, asset: Asset, lookup=None) -> str:
     return ip
 
 
-def scan(s: Session, asset: Asset, lookup=None, run_checks=None) -> dict:
-    """Re-prove scope, check Asset asset, update findings/ledger and commit Session s.
+def findings_from(verdicts: list) -> list[dict]:
+    """Finding dictionaries (exposed_finding's shape) for the engine's vulnerable exposed-service and TLS verdicts."""
+    return [{"id": v.vuln_id, "package": v.product, "cvss": v.cvss, "likelihood": likelihood_of(v.vuln_id), "summary": v.summary}
+            for v in verdicts if v.outcome == "vulnerable" and v.vuln_id.startswith(("NIM-EXPOSED-", "NIM-TLS-"))]
 
-    lookup follows prove_scope(). Optional run_checks(host, ip) returns (finding
-    dictionaries, skipped strings); default uses checks(). Caller checks ownership.
-    Return address, open (unique observed issue count), resolved (new transitions),
-    and skipped. Accepted observed findings stay accepted. Unseen open/accepted
-    findings resolve, including when a port is filtered, except one whose check this
-    scan skipped (legacy TLS): an untested check isn't evidence of a fix.
+
+def scan(s: Session, asset: Asset, lookup=None) -> dict:
+    """Re-prove scope, probe Asset asset with the engine, store its report, update findings/ledger and commit Session s.
+
+    lookup follows prove_scope(). Caller checks ownership. Findings come from the
+    engine's verdicts (observe()). Return address, open (unique observed issue count),
+    resolved (new transitions), and skipped. Accepted observed findings stay accepted.
+    Unseen open/accepted findings resolve, including when a port is filtered, except one
+    whose check this scan skipped (legacy TLS): an untested check isn't evidence of a fix.
     On success update asset.last_seen and commit all pending session changes.
     ScanRefused and other scope/probe/database errors propagate. Refusal can itself
     commit through prove_scope(). No automatic rollback handles later exceptions."""
     ip = prove_scope(s, asset, lookup)
-    found, skipped = (run_checks or checks)(asset.hostname, ip)
+    verdicts, rep = observe(asset.hostname, ip)
+    found = findings_from(verdicts)
+    skipped = [v.detail for v in verdicts if v.reason == "scanner-limited"]
+    engine.record(s, asset, rep, {"host": asset.hostname, "address": ip})
     t = now()
     existing = {f.vuln_id: f for f in s.scalars(select(Finding).where(Finding.asset_id == asset.id))}
     events, seen = [], set()

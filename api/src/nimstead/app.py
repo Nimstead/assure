@@ -1511,8 +1511,15 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
         Requires a session or eligible read-only token. Ownership failure returns 404.
         May create a retained ScanRecord and commit the session, even though this is GET.
-        Retains five records per asset. Findings still open and close through rescan."""
-        return engine.asset_report(s, owned_asset(s, user, asset_id))
+        Retains five records per asset. An external target returns its last scan's
+        stored network report (404 before its first scan); nothing is probed here."""
+        a = owned_asset(s, user, asset_id)
+        if a.kind == "external":
+            rep = s.scalar(select(ScanRecord.report).where(ScanRecord.asset_id == a.id).order_by(ScanRecord.created.desc(), ScanRecord.id).limit(1))
+            if rep is None:
+                raise HTTPException(404, "Not scanned yet")
+            return rep
+        return engine.asset_report(s, a)
 
     @app.get("/api/attack-paths")
     def attack_paths(user: CurrentUser, s: DB):

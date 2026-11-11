@@ -6319,7 +6319,7 @@
     },
     "/api/assets/{asset_id}/scan-report": {
       "get": {
-        "description": "Return the grouped engine report for asset_id's stored inventory.\n\nRequires a session or eligible read-only token. Ownership failure returns 404.\nMay create a retained ScanRecord and commit the session, even though this is GET.\nRetains five records per asset. Findings still open and close through rescan.",
+        "description": "Return the grouped engine report for asset_id's stored inventory.\n\nRequires a session or eligible read-only token. Ownership failure returns 404.\nMay create a retained ScanRecord and commit the session, even though this is GET.\nRetains five records per asset. An external target returns its last scan's\nstored network report (404 before its first scan); nothing is probed here.",
         "operationId": "asset_scan_report_api_assets__asset_id__scan_report_get",
         "parameters": [
           {

@@ -6,10 +6,9 @@ runs web-path rules with negative controls, applies worker/exchange limits and t
 web rules in safe mode. Time budgets are not strict wall-clock cancellation deadlines.
 
 Nothing a remote check reads can be `confirmed`: a banner is weak and spoofable and vendors backport (R10.2), so grades
-here ceiling at `reasonable`, and a banner-to-CVE check is `unverified`. Findings still open and close through
-`external.scan`; this is a parallel read, as the host engine is to `rescan`. The exposed-service and TLS verdicts reuse
-`external`'s own decision helpers, so the two can't drift; the extra web-path and version checks are engine-only and
-`parity` lists them as such."""
+here ceiling at `reasonable`, and a banner-to-CVE check is `unverified`. `external.scan` probes through `probe()` and
+opens findings from the exposed-service and TLS verdicts (DECISIONS 126), which reuse `external`'s own decision helpers;
+the web-path and version checks are reported only, and `parity` lists them as such."""
 
 import hashlib
 import json
@@ -441,8 +440,8 @@ def _coverage(endpoints: dict[int, Endpoint], verdicts: list[Verdict], skipped: 
         stated.append("Some ports were dropped rather than refused: those checks are not clean results, only undetermined.")
     for s in skipped:
         stated.append(f"Not checked on this scanner: {s}.")
-    stated.append("This slice checks reachable services, TLS on 443, exposed web paths and a few banner versions. Findings still open and close "
-                  "through the external scan; banner-to-CVE results are weak evidence until the host is read directly.")
+    stated.append("This slice checks reachable services, TLS on 443, exposed web paths and a few banner versions. Findings open and close "
+                  "from the exposed-service and TLS results; web-path and banner-version results are shown here only.")
     return {"sources": sources, "families": families, "statements": stated}
 
 
@@ -509,9 +508,15 @@ def run(s, asset, lookup=None, budget: Budget | None = None, safe_mode: bool = T
     external.ScanRefused can follow a committed refusal event or verification reset.
     Other database, lookup, budget and probe errors propagate. Does not persist the
     report or change findings. host_lost means every initial endpoint was filtered."""
-    ip = external.prove_scope(s, asset, lookup)
-    prober = Prober(asset.hostname, ip, budget, safe_mode)
+    ip = external.prove_scope(s, asset, lookup)  # before anything else: no packet until scope passes
+    return probe(asset.hostname, ip, budget, safe_mode)
+
+
+def probe(host: str, ip: str, budget: Budget | None = None, safe_mode: bool = True) -> tuple[list[Verdict], dict, Prober]:
+    """Probe pinned ip once and return (verdicts, report, Prober). No ownership check: callers prove scope first."""
+    prober = Prober(host, ip, budget, safe_mode)
     endpoints = prober.observe()
     host_lost = all(e.state == "filtered" for e in endpoints.values())
     verdicts = evaluate(prober, endpoints)
-    return verdicts, build_report(asset.hostname, ip, verdicts, endpoints, [], host_lost), prober
+    skipped = [v.detail for v in verdicts if v.reason == "scanner-limited"]
+    return verdicts, build_report(host, ip, verdicts, endpoints, skipped, host_lost), prober

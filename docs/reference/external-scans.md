@@ -1,6 +1,6 @@
 # External scan reference
 
-The external scanner checks a verified target with the [network engine](network-engine.md)'s prober: exposed TCP ports, TLS on 443, and a short list of well-known web paths on 80. Banner-version results appear in the target's scan report only. Manual and scheduled scans work the same way.
+The external scanner checks a verified target with the [network engine](network-engine.md)'s prober: exposed TCP ports, TLS on 443, and a short list of well-known web paths on 80. Greetings on FTP, SSH, mail and alternate ports are compared with a few version rules; a match opens a finding graded `unverified` (DECISIONS 127). Manual and scheduled scans work the same way.
 
 ## Target operations
 
@@ -83,7 +83,7 @@ The scanner performs no UDP checks, logins or exploits. Its web-path checks are 
 
 ## Priority inputs
 
-The generic scorer uses the configured impact, asset criticality, internet-facing true, fix-available true, KEV false, and no EPSS. Its alternative likelihood is 1.0 for Redis, Elasticsearch, MongoDB, Memcached, and Docker findings. Other exposed-service findings use 0.8. TLS findings use 0.3.
+The generic scorer uses the configured impact, asset criticality, internet-facing true, fix-available true, KEV false, and no EPSS. Its alternative likelihood is 1.0 for Redis, Elasticsearch, MongoDB, Memcached, and Docker findings. Other exposed-service findings and exposed web paths use 0.8. Banner-version findings use 0.4. TLS findings use 0.3.
 
 These likelihoods are configured scoring inputs. They are not measured probabilities for the scanned service. See the [priority score reference](risk-score.md) for the calculation.
 
@@ -92,7 +92,7 @@ These likelihoods are configured scoring inputs. They are not measured probabili
 | Field | Meaning |
 | --- | --- |
 | `address` | Selected IP string |
-| `open` | Number of unique issue IDs returned by the checks, including observed findings whose status remains accepted |
+| `open` | Number of findings the checks returned (one per issue and endpoint), including observed findings whose status remains accepted |
 | `resolved` | Number of previously open or accepted findings newly changed to resolved |
 | `still_open` | Number of previously open or accepted findings not seen this scan, but not proven fixed |
 | `skipped` | Strings for reported scanner limitations, principally untestable legacy TLS |

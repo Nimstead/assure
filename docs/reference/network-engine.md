@@ -85,6 +85,6 @@ The content identifier hashes service port numbers, TLS warning age, web rule ID
 
 ## Parity result
 
-`agree` is a sorted list of shared finding IDs. `explained` lists engine-only `NIM-WEB-` and `CVE-` results. `unexplained` lists other differences. `ok` means the unexplained list is empty, so it can be true with explained differences.
+`agree` is a sorted list of shared finding IDs. Every vulnerable verdict opens a finding, so `unexplained` lists every difference. `ok` means the unexplained list is empty, so it can be true with explained differences.
 
 Source: [`network.py`](../../api/src/nimstead/engine/network.py).

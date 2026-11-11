@@ -111,10 +111,11 @@ def test_safe_mode_cannot_be_bypassed_by_content(monkeypatch):
     assert blocked[0].outcome == Outcome.NOT_RUN and blocked[0].reason == "safe-mode"  # never probed in safe mode
 
 
-def test_parity_lists_engine_only_checks_and_flags_a_gap():
+def test_parity_agrees_on_every_vulnerable_verdict_and_flags_a_gap():
     vuln = net._exposed(endpoints({6379: Endpoint(6379, "open")})) + net._versions(endpoints({21: Endpoint(21, "open", banner=b"220 (vsFTPd 2.3.4)\r\n")}))
-    good = net.parity(vuln, {"NIM-EXPOSED-REDIS"})
-    assert good["ok"] and good["agree"] == ["NIM-EXPOSED-REDIS"] and good["explained"][0]["id"] == "CVE-2011-2523"
+    good = net.parity(vuln, {"NIM-EXPOSED-REDIS", "CVE-2011-2523"})
+    assert good["ok"] and good["agree"] == ["CVE-2011-2523", "NIM-EXPOSED-REDIS"]
+    assert not net.parity(vuln, {"NIM-EXPOSED-REDIS"})["ok"]  # a banner verdict the scan didn't open is a bug now
     gap = net.parity(vuln, {"NIM-EXPOSED-REDIS", "NIM-TLS-EXPIRED"})  # scan opened one the engine didn't
     assert not gap["ok"] and gap["unexplained"][0]["id"] == "NIM-TLS-EXPIRED"
 

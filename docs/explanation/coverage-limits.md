@@ -22,7 +22,7 @@ The external scanner performs proof requests, TCP connections, TLS handshakes an
 
 A finding resolves only on evidence: the port refused the connection, or the TLS handshake ran and no longer shows the problem. A filtered port, a timed-out check or a target that stopped answering keeps it open with a "Still open" reason. The [external scan reference](../reference/external-scans.md) defines these limits.
 
-The scan runs the [network engine](../reference/network-engine.md)'s prober. Its weak banner-to-CVE checks appear in the target's scan report only. Its time budgets do not guarantee cancellation at an exact deadline.
+The scan runs the [network engine](../reference/network-engine.md)'s prober. Its banner-to-CVE findings are graded unverified and ranked below exposures read directly: a banner can be spoofed, and distributions backport fixes without changing the version. Its time budgets do not guarantee cancellation at an exact deadline.
 
 Agentless Windows scans depend on PowerShell remoting and the caller's permissions. They provide findings, but fixes need an installed agent.
 

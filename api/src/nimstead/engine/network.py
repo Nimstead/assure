@@ -8,7 +8,7 @@ web rules in safe mode. Time budgets are not strict wall-clock cancellation dead
 Nothing a remote check reads can be `confirmed`: a banner is weak and spoofable and vendors backport (R10.2), so grades
 here ceiling at `reasonable`, and a banner-to-CVE check is `unverified`. `external.scan` probes through `probe()` and
 opens findings from the exposed-service, TLS and web-path verdicts (DECISIONS 126); the first two reuse `external`'s own
-decision helpers. The banner-version checks are reported only, and `parity` lists them as such."""
+decision helpers. Banner-version findings open too, graded unverified (DECISIONS 127)."""
 
 import hashlib
 import json
@@ -430,7 +430,7 @@ def _coverage(endpoints: dict[int, Endpoint], verdicts: list[Verdict], skipped: 
         e = endpoints[port]
         label = f"tcp/{port}" + (f" {_SERVICE_NAME[port]}" if port in _SERVICE_NAME else " TLS" if port == external.TLS_PORT else " HTTP" if port == 80 else "")
         err = "did not answer (dropped)" if e.state == "filtered" else "answered a nonsense probe" if e.reflects else None
-        sources.append({"name": label, "label": label, "state": e.state, "count": 1 if e.state == "open" else 0, "error": err})
+        sources.append({"name": label, "label": label, "state": e.state, "count": 1 if e.state == "open" else 0, "error": err, "banner": bool(e.banner)})
     net = [v for v in verdicts if v.family == "network"]
     families = {"network": {"label": "Network services", "attempted": len(net), "determined": sum(v.outcome in _DETERMINED for v in net),
                             "outcomes": dict(sorted(Counter(v.outcome.value for v in net).items()))}}
@@ -445,8 +445,8 @@ def _coverage(endpoints: dict[int, Endpoint], verdicts: list[Verdict], skipped: 
         stated.append("Some ports were dropped rather than refused: those checks are not clean results, only undetermined.")
     for s in skipped:
         stated.append(f"Not checked on this scanner: {s}.")
-    stated.append("This slice checks reachable services, TLS on 443, exposed web paths and a few banner versions. Findings open and close "
-                  "from the exposed-service, TLS and web-path results; banner-version results are shown here only.")
+    stated.append("This slice checks reachable services, TLS on 443, exposed web paths and a few banner versions. Each result opens or "
+                  "closes a finding; banner-version ones are unverified, since a banner can be spoofed or carry a backported fix.")
     return {"sources": sources, "families": families, "statements": stated}
 
 
@@ -486,20 +486,13 @@ def build_report(host: str, ip: str, verdicts: list[Verdict], endpoints: dict[in
 def parity(verdicts: list[Verdict], external_ids: set[str]) -> dict:
     """Compare vulnerable verdict IDs with external.scan finding IDs in external_ids.
 
-    Return sorted agree IDs, explained/unexplained difference rows, and ok. Extra
-    CVE- (banner) verdicts are explained engine-only checks. ok means no unexplained
-    differences, not exact equality. Does not change inputs. Invalid ID/model types
-    can raise TypeError or AttributeError."""
+    Return sorted agree IDs, unexplained difference rows, and ok. Every vulnerable
+    verdict opens a finding (DECISIONS 126, 127), so any difference is a bug.
+    Does not change inputs. Invalid ID/model types can raise TypeError or AttributeError."""
     vuln = {v.vuln_id for v in verdicts if v.outcome == Outcome.VULNERABLE and v.vuln_id}
-    explained, unexplained = [], []
-    for fid in sorted(external_ids - vuln):
-        unexplained.append({"id": fid, "problem": "external.scan opened it and the engine has no vulnerable verdict"})
-    for vid in sorted(vuln - external_ids):
-        if vid.startswith("CVE-"):
-            explained.append({"id": vid, "why": "an engine-only remote check (banner version); external.scan doesn't open it yet"})
-        else:
-            unexplained.append({"id": vid, "problem": "the engine says vulnerable and external.scan has no finding"})
-    return {"agree": sorted(vuln & external_ids), "explained": explained, "unexplained": unexplained, "ok": not unexplained}
+    unexplained = [{"id": fid, "problem": "external.scan opened it and the engine has no vulnerable verdict"} for fid in sorted(external_ids - vuln)]
+    unexplained += [{"id": vid, "problem": "the engine says vulnerable and external.scan has no finding"} for vid in sorted(vuln - external_ids)]
+    return {"agree": sorted(vuln & external_ids), "unexplained": unexplained, "ok": not unexplained}
 
 
 # --- entry point (scope proven, then probe) --------------------------------

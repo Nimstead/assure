@@ -29,6 +29,7 @@ EXPOSED_LIKELIHOOD = (0.8, "Reachable from the internet, where this service is s
 OPEN_BY_DEFAULT_LIKELIHOOD = (1.0, "No authentication by default: exposed instances are found and abused automatically within hours")
 OPEN_BY_DEFAULT = {"REDIS", "ELASTICSEARCH", "MONGODB", "MEMCACHED", "DOCKER"}
 TLS_LIKELIHOOD = (0.3, "Visible to every visitor")
+BANNER_LIKELIHOOD = (0.4, "Read from the service's banner, which can be spoofed or carry a backported fix: unverified until an agent reads the host")
 WEB_LIKELIHOOD = (0.8, "Files at well-known paths are fetched by automated crawlers within hours of going online")
 
 # port: (id, name, CVSS-equivalent impact, what to do)
@@ -237,6 +238,8 @@ def likelihood_of(check_id: str) -> tuple[float, str]:
         return OPEN_BY_DEFAULT_LIKELIHOOD if check_id.removeprefix("NIM-EXPOSED-") in OPEN_BY_DEFAULT else EXPOSED_LIKELIHOOD
     if check_id.startswith("NIM-WEB-"):
         return WEB_LIKELIHOOD
+    if check_id.startswith("CVE-"):
+        return BANNER_LIKELIHOOD
     return TLS_LIKELIHOOD
 
 
@@ -280,21 +283,30 @@ def prove_scope(s: Session, asset: Asset, lookup=None) -> str:
 
 
 def findings_from(verdicts: list) -> list[dict]:
-    """Finding dictionaries (exposed_finding's shape) for the engine's vulnerable exposed-service, TLS and web-path verdicts."""
-    return [{"id": v.vuln_id, "package": v.product, "cvss": v.cvss, "likelihood": likelihood_of(v.vuln_id), "summary": v.summary}
-            for v in verdicts if v.outcome == "vulnerable" and v.vuln_id.startswith(("NIM-EXPOSED-", "NIM-TLS-", "NIM-WEB-"))]
+    """Finding dictionaries (exposed_finding's shape, plus installed and fixed) for every vulnerable verdict of the
+    engine's prober: exposed services, TLS, web paths, and banner versions (graded unverified, DECISIONS 127)."""
+    return [{"id": v.vuln_id, "package": v.product, "cvss": v.cvss, "likelihood": likelihood_of(v.vuln_id), "summary": v.summary,
+             "installed": v.version or "", "fixed": v.fixed} for v in verdicts if v.outcome == "vulnerable" and v.vuln_id]
 
 
-def held_open(vid: str, verdicts: list) -> str | None:
-    """None when this scan proved vid absent; otherwise the engine REASONS key for why it stays open (R4.6, DECISIONS 126).
+def held_open(vid: str, package: str, verdicts: list, rep: dict) -> str | None:
+    """None when this scan proved the finding (vid on package) absent; otherwise the engine REASONS key for why it stays open
+    (R4.6, DECISIONS 126). rep is the scan's report, whose coverage holds each port's state.
 
-    Exposed services close only on a refused port. TLS findings close when the handshake ran without showing them, or
-    nothing listens on 443; legacy TLS also needs this scanner to have tried TLS 1.0/1.1."""
-    own = [v for v in verdicts if v.vuln_id == vid or v.check == vid]
+    Exposed services and web paths close on their own not-vulnerable or not-applicable verdict. TLS findings close when
+    the handshake ran without showing them, or nothing listens on 443; legacy TLS also needs this scanner to have tried
+    TLS 1.0/1.1. A banner finding closes on its port refusing, or answering with a greeting that no longer names it."""
+    own = [v for v in verdicts if (v.vuln_id == vid and v.product == package) or v.check == vid]
     if not own and vid.startswith("NIM-TLS-"):
         own = [v for v in verdicts if v.check == "tls"]  # 443 as a whole: refused, dropped or timed out
         if not own:
             return None  # the handshake ran and didn't show it
+    if not own and vid.startswith("CVE-"):
+        port = package.split()[0]  # "tcp/2222 vsftpd"
+        src = next((x for x in rep["coverage"]["sources"] if x["name"].split()[0] == port), None)
+        if src and (src["state"] == "closed" or (src["state"] == "open" and src.get("banner") and not src["error"])):
+            return None  # nothing listens, or a genuine greeting that isn't this product any more
+        return "port-filtered" if src and src["state"] == "filtered" else "not-reassessed"
     if not own:
         return "not-reassessed"
     return next((v.reason or "not-reassessed" for v in own if not v.proves_absent), None)
@@ -317,26 +329,28 @@ def scan(s: Session, asset: Asset, lookup=None) -> dict:
     skipped = [v.detail for v in verdicts if v.reason == "scanner-limited"]
     engine.record(s, asset, rep, {"host": asset.hostname, "address": ip})
     t = now()
-    existing = {f.vuln_id: f for f in s.scalars(select(Finding).where(Finding.asset_id == asset.id))}
+    # keyed by (vulnerability, endpoint): one banner CVE can be on two ports
+    existing = {(f.vuln_id, f.package): f for f in s.scalars(select(Finding).where(Finding.asset_id == asset.id))}
     events, seen = [], set()
     for c in found:
-        seen.add(c["id"])
+        seen.add((c["id"], c["package"]))
         r = _score(asset, c)
-        f = existing.get(c["id"])
+        f = existing.get((c["id"], c["package"]))
         if f is None:
             f = Finding(org_id=asset.org_id, asset_id=asset.id, ecosystem=ECOSYSTEM, package=c["package"], vuln_id=c["id"],
-                        first_seen=t, advisory_ids=[c["id"]], installed_version="", fixed_version=None)
+                        first_seen=t, advisory_ids=[c["id"]], installed_version=c["installed"], fixed_version=c["fixed"])
             s.add(f)
             events.append(("finding_opened", f))
         elif f.status == "resolved":
             f.status, f.resolved_at = "open", None
             events.append(("finding_reopened", f))
         f.summary, f.cvss, f.epss, f.kev = c["summary"], c["cvss"], None, False
+        f.installed_version, f.fixed_version = c["installed"], c["fixed"]
         f.score, f.priority, f.reasons, f.last_seen = r.score, r.priority, r.reasons, t
     resolved = still = 0
-    for vid, f in existing.items():
-        if vid not in seen and f.status in ("open", "accepted"):
-            if (why := held_open(vid, verdicts)) is not None:  # silence, a drop or an untested check isn't evidence of a fix
+    for (vid, package), f in existing.items():
+        if (vid, package) not in seen and f.status in ("open", "accepted"):
+            if (why := held_open(vid, package, verdicts, rep)) is not None:  # silence, a drop or an untested check isn't evidence of a fix
                 f.reasons = [r for r in f.reasons or [] if not r.startswith("Still open: ")] + [f"Still open: {REASONS[why][0]}"]
                 still += 1
                 continue
@@ -346,9 +360,9 @@ def scan(s: Session, asset: Asset, lookup=None) -> dict:
     s.flush()
     for kind, f in events:
         evidence.append(s, asset.org_id, kind, f.id, {"host": asset.hostname, "vuln_id": f.vuln_id, "package": f.package,
-                                                      "installed_version": "", "fixed_version": None, "priority": f.priority})
+                                                      "installed_version": f.installed_version, "fixed_version": f.fixed_version, "priority": f.priority})
     asset.last_seen = t
-    evidence.append(s, asset.org_id, "external_scan", asset.id, {"host": asset.hostname, "address": ip, "problems": sorted(seen),
+    evidence.append(s, asset.org_id, "external_scan", asset.id, {"host": asset.hostname, "address": ip, "problems": sorted({v for v, _ in seen}),
                                                                  "skipped": skipped, "requests": rep.get("requests", [])})
     s.commit()
     return {"address": ip, "open": len(seen), "resolved": resolved, "still_open": still, "skipped": skipped}

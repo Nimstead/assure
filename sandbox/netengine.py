@@ -234,6 +234,11 @@ def main(keep=False) -> int:
         note("phase 2 verdicts", vsftpd_cve=outcome(rep2, "CVE-2011-2523"), catch_all_2121=catchall)
         assert outcome(rep2, "CVE-2011-2523") == "vulnerable", "a plain banner should fire the version check"
         assert any(g["reason"] == "catch-all" for g in rep2["undetermined"]), "the echo port's product result should be suppressed"
+        with sm() as s:  # the shipped scan opens the plain banner's CVE, graded unverified, and nothing for the echo port
+            scan2 = external.scan(s, s.query(Asset).filter_by(id=tid).one(), lookup=dns_lookup)
+        cves = sorted(f["package"] for f in c.get("/api/findings").json() if f["vuln_id"] == "CVE-2011-2523")
+        note("external.scan with banners", result=scan2, cve_2011_2523_on=cves)
+        assert cves == ["tcp/2222 vsftpd"], cves
         stop("catchall")
         stop("ftp")
 

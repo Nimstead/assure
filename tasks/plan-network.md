@@ -73,7 +73,7 @@ See `tasks/todo-network.md` for acceptance criteria and verification per task.
 
 ### Phase 2: engine-only remote checks become findings
 - [x] N4: Web-path checks (e.g. exposed `/.git/config`) open findings, never on a soft-404 (S)
-- [ ] N5: Banner-version checks open `unverified` findings, suppressed on echo responders (S)
+- [x] N5: Banner-version checks open `unverified` findings, suppressed on echo responders (S)
 
 ### Checkpoint 2
 - [ ] `netengine.py` cases 2-4 open exactly the findings its docstring names, none on the soft-404 or echo hosts

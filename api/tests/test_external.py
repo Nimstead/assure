@@ -198,6 +198,54 @@ def test_a_soft_404_site_opens_no_web_finding_and_closes_none(world, monkeypatch
     assert r["resolved"] == 0 and r["still_open"] == 1 and [x["vuln_id"] for x in c.get("/api/findings").json()] == ["NIM-WEB-ENV"]
 
 
+def banner(monkeypatch, greetings, reflects=()):
+    """Open banner ports and their greetings; ports in reflects echo a nonsense probe back (a catch-all)."""
+    eps = {p: Endpoint(p, "closed") for p in sorted(set(external.SERVICES) | {external.TLS_PORT, 80, *net.BANNER_PORTS})}
+    for p, g in greetings.items():
+        eps[p] = Endpoint(p, "open", banner=g, reflects=p in reflects)
+    monkeypatch.setattr(net.Prober, "observe", lambda self: eps)
+
+
+def test_a_vulnerable_banner_opens_an_unverified_finding_ranked_below_firmer_evidence(world, monkeypatch):
+    c, dns = world
+    t = add(c, dns)
+    c.post(f"/api/targets/{t['id']}/verify")
+    banner(monkeypatch, {2222: b"220 (vsFTPd 2.3.4)\r\n", 2121: b"220 (vsFTPd 2.3.4)\r\n"})
+    c.post(f"/api/targets/{t['id']}/scan")
+    f = c.get("/api/findings").json()
+    assert sorted((x["vuln_id"], x["package"]) for x in f) == [("CVE-2011-2523", "tcp/2121 vsftpd"), ("CVE-2011-2523", "tcp/2222 vsftpd")]
+    assert f[0]["installed_version"] == "2.3.4" and f[0]["fixed_version"] == "2.3.5"
+    assert any("banner" in why and "agent" in why for why in f[0]["reasons"])
+    bscore = f[0]["score"]
+    fake_net(monkeypatch, open_ports={23})  # Telnet: CVSS 9.0 exposed, firm evidence
+    c.post(f"/api/targets/{t['id']}/scan")
+    telnet = next(x for x in c.get("/api/findings").json() if x["vuln_id"] == "NIM-EXPOSED-TELNET")
+    assert telnet["score"] > bscore  # 9.8 from a banner still ranks below 9.0 read directly
+    assert c.get("/api/findings", params={"status": "resolved"}).json()  # both FTP ports refused now: evidence it's gone
+
+
+def test_banners_that_echo_or_carry_a_distro_tag_open_nothing(world, monkeypatch):
+    c, dns = world
+    t = add(c, dns)
+    c.post(f"/api/targets/{t['id']}/verify")
+    banner(monkeypatch, {2121: b"220 (vsFTPd 2.3.4)\r\n", 22: b"SSH-2.0-OpenSSH_9.2p1 Debian-2+deb12u3\r\n"}, reflects={2121})
+    c.post(f"/api/targets/{t['id']}/scan")
+    assert c.get("/api/findings").json() == []
+
+
+def test_a_banner_finding_stays_open_while_its_port_drops_and_closes_on_an_upgrade(world, monkeypatch):
+    c, dns = world
+    t = add(c, dns)
+    c.post(f"/api/targets/{t['id']}/verify")
+    banner(monkeypatch, {22: b"SSH-2.0-OpenSSH_9.6p1\r\n"})
+    c.post(f"/api/targets/{t['id']}/scan")
+    assert [x["vuln_id"] for x in c.get("/api/findings").json()] == ["CVE-2024-6387"]
+    fake_net(monkeypatch, filtered={22})
+    assert c.post(f"/api/targets/{t['id']}/scan").json()["still_open"] == 1
+    banner(monkeypatch, {22: b"SSH-2.0-OpenSSH_9.8p1\r\n"})
+    assert c.post(f"/api/targets/{t['id']}/scan").json()["resolved"] == 1
+
+
 def test_ownership_is_rechecked_before_every_scan(world, monkeypatch):
     c, dns = world
     t = add(c, dns)

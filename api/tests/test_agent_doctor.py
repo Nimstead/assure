@@ -241,6 +241,7 @@ def enrolled(tmp_path, monkeypatch):
     monkeypatch.setattr(agent, "config_path", lambda: str(cfg))
     monkeypatch.setattr(agent, "LOG_PATH", str(log))
     monkeypatch.setattr(agent, "collect", lambda: {"os_name": "x", "ecosystem": "y", "packages": [{"name": "a"}]})
+    monkeypatch.setattr(agent, "neighbours", lambda: [])
     return log
 
 

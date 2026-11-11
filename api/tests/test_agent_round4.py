@@ -105,6 +105,7 @@ def test_stable_host_skips_a_preview_build_the_server_relays(host, monkeypatch):
 def test_enrol_records_the_channel(monkeypatch):
     saved = {}
     monkeypatch.setattr(agent, "collect", lambda: {"os_name": "x", "ecosystem": "Debian:13", "packages": []})
+    monkeypatch.setattr(agent, "neighbours", lambda: [])
     monkeypatch.setattr(agent, "post", lambda *a, **kw: {"asset_id": "a1", "agent_key": "nma_k", "channel": "preview"})
     monkeypatch.setattr(agent, "save_config", lambda cfg: saved.update(cfg) or "cfg")
     assert agent.main(["enroll", "--server", "https://n.example", "--token", "t", "--channel", "beta"]) == 0

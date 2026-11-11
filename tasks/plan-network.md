@@ -80,7 +80,7 @@ See `tasks/todo-network.md` for acceptance criteria and verification per task.
 - [ ] Owner review, release
 
 ### Phase 3: devices without an agent (passive)
-- [ ] N6: Agent reports its neighbour table on Linux and Windows (M, agent bump)
+- [x] N6: Agent reports its neighbour table on Linux and Windows (M, agent bump)
 - [ ] N7: Server merges neighbours into "seen on your network, no agent", named from the OUI registry, with an API and CSV (M)
 - [ ] N8: Assets shows the list beside the AD unmanaged list (S)
 

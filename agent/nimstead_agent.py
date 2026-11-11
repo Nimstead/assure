@@ -14,6 +14,7 @@ import email.utils
 import glob
 import hashlib
 import io
+import ipaddress
 import json
 import ntpath
 import os
@@ -32,7 +33,7 @@ import urllib.parse
 import urllib.request
 import zipfile
 
-AGENT_VERSION = "0.6.9"  # the server reads this line to flag outdated agents; bump on every agent change
+AGENT_VERSION = "0.7.0"  # the server reads this line to flag outdated agents; bump on every agent change
 # Ed25519 public keys (hex) allowed to sign releases (DECISIONS 31): primary (GitHub Actions) and offline backup.
 # The server only relays signed releases, so it can withhold an update but never forge one. Empty = never self-update.
 RELEASE_KEYS = ["a91fa6539c6c2593009fc71b1c1fba341b5685ba7bc97c127c068b1d732b21d2", "2438f2ccebab5bf26edf9e21a8aa8f09abd1861f52fbe0d6641b28b90f8b0e5a"]  # noqa: E501
@@ -1390,6 +1391,81 @@ def esu_active(product, run=None):
         return None
     rc, out = ps(run or sh, PS_ESU)
     return int(out.strip()) > 0 if rc == 0 and out.strip().isdigit() else None
+
+
+# The machine's own neighbour (ARP/NDP) table: addresses it has already talked to on its links. Read only; nothing is
+# sent on the network (tasks/plan-network.md N6). The server lists the ones no agent accounts for.
+NEIGHBOURS_MAX = 1024
+PROC_ARP = "/proc/net/arp"
+NEIGH_STATES = {"REACHABLE", "STALE", "DELAY", "PROBE", "PERMANENT"}  # a live or recently confirmed entry, not FAILED/INCOMPLETE
+# Get-NetNeighbor's State is an enum, the same in every Windows language (DECISIONS 68)
+PS_NEIGHBOURS = ("Get-NetNeighbor -State Reachable,Stale,Permanent -ErrorAction SilentlyContinue | "
+                 "Select-Object IPAddress,LinkLayerAddress,InterfaceAlias | ConvertTo-Json -Compress")
+_MAC = re.compile(r"^([0-9a-f]{2})[:-]([0-9a-f]{2})[:-]([0-9a-f]{2})[:-]([0-9a-f]{2})[:-]([0-9a-f]{2})[:-]([0-9a-f]{2})$")
+
+
+def neighbour(ip, mac, interface):
+    """One {ip, mac, interface} row, or None for an unusable entry: no MAC, all zeros, broadcast or multicast, or a
+    multicast, broadcast or unspecified address. The MAC comes back lower case with colons."""
+    m = _MAC.match(str(mac or "").strip().lower())
+    try:
+        addr = ipaddress.ip_address(str(ip).split("%")[0])
+    except ValueError:
+        return None
+    if not m or int(m[1], 16) & 1 or m.groups() == ("00",) * 6:  # the group bit marks broadcast and multicast MACs
+        return None
+    if addr.is_multicast or addr.is_unspecified or addr.is_loopback or str(addr) == "255.255.255.255":
+        return None
+    return {"ip": str(addr), "mac": ":".join(m.groups()), "interface": str(interface or "")[:64]}
+
+
+def parse_proc_arp(text):
+    """Rows from /proc/net/arp (IPv4). Flags 0x0 is an incomplete entry, so it's dropped."""
+    out = []
+    for line in text.splitlines()[1:]:
+        f = line.split()
+        if len(f) >= 6 and f[2] != "0x0":
+            out.append(neighbour(f[0], f[3], f[5]))
+    return [r for r in out if r]
+
+
+def parse_ip_neigh(text):
+    """Rows from `ip -j neigh` (IPv4 and IPv6), live or recently confirmed entries only."""
+    try:
+        rows = json.loads(text or "[]")
+    except ValueError:
+        return []
+    out = [neighbour(r.get("dst"), r.get("lladdr"), r.get("dev")) for r in rows if isinstance(r, dict) and NEIGH_STATES & set(r.get("state") or [])]
+    return [r for r in out if r]
+
+
+def parse_net_neighbor(text):
+    """Rows from Get-NetNeighbor's JSON (one object when there's a single entry)."""
+    try:
+        rows = json.loads(text or "[]")
+    except ValueError:
+        return []
+    rows = [rows] if isinstance(rows, dict) else rows if isinstance(rows, list) else []
+    out = [neighbour(r.get("IPAddress"), r.get("LinkLayerAddress"), r.get("InterfaceAlias")) for r in rows if isinstance(r, dict)]
+    return [r for r in out if r]
+
+
+def neighbours(run=None, read=None, which=shutil.which, nt=os.name == "nt"):
+    """This machine's neighbour table as unique {ip, mac, interface} rows, at most NEIGHBOURS_MAX; [] where unreadable."""
+    rows = []
+    if nt:
+        rc, out = ps(run or sh, PS_NEIGHBOURS, timeout=60)
+        rows = parse_net_neighbor(out) if rc == 0 else []
+    else:
+        try:
+            rows = parse_proc_arp((read or (lambda p: open(p, encoding="ascii", errors="replace").read()))(PROC_ARP))
+        except OSError:
+            pass
+        if which("ip"):
+            rc, out = (run or sh)(["ip", "-j", "neigh"], timeout=30)
+            rows += parse_ip_neigh(out) if rc == 0 else []
+    unique = {(r["ip"], r["mac"]): r for r in rows}
+    return list(unique.values())[:NEIGHBOURS_MAX]
 
 
 def collect():
@@ -3797,9 +3873,12 @@ def inventory(cfg):
     cfg is a dictionary of local flags/roots. auto_update uses its truthy/default value when
     release keys exist, otherwise None. update_error uses this process's last update result.
     with_apps adds optional data and can mutate the collected nested dictionaries. Errors
-    follow collectors/scanners. This helper performs no upload.
+    follow collectors/scanners. This helper performs no upload. "neighbours": false in the
+    config leaves the neighbour table out.
     """
     inv = {**collect(), "auto_update": bool(cfg.get("auto_update", True)) if RELEASE_KEYS else None, "update_error": _update_error}
+    if cfg.get("neighbours", True):
+        inv["neighbours"] = neighbours()
     return with_apps(inv, cfg)
 
 

@@ -29,6 +29,7 @@ EXPOSED_LIKELIHOOD = (0.8, "Reachable from the internet, where this service is s
 OPEN_BY_DEFAULT_LIKELIHOOD = (1.0, "No authentication by default: exposed instances are found and abused automatically within hours")
 OPEN_BY_DEFAULT = {"REDIS", "ELASTICSEARCH", "MONGODB", "MEMCACHED", "DOCKER"}
 TLS_LIKELIHOOD = (0.3, "Visible to every visitor")
+WEB_LIKELIHOOD = (0.8, "Files at well-known paths are fetched by automated crawlers within hours of going online")
 
 # port: (id, name, CVSS-equivalent impact, what to do)
 SERVICES = {
@@ -234,6 +235,8 @@ def likelihood_of(check_id: str) -> tuple[float, str]:
     """Return the configured (likelihood, reason) tuple for the external vulnerability ID check_id."""
     if check_id.startswith("NIM-EXPOSED-"):
         return OPEN_BY_DEFAULT_LIKELIHOOD if check_id.removeprefix("NIM-EXPOSED-") in OPEN_BY_DEFAULT else EXPOSED_LIKELIHOOD
+    if check_id.startswith("NIM-WEB-"):
+        return WEB_LIKELIHOOD
     return TLS_LIKELIHOOD
 
 
@@ -277,9 +280,9 @@ def prove_scope(s: Session, asset: Asset, lookup=None) -> str:
 
 
 def findings_from(verdicts: list) -> list[dict]:
-    """Finding dictionaries (exposed_finding's shape) for the engine's vulnerable exposed-service and TLS verdicts."""
+    """Finding dictionaries (exposed_finding's shape) for the engine's vulnerable exposed-service, TLS and web-path verdicts."""
     return [{"id": v.vuln_id, "package": v.product, "cvss": v.cvss, "likelihood": likelihood_of(v.vuln_id), "summary": v.summary}
-            for v in verdicts if v.outcome == "vulnerable" and v.vuln_id.startswith(("NIM-EXPOSED-", "NIM-TLS-"))]
+            for v in verdicts if v.outcome == "vulnerable" and v.vuln_id.startswith(("NIM-EXPOSED-", "NIM-TLS-", "NIM-WEB-"))]
 
 
 def held_open(vid: str, verdicts: list) -> str | None:
@@ -346,7 +349,7 @@ def scan(s: Session, asset: Asset, lookup=None) -> dict:
                                                       "installed_version": "", "fixed_version": None, "priority": f.priority})
     asset.last_seen = t
     evidence.append(s, asset.org_id, "external_scan", asset.id, {"host": asset.hostname, "address": ip, "problems": sorted(seen),
-                                                                 "skipped": skipped})
+                                                                 "skipped": skipped, "requests": rep.get("requests", [])})
     s.commit()
     return {"address": ip, "open": len(seen), "resolved": resolved, "still_open": still, "skipped": skipped}
 

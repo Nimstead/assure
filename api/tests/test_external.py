@@ -159,6 +159,45 @@ def test_tls_findings_close_when_nothing_listens_on_443(world, monkeypatch):
     assert c.post(f"/api/targets/{t['id']}/scan").json()["resolved"] == 1
 
 
+def web(monkeypatch, pages):
+    """Port 80's answers by path; any other path gets a real 404. Returns the paths requested."""
+    asked = []
+
+    def get(self, port, path, deadline):
+        asked.append(path)
+        return pages.get(path, (404, b"not found"))
+    monkeypatch.setattr(net.Prober, "_http_get", get)
+    return asked
+
+
+def test_an_exposed_git_config_opens_a_finding_and_every_request_is_in_the_ledger(world, monkeypatch):
+    c, dns = world
+    t = add(c, dns)
+    c.post(f"/api/targets/{t['id']}/verify")
+    fake_net(monkeypatch, open_ports={80})
+    asked = web(monkeypatch, {"/.git/config": (200, b"[core]\n\trepositoryformatversion = 0\n")})
+    c.post(f"/api/targets/{t['id']}/scan")
+    f = {x["vuln_id"]: x for x in c.get("/api/findings").json()}
+    assert set(f) == {"NIM-WEB-GIT"} and f["NIM-WEB-GIT"]["package"] == "http://www.example.com/.git/config"
+    scan = next(e for e in c.get("/api/evidence/ledger").json()["entries"] if e["kind"] == "external_scan")
+    assert scan["data"]["requests"] == [f"GET :80{p}" for p in asked] and "/.git/config" in asked
+    web(monkeypatch, {"/.git/config": (404, b"gone")})
+    assert c.post(f"/api/targets/{t['id']}/scan").json()["resolved"] == 1  # a real 404 after a clean control is evidence
+
+
+def test_a_soft_404_site_opens_no_web_finding_and_closes_none(world, monkeypatch):
+    c, dns = world
+    t = add(c, dns)
+    c.post(f"/api/targets/{t['id']}/verify")
+    fake_net(monkeypatch, open_ports={80})
+    web(monkeypatch, {"/.env": (200, b"DB_PASSWORD=hunter2\n")})
+    c.post(f"/api/targets/{t['id']}/scan")
+    assert [x["vuln_id"] for x in c.get("/api/findings").json()] == ["NIM-WEB-ENV"]
+    monkeypatch.setattr(net.Prober, "_http_get", lambda self, port, path, deadline: (200, b"<h1>welcome</h1>"))  # 200 for everything
+    r = c.post(f"/api/targets/{t['id']}/scan").json()
+    assert r["resolved"] == 0 and r["still_open"] == 1 and [x["vuln_id"] for x in c.get("/api/findings").json()] == ["NIM-WEB-ENV"]
+
+
 def test_ownership_is_rechecked_before_every_scan(world, monkeypatch):
     c, dns = world
     t = add(c, dns)

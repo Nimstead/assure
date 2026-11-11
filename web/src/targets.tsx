@@ -70,8 +70,8 @@ export function ExternalTargets({ targets, onDelete }: { targets: Asset[]; onDel
     <section aria-labelledby="ext-h" className="flex flex-col gap-3">
       <h2 id="ext-h" className="text-lg font-semibold">External targets</h2>
       <p className="max-w-prose text-sm text-muted">
-        Checks exposed risky services (RDP, SMB, Telnet, databases, Docker API…) and TLS (expired, expiring or untrusted certificates, TLS 1.0/1.1).
-        TCP connects and TLS handshakes only; nothing is logged into or exploited. We only scan hosts you prove you own.
+        Checks exposed risky services (RDP, SMB, Telnet, databases, Docker API…), TLS (expired, expiring or untrusted certificates, TLS 1.0/1.1) and source or config files served by mistake.
+        TCP connects, TLS handshakes and read-only requests for /.git/config and /.env; nothing is logged into or exploited. We only scan hosts you prove you own.
       </p>
       <form className="flex flex-wrap items-start gap-2" onSubmit={(e) => { e.preventDefault(); if (hostname.trim()) add.mutate(hostname.trim()); }}>
         <Field label="Hostname to scan" error={add.error?.message} className="w-full sm:w-72">

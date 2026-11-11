@@ -18,11 +18,11 @@ Use the [version comparison reference](../reference/version-comparison.md) for c
 
 ## Remote checks
 
-The normal external scanner performs proof requests, TCP connections, and TLS handshakes. It does not exploit services, inspect UDP, or derive remote CVEs from banners. Address selection and TLS-port limits make this a focused exposure check.
+The external scanner performs proof requests, TCP connections, TLS handshakes and a few read-only web-path requests. It does not exploit services or inspect UDP. Address selection and TLS-port limits make this a focused exposure check.
 
 A finding resolves only on evidence: the port refused the connection, or the TLS handshake ran and no longer shows the problem. A filtered port, a timed-out check or a target that stopped answering keeps it open with a "Still open" reason. The [external scan reference](../reference/external-scans.md) defines these limits.
 
-The scan runs the [network engine](../reference/network-engine.md)'s prober. Its web-path and weak banner-to-CVE checks appear in the target's scan report. Its time budgets do not guarantee cancellation at an exact deadline.
+The scan runs the [network engine](../reference/network-engine.md)'s prober. Its weak banner-to-CVE checks appear in the target's scan report only. Its time budgets do not guarantee cancellation at an exact deadline.
 
 Agentless Windows scans depend on PowerShell remoting and the caller's permissions. They provide findings, but fixes need an installed agent.
 

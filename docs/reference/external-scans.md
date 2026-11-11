@@ -1,6 +1,6 @@
 # External scan reference
 
-The normal external scanner checks exposed TCP ports and TLS on a verified target. The separate network engine adds web-path and banner checks. The external-target UI and scheduled scans use the normal scanner.
+The external scanner checks a verified target with the [network engine](network-engine.md)'s prober: exposed TCP ports, TLS on 443, and a short list of well-known web paths on 80. Banner-version results appear in the target's scan report only. Manual and scheduled scans work the same way.
 
 ## Target operations
 
@@ -79,7 +79,7 @@ An expired certificate suppresses the separate name/untrusted finding. An untest
 
 TLS socket operations default to five-second timeouts. Several connections can each use that limit. The normal scanner has no overall wall-clock deadline.
 
-The normal scanner performs no UDP checks, logins, exploits, web-path checks, or banner-to-CVE comparisons.
+The scanner performs no UDP checks, logins or exploits. Its web-path checks are read-only `GET` requests for `/.git/config` and `/.env` on port 80, each after a request for a path that can't exist (the negative control). A site that answers that control with a success page gets no web-path verdict (`soft-404`). Every request is listed in the scan's `external_scan` ledger entry under `requests`.
 
 ## Priority inputs
 

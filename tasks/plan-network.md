@@ -72,7 +72,7 @@ See `tasks/todo-network.md` for acceptance criteria and verification per task.
 - [ ] Owner review, then release (preview)
 
 ### Phase 2: engine-only remote checks become findings
-- [ ] N4: Web-path checks (e.g. exposed `/.git/config`) open findings, never on a soft-404 (S)
+- [x] N4: Web-path checks (e.g. exposed `/.git/config`) open findings, never on a soft-404 (S)
 - [ ] N5: Banner-version checks open `unverified` findings, suppressed on echo responders (S)
 
 ### Checkpoint 2

@@ -21,6 +21,6 @@ If scanning reports lost DNS ownership, restore the TXT record and select **Veri
 
 A finding resolves only when the scan sees evidence: the port refused the connection, or the TLS handshake no longer shows the problem. A port that drops connections keeps its finding open with a "Still open" reason. Open **What the last scan checked** under the target to see each port's result.
 
-The scan performs proof requests, TCP connections, and TLS handshakes. It does not log in, exploit a service, or infer remote CVEs from banners.
+The scan performs proof requests, TCP connections, TLS handshakes, and read-only `GET` requests for `/.git/config` and `/.env` on port 80. It does not log in or exploit a service.
 
 See [external scan reference](../reference/external-scans.md) for ports, counters, and address selection. Read [coverage limits](../explanation/coverage-limits.md) before interpreting a result with no findings.

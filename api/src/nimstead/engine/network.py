@@ -7,8 +7,8 @@ web rules in safe mode. Time budgets are not strict wall-clock cancellation dead
 
 Nothing a remote check reads can be `confirmed`: a banner is weak and spoofable and vendors backport (R10.2), so grades
 here ceiling at `reasonable`, and a banner-to-CVE check is `unverified`. `external.scan` probes through `probe()` and
-opens findings from the exposed-service and TLS verdicts (DECISIONS 126), which reuse `external`'s own decision helpers;
-the web-path and version checks are reported only, and `parity` lists them as such."""
+opens findings from the exposed-service, TLS and web-path verdicts (DECISIONS 126); the first two reuse `external`'s own
+decision helpers. The banner-version checks are reported only, and `parity` lists them as such."""
 
 import hashlib
 import json
@@ -174,6 +174,7 @@ class Prober:
     def __init__(self, host: str, ip: str, budget: Budget | None = None, safe_mode: bool = True):
         self.host, self.ip, self.budget, self.safe_mode = host, ip, budget or Budget(), safe_mode
         self._sems: dict[int, threading.Semaphore] = defaultdict(lambda: threading.Semaphore(self.budget.per_endpoint))
+        self.requests: list[str] = []  # every HTTP request sent, for the scan's ledger entry (R10.7)
 
     def _sem(self, port: int) -> threading.Semaphore:
         return self._sems[port]
@@ -316,6 +317,10 @@ def _tls(endpoints: dict[int, Endpoint], host: str) -> list[Verdict]:
 
 def _web(prober: Prober, endpoints: dict[int, Endpoint]) -> list[Verdict]:
     out, controls = [], {}
+
+    def get(port, path, deadline):
+        prober.requests.append(f"GET :{port}{path}")  # recorded before it's sent, so a failed request is listed too
+        return prober._http_get(port, path, deadline)
     for rule in WEB_RULES:
         e = endpoints.get(rule.port)
         product = f"http://{prober.host}{rule.path}"
@@ -331,12 +336,12 @@ def _web(prober: Prober, endpoints: dict[int, Endpoint]) -> list[Verdict]:
             continue
         deadline = time.monotonic() + prober.budget.deadline
         if rule.port not in controls:  # negative control, once per port: how does this site answer a path that can't exist? (R10.3)
-            controls[rule.port] = prober._http_get(rule.port, f"/nimstead-{secrets.token_hex(8)}", deadline)
+            controls[rule.port] = get(rule.port, f"/nimstead-{secrets.token_hex(8)}", deadline)
         cst, cbody = controls[rule.port]
         if cst is not None and 200 <= cst < 300 and cbody.strip():
             out.append(Verdict(outcome=Outcome.UNDETERMINED, reason="soft-404", detail=f"a missing path returned HTTP {cst} with a body", **base))
             continue
-        st, body = prober._http_get(rule.port, rule.path, deadline)
+        st, body = get(rule.port, rule.path, deadline)
         if st is None:  # no response (timeout, reset): nothing was observed, so it can't be called fixed (R4.6)
             out.append(Verdict(outcome=Outcome.UNDETERMINED, reason="host-lost", detail="the request got no HTTP response", **base))
         elif st == 200 and rule.marker.search(body) and body != cbody:  # a flaw-specific marker, and different from the control
@@ -441,7 +446,7 @@ def _coverage(endpoints: dict[int, Endpoint], verdicts: list[Verdict], skipped: 
     for s in skipped:
         stated.append(f"Not checked on this scanner: {s}.")
     stated.append("This slice checks reachable services, TLS on 443, exposed web paths and a few banner versions. Findings open and close "
-                  "from the exposed-service and TLS results; web-path and banner-version results are shown here only.")
+                  "from the exposed-service, TLS and web-path results; banner-version results are shown here only.")
     return {"sources": sources, "families": families, "statements": stated}
 
 
@@ -482,7 +487,7 @@ def parity(verdicts: list[Verdict], external_ids: set[str]) -> dict:
     """Compare vulnerable verdict IDs with external.scan finding IDs in external_ids.
 
     Return sorted agree IDs, explained/unexplained difference rows, and ok. Extra
-    NIM-WEB-/CVE- verdicts are explained engine-only checks. ok means no unexplained
+    CVE- (banner) verdicts are explained engine-only checks. ok means no unexplained
     differences, not exact equality. Does not change inputs. Invalid ID/model types
     can raise TypeError or AttributeError."""
     vuln = {v.vuln_id for v in verdicts if v.outcome == Outcome.VULNERABLE and v.vuln_id}
@@ -490,8 +495,8 @@ def parity(verdicts: list[Verdict], external_ids: set[str]) -> dict:
     for fid in sorted(external_ids - vuln):
         unexplained.append({"id": fid, "problem": "external.scan opened it and the engine has no vulnerable verdict"})
     for vid in sorted(vuln - external_ids):
-        if vid.startswith("NIM-WEB-") or vid.startswith("CVE-"):
-            explained.append({"id": vid, "why": "an engine-only remote check (web path or banner version); external.scan doesn't open it yet"})
+        if vid.startswith("CVE-"):
+            explained.append({"id": vid, "why": "an engine-only remote check (banner version); external.scan doesn't open it yet"})
         else:
             unexplained.append({"id": vid, "problem": "the engine says vulnerable and external.scan has no finding"})
     return {"agree": sorted(vuln & external_ids), "explained": explained, "unexplained": unexplained, "ok": not unexplained}
@@ -519,4 +524,4 @@ def probe(host: str, ip: str, budget: Budget | None = None, safe_mode: bool = Tr
     host_lost = all(e.state == "filtered" for e in endpoints.values())
     verdicts = evaluate(prober, endpoints)
     skipped = [v.detail for v in verdicts if v.reason == "scanner-limited"]
-    return verdicts, build_report(host, ip, verdicts, endpoints, skipped, host_lost), prober
+    return verdicts, {**build_report(host, ip, verdicts, endpoints, skipped, host_lost), "requests": prober.requests}, prober

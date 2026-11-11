@@ -63,7 +63,7 @@ See `tasks/todo-network.md` for acceptance criteria and verification per task.
 
 ### Phase 1: external targets through the engine
 - [x] N1: The shipped scan probes with the engine and stores its report (M)
-- [ ] N2: External findings open and close from verdicts; a filtered port closes nothing (M)
+- [x] N2: External findings open and close from verdicts; a filtered port closes nothing (M)
 - [ ] N3: The target view shows the engine report: per port, verdict, grade, why not checked (S)
 
 ### Checkpoint 1

@@ -94,11 +94,12 @@ These likelihoods are configured scoring inputs. They are not measured probabili
 | `address` | Selected IP string |
 | `open` | Number of unique issue IDs returned by the checks, including observed findings whose status remains accepted |
 | `resolved` | Number of previously open or accepted findings newly changed to resolved |
+| `still_open` | Number of previously open or accepted findings not seen this scan, but not proven fixed |
 | `skipped` | Strings for reported scanner limitations, principally untestable legacy TLS |
 
-Observed resolved findings reopen. Observed accepted findings remain accepted. A previously open or accepted finding resolves when its ID is absent from the check result. The exception is a check the scan skipped: an open legacy-TLS finding stays as it was while legacy TLS couldn't be tested, since an untested check isn't evidence of a fix.
+Findings come from the network engine's exposed-service and TLS verdicts (DECISIONS 126). Observed resolved findings reopen. Observed accepted findings remain accepted. A previously open or accepted finding resolves only when the engine proves it absent: its port refused the connection, or the TLS handshake ran without showing it, or nothing listens on 443. A filtered port, a timed-out check, a target that stopped answering, or legacy TLS this scanner can't offer keeps it open and adds one `Still open: ...` reason, which later re-scores keep.
 
-This absence rule also applies when a port is filtered or a TLS check returns no usable facts. A resolved finding therefore does not prove that the service closed or the certificate was repaired. `skipped` is not a complete list of every failed connection or missing observation.
+Each scan stores the engine's report; `GET /api/assets/{id}/scan-report` returns the latest one for a target and never probes.
 
 Successful scans update `last_seen`, append finding/scan ledger events, and commit the session. Criticality changes rescore open findings without a network scan. Accepted and resolved findings are excluded from that rescore.
 

@@ -5,6 +5,8 @@ Run from api/:  uv run python ../sandbox/extscan.py [--keep]
 1. No TXT record: the scan is refused and nothing is probed. TXT record but the address doesn't serve the value at
    /.well-known/nimstead-verify.txt: verification is refused. Once a real HTTP server there serves it: verified.
 2. Redis exposed + TLS server with an EXPIRED certificate that also accepts TLS 1.0/1.1: each must be found.
+2b. Redis firewalled (iptables DROP: no answer): its finding must stay open with a "Still open" reason, never close
+   on silence (DECISIONS 126).
 3. Redis stopped, TLS restarted with a valid self-signed certificate, TLS 1.2+ only: the earlier findings must
    close and "untrusted certificate" must open.
 The private-address guard is switched off for this run only (NIMSTEAD_ALLOW_PRIVATE_TARGETS=1): the WSL address is
@@ -96,7 +98,7 @@ def main(keep=False) -> int:
         if r.returncode != 0:
             raise RuntimeError((r.stdout + r.stderr).decode("utf-16-le", errors="replace"))
         running["keepalive"] = subprocess.Popen(["wsl", "-d", NAME, "-u", "root", "--", "sleep", "infinity"])
-        vm("apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq redis-server openssl iproute2 python3 >/dev/null")
+        vm("apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq redis-server openssl iproute2 iptables python3 >/dev/null")
         vm("systemctl disable --now redis-server >/dev/null 2>&1 || true")  # the package starts its own, bound to localhost
         ip = vm("ip -4 -o addr show eth0 | awk '{print $4}' | cut -d/ -f1").strip()
         versions = vm("redis-server --version | cut -d' ' -f3; openssl version").split()
@@ -151,6 +153,14 @@ def main(keep=False) -> int:
         assert {"NIM-EXPOSED-REDIS", "NIM-TLS-EXPIRED"} <= set(f2), f2
         assert ("NIM-TLS-LEGACY" in f2) or r2["skipped"], "legacy TLS neither found nor reported as unchecked"
         assert f2["NIM-EXPOSED-REDIS"] == "fix-now"
+
+        # 2b) Redis dropped by a firewall: no answer is not evidence of a fix
+        vm("iptables -I INPUT -p tcp --dport 6379 -j DROP")
+        r2b = c.post(f"/api/targets/{t['id']}/scan").json()
+        redis = next(f for f in c.get("/api/findings").json() if f["vuln_id"] == "NIM-EXPOSED-REDIS")
+        note("scan 1b: Redis firewalled (dropped)", result=r2b, redis_reasons=redis["reasons"])
+        assert r2b["still_open"] >= 1 and any(w.startswith("Still open: ") for w in redis["reasons"]), redis
+        vm("iptables -D INPUT -p tcp --dport 6379 -j DROP")
 
         # 3) fixed: Redis gone, valid (self-signed) cert, TLS 1.2+ only
         running.pop("redis").kill()

@@ -1,12 +1,13 @@
 # Network engine reference
 
-`nimstead.engine.network.run()` provides a separate remote-check evaluation path. It does not replace the [normal external scanner](external-scans.md), persist findings, or publish a network-report HTTP endpoint. The repository sandbox calls this entry point.
+The [external scanner](external-scans.md) probes every target through `probe()`, opens and closes findings from its exposed-service and TLS verdicts, and stores its report, which `GET /api/assets/{id}/scan-report` returns (DECISIONS 126). `run()` proves scope and then calls `probe()`; it persists nothing, and the repository sandbox calls it.
 
 ## Entry points
 
 | Function | Inputs and result |
 | --- | --- |
 | `run(s, asset, lookup=None, budget=None, safe_mode=True)` | SQLAlchemy session, verified external asset, optional DNS TXT lookup, budget, and safety flag. Returns `(verdicts, report, prober)` |
+| `probe(host, ip, budget=None, safe_mode=True)` | One probe pass on a pinned IP with no ownership check (callers prove scope first). Returns `(verdicts, report, prober)` |
 | `Prober(host, ip, budget=None, safe_mode=True)` | Host/SNI string and pinned IP string. Construction performs no ownership validation or I/O |
 | `Prober.observe()` | Probes configured ports and returns an integer-port-to-`Endpoint` map |
 | `evaluate(prober, endpoints)` | Returns verdicts, with additional web requests and current-clock TLS evaluation |

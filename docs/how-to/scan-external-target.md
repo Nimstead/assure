@@ -19,7 +19,7 @@ If verification fails, check the public DNS answer and the response body at the 
 
 If scanning reports lost DNS ownership, restore the TXT record and select **Verify** again. If scanning reports missing address proof, restore the proof response and repeat the scan.
 
-Treat a newly resolved finding as a status change that needs verification. The normal scanner can resolve a finding after a filtered port or unavailable TLS observation. An empty **Not checked** list does not prove all checks succeeded.
+A finding resolves only when the scan sees evidence: the port refused the connection, or the TLS handshake no longer shows the problem. A port that drops connections keeps its finding open with a "Still open" reason. Open **What the last scan checked** under the target to see each port's result.
 
 The scan performs proof requests, TCP connections, and TLS handshakes. It does not log in, exploit a service, or infer remote CVEs from banners.
 

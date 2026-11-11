@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from nimstead import engine, evidence, netguard, risk, sso
 from nimstead.db import Asset, Finding, now
+from nimstead.engine.model import REASONS
 
 ECOSYSTEM = "External"
 HOSTNAME = re.compile(r"^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
@@ -47,7 +48,7 @@ SERVICES = {
 }
 TLS_PORT = 443
 EXPIRY_WARN_DAYS = 14
-LEGACY_SKIP = "legacy TLS (this server's OpenSSL can't offer TLS 1.0/1.1)"  # scan() keeps NIM-TLS-LEGACY open when it sees this
+LEGACY_SKIP = "legacy TLS (this server's OpenSSL can't offer TLS 1.0/1.1)"  # the engine reads it as scanner-limited, which keeps NIM-TLS-LEGACY open
 PROOF_PATH = "/.well-known/nimstead-verify.txt"
 PROOF_PORTS = ((443, True), (80, False))  # (port, TLS)
 
@@ -281,14 +282,29 @@ def findings_from(verdicts: list) -> list[dict]:
             for v in verdicts if v.outcome == "vulnerable" and v.vuln_id.startswith(("NIM-EXPOSED-", "NIM-TLS-"))]
 
 
+def held_open(vid: str, verdicts: list) -> str | None:
+    """None when this scan proved vid absent; otherwise the engine REASONS key for why it stays open (R4.6, DECISIONS 126).
+
+    Exposed services close only on a refused port. TLS findings close when the handshake ran without showing them, or
+    nothing listens on 443; legacy TLS also needs this scanner to have tried TLS 1.0/1.1."""
+    own = [v for v in verdicts if v.vuln_id == vid or v.check == vid]
+    if not own and vid.startswith("NIM-TLS-"):
+        own = [v for v in verdicts if v.check == "tls"]  # 443 as a whole: refused, dropped or timed out
+        if not own:
+            return None  # the handshake ran and didn't show it
+    if not own:
+        return "not-reassessed"
+    return next((v.reason or "not-reassessed" for v in own if not v.proves_absent), None)
+
+
 def scan(s: Session, asset: Asset, lookup=None) -> dict:
     """Re-prove scope, probe Asset asset with the engine, store its report, update findings/ledger and commit Session s.
 
     lookup follows prove_scope(). Caller checks ownership. Findings come from the
     engine's verdicts (observe()). Return address, open (unique observed issue count),
-    resolved (new transitions), and skipped. Accepted observed findings stay accepted.
-    Unseen open/accepted findings resolve, including when a port is filtered, except one
-    whose check this scan skipped (legacy TLS): an untested check isn't evidence of a fix.
+    resolved (new transitions), still_open (unseen, but not proven fixed) and skipped.
+    Accepted observed findings stay accepted. An unseen open/accepted finding resolves
+    only on evidence (held_open); otherwise it gets one "Still open: ..." reason.
     On success update asset.last_seen and commit all pending session changes.
     ScanRefused and other scope/probe/database errors propagate. Refusal can itself
     commit through prove_scope(). No automatic rollback handles later exceptions."""
@@ -314,10 +330,13 @@ def scan(s: Session, asset: Asset, lookup=None) -> dict:
             events.append(("finding_reopened", f))
         f.summary, f.cvss, f.epss, f.kev = c["summary"], c["cvss"], None, False
         f.score, f.priority, f.reasons, f.last_seen = r.score, r.priority, r.reasons, t
-    resolved = 0
-    untested = {"NIM-TLS-LEGACY"} if LEGACY_SKIP in skipped else set()  # an untested check isn't evidence of a fix
+    resolved = still = 0
     for vid, f in existing.items():
-        if vid not in seen and vid not in untested and f.status in ("open", "accepted"):
+        if vid not in seen and f.status in ("open", "accepted"):
+            if (why := held_open(vid, verdicts)) is not None:  # silence, a drop or an untested check isn't evidence of a fix
+                f.reasons = [r for r in f.reasons or [] if not r.startswith("Still open: ")] + [f"Still open: {REASONS[why][0]}"]
+                still += 1
+                continue
             f.status, f.resolved_at = "resolved", t
             resolved += 1
             events.append(("finding_resolved", f))
@@ -329,7 +348,7 @@ def scan(s: Session, asset: Asset, lookup=None) -> dict:
     evidence.append(s, asset.org_id, "external_scan", asset.id, {"host": asset.hostname, "address": ip, "problems": sorted(seen),
                                                                  "skipped": skipped})
     s.commit()
-    return {"address": ip, "open": len(seen), "resolved": resolved, "skipped": skipped}
+    return {"address": ip, "open": len(seen), "resolved": resolved, "still_open": still, "skipped": skipped}
 
 
 def _score(asset: Asset, c: dict):
@@ -346,7 +365,8 @@ def rescore(s: Session, asset: Asset) -> dict:
     n = 0
     for f in s.scalars(select(Finding).where(Finding.asset_id == asset.id, Finding.status == "open")):
         r = _score(asset, {"cvss": f.cvss, "likelihood": likelihood_of(f.vuln_id)})
-        f.score, f.priority, f.reasons = r.score, r.priority, r.reasons
+        f.score, f.priority = r.score, r.priority
+        f.reasons = r.reasons + [x for x in f.reasons or [] if x.startswith("Still open: ")]  # the last scan's word on why it's open stays
         n += 1
     s.commit()
     return {"open": n, "resolved": 0}

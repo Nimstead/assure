@@ -83,7 +83,7 @@ def test_verified_scan_opens_and_resolves_findings_with_evidence(world, monkeypa
     assert any("abused automatically" in why for why in f["NIM-EXPOSED-REDIS"]["reasons"])
 
     fake_net(monkeypatch, tls=EXPIRED)  # Redis now refuses connections
-    assert c.post(f"/api/targets/{t['id']}/scan").json() == {"address": "93.184.216.34", "open": 1, "resolved": 1, "skipped": []}
+    assert c.post(f"/api/targets/{t['id']}/scan").json() == {"address": "93.184.216.34", "open": 1, "resolved": 1, "still_open": 0, "skipped": []}
     kinds = [e["kind"] for e in c.get("/api/evidence/ledger").json()["entries"]]
     assert {"external_target_verified", "external_scan", "finding_opened", "finding_resolved"} <= set(kinds)
 
@@ -114,6 +114,48 @@ def test_a_legacy_tls_finding_stays_open_when_this_scan_couldnt_test_legacy_tls(
     r = c.post(f"/api/targets/{t['id']}/scan").json()
     assert r["resolved"] == 0 and [f["vuln_id"] for f in c.get("/api/findings").json()] == ["NIM-TLS-LEGACY"]
     fake_net(monkeypatch, tls=GOOD_TLS)  # tested, and not accepted any more
+    assert c.post(f"/api/targets/{t['id']}/scan").json()["resolved"] == 1
+
+
+def test_a_finding_closes_on_a_refused_port_never_on_a_dropped_one(world, monkeypatch):
+    c, dns = world
+    t = add(c, dns)
+    c.post(f"/api/targets/{t['id']}/verify")
+    fake_net(monkeypatch, open_ports={3389, 6379}, tls=EXPIRED)
+    c.post(f"/api/targets/{t['id']}/scan")
+    fake_net(monkeypatch, filtered={3389}, tls=EXPIRED)  # RDP firewalled (dropped), Redis gone (refused)
+    r = c.post(f"/api/targets/{t['id']}/scan").json()
+    assert r["resolved"] == 1 and r["still_open"] == 1
+    f = {x["vuln_id"]: x for x in c.get("/api/findings").json()}
+    assert set(f) == {"NIM-EXPOSED-RDP", "NIM-TLS-EXPIRED"}
+    assert any(why.startswith("Still open: ") and "drop" in why for why in f["NIM-EXPOSED-RDP"]["reasons"])
+    c.patch(f"/api/assets/{t['id']}", json={"criticality": "high"})  # a re-score keeps the scan's word on why it's open
+    rdp = next(x for x in c.get("/api/findings").json() if x["vuln_id"] == "NIM-EXPOSED-RDP")
+    assert sum(why.startswith("Still open: ") for why in rdp["reasons"]) == 1
+    fake_net(monkeypatch, tls=EXPIRED)  # now refused: evidence that nothing listens
+    assert c.post(f"/api/targets/{t['id']}/scan").json()["resolved"] == 1
+
+
+def test_a_target_that_stops_answering_closes_nothing(world, monkeypatch):
+    c, dns = world
+    t = add(c, dns)
+    c.post(f"/api/targets/{t['id']}/verify")
+    fake_net(monkeypatch, open_ports={6379}, tls=EXPIRED)
+    c.post(f"/api/targets/{t['id']}/scan")
+    every = set(external.SERVICES) | {external.TLS_PORT, 80, *net.BANNER_PORTS}
+    fake_net(monkeypatch, filtered=every)
+    r = c.post(f"/api/targets/{t['id']}/scan").json()
+    assert r["resolved"] == 0 and r["still_open"] == 2
+    assert c.get(f"/api/assets/{t['id']}/scan-report").json()["headline"]["status"] == "not-assessed"
+
+
+def test_tls_findings_close_when_nothing_listens_on_443(world, monkeypatch):
+    c, dns = world
+    t = add(c, dns)
+    c.post(f"/api/targets/{t['id']}/verify")
+    fake_net(monkeypatch, tls=EXPIRED)
+    c.post(f"/api/targets/{t['id']}/scan")
+    fake_net(monkeypatch)  # 443 refused: no HTTPS left to be wrong
     assert c.post(f"/api/targets/{t['id']}/scan").json()["resolved"] == 1
 
 

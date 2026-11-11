@@ -90,7 +90,7 @@ See `tasks/todo-network.md` for acceptance criteria and verification per task.
 - [ ] STATUS, CHANGELOG, README, docs updated; owner review, release
 
 ### Phase 4: internal exposure from one chosen agent (gated on N9)
-- [ ] N9: Decision draft with a recommendation; the owner's yes or no (XS)
+- [x] N9: Decision draft with a recommendation (written below; the owner's yes or no is pending) (XS)
 - [ ] N10: One admin-chosen agent probes its own directly attached private subnets with the shipped prober (M, agent bump)
 - [ ] N11: Internal devices' exposed-service and TLS verdicts become findings on the unmanaged-device rows (M)
 
@@ -122,6 +122,45 @@ The owner answered "whatever you recommend for a great industry leading tool" to
    check agentless internal devices, so passive discovery alone would leave a gap. It changes the threat model
    (DECISIONS 7, 27), so N10-N11 aren't built until the owner answers N9 itself: the general answer above isn't a yes
    to that change.
+
+## N9 decision draft: should one agent probe the devices on its own network? (for the owner; nothing built)
+
+**What it would add.** Phase 3 lists the devices with no agent. It can't say whether that camera has Telnet open or that
+NAS answers SMBv1, which is what an internal scanner appliance (or a vendor's "scanner agent") tells you. N10-N11 would
+run the same read-only checks the external scan already ships (TCP connect, TLS handshake, the two web paths and the
+banner rules, safe mode only) against those devices, from one machine on their network.
+
+**What changes in the threat model.** Today a compromised server can't make an agent send a packet anywhere but to the
+server itself (DECISIONS 7, 27). With N10, a compromised server could ask the probing agent to connect to addresses on
+its network. The question is whether the limits below keep that from being worth anything to an attacker.
+
+**Recommended: yes, with all of these limits, each enforced by the agent, not the server.**
+1. **Opt-in on the machine.** A local config flag set at enrolment (`--allow-network-checks`), like
+   `--allow-remediation` (DECISIONS 7). The server can't turn it on, and an agent without it refuses every request.
+2. **The agent decides scope.** Only addresses inside private subnets it is directly attached to, read from its own
+   interfaces at the time, and only ones in its own neighbour table (devices it already talks to). It never takes a
+   range from the server; the server can only name addresses, and the agent drops any that fail these rules.
+3. **Fixed, read-only checks.** The prober's rule data ships inside the signed agent, so it updates only with a signed
+   release (DECISIONS 31). No disruptive rules, no logins, no payloads beyond the web-path GETs and the nonce echo test.
+4. **Rate and size caps in the agent.** At most 32 devices per run, one connection per endpoint, one run an hour.
+5. **Everything recorded.** Each address and request goes in the ledger with the agent that sent it, and the device row
+   on Assets says it was checked from that machine.
+
+**What a compromised server could still do.** Make an opted-in agent connect, at most hourly, to up to 32 devices it
+already talks to on its own subnet, with read-only checks. It can't reach the internet, other subnets or anything the
+agent hasn't seen, can't send attack traffic, and can't hide it from the ledger (DECISIONS 27's offline-verifiable
+chain). The worst case is a port-scan-sized map of a subnet the attacker would already need a foothold to care about.
+
+**What DECISIONS 7 and 27 would need to say.** 7 gains one sentence: an agent opted in to network checks may connect
+to devices in its own neighbour table with the signed agent's fixed checks, and nothing else. 27's "server to host"
+row lists it as a new capability with the limits above, and `docs/pentest-scope.md` adds "can a server make an agent
+probe anything outside these limits?".
+
+**Alternatives considered.** (a) Leave it out: the passive list stands alone and users scan with their own tools.
+Safest, but a gap against leading tools. (b) A separate scanner appliance the customer runs: no change to the agent's
+threat model, but a second product to install and keep updated; a later option, not a replacement.
+
+**Owner's answer:** _pending_. N10 and N11 start only on a yes to this draft specifically.
 
 ## Not doing
 - UDP, banner fingerprinting beyond the rules in `network.VERSION_RULES`, credentialed remote checks, internal

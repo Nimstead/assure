@@ -162,7 +162,7 @@ def test_an_org_stores_at_most_its_cap_of_neighbour_rows(env, monkeypatch):
     assert len(make_sessionmaker(env)().scalars(select(Neighbour)).all()) == 3
 
 
-def test_the_unmanaged_list_is_rate_limited_per_org(env, monkeypatch):
+def test_the_unmanaged_list_is_rate_limited_per_caller(env, monkeypatch):
     from nimstead import app as appmod
     monkeypatch.setattr(appmod, "UNMANAGED_MAX_PER_HOUR", 2)
     c = user(env)
@@ -184,3 +184,14 @@ def test_a_failed_registry_fetch_waits_a_day_before_trying_again(env):
     good = Manuf()
     update_all(s, client=good)
     assert good.calls.count(oui.URL) == 1 and c.get("/api/network/unmanaged").json()[0]["vendor"].startswith("Hangzhou Hikvision")
+
+
+def test_a_read_token_using_up_its_device_list_reads_doesnt_lock_out_people(env, monkeypatch):
+    """Ship review 2: the limit was one per org, so one busy read token locked every admin out of the list."""
+    from nimstead import app as appmod
+    monkeypatch.setattr(appmod, "UNMANAGED_MAX_PER_HOUR", 2)
+    c = user(env)
+    ro = TestClient(create_app(env))
+    h = {"Authorization": f"Bearer {c.post('/api/tokens', json={'name': 'ro'}).json()['token']}"}
+    assert [ro.get("/api/network/unmanaged", headers=h).status_code for _ in range(3)] == [200, 200, 429]
+    assert c.get("/api/network/unmanaged").status_code == 200

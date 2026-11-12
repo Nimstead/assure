@@ -219,7 +219,8 @@ MAX_ASSETS_PER_ORG = int(os.environ.get("NIMSTEAD_MAX_ASSETS_PER_ORG", "5000"))
 ENROLL_MAX_PER_TOKEN_HOUR = int(os.environ.get("NIMSTEAD_ENROLL_MAX_PER_TOKEN_HOUR", "2000"))  # a fleet rollout enrols fast
 ORG_INVENTORY_MAX_PER_HOUR = int(os.environ.get("NIMSTEAD_ORG_INVENTORY_MAX_PER_HOUR", "20000"))
 ORG_NETCHECKS_MAX_PER_HOUR = 2000  # network-check reports per org: hosts send one per report (6-hourly), so many fake hosts can't flood the ledger
-UNMANAGED_MAX_PER_HOUR = 120  # the unmanaged list reads the whole org's neighbour rows, as attack paths read every report
+UNMANAGED_MAX_PER_HOUR = 120  # per person or read token: the unmanaged list reads the whole org's neighbour rows, as attack paths read every report
+UNMANAGED_ORG_MAX_PER_HOUR = 1000  # and for the whole org, so many tokens can't add up to more
 AI_MAX_PER_USER_HOUR, AI_MAX_PER_ORG_HOUR = 30, 200  # each call costs the operator's Anthropic credits
 
 
@@ -396,7 +397,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             if not t.last_used or now() - t.last_used > timedelta(minutes=5):
                 t.last_used = now()
                 s.commit()
-            request.state.api_token = True
+            request.state.api_token = t.token_hash[:12]  # truthy: which token, for per-caller limits
             return user
         token = request.cookies.get(SESSION_COOKIE)
         ws = s.get(WebSession, sha(token)) if token else None
@@ -1312,12 +1313,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         return out
 
     @app.get("/api/network/unmanaged")
-    def unmanaged_devices(user: CurrentUser, s: DB, format: str | None = None):
+    def unmanaged_devices(request: Request, user: CurrentUser, s: DB, format: str | None = None):
         """Return devices the organisation's agents saw in their own neighbour tables that are none of its agents.
 
         Require a session or eligible read token. One row per MAC with addresses, vendor, seen_by hostnames and
         first/last seen, newest first; rows unseen for 30 days are gone. CSV for format=csv. Nothing is probed."""
-        if over_limit(s, "unmanaged:" + user.org_id, UNMANAGED_MAX_PER_HOUR):
+        caller = getattr(request.state, "api_token", None) or user.id  # one busy read token never locks people out (ship review 2)
+        if over_limit(s, f"unmanaged:{user.org_id}:{caller}", UNMANAGED_MAX_PER_HOUR) or over_limit(s, "unmanaged:" + user.org_id, UNMANAGED_ORG_MAX_PER_HOUR):
             raise HTTPException(429, "The device list was read too often this hour; try again later")
         s.commit()
         out = neighbours.unmanaged(s, user.org_id)
@@ -1557,13 +1559,17 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         asset_id selects any owned kind. user requires an admin browser session.
         Append deletion evidence, delete rows and commit. Return HTTP 204 without
         a body. The ledger remains. This does not stop a resident agent or dispatched
-        host process. Missing/unowned assets return 404. Storage/evidence errors
+        host process. A host's views of devices it checked go with it (they're its
+        evidence alone). Missing/unowned assets return 404. Storage/evidence errors
         can propagate."""
         a = owned_asset(s, user, asset_id)
-        evidence.append(s, user.org_id, "asset_deleted", a.id, {"by": user.email, "hostname": a.hostname})
-        for model in (Finding, InstalledPackage, Neighbour, RemediationJob, ScanRecord):
-            s.execute(delete(model).where(model.asset_id == a.id))
-        s.delete(a)
+        views = [d for d in s.scalars(select(Asset).where(Asset.org_id == a.org_id, Asset.kind == "device"))
+                 if (d.facts or {}).get("checked_by") == a.id] if a.kind == "host" else []
+        for gone in (a, *views):  # a device's name is its address: personal data, kept out of the permanent ledger
+            evidence.append(s, user.org_id, "asset_deleted", gone.id, {"by": user.email, "hostname": "device" if gone.kind == "device" else gone.hostname})
+            for model in (Finding, InstalledPackage, Neighbour, RemediationJob, ScanRecord):
+                s.execute(delete(model).where(model.asset_id == gone.id))
+            s.delete(gone)
         s.commit()
 
     @app.get("/api/assets/{asset_id}/scan-report")

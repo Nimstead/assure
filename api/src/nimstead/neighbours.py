@@ -12,6 +12,7 @@ asset per MAC.
 import base64
 import hashlib
 import ipaddress
+import json
 import os
 import re
 from dataclasses import replace
@@ -241,11 +242,22 @@ def _observe(obs: dict) -> tuple[list, dict]:
     recorded = {k: _web_fact(http[k]) for k in ("control", *(r.path for r in network.WEB_RULES)) if k in http}
     verdicts = [v for v in network.evaluate(_Replay(ip, recorded), endpoints)
                 if not (v.vuln_id or "").startswith("NIM-EXPOSED-") or v.vuln_id in INTERNAL_EXPOSED]
-    verdicts = [replace(v, summary=v.summary.replace("is reachable from the internet.", "answers on your network.")
-                        .replace("served to the internet", "served on your network")) if v.summary else v for v in verdicts]
+    verdicts = [replace(v, summary=_on_network(v.summary)) if v.summary else v for v in verdicts]
     rep = network.build_report(ip, ip, verdicts, endpoints, [], all(e.state == "filtered" for e in endpoints.values()))
+    rep = json.loads(_on_network(json.dumps(rep)))  # the engine's wording is for internet targets: every field, not only summaries
     rep["requests"] = ["GET :80 (a path that can't exist)" if k == "control" else f"GET :80{k}" for k in recorded]
     return verdicts, rep
+
+
+_WORDING = (("is reachable from the internet.", "answers on your network."), ("not reachable from the internet", "not reachable on your network"),
+            ("open to the internet", "open on your network"), ("served to the internet", "served on your network"),
+            ("external target ", "device "))
+
+
+def _on_network(text: str) -> str:
+    for internet, lan in _WORDING:
+        text = text.replace(internet, lan)
+    return text
 
 
 def record_checks(s: Session, asset: Asset, devices) -> dict:

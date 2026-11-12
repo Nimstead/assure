@@ -359,3 +359,44 @@ def test_ipv6_devices_are_never_checked(env):
     c, h = setup(env)
     report(c, h, [row("fd00::5", "02:00:00:00:00:05"), row("fe80::5", "02:00:00:00:00:05")])
     assert send(c, h, [obs("fd00::5", "02:00:00:00:00:05", open_={23}), obs("fe80::5", "02:00:00:00:00:05", open_={23})])["refused"] == 2
+
+
+def test_a_devices_report_says_on_your_network_never_the_internet(env):
+    """Ship review 2: only the summary was reworded; "open to the internet" and "external target" stayed in the report."""
+    c, h = setup(env)
+    git = page(200, b"[core]\n\trepositoryformatversion = 0\n", "/.git/config")
+    send(c, h, [obs(open_={23, 80}, http={"control": page(404, b"nope"), "/.git/config": git})])
+    aid = next(d for d in c.get("/api/network/unmanaged").json() if d["mac"] == CAMERA[1])["checked"]["asset_id"]
+    text = c.get(f"/api/assets/{aid}/scan-report").text
+    assert "NIM-WEB-GIT" in text and "internet" not in text.lower() and "external target" not in text
+
+
+def test_deleting_a_device_keeps_its_address_out_of_the_ledger(env):
+    c, h = setup(env)
+    send(c, h, [obs(open_={23})])
+    aid = next(d for d in c.get("/api/network/unmanaged").json() if d["mac"] == CAMERA[1])["checked"]["asset_id"]
+    assert c.delete(f"/api/assets/{aid}").status_code == 204
+    entry = next(e for e in c.get("/api/evidence/ledger").json()["entries"] if e["kind"] == "asset_deleted")
+    assert entry["data"]["hostname"] == "device" and CAMERA[0] not in str(entry["data"])
+
+
+def test_deleting_a_host_takes_its_device_views_with_it_not_anyone_elses(env):
+    """Ship review 2: a deleted host's views kept their findings open for 30 days, checked from a machine that's gone."""
+    c, web = setup(env)
+    db = agent(c, "db-1")
+    report(c, db, [row(*CAMERA)], own={"ips": ["192.168.1.21"], "macs": ["52:54:00:00:00:21"]})
+    send(c, web, [obs(open_={23})])
+    send(c, db, [obs(open_={6379})])
+    web_id = next(a["id"] for a in c.get("/api/assets").json() if a["hostname"] == "web-1")
+    assert c.delete(f"/api/assets/{web_id}").status_code == 204
+    assert sorted(f["vuln_id"] for f in c.get("/api/findings").json()) == ["NIM-EXPOSED-REDIS"]
+
+
+def test_a_device_that_later_gets_an_agent_keeps_its_old_views_until_they_age_out(env):
+    """Decided (ship review 2): views stay until the 30-day prune. Deleting them on a claim would let one host erase what
+    another machine found; checking the device stops, as it's judged from its own agent now."""
+    c, web = setup(env)
+    send(c, web, [obs(open_={23})])
+    report(c, agent(c, "camera-1"), [], own={"ips": [CAMERA[0]], "macs": [CAMERA[1]]})
+    assert send(c, web, [obs(open_={23})])["refused"] == 1
+    assert [f["vuln_id"] for f in c.get("/api/findings").json()] == ["NIM-EXPOSED-TELNET"]

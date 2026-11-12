@@ -1,7 +1,7 @@
 [
   {
     "step": "distro up",
-    "name": "nimstead-sbx-net-47cea5",
+    "name": "nimstead-sbx-net-0094c2",
     "address": "172.25.98.1"
   },
   {
@@ -70,6 +70,6 @@
   },
   {
     "step": "distro destroyed",
-    "name": "nimstead-sbx-net-47cea5"
+    "name": "nimstead-sbx-net-0094c2"
   }
 ]

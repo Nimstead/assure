@@ -97,7 +97,7 @@ These likelihoods are configured scoring inputs. They are not measured probabili
 | `still_open` | Number of previously open or accepted findings not seen this scan, but not proven fixed |
 | `skipped` | Strings for reported scanner limitations, principally untestable legacy TLS |
 
-Findings come from the network engine's exposed-service and TLS verdicts (DECISIONS 126). Observed resolved findings reopen. Observed accepted findings remain accepted. A previously open or accepted finding resolves only when the engine proves it absent: its port refused the connection, or the TLS handshake ran without showing it, or nothing listens on 443. A filtered port, a timed-out check, a target that stopped answering, or legacy TLS this scanner can't offer keeps it open and adds one `Still open: ...` reason, which later re-scores keep.
+Findings come from the network engine's exposed-service and TLS verdicts (DECISIONS 126). Observed resolved findings reopen. Observed accepted findings remain accepted. A previously open or accepted finding resolves only when the engine proves it absent: its port refused the connection, or the TLS handshake ran without showing it, or nothing listens on 443. A filtered port, a timed-out check, a target that stopped answering, or legacy TLS this scanner can't offer or that got no answer (only a TLS refusal counts as not accepted: `legacy_refused`) keeps it open and adds one `Still open: ...` reason, which later re-scores keep.
 
 Each scan stores the engine's report; `GET /api/assets/{id}/scan-report` returns the latest one for a target and never probes.
 

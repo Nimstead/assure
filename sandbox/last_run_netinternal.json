@@ -52,12 +52,12 @@
    "seen_by": [
     "web-1"
    ],
-   "first_seen": "2026-11-12T02:42:45.142828",
-   "last_seen": "2026-11-12T02:42:45.142828",
+   "first_seen": "2026-11-12T11:09:49.319799",
+   "last_seen": "2026-11-12T11:09:49.319799",
    "vendor": "",
    "checked": {
-    "asset_id": "044c6bab6cd7428e924eddc4dd9d6634",
-    "at": "2026-11-12T02:42:46.805402",
+    "asset_id": "35b9357acbc14a42a96d845f1e6fa82d",
+    "at": "2026-11-12T11:09:50.690399",
     "from": "web-1",
     "open": [
      "NIM-TLS-EXPIRED",

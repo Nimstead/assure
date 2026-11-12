@@ -6230,7 +6230,7 @@
     },
     "/api/assets/{asset_id}": {
       "delete": {
-        "description": "Delete an owned asset and its findings, packages, jobs and scan records.\n\nasset_id selects any owned kind. user requires an admin browser session.\nAppend deletion evidence, delete rows and commit. Return HTTP 204 without\na body. The ledger remains. This does not stop a resident agent or dispatched\nhost process. Missing/unowned assets return 404. Storage/evidence errors\ncan propagate.",
+        "description": "Delete an owned asset and its findings, packages, jobs and scan records.\n\nasset_id selects any owned kind. user requires an admin browser session.\nAppend deletion evidence, delete rows and commit. Return HTTP 204 without\na body. The ledger remains. This does not stop a resident agent or dispatched\nhost process. A host's views of devices it checked go with it (they're its\nevidence alone). Missing/unowned assets return 404. Storage/evidence errors\ncan propagate.",
         "operationId": "delete_asset_api_assets__asset_id__delete",
         "parameters": [
           {

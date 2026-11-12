@@ -15,7 +15,7 @@ from sqlalchemy import select
 from test_api import user
 from test_neighbours import agent, report, row
 
-from nimstead import external
+from nimstead import external, neighbours
 from nimstead.db import Asset, make_sessionmaker, now
 from nimstead.engine import network as net
 
@@ -139,7 +139,8 @@ def test_devices_stay_out_of_the_asset_quota_and_go_after_30_days(env, monkeypat
     d = s.scalar(select(Asset).where(Asset.kind == "device"))
     d.last_seen = now() - timedelta(days=31)
     s.commit()
-    report(c, h, [row("192.168.1.65", "bc:ba:c2:11:22:34")])
+    neighbours.prune(s)  # the hourly run's step: devices gone a month go, with their findings
+    s.commit()
     assert make_sessionmaker(env)().scalar(select(Asset).where(Asset.kind == "device")) is None
     assert c.get("/api/findings").json() == []
 
@@ -285,3 +286,13 @@ def test_the_ledger_keeps_no_device_address_or_mac(env):
     entries = c.get("/api/evidence/ledger").json()["entries"]
     text = str([e["data"] for e in entries if e["kind"] in ("network_check", "asset_created", "finding_opened") and e["data"].get("kind") != "host"])
     assert CAMERA[1] not in text and CAMERA[0] not in text
+
+
+def test_network_check_reports_are_limited_per_org(env, monkeypatch):
+    """Ship review: the per-host limit alone let one org with thousands of hosts send 20,000 reports an hour."""
+    from nimstead import app as appmod
+    monkeypatch.setattr(appmod, "ORG_NETCHECKS_MAX_PER_HOUR", 2)
+    c, web = setup(env)
+    db = agent(c, "db-1")
+    codes = [c.post("/api/agent/network-checks", headers=h, json={"devices": []}).status_code for h in (web, db, db)]
+    assert codes == [200, 200, 429]

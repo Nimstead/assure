@@ -17,7 +17,7 @@ import re
 from dataclasses import replace
 from datetime import timedelta
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from nimstead import engine, evidence, external, oui
@@ -26,6 +26,8 @@ from nimstead.engine import network
 
 KEEP = timedelta(days=30)
 MAX_SEEN, MAX_OWN = 1024, 64
+MAX_STORED_PER_HOST = 2048  # rotating IPv6 and randomised MACs would otherwise grow a host's rows for 30 days
+MAX_NEIGHBOURS_PER_ORG = 65536  # one org on a shared server stores no more; past it, known rows still refresh
 _MAC = re.compile(r"^[0-9a-f]{2}(:[0-9a-f]{2}){5}$")
 
 
@@ -47,8 +49,9 @@ def _list(v) -> list:
 def store(s: Session, asset: Asset, sent) -> None:
     """Record what asset's agent sent as `neighbours` ({"seen": [{ip, mac, interface}], "own": {"ips", "macs"}}).
 
-    Rows that don't fit are dropped, never the inventory; over the caps, the rest is ignored. None (an older agent, or
-    one with the table turned off) changes nothing. The org's rows unseen for 30 days are deleted. No commit."""
+    Rows that don't fit are dropped, never the inventory; over the caps, the rest is ignored: at most MAX_SEEN a report,
+    the newest MAX_STORED_PER_HOST kept per host, no new rows past MAX_NEIGHBOURS_PER_ORG. None (an older agent, or one
+    with the table turned off) changes nothing. prune(), from the hourly run, deletes what's 30 days old. No commit."""
     if not isinstance(sent, dict):
         return
     own = sent.get("own") if isinstance(sent.get("own"), dict) else {}
@@ -60,15 +63,30 @@ def store(s: Session, asset: Asset, sent) -> None:
         if isinstance(r, dict) and (ip := _ip(r.get("ip"))) and (mac := _mac(r.get("mac"))):
             rows[ip, mac] = str(r.get("interface") or "")[:64]
     have = {(n.ip, n.mac): n for n in s.scalars(select(Neighbour).where(Neighbour.asset_id == asset.id))}
+    room = MAX_NEIGHBOURS_PER_ORG - s.scalar(select(func.count()).select_from(Neighbour).where(Neighbour.org_id == asset.org_id))
     for (ip, mac), interface in rows.items():
         if n := have.get((ip, mac)):
             n.last_seen, n.interface = t, interface
-        else:
+        elif room > 0:
             s.add(Neighbour(asset_id=asset.id, org_id=asset.org_id, ip=ip, mac=mac, interface=interface, first_seen=t, last_seen=t))
-    s.execute(delete(Neighbour).where(Neighbour.org_id == asset.org_id, Neighbour.last_seen < t - KEEP))
-    for d in s.scalars(select(Asset).where(Asset.org_id == asset.org_id, Asset.kind == "device", Asset.last_seen < t - KEEP)):
-        s.execute(delete(Finding).where(Finding.asset_id == d.id))  # a device gone a month: its findings go with it, the ledger stays
+            room -= 1
+    s.flush()
+    old = s.execute(select(Neighbour.ip, Neighbour.mac).where(Neighbour.asset_id == asset.id)
+                    .order_by(Neighbour.last_seen.desc(), Neighbour.ip).offset(MAX_STORED_PER_HOST)).all()
+    for ip, mac in old:
+        s.execute(delete(Neighbour).where(Neighbour.asset_id == asset.id, Neighbour.ip == ip, Neighbour.mac == mac))
+
+
+def prune(s: Session) -> dict:
+    """The hourly run's clean-up for every org: neighbour rows and devices unseen for 30 days go (a device's findings
+    with it; the ledger stays). It runs whether or not an org's agents still report. No commit."""
+    cutoff = now() - KEEP
+    rows = s.execute(delete(Neighbour).where(Neighbour.last_seen < cutoff)).rowcount
+    gone = list(s.scalars(select(Asset).where(Asset.kind == "device", Asset.last_seen < cutoff)))
+    for d in gone:
+        s.execute(delete(Finding).where(Finding.asset_id == d.id))
         s.delete(d)
+    return {"neighbours": rows, "devices": len(gone)}
 
 
 class Fleet:

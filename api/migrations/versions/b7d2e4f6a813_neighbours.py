@@ -32,12 +32,12 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(['org_id'], ['org.id']),
         sa.PrimaryKeyConstraint('asset_id', 'ip', 'mac'),
     )
-    op.create_index(op.f('ix_neighbour_org_id'), 'neighbour', ['org_id'], unique=False)
+    op.create_index('ix_neighbour_org_seen', 'neighbour', ['org_id', 'last_seen'], unique=False)
     op.add_column('asset', sa.Column('own_addresses', sa.JSON(), nullable=True))
 
 
 def downgrade() -> None:
     """Downgrade schema."""
     op.drop_column('asset', 'own_addresses')
-    op.drop_index(op.f('ix_neighbour_org_id'), table_name='neighbour')
+    op.drop_index('ix_neighbour_org_seen', table_name='neighbour')
     op.drop_table('neighbour')

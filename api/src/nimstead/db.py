@@ -186,10 +186,11 @@ class Neighbour(Base):
     asset_id: Mapped[str] = mapped_column(ForeignKey("asset.id", ondelete="CASCADE"), primary_key=True)
     ip: Mapped[str] = mapped_column(String(45), primary_key=True)
     mac: Mapped[str] = mapped_column(String(17), primary_key=True)
-    org_id: Mapped[str] = mapped_column(ForeignKey("org.id"), index=True)
+    org_id: Mapped[str] = mapped_column(ForeignKey("org.id"))
     interface: Mapped[str] = mapped_column(String(64), default="")
     first_seen: Mapped[datetime] = mapped_column(default=now)
     last_seen: Mapped[datetime] = mapped_column(default=now)
+    __table_args__ = (Index("ix_neighbour_org_seen", "org_id", "last_seen"),)  # the org's list, and the 30-day prune
 
 
 class Kev(Base):

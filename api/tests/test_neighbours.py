@@ -92,7 +92,7 @@ def test_rows_unseen_for_30_days_are_gone(env):
         n.last_seen = now() - timedelta(days=31)
     s.commit()
     assert [d["addresses"] for d in c.get("/api/network/unmanaged").json()] == [["192.168.1.65"]]
-    report(c, h, [row("192.168.1.65", "bc:ba:c2:11:22:34")])  # the next report deletes the expired row
+    update_all(s, client=Manuf())  # the hourly run deletes it, whether or not any agent reports again
     assert len(make_sessionmaker(env)().scalars(select(Neighbour)).all()) == 1
 
 
@@ -135,3 +135,35 @@ def test_the_registry_is_fetched_weekly_once_devices_exist_and_a_bad_fetch_keeps
     s.commit()
     update_all(s, client=Manuf(body="truncated"))
     assert c.get("/api/network/unmanaged").json()[0]["vendor"].startswith("Hangzhou Hikvision")  # the stored copy stayed
+
+
+def test_a_hosts_stored_rows_are_capped_newest_kept(env, monkeypatch):
+    """Ship review: rotating IPv6 and randomised MACs grew each host's rows without bound for 30 days."""
+    from nimstead import neighbours
+    monkeypatch.setattr(neighbours, "MAX_STORED_PER_HOST", 3)
+    c = user(env)
+    h = agent(c, "web-1")
+    report(c, h, [row("192.168.1.1", "02:00:00:00:00:01"), row("192.168.1.2", "02:00:00:00:00:02")])
+    s = make_sessionmaker(env)()
+    for n in s.scalars(select(Neighbour)):
+        n.last_seen = now() - timedelta(hours=1)
+    s.commit()
+    report(c, h, [row("192.168.1.3", "02:00:00:00:00:03"), row("192.168.1.4", "02:00:00:00:00:04")])
+    ips = sorted(n.ip for n in make_sessionmaker(env)().scalars(select(Neighbour)))
+    assert len(ips) == 3 and {"192.168.1.3", "192.168.1.4"} <= set(ips)
+
+
+def test_an_org_stores_at_most_its_cap_of_neighbour_rows(env, monkeypatch):
+    """Ship review: one signed-up org could store 5,000 hosts x 1,024 rows on a shared server."""
+    from nimstead import neighbours
+    monkeypatch.setattr(neighbours, "MAX_NEIGHBOURS_PER_ORG", 3)
+    c = user(env)
+    report(c, agent(c, "web-1"), [row(f"192.168.1.{i}", f"02:00:00:00:00:{i:02x}") for i in range(1, 6)])
+    assert len(make_sessionmaker(env)().scalars(select(Neighbour)).all()) == 3
+
+
+def test_the_unmanaged_list_is_rate_limited_per_org(env, monkeypatch):
+    from nimstead import app as appmod
+    monkeypatch.setattr(appmod, "UNMANAGED_MAX_PER_HOUR", 2)
+    c = user(env)
+    assert [c.get("/api/network/unmanaged").status_code for _ in range(3)] == [200, 200, 429]

@@ -218,6 +218,8 @@ EXPORT_MAX_PER_HOUR = 30  # CSV exports per org
 MAX_ASSETS_PER_ORG = int(os.environ.get("NIMSTEAD_MAX_ASSETS_PER_ORG", "5000"))
 ENROLL_MAX_PER_TOKEN_HOUR = int(os.environ.get("NIMSTEAD_ENROLL_MAX_PER_TOKEN_HOUR", "2000"))  # a fleet rollout enrols fast
 ORG_INVENTORY_MAX_PER_HOUR = int(os.environ.get("NIMSTEAD_ORG_INVENTORY_MAX_PER_HOUR", "20000"))
+ORG_NETCHECKS_MAX_PER_HOUR = 2000  # network-check reports per org: hosts send one per report (6-hourly), so many fake hosts can't flood the ledger
+UNMANAGED_MAX_PER_HOUR = 120  # the unmanaged list reads the whole org's neighbour rows, as attack paths read every report
 AI_MAX_PER_USER_HOUR, AI_MAX_PER_ORG_HOUR = 30, 200  # each call costs the operator's Anthropic credits
 
 
@@ -1304,6 +1306,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         At most four reports an hour per host (its timer sends one every six hours). Commits."""
         if over_limit(s, "netchecks:" + asset.id, 4):
             raise HTTPException(429, "Network checks already received this hour")
+        if over_limit(s, "netchecks-org:" + asset.org_id, ORG_NETCHECKS_MAX_PER_HOUR):
+            raise HTTPException(429, "This organisation is sending too many network checks; try again later")
         out = neighbours.record_checks(s, asset, body.devices)
         s.commit()
         return out
@@ -1314,6 +1318,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
         Require a session or eligible read token. One row per MAC with addresses, vendor, seen_by hostnames and
         first/last seen, newest first; rows unseen for 30 days are gone. CSV for format=csv. Nothing is probed."""
+        if over_limit(s, "unmanaged:" + user.org_id, UNMANAGED_MAX_PER_HOUR):
+            raise HTTPException(429, "The device list was read too often this hour; try again later")
+        s.commit()
         out = neighbours.unmanaged(s, user.org_id)
         if format == "csv":
             buf = io.StringIO()

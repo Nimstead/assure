@@ -24,6 +24,14 @@ A finding resolves only on evidence: the port refused the connection, or the TLS
 
 The scan runs the [network engine](../reference/network-engine.md)'s prober. Its banner-to-CVE findings are graded unverified and ranked below exposures read directly: a banner can be spoofed, and distributions backport fixes without changing the version. Its time budgets do not guarantee cancellation at an exact deadline.
 
+## Devices on your networks
+
+The device list comes from your machines' own neighbour tables, so it shows only devices those machines have talked to recently. A device on a network with no agent, or one that never talks to an enrolled machine, isn't listed. Network checks cover only private IPv4 subnets a machine is directly attached to (IPv6 neighbours are listed but not checked), at most 32 devices a run, with the same fixed checks as the external scanner. A network card that answers at several addresses at once isn't checked. "Nothing found" means those checks found nothing, not that the device is secure.
+
+A compromised enrolled machine can report false results about the devices it checks; these change only its own view of each device. It can also take up to 64 devices off the list by claiming their addresses. DECISIONS 130–132 record these limits.
+
+## Agentless Windows
+
 Agentless Windows scans depend on PowerShell remoting and the caller's permissions. They provide findings, but fixes need an installed agent.
 
 ## Evidence and operation

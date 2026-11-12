@@ -4,6 +4,10 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-12 (preview)
+
+Agent 0.7.0. One database migration (`b7d2e4f6a813`, neighbour rows and device facts): the Docker image applies it on start; without Docker, run `alembic upgrade head`. Network checks are off unless a machine is enrolled with the local `--allow-network-checks` opt-in; an agent older than 0.7.0 keeps working and sends no neighbour table.
+
 ### Added
 - **Devices with no agent** (agent 0.7.0, DECISIONS 128): each agent reports its machine's own neighbour table (ARP/NDP) and its own addresses, read only. Assets lists the devices on your networks that none of your agents accounts for, with their maker from the IEEE registry, which machines saw them and when, and a CSV download. Nothing is sent to those devices. Rows are deleted 30 days after they were last seen. Turn it off on a host with `"neighbours": false` in the agent's configuration. One migration (b7d2e4f6a813).
 - **Network checks for devices with no agent** (agent 0.7.0, DECISIONS 129): a machine enrolled with `--allow-network-checks` (a local opt-in the server can't set) checks up to 32 devices it already talks to on its own private subnet, every report, with the same read-only checks as the external scan. Unauthenticated or cleartext services (Telnet, FTP, VNC, Redis, Elasticsearch, MongoDB, Memcached, the Docker API), expired certificates, legacy TLS, exposed `.git/config` and `.env`, and vulnerable banners become findings on the device, which close only on evidence. The server never chooses what is checked.
@@ -458,7 +462,8 @@ The first early-access release. Everything listed is proven by tests and, for an
 
 Licensed under FSL-1.1-ALv2: this release becomes available under Apache 2.0 on 2028-10-27.
 
-[Unreleased]: https://github.com/Nimstead/assure/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/Nimstead/assure/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/Nimstead/assure/compare/v0.8.0...v0.9.0
 [0.6.0]: https://github.com/Nimstead/assure/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/Nimstead/assure/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Nimstead/assure/compare/v0.3.1...v0.4.0

@@ -10,6 +10,7 @@
 
 import argparse
 import base64
+import collections
 import email.utils
 import glob
 import hashlib
@@ -1669,19 +1670,19 @@ def check_device(ip, mac):
 
 def network_check_targets(seen, networks, own_ips, start):
     """At most NET_CHECK_MAX (ip, mac) from this machine's own neighbour rows that sit in its own private subnets and
-    aren't its own addresses, one address per MAC, taken in address order from offset start (wrapping) so a larger subnet
-    is covered over runs, and returned in address order."""
+    aren't its own addresses, taken in address order from offset start (wrapping) so a larger subnet is covered over runs,
+    and returned in address order. A MAC at more than one address is left out: an extender or proxy ARP puts one MAC on
+    several devices, which the server won't judge as one (DECISIONS 132)."""
     rows = sorted({(r["ip"], r["mac"]) for r in seen if r["ip"] not in own_ips
                    and any(ipaddress.ip_address(r["ip"]) in n for n in networks)}, key=lambda r: ipaddress.ip_address(r[0]))
+    addresses_of = collections.Counter(m for _, m in rows)
+    rows = [r for r in rows if addresses_of[r[1]] == 1]
     start %= len(rows) or 1
-    one_each = {}  # one address per MAC a run, so a MAC announced on many can't fill it; the others get later runs
-    for ip, mac in rows[start:] + rows[:start]:
-        one_each.setdefault(mac, ip)
-    return sorted([(ip, mac) for mac, ip in one_each.items()][:NET_CHECK_MAX], key=lambda r: ipaddress.ip_address(r[0]))
+    return sorted((rows[start:] + rows[:start])[:NET_CHECK_MAX], key=lambda r: ipaddress.ip_address(r[0]))
 
 
 def network_checks(seen, networks=None, own_ips=None, check=check_device, clock=time.monotonic):
-    """{"devices": [observations], "stopped": bool} for this run's targets, within NET_CHECK_SECONDS.
+    """{"devices": [observations]} for this run's targets, within NET_CHECK_SECONDS; devices not reached are left for later runs.
 
     Each run starts at a random point in the list: a clock-based rotation lined up with the report timer and kept
     checking the same half. The run itself is a daemon thread the agent stops waiting for at the deadline, so a device
@@ -1689,12 +1690,11 @@ def network_checks(seen, networks=None, own_ips=None, check=check_device, clock=
     networks = own_networks() if networks is None else networks
     own_ips = set(own_addresses()["ips"]) if own_ips is None else own_ips
     targets = network_check_targets(seen, networks, own_ips, int.from_bytes(os.urandom(4), "big"))
-    deadline, out, state = clock() + NET_CHECK_SECONDS, [], {"stopped": False}
+    deadline, out = clock() + NET_CHECK_SECONDS, []
 
     def run():
         for ip, mac in targets:
             if clock() > deadline:
-                state["stopped"] = True
                 return
             got = []  # each device in its own daemon thread: one that never finishes sends nothing and holds up no other
             th = threading.Thread(target=lambda into, i, m: into.append(check(i, m)), args=(got, ip, mac), daemon=True)  # bound: a late one fills its own list
@@ -1704,7 +1704,7 @@ def network_checks(seen, networks=None, own_ips=None, check=check_device, clock=
     worker = threading.Thread(target=run, daemon=True)
     worker.start()
     worker.join(NET_CHECK_SECONDS + NET_DEVICE_SECONDS)
-    return {"devices": list(out), "stopped": state["stopped"] or worker.is_alive()}
+    return {"devices": list(out)}
 
 
 def collect():

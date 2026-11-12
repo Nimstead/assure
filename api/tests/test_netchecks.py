@@ -690,3 +690,12 @@ def test_deleting_a_host_removes_its_neighbour_rows(env):
     hid = next(a["id"] for a in c.get("/api/assets").json() if a["hostname"] == "web-1")
     assert c.delete(f"/api/assets/{hid}").status_code in (200, 204)
     assert make_sessionmaker(env)().scalars(select(Neighbour)).all() == []
+
+
+def test_a_device_greeting_that_hides_its_version_but_still_names_the_product_keeps_the_cve_open(env):
+    """Prove-It (PR review): as for external targets, a hidden version is not a fixed one."""
+    c, h = setup(env)
+    send(c, h, [obs(banners={21: b"220 ProFTPD 1.3.5 Server (Debian) [::ffff:192.168.1.64]\r\n"})])
+    assert "CVE-2015-3306" in open_ids(c)
+    send(c, h, [obs(banners={21: b"220 ProFTPD Server (Debian) [::ffff:192.168.1.64]\r\n"})])  # version hidden, same product
+    assert "CVE-2015-3306" in open_ids(c)

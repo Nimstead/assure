@@ -461,7 +461,9 @@ def _coverage(endpoints: dict[int, Endpoint], verdicts: list[Verdict], skipped: 
         e = endpoints[port]
         label = f"tcp/{port}" + (f" {_SERVICE_NAME[port]}" if port in _SERVICE_NAME else " TLS" if port == external.TLS_PORT else " HTTP" if port == 80 else "")
         err = "did not answer (dropped)" if e.state == "filtered" else "answered a nonsense probe" if e.reflects else None
-        sources.append({"name": label, "label": label, "state": e.state, "count": 1 if e.state == "open" else 0, "error": err, "greeting": greeting(e.banner) and not e.reflects})
+        names = [r.product for r in VERSION_RULES if r.product.lower().encode() in whole_lines(e.banner).lower()] if not e.reflects else []
+        sources.append({"name": label, "label": label, "state": e.state, "count": 1 if e.state == "open" else 0, "error": err,
+                        "greeting": greeting(e.banner) and not e.reflects, "names": names})  # names: products the greeting still names
     net = [v for v in verdicts if v.family == "network"]
     families = {"network": {"label": "Network services", "attempted": len(net), "determined": sum(v.outcome in _DETERMINED for v in net),
                             "outcomes": dict(sorted(Counter(v.outcome.value for v in net).items()))}}

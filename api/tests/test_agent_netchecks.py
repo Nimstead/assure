@@ -55,7 +55,7 @@ def test_a_run_stops_at_its_time_limit():
     t = iter(range(0, 10_000, 200))
     out = agent.network_checks([row(f"192.168.1.{i}", f"02:00:00:00:00:{i:02x}") for i in range(1, 10)], LAN, set(),
                               check=lambda ip, mac: {"ip": ip}, clock=lambda: next(t))
-    assert out["stopped"] and 0 < len(out["devices"]) < 9
+    assert out.keys() == {"devices"} and 0 < len(out["devices"]) < 9
 
 
 def test_observations_from_real_sockets_banner_echo_and_states(monkeypatch):
@@ -299,7 +299,7 @@ def test_a_device_that_never_lets_go_cant_hang_the_run(monkeypatch):
     out = agent.network_checks([row("192.168.1.5"), row("192.168.1.6", "02:00:00:00:00:06")], LAN, set(),
                                check=lambda ip, mac: stuck.wait(60) or {"ip": ip})
     stuck.set()
-    assert out["stopped"] and time.monotonic() - began < 5
+    assert out["devices"] == [] and time.monotonic() - began < 5
 
 
 def test_ports_a_device_never_answers_in_time_read_as_no_answer(monkeypatch):
@@ -323,7 +323,7 @@ def test_a_report_still_succeeds_when_its_network_checks_are_refused(monkeypatch
         return {}
     monkeypatch.setattr(agent, "load_config", lambda: {"server": "https://s.example", "agent_key": "k", "network_checks": True})
     monkeypatch.setattr(agent, "inventory", lambda cfg: {"packages": [], "neighbours": {"seen": [row("192.168.1.64")], "own": {"ips": [], "macs": []}}})
-    monkeypatch.setattr(agent, "network_checks", lambda seen: {"devices": [{"ip": "192.168.1.64"}], "stopped": False})
+    monkeypatch.setattr(agent, "network_checks", lambda seen: {"devices": [{"ip": "192.168.1.64"}]})
     monkeypatch.setattr(agent, "post", post)
     monkeypatch.setattr(agent, "log_event", lambda text: sent.append(text))
     assert agent.main(["report"]) == 0
@@ -364,12 +364,12 @@ def test_one_stuck_device_skips_only_itself_not_the_rest_of_the_run(monkeypatch)
     assert [d["ip"] for d in out["devices"]] == ["192.168.1.6"] and time.monotonic() - began < 3
 
 
-def test_a_mac_answering_on_many_addresses_is_checked_once_a_run():
-    """Ship review 2: one MAC announced on 32 addresses filled the run; its other addresses get their turn on later runs."""
+def test_a_mac_answering_on_many_addresses_is_never_checked():
+    """Ship review 2: one MAC announced on 32 addresses filled the run. PR review: the server refuses a MAC at several
+    addresses (an extender's clients aren't one device), so checking it only spent a slot every run."""
     seen = [row(f"192.168.1.{i}", "02:00:00:00:00:66") for i in range(100, 140)] + [row("192.168.1.9", "02:00:00:00:00:09")]
     for start in (0, 7, 33):
-        targets = agent.network_check_targets(seen, LAN, set(), start)
-        assert sorted(m for _, m in targets) == ["02:00:00:00:00:09", "02:00:00:00:00:66"]
+        assert agent.network_check_targets(seen, LAN, set(), start) == [("192.168.1.9", "02:00:00:00:00:09")]
 
 
 def test_a_device_that_finishes_late_never_lands_in_another_devices_place(monkeypatch):

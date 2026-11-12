@@ -246,6 +246,19 @@ def test_a_banner_finding_stays_open_while_its_port_drops_and_closes_on_an_upgra
     assert c.post(f"/api/targets/{t['id']}/scan").json()["resolved"] == 1
 
 
+def test_a_greeting_that_hides_its_version_but_still_names_the_product_keeps_the_cve_open(world, monkeypatch):
+    """Prove-It (PR review): "220 ProFTPD Server" after "220 ProFTPD 1.3.5 Server" closed CVE-2015-3306, though the
+    product is still there and only its version was hidden (DECISIONS 130: close on another product or a fixed version)."""
+    c, dns = world
+    t = add(c, dns)
+    c.post(f"/api/targets/{t['id']}/verify")
+    banner(monkeypatch, {21: b"220 ProFTPD 1.3.5 Server (Debian) [203.0.113.10]\r\n"})
+    c.post(f"/api/targets/{t['id']}/scan")
+    banner(monkeypatch, {21: b"220 ProFTPD Server (Debian) [203.0.113.10]\r\n"})
+    assert c.post(f"/api/targets/{t['id']}/scan").json()["still_open"] == 1
+    assert "CVE-2015-3306" in [f["vuln_id"] for f in c.get("/api/findings").json()]
+
+
 def test_ownership_is_rechecked_before_every_scan(world, monkeypatch):
     c, dns = world
     t = add(c, dns)

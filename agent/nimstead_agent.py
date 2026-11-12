@@ -1696,7 +1696,7 @@ def network_checks(seen, networks=None, own_ips=None, check=check_device, clock=
                 state["stopped"] = True
                 return
             got = []  # each device in its own daemon thread: one that never finishes sends nothing and holds up no other
-            th = threading.Thread(target=lambda: got.append(check(ip, mac)), daemon=True)
+            th = threading.Thread(target=lambda into, i, m: into.append(check(i, m)), args=(got, ip, mac), daemon=True)  # bound: a late one fills its own list
             th.start()
             th.join(NET_DEVICE_SECONDS + NET_DEVICE_TAIL)
             out.extend(got[:1])

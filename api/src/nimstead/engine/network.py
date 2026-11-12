@@ -300,6 +300,11 @@ def _tls(endpoints: dict[int, Endpoint], host: str) -> list[Verdict]:
     if e.state == "filtered":
         return [Verdict(check="tls", outcome=Outcome.NOT_RUN, reason="port-filtered", observed="443 did not answer", **base)]
     t = e.tls or {}
+    if t.get("legacy") is True and t.get("not_after") is None:  # only TLS 1.0/1.1 answered: a finding, and the certificate unread
+        found, _ = external.tls_findings(host, {**t, "trusted": None})
+        return [Verdict(check=f["id"], outcome=Outcome.VULNERABLE, grade=Grade.REASONABLE, vuln_id=f["id"], cvss=f["cvss"], cvss_source="Nimstead",
+                        summary=f["summary"], observed="a TLS 1.0/1.1 handshake completed; a current one was refused", source="TLS handshake",
+                        detail=_RAISE_REMOTE, **base) for f in found] + [Verdict(check="tls", outcome=Outcome.UNDETERMINED, reason="legacy-only", **base)]
     if t.get("lost"):  # the handshake was cut or timed out: nothing was learnt, so nothing it found before can close (R4.6)
         return [Verdict(check="tls", outcome=Outcome.UNDETERMINED, reason="host-lost", detail=t.get("error"), **base)]
     if t.get("trusted") is None and t.get("not_after") is None:  # open but not a TLS service

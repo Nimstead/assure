@@ -408,7 +408,7 @@ def test_tls_probe_says_lost_for_a_cut_connection_and_not_tls_for_a_plain_servic
     port = srv.getsockname()[1]
 
     def serve():
-        for reply in (None, b"HTTP/1.1 400 Bad Request\r\n\r\n"):
+        for reply in (None, None, b"HTTP/1.1 400 Bad Request\r\n\r\n"):  # the cut probe also tries TLS 1.0: two connections
             conn, _ = srv.accept()
             if reply:
                 conn.recv(65536)  # all of the ClientHello: closing with unread bytes would send a reset, which reads as "lost"
@@ -421,3 +421,43 @@ def test_tls_probe_says_lost_for_a_cut_connection_and_not_tls_for_a_plain_servic
     srv.close()
     assert cut["trusted"] is None and cut.get("lost") is True
     assert plain["trusted"] is None and not plain.get("lost")
+
+
+def test_a_tls_server_that_rejects_our_handshake_is_lost_not_a_plain_service():
+    """Prove-It (review 1): a handshake-failure alert comes from a real TLS server, so it proves nothing about its certificate."""
+    from tls_servers import no_shared_cipher, serve
+    port, srv = serve(no_shared_cipher)
+    try:
+        r = external.tls_probe("127.0.0.1", "www.example.com", port=port, timeout=3)
+    finally:
+        srv.close()
+    assert r["trusted"] is None and r["lost"] is True
+
+
+def test_a_server_that_only_speaks_tls_1_0_opens_the_legacy_finding():
+    """Prove-It (review 1): the worst legacy case used to read as "not TLS" and open nothing."""
+    from tls_servers import serve, tls10_only
+    port, srv = serve(tls10_only)
+    try:
+        r = external.tls_probe("127.0.0.1", "www.example.com", port=port, timeout=3)
+    finally:
+        srv.close()
+    if r["legacy"] is None and "NO_PROTOCOLS" in (r.get("error") or "").upper():
+        pytest.skip("this machine's OpenSSL can't offer TLS 1.0")
+    assert r["legacy"] is True
+    assert {f["id"] for f in external.tls_findings("www.example.com", r)[0]} == {"NIM-TLS-LEGACY"}
+
+
+def test_a_legacy_only_server_opens_the_legacy_finding_and_keeps_certificate_findings_open(world, monkeypatch):
+    c, dns = world
+    t = add(c, dns)
+    c.post(f"/api/targets/{t['id']}/verify")
+    fake_net(monkeypatch, tls=EXPIRED)
+    c.post(f"/api/targets/{t['id']}/scan")
+    legacy_only = {"trusted": None, "error": "no TLS handshake: [SSL: UNSUPPORTED_PROTOCOL]", "not_after": None, "legacy": True, "lost": True}
+    fake_net(monkeypatch)
+    real = net.Prober.observe
+    monkeypatch.setattr(net.Prober, "observe", lambda self: {**real(self), external.TLS_PORT: Endpoint(external.TLS_PORT, "open", tls=legacy_only)})
+    r = c.post(f"/api/targets/{t['id']}/scan").json()
+    assert r["resolved"] == 0
+    assert sorted(f["vuln_id"] for f in c.get("/api/findings").json()) == ["NIM-TLS-EXPIRED", "NIM-TLS-LEGACY"]

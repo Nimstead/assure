@@ -124,3 +124,15 @@ def test_a_cut_handshake_is_lost_and_a_plain_service_is_not_tls(monkeypatch):
     srv.close()
     assert cut["der"] is None and cut["lost"] is True
     assert plain["der"] is None and plain["lost"] is False
+
+
+def test_the_agent_calls_a_rejected_handshake_lost(monkeypatch):
+    """Prove-It (review 1): the agent's copy of the rule had the same gap."""
+    from tls_servers import no_shared_cipher, serve
+    port, srv = serve(no_shared_cipher)
+    monkeypatch.setattr(agent.socket, "create_connection", (lambda orig: lambda addr, timeout=None: orig(("127.0.0.1", port), timeout=timeout))(socket.create_connection))
+    try:
+        facts = agent._tls_facts("127.0.0.1")
+    finally:
+        srv.close()
+    assert facts["der"] is None and facts["lost"] is True

@@ -13,7 +13,7 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 ### Changed
 - External targets are scanned by the detection engine's prober, once per scan (DECISIONS 126). **A finding now closes only on evidence**: a refused port, or a TLS handshake that no longer shows the problem. A port that a firewall drops, a timed-out check or a target that stopped answering keeps the finding open with a "Still open" reason, where it used to close. The scan result gains `still_open`.
 - External findings are keyed by vulnerability and endpoint, so the same banner CVE on two ports is two findings.
-- A TLS handshake on 443 that is cut, reset or times out is now undetermined instead of "not a TLS service", so it no longer closes certificate findings. A web path missing from an agent's network-check report keeps its finding open, and a neighbour that is one of your own machines is never checked as a device.
+- A TLS handshake on 443 that is cut, reset, times out or is refused is now undetermined instead of "not a TLS service", so it no longer closes certificate findings, and a server that speaks only TLS 1.0/1.1 now opens the legacy-TLS finding (it used to open nothing). A web path missing from an agent's network-check report keeps its finding open, and a neighbour that is one of your own machines is never checked as a device.
 
 ## [0.8.0] - 2026-11-11 (preview)
 

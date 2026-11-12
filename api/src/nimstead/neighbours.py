@@ -68,12 +68,15 @@ def store(s: Session, asset: Asset, sent) -> None:
 
 
 def _fleet(s: Session, org_id: str) -> tuple[dict, set, set]:
-    """(the org's hosts by id, the MACs and the addresses its agents report as their own) - a device is none of these."""
-    hosts = {a.id: a for a in s.scalars(select(Asset).where(Asset.org_id == org_id, Asset.kind == "host"))}
-    own_macs = {m for a in hosts.values() for m in (a.own_addresses or {}).get("macs", [])}
-    own_ips = {ip for a in hosts.values() for ip in (a.own_addresses or {}).get("ips", [])}
-    own_ips |= {ip for a in hosts.values() for ip in ((a.facts or {}).get("addresses") or []) if isinstance(ip, str)}  # Windows' own (DECISIONS 112)
-    return hosts, own_macs, own_ips
+    """(the org's hostnames by host id, the MACs and the addresses its agents report as their own) - a device is none of these.
+    Reads two small columns per host; a host's facts (up to 64 KB) only when it reported no own addresses (pre-0.7.0, or none read)."""
+    rows = s.execute(select(Asset.id, Asset.hostname, Asset.own_addresses).where(Asset.org_id == org_id, Asset.kind == "host")).all()
+    own_macs = {m for _, _, own in rows for m in (own or {}).get("macs", [])}
+    own_ips = {ip for _, _, own in rows for ip in (own or {}).get("ips", [])}
+    older = [aid for aid, _, own in rows if not (own or {}).get("ips")]  # an older agent, or one whose own read came back empty
+    for facts in s.scalars(select(Asset.facts).where(Asset.id.in_(older))) if older else ():  # Windows' own addresses (DECISIONS 112)
+        own_ips |= {ip for ip in ((facts or {}).get("addresses") or []) if isinstance(ip, str)}
+    return {aid: hostname for aid, hostname, _ in rows}, own_macs, own_ips
 
 
 def unmanaged(s: Session, org_id: str) -> list[dict]:
@@ -87,7 +90,7 @@ def unmanaged(s: Session, org_id: str) -> list[dict]:
             continue
         d = by_mac.setdefault(n.mac, {"mac": n.mac, "addresses": set(), "seen_by": set(), "first_seen": n.first_seen, "last_seen": n.last_seen})
         d["addresses"].add(n.ip)
-        d["seen_by"].add(hosts[n.asset_id].hostname)
+        d["seen_by"].add(hosts[n.asset_id])
         d["first_seen"], d["last_seen"] = min(d["first_seen"], n.first_seen), max(d["last_seen"], n.last_seen)
     by_mac = {m: d for m, d in by_mac.items() if not own_ips & d["addresses"]}  # any of its addresses an agent's own: it's that agent
     names = oui.vendors(s)
@@ -144,14 +147,15 @@ def _tls(obs) -> dict:
     """external.tls_probe's facts from the agent's certificate. Trust and name aren't judged inside a network: devices
     there are usually self-signed and reached by address, so only expiry and legacy TLS can become findings."""
     from cryptography import x509
-    der = _b64(obs.get("der"), 16384) if isinstance(obs, dict) else b""
+    obs = obs if isinstance(obs, dict) else {}
+    der = _b64(obs.get("der"), 16384)
     try:
         not_after = x509.load_der_x509_certificate(der).not_valid_after_utc.timestamp() if der else None
     except ValueError:
         not_after = None
-    if not_after is None:  # lost: the agent's handshake was cut or timed out, which isn't evidence of anything
-        return {"trusted": None, "error": "no TLS handshake", "not_after": None, "legacy": None, "lost": not isinstance(obs, dict) or obs.get("lost") is not False}
     legacy = obs.get("legacy") if obs.get("legacy") in (True, False) else None
+    if not_after is None:  # lost unless the agent reached a service that wasn't TLS: a cut handshake, or a certificate sent but unreadable
+        return {"trusted": None, "error": "no TLS handshake", "not_after": None, "legacy": legacy, "lost": bool(obs.get("der")) or obs.get("lost") is not False}
     return {"trusted": True, "error": None, "not_after": not_after, "legacy": legacy}
 
 

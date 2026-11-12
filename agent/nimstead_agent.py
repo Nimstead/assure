@@ -1588,8 +1588,8 @@ def _tls_facts(ip):
     try:
         with socket.create_connection((ip, 443), timeout=NET_TIMEOUT) as raw, _no_verify().wrap_socket(raw) as s:
             der = s.getpeercert(binary_form=True)
-    except OSError as e:  # ssl.SSLError is an OSError; only a TLS protocol error other than an early EOF means "not TLS"
-        lost = not isinstance(e, ssl.SSLError) or isinstance(e, (ssl.SSLEOFError, ssl.SSLZeroReturnError))
+    except OSError as e:  # only a reply that wasn't TLS at all means "not TLS"; a cut, timeout or TLS alert taught us nothing
+        lost = getattr(e, "reason", None) != "WRONG_VERSION_NUMBER"
     try:
         legacy_ctx = _no_verify(ssl.TLSVersion.TLSv1, ssl.TLSVersion.TLSv1_1)
     except (ValueError, ssl.SSLError):

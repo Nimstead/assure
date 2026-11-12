@@ -170,3 +170,19 @@ def test_a_neighbour_that_is_one_of_the_orgs_own_machines_never_becomes_a_device
     out = send(c, web, [obs("192.168.1.11", "52:54:00:00:00:11", open_={6379})])
     assert out["checked"] == 0 and out["refused"] == 1
     assert c.get("/api/findings").json() == [] and make_sessionmaker(env)().scalar(select(Asset).where(Asset.kind == "device")) is None
+
+
+def test_a_certificate_too_big_to_read_keeps_tls_findings_open(env):
+    """Prove-It (review 2): the server can't read a certificate past its size cap; unread is not renewed."""
+    c, h = setup(env)
+    send(c, h, [obs(open_={443}, tls={"der": cert(-10), "legacy": False, "lost": False})])
+    huge = b64(b"\x30\x82" + bytes(40_000))  # a 40 KB "certificate": over the cap, and unparseable if cut
+    send(c, h, [obs(open_={443}, tls={"der": huge, "legacy": False, "lost": False})])
+    assert [x["vuln_id"] for x in c.get("/api/findings").json()] == ["NIM-TLS-EXPIRED"]
+
+
+def test_a_device_that_speaks_only_tls_1_0_opens_the_legacy_finding(env):
+    """Prove-It (review 1, devices): the agent's handshake was refused (lost) but TLS 1.0 completed."""
+    c, h = setup(env)
+    send(c, h, [obs(open_={443}, tls={"der": None, "legacy": True, "lost": True})])
+    assert [x["vuln_id"] for x in c.get("/api/findings").json()] == ["NIM-TLS-LEGACY"]

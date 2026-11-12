@@ -65,6 +65,7 @@ REASONS = {
     "backported": ("the banner carries a distribution's own build suffix, and distributions backport fixes without changing the upstream number (R10.2)",
                    "Read the installed version from the host (agent or credentials); a banner can't show a backported fix"),
     "safe-mode": ("this check could disturb the target and safe mode is on, which content can't override (R2.6)", "Opt this target in to disruptive checks to run it"),
+    "legacy-only": ("the server answered only TLS 1.0/1.1, so its certificate couldn't be read with a current handshake", "Enable TLS 1.2 or later on it, then scan again"),
     "scanner-limited": ("this scanner's own TLS library can't offer the protocol this check needs, so it couldn't be tested", "Scan from a host whose OpenSSL still allows it, or read the setting from the server itself"),
 }
 

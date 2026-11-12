@@ -129,9 +129,10 @@ def connect_state(ip: str, port: int, timeout: float = 3.0) -> str:
 
 
 def handshake_lost(e: OSError) -> bool:
-    """True when a failed handshake proves nothing (cut, reset, timed out); False when the service answered and isn't TLS.
-    A TLS protocol error other than an early EOF means bytes came back that weren't TLS (a plain service on the port)."""
-    return not isinstance(e, ssl.SSLError) or isinstance(e, (ssl.SSLEOFError, ssl.SSLZeroReturnError))
+    """True when a failed handshake proves nothing; False only when the reply wasn't TLS at all (a plain service on the
+    port: OpenSSL's WRONG_VERSION_NUMBER). A cut, reset, timeout or a TLS alert (the server is TLS but refused our offer)
+    is lost: nothing was learnt about its certificate."""
+    return getattr(e, "reason", None) != "WRONG_VERSION_NUMBER"
 
 
 def tls_probe(ip: str, host: str, port: int = TLS_PORT, timeout: float = 5.0) -> dict:
@@ -156,6 +157,8 @@ def tls_probe(ip: str, host: str, port: int = TLS_PORT, timeout: float = 5.0) ->
         out["not_after"] = _expiry_unverified(ip, host, port, timeout)
     except (OSError, ssl.SSLError) as e:
         out["trusted"], out["error"], out["lost"] = None, f"no TLS handshake: {e}", handshake_lost(e)
+        if out["lost"]:  # a server that speaks only TLS 1.0/1.1 refuses a current handshake: the worst legacy case
+            out["legacy"] = _accepts_legacy(ip, host, port, timeout)
         return out
     out["legacy"] = _accepts_legacy(ip, host, port, timeout)
     return out

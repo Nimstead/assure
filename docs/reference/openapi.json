@@ -3216,11 +3216,6 @@
             "maxItems": 32,
             "title": "Devices",
             "type": "array"
-          },
-          "stopped": {
-            "default": false,
-            "title": "Stopped",
-            "type": "boolean"
           }
         },
         "required": [

@@ -167,3 +167,20 @@ def test_the_unmanaged_list_is_rate_limited_per_org(env, monkeypatch):
     monkeypatch.setattr(appmod, "UNMANAGED_MAX_PER_HOUR", 2)
     c = user(env)
     assert [c.get("/api/network/unmanaged").status_code for _ in range(3)] == [200, 200, 429]
+
+
+def test_a_failed_registry_fetch_waits_a_day_before_trying_again(env):
+    """Ship review: a failed fetch stored nothing, so every hourly run fetched again, against the file's own request."""
+    c = user(env)
+    s = make_sessionmaker(env)()
+    report(c, agent(c, "web-1"), [row("192.168.1.64", "bc:ba:c2:11:22:33")])
+    bad = Manuf(body="truncated")
+    update_all(s, client=bad)
+    update_all(s, client=bad)
+    assert bad.calls.count(oui.URL) == 1
+    row_ = s.get(Advisory, oui.KEY)
+    row_.modified = (now() - oui.REFRESH - timedelta(hours=1)).isoformat()
+    s.commit()
+    good = Manuf()
+    update_all(s, client=good)
+    assert good.calls.count(oui.URL) == 1 and c.get("/api/network/unmanaged").json()[0]["vendor"].startswith("Hangzhou Hikvision")

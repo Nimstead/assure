@@ -341,6 +341,17 @@ it("the palette keeps the highlighted command when late results arrive, and find
   expect(box.getAttribute("aria-activedescendant")).toBe(chosen);  // a new row arriving above didn't move the highlight
 });
 
+it("the palette offers machines, never the devices network checks found", async () => {
+  serve({ "GET /api/assets": [{ ...HOST, hostname: "go-web-1" }, { ...HOST, id: "d1", kind: "device", hostname: "192.168.1.64", os_name: "Hikvision" }], "GET /api/findings": [] });
+  wrap(<Palette open onOpenChange={() => {}} signOut={() => {}} nextTheme={() => {}} />);
+  await userEvent.type(screen.getByRole("combobox"), "go");
+  await screen.findByRole("option", { name: /Host: go-web-1/ });
+  await userEvent.clear(screen.getByRole("combobox"));
+  await userEvent.type(screen.getByRole("combobox"), "192.168");
+  await screen.findByRole("option", { name: /Search findings/ });
+  expect(screen.queryByRole("option", { name: /Host: 192\.168\.1\.64/ })).toBeNull();
+});
+
 it("the palette never dead-ends: any text offers a findings search, and the list is a valid listbox", async () => {
   serve({ "GET /api/assets": [], "GET /api/findings": [] });
   wrap(<Palette open onOpenChange={() => {}} signOut={() => {}} nextTheme={() => {}} />);

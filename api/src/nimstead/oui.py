@@ -8,6 +8,8 @@ run fetches it only when the stored copy is a week old. A failed or oversized fe
 import re
 from datetime import datetime, timedelta
 
+import httpx
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from nimstead.db import Advisory, now
@@ -44,22 +46,32 @@ def vendor(mac: str, vendors: dict[str, str]) -> str:
 def vendors(s: Session) -> dict[str, str]:
     """The stored registry, decoded once per stored copy; {} before the first fetch."""
     global _cache
-    row = s.get(Advisory, KEY)
-    if row is None:
+    modified = s.scalar(select(Advisory.modified).filter_by(**KEY))  # the date only: the ~3 MB record loads when it changed
+    if modified is None:
         return {}
-    if _cache is None or _cache[0] != row.modified:
-        _cache = (row.modified, row.record.get("vendors", {}))
+    if _cache is None or _cache[0] != modified:
+        _cache = (modified, s.scalar(select(Advisory.record).filter_by(**KEY)).get("vendors", {}))
     return _cache[1]
 
 
 def sync(s: Session, get) -> dict:
     """Fetch the registry with get(url, limit) -> bytes if the stored copy is a week old; commit. Returns counts or "fresh"."""
-    row = s.get(Advisory, KEY)
-    if row and row.modified and datetime.fromisoformat(row.modified) > now() - REFRESH:
-        return {"fresh": row.modified}
-    table = parse(get(URL, MAX_BYTES).decode("utf-8", errors="replace"))
-    if len(table) < 1000:  # a truncated or changed file: keep what's stored rather than lose every name
-        raise ValueError(f"only {len(table)} prefixes parsed")
+    modified = s.scalar(select(Advisory.modified).filter_by(**KEY))
+    if modified and datetime.fromisoformat(modified) > now() - REFRESH:
+        return {"fresh": modified}
+    try:
+        table = parse(get(URL, MAX_BYTES).decode("utf-8", errors="replace"))
+        if len(table) < 1000:  # a truncated or changed file: keep what's stored rather than lose every name
+            raise ValueError(f"only {len(table)} prefixes parsed")
+    except (httpx.HTTPError, ValueError) as e:
+        # try again in a day, not next hour: the file asks for no more than weekly fetches, and the stored names stay
+        retry = (now() - REFRESH + timedelta(days=1)).isoformat()
+        if (row := s.get(Advisory, KEY)) is not None:
+            row.modified = retry
+        else:
+            s.add(Advisory(**KEY, modified=retry, record={"vendors": {}}))
+        s.commit()
+        return {"error": str(e)[:200], "retry_after": "1 day"}
     s.merge(Advisory(**KEY, modified=now().isoformat(), record={"vendors": table}))
     s.commit()
     return {"prefixes": len(table)}

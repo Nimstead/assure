@@ -485,3 +485,22 @@ def test_a_greeting_from_another_product_closes_a_banner_finding(world, monkeypa
     banner(monkeypatch, {21: b"220 Microsoft FTP Service\r\n"})  # replaced: a full greeting that names no vsftpd
     c.post(f"/api/targets/{t['id']}/scan")
     assert [f["vuln_id"] for f in c.get("/api/findings").json()] == ["NIM-EXPOSED-FTP"]
+
+
+def test_the_stored_report_says_when_the_last_scan_ran_even_when_nothing_changed(world, monkeypatch):
+    """Ship review: an unchanged result stored no new record, so the report kept showing the first scan's time."""
+    import datetime as dt
+    c, dns = world
+    t = add(c, dns)
+    c.post(f"/api/targets/{t['id']}/verify")
+    fake_net(monkeypatch, open_ports={6379})
+    times = iter([dt.datetime(2026, 11, 1, tzinfo=dt.UTC), dt.datetime(2026, 11, 2, tzinfo=dt.UTC)])
+
+    class Clock(dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return next(times)
+    monkeypatch.setattr(net, "datetime", Clock)
+    c.post(f"/api/targets/{t['id']}/scan")
+    c.post(f"/api/targets/{t['id']}/scan")
+    assert c.get(f"/api/assets/{t['id']}/scan-report").json()["inventory_read_at"].startswith("2026-11-02")

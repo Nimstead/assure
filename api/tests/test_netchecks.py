@@ -296,3 +296,47 @@ def test_network_check_reports_are_limited_per_org(env, monkeypatch):
     db = agent(c, "db-1")
     codes = [c.post("/api/agent/network-checks", headers=h, json={"devices": []}).status_code for h in (web, db, db)]
     assert codes == [200, 200, 429]
+
+
+def test_devices_stay_out_of_asset_counts_and_attack_paths(env):
+    """Ship review: a device counted as an asset on Home and appeared as a host in attack paths."""
+    c, h = setup(env)
+    send(c, h, [obs(open_={23})])
+    assert c.get("/api/summary").json()["assets"] == 1
+    assert [x["hostname"] for x in c.get("/api/attack-paths").json()["hosts"].values()] == ["web-1"]
+
+
+def test_device_findings_explain_themselves_as_on_your_network(env):
+    """Ship review: a device's reasons said "reachable from the internet" and "fetched by automated crawlers"."""
+    c, h = setup(env)
+    send(c, h, [obs(open_={23, 80}, http={"control": page(404, b"no"), "/.git/config": page(200, b"[core]", "/.git/config"),
+                                          "/.env": page(404, b"no", "/.env")})])
+    c.patch(f"/api/assets/{c.get('/api/findings').json()[0]['asset_id']}", json={"criticality": "high"})  # a re-score writes reasons too
+    for f in c.get("/api/findings").json():
+        text = " ".join([f["summary"], *f["reasons"]]).lower()
+        assert "internet" not in text and "crawler" not in text, f
+        assert "network" in text
+
+
+def test_a_device_finding_that_comes_back_is_reopened_not_duplicated(env):
+    c, h = setup(env)
+    send(c, h, [obs(open_={23})])
+    first = c.get("/api/findings").json()[0]["id"]
+    send(c, h, [obs()])
+    send(c, h, [obs(open_={23})])
+    f = c.get("/api/findings").json()
+    assert [x["id"] for x in f] == [first]
+    assert "finding_reopened" in [e["kind"] for e in c.get("/api/evidence/ledger").json()["entries"]]
+
+
+def test_the_device_cap_refuses_new_devices_past_it(env, monkeypatch):
+    monkeypatch.setattr(neighbours, "MAX_DEVICES_PER_ORG", 1)
+    c, h = setup(env)
+    out = send(c, h, [obs(), obs("192.168.1.65", "bc:ba:c2:11:22:34")])
+    assert out["checked"] == 1 and out["refused"] == 1
+
+
+def test_ipv6_devices_are_never_checked(env):
+    c, h = setup(env)
+    report(c, h, [row("fd00::5", "02:00:00:00:00:05"), row("fe80::5", "02:00:00:00:00:05")])
+    assert send(c, h, [obs("fd00::5", "02:00:00:00:00:05", open_={23}), obs("fe80::5", "02:00:00:00:00:05", open_={23})])["refused"] == 2

@@ -75,7 +75,8 @@ def record(s: Session, asset: Asset, out: dict, inventory: dict) -> bool:
     Return False when the same inventory, content and verdicts are already stored (asking twice stores one record)."""
     same = select(ScanRecord.id).where(ScanRecord.asset_id == asset.id, ScanRecord.inventory_sha256 == out["inventory_sha256"],
                                        ScanRecord.content_version == out["content_version"], ScanRecord.verdicts_sha256 == out["verdicts_sha256"]).limit(1)
-    if s.scalar(same):
+    if (row := s.scalar(select(ScanRecord).where(same.whereclause).limit(1))) is not None:
+        row.report = out  # the same result again: keep one record, but say when it was last read (and what was sent)
         return False
     s.add(ScanRecord(org_id=asset.org_id, asset_id=asset.id, engine_version=out["engine_version"], content_version=out["content_version"],
                      inventory_sha256=out["inventory_sha256"], verdicts_sha256=out["verdicts_sha256"], inventory=inventory, report=out))

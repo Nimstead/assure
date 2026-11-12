@@ -1291,7 +1291,6 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     class NetworkChecks(BaseModel):
         devices: list[Any] = Field(max_length=32)  # each checked row by row by neighbours.record_checks
-        stopped: bool = False
 
     class NetworkChecksResult(BaseModel):
         checked: int  # devices judged
@@ -1604,7 +1603,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                              .where(Asset.org_id == user.org_id, InstalledPackage.ecosystem == "Windows")).all())
         return engine_fleet.build([{"id": a.id, "hostname": a.hostname, "facts": a.facts or {}, "os_version": win.get(a.id, ""),
                                     "report": latest.get(a.id), "internet_facing": a.internet_facing}
-                                   for a in s.scalars(select(Asset).where(Asset.org_id == user.org_id))])
+                                   for a in s.scalars(select(Asset).where(Asset.org_id == user.org_id, Asset.kind != "device"))])
 
     class AssetPatch(BaseModel):
         criticality: Literal["low", "medium", "high", "critical"] | None = None
@@ -2956,7 +2955,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         hosts = s.scalars(select(Asset).where(Asset.org_id == user.org_id, Asset.kind == "host")).all()
         paused, release = s.get(Org, user.org_id).agent_updates_paused, signed_release() is not None
         return {
-            "assets": s.scalar(select(func.count()).select_from(Asset).where(Asset.org_id == user.org_id)),
+            "assets": s.scalar(select(func.count()).select_from(Asset).where(Asset.org_id == user.org_id, Asset.kind != "device")),
             "hosts_not_reporting": sum(a.last_seen < now() - notify.SILENT_AFTER for a in hosts),
             "agents_need_attention": sum(agent_update_status(a, paused, release) in ("failed", "off", "reinstall") for a in hosts),
             "open_by_priority": by_priority,

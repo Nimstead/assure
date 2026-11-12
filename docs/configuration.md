@@ -49,6 +49,12 @@ Publish your evidence key fingerprint (`GET /api/evidence/public-key`) to audito
 
 Each host must also opt in locally (`--allow-remediation` at install). The server can't turn remediation on for a host.
 
+## Devices on your networks
+
+Each agent from 0.7.0 reports its own neighbour table (the addresses its machine already talks to) and its own addresses. Assets lists the devices none of your machines accounts for. To leave a host's table out, set `"neighbours": false` in that agent's configuration file.
+
+A host can also check the devices next to it for exposed services, with fixed read-only checks it chooses itself (DECISIONS 129). Like remediation, only the host can turn this on: `--allow-network-checks` at install (Linux installer), or `$env:NIMSTEAD_ALLOW_NETWORK_CHECKS = "1"` before running the Windows installer. The server can't turn it on or choose what is checked. To turn it off, set `"network_checks": false` in that agent's configuration file.
+
 ## Alerts
 
 | Variable | Default | What it does |

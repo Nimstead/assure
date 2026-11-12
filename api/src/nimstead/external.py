@@ -242,8 +242,20 @@ def observe(host: str, ip: str) -> tuple[list, dict]:
     return verdicts, rep
 
 
-def likelihood_of(check_id: str) -> tuple[float, str]:
-    """Return the configured (likelihood, reason) tuple for the external vulnerability ID check_id."""
+# The same checks on a device inside a network (DECISIONS 129): reachable by what's on that network, not the internet
+INTERNAL_LIKELIHOOD = {"exposed": (0.6, "Answers on your network: any machine there, or anything that gets onto it, can reach it"),
+                       "open": (0.8, "No authentication by default: anything on your network can use it"),
+                       "web": (0.6, "Served on your network: any machine there can fetch it"),
+                       "tls": (0.3, "Seen by every client on your network")}
+
+
+def likelihood_of(check_id: str, internal: bool = False) -> tuple[float, str]:
+    """Return the configured (likelihood, reason) tuple for the vulnerability ID check_id: as seen from the internet, or
+    with internal, on a device inside a network."""
+    if internal and not check_id.startswith("CVE-"):
+        kind = ("open" if check_id.removeprefix("NIM-EXPOSED-") in OPEN_BY_DEFAULT else "exposed") if check_id.startswith("NIM-EXPOSED-") \
+            else "web" if check_id.startswith("NIM-WEB-") else "tls"
+        return INTERNAL_LIKELIHOOD[kind]
     if check_id.startswith("NIM-EXPOSED-"):
         return OPEN_BY_DEFAULT_LIKELIHOOD if check_id.removeprefix("NIM-EXPOSED-") in OPEN_BY_DEFAULT else EXPOSED_LIKELIHOOD
     if check_id.startswith("NIM-WEB-"):
@@ -292,10 +304,11 @@ def prove_scope(s: Session, asset: Asset, lookup=None) -> str:
     return ip
 
 
-def findings_from(verdicts: list) -> list[dict]:
+def findings_from(verdicts: list, internal: bool = False) -> list[dict]:
     """Finding dictionaries (exposed_finding's shape, plus installed and fixed) for every vulnerable verdict of the
-    engine's prober: exposed services, TLS, web paths, and banner versions (graded unverified, DECISIONS 127)."""
-    return [{"id": v.vuln_id, "package": v.product, "cvss": v.cvss, "likelihood": likelihood_of(v.vuln_id), "summary": v.summary,
+    engine's prober: exposed services, TLS, web paths, and banner versions (graded unverified, DECISIONS 127). internal:
+    a device inside a network, whose reasons say so."""
+    return [{"id": v.vuln_id, "package": v.product, "cvss": v.cvss, "likelihood": likelihood_of(v.vuln_id, internal), "summary": v.summary,
              "installed": v.version or "", "fixed": v.fixed} for v in verdicts if v.outcome == "vulnerable" and v.vuln_id]
 
 
@@ -350,7 +363,7 @@ def apply(s: Session, asset: Asset, verdicts: list, rep: dict, ecosystem: str = 
     Return (seen (vulnerability, endpoint) pairs, resolved count, still-open count). An unseen open or accepted
     finding resolves only on evidence (held_open); otherwise it keeps one "Still open: ..." reason. Each transition
     goes to the ledger. Sets asset.last_seen. Used by the external scan and by devices' network checks."""
-    found = findings_from(verdicts)
+    found = findings_from(verdicts, asset.kind == "device")
     t = now()
     # keyed by (vulnerability, endpoint): one banner CVE can be on two ports
     existing = {(f.vuln_id, f.package): f for f in s.scalars(select(Finding).where(Finding.asset_id == asset.id))}
@@ -402,7 +415,7 @@ def rescore(s: Session, asset: Asset) -> dict:
     Database and malformed score-input errors propagate without automatic rollback."""
     n = 0
     for f in s.scalars(select(Finding).where(Finding.asset_id == asset.id, Finding.status == "open")):
-        r = _score(asset, {"cvss": f.cvss, "likelihood": likelihood_of(f.vuln_id)})
+        r = _score(asset, {"cvss": f.cvss, "likelihood": likelihood_of(f.vuln_id, asset.kind == "device")})
         f.score, f.priority = r.score, r.priority
         f.reasons = r.reasons + [x for x in f.reasons or [] if x.startswith("Still open: ")]  # the last scan's word on why it's open stays
         n += 1

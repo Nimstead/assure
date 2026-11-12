@@ -286,3 +286,9 @@ def test_no_network_checks_without_the_local_opt_in(monkeypatch):
     monkeypatch.setattr(agent, "post", lambda server, path, body, insecure, key=None: sent.append(path) or {})
     monkeypatch.setattr(agent, "log_event", lambda text: None)
     assert agent.main(["report"]) == 0 and "/api/agent/inventory" in sent and "/api/agent/network-checks" not in sent
+
+
+def test_linux_subnets_come_from_ip_addr():
+    out = json.dumps([{"ifname": "lo", "address": "00:00:00:00:00:00", "addr_info": [{"local": "127.0.0.1", "prefixlen": 8}]},
+                      {"ifname": "eth0", "address": "52:54:00:ab:cd:ef", "addr_info": [{"local": "10.1.2.3", "prefixlen": 24}, {"local": "fe80::1", "prefixlen": 64}]}])
+    assert [str(n) for n in agent.own_networks(run=lambda cmd, **k: (0, out), which=lambda n: "/usr/sbin/ip", nt=False)] == ["10.1.2.0/24"]

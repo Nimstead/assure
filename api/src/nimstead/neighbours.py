@@ -67,13 +67,19 @@ def store(s: Session, asset: Asset, sent) -> None:
         s.delete(d)
 
 
-def unmanaged(s: Session, org_id: str) -> list[dict]:
-    """Devices the org's agents saw that are none of its agents, one row per MAC: addresses, maker, which hosts saw
-    it, first and last seen. Matched by MAC first (DHCP moves addresses), then by any address an agent reports as its own."""
+def _fleet(s: Session, org_id: str) -> tuple[dict, set, set]:
+    """(the org's hosts by id, the MACs and the addresses its agents report as their own) - a device is none of these."""
     hosts = {a.id: a for a in s.scalars(select(Asset).where(Asset.org_id == org_id, Asset.kind == "host"))}
     own_macs = {m for a in hosts.values() for m in (a.own_addresses or {}).get("macs", [])}
     own_ips = {ip for a in hosts.values() for ip in (a.own_addresses or {}).get("ips", [])}
     own_ips |= {ip for a in hosts.values() for ip in ((a.facts or {}).get("addresses") or []) if isinstance(ip, str)}  # Windows' own (DECISIONS 112)
+    return hosts, own_macs, own_ips
+
+
+def unmanaged(s: Session, org_id: str) -> list[dict]:
+    """Devices the org's agents saw that are none of its agents, one row per MAC: addresses, maker, which hosts saw
+    it, first and last seen. Matched by MAC first (DHCP moves addresses), then by any address an agent reports as its own."""
+    hosts, own_macs, own_ips = _fleet(s, org_id)
     cutoff = now() - KEEP
     by_mac: dict[str, dict] = {}
     for n in s.scalars(select(Neighbour).where(Neighbour.org_id == org_id, Neighbour.last_seen >= cutoff)):
@@ -115,13 +121,15 @@ PORTS = sorted(set(external.SERVICES) | {external.TLS_PORT, 80, *network.BANNER_
 
 
 class _Replay(network.Prober):
-    """The prober's web checks answered from what the agent recorded: the fixed paths, and the control for anything else."""
+    """The prober's web checks answered from what the agent recorded: each fixed path as recorded, any other path (the
+    prober's own random control) with the agent's control. A fixed path the agent didn't record got no response."""
     def __init__(self, ip: str, http: dict):
         super().__init__(ip, ip)
         self.http = http
 
     def _http_get(self, port, path, deadline):
-        status, body = self.http.get(path) or self.http.get("control") or [None, b""]
+        fixed = path in {r.path for r in network.WEB_RULES}
+        status, body = self.http.get(path if fixed else "control") or [None, b""]  # missing: no response, so it can't close anything
         return status, body
 
 
@@ -141,8 +149,8 @@ def _tls(obs) -> dict:
         not_after = x509.load_der_x509_certificate(der).not_valid_after_utc.timestamp() if der else None
     except ValueError:
         not_after = None
-    if not_after is None:
-        return {"trusted": None, "error": "no TLS handshake", "not_after": None, "legacy": None}
+    if not_after is None:  # lost: the agent's handshake was cut or timed out, which isn't evidence of anything
+        return {"trusted": None, "error": "no TLS handshake", "not_after": None, "legacy": None, "lost": not isinstance(obs, dict) or obs.get("lost") is not False}
     legacy = obs.get("legacy") if obs.get("legacy") in (True, False) else None
     return {"trusted": True, "error": None, "not_after": not_after, "legacy": legacy}
 
@@ -175,14 +183,17 @@ def record_checks(s: Session, asset: Asset, devices) -> dict:
     """Judge what asset's agent observed on devices it chose (DECISIONS 129) and update each device's findings; no commit.
 
     A device counts only if it is in this host's own stored neighbour rows (same address and MAC) and in a private IPv4
-    range; anything else is dropped and counted as refused. Each check goes to the ledger with the host that made it."""
+    range, and isn't one of the org's own machines (it has an agent, so it's judged from that); anything else is dropped
+    and counted as refused. Each check goes to the ledger with the host that made it."""
     mine = {(n.ip, n.mac) for n in s.scalars(select(Neighbour).where(Neighbour.asset_id == asset.id))}
+    _, own_macs, own_ips = _fleet(s, asset.org_id)
     known = {(d.facts or {}).get("mac"): d for d in s.scalars(select(Asset).where(Asset.org_id == asset.org_id, Asset.kind == "device"))}
     names = oui.vendors(s)
     checked = refused = opened = 0
     for obs in (devices if isinstance(devices, list) else [])[:MAX_CHECKED]:
         ip, mac = (_ip(obs.get("ip")), _mac(obs.get("mac"))) if isinstance(obs, dict) else (None, None)
-        if not ip or not mac or (ip, mac) not in mine or not any(ipaddress.ip_address(ip) in n for n in RFC1918):
+        if (not ip or not mac or (ip, mac) not in mine or not any(ipaddress.ip_address(ip) in n for n in RFC1918)
+                or mac in own_macs or ip in own_ips):
             refused += 1
             continue
         device = known.get(mac)

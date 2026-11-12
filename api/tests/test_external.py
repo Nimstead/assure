@@ -381,3 +381,43 @@ def test_address_proof_reads_the_value_from_that_exact_address():
     finally:
         srv.shutdown()
     assert not external.address_proven("127.0.0.1", "www.example.com", "nimstead-verify=abc", ports=port, timeout=1)  # nothing listening
+
+
+def test_a_tls_handshake_that_times_out_keeps_tls_findings_open(world, monkeypatch):
+    """Prove-It: 443 accepted the connection but the handshake was cut off. That is no evidence the certificate was fixed."""
+    c, dns = world
+    t = add(c, dns)
+    c.post(f"/api/targets/{t['id']}/verify")
+    fake_net(monkeypatch, tls=EXPIRED)
+    c.post(f"/api/targets/{t['id']}/scan")
+    lost = {"trusted": None, "error": "no TLS handshake: _ssl.c:1011: The handshake operation timed out", "not_after": None, "legacy": None, "lost": True}
+    eps_tls = Endpoint(external.TLS_PORT, "open", tls=lost)
+    fake_net(monkeypatch)
+    real = net.Prober.observe
+    monkeypatch.setattr(net.Prober, "observe", lambda self: {**real(self), external.TLS_PORT: eps_tls})
+    r = c.post(f"/api/targets/{t['id']}/scan").json()
+    assert r["resolved"] == 0 and [f["vuln_id"] for f in c.get("/api/findings").json()] == ["NIM-TLS-EXPIRED"]
+
+
+def test_tls_probe_says_lost_for_a_cut_connection_and_not_tls_for_a_plain_service():
+    import socket as so
+    import threading as th
+    srv = so.socket()
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(4)
+    port = srv.getsockname()[1]
+
+    def serve():
+        for reply in (None, b"HTTP/1.1 400 Bad Request\r\n\r\n"):
+            conn, _ = srv.accept()
+            if reply:
+                conn.recv(65536)  # all of the ClientHello: closing with unread bytes would send a reset, which reads as "lost"
+                conn.sendall(reply)
+                conn.shutdown(so.SHUT_WR)
+            conn.close()  # the first: closed mid-handshake, nothing sent
+    th.Thread(target=serve, daemon=True).start()
+    cut = external.tls_probe("127.0.0.1", "www.example.com", port=port, timeout=3)
+    plain = external.tls_probe("127.0.0.1", "www.example.com", port=port, timeout=3)
+    srv.close()
+    assert cut["trusted"] is None and cut.get("lost") is True
+    assert plain["trusted"] is None and not plain.get("lost")

@@ -32,6 +32,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import warnings
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
 
@@ -1573,19 +1574,22 @@ def _no_verify(minimum=None, maximum=None):
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     ctx.check_hostname, ctx.verify_mode = False, ssl.CERT_NONE  # content, not trust: the server judges the certificate
     if minimum:
-        ctx.minimum_version, ctx.maximum_version = minimum, maximum
+        with warnings.catch_warnings():  # offering TLS 1.0/1.1 is the point of the legacy check: keep the run's output clean
+            warnings.simplefilter("ignore", DeprecationWarning)
+            ctx.minimum_version, ctx.maximum_version = minimum, maximum
         ctx.set_ciphers("DEFAULT:@SECLEVEL=0")
     return ctx
 
 
 def _tls_facts(ip):
-    """The certificate 443 presents (DER, base64) and whether TLS 1.0/1.1 completes (None: this Python can't offer them)."""
-    der = None
+    """The certificate 443 presents (DER, base64), whether TLS 1.0/1.1 completes (None: this Python can't offer them), and
+    lost: True when the handshake was cut, reset or timed out (nothing learnt), not when the service simply isn't TLS."""
+    der, lost = None, False
     try:
         with socket.create_connection((ip, 443), timeout=NET_TIMEOUT) as raw, _no_verify().wrap_socket(raw) as s:
             der = s.getpeercert(binary_form=True)
-    except (OSError, ssl.SSLError):
-        pass
+    except OSError as e:  # ssl.SSLError is an OSError; only a TLS protocol error other than an early EOF means "not TLS"
+        lost = not isinstance(e, ssl.SSLError) or isinstance(e, (ssl.SSLEOFError, ssl.SSLZeroReturnError))
     try:
         legacy_ctx = _no_verify(ssl.TLSVersion.TLSv1, ssl.TLSVersion.TLSv1_1)
     except (ValueError, ssl.SSLError):
@@ -1598,7 +1602,7 @@ def _tls_facts(ip):
             legacy = None if "NO_PROTOCOLS_AVAILABLE" in str(e).upper() else False
         except OSError:
             legacy = False
-    return {"der": base64.b64encode(der).decode() if der else None, "legacy": legacy}
+    return {"der": base64.b64encode(der).decode() if der else None, "legacy": legacy, "lost": lost}
 
 
 def _http_get(ip, path):

@@ -140,3 +140,33 @@ def test_at_most_four_reports_an_hour_per_host(env):
     codes = [c.post("/api/agent/network-checks", headers=h, json={"devices": []}).status_code for _ in range(5)]
     assert codes == [200] * 4 + [429]
     assert c.post("/api/agent/network-checks", headers=h, json={"devices": [obs()] * 33}).status_code == 422
+
+
+def test_a_web_path_missing_from_the_report_keeps_its_finding_open(env):
+    """Prove-It: the agent's report lacks /.env this time. Silence is not evidence the file is gone."""
+    c, h = setup(env)
+    env_body = b"DB_PASSWORD=hunter2\n"
+    send(c, h, [obs(open_={80}, http={"control": [404, b64(b"no")], "/.git/config": [404, b64(b"no")], "/.env": [200, b64(env_body)]})])
+    assert [x["vuln_id"] for x in c.get("/api/findings").json()] == ["NIM-WEB-ENV"]
+    send(c, h, [obs(open_={80}, http={"control": [404, b64(b"no")], "/.git/config": [404, b64(b"no")]})])
+    assert [x["vuln_id"] for x in c.get("/api/findings").json()] == ["NIM-WEB-ENV"]
+
+
+def test_a_tls_read_the_agent_lost_keeps_tls_findings_open(env):
+    """Prove-It: 443 open, but the agent's handshake failed this run (no certificate, lost). Not evidence of a renewal."""
+    c, h = setup(env)
+    send(c, h, [obs(open_={443}, tls={"der": cert(-10), "legacy": False})])
+    assert [x["vuln_id"] for x in c.get("/api/findings").json()] == ["NIM-TLS-EXPIRED"]
+    send(c, h, [obs(open_={443}, tls={"der": None, "legacy": None, "lost": True})])
+    assert [x["vuln_id"] for x in c.get("/api/findings").json()] == ["NIM-TLS-EXPIRED"]
+
+
+def test_a_neighbour_that_is_one_of_the_orgs_own_machines_never_becomes_a_device(env):
+    """Prove-It: web-1 checked db-1, which has an agent. It must not appear twice, once as a device with its own findings."""
+    c = user(env)
+    web, db = agent(c, "web-1"), agent(c, "db-1")
+    report(c, web, [row("192.168.1.11", "52:54:00:00:00:11")], own={"ips": ["192.168.1.10"], "macs": ["52:54:00:00:00:10"]})
+    report(c, db, [], own={"ips": ["192.168.1.11"], "macs": ["52:54:00:00:00:11"]})
+    out = send(c, web, [obs("192.168.1.11", "52:54:00:00:00:11", open_={6379})])
+    assert out["checked"] == 0 and out["refused"] == 1
+    assert c.get("/api/findings").json() == [] and make_sessionmaker(env)().scalar(select(Asset).where(Asset.kind == "device")) is None

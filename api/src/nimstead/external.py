@@ -128,13 +128,20 @@ def connect_state(ip: str, port: int, timeout: float = 3.0) -> str:
         return "filtered"
 
 
+def handshake_lost(e: OSError) -> bool:
+    """True when a failed handshake proves nothing (cut, reset, timed out); False when the service answered and isn't TLS.
+    A TLS protocol error other than an early EOF means bytes came back that weren't TLS (a plain service on the port)."""
+    return not isinstance(e, ssl.SSLError) or isinstance(e, (ssl.SSLEOFError, ssl.SSLZeroReturnError))
+
+
 def tls_probe(ip: str, host: str, port: int = TLS_PORT, timeout: float = 5.0) -> dict:
     """Read TLS trust/expiry facts at ip:port using host for SNI and certificate checks.
 
     ip/host are strings, port is an integer and timeout is a socket-operation limit
     in seconds. Return trusted (True/False/None), error (string/None), not_after
     (Unix timestamp/None), and legacy (True/False/None). None for trusted means no
-    TLS handshake. None for legacy can mean an untestable scanner protocol or an
+    TLS handshake; then lost says why: True when the connection was cut, reset or timed
+    out (nothing learnt), False when the service answered but isn't TLS. None for legacy can mean an untestable scanner protocol or an
     early return before that test. Certificate failures trigger an unverified expiry
     read. Ordinary socket/TLS errors become facts, but malformed certificates,
     invalid arguments and unexpected configuration errors can propagate.
@@ -148,7 +155,7 @@ def tls_probe(ip: str, host: str, port: int = TLS_PORT, timeout: float = 5.0) ->
         out["trusted"], out["error"] = False, (e.verify_message or str(e))
         out["not_after"] = _expiry_unverified(ip, host, port, timeout)
     except (OSError, ssl.SSLError) as e:
-        out["trusted"], out["error"] = None, f"no TLS handshake: {e}"  # not a TLS service: nothing to judge
+        out["trusted"], out["error"], out["lost"] = None, f"no TLS handshake: {e}", handshake_lost(e)
         return out
     out["legacy"] = _accepts_legacy(ip, host, port, timeout)
     return out

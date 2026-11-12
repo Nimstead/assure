@@ -82,6 +82,7 @@ def test_observations_from_real_sockets_banner_echo_and_states(monkeypatch):
     finally:
         for srv in servers.values():
             srv.shutdown()
+            srv.server_close()
     assert set(obs["ports"]) == {str(p) for p in agent.NET_CHECK_PORTS}
     assert obs["ports"]["21"]["state"] == "open" and base64.b64decode(obs["ports"]["21"]["banner"]).startswith(b"220 (vsFTPd 2.3.4)")
     assert obs["ports"]["21"]["reflects"] is False and obs["ports"]["2121"]["reflects"] is True
@@ -100,3 +101,26 @@ def test_the_server_cannot_turn_it_on_only_enrolment_flags_set_it(monkeypatch, t
     cfgs = [b for p, b in sent if p == "cfg"]
     assert [c["network_checks"] for c in cfgs] == [False, True]
     assert all(set(b) <= {"token", "hostname", "os_name", "ecosystem"} for p, b in sent if p == "/api/agent/enroll")
+
+
+def test_a_cut_handshake_is_lost_and_a_plain_service_is_not_tls(monkeypatch):
+    """Prove-It: the agent must say when a TLS read proved nothing, or the server would close TLS findings on it."""
+    srv = socket.socket()
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(8)
+    port = srv.getsockname()[1]
+
+    def serve():
+        for reply in (None, None, b"HTTP/1.1 400 Bad Request\r\n\r\n", b"HTTP/1.1 400 Bad Request\r\n\r\n"):
+            conn, _ = srv.accept()
+            if reply:
+                conn.recv(65536)  # all of the ClientHello: closing with unread bytes would send a reset, which reads as "lost"
+                conn.sendall(reply)
+                conn.shutdown(socket.SHUT_WR)
+            conn.close()
+    threading.Thread(target=serve, daemon=True).start()
+    monkeypatch.setattr(agent.socket, "create_connection", (lambda orig: lambda addr, timeout=None: orig(("127.0.0.1", port), timeout=timeout))(socket.create_connection))
+    cut, plain = agent._tls_facts("127.0.0.1"), agent._tls_facts("127.0.0.1")
+    srv.close()
+    assert cut["der"] is None and cut["lost"] is True
+    assert plain["der"] is None and plain["lost"] is False

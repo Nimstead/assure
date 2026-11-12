@@ -114,8 +114,10 @@ export interface UnmanagedDevice {
 /** Devices on the fleet's networks that no agent accounts for, from each agent's own neighbour table (DECISIONS 128). Passive:
  * nothing is sent to them. Hidden while there are none, like the Active Directory list. */
 export function UnmanagedDevices() {
-  const q = useQuery({ queryKey: ["network-unmanaged"], queryFn: () => api<UnmanagedDevice[]>("/api/network/unmanaged") });
+  // the list is rate-limited per person: five minutes fresh keeps ordinary browsing well inside it
+  const q = useQuery({ queryKey: ["network-unmanaged"], queryFn: () => api<UnmanagedDevice[]>("/api/network/unmanaged"), staleTime: 300_000 });
   const rows = q.data ?? [];
+  if (q.isError) return <Alert error={q.error} prefix="Couldn't load the devices with no agent: " />;
   if (!rows.length) return null;
   const named = rows.filter((r) => r.vendor && r.vendor !== "randomised MAC").length;
   const checkedCount = rows.filter((r) => r.checked).length;

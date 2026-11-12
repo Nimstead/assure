@@ -543,3 +543,10 @@ it("devices with no agent: hidden while there are none, then counted, named and 
   expect(screen.getByRole("link", { name: "Download as CSV" })).toHaveAttribute("href", "/api/network/unmanaged?format=csv");
   vi.unstubAllGlobals();
 });
+
+it("devices with no agent: a list that couldn't be read says so, never reads as none (ship review 2)", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ detail: "The device list was read too often this hour; try again later" }), { status: 429 })));
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><UnmanagedDevices /></QueryClientProvider>);
+  expect(await screen.findByRole("alert")).toHaveTextContent(/devices with no agent.*too often this hour/);
+  vi.unstubAllGlobals();
+});

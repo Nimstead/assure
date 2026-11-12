@@ -1540,7 +1540,10 @@ def own_networks(run=None, which=shutil.which, nt=os.name == "nt"):
 # port, path or rule. The agent sends what it observed; the server judges it with the engine's evaluator.
 NET_CHECK_PORTS = (21, 22, 23, 25, 80, 110, 143, 443, 445, 1433, 2121, 2222, 2375, 3306, 3389, 5432, 5900, 6379, 9200, 11211, 27017)
 NET_BANNER_PORTS = (21, 22, 25, 110, 143, 2121, 2222)
-NET_WEB_PATHS = ("/.git/config", "/.env")
+# The web paths and the marker that shows each is really exposed, as the server's engine has them (a test keeps them equal).
+# The agent judges the body here and sends only facts, so a file's contents never leave the network it's on (DECISIONS 129).
+NET_WEB_MARKERS = {"/.git/config": re.compile(rb"\[core\]", re.I), "/.env": re.compile(rb"(?mi)^[A-Z][A-Z0-9_]+\s*=")}
+NET_WEB_PATHS = tuple(NET_WEB_MARKERS)
 NET_CHECK_MAX = 32          # devices per run, rotating through the rest run by run
 NET_CHECK_SECONDS = 300     # the whole run; devices not reached are left for the next one
 NET_TIMEOUT = 3.0  # as the server's prober: Windows reports a refused connection only after about 2 s of retries
@@ -1605,15 +1608,16 @@ def _tls_facts(ip):
     return {"der": base64.b64encode(der).decode() if der else None, "legacy": legacy, "lost": lost}
 
 
-def _http_get(ip, path):
-    """[status or None, body base64 (at most 4 KiB)] for one GET with Host: the address."""
-    data = _exchange(ip, 80, f"GET {path} HTTP/1.1\r\nHost: {ip}\r\nUser-Agent: nimstead-agent\r\nConnection: close\r\n\r\n".encode(), 8192)
-    head, _, body = data.partition(b"\r\n\r\n")
+def _web_fact(ip, path, marker):
+    """[status or None, marker matched (None for the control), body SHA-256, body had content] for one GET with Host: the
+    address. Headers that never end within the read mean no page was read (status None), not an empty one."""
+    data = _exchange(ip, 80, f"GET {path} HTTP/1.1\r\nHost: {ip}\r\nUser-Agent: nimstead-agent\r\nConnection: close\r\n\r\n".encode(), 65536)
+    head, sep, body = data.partition(b"\r\n\r\n")
     try:
-        status = int(head.split(b" ", 2)[1])
+        status = int(head.split(b" ", 2)[1]) if sep else None
     except (IndexError, ValueError):
         status = None
-    return [status, base64.b64encode(body[:4096]).decode()]
+    return [status, bool(marker.search(body)) if marker is not None else None, hashlib.sha256(body).hexdigest(), bool(body.strip())]
 
 
 def check_device(ip, mac):
@@ -1634,7 +1638,7 @@ def check_device(ip, mac):
         obs["tls"] = _tls_facts(ip)
     if ports[80]["state"] == "open":
         control = f"/nimstead-{os.urandom(8).hex()}"
-        obs["http"] = {"control": _http_get(ip, control), **{p: _http_get(ip, p) for p in NET_WEB_PATHS}}
+        obs["http"] = {"control": _web_fact(ip, control, None), **{p: _web_fact(ip, p, m) for p, m in NET_WEB_MARKERS.items()}}
     return obs
 
 

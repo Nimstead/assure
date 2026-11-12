@@ -232,3 +232,22 @@ def test_network_report_and_scan_fields_are_documented():
     normal = (root / "external-scans.md").read_text()
     for port, (cid, *_rest) in external.SERVICES.items():
         assert f"| {port} |" in normal and f"`{cid}`" in normal
+
+
+def test_a_reply_whose_headers_fill_the_read_is_no_response_not_an_empty_page():
+    """Prove-It (ship review): headers longer than the read left an empty "body" with status 200, judged not vulnerable."""
+    import socket as so
+    srv = so.socket()
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(2)
+    port = srv.getsockname()[1]
+
+    def serve():
+        conn, _ = srv.accept()
+        conn.recv(4096)
+        conn.sendall(b"HTTP/1.1 200 OK\r\nX-Pad: " + b"a" * 9000 + b"\r\n\r\n[core]\n")
+        conn.close()
+    threading.Thread(target=serve, daemon=True).start()
+    status, body = Prober("www.example.com", "127.0.0.1", Budget(deadline=5))._http_get(port, "/.git/config", time.monotonic() + 5)
+    srv.close()
+    assert status is None

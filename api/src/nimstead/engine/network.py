@@ -173,6 +173,7 @@ class Prober:
     Invalid budget values can fail when a semaphore, worker pool or socket is used."""
     def __init__(self, host: str, ip: str, budget: Budget | None = None, safe_mode: bool = True):
         self.host, self.ip, self.budget, self.safe_mode = host, ip, budget or Budget(), safe_mode
+        self.web_base = f"http://{host}"  # what a web finding is named by; a device's replay names it by port, so a new address keeps it
         self._sems: dict[int, threading.Semaphore] = defaultdict(lambda: threading.Semaphore(self.budget.per_endpoint))
         self.requests: list[str] = []  # every HTTP request sent, for the scan's ledger entry (R10.7)
 
@@ -230,12 +231,18 @@ class Prober:
     def _http_get(self, port: int, path: str, deadline: float) -> tuple[int | None, bytes]:
         req = f"GET {path} HTTP/1.1\r\nHost: {self.host}\r\nUser-Agent: nimstead-engine\r\nConnection: close\r\n\r\n".encode()
         data = self._exchange(port, req, read_bytes=8192, deadline=deadline)
-        head, _, body = data.partition(b"\r\n\r\n")
+        head, sep, body = data.partition(b"\r\n\r\n")
         try:
-            status = int(head.split(b" ", 2)[1])
+            status = int(head.split(b" ", 2)[1]) if sep else None  # headers that never ended: no page was read, not an empty one
         except (IndexError, ValueError):
             status = None
         return status, body
+
+    def web_fact(self, port: int, path: str, marker: re.Pattern | None, deadline: float) -> tuple[int | None, bool | None, str, bool]:
+        """(status, marker matched (None without a marker), body SHA-256, body had content) for one GET: what a web rule
+        is judged on, so an agent can send these facts instead of the body (DECISIONS 129)."""
+        status, body = self._http_get(port, path, deadline)
+        return status, (bool(marker.search(body)) if marker is not None else None), hashlib.sha256(body).hexdigest(), bool(body.strip())
 
     def _probe_port(self, port: int) -> Endpoint:
         start = time.monotonic()
@@ -325,12 +332,12 @@ def _tls(endpoints: dict[int, Endpoint], host: str) -> list[Verdict]:
 def _web(prober: Prober, endpoints: dict[int, Endpoint]) -> list[Verdict]:
     out, controls = [], {}
 
-    def get(port, path, deadline):
+    def fact(port, path, marker, deadline):
         prober.requests.append(f"GET :{port}{path}")  # recorded before it's sent, so a failed request is listed too
-        return prober._http_get(port, path, deadline)
+        return prober.web_fact(port, path, marker, deadline)
     for rule in WEB_RULES:
         e = endpoints.get(rule.port)
-        product = f"http://{prober.host}{rule.path}"
+        product = f"{prober.web_base}{rule.path}"
         base = {"check": rule.id, "family": "network", "ecosystem": ECOSYSTEM, "product": product, "instance": product, "vuln_id": rule.id}
         if rule.safety == Safety.DISRUPTIVE and prober.safe_mode:  # content can't bypass safe mode (R2.6)
             out.append(Verdict(outcome=Outcome.NOT_RUN, reason="safe-mode", **base))
@@ -343,17 +350,17 @@ def _web(prober: Prober, endpoints: dict[int, Endpoint]) -> list[Verdict]:
             continue
         deadline = time.monotonic() + prober.budget.deadline
         if rule.port not in controls:  # negative control, once per port: how does this site answer a path that can't exist? (R10.3)
-            controls[rule.port] = get(rule.port, f"/nimstead-{secrets.token_hex(8)}", deadline)
-        cst, cbody = controls[rule.port]
-        if cst is not None and 200 <= cst < 300 and cbody.strip():
+            controls[rule.port] = fact(rule.port, f"/nimstead-{secrets.token_hex(8)}", None, deadline)
+        cst, _, cdigest, ccontent = controls[rule.port]
+        if cst is not None and 200 <= cst < 300 and ccontent:
             out.append(Verdict(outcome=Outcome.UNDETERMINED, reason="soft-404", detail=f"a missing path returned HTTP {cst} with a body", **base))
             continue
-        st, body = get(rule.port, rule.path, deadline)
+        st, hit, digest, _ = fact(rule.port, rule.path, rule.marker, deadline)
         if st is None:  # no response (timeout, reset): nothing was observed, so it can't be called fixed (R4.6)
             out.append(Verdict(outcome=Outcome.UNDETERMINED, reason="host-lost", detail="the request got no HTTP response", **base))
-        elif st == 200 and rule.marker.search(body) and body != cbody:  # a flaw-specific marker, and different from the control
+        elif st == 200 and hit and digest != cdigest:  # a flaw-specific marker, and different from the control
             out.append(Verdict(outcome=Outcome.VULNERABLE, grade=Grade.REASONABLE, cvss=rule.cvss, cvss_source="Nimstead", summary=rule.summary,
-                               observed=f"HTTP {st}, {len(body)} bytes matching the marker", source="HTTP GET", detail=_RAISE_REMOTE, **base))
+                               observed=f"HTTP {st}, matching the marker", source="HTTP GET", detail=_RAISE_REMOTE, **base))
         else:
             out.append(Verdict(outcome=Outcome.NOT_VULNERABLE, grade=Grade.REASONABLE,
                                observed=f"HTTP {st}" + (" (marker absent)" if st == 200 else ""), source="HTTP GET", **base))

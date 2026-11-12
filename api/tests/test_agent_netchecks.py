@@ -136,3 +136,58 @@ def test_the_agent_calls_a_rejected_handshake_lost(monkeypatch):
     finally:
         srv.close()
     assert facts["der"] is None and facts["lost"] is True
+
+
+def _http_server(pages: dict, pad: int = 0):
+    """A local HTTP server: pages maps a path to (status, body); anything else is a 404. pad adds that many header bytes."""
+    import http.server
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            status, body = pages.get(self.path, (404, b"not found"))
+            self.send_response(status)
+            if pad:
+                self.send_header("X-Pad", "a" * pad)
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):
+            pass
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv
+
+
+def test_the_agent_judges_web_paths_itself_and_never_sends_the_body(monkeypatch):
+    """Ship review: the agent sent up to 4 KiB of each .env/.git/config body to the server; now only facts."""
+    secret = b"DB_PASSWORD=hunter2\n"
+    srv = _http_server({"/.git/config": (200, b"[core]\n\tbare = false\n"), "/.env": (200, secret)})
+    port = srv.server_address[1]
+    monkeypatch.setattr(agent.socket, "create_connection", (lambda orig: lambda addr, timeout=None: orig(("127.0.0.1", port), timeout=timeout))(socket.create_connection))
+    try:
+        control = agent._web_fact("127.0.0.1", "/nimstead-control", None)
+        git = agent._web_fact("127.0.0.1", "/.git/config", agent.NET_WEB_MARKERS["/.git/config"])
+        env = agent._web_fact("127.0.0.1", "/.env", agent.NET_WEB_MARKERS["/.env"])
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    assert control[0] == 404 and control[1] is None and control[3] is True
+    assert git[:2] == [200, True] and env[:2] == [200, True] and len(env[2]) == 64
+    assert b"hunter2" not in json.dumps([control, git, env]).encode() and base64.b64encode(secret).decode() not in json.dumps(env)
+
+
+def test_headers_that_fill_the_agents_read_are_no_response(monkeypatch):
+    srv = _http_server({"/.env": (200, b"DB_PASSWORD=x\n")}, pad=70_000)
+    port = srv.server_address[1]
+    monkeypatch.setattr(agent.socket, "create_connection", (lambda orig: lambda addr, timeout=None: orig(("127.0.0.1", port), timeout=timeout))(socket.create_connection))
+    try:
+        fact = agent._web_fact("127.0.0.1", "/.env", agent.NET_WEB_MARKERS["/.env"])
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    assert fact[0] is None
+
+
+def test_the_agents_markers_are_the_servers():
+    assert {p: m.pattern for p, m in agent.NET_WEB_MARKERS.items()} == {r.path: r.marker.pattern for r in net.WEB_RULES}
+    assert {p: m.flags for p, m in agent.NET_WEB_MARKERS.items()} == {r.path: r.marker.flags for r in net.WEB_RULES}

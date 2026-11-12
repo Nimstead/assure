@@ -123,17 +123,35 @@ INTERNAL_EXPOSED = {f"NIM-EXPOSED-{c}" for c in ("TELNET", "FTP", "VNC", "REDIS"
 PORTS = sorted(set(external.SERVICES) | {external.TLS_PORT, 80, *network.BANNER_PORTS})
 
 
+NO_RESPONSE = (None, None, "", False)
+_DIGEST = re.compile(r"^[0-9a-f]{64}$")
+
+
 class _Replay(network.Prober):
-    """The prober's web checks answered from what the agent recorded: each fixed path as recorded, any other path (the
-    prober's own random control) with the agent's control. A fixed path the agent didn't record got no response."""
+    """The prober's checks answered from what the agent recorded, never from the network: each fixed web path's facts as
+    the agent judged them, any other path (the prober's own random control) with the agent's control. A fixed path the
+    agent didn't record, or recorded in a form the server can't read, got no response. Web findings are named by port,
+    so a device that moves address keeps them."""
     def __init__(self, ip: str, http: dict):
         super().__init__(ip, ip)
-        self.http = http
+        self.http, self.web_base = http, "tcp/80 "
 
-    def _http_get(self, port, path, deadline):
-        fixed = path in {r.path for r in network.WEB_RULES}
-        status, body = self.http.get(path if fixed else "control") or [None, b""]  # missing: no response, so it can't close anything
-        return status, body
+    def web_fact(self, port, path, marker, deadline):
+        return self.http.get(path if path in {r.path for r in network.WEB_RULES} else "control", NO_RESPONSE)
+
+    def _exchange(self, *a, **k):
+        raise RuntimeError("a replay never connects: the server judges what the agent saw")
+
+
+def _web_fact(v) -> tuple:
+    """One web fact the agent sent ([status, marker matched or null, body SHA-256, had content]), or NO_RESPONSE if it
+    doesn't have exactly that shape: unread is never an empty page (R4.6)."""
+    if not (isinstance(v, list) and len(v) == 4):
+        return NO_RESPONSE
+    status, hit, digest, content = v
+    ok = ((status is None or (isinstance(status, int) and not isinstance(status, bool) and 100 <= status <= 599)) and hit in (True, False, None)
+          and isinstance(digest, str) and _DIGEST.match(digest) and content in (True, False))
+    return (status, hit, digest, content) if ok else NO_RESPONSE
 
 
 def _b64(v, limit: int) -> bytes:
@@ -172,14 +190,13 @@ def _observe(obs: dict) -> tuple[list, dict]:
     if endpoints[external.TLS_PORT].state == "open":
         endpoints[external.TLS_PORT].tls = _tls(obs.get("tls"))
     http = obs.get("http") if isinstance(obs.get("http"), dict) else {}
-    recorded = {k: [v[0] if isinstance(v[0], int) else None, _b64(v[1], 4096)] for k, v in http.items()
-                if k in ("control", *(r.path for r in network.WEB_RULES)) and isinstance(v, list) and len(v) == 2}
+    recorded = {k: _web_fact(http[k]) for k in ("control", *(r.path for r in network.WEB_RULES)) if k in http}
     verdicts = [v for v in network.evaluate(_Replay(ip, recorded), endpoints)
                 if not (v.vuln_id or "").startswith("NIM-EXPOSED-") or v.vuln_id in INTERNAL_EXPOSED]
-    verdicts = [replace(v, summary=v.summary.replace("is reachable from the internet.", "answers on your network."))
-                if v.summary and v.vuln_id in INTERNAL_EXPOSED else v for v in verdicts]
+    verdicts = [replace(v, summary=v.summary.replace("is reachable from the internet.", "answers on your network.")
+                        .replace("served to the internet", "served on your network")) if v.summary else v for v in verdicts]
     rep = network.build_report(ip, ip, verdicts, endpoints, [], all(e.state == "filtered" for e in endpoints.values()))
-    rep["requests"] = [f"GET :80{p}" for p in recorded]
+    rep["requests"] = ["GET :80 (a path that can't exist)" if k == "control" else f"GET :80{k}" for k in recorded]
     return verdicts, rep
 
 

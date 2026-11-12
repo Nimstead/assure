@@ -3,8 +3,10 @@ own neighbour rows on private ranges, through the engine's evaluator, as finding
 
 import base64
 import datetime as dt
+import hashlib
 from datetime import timedelta
 
+import pytest
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
@@ -30,6 +32,13 @@ def obs(ip=CAMERA[0], mac=CAMERA[1], open_=(), filtered=(), banners=None, tls=No
     for p, b in (banners or {}).items():
         ports[str(p)].update(state="open", banner=b64(b), reflects=False)
     return {"ip": ip, "mac": mac, "ports": ports, "tls": tls, "http": http}
+
+
+def page(status, body: bytes, path: str | None = None) -> list:
+    """What the agent sends for one web request: status, whether the path's marker matched (None for the control), the
+    body's SHA-256 and whether it had any content. Never the body itself (DECISIONS 129)."""
+    rule = next((r for r in net.WEB_RULES if r.path == path), None)
+    return [status, bool(rule.marker.search(body)) if rule else None, hashlib.sha256(body).hexdigest(), bool(body.strip())]
 
 
 def cert(days: int) -> str:
@@ -112,10 +121,10 @@ def test_expired_certificates_and_banners_count_self_signed_ones_do_not(env):
 def test_web_paths_use_the_agents_negative_control(env):
     c, h = setup(env)
     git = b"[core]\n\trepositoryformatversion = 0\n"
-    send(c, h, [obs(open_={80}, http={"control": [404, b64(b"no")], "/.git/config": [200, b64(git)], "/.env": [404, b64(b"no")]})])
+    send(c, h, [obs(open_={80}, http={"control": page(404, b"no"), "/.git/config": page(200, git, "/.git/config"), "/.env": page(404, b"no", "/.env")})])
     assert [x["vuln_id"] for x in c.get("/api/findings").json()] == ["NIM-WEB-GIT"]
-    send(c, h, [obs(CAMERA[0], CAMERA[1], open_={80}, http={"control": [200, b64(b"<h1>hi</h1>")], "/.git/config": [200, b64(b"<h1>hi</h1>")],
-                                                          "/.env": [200, b64(b"<h1>hi</h1>")]})])
+    send(c, h, [obs(CAMERA[0], CAMERA[1], open_={80}, http={"control": page(200, b"<h1>hi</h1>"), "/.git/config": page(200, b"<h1>hi</h1>", "/.git/config"),
+                                                          "/.env": page(200, b"<h1>hi</h1>", "/.env")})])
     assert [x["vuln_id"] for x in c.get("/api/findings").json()] == ["NIM-WEB-GIT"]  # soft-404 now: undetermined, still open
 
 
@@ -146,9 +155,9 @@ def test_a_web_path_missing_from_the_report_keeps_its_finding_open(env):
     """Prove-It: the agent's report lacks /.env this time. Silence is not evidence the file is gone."""
     c, h = setup(env)
     env_body = b"DB_PASSWORD=hunter2\n"
-    send(c, h, [obs(open_={80}, http={"control": [404, b64(b"no")], "/.git/config": [404, b64(b"no")], "/.env": [200, b64(env_body)]})])
+    send(c, h, [obs(open_={80}, http={"control": page(404, b"no"), "/.git/config": page(404, b"no", "/.git/config"), "/.env": page(200, env_body, "/.env")})])
     assert [x["vuln_id"] for x in c.get("/api/findings").json()] == ["NIM-WEB-ENV"]
-    send(c, h, [obs(open_={80}, http={"control": [404, b64(b"no")], "/.git/config": [404, b64(b"no")]})])
+    send(c, h, [obs(open_={80}, http={"control": page(404, b"no"), "/.git/config": page(404, b"no", "/.git/config")})])
     assert [x["vuln_id"] for x in c.get("/api/findings").json()] == ["NIM-WEB-ENV"]
 
 
@@ -186,3 +195,38 @@ def test_a_device_that_speaks_only_tls_1_0_opens_the_legacy_finding(env):
     c, h = setup(env)
     send(c, h, [obs(open_={443}, tls={"der": None, "legacy": True, "lost": True})])
     assert [x["vuln_id"] for x in c.get("/api/findings").json()] == ["NIM-TLS-LEGACY"]
+
+
+def test_a_malformed_web_entry_keeps_its_finding_open(env):
+    """Prove-It (ship review): an entry the server can't read was treated as an empty 200 and closed the finding."""
+    c, h = setup(env)
+    env_body = b"DB_PASSWORD=hunter2\n"
+    send(c, h, [obs(open_={80}, http={"control": page(404, b"no"), "/.git/config": page(404, b"no", "/.git/config"), "/.env": page(200, env_body, "/.env")})])
+    for bad in ([200, "yes", "zz", True], [200, False], [200, False, "0" * 64, True, "extra"]):  # three more: the hourly limit is four
+        send(c, h, [obs(open_={80}, http={"control": page(404, b"no"), "/.git/config": page(404, b"no", "/.git/config"), "/.env": bad})])
+        assert [x["vuln_id"] for x in c.get("/api/findings").json()] == ["NIM-WEB-ENV"], bad
+
+
+def test_a_device_that_moves_address_keeps_one_web_finding(env):
+    """Prove-It (ship review): the web finding was keyed by the device's IP, so a DHCP move opened a second one."""
+    c, h = setup(env)
+    git = b"[core]\n"
+    exposed = {"control": page(404, b"no"), "/.git/config": page(200, git, "/.git/config"), "/.env": page(404, b"no", "/.env")}
+    send(c, h, [obs(open_={80}, http=exposed)])
+    report(c, h, [row("192.168.1.70", CAMERA[1])])
+    send(c, h, [obs("192.168.1.70", CAMERA[1], open_={80}, http=exposed)])
+    f = c.get("/api/findings").json()
+    assert [(x["vuln_id"], x["hostname"]) for x in f] == [("NIM-WEB-GIT", "192.168.1.70")]
+
+
+def test_judging_a_device_never_opens_a_connection(env, monkeypatch):
+    """The server replays what the agent saw; a future rule must not make it connect to an address an agent named."""
+    import socket
+    c, h = setup(env)
+    monkeypatch.setattr(socket, "create_connection", lambda *a, **k: pytest.fail(f"server connected to {a}"))
+    send(c, h, [obs(open_={80, 443, 6379}, banners={21: b"220 (vsFTPd 2.3.4)\r\n"}, tls={"der": cert(-5), "legacy": True, "lost": False},
+                    http={"control": page(404, b"no"), "/.git/config": page(200, b"[core]", "/.git/config"), "/.env": page(404, b"no", "/.env")})])
+    assert len(c.get("/api/findings").json()) == 6
+    from nimstead.neighbours import _Replay
+    with pytest.raises(RuntimeError):
+        _Replay("192.168.1.64", {})._exchange(80)

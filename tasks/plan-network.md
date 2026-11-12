@@ -91,8 +91,8 @@ See `tasks/todo-network.md` for acceptance criteria and verification per task.
 - [ ] Owner review, release
 
 ### Phase 4: internal exposure from one chosen agent (gated on N9)
-- [x] N9: Decision draft with a recommendation (written below; the owner's yes or no is pending) (XS)
-- [ ] N10: One admin-chosen agent probes its own directly attached private subnets with the shipped prober (M, agent bump)
+- [x] N9: Decision draft with a recommendation; the owner said yes 2026-11-12 (XS)
+- [x] N10: One locally opted-in agent checks devices from its own neighbour table on its own private subnets (M, agent 0.7.0)
 - [ ] N11: Internal devices' exposed-service and TLS verdicts become findings on the unmanaged-device rows (M)
 
 ### Checkpoint 4
@@ -161,7 +161,7 @@ probe anything outside these limits?".
 Safest, but a gap against leading tools. (b) A separate scanner appliance the customer runs: no change to the agent's
 threat model, but a second product to install and keep updated; a later option, not a replacement.
 
-**Owner's answer:** _pending_. N10 and N11 start only on a yes to this draft specifically.
+**Owner's answer (2026-11-12):** yes, "proceed with best recommendation" (DECISIONS 129). Built one step tighter than drafted: the server names no addresses at all; the agent picks from its own table.
 
 ## Not doing
 - UDP, banner fingerprinting beyond the rules in `network.VERSION_RULES`, credentialed remote checks, internal

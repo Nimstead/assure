@@ -22,6 +22,7 @@ import platform
 import re
 import shutil
 import socket
+import ssl
 import stat
 import subprocess
 import sys
@@ -32,6 +33,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 
 AGENT_VERSION = "0.7.0"  # the server reads this line to flag outdated agents; bump on every agent change
 # Ed25519 public keys (hex) allowed to sign releases (DECISIONS 31): primary (GitHub Actions) and offline backup.
@@ -1481,30 +1483,179 @@ def network_view():
     return {"seen": neighbours(), "own": own_addresses()}
 
 
-PS_OWN_ADDRESSES = ("ConvertTo-Json -Compress -InputObject @{ ips = @(Get-NetIPAddress -ErrorAction SilentlyContinue | ForEach-Object IPAddress); "
+PS_OWN_ADDRESSES = ("ConvertTo-Json -Compress -InputObject @{ ips = @(Get-NetIPAddress -ErrorAction SilentlyContinue | "
+                    "ForEach-Object { \"$($_.IPAddress)/$($_.PrefixLength)\" }); "
                     "macs = @(Get-NetAdapter -ErrorAction SilentlyContinue | ForEach-Object MacAddress) }")
+
+
+def interfaces(run=None, which=shutil.which, nt=os.name == "nt"):
+    """(["address/prefix", ...], [mac, ...]) as this machine's interfaces report them, unvalidated; ([], []) if unreadable."""
+    cidrs, macs = [], []
+    try:
+        if nt:
+            rc, out = ps(run or sh, PS_OWN_ADDRESSES, timeout=60)
+            d = json.loads(out) if rc == 0 else {}
+            cidrs, macs = d.get("ips") or [], d.get("macs") or []
+            cidrs, macs = [cidrs] if isinstance(cidrs, str) else cidrs, [macs] if isinstance(macs, str) else macs  # one value isn't a list
+        elif which("ip"):
+            rc, out = (run or sh)(["ip", "-j", "addr"], timeout=30)
+            for link in json.loads(out) if rc == 0 else []:
+                macs.append(link.get("address"))
+                cidrs += [f"{a.get('local')}/{a.get('prefixlen')}" for a in link.get("addr_info") or []]
+    except (ValueError, AttributeError, TypeError):  # output that isn't the JSON shape asked for: say nothing rather than guess
+        return [], []
+    return [str(c) for c in cidrs], macs
 
 
 def own_addresses(run=None, which=shutil.which, nt=os.name == "nt"):
     """This machine's own interface addresses and MACs, {"ips": [...], "macs": [...]}, so the server can tell a neighbour
     that is another managed machine. Unusable entries are dropped (unicast_ip, unicast_mac); at most 64 of each."""
-    ips, macs = [], []
-    try:
-        if nt:
-            rc, out = ps(run or sh, PS_OWN_ADDRESSES, timeout=60)
-            d = json.loads(out) if rc == 0 else {}
-            ips, macs = d.get("ips") or [], d.get("macs") or []
-            ips, macs = [ips] if isinstance(ips, str) else ips, [macs] if isinstance(macs, str) else macs  # one value isn't a list
-        elif which("ip"):
-            rc, out = (run or sh)(["ip", "-j", "addr"], timeout=30)
-            for link in json.loads(out) if rc == 0 else []:
-                macs.append(link.get("address"))
-                ips += [a.get("local") for a in link.get("addr_info") or []]
-    except (ValueError, AttributeError, TypeError):  # output that isn't the JSON shape asked for: say nothing rather than guess
-        ips, macs = [], []
-    ips = list(dict.fromkeys(filter(None, map(unicast_ip, ips))))
+    cidrs, macs = interfaces(run, which, nt)
+    ips = list(dict.fromkeys(filter(None, (unicast_ip(c.split("/")[0]) for c in cidrs))))
     macs = list(dict.fromkeys(filter(None, map(unicast_mac, macs))))
     return {"ips": ips[:64], "macs": macs[:64]}
+
+
+RFC1918 = ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
+
+
+def own_networks(run=None, which=shutil.which, nt=os.name == "nt"):
+    """The private IPv4 subnets this machine is directly attached to, /16 or smaller (DECISIONS 129): the only places
+    network checks may go. shortcut: IPv4 only; IPv6 neighbours aren't checked yet."""
+    out = []
+    for c in interfaces(run, which, nt)[0]:
+        try:
+            net = ipaddress.ip_interface(c).network
+        except ValueError:
+            continue
+        # RFC 1918 only: Python's is_private also counts documentation and other reserved ranges
+        if net.version == 4 and 16 <= net.prefixlen <= 30 and any(net.subnet_of(ipaddress.ip_network(r)) for r in RFC1918):
+            out.append(net)
+    return list(dict.fromkeys(out))
+
+
+# Network checks (DECISIONS 129): only with the local --allow-network-checks opt-in, only devices in this machine's own
+# neighbour table on its own private subnets, only these fixed read-only checks. The server names nothing: no address,
+# port, path or rule. The agent sends what it observed; the server judges it with the engine's evaluator.
+NET_CHECK_PORTS = (21, 22, 23, 25, 80, 110, 143, 443, 445, 1433, 2121, 2222, 2375, 3306, 3389, 5432, 5900, 6379, 9200, 11211, 27017)
+NET_BANNER_PORTS = (21, 22, 25, 110, 143, 2121, 2222)
+NET_WEB_PATHS = ("/.git/config", "/.env")
+NET_CHECK_MAX = 32          # devices per run, rotating through the rest run by run
+NET_CHECK_SECONDS = 300     # the whole run; devices not reached are left for the next one
+NET_TIMEOUT = 3.0  # as the server's prober: Windows reports a refused connection only after about 2 s of retries
+
+
+def _connect_state(ip, port):
+    try:
+        with socket.create_connection((ip, port), timeout=NET_TIMEOUT):
+            return "open"
+    except (ConnectionRefusedError, ConnectionResetError):
+        return "closed"  # something answered and nothing listens: evidence
+    except OSError:
+        return "filtered"  # a drop proves nothing either way
+
+
+def _exchange(ip, port, payload=b"", limit=512):
+    """One read-only connection: send payload (if any), read at most limit bytes. b"" on any failure."""
+    data = b""
+    try:
+        with socket.create_connection((ip, port), timeout=NET_TIMEOUT) as sock:
+            if payload:
+                sock.sendall(payload)
+            while len(data) < limit and (chunk := sock.recv(limit - len(data))):
+                data += chunk
+    except OSError:
+        pass  # keep what was read: a partial greeting is still evidence
+    return data
+
+
+def _no_verify(minimum=None, maximum=None):
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    ctx.check_hostname, ctx.verify_mode = False, ssl.CERT_NONE  # content, not trust: the server judges the certificate
+    if minimum:
+        ctx.minimum_version, ctx.maximum_version = minimum, maximum
+        ctx.set_ciphers("DEFAULT:@SECLEVEL=0")
+    return ctx
+
+
+def _tls_facts(ip):
+    """The certificate 443 presents (DER, base64) and whether TLS 1.0/1.1 completes (None: this Python can't offer them)."""
+    der = None
+    try:
+        with socket.create_connection((ip, 443), timeout=NET_TIMEOUT) as raw, _no_verify().wrap_socket(raw) as s:
+            der = s.getpeercert(binary_form=True)
+    except (OSError, ssl.SSLError):
+        pass
+    try:
+        legacy_ctx = _no_verify(ssl.TLSVersion.TLSv1, ssl.TLSVersion.TLSv1_1)
+    except (ValueError, ssl.SSLError):
+        legacy = None
+    else:
+        try:
+            with socket.create_connection((ip, 443), timeout=NET_TIMEOUT) as raw, legacy_ctx.wrap_socket(raw):
+                legacy = True
+        except ssl.SSLError as e:
+            legacy = None if "NO_PROTOCOLS_AVAILABLE" in str(e).upper() else False
+        except OSError:
+            legacy = False
+    return {"der": base64.b64encode(der).decode() if der else None, "legacy": legacy}
+
+
+def _http_get(ip, path):
+    """[status or None, body base64 (at most 4 KiB)] for one GET with Host: the address."""
+    data = _exchange(ip, 80, f"GET {path} HTTP/1.1\r\nHost: {ip}\r\nUser-Agent: nimstead-agent\r\nConnection: close\r\n\r\n".encode(), 8192)
+    head, _, body = data.partition(b"\r\n\r\n")
+    try:
+        status = int(head.split(b" ", 2)[1])
+    except (IndexError, ValueError):
+        status = None
+    return [status, base64.b64encode(body[:4096]).decode()]
+
+
+def check_device(ip, mac):
+    """Observations of one device: each fixed port's state, banner greetings with a nonce echo test, 443's certificate,
+    and the negative control plus the fixed web paths on 80. Read only; one connection per endpoint at a time."""
+    def port(p):
+        st = _connect_state(ip, p)
+        row = {"state": st}
+        if st == "open" and p in NET_BANNER_PORTS:
+            nonce = os.urandom(8).hex().encode()
+            row["banner"] = base64.b64encode(_exchange(ip, p)).decode()
+            row["reflects"] = nonce in _exchange(ip, p, b"NIMSTEAD-CTRL-" + nonce + b"\r\n")
+        return p, row
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        ports = dict(pool.map(port, NET_CHECK_PORTS))
+    obs = {"ip": ip, "mac": mac, "ports": {str(p): r for p, r in ports.items()}, "tls": None, "http": None}
+    if ports[443]["state"] == "open":
+        obs["tls"] = _tls_facts(ip)
+    if ports[80]["state"] == "open":
+        control = f"/nimstead-{os.urandom(8).hex()}"
+        obs["http"] = {"control": _http_get(ip, control), **{p: _http_get(ip, p) for p in NET_WEB_PATHS}}
+    return obs
+
+
+def network_check_targets(seen, networks, own_ips, run_index):
+    """At most NET_CHECK_MAX (ip, mac) from this machine's own neighbour rows that sit in its own private subnets and
+    aren't its own addresses, rotating by run_index so a larger subnet is covered over several runs."""
+    rows = sorted({(r["ip"], r["mac"]) for r in seen if r["ip"] not in own_ips
+                   and any(ipaddress.ip_address(r["ip"]) in n for n in networks)}, key=lambda r: ipaddress.ip_address(r[0]))
+    if len(rows) <= NET_CHECK_MAX:
+        return rows
+    start = run_index * NET_CHECK_MAX % len(rows)
+    return (rows[start:] + rows[:start])[:NET_CHECK_MAX]
+
+
+def network_checks(seen, networks=None, own_ips=None, check=check_device, clock=time.monotonic):
+    """{"devices": [observations], "stopped": bool} for this run's targets; stops at NET_CHECK_SECONDS."""
+    networks = own_networks() if networks is None else networks
+    own_ips = set(own_addresses()["ips"]) if own_ips is None else own_ips
+    deadline, out, stopped = clock() + NET_CHECK_SECONDS, [], False
+    for ip, mac in network_check_targets(seen, networks, own_ips, int(time.time() // 3600)):
+        if clock() > deadline:
+            stopped = True
+            break
+        out.append(check(ip, mac))
+    return {"devices": out, "stopped": stopped}
 
 
 def collect():
@@ -4609,6 +4760,9 @@ def _main(argv):
                     help="enrolment token (or set NIMSTEAD_TOKEN, which keeps it out of the process list)")
     en.add_argument("--allow-remediation", action="store_true",
                     help="let this host run approved package upgrades (local opt-in; the server cannot enable it)")
+    en.add_argument("--allow-network-checks", action="store_true",
+                    help="after each report, check up to 32 devices from this machine's own neighbour table on its own private "
+                         "subnets with fixed read-only checks (local opt-in; the server cannot enable it or choose targets)")
     en.add_argument("--windows-update-source", choices=("default", "microsoft"), default="default",
                     help="Windows: where fixes are searched for; 'microsoft' bypasses WSUS for Nimstead's jobs (local choice)")
     en.add_argument("--ad-discovery", action="store_true",
@@ -4675,7 +4829,8 @@ def _main(argv):
                 raise AgentError("enroll response missing agent_key")
             # only the fields we expect from the server, and local choices last: the server can't opt a host in
             cfg = {"asset_id": res.get("asset_id"), "agent_key": res["agent_key"], "server": a.server,
-                   "allow_remediation": a.allow_remediation, "auto_update": not a.no_auto_update, "channel": a.channel,
+                   "allow_remediation": a.allow_remediation, "network_checks": a.allow_network_checks,
+                   "auto_update": not a.no_auto_update, "channel": a.channel,
                    "scan_jars": a.scan_jars, "scan_apps": a.scan_apps, "app_roots": app_roots(a), "ad_discovery": a.ad_discovery,
                    **({"windows_update_source": "microsoft"} if a.windows_update_source == "microsoft" else {}),
                    **({"proxy": a.proxy} if a.proxy else {})}
@@ -4737,6 +4892,15 @@ def _main(argv):
             post(cfg["server"], "/api/agent/inventory", inv, a.insecure_http, cfg["agent_key"])
             print(f"reported {len(inv['packages'])} packages")
             log_event(f"reported {len(inv['packages'])} packages")
+            if cfg.get("network_checks") and inv.get("neighbours"):  # local opt-in only (DECISIONS 129): the agent picks every target
+                checked = network_checks(inv["neighbours"]["seen"])
+                try:
+                    post(cfg["server"], "/api/agent/network-checks", checked, a.insecure_http, cfg["agent_key"])
+                    print(f"checked {len(checked['devices'])} devices on this machine's networks")
+                    log_event(f"checked {len(checked['devices'])} devices: {', '.join(d['ip'] for d in checked['devices'])}")
+                except AgentError as e:  # the inventory went through: say why the checks didn't
+                    print(f"nimstead-agent: network checks not sent: {e}", file=sys.stderr)
+                    log_event(f"network checks not sent: {e}")
             if cfg.get("ad_discovery") and os.name == "nt":  # local opt-in only: which domain computers have no agent
                 d = ad_computers()
                 try:

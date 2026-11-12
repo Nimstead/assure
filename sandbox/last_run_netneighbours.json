@@ -4,17 +4,17 @@
   "tables": {
    "web": [
     {
-     "dst": "10.77.0.64",
+     "dst": "10.77.0.11",
      "dev": "e-web",
-     "lladdr": "bc:ba:c2:11:22:33",
+     "lladdr": "52:54:00:77:00:11",
      "state": [
       "REACHABLE"
      ]
     },
     {
-     "dst": "10.77.0.11",
+     "dst": "10.77.0.64",
      "dev": "e-web",
-     "lladdr": "52:54:00:77:00:11",
+     "lladdr": "bc:ba:c2:11:22:33",
      "state": [
       "REACHABLE"
      ]
@@ -22,19 +22,19 @@
    ],
    "db": [
     {
-     "dst": "10.77.0.64",
-     "dev": "e-db",
-     "lladdr": "bc:ba:c2:11:22:33",
-     "state": [
-      "REACHABLE"
-     ]
-    },
-    {
      "dst": "10.77.0.10",
      "dev": "e-db",
      "lladdr": "52:54:00:77:00:10",
      "state": [
       "DELAY"
+     ]
+    },
+    {
+     "dst": "10.77.0.64",
+     "dev": "e-db",
+     "lladdr": "bc:ba:c2:11:22:33",
+     "state": [
+      "REACHABLE"
      ]
     }
    ]
@@ -45,13 +45,13 @@
   "neighbours": {
    "seen": [
     {
-     "ip": "10.77.0.64",
-     "mac": "bc:ba:c2:11:22:33",
+     "ip": "10.77.0.11",
+     "mac": "52:54:00:77:00:11",
      "interface": "e-web"
     },
     {
-     "ip": "10.77.0.11",
-     "mac": "52:54:00:77:00:11",
+     "ip": "10.77.0.64",
+     "mac": "bc:ba:c2:11:22:33",
      "interface": "e-web"
     }
    ],
@@ -71,13 +71,13 @@
   "neighbours": {
    "seen": [
     {
-     "ip": "10.77.0.64",
-     "mac": "bc:ba:c2:11:22:33",
+     "ip": "10.77.0.10",
+     "mac": "52:54:00:77:00:10",
      "interface": "e-db"
     },
     {
-     "ip": "10.77.0.10",
-     "mac": "52:54:00:77:00:10",
+     "ip": "10.77.0.64",
+     "mac": "bc:ba:c2:11:22:33",
      "interface": "e-db"
     }
    ],
@@ -110,9 +110,10 @@
      "db-1",
      "web-1"
     ],
-    "first_seen": "2026-11-11T23:51:52.054023",
-    "last_seen": "2026-11-11T23:51:52.391218",
-    "vendor": "Hangzhou Hikvision Digital Technology Co.,Ltd."
+    "first_seen": "2026-11-12T02:43:46.760193",
+    "last_seen": "2026-11-12T02:43:47.023234",
+    "vendor": "Hangzhou Hikvision Digital Technology Co.,Ltd.",
+    "checked": null
    }
   ]
  },
@@ -127,9 +128,10 @@
     "db-1",
     "web-1"
    ],
-   "first_seen": "2026-11-11T23:51:52.054023",
-   "last_seen": "2026-11-11T23:51:52.391218",
-   "vendor": "Hangzhou Hikvision Digital Technology Co.,Ltd."
+   "first_seen": "2026-11-12T02:43:46.760193",
+   "last_seen": "2026-11-12T02:43:47.023234",
+   "vendor": "Hangzhou Hikvision Digital Technology Co.,Ltd.",
+   "checked": null
   }
  }
 ]

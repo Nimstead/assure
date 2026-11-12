@@ -65,7 +65,7 @@ def network():
                   f"ip link set v-{ns} up", f"ip link set e-{ns} netns {ns}", f"ip -n {ns} link set e-{ns} address {mac}",
                   f"ip -n {ns} link set e-{ns} up", f"ip -n {ns} link set lo up", f"ip -n {ns} addr add {ip}/24 dev e-{ns}"]
     vm("\n".join(lines))
-    vm("ip netns exec camera sh -c 'nohup python3 -m http.server 80 >/dev/null 2>&1 &'; sleep 1")
+    vm("mkdir -p /root/www; ip netns exec camera sh -c 'nohup python3 -m http.server 80 --directory /root/www >/dev/null 2>&1 &'; sleep 1")
     for a in ("web", "db"):
         for b, (ip, _) in HOSTS.items():
             if a != b:

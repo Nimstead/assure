@@ -6,7 +6,8 @@ entry outside web's subnet is planted in its table (a permanent ARP entry on ano
 Run from api/:  uv run python ../sandbox/netinternal.py [--keep]
 
 Must hold: the agent's own target choice is the camera and db, which has no agent here (never the planted address, never itself); its real
-observations, judged by the real server, open NIM-EXPOSED-REDIS and NIM-TLS-EXPIRED on the camera's device asset and no
+observations, judged by the real server, open NIM-EXPOSED-REDIS, NIM-TLS-EXPIRED and NIM-WEB-GIT (a real .git/config the agent
+judged itself, sending only facts, never the file) on the camera's device asset and no
 untrusted-certificate finding; Redis stopped (refused) then closes its finding; a device the host never saw, added to
 the report by hand, is refused by the server. Logs to sandbox/last_run_netinternal.json.
 """
@@ -76,6 +77,8 @@ def main(keep=False) -> int:
         nn.put("/root/expired.pem", pem)
         nn.put("/root/expired.key", key)
         network()
+        vm("mkdir -p /root/www/.git")
+        nn.put("/root/www/.git/config", b"[core]\n\trepositoryformatversion = 0\n")  # served by the camera's web server
         vm("ip netns exec camera redis-server --bind 0.0.0.0 --protected-mode no --port 6379 --save '' --daemonize yes >/dev/null")
         vm("ip netns exec camera sh -c 'nohup openssl s_server -quiet -accept 443 -cert /root/expired.pem -key /root/expired.key -www >/dev/null 2>&1 &'; sleep 2")
         vm(f"ip -n web neigh replace {PLANTED[0]} lladdr {PLANTED[1]} dev e-web nud permanent")
@@ -104,6 +107,9 @@ def main(keep=False) -> int:
         note("server's judgement", result=out, findings=f1)
         assert out["refused"] == 1 and out["checked"] == 2, out
         assert ("NIM-EXPOSED-REDIS", HOSTS["camera"][0]) in f1 and ("NIM-TLS-EXPIRED", HOSTS["camera"][0]) in f1, f1
+        assert ("NIM-WEB-GIT", HOSTS["camera"][0]) in f1, f1  # judged in the agent, from facts
+        camera_obs = next(d for d in run1["checks"]["devices"] if d["ip"] == HOSTS["camera"][0])
+        assert all(len(v) == 4 for v in camera_obs["http"].values()) and "repositoryformatversion" not in json.dumps(camera_obs), camera_obs["http"]
         assert not any(v in ("NIM-TLS-UNTRUSTED", "NIM-TLS-NAME") for v, _ in f1), f1
 
         vm("ip netns exec camera pkill redis-server || true", check=False)

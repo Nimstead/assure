@@ -158,6 +158,31 @@ def test_the_agent_calls_a_reset_legacy_attempt_unknown(monkeypatch):
     assert facts["der"] and facts["legacy"] is None
 
 
+def test_the_agent_finds_a_device_that_only_speaks_tls_1_0(monkeypatch):
+    """Ship review 3: tested on the server and the external scanner, never in the agent itself."""
+    from tls_servers import serve, tls10_only
+    port, srv = serve(tls10_only)
+    _to_port(monkeypatch, port)
+    try:
+        facts = agent._tls_facts("127.0.0.1")
+    finally:
+        srv.close()
+    if facts["legacy"] is None and not _offers_tls10():
+        pytest.skip("this machine's OpenSSL can't offer TLS 1.0")
+    assert facts["lost"] is True and facts["legacy"] is True
+
+
+def _offers_tls10() -> bool:
+    import ssl
+    try:
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        ctx.minimum_version = ctx.maximum_version = ssl.TLSVersion.TLSv1
+        ctx.set_ciphers("DEFAULT:@SECLEVEL=0")
+        return True
+    except (ValueError, ssl.SSLError):
+        return False
+
+
 def test_the_agent_calls_an_alert_on_tls_1_0_a_refusal(monkeypatch):
     from tls_servers import modern_only, serve
     port, srv = serve(modern_only)

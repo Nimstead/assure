@@ -116,15 +116,15 @@ class VersionRule:
 # Results remain unverified because banners do not establish the installed binary or backport state.
 _DISTRO_SUFFIX = re.compile(rb"(?i)(ubuntu|debian|raspbian|freebsd|\+deb|el\d|\.fc\d)")
 VERSION_RULES = (
-    VersionRule("CVE-2011-2523", "vsftpd", re.compile(rb"\(vsFTPd (?P<ver>[0-9.]+)\)"), lambda v: v == "2.3.4", "2.3.5", 9.8,
+    VersionRule("CVE-2011-2523", "vsftpd", re.compile(rb"\(vsFTPd (?P<ver>[0-9.]{1,20})\)"), lambda v: v == "2.3.4", "2.3.5", 9.8,
                 "NVD", "vsftpd 2.3.4 is the backdoored release: connecting with a ':)' smiley opens a root shell on port 6200.",
                 "Replace this build immediately; install vsftpd from your distribution, which never shipped 2.3.4.",
                 "2.3.4 was a one-off trojaned upstream tarball, not a distribution package, so there is no backported 2.3.4 to confuse it with."),
-    VersionRule("CVE-2015-3306", "ProFTPD", re.compile(rb"ProFTPD (?P<ver>[0-9.]+[a-z]?)"), lambda v: v == "1.3.5", "1.3.5a", 9.8,
+    VersionRule("CVE-2015-3306", "ProFTPD", re.compile(rb"ProFTPD (?P<ver>[0-9.]{1,20}[a-z]?)(?![0-9.a-z])"), lambda v: v == "1.3.5", "1.3.5a", 9.8,
                 "NVD", "ProFTPD 1.3.5's mod_copy lets an unauthenticated client copy files anywhere on the server (SITE CPFR/CPTO).",
                 "Upgrade to 1.3.5a or later, or disable mod_copy.",
                 "ProFTPD states the full upstream version in its banner and the mod_copy fix shipped as 1.3.5a, a new upstream release, not a backport of 1.3.5."),
-    VersionRule("CVE-2024-6387", "OpenSSH", re.compile(rb"SSH-2\.0-OpenSSH[_-](?P<ver>\d+\.\d+(?:p\d+)?)(?P<tail>.*)"),
+    VersionRule("CVE-2024-6387", "OpenSSH", re.compile(rb"SSH-2\.0-OpenSSH[_-](?P<ver>\d{1,4}\.\d{1,4}(?:p\d{1,4})?)(?![\dp])(?P<tail>.*)"),
                 lambda v: _ssh_tuple(v) < (4, 4, 1) or (8, 5, 1) <= _ssh_tuple(v) < (9, 8, 1), "9.8p1", 8.1,
                 "NVD", "OpenSSH 'regreSSHion': a signal-handler race in sshd can give unauthenticated remote code execution.",
                 "Upgrade to OpenSSH 9.8p1 or later.",
@@ -164,12 +164,18 @@ class Endpoint:
 BANNER_PORTS = (21, 22, 25, 110, 143, 2121, 2222)  # where a greeting is worth reading; version rules match on any of them
 # A service saying who it is: an FTP/SMTP 220, a POP3 +OK, an IMAP * OK, or a whole SSH identification line. A refusal
 # (421, 554), an error or a line cut off names nothing, so it can't show a product has gone.
-_GREETING = re.compile(rb"^(220[ -]\S|\+OK\b|\* OK\b|SSH-\d\.\d+-\S+\r?\n)")
+_GREETING = re.compile(rb"^(220[ -]\S|\+OK\b|\* OK\b|SSH-\d\.\d+-\S)")
+
+
+def whole_lines(banner: bytes) -> bytes:
+    """banner up to its last line end: a read cut mid-line ("220 (vsFTPd 2.3.4", "ProFTPD 1.3") is judged on nothing
+    (ship review 3)."""
+    return banner[:banner.rfind(b"\n") + 1]
 
 
 def greeting(banner: bytes) -> bool:
-    """Whether banner is a service positively identifying itself (see _GREETING)."""
-    return bool(_GREETING.match(banner))
+    """Whether banner is a service positively identifying itself in a whole line (see _GREETING)."""
+    return bool(_GREETING.match(whole_lines(banner)))
 
 
 class Prober:
@@ -360,7 +366,10 @@ def _web(prober: Prober, endpoints: dict[int, Endpoint]) -> list[Verdict]:
         if rule.port not in controls:  # negative control, once per port: how does this site answer a path that can't exist? (R10.3)
             controls[rule.port] = fact(rule.port, f"/nimstead-{secrets.token_hex(8)}", None, deadline)
         cst, _, cdigest, ccontent = controls[rule.port]
-        if cst is not None and 200 <= cst < 300 and ccontent:
+        if cst is None:  # without the control's answer a catch-all can't be told from a hit, so nothing is judged (R10.3)
+            out.append(Verdict(outcome=Outcome.UNDETERMINED, reason="host-lost", detail="the path that can't exist got no HTTP response", **base))
+            continue
+        if 200 <= cst < 300 and ccontent:
             out.append(Verdict(outcome=Outcome.UNDETERMINED, reason="soft-404", detail=f"a missing path returned HTTP {cst} with a body", **base))
             continue
         st, hit, digest, _ = fact(rule.port, rule.path, rule.marker, deadline)
@@ -385,7 +394,7 @@ def _versions(endpoints: dict[int, Endpoint]) -> list[Verdict]:
                                outcome=Outcome.UNDETERMINED, reason="catch-all", detail="answered a nonsense probe with the same reply"))
             continue
         for rule in VERSION_RULES:
-            m = rule.banner.search(e.banner)
+            m = rule.banner.search(whole_lines(e.banner))
             if not m:
                 continue
             ver = m.group("ver").decode()

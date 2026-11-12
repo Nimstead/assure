@@ -15,6 +15,7 @@ import ipaddress
 import json
 import os
 import re
+from collections import Counter
 from dataclasses import replace
 from datetime import timedelta
 
@@ -97,7 +98,9 @@ class Fleet:
     at one of those addresses, so a host can't hide a device by naming its MAC alone. fallback: addresses of hosts that
     report no MACs of their own, matched against a device's latest address only, so an address it held last week doesn't
     hide it. Only a host that never sent the table (an agent before 0.7.0, or one with it off) is taken from its `addresses`
-    fact (Windows, DECISIONS 112), and no host counts for more than MAX_OWN addresses either way (ship review 2)."""
+    fact (Windows, DECISIONS 112), and no host counts for more than MAX_OWN addresses either way (ship review 2). A fallback
+    address hides only the MAC seen there most recently, so it hides one device, however many MACs a host reports at it
+    (ship review 3)."""
     def __init__(self, s: Session, org_id: str):
         rows = s.execute(select(Asset.id, Asset.hostname, Asset.own_addresses).where(Asset.org_id == org_id, Asset.kind == "host")).all()
         self.hosts = {aid: hostname for aid, hostname, _ in rows}
@@ -114,10 +117,16 @@ class Fleet:
                 older.append(aid)
         for facts in s.scalars(select(Asset.facts).where(Asset.id.in_(older))) if older else ():
             self.fallback |= {ip for ip in ((facts or {}).get("addresses") or [])[:MAX_OWN] if isinstance(ip, str)}
+        self.newest_at: dict[str, str] = {}  # fallback address -> the MAC seen there most recently
+        ips = sorted(self.fallback)
+        for i in range(0, len(ips), 500):  # in chunks: SQLite allows only so many bound values
+            for ip, mac in s.execute(select(Neighbour.ip, Neighbour.mac).where(Neighbour.org_id == org_id, Neighbour.ip.in_(ips[i:i + 500]))
+                                     .order_by(Neighbour.last_seen, Neighbour.mac)):
+                self.newest_at[ip] = mac
 
     def owns(self, mac: str, addresses: set[str], latest: str) -> bool:
         """Whether a MAC seen at these addresses (latest the newest) is one of the org's own machines."""
-        return bool(self.claims.get(mac, set()) & addresses) or latest in self.fallback
+        return bool(self.claims.get(mac, set()) & addresses) or self.newest_at.get(latest) == mac
 
 
 def unmanaged(s: Session, org_id: str) -> list[dict]:
@@ -166,6 +175,7 @@ def _checked(views: list[Asset], open_ids: dict) -> dict | None:
 RFC1918 = tuple(ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"))
 MAX_CHECKED = 32
 MAX_DEVICES_PER_ORG = 4096  # devices aren't counted against the asset quota, so they have their own cap
+MAX_DEVICES_PER_HOST = 256  # one host checks only its own subnets: it can't take the whole org's share (ship review 3)
 ECOSYSTEM = "Network"
 # On a LAN an open SMB, RDP or database port is normal; these answer without a password or in cleartext by default
 INTERNAL_EXPOSED = {f"NIM-EXPOSED-{c}" for c in ("TELNET", "FTP", "VNC", "REDIS", "ELASTICSEARCH", "MONGODB", "MEMCACHED", "DOCKER")}
@@ -198,8 +208,8 @@ def _web_fact(v) -> tuple:
     if not (isinstance(v, list) and len(v) == 4):
         return NO_RESPONSE
     status, hit, digest, content = v
-    ok = ((status is None or (isinstance(status, int) and not isinstance(status, bool) and 100 <= status <= 599)) and hit in (True, False, None)
-          and isinstance(digest, str) and _DIGEST.match(digest) and content in (True, False))
+    ok = ((status is None or (type(status) is int and 100 <= status <= 599)) and (hit is None or type(hit) is bool)
+          and isinstance(digest, str) and _DIGEST.match(digest) and type(content) is bool)  # 0 == False, but isn't an answer
     return (status, hit, digest, content) if ok else NO_RESPONSE
 
 
@@ -220,7 +230,7 @@ def _tls(obs) -> dict:
         not_after = x509.load_der_x509_certificate(der).not_valid_after_utc.timestamp() if der else None
     except ValueError:
         not_after = None
-    legacy = obs.get("legacy") if obs.get("legacy") in (True, False) else None
+    legacy = obs.get("legacy") if type(obs.get("legacy")) is bool else None  # 0 in (True, False) is True (ship review 3)
     if not_after is None:  # lost unless the agent reached a service that wasn't TLS: a cut handshake, or a certificate sent but unreadable
         return {"trusted": None, "error": "no TLS handshake", "not_after": None, "legacy": legacy, "lost": bool(obs.get("der")) or obs.get("lost") is not False}
     return {"trusted": True, "error": None, "not_after": not_after, "legacy": legacy}
@@ -265,23 +275,29 @@ def record_checks(s: Session, asset: Asset, devices) -> dict:
 
     A device counts only if it is in this host's own stored neighbour rows (same address and MAC) and in a private IPv4
     range, and isn't one of the org's own machines (it has an agent, so it's judged from that); anything else is dropped
-    and counted as refused. Each check goes to the ledger with the host that made it."""
+    and counted as refused. So is a MAC this host sees at more than one address (an extender or proxy ARP puts one MAC on
+    several devices, and one's evidence mustn't close another's finding; ship review 3), and a new device past this host's
+    MAX_DEVICES_PER_HOST or the org's cap. One ledger entry per report lists what each device's check found."""
     s.execute(select(Asset.id).where(Asset.id == asset.id).with_for_update())  # one host's reports one at a time: no device made twice
-    mine = {(n.ip, n.mac) for n in s.scalars(select(Neighbour).where(Neighbour.asset_id == asset.id))}
+    rows = list(s.scalars(select(Neighbour).where(Neighbour.asset_id == asset.id)))
+    mine = {(n.ip, n.mac) for n in rows}
+    newest = max((n.last_seen for n in rows), default=None)  # the latest table only: a DHCP move leaves the old row for 30 days
+    addresses_of = Counter(n.mac for n in rows if n.last_seen == newest)
     fleet = Fleet(s, asset.org_id)
     org_devices = list(s.scalars(select(Asset).where(Asset.org_id == asset.org_id, Asset.kind == "device")))
     known = {(d.facts or {}).get("mac"): d for d in org_devices if (d.facts or {}).get("checked_by") == asset.id}  # this host's own views
     names = oui.vendors(s)
     checked = refused = opened = 0
+    ledger = []
     for obs in (devices if isinstance(devices, list) else [])[:MAX_CHECKED]:
         ip, mac = (_ip(obs.get("ip")), _mac(obs.get("mac"))) if isinstance(obs, dict) else (None, None)
         if (not ip or not mac or (ip, mac) not in mine or not any(ipaddress.ip_address(ip) in n for n in RFC1918)
-                or fleet.owns(mac, {ip}, ip)):
+                or addresses_of[mac] > 1 or fleet.owns(mac, {ip}, ip)):
             refused += 1
             continue
         device = known.get(mac)
         if device is None:
-            if len(org_devices) >= MAX_DEVICES_PER_ORG:
+            if len(org_devices) >= MAX_DEVICES_PER_ORG or len(known) >= MAX_DEVICES_PER_HOST:
                 refused += 1
                 continue
             device = Asset(org_id=asset.org_id, hostname=ip, kind="device", internet_facing=False,
@@ -292,14 +308,15 @@ def record_checks(s: Session, asset: Asset, devices) -> dict:
             org_devices.append(device)
             evidence.append(s, asset.org_id, "asset_created", device.id, {"by": asset.hostname, "name": "device", "kind": "device"})
         vendor = oui.vendor(mac, names)
-        device.hostname, device.os_name = ip, f"{vendor or 'Network device'}, as checked from {asset.hostname}"  # one view per machine
+        device.hostname, device.os_name = ip, f"{vendor or 'Network device'}, as checked from {asset.hostname}"[:255]  # one view per machine
         device.facts = {"mac": mac, "vendor": vendor, "checked_from": asset.hostname, "checked_by": asset.id}
         verdicts, rep = _observe({**obs, "ip": ip})
         engine.record(s, device, rep, {"address": ip, "mac": mac, "from": asset.hostname})
         seen, _, _ = external.apply(s, device, verdicts, rep, ECOSYSTEM)
         # no address or MAC: they can be personal data, kept on the device row (gone after 30 days), not in the permanent ledger
-        evidence.append(s, asset.org_id, "network_check", device.id, {"from": asset.hostname, "problems": sorted({v for v, _ in seen}),
-                                                                      "requests": rep["requests"]})
+        ledger.append({"device": device.id, "problems": sorted({v for v, _ in seen}), "requests": rep["requests"]})
         checked += 1
         opened += len(seen)
+    if ledger:
+        evidence.append(s, asset.org_id, "network_check", asset.id, {"from": asset.hostname, "devices": ledger})
     return {"checked": checked, "refused": refused, "open": opened}

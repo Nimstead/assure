@@ -192,7 +192,9 @@ def _accepts_legacy(ip, host, port, timeout) -> bool | None:
         return legacy_refused(e)
 
 
-_REFUSALS = ("ALERT", "UNSUPPORTED_PROTOCOL", "WRONG_VERSION_NUMBER", "VERSION_TOO_LOW", "NO_SHARED_CIPHER")
+# the alerts that mean "not this version" (an internal_error or decode_error alert says nothing about TLS 1.0; ship review 3)
+_REFUSALS = ("ALERT_PROTOCOL_VERSION", "ALERT_HANDSHAKE_FAILURE", "ALERT_INSUFFICIENT_SECURITY", "UNSUPPORTED_PROTOCOL",
+             "WRONG_VERSION_NUMBER", "VERSION_TOO_LOW")
 
 
 def legacy_refused(e: OSError) -> bool | None:
@@ -319,7 +321,7 @@ def findings_from(verdicts: list, internal: bool = False) -> list[dict]:
     engine's prober: exposed services, TLS, web paths, and banner versions (graded unverified, DECISIONS 127). internal:
     a device inside a network, whose reasons say so."""
     return [{"id": v.vuln_id, "package": v.product, "cvss": v.cvss, "likelihood": likelihood_of(v.vuln_id, internal), "summary": v.summary,
-             "installed": v.version or "", "fixed": v.fixed} for v in verdicts if v.outcome == "vulnerable" and v.vuln_id]
+             "installed": (v.version or "")[:255], "fixed": v.fixed} for v in verdicts if v.outcome == "vulnerable" and v.vuln_id]
 
 
 def held_open(vid: str, package: str, verdicts: list, rep: dict) -> str | None:

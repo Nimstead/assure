@@ -1549,7 +1549,8 @@ NET_CHECK_SECONDS = 300     # the whole run; devices not reached are left for th
 NET_DEVICE_SECONDS = 60     # one device's ports; a port not done by then reads as no answer
 NET_DEVICE_TAIL = 30  # then its TLS and web reads; a device not done by both sends nothing this run
 NET_TIMEOUT = 3.0  # as the server's prober: Windows reports a refused connection only after about 2 s of retries
-NET_TLS_REFUSALS = ("ALERT", "UNSUPPORTED_PROTOCOL", "WRONG_VERSION_NUMBER", "VERSION_TOO_LOW", "NO_SHARED_CIPHER")  # as the server's
+NET_TLS_REFUSALS = ("ALERT_PROTOCOL_VERSION", "ALERT_HANDSHAKE_FAILURE", "ALERT_INSUFFICIENT_SECURITY", "UNSUPPORTED_PROTOCOL",
+                    "WRONG_VERSION_NUMBER", "VERSION_TOO_LOW")  # as the server's
 
 
 def _connect_state(ip, port):

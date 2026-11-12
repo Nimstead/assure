@@ -494,8 +494,11 @@ def test_another_org_can_neither_check_hide_nor_read_this_orgs_devices(env, monk
 
 
 @pytest.mark.skipif(not __import__("conftest").PG, reason="SQLite ignores row locks; the race is Postgres-only")
-def test_one_host_posting_twice_at_once_makes_one_view_of_a_device(env):
+def test_one_host_posting_twice_at_once_makes_one_view_of_a_device(env, monkeypatch):
     import threading
+    import time
+    vendors = neighbours.oui.vendors
+    monkeypatch.setattr(neighbours.oui, "vendors", lambda s: (time.sleep(0.5), vendors(s))[1])  # both past the read, without the lock
     c, h = setup(env)
     gate, codes = threading.Barrier(2), []
 
@@ -509,3 +512,181 @@ def test_one_host_posting_twice_at_once_makes_one_view_of_a_device(env):
         t.join(30)
     s = make_sessionmaker(env)()
     assert codes == [200, 200] and len(list(s.scalars(select(Asset).where(Asset.kind == "device")))) == 1
+
+
+# --- ship review 3 -----------------------------------------------------------------------------------------------------
+
+def open_ids(c):
+    return sorted(f["vuln_id"] for f in c.get("/api/findings").json())
+
+
+@pytest.mark.parametrize("whole,cut,cve", [(b"220 (vsFTPd 2.3.4)\r\n", b"220 (vsFTPd 2.3.4", "CVE-2011-2523"),
+                                            (b"220 ProFTPD 1.3.5 Server ready.\r\n", b"220 ProFTPD 1.3", "CVE-2015-3306")])
+def test_a_greeting_cut_off_mid_line_or_mid_version_keeps_a_banner_cve_open(env, whole, cut, cve):
+    """Prove-It (ship review 3): "220 (vsFTPd 2.3.4" counted as a greeting naming something else, and "ProFTPD 1.3" as a
+    version that isn't 1.3.5; both closed the CVE on a read the agent cut short."""
+    c, h = setup(env)
+    send(c, h, [obs(banners={21: whole})])
+    assert cve in open_ids(c)
+    send(c, h, [obs(banners={21: cut})])
+    assert cve in open_ids(c)
+    send(c, h, [obs(banners={21: b"220 Microsoft FTP Service\r\n"})])  # a whole greeting naming something else closes it
+    assert cve not in open_ids(c)
+
+
+def test_one_mac_at_two_addresses_is_never_judged_on_the_other_devices_evidence(env):
+    """Prove-It (ship review 3): a Wi-Fi extender puts its own MAC on every client behind it; Redis open on .50 opened a
+    finding and .51 refusing the port closed it."""
+    c = user(env)
+    h = agent(c, "web-1")
+    mac = "bc:ba:c2:11:22:33"
+    report(c, h, [row("192.168.1.50", mac), row("192.168.1.51", mac)], own={"ips": ["192.168.1.20"], "macs": ["52:54:00:00:00:20"]})
+    assert send(c, h, [obs("192.168.1.50", mac, open_={6379})])["refused"] == 1
+    assert open_ids(c) == []
+    report(c, h, [row("192.168.1.50", mac)], own={"ips": ["192.168.1.20"], "macs": ["52:54:00:00:00:20"]})  # one address in the latest table
+    assert send(c, h, [obs("192.168.1.50", mac, open_={6379})])["checked"] == 1
+    assert open_ids(c) == ["NIM-EXPOSED-REDIS"]
+
+
+def test_a_web_path_found_without_its_control_answering_opens_nothing(env):
+    """Prove-It (ship review 3): with no answer to the path that can't exist, the soft-404 check was skipped and the hit
+    opened NIM-WEB-GIT (R10.3)."""
+    c, h = setup(env)
+    send(c, h, [obs(open_={80}, http={"/.git/config": page(200, b"[core]\n", "/.git/config"), "/.env": page(404, b"no", "/.env")})])
+    assert open_ids(c) == []
+    send(c, h, [obs(open_={80}, http={"control": page(404, b"no"), "/.git/config": page(200, b"[core]\n", "/.git/config"),
+                                      "/.env": page(404, b"no", "/.env")})])
+    assert open_ids(c) == ["NIM-WEB-GIT"]
+    send(c, h, [obs(open_={80}, http={"/.git/config": page(404, b"no", "/.git/config"), "/.env": page(404, b"no", "/.env")})])
+    assert open_ids(c) == ["NIM-WEB-GIT"]  # nor closes it
+
+
+def test_a_version_too_long_to_be_real_is_never_judged_or_stored(env):
+    """Prove-It (ship review 3): a 400-digit OpenSSH version opened a finding whose version overflowed its 255-character
+    column, so PostgreSQL refused the whole report."""
+    c, h = setup(env)
+    send(c, h, [obs(banners={22: b"SSH-2.0-OpenSSH_8." + b"6" * 400 + b"\r\n", 21: b"220 (vsFTPd " + b"2" * 300 + b")\r\n"})])
+    assert [v for v in open_ids(c) if v.startswith("CVE-")] == []
+    assert all(len(f["installed_version"] or "") <= 255 for f in c.get("/api/findings").json())
+
+
+def test_a_long_host_name_and_maker_still_fit_the_device_name(env, monkeypatch):
+    """Prove-It (ship review 3): maker plus "as checked from" plus a long host name passed 255 characters."""
+    monkeypatch.setattr(neighbours.oui, "vendor", lambda mac, names: "M" * 120)
+    c = user(env)
+    h = agent(c, "h" * 250)
+    report(c, h, [row(*CAMERA)], own={"ips": ["192.168.1.20"], "macs": ["52:54:00:00:00:20"]})
+    send(c, h, [obs(open_={23})])
+    s = make_sessionmaker(env)()
+    assert [len(d.os_name) <= 255 for d in s.scalars(select(Asset).where(Asset.kind == "device"))] == [True]
+
+
+def test_a_host_claiming_one_address_hides_at_most_one_device_there(env):
+    """Prove-It (ship review 3): a host with no MACs of its own that reported 200 MACs at its one address hid all 200."""
+    c = user(env)
+    honest, evil = agent(c, "honest"), agent(c, "evil")
+    victims = [row(f"192.168.1.{i}", f"bc:ba:c2:00:00:{i:02x}") for i in range(2, 202)]
+    report(c, honest, victims, own={"ips": ["192.168.1.1"], "macs": ["52:54:00:00:00:01"]})
+    report(c, evil, [row("192.168.1.250", v["mac"]) for v in victims], own={"ips": ["192.168.1.250"], "macs": []})
+    assert len(c.get("/api/network/unmanaged").json()) == 199
+
+
+def test_one_host_can_fill_only_its_own_share_of_the_device_cap(env, monkeypatch):
+    """Ship review 3: one compromised host filled the org's whole device cap and no other host could add a device."""
+    monkeypatch.setattr(neighbours, "MAX_DEVICES_PER_HOST", 1, raising=False)
+    c, web = setup(env)
+    assert send(c, web, [obs(open_={23}), obs("192.168.1.65", "bc:ba:c2:11:22:34")]) == {"checked": 1, "refused": 1, "open": 1}
+    assert send(c, web, [obs(open_={23})])["checked"] == 1  # its known device still is
+    db = agent(c, "db-1")
+    report(c, db, [row("192.168.1.65", "bc:ba:c2:11:22:34")], own={"ips": ["192.168.1.21"], "macs": ["52:54:00:00:00:21"]})
+    assert send(c, db, [obs("192.168.1.65", "bc:ba:c2:11:22:34")])["checked"] == 1
+
+
+def test_only_true_or_false_count_as_a_tls_or_web_answer(env):
+    """Prove-It (ship review 3): 0 is in (True, False), so legacy: 0 closed NIM-TLS-LEGACY."""
+    c, h = setup(env)
+    send(c, h, [obs(open_={443}, tls={"der": cert(300), "legacy": True, "lost": False})])
+    send(c, h, [obs(open_={443}, tls={"der": cert(300), "legacy": 0, "lost": False})])
+    assert open_ids(c) == ["NIM-TLS-LEGACY"]
+    digest = hashlib.sha256(b"x").hexdigest()
+    assert neighbours._web_fact([200, 1, digest, True]) == neighbours.NO_RESPONSE
+    assert neighbours._web_fact([200, True, digest, 1]) == neighbours.NO_RESPONSE
+
+
+def test_one_ledger_entry_per_report_not_per_device(env):
+    """Ship review 3: one entry per device per report let a host write thousands of permanent rows a day."""
+    c, h = setup(env)
+    send(c, h, [obs(open_={23}), obs("192.168.1.65", "bc:ba:c2:11:22:34")])
+    entries = [e for e in c.get("/api/evidence/ledger").json()["entries"] if e["kind"] == "network_check"]
+    assert len(entries) == 1 and sorted(d["problems"] for d in entries[0]["data"]["devices"]) == [[], ["NIM-EXPOSED-TELNET"]]
+
+
+def test_443_open_with_no_tls_facts_keeps_tls_findings_open(env):
+    c, h = setup(env)
+    send(c, h, [obs(open_={443}, tls={"der": cert(-10), "legacy": False})])
+    assert open_ids(c) == ["NIM-TLS-EXPIRED"]
+    send(c, h, [obs(open_={443})])  # tls missing: a truncated or older report
+    assert open_ids(c) == ["NIM-TLS-EXPIRED"]
+
+
+def test_legacy_tls_on_a_device_closes_only_on_a_refusal(env):
+    c, h = setup(env)
+    send(c, h, [obs(open_={443}, tls={"der": cert(300), "legacy": True, "lost": False})])
+    send(c, h, [obs(open_={443}, tls={"der": cert(300), "legacy": None, "lost": False})])
+    assert open_ids(c) == ["NIM-TLS-LEGACY"]
+    send(c, h, [obs(open_={443}, tls={"der": cert(300), "legacy": False, "lost": False})])
+    assert open_ids(c) == []
+
+
+def test_a_known_neighbour_still_refreshes_at_the_org_cap(env, monkeypatch):
+    from nimstead.db import Neighbour
+    monkeypatch.setattr(neighbours, "MAX_NEIGHBOURS_PER_ORG", 1)
+    c = user(env)
+    h = agent(c, "web-1")
+    report(c, h, [row("192.168.1.5", "02:00:00:00:00:05")])
+    s = make_sessionmaker(env)()
+    for n in s.scalars(select(Neighbour)):
+        n.last_seen = now() - timedelta(days=20)
+    s.commit()
+    report(c, h, [row("192.168.1.5", "02:00:00:00:00:05"), row("192.168.1.6", "02:00:00:00:00:06")])
+    rows = make_sessionmaker(env)().scalars(select(Neighbour)).all()
+    assert len(rows) == 1 and now() - rows[0].last_seen < timedelta(minutes=5)
+
+
+def test_the_device_list_has_an_org_wide_limit_too(env, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from nimstead import app as appmod
+    from nimstead.app import create_app
+    monkeypatch.setattr(appmod, "UNMANAGED_ORG_MAX_PER_HOUR", 2)
+    c = user(env)
+    tok = c.post("/api/tokens", json={"name": "ro"}).json()["token"]
+    ro = TestClient(create_app(env))
+    assert c.get("/api/network/unmanaged").status_code == 200
+    assert ro.get("/api/network/unmanaged", headers={"Authorization": f"Bearer {tok}"}).status_code == 200
+    assert c.get("/api/network/unmanaged").status_code == 429
+
+
+def test_the_device_list_links_to_the_view_with_findings(env):
+    c, web = setup(env)
+    db = agent(c, "db-1")
+    report(c, db, [row(*CAMERA)], own={"ips": ["192.168.1.21"], "macs": ["52:54:00:00:00:21"]})
+    send(c, web, [obs(open_={23})])
+    send(c, db, [obs()])
+    cam = next(d for d in c.get("/api/network/unmanaged").json() if d["mac"] == CAMERA[1])
+    assert cam["checked"]["asset_id"] == c.get("/api/findings").json()[0]["asset_id"]
+
+
+def test_a_device_at_an_older_agents_address_is_refused(env):
+    c, h = setup(env)
+    old = agent(c, "old-win")
+    report(c, old, None, facts={"addresses": [CAMERA[0]]})  # an agent before 0.7.0 at the camera's address
+    assert send(c, h, [obs(open_={23})])["refused"] == 1
+
+
+def test_deleting_a_host_removes_its_neighbour_rows(env):
+    from nimstead.db import Neighbour
+    c, h = setup(env)
+    hid = next(a["id"] for a in c.get("/api/assets").json() if a["hostname"] == "web-1")
+    assert c.delete(f"/api/assets/{hid}").status_code in (200, 204)
+    assert make_sessionmaker(env)().scalars(select(Neighbour)).all() == []

@@ -448,6 +448,14 @@ def test_a_server_that_only_speaks_tls_1_0_opens_the_legacy_finding():
     assert {f["id"] for f in external.tls_findings("www.example.com", r)[0]} == {"NIM-TLS-LEGACY"}
 
 
+def test_only_a_version_or_handshake_alert_refuses_legacy_tls():
+    """Ship review 3: any alert counted, so a load balancer's internal_error on the TLS 1.0 try closed NIM-TLS-LEGACY."""
+    import ssl
+    assert external.legacy_refused(ssl.SSLError(1, "[SSL: TLSV1_ALERT_INTERNAL_ERROR] tlsv1 alert internal error")) is None
+    assert external.legacy_refused(ssl.SSLError(1, "[SSL: TLSV1_ALERT_PROTOCOL_VERSION] tlsv1 alert protocol version")) is False
+    assert external.legacy_refused(ssl.SSLError(1, "[SSL: SSLV3_ALERT_HANDSHAKE_FAILURE] sslv3 alert handshake failure")) is False
+
+
 def test_a_legacy_attempt_that_is_reset_proves_nothing():
     """Prove-It (ship review 2): a reset on the TLS 1.0/1.1 try read as "refused" and closed NIM-TLS-LEGACY on no evidence."""
     from tls_servers import serve_then_reset
@@ -493,7 +501,8 @@ def test_a_refusal_or_cut_off_greeting_keeps_a_banner_finding_open(world, monkey
     banner(monkeypatch, {21: b"220 (vsFTPd 2.3.4)\r\n", 22: b"SSH-2.0-OpenSSH_9.6p1\r\n"})
     c.post(f"/api/targets/{t['id']}/scan")
     assert sorted(f["vuln_id"] for f in c.get("/api/findings").json()) == ["CVE-2011-2523", "CVE-2024-6387", "NIM-EXPOSED-FTP"]
-    for refusal in (b"421 There are too many connections from your internet address.\r\n", b"554 No service\r\n"):
+    for refusal in (b"421 There are too many connections from your internet address.\r\n", b"554 No service\r\n",
+                    b"220 (vsFTPd 2.3.4"):  # ship review 3: an FTP greeting cut mid-line too
         banner(monkeypatch, {21: refusal, 22: b"SSH-2.0-OpenSS"})  # and a greeting cut off mid-line
         assert c.post(f"/api/targets/{t['id']}/scan").json()["resolved"] == 0, refusal
 

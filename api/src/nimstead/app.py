@@ -1318,7 +1318,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
         Require a session or eligible read token. One row per MAC with addresses, vendor, seen_by hostnames and
         first/last seen, newest first; rows unseen for 30 days are gone. CSV for format=csv. Nothing is probed."""
-        caller = getattr(request.state, "api_token", None) or user.id  # one busy read token never locks people out (ship review 2)
+        caller = getattr(request.state, "api_token", None) or user.id  # one busy read token can't lock people out; nine at once can, for the hour
         if over_limit(s, f"unmanaged:{user.org_id}:{caller}", UNMANAGED_MAX_PER_HOUR) or over_limit(s, "unmanaged:" + user.org_id, UNMANAGED_ORG_MAX_PER_HOUR):
             raise HTTPException(429, "The device list was read too often this hour; try again later")
         s.commit()

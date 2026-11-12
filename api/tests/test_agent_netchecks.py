@@ -4,6 +4,7 @@ from its own neighbour table on its own private subnets, with fixed read-only ch
 import base64
 import importlib.util
 import ipaddress
+import json
 import socket
 import socketserver
 import threading
@@ -36,7 +37,7 @@ def test_only_its_own_neighbours_on_its_own_private_subnets_and_never_itself():
 
 def test_subnets_come_from_its_own_interfaces_private_ipv4_no_wider_than_a_16():
     cidrs = ["192.168.1.20/24", "10.0.0.2/8", "172.16.5.1/16", "203.0.113.4/24", "127.0.0.1/8", "169.254.3.3/16", "fe80::1/64"]
-    nets = agent.own_networks(run=lambda *a, **k: (0, '{"ips": %s, "macs": []}' % str(cidrs).replace("'", '"')), nt=True)
+    nets = agent.own_networks(run=lambda *a, **k: (0, json.dumps({"ips": cidrs, "macs": []})), nt=True)
     assert [str(n) for n in nets] == ["192.168.1.0/24", "172.16.0.0/16"]
 
 

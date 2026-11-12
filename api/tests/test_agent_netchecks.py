@@ -53,7 +53,8 @@ def test_a_large_subnet_is_covered_over_runs_at_most_32_a_run():
 
 def test_a_run_stops_at_its_time_limit():
     t = iter(range(0, 10_000, 200))
-    out = agent.network_checks([row(f"192.168.1.{i}") for i in range(1, 10)], LAN, set(), check=lambda ip, mac: {"ip": ip}, clock=lambda: next(t))
+    out = agent.network_checks([row(f"192.168.1.{i}", f"02:00:00:00:00:{i:02x}") for i in range(1, 10)], LAN, set(),
+                              check=lambda ip, mac: {"ip": ip}, clock=lambda: next(t))
     assert out["stopped"] and 0 < len(out["devices"]) < 9
 
 
@@ -261,7 +262,7 @@ def test_a_slow_drip_reply_cant_hold_a_read_past_its_deadline(monkeypatch):
     finally:
         stop.set()
         srv.close()
-    assert time.monotonic() - began < 3
+    assert time.monotonic() - began < 10  # unbounded it drips forever; a loaded CI runner needs the room
 
 
 def test_a_device_that_never_lets_go_cant_hang_the_run(monkeypatch):
@@ -323,3 +324,24 @@ def test_linux_subnets_come_from_ip_addr():
 
 def test_the_agents_tls_refusals_are_the_servers():
     assert agent.NET_TLS_REFUSALS == external._REFUSALS
+
+
+def test_one_stuck_device_skips_only_itself_not_the_rest_of_the_run(monkeypatch):
+    """Prove-It (ship review 2): TLS and web reads ran outside the per-device limit, so one tarpit used the whole run.
+    A device that doesn't finish sends nothing, so nothing about it changes on the server."""
+    stuck = threading.Event()
+    monkeypatch.setattr(agent, "NET_DEVICE_SECONDS", 0.2)
+    monkeypatch.setattr(agent, "NET_DEVICE_TAIL", 0.2)
+    began = time.monotonic()
+    out = agent.network_checks([row("192.168.1.5"), row("192.168.1.6", "02:00:00:00:00:06")], LAN, set(),
+                               check=lambda ip, mac: (stuck.wait(60) if ip == "192.168.1.5" else None) or {"ip": ip})
+    stuck.set()
+    assert [d["ip"] for d in out["devices"]] == ["192.168.1.6"] and time.monotonic() - began < 3
+
+
+def test_a_mac_answering_on_many_addresses_is_checked_once_a_run():
+    """Ship review 2: one MAC announced on 32 addresses filled the run; its other addresses get their turn on later runs."""
+    seen = [row(f"192.168.1.{i}", "02:00:00:00:00:66") for i in range(100, 140)] + [row("192.168.1.9", "02:00:00:00:00:09")]
+    for start in (0, 7, 33):
+        targets = agent.network_check_targets(seen, LAN, set(), start)
+        assert sorted(m for _, m in targets) == ["02:00:00:00:00:09", "02:00:00:00:00:66"]

@@ -1547,6 +1547,7 @@ NET_WEB_PATHS = tuple(NET_WEB_MARKERS)
 NET_CHECK_MAX = 32          # devices per run, rotating through the rest run by run
 NET_CHECK_SECONDS = 300     # the whole run; devices not reached are left for the next one
 NET_DEVICE_SECONDS = 60     # one device's ports; a port not done by then reads as no answer
+NET_DEVICE_TAIL = 30  # then its TLS and web reads; a device not done by both sends nothing this run
 NET_TIMEOUT = 3.0  # as the server's prober: Windows reports a refused connection only after about 2 s of retries
 NET_TLS_REFUSALS = ("ALERT", "UNSUPPORTED_PROTOCOL", "WRONG_VERSION_NUMBER", "VERSION_TOO_LOW", "NO_SHARED_CIPHER")  # as the server's
 
@@ -1667,13 +1668,15 @@ def check_device(ip, mac):
 
 def network_check_targets(seen, networks, own_ips, start):
     """At most NET_CHECK_MAX (ip, mac) from this machine's own neighbour rows that sit in its own private subnets and
-    aren't its own addresses, in address order from offset start (wrapping), so a larger subnet is covered over runs."""
+    aren't its own addresses, one address per MAC, taken in address order from offset start (wrapping) so a larger subnet
+    is covered over runs, and returned in address order."""
     rows = sorted({(r["ip"], r["mac"]) for r in seen if r["ip"] not in own_ips
                    and any(ipaddress.ip_address(r["ip"]) in n for n in networks)}, key=lambda r: ipaddress.ip_address(r[0]))
-    if len(rows) <= NET_CHECK_MAX:
-        return rows
-    start %= len(rows)
-    return (rows[start:] + rows[:start])[:NET_CHECK_MAX]
+    start %= len(rows) or 1
+    one_each = {}  # one address per MAC a run, so a MAC announced on many can't fill it; the others get later runs
+    for ip, mac in rows[start:] + rows[:start]:
+        one_each.setdefault(mac, ip)
+    return sorted([(ip, mac) for mac, ip in one_each.items()][:NET_CHECK_MAX], key=lambda r: ipaddress.ip_address(r[0]))
 
 
 def network_checks(seen, networks=None, own_ips=None, check=check_device, clock=time.monotonic):
@@ -1692,7 +1695,11 @@ def network_checks(seen, networks=None, own_ips=None, check=check_device, clock=
             if clock() > deadline:
                 state["stopped"] = True
                 return
-            out.append(check(ip, mac))
+            got = []  # each device in its own daemon thread: one that never finishes sends nothing and holds up no other
+            th = threading.Thread(target=lambda: got.append(check(ip, mac)), daemon=True)
+            th.start()
+            th.join(NET_DEVICE_SECONDS + NET_DEVICE_TAIL)
+            out.extend(got[:1])
     worker = threading.Thread(target=run, daemon=True)
     worker.start()
     worker.join(NET_CHECK_SECONDS + NET_DEVICE_SECONDS)

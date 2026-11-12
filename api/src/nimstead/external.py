@@ -381,8 +381,9 @@ def apply(s: Session, asset: Asset, verdicts: list, rep: dict, ecosystem: str = 
             resolved += 1
             events.append(("finding_resolved", f))
     s.flush()
+    host = "device" if asset.kind == "device" else asset.hostname  # a device's address can be personal data: not in the permanent ledger
     for kind, f in events:
-        evidence.append(s, asset.org_id, kind, f.id, {"host": asset.hostname, "vuln_id": f.vuln_id, "package": f.package,
+        evidence.append(s, asset.org_id, kind, f.id, {"host": host, "vuln_id": f.vuln_id, "package": f.package,
                                                       "installed_version": f.installed_version, "fixed_version": f.fixed_version, "priority": f.priority})
     asset.last_seen = t
     return seen, resolved, still

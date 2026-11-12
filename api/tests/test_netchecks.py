@@ -230,3 +230,58 @@ def test_judging_a_device_never_opens_a_connection(env, monkeypatch):
     from nimstead.neighbours import _Replay
     with pytest.raises(RuntimeError):
         _Replay("192.168.1.64", {})._exchange(80)
+
+
+def test_one_machines_view_never_closes_what_another_machine_found(env):
+    """Prove-It (ship review): db-1 is behind a firewall rule that refuses Telnet; web-1 sees it open. db-1's report closed
+    web-1's finding, and every run flipped it. A compromised host could close real findings the same way."""
+    c, web = setup(env)
+    db = agent(c, "db-1")
+    report(c, db, [row(*CAMERA)], own={"ips": ["192.168.1.21"], "macs": ["52:54:00:00:00:21"]})
+    send(c, web, [obs(open_={23})])
+    send(c, db, [obs()])  # every port refused from db-1
+    f = c.get("/api/findings").json()
+    assert [x["vuln_id"] for x in f] == ["NIM-EXPOSED-TELNET"]
+    camera = next(d for d in c.get("/api/network/unmanaged").json() if d["mac"] == CAMERA[1])
+    assert camera["checked"]["open"] == ["NIM-EXPOSED-TELNET"] and camera["checked"]["from"] == "db-1, web-1"
+
+
+def test_claiming_a_devices_mac_without_its_address_hides_nothing(env):
+    """Prove-It (ship review): a host that listed the camera's MAC as its own hid it and made every check on it refused."""
+    c, web = setup(env)
+    liar = agent(c, "liar-1")
+    report(c, liar, [], own={"ips": ["192.168.1.30"], "macs": [CAMERA[1]]})
+    assert CAMERA[1] in [d["mac"] for d in c.get("/api/network/unmanaged").json()]
+    assert send(c, web, [obs(open_={23})])["checked"] == 1
+
+
+def test_an_address_a_device_used_to_have_doesnt_hide_it(env):
+    """Prove-It (ship review): a phone held .77 last week; a managed laptop has .77 now. The phone vanished for 30 days."""
+    from nimstead.db import Neighbour
+    c = user(env)
+    web = agent(c, "web-1")
+    report(c, web, [row("192.168.1.77", "02:aa:00:00:00:77")])
+    s = make_sessionmaker(env)()
+    for n in s.scalars(select(Neighbour)):
+        n.last_seen = n.first_seen = now() - timedelta(days=7)
+    s.commit()
+    report(c, web, [row("192.168.1.78", "02:aa:00:00:00:77")])  # the phone moved
+    report(c, agent(c, "laptop-1", "Windows"), [], facts={"addresses": ["192.168.1.77"]})  # an older agent: its address from facts
+    assert [d["mac"] for d in c.get("/api/network/unmanaged").json()] == ["02:aa:00:00:00:77"]
+
+
+def test_a_malformed_own_field_never_fails_the_inventory(env):
+    c = user(env)
+    h = agent(c, "web-1")
+    for own in ({"ips": {}, "macs": 5}, {"ips": "10.0.0.1"}, []):
+        r = c.post("/api/agent/inventory", headers=h, json={"os_name": "x", "ecosystem": "Debian:13", "packages": [], "neighbours": {"seen": [], "own": own}})
+        assert r.status_code == 200, own
+
+
+def test_the_ledger_keeps_no_device_address_or_mac(env):
+    """Ship review: MACs can be personal data; the device row (deleted after 30 days) holds them, the permanent ledger doesn't."""
+    c, h = setup(env)
+    send(c, h, [obs(open_={23})])
+    entries = c.get("/api/evidence/ledger").json()["entries"]
+    text = str([e["data"] for e in entries if e["kind"] in ("network_check", "asset_created", "finding_opened") and e["data"].get("kind") != "host"])
+    assert CAMERA[1] not in text and CAMERA[0] not in text

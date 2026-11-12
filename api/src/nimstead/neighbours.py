@@ -40,6 +40,10 @@ def _mac(v) -> str | None:
     return v if isinstance(v, str) and _MAC.match(v) else None
 
 
+def _list(v) -> list:
+    return v if isinstance(v, list) else []
+
+
 def store(s: Session, asset: Asset, sent) -> None:
     """Record what asset's agent sent as `neighbours` ({"seen": [{ip, mac, interface}], "own": {"ips", "macs"}}).
 
@@ -48,11 +52,11 @@ def store(s: Session, asset: Asset, sent) -> None:
     if not isinstance(sent, dict):
         return
     own = sent.get("own") if isinstance(sent.get("own"), dict) else {}
-    asset.own_addresses = {"ips": [x for x in map(_ip, (own.get("ips") or [])[:MAX_OWN]) if x],
-                           "macs": [x for x in map(_mac, (own.get("macs") or [])[:MAX_OWN]) if x]}
+    asset.own_addresses = {"ips": [x for x in map(_ip, _list(own.get("ips"))[:MAX_OWN]) if x],
+                           "macs": [x for x in map(_mac, _list(own.get("macs"))[:MAX_OWN]) if x]}
     t = now()
     rows = {}
-    for r in (sent.get("seen") if isinstance(sent.get("seen"), list) else [])[:MAX_SEEN]:
+    for r in _list(sent.get("seen"))[:MAX_SEEN]:
         if isinstance(r, dict) and (ip := _ip(r.get("ip"))) and (mac := _mac(r.get("mac"))):
             rows[ip, mac] = str(r.get("interface") or "")[:64]
     have = {(n.ip, n.mac): n for n in s.scalars(select(Neighbour).where(Neighbour.asset_id == asset.id))}
@@ -67,49 +71,73 @@ def store(s: Session, asset: Asset, sent) -> None:
         s.delete(d)
 
 
-def _fleet(s: Session, org_id: str) -> tuple[dict, set, set]:
-    """(the org's hostnames by host id, the MACs and the addresses its agents report as their own) - a device is none of these.
-    Reads two small columns per host; a host's facts (up to 64 KB) only when it reported no own addresses (pre-0.7.0, or none read)."""
-    rows = s.execute(select(Asset.id, Asset.hostname, Asset.own_addresses).where(Asset.org_id == org_id, Asset.kind == "host")).all()
-    own_macs = {m for _, _, own in rows for m in (own or {}).get("macs", [])}
-    own_ips = {ip for _, _, own in rows for ip in (own or {}).get("ips", [])}
-    older = [aid for aid, _, own in rows if not (own or {}).get("ips")]  # an older agent, or one whose own read came back empty
-    for facts in s.scalars(select(Asset.facts).where(Asset.id.in_(older))) if older else ():  # Windows' own addresses (DECISIONS 112)
-        own_ips |= {ip for ip in ((facts or {}).get("addresses") or []) if isinstance(ip, str)}
-    return {aid: hostname for aid, hostname, _ in rows}, own_macs, own_ips
+class Fleet:
+    """Who the org's own machines are, for telling them from devices (ship review).
+
+    claims: MAC -> the addresses of every host that says that MAC is its own. A claim counts only where the MAC was seen
+    at one of those addresses, so a host can't hide a device by naming its MAC alone. fallback: addresses of hosts that
+    report no MACs of their own (agents before 0.7.0: Windows' `addresses` fact, DECISIONS 112), matched against a
+    device's latest address only, so an address it held last week doesn't hide it."""
+    def __init__(self, s: Session, org_id: str):
+        rows = s.execute(select(Asset.id, Asset.hostname, Asset.own_addresses).where(Asset.org_id == org_id, Asset.kind == "host")).all()
+        self.hosts = {aid: hostname for aid, hostname, _ in rows}
+        self.claims: dict[str, set[str]] = {}
+        self.fallback: set[str] = set()
+        older = []
+        for aid, _, own in rows:
+            ips, macs = set((own or {}).get("ips", [])), (own or {}).get("macs", [])
+            for m in macs:
+                self.claims.setdefault(m, set()).update(ips)
+            if not macs:
+                self.fallback |= ips
+                older.append(aid)
+        for facts in s.scalars(select(Asset.facts).where(Asset.id.in_(older))) if older else ():  # a host's facts only for those
+            self.fallback |= {ip for ip in ((facts or {}).get("addresses") or []) if isinstance(ip, str)}
+
+    def owns(self, mac: str, addresses: set[str], latest: str) -> bool:
+        """Whether a MAC seen at these addresses (latest the newest) is one of the org's own machines."""
+        return bool(self.claims.get(mac, set()) & addresses) or latest in self.fallback
 
 
 def unmanaged(s: Session, org_id: str) -> list[dict]:
-    """Devices the org's agents saw that are none of its agents, one row per MAC: addresses, maker, which hosts saw
-    it, first and last seen. Matched by MAC first (DHCP moves addresses), then by any address an agent reports as its own."""
-    hosts, own_macs, own_ips = _fleet(s, org_id)
-    cutoff = now() - KEEP
+    """Devices the org's agents saw that are none of its agents (Fleet.owns), one row per MAC: addresses, maker, which
+    hosts saw it, first and last seen, and what network checks found on it."""
+    fleet = Fleet(s, org_id)
     by_mac: dict[str, dict] = {}
-    for n in s.scalars(select(Neighbour).where(Neighbour.org_id == org_id, Neighbour.last_seen >= cutoff)):
-        if n.mac in own_macs or n.asset_id not in hosts:
+    for aid, ip, mac, first, last in s.execute(select(Neighbour.asset_id, Neighbour.ip, Neighbour.mac, Neighbour.first_seen, Neighbour.last_seen)
+                                               .where(Neighbour.org_id == org_id, Neighbour.last_seen >= now() - KEEP)):
+        if aid not in fleet.hosts:
             continue
-        d = by_mac.setdefault(n.mac, {"mac": n.mac, "addresses": set(), "seen_by": set(), "first_seen": n.first_seen, "last_seen": n.last_seen})
-        d["addresses"].add(n.ip)
-        d["seen_by"].add(hosts[n.asset_id])
-        d["first_seen"], d["last_seen"] = min(d["first_seen"], n.first_seen), max(d["last_seen"], n.last_seen)
-    by_mac = {m: d for m, d in by_mac.items() if not own_ips & d["addresses"]}  # any of its addresses an agent's own: it's that agent
+        d = by_mac.setdefault(mac, {"mac": mac, "addresses": set(), "seen_by": set(), "first_seen": first, "last_seen": last, "latest": ip})
+        d["addresses"].add(ip)
+        d["seen_by"].add(fleet.hosts[aid])
+        if last >= d["last_seen"]:
+            d["latest"] = ip
+        d["first_seen"], d["last_seen"] = min(d["first_seen"], first), max(d["last_seen"], last)
+    by_mac = {m: d for m, d in by_mac.items() if not fleet.owns(m, d["addresses"], d.pop("latest"))}
     names = oui.vendors(s)
-    devices = {(d.facts or {}).get("mac"): d for d in s.scalars(select(Asset).where(Asset.org_id == org_id, Asset.kind == "device"))}
+    views: dict[str, list[Asset]] = {}
+    for d in s.scalars(select(Asset).where(Asset.org_id == org_id, Asset.kind == "device")):
+        views.setdefault((d.facts or {}).get("mac"), []).append(d)
     open_ids: dict[str, list[str]] = {}
-    for aid, vid in s.execute(select(Finding.asset_id, Finding.vuln_id).where(
-            Finding.org_id == org_id, Finding.status == "open", Finding.asset_id.in_([d.id for d in devices.values()]))):
+    ids = [v.id for vs in views.values() for v in vs]
+    for aid, vid in s.execute(select(Finding.asset_id, Finding.vuln_id).where(Finding.org_id == org_id, Finding.status == "open",
+                                                                          Finding.asset_id.in_(ids))) if ids else ():
         open_ids.setdefault(aid, []).append(vid)
     return [{**d, "addresses": sorted(d["addresses"], key=lambda a: (":" in a, a)), "seen_by": sorted(d["seen_by"]),
-             "vendor": oui.vendor(m, names), "checked": _checked(devices.get(m), open_ids)}
+             "vendor": oui.vendor(m, names), "checked": _checked(views.get(m, []), open_ids)}
             for m, d in sorted(by_mac.items(), key=lambda kv: kv[1]["last_seen"], reverse=True)]
 
 
-def _checked(device: Asset | None, open_ids: dict) -> dict | None:
-    """When and from where this device was last checked, its asset id and its open findings; None if never checked."""
-    if device is None:
+def _checked(views: list[Asset], open_ids: dict) -> dict | None:
+    """What network checks found on a device, across every machine that checked it (each keeps its own view): when last,
+    from which machines, the open findings, and the view with the most to link to. None if no machine checked it."""
+    if not views:
         return None
-    return {"asset_id": device.id, "at": device.last_seen, "from": (device.facts or {}).get("checked_from", ""),
-            "open": sorted(open_ids.get(device.id, []))}
+    worst = max(views, key=lambda v: (len(open_ids.get(v.id, [])), v.last_seen))
+    return {"asset_id": worst.id, "at": max(v.last_seen for v in views),
+            "from": ", ".join(sorted((v.facts or {}).get("checked_from", "") for v in views)),
+            "open": sorted({vid for v in views for vid in open_ids.get(v.id, [])})}
 
 
 # --- network checks from one opted-in agent (DECISIONS 129) ----------------------------------------------------------
@@ -206,20 +234,22 @@ def record_checks(s: Session, asset: Asset, devices) -> dict:
     A device counts only if it is in this host's own stored neighbour rows (same address and MAC) and in a private IPv4
     range, and isn't one of the org's own machines (it has an agent, so it's judged from that); anything else is dropped
     and counted as refused. Each check goes to the ledger with the host that made it."""
+    s.execute(select(Asset.id).where(Asset.id == asset.id).with_for_update())  # one host's reports one at a time: no device made twice
     mine = {(n.ip, n.mac) for n in s.scalars(select(Neighbour).where(Neighbour.asset_id == asset.id))}
-    _, own_macs, own_ips = _fleet(s, asset.org_id)
-    known = {(d.facts or {}).get("mac"): d for d in s.scalars(select(Asset).where(Asset.org_id == asset.org_id, Asset.kind == "device"))}
+    fleet = Fleet(s, asset.org_id)
+    org_devices = list(s.scalars(select(Asset).where(Asset.org_id == asset.org_id, Asset.kind == "device")))
+    known = {(d.facts or {}).get("mac"): d for d in org_devices if (d.facts or {}).get("checked_by") == asset.id}  # this host's own views
     names = oui.vendors(s)
     checked = refused = opened = 0
     for obs in (devices if isinstance(devices, list) else [])[:MAX_CHECKED]:
         ip, mac = (_ip(obs.get("ip")), _mac(obs.get("mac"))) if isinstance(obs, dict) else (None, None)
         if (not ip or not mac or (ip, mac) not in mine or not any(ipaddress.ip_address(ip) in n for n in RFC1918)
-                or mac in own_macs or ip in own_ips):
+                or fleet.owns(mac, {ip}, ip)):
             refused += 1
             continue
         device = known.get(mac)
         if device is None:
-            if len(known) >= MAX_DEVICES_PER_ORG:
+            if len(org_devices) >= MAX_DEVICES_PER_ORG:
                 refused += 1
                 continue
             device = Asset(org_id=asset.org_id, hostname=ip, kind="device", internet_facing=False,
@@ -227,15 +257,17 @@ def record_checks(s: Session, asset: Asset, devices) -> dict:
             s.add(device)
             s.flush()
             known[mac] = device
-            evidence.append(s, asset.org_id, "asset_created", device.id, {"by": asset.hostname, "name": ip, "kind": "device"})
+            org_devices.append(device)
+            evidence.append(s, asset.org_id, "asset_created", device.id, {"by": asset.hostname, "name": "device", "kind": "device"})
         vendor = oui.vendor(mac, names)
-        device.hostname, device.os_name = ip, vendor or "Network device"
-        device.facts = {"mac": mac, "vendor": vendor, "checked_from": asset.hostname}
+        device.hostname, device.os_name = ip, f"{vendor or 'Network device'}, as checked from {asset.hostname}"  # one view per machine
+        device.facts = {"mac": mac, "vendor": vendor, "checked_from": asset.hostname, "checked_by": asset.id}
         verdicts, rep = _observe({**obs, "ip": ip})
         engine.record(s, device, rep, {"address": ip, "mac": mac, "from": asset.hostname})
         seen, _, _ = external.apply(s, device, verdicts, rep, ECOSYSTEM)
-        evidence.append(s, asset.org_id, "network_check", device.id, {"from": asset.hostname, "address": ip, "mac": mac,
-                                                                      "problems": sorted({v for v, _ in seen}), "requests": rep["requests"]})
+        # no address or MAC: they can be personal data, kept on the device row (gone after 30 days), not in the permanent ledger
+        evidence.append(s, asset.org_id, "network_check", device.id, {"from": asset.hostname, "problems": sorted({v for v, _ in seen}),
+                                                                      "requests": rep["requests"]})
         checked += 1
         opened += len(seen)
     return {"checked": checked, "refused": refused, "open": opened}

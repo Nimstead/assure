@@ -4,6 +4,15 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Added
+- **Devices with no agent** (agent 0.7.0, DECISIONS 128): each agent reports its machine's own neighbour table (ARP/NDP) and its own addresses, read only. Assets lists the devices on your networks that none of your agents accounts for, with their maker from the IEEE registry, which machines saw them and when, and a CSV download. Nothing is sent to those devices. Rows are deleted 30 days after they were last seen. Turn it off on a host with `"neighbours": false` in the agent's configuration. One migration (b7d2e4f6a813).
+- Each external target shows **what its last scan checked**: every port's result, what couldn't be determined and why, and each finding's confidence (`GET /api/assets/{id}/scan-report` now answers for targets).
+- External scans open findings for **exposed `/.git/config` and `/.env`** files (read-only requests, each after a negative control, so a site that answers every path with a page opens nothing), and for **vulnerable versions in service banners** (vsftpd 2.3.4, ProFTPD 1.3.5, OpenSSH regreSSHion), graded unverified and ranked below exposures read directly (DECISIONS 127). Every request a scan sends is in its ledger entry.
+
+### Changed
+- External targets are scanned by the detection engine's prober, once per scan (DECISIONS 126). **A finding now closes only on evidence**: a refused port, or a TLS handshake that no longer shows the problem. A port that a firewall drops, a timed-out check or a target that stopped answering keeps the finding open with a "Still open" reason, where it used to close. The scan result gains `still_open`.
+- External findings are keyed by vulnerability and endpoint, so the same banner CVE on two ports is two findings.
+
 ## [0.8.0] - 2026-11-11 (preview)
 
 ### Changed

@@ -1476,6 +1476,11 @@ def neighbours(run=None, read=None, which=shutil.which, nt=os.name == "nt"):
     return list(unique.values())[:NEIGHBOURS_MAX]
 
 
+def network_view():
+    """The inventory's "neighbours" field: {"seen": this machine's neighbour table, "own": its own addresses}."""
+    return {"seen": neighbours(), "own": own_addresses()}
+
+
 PS_OWN_ADDRESSES = ("ConvertTo-Json -Compress -InputObject @{ ips = @(Get-NetIPAddress -ErrorAction SilentlyContinue | ForEach-Object IPAddress); "
                     "macs = @(Get-NetAdapter -ErrorAction SilentlyContinue | ForEach-Object MacAddress) }")
 
@@ -3912,7 +3917,7 @@ def inventory(cfg):
     """
     inv = {**collect(), "auto_update": bool(cfg.get("auto_update", True)) if RELEASE_KEYS else None, "update_error": _update_error}
     if cfg.get("neighbours", True):
-        inv["neighbours"] = {"seen": neighbours(), "own": own_addresses()}
+        inv["neighbours"] = network_view()
     return with_apps(inv, cfg)
 
 
@@ -4647,7 +4652,8 @@ def _main(argv):
             _log_on = True
             log_event(f"run start: {a.cmd}, agent {AGENT_VERSION}")
         if a.cmd == "collect":
-            print(json.dumps(with_apps(collect(), {"scan_jars": a.scan_jars, "scan_apps": a.scan_apps, "app_roots": app_roots(a)}), indent=2))
+            print(json.dumps({**with_apps(collect(), {"scan_jars": a.scan_jars, "scan_apps": a.scan_apps, "app_roots": app_roots(a)}),
+                              "neighbours": network_view()}, indent=2))
         elif a.cmd == "doctor":
             return doctor(a.insecure_http)
         elif a.cmd == "scan-remote":

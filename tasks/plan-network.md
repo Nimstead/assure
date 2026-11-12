@@ -67,8 +67,8 @@ See `tasks/todo-network.md` for acceptance criteria and verification per task.
 - [x] N3: The target view shows the engine report: per port, verdict, grade, why not checked (S)
 
 ### Checkpoint 1
-- [ ] `sandbox/extscan.py` and `sandbox/netengine.py` PASS on the final build, parity zero unexplained
-- [ ] Full API suite on SQLite and PostgreSQL, web unit + e2e, ruff
+- [x] `sandbox/extscan.py` and `sandbox/netengine.py` PASS on the final build, parity zero unexplained
+- [x] Full API suite on SQLite and PostgreSQL, web unit + e2e, ruff
 - [ ] Owner review, then release (preview)
 
 ### Phase 2: engine-only remote checks become findings
@@ -76,7 +76,7 @@ See `tasks/todo-network.md` for acceptance criteria and verification per task.
 - [x] N5: Banner-version checks open `unverified` findings, suppressed on echo responders (S)
 
 ### Checkpoint 2
-- [ ] `netengine.py` cases 2-4 open exactly the findings its docstring names, none on the soft-404 or echo hosts
+- [x] `netengine.py` cases 2-4 open exactly the findings its docstring names, none on the soft-404 or echo hosts
 - [ ] Owner review, release
 
 ### Phase 3: devices without an agent (passive)
@@ -85,9 +85,10 @@ See `tasks/todo-network.md` for acceptance criteria and verification per task.
 - [x] N8: Assets shows the list beside the AD unmanaged list (S)
 
 ### Checkpoint 3
-- [ ] Real run: two VMs on one virtual network plus one agentless VM; the agentless one is listed with its vendor, the two agents aren't
-- [ ] `docs/pentest-scope.md` adds the neighbour collector (the pentest isn't waited on)
-- [ ] STATUS, CHANGELOG, README, docs updated; owner review, release
+- [x] Real run (three network namespaces on one bridge in a disposable WSL distro, not separate VMs: `last_run_netneighbours.json`): the agentless one is listed with its vendor, the two agents aren't
+- [x] `docs/pentest-scope.md` adds the neighbour collector (the pentest isn't waited on)
+- [x] STATUS, CHANGELOG, README, docs updated
+- [ ] Owner review, release
 
 ### Phase 4: internal exposure from one chosen agent (gated on N9)
 - [x] N9: Decision draft with a recommendation (written below; the owner's yes or no is pending) (XS)

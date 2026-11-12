@@ -1,0 +1,135 @@
+[
+ {
+  "step": "namespaces up, traffic sent",
+  "tables": {
+   "web": [
+    {
+     "dst": "10.77.0.64",
+     "dev": "e-web",
+     "lladdr": "bc:ba:c2:11:22:33",
+     "state": [
+      "REACHABLE"
+     ]
+    },
+    {
+     "dst": "10.77.0.11",
+     "dev": "e-web",
+     "lladdr": "52:54:00:77:00:11",
+     "state": [
+      "REACHABLE"
+     ]
+    }
+   ],
+   "db": [
+    {
+     "dst": "10.77.0.64",
+     "dev": "e-db",
+     "lladdr": "bc:ba:c2:11:22:33",
+     "state": [
+      "REACHABLE"
+     ]
+    },
+    {
+     "dst": "10.77.0.10",
+     "dev": "e-db",
+     "lladdr": "52:54:00:77:00:10",
+     "state": [
+      "DELAY"
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "step": "web: the agent's own collect",
+  "neighbours": {
+   "seen": [
+    {
+     "ip": "10.77.0.64",
+     "mac": "bc:ba:c2:11:22:33",
+     "interface": "e-web"
+    },
+    {
+     "ip": "10.77.0.11",
+     "mac": "52:54:00:77:00:11",
+     "interface": "e-web"
+    }
+   ],
+   "own": {
+    "ips": [
+     "10.77.0.10",
+     "fe80::5054:ff:fe77:10"
+    ],
+    "macs": [
+     "52:54:00:77:00:10"
+    ]
+   }
+  }
+ },
+ {
+  "step": "db: the agent's own collect",
+  "neighbours": {
+   "seen": [
+    {
+     "ip": "10.77.0.64",
+     "mac": "bc:ba:c2:11:22:33",
+     "interface": "e-db"
+    },
+    {
+     "ip": "10.77.0.10",
+     "mac": "52:54:00:77:00:10",
+     "interface": "e-db"
+    }
+   ],
+   "own": {
+    "ips": [
+     "10.77.0.11",
+     "fe80::5054:ff:fe77:11"
+    ],
+    "macs": [
+     "52:54:00:77:00:11"
+    ]
+   }
+  }
+ },
+ {
+  "step": "MAC vendor registry",
+  "result": {
+   "prefixes": 58752
+  }
+ },
+ {
+  "step": "devices with no agent",
+  "rows": [
+   {
+    "mac": "bc:ba:c2:11:22:33",
+    "addresses": [
+     "10.77.0.64"
+    ],
+    "seen_by": [
+     "db-1",
+     "web-1"
+    ],
+    "first_seen": "2026-11-11T23:51:52.054023",
+    "last_seen": "2026-11-11T23:51:52.391218",
+    "vendor": "Hangzhou Hikvision Digital Technology Co.,Ltd."
+   }
+  ]
+ },
+ {
+  "step": "RESULT: PASS",
+  "camera": {
+   "mac": "bc:ba:c2:11:22:33",
+   "addresses": [
+    "10.77.0.64"
+   ],
+   "seen_by": [
+    "db-1",
+    "web-1"
+   ],
+   "first_seen": "2026-11-11T23:51:52.054023",
+   "last_seen": "2026-11-11T23:51:52.391218",
+   "vendor": "Hangzhou Hikvision Digital Technology Co.,Ltd."
+  }
+ }
+]

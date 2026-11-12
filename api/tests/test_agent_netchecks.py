@@ -353,3 +353,24 @@ def test_a_device_that_finishes_late_never_lands_in_another_devices_place(monkey
     out = agent.network_checks([row("192.168.1.5"), row("192.168.1.6", "02:00:00:00:00:06")], LAN, set(),
                                check=lambda ip, mac: time.sleep(0.7 if ip.endswith(".5") else 0.4) or {"ip": ip})
     assert out["devices"] == [{"ip": "192.168.1.6"}]
+
+
+def test_a_greeting_on_a_connection_left_open_is_kept(monkeypatch):
+    """Real FTP and SSH servers greet and then wait; the read times out with the greeting in hand, which is evidence."""
+    hold = threading.Event()
+
+    class GreetAndWait(socketserver.BaseRequestHandler):
+        def handle(self):
+            self.request.sendall(b"220 (vsFTPd 2.3.4)\r\n")
+            hold.wait(10)
+    srv = socketserver.ThreadingTCPServer(("127.0.0.1", 0), GreetAndWait)
+    srv.daemon_threads = True
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    monkeypatch.setattr(agent, "NET_TIMEOUT", 0.5)
+    _to_port(monkeypatch, srv.server_address[1])
+    try:
+        assert agent._exchange("127.0.0.1", 21) == b"220 (vsFTPd 2.3.4)\r\n"
+    finally:
+        hold.set()
+        srv.shutdown()
+        srv.server_close()

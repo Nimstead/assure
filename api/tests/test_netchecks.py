@@ -400,3 +400,112 @@ def test_a_device_that_later_gets_an_agent_keeps_its_old_views_until_they_age_ou
     report(c, agent(c, "camera-1"), [], own={"ips": [CAMERA[0]], "macs": [CAMERA[1]]})
     assert send(c, web, [obs(open_={23})])["refused"] == 1
     assert [f["vuln_id"] for f in c.get("/api/findings").json()] == ["NIM-EXPOSED-TELNET"]
+
+
+# --- ship review 2: coverage the test engineer asked for ---------------------------------------------------------------
+
+def age(env, days, **where):
+    s = make_sessionmaker(env)()
+    for a in s.scalars(select(Asset).filter_by(**where)):
+        a.last_seen = now() - timedelta(days=days)
+    s.commit()
+
+
+def test_the_hourly_prune_never_touches_hosts_or_external_targets_and_keeps_the_ledger(env):
+    """A wrong filter would delete every silent host and its history each hour."""
+    c, h = setup(env)
+    send(c, h, [obs(open_={23})])
+    s = make_sessionmaker(env)()
+    org = s.scalar(select(Asset.org_id))
+    s.add(Asset(org_id=org, hostname="shop.example.com", kind="external", agent_key_hash="x" * 64))
+    s.commit()
+    age(env, 400, kind="host")
+    age(env, 400, kind="external")
+    before = len(c.get("/api/evidence/ledger").json()["entries"])
+    s = make_sessionmaker(env)()
+    assert neighbours.prune(s)["devices"] == 0
+    s.commit()
+    assert {a.kind for a in s.scalars(select(Asset))} == {"host", "external", "device"}
+    assert len(c.get("/api/evidence/ledger").json()["entries"]) == before
+
+
+def test_a_device_checked_29_days_ago_stays_and_31_goes(env):
+    c, h = setup(env)
+    send(c, h, [obs(open_={23})])
+    age(env, 29, kind="device")
+    s = make_sessionmaker(env)()
+    assert neighbours.prune(s)["devices"] == 0
+    s.commit()
+    age(env, 31, kind="device")
+    assert neighbours.prune(s)["devices"] == 1
+
+
+def test_a_known_device_is_still_checked_at_the_cap_and_the_cap_counts_each_machines_view(env, monkeypatch):
+    """At the cap only new views are refused, or known devices' findings would freeze. The cap counts views (one per
+    machine that checks a device), so N machines checking one camera use N: bounded storage, not a device count."""
+    monkeypatch.setattr(neighbours, "MAX_DEVICES_PER_ORG", 1)
+    c, web = setup(env)
+    send(c, web, [obs(open_={23})])
+    assert send(c, web, [obs(open_=())]) == {"checked": 1, "refused": 0, "open": 0}  # and the finding closed on it
+    assert send(c, web, [obs(ip="192.168.1.65", mac="bc:ba:c2:11:22:34")])["refused"] == 1
+    db = agent(c, "db-1")
+    report(c, db, [row(*CAMERA)], own={"ips": ["192.168.1.21"], "macs": ["52:54:00:00:00:21"]})
+    assert send(c, db, [obs(open_={23})])["refused"] == 1
+
+
+def test_a_port_that_echoes_whatever_its_sent_neither_opens_nor_closes_a_banner_cve(env):
+    c, h = setup(env)
+    echo = obs(banners={21: b"220 (vsFTPd 2.3.4)\r\n"})
+    echo["ports"]["21"]["reflects"] = True
+    send(c, h, [echo])
+    assert [f["vuln_id"] for f in c.get("/api/findings").json() if f["vuln_id"].startswith("CVE-")] == []  # a catch-all repeats our words: no product is proven
+    send(c, h, [obs(banners={21: b"220 (vsFTPd 2.3.4)\r\n"})])
+    assert [f["vuln_id"] for f in c.get("/api/findings").json() if f["vuln_id"].startswith("CVE-")] == ["CVE-2011-2523"]
+    send(c, h, [echo])
+    assert [f["vuln_id"] for f in c.get("/api/findings").json() if f["vuln_id"].startswith("CVE-")] == ["CVE-2011-2523"]  # no proof it's gone either
+
+
+def test_a_report_missing_ports_or_a_device_thats_off_keeps_findings_open(env):
+    """A truncated or older report, or every port dropped (device off), proves nothing closed (R4.6)."""
+    c, h = setup(env)
+    send(c, h, [obs(open_={23})])
+    send(c, h, [{"ip": CAMERA[0], "mac": CAMERA[1], "ports": {}}])
+    send(c, h, [{"ip": CAMERA[0], "mac": CAMERA[1]}])
+    send(c, h, [obs(filtered=set(PORTS))])
+    assert [f["vuln_id"] for f in c.get("/api/findings").json()] == ["NIM-EXPOSED-TELNET"]
+
+
+def test_another_org_can_neither_check_hide_nor_read_this_orgs_devices(env, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from nimstead.app import create_app
+    monkeypatch.setattr(neighbours, "MAX_DEVICES_PER_ORG", 1)
+    c, web = setup(env)
+    send(c, web, [obs(open_={23})])  # org A is at its device cap
+    b = TestClient(create_app(env))
+    assert b.post("/api/auth/signup", json={"email": "b@example.org", "password": "correct horse battery", "org_name": "B"}).status_code == 201
+    bh = agent(b, "b-web")
+    report(b, bh, [row("192.168.1.99", "02:bb:00:00:00:99")], own={"ips": [CAMERA[0]], "macs": [CAMERA[1]]})  # B claims A's camera
+    assert send(b, bh, [obs()])["refused"] == 1  # A's camera isn't in B's table
+    assert send(b, bh, [obs(ip="192.168.1.99", mac="02:bb:00:00:00:99")])["checked"] == 1  # A's cap isn't B's
+    assert CAMERA[1] in [d["mac"] for d in c.get("/api/network/unmanaged").json()]
+    aid = next(d for d in c.get("/api/network/unmanaged").json() if d["mac"] == CAMERA[1])["checked"]["asset_id"]
+    assert b.get(f"/api/assets/{aid}/scan-report").status_code == 404
+
+
+@pytest.mark.skipif(not __import__("conftest").PG, reason="SQLite ignores row locks; the race is Postgres-only")
+def test_one_host_posting_twice_at_once_makes_one_view_of_a_device(env):
+    import threading
+    c, h = setup(env)
+    gate, codes = threading.Barrier(2), []
+
+    def post():
+        gate.wait()
+        codes.append(c.post("/api/agent/network-checks", headers=h, json={"devices": [obs(open_={23})]}).status_code)
+    threads = [threading.Thread(target=post) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(30)
+    s = make_sessionmaker(env)()
+    assert codes == [200, 200] and len(list(s.scalars(select(Asset).where(Asset.kind == "device")))) == 1

@@ -195,3 +195,13 @@ def test_a_read_token_using_up_its_device_list_reads_doesnt_lock_out_people(env,
     h = {"Authorization": f"Bearer {c.post('/api/tokens', json={'name': 'ro'}).json()['token']}"}
     assert [ro.get("/api/network/unmanaged", headers=h).status_code for _ in range(3)] == [200, 200, 429]
     assert c.get("/api/network/unmanaged").status_code == 200
+
+
+def test_a_vendor_name_from_the_registry_cant_become_a_spreadsheet_formula(env):
+    """The vendor file comes from outside; a name starting with = must reach the CSV as text."""
+    c = user(env)
+    s = make_sessionmaker(env)()
+    report(c, agent(c, "web-1"), [row("192.168.1.64", "bc:ba:c2:11:22:33")])
+    update_all(s, client=Manuf(body=MANUF.replace("Hangzhou Hikvision Digital Technology Co.,Ltd.", '=HYPERLINK("http://x.invalid")')))
+    csv_text = c.get("/api/network/unmanaged", params={"format": "csv"}).text
+    assert "'=HYPERLINK" in csv_text and ",=HYPERLINK" not in csv_text

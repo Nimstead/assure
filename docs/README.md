@@ -25,6 +25,7 @@ Choose the procedure for your task.
 - [Change asset context](how-to/change-asset-context.md)
 - [Upload an SBOM from CI](how-to/upload-sbom.md)
 - [Scan an external target](how-to/scan-external-target.md)
+- [Find and check devices with no agent](how-to/check-network-devices.md)
 - [Scan Windows without an agent](how-to/remote-windows.md)
 - [Configure single sign-on](how-to/configure-sso.md)
 - [Create a read-only API token](how-to/create-api-token.md)

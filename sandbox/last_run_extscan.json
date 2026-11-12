@@ -1,7 +1,7 @@
 [
   {
     "step": "distro up",
-    "name": "nimstead-sbx-ext-dfbfc1",
+    "name": "nimstead-sbx-ext-efda7f",
     "address": "172.25.98.1",
     "redis": "v=8.0.2",
     "openssl": "OpenSSL 3.5.7"
@@ -15,7 +15,7 @@
   {
     "step": "TXT only, no address proof",
     "status": 409,
-    "detail": "172.25.98.1 doesn't serve the value at /.well-known/nimstead-verify.txt: serve nimstead-verify=366bf55f0dd8f99fe6f4c0eee3121eb0 there over HTTPS or HTTP"
+    "detail": "172.25.98.1 doesn't serve the value at /.well-known/nimstead-verify.txt: serve nimstead-verify=677c021137c5e16736bf11a01aff1c20 there over HTTPS or HTTP"
   },
   {
     "step": "verified: TXT record and the value served by the address itself"
@@ -26,6 +26,7 @@
       "address": "172.25.98.1",
       "open": 3,
       "resolved": 0,
+      "still_open": 0,
       "skipped": []
     },
     "findings": {
@@ -35,11 +36,29 @@
     }
   },
   {
+    "step": "scan 1b: Redis firewalled (dropped)",
+    "result": {
+      "address": "172.25.98.1",
+      "open": 2,
+      "resolved": 0,
+      "still_open": 1,
+      "skipped": []
+    },
+    "redis_reasons": [
+      "No authentication by default: exposed instances are found and abused automatically within hours",
+      "Critical severity (CVSS 9.8)",
+      "Internet-facing asset",
+      "Fix available",
+      "Still open: the port didn't answer in time, so whether this service is exposed couldn't be determined; a drop is not a closed port"
+    ]
+  },
+  {
     "step": "scan 2: Redis closed, valid self-signed cert, TLS 1.2+",
     "result": {
       "address": "172.25.98.1",
       "open": 1,
       "resolved": 3,
+      "still_open": 0,
       "skipped": []
     },
     "open": [
@@ -57,6 +76,6 @@
   },
   {
     "step": "distro destroyed",
-    "name": "nimstead-sbx-ext-dfbfc1"
+    "name": "nimstead-sbx-ext-efda7f"
   }
 ]

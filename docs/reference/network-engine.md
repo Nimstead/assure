@@ -1,16 +1,18 @@
 # Network engine reference
 
-`nimstead.engine.network.run()` provides a separate remote-check evaluation path. It does not replace the [normal external scanner](external-scans.md), persist findings, or publish a network-report HTTP endpoint. The repository sandbox calls this entry point.
+The [external scanner](external-scans.md) probes every target through `probe()`, opens and closes findings from its exposed-service and TLS verdicts, and stores its report, which `GET /api/assets/{id}/scan-report` returns (DECISIONS 126). `run()` proves scope and then calls `probe()`; it persists nothing, and the repository sandbox calls it.
 
 ## Entry points
 
 | Function | Inputs and result |
 | --- | --- |
 | `run(s, asset, lookup=None, budget=None, safe_mode=True)` | SQLAlchemy session, verified external asset, optional DNS TXT lookup, budget, and safety flag. Returns `(verdicts, report, prober)` |
+| `probe(host, ip, budget=None, safe_mode=True)` | One probe pass on a pinned IP with no ownership check (callers prove scope first). Returns `(verdicts, report, prober)` |
 | `Prober(host, ip, budget=None, safe_mode=True)` | Host/SNI string and pinned IP string. Construction performs no ownership validation or I/O |
 | `Prober.observe()` | Probes configured ports and returns an integer-port-to-`Endpoint` map |
 | `evaluate(prober, endpoints)` | Returns verdicts, with additional web requests and current-clock TLS evaluation |
 | `build_report(host, ip, verdicts, endpoints, skipped, host_lost)` | Returns report data without probes or persistence |
+| `greeting(banner)` | Whether a banner is a service identifying itself: an FTP/SMTP `220`, POP3 `+OK`, IMAP `* OK` or a whole SSH identification line. Only such a greeting that no longer names a product can close that product's banner finding; a refusal (`421`, `554`) or a line cut off can't. Only whole lines count (`whole_lines`), for greetings and version rules alike, so a read cut mid-version (`ProFTPD 1.3`) is judged on nothing. Each port's coverage row carries it as `greeting`, and as `names` the version rules' products the greeting still names: a greeting that still names the product but hides its version keeps the finding open, since a hidden version isn't a fixed one |
 | `parity(verdicts, external_ids)` | Compares vulnerable IDs against a set of normal-scanner finding IDs |
 
 `run()` repeats the normal scanner's scope proof before service probes. Proof can commit a refusal event or clear verification. It can raise `external.ScanRefused`. Database, lookup, configuration, and unexpected probe errors can also propagate.
@@ -48,11 +50,11 @@ TLS facts contain `trusted`, `error`, `not_after`, and `legacy`. `not_after` is 
 
 Normal exposed-port and TLS verdicts reuse the external scanner's decision helpers. A filtered service port becomes not-run with reason `port-filtered`. An observation over budget becomes not-run with reason `timed-out` for exposed-service/TLS checks.
 
-Built-in web rules request `/.git/config` and `/.env` on HTTP port 80. Each requires HTTP 200, its bytes marker, and a body different from the missing-path control. A successful, nonempty missing-path response produces `soft-404` instead. A failed control request does not itself mark the check incomplete.
+Built-in web rules request `/.git/config` and `/.env` on HTTP port 80. Each requires HTTP 200, its bytes marker, and a body different from the missing-path control. A successful, nonempty missing-path response produces `soft-404` instead. A control request that gets no HTTP response leaves the path undetermined (`host-lost`): without it a catch-all can't be told from a hit.
 
 Other parsed responses produce not-vulnerable web verdicts. A request that gets no response at all (a timeout or reset, with no parsed status) is undetermined with reason `host-lost`: nothing was observed, so it can't be called fixed. The HTTP reader is a bounded raw exchange, without redirects or general HTTP body decoding.
 
-Version rules inspect greetings for vsftpd (`CVE-2011-2523`), ProFTPD (`CVE-2015-3306`), and OpenSSH (`CVE-2024-6387`). They can match on any greeting port. Distribution-tagged OpenSSH banners produce `backported`. Reflected controls suppress banner identification with reason `catch-all`.
+Version rules inspect greetings for vsftpd (`CVE-2011-2523`), ProFTPD (`CVE-2015-3306`), and OpenSSH (`CVE-2024-6387`). They can match on any greeting port. Version captures are bounded (a few digits a part), so a version too long to be real matches nothing. Distribution-tagged OpenSSH banners produce `backported`. Reflected controls suppress banner identification with reason `catch-all`.
 
 `safe_mode=True` blocks web rules classified as disruptive. Current built-in web rules have the `probe` classification. Remote verdicts have no grade above reasonable. Banner-to-CVE verdicts have an unverified ceiling.
 
@@ -84,6 +86,6 @@ The content identifier hashes service port numbers, TLS warning age, web rule ID
 
 ## Parity result
 
-`agree` is a sorted list of shared finding IDs. `explained` lists engine-only `NIM-WEB-` and `CVE-` results. `unexplained` lists other differences. `ok` means the unexplained list is empty, so it can be true with explained differences.
+`agree` is a sorted list of shared finding IDs. Every vulnerable verdict opens a finding, so `unexplained` lists every difference. `ok` means the unexplained list is empty, so it can be true with explained differences.
 
 Source: [`network.py`](../../api/src/nimstead/engine/network.py).

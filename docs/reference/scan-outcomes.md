@@ -52,6 +52,7 @@ A grade can be absent. SBOM-derived component verdicts have an unverified ceilin
 | `soft-404` | Inspect the host directly. A successful response for nonexistent paths prevents reliable path checks |
 | `backported` | Read the installed distribution package version instead of an upstream banner |
 | `safe-mode` | Review target authorization for disruptive checks |
+| `legacy-only` | Enable TLS 1.2 or later on the server. Only TLS 1.0/1.1 answered, so the certificate wasn't read |
 | `scanner-limited` | Use a scanner whose TLS library supports the required protocol, or inspect the server configuration |
 
 Confidence describes evidence strength. Severity describes impact. Priority orders work. A high-confidence result can have low operational priority.

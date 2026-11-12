@@ -334,6 +334,57 @@ test("Windows updates: who has a KB, why the others don't, and planning the rest
   await context.close();
 });
 
+test("an external target's last scan report: dropped ports read as not checked, and it passes axe", async ({ browser }) => {
+  const report = {
+    host: "www.example.com", headline: { status: "vulnerable", text: "VULNERABLE: 1 issue across 1 endpoint. 1 checks couldn't be determined." },
+    vulnerable: [{ product: "tcp/6379 Redis", grade: "reasonable", action: "Redis has no authentication by default: bind it to localhost or firewall it.",
+                   raise_confidence: "A credentialed or agent check reads the host directly; a remote probe can't be surer than this.", vulnerabilities: [{ id: "NIM-EXPOSED-REDIS" }] }],
+    undetermined: [{ reason: "port-filtered", why: "the port didn't answer in time, so whether this service is exposed couldn't be determined; a drop is not a closed port",
+                     what_to_do: "Check whether a firewall drops it", count: 1, examples: ["NIM-EXPOSED-RDP"] }],
+    coverage: { sources: [{ label: "tcp/3389 Remote Desktop", state: "filtered", error: "did not answer (dropped)" }, { label: "tcp/6379 Redis", state: "open", error: null },
+                          { label: "tcp/23 Telnet", state: "closed", error: null }],
+                statements: ["Some ports were dropped rather than refused: those checks are not clean results, only undetermined."] },
+  };
+  const target = { id: "ext-e2e", hostname: "www.example.com", kind: "external", verified: true, verified_at: "2026-11-01T00:00:00", txt_name: "_nimstead-verify.www.example.com",
+                   txt_value: "nimstead-verify=x", proof_path: "/.well-known/nimstead-verify.txt", open_by_priority: { "fix-now": 1 },
+                   first_seen: "2026-11-01T00:00:00", last_seen: "2026-11-11T00:00:00", criticality: "medium", internet_facing: true };
+  for (const width of [1440, 375] as const) {
+    for (const scheme of ["light", "dark"] as const) {
+      const { context, page } = await ctx(browser, width, scheme);
+      await page.route("**/api/assets", async (route) => {  // the e2e server can't prove a public host, so the target is added to its real list
+        const real = await route.fetch();
+        await route.fulfill({ response: real, json: [...(await real.json()), target] });
+      });
+      await page.route("**/api/assets/ext-e2e/scan-report", (route) => route.fulfill({ json: report }));
+      await page.goto("/assets");
+      await page.getByText("What the last scan checked").click();
+      await expect(page.getByRole("row", { name: /3389.*no answer: not checked/ })).toBeVisible();
+      await expect(page.getByText(/^reasonable: /)).toBeVisible();
+      await axe(page, `target report @${width} ${scheme}`);
+      await context.close();
+    }
+  }
+});
+
+test("devices with no agent: listed on Assets from agents' neighbour tables, and it passes axe", async ({ browser }) => {
+  const rows = [{ mac: "bc:ba:c2:11:22:33", vendor: "Hangzhou Hikvision Digital Technology Co.,Ltd.", addresses: ["192.168.1.64", "fe80::beba:c2ff:fe11:2233"], seen_by: ["web-1"],
+                  first_seen: "2026-11-01T00:00:00", last_seen: "2026-11-11T00:00:00",
+                  checked: { asset_id: "dev-e2e", at: "2026-11-11T00:00:00", from: "web-1", open: ["NIM-EXPOSED-TELNET"] } }];
+  for (const width of [1440, 375] as const) {
+    for (const scheme of ["light", "dark"] as const) {
+      const { context, page } = await ctx(browser, width, scheme);
+      await page.route("**/api/network/unmanaged", (route) => route.fulfill({ json: rows }));
+      await page.goto("/assets");
+      const section = page.getByRole("region", { name: "1 device on your networks has no agent" });
+      await section.getByText("Show them").click();
+      await expect(section.getByText(/Hangzhou Hikvision/)).toBeVisible();
+      await expect(section.getByRole("link", { name: "1 issue" })).toBeVisible();
+      await axe(page, `unmanaged devices @${width} ${scheme}`);
+      await context.close();
+    }
+  }
+});
+
 test("Baseline view: per host counts, wording that claims no conformance, rules on demand, CSV", async ({ browser }) => {
   const context = await browser.newContext({ storageState: STATE });
   const page = await context.newPage();

@@ -1036,6 +1036,33 @@
         ],
         "type": "object"
       },
+      "DeviceCheck": {
+        "additionalProperties": false,
+        "properties": {
+          "asset_id": {
+            "type": "string"
+          },
+          "at": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string"
+          },
+          "open": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "asset_id",
+          "at",
+          "from",
+          "open"
+        ],
+        "type": "object"
+      },
       "Directory": {
         "properties": {
           "computers": {
@@ -2905,6 +2932,9 @@
             ],
             "title": "Facts"
           },
+          "neighbours": {
+            "title": "Neighbours"
+          },
           "os_name": {
             "default": "",
             "maxLength": 255,
@@ -3177,6 +3207,44 @@
           "code"
         ],
         "title": "MfaConfirm",
+        "type": "object"
+      },
+      "NetworkChecks": {
+        "properties": {
+          "devices": {
+            "items": {},
+            "maxItems": 32,
+            "title": "Devices",
+            "type": "array"
+          }
+        },
+        "required": [
+          "devices"
+        ],
+        "title": "NetworkChecks",
+        "type": "object"
+      },
+      "NetworkChecksResult": {
+        "properties": {
+          "checked": {
+            "title": "Checked",
+            "type": "integer"
+          },
+          "open": {
+            "title": "Open",
+            "type": "integer"
+          },
+          "refused": {
+            "title": "Refused",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "checked",
+          "refused",
+          "open"
+        ],
+        "title": "NetworkChecksResult",
         "type": "object"
       },
       "NonVulnerableInstall": {
@@ -4669,6 +4737,55 @@
         ],
         "type": "object"
       },
+      "UnmanagedDevice": {
+        "additionalProperties": false,
+        "properties": {
+          "addresses": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "checked": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeviceCheck"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "first_seen": {
+            "type": "string"
+          },
+          "last_seen": {
+            "type": "string"
+          },
+          "mac": {
+            "type": "string"
+          },
+          "seen_by": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "vendor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "mac",
+          "vendor",
+          "first_seen",
+          "last_seen",
+          "addresses",
+          "seen_by",
+          "checked"
+        ],
+        "type": "object"
+      },
       "UserPatch": {
         "properties": {
           "admin": {
@@ -5695,6 +5812,99 @@
         "x-authentication": "Asset agent key"
       }
     },
+    "/api/agent/network-checks": {
+      "post": {
+        "description": "Judge what this host's opted-in agent observed on devices it chose itself (DECISIONS 129) and return counts.\n\nOnly devices in this host's own stored neighbour rows on private IPv4 ranges count; the rest are refused.\nAt most four reports an hour per host (its timer sends one every six hours). Commits.",
+        "operationId": "agent_network_checks_api_agent_network_checks_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NetworkChecks"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkChecksResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "An Origin-bearing write failed the shared origin check."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "AgentToken": []
+          }
+        ],
+        "summary": "Agent Network Checks",
+        "x-authentication": "Asset agent key"
+      }
+    },
     "/api/ai/explain/{finding_id}": {
       "post": {
         "description": "Return text/model for finding_id's owned detail through ai.explain.\n\nuser requires a session. s resolves the finding and commits enabled quotas\nbefore cache/provider work. Missing finding returns 404. AIUnavailable maps\nto 503 and quota refusal to 429. Other data/backend errors propagate.\nModel names configured policy, not necessarily a provider fallback model.",
@@ -6020,7 +6230,7 @@
     },
     "/api/assets/{asset_id}": {
       "delete": {
-        "description": "Delete an owned asset and its findings, packages, jobs and scan records.\n\nasset_id selects any owned kind. user requires an admin browser session.\nAppend deletion evidence, delete rows and commit. Return HTTP 204 without\na body. The ledger remains. This does not stop a resident agent or dispatched\nhost process. Missing/unowned assets return 404. Storage/evidence errors\ncan propagate.",
+        "description": "Delete an owned asset and its findings, packages, jobs and scan records.\n\nasset_id selects any owned kind. user requires an admin browser session.\nAppend deletion evidence, delete rows and commit. Return HTTP 204 without\na body. The ledger remains. This does not stop a resident agent or dispatched\nhost process. A host's views of devices it checked go with it (they're its\nevidence alone). Missing/unowned assets return 404. Storage/evidence errors\ncan propagate.",
         "operationId": "delete_asset_api_assets__asset_id__delete",
         "parameters": [
           {
@@ -6319,7 +6529,7 @@
     },
     "/api/assets/{asset_id}/scan-report": {
       "get": {
-        "description": "Return the grouped engine report for asset_id's stored inventory.\n\nRequires a session or eligible read-only token. Ownership failure returns 404.\nMay create a retained ScanRecord and commit the session, even though this is GET.\nRetains five records per asset. Findings still open and close through rescan.",
+        "description": "Return the grouped engine report for asset_id's stored inventory.\n\nRequires a session or eligible read-only token. Ownership failure returns 404.\nMay create a retained ScanRecord and commit the session, even though this is GET.\nRetains five records per asset. An external target returns its last scan's\nstored network report (404 before its first scan); nothing is probed here.",
         "operationId": "asset_scan_report_api_assets__asset_id__scan_report_get",
         "parameters": [
           {
@@ -9303,6 +9513,90 @@
         ],
         "summary": "Sign Out Everywhere",
         "x-authentication": "Browser session; no API token"
+      }
+    },
+    "/api/network/unmanaged": {
+      "get": {
+        "description": "Return devices the organisation's agents saw in their own neighbour tables that are none of its agents.\n\nRequire a session or eligible read token. One row per MAC with addresses, vendor, seen_by hostnames and\nfirst/last seen, newest first; rows unseen for 30 days are gone. CSV for format=csv. Nothing is probed.",
+        "operationId": "unmanaged_devices_api_network_unmanaged_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Format"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/UnmanagedDevice"
+                  },
+                  "type": "array"
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Devices in agents' own neighbour tables that are none of the organisation's agents, or CSV only when format=csv."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SessionCookie": []
+          },
+          {
+            "ReadToken": []
+          }
+        ],
+        "summary": "Unmanaged Devices",
+        "x-authentication": "Session or read-only API token"
       }
     },
     "/api/notify/confirm": {

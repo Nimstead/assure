@@ -18,11 +18,19 @@ Use the [version comparison reference](../reference/version-comparison.md) for c
 
 ## Remote checks
 
-The normal external scanner performs proof requests, TCP connections, and TLS handshakes. It does not exploit services, inspect UDP, or derive remote CVEs from banners. Address selection and TLS-port limits make this a focused exposure check.
+The external scanner performs proof requests, TCP connections, TLS handshakes and a few read-only web-path requests. It does not exploit services or inspect UDP. Address selection and TLS-port limits make this a focused exposure check.
 
-A finding can resolve when its check returns no issue, including after a filtered port or missing TLS observation. The status change alone does not establish a successful repair. The [external scan reference](../reference/external-scans.md) defines these limits.
+A finding resolves only on evidence: the port refused the connection, or the TLS handshake ran and no longer shows the problem. A filtered port, a timed-out check or a target that stopped answering keeps it open with a "Still open" reason. The [external scan reference](../reference/external-scans.md) defines these limits.
 
-The separate [network engine](../reference/network-engine.md) adds web-path and weak banner-to-CVE checks. It does not manage normal external findings. Its time budgets also do not guarantee cancellation at an exact deadline.
+The scan runs the [network engine](../reference/network-engine.md)'s prober. Its banner-to-CVE findings are graded unverified and ranked below exposures read directly: a banner can be spoofed, and distributions backport fixes without changing the version. Its time budgets do not guarantee cancellation at an exact deadline.
+
+## Devices on your networks
+
+The device list comes from your machines' own neighbour tables, so it shows only devices those machines have talked to recently. A device on a network with no agent, or one that never talks to an enrolled machine, isn't listed. Network checks cover only private IPv4 subnets a machine is directly attached to (IPv6 neighbours are listed but not checked), at most 32 devices a run, with the same fixed checks as the external scanner. A network card that answers at several addresses at once isn't checked. "Nothing found" means those checks found nothing, not that the device is secure.
+
+A compromised enrolled machine can report false results about the devices it checks; these change only its own view of each device. It can also take up to 64 devices off the list by claiming their addresses. DECISIONS 130–132 record these limits.
+
+## Agentless Windows
 
 Agentless Windows scans depend on PowerShell remoting and the caller's permissions. They provide findings, but fixes need an installed agent.
 

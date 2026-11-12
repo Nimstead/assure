@@ -4,6 +4,24 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-12 (preview)
+
+Agent 0.7.0. One database migration (`b7d2e4f6a813`, neighbour rows and device facts): the Docker image applies it on start; without Docker, run `alembic upgrade head`. Network checks are off unless a machine is enrolled with the local `--allow-network-checks` opt-in; an agent older than 0.7.0 keeps working and sends no neighbour table.
+
+### Added
+- **Devices with no agent** (agent 0.7.0, DECISIONS 128): each agent reports its machine's own neighbour table (ARP/NDP) and its own addresses, read only. Assets lists the devices on your networks that none of your agents accounts for, with their maker from the IEEE registry, which machines saw them and when, and a CSV download. Nothing is sent to those devices. Rows are deleted 30 days after they were last seen. Turn it off on a host with `"neighbours": false` in the agent's configuration. One migration (b7d2e4f6a813).
+- **Network checks for devices with no agent** (agent 0.7.0, DECISIONS 129): a machine enrolled with `--allow-network-checks` (a local opt-in the server can't set) checks up to 32 devices it already talks to on its own private subnet, every report, with the same read-only checks as the external scan. Unauthenticated or cleartext services (Telnet, FTP, VNC, Redis, Elasticsearch, MongoDB, Memcached, the Docker API), expired certificates, legacy TLS, exposed `.git/config` and `.env`, and vulnerable banners become findings on the device, which close only on evidence. The server never chooses what is checked.
+- Each external target shows **what its last scan checked**: every port's result, what couldn't be determined and why, and each finding's confidence (`GET /api/assets/{id}/scan-report` now answers for targets).
+- External scans open findings for **exposed `/.git/config` and `/.env`** files (read-only requests, each after a negative control, so a site that answers every path with a page opens nothing), and for **vulnerable versions in service banners** (vsftpd 2.3.4, ProFTPD 1.3.5, OpenSSH regreSSHion), graded unverified and ranked below exposures read directly (DECISIONS 127). Every request a scan sends is in its ledger entry.
+
+### Changed
+- External targets are scanned by the detection engine's prober, once per scan (DECISIONS 126). **A finding now closes only on evidence**: a refused port, or a TLS handshake that no longer shows the problem. A port that a firewall drops, a timed-out check or a target that stopped answering keeps the finding open with a "Still open" reason, where it used to close. The scan result gains `still_open`.
+- External findings are keyed by vulnerability and endpoint, so the same banner CVE on two ports is two findings.
+- A greeting or version cut off mid-line, or one that hides its version but still names the product, no longer closes a banner CVE; a MAC seen at several addresses at once, or a web check whose control got no answer, is no longer judged; a hostile banner can no longer make a device report fail on PostgreSQL; one host claiming an address hides at most one device there, and holds at most 256 device views; network checks write one ledger entry per report (DECISIONS 132).
+- A TLS 1.0/1.1 try that is reset or times out no longer closes NIM-TLS-LEGACY, on external targets or devices; only a refusal does. A host can no longer hide devices through its `addresses` fact unless it is an agent before 0.7.0, and then for at most 64 addresses. Deleting a host removes the device views it made; device reports say "on your network" throughout; the device list is limited per person or token, and shows when it couldn't be read (DECISIONS 131).
+- Network checks keep a separate view of each device per machine that checks it, so one machine's report never closes another's finding. The agent judges web paths itself and sends only facts, never file contents. A banner finding closes only on a positive greeting. Every device is reached over a few runs (random start), no device can stall the agent, network-check reports and the device list are limited per organisation, neighbour rows are capped, and devices' addresses and MACs stay out of the permanent ledger (DECISIONS 130).
+- A TLS handshake on 443 that is cut, reset, times out or is refused is now undetermined instead of "not a TLS service", so it no longer closes certificate findings, and a server that speaks only TLS 1.0/1.1 now opens the legacy-TLS finding (it used to open nothing). A web path missing from an agent's network-check report keeps its finding open, and a neighbour that is one of your own machines is never checked as a device.
+
 ## [0.8.0] - 2026-11-11 (preview)
 
 ### Changed
@@ -444,7 +462,8 @@ The first early-access release. Everything listed is proven by tests and, for an
 
 Licensed under FSL-1.1-ALv2: this release becomes available under Apache 2.0 on 2028-10-27.
 
-[Unreleased]: https://github.com/Nimstead/assure/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/Nimstead/assure/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/Nimstead/assure/compare/v0.8.0...v0.9.0
 [0.6.0]: https://github.com/Nimstead/assure/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/Nimstead/assure/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Nimstead/assure/compare/v0.3.1...v0.4.0

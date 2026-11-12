@@ -6,10 +6,9 @@ runs web-path rules with negative controls, applies worker/exchange limits and t
 web rules in safe mode. Time budgets are not strict wall-clock cancellation deadlines.
 
 Nothing a remote check reads can be `confirmed`: a banner is weak and spoofable and vendors backport (R10.2), so grades
-here ceiling at `reasonable`, and a banner-to-CVE check is `unverified`. Findings still open and close through
-`external.scan`; this is a parallel read, as the host engine is to `rescan`. The exposed-service and TLS verdicts reuse
-`external`'s own decision helpers, so the two can't drift; the extra web-path and version checks are engine-only and
-`parity` lists them as such."""
+here ceiling at `reasonable`, and a banner-to-CVE check is `unverified`. `external.scan` probes through `probe()` and
+opens findings from the exposed-service, TLS and web-path verdicts (DECISIONS 126); the first two reuse `external`'s own
+decision helpers. Banner-version findings open too, graded unverified (DECISIONS 127)."""
 
 import hashlib
 import json
@@ -117,15 +116,15 @@ class VersionRule:
 # Results remain unverified because banners do not establish the installed binary or backport state.
 _DISTRO_SUFFIX = re.compile(rb"(?i)(ubuntu|debian|raspbian|freebsd|\+deb|el\d|\.fc\d)")
 VERSION_RULES = (
-    VersionRule("CVE-2011-2523", "vsftpd", re.compile(rb"\(vsFTPd (?P<ver>[0-9.]+)\)"), lambda v: v == "2.3.4", "2.3.5", 9.8,
+    VersionRule("CVE-2011-2523", "vsftpd", re.compile(rb"\(vsFTPd (?P<ver>[0-9.]{1,20})\)"), lambda v: v == "2.3.4", "2.3.5", 9.8,
                 "NVD", "vsftpd 2.3.4 is the backdoored release: connecting with a ':)' smiley opens a root shell on port 6200.",
                 "Replace this build immediately; install vsftpd from your distribution, which never shipped 2.3.4.",
                 "2.3.4 was a one-off trojaned upstream tarball, not a distribution package, so there is no backported 2.3.4 to confuse it with."),
-    VersionRule("CVE-2015-3306", "ProFTPD", re.compile(rb"ProFTPD (?P<ver>[0-9.]+[a-z]?)"), lambda v: v == "1.3.5", "1.3.5a", 9.8,
+    VersionRule("CVE-2015-3306", "ProFTPD", re.compile(rb"ProFTPD (?P<ver>[0-9.]{1,20}[a-z]?)(?![0-9.a-z])"), lambda v: v == "1.3.5", "1.3.5a", 9.8,
                 "NVD", "ProFTPD 1.3.5's mod_copy lets an unauthenticated client copy files anywhere on the server (SITE CPFR/CPTO).",
                 "Upgrade to 1.3.5a or later, or disable mod_copy.",
                 "ProFTPD states the full upstream version in its banner and the mod_copy fix shipped as 1.3.5a, a new upstream release, not a backport of 1.3.5."),
-    VersionRule("CVE-2024-6387", "OpenSSH", re.compile(rb"SSH-2\.0-OpenSSH[_-](?P<ver>\d+\.\d+(?:p\d+)?)(?P<tail>.*)"),
+    VersionRule("CVE-2024-6387", "OpenSSH", re.compile(rb"SSH-2\.0-OpenSSH[_-](?P<ver>\d{1,4}\.\d{1,4}(?:p\d{1,4})?)(?![\dp])(?P<tail>.*)"),
                 lambda v: _ssh_tuple(v) < (4, 4, 1) or (8, 5, 1) <= _ssh_tuple(v) < (9, 8, 1), "9.8p1", 8.1,
                 "NVD", "OpenSSH 'regreSSHion': a signal-handler race in sshd can give unauthenticated remote code execution.",
                 "Upgrade to OpenSSH 9.8p1 or later.",
@@ -163,6 +162,20 @@ class Endpoint:
 
 
 BANNER_PORTS = (21, 22, 25, 110, 143, 2121, 2222)  # where a greeting is worth reading; version rules match on any of them
+# A service saying who it is: an FTP/SMTP 220, a POP3 +OK, an IMAP * OK, or a whole SSH identification line. A refusal
+# (421, 554), an error or a line cut off names nothing, so it can't show a product has gone.
+_GREETING = re.compile(rb"^(220[ -]\S|\+OK\b|\* OK\b|SSH-\d\.\d+-\S)")
+
+
+def whole_lines(banner: bytes) -> bytes:
+    """banner up to its last line end: a read cut mid-line ("220 (vsFTPd 2.3.4", "ProFTPD 1.3") is judged on nothing
+    (ship review 3)."""
+    return banner[:banner.rfind(b"\n") + 1]
+
+
+def greeting(banner: bytes) -> bool:
+    """Whether banner is a service positively identifying itself in a whole line (see _GREETING)."""
+    return bool(_GREETING.match(whole_lines(banner)))
 
 
 class Prober:
@@ -174,7 +187,9 @@ class Prober:
     Invalid budget values can fail when a semaphore, worker pool or socket is used."""
     def __init__(self, host: str, ip: str, budget: Budget | None = None, safe_mode: bool = True):
         self.host, self.ip, self.budget, self.safe_mode = host, ip, budget or Budget(), safe_mode
+        self.web_base = f"http://{host}"  # what a web finding is named by; a device's replay names it by port, so a new address keeps it
         self._sems: dict[int, threading.Semaphore] = defaultdict(lambda: threading.Semaphore(self.budget.per_endpoint))
+        self.requests: list[str] = []  # every HTTP request sent, for the scan's ledger entry (R10.7)
 
     def _sem(self, port: int) -> threading.Semaphore:
         return self._sems[port]
@@ -230,12 +245,18 @@ class Prober:
     def _http_get(self, port: int, path: str, deadline: float) -> tuple[int | None, bytes]:
         req = f"GET {path} HTTP/1.1\r\nHost: {self.host}\r\nUser-Agent: nimstead-engine\r\nConnection: close\r\n\r\n".encode()
         data = self._exchange(port, req, read_bytes=8192, deadline=deadline)
-        head, _, body = data.partition(b"\r\n\r\n")
+        head, sep, body = data.partition(b"\r\n\r\n")
         try:
-            status = int(head.split(b" ", 2)[1])
+            status = int(head.split(b" ", 2)[1]) if sep else None  # headers that never ended: no page was read, not an empty one
         except (IndexError, ValueError):
             status = None
         return status, body
+
+    def web_fact(self, port: int, path: str, marker: re.Pattern | None, deadline: float) -> tuple[int | None, bool | None, str, bool]:
+        """(status, marker matched (None without a marker), body SHA-256, body had content) for one GET: what a web rule
+        is judged on, so an agent can send these facts instead of the body (DECISIONS 129)."""
+        status, body = self._http_get(port, path, deadline)
+        return status, (bool(marker.search(body)) if marker is not None else None), hashlib.sha256(body).hexdigest(), bool(body.strip())
 
     def _probe_port(self, port: int) -> Endpoint:
         start = time.monotonic()
@@ -300,6 +321,13 @@ def _tls(endpoints: dict[int, Endpoint], host: str) -> list[Verdict]:
     if e.state == "filtered":
         return [Verdict(check="tls", outcome=Outcome.NOT_RUN, reason="port-filtered", observed="443 did not answer", **base)]
     t = e.tls or {}
+    if t.get("legacy") is True and t.get("not_after") is None:  # only TLS 1.0/1.1 answered: a finding, and the certificate unread
+        found, _ = external.tls_findings(host, {**t, "trusted": None})
+        return [Verdict(check=f["id"], outcome=Outcome.VULNERABLE, grade=Grade.REASONABLE, vuln_id=f["id"], cvss=f["cvss"], cvss_source="Nimstead",
+                        summary=f["summary"], observed="a TLS 1.0/1.1 handshake completed; a current one was refused", source="TLS handshake",
+                        detail=_RAISE_REMOTE, **base) for f in found] + [Verdict(check="tls", outcome=Outcome.UNDETERMINED, reason="legacy-only", **base)]
+    if t.get("lost"):  # the handshake was cut or timed out: nothing was learnt, so nothing it found before can close (R4.6)
+        return [Verdict(check="tls", outcome=Outcome.UNDETERMINED, reason="host-lost", detail=t.get("error"), **base)]
     if t.get("trusted") is None and t.get("not_after") is None:  # open but not a TLS service
         return [Verdict(check="tls", outcome=Outcome.NOT_APPLICABLE, detail=f"443 is open but completed no TLS handshake ({t.get('error') or 'unknown'})", **base)]
     found, skipped = external.tls_findings(host, t)
@@ -317,9 +345,13 @@ def _tls(endpoints: dict[int, Endpoint], host: str) -> list[Verdict]:
 
 def _web(prober: Prober, endpoints: dict[int, Endpoint]) -> list[Verdict]:
     out, controls = [], {}
+
+    def fact(port, path, marker, deadline):
+        prober.requests.append(f"GET :{port}{path}")  # recorded before it's sent, so a failed request is listed too
+        return prober.web_fact(port, path, marker, deadline)
     for rule in WEB_RULES:
         e = endpoints.get(rule.port)
-        product = f"http://{prober.host}{rule.path}"
+        product = f"{prober.web_base}{rule.path}"
         base = {"check": rule.id, "family": "network", "ecosystem": ECOSYSTEM, "product": product, "instance": product, "vuln_id": rule.id}
         if rule.safety == Safety.DISRUPTIVE and prober.safe_mode:  # content can't bypass safe mode (R2.6)
             out.append(Verdict(outcome=Outcome.NOT_RUN, reason="safe-mode", **base))
@@ -332,17 +364,20 @@ def _web(prober: Prober, endpoints: dict[int, Endpoint]) -> list[Verdict]:
             continue
         deadline = time.monotonic() + prober.budget.deadline
         if rule.port not in controls:  # negative control, once per port: how does this site answer a path that can't exist? (R10.3)
-            controls[rule.port] = prober._http_get(rule.port, f"/nimstead-{secrets.token_hex(8)}", deadline)
-        cst, cbody = controls[rule.port]
-        if cst is not None and 200 <= cst < 300 and cbody.strip():
+            controls[rule.port] = fact(rule.port, f"/nimstead-{secrets.token_hex(8)}", None, deadline)
+        cst, _, cdigest, ccontent = controls[rule.port]
+        if cst is None:  # without the control's answer a catch-all can't be told from a hit, so nothing is judged (R10.3)
+            out.append(Verdict(outcome=Outcome.UNDETERMINED, reason="host-lost", detail="the path that can't exist got no HTTP response", **base))
+            continue
+        if 200 <= cst < 300 and ccontent:
             out.append(Verdict(outcome=Outcome.UNDETERMINED, reason="soft-404", detail=f"a missing path returned HTTP {cst} with a body", **base))
             continue
-        st, body = prober._http_get(rule.port, rule.path, deadline)
+        st, hit, digest, _ = fact(rule.port, rule.path, rule.marker, deadline)
         if st is None:  # no response (timeout, reset): nothing was observed, so it can't be called fixed (R4.6)
             out.append(Verdict(outcome=Outcome.UNDETERMINED, reason="host-lost", detail="the request got no HTTP response", **base))
-        elif st == 200 and rule.marker.search(body) and body != cbody:  # a flaw-specific marker, and different from the control
+        elif st == 200 and hit and digest != cdigest:  # a flaw-specific marker, and different from the control
             out.append(Verdict(outcome=Outcome.VULNERABLE, grade=Grade.REASONABLE, cvss=rule.cvss, cvss_source="Nimstead", summary=rule.summary,
-                               observed=f"HTTP {st}, {len(body)} bytes matching the marker", source="HTTP GET", detail=_RAISE_REMOTE, **base))
+                               observed=f"HTTP {st}, matching the marker", source="HTTP GET", detail=_RAISE_REMOTE, **base))
         else:
             out.append(Verdict(outcome=Outcome.NOT_VULNERABLE, grade=Grade.REASONABLE,
                                observed=f"HTTP {st}" + (" (marker absent)" if st == 200 else ""), source="HTTP GET", **base))
@@ -359,7 +394,7 @@ def _versions(endpoints: dict[int, Endpoint]) -> list[Verdict]:
                                outcome=Outcome.UNDETERMINED, reason="catch-all", detail="answered a nonsense probe with the same reply"))
             continue
         for rule in VERSION_RULES:
-            m = rule.banner.search(e.banner)
+            m = rule.banner.search(whole_lines(e.banner))
             if not m:
                 continue
             ver = m.group("ver").decode()
@@ -426,7 +461,9 @@ def _coverage(endpoints: dict[int, Endpoint], verdicts: list[Verdict], skipped: 
         e = endpoints[port]
         label = f"tcp/{port}" + (f" {_SERVICE_NAME[port]}" if port in _SERVICE_NAME else " TLS" if port == external.TLS_PORT else " HTTP" if port == 80 else "")
         err = "did not answer (dropped)" if e.state == "filtered" else "answered a nonsense probe" if e.reflects else None
-        sources.append({"name": label, "label": label, "state": e.state, "count": 1 if e.state == "open" else 0, "error": err})
+        names = [r.product for r in VERSION_RULES if r.product.lower().encode() in whole_lines(e.banner).lower()] if not e.reflects else []
+        sources.append({"name": label, "label": label, "state": e.state, "count": 1 if e.state == "open" else 0, "error": err,
+                        "greeting": greeting(e.banner) and not e.reflects, "names": names})  # names: products the greeting still names
     net = [v for v in verdicts if v.family == "network"]
     families = {"network": {"label": "Network services", "attempted": len(net), "determined": sum(v.outcome in _DETERMINED for v in net),
                             "outcomes": dict(sorted(Counter(v.outcome.value for v in net).items()))}}
@@ -441,8 +478,8 @@ def _coverage(endpoints: dict[int, Endpoint], verdicts: list[Verdict], skipped: 
         stated.append("Some ports were dropped rather than refused: those checks are not clean results, only undetermined.")
     for s in skipped:
         stated.append(f"Not checked on this scanner: {s}.")
-    stated.append("This slice checks reachable services, TLS on 443, exposed web paths and a few banner versions. Findings still open and close "
-                  "through the external scan; banner-to-CVE results are weak evidence until the host is read directly.")
+    stated.append("This slice checks reachable services, TLS on 443, exposed web paths and a few banner versions. Each result opens or "
+                  "closes a finding; banner-version ones are unverified, since a banner can be spoofed or carry a backported fix.")
     return {"sources": sources, "families": families, "statements": stated}
 
 
@@ -482,20 +519,13 @@ def build_report(host: str, ip: str, verdicts: list[Verdict], endpoints: dict[in
 def parity(verdicts: list[Verdict], external_ids: set[str]) -> dict:
     """Compare vulnerable verdict IDs with external.scan finding IDs in external_ids.
 
-    Return sorted agree IDs, explained/unexplained difference rows, and ok. Extra
-    NIM-WEB-/CVE- verdicts are explained engine-only checks. ok means no unexplained
-    differences, not exact equality. Does not change inputs. Invalid ID/model types
-    can raise TypeError or AttributeError."""
+    Return sorted agree IDs, unexplained difference rows, and ok. Every vulnerable
+    verdict opens a finding (DECISIONS 126, 127), so any difference is a bug.
+    Does not change inputs. Invalid ID/model types can raise TypeError or AttributeError."""
     vuln = {v.vuln_id for v in verdicts if v.outcome == Outcome.VULNERABLE and v.vuln_id}
-    explained, unexplained = [], []
-    for fid in sorted(external_ids - vuln):
-        unexplained.append({"id": fid, "problem": "external.scan opened it and the engine has no vulnerable verdict"})
-    for vid in sorted(vuln - external_ids):
-        if vid.startswith("NIM-WEB-") or vid.startswith("CVE-"):
-            explained.append({"id": vid, "why": "an engine-only remote check (web path or banner version); external.scan doesn't open it yet"})
-        else:
-            unexplained.append({"id": vid, "problem": "the engine says vulnerable and external.scan has no finding"})
-    return {"agree": sorted(vuln & external_ids), "explained": explained, "unexplained": unexplained, "ok": not unexplained}
+    unexplained = [{"id": fid, "problem": "external.scan opened it and the engine has no vulnerable verdict"} for fid in sorted(external_ids - vuln)]
+    unexplained += [{"id": vid, "problem": "the engine says vulnerable and external.scan has no finding"} for vid in sorted(vuln - external_ids)]
+    return {"agree": sorted(vuln & external_ids), "unexplained": unexplained, "ok": not unexplained}
 
 
 # --- entry point (scope proven, then probe) --------------------------------
@@ -509,9 +539,15 @@ def run(s, asset, lookup=None, budget: Budget | None = None, safe_mode: bool = T
     external.ScanRefused can follow a committed refusal event or verification reset.
     Other database, lookup, budget and probe errors propagate. Does not persist the
     report or change findings. host_lost means every initial endpoint was filtered."""
-    ip = external.prove_scope(s, asset, lookup)
-    prober = Prober(asset.hostname, ip, budget, safe_mode)
+    ip = external.prove_scope(s, asset, lookup)  # before anything else: no packet until scope passes
+    return probe(asset.hostname, ip, budget, safe_mode)
+
+
+def probe(host: str, ip: str, budget: Budget | None = None, safe_mode: bool = True) -> tuple[list[Verdict], dict, Prober]:
+    """Probe pinned ip once and return (verdicts, report, Prober). No ownership check: callers prove scope first."""
+    prober = Prober(host, ip, budget, safe_mode)
     endpoints = prober.observe()
     host_lost = all(e.state == "filtered" for e in endpoints.values())
     verdicts = evaluate(prober, endpoints)
-    return verdicts, build_report(asset.hostname, ip, verdicts, endpoints, [], host_lost), prober
+    skipped = [v.detail for v in verdicts if v.reason == "scanner-limited"]
+    return verdicts, {**build_report(host, ip, verdicts, endpoints, skipped, host_lost), "requests": prober.requests}, prober

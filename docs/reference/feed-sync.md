@@ -93,6 +93,8 @@ Lifecycle fetches use the union of application and distribution products. Thunde
 
 Office handles only HTTP errors and `ValueError` locally. Other malformed fields and database errors can propagate. A handled failure rolls back the entire pending session.
 
+MAC vendor names (`oui.sync`) run only once some agent has reported a neighbour. The source is Wireshark's `manuf`, published for automated download from the IEEE MA-L, MA-M and MA-S registries; IEEE's own `oui.csv` refuses ordinary HTTP clients. It is fetched only when the stored copy is seven days old, as the file asks. It has a 16 MiB limit and needs at least 1,000 parsed prefixes; otherwise the stored copy stays.
+
 Metasploit requires a dictionary with at least 1000 entries, but no minimum extracted CVE count. Exploit-DB requires `codes` and `type` columns and at least 1000 unique CVE IDs. Only exact lowercase `dos` rows are excluded. Both use a 100 MiB response limit. LOLDrivers uses a 200 MiB limit and its [parser rules](platforms.md#windows-matching-inputs).
 
 ## Scheduled update result

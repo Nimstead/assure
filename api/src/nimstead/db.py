@@ -120,7 +120,7 @@ class Asset(Base):
     internet_facing: Mapped[bool] = mapped_column(Boolean, default=False)
     directory_source: Mapped[bool] = mapped_column(Boolean, default=False)  # an admin chose it to send the AD list (DECISIONS 102)
     sandbox: Mapped[bool] = mapped_column(Boolean, default=False)  # disposable test target; remediation dev-guard
-    kind: Mapped[str] = mapped_column(String(20), default="host", server_default="host")  # host | application (no agent; SBOM only) | external (outside-in scan)
+    kind: Mapped[str] = mapped_column(String(20), default="host", server_default="host")  # host | application (no agent; SBOM only) | external (outside-in scan) | device (no agent; checked by an opted-in agent on its network, DECISIONS 129)
     verified_at: Mapped[datetime | None]  # external: DNS/address proof passed; scan entry rechecks both
     ring: Mapped[int] = mapped_column(Integer, default=1)  # 0 = canary: auto-remediation lands here first
     health_units: Mapped[list] = mapped_column(default=list)  # systemd units that must stay active after a change
@@ -136,6 +136,7 @@ class Asset(Base):
     maintenance_window: Mapped[dict | None]  # overrides the org's (plan T40); None = the org's
     enrolled_by: Mapped[str | None] = mapped_column(String(12))  # enrolment token id, so a leaked token's hosts can be found
     collection: Mapped[dict | None]  # what the agent says it read of its latest inventory (engine/collection.py); None = not reported
+    own_addresses: Mapped[dict | None]  # {"ips", "macs"} of the machine itself (DECISIONS 128): its neighbours' rows for it aren't unmanaged
     # the last inventory written to the ledger: an unchanged one is written at most once a day (DECISIONS 121)
     inventory_logged_sha256: Mapped[str | None] = mapped_column(String(64))
     inventory_logged_at: Mapped[datetime | None]
@@ -176,6 +177,20 @@ class DirectoryComputer(Base):
     os_version: Mapped[str] = mapped_column(String(100), default="")
     last_logon: Mapped[datetime | None]
     seen_at: Mapped[datetime] = mapped_column(default=now)
+
+
+class Neighbour(Base):
+    """An address and MAC one agent's machine had in its own neighbour table (DECISIONS 128): which devices on the
+    fleet's networks have no agent. Dropped 30 days after it was last seen."""
+    __tablename__ = "neighbour"
+    asset_id: Mapped[str] = mapped_column(ForeignKey("asset.id", ondelete="CASCADE"), primary_key=True)
+    ip: Mapped[str] = mapped_column(String(45), primary_key=True)
+    mac: Mapped[str] = mapped_column(String(17), primary_key=True)
+    org_id: Mapped[str] = mapped_column(ForeignKey("org.id"))
+    interface: Mapped[str] = mapped_column(String(64), default="")
+    first_seen: Mapped[datetime] = mapped_column(default=now)
+    last_seen: Mapped[datetime] = mapped_column(default=now)
+    __table_args__ = (Index("ix_neighbour_org_seen", "org_id", "last_seen"),)  # the org's list, and the 30-day prune
 
 
 class Kev(Base):

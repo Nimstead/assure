@@ -219,6 +219,9 @@ def render() -> dict[str, str]:
     schema["components"]["schemas"]["AISearchFilter"] = search_filter
     record("DirectoryReceipt", {"computers": integer})
     record("UnmanagedComputer", {**{k: string for k in ("domain", "name", "os", "os_version", "last_logon")}, "end_of_support": nullable_text})
+    checked = record("DeviceCheck", {**{k: string for k in ("asset_id", "at", "from")}, "open": strings})
+    record("UnmanagedDevice", {**{k: string for k in ("mac", "vendor", "first_seen", "last_seen")}, "addresses": strings, "seen_by": strings,
+                               "checked": {"anyOf": [checked, {"type": "null"}]}})
     entry = record("LedgerEntry", {**{k: string for k in ("ts", "kind", "subject", "prev_hash", "hash")},
                                     "seq": integer, "data": {"type": "object", "description": "Event-specific ledger payload."}})
     record("LedgerPage", {"problems": strings, "entries": {"type": "array", "items": entry}, "total": integer})
@@ -379,6 +382,10 @@ def render() -> dict[str, str]:
             if route.path == "/api/directory/unmanaged":
                 operation["responses"]["200"] = {"description": "Stored unmatched directory rows, or CSV only when format=csv.", "content": {
                     "application/json": {"schema": {"type": "array", "items": {"$ref": "#/components/schemas/UnmanagedComputer"}}},
+                    "text/csv": {"schema": {"type": "string"}}}}
+            if route.path == "/api/network/unmanaged":
+                operation["responses"]["200"] = {"description": "Devices in agents' own neighbour tables that are none of the organisation's agents, or CSV only when format=csv.", "content": {
+                    "application/json": {"schema": {"type": "array", "items": {"$ref": "#/components/schemas/UnmanagedDevice"}}},
                     "text/csv": {"schema": {"type": "string"}}}}
             if route.path == "/api/evidence/pack":
                 operation["responses"]["200"] = {"description": "Signed ZIP containing pack.json matching EvidencePackDocument, plus signature/key/instructions.",

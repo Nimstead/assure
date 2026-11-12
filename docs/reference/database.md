@@ -43,6 +43,7 @@ The model does not make the evidence ledger immutable. The unique `(org_id, seq)
 | `InstalledPackage` | Observed asset package, source version, and agent/SBOM origin |
 | `Advisory` | Composite ID/ecosystem/package key for advisory and auxiliary feed records |
 | `DirectoryComputer` | Composite organisation/domain/name key for directory-discovered computers |
+| `Neighbour` | Composite asset/IP/MAC key for one row of a host's own neighbour table, with first and last seen (deleted 30 days after last seen) |
 | `Kev` | CVE-keyed known-exploitation metadata |
 | `Epss` | CVE-keyed probability and percentile |
 | `Cvss` | CVE-keyed fallback impact score/vector |
@@ -55,7 +56,7 @@ The model does not make the evidence ledger immutable. The unique `(org_id, seq)
 | `PendingLogin` | SSO state, expiry, and nonce/PKCE flow data |
 | `Notification` | Delivery attempt, channel, result, retry state, and retained message |
 
-Installed-package, finding, scan-record, and remediation-job foreign keys request cascade deletion with their asset. Other relationships have their own declarations. Do not assume every organisation or user deletion cascades through all records.
+Installed-package, neighbour, finding, scan-record, and remediation-job foreign keys request cascade deletion with their asset. Other relationships have their own declarations. Do not assume every organisation or user deletion cascades through all records.
 
 ## Related
 

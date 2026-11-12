@@ -7,7 +7,7 @@ import { afterEach, vi } from "vitest";
 import { SsoSection } from "./integrations";
 import { ApiError, meQ, type Action, type Asset, type Finding, type Job, type Settings } from "./lib";
 import { ActionCard } from "./home";
-import { AssetRow, AttackPaths, Baselines, baselineSummary, filterAssets, NotAssessed } from "./assets";
+import { AssetRow, AssetsPage, AttackPaths, Baselines, baselineSummary, filterAssets, NotAssessed, UnmanagedDevices } from "./assets";
 import { Palette } from "./shell";
 import { Done, errorLead } from "./ui";
 import { Onboarding, TROUBLESHOOT_AFTER_MS } from "./onboarding";
@@ -341,6 +341,17 @@ it("the palette keeps the highlighted command when late results arrive, and find
   expect(box.getAttribute("aria-activedescendant")).toBe(chosen);  // a new row arriving above didn't move the highlight
 });
 
+it("the palette offers machines, never the devices network checks found", async () => {
+  serve({ "GET /api/assets": [{ ...HOST, hostname: "go-web-1" }, { ...HOST, id: "d1", kind: "device", hostname: "192.168.1.64", os_name: "Hikvision" }], "GET /api/findings": [] });
+  wrap(<Palette open onOpenChange={() => {}} signOut={() => {}} nextTheme={() => {}} />);
+  await userEvent.type(screen.getByRole("combobox"), "go");
+  await screen.findByRole("option", { name: /Host: go-web-1/ });
+  await userEvent.clear(screen.getByRole("combobox"));
+  await userEvent.type(screen.getByRole("combobox"), "192.168");
+  await screen.findByRole("option", { name: /Search findings/ });
+  expect(screen.queryByRole("option", { name: /Host: 192\.168\.1\.64/ })).toBeNull();
+});
+
 it("the palette never dead-ends: any text offers a findings search, and the list is a valid listbox", async () => {
   serve({ "GET /api/assets": [], "GET /api/findings": [] });
   wrap(<Palette open onOpenChange={() => {}} signOut={() => {}} nextTheme={() => {}} />);
@@ -510,4 +521,48 @@ it("the approval names the target machine's criticality, ring, kind and health c
   const a = { hostname: "db-1", criticality: "critical", ring: 0, sandbox: false, health_units: ["postgresql"] } as unknown as Asset;
   expect(machineContext(a)).toBe("db-1 · critical criticality · canary (fixed first) · production · health checks: postgresql");
   expect(machineContext(undefined)).toBeUndefined();
+});
+
+it("devices with no agent: hidden while there are none, then counted, named and said to be passive", async () => {
+  const rows = [{ mac: "bc:ba:c2:11:22:33", vendor: "Hangzhou Hikvision Digital Technology Co.,Ltd.", addresses: ["192.168.1.64"], seen_by: ["web-1"], first_seen: "2026-11-01T00:00:00", last_seen: "2026-11-11T00:00:00",
+                  checked: { asset_id: "d1", at: "2026-11-11T00:00:00", from: "web-1", open: ["NIM-EXPOSED-TELNET"] } },
+                { mac: "da:a1:19:00:00:01", vendor: "randomised MAC", addresses: ["192.168.1.70"], seen_by: ["web-1", "db-1"], first_seen: "2026-11-10T00:00:00", last_seen: "2026-11-11T00:00:00", checked: null }];
+  vi.stubGlobal("fetch", vi.fn(async () => new Response("[]", { status: 200 })));
+  const empty = render(<QueryClientProvider client={new QueryClient()}><UnmanagedDevices /></QueryClientProvider>);
+  await new Promise((r) => setTimeout(r, 20));
+  expect(empty.container).toBeEmptyDOMElement();
+  empty.unmount();
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(rows), { status: 200 })));
+  render(<QueryClientProvider client={new QueryClient()}><UnmanagedDevices /></QueryClientProvider>);
+  expect(await screen.findByRole("heading", { name: "2 devices on your networks have no agent" })).toBeInTheDocument();
+  expect(screen.getByText(/1 checked for exposed services/)).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "1 issue" }).getAttribute("href")).toMatch(/^\/findings\?.*asset=d1/);
+  expect(screen.getByText(/nothing was sent to them to find them/)).toBeInTheDocument();
+  expect(screen.getByText(/1 named by their network card's maker/)).toBeInTheDocument();
+  expect(screen.getByText(/Hangzhou Hikvision/)).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Download as CSV" })).toHaveAttribute("href", "/api/network/unmanaged?format=csv");
+  vi.unstubAllGlobals();
+});
+
+it("devices with no agent: a device checked with nothing found says who checked it (ship review 3)", async () => {
+  serve({ "GET /api/network/unmanaged": [{ mac: "bc:ba:c2:11:22:33", vendor: "", addresses: ["192.168.1.64"], seen_by: ["web-1"], first_seen: "2026-11-01T00:00:00",
+    last_seen: "2026-11-11T00:00:00", checked: { asset_id: "d1", at: "2026-11-11T00:00:00", from: "db-1", open: [] } }] });
+  wrap(<UnmanagedDevices />);
+  expect(await screen.findByText(/checked by db-1, nothing found/)).toBeInTheDocument();
+  expect(screen.getByText(/unknown maker/)).toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: /issue/ })).toBeNull();
+});
+
+it("assets: an org whose only assets are devices still shows the add-your-first-machine state (ship review 3)", async () => {
+  serve({ "GET /api/assets": [{ id: "d1", kind: "device", hostname: "192.168.1.64", ring: 1 }], "GET /api/network/unmanaged": [] });
+  wrap(<AssetsPage />);
+  expect(await screen.findByText("No machines yet")).toBeInTheDocument();
+  expect(screen.queryByText("192.168.1.64")).toBeNull();
+});
+
+it("devices with no agent: a list that couldn't be read says so, never reads as none (ship review 2)", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ detail: "The device list was read too often this hour; try again later" }), { status: 429 })));
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><UnmanagedDevices /></QueryClientProvider>);
+  expect(await screen.findByRole("alert")).toHaveTextContent(/devices with no agent.*too often this hour/);
+  vi.unstubAllGlobals();
 });

@@ -14,14 +14,14 @@ the first returned address. Checks cover:
 import re
 import socket
 import ssl
-from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from nimstead import evidence, netguard, risk, sso
+from nimstead import engine, evidence, netguard, risk, sso
 from nimstead.db import Asset, Finding, now
+from nimstead.engine.model import REASONS
 
 ECOSYSTEM = "External"
 HOSTNAME = re.compile(r"^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
@@ -29,6 +29,8 @@ EXPOSED_LIKELIHOOD = (0.8, "Reachable from the internet, where this service is s
 OPEN_BY_DEFAULT_LIKELIHOOD = (1.0, "No authentication by default: exposed instances are found and abused automatically within hours")
 OPEN_BY_DEFAULT = {"REDIS", "ELASTICSEARCH", "MONGODB", "MEMCACHED", "DOCKER"}
 TLS_LIKELIHOOD = (0.3, "Visible to every visitor")
+BANNER_LIKELIHOOD = (0.4, "Read from the service's banner, which can be spoofed or carry a backported fix: unverified until an agent reads the host")
+WEB_LIKELIHOOD = (0.8, "Files at well-known paths are fetched by automated crawlers within hours of going online")
 
 # port: (id, name, CVSS-equivalent impact, what to do)
 SERVICES = {
@@ -48,7 +50,7 @@ SERVICES = {
 }
 TLS_PORT = 443
 EXPIRY_WARN_DAYS = 14
-LEGACY_SKIP = "legacy TLS (this server's OpenSSL can't offer TLS 1.0/1.1)"  # scan() keeps NIM-TLS-LEGACY open when it sees this
+LEGACY_SKIP = "legacy TLS (the TLS 1.0/1.1 try got no answer, or this scanner can't offer them)"  # the engine reads it as scanner-limited, which keeps NIM-TLS-LEGACY open
 PROOF_PATH = "/.well-known/nimstead-verify.txt"
 PROOF_PORTS = ((443, True), (80, False))  # (port, TLS)
 
@@ -126,11 +128,11 @@ def connect_state(ip: str, port: int, timeout: float = 3.0) -> str:
         return "filtered"
 
 
-def port_open(ip: str, port: int, timeout: float = 3.0) -> bool:
-    """Return whether a TCP connection to ip:port succeeds within timeout seconds.
-
-    Refusal, timeout, and other socket errors return False; this does not distinguish closed from filtered."""
-    return connect_state(ip, port, timeout) == "open"
+def handshake_lost(e: OSError) -> bool:
+    """True when a failed handshake proves nothing; False only when the reply wasn't TLS at all (a plain service on the
+    port: OpenSSL's WRONG_VERSION_NUMBER). A cut, reset, timeout or a TLS alert (the server is TLS but refused our offer)
+    is lost: nothing was learnt about its certificate."""
+    return getattr(e, "reason", None) != "WRONG_VERSION_NUMBER"
 
 
 def tls_probe(ip: str, host: str, port: int = TLS_PORT, timeout: float = 5.0) -> dict:
@@ -139,7 +141,8 @@ def tls_probe(ip: str, host: str, port: int = TLS_PORT, timeout: float = 5.0) ->
     ip/host are strings, port is an integer and timeout is a socket-operation limit
     in seconds. Return trusted (True/False/None), error (string/None), not_after
     (Unix timestamp/None), and legacy (True/False/None). None for trusted means no
-    TLS handshake. None for legacy can mean an untestable scanner protocol or an
+    TLS handshake; then lost says why: True when the connection was cut, reset or timed
+    out (nothing learnt), False when the service answered but isn't TLS. None for legacy can mean an untestable scanner protocol or an
     early return before that test. Certificate failures trigger an unverified expiry
     read. Ordinary socket/TLS errors become facts, but malformed certificates,
     invalid arguments and unexpected configuration errors can propagate.
@@ -153,7 +156,9 @@ def tls_probe(ip: str, host: str, port: int = TLS_PORT, timeout: float = 5.0) ->
         out["trusted"], out["error"] = False, (e.verify_message or str(e))
         out["not_after"] = _expiry_unverified(ip, host, port, timeout)
     except (OSError, ssl.SSLError) as e:
-        out["trusted"], out["error"] = None, f"no TLS handshake: {e}"  # not a TLS service: nothing to judge
+        out["trusted"], out["error"], out["lost"] = None, f"no TLS handshake: {e}", handshake_lost(e)
+        if out["lost"]:  # a server that speaks only TLS 1.0/1.1 refuses a current handshake: the worst legacy case
+            out["legacy"] = _accepts_legacy(ip, host, port, timeout)
         return out
     out["legacy"] = _accepts_legacy(ip, host, port, timeout)
     return out
@@ -183,10 +188,22 @@ def _accepts_legacy(ip, host, port, timeout) -> bool | None:
     try:
         with socket.create_connection((ip, port), timeout=timeout) as raw, ctx.wrap_socket(raw, server_hostname=host):
             return True
-    except ssl.SSLError as e:
-        return None if "NO_PROTOCOLS_AVAILABLE" in str(e) or "no protocols available" in str(e) else False
-    except OSError:
-        return False
+    except OSError as e:
+        return legacy_refused(e)
+
+
+# the alerts that mean "not this version" (an internal_error or decode_error alert says nothing about TLS 1.0; ship review 3)
+_REFUSALS = ("ALERT_PROTOCOL_VERSION", "ALERT_HANDSHAKE_FAILURE", "ALERT_INSUFFICIENT_SECURITY", "UNSUPPORTED_PROTOCOL",
+             "WRONG_VERSION_NUMBER", "VERSION_TOO_LOW")
+
+
+def legacy_refused(e: OSError) -> bool | None:
+    """False when the server answered a TLS 1.0/1.1 offer with a TLS refusal; None when nothing was learnt (a cut, reset or
+    timeout, or this machine can't offer them), which keeps NIM-TLS-LEGACY open (R4.6, ship review 2)."""
+    text = f"{getattr(e, 'reason', None) or ''} {e}".upper().replace(" ", "_")
+    if not isinstance(e, ssl.SSLError) or "NO_PROTOCOLS" in text:
+        return None
+    return False if any(k in text for k in _REFUSALS) else None
 
 
 def exposed_finding(port: int) -> dict:
@@ -228,29 +245,35 @@ def tls_findings(host: str, t: dict) -> tuple[list[dict], list[str]]:
     return found, skipped
 
 
-def checks(host: str, ip: str) -> tuple[list[dict], list[str]]:
-    """Check configured service ports and TLS on pinned ip, using host for TLS identity.
+def observe(host: str, ip: str) -> tuple[list, dict]:
+    """Return (verdicts, report) from the engine's prober on pinned ip, using host for TLS and HTTP identity.
 
-    host/ip are strings. Return (finding dictionaries, skipped descriptions).
-    Probe SERVICES with eight workers, then TLS_PORT if it accepts a connection.
-    Closed and filtered service ports both omit findings. No web-path or banner-CVE
-    checks run here. Does not validate scope or persist. Unexpected helper failures
-    propagate. Use scan() for ownership checks and finding updates."""
-    found, skipped = [], []
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        open_ports = {p for p, ok in zip(SERVICES, pool.map(lambda p: port_open(ip, p), SERVICES), strict=True) if ok}
-    found += [exposed_finding(port) for port in sorted(open_ports)]
-    if port_open(ip, TLS_PORT):
-        f, s = tls_findings(host, tls_probe(ip, host))
-        found += f
-        skipped += s
-    return found, skipped
+    One probe pass (DECISIONS 126). Does not validate scope or persist: scan() proves scope first."""
+    from nimstead.engine import network  # network imports this module
+    verdicts, rep, _ = network.probe(host, ip)
+    return verdicts, rep
 
 
-def likelihood_of(check_id: str) -> tuple[float, str]:
-    """Return the configured (likelihood, reason) tuple for the external vulnerability ID check_id."""
+# The same checks on a device inside a network (DECISIONS 129): reachable by what's on that network, not the internet
+INTERNAL_LIKELIHOOD = {"exposed": (0.6, "Answers on your network: any machine there, or anything that gets onto it, can reach it"),
+                       "open": (0.8, "No authentication by default: anything on your network can use it"),
+                       "web": (0.6, "Served on your network: any machine there can fetch it"),
+                       "tls": (0.3, "Seen by every client on your network")}
+
+
+def likelihood_of(check_id: str, internal: bool = False) -> tuple[float, str]:
+    """Return the configured (likelihood, reason) tuple for the vulnerability ID check_id: as seen from the internet, or
+    with internal, on a device inside a network."""
+    if internal and not check_id.startswith("CVE-"):
+        kind = ("open" if check_id.removeprefix("NIM-EXPOSED-") in OPEN_BY_DEFAULT else "exposed") if check_id.startswith("NIM-EXPOSED-") \
+            else "web" if check_id.startswith("NIM-WEB-") else "tls"
+        return INTERNAL_LIKELIHOOD[kind]
     if check_id.startswith("NIM-EXPOSED-"):
         return OPEN_BY_DEFAULT_LIKELIHOOD if check_id.removeprefix("NIM-EXPOSED-") in OPEN_BY_DEFAULT else EXPOSED_LIKELIHOOD
+    if check_id.startswith("NIM-WEB-"):
+        return WEB_LIKELIHOOD
+    if check_id.startswith("CVE-"):
+        return BANNER_LIKELIHOOD
     return TLS_LIKELIHOOD
 
 
@@ -293,57 +316,106 @@ def prove_scope(s: Session, asset: Asset, lookup=None) -> str:
     return ip
 
 
-def scan(s: Session, asset: Asset, lookup=None, run_checks=None) -> dict:
-    """Re-prove scope, check Asset asset, update findings/ledger and commit Session s.
+def findings_from(verdicts: list, internal: bool = False) -> list[dict]:
+    """Finding dictionaries (exposed_finding's shape, plus installed and fixed) for every vulnerable verdict of the
+    engine's prober: exposed services, TLS, web paths, and banner versions (graded unverified, DECISIONS 127). internal:
+    a device inside a network, whose reasons say so."""
+    return [{"id": v.vuln_id, "package": v.product, "cvss": v.cvss, "likelihood": likelihood_of(v.vuln_id, internal), "summary": v.summary,
+             "installed": (v.version or "")[:255], "fixed": v.fixed} for v in verdicts if v.outcome == "vulnerable" and v.vuln_id]
 
-    lookup follows prove_scope(). Optional run_checks(host, ip) returns (finding
-    dictionaries, skipped strings); default uses checks(). Caller checks ownership.
-    Return address, open (unique observed issue count), resolved (new transitions),
-    and skipped. Accepted observed findings stay accepted. Unseen open/accepted
-    findings resolve, including when a port is filtered, except one whose check this
-    scan skipped (legacy TLS): an untested check isn't evidence of a fix.
+
+def held_open(vid: str, package: str, verdicts: list, rep: dict) -> str | None:
+    """None when this scan proved the finding (vid on package) absent; otherwise the engine REASONS key for why it stays open
+    (R4.6, DECISIONS 126). rep is the scan's report, whose coverage holds each port's state.
+
+    Exposed services and web paths close on their own not-vulnerable or not-applicable verdict. TLS findings close when
+    the handshake ran without showing them, or nothing listens on 443; legacy TLS also needs this scanner to have tried
+    TLS 1.0/1.1. A banner finding closes on its port refusing, or answering with a greeting that no longer names it."""
+    own = [v for v in verdicts if (v.vuln_id == vid and v.product == package) or v.check == vid]
+    if not own and vid.startswith("NIM-TLS-"):
+        own = [v for v in verdicts if v.check == "tls"]  # 443 as a whole: refused, dropped or timed out
+        if not own:
+            return None  # the handshake ran and didn't show it
+    if not own and vid.startswith("CVE-"):
+        port, product = package.split(" ", 1)  # "tcp/2222 vsftpd"
+        src = next((x for x in rep["coverage"]["sources"] if x["name"].split()[0] == port), None)
+        if src and (src["state"] == "closed" or (src["state"] == "open" and src.get("greeting") and product not in src.get("names", []))):
+            return None  # nothing listens, or a service introducing itself as something else (a refusal or a hidden version names no change)
+        return "port-filtered" if src and src["state"] == "filtered" else "not-reassessed"
+    if not own:
+        return "not-reassessed"
+    return next((v.reason or "not-reassessed" for v in own if not v.proves_absent), None)
+
+
+def scan(s: Session, asset: Asset, lookup=None) -> dict:
+    """Re-prove scope, probe Asset asset with the engine, store its report, update findings/ledger and commit Session s.
+
+    lookup follows prove_scope(). Caller checks ownership. Findings come from the
+    engine's verdicts (observe()). Return address, open (unique observed issue count),
+    resolved (new transitions), still_open (unseen, but not proven fixed) and skipped.
+    Accepted observed findings stay accepted. An unseen open/accepted finding resolves
+    only on evidence (held_open); otherwise it gets one "Still open: ..." reason.
     On success update asset.last_seen and commit all pending session changes.
     ScanRefused and other scope/probe/database errors propagate. Refusal can itself
     commit through prove_scope(). No automatic rollback handles later exceptions."""
     ip = prove_scope(s, asset, lookup)
-    found, skipped = (run_checks or checks)(asset.hostname, ip)
+    verdicts, rep = observe(asset.hostname, ip)
+    skipped = [v.detail for v in verdicts if v.reason == "scanner-limited"]
+    engine.record(s, asset, rep, {"host": asset.hostname, "address": ip})
+    seen, resolved, still = apply(s, asset, verdicts, rep)
+    evidence.append(s, asset.org_id, "external_scan", asset.id, {"host": asset.hostname, "address": ip, "problems": sorted({v for v, _ in seen}),
+                                                                 "skipped": skipped, "requests": rep.get("requests", [])})
+    s.commit()
+    return {"address": ip, "open": len(seen), "resolved": resolved, "still_open": still, "skipped": skipped}
+
+
+def apply(s: Session, asset: Asset, verdicts: list, rep: dict, ecosystem: str = ECOSYSTEM) -> tuple[set, int, int]:
+    """Open, reopen, re-score and close asset's findings from a network report's verdicts; no commit.
+
+    Return (seen (vulnerability, endpoint) pairs, resolved count, still-open count). An unseen open or accepted
+    finding resolves only on evidence (held_open); otherwise it keeps one "Still open: ..." reason. Each transition
+    goes to the ledger. Sets asset.last_seen. Used by the external scan and by devices' network checks."""
+    found = findings_from(verdicts, asset.kind == "device")
     t = now()
-    existing = {f.vuln_id: f for f in s.scalars(select(Finding).where(Finding.asset_id == asset.id))}
+    # keyed by (vulnerability, endpoint): one banner CVE can be on two ports
+    existing = {(f.vuln_id, f.package): f for f in s.scalars(select(Finding).where(Finding.asset_id == asset.id))}
     events, seen = [], set()
     for c in found:
-        seen.add(c["id"])
+        seen.add((c["id"], c["package"]))
         r = _score(asset, c)
-        f = existing.get(c["id"])
+        f = existing.get((c["id"], c["package"]))
         if f is None:
-            f = Finding(org_id=asset.org_id, asset_id=asset.id, ecosystem=ECOSYSTEM, package=c["package"], vuln_id=c["id"],
-                        first_seen=t, advisory_ids=[c["id"]], installed_version="", fixed_version=None)
+            f = Finding(org_id=asset.org_id, asset_id=asset.id, ecosystem=ecosystem, package=c["package"], vuln_id=c["id"],
+                        first_seen=t, advisory_ids=[c["id"]], installed_version=c["installed"], fixed_version=c["fixed"])
             s.add(f)
             events.append(("finding_opened", f))
         elif f.status == "resolved":
             f.status, f.resolved_at = "open", None
             events.append(("finding_reopened", f))
         f.summary, f.cvss, f.epss, f.kev = c["summary"], c["cvss"], None, False
+        f.installed_version, f.fixed_version = c["installed"], c["fixed"]
         f.score, f.priority, f.reasons, f.last_seen = r.score, r.priority, r.reasons, t
-    resolved = 0
-    untested = {"NIM-TLS-LEGACY"} if LEGACY_SKIP in skipped else set()  # an untested check isn't evidence of a fix
-    for vid, f in existing.items():
-        if vid not in seen and vid not in untested and f.status in ("open", "accepted"):
+    resolved = still = 0
+    for (vid, package), f in existing.items():
+        if (vid, package) not in seen and f.status in ("open", "accepted"):
+            if (why := held_open(vid, package, verdicts, rep)) is not None:  # silence, a drop or an untested check isn't evidence of a fix
+                f.reasons = [r for r in f.reasons or [] if not r.startswith("Still open: ")] + [f"Still open: {REASONS[why][0]}"]
+                still += 1
+                continue
             f.status, f.resolved_at = "resolved", t
             resolved += 1
             events.append(("finding_resolved", f))
     s.flush()
+    host = "device" if asset.kind == "device" else asset.hostname  # a device's address can be personal data: not in the permanent ledger
     for kind, f in events:
-        evidence.append(s, asset.org_id, kind, f.id, {"host": asset.hostname, "vuln_id": f.vuln_id, "package": f.package,
-                                                      "installed_version": "", "fixed_version": None, "priority": f.priority})
+        evidence.append(s, asset.org_id, kind, f.id, {"host": host, "vuln_id": f.vuln_id, "package": f.package,
+                                                      "installed_version": f.installed_version, "fixed_version": f.fixed_version, "priority": f.priority})
     asset.last_seen = t
-    evidence.append(s, asset.org_id, "external_scan", asset.id, {"host": asset.hostname, "address": ip, "problems": sorted(seen),
-                                                                 "skipped": skipped})
-    s.commit()
-    return {"address": ip, "open": len(seen), "resolved": resolved, "skipped": skipped}
+    return seen, resolved, still
 
 
 def _score(asset: Asset, c: dict):
-    return risk.score(kev=False, epss=None, cvss=c["cvss"], criticality=asset.criticality, internet_facing=True,
+    return risk.score(kev=False, epss=None, cvss=c["cvss"], criticality=asset.criticality, internet_facing=asset.kind == "external",
                       fix_available=True, likelihood=c["likelihood"][0], likelihood_reason=c["likelihood"][1])
 
 
@@ -355,8 +427,9 @@ def rescore(s: Session, asset: Asset) -> dict:
     Database and malformed score-input errors propagate without automatic rollback."""
     n = 0
     for f in s.scalars(select(Finding).where(Finding.asset_id == asset.id, Finding.status == "open")):
-        r = _score(asset, {"cvss": f.cvss, "likelihood": likelihood_of(f.vuln_id)})
-        f.score, f.priority, f.reasons = r.score, r.priority, r.reasons
+        r = _score(asset, {"cvss": f.cvss, "likelihood": likelihood_of(f.vuln_id, asset.kind == "device")})
+        f.score, f.priority = r.score, r.priority
+        f.reasons = r.reasons + [x for x in f.reasons or [] if x.startswith("Still open: ")]  # the last scan's word on why it's open stays
         n += 1
     s.commit()
     return {"open": n, "resolved": 0}

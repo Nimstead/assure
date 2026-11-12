@@ -46,6 +46,8 @@ def test_unsafe_coordinates_are_ignored(tmp_path):
 
 def test_only_when_the_host_opted_in(monkeypatch):
     monkeypatch.setattr(agent, "collect", lambda: {"packages": [], "facts": {}})
+    monkeypatch.setattr(agent, "neighbours", lambda: [])
+    monkeypatch.setattr(agent, "own_addresses", lambda: {"ips": [], "macs": []})
     monkeypatch.setattr(agent, "scan_jars", lambda roots, owned: ([{"ecosystem": "Maven", "name": "g:a", "version": "1", "source": None}], {"complete": True}))
     assert agent.inventory({})["packages"] == []
     inv = agent.inventory({"scan_jars": True})

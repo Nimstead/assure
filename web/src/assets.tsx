@@ -57,18 +57,19 @@ export function AssetsPage() {
       </header>
 
       <Unmanaged />
+      <UnmanagedDevices />
       <AttackPaths />
       <Baselines />
       <NotAssessed />
 
       {q.isPending ? <Loading className="h-20" rows={3} label="Loading assets…" />
         : q.error ? <ErrorState error={q.error} retry={() => q.refetch()} />
-        : q.data.every((a) => a.kind === "external") ? (
+        : q.data.every((a) => a.kind === "external" || a.kind === "device") ? (
           <EmptyState title="No machines yet" action={<Link to="/add" className={clsx(btnPrimary, "no-underline")}>Add your first machine</Link>}>
             Machines show up here once they report in.
           </EmptyState>
         ) : (
-          <MachineList assets={q.data.filter((a) => a.kind !== "external")} saved={patch.isPending ? "" : saved} failed={failed}
+          <MachineList assets={q.data.filter((a) => a.kind !== "external" && a.kind !== "device")} saved={patch.isPending ? "" : saved} failed={failed}
             undo={last ? () => { const { id, prev } = last; setLast(null); patch.mutate({ id, criticality: prev.criticality, internet_facing: prev.internet_facing, ring: prev.ring, health_units: prev.health_units }); } : undefined}
             onPatch={(id, p) => { setSaved(""); setFailed(null); patch.mutate({ id, ...p }); }} onDelete={(a) => { del.reset(); setTarget(a); }} />
         )}
@@ -101,6 +102,42 @@ function Unmanaged() {
         </ul>
       </details>
       <a href="/api/directory/unmanaged?format=csv" className="text-sm">Download as CSV</a>
+    </section>
+  );
+}
+
+export interface UnmanagedDevice {
+  mac: string; vendor: string; addresses: string[]; seen_by: string[]; first_seen: string; last_seen: string;
+  checked: { asset_id: string; at: string; from: string; open: string[] } | null;  // a machine opted in to network checks looked at it (DECISIONS 129)
+}
+
+/** Devices on the fleet's networks that no agent accounts for, from each agent's own neighbour table (DECISIONS 128). Passive:
+ * nothing is sent to them. Hidden while there are none, like the Active Directory list. */
+export function UnmanagedDevices() {
+  // the list is rate-limited per person: five minutes fresh keeps ordinary browsing well inside it
+  const q = useQuery({ queryKey: ["network-unmanaged"], queryFn: () => api<UnmanagedDevice[]>("/api/network/unmanaged"), staleTime: 300_000 });
+  const rows = q.data ?? [];
+  if (q.isError) return <Alert error={q.error} prefix="Couldn't load the devices with no agent: " />;
+  if (!rows.length) return null;
+  const named = rows.filter((r) => r.vendor && r.vendor !== "randomised MAC").length;
+  const checkedCount = rows.filter((r) => r.checked).length;
+  return (
+    <section aria-labelledby="unmanaged-devices" className="flex flex-col gap-2 border border-line bg-sunken p-4">
+      <h2 id="unmanaged-devices" className="text-base font-semibold">{rows.length} device{rows.length === 1 ? "" : "s"} on your networks {rows.length === 1 ? "has" : "have"} no agent</h2>
+      <p className="text-sm text-muted">Seen in the last 30 days in your machines' own network tables; nothing was sent to them to find them.{checkedCount ? ` ${checkedCount} checked for exposed services by a machine opted in to network checks.` : " None is checked unless a machine on that network is enrolled with --allow-network-checks."}{named ? ` ${named} named by their network card's maker.` : ""}</p>
+      <details className="text-sm">
+        <summary className="tap cursor-pointer py-2">Show them</summary>
+        <ul className="mt-2 flex flex-col gap-1">
+          {rows.slice(0, 200).map((r) => (
+            <li key={r.mac} className="break-all"><span className="font-medium">{r.addresses.join(", ")}</span> · {r.vendor || "unknown maker"} · {r.mac}
+              <span className="text-muted"> · seen by {r.seen_by.join(", ")} <time dateTime={parseUtc(r.last_seen).toISOString()}>{relativeTime(r.last_seen)}</time></span>
+              {r.checked && (r.checked.open.length
+                ? <> · <Link to="/findings" search={filtersToSearch({ ...parseFilters({}), asset: r.checked.asset_id, fixable: false })} className="font-medium text-now-fg">{plural(r.checked.open.length, "issue")}</Link> found by {r.checked.from}</>
+                : <span className="text-muted"> · checked by {r.checked.from}, nothing found</span>)}</li>
+          ))}
+        </ul>
+      </details>
+      <a href="/api/network/unmanaged?format=csv" className="text-sm">Download as CSV</a>
     </section>
   );
 }

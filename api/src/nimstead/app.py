@@ -15,7 +15,7 @@ import secrets
 from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 import httpx
@@ -32,7 +32,22 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import Integer, and_, case, delete, func, or_, select
 from sqlalchemy.orm import Session
 
-from nimstead import ai, engine, evidence, external, lifecycle, mfa, notify, remediate, sbom, sso, updates, winbaseline, windrivers
+from nimstead import (
+    ai,
+    engine,
+    evidence,
+    external,
+    lifecycle,
+    mfa,
+    neighbours,
+    notify,
+    remediate,
+    sbom,
+    sso,
+    updates,
+    winbaseline,
+    windrivers,
+)
 from nimstead.db import (
     ApiToken,
     Asset,
@@ -42,6 +57,7 @@ from nimstead.db import (
     Finding,
     InstalledPackage,
     LedgerEntry,
+    Neighbour,
     Notification,
     Org,
     PendingLogin,
@@ -202,6 +218,9 @@ EXPORT_MAX_PER_HOUR = 30  # CSV exports per org
 MAX_ASSETS_PER_ORG = int(os.environ.get("NIMSTEAD_MAX_ASSETS_PER_ORG", "5000"))
 ENROLL_MAX_PER_TOKEN_HOUR = int(os.environ.get("NIMSTEAD_ENROLL_MAX_PER_TOKEN_HOUR", "2000"))  # a fleet rollout enrols fast
 ORG_INVENTORY_MAX_PER_HOUR = int(os.environ.get("NIMSTEAD_ORG_INVENTORY_MAX_PER_HOUR", "20000"))
+ORG_NETCHECKS_MAX_PER_HOUR = 2000  # network-check reports per org: hosts send one per report (6-hourly), so many fake hosts can't flood the ledger
+UNMANAGED_MAX_PER_HOUR = 120  # per person or read token: the unmanaged list reads the whole org's neighbour rows, as attack paths read every report
+UNMANAGED_ORG_MAX_PER_HOUR = 1000  # and for the whole org, so many tokens can't add up to more
 AI_MAX_PER_USER_HOUR, AI_MAX_PER_ORG_HOUR = 30, 200  # each call costs the operator's Anthropic credits
 
 
@@ -378,7 +397,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             if not t.last_used or now() - t.last_used > timedelta(minutes=5):
                 t.last_used = now()
                 s.commit()
-            request.state.api_token = True
+            request.state.api_token = t.token_hash[:12]  # truthy: which token, for per-caller limits
             return user
         token = request.cookies.get(SESSION_COOKIE)
         ws = s.get(WebSession, sha(token)) if token else None
@@ -1087,7 +1106,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
         s is the Session and org_id selects all asset kinds. Raise HTTP 403 at the
         limit. This query is not a reservation or a concurrency-safe quota lock."""
-        if s.scalar(select(func.count()).select_from(Asset).where(Asset.org_id == org_id)) >= MAX_ASSETS_PER_ORG:
+        if s.scalar(select(func.count()).select_from(Asset).where(Asset.org_id == org_id, Asset.kind != "device")) >= MAX_ASSETS_PER_ORG:
             raise HTTPException(403, f"This organisation has reached its limit of {MAX_ASSETS_PER_ORG} assets "
                                      "(NIMSTEAD_MAX_ASSETS_PER_ORG); delete unused ones or ask your Nimstead administrator")
 
@@ -1107,6 +1126,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         update_error: str | None = Field(None, max_length=500)
         facts: dict | None = None  # checked by facts_ok: small, flat, plain values
         collection: dict | None = None  # checked by engine's valid_document: closed and bounded. None: agent older than this
+        neighbours: Any = None  # checked row by row by neighbours.store, which drops what doesn't fit; None: agent older than 0.7.0, or off
 
     def facts_ok(f: dict) -> bool:
         """Return whether a facts dictionary passes structural and JSON-length bounds.
@@ -1188,6 +1208,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             elif asset.collection:  # the stored facts are the last report's, and the engine must know
                 asset.collection = {**asset.collection, "sources": {**asset.collection["sources"], "host_facts": {
                     "state": "failed", "count": 0, "error": "these facts were too large for the server, so older ones are stored"}}}
+        neighbours.store(s, asset, body.neighbours)
         db_read = ((asset.collection or {}).get("sources") or {}).get("package_db")
         replaced = not (db_read and (db_read["state"] != "ok" or not db_read.get("count")))  # DECISIONS 83: a Linux list not read in full doesn't replace the last
         if replaced:
@@ -1267,6 +1288,48 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             for r in out:
                 w.writerow([csv_safe(str(r[k] or "")) for k in ("domain", "name", "os", "os_version", "last_logon", "end_of_support")])
             return Response(buf.getvalue(), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=unmanaged-windows.csv"})
+        return out
+
+    class NetworkChecks(BaseModel):
+        devices: list[Any] = Field(max_length=32)  # each checked row by row by neighbours.record_checks
+
+    class NetworkChecksResult(BaseModel):
+        checked: int  # devices judged
+        refused: int  # dropped: not this host's own neighbour, not a private address, malformed, or over the device cap
+        open: int  # findings these checks saw (one per issue and endpoint)
+
+    @app.post("/api/agent/network-checks", response_model=NetworkChecksResult)
+    def agent_network_checks(body: NetworkChecks, s: DB, asset: Annotated[Asset, Depends(current_agent)]):
+        """Judge what this host's opted-in agent observed on devices it chose itself (DECISIONS 129) and return counts.
+
+        Only devices in this host's own stored neighbour rows on private IPv4 ranges count; the rest are refused.
+        At most four reports an hour per host (its timer sends one every six hours). Commits."""
+        if over_limit(s, "netchecks:" + asset.id, 4):
+            raise HTTPException(429, "Network checks already received this hour")
+        if over_limit(s, "netchecks-org:" + asset.org_id, ORG_NETCHECKS_MAX_PER_HOUR):
+            raise HTTPException(429, "This organisation is sending too many network checks; try again later")
+        out = neighbours.record_checks(s, asset, body.devices)
+        s.commit()
+        return out
+
+    @app.get("/api/network/unmanaged")
+    def unmanaged_devices(request: Request, user: CurrentUser, s: DB, format: str | None = None):
+        """Return devices the organisation's agents saw in their own neighbour tables that are none of its agents.
+
+        Require a session or eligible read token. One row per MAC with addresses, vendor, seen_by hostnames and
+        first/last seen, newest first; rows unseen for 30 days are gone. CSV for format=csv. Nothing is probed."""
+        caller = getattr(request.state, "api_token", None) or user.id  # one busy read token can't lock people out; nine at once can, for the hour
+        if over_limit(s, f"unmanaged:{user.org_id}:{caller}", UNMANAGED_MAX_PER_HOUR) or over_limit(s, "unmanaged:" + user.org_id, UNMANAGED_ORG_MAX_PER_HOUR):
+            raise HTTPException(429, "The device list was read too often this hour; try again later")
+        s.commit()
+        out = neighbours.unmanaged(s, user.org_id)
+        if format == "csv":
+            buf = io.StringIO()
+            w = csv.writer(buf)
+            w.writerow(["mac", "vendor", "addresses", "seen_by", "first_seen", "last_seen"])
+            for r in out:
+                w.writerow([csv_safe(str(x)) for x in (r["mac"], r["vendor"], " ".join(r["addresses"]), " ".join(r["seen_by"]), r["first_seen"], r["last_seen"])])
+            return Response(buf.getvalue(), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=unmanaged-devices.csv"})
         return out
 
     BASELINE_COLUMNS = ["hostname", "baseline", "version", "rule_id", "vuln_id", "severity", "status", "setting", "expected", "found", "note"]
@@ -1496,13 +1559,17 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         asset_id selects any owned kind. user requires an admin browser session.
         Append deletion evidence, delete rows and commit. Return HTTP 204 without
         a body. The ledger remains. This does not stop a resident agent or dispatched
-        host process. Missing/unowned assets return 404. Storage/evidence errors
+        host process. A host's views of devices it checked go with it (they're its
+        evidence alone). Missing/unowned assets return 404. Storage/evidence errors
         can propagate."""
         a = owned_asset(s, user, asset_id)
-        evidence.append(s, user.org_id, "asset_deleted", a.id, {"by": user.email, "hostname": a.hostname})
-        for model in (Finding, InstalledPackage, RemediationJob, ScanRecord):
-            s.execute(delete(model).where(model.asset_id == a.id))
-        s.delete(a)
+        views = [d for d in s.scalars(select(Asset).where(Asset.org_id == a.org_id, Asset.kind == "device"))
+                 if (d.facts or {}).get("checked_by") == a.id] if a.kind == "host" else []
+        for gone in (a, *views):  # a device's name is its address: personal data, kept out of the permanent ledger
+            evidence.append(s, user.org_id, "asset_deleted", gone.id, {"by": user.email, "hostname": "device" if gone.kind == "device" else gone.hostname})
+            for model in (Finding, InstalledPackage, Neighbour, RemediationJob, ScanRecord):
+                s.execute(delete(model).where(model.asset_id == gone.id))
+            s.delete(gone)
         s.commit()
 
     @app.get("/api/assets/{asset_id}/scan-report")
@@ -1511,8 +1578,15 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
         Requires a session or eligible read-only token. Ownership failure returns 404.
         May create a retained ScanRecord and commit the session, even though this is GET.
-        Retains five records per asset. Findings still open and close through rescan."""
-        return engine.asset_report(s, owned_asset(s, user, asset_id))
+        Retains five records per asset. An external target returns its last scan's
+        stored network report (404 before its first scan); nothing is probed here."""
+        a = owned_asset(s, user, asset_id)
+        if a.kind in ("external", "device"):
+            rep = s.scalar(select(ScanRecord.report).where(ScanRecord.asset_id == a.id).order_by(ScanRecord.created.desc(), ScanRecord.id).limit(1))
+            if rep is None:
+                raise HTTPException(404, "Not scanned yet")
+            return rep
+        return engine.asset_report(s, a)
 
     @app.get("/api/attack-paths")
     def attack_paths(user: CurrentUser, s: DB):
@@ -1535,7 +1609,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                              .where(Asset.org_id == user.org_id, InstalledPackage.ecosystem == "Windows")).all())
         return engine_fleet.build([{"id": a.id, "hostname": a.hostname, "facts": a.facts or {}, "os_version": win.get(a.id, ""),
                                     "report": latest.get(a.id), "internet_facing": a.internet_facing}
-                                   for a in s.scalars(select(Asset).where(Asset.org_id == user.org_id))])
+                                   for a in s.scalars(select(Asset).where(Asset.org_id == user.org_id, Asset.kind != "device"))])
 
     class AssetPatch(BaseModel):
         criticality: Literal["low", "medium", "high", "critical"] | None = None
@@ -1910,7 +1984,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             stmt = stmt.where(Finding.kev == kev)
         if fixable is not None:
             # a setting, an end of support or an exposure never has a fixed version, but there is always something to do
-            has_fix = Finding.fixed_version.is_not(None) | Finding.ecosystem.in_(("WinConfig", lifecycle.ECOSYSTEM, external.ECOSYSTEM, windrivers.ECOSYSTEM))
+            has_fix = Finding.fixed_version.is_not(None) | Finding.ecosystem.in_(("WinConfig", lifecycle.ECOSYSTEM, external.ECOSYSTEM, neighbours.ECOSYSTEM, windrivers.ECOSYSTEM))
             stmt = stmt.where(has_fix if fixable else ~has_fix)
         if q:
             like = f"%{q.lower()}%"
@@ -2887,7 +2961,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         hosts = s.scalars(select(Asset).where(Asset.org_id == user.org_id, Asset.kind == "host")).all()
         paused, release = s.get(Org, user.org_id).agent_updates_paused, signed_release() is not None
         return {
-            "assets": s.scalar(select(func.count()).select_from(Asset).where(Asset.org_id == user.org_id)),
+            "assets": s.scalar(select(func.count()).select_from(Asset).where(Asset.org_id == user.org_id, Asset.kind != "device")),
             "hosts_not_reporting": sum(a.last_seen < now() - notify.SILENT_AFTER for a in hosts),
             "agents_need_attention": sum(agent_update_status(a, paused, release) in ("failed", "off", "reinstall") for a in hosts),
             "open_by_priority": by_priority,

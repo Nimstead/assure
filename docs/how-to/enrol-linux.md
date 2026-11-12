@@ -27,4 +27,6 @@ Remediation is off by default. Follow [enable remediation](enable-remediation.md
 
 For collection options, use the agent's `enroll` flags in the [command reference](../reference/agent-cli.md). Java and application scans require explicit local opt-in.
 
+To let this machine check the devices on its own network for exposed services, add `--allow-network-checks` after `sh -s --` in the install command. See [find and check devices with no agent](check-network-devices.md).
+
 If the host does not report, run [scan troubleshooting](troubleshoot-scans.md). For a first installation you must trust the server, or follow [verify an agent release](verify-agent-release.md).

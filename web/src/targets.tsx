@@ -1,10 +1,61 @@
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Radar, ShieldCheck, Trash2 } from "lucide-react";
 import { adminGate, api, parseUtc, plural, refresh, relativeTime, useIsAdmin, type Asset } from "./lib";
-import { Alert, btnPrimary, btnQuiet, CopyBlock, Field, input, Tag } from "./ui";
+import { Alert, btnPrimary, btnQuiet, CopyBlock, Field, input, Loading, Tag } from "./ui";
 
-interface ScanResult { address: string; open: number; resolved: number; skipped: string[] }
+interface ScanResult { address: string; open: number; resolved: number; still_open: number; skipped: string[] }
+
+/** The engine's network report for a target (api engine/network.build_report); only the fields shown here. */
+export interface TargetReport {
+  headline: { status: string; text: string };
+  vulnerable: { product: string; grade: string; action: string; raise_confidence: string | null; vulnerabilities: { id: string }[] }[];
+  undetermined: { reason: string; why: string; what_to_do: string; count: number; examples: string[] }[];
+  coverage: { sources: { label: string; state: string; error: string | null }[]; statements: string[] };
+}
+
+const STATE = { open: "answered", closed: "refused (nothing listening)", filtered: "no answer: not checked" } as Record<string, string>;
+
+/** What the last scan of a target found, couldn't determine, and saw on each port; nothing here reads as clean that wasn't checked. */
+export function TargetReportView({ r }: { r: TargetReport }) {
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="font-medium">{r.headline.text}</p>
+      {r.vulnerable.length > 0 && (
+        <ul className="flex flex-col gap-2">
+          {r.vulnerable.map((g) => (
+            <li key={g.product + g.vulnerabilities[0]?.id} className="break-words border-t border-line pt-2">
+              <span className="font-medium">{g.product}</span> · {g.vulnerabilities.map((v) => v.id).join(", ")} <Tag tone={g.grade === "unverified" ? "warn" : "muted"} why={g.raise_confidence ?? undefined}>{g.grade}</Tag>
+              <div className="text-muted">{g.action}</div>
+            </li>
+          ))}
+        </ul>
+      )}
+      {r.undetermined.map((u) => (
+        <p key={u.reason} className="break-words"><span className="font-medium">Couldn't determine ({u.count}):</span> {u.why}. {u.what_to_do}.</p>
+      ))}
+      <ul className="flex flex-col text-muted">{r.coverage.statements.map((s) => <li key={s}>{s}</li>)}</ul>
+      <table className="w-full text-left">
+        <caption className="sr-only">Each port the scan tried</caption>
+        <thead><tr><th scope="col" className="font-medium">Port</th><th scope="col" className="font-medium">What it did</th></tr></thead>
+        <tbody>{r.coverage.sources.map((src) => <tr key={src.label} className="border-t border-line"><td className="py-1 pr-4">{src.label}</td><td>{src.error && src.state !== "filtered" ? src.error : STATE[src.state] ?? src.state}</td></tr>)}</tbody>
+      </table>
+    </div>
+  );
+}
+
+function TargetReportPanel({ id }: { id: string }) {
+  const [open, setOpen] = useState(false);
+  const q = useQuery({ queryKey: ["target-report", id], enabled: open, queryFn: () => api<TargetReport>(`/api/assets/${id}/scan-report`) });
+  return (
+    <details className="text-sm" onToggle={(e) => setOpen(e.currentTarget.open)}>
+      <summary className="tap cursor-pointer py-2">What the last scan checked</summary>
+      {q.isLoading && <Loading />}
+      <Alert error={q.error} />
+      {q.data && <TargetReportView r={q.data} />}
+    </details>
+  );
+}
 
 /** Internet hosts scanned from outside; only ever after a DNS TXT proof of ownership. */
 export function ExternalTargets({ targets, onDelete }: { targets: Asset[]; onDelete: (a: Asset) => void }) {
@@ -19,8 +70,8 @@ export function ExternalTargets({ targets, onDelete }: { targets: Asset[]; onDel
     <section aria-labelledby="ext-h" className="flex flex-col gap-3">
       <h2 id="ext-h" className="text-lg font-semibold">External targets</h2>
       <p className="max-w-prose text-sm text-muted">
-        Checks exposed risky services (RDP, SMB, Telnet, databases, Docker API…) and TLS (expired, expiring or untrusted certificates, TLS 1.0/1.1).
-        TCP connects and TLS handshakes only; nothing is logged into or exploited. We only scan hosts you prove you own.
+        Checks exposed risky services (RDP, SMB, Telnet, databases, Docker API…), TLS (expired, expiring or untrusted certificates, TLS 1.0/1.1) and source or config files served by mistake.
+        TCP connects, TLS handshakes and read-only requests for /.git/config and /.env; nothing is logged into or exploited. We only scan hosts you prove you own.
       </p>
       <form className="flex flex-wrap items-start gap-2" onSubmit={(e) => { e.preventDefault(); if (hostname.trim()) add.mutate(hostname.trim()); }}>
         <Field label="Hostname to scan" error={add.error?.message} className="w-full sm:w-72">
@@ -48,7 +99,7 @@ export function TargetRow({ t, onDelete }: { t: Asset; onDelete: () => void }) {
   });
   const scan = useMutation({
     mutationFn: () => api<ScanResult>(`/api/targets/${t.id}/scan`, { method: "POST" }),
-    onSuccess: () => refresh(qc, "assets"),
+    onSuccess: () => { void refresh(qc, "assets"); void qc.invalidateQueries({ queryKey: ["target-report", t.id] }); },
   });
   return (
     <li className="flex flex-col gap-3 p-4">
@@ -76,8 +127,9 @@ export function TargetRow({ t, onDelete }: { t: Asset; onDelete: () => void }) {
           <Alert error={verify.error} />
         </div>
       )}
+      {t.verified && t.last_seen !== t.first_seen && <TargetReportPanel id={t.id} />}
       <div aria-live="polite" className="text-sm">
-        {scan.data && <p role="status">{scan.data.open} open, {scan.data.resolved} resolved{scan.data.skipped.length > 0 && <> · Not checked: {scan.data.skipped.join(", ")}</>}</p>}
+        {scan.data && <p role="status">{scan.data.open} open, {scan.data.resolved} resolved{scan.data.still_open > 0 && <>, {scan.data.still_open} not seen but not proven fixed</>}{scan.data.skipped.length > 0 && <> · Not checked: {scan.data.skipped.join(", ")}</>}</p>}
         <Alert error={scan.error} />
       </div>
     </li>

@@ -21,6 +21,8 @@ Replace the example server and token with the values from Assure. You do not nee
 
 The scheduled task runs as SYSTEM every six hours and at startup. See [platforms](../reference/platforms.md) for support and collection limits.
 
+To let this machine check the devices on its own network for exposed services, set `$env:NIMSTEAD_ALLOW_NETWORK_CHECKS = "1"` before the install command. See [find and check devices with no agent](check-network-devices.md).
+
 ## Configure a proxy
 
 Set the proxy before the install command when an explicit proxy is required:

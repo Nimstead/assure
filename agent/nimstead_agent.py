@@ -10,10 +10,12 @@
 
 import argparse
 import base64
+import collections
 import email.utils
 import glob
 import hashlib
 import io
+import ipaddress
 import json
 import ntpath
 import os
@@ -21,18 +23,21 @@ import platform
 import re
 import shutil
 import socket
+import ssl
 import stat
 import subprocess
 import sys
 import tarfile
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import warnings
 import zipfile
 
-AGENT_VERSION = "0.6.9"  # the server reads this line to flag outdated agents; bump on every agent change
+AGENT_VERSION = "0.7.0"  # the server reads this line to flag outdated agents; bump on every agent change
 # Ed25519 public keys (hex) allowed to sign releases (DECISIONS 31): primary (GitHub Actions) and offline backup.
 # The server only relays signed releases, so it can withhold an update but never forge one. Empty = never self-update.
 RELEASE_KEYS = ["a91fa6539c6c2593009fc71b1c1fba341b5685ba7bc97c127c068b1d732b21d2", "2438f2ccebab5bf26edf9e21a8aa8f09abd1861f52fbe0d6641b28b90f8b0e5a"]  # noqa: E501
@@ -1390,6 +1395,316 @@ def esu_active(product, run=None):
         return None
     rc, out = ps(run or sh, PS_ESU)
     return int(out.strip()) > 0 if rc == 0 and out.strip().isdigit() else None
+
+
+# The machine's own neighbour (ARP/NDP) table: addresses it has already talked to on its links. Read only; nothing is
+# sent on the network (tasks/plan-network.md N6). The server lists the ones no agent accounts for.
+NEIGHBOURS_MAX = 1024
+PROC_ARP = "/proc/net/arp"
+NEIGH_STATES = {"REACHABLE", "STALE", "DELAY", "PROBE", "PERMANENT"}  # a live or recently confirmed entry, not FAILED/INCOMPLETE
+# Get-NetNeighbor's State is an enum, the same in every Windows language (DECISIONS 68)
+PS_NEIGHBOURS = ("Get-NetNeighbor -State Reachable,Stale,Permanent -ErrorAction SilentlyContinue | "
+                 "Select-Object IPAddress,LinkLayerAddress,InterfaceAlias | ConvertTo-Json -Compress")
+_MAC = re.compile(r"^([0-9a-f]{2})[:-]([0-9a-f]{2})[:-]([0-9a-f]{2})[:-]([0-9a-f]{2})[:-]([0-9a-f]{2})[:-]([0-9a-f]{2})$")
+
+
+def unicast_mac(mac):
+    """mac lower case with colons, or None if it isn't one device's: unparseable, all zeros, broadcast or multicast."""
+    m = _MAC.match(str(mac or "").strip().lower())
+    if not m or int(m[1], 16) & 1 or m.groups() == ("00",) * 6:  # the group bit marks broadcast and multicast MACs
+        return None
+    return ":".join(m.groups())
+
+
+def unicast_ip(ip):
+    """ip as a canonical string (any %zone dropped), or None for multicast, broadcast, unspecified, loopback or unparseable."""
+    try:
+        addr = ipaddress.ip_address(str(ip).split("%")[0])
+    except ValueError:
+        return None
+    return None if addr.is_multicast or addr.is_unspecified or addr.is_loopback or str(addr) == "255.255.255.255" else str(addr)
+
+
+def neighbour(ip, mac, interface):
+    """One {ip, mac, interface} row, or None when either half is unusable (unicast_ip, unicast_mac)."""
+    ip, mac = unicast_ip(ip), unicast_mac(mac)
+    return {"ip": ip, "mac": mac, "interface": str(interface or "")[:64]} if ip and mac else None
+
+
+def parse_proc_arp(text):
+    """Rows from /proc/net/arp (IPv4). Flags 0x0 is an incomplete entry, so it's dropped."""
+    out = []
+    for line in text.splitlines()[1:]:
+        f = line.split()
+        if len(f) >= 6 and f[2] != "0x0":
+            out.append(neighbour(f[0], f[3], f[5]))
+    return [r for r in out if r]
+
+
+def parse_ip_neigh(text):
+    """Rows from `ip -j neigh` (IPv4 and IPv6), live or recently confirmed entries only."""
+    try:
+        rows = json.loads(text or "[]")
+    except ValueError:
+        return []
+    out = [neighbour(r.get("dst"), r.get("lladdr"), r.get("dev")) for r in rows if isinstance(r, dict) and NEIGH_STATES & set(r.get("state") or [])]
+    return [r for r in out if r]
+
+
+def parse_net_neighbor(text):
+    """Rows from Get-NetNeighbor's JSON (one object when there's a single entry)."""
+    try:
+        rows = json.loads(text or "[]")
+    except ValueError:
+        return []
+    rows = [rows] if isinstance(rows, dict) else rows if isinstance(rows, list) else []
+    out = [neighbour(r.get("IPAddress"), r.get("LinkLayerAddress"), r.get("InterfaceAlias")) for r in rows if isinstance(r, dict)]
+    return [r for r in out if r]
+
+
+def neighbours(run=None, read=None, which=shutil.which, nt=os.name == "nt"):
+    """This machine's neighbour table as unique {ip, mac, interface} rows, at most NEIGHBOURS_MAX; [] where unreadable."""
+    rows = []
+    if nt:
+        rc, out = ps(run or sh, PS_NEIGHBOURS, timeout=60)
+        rows = parse_net_neighbor(out) if rc == 0 else []
+    else:
+        try:
+            rows = parse_proc_arp((read or (lambda p: open(p, encoding="ascii", errors="replace").read()))(PROC_ARP))
+        except OSError:
+            pass
+        if which("ip"):
+            rc, out = (run or sh)(["ip", "-j", "neigh"], timeout=30)
+            rows += parse_ip_neigh(out) if rc == 0 else []
+    unique = {(r["ip"], r["mac"]): r for r in rows}
+    return list(unique.values())[:NEIGHBOURS_MAX]
+
+
+def network_view():
+    """The inventory's "neighbours" field: {"seen": this machine's neighbour table, "own": its own addresses}."""
+    return {"seen": neighbours(), "own": own_addresses()}
+
+
+PS_OWN_ADDRESSES = ("ConvertTo-Json -Compress -InputObject @{ ips = @(Get-NetIPAddress -ErrorAction SilentlyContinue | "
+                    "ForEach-Object { \"$($_.IPAddress)/$($_.PrefixLength)\" }); "
+                    "macs = @(Get-NetAdapter -ErrorAction SilentlyContinue | ForEach-Object MacAddress) }")
+
+
+def interfaces(run=None, which=shutil.which, nt=os.name == "nt"):
+    """(["address/prefix", ...], [mac, ...]) as this machine's interfaces report them, unvalidated; ([], []) if unreadable."""
+    cidrs, macs = [], []
+    try:
+        if nt:
+            rc, out = ps(run or sh, PS_OWN_ADDRESSES, timeout=60)
+            d = json.loads(out) if rc == 0 else {}
+            cidrs, macs = d.get("ips") or [], d.get("macs") or []
+            cidrs, macs = [cidrs] if isinstance(cidrs, str) else cidrs, [macs] if isinstance(macs, str) else macs  # one value isn't a list
+        elif which("ip"):
+            rc, out = (run or sh)(["ip", "-j", "addr"], timeout=30)
+            for link in json.loads(out) if rc == 0 else []:
+                macs.append(link.get("address"))
+                cidrs += [f"{a.get('local')}/{a.get('prefixlen')}" for a in link.get("addr_info") or []]
+    except (ValueError, AttributeError, TypeError):  # output that isn't the JSON shape asked for: say nothing rather than guess
+        return [], []
+    return [str(c) for c in cidrs], macs
+
+
+def own_addresses(run=None, which=shutil.which, nt=os.name == "nt"):
+    """This machine's own interface addresses and MACs, {"ips": [...], "macs": [...]}, so the server can tell a neighbour
+    that is another managed machine. Unusable entries are dropped (unicast_ip, unicast_mac); at most 64 of each."""
+    cidrs, macs = interfaces(run, which, nt)
+    ips = list(dict.fromkeys(filter(None, (unicast_ip(c.split("/")[0]) for c in cidrs))))
+    macs = list(dict.fromkeys(filter(None, map(unicast_mac, macs))))
+    return {"ips": ips[:64], "macs": macs[:64]}
+
+
+RFC1918 = ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
+
+
+def own_networks(run=None, which=shutil.which, nt=os.name == "nt"):
+    """The private IPv4 subnets this machine is directly attached to, /16 or smaller (DECISIONS 129): the only places
+    network checks may go. shortcut: IPv4 only; IPv6 neighbours aren't checked yet."""
+    out = []
+    for c in interfaces(run, which, nt)[0]:
+        try:
+            net = ipaddress.ip_interface(c).network
+        except ValueError:
+            continue
+        # RFC 1918 only: Python's is_private also counts documentation and other reserved ranges
+        if net.version == 4 and 16 <= net.prefixlen <= 30 and any(net.subnet_of(ipaddress.ip_network(r)) for r in RFC1918):
+            out.append(net)
+    return list(dict.fromkeys(out))
+
+
+# Network checks (DECISIONS 129): only with the local --allow-network-checks opt-in, only devices in this machine's own
+# neighbour table on its own private subnets, only these fixed read-only checks. The server names nothing: no address,
+# port, path or rule. The agent sends what it observed; the server judges it with the engine's evaluator.
+NET_CHECK_PORTS = (21, 22, 23, 25, 80, 110, 143, 443, 445, 1433, 2121, 2222, 2375, 3306, 3389, 5432, 5900, 6379, 9200, 11211, 27017)
+NET_BANNER_PORTS = (21, 22, 25, 110, 143, 2121, 2222)
+# The web paths and the marker that shows each is really exposed, as the server's engine has them (a test keeps them equal).
+# The agent judges the body here and sends only facts, so a file's contents never leave the network it's on (DECISIONS 129).
+NET_WEB_MARKERS = {"/.git/config": re.compile(rb"\[core\]", re.I), "/.env": re.compile(rb"(?mi)^[A-Z][A-Z0-9_]+\s*=")}
+NET_WEB_PATHS = tuple(NET_WEB_MARKERS)
+NET_CHECK_MAX = 32          # devices per run, rotating through the rest run by run
+NET_CHECK_SECONDS = 300     # the whole run; devices not reached are left for the next one
+NET_DEVICE_SECONDS = 60     # one device's ports; a port not done by then reads as no answer
+NET_DEVICE_TAIL = 30  # then its TLS and web reads; a device not done by both sends nothing this run
+NET_TIMEOUT = 3.0  # as the server's prober: Windows reports a refused connection only after about 2 s of retries
+NET_TLS_REFUSALS = ("ALERT_PROTOCOL_VERSION", "ALERT_HANDSHAKE_FAILURE", "ALERT_INSUFFICIENT_SECURITY", "UNSUPPORTED_PROTOCOL",
+                    "WRONG_VERSION_NUMBER", "VERSION_TOO_LOW")  # as the server's
+
+
+def _connect_state(ip, port):
+    try:
+        with socket.create_connection((ip, port), timeout=NET_TIMEOUT):
+            return "open"
+    except (ConnectionRefusedError, ConnectionResetError):
+        return "closed"  # something answered and nothing listens: evidence
+    except OSError:
+        return "filtered"  # a drop proves nothing either way
+
+
+def _exchange(ip, port, payload=b"", limit=512, whole=False):
+    """One read-only connection: send payload (if any), read at most limit bytes within NET_TIMEOUT * 3 in all, so a reply
+    dripped a byte at a time can't hold it. b"" on any failure. A partial greeting is kept (still evidence); with whole,
+    a reply cut off before the device closed or the limit was reached is b"": part of a page is not a page."""
+    data, done, end = b"", False, time.monotonic() + NET_TIMEOUT * 3
+    try:
+        with socket.create_connection((ip, port), timeout=NET_TIMEOUT) as sock:
+            if payload:
+                sock.sendall(payload)
+            while len(data) < limit:
+                left = end - time.monotonic()
+                if left <= 0:
+                    break
+                sock.settimeout(min(NET_TIMEOUT, left))
+                chunk = sock.recv(limit - len(data))
+                if not chunk:
+                    done = True
+                    break
+                data += chunk
+            done = done or len(data) >= limit
+    except OSError:
+        pass
+    return data if done or not whole else b""
+
+
+def _no_verify(minimum=None, maximum=None):
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    ctx.check_hostname, ctx.verify_mode = False, ssl.CERT_NONE  # content, not trust: the server judges the certificate
+    if minimum:
+        with warnings.catch_warnings():  # offering TLS 1.0/1.1 is the point of the legacy check: keep the run's output clean
+            warnings.simplefilter("ignore", DeprecationWarning)
+            ctx.minimum_version, ctx.maximum_version = minimum, maximum
+        ctx.set_ciphers("DEFAULT:@SECLEVEL=0")
+    return ctx
+
+
+def _tls_facts(ip):
+    """The certificate 443 presents (DER, base64), whether TLS 1.0/1.1 completes (None: this Python can't offer them), and
+    lost: True when the handshake was cut, reset or timed out (nothing learnt), not when the service simply isn't TLS."""
+    der, lost = None, False
+    try:
+        with socket.create_connection((ip, 443), timeout=NET_TIMEOUT) as raw, _no_verify().wrap_socket(raw) as s:
+            der = s.getpeercert(binary_form=True)
+    except OSError as e:  # only a reply that wasn't TLS at all means "not TLS"; a cut, timeout or TLS alert taught us nothing
+        lost = getattr(e, "reason", None) != "WRONG_VERSION_NUMBER"
+    try:
+        legacy_ctx = _no_verify(ssl.TLSVersion.TLSv1, ssl.TLSVersion.TLSv1_1)
+    except (ValueError, ssl.SSLError):
+        legacy = None
+    else:
+        try:
+            with socket.create_connection((ip, 443), timeout=NET_TIMEOUT) as raw, legacy_ctx.wrap_socket(raw):
+                legacy = True
+        except OSError as e:  # only a TLS refusal is "no"; a cut, reset or timeout taught us nothing (the server's legacy_refused)
+            text = f"{getattr(e, 'reason', None) or ''} {e}".upper().replace(" ", "_")
+            refused = isinstance(e, ssl.SSLError) and "NO_PROTOCOLS" not in text and any(k in text for k in NET_TLS_REFUSALS)
+            legacy = False if refused else None
+    return {"der": base64.b64encode(der).decode() if der else None, "legacy": legacy, "lost": lost}
+
+
+def _web_fact(ip, path, marker):
+    """[status or None, marker matched (None for the control), body SHA-256, body had content] for one GET with Host: the
+    address. Headers that never end within the read mean no page was read (status None), not an empty one."""
+    data = _exchange(ip, 80, f"GET {path} HTTP/1.1\r\nHost: {ip}\r\nUser-Agent: nimstead-agent\r\nConnection: close\r\n\r\n".encode(), 65536, whole=True)
+    head, sep, body = data.partition(b"\r\n\r\n")
+    try:
+        status = int(head.split(b" ", 2)[1]) if sep else None
+    except (IndexError, ValueError):
+        status = None
+    return [status, bool(marker.search(body)) if marker is not None else None, hashlib.sha256(body).hexdigest(), bool(body.strip())]
+
+
+def check_device(ip, mac):
+    """Observations of one device: each fixed port's state, banner greetings with a nonce echo test, 443's certificate,
+    and the negative control plus the fixed web paths on 80. Read only; one connection per endpoint at a time."""
+    done = {}
+
+    def port(p):
+        st = _connect_state(ip, p)
+        row = {"state": st}
+        if st == "open" and p in NET_BANNER_PORTS:
+            nonce = os.urandom(8).hex().encode()
+            row["banner"] = base64.b64encode(_exchange(ip, p)).decode()
+            row["reflects"] = nonce in _exchange(ip, p, b"NIMSTEAD-CTRL-" + nonce + b"\r\n")
+        done[p] = row
+    # daemon threads, 8 at a time, within NET_DEVICE_SECONDS: a port that never finishes reads as no answer (proves nothing),
+    # and can't keep the process alive at exit the way a thread pool's workers would
+    end = time.monotonic() + NET_DEVICE_SECONDS
+    for i in range(0, len(NET_CHECK_PORTS), 8):
+        batch = [threading.Thread(target=port, args=(p,), daemon=True) for p in NET_CHECK_PORTS[i:i + 8]]
+        for th in batch:
+            th.start()
+        for th in batch:
+            th.join(max(0.0, end - time.monotonic()))
+    ports = {p: done.get(p, {"state": "filtered"}) for p in NET_CHECK_PORTS}
+    obs = {"ip": ip, "mac": mac, "ports": {str(p): r for p, r in ports.items()}, "tls": None, "http": None}
+    if ports[443]["state"] == "open":
+        obs["tls"] = _tls_facts(ip)
+    if ports[80]["state"] == "open":
+        control = f"/nimstead-{os.urandom(8).hex()}"
+        obs["http"] = {"control": _web_fact(ip, control, None), **{p: _web_fact(ip, p, m) for p, m in NET_WEB_MARKERS.items()}}
+    return obs
+
+
+def network_check_targets(seen, networks, own_ips, start):
+    """At most NET_CHECK_MAX (ip, mac) from this machine's own neighbour rows that sit in its own private subnets and
+    aren't its own addresses, taken in address order from offset start (wrapping) so a larger subnet is covered over runs,
+    and returned in address order. A MAC at more than one address is left out: an extender or proxy ARP puts one MAC on
+    several devices, which the server won't judge as one (DECISIONS 132)."""
+    rows = sorted({(r["ip"], r["mac"]) for r in seen if r["ip"] not in own_ips
+                   and any(ipaddress.ip_address(r["ip"]) in n for n in networks)}, key=lambda r: ipaddress.ip_address(r[0]))
+    addresses_of = collections.Counter(m for _, m in rows)
+    rows = [r for r in rows if addresses_of[r[1]] == 1]
+    start %= len(rows) or 1
+    return sorted((rows[start:] + rows[:start])[:NET_CHECK_MAX], key=lambda r: ipaddress.ip_address(r[0]))
+
+
+def network_checks(seen, networks=None, own_ips=None, check=check_device, clock=time.monotonic):
+    """{"devices": [observations]} for this run's targets, within NET_CHECK_SECONDS; devices not reached are left for later runs.
+
+    Each run starts at a random point in the list: a clock-based rotation lined up with the report timer and kept
+    checking the same half. The run itself is a daemon thread the agent stops waiting for at the deadline, so a device
+    that never lets go can't stop this report or the ones after it."""
+    networks = own_networks() if networks is None else networks
+    own_ips = set(own_addresses()["ips"]) if own_ips is None else own_ips
+    targets = network_check_targets(seen, networks, own_ips, int.from_bytes(os.urandom(4), "big"))
+    deadline, out = clock() + NET_CHECK_SECONDS, []
+
+    def run():
+        for ip, mac in targets:
+            if clock() > deadline:
+                return
+            got = []  # each device in its own daemon thread: one that never finishes sends nothing and holds up no other
+            th = threading.Thread(target=lambda into, i, m: into.append(check(i, m)), args=(got, ip, mac), daemon=True)  # bound: a late one fills its own list
+            th.start()
+            th.join(NET_DEVICE_SECONDS + NET_DEVICE_TAIL)
+            out.extend(got[:1])
+    worker = threading.Thread(target=run, daemon=True)
+    worker.start()
+    worker.join(NET_CHECK_SECONDS + NET_DEVICE_SECONDS)
+    return {"devices": list(out)}
 
 
 def collect():
@@ -3797,9 +4112,12 @@ def inventory(cfg):
     cfg is a dictionary of local flags/roots. auto_update uses its truthy/default value when
     release keys exist, otherwise None. update_error uses this process's last update result.
     with_apps adds optional data and can mutate the collected nested dictionaries. Errors
-    follow collectors/scanners. This helper performs no upload.
+    follow collectors/scanners. This helper performs no upload. "neighbours": false in the
+    config leaves the neighbour table out.
     """
     inv = {**collect(), "auto_update": bool(cfg.get("auto_update", True)) if RELEASE_KEYS else None, "update_error": _update_error}
+    if cfg.get("neighbours", True):
+        inv["neighbours"] = network_view()
     return with_apps(inv, cfg)
 
 
@@ -4491,6 +4809,9 @@ def _main(argv):
                     help="enrolment token (or set NIMSTEAD_TOKEN, which keeps it out of the process list)")
     en.add_argument("--allow-remediation", action="store_true",
                     help="let this host run approved package upgrades (local opt-in; the server cannot enable it)")
+    en.add_argument("--allow-network-checks", action="store_true",
+                    help="after each report, check up to 32 devices from this machine's own neighbour table on its own private "
+                         "subnets with fixed read-only checks (local opt-in; the server cannot enable it or choose targets)")
     en.add_argument("--windows-update-source", choices=("default", "microsoft"), default="default",
                     help="Windows: where fixes are searched for; 'microsoft' bypasses WSUS for Nimstead's jobs (local choice)")
     en.add_argument("--ad-discovery", action="store_true",
@@ -4534,7 +4855,8 @@ def _main(argv):
             _log_on = True
             log_event(f"run start: {a.cmd}, agent {AGENT_VERSION}")
         if a.cmd == "collect":
-            print(json.dumps(with_apps(collect(), {"scan_jars": a.scan_jars, "scan_apps": a.scan_apps, "app_roots": app_roots(a)}), indent=2))
+            print(json.dumps({**with_apps(collect(), {"scan_jars": a.scan_jars, "scan_apps": a.scan_apps, "app_roots": app_roots(a)}),
+                              "neighbours": network_view()}, indent=2))
         elif a.cmd == "doctor":
             return doctor(a.insecure_http)
         elif a.cmd == "scan-remote":
@@ -4556,7 +4878,8 @@ def _main(argv):
                 raise AgentError("enroll response missing agent_key")
             # only the fields we expect from the server, and local choices last: the server can't opt a host in
             cfg = {"asset_id": res.get("asset_id"), "agent_key": res["agent_key"], "server": a.server,
-                   "allow_remediation": a.allow_remediation, "auto_update": not a.no_auto_update, "channel": a.channel,
+                   "allow_remediation": a.allow_remediation, "network_checks": a.allow_network_checks,
+                   "auto_update": not a.no_auto_update, "channel": a.channel,
                    "scan_jars": a.scan_jars, "scan_apps": a.scan_apps, "app_roots": app_roots(a), "ad_discovery": a.ad_discovery,
                    **({"windows_update_source": "microsoft"} if a.windows_update_source == "microsoft" else {}),
                    **({"proxy": a.proxy} if a.proxy else {})}
@@ -4618,6 +4941,15 @@ def _main(argv):
             post(cfg["server"], "/api/agent/inventory", inv, a.insecure_http, cfg["agent_key"])
             print(f"reported {len(inv['packages'])} packages")
             log_event(f"reported {len(inv['packages'])} packages")
+            if cfg.get("network_checks") and inv.get("neighbours"):  # local opt-in only (DECISIONS 129): the agent picks every target
+                checked = network_checks(inv["neighbours"]["seen"])
+                try:
+                    post(cfg["server"], "/api/agent/network-checks", checked, a.insecure_http, cfg["agent_key"])
+                    print(f"checked {len(checked['devices'])} devices on this machine's networks")
+                    log_event(f"checked {len(checked['devices'])} devices: {', '.join(d['ip'] for d in checked['devices'])}")
+                except AgentError as e:  # the inventory went through: say why the checks didn't
+                    print(f"nimstead-agent: network checks not sent: {e}", file=sys.stderr)
+                    log_event(f"network checks not sent: {e}")
             if cfg.get("ad_discovery") and os.name == "nt":  # local opt-in only: which domain computers have no agent
                 d = ad_computers()
                 try:

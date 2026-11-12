@@ -7,6 +7,8 @@ from fastapi.testclient import TestClient
 
 from nimstead import external, netguard
 from nimstead.app import create_app
+from nimstead.engine import network as net
+from nimstead.engine.network import Endpoint
 
 PUBLIC = [(2, 1, 6, "", ("93.184.216.34", 443))]
 
@@ -38,15 +40,29 @@ def add(c, dns, host="www.example.com", prove=True):
     return t
 
 
-def fake_checks(problems):
-    return lambda host, ip: ([{"id": p, "package": "tcp/6379 Redis" if "REDIS" in p else "tcp/443 TLS", "cvss": 9.8,
-                               "likelihood": external.likelihood_of(p), "summary": p} for p in problems], [])
+DAY = 86400
+GOOD_TLS = {"trusted": True, "error": None, "legacy": False}
+EXPIRED = {"trusted": False, "error": "certificate has expired", "legacy": False}
+
+
+def fake_net(monkeypatch, open_ports=(), tls=None, filtered=()):
+    """What the engine's prober sees: every port refused unless open or filtered; tls = 443's handshake facts (open)."""
+    eps = {p: Endpoint(p, "open" if p in open_ports else "filtered" if p in filtered else "closed")
+           for p in sorted(set(external.SERVICES) | {external.TLS_PORT, 80, *net.BANNER_PORTS})}
+    if tls is not None:
+        days = -3 if tls is EXPIRED else 90
+        eps[external.TLS_PORT] = Endpoint(external.TLS_PORT, "open", tls={"not_after": time.time() + days * DAY, **tls})
+    monkeypatch.setattr(net.Prober, "observe", lambda self: eps)
+
+
+def no_probe(monkeypatch, why):
+    monkeypatch.setattr(net.Prober, "observe", lambda self: pytest.fail(why))
 
 
 def test_unverified_target_is_never_scanned(world, monkeypatch):
     c, dns = world
     probes = []
-    monkeypatch.setattr(external, "checks", lambda *a: probes.append(a) or ([], []))
+    monkeypatch.setattr(net.Prober, "observe", lambda self: probes.append(self) or {})
     t = add(c, dns, prove=False)
     assert t["verified"] is False and t["txt_name"] == "_nimstead-verify.www.example.com"
     r = c.post(f"/api/targets/{t['id']}/scan")
@@ -59,15 +75,15 @@ def test_verified_scan_opens_and_resolves_findings_with_evidence(world, monkeypa
     c, dns = world
     t = add(c, dns)
     assert c.post(f"/api/targets/{t['id']}/verify").json()["verified"] is True
-    monkeypatch.setattr(external, "checks", fake_checks(["NIM-EXPOSED-REDIS", "NIM-TLS-EXPIRED"]))
+    fake_net(monkeypatch, open_ports={6379}, tls=EXPIRED)
     r = c.post(f"/api/targets/{t['id']}/scan").json()
     assert r["open"] == 2 and r["address"] == "93.184.216.34"
     f = {x["vuln_id"]: x for x in c.get("/api/findings").json()}
     assert set(f) == {"NIM-EXPOSED-REDIS", "NIM-TLS-EXPIRED"} and f["NIM-EXPOSED-REDIS"]["priority"] == "fix-now"
     assert any("abused automatically" in why for why in f["NIM-EXPOSED-REDIS"]["reasons"])
 
-    monkeypatch.setattr(external, "checks", fake_checks(["NIM-TLS-EXPIRED"]))  # Redis firewalled
-    assert c.post(f"/api/targets/{t['id']}/scan").json() == {"address": "93.184.216.34", "open": 1, "resolved": 1, "skipped": []}
+    fake_net(monkeypatch, tls=EXPIRED)  # Redis now refuses connections
+    assert c.post(f"/api/targets/{t['id']}/scan").json() == {"address": "93.184.216.34", "open": 1, "resolved": 1, "still_open": 0, "skipped": []}
     kinds = [e["kind"] for e in c.get("/api/evidence/ledger").json()["entries"]]
     assert {"external_target_verified", "external_scan", "finding_opened", "finding_resolved"} <= set(kinds)
 
@@ -76,15 +92,15 @@ def test_scan_counters_include_accepted_and_omitted_checks_can_resolve_them(worl
     c, dns = world
     t = add(c, dns)
     c.post(f"/api/targets/{t['id']}/verify")
-    monkeypatch.setattr(external, "checks", fake_checks(["NIM-TLS-EXPIRED"]))
+    fake_net(monkeypatch, tls=EXPIRED)
     c.post(f"/api/targets/{t['id']}/scan")
     finding = c.get("/api/findings").json()[0]
     assert c.post(f"/api/findings/{finding['id']}/accept", json={"reason": "Test compensating control", "days": 30}).status_code == 200
     assert c.post(f"/api/targets/{t['id']}/scan").json()["open"] == 1
     assert not c.get("/api/findings").json()
-    monkeypatch.setattr(external, "checks", lambda *_: ([], ["legacy TLS unavailable"]))
+    fake_net(monkeypatch, tls={**GOOD_TLS, "legacy": None})  # renewed; this scanner can't offer TLS 1.0/1.1
     r = c.post(f"/api/targets/{t['id']}/scan").json()
-    assert r["open"] == 0 and r["resolved"] == 1 and r["skipped"] == ["legacy TLS unavailable"]
+    assert r["open"] == 0 and r["resolved"] == 1 and r["skipped"] == [external.LEGACY_SKIP]
     assert c.get("/api/findings", params={"status": "resolved"}).json()[0]["id"] == finding["id"]
 
 
@@ -92,13 +108,155 @@ def test_a_legacy_tls_finding_stays_open_when_this_scan_couldnt_test_legacy_tls(
     c, dns = world
     t = add(c, dns)
     c.post(f"/api/targets/{t['id']}/verify")
-    monkeypatch.setattr(external, "checks", fake_checks(["NIM-TLS-LEGACY"]))
+    fake_net(monkeypatch, tls={**GOOD_TLS, "legacy": True})
     c.post(f"/api/targets/{t['id']}/scan")
-    monkeypatch.setattr(external, "checks", lambda *_: ([], [external.LEGACY_SKIP]))
+    fake_net(monkeypatch, tls={**GOOD_TLS, "legacy": None})
     r = c.post(f"/api/targets/{t['id']}/scan").json()
     assert r["resolved"] == 0 and [f["vuln_id"] for f in c.get("/api/findings").json()] == ["NIM-TLS-LEGACY"]
-    monkeypatch.setattr(external, "checks", lambda *_: ([], []))  # tested, and not accepted any more
+    fake_net(monkeypatch, tls=GOOD_TLS)  # tested, and not accepted any more
     assert c.post(f"/api/targets/{t['id']}/scan").json()["resolved"] == 1
+
+
+def test_a_finding_closes_on_a_refused_port_never_on_a_dropped_one(world, monkeypatch):
+    c, dns = world
+    t = add(c, dns)
+    c.post(f"/api/targets/{t['id']}/verify")
+    fake_net(monkeypatch, open_ports={3389, 6379}, tls=EXPIRED)
+    c.post(f"/api/targets/{t['id']}/scan")
+    fake_net(monkeypatch, filtered={3389}, tls=EXPIRED)  # RDP firewalled (dropped), Redis gone (refused)
+    r = c.post(f"/api/targets/{t['id']}/scan").json()
+    assert r["resolved"] == 1 and r["still_open"] == 1
+    f = {x["vuln_id"]: x for x in c.get("/api/findings").json()}
+    assert set(f) == {"NIM-EXPOSED-RDP", "NIM-TLS-EXPIRED"}
+    assert any(why.startswith("Still open: ") and "drop" in why for why in f["NIM-EXPOSED-RDP"]["reasons"])
+    c.patch(f"/api/assets/{t['id']}", json={"criticality": "high"})  # a re-score keeps the scan's word on why it's open
+    rdp = next(x for x in c.get("/api/findings").json() if x["vuln_id"] == "NIM-EXPOSED-RDP")
+    assert sum(why.startswith("Still open: ") for why in rdp["reasons"]) == 1
+    fake_net(monkeypatch, tls=EXPIRED)  # now refused: evidence that nothing listens
+    assert c.post(f"/api/targets/{t['id']}/scan").json()["resolved"] == 1
+
+
+def test_a_target_that_stops_answering_closes_nothing(world, monkeypatch):
+    c, dns = world
+    t = add(c, dns)
+    c.post(f"/api/targets/{t['id']}/verify")
+    fake_net(monkeypatch, open_ports={6379}, tls=EXPIRED)
+    c.post(f"/api/targets/{t['id']}/scan")
+    every = set(external.SERVICES) | {external.TLS_PORT, 80, *net.BANNER_PORTS}
+    fake_net(monkeypatch, filtered=every)
+    r = c.post(f"/api/targets/{t['id']}/scan").json()
+    assert r["resolved"] == 0 and r["still_open"] == 2
+    assert c.get(f"/api/assets/{t['id']}/scan-report").json()["headline"]["status"] == "not-assessed"
+
+
+def test_tls_findings_close_when_nothing_listens_on_443(world, monkeypatch):
+    c, dns = world
+    t = add(c, dns)
+    c.post(f"/api/targets/{t['id']}/verify")
+    fake_net(monkeypatch, tls=EXPIRED)
+    c.post(f"/api/targets/{t['id']}/scan")
+    fake_net(monkeypatch)  # 443 refused: no HTTPS left to be wrong
+    assert c.post(f"/api/targets/{t['id']}/scan").json()["resolved"] == 1
+
+
+def web(monkeypatch, pages):
+    """Port 80's answers by path; any other path gets a real 404. Returns the paths requested."""
+    asked = []
+
+    def get(self, port, path, deadline):
+        asked.append(path)
+        return pages.get(path, (404, b"not found"))
+    monkeypatch.setattr(net.Prober, "_http_get", get)
+    return asked
+
+
+def test_an_exposed_git_config_opens_a_finding_and_every_request_is_in_the_ledger(world, monkeypatch):
+    c, dns = world
+    t = add(c, dns)
+    c.post(f"/api/targets/{t['id']}/verify")
+    fake_net(monkeypatch, open_ports={80})
+    asked = web(monkeypatch, {"/.git/config": (200, b"[core]\n\trepositoryformatversion = 0\n")})
+    c.post(f"/api/targets/{t['id']}/scan")
+    f = {x["vuln_id"]: x for x in c.get("/api/findings").json()}
+    assert set(f) == {"NIM-WEB-GIT"} and f["NIM-WEB-GIT"]["package"] == "http://www.example.com/.git/config"
+    scan = next(e for e in c.get("/api/evidence/ledger").json()["entries"] if e["kind"] == "external_scan")
+    assert scan["data"]["requests"] == [f"GET :80{p}" for p in asked] and "/.git/config" in asked
+    web(monkeypatch, {"/.git/config": (404, b"gone")})
+    assert c.post(f"/api/targets/{t['id']}/scan").json()["resolved"] == 1  # a real 404 after a clean control is evidence
+
+
+def test_a_soft_404_site_opens_no_web_finding_and_closes_none(world, monkeypatch):
+    c, dns = world
+    t = add(c, dns)
+    c.post(f"/api/targets/{t['id']}/verify")
+    fake_net(monkeypatch, open_ports={80})
+    web(monkeypatch, {"/.env": (200, b"DB_PASSWORD=hunter2\n")})
+    c.post(f"/api/targets/{t['id']}/scan")
+    assert [x["vuln_id"] for x in c.get("/api/findings").json()] == ["NIM-WEB-ENV"]
+    monkeypatch.setattr(net.Prober, "_http_get", lambda self, port, path, deadline: (200, b"<h1>welcome</h1>"))  # 200 for everything
+    r = c.post(f"/api/targets/{t['id']}/scan").json()
+    assert r["resolved"] == 0 and r["still_open"] == 1 and [x["vuln_id"] for x in c.get("/api/findings").json()] == ["NIM-WEB-ENV"]
+
+
+def banner(monkeypatch, greetings, reflects=()):
+    """Open banner ports and their greetings; ports in reflects echo a nonsense probe back (a catch-all)."""
+    eps = {p: Endpoint(p, "closed") for p in sorted(set(external.SERVICES) | {external.TLS_PORT, 80, *net.BANNER_PORTS})}
+    for p, g in greetings.items():
+        eps[p] = Endpoint(p, "open", banner=g, reflects=p in reflects)
+    monkeypatch.setattr(net.Prober, "observe", lambda self: eps)
+
+
+def test_a_vulnerable_banner_opens_an_unverified_finding_ranked_below_firmer_evidence(world, monkeypatch):
+    c, dns = world
+    t = add(c, dns)
+    c.post(f"/api/targets/{t['id']}/verify")
+    banner(monkeypatch, {2222: b"220 (vsFTPd 2.3.4)\r\n", 2121: b"220 (vsFTPd 2.3.4)\r\n"})
+    c.post(f"/api/targets/{t['id']}/scan")
+    f = c.get("/api/findings").json()
+    assert sorted((x["vuln_id"], x["package"]) for x in f) == [("CVE-2011-2523", "tcp/2121 vsftpd"), ("CVE-2011-2523", "tcp/2222 vsftpd")]
+    assert f[0]["installed_version"] == "2.3.4" and f[0]["fixed_version"] == "2.3.5"
+    assert any("banner" in why and "agent" in why for why in f[0]["reasons"])
+    bscore = f[0]["score"]
+    fake_net(monkeypatch, open_ports={23})  # Telnet: CVSS 9.0 exposed, firm evidence
+    c.post(f"/api/targets/{t['id']}/scan")
+    telnet = next(x for x in c.get("/api/findings").json() if x["vuln_id"] == "NIM-EXPOSED-TELNET")
+    assert telnet["score"] > bscore  # 9.8 from a banner still ranks below 9.0 read directly
+    assert c.get("/api/findings", params={"status": "resolved"}).json()  # both FTP ports refused now: evidence it's gone
+
+
+def test_banners_that_echo_or_carry_a_distro_tag_open_nothing(world, monkeypatch):
+    c, dns = world
+    t = add(c, dns)
+    c.post(f"/api/targets/{t['id']}/verify")
+    banner(monkeypatch, {2121: b"220 (vsFTPd 2.3.4)\r\n", 22: b"SSH-2.0-OpenSSH_9.2p1 Debian-2+deb12u3\r\n"}, reflects={2121})
+    c.post(f"/api/targets/{t['id']}/scan")
+    assert c.get("/api/findings").json() == []
+
+
+def test_a_banner_finding_stays_open_while_its_port_drops_and_closes_on_an_upgrade(world, monkeypatch):
+    c, dns = world
+    t = add(c, dns)
+    c.post(f"/api/targets/{t['id']}/verify")
+    banner(monkeypatch, {22: b"SSH-2.0-OpenSSH_9.6p1\r\n"})
+    c.post(f"/api/targets/{t['id']}/scan")
+    assert [x["vuln_id"] for x in c.get("/api/findings").json()] == ["CVE-2024-6387"]
+    fake_net(monkeypatch, filtered={22})
+    assert c.post(f"/api/targets/{t['id']}/scan").json()["still_open"] == 1
+    banner(monkeypatch, {22: b"SSH-2.0-OpenSSH_9.8p1\r\n"})
+    assert c.post(f"/api/targets/{t['id']}/scan").json()["resolved"] == 1
+
+
+def test_a_greeting_that_hides_its_version_but_still_names_the_product_keeps_the_cve_open(world, monkeypatch):
+    """Prove-It (PR review): "220 ProFTPD Server" after "220 ProFTPD 1.3.5 Server" closed CVE-2015-3306, though the
+    product is still there and only its version was hidden (DECISIONS 130: close on another product or a fixed version)."""
+    c, dns = world
+    t = add(c, dns)
+    c.post(f"/api/targets/{t['id']}/verify")
+    banner(monkeypatch, {21: b"220 ProFTPD 1.3.5 Server (Debian) [203.0.113.10]\r\n"})
+    c.post(f"/api/targets/{t['id']}/scan")
+    banner(monkeypatch, {21: b"220 ProFTPD Server (Debian) [203.0.113.10]\r\n"})
+    assert c.post(f"/api/targets/{t['id']}/scan").json()["still_open"] == 1
+    assert "CVE-2015-3306" in [f["vuln_id"] for f in c.get("/api/findings").json()]
 
 
 def test_ownership_is_rechecked_before_every_scan(world, monkeypatch):
@@ -106,7 +264,7 @@ def test_ownership_is_rechecked_before_every_scan(world, monkeypatch):
     t = add(c, dns)
     c.post(f"/api/targets/{t['id']}/verify")
     dns.records.clear()  # record removed, or the domain changed hands
-    monkeypatch.setattr(external, "checks", lambda *a: pytest.fail("scanned a host no longer proven"))
+    no_probe(monkeypatch, "scanned a host no longer proven")
     r = c.post(f"/api/targets/{t['id']}/scan")
     assert r.status_code == 409 and "gone" in r.json()["detail"]
     assert next(a for a in c.get("/api/assets").json() if a["id"] == t["id"])["verified"] is False
@@ -117,7 +275,7 @@ def test_names_that_resolve_to_private_addresses_are_refused(world, monkeypatch)
     t = add(c, dns, "intranet.example.com")
     c.post(f"/api/targets/{t['id']}/verify")
     monkeypatch.setattr(netguard.socket, "getaddrinfo", lambda *a, **k: [(2, 1, 6, "", ("10.0.0.7", 443))])
-    monkeypatch.setattr(external, "checks", lambda *a: pytest.fail("scanned a private address"))
+    no_probe(monkeypatch, "scanned a private address")
     r = c.post(f"/api/targets/{t['id']}/scan")
     assert r.status_code == 409 and "private" in r.json()["detail"]
 
@@ -145,7 +303,7 @@ def test_manual_scans_are_rate_limited_per_org(world, monkeypatch):
     c, dns = world
     t = add(c, dns)
     c.post(f"/api/targets/{t['id']}/verify")
-    monkeypatch.setattr(external, "checks", fake_checks([]))
+    fake_net(monkeypatch)
     codes = [c.post(f"/api/targets/{t['id']}/scan").status_code for _ in range(11)]
     assert codes[:10] == [200] * 10 and codes[10] == 429
 
@@ -154,7 +312,7 @@ def test_context_rescore_never_closes_external_findings(world, monkeypatch):
     c, dns = world
     t = add(c, dns)
     c.post(f"/api/targets/{t['id']}/verify")
-    monkeypatch.setattr(external, "checks", fake_checks(["NIM-EXPOSED-REDIS"]))
+    fake_net(monkeypatch, open_ports={6379})
     c.post(f"/api/targets/{t['id']}/scan")
     before = c.get("/api/findings").json()[0]["score"]
     c.patch(f"/api/assets/{t['id']}", json={"criticality": "low"})  # triggers rescan(): must only re-score
@@ -162,21 +320,35 @@ def test_context_rescore_never_closes_external_findings(world, monkeypatch):
     assert len(after) == 1 and after[0]["score"] < before
 
 
-def test_checks_classify_ports_and_tls(monkeypatch):
-    monkeypatch.setattr(external, "port_open", lambda ip, port, timeout=3.0: port in (6379, 443))
+def test_tls_facts_classify_into_findings():
     now = time.time()
-    for probe, want in (({"trusted": True, "error": None, "not_after": now + 86400 * 90, "legacy": False}, set()),
-                        ({"trusted": True, "error": None, "not_after": now + 86400 * 5, "legacy": False}, {"NIM-TLS-EXPIRING"}),
-                        ({"trusted": False, "error": "certificate has expired", "not_after": now - 86400 * 3, "legacy": False},
-                         {"NIM-TLS-EXPIRED"}),
-                        ({"trusted": False, "error": "Hostname mismatch, certificate is not valid for 'x'", "not_after": now + 86400 * 90,
+    for probe, want in (({"trusted": True, "error": None, "not_after": now + DAY * 90, "legacy": False}, set()),
+                        ({"trusted": True, "error": None, "not_after": now + DAY * 5, "legacy": False}, {"NIM-TLS-EXPIRING"}),
+                        ({"trusted": False, "error": "certificate has expired", "not_after": now - DAY * 3, "legacy": False}, {"NIM-TLS-EXPIRED"}),
+                        ({"trusted": False, "error": "Hostname mismatch, certificate is not valid for 'x'", "not_after": now + DAY * 90,
                           "legacy": True}, {"NIM-TLS-NAME", "NIM-TLS-LEGACY"}),
-                        ({"trusted": False, "error": "self-signed certificate", "not_after": now + 86400 * 90, "legacy": None},
+                        ({"trusted": False, "error": "self-signed certificate", "not_after": now + DAY * 90, "legacy": None},
                          {"NIM-TLS-UNTRUSTED"})):
-        monkeypatch.setattr(external, "tls_probe", lambda ip, host, p=probe: p)
-        found, skipped = external.checks("www.example.com", "93.184.216.34")
-        assert {f["id"] for f in found} == {"NIM-EXPOSED-REDIS"} | want
+        found, skipped = external.tls_findings("www.example.com", probe)
+        assert {f["id"] for f in found} == want
         assert bool(skipped) == (probe["legacy"] is None)  # an untested check is said, never silently passed
+
+
+def test_a_scan_stores_the_engine_report_for_the_target(world, monkeypatch, env):
+    c, dns = world
+    t = add(c, dns)
+    c.post(f"/api/targets/{t['id']}/verify")
+    assert c.get(f"/api/assets/{t['id']}/scan-report").status_code == 404  # not scanned yet: nothing probed by reading
+    fake_net(monkeypatch, open_ports={6379}, filtered={3389}, tls=EXPIRED)
+    c.post(f"/api/targets/{t['id']}/scan")
+    no_probe(monkeypatch, "reading the report probed the host")
+    rep = c.get(f"/api/assets/{t['id']}/scan-report").json()
+    assert rep["host"] == "www.example.com" and rep["headline"]["status"] == "vulnerable"
+    assert {g["vulnerabilities"][0]["id"] for g in rep["vulnerable"]} == {"NIM-EXPOSED-REDIS", "NIM-TLS-EXPIRED"}
+    assert any("dropped rather than refused" in s for s in rep["coverage"]["statements"])
+    other = TestClient(create_app(env, dns_lookup=dns))
+    other.post("/api/auth/signup", json={"email": "b@example.org", "password": "correct horse battery", "org_name": "B"})
+    assert other.get(f"/api/assets/{t['id']}/scan-report").status_code == 404
 
 
 def test_a_name_pointed_at_someone_elses_server_is_never_scanned(world, monkeypatch):
@@ -185,7 +357,7 @@ def test_a_name_pointed_at_someone_elses_server_is_never_scanned(world, monkeypa
     c, dns = world
     t = add(c, dns)
     dns.served.clear()  # the address the name resolves to isn't the tenant's
-    monkeypatch.setattr(external, "checks", lambda *a: pytest.fail("probed an address nobody proved"))
+    no_probe(monkeypatch, "probed an address nobody proved")
     r = c.post(f"/api/targets/{t['id']}/verify")
     assert r.status_code == 409 and "/.well-known/nimstead-verify.txt" in r.json()["detail"]
     dns.served.add(("93.184.216.34", t["txt_value"]))
@@ -222,3 +394,157 @@ def test_address_proof_reads_the_value_from_that_exact_address():
     finally:
         srv.shutdown()
     assert not external.address_proven("127.0.0.1", "www.example.com", "nimstead-verify=abc", ports=port, timeout=1)  # nothing listening
+
+
+def test_a_tls_handshake_that_times_out_keeps_tls_findings_open(world, monkeypatch):
+    """Prove-It: 443 accepted the connection but the handshake was cut off. That is no evidence the certificate was fixed."""
+    c, dns = world
+    t = add(c, dns)
+    c.post(f"/api/targets/{t['id']}/verify")
+    fake_net(monkeypatch, tls=EXPIRED)
+    c.post(f"/api/targets/{t['id']}/scan")
+    lost = {"trusted": None, "error": "no TLS handshake: _ssl.c:1011: The handshake operation timed out", "not_after": None, "legacy": None, "lost": True}
+    eps_tls = Endpoint(external.TLS_PORT, "open", tls=lost)
+    fake_net(monkeypatch)
+    real = net.Prober.observe
+    monkeypatch.setattr(net.Prober, "observe", lambda self: {**real(self), external.TLS_PORT: eps_tls})
+    r = c.post(f"/api/targets/{t['id']}/scan").json()
+    assert r["resolved"] == 0 and [f["vuln_id"] for f in c.get("/api/findings").json()] == ["NIM-TLS-EXPIRED"]
+
+
+def test_tls_probe_says_lost_for_a_cut_connection_and_not_tls_for_a_plain_service():
+    import socket as so
+    import threading as th
+    srv = so.socket()
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(4)
+    port = srv.getsockname()[1]
+
+    def serve():
+        for reply in (None, None, b"HTTP/1.1 400 Bad Request\r\n\r\n"):  # the cut probe also tries TLS 1.0: two connections
+            conn, _ = srv.accept()
+            if reply:
+                conn.recv(65536)  # all of the ClientHello: closing with unread bytes would send a reset, which reads as "lost"
+                conn.sendall(reply)
+                conn.shutdown(so.SHUT_WR)
+            conn.close()  # the first: closed mid-handshake, nothing sent
+    th.Thread(target=serve, daemon=True).start()
+    cut = external.tls_probe("127.0.0.1", "www.example.com", port=port, timeout=3)
+    plain = external.tls_probe("127.0.0.1", "www.example.com", port=port, timeout=3)
+    srv.close()
+    assert cut["trusted"] is None and cut.get("lost") is True
+    assert plain["trusted"] is None and not plain.get("lost")
+
+
+def test_a_tls_server_that_rejects_our_handshake_is_lost_not_a_plain_service():
+    """Prove-It (review 1): a handshake-failure alert comes from a real TLS server, so it proves nothing about its certificate."""
+    from tls_servers import no_shared_cipher, serve
+    port, srv = serve(no_shared_cipher)
+    try:
+        r = external.tls_probe("127.0.0.1", "www.example.com", port=port, timeout=3)
+    finally:
+        srv.close()
+    assert r["trusted"] is None and r["lost"] is True
+
+
+def test_a_server_that_only_speaks_tls_1_0_opens_the_legacy_finding():
+    """Prove-It (review 1): the worst legacy case used to read as "not TLS" and open nothing."""
+    from tls_servers import serve, tls10_only
+    port, srv = serve(tls10_only)
+    try:
+        r = external.tls_probe("127.0.0.1", "www.example.com", port=port, timeout=3)
+    finally:
+        srv.close()
+    if r["legacy"] is None and "NO_PROTOCOLS" in (r.get("error") or "").upper():
+        pytest.skip("this machine's OpenSSL can't offer TLS 1.0")
+    assert r["legacy"] is True
+    assert {f["id"] for f in external.tls_findings("www.example.com", r)[0]} == {"NIM-TLS-LEGACY"}
+
+
+def test_only_a_version_or_handshake_alert_refuses_legacy_tls():
+    """Ship review 3: any alert counted, so a load balancer's internal_error on the TLS 1.0 try closed NIM-TLS-LEGACY."""
+    import ssl
+    assert external.legacy_refused(ssl.SSLError(1, "[SSL: TLSV1_ALERT_INTERNAL_ERROR] tlsv1 alert internal error")) is None
+    assert external.legacy_refused(ssl.SSLError(1, "[SSL: TLSV1_ALERT_PROTOCOL_VERSION] tlsv1 alert protocol version")) is False
+    assert external.legacy_refused(ssl.SSLError(1, "[SSL: SSLV3_ALERT_HANDSHAKE_FAILURE] sslv3 alert handshake failure")) is False
+
+
+def test_a_legacy_attempt_that_is_reset_proves_nothing():
+    """Prove-It (ship review 2): a reset on the TLS 1.0/1.1 try read as "refused" and closed NIM-TLS-LEGACY on no evidence."""
+    from tls_servers import serve_then_reset
+    port, srv = serve_then_reset(ok=2)  # the current handshake and the unverified expiry read; the legacy try is reset
+    try:
+        r = external.tls_probe("127.0.0.1", "www.example.com", port=port, timeout=3)
+    finally:
+        srv.close()
+    assert r["not_after"] and r["legacy"] is None
+    assert external.LEGACY_SKIP in external.tls_findings("www.example.com", r)[1]
+
+
+def test_a_server_that_refuses_tls_1_0_with_an_alert_is_not_legacy():
+    from tls_servers import modern_only, serve
+    port, srv = serve(modern_only)
+    try:
+        r = external.tls_probe("127.0.0.1", "www.example.com", port=port, timeout=3)
+    finally:
+        srv.close()
+    assert r["legacy"] is False
+
+
+def test_a_legacy_only_server_opens_the_legacy_finding_and_keeps_certificate_findings_open(world, monkeypatch):
+    c, dns = world
+    t = add(c, dns)
+    c.post(f"/api/targets/{t['id']}/verify")
+    fake_net(monkeypatch, tls=EXPIRED)
+    c.post(f"/api/targets/{t['id']}/scan")
+    legacy_only = {"trusted": None, "error": "no TLS handshake: [SSL: UNSUPPORTED_PROTOCOL]", "not_after": None, "legacy": True, "lost": True}
+    fake_net(monkeypatch)
+    real = net.Prober.observe
+    monkeypatch.setattr(net.Prober, "observe", lambda self: {**real(self), external.TLS_PORT: Endpoint(external.TLS_PORT, "open", tls=legacy_only)})
+    r = c.post(f"/api/targets/{t['id']}/scan").json()
+    assert r["resolved"] == 0
+    assert sorted(f["vuln_id"] for f in c.get("/api/findings").json()) == ["NIM-TLS-EXPIRED", "NIM-TLS-LEGACY"]
+
+
+def test_a_refusal_or_cut_off_greeting_keeps_a_banner_finding_open(world, monkeypatch):
+    """Prove-It (ship review): vsftpd's per-address limit ("421 too many connections") closed the backdoor finding."""
+    c, dns = world
+    t = add(c, dns)
+    c.post(f"/api/targets/{t['id']}/verify")
+    banner(monkeypatch, {21: b"220 (vsFTPd 2.3.4)\r\n", 22: b"SSH-2.0-OpenSSH_9.6p1\r\n"})
+    c.post(f"/api/targets/{t['id']}/scan")
+    assert sorted(f["vuln_id"] for f in c.get("/api/findings").json()) == ["CVE-2011-2523", "CVE-2024-6387", "NIM-EXPOSED-FTP"]
+    for refusal in (b"421 There are too many connections from your internet address.\r\n", b"554 No service\r\n",
+                    b"220 (vsFTPd 2.3.4"):  # ship review 3: an FTP greeting cut mid-line too
+        banner(monkeypatch, {21: refusal, 22: b"SSH-2.0-OpenSS"})  # and a greeting cut off mid-line
+        assert c.post(f"/api/targets/{t['id']}/scan").json()["resolved"] == 0, refusal
+
+
+def test_a_greeting_from_another_product_closes_a_banner_finding(world, monkeypatch):
+    c, dns = world
+    t = add(c, dns)
+    c.post(f"/api/targets/{t['id']}/verify")
+    banner(monkeypatch, {21: b"220 (vsFTPd 2.3.4)\r\n"})
+    c.post(f"/api/targets/{t['id']}/scan")
+    banner(monkeypatch, {21: b"220 Microsoft FTP Service\r\n"})  # replaced: a full greeting that names no vsftpd
+    c.post(f"/api/targets/{t['id']}/scan")
+    assert [f["vuln_id"] for f in c.get("/api/findings").json()] == ["NIM-EXPOSED-FTP"]
+
+
+def test_the_stored_report_says_when_the_last_scan_ran_even_when_nothing_changed(world, monkeypatch):
+    """Ship review: an unchanged result stored no new record, so the report kept showing the first scan's time."""
+    import datetime as dt
+    c, dns = world
+    t = add(c, dns)
+    c.post(f"/api/targets/{t['id']}/verify")
+    fake_net(monkeypatch, open_ports={6379})
+    times = iter([dt.datetime(2026, 11, 1, tzinfo=dt.UTC), dt.datetime(2026, 11, 2, tzinfo=dt.UTC)])
+
+    class Clock(dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return next(times)
+    monkeypatch.setattr(net, "datetime", Clock)
+    c.post(f"/api/targets/{t['id']}/scan")
+    c.post(f"/api/targets/{t['id']}/scan")
+    assert c.get(f"/api/assets/{t['id']}/scan-report").json()["inventory_read_at"].startswith("2026-11-02")

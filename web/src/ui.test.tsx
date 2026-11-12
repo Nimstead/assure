@@ -8,7 +8,7 @@ import { ApproveDialog, PlanFixButton } from "./remediation";
 import { ADMIN_ONLY_ID, APPROVE_COPY, meQ, type Asset } from "./lib";
 import { InstallCommands } from "./onboarding";
 import { PlatformSection } from "./settings";
-import { TargetRow } from "./targets";
+import { TargetReportView, TargetRow, type TargetReport } from "./targets";
 import { PriorityPill } from "./ui";
 
 it("priority pill carries a text label, not just colour", () => {
@@ -93,6 +93,22 @@ it("unverified target shows the TXT record and a Verify button", () => {
   expect(screen.getByText("nimstead-verify=abc")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /^Verify/ })).toBeInTheDocument();
   vi.unstubAllGlobals();
+});
+
+it("a target's report says a dropped port wasn't checked and grades each finding", () => {
+  const r: TargetReport = {
+    headline: { status: "vulnerable", text: "VULNERABLE: 1 issue across 1 endpoint. 1 checks couldn't be determined." },
+    vulnerable: [{ product: "tcp/6379 Redis", grade: "reasonable", action: "Bind Redis to localhost.", raise_confidence: "A credentialed or agent check reads the host directly.", vulnerabilities: [{ id: "NIM-EXPOSED-REDIS" }] }],
+    undetermined: [{ reason: "port-filtered", why: "the port didn't answer in time", what_to_do: "Check the firewall", count: 1, examples: ["NIM-EXPOSED-RDP"] }],
+    coverage: { sources: [{ label: "tcp/3389 Remote Desktop", state: "filtered", error: "did not answer (dropped)" }, { label: "tcp/23 Telnet", state: "closed", error: null }],
+                statements: ["Some ports were dropped rather than refused: those checks are not clean results, only undetermined."] },
+  };
+  render(<TargetReportView r={r} />);
+  expect(screen.getByText(/VULNERABLE: 1 issue/)).toBeInTheDocument();
+  expect(screen.getByText("reasonable")).toBeInTheDocument();
+  expect(screen.getByRole("row", { name: /3389.*no answer: not checked/ })).toBeInTheDocument();
+  expect(screen.getByRole("row", { name: /Telnet.*refused/ })).toBeInTheDocument();
+  expect(screen.getByText(/Couldn't determine \(1\):/)).toBeInTheDocument();
 });
 
 it("admin-only buttons stay focusable, explain themselves and do nothing for non-admins", async () => {

@@ -216,6 +216,8 @@ def test_updated_agent_reruns_the_command_with_the_new_file(monkeypatch, tmp_pat
 
 def test_inventory_says_whether_this_agent_can_update(monkeypatch):
     monkeypatch.setattr(agent, "collect", lambda: {"packages": []})
+    monkeypatch.setattr(agent, "neighbours", lambda: [])
+    monkeypatch.setattr(agent, "own_addresses", lambda: {"ips": [], "macs": []})
     monkeypatch.setattr(agent, "RELEASE_KEYS", [])
     assert agent.inventory({})["auto_update"] is None  # can't: no pinned keys, so the server asks for a reinstall
     monkeypatch.setattr(agent, "RELEASE_KEYS", ["00" * 32])
@@ -398,11 +400,11 @@ def test_failed_release_is_not_retried_for_a_day_and_bad_manifests_never_crash(h
 def test_enrol_keeps_local_choices_whatever_the_server_answers(monkeypatch, tmp_path):
     saved = {}
     monkeypatch.setattr(agent, "collect", lambda: {"os_name": "x", "ecosystem": "Debian:13", "packages": []})
-    monkeypatch.setattr(agent, "post", lambda *a, **kw: {"asset_id": "a1", "agent_key": "nma_k", "allow_remediation": True,
+    monkeypatch.setattr(agent, "post", lambda *a, **kw: {"asset_id": "a1", "agent_key": "nma_k", "allow_remediation": True, "network_checks": True,
                                                          "auto_update": True, "server": "http://evil.example", "schedule_version": 99})
     monkeypatch.setattr(agent, "save_config", lambda cfg: saved.update(cfg) or "cfg")
     assert agent.main(["enroll", "--server", "https://nimstead.example", "--token", "t", "--no-auto-update"]) == 0
-    assert saved == {"asset_id": "a1", "agent_key": "nma_k", "server": "https://nimstead.example", "allow_remediation": False, "auto_update": False,
+    assert saved == {"asset_id": "a1", "agent_key": "nma_k", "server": "https://nimstead.example", "allow_remediation": False, "network_checks": False, "auto_update": False,
                      "channel": "stable", "scan_jars": False, "scan_apps": False, "app_roots": [], "ad_discovery": False}  # local opt-ins stay local
 
 

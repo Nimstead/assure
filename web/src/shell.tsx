@@ -270,7 +270,7 @@ export function Palette({ open, onOpenChange, signOut, nextTheme }: { open: bool
       run: done(() => navigate({ to: "/findings", search: filtersToSearch({ ...parseFilters({}), fixable: false, q: term, open: f.id }) })),
     }));
     // Hosts come from the already-cached asset list: no extra request, and a host is one jump from its findings.
-    const hosts: Cmd[] = term.length > 1 ? (assets.data ?? []).filter((a) => a.kind !== "external" && a.hostname.toLowerCase().includes(term.toLowerCase())).slice(0, 5)
+    const hosts: Cmd[] = term.length > 1 ? (assets.data ?? []).filter((a) => a.kind !== "external" && a.kind !== "device" && a.hostname.toLowerCase().includes(term.toLowerCase())).slice(0, 5)
       .flatMap((a) => [
         { id: `host-${a.id}`, label: `Host: ${a.hostname}`, hint: "findings", run: done(() => navigate({ to: "/findings", search: filtersToSearch({ ...parseFilters({}), asset: a.id, fixable: false }) })) },
         { id: `machine-${a.id}`, label: `Machine: ${a.hostname}`, hint: "settings", run: done(() => navigate({ to: "/assets", search: { machine: a.id } })) },

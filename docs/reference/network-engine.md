@@ -12,6 +12,7 @@ The [external scanner](external-scans.md) probes every target through `probe()`,
 | `Prober.observe()` | Probes configured ports and returns an integer-port-to-`Endpoint` map |
 | `evaluate(prober, endpoints)` | Returns verdicts, with additional web requests and current-clock TLS evaluation |
 | `build_report(host, ip, verdicts, endpoints, skipped, host_lost)` | Returns report data without probes or persistence |
+| `greeting(banner)` | Whether a banner is a service identifying itself: an FTP/SMTP `220`, POP3 `+OK`, IMAP `* OK` or a whole SSH identification line. Only such a greeting that no longer names a product can close that product's banner finding; a refusal (`421`, `554`) or a line cut off can't. Each port's coverage row carries it as `greeting` |
 | `parity(verdicts, external_ids)` | Compares vulnerable IDs against a set of normal-scanner finding IDs |
 
 `run()` repeats the normal scanner's scope proof before service probes. Proof can commit a refusal event or clear verification. It can raise `external.ScanRefused`. Database, lookup, configuration, and unexpected probe errors can also propagate.

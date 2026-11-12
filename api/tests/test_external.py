@@ -461,3 +461,27 @@ def test_a_legacy_only_server_opens_the_legacy_finding_and_keeps_certificate_fin
     r = c.post(f"/api/targets/{t['id']}/scan").json()
     assert r["resolved"] == 0
     assert sorted(f["vuln_id"] for f in c.get("/api/findings").json()) == ["NIM-TLS-EXPIRED", "NIM-TLS-LEGACY"]
+
+
+def test_a_refusal_or_cut_off_greeting_keeps_a_banner_finding_open(world, monkeypatch):
+    """Prove-It (ship review): vsftpd's per-address limit ("421 too many connections") closed the backdoor finding."""
+    c, dns = world
+    t = add(c, dns)
+    c.post(f"/api/targets/{t['id']}/verify")
+    banner(monkeypatch, {21: b"220 (vsFTPd 2.3.4)\r\n", 22: b"SSH-2.0-OpenSSH_9.6p1\r\n"})
+    c.post(f"/api/targets/{t['id']}/scan")
+    assert sorted(f["vuln_id"] for f in c.get("/api/findings").json()) == ["CVE-2011-2523", "CVE-2024-6387", "NIM-EXPOSED-FTP"]
+    for refusal in (b"421 There are too many connections from your internet address.\r\n", b"554 No service\r\n"):
+        banner(monkeypatch, {21: refusal, 22: b"SSH-2.0-OpenSS"})  # and a greeting cut off mid-line
+        assert c.post(f"/api/targets/{t['id']}/scan").json()["resolved"] == 0, refusal
+
+
+def test_a_greeting_from_another_product_closes_a_banner_finding(world, monkeypatch):
+    c, dns = world
+    t = add(c, dns)
+    c.post(f"/api/targets/{t['id']}/verify")
+    banner(monkeypatch, {21: b"220 (vsFTPd 2.3.4)\r\n"})
+    c.post(f"/api/targets/{t['id']}/scan")
+    banner(monkeypatch, {21: b"220 Microsoft FTP Service\r\n"})  # replaced: a full greeting that names no vsftpd
+    c.post(f"/api/targets/{t['id']}/scan")
+    assert [f["vuln_id"] for f in c.get("/api/findings").json()] == ["NIM-EXPOSED-FTP"]

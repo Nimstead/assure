@@ -314,8 +314,8 @@ def held_open(vid: str, package: str, verdicts: list, rep: dict) -> str | None:
     if not own and vid.startswith("CVE-"):
         port = package.split()[0]  # "tcp/2222 vsftpd"
         src = next((x for x in rep["coverage"]["sources"] if x["name"].split()[0] == port), None)
-        if src and (src["state"] == "closed" or (src["state"] == "open" and src.get("banner") and not src["error"])):
-            return None  # nothing listens, or a genuine greeting that isn't this product any more
+        if src and (src["state"] == "closed" or (src["state"] == "open" and src.get("greeting"))):
+            return None  # nothing listens, or a service introducing itself as something else (a refusal names nothing)
         return "port-filtered" if src and src["state"] == "filtered" else "not-reassessed"
     if not own:
         return "not-reassessed"

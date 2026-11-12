@@ -162,6 +162,14 @@ class Endpoint:
 
 
 BANNER_PORTS = (21, 22, 25, 110, 143, 2121, 2222)  # where a greeting is worth reading; version rules match on any of them
+# A service saying who it is: an FTP/SMTP 220, a POP3 +OK, an IMAP * OK, or a whole SSH identification line. A refusal
+# (421, 554), an error or a line cut off names nothing, so it can't show a product has gone.
+_GREETING = re.compile(rb"^(220[ -]\S|\+OK\b|\* OK\b|SSH-\d\.\d+-\S+\r?\n)")
+
+
+def greeting(banner: bytes) -> bool:
+    """Whether banner is a service positively identifying itself (see _GREETING)."""
+    return bool(_GREETING.match(banner))
 
 
 class Prober:
@@ -444,7 +452,7 @@ def _coverage(endpoints: dict[int, Endpoint], verdicts: list[Verdict], skipped: 
         e = endpoints[port]
         label = f"tcp/{port}" + (f" {_SERVICE_NAME[port]}" if port in _SERVICE_NAME else " TLS" if port == external.TLS_PORT else " HTTP" if port == 80 else "")
         err = "did not answer (dropped)" if e.state == "filtered" else "answered a nonsense probe" if e.reflects else None
-        sources.append({"name": label, "label": label, "state": e.state, "count": 1 if e.state == "open" else 0, "error": err, "banner": bool(e.banner)})
+        sources.append({"name": label, "label": label, "state": e.state, "count": 1 if e.state == "open" else 0, "error": err, "greeting": greeting(e.banner) and not e.reflects})
     net = [v for v in verdicts if v.family == "network"]
     families = {"network": {"label": "Network services", "attempted": len(net), "determined": sum(v.outcome in _DETERMINED for v in net),
                             "outcomes": dict(sorted(Counter(v.outcome.value for v in net).items()))}}

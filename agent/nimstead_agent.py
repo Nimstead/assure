@@ -28,13 +28,13 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 import warnings
 import zipfile
-from concurrent.futures import ThreadPoolExecutor
 
 AGENT_VERSION = "0.7.0"  # the server reads this line to flag outdated agents; bump on every agent change
 # Ed25519 public keys (hex) allowed to sign releases (DECISIONS 31): primary (GitHub Actions) and offline backup.
@@ -1546,6 +1546,7 @@ NET_WEB_MARKERS = {"/.git/config": re.compile(rb"\[core\]", re.I), "/.env": re.c
 NET_WEB_PATHS = tuple(NET_WEB_MARKERS)
 NET_CHECK_MAX = 32          # devices per run, rotating through the rest run by run
 NET_CHECK_SECONDS = 300     # the whole run; devices not reached are left for the next one
+NET_DEVICE_SECONDS = 60     # one device's ports; a port not done by then reads as no answer
 NET_TIMEOUT = 3.0  # as the server's prober: Windows reports a refused connection only after about 2 s of retries
 
 
@@ -1559,18 +1560,29 @@ def _connect_state(ip, port):
         return "filtered"  # a drop proves nothing either way
 
 
-def _exchange(ip, port, payload=b"", limit=512):
-    """One read-only connection: send payload (if any), read at most limit bytes. b"" on any failure."""
-    data = b""
+def _exchange(ip, port, payload=b"", limit=512, whole=False):
+    """One read-only connection: send payload (if any), read at most limit bytes within NET_TIMEOUT * 3 in all, so a reply
+    dripped a byte at a time can't hold it. b"" on any failure. A partial greeting is kept (still evidence); with whole,
+    a reply cut off before the device closed or the limit was reached is b"": part of a page is not a page."""
+    data, done, end = b"", False, time.monotonic() + NET_TIMEOUT * 3
     try:
         with socket.create_connection((ip, port), timeout=NET_TIMEOUT) as sock:
             if payload:
                 sock.sendall(payload)
-            while len(data) < limit and (chunk := sock.recv(limit - len(data))):
+            while len(data) < limit:
+                left = end - time.monotonic()
+                if left <= 0:
+                    break
+                sock.settimeout(min(NET_TIMEOUT, left))
+                chunk = sock.recv(limit - len(data))
+                if not chunk:
+                    done = True
+                    break
                 data += chunk
+            done = done or len(data) >= limit
     except OSError:
-        pass  # keep what was read: a partial greeting is still evidence
-    return data
+        pass
+    return data if done or not whole else b""
 
 
 def _no_verify(minimum=None, maximum=None):
@@ -1611,7 +1623,7 @@ def _tls_facts(ip):
 def _web_fact(ip, path, marker):
     """[status or None, marker matched (None for the control), body SHA-256, body had content] for one GET with Host: the
     address. Headers that never end within the read mean no page was read (status None), not an empty one."""
-    data = _exchange(ip, 80, f"GET {path} HTTP/1.1\r\nHost: {ip}\r\nUser-Agent: nimstead-agent\r\nConnection: close\r\n\r\n".encode(), 65536)
+    data = _exchange(ip, 80, f"GET {path} HTTP/1.1\r\nHost: {ip}\r\nUser-Agent: nimstead-agent\r\nConnection: close\r\n\r\n".encode(), 65536, whole=True)
     head, sep, body = data.partition(b"\r\n\r\n")
     try:
         status = int(head.split(b" ", 2)[1]) if sep else None
@@ -1623,6 +1635,8 @@ def _web_fact(ip, path, marker):
 def check_device(ip, mac):
     """Observations of one device: each fixed port's state, banner greetings with a nonce echo test, 443's certificate,
     and the negative control plus the fixed web paths on 80. Read only; one connection per endpoint at a time."""
+    done = {}
+
     def port(p):
         st = _connect_state(ip, p)
         row = {"state": st}
@@ -1630,9 +1644,17 @@ def check_device(ip, mac):
             nonce = os.urandom(8).hex().encode()
             row["banner"] = base64.b64encode(_exchange(ip, p)).decode()
             row["reflects"] = nonce in _exchange(ip, p, b"NIMSTEAD-CTRL-" + nonce + b"\r\n")
-        return p, row
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        ports = dict(pool.map(port, NET_CHECK_PORTS))
+        done[p] = row
+    # daemon threads, 8 at a time, within NET_DEVICE_SECONDS: a port that never finishes reads as no answer (proves nothing),
+    # and can't keep the process alive at exit the way a thread pool's workers would
+    end = time.monotonic() + NET_DEVICE_SECONDS
+    for i in range(0, len(NET_CHECK_PORTS), 8):
+        batch = [threading.Thread(target=port, args=(p,), daemon=True) for p in NET_CHECK_PORTS[i:i + 8]]
+        for th in batch:
+            th.start()
+        for th in batch:
+            th.join(max(0.0, end - time.monotonic()))
+    ports = {p: done.get(p, {"state": "filtered"}) for p in NET_CHECK_PORTS}
     obs = {"ip": ip, "mac": mac, "ports": {str(p): r for p, r in ports.items()}, "tls": None, "http": None}
     if ports[443]["state"] == "open":
         obs["tls"] = _tls_facts(ip)
@@ -1642,28 +1664,38 @@ def check_device(ip, mac):
     return obs
 
 
-def network_check_targets(seen, networks, own_ips, run_index):
+def network_check_targets(seen, networks, own_ips, start):
     """At most NET_CHECK_MAX (ip, mac) from this machine's own neighbour rows that sit in its own private subnets and
-    aren't its own addresses, rotating by run_index so a larger subnet is covered over several runs."""
+    aren't its own addresses, in address order from offset start (wrapping), so a larger subnet is covered over runs."""
     rows = sorted({(r["ip"], r["mac"]) for r in seen if r["ip"] not in own_ips
                    and any(ipaddress.ip_address(r["ip"]) in n for n in networks)}, key=lambda r: ipaddress.ip_address(r[0]))
     if len(rows) <= NET_CHECK_MAX:
         return rows
-    start = run_index * NET_CHECK_MAX % len(rows)
+    start %= len(rows)
     return (rows[start:] + rows[:start])[:NET_CHECK_MAX]
 
 
 def network_checks(seen, networks=None, own_ips=None, check=check_device, clock=time.monotonic):
-    """{"devices": [observations], "stopped": bool} for this run's targets; stops at NET_CHECK_SECONDS."""
+    """{"devices": [observations], "stopped": bool} for this run's targets, within NET_CHECK_SECONDS.
+
+    Each run starts at a random point in the list: a clock-based rotation lined up with the report timer and kept
+    checking the same half. The run itself is a daemon thread the agent stops waiting for at the deadline, so a device
+    that never lets go can't stop this report or the ones after it."""
     networks = own_networks() if networks is None else networks
     own_ips = set(own_addresses()["ips"]) if own_ips is None else own_ips
-    deadline, out, stopped = clock() + NET_CHECK_SECONDS, [], False
-    for ip, mac in network_check_targets(seen, networks, own_ips, int(time.time() // 3600)):
-        if clock() > deadline:
-            stopped = True
-            break
-        out.append(check(ip, mac))
-    return {"devices": out, "stopped": stopped}
+    targets = network_check_targets(seen, networks, own_ips, int.from_bytes(os.urandom(4), "big"))
+    deadline, out, state = clock() + NET_CHECK_SECONDS, [], {"stopped": False}
+
+    def run():
+        for ip, mac in targets:
+            if clock() > deadline:
+                state["stopped"] = True
+                return
+            out.append(check(ip, mac))
+    worker = threading.Thread(target=run, daemon=True)
+    worker.start()
+    worker.join(NET_CHECK_SECONDS + NET_DEVICE_SECONDS)
+    return {"devices": list(out), "stopped": state["stopped"] or worker.is_alive()}
 
 
 def collect():

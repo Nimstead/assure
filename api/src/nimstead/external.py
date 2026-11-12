@@ -50,7 +50,7 @@ SERVICES = {
 }
 TLS_PORT = 443
 EXPIRY_WARN_DAYS = 14
-LEGACY_SKIP = "legacy TLS (this server's OpenSSL can't offer TLS 1.0/1.1)"  # the engine reads it as scanner-limited, which keeps NIM-TLS-LEGACY open
+LEGACY_SKIP = "legacy TLS (the TLS 1.0/1.1 try got no answer, or this scanner can't offer them)"  # the engine reads it as scanner-limited, which keeps NIM-TLS-LEGACY open
 PROOF_PATH = "/.well-known/nimstead-verify.txt"
 PROOF_PORTS = ((443, True), (80, False))  # (port, TLS)
 
@@ -188,10 +188,20 @@ def _accepts_legacy(ip, host, port, timeout) -> bool | None:
     try:
         with socket.create_connection((ip, port), timeout=timeout) as raw, ctx.wrap_socket(raw, server_hostname=host):
             return True
-    except ssl.SSLError as e:
-        return None if "NO_PROTOCOLS_AVAILABLE" in str(e) or "no protocols available" in str(e) else False
-    except OSError:
-        return False
+    except OSError as e:
+        return legacy_refused(e)
+
+
+_REFUSALS = ("ALERT", "UNSUPPORTED_PROTOCOL", "WRONG_VERSION_NUMBER", "VERSION_TOO_LOW", "NO_SHARED_CIPHER")
+
+
+def legacy_refused(e: OSError) -> bool | None:
+    """False when the server answered a TLS 1.0/1.1 offer with a TLS refusal; None when nothing was learnt (a cut, reset or
+    timeout, or this machine can't offer them), which keeps NIM-TLS-LEGACY open (R4.6, ship review 2)."""
+    text = f"{getattr(e, 'reason', None) or ''} {e}".upper().replace(" ", "_")
+    if not isinstance(e, ssl.SSLError) or "NO_PROTOCOLS" in text:
+        return None
+    return False if any(k in text for k in _REFUSALS) else None
 
 
 def exposed_finding(port: int) -> dict:

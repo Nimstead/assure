@@ -448,6 +448,28 @@ def test_a_server_that_only_speaks_tls_1_0_opens_the_legacy_finding():
     assert {f["id"] for f in external.tls_findings("www.example.com", r)[0]} == {"NIM-TLS-LEGACY"}
 
 
+def test_a_legacy_attempt_that_is_reset_proves_nothing():
+    """Prove-It (ship review 2): a reset on the TLS 1.0/1.1 try read as "refused" and closed NIM-TLS-LEGACY on no evidence."""
+    from tls_servers import serve_then_reset
+    port, srv = serve_then_reset(ok=2)  # the current handshake and the unverified expiry read; the legacy try is reset
+    try:
+        r = external.tls_probe("127.0.0.1", "www.example.com", port=port, timeout=3)
+    finally:
+        srv.close()
+    assert r["not_after"] and r["legacy"] is None
+    assert external.LEGACY_SKIP in external.tls_findings("www.example.com", r)[1]
+
+
+def test_a_server_that_refuses_tls_1_0_with_an_alert_is_not_legacy():
+    from tls_servers import modern_only, serve
+    port, srv = serve(modern_only)
+    try:
+        r = external.tls_probe("127.0.0.1", "www.example.com", port=port, timeout=3)
+    finally:
+        srv.close()
+    assert r["legacy"] is False
+
+
 def test_a_legacy_only_server_opens_the_legacy_finding_and_keeps_certificate_findings_open(world, monkeypatch):
     c, dns = world
     t = add(c, dns)

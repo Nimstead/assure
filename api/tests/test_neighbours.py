@@ -54,7 +54,7 @@ def test_a_windows_agents_own_addresses_from_its_facts_count_too(env):
     lin, win = agent(c, "lin-1"), agent(c, "win-1", "Windows")
     report(c, lin, [row("10.0.0.5", "00:15:5d:01:02:03")])
     assert len(c.get("/api/network/unmanaged").json()) == 1
-    report(c, win, [], facts={"addresses": ["10.0.0.5"]})  # an older Windows agent: its address is in its facts (DECISIONS 112)
+    report(c, win, None, facts={"addresses": ["10.0.0.5"]})  # an older Windows agent: its address is in its facts (DECISIONS 112)
     assert c.get("/api/network/unmanaged").json() == []
 
 

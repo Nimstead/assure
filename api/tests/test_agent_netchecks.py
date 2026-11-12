@@ -141,6 +141,33 @@ def test_the_agent_calls_a_rejected_handshake_lost(monkeypatch):
     assert facts["der"] is None and facts["lost"] is True
 
 
+def _to_port(monkeypatch, port):
+    monkeypatch.setattr(agent.socket, "create_connection", (lambda orig: lambda addr, timeout=None: orig(("127.0.0.1", port), timeout=timeout))(socket.create_connection))
+
+
+def test_the_agent_calls_a_reset_legacy_attempt_unknown(monkeypatch):
+    """Prove-It (ship review 2): a reset on the TLS 1.0/1.1 try read as "refused", which closed NIM-TLS-LEGACY."""
+    from tls_servers import serve_then_reset
+    port, srv = serve_then_reset(ok=1)
+    _to_port(monkeypatch, port)
+    try:
+        facts = agent._tls_facts("127.0.0.1")
+    finally:
+        srv.close()
+    assert facts["der"] and facts["legacy"] is None
+
+
+def test_the_agent_calls_an_alert_on_tls_1_0_a_refusal(monkeypatch):
+    from tls_servers import modern_only, serve
+    port, srv = serve(modern_only)
+    _to_port(monkeypatch, port)
+    try:
+        facts = agent._tls_facts("127.0.0.1")
+    finally:
+        srv.close()
+    assert facts["der"] and facts["legacy"] is False
+
+
 def _http_server(pages: dict, pad: int = 0):
     """A local HTTP server: pages maps a path to (status, body); anything else is a 404. pad adds that many header bytes."""
     import http.server
@@ -292,3 +319,7 @@ def test_linux_subnets_come_from_ip_addr():
     out = json.dumps([{"ifname": "lo", "address": "00:00:00:00:00:00", "addr_info": [{"local": "127.0.0.1", "prefixlen": 8}]},
                       {"ifname": "eth0", "address": "52:54:00:ab:cd:ef", "addr_info": [{"local": "10.1.2.3", "prefixlen": 24}, {"local": "fe80::1", "prefixlen": 64}]}])
     assert [str(n) for n in agent.own_networks(run=lambda cmd, **k: (0, out), which=lambda n: "/usr/sbin/ip", nt=False)] == ["10.1.2.0/24"]
+
+
+def test_the_agents_tls_refusals_are_the_servers():
+    assert agent.NET_TLS_REFUSALS == external._REFUSALS

@@ -267,8 +267,27 @@ def test_an_address_a_device_used_to_have_doesnt_hide_it(env):
         n.last_seen = n.first_seen = now() - timedelta(days=7)
     s.commit()
     report(c, web, [row("192.168.1.78", "02:aa:00:00:00:77")])  # the phone moved
-    report(c, agent(c, "laptop-1", "Windows"), [], facts={"addresses": ["192.168.1.77"]})  # an older agent: its address from facts
+    report(c, agent(c, "laptop-1", "Windows"), None, facts={"addresses": ["192.168.1.77"]})  # an older agent: its address from facts
     assert [d["mac"] for d in c.get("/api/network/unmanaged").json()] == ["02:aa:00:00:00:77"]
+
+
+def test_a_current_agent_with_no_macs_cant_hide_devices_through_its_facts(env):
+    """Prove-It (ship review 2): a 0.7.0 host sending no MACs and 250 `addresses` hid a whole /24 and blocked others' checks."""
+    c, web = setup(env)
+    liar = agent(c, "liar-1")
+    report(c, liar, [], own={"ips": [], "macs": []}, facts={"addresses": [f"192.168.1.{i}" for i in range(1, 251)]})
+    assert CAMERA[1] in [d["mac"] for d in c.get("/api/network/unmanaged").json()]
+    assert send(c, web, [obs(open_={23})])["checked"] == 1
+
+
+def test_an_older_agents_addresses_count_only_up_to_a_hosts_own_cap(env):
+    """The fallback for agents before 0.7.0 trusts their `addresses` fact, but no more of it than a host's own addresses."""
+    from nimstead.db import Asset
+    c, web = setup(env)
+    report(c, agent(c, "old-1", "Windows"), None, facts={"addresses": [f"10.9.{i // 250}.{i % 250}" for i in range(300)] + [CAMERA[0]]})
+    assert CAMERA[1] in [d["mac"] for d in c.get("/api/network/unmanaged").json()]
+    s = make_sessionmaker(env)()
+    assert len(neighbours.Fleet(s, s.scalar(select(Asset.org_id))).fallback) == neighbours.MAX_OWN
 
 
 def test_a_malformed_own_field_never_fails_the_inventory(env):

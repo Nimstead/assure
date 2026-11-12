@@ -1548,6 +1548,7 @@ NET_CHECK_MAX = 32          # devices per run, rotating through the rest run by 
 NET_CHECK_SECONDS = 300     # the whole run; devices not reached are left for the next one
 NET_DEVICE_SECONDS = 60     # one device's ports; a port not done by then reads as no answer
 NET_TIMEOUT = 3.0  # as the server's prober: Windows reports a refused connection only after about 2 s of retries
+NET_TLS_REFUSALS = ("ALERT", "UNSUPPORTED_PROTOCOL", "WRONG_VERSION_NUMBER", "VERSION_TOO_LOW", "NO_SHARED_CIPHER")  # as the server's
 
 
 def _connect_state(ip, port):
@@ -1613,10 +1614,10 @@ def _tls_facts(ip):
         try:
             with socket.create_connection((ip, 443), timeout=NET_TIMEOUT) as raw, legacy_ctx.wrap_socket(raw):
                 legacy = True
-        except ssl.SSLError as e:
-            legacy = None if "NO_PROTOCOLS_AVAILABLE" in str(e).upper() else False
-        except OSError:
-            legacy = False
+        except OSError as e:  # only a TLS refusal is "no"; a cut, reset or timeout taught us nothing (the server's legacy_refused)
+            text = f"{getattr(e, 'reason', None) or ''} {e}".upper().replace(" ", "_")
+            refused = isinstance(e, ssl.SSLError) and "NO_PROTOCOLS" not in text and any(k in text for k in NET_TLS_REFUSALS)
+            legacy = False if refused else None
     return {"der": base64.b64encode(der).decode() if der else None, "legacy": legacy, "lost": lost}
 
 

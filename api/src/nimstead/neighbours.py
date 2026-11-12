@@ -1,8 +1,8 @@
 """Devices seen on the fleet's networks with no agent, from each agent's own neighbour table (DECISIONS 128).
 
 Passive: an agent reports addresses its machine already talked to; nothing here sends a packet or starts a job. A host's
-key only writes that host's own rows (DECISIONS 27), so a compromised agent can at most add noise to this list. Rows not
-seen for 30 days are dropped.
+key only writes that host's own rows (DECISIONS 27); what a compromised agent can still do here is in DECISIONS 130-131.
+Rows not seen for 30 days are dropped.
 
 A host opted in locally to network checks (DECISIONS 129) also sends what its fixed read-only checks observed on devices
 it chose itself; record_checks judges those observations with the engine's evaluator and keeps findings on a `device`
@@ -94,8 +94,9 @@ class Fleet:
 
     claims: MAC -> the addresses of every host that says that MAC is its own. A claim counts only where the MAC was seen
     at one of those addresses, so a host can't hide a device by naming its MAC alone. fallback: addresses of hosts that
-    report no MACs of their own (agents before 0.7.0: Windows' `addresses` fact, DECISIONS 112), matched against a
-    device's latest address only, so an address it held last week doesn't hide it."""
+    report no MACs of their own, matched against a device's latest address only, so an address it held last week doesn't
+    hide it. Only a host that never sent the table (an agent before 0.7.0, or one with it off) is taken from its `addresses`
+    fact (Windows, DECISIONS 112), and no host counts for more than MAX_OWN addresses either way (ship review 2)."""
     def __init__(self, s: Session, org_id: str):
         rows = s.execute(select(Asset.id, Asset.hostname, Asset.own_addresses).where(Asset.org_id == org_id, Asset.kind == "host")).all()
         self.hosts = {aid: hostname for aid, hostname, _ in rows}
@@ -108,9 +109,10 @@ class Fleet:
                 self.claims.setdefault(m, set()).update(ips)
             if not macs:
                 self.fallback |= ips
+            if own is None:
                 older.append(aid)
-        for facts in s.scalars(select(Asset.facts).where(Asset.id.in_(older))) if older else ():  # a host's facts only for those
-            self.fallback |= {ip for ip in ((facts or {}).get("addresses") or []) if isinstance(ip, str)}
+        for facts in s.scalars(select(Asset.facts).where(Asset.id.in_(older))) if older else ():
+            self.fallback |= {ip for ip in ((facts or {}).get("addresses") or [])[:MAX_OWN] if isinstance(ip, str)}
 
     def owns(self, mac: str, addresses: set[str], latest: str) -> bool:
         """Whether a MAC seen at these addresses (latest the newest) is one of the org's own machines."""

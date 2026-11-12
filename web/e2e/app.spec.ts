@@ -368,7 +368,8 @@ test("an external target's last scan report: dropped ports read as not checked, 
 
 test("devices with no agent: listed on Assets from agents' neighbour tables, and it passes axe", async ({ browser }) => {
   const rows = [{ mac: "bc:ba:c2:11:22:33", vendor: "Hangzhou Hikvision Digital Technology Co.,Ltd.", addresses: ["192.168.1.64", "fe80::beba:c2ff:fe11:2233"], seen_by: ["web-1"],
-                  first_seen: "2026-11-01T00:00:00", last_seen: "2026-11-11T00:00:00" }];
+                  first_seen: "2026-11-01T00:00:00", last_seen: "2026-11-11T00:00:00",
+                  checked: { asset_id: "dev-e2e", at: "2026-11-11T00:00:00", from: "web-1", open: ["NIM-EXPOSED-TELNET"] } }];
   for (const width of [1440, 375] as const) {
     for (const scheme of ["light", "dark"] as const) {
       const { context, page } = await ctx(browser, width, scheme);
@@ -377,6 +378,7 @@ test("devices with no agent: listed on Assets from agents' neighbour tables, and
       const section = page.getByRole("region", { name: "1 device on your networks has no agent" });
       await section.getByText("Show them").click();
       await expect(section.getByText(/Hangzhou Hikvision/)).toBeVisible();
+      await expect(section.getByRole("link", { name: "1 issue" })).toBeVisible();
       await axe(page, `unmanaged devices @${width} ${scheme}`);
       await context.close();
     }

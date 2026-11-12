@@ -1103,7 +1103,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
         s is the Session and org_id selects all asset kinds. Raise HTTP 403 at the
         limit. This query is not a reservation or a concurrency-safe quota lock."""
-        if s.scalar(select(func.count()).select_from(Asset).where(Asset.org_id == org_id)) >= MAX_ASSETS_PER_ORG:
+        if s.scalar(select(func.count()).select_from(Asset).where(Asset.org_id == org_id, Asset.kind != "device")) >= MAX_ASSETS_PER_ORG:
             raise HTTPException(403, f"This organisation has reached its limit of {MAX_ASSETS_PER_ORG} assets "
                                      "(NIMSTEAD_MAX_ASSETS_PER_ORG); delete unused ones or ask your Nimstead administrator")
 
@@ -1285,6 +1285,27 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             for r in out:
                 w.writerow([csv_safe(str(r[k] or "")) for k in ("domain", "name", "os", "os_version", "last_logon", "end_of_support")])
             return Response(buf.getvalue(), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=unmanaged-windows.csv"})
+        return out
+
+    class NetworkChecks(BaseModel):
+        devices: list[Any] = Field(max_length=32)  # each checked row by row by neighbours.record_checks
+        stopped: bool = False
+
+    class NetworkChecksResult(BaseModel):
+        checked: int  # devices judged
+        refused: int  # dropped: not this host's own neighbour, not a private address, malformed, or over the device cap
+        open: int  # findings these checks saw (one per issue and endpoint)
+
+    @app.post("/api/agent/network-checks", response_model=NetworkChecksResult)
+    def agent_network_checks(body: NetworkChecks, s: DB, asset: Annotated[Asset, Depends(current_agent)]):
+        """Judge what this host's opted-in agent observed on devices it chose itself (DECISIONS 129) and return counts.
+
+        Only devices in this host's own stored neighbour rows on private IPv4 ranges count; the rest are refused.
+        At most four reports an hour per host (its timer sends one every six hours). Commits."""
+        if over_limit(s, "netchecks:" + asset.id, 4):
+            raise HTTPException(429, "Network checks already received this hour")
+        out = neighbours.record_checks(s, asset, body.devices)
+        s.commit()
         return out
 
     @app.get("/api/network/unmanaged")
@@ -1548,7 +1569,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         Retains five records per asset. An external target returns its last scan's
         stored network report (404 before its first scan); nothing is probed here."""
         a = owned_asset(s, user, asset_id)
-        if a.kind == "external":
+        if a.kind in ("external", "device"):
             rep = s.scalar(select(ScanRecord.report).where(ScanRecord.asset_id == a.id).order_by(ScanRecord.created.desc(), ScanRecord.id).limit(1))
             if rep is None:
                 raise HTTPException(404, "Not scanned yet")
@@ -1951,7 +1972,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             stmt = stmt.where(Finding.kev == kev)
         if fixable is not None:
             # a setting, an end of support or an exposure never has a fixed version, but there is always something to do
-            has_fix = Finding.fixed_version.is_not(None) | Finding.ecosystem.in_(("WinConfig", lifecycle.ECOSYSTEM, external.ECOSYSTEM, windrivers.ECOSYSTEM))
+            has_fix = Finding.fixed_version.is_not(None) | Finding.ecosystem.in_(("WinConfig", lifecycle.ECOSYSTEM, external.ECOSYSTEM, neighbours.ECOSYSTEM, windrivers.ECOSYSTEM))
             stmt = stmt.where(has_fix if fixable else ~has_fix)
         if q:
             like = f"%{q.lower()}%"

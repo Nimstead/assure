@@ -35,6 +35,7 @@ Global options precede the command. `--insecure-http` permits plain HTTP for loc
 | Option | Default and effect |
 | --- | --- |
 | `--allow-remediation` | Off; permits approved package changes on this host |
+| `--allow-network-checks` | Off; after each report, checks up to 32 devices from this host's own neighbour table on its own private subnets with fixed read-only checks (DECISIONS 129). The installers take `--allow-network-checks` (Linux) or `$env:NIMSTEAD_ALLOW_NETWORK_CHECKS = "1"` (Windows) |
 | `--no-auto-update` | Updates enabled by default; this flag disables them locally |
 | `--channel stable\|beta\|preview` | `stable`; installer commands pass the server's channel |
 | `--proxy URL` | Explicit proxy; Windows otherwise uses the machine WinHTTP proxy when available |

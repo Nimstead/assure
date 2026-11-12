@@ -1,6 +1,7 @@
 # Nimstead agent installer for Windows. Run in an elevated PowerShell:
 #   $env:NIMSTEAD_TOKEN = "<token>"; irm __SERVER__/install.ps1 | iex
 # Optional: $env:NIMSTEAD_ALLOW_REMEDIATION = "1" lets this machine install approved updates (local opt-in);
+# $env:NIMSTEAD_ALLOW_NETWORK_CHECKS = "1" lets it check devices on its own subnet for exposed services (local opt-in);
 # $env:NIMSTEAD_PROXY = "http://proxy:8080" sends the agent's traffic through that proxy (TLS stays end to end;
 # without it the machine's WinHTTP proxy is used, if one is set).
 # No Python needed: the agent runs on Python's official embeddable runtime, which this script downloads from your
@@ -75,6 +76,7 @@ if ($Server.StartsWith("http://")) { $insecure = @("--insecure-http"); Write-War
 $remediate = @()
 if ($env:NIMSTEAD_ALLOW_REMEDIATION -eq "1") { $remediate = @("--allow-remediation") }
 if ($env:NIMSTEAD_SCAN_JARS -eq "1") { $remediate += @("--scan-jars") }  # local opt-in: Java libraries on disk
+if ($env:NIMSTEAD_ALLOW_NETWORK_CHECKS -eq "1") { $remediate += @("--allow-network-checks") }  # local opt-in: devices on its own subnet (DECISIONS 129)
 & $py @pyArgs $agent @insecure enroll --server $Server --channel $Channel @remediate @proxyArgs
 if ($LASTEXITCODE -ne 0) { throw "Enrolment failed." }
 & $py @pyArgs $agent @insecure report

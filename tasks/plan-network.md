@@ -93,7 +93,7 @@ See `tasks/todo-network.md` for acceptance criteria and verification per task.
 ### Phase 4: internal exposure from one chosen agent (gated on N9)
 - [x] N9: Decision draft with a recommendation; the owner said yes 2026-11-12 (XS)
 - [x] N10: One locally opted-in agent checks devices from its own neighbour table on its own private subnets (M, agent 0.7.0)
-- [ ] N11: Internal devices' exposed-service and TLS verdicts become findings on the unmanaged-device rows (M)
+- [x] N11: Devices' verdicts become findings on a device asset, shown on the unmanaged-device rows (M)
 
 ### Checkpoint 4
 - [ ] Real run: the probing agent finds an exposed Redis and an expired certificate on the agentless VM; a server told to probe an address outside the agent's own subnets is refused by the agent (`last_run_netinternal.json`)

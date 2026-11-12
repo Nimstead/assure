@@ -120,7 +120,7 @@ class Asset(Base):
     internet_facing: Mapped[bool] = mapped_column(Boolean, default=False)
     directory_source: Mapped[bool] = mapped_column(Boolean, default=False)  # an admin chose it to send the AD list (DECISIONS 102)
     sandbox: Mapped[bool] = mapped_column(Boolean, default=False)  # disposable test target; remediation dev-guard
-    kind: Mapped[str] = mapped_column(String(20), default="host", server_default="host")  # host | application (no agent; SBOM only) | external (outside-in scan)
+    kind: Mapped[str] = mapped_column(String(20), default="host", server_default="host")  # host | application (no agent; SBOM only) | external (outside-in scan) | device (no agent; checked by an opted-in agent on its network, DECISIONS 129)
     verified_at: Mapped[datetime | None]  # external: DNS/address proof passed; scan entry rechecks both
     ring: Mapped[int] = mapped_column(Integer, default=1)  # 0 = canary: auto-remediation lands here first
     health_units: Mapped[list] = mapped_column(default=list)  # systemd units that must stay active after a change

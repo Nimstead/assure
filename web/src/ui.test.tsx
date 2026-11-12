@@ -3,7 +3,7 @@ import { NotificationsSection } from "./integrations";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
-import { AgentUpdateSummary, AssetRow, SbomUpload, UnmanagedDevices } from "./assets";
+import { AgentUpdateSummary, AssetRow, SbomUpload } from "./assets";
 import { ApproveDialog, PlanFixButton } from "./remediation";
 import { ADMIN_ONLY_ID, APPROVE_COPY, meQ, type Asset } from "./lib";
 import { InstallCommands } from "./onboarding";
@@ -109,24 +109,6 @@ it("a target's report says a dropped port wasn't checked and grades each finding
   expect(screen.getByRole("row", { name: /3389.*no answer: not checked/ })).toBeInTheDocument();
   expect(screen.getByRole("row", { name: /Telnet.*refused/ })).toBeInTheDocument();
   expect(screen.getByText(/Couldn't determine \(1\):/)).toBeInTheDocument();
-});
-
-it("devices with no agent: hidden while there are none, then counted, named and said to be passive", async () => {
-  const rows = [{ mac: "bc:ba:c2:11:22:33", vendor: "Hangzhou Hikvision Digital Technology Co.,Ltd.", addresses: ["192.168.1.64"], seen_by: ["web-1"], first_seen: "2026-11-01T00:00:00", last_seen: "2026-11-11T00:00:00" },
-                { mac: "da:a1:19:00:00:01", vendor: "randomised MAC", addresses: ["192.168.1.70"], seen_by: ["web-1", "db-1"], first_seen: "2026-11-10T00:00:00", last_seen: "2026-11-11T00:00:00" }];
-  vi.stubGlobal("fetch", vi.fn(async () => new Response("[]", { status: 200 })));
-  const empty = render(<QueryClientProvider client={new QueryClient()}><UnmanagedDevices /></QueryClientProvider>);
-  await new Promise((r) => setTimeout(r, 20));
-  expect(empty.container).toBeEmptyDOMElement();
-  empty.unmount();
-  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(rows), { status: 200 })));
-  render(<QueryClientProvider client={new QueryClient()}><UnmanagedDevices /></QueryClientProvider>);
-  expect(await screen.findByRole("heading", { name: "2 devices on your networks have no agent" })).toBeInTheDocument();
-  expect(screen.getByText(/nothing was sent to them to find them/)).toBeInTheDocument();
-  expect(screen.getByText(/1 named by their network card's maker/)).toBeInTheDocument();
-  expect(screen.getByText(/Hangzhou Hikvision/)).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "Download as CSV" })).toHaveAttribute("href", "/api/network/unmanaged?format=csv");
-  vi.unstubAllGlobals();
 });
 
 it("admin-only buttons stay focusable, explain themselves and do nothing for non-admins", async () => {

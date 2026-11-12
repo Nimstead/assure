@@ -1036,6 +1036,33 @@
         ],
         "type": "object"
       },
+      "DeviceCheck": {
+        "additionalProperties": false,
+        "properties": {
+          "asset_id": {
+            "type": "string"
+          },
+          "at": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string"
+          },
+          "open": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "asset_id",
+          "at",
+          "from",
+          "open"
+        ],
+        "type": "object"
+      },
       "Directory": {
         "properties": {
           "computers": {
@@ -3182,6 +3209,49 @@
         "title": "MfaConfirm",
         "type": "object"
       },
+      "NetworkChecks": {
+        "properties": {
+          "devices": {
+            "items": {},
+            "maxItems": 32,
+            "title": "Devices",
+            "type": "array"
+          },
+          "stopped": {
+            "default": false,
+            "title": "Stopped",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "devices"
+        ],
+        "title": "NetworkChecks",
+        "type": "object"
+      },
+      "NetworkChecksResult": {
+        "properties": {
+          "checked": {
+            "title": "Checked",
+            "type": "integer"
+          },
+          "open": {
+            "title": "Open",
+            "type": "integer"
+          },
+          "refused": {
+            "title": "Refused",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "checked",
+          "refused",
+          "open"
+        ],
+        "title": "NetworkChecksResult",
+        "type": "object"
+      },
       "NonVulnerableInstall": {
         "additionalProperties": false,
         "properties": {
@@ -4681,6 +4751,16 @@
             },
             "type": "array"
           },
+          "checked": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeviceCheck"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "first_seen": {
             "type": "string"
           },
@@ -4706,7 +4786,8 @@
           "first_seen",
           "last_seen",
           "addresses",
-          "seen_by"
+          "seen_by",
+          "checked"
         ],
         "type": "object"
       },
@@ -5733,6 +5814,99 @@
           }
         ],
         "summary": "Agent Manifest",
+        "x-authentication": "Asset agent key"
+      }
+    },
+    "/api/agent/network-checks": {
+      "post": {
+        "description": "Judge what this host's opted-in agent observed on devices it chose itself (DECISIONS 129) and return counts.\n\nOnly devices in this host's own stored neighbour rows on private IPv4 ranges count; the rest are refused.\nAt most four reports an hour per host (its timer sends one every six hours). Commits.",
+        "operationId": "agent_network_checks_api_agent_network_checks_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NetworkChecks"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkChecksResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "An Origin-bearing write failed the shared origin check."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "AgentToken": []
+          }
+        ],
+        "summary": "Agent Network Checks",
         "x-authentication": "Asset agent key"
       }
     },

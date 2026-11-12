@@ -219,7 +219,9 @@ def render() -> dict[str, str]:
     schema["components"]["schemas"]["AISearchFilter"] = search_filter
     record("DirectoryReceipt", {"computers": integer})
     record("UnmanagedComputer", {**{k: string for k in ("domain", "name", "os", "os_version", "last_logon")}, "end_of_support": nullable_text})
-    record("UnmanagedDevice", {**{k: string for k in ("mac", "vendor", "first_seen", "last_seen")}, "addresses": strings, "seen_by": strings})
+    checked = record("DeviceCheck", {**{k: string for k in ("asset_id", "at", "from")}, "open": strings})
+    record("UnmanagedDevice", {**{k: string for k in ("mac", "vendor", "first_seen", "last_seen")}, "addresses": strings, "seen_by": strings,
+                               "checked": {"anyOf": [checked, {"type": "null"}]}})
     entry = record("LedgerEntry", {**{k: string for k in ("ts", "kind", "subject", "prev_hash", "hash")},
                                     "seq": integer, "data": {"type": "object", "description": "Event-specific ledger payload."}})
     record("LedgerPage", {"problems": strings, "entries": {"type": "array", "items": entry}, "total": integer})

@@ -7,7 +7,7 @@ import { afterEach, vi } from "vitest";
 import { SsoSection } from "./integrations";
 import { ApiError, meQ, type Action, type Asset, type Finding, type Job, type Settings } from "./lib";
 import { ActionCard } from "./home";
-import { AssetRow, AttackPaths, Baselines, baselineSummary, filterAssets, NotAssessed } from "./assets";
+import { AssetRow, AttackPaths, Baselines, baselineSummary, filterAssets, NotAssessed, UnmanagedDevices } from "./assets";
 import { Palette } from "./shell";
 import { Done, errorLead } from "./ui";
 import { Onboarding, TROUBLESHOOT_AFTER_MS } from "./onboarding";
@@ -510,4 +510,25 @@ it("the approval names the target machine's criticality, ring, kind and health c
   const a = { hostname: "db-1", criticality: "critical", ring: 0, sandbox: false, health_units: ["postgresql"] } as unknown as Asset;
   expect(machineContext(a)).toBe("db-1 · critical criticality · canary (fixed first) · production · health checks: postgresql");
   expect(machineContext(undefined)).toBeUndefined();
+});
+
+it("devices with no agent: hidden while there are none, then counted, named and said to be passive", async () => {
+  const rows = [{ mac: "bc:ba:c2:11:22:33", vendor: "Hangzhou Hikvision Digital Technology Co.,Ltd.", addresses: ["192.168.1.64"], seen_by: ["web-1"], first_seen: "2026-11-01T00:00:00", last_seen: "2026-11-11T00:00:00",
+                  checked: { asset_id: "d1", at: "2026-11-11T00:00:00", from: "web-1", open: ["NIM-EXPOSED-TELNET"] } },
+                { mac: "da:a1:19:00:00:01", vendor: "randomised MAC", addresses: ["192.168.1.70"], seen_by: ["web-1", "db-1"], first_seen: "2026-11-10T00:00:00", last_seen: "2026-11-11T00:00:00", checked: null }];
+  vi.stubGlobal("fetch", vi.fn(async () => new Response("[]", { status: 200 })));
+  const empty = render(<QueryClientProvider client={new QueryClient()}><UnmanagedDevices /></QueryClientProvider>);
+  await new Promise((r) => setTimeout(r, 20));
+  expect(empty.container).toBeEmptyDOMElement();
+  empty.unmount();
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(rows), { status: 200 })));
+  render(<QueryClientProvider client={new QueryClient()}><UnmanagedDevices /></QueryClientProvider>);
+  expect(await screen.findByRole("heading", { name: "2 devices on your networks have no agent" })).toBeInTheDocument();
+  expect(screen.getByText(/1 checked for exposed services/)).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "1 issue" })).toBeInTheDocument();
+  expect(screen.getByText(/nothing was sent to them to find them/)).toBeInTheDocument();
+  expect(screen.getByText(/1 named by their network card's maker/)).toBeInTheDocument();
+  expect(screen.getByText(/Hangzhou Hikvision/)).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Download as CSV" })).toHaveAttribute("href", "/api/network/unmanaged?format=csv");
+  vi.unstubAllGlobals();
 });

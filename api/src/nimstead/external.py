@@ -325,9 +325,22 @@ def scan(s: Session, asset: Asset, lookup=None) -> dict:
     commit through prove_scope(). No automatic rollback handles later exceptions."""
     ip = prove_scope(s, asset, lookup)
     verdicts, rep = observe(asset.hostname, ip)
-    found = findings_from(verdicts)
     skipped = [v.detail for v in verdicts if v.reason == "scanner-limited"]
     engine.record(s, asset, rep, {"host": asset.hostname, "address": ip})
+    seen, resolved, still = apply(s, asset, verdicts, rep)
+    evidence.append(s, asset.org_id, "external_scan", asset.id, {"host": asset.hostname, "address": ip, "problems": sorted({v for v, _ in seen}),
+                                                                 "skipped": skipped, "requests": rep.get("requests", [])})
+    s.commit()
+    return {"address": ip, "open": len(seen), "resolved": resolved, "still_open": still, "skipped": skipped}
+
+
+def apply(s: Session, asset: Asset, verdicts: list, rep: dict, ecosystem: str = ECOSYSTEM) -> tuple[set, int, int]:
+    """Open, reopen, re-score and close asset's findings from a network report's verdicts; no commit.
+
+    Return (seen (vulnerability, endpoint) pairs, resolved count, still-open count). An unseen open or accepted
+    finding resolves only on evidence (held_open); otherwise it keeps one "Still open: ..." reason. Each transition
+    goes to the ledger. Sets asset.last_seen. Used by the external scan and by devices' network checks."""
+    found = findings_from(verdicts)
     t = now()
     # keyed by (vulnerability, endpoint): one banner CVE can be on two ports
     existing = {(f.vuln_id, f.package): f for f in s.scalars(select(Finding).where(Finding.asset_id == asset.id))}
@@ -337,7 +350,7 @@ def scan(s: Session, asset: Asset, lookup=None) -> dict:
         r = _score(asset, c)
         f = existing.get((c["id"], c["package"]))
         if f is None:
-            f = Finding(org_id=asset.org_id, asset_id=asset.id, ecosystem=ECOSYSTEM, package=c["package"], vuln_id=c["id"],
+            f = Finding(org_id=asset.org_id, asset_id=asset.id, ecosystem=ecosystem, package=c["package"], vuln_id=c["id"],
                         first_seen=t, advisory_ids=[c["id"]], installed_version=c["installed"], fixed_version=c["fixed"])
             s.add(f)
             events.append(("finding_opened", f))
@@ -362,14 +375,11 @@ def scan(s: Session, asset: Asset, lookup=None) -> dict:
         evidence.append(s, asset.org_id, kind, f.id, {"host": asset.hostname, "vuln_id": f.vuln_id, "package": f.package,
                                                       "installed_version": f.installed_version, "fixed_version": f.fixed_version, "priority": f.priority})
     asset.last_seen = t
-    evidence.append(s, asset.org_id, "external_scan", asset.id, {"host": asset.hostname, "address": ip, "problems": sorted({v for v, _ in seen}),
-                                                                 "skipped": skipped, "requests": rep.get("requests", [])})
-    s.commit()
-    return {"address": ip, "open": len(seen), "resolved": resolved, "still_open": still, "skipped": skipped}
+    return seen, resolved, still
 
 
 def _score(asset: Asset, c: dict):
-    return risk.score(kev=False, epss=None, cvss=c["cvss"], criticality=asset.criticality, internet_facing=True,
+    return risk.score(kev=False, epss=None, cvss=c["cvss"], criticality=asset.criticality, internet_facing=asset.kind == "external",
                       fix_available=True, likelihood=c["likelihood"][0], likelihood_reason=c["likelihood"][1])
 
 

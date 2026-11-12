@@ -1,6 +1,6 @@
 #!/bin/sh
 # Nimstead agent installer. Usage (the token travels in the environment, never on a command line other users can see):
-#   export NIMSTEAD_TOKEN=TOKEN; curl -fsSL --proto '=https' https://SERVER/install.sh | sudo --preserve-env=NIMSTEAD_TOKEN sh [-s -- --allow-remediation]
+#   export NIMSTEAD_TOKEN=TOKEN; curl -fsSL --proto '=https' https://SERVER/install.sh | sudo --preserve-env=NIMSTEAD_TOKEN sh [-s -- --allow-remediation --allow-network-checks]
 # Installs the agent, enrols this host, and adds systemd timers: inventory every 6 hours, and on hosts that allow
 # remediation a check for approved fixes every 15 minutes. The agent updates itself from signed releases.
 set -eu
@@ -11,7 +11,8 @@ EXTRA=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --token) TOKEN="$2"; echo "warning: --token is visible to other users in the process list; set NIMSTEAD_TOKEN instead" >&2; shift 2 ;;
-    --allow-remediation) EXTRA="--allow-remediation"; shift ;;
+    --allow-remediation) EXTRA="$EXTRA --allow-remediation"; shift ;;
+    --allow-network-checks) EXTRA="$EXTRA --allow-network-checks"; shift ;;  # DECISIONS 129: local opt-in only
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done

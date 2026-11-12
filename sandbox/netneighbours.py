@@ -48,8 +48,17 @@ def put(path: str, data: bytes):
     subprocess.run(["wsl", "-d", NAME, "-u", "root", "--", "sh", "-c", f"cat > {path}"], input=data, check=True, timeout=120)
 
 
+TEARDOWN = "ip link del br-nim 2>/dev/null; " + " ".join(f"ip link del v-{ns} 2>/dev/null; ip netns del {ns} 2>/dev/null;" for ns in HOSTS) + " true"
+
+
+def teardown():
+    """WSL distros share one kernel network stack: the bridge and veths outlive the distro unless removed."""
+    vm(TEARDOWN, check=False)
+
+
 def network():
     """A bridge and three namespaces, each with a veth, its address and its MAC; then traffic between them."""
+    teardown()  # a run cut short leaves them behind
     lines = ["set -e", "ip link add br-nim type bridge", "ip link set br-nim up"]
     for ns, (ip, mac) in HOSTS.items():
         lines += [f"ip netns add {ns}", f"ip link add v-{ns} type veth peer name e-{ns}", f"ip link set v-{ns} master br-nim",
@@ -109,6 +118,7 @@ def main(keep=False) -> int:
         return 1
     finally:
         if not keep:
+            teardown()
             subprocess.run(["wsl", "--unregister", NAME], capture_output=True)
         (ROOT / "sandbox" / "last_run_netneighbours.json").write_text(json.dumps(log, indent=1, default=str))
 

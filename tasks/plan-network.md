@@ -96,8 +96,8 @@ See `tasks/todo-network.md` for acceptance criteria and verification per task.
 - [x] N11: Devices' verdicts become findings on a device asset, shown on the unmanaged-device rows (M)
 
 ### Checkpoint 4
-- [ ] Real run: the probing agent finds an exposed Redis and an expired certificate on the agentless VM; a server told to probe an address outside the agent's own subnets is refused by the agent (`last_run_netinternal.json`)
-- [ ] `docs/pentest-scope.md` adds "can a server make an agent probe anything outside its own subnets?"
+- [x] Real run (namespaces, as Checkpoint 3): the agent finds an exposed Redis and an expired certificate on the agentless device and never picks a planted out-of-subnet neighbour; a forged device is refused by the server (`last_run_netinternal.json`)
+- [x] `docs/pentest-scope.md` adds "can a server make an agent probe anything outside its own subnets?"
 - [ ] Owner review, release
 
 ## Risks and mitigations

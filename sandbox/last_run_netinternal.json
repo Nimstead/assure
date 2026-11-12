@@ -1,0 +1,63 @@
+[
+ {
+  "step": "agent's own choice and observations",
+  "targets": [
+   [
+    "10.77.0.11",
+    "52:54:00:77:00:11"
+   ],
+   [
+    "10.77.0.64",
+    "bc:ba:c2:11:22:33"
+   ]
+  ],
+  "planted_in_table": true
+ },
+ {
+  "step": "server's judgement",
+  "result": {
+   "checked": 2,
+   "refused": 1,
+   "open": 2
+  },
+  "findings": [
+   [
+    "NIM-EXPOSED-REDIS",
+    "10.77.0.64"
+   ],
+   [
+    "NIM-TLS-EXPIRED",
+    "10.77.0.64"
+   ]
+  ]
+ },
+ {
+  "step": "after Redis stopped",
+  "findings": [
+   "NIM-TLS-EXPIRED"
+  ]
+ },
+ {
+  "step": "RESULT: PASS",
+  "device": {
+   "mac": "bc:ba:c2:11:22:33",
+   "addresses": [
+    "10.77.0.64"
+   ],
+   "seen_by": [
+    "web-1"
+   ],
+   "first_seen": "2026-11-12T01:09:57.206307",
+   "last_seen": "2026-11-12T01:09:57.206307",
+   "vendor": "",
+   "checked": {
+    "asset_id": "2095b377df724f24bf0b4b19440ae9a8",
+    "at": "2026-11-12T01:09:58.597913",
+    "from": "web-1",
+    "open": [
+     "NIM-TLS-EXPIRED"
+    ]
+   }
+  }
+ }
+]

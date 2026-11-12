@@ -345,3 +345,11 @@ def test_a_mac_answering_on_many_addresses_is_checked_once_a_run():
     for start in (0, 7, 33):
         targets = agent.network_check_targets(seen, LAN, set(), start)
         assert sorted(m for _, m in targets) == ["02:00:00:00:00:09", "02:00:00:00:00:66"]
+
+
+def test_a_device_that_finishes_late_never_lands_in_another_devices_place(monkeypatch):
+    monkeypatch.setattr(agent, "NET_DEVICE_SECONDS", 0.1)
+    monkeypatch.setattr(agent, "NET_DEVICE_TAIL", 0.4)  # .5 is given up at 0.5 s and finishes at 0.7 s, while .6 runs to 0.9 s
+    out = agent.network_checks([row("192.168.1.5"), row("192.168.1.6", "02:00:00:00:00:06")], LAN, set(),
+                               check=lambda ip, mac: time.sleep(0.7 if ip.endswith(".5") else 0.4) or {"ip": ip})
+    assert out["devices"] == [{"ip": "192.168.1.6"}]

@@ -72,6 +72,8 @@ def test_openssh_backport_is_declined_not_guessed():
     assert by_id(bare)["CVE-2024-6387"].outcome == Outcome.VULNERABLE
     patched = net._versions(endpoints({22: Endpoint(22, "open", banner=b"SSH-2.0-OpenSSH_9.9p1\r\n")}))
     assert by_id(patched)["CVE-2024-6387"].outcome == Outcome.NOT_VULNERABLE
+    for native in (b"SSH-2.0-OpenSSH_9.8\r\n", b"SSH-2.0-OpenSSH_9.6\r\n"):  # OpenBSD's own sshd: never affected
+        assert by_id(net._versions(endpoints({22: Endpoint(22, "open", banner=native)})))["CVE-2024-6387"].outcome == Outcome.NOT_VULNERABLE
 
 
 def test_catch_all_port_suppresses_product_results_and_says_why():

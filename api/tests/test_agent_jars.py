@@ -85,3 +85,10 @@ def test_facts_that_dont_fit_are_dropped_not_the_report(env):
     h = {"Authorization": f"Bearer {a['agent_key']}"}
     r = c.post("/api/agent/inventory", headers=h, json={"ecosystem": "Windows", "packages": [], "facts": {"x" * 200: 1}})
     assert r.status_code == 200 and c.get("/api/assets").json()[0]["facts"] == {}
+
+
+def test_too_many_jar_packages_are_capped_and_the_scan_says_partial(tmp_path):
+    for i in range(3):
+        (tmp_path / f"a{i}.jar").write_bytes(jar({POM: f"groupId=org.apache.logging.log4j\nartifactId=log4j-core\nversion=2.{i}.0\n"}))
+    pkgs, summary = agent.scan_jars([str(tmp_path)], mounts=[], max_packages=2)
+    assert len(pkgs) == 2 and not summary["complete"] and "2 jar packages" in summary["partial"]

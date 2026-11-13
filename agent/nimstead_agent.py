@@ -37,7 +37,7 @@ import urllib.request
 import warnings
 import zipfile
 
-AGENT_VERSION = "0.7.0"  # the server reads this line to flag outdated agents; bump on every agent change
+AGENT_VERSION = "0.7.1"  # the server reads this line to flag outdated agents; bump on every agent change
 # Ed25519 public keys (hex) allowed to sign releases (DECISIONS 31): primary (GitHub Actions) and offline backup.
 # The server only relays signed releases, so it can withhold an update but never forge one. Empty = never self-update.
 RELEASE_KEYS = ["a91fa6539c6c2593009fc71b1c1fba341b5685ba7bc97c127c068b1d732b21d2", "2438f2ccebab5bf26edf9e21a8aa8f09abd1861f52fbe0d6641b28b90f8b0e5a"]  # noqa: E501
@@ -680,7 +680,7 @@ def collect_remote(host, run=None):
             with os.fdopen(fd, "w", encoding="utf-8-sig") as f:
                 f.write(cmd[-1])
             return run(["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
-                        f"Invoke-Command -ComputerName {host} -FilePath '{path}' -ErrorAction Stop"], **kw)
+                        PS_UTF8 + f"Invoke-Command -ComputerName {host} -FilePath '{path}' -ErrorAction Stop"], **kw)
         finally:
             os.unlink(path)
     rc, out = ps(remote, PS_REMOTE_DUMP, timeout=600)
@@ -1544,7 +1544,6 @@ NET_BANNER_PORTS = (21, 22, 25, 110, 143, 2121, 2222)
 # The web paths and the marker that shows each is really exposed, as the server's engine has them (a test keeps them equal).
 # The agent judges the body here and sends only facts, so a file's contents never leave the network it's on (DECISIONS 129).
 NET_WEB_MARKERS = {"/.git/config": re.compile(rb"\[core\]", re.I), "/.env": re.compile(rb"(?mi)^[A-Z][A-Z0-9_]+\s*=")}
-NET_WEB_PATHS = tuple(NET_WEB_MARKERS)
 NET_CHECK_MAX = 32          # devices per run, rotating through the rest run by run
 NET_CHECK_SECONDS = 300     # the whole run; devices not reached are left for the next one
 NET_DEVICE_SECONDS = 60     # one device's ports; a port not done by then reads as no answer
@@ -1736,8 +1735,9 @@ def sh(cmd, cwd=None, timeout=1800):
     propagate. Output is captured without a size cap. The caller controls command effects.
     """
     env = dict(os.environ, DEBIAN_FRONTEND="noninteractive", LC_ALL="C")
+    enc = "utf-8" if cmd[:1] == ["powershell"] else None  # ps() makes PowerShell write UTF-8; Python would read the ANSI code page
     try:
-        p = subprocess.run(cmd, cwd=cwd, env=env, capture_output=True, text=True, errors="replace", timeout=timeout)
+        p = subprocess.run(cmd, cwd=cwd, env=env, capture_output=True, text=True, encoding=enc, errors="replace", timeout=timeout)
         return p.returncode, p.stdout + p.stderr
     except (OSError, subprocess.TimeoutExpired) as e:
         return 127, str(e)
@@ -2059,6 +2059,9 @@ class Job:
         extra = sorted(touched - planned)
         self.step("change limited to planned packages", ok=not extra,
                   output=("would also change: " + ", ".join(extra)) if extra else "touches: " + ", ".join(sorted(touched)))
+        # an empty plan passes the checks above, then "applies" with nothing changed (e.g. a fix only ESM or a newer mirror has)
+        self.step("repository has a newer version", ok=bool(touched & planned),
+                  output="" if touched & planned else "the package source offers no upgrade for: " + ", ".join(sorted(planned)))
 
     # --- rollback artefacts -------------------------------------------------
 
@@ -2226,6 +2229,13 @@ class Job:
             self.step("job validated", ok=ok, output="" if ok else "unsupported manager, or invalid package name, version or unit")
             tool = TOOLS[self.mgr]
             self.step(f"{tool} available", [tool, "--version"])
+            if self.mgr == "apt":
+                # shortcut: one architecture per package, because the dry run and the rollback copy handle one; multi-arch support needs both
+                # only "ii" lines: rc (config kept) is not installed, and a missing package's error text has no status at all
+                multi = [p["name"] for p in self.pkgs if sum(ln.startswith("ii") for ln in self.run(
+                    ["dpkg-query", "-W", "-f=${db:Status-Abbrev}${Architecture}\n", p["name"]])[1].splitlines()) > 1]
+                self.step("installed for one architecture only", ok=not multi,
+                          output=("installed for several architectures, not supported yet: " + ", ".join(multi)) if multi else "")
             cur = self.versions()
             drift = [p["name"] for p in self.pkgs if cur.get(p["name"]) != p["from"]]
             self.step("installed versions match plan", ok=not drift, output=("drifted: " + ", ".join(drift)) if drift else "")
@@ -2324,8 +2334,9 @@ class WinAppJob:
     fail_after_apply is a local test override. Direct use checks no server approval
     or local consent. execute returns (outcome,steps,error).
 
-    Undo closures exist only after a handler returns successfully. Handler errors
-    can return aborted after host changes, without undo. Office/settings recovery
+    Handlers set changed just before their first host change and undo once they
+    can undo it, so an error after that point is rolled back (or reported as
+    needing attention), never as "No changes made". Office/settings recovery
     is in memory only. Winget has no undo. Services are sampled, not exhaustively
     tested. Invalid input/runner shapes can fail during construction or execution."""
 
@@ -2333,6 +2344,7 @@ class WinAppJob:
         self.run, self.steps, self.mgr = run, [], job.get("manager")
         self.pkgs, self.units = job.get("packages") or [], job.get("health_units") or []
         self.inject, self.result_versions = fail_after_apply, None
+        self.changed, self.undo = False, None  # set by the handler before its first change
 
     def step(self, name, cmd=None, ok=None, output="", cwd=None):
         """Run optional cmd and append a bounded step result; return output text or raise StepFailed.
@@ -2366,10 +2378,10 @@ class WinAppJob:
         """Return (outcome,steps,error) for one Windows application/setting action.
 
         Validate shape, compare numeric planned versions and check services before
-        invoking the handler. A handler exception returns aborted, even if it
-        already changed the host. Undo exists only after handler success. Later
-        service/test failure attempts that undo or reports rollback_failed for
-        winget. A successful undo does not repeat health or version verification."""
+        invoking the handler. An error before the handler's first change returns
+        aborted. Any later failure, inside the handler or in the checks after it,
+        attempts its undo, or reports rollback_failed when there is none (winget).
+        A successful undo does not repeat health or version verification."""
         try:
             self.step("job validated", ok=self.valid(), output="" if self.valid() else "unknown product or setting, or invalid version")
             p = self.pkgs[0]
@@ -2377,16 +2389,16 @@ class WinAppJob:
                 self.step("fix is newer than installed", ok=windows_version_key(p["to"]) > windows_version_key(p["from"]),
                           output=f"{p['from']} -> {p['to']}")
             self.health("before change")
-            undo = getattr(self, f"_{self.mgr}")(p)
-        except Exception as e:
-            return "aborted", self.steps, f"No changes made: {e}"
-        try:
+            getattr(self, f"_{self.mgr}")(p)
             self.health("after change")
             if self.inject:
                 self.step("injected failure (sandbox test)", ok=False, output="--fail-after-apply")
             return "applied", self.steps, None
         except Exception as e:
+            if not self.changed:
+                return "aborted", self.steps, f"No changes made: {e}"
             err = str(e)
+        undo = self.undo
         if undo is None:
             return "rollback_failed", self.steps, f"Change failed and can't be undone (forward-only, approved as such): {err}"
         try:
@@ -2405,6 +2417,7 @@ class WinAppJob:
         common = ["--id", wid, "--exact", "--source", "winget", "--version", p["to"], "--accept-source-agreements", "--disable-interactivity"]
         out = self.step(f"winget lists {wid} {p['to']} with an installer hash", [exe, "show", *common], cwd=cwd)
         self.step("installer SHA-256 published", ok=bool(re.search(r"(?im):\s*[0-9a-f]{64}\s*$", out)), output=out)  # by the value: winget's labels are localised
+        self.changed = True  # forward-only: a failed install may have changed the app, with no undo
         self.step(f"{wid} upgraded to {p['to']}", [exe, "install", *common, "--silent", "--force", "--accept-package-agreements",
                                                     "--scope", "machine"], cwd=cwd)
         self.result_versions = {p["name"]: p["to"]}
@@ -2427,26 +2440,28 @@ class WinAppJob:
                     return
                 time.sleep(30)
             self.step(f"Office reports {build}", ok=False, output=f"still {cur.strip()}")
+        self.changed, self.undo = True, lambda: go(p["from"])  # Click-to-Run may take the update after we stop waiting
         go(p["to"])
         self.result_versions = {p["name"]: p["to"]}
-        return lambda: go(p["from"])
 
     def _winconfig(self, p):
-        undos = [self._set_value(*CONFIG_FIXES[p["name"]])]
-        if p["name"] in CONFIG_ALSO:
-            undos.append(self._set_value(*CONFIG_ALSO[p["name"]]))
-        self.result_versions = {p["name"]: "fixed"}
+        undos = []
 
         def undo():
             for u in reversed(undos):
                 u()
-        return undo
+        self.undo = undo  # restores whatever was set before a later step failed
+        undos.append(self._set_value(*CONFIG_FIXES[p["name"]]))
+        if p["name"] in CONFIG_ALSO:
+            undos.append(self._set_value(*CONFIG_ALSO[p["name"]]))
+        self.result_versions = {p["name"]: "fixed"}
 
     def _set_value(self, key, name, typ, value):
         rc, out = self.run(["reg", "query", key, "/v", name])
         m = re.search(rf"{re.escape(name)}\s+(REG_\w+)\s+(\S*)", out) if rc == 0 else None
         before = (m[1], m[2]) if m else None  # None: absent, restored by deleting it again
         self.step(f"recorded {name} before the change", ok=True, output=f"{before or 'not set'}")
+        self.changed = True
         self.step(f"{name} set to {value}", ["reg", "add", key, "/v", name, "/t", typ, "/d", value, "/f"])
 
         def undo():
@@ -2536,6 +2551,9 @@ OUTCOME_DIR = (os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "N
                else "/var/lib/nimstead/outcomes")
 
 
+REPORT_MAX_STEPS = 200  # JobReport.steps on the server: the first and last 100 say how it started and how it ended
+
+
 def run_jobs(server, key, insecure_http, run=sh, outcome_dir=None, win_state=None, ran=None, **job_kw):
     """Retry saved reports, execute fetched jobs and return (problem_count,reboot_needed).
 
@@ -2585,8 +2603,10 @@ def run_jobs(server, key, insecure_http, run=sh, outcome_dir=None, win_state=Non
     def record(job_id, report):
         nonlocal problems
         path = os.path.join(outcome_dir, re.sub(r"[^A-Za-z0-9]", "", str(job_id)) + ".json")
-        with open(path, "w") as f:
-            json.dump({"id": job_id, "report": report}, f)
+        if len(report.get("steps") or ()) > REPORT_MAX_STEPS:  # the server refuses more, and a refused outcome is retried for ever
+            half = REPORT_MAX_STEPS // 2
+            report = {**report, "steps": report["steps"][:half] + report["steps"][-half:]}
+        write_json(path, {"id": job_id, "report": report})
         print("job {}: {}{}".format(job_id, report["outcome"], f" ({report['error']})" if report.get("error") else ""))
         log_event("job {}: {}{}".format(job_id, report["outcome"], f" ({report['error']})" if report.get("error") else ""))
         if ran is not None:
@@ -2879,7 +2899,11 @@ def ps(run, script, **kw):
     noninteractive mode and ExecutionPolicy Bypass. Keyword arguments pass through to run.
     Runner errors and command effects belong to the supplied callable. No result validation
     or independent timeout/output bound is added here."""
-    return run(["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script], **kw)
+    return run(["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", PS_UTF8 + script], **kw)
+
+
+# PowerShell 5.1 writes the OEM code page ("Intel®" came back "Intel©"); no console to set (rare) leaves it as it was
+PS_UTF8 = "try { [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false) } catch {}; "
 
 
 def boot_time():
@@ -2987,11 +3011,10 @@ class WinJob:
         """Create the parent directory and truncate/write current state as JSON.
 
         Inherits existing folder permissions, without an independent ACL check.
-        Writes are non-atomic. Filesystem/serialization failures can leave partial
-        state and propagate."""
+        The write replaces the file whole, so a failure leaves the previous state.
+        Filesystem/serialization failures propagate."""
         os.makedirs(os.path.dirname(self.state_path), exist_ok=True)
-        with open(self.state_path, "w") as f:
-            json.dump(self.s, f)  # inherits the locked-down folder ACL (secure_windows_dir)
+        write_json(self.state_path, self.s)  # inherits the locked-down folder ACL (secure_windows_dir)
 
     def clear(self):
         """Delete the saved job state if present; filesystem errors propagate."""
@@ -3072,10 +3095,10 @@ class WinJob:
 
         Verify/rollback phases first wait for the boot-time heuristic. Start errors
         attempt aborted results. Verify errors attempt removal, except servicing
-        steps return failed. Rollback-phase errors attempt rollback_failed results.
-        Recovery/result errors can still propagate. Host effects can precede any
-        outcome, including aborted. Returned failed is not accepted by the current
-        agent-report endpoint."""
+        steps return rollback_failed (installed for good, needs attention).
+        Rollback-phase errors attempt rollback_failed results. Recovery/result
+        errors can still propagate. Host effects can precede any outcome,
+        including aborted."""
         phase = self.s["phase"]
         if phase in ("verify", "rolled_back_pending") and not self.restarted():
             return {"outcome": "pending_reboot", "steps": self.s["steps"], "error": None, "versions": None}  # judge nothing yet
@@ -3092,7 +3115,7 @@ class WinJob:
             if now == "start":
                 return self.result("aborted", f"No changes made: {e}")
             if now == "verify" and self.ssu():  # nothing to roll back to: it stays installed, and the report says so
-                return self.result("failed", f"Servicing stack update installed, then a check failed; it can't be removed and stays installed: {e}")
+                return self.result("rollback_failed", f"Servicing stack update installed, then a check failed; it can't be removed and stays installed: {e}")
             if now == "verify":
                 return self._rollback(str(e))
             return self.result("rollback_failed", f"ROLLBACK FAILED, host needs attention: {e}")
@@ -3810,13 +3833,29 @@ def save_config(cfg):
         secure_windows_dir(d=os.path.dirname(p))
     try:
         os.makedirs(os.path.dirname(p), exist_ok=True)
-        fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w") as f:
-            json.dump(cfg, f)
-        os.chmod(p, 0o600)  # in case the file pre-existed with looser perms
+        write_json(p, cfg)
     except OSError as e:
         raise AgentError(f"cannot write {p}: {e}")
     return p
+
+
+def write_json(path: str, obj) -> None:
+    """Replace path with obj as JSON, mode 0600, so a full disk or power cut leaves the old file whole, never an empty one."""
+    tmp = path + ".tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(obj, f)
+            f.flush()
+            os.fsync(f.fileno())
+        os.chmod(tmp, 0o600)  # in case a stale .tmp pre-existed with looser perms
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
 
 
 # Lists the folder without ever following a junction or symlink (Windows PowerShell 5.1's -Recurse would): path|owner|link
@@ -4231,10 +4270,11 @@ def _seen_filesystem(d, devs, top=False):
     return False
 
 
-def scan_jars(roots, max_seconds=300, max_files=500_000, mounts=None, owned=lambda p: False):
+def scan_jars(roots, max_seconds=300, max_files=500_000, mounts=None, owned=lambda p: False, max_packages=20_000):
     """Return (Maven package dictionaries, scan summary) from root path strings.
 
-    max_seconds defaults to 300 and max_files to 500000. Budgets are checked between file
+    max_seconds defaults to 300 and max_files to 500000. max_packages (20000, as scan_apps) caps
+    the rows so a big build server's inventory stays under the server's body limit. Budgets are checked between file
     entries, not during traversal, ZIP I/O or nested parsing. mounts=None reads net_mounts.
     owned(path) excludes known OS-owned archives. Keep locations in source, truncated to 255
     characters. Deduplicate by full coordinate/version/location before output truncation.
@@ -4280,7 +4320,9 @@ def scan_jars(roots, max_seconds=300, max_files=500_000, mounts=None, owned=lamb
                 break
         if partial:
             break
-    pkgs = [{"ecosystem": "Maven", "name": k[0], "version": k[1], "source": _where(k[2])} for k in sorted(found)]
+    if len(found) > max_packages:
+        partial = partial or f"stopped at {max_packages} jar packages (budget)"
+    pkgs = [{"ecosystem": "Maven", "name": k[0], "version": k[1], "source": _where(k[2])} for k in sorted(found)[:max_packages]]
     return pkgs, {"files": min(files, max_files), "complete": partial is None, **({"partial": partial} if partial else {}), "owned": skipped,
                   "locations": [[k[0], k[1], k[2][-300:]] for k in sorted(found)[:100]]}
 

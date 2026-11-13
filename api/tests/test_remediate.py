@@ -1,7 +1,7 @@
 from datetime import timedelta
 
 from fastapi.testclient import TestClient
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.orm import sessionmaker
 
 from nimstead.app import create_app
@@ -183,6 +183,40 @@ def test_silent_agent_times_out(env):
     assert j["status"] == "failed" and "did not report" in j["error"]
 
 
+def test_an_applied_job_that_is_never_verified_times_out_and_frees_the_fix(env):
+    c = setup(env)
+    aid, h = add_host(c)
+    jid = plan(c, aid).json()["id"]
+    c.post(f"/api/remediation/jobs/{jid}/approve")
+    c.get("/api/agent/jobs", headers=h)
+    assert c.post(f"/api/agent/jobs/{jid}/report", headers=h, json={"outcome": "applied"}).json()["status"] == "verifying"
+    s = sessionmaker(make_engine(env))()
+    s.execute(update(RemediationJob).values(updated=now() - timedelta(days=6)))
+    s.commit()
+    assert c.get("/api/remediation/jobs").json()[0]["status"] == "verifying"  # a few days of partial inventories are fine
+    s.execute(update(RemediationJob).values(updated=now() - timedelta(days=8)))
+    s.commit()
+    j = c.get("/api/remediation/jobs").json()[0]
+    assert j["status"] == "failed" and "7 days" in j["error"]
+    assert plan(c, aid).status_code == 201  # no longer "already in progress"
+
+
+def test_a_cancel_from_a_stale_copy_sees_the_job_was_dispatched_meanwhile(env):
+    import pytest
+
+    from nimstead import remediate
+    c = setup(env)
+    aid, h = add_host(c)
+    jid = plan(c, aid).json()["id"]
+    c.post(f"/api/remediation/jobs/{jid}/approve")
+    admin = sessionmaker(make_engine(env))()
+    job = admin.get(RemediationJob, jid)  # the admin's view: approved
+    assert job.status == "approved"
+    c.get("/api/agent/jobs", headers=h)  # meanwhile the agent picks it up
+    with pytest.raises(remediate.RemediationError, match="dispatched"):
+        remediate.cancel(admin, job, "a@example.com")
+
+
 def test_windows_job_waiting_for_its_restart_isnt_timed_out_before_the_deadline(env):
     c = setup(env)
     aid, h = add_host(c)
@@ -292,6 +326,27 @@ def test_broad_ring_pinned_to_canary_version_and_held_on_later_failure(env):
     assert c.get("/api/agent/jobs", headers=hb2).json() == []  # approved earlier, held at dispatch
     held = next(j for j in c.get("/api/remediation/jobs").json() if j["hostname"] == "broad-2")
     assert held["status"] == "planned" and "halted" in held["error"]
+
+
+def test_an_old_linux_failure_stops_halting_once_the_change_has_succeeded_since(env):
+    from nimstead import remediate
+    from nimstead.db import Org
+    test_broad_ring_pinned_to_canary_version_and_held_on_later_failure(env)
+    s = sessionmaker(make_engine(env))()
+    jobs = s.scalars(select(RemediationJob)).all()
+    failed = next(j for j in jobs if j.status == "rolled_back")
+    held = next(j for j in jobs if j.status == "planned")
+    org = s.get(Org, held.org_id)
+    assert remediate.canary_ok(s, org, held)[1].endswith("halted")
+    failed.updated = now() - timedelta(days=30)  # it failed a month ago; the canary has succeeded since
+    s.flush()
+    assert remediate.canary_ok(s, org, held)[0]
+    failed.packages = [{**p, "to": "9.9.9-1"} for p in failed.packages]  # but the failure was a version nobody has proven
+    s.flush()
+    assert remediate.canary_ok(s, org, held)[1].endswith("halted")
+    failed.status, failed.error = "failed", remediate.VERIFY_TIMEOUT_ERROR  # a host that never reported back proves nothing
+    s.flush()
+    assert remediate.canary_ok(s, org, held)[0]
 
 
 def test_canary_report_cannot_pin_the_fleet_to_an_older_version(env):

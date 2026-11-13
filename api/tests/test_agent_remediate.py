@@ -16,7 +16,7 @@ class FakeApt:
         self.tmp, self.installed, self.candidate = tmp, dict(installed), candidate
         self.downloadable, self.break_unit, self.dpkg_i_fails = downloadable, break_unit_on_upgrade, dpkg_i_fails
         self.also, self.clean_cache = list(also_upgrades), clean_cache_on_upgrade
-        self.units_ok, self.log = True, []
+        self.units_ok, self.log, self.multiarch = True, [], set()
         self.crash_loop, self.restart_n = crash_loop_on_upgrade, 0  # systemd restarting a dying service: is-active can still say active
 
     def __call__(self, cmd, cwd=None):
@@ -28,6 +28,10 @@ class FakeApt:
                 return 1, "not in this fake"  # repack path covered by test_repack_*
             case ["dpkg-query", "-W", "-f=${Architecture}", _]:
                 return 0, "amd64"
+            case ["dpkg-query", "-W", "-f=${db:Status-Abbrev}${Architecture}\n", name]:
+                if name not in self.installed:
+                    return 1, f"dpkg-query: no packages found matching {name}"
+                return 0, "ii amd64\nii i386\n" if name in self.multiarch else "ii amd64\nrc i386\n"
             case ["dpkg-query", "-W", _, name]:
                 return (0, self.installed[name]) if name in self.installed else (1, "not installed")
             case ["systemctl", "is-active", *_]:
@@ -37,7 +41,7 @@ class FakeApt:
             case ["apt-get", "update"]:
                 return 0, "ok"
             case ["apt-get", "-s", "install", "--only-upgrade", "--no-remove", *specs]:
-                names = [s.split("=")[0] for s in specs] + self.also
+                names = [s.split("=")[0] for s in specs if self.candidate] + self.also
                 return 0, "\n".join(f"Inst {n} [old] (new Debian:12/stable [amd64])" for n in names) + "\nConf x"
             case ["apt-get", "download", spec_]:
                 if not self.downloadable:
@@ -127,6 +131,27 @@ def test_transaction_touching_unplanned_packages_is_refused(tmp_path):
     outcome, _, err = run(tmp_path, h)
     assert outcome == "aborted" and "would also change: libc6" in err
     assert h.installed == OLD
+
+
+def test_a_repository_with_no_newer_version_aborts_instead_of_applying_nothing(tmp_path):
+    h = FakeApt(tmp_path, OLD, {})
+    outcome, _, err = run(tmp_path, h)
+    assert outcome == "aborted" and "offers no upgrade for: libssl3, openssl" in err
+    assert not any(c[:2] in (["apt-get", "download"], ["apt-get", "install"]) for c in h.log)  # no rollback copy, no change
+
+
+def test_a_package_installed_for_two_architectures_is_refused_as_such(tmp_path):
+    h = FakeApt(tmp_path, OLD, NEW)
+    h.multiarch = {"libssl3"}
+    outcome, _, err = run(tmp_path, h)
+    assert outcome == "aborted" and "several architectures, not supported yet: libssl3" in err and "drifted" not in err
+    assert h.installed == OLD
+
+
+def test_a_planned_package_no_longer_installed_is_reported_drifted_not_multiarch(tmp_path):
+    h = FakeApt(tmp_path, {k: v for k, v in OLD.items() if k != "libssl3"}, NEW)
+    outcome, _, err = run(tmp_path, h)
+    assert outcome == "aborted" and "drifted: libssl3" in err and "architectures" not in err
 
 
 def test_rollback_survives_cache_cleaned_during_upgrade(tmp_path):
@@ -225,6 +250,22 @@ def test_outcomes_persist_and_retry_when_report_fails(tmp_path, monkeypatch):
     fail["on"] = False  # next run: the unsent outcome is delivered, nothing re-executed
     assert agent.run_jobs("https://x", "k", False, run=h, outcome_dir=str(out), **job_kw(tmp_path)) == (0, False)
     assert not list(out.glob("*.json")) and calls.count("/api/agent/jobs/j1/report") == 2
+
+
+def test_a_report_with_more_steps_than_the_server_takes_keeps_its_first_and_last(tmp_path, monkeypatch):
+    sent = []
+
+    def fake_post(server, path, body, insecure, key=None):
+        if path == "/api/agent/jobs":
+            return [JOB] if not sent else []
+        sent.append(body)
+        return {}
+    monkeypatch.setattr(agent, "post", fake_post)
+    steps = [{"step": f"s{i}", "ok": True, "output": ""} for i in range(300)]
+    monkeypatch.setattr(agent.Job, "execute", lambda self: ("rolled_back", steps, "health check failed"))
+    agent.run_jobs("https://x", "k", False, run=FakeApt(tmp_path, OLD, NEW), outcome_dir=str(tmp_path / "out"), **job_kw(tmp_path))
+    [body] = sent
+    assert len(body["steps"]) == agent.REPORT_MAX_STEPS and body["steps"][0]["step"] == "s0" and body["steps"][-1]["step"] == "s299"
 
 
 def test_a_jobs_answer_that_isnt_a_list_is_an_agent_error_not_a_crash(tmp_path, monkeypatch):

@@ -101,6 +101,11 @@ EOL_URL = "https://endoflife.date/api/{}.json"
 THUNDERBIRD_URL = "https://product-details.mozilla.org/1.0/thunderbird_versions.json"  # endoflife.date has no Thunderbird
 BY_KEY = {r.key: r for r in ROWS}
 
+
+def os_key(vuln_id: str) -> bool:
+    """Whether an `EOL:` id is a Windows release's (read from the build) rather than a Microsoft product's or an app's."""
+    return vuln_id.startswith(("EOL:win", "EOL:ws"))  # every Windows row's key starts win or ws (ROWS); products' never do
+
 HOME_PRO = re.compile(r"^(Core|CoreN|CoreSingleLanguage|CoreCountrySpecific|Professional|ProfessionalN|ProfessionalWorkstation|"
                       r"ProfessionalWorkstationN|ProfessionalEducation|ProfessionalEducationN)$")
 ENT_EDU = re.compile(r"^(Enterprise|EnterpriseN|Education|EducationN|IoTEnterprise|ServerRdsh|EnterpriseG)$")

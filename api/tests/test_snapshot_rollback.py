@@ -125,3 +125,27 @@ Operation aborted.
 
 def test_dnf_transaction_parser():
     assert agent.dnf_touched(DNF_PLAN) == {"openssl", "openssl-libs", "crypto-policies-x"}
+
+
+class NoUpgradeApk(FakeApk):
+    def __call__(self, cmd, cwd=None):
+        return (0, "OK: 10 MiB in 20 packages") if cmd[:3] == ["apk", "add", "-s"] else super().__call__(cmd, cwd)
+
+
+def test_apk_with_no_upgrade_on_offer_aborts_before_any_change(tmp_path):
+    h = NoUpgradeApk(tmp_path / "root")
+    outcome, _, err = run(tmp_path, h)
+    assert outcome == "aborted" and "offers no upgrade for: libcrypto3" in err
+    assert (h.root / "usr/lib/libcrypto.so.3").read_text() == "old library"
+
+
+def test_dnf_with_nothing_to_do_is_refused_in_the_dry_run(tmp_path):
+    job = {**JOB, "manager": "dnf", "packages": [{"name": "openssl", "from": "1:3.2.2-1.el9"}]}
+    for out in ("Dependencies resolved.\nNothing to do.\nComplete!\n",  # dnf4: no plan printed at all
+                "Dependencies resolved.\n\nTransaction Summary\n====\n\nOperation aborted.\n"):  # a summary of nothing
+        j = agent.Job(job, run=lambda cmd, cwd=None, out=out: (1, out), rollback_root=str(tmp_path / "rb"), root=str(tmp_path))
+        try:
+            j.simulate()
+            raise AssertionError("dry run passed")
+        except agent.StepFailed as e:
+            assert "simulate upgrade failed" in str(e) or "offers no upgrade for: openssl" in str(e)

@@ -100,7 +100,7 @@ def sync_osv(session: Session, ecosystems: list[str], client=None, batch: int = 
         upd: list[dict] = []
 
         with tempfile.TemporaryFile() as tmp:  # large zips: stream to disk, not RAM
-            with http.stream("GET", OSV_URL.format(quote(top))) as r:
+            with http.stream("GET", OSV_URL.format(quote(top, safe=""))) as r:
                 r.raise_for_status()
                 for chunk in r.iter_bytes(1 << 20):
                     tmp.write(chunk)
@@ -615,11 +615,13 @@ def update_all(session: Session, client=None) -> dict:
             session.rollback()
             log.exception("re-match of %s skipped this run", asset.hostname)
             out.setdefault("rescan_failed", []).append(asset.id)
+    # each guarded: an S3/Vault outage or one org's bad checkpoint file must not stop every org's alerts
     for org_id in session.scalars(select(Org.id)).all():  # hourly signed ledger checkpoints, kept off-database
-        evidence.checkpoint(session, org_id)
-    out["webhooks_sealed"] = notify.seal_legacy(session)
-    out["alerts_retried"] = notify.retry_failed(session)
-    out["hosts_not_reporting_alerted"] = notify.alert_silent_hosts(session)
+        if "error" in (guarded(f"checkpoint for org {org_id}", lambda o=org_id: evidence.checkpoint(session, o)) or {}):
+            out.setdefault("checkpoint_failed", []).append(org_id)
+    out["webhooks_sealed"] = guarded("webhook sealing", lambda: notify.seal_legacy(session))
+    out["alerts_retried"] = guarded("alert retries", lambda: notify.retry_failed(session))
+    out["hosts_not_reporting_alerted"] = guarded("not-reporting alerts", lambda: notify.alert_silent_hosts(session))
     try:  # a release-check problem must never stop the feed update
         out["platform"] = updates.check(session)
     except Exception as e:

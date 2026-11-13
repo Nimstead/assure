@@ -15,7 +15,7 @@ from nimstead.verify_pack import fingerprint, verify
 
 class FakeTransit:
     def __init__(self):
-        self.keys, self.ed = {}, Ed25519PrivateKey.generate()
+        self.keys, self.eds, self.floor = {}, [Ed25519PrivateKey.generate()], 1
         self.calls = []
 
     def __call__(self, req: httpx.Request) -> httpx.Response:
@@ -29,10 +29,10 @@ class FakeTransit:
                 return httpx.Response(204)
             if name not in self.keys:
                 return httpx.Response(404, json={"errors": []})
-            pub = self.ed.public_key().public_bytes_raw()
-            return httpx.Response(200, json={"data": {"keys": {"1": {"public_key": base64.b64encode(pub).decode()}}}})
+            versions = {str(i): {"public_key": base64.b64encode(k.public_key().public_bytes_raw()).decode()} for i, k in enumerate(self.eds, 1)}
+            return httpx.Response(200, json={"data": {"keys": versions, "min_decryption_version": self.floor}})
         if path.startswith("sign/"):
-            sig = self.ed.sign(base64.b64decode(body["input"]))
+            sig = self.eds[-1].sign(base64.b64decode(body["input"]))
             return httpx.Response(200, json={"data": {"signature": "vault:v1:" + base64.b64encode(sig).decode()}})
         if path.startswith("encrypt/"):
             return httpx.Response(200, json={"data": {"ciphertext": "vault:v1:" + body["plaintext"][::-1]}})
@@ -88,3 +88,34 @@ def test_vault_errors_are_loud_not_a_silent_fallback(env, monkeypatch):
     with pytest.raises(keys.KeyError_):
         evidence.signing_key().sign(b"x")
     keys.vault.cache_clear()
+
+
+def test_checkpoints_signed_before_a_vault_key_rotation_still_verify(env, transit):
+    from sqlalchemy import select
+    from sqlalchemy.orm import sessionmaker
+    from test_evidence import setup_flow
+
+    from nimstead.db import Finding, make_engine
+    c, _ = setup_flow(env)
+    s = sessionmaker(make_engine(env))()
+    org_id = s.scalar(select(Finding.org_id))
+    old = evidence.checkpoint(s, org_id)
+    transit.eds.append(Ed25519PrivateKey.generate())  # "vault write -f transit/keys/nimstead-evidence/rotate"
+    c.post("/api/enroll-tokens")
+    assert evidence.checkpoint(s, org_id)["sig"] != old["sig"]
+    assert evidence.verify_chain(s, org_id) == []  # the old checkpoint is not reported as tampering
+    z = zipfile.ZipFile(io.BytesIO(c.get("/api/evidence/pack").content))
+    fp = c.get("/api/evidence/public-key").json()["fingerprint_sha256"]
+    pack, sig, pem = z.read("pack.json"), z.read("pack.sig").decode(), z.read("public_key.pem")
+    assert len(json.loads(pack)["ledger"]["checkpoints"]) == 2 and fp == fingerprint(pem)
+    assert verify(pack, sig, pem, fp) == []  # offline, still pinned to the one current fingerprint
+    bare = json.loads(pack)
+    bare["earlier_keys"] = []
+    unsigned = evidence.canonical(bare)
+    resigned = base64.b64encode(transit.eds[-1].sign(unsigned)).decode()
+    assert any("seq" in p and "bad signature" in p for p in verify(unsigned, resigned, pem, fp))  # without the older key it fails
+    stranger = {**old, "sig": base64.b64encode(Ed25519PrivateKey.generate().sign(b"x")).decode()}
+    assert not evidence.checkpoint_valid(stranger)
+    transit.floor = 2  # the old key leaked: "vault write transit/keys/nimstead-evidence/config min_decryption_version=2"
+    assert not evidence.checkpoint_valid(old)
+    assert any("bad signature" in p for p in evidence.verify_chain(s, org_id))

@@ -72,6 +72,14 @@ def test_t11_debian_backport_one_install_per_source_judged_once_with_its_grade()
     assert (one(vs, check="product:curl").outcome) == Outcome.NOT_APPLICABLE  # the distro has advisories for it; it isn't installed
 
 
+def test_a_record_naming_several_cves_is_judged_on_the_worst_of_them_as_its_finding_is():
+    rec = deb("CVE-2026-1000", "openssl", "3.5.1-1+deb13u2")
+    rec["upstream"] = ["CVE-2026-1000", "CVE-2026-2000"]
+    c = Content.make({(DEB, "openssl"): [rec]}, kev={"CVE-2026-2000"}, cvss={"CVE-2026-1000": 4.0, "CVE-2026-2000": 9.8}, feeds={DEB})
+    v = one(run(ldoc(*SSL), c), vuln_id="CVE-2026-1000")
+    assert (v.outcome, v.kev, v.cvss, v.cvss_source) == (Outcome.VULNERABLE, True, 9.8, "NVD")
+
+
 def test_t11_rpm_backport_and_t19_a_half_finished_upgrade_is_two_installs():
     d = ldoc(pkg("openssl-libs", "1:3.0.7-27.el9", "openssl"), pkg("openssl", "1:3.0.7-28.el9"), eco=ALMA)
     vs = run(d, lcontent(alsa("CVE-2026-1", "openssl", "1:3.0.7-28.el9"), alsa("CVE-2026-2", "openssl", "1:3.0.7-25.el9"), eco=ALMA))

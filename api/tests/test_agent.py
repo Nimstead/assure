@@ -181,6 +181,20 @@ def test_windows_enroll_locks_the_folder_before_the_key_is_written(tmp_path, mon
     assert seen == [(str(cfg.parent), False)] and json.loads(cfg.read_text()) == {"agent_key": "nma_x"}
 
 
+def test_a_failed_config_write_keeps_the_old_key(tmp_path, monkeypatch):
+    cfg = tmp_path / "agent.json"
+    cfg.write_text(json.dumps({"agent_key": "nma_old"}))
+    monkeypatch.setattr(agent, "config_path", lambda: str(cfg))
+
+    def full_disk(*a, **k):
+        raise OSError(28, "No space left on device")
+    monkeypatch.setattr(agent.os, "fsync", full_disk)
+    with pytest.raises(agent.AgentError):
+        agent.save_config({"agent_key": "nma_old", "server": "https://x"})
+    monkeypatch.undo()
+    assert json.loads(cfg.read_text()) == {"agent_key": "nma_old"} and list(tmp_path.iterdir()) == [cfg]
+
+
 @pytest.mark.real_lockdown
 def test_lockdown_failure_is_loud(tmp_path):
     with pytest.raises(agent.AgentError):
@@ -274,3 +288,9 @@ def test_scanners_open_only_plain_files(tmp_path):
     except OSError:  # Windows without the symlink right
         return
     assert not agent.regular(tmp_path / "link.json")
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows PowerShell")
+def test_powershell_output_keeps_non_ascii_names():
+    rc, out = agent.ps(agent.sh, "Write-Output ([string][char]0x00AE + [char]0x00FC + [char]0x2013)")
+    assert rc == 0 and out.strip() == "®ü–"

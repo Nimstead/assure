@@ -65,11 +65,18 @@ class Vault:
         sig = self._call("POST", f"sign/{self.signing}", {"input": base64.b64encode(data).decode()})["signature"]
         return base64.b64decode(sig.split(":", 2)[2])  # "vault:v1:<base64>"
 
+    def public_keys(self) -> list[Ed25519PublicKey]:
+        """Return the signing key's live versions, oldest first; older ones signed earlier checkpoints.
+
+        Versions below Vault's min_decryption_version are retired, as Vault's own verify treats them: raise it after a leak."""
+        d = self._call("GET", f"keys/{self.signing}")
+        floor = int(d.get("min_decryption_version") or 1)
+        return [Ed25519PublicKey.from_public_bytes(base64.b64decode(d["keys"][v]["public_key"]))
+                for v in sorted(d["keys"], key=int) if int(v) >= floor]
+
     def public_key(self) -> Ed25519PublicKey:
         """Return the latest version of the configured signing key as an Ed25519PublicKey."""
-        keys = self._call("GET", f"keys/{self.signing}")["keys"]
-        latest = keys[str(max(int(v) for v in keys))]
-        return Ed25519PublicKey.from_public_bytes(base64.b64decode(latest["public_key"]))
+        return self.public_keys()[-1]
 
     # -- encryption / HMAC for secrets
     def encrypt(self, plaintext: str) -> str:
@@ -124,6 +131,21 @@ def s3_put_checkpoint(org_id: str, cp: dict) -> None:
     _s3().put_object(Bucket=bucket, Key=f"{prefix}/{org_id}/{cp['seq']:012d}.json", Body=json.dumps(cp).encode(),
                      ContentType="application/json", ObjectLockMode="COMPLIANCE",
                      ObjectLockRetainUntilDate=datetime.now(UTC) + timedelta(days=days))
+
+
+def s3_latest_checkpoint(org_id: str) -> dict | None:
+    """Return org_id's highest-seq checkpoint, or None: lists the keys (zero-padded seq, so they sort) and reads one object.
+
+    Configuration, S3 service, and malformed JSON errors propagate."""
+    bucket, prefix = _bucket_prefix()
+    last, token = None, None
+    while True:
+        kw = {"Bucket": bucket, "Prefix": f"{prefix}/{org_id}/"} | ({"ContinuationToken": token} if token else {})
+        page = _s3().list_objects_v2(**kw)
+        last = max([last, *(o["Key"] for o in page.get("Contents", []))], key=lambda k: k or "")
+        if not page.get("IsTruncated"):
+            return json.loads(_s3().get_object(Bucket=bucket, Key=last)["Body"].read()) if last else None
+        token = page["NextContinuationToken"]
 
 
 def s3_load_checkpoints(org_id: str) -> list[dict]:

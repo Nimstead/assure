@@ -1773,12 +1773,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         cap and HTTP 413 on excess. Preserve agent-origin rows. Defer parse/store
         work to ingest_sbom. Invalid formats return 422, wrong keys 401. Other
         authentication/ownership failures and storage/evidence errors can occur."""
-        raw = b""
+        raw = bytearray()  # grows in place: bytes += would copy the whole body again on every chunk
         async for chunk in request.stream():  # cap chunked bodies too, which the middleware can't see
             raw += chunk
             if len(raw) > MAX_BODY:
                 raise HTTPException(413, "Request body too large")
-        return await run_in_threadpool(ingest_sbom, asset_id, request, raw, s)
+        return await run_in_threadpool(ingest_sbom, asset_id, request, bytes(raw), s)
 
     def ingest_sbom(asset_id: str, request: Request, raw: bytes, s: Session) -> dict:
         """Authenticate, replace SBOM-origin rows and return mapping/rescan counts.

@@ -23,7 +23,7 @@ from nimstead.engine.collection import (
     linux,
     manager,
 )
-from nimstead.engine.content import Content
+from nimstead.engine.content import Content, cves
 from nimstead.engine.model import Grade, Outcome, Verdict
 from nimstead.match import Package, canonical_id, match_package, normalize_ecosystem
 from nimstead.scan import HOTPATCH, hotpatch_track
@@ -161,10 +161,12 @@ def _judge_once(inv: Inventory, i: Install, c: Content) -> list[Verdict]:
     for cve, group in sorted(by_cve.items()):
         rec = group[0]
         fix = next(iter(_fixes(group, key, i.ecosystem if distro else None)), None)
+        ids = cves(group) | {cve}  # a DSA or RLSA names several CVEs: judged on the worst of them, as scan.rescan's finding is
         v = dict(base, check=f"{cve}/{key}", vuln_id=cve, source=_fix_source(rec, i.ecosystem), kb=(rec.get("database_specific") or {}).get("kb"),
-                 summary=(rec.get("summary") or "")[:200] or None, kev=cve in c.kev)
+                 summary=(rec.get("summary") or "")[:200] or None, kev=bool(ids & c.kev))
         score = risk.cvss_base(rec.get("severity"))
-        v |= {"cvss": score, "cvss_source": v["source"]} if score is not None else {"cvss": c.cvss.get(cve), "cvss_source": "NVD" if cve in c.cvss else None}
+        nvd = max((c.cvss[x] for x in ids if x in c.cvss), default=None)
+        v |= {"cvss": score, "cvss_source": v["source"]} if score is not None else {"cvss": nvd, "cvss_source": "NVD" if nvd is not None else None}
         if i.family == "os" and _other_line(i.version, group, key):
             out.append(Verdict(outcome=Outcome.UNDETERMINED, reason="release-line", fixed=fix, **v))
             continue

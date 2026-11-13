@@ -93,11 +93,11 @@ def load(s: Session, inv: Inventory, cache: dict | None = None) -> Content:
     queried = (*ECOSYSTEMS, *app_ecos, *([distro] if distro else []))
     for eco in queried:
         names = sorted(k for e, k in wanted if e == eco and (e, k) not in cache)
-        for n in names:
-            cache[eco, n] = []
+        got: dict[str, list] = {n: [] for n in names}
         for i in range(0, len(names), 500):  # stay under SQL parameter limits
             for pkg, rec in s.execute(select(Advisory.package, Advisory.record).where(Advisory.ecosystem == eco, Advisory.package.in_(names[i:i + 500]))):
-                cache[eco, pkg].append(rec)
+                got[pkg].append(rec)
+        cache.update(((eco, n), v) for n, v in got.items())  # only once read in full: a failed query must not cache "no advisories" for the pass
     records: dict[tuple[str, str], list[dict]] = {k: cache[k] if k[0] in queried else [] for k in wanted}  # outside the queried ecosystems: empty, as before
     todo = sorted(k for k in records if ("engine", "kev", *k) not in cache)
     cves_of = {k: cves(records[k]) for k in todo}

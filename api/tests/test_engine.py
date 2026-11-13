@@ -461,6 +461,46 @@ def test_t7_through_the_api_an_unread_source_closes_nothing_and_the_report_says_
     assert "CVE-2026-9" in still_open()
 
 
+def test_an_unread_microsoft_source_keeps_end_of_support_findings_open(env):
+    seed(env)
+    c = user(env)
+    aid, h = enrolled(c, RICH)
+    s = make_sessionmaker(env)()
+
+    def eol_open():
+        s.expire_all()
+        return {f.vuln_id for f in s.scalars(select(Finding).where(Finding.asset_id == aid, Finding.ecosystem == "Lifecycle", Finding.status == "open"))}
+    before = eol_open()
+    assert "EOL:dotnet-8" in before
+    worse = copy.deepcopy(RICH)
+    worse["packages"] = [p for p in worse["packages"] if p["ecosystem"] != "Microsoft"]
+    worse["collection"]["sources"]["microsoft_products"] = {"state": "failed", "count": 0, "error": "timed out"}
+    assert c.post("/api/agent/inventory", headers=h, json=worse).status_code == 200
+    assert eol_open() == before  # a source nobody read proves nothing reached end of support's fix
+    remote = copy.deepcopy(worse)
+    remote["collection"]["sources"]["microsoft_products"] = {"state": "ok", "count": 0}
+    remote["collection"]["sources"]["user_hives"] = {"state": "partial", "count": 0, "error": "not read over remoting"}
+    assert c.post("/api/agent/inventory", headers=h, json=remote).status_code == 200
+    assert "EOL:dotnet-8" not in eol_open()  # user profiles hold no Microsoft products: a remote scan still closes it
+
+
+def test_a_failed_advisory_query_caches_nothing_for_the_rest_of_the_pass(env):
+    s = seed(env)
+    inv = Inventory.from_doc(RICH)
+    real, cache = s.execute, {}
+
+    def dropped(stmt, *a, **k):
+        if "FROM advisory" in str(stmt):
+            raise OSError("connection dropped")
+        return real(stmt, *a, **k)
+    s.execute = dropped
+    with pytest.raises(OSError):
+        engine.content.load(s, inv, cache)
+    s.execute = real
+    assert not any(v == [] for k, v in cache.items() if isinstance(k, tuple) and len(k) == 2), cache
+    assert engine.content.load(s, inv, cache).records == engine.content.load(s, inv).records  # the next host still sees them
+
+
 def test_a_scan_is_recorded_once_with_what_explains_it_and_can_be_replayed(env):
     s = seed(env)
     c = user(env)

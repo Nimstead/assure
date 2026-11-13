@@ -40,6 +40,15 @@ def fingerprint(pubkey_pem: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
+def checkpoint_signed(key, cp: dict) -> bool:
+    """Return whether public key key signed checkpoint cp; a bad signature or malformed cp returns False."""
+    try:
+        key.verify(base64.b64decode(cp["sig"]), canonical({k: cp[k] for k in ("org_id", "seq", "hash", "ts")}))
+        return True
+    except Exception:
+        return False
+
+
 def verify(pack_bytes: bytes, sig_b64: str, pubkey_pem: bytes, expect_fingerprint=None) -> list:
     """Return a list of signature, fingerprint, ledger, and checkpoint problems; [] means verification passed.
 
@@ -68,11 +77,10 @@ def verify(pack_bytes: bytes, sig_b64: str, pubkey_pem: bytes, expect_fingerprin
         problems.append("ledger head hash mismatch")
     # signed off-database checkpoints must agree with any entry they cover
     in_pack = {e["seq"]: e["hash"] for e in pack["ledger"]["entries"]}
-    key = load_pem_public_key(pubkey_pem)
+    # older checkpoints may be signed by keys rotated out since; the pack lists them under its own signature
+    cp_keys = [load_pem_public_key(pubkey_pem)] + [load_pem_public_key(p.encode()) for p in pack.get("earlier_keys", [])]
     for cp in pack["ledger"].get("checkpoints", []):
-        try:
-            key.verify(base64.b64decode(cp["sig"]), canonical({k: cp[k] for k in ("org_id", "seq", "hash", "ts")}))
-        except Exception:
+        if not any(checkpoint_signed(k, cp) for k in cp_keys):
             problems.append(f"checkpoint at seq {cp.get('seq')}: bad signature")
             continue
         if cp["seq"] in in_pack and in_pack[cp["seq"]] != cp["hash"]:

@@ -125,7 +125,8 @@ VERSION_RULES = (
                 "Upgrade to 1.3.5a or later, or disable mod_copy.",
                 "ProFTPD states the full upstream version in its banner and the mod_copy fix shipped as 1.3.5a, a new upstream release, not a backport of 1.3.5."),
     VersionRule("CVE-2024-6387", "OpenSSH", re.compile(rb"SSH-2\.0-OpenSSH[_-](?P<ver>\d{1,4}\.\d{1,4}(?:p\d{1,4})?)(?![\dp])(?P<tail>.*)"),
-                lambda v: _ssh_tuple(v) < (4, 4, 1) or (8, 5, 1) <= _ssh_tuple(v) < (9, 8, 1), "9.8p1", 8.1,
+                # portable builds only (a "pN" suffix): native OpenBSD sshd isn't affected, and "9.8" is not below 9.8p1
+                lambda v: "p" in v and (_ssh_tuple(v) < (4, 4, 1) or (8, 5, 1) <= _ssh_tuple(v) < (9, 8, 1)), "9.8p1", 8.1,
                 "NVD", "OpenSSH 'regreSSHion': a signal-handler race in sshd can give unauthenticated remote code execution.",
                 "Upgrade to OpenSSH 9.8p1 or later.",
                 "A bare upstream OpenSSH banner (no distribution tag) is the vendor's own version; a distribution-tagged banner is declined, because distributions backport this fix without changing the number.",

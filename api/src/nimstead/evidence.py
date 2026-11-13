@@ -122,8 +122,9 @@ def verify_chain(s: Session, org_id: str, full: bool = True) -> list[str]:
             _VERIFIED[org_id] = (entries[-1].seq, entries[-1].hash, done[2])
         return problems
     by_seq = {e.seq: e.hash for e in entries}
+    pubs = verification_keys()  # once: with Vault each load is an HTTP call, and checkpoints grow by one an hour
     for cp in load_checkpoints(org_id):
-        if not checkpoint_valid(cp):
+        if not checkpoint_valid(cp, pubs):
             problems.append(f"checkpoint at seq {cp.get('seq')}: bad signature")
         elif cp["seq"] not in by_seq and cp["seq"] > 0:
             problems.append(f"checkpoint at seq {cp['seq']}: entry missing (ledger truncated)")
@@ -178,16 +179,34 @@ def load_checkpoints(org_id: str) -> list[dict]:
     return [json.loads(ln) for ln in f.read_text().splitlines() if ln.strip()] if f.exists() else []
 
 
-def checkpoint_valid(cp: dict) -> bool:
-    """Return whether checkpoint cp verifies under the current signing key.
+def latest_checkpoint(org_id: str) -> dict | None:
+    """Return org_id's newest checkpoint, or None, without reading every older one from S3.
 
-    Missing org_id, seq, hash, or ts raises KeyError. Signature and key-access failures return False."""
-    body = {k: cp[k] for k in ("org_id", "seq", "hash", "ts")}
+    Malformed JSON, file I/O, and S3 errors propagate."""
+    if keys.s3_enabled():
+        return keys.s3_latest_checkpoint(org_id)
+    f = _cp_file(org_id)
+    lines = [ln for ln in f.read_text().splitlines() if ln.strip()] if f.exists() else []
+    return json.loads(lines[-1]) if lines else None
+
+
+def verification_keys() -> list:
+    """Return the public keys checkpoints may be signed with, oldest first, the current signing key last.
+
+    With Vault that is every version of the transit key, so checkpoints signed before a rotation still verify."""
+    key = signing_key()
+    return key.public_keys() if hasattr(key, "public_keys") else [key.public_key()]
+
+
+def checkpoint_valid(cp: dict, pubs=None) -> bool:
+    """Return whether checkpoint cp verifies under any key in pubs, by default verification_keys().
+
+    A malformed cp, a bad signature and key-access failures return False."""
     try:
-        signing_key().public_key().verify(base64.b64decode(cp["sig"]), canonical(body))
-        return True
+        pubs = pubs or verification_keys()
     except Exception:
         return False
+    return any(verify_pack.checkpoint_signed(pub, cp) for pub in pubs)
 
 
 def checkpoint(s: Session, org_id: str) -> dict | None:
@@ -202,9 +221,9 @@ def checkpoint(s: Session, org_id: str) -> dict | None:
     head = s.scalar(select(LedgerEntry).where(LedgerEntry.org_id == org_id).order_by(LedgerEntry.seq.desc()).limit(1))
     if not head:
         return None
-    existing = load_checkpoints(org_id)
-    if existing and existing[-1]["seq"] == head.seq:
-        return existing[-1]
+    last = latest_checkpoint(org_id)
+    if last and last["seq"] == head.seq:
+        return last
     body = {"org_id": org_id, "seq": head.seq, "hash": head.hash, "ts": datetime.now(UTC).isoformat()}
     cp = {**body, "sig": base64.b64encode(signing_key().sign(canonical(body))).decode()}
     if keys.s3_enabled():  # write-once: COMPLIANCE object lock, nobody can delete or overwrite it
@@ -252,7 +271,11 @@ def fingerprint(pem: bytes) -> str:
 
 def public_pem(key: Ed25519PrivateKey | keys.Vault) -> bytes:
     """Return PEM SubjectPublicKeyInfo bytes from an Ed25519 private key or compatible Vault adapter."""
-    return key.public_key().public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+    return _pem(key.public_key())
+
+
+def _pem(pub) -> bytes:
+    return pub.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
 
 
 # --- evidence pack ---------------------------------------------------------
@@ -420,7 +443,9 @@ def build_pack(s: Session, org_id: str, start: datetime, end: datetime, with_ent
         # chain_head pins the whole chain at signing time; compare across successive packs to detect rewritten history
         "ledger": {"entries": entries, "head_hash": period_head,
                    "chain_head": {"seq": head.seq, "hash": head.hash} if head else {"seq": 0, "hash": GENESIS},
-                   "checkpoints": load_checkpoints(org_id)},
+                   "checkpoints": load_checkpoints(org_id) if with_entries else []},  # the Evidence page shows none of them
+        # keys rotated out of Vault that signed older checkpoints; this pack's signature vouches for them
+        **({"earlier_keys": [_pem(k).decode() for k in verification_keys()[:-1]]} if with_entries else {}),
     }
 
 

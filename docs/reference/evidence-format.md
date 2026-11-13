@@ -48,6 +48,7 @@ The ZIP does not contain a trusted verifier. Obtain the verifier and expected fi
 | `assets` | Current organisation asset records, not a historical inventory snapshot. Omitted by `summary=true` |
 | `findings` | Finding review records defined below. Omitted by `summary=true` |
 | `ledger` | Period entries/count and head information, with endpoint-specific differences below |
+| `earlier_keys` | Signed pack only. PEM public keys of older Vault signing-key versions, oldest first; empty without a rotation. Versions below the transit key's `min_decryption_version` are left out, so raising it retires a leaked key |
 
 Asset records contain `hostname`, `os`, and `last_seen` strings. Forward-only job records contain `job`, `host`, `summary`, `approved_by`, `status`, and `updated`. The approver can be absent.
 
@@ -118,7 +119,7 @@ Ledger entry records contain `seq` (integer), `ts`, `kind`, `subject`, `prev_has
 
 `head_hash` identifies the last entry in the selected period, or 64 zeroes for an empty period. `chain_head` identifies the latest whole-chain `seq` and `hash` at generation, which can be outside the period.
 
-Each checkpoint contains `org_id`, `seq`, `hash`, `ts`, and `sig`. Its base64 signature covers canonical JSON of the first four fields. Checkpoints can cover history outside the pack's selected period.
+Each checkpoint contains `org_id`, `seq`, `hash`, `ts`, and `sig`. Its base64 signature covers canonical JSON of the first four fields. Checkpoints can cover history outside the pack's selected period. A checkpoint signed before a Vault key rotation verifies under one of `earlier_keys`; the pack's own signature, checked against the pinned fingerprint, vouches for that list.
 
 See [verify an evidence pack](../how-to/verify-evidence.md) for the procedure and [evidence trust](../explanation/evidence-trust.md) for the limits.
 

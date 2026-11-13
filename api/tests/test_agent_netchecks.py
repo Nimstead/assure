@@ -30,7 +30,7 @@ def row(ip, mac="02:00:00:00:00:01"):
 def test_the_agents_fixed_lists_are_exactly_what_the_server_judges():
     assert set(agent.NET_CHECK_PORTS) == set(external.SERVICES) | {external.TLS_PORT, 80, *net.BANNER_PORTS}
     assert set(agent.NET_BANNER_PORTS) == set(net.BANNER_PORTS)
-    assert set(agent.NET_WEB_PATHS) == {r.path for r in net.WEB_RULES}
+    assert set(agent.NET_WEB_MARKERS) == {r.path for r in net.WEB_RULES}
 
 
 def test_only_its_own_neighbours_on_its_own_private_subnets_and_never_itself():

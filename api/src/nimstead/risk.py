@@ -23,11 +23,6 @@ class Risk:
     priority: str  # fix-now | next | planned | low
     reasons: list[str] = field(default_factory=list)
 
-    @property
-    def headline(self) -> str:
-        """Return reasons joined by semicolons for compact display."""
-        return "; ".join(self.reasons)
-
 
 @lru_cache(maxsize=65536)  # a rescan pass scores the same few thousand vectors once per finding
 def _vector_score(kind: str, vector: str):

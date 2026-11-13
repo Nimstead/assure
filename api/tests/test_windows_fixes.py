@@ -254,3 +254,40 @@ def test_cert_padding_fix_sets_both_registry_views_and_restores_both():
     added = [c[2] for c in calls if c[:2] == ["reg", "add"]]
     removed = [c[2] for c in calls if c[:2] == ["reg", "delete"]]
     assert out[0] == "rolled_back" and len(added) == 2 and any("WOW6432Node" in k for k in added) and sorted(removed) == sorted(added)
+
+
+def test_office_that_never_reports_the_new_build_is_rolled_back_not_called_unchanged(monkeypatch):
+    monkeypatch.setattr(agent.time, "sleep", lambda s: None)
+    h = Host()
+    h.c2r_drops = 10**6  # the client accepts every request and reports nothing within the wait
+    outcome, _, err = agent.WinAppJob(job("office", "Microsoft 365 Apps", "16.0.20430.20100", "16.0.20430.20180"), run=h).execute()
+    assert outcome in ("rolled_back", "rollback_failed") and "No changes made" not in err
+
+
+def test_a_second_registry_view_that_fails_puts_the_first_back():
+    calls = []
+
+    def run(cmd, **k):
+        calls.append(cmd)
+        if cmd[:2] == ["reg", "query"]:
+            return 1, ""
+        if cmd[:2] == ["reg", "add"] and "WOW6432Node" in cmd[2]:
+            return 1, "ERROR: Access is denied."
+        return 0, "Running"
+    outcome, _, err = agent.WinAppJob(job("winconfig", "cert-padding-check", "current", "fixed"), run=run).execute()
+    added = [c[2] for c in calls if c[:2] == ["reg", "add"]]
+    removed = [c[2] for c in calls if c[:2] == ["reg", "delete"]]
+    assert outcome == "rolled_back" and "No changes made" not in err
+    assert removed == [k for k in added if "WOW6432Node" not in k]  # the view that was set is removed again
+
+
+def test_a_failed_winget_install_says_it_needs_attention():
+    h = Host()
+    real = h.__call__
+
+    def run(cmd, cwd=None, timeout=None):
+        if cmd[0].endswith("winget.exe") and cmd[1] == "install":
+            return 1, "Installer failed with exit code: 1603"
+        return real(cmd, cwd=cwd, timeout=timeout)
+    outcome, _, err = agent.WinAppJob(job("winget", "7-zip:7-zip"), run=run).execute()
+    assert outcome == "rollback_failed" and "No changes made" not in err

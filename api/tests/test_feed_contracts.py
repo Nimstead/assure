@@ -87,3 +87,15 @@ def test_historical_evidence_mapping_matches_current_run_files():
     spec.loader.exec_module(module)
     derived = {key: (label, tuple(files)) for key, (label, files) in module.derive().items()}
     assert derived == EVIDENCE
+
+
+def test_osv_ecosystem_name_cant_add_a_path_segment_to_the_download_url():
+    asked = []
+
+    def osv(r):
+        asked.append(r.url.raw_path.decode())
+        return httpx.Response(404)
+    with make_sessionmaker("sqlite://")() as session, httpx.Client(transport=httpx.MockTransport(osv)) as client:
+        with pytest.raises(httpx.HTTPStatusError):
+            feeds.sync_osv(session, ["../npm"], client)
+    assert asked and "/../" not in asked[0] and "..%2Fnpm" in asked[0]

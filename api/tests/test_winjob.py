@@ -645,10 +645,11 @@ def test_anything_else_on_the_servicing_path_is_refused_with_no_changes(tmp_path
     assert r["outcome"] == "pending_reboot" and any("removable" in s["step"] for s in r["steps"])
 
 
-def test_a_servicing_install_that_fails_its_check_is_reported_failed_not_rolled_back(tmp_path):
+def test_a_servicing_install_that_fails_its_check_is_reported_as_needing_attention_not_rolled_back(tmp_path):
+    from nimstead.remediate import AGENT_OUTCOMES
     h = FakeSSU(installs=False)
     r = make(tmp_path, h, SSU_JOB).advance()
-    assert r["outcome"] in ("failed", "rolled_back", "aborted") and r["outcome"] != "rolled_back"
+    assert r["outcome"] in AGENT_OUTCOMES and r["outcome"] not in ("rolled_back", "applied"), r  # the server must accept it
     assert not any(c[:3] == ["dism", "/online", "/remove-package"] for c in h.log)
 
 

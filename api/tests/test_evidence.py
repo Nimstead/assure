@@ -339,8 +339,11 @@ def test_the_report_counts_the_period_without_loading_it(env):
     c, _ = setup_flow(env)
     s = sessionmaker(make_engine(env))()
     org_id = s.scalar(select(Finding.org_id))
+    evidence.checkpoint(s, org_id)
     full = evidence.build_pack(s, org_id, *evidence.default_period(30))["ledger"]
-    counted = evidence.build_pack(s, org_id, *evidence.default_period(30), with_entries=False)["ledger"]
+    page = evidence.build_pack(s, org_id, *evidence.default_period(30), with_entries=False)
+    counted = page["ledger"]
+    assert len(full["checkpoints"]) == 1 and counted["checkpoints"] == [] and "earlier_keys" not in page  # the page shows neither
     assert counted["entries"] == len(full["entries"]) > 0 and counted["head_hash"] == full["head_hash"]
     assert c.get("/api/evidence/report", params={"days": 30}).json()["ledger"]["entries"] == counted["entries"]
     report = c.get("/api/evidence/report", params={"days": 30}).json()
@@ -414,3 +417,37 @@ def test_basis_describes_resolution_without_assuming_a_package_update(env):
     assert "agent, SBOM and external-scan observations" in basis
     assert "Resolution can reflect changes in observations or advisory data" in basis
     assert "first inventory showing a fixed version" not in basis
+
+
+def test_the_hourly_checkpoint_reads_only_the_newest_one_from_s3(env, monkeypatch):
+    from nimstead import keys
+
+    class FakeS3:
+        def __init__(self):
+            self.objects, self.gets = {}, 0
+
+        def put_object(self, Bucket, Key, Body, **k):
+            self.objects[Key] = Body
+
+        def list_objects_v2(self, Bucket, Prefix, ContinuationToken=None):
+            names = sorted(k for k in self.objects if k.startswith(Prefix))
+            start = int(ContinuationToken or 0)
+            return {"Contents": [{"Key": k} for k in names[start:start + 2]], "IsTruncated": start + 2 < len(names),
+                    "NextContinuationToken": str(start + 2)}
+
+        def get_object(self, Bucket, Key):
+            self.gets += 1
+            return {"Body": io.BytesIO(self.objects[Key])}
+    s3 = FakeS3()
+    monkeypatch.setenv("NIMSTEAD_CHECKPOINT_S3", "s3://bucket/cp")
+    monkeypatch.setattr(keys, "_s3", lambda: s3)
+    c = user(env)
+    s = sessionmaker(make_engine(env))()
+    org = s.scalar(select(LedgerEntry.org_id))
+    for _ in range(5):  # five hours of activity: five checkpoints, paged two at a time
+        c.post("/api/enroll-tokens")
+        evidence.checkpoint(s, org)
+    s3.gets = 0
+    assert evidence.checkpoint(s, org)["seq"] == s.scalar(select(func.max(LedgerEntry.seq)))  # unchanged head: the newest is returned
+    assert s3.gets == 1 and len(s3.objects) == 5
+    assert evidence.verify_chain(s, org) == []

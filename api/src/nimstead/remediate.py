@@ -69,6 +69,8 @@ TIMEOUT_ERROR = "Agent did not report a result within 2 hours; check the host"
 # A Windows job can wait for its restart until reboot_by (a signed-in user may put it off), then needs time to install and verify
 WIN_TIMEOUT_MARGIN = timedelta(hours=4)
 WIN_TIMEOUT_ERROR = "Agent did not report a result by 4 hours after the restart deadline; check the host"
+VERIFY_TIMEOUT = timedelta(days=7)
+VERIFY_TIMEOUT_ERROR = "Applied, but no full inventory arrived within 7 days to prove it fixed; check the host"
 
 
 class RemediationError(Exception):
@@ -142,6 +144,20 @@ JOB_WHY = {"planned": "Planned, waiting for approval", "approved": "Approved, wa
 HALTS = ("rolled_back", "rollback_failed", "failed", "not_fixed")  # as canary_ok
 
 
+def _halts(job: RemediationJob) -> bool:
+    """Whether job's outcome stops rollout. A fix that applied but a switched-off host never proved is not evidence against it."""
+    return job.status in HALTS and job.error != VERIFY_TIMEOUT_ERROR
+
+
+def _covers(ok: RemediationJob, failed: RemediationJob) -> bool:
+    """Whether a success installed at least every version a failed job aimed at (an unpinned failure names none)."""
+    proven, cmp = ok.result_versions or {}, comparator_for(failed.action_key.split("|", 1)[0])
+    try:
+        return all(p["name"] in proven and cmp(str(proven[p["name"]]), str(p["to"])) >= 0 for p in failed.packages if p.get("to"))
+    except ValueError:
+        return False
+
+
 def _reaches(version, build: str) -> bool:
     try:
         return windows_cmp(str(version), build) >= 0
@@ -185,7 +201,7 @@ def _rollout(plannable: list[Asset], jobs: list[RemediationJob], ring0: set[str]
         return [], None
     if canaries := [a.id for a in plannable if a.ring == 0]:
         return canaries, f"Canary machines first. The rest can be planned once one has succeeded and soaked for {soak_hours}h."
-    if any(j.status in HALTS for j in jobs):
+    if any(_halts(j) for j in jobs):
         return [], "This update failed on a machine: review that before planning the rest."
     proving = [j for j in jobs if j.asset_id in ring0 and (j.status in ACTIVE or j.status == "succeeded")]
     if any(j.status == "succeeded" and j.updated <= now() - timedelta(hours=soak_hours) for j in proving):
@@ -375,7 +391,8 @@ def proves(canary: RemediationJob, job: RemediationJob) -> bool:
 def canary_ok(s: Session, org: Org, job: RemediationJob) -> tuple[bool, str]:
     """Return (allowed, reason) for policy approval of job under org in Session s.
 
-    Same-action HALTS block rollout, except KB failures below this target.
+    Same-action HALTS block rollout, except verify timeouts, KB failures below this target and,
+    for other managers, failures older than a success that installed at least the versions they aimed at.
     Require a current ring-0 asset with a succeeded, sufficiently old job that
     proves(job). Aborted/cancelled jobs are not HALTS. This helper does not check
     mode, local consent or production permission. No explicit commit occurs.
@@ -383,7 +400,10 @@ def canary_ok(s: Session, org: Org, job: RemediationJob) -> tuple[bool, str]:
     same = s.scalars(select(RemediationJob).where(RemediationJob.org_id == org.id, RemediationJob.action_key == job.action_key)).all()
     # a Windows action key spans every month: a failed September job halts September's rollout, not October's (as kb_fleet)
     target = job.packages[0].get("to") if job.packages and job.packages[0].get("kb") else None
-    if any(j.status in HALTS and (target is None or _reaches(_aims(j), target)) for j in same):
+    # elsewhere a key spans every version (Debian:12|openssl): a failure halts until the same versions have succeeded since
+    def lifted(f):
+        return any(j.status == "succeeded" and j.updated > f.updated and _covers(j, f) for j in same)
+    if any(_halts(j) and (_reaches(_aims(j), target) if target else not lifted(j)) for j in same):
         return False, "This change failed elsewhere; automatic rollout halted"
     canary_ids = set(s.scalars(select(Asset.id).where(Asset.org_id == org.id, Asset.ring == 0)))
     if not canary_ids:
@@ -475,6 +495,9 @@ def cancel(s: Session, job: RemediationJob, by: str) -> RemediationJob:
 
     Other statuses raise RemediationError. The caller commits. Evidence/database
     errors propagate. This helper neither stops a host process nor changes other jobs."""
+    s.get(Org, job.org_id, with_for_update=True)  # PostgreSQL: as approve, so a dispatch, report or sweep in between is seen
+    s.flush()
+    s.refresh(job, ["status", "error"])
     if job.status not in ("planned", "approved"):
         raise RemediationError(f"Job is {job.status}; only planned or approved fixes that no machine has picked up can be cancelled")
     job.status, job.error = "cancelled", f"Cancelled by {by}"
@@ -525,19 +548,26 @@ def pin_to_canary(s: Session, job: RemediationJob) -> None:
 
 
 def sweep(s: Session, org_id: str) -> None:
-    """Fail timed-out dispatched jobs for org_id in s and commit all pending changes.
+    """Fail timed-out dispatched and verifying jobs for org_id in s and commit all pending changes.
 
     Ordinary timeout is two hours since updated. Windows also waits the current
     organisation restart deadline (fallback 24 hours) plus four hours. Failure logs
     update the timestamp and can submit alerts. Later timeout reports remain eligible.
     Database/evidence errors propagate. This helper does not stop the host process."""
     stale = now() - DISPATCH_TIMEOUT
+    s.get(Org, org_id, with_for_update=True)  # PostgreSQL: two page loads at the timeout fail a job once, with one alert
+    s.flush()
     for job in s.scalars(select(RemediationJob).where(RemediationJob.org_id == org_id, RemediationJob.status == "dispatched",
-                                                      RemediationJob.updated < stale)):
+                                                      RemediationJob.updated < stale).execution_options(populate_existing=True)):
         windows = job.manager == "windows"
         if windows and job.updated >= now() - timedelta(hours=s.get(Org, org_id).reboot_deadline_hours or 24) - WIN_TIMEOUT_MARGIN:
             continue
         job.status, job.error = "failed", WIN_TIMEOUT_ERROR if windows else TIMEOUT_ERROR
+        _log(s, job, "remediation_failed", error=job.error)
+    # applied, then only partial inventories (or none): without this the job stays active and blocks that fix for ever
+    for job in s.scalars(select(RemediationJob).where(RemediationJob.org_id == org_id, RemediationJob.status == "verifying",
+                                                      RemediationJob.updated < now() - VERIFY_TIMEOUT).execution_options(populate_existing=True)):
+        job.status, job.error = "failed", VERIFY_TIMEOUT_ERROR
         _log(s, job, "remediation_failed", error=job.error)
     s.commit()
 
@@ -670,6 +700,9 @@ def report(s: Session, job: RemediationJob, outcome: str, steps: list[dict], err
     unknown outcome or other state. Invalid nested data/evidence errors propagate."""
     if outcome not in AGENT_OUTCOMES:
         raise RemediationError(f"Unknown outcome {outcome!r}")
+    s.get(Org, job.org_id, with_for_update=True)  # PostgreSQL: as approve, so a dispatch, report or sweep in between is seen
+    s.flush()
+    s.refresh(job, ["status", "error"])
     late = job.status == "failed" and job.error in (TIMEOUT_ERROR, WIN_TIMEOUT_ERROR)  # agent came back after the timeout: keep the truth
     if job.status != "dispatched" and not late:
         raise RemediationError(f"Job is {job.status}, not awaiting a report")

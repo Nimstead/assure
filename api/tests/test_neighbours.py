@@ -205,3 +205,14 @@ def test_a_vendor_name_from_the_registry_cant_become_a_spreadsheet_formula(env):
     update_all(s, client=Manuf(body=MANUF.replace("Hangzhou Hikvision Digital Technology Co.,Ltd.", '=HYPERLINK("http://x.invalid")')))
     csv_text = c.get("/api/network/unmanaged", params={"format": "csv"}).text
     assert "'=HYPERLINK" in csv_text and ",=HYPERLINK" not in csv_text
+
+
+def test_one_orgs_checkpoint_failure_still_runs_every_orgs_alerts(env, monkeypatch):
+    from nimstead import evidence, notify
+    c = user(env)
+    agent(c, "web-1")  # a ledger, so there is a checkpoint to write
+    ran = []
+    monkeypatch.setattr(evidence, "checkpoint", lambda s, org_id: (_ for _ in ()).throw(OSError("S3 unreachable")))
+    monkeypatch.setattr(notify, "alert_silent_hosts", lambda s: ran.append("silent") or 0)
+    out = update_all(make_sessionmaker(env)(), client=Manuf())
+    assert out["checkpoint_failed"] and ran == ["silent"]

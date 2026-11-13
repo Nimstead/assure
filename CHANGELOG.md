@@ -4,6 +4,31 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-11-13 (preview)
+
+Agent 0.7.1. No database migration.
+
+### Fixed
+- An end-of-support finding (for example .NET 8) no longer closes, and reopens on the next report, when the agent couldn't read the Microsoft products or Uninstall list it is judged from; those false fixes no longer reach the ledger. A remote scan, which never reads signed-out users' profiles, still closes Microsoft product findings.
+- A servicing stack update that installs and then fails its check is reported as needing attention (`rollback_failed`); the server used to refuse the report, so the job only timed out.
+- The agent writes its configuration, Windows job state and job outcomes whole (temporary file, then replace), so a full disk or power cut can no longer leave `agent.json` empty and the agent key lost.
+- A fix job that applied but is never proven by a full inventory fails after 7 days with a reason, instead of staying "verifying" and blocking that fix on the machine for ever. That timeout doesn't halt automatic rollout: a switched-off machine is no evidence against the fix.
+- In the hourly run, a checkpoint that can't be written for one organisation (S3 or Vault down, a damaged checkpoint file) no longer stops alert retries, "not reporting" alerts and the release check for every organisation.
+- External and network scans no longer report CVE-2024-6387 (regreSSHion) for OpenSSH 9.8, the fixed release, or for OpenBSD's own sshd.
+- The scan report judges an advisory that names several CVEs on the worst of them (known exploited, highest CVSS), as its finding already did, so the two no longer disagree.
+- A fix job on Debian for a package installed for two architectures (amd64 and i386) is refused with that reason before anything changes, instead of as "drifted"; multi-arch upgrades are not supported yet. Only installed copies count: leftover configuration of a removed architecture doesn't.
+- apt, apk and zypper fix jobs abort with "the package source offers no upgrade" before taking a rollback copy, instead of reporting "applied" with nothing changed. A dnf dry run that prints an empty summary is refused the same way (one with no summary was already refused).
+- A Windows app or setting fix that fails part way (Click-to-Run takes an update but doesn't report the new build in time, the second registry view can't be set, a winget installer fails) is rolled back, or reported as needing attention, instead of "No changes made".
+- A rolled-back Linux fix no longer halts automatic rollout of that package for good: a later success that installed at least the versions the failed job aimed at lifts the halt (Windows updates were already judged per month).
+- A failed advisory query during the hourly re-match no longer hides that package's advisories from every later host in the same run.
+- A fix job with more than 200 steps (a rolled-back apt job of about 60 packages) is reported with its first and last 100, instead of being refused by the server and retried for ever.
+- The jar scan stops at 20,000 packages and says it is partial, like the app scan, so a large build server's inventory stays under the server's size limit instead of being refused whole.
+- Cancelling a job, an agent's report and the 2-hour timeout now take the same lock as approval, so a cancel can't overwrite a job a machine has just picked up and a timed-out job is failed (and alerted) once.
+- The hourly checkpoint reads only the newest checkpoint (one S3 object, not every one), chain checks load the signing key once, and the Evidence page no longer loads every checkpoint.
+- After a Vault signing-key rotation, checkpoints signed with the old key no longer read as tampering, so evidence packs still build. Each pack lists the earlier public keys under its own signature, and `verify.py` accepts checkpoints signed by them; auditors still pin only the current fingerprint. Fetch the new `verify.py` and its SHA-256. If an old key leaked, raise the transit key's `min_decryption_version` above it: checkpoints it signed then show as bad signatures.
+- PowerShell output is read as UTF-8, so names like "Intel®" no longer arrive as "Intel©".
+- SBOM uploads are buffered without copying the body on every chunk, and an ecosystem name can no longer add a path segment to the OSV download URL.
+
 ## [0.9.0] - 2026-11-12 (preview)
 
 Agent 0.7.0. One database migration (`b7d2e4f6a813`, neighbour rows and device facts): the Docker image applies it on start; without Docker, run `alembic upgrade head`. Network checks are off unless a machine is enrolled with the local `--allow-network-checks` opt-in; an agent older than 0.7.0 keeps working and sends no neighbour table.
@@ -462,7 +487,8 @@ The first early-access release. Everything listed is proven by tests and, for an
 
 Licensed under FSL-1.1-ALv2: this release becomes available under Apache 2.0 on 2028-10-27.
 
-[Unreleased]: https://github.com/Nimstead/assure/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/Nimstead/assure/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/Nimstead/assure/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/Nimstead/assure/compare/v0.8.0...v0.9.0
 [0.6.0]: https://github.com/Nimstead/assure/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/Nimstead/assure/compare/v0.4.0...v0.5.0

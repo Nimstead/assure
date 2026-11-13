@@ -34,6 +34,15 @@ def unread(collection: dict | None) -> set[str]:
     return {eco for eco, names in READ_FROM.items() if any(bad(n) for n in names)}
 
 
+def _eol_unread(key: tuple, collection: dict | None) -> bool:
+    """Whether a Windows, Microsoft or app end-of-support finding's source failed or stopped early, so its absence proves nothing.
+
+    Stricter than `unread`: an empty Uninstall list is a real answer here, or a host with no apps would keep these open for ever."""
+    sources = (collection or {}).get("sources") or {}
+    names = READ_FROM["Windows" if lifecycle.os_key(key[2]) else winapps.ECOSYSTEM if key[2].startswith("EOL:app-") else msproducts.ECOSYSTEM]
+    return any((sources.get(n) or {}).get("state") in ("failed", "partial") for n in names)
+
+
 @functools.lru_cache(maxsize=20_000)  # a fleet's distinct app names: few, where (name, version) pairs are not
 def _named(name: str, source: str | None) -> bool:
     """Whether any curated rule names this app at all. Most installed apps match none, whatever their version."""
@@ -300,6 +309,8 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
         if key[0] == windrivers.ECOSYSTEM and not drivers_complete:  # a scan that failed or stopped early proves nothing is gone
             continue
         if key[0] in blocked:  # e.g. Uninstall access denied: the apps' findings stay as they were until a full read
+            continue
+        if key[0] == lifecycle.ECOSYSTEM and not _linux_eol(key) and _eol_unread(key, asset.collection):
             continue
         if key not in seen and f.status in ("open", "accepted"):
             index = index or _closing_index(verdicts)

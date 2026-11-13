@@ -195,6 +195,20 @@ def test_a_failed_config_write_keeps_the_old_key(tmp_path, monkeypatch):
     assert json.loads(cfg.read_text()) == {"agent_key": "nma_old"} and list(tmp_path.iterdir()) == [cfg]
 
 
+def test_a_config_or_windows_job_state_that_fails_to_serialise_keeps_the_old_file(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    cfg, state = tmp_path / "agent.json", tmp_path / "state.json"
+    cfg.write_text('{"agent_key": "nma_old"}')
+    state.write_text('{"kb": "KB1"}')
+    monkeypatch.setattr(agent, "config_path", lambda: str(cfg))
+    with pytest.raises(TypeError):  # json.dump streams: the old code had already truncated the file and written half
+        agent.save_config({"agent_key": "nma_new", "proxy": object()})
+    with pytest.raises(TypeError):
+        agent.WinJob.save(SimpleNamespace(state_path=str(state), s={"kb": "KB2", "when": object()}))
+    assert cfg.read_text() == '{"agent_key": "nma_old"}' and state.read_text() == '{"kb": "KB1"}'
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["agent.json", "state.json"]  # no temporary file left behind
+
+
 @pytest.mark.real_lockdown
 def test_lockdown_failure_is_loud(tmp_path):
     with pytest.raises(agent.AgentError):

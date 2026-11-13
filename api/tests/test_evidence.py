@@ -339,8 +339,11 @@ def test_the_report_counts_the_period_without_loading_it(env):
     c, _ = setup_flow(env)
     s = sessionmaker(make_engine(env))()
     org_id = s.scalar(select(Finding.org_id))
+    evidence.checkpoint(s, org_id)
     full = evidence.build_pack(s, org_id, *evidence.default_period(30))["ledger"]
-    counted = evidence.build_pack(s, org_id, *evidence.default_period(30), with_entries=False)["ledger"]
+    page = evidence.build_pack(s, org_id, *evidence.default_period(30), with_entries=False)
+    counted = page["ledger"]
+    assert len(full["checkpoints"]) == 1 and counted["checkpoints"] == [] and "earlier_keys" not in page  # the page shows neither
     assert counted["entries"] == len(full["entries"]) > 0 and counted["head_hash"] == full["head_hash"]
     assert c.get("/api/evidence/report", params={"days": 30}).json()["ledger"]["entries"] == counted["entries"]
     report = c.get("/api/evidence/report", params={"days": 30}).json()

@@ -3823,9 +3823,8 @@ def load_config():
 def save_config(cfg):
     """Write configuration cfg as JSON and return the platform path string.
 
-    Secure the Windows directory first. Create parents, truncate/create the file, serialize,
-    then chmod to 0600. Existing content can be lost on failure. Writes are not atomic.
-    File OSError becomes AgentError. JSON/type and directory-security errors can propagate.
+    Secure the Windows directory first. Create parents, then replace the file whole with mode
+    0600 (write_json), so a failure leaves the previous configuration. File OSError becomes AgentError. JSON/type and directory-security errors can propagate.
     This does not enrol an asset or validate cfg. Windows ACL behavior belongs to its helper.
     """
     p = config_path()

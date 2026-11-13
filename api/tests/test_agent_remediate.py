@@ -265,7 +265,10 @@ def test_a_report_with_more_steps_than_the_server_takes_keeps_its_first_and_last
     monkeypatch.setattr(agent.Job, "execute", lambda self: ("rolled_back", steps, "health check failed"))
     agent.run_jobs("https://x", "k", False, run=FakeApt(tmp_path, OLD, NEW), outcome_dir=str(tmp_path / "out"), **job_kw(tmp_path))
     [body] = sent
-    assert len(body["steps"]) == agent.REPORT_MAX_STEPS and body["steps"][0]["step"] == "s0" and body["steps"][-1]["step"] == "s299"
+    # what the server accepts (openapi.json is kept in step with the app by export_api_docs.py --check)
+    api = json.loads((Path(__file__).parents[2] / "docs/reference/openapi.json").read_text(encoding="utf-8"))
+    server_max = api["components"]["schemas"]["JobReport"]["properties"]["steps"]["maxItems"]
+    assert len(body["steps"]) == server_max and body["steps"][0]["step"] == "s0" and body["steps"][-1]["step"] == "s299"
 
 
 def test_a_jobs_answer_that_isnt_a_list_is_an_agent_error_not_a_crash(tmp_path, monkeypatch):

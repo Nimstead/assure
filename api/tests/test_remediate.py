@@ -217,6 +217,27 @@ def test_a_cancel_from_a_stale_copy_sees_the_job_was_dispatched_meanwhile(env):
         remediate.cancel(admin, job, "a@example.com")
 
 
+def test_a_report_from_a_stale_copy_sees_the_job_timed_out_meanwhile(env):
+    from nimstead import remediate
+    from nimstead.db import LedgerEntry
+    c = setup(env)
+    aid, h = add_host(c)
+    jid = plan(c, aid).json()["id"]
+    c.post(f"/api/remediation/jobs/{jid}/approve")
+    c.get("/api/agent/jobs", headers=h)
+    agent_view = sessionmaker(make_engine(env))()
+    job = agent_view.get(RemediationJob, jid)  # the report handler's view: dispatched
+    assert job.status == "dispatched"
+    other = sessionmaker(make_engine(env))()
+    other.execute(update(RemediationJob).values(updated=now() - timedelta(hours=3)))
+    other.commit()
+    remediate.sweep(other, job.org_id)  # meanwhile a page load times it out
+    remediate.report(agent_view, job, "rolled_back", [], "health check failed")
+    agent_view.commit()
+    last = agent_view.scalars(select(LedgerEntry).where(LedgerEntry.subject == jid).order_by(LedgerEntry.seq.desc())).first()
+    assert last.kind == "remediation_rolled_back" and last.data["late"] is True  # recorded as a late report, not a normal one
+
+
 def test_windows_job_waiting_for_its_restart_isnt_timed_out_before_the_deadline(env):
     c = setup(env)
     aid, h = add_host(c)

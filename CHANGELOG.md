@@ -4,6 +4,8 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-11-13 (preview)
+
 Agent 0.7.1. No database migration.
 
 ### Fixed
@@ -485,7 +487,8 @@ The first early-access release. Everything listed is proven by tests and, for an
 
 Licensed under FSL-1.1-ALv2: this release becomes available under Apache 2.0 on 2028-10-27.
 
-[Unreleased]: https://github.com/Nimstead/assure/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/Nimstead/assure/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/Nimstead/assure/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/Nimstead/assure/compare/v0.8.0...v0.9.0
 [0.6.0]: https://github.com/Nimstead/assure/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/Nimstead/assure/compare/v0.4.0...v0.5.0

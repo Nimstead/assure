@@ -220,10 +220,12 @@ Square everything: every radius token is 0. The one exception is real circles, s
   - Anything longer goes behind a "How this is judged" disclosure.
 - **Do name the unit of every number:** machines, findings, resolved findings, jobs, hosts. Say when a number is narrowed ("2 hosts matching …", "4 of 500 loaded").
 - **Do use the glossary, the same word everywhere:**
-  - **Finding:** a vulnerability or exposure on one machine.
+  - **Asset:** anything findings are tracked on: a machine with an agent, an application, an internet target.
+  - **Finding:** a vulnerability or exposure on one asset. Never "issue" or "vulnerability" as a count.
   - **Fix:** an upgrade or setting change that removes findings.
   - **Job:** one machine's planned fix.
   - **Rollout:** one fix across machines, canary first.
+  - **Ring:** canary (ring 0) gets a change first; broad (ring 1) after it worked there.
   - **Resolved:** a finding the next inventory proved gone. A job is "Fixed and verified" only then.
   - **Has a fix:** a fix exists, whether or not Nimstead can apply it.
   - **Test machine:** a machine production-off remediation may change.

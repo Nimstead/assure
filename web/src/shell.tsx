@@ -382,10 +382,12 @@ const KEYS: [string, string][] = [
 /** The keyboard shortcuts, on "?": every key the app answers to, in one place. */
 // DESIGN.md's glossary, said where people work: one word per idea, the same everywhere
 const GLOSSARY: [string, string][] = [
-  ["Finding", "A vulnerability or exposure on one machine."],
+  ["Asset", "Anything findings are tracked on: a machine with an agent, an application, an internet target."],
+  ["Finding", "A vulnerability or exposure on one asset."],
   ["Fix", "An upgrade or setting change that removes findings."],
   ["Job", "One machine's planned fix: planned, approved, run, then verified."],
   ["Rollout", "One fix across machines: canary machines first, the broad ring once the canary is fixed."],
+  ["Ring", "Canary (ring 0) machines get a change first; broad (ring 1) machines after it worked there. Set per machine on Assets."],
   ["Resolved", "A finding the next inventory proved gone. A job is “Fixed and verified” only then."],
   ["Has a fix", "A fix exists, whether or not Nimstead can apply it."],
   ["Test machine", "A machine fixes may run on while production remediation is off."],

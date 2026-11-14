@@ -521,7 +521,7 @@ function FindingDetail({ f }: { f: Finding }) {
 
       <H>Why it matched</H>
       <p className="break-words text-sm"><strong className="break-all font-semibold">{f.package}</strong> on <strong className="break-all font-semibold">{f.hostname}</strong></p>
-      <p className="text-mono mt-1 overflow-x-auto whitespace-pre-wrap bg-sunken p-3 font-mono [word-break:keep-all]">{whyMatched(f)}</p>
+      <p className="text-mono mt-1 overflow-x-auto whitespace-pre bg-sunken p-3 font-mono">{whyMatched(f)}</p>
       {f.fixed_version && (f.package_fix && f.package_fix.open > 1
         ? <p className="mt-2 text-sm text-muted">Fix: upgrade {f.package} to {f.package_fix.version} or later. That clears all {f.package_fix.open} open findings for {f.package} on this host; {f.fixed_version} fixes only this one.</p>
         : <p className="mt-2 text-sm text-muted">Fix: upgrade {f.package} to {f.fixed_version} or later.</p>)}

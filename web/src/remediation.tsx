@@ -34,7 +34,8 @@ export function PackageList({ job, jobs }: { job: { packages?: unknown; summary?
       {[...seen.values()].map(({ p, target, n }) => (
         <li key={p.name} className="break-words"><span className="font-medium">{p.name}</span>{" "}
           {/* a version never wraps mid-token: the arrow is where the line may break */}
-          <span className="font-mono text-muted">{p.kb ? p.kb : <><span className="whitespace-nowrap">{p.from ?? "?"}</span> → <span className="whitespace-nowrap">{p.to ?? (target ?? "the newest fixed version")}</span>{!p.to && target && " or the repository's newer"}</>}</span>
+          {/* mono only on the versions compared; the words around them are prose */}
+          <span className="text-muted">{p.kb ? <span className="font-mono">{p.kb}</span> : <><span className="whitespace-nowrap font-mono">{p.from ?? "?"}</span> → {p.to || target ? <span className="whitespace-nowrap font-mono">{p.to ?? target}</span> : "the newest fixed version"}{!p.to && target && " or the repository's newer"}</>}</span>
           {n < all.length && <span className="text-muted"> on {n} of {plural(all.length, "machine")}</span>}</li>
       ))}
     </ul>
@@ -233,10 +234,10 @@ export function JobCard({ job: j, onApprove, onCancel, blocked, inRollout }: { j
             <li><StatusPill status={j.status} /></li>
             {stale && <li className="text-ink">planned for {planned}; {stale} is now the fix</li>}
             {/* the count lives here, not in the title (DESIGN.md: one title format) */}
-            {j.finding_ids.length > 0 && <li>fixes {plural(j.finding_ids.length, "vulnerability", "vulnerabilities")}</li>}
+            {j.finding_ids.length > 0 && !inRollout && !/to fix \d/.test(j.summary) && <li>fixes {plural(j.finding_ids.length, "finding")}</li>}
             {/* a name opens that thing's detail (DESIGN.md): the machine's drawer */}
             {!inRollout && <li className="min-w-0 break-all">on <Link to="/assets" search={{ machine: j.asset_id }} className="inline-flex tap items-center font-semibold text-ink underline decoration-line-strong hover:decoration-ink">{j.hostname}</Link></li>}
-            <li className="break-all">planned by {j.created_by}</li>
+            {!inRollout && <li className="break-all">planned by {j.created_by}</li>}
             {j.approved_by && <li className="break-all">approved by {j.approved_by}</li>}
             {j.forward_only && <li className="text-now-fg">forward-only: no automatic rollback</li>}
             {j.waits_for_window && <li>waits for the maintenance window ({parseUtc(j.waits_for_window).toLocaleString()})</li>}
@@ -323,11 +324,11 @@ export function RolloutCard({ jobs, assets, hold, onApprove, card }: {
     : canary.total && canary.fixed < canary.total ? "Waiting on the canary machines"
     : broad.fixed + broad.stuck === broad.total ? (broad.stuck ? "Done, with machines to review" : "Done")
     : broad.waiting ? `${canary.total ? "Canary fixed: " : ""}approve the broad machines`
-    : broad.moving ? `${canary.total ? "Canary fixed: " : ""}broad machines running`
+    : broad.moving ? `${canary.total ? "Canary fixed: " : ""}broad machines in progress`
     : canary.total ? "Canary fixed: plan the broad machines" : "No canary machine in this fix";
   const cell = (label: string, t: ReturnType<typeof tally>) => t.total > 0 && (
     <span className="num">{label} <strong className="font-semibold">{t.fixed} of {t.total}</strong> fixed
-      {t.moving > 0 && <span className="text-muted"> · {t.moving} running</span>}
+      {t.moving > 0 && <span className="text-muted"> · {t.moving} in progress</span>}
       {t.waiting > 0 && <span className="text-muted"> · {t.waiting} awaiting approval</span>}
       {t.stuck > 0 && <span className="text-now-fg"> · {t.stuck} didn't work</span>}</span>);
   const waiting = live.filter((j) => j.status === "planned");
@@ -361,7 +362,15 @@ export function RolloutCard({ jobs, assets, hold, onApprove, card }: {
           <summary className="flex tap w-fit cursor-pointer items-center gap-2 px-4 py-2 text-sm font-medium">
             <ChevronRight aria-hidden className="size-4 shrink-0 transition-transform [details[open]_&]:rotate-90" />Machines ({live.length}{jobs.length > live.length && `, ${jobs.length - live.length} cancelled`})
           </summary>
-          <ul className="flex flex-col gap-2 bg-sunken p-2">{jobs.map(card)}</ul>
+          {/* under their ring, so the tallies above read straight against the list */}
+          <div className="flex flex-col gap-2 bg-sunken p-2">
+            {([["Canary", jobs.filter((j) => ring.get(j.asset_id) === 0)], ["Broad", jobs.filter((j) => ring.get(j.asset_id) !== 0)]] as const).map(([label, js]) => js.length > 0 && (
+              <section key={label} aria-label={`${label} machines`}>
+                <h4 className="px-1 pb-1 text-xs font-medium text-muted">{label}</h4>
+                <ul className="flex flex-col gap-2">{js.map(card)}</ul>
+              </section>
+            ))}
+          </div>
         </details>
       )}
     </li>

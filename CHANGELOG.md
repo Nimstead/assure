@@ -7,6 +7,7 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 No database migration; the agent is unchanged.
 
 ### Changed
+- A rollout's machines are listed under Canary and Broad, and its tallies say "in progress" for approved and running machines alike. Inside a rollout, a machine's card drops what the rollout already says (what it fixes, who planned it). Only versions are set in mono. Devices "with findings", not "with issues"; the first Assets view is "Machines and applications"; Help defines asset and ring. The Assets view tabs fade at the edge on phones to show there are more.
 - **A rollout's approve dialog lists every package any chosen machine changes**, with "on 2 of 4 machines" where they differ; before, it showed only the first machine's packages.
 - The finding drawer puts "Act on it" straight after the priority and deadline, and dims the last finding while the next loads. A narrowed Findings list says "37 of 43,944 findings". Evidence's SI-2 says "6 open findings past SLA" before "27/27 fixes within SLA". Machines are "machines" on Fix first, in Plan fix and in Windows updates. On a job card, Cancel fix is a trailing link after Review and approve. The Devices tab's "with issues" count is ink, not crimson. Versions and the production setting no longer wrap mid-token. Help puts focus on its title.
 - **Help opens in the app** (sidebar Help, `?`, or Ctrl K): the words used here, how priority and rollouts work, and every keyboard shortcut, with the full documentation one link away.

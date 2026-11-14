@@ -136,13 +136,13 @@ type AssetView = "machines" | "devices" | "internet";
 /** The three kinds of asset as views, with counts; devices with issues say so on the tab. */
 function AssetViews({ view, devices, flagged, external }: { view: AssetView; devices: number; flagged: number; external: number }) {
   const tabs: [AssetView, string, ReactNode][] = [
-    ["machines", "Machines", null],
-    ["devices", "Devices with no agent", devices ? <span className="num text-muted">{devices}{flagged > 0 && <span className="text-ink"> · {plural(flagged, "with issues", "with issues")}</span>}</span> : null],
+    ["machines", "Machines and applications", null],
+    ["devices", "Devices with no agent", devices ? <span className="num text-muted">{devices}{flagged > 0 && <span className="text-ink"> · {plural(flagged, "with findings", "with findings")}</span>}</span> : null],
     ["internet", "Internet targets", external ? <span className="num text-muted">{external}</span> : null],
   ];
   return (
     // one tab pattern on phones, as Settings: a strip that scrolls sideways, never a stacked list
-    <nav aria-label="Asset views" className="-mb-2 flex gap-x-1 overflow-x-auto border-b border-line [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <nav aria-label="Asset views" className="-mb-2 flex gap-x-1 overflow-x-auto border-b border-line [mask-image:linear-gradient(to_right,black_80%,transparent)] [scrollbar-width:none] md:[mask-image:none] [&::-webkit-scrollbar]:hidden">
       {tabs.map(([v, label, count]) => (
         <Link key={v} to="/assets" search={v === "machines" ? {} : { view: v }} aria-current={view === v ? "page" : undefined}
           className={clsx("-mb-px inline-flex min-h-[44px] shrink-0 items-center gap-2 whitespace-nowrap border-b-2 px-3 text-sm no-underline md:min-h-10",
@@ -195,10 +195,10 @@ export function UnmanagedDevices() {
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden />
           <input type="search" className={clsx(input, "pl-9")} placeholder="Search by address, maker, MAC or machine" value={text} onChange={(e) => { setText(e.target.value); setShown(DEVICE_PAGE); }} />
         </label>
-        {flagged > 0 && <button className={chip(issuesOnly)} aria-pressed={issuesOnly} onClick={() => { setIssuesOnly((x) => !x); setShown(DEVICE_PAGE); }}>With issues<span className="num text-muted">{flagged}</span></button>}
+        {flagged > 0 && <button className={chip(issuesOnly)} aria-pressed={issuesOnly} onClick={() => { setIssuesOnly((x) => !x); setShown(DEVICE_PAGE); }}>With findings<span className="num text-muted">{flagged}</span></button>}
         <a href="/api/network/unmanaged?format=csv" className="tap inline-flex items-center px-1 text-sm">Download as CSV</a>
       </div>
-      <p className="num text-sm text-muted" role="status">{rows.length === all.length ? `${plural(all.length, "device")}, those with issues first` : `${rows.length.toLocaleString()} of ${plural(all.length, "device")}`}</p>
+      <p className="num text-sm text-muted" role="status">{rows.length === all.length ? `${plural(all.length, "device")}, those with findings first` : `${rows.length.toLocaleString()} of ${plural(all.length, "device")}`}</p>
       {rows.length === 0 ? (
         <EmptyState title="No devices match" action={<button className={btnQuiet} onClick={() => { setText(""); setIssuesOnly(false); }}>Clear search and filter</button>}>
           Nothing matches {text ? `“${text}”` : "this filter"}.

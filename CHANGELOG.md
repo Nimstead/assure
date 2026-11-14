@@ -8,6 +8,27 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 Agent 0.7.1. No database migration. Released after the design-critique and repo-audit work below; the 2026-11-13 build was never published.
 
+### Upgrade notes
+- **Findings opens on every open finding.** "Fixable only" is now an opt-in **Has a fix** filter. Old links and saved views with `fixable` show every finding; add Has a fix to narrow them again.
+- **Vault key rotation:** evidence packs now list earlier public keys, and the new `verify.py` accepts checkpoints they signed. Give auditors the new `verify.py` and its SHA-256.
+
+### Highlights
+- **Rollouts.** A fix planned on several machines shows as one card on Remediation, with canary and broad tallies and where it stands. You can approve a whole ring in one review. A ring where the fix already failed says so first.
+- **Fix first is a queue.** Failed fixes come first, then the fixes you can plan from here, then machines not reporting and devices with issues. Plan fix stays on the page, so you can plan several in a row.
+- **Devices with no agent** get their own view on Assets, with search, a drawer per device, and ranking by what an exposure lets an attacker do. Redis with no password on a camera is now Fix now, not Routine.
+- **Help in the app** (`?` or Ctrl K): the words used, how priority and rollouts work, and every shortcut. Ctrl K also finds packages, machines and devices.
+- **Quieter screens.** Filters sit behind "More filters", long explanations sit behind "How this is judged", and dialogs scroll on phones with their buttons in view.
+
+### Fixes that matter
+- Auto-rollout no longer pins broad machines to an old canary's version that doesn't fix this month's issue (it used to abort and re-plan every 15 minutes).
+- A reopened finding is timed from when it came back, not from a detection fixed months ago.
+- A resolved finding can't be accepted as a risk, and an anonymous SBOM upload is refused before its body is read.
+- The agent writes its configuration and job state atomically, so a full disk or power cut can't wipe `agent.json`.
+- Fix jobs that changed nothing no longer report "applied": apt, apk, zypper and dnf abort when there's no upgrade, and part-failed Windows fixes roll back.
+- A job that applied but is never confirmed fails after 7 days with a reason, instead of staying "verifying" for good.
+- One organisation's S3 or Vault outage no longer stops the hourly alerts and release check for all the others.
+- No more false regreSSHion (CVE-2024-6387) findings on OpenSSH 9.8 or OpenBSD's sshd.
+
 ### Changed
 - Confirmation dialogs are wider (36rem), so package lines fit on one line. Evidence's four numbers sit 2x2 on phones. A rolled-back job on a machine production remediation won't change no longer shows retry advice it can't act on.
 - An aborted fix's "Plan again including …" on Fix first names its machine, as every plan button does (`last_attempt.asset_id` in `/api/summary`). In a ring review, "on 3 of 4 machines (not …)" sits on its own short line. The Internet targets empty state says how to add one.

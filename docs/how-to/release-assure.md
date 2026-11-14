@@ -18,6 +18,8 @@ Use a trusted checkout with locked API dependencies installed. Run commands from
 
 Write release notes for operators: include behavior changes, compatibility limits, and upgrade instructions.
 
+The GitHub release notes come from the version's changelog section. Start the section with a short summary: a line with the agent version and any migration, then `### Upgrade notes`, `### Highlights` (about five) and `### Fixes that matter`, before `### Added`, `### Changed` and `### Fixed`. When the section has `### Highlights`, the notes stop at the first of those standard headings and link to the full changelog. Without it, the whole section is published.
+
 ## Publish a preview
 
 1. Create an annotated tag at the release commit:

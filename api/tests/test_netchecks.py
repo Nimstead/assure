@@ -342,9 +342,20 @@ def test_a_device_finding_that_comes_back_is_reopened_not_duplicated(env):
     send(c, h, [obs(open_={23})])
     first = c.get("/api/findings").json()[0]["id"]
     send(c, h, [obs()])
+    from datetime import timedelta
+
+    from sqlalchemy import update
+    from sqlalchemy.orm import sessionmaker
+
+    from nimstead.db import Finding, make_engine, now
+    s = sessionmaker(make_engine(env))()
+    s.execute(update(Finding).where(Finding.id == first).values(first_seen=now() - timedelta(days=200)))
+    s.commit()
     send(c, h, [obs(open_={23})])
     f = c.get("/api/findings").json()
     assert [x["id"] for x in f] == [first]
+    s.expire_all()
+    assert s.get(Finding, first).first_seen > now() - timedelta(minutes=5)  # due from its return, as on hosts (DECISIONS 137)
     assert "finding_reopened" in [e["kind"] for e in c.get("/api/evidence/ledger").json()["entries"]]
 
 

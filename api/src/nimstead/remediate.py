@@ -375,28 +375,29 @@ def _proven_upgrade(p: dict, proven: dict, cmp) -> bool:
     return bool(cmp and SAFE_VERSION.match(to) and p.get("from") and cmp(to, str(p["from"])) > 0)
 
 
-def _needed(s: Session, job: RemediationJob, cmp) -> str | None:
-    """The highest fixed version among job's findings: what a non-KB canary must have reached to vouch for this job."""
-    fixed = [v for v in s.scalars(select(Finding.fixed_version).where(Finding.id.in_(job.finding_ids or []))) if v and SAFE_VERSION.match(v)]
-    if not fixed or not cmp:
-        return None
-    best = fixed[0]
-    for v in fixed[1:]:
-        if cmp(v, best) > 0:
-            best = v
-    return best
+def _needed(s: Session, job: RemediationJob, cmp) -> tuple[str | None, set[str]]:
+    """What a non-KB canary must have reached to vouch for job: the highest fixed version among the job's findings
+    for its own package, and the binaries of that source package on the job's host (which carry that version).
+
+    Dependencies a replan included (libc6 with openssl) have their own versions and are left out of the comparison."""
+    pkg = job.action_key.split("|", 1)[1]
+    fixed = [v for v in s.scalars(select(Finding.fixed_version).where(Finding.id.in_(job.finding_ids or []), Finding.package == pkg))
+             if v and SAFE_VERSION.match(v)]
+    names = {b.name for b in s.scalars(select(InstalledPackage).where(InstalledPackage.asset_id == job.asset_id)) if (b.source or b.name) == pkg}
+    return (max(fixed, key=sort_key(cmp)) if fixed and cmp else None), names
 
 
-def _reaches_fix(canary: RemediationJob, job: RemediationJob, need: str | None, cmp) -> bool:
-    """A non-KB canary vouches for job only if every package it reported for this job is at or past need.
+def _reaches_fix(canary: RemediationJob, need: tuple[str | None, set[str]], cmp) -> bool:
+    """A non-KB canary vouches for a job only if every binary of the job's source it reported is at or past the fix.
 
     One action key spans every release: a canary that installed 3.0.13 in September says nothing about
     November's CVE fixed in 3.0.15, and pinning to it would abort (or come back not fixed) on every host."""
-    if not need or not cmp:
+    version, names = need
+    if not version or not cmp:
         return True
-    got = [str(v) for n, v in (canary.result_versions or {}).items() if any(p["name"] == n and not p.get("kb") for p in job.packages)]
+    got = [str(v) for n, v in (canary.result_versions or {}).items() if n in names]
     # a canary that reported no versions (an older agent) vouches as before; one that reported versions must reach the fix
-    return not got or all(SAFE_VERSION.match(v) and cmp(v, need) >= 0 for v in got)
+    return not got or all(SAFE_VERSION.match(v) and cmp(v, version) >= 0 for v in got)
 
 
 def proves(canary: RemediationJob, job: RemediationJob) -> bool:
@@ -435,8 +436,8 @@ def canary_ok(s: Session, org: Org, job: RemediationJob) -> tuple[bool, str]:
     soak = now() - timedelta(hours=org.canary_soak_hours)
     soaked = [j for j in same if j.asset_id in canary_ids and j.status == "succeeded" and j.updated <= soak]
     cmp = comparator_for(job.action_key.split("|", 1)[0])
-    need = None if target else _needed(s, job, cmp)
-    if any(proves(j, job) and _reaches_fix(j, job, need, cmp) for j in soaked):
+    need = (None, set()) if target else _needed(s, job, cmp)
+    if any(proves(j, job) and _reaches_fix(j, need, cmp) for j in soaked):
         return True, "Canary succeeded and soaked"
     if soaked:  # one action key spans every release: last month's canary says nothing about this month's update
         return False, f"Waiting for a canary to succeed on this version and soak for {org.canary_soak_hours}h"
@@ -560,17 +561,20 @@ def auto_remediate(s: Session, asset: Asset) -> None:
 def pin_to_canary(s: Session, job: RemediationJob) -> None:
     """Replace eligible non-KB package targets in job using a canary found through s.
 
-    Select the newest same-action succeeded job on a current ring-0 asset with
-    nonnull result_versions. This helper does not recheck soak or proves().
+    Select the newest same-action succeeded, soaked job on a current ring-0 asset with
+    nonnull result_versions that reached this job's fix: the canary that vouched for it.
     Missing/invalid/non-upgrade versions leave existing targets unchanged, possibly
     unpinned. Comparator/database errors propagate. The caller commits."""
-    canary = s.scalar(select(RemediationJob).join(Asset, Asset.id == RemediationJob.asset_id).where(
-        RemediationJob.org_id == job.org_id, RemediationJob.action_key == job.action_key,
-        RemediationJob.status == "succeeded", Asset.ring == 0, RemediationJob.result_versions.is_not(None),
-    ).order_by(RemediationJob.updated.desc()).limit(1))
+    # the canary that vouched for this job: soaked, and at or past its fix (as canary_ok judged), newest first.
+    # A newer canary on a lagging mirror must not unpin the job onto a version no canary tested.
     cmp = comparator_for(job.action_key.split("|", 1)[0])
-    # a canary below this job's fix would pin the host to a version that doesn't fix it: leave the target unpinned
-    proven = (canary.result_versions or {}) if canary and _reaches_fix(canary, job, _needed(s, job, cmp), cmp) else {}
+    need = _needed(s, job, cmp)
+    soak = now() - timedelta(hours=s.get(Org, job.org_id).canary_soak_hours)
+    canary = next((c for c in s.scalars(select(RemediationJob).join(Asset, Asset.id == RemediationJob.asset_id).where(
+        RemediationJob.org_id == job.org_id, RemediationJob.action_key == job.action_key, RemediationJob.status == "succeeded",
+        Asset.ring == 0, RemediationJob.result_versions.is_not(None), RemediationJob.updated <= soak,
+    ).order_by(RemediationJob.updated.desc())) if _reaches_fix(c, need, cmp)), None)
+    proven = (canary.result_versions or {}) if canary else {}
     job.packages = [{**p, "to": proven[p["name"]]} if not p.get("kb") and _proven_upgrade(p, proven, cmp) else p for p in job.packages]
 
 

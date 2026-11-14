@@ -55,18 +55,17 @@ def test_false_overdue_is_no_filter_and_grouping_ignores_true(env):
     assert c.get("/api/findings/count", params={"q": "%"}).json() == total
 
 
-def test_single_acceptance_can_follow_resolution_and_revoke_retains_timestamp(env):
+def test_a_resolved_finding_cannot_be_accepted(env):
+    """Intended (DECISIONS 137 audit): acceptance is for open findings. Accepting a resolved one dropped a real fix out of the
+    evidence pack's resolved counts and time-to-fix, so it is refused and the finding keeps its resolution."""
     c, _, h = _host(env)
     changed = {**INV, "packages": INV["packages"][:2] + [{"ecosystem": "PyPI", "name": "requests", "version": "2.32.4"}]}
     assert c.post("/api/agent/inventory", json=changed, headers=h).status_code == 200
     resolved = c.get("/api/findings", params={"status": "resolved"}).json()[0]
-    assert resolved["resolved_at"]
-    fid = resolved["id"]
-    accepted = c.post(f"/api/findings/{fid}/accept", json={"reason": "Documented acceptance contract", "days": 30}).json()
-    assert accepted["status"] == "accepted" and accepted["resolved_at"] == resolved["resolved_at"]
-    revoked = c.post(f"/api/findings/{fid}/revoke-acceptance", json={"reason": "Reassess this result"}).json()
-    assert revoked["status"] == "open" and revoked["resolved_at"] == resolved["resolved_at"]
-    assert revoked["due"] is None and c.get(f"/api/findings/{fid}").json()["due"] is not None
+    r = c.post(f"/api/findings/{resolved['id']}/accept", json={"reason": "Documented acceptance contract", "days": 30})
+    assert r.status_code == 409
+    after = c.get(f"/api/findings/{resolved['id']}").json()
+    assert after["status"] == "resolved" and after["resolved_at"] == resolved["resolved_at"]
 
 
 def test_rescan_commits_the_callers_pending_changes(env):

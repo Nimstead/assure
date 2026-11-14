@@ -400,8 +400,8 @@ def apply(s: Session, asset: Asset, verdicts: list, rep: dict, ecosystem: str = 
                         first_seen=t, advisory_ids=[c["id"]], installed_version=c["installed"], fixed_version=c["fixed"])
             s.add(f)
             events.append(("finding_opened", f))
-        elif f.status == "resolved":
-            f.status, f.resolved_at = "open", None
+        elif f.status == "resolved":  # a new exposure: due from its return, as the pack times it (DECISIONS 137)
+            f.status, f.resolved_at, f.first_seen = "open", None, t
             events.append(("finding_reopened", f))
         f.summary, f.cvss, f.epss, f.kev = c["summary"], c["cvss"], None, False
         f.installed_version, f.fixed_version = c["installed"], c["fixed"]

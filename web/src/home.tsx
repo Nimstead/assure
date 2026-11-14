@@ -168,7 +168,7 @@ export function ActionCard({ a }: { a: Action }) {
       <ActionRow
         primary={a.plannable && free.length > 0 && !needsMore ? (
           <PlanFixButton ecosystem={a.ecosystem} pkg={a.package} assetIds={free} names={freeNames} kind={prodOk ? "machine" : "test machine"}
-            label={a.job ? `Plan fix on ${plural(free.length, "more machine")}` : failed ? "Plan fix again" : held ? (freeNames.length === 1 ? `Plan fix on ${freeNames[0]}` : `Plan fix on ${plural(free.length, "test machine")}`) : "Plan fix"} />
+            label={a.job ? `Plan fix on ${plural(free.length, "more machine")} (${a.busy_asset_ids.length} already planned)` : failed ? "Plan fix again" : held ? (freeNames.length === 1 ? `Plan fix on ${freeNames[0]}` : `Plan fix on ${plural(free.length, "test machine")}`) : "Plan fix"} />
         ) : needsMore ? (
           // the replan needs packages the plan left out: it lives on the job, so the card's main action goes there (a quiet button, as on Remediation)
           <Link to="/remediation" hash={jobAnchor(failed!.id)} className={clsx(btnQuiet, "no-underline")}>

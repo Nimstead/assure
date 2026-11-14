@@ -106,6 +106,9 @@ def test_sla_metrics(env):
     # what the status turns on is said first, so "27/27 within SLA" never reads as the reason for Not met
     si2 = next(x for x in pack["controls"] if x["control"] == "SI-2")["evidence"]
     assert si2.startswith(f"{m['overdue_open']} open findings past SLA; ")
+    # Cyber Essentials' 14-day count says what it measures, so it isn't read against "Overdue"
+    ce = next(x for x in pack["controls"] if x["framework"] == "UK Cyber Essentials" and x["control"] == "Security update management")["evidence"]
+    assert "a different measure from the priority deadlines" in ce
 
 
 def test_overdue_filter_matches_the_evidence_count(env):

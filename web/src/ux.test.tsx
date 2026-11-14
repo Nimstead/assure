@@ -266,7 +266,7 @@ it("Home: after an aborted attempt that needs more packages, it points to the jo
   serve({});
   const aborted = { id: "j9", status: "aborted" as const, error: "No changes made: would also change: musl" };
   const r = wrap(<ol><ActionCard a={{ ...ACTION, last_attempt: aborted }} /></ol>);
-  expect(screen.getByRole("link", { name: /Last attempt aborted: review/ })).toHaveAttribute("href", "/remediation#job-j9");
+  expect(screen.getByRole("link", { name: /^Plan again including / })).toHaveAttribute("href", "/remediation#job-j9");
   expect(screen.queryByRole("button", { name: /Plan fix/ })).not.toBeInTheDocument();
   r.unmount();
   wrap(<ol><ActionCard a={{ ...ACTION, last_attempt: { ...aborted, status: "rolled_back", error: "health check failed" } }} /></ol>);

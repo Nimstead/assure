@@ -173,7 +173,7 @@ export function ActionCard({ a }: { a: Action }) {
         links={[
           (a.job || failed) && (
             <Link key="job" to="/remediation" hash={jobAnchor((a.job ?? failed)!.id)} className="inline-flex min-h-[44px] items-center gap-1.5 text-sm font-medium text-accent underline md:min-h-9">
-              <span>{a.job ? "View fix" : `Last attempt ${JOB_STATUS_LABEL[failed!.status].toLowerCase()}: review`}<span className="sr-only"> for {a.package}</span></span> <ArrowRight className="size-4" aria-hidden />
+              <span>{a.job ? "View fix" : needsMore ? `Plan again including ${dependenciesNeeded(failed!.error).join(", ")}` : `Last attempt ${JOB_STATUS_LABEL[failed!.status].toLowerCase()}: review`}<span className="sr-only"> for {a.package}</span></span> <ArrowRight className="size-4" aria-hidden />
             </Link>
           ),
           <Link key="findings" to="/findings" search={filtersToSearch({ ...parseFilters({}), q: a.package, ecosystem: a.ecosystem })}

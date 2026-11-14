@@ -294,7 +294,7 @@ def _controls(m: dict, sla: dict) -> list[dict]:
         {"framework": "UK Cyber Essentials", "control": "Security update management",
          "requirement": "High/critical updates (CVSS ≥ 7 or known exploited) applied within 14 days",
          "status": timely(ce_ok, m["ce_in_scope_resolved"]),
-         "evidence": f"{m['ce_in_scope_resolved_in_14d']}/{m['ce_in_scope_resolved']} in-scope fixes within 14 days; {m['ce_in_scope_overdue']} open past 14 days"},
+         "evidence": f"{m['ce_in_scope_resolved_in_14d']}/{m['ce_in_scope_resolved']} in-scope fixes within 14 days; {m['ce_in_scope_overdue']} open past 14 days (high or critical findings, a different measure from the priority deadlines)"},
         {"framework": "ISO/IEC 27001:2022", "control": "A.8.8", "requirement": "Management of technical vulnerabilities",
          "status": st(scanned and sla_ok),
          "evidence": f"{m['assets_reporting']}/{m['assets']} assets with a report timestamp in or after the period; {m['overdue_open']} findings past SLA"},

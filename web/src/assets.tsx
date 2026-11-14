@@ -55,10 +55,11 @@ export function AssetsPage() {
     <div className="flex flex-col gap-6">
       <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
         <h1 className="w-full text-3xl font-semibold sm:w-auto">Assets</h1>
-        <div className="flex flex-wrap items-center gap-2">
+        {/* each view has its own add action: the internet view adds targets, the devices view adds nothing */}
+        {view === "machines" && <div className="flex flex-wrap items-center gap-2">
           <AddApplication />
           <Link to="/add" className={clsx(btnPrimary, "no-underline")}><Plus className="size-4" aria-hidden />Add machine</Link>
-        </div>
+        </div>}
       </header>
 
       <AssetViews view={view} devices={devices.data?.length ?? 0} flagged={flagged} external={(q.data ?? []).filter((a) => a.kind === "external").length} />

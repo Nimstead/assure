@@ -4,7 +4,9 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
-No database migration; the agent is unchanged.
+## [0.9.1] - 2026-11-14 (preview)
+
+Agent 0.7.1. No database migration. Released after the design-critique and repo-audit work below; the 2026-11-13 build was never published.
 
 ### Changed
 - Confirmation dialogs are wider (36rem), so package lines fit on one line. Evidence's four numbers sit 2x2 on phones. A rolled-back job on a machine production remediation won't change no longer shows retry advice it can't act on.
@@ -98,12 +100,6 @@ No database migration; the agent is unchanged.
 - Confirmation dialogs never grow taller than the screen: a long machine list scrolls inside, so Cancel and Approve stay reachable on a phone. The finding drawer's host opens that machine. A rollout's machine list counts cancelled machines in its total ("Machines (4: 1 cancelled)"). Evidence's tile says "Overdue findings". Fix first's and Assets' notice links are 44px touch targets on phones.
 - A rollout counts each machine's newest job, so a canary fixed after a failed attempt counts as fixed and the broad ring can be approved. Approving several machines unticks each one as it's approved, so a retry after a partial failure sends only what's left. Stepping past the last loaded finding no longer jumps ahead later when the next page is empty. A break-glass sign-in is never folded with the sign-ins after it. The Ctrl K help command opens Help.
 - Agent update notices name an agent that reported no version "unknown" instead of showing an empty label ("(2)"), and count machines per version.
-
-## [0.9.1] - 2026-11-13 (preview)
-
-Agent 0.7.1. No database migration.
-
-### Fixed
 - An end-of-support finding (for example .NET 8) no longer closes, and reopens on the next report, when the agent couldn't read the Microsoft products or Uninstall list it is judged from; those false fixes no longer reach the ledger. A remote scan, which never reads signed-out users' profiles, still closes Microsoft product findings.
 - A servicing stack update that installs and then fails its check is reported as needing attention (`rollback_failed`); the server used to refuse the report, so the job only timed out.
 - The agent writes its configuration, Windows job state and job outcomes whole (temporary file, then replace), so a full disk or power cut can no longer leave `agent.json` empty and the agent key lost.

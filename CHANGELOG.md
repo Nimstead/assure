@@ -89,6 +89,12 @@ No database migration; the agent is unchanged.
 - CSV downloads are labelled "Download as CSV" everywhere. A finding description cut off at 200 characters points to the advisory for the full text.
 
 ### Fixed
+- **Auto-rollout no longer pins broad machines to an old canary's version** (DECISIONS 137). A canary vouches for, and pins, a Linux fix only if what it installed reaches that fix; before, last month's canary could approve this month's job and pin it to a version that doesn't fix it, which aborted and re-planned every 15 minutes or came back not fixed.
+- **A reopened finding is timed from its return** (DECISIONS 137), in the evidence pack and its due date, not from a first detection that was fixed months ago.
+- Fix first counts every fix in flight as already planned; it stopped at 50 jobs, so a large fleet was offered plans the server then refused.
+- A resolved finding can't be accepted as a risk (409); accepting it dropped a real fix from the evidence counts.
+- An SBOM upload is authenticated before its body is read, so an anonymous caller can't make the server buffer 10 MiB.
+- The ledger integrity check streams entries instead of loading the whole history at once. A domain controller's job poll no longer loads every asset unless it has a Windows job to hand out, and the summary reads only the host columns it counts. One list defines a failed job, and one rule guards every CSV export against formulas.
 - Confirmation dialogs never grow taller than the screen: a long machine list scrolls inside, so Cancel and Approve stay reachable on a phone. The finding drawer's host opens that machine. A rollout's machine list counts cancelled machines in its total ("Machines (4: 1 cancelled)"). Evidence's tile says "Overdue findings". Fix first's and Assets' notice links are 44px touch targets on phones.
 - A rollout counts each machine's newest job, so a canary fixed after a failed attempt counts as fixed and the broad ring can be approved. Approving several machines unticks each one as it's approved, so a retry after a partial failure sends only what's left. Stepping past the last loaded finding no longer jumps ahead later when the next page is empty. A break-glass sign-in is never folded with the sign-ins after it. The Ctrl K help command opens Help.
 - Agent update notices name an agent that reported no version "unknown" instead of showing an empty label ("(2)"), and count machines per version.

@@ -193,6 +193,8 @@ The ledger displays at most 50 newest matching events across its whole history. 
 
 An empty server `problems` list produces the integrity-status message. Server checks can reuse a verified prefix for up to one hour. A nonempty list displays only its first five problems. The pack endpoint checks integrity before signing and rehashes its exact period entries.
 
+Consecutive entries of one kind fold into one row that opens to every entry (`foldRuns`); every sign-in method counts as one kind. A failure kind (rolled back, failed, aborted, revoked, break-glass and similar) never folds, and nothing joins its run.
+
 Subject text uses selected event strings, deduplicates them, and falls back to the first eight subject characters. Optional cached asset/job labels can add a hostname. Remediation events link to their job anchor. Highlighted failure kinds use a regular-expression heuristic. Neither label nor colour independently proves an outcome.
 
 Pack and verifier downloads use native links. HTTP or download errors do not appear in component query errors. The public-key query exposes retry but stays fresh indefinitely after success. Key rotation can require a reload or explicit query invalidation before new signing material appears.
@@ -278,7 +280,7 @@ Desktop navigation exposes the six main pages and Add machine. Mobile tabs norma
 
 Size observers update root header/tab-height CSS variables and disconnect on cleanup. They do not restore earlier variable values. Theme controls cycle System, Light and Dark. Their local state initializes from the document dataset. It does not subscribe to external theme or storage changes.
 
-Help opens the Assure wiki in a new tab. Palette help uses `window.open`, which browsers can block. Logout clears query data and navigates to sign-in even when its request fails. The shell has no logout-failure panel. A failed request can leave the server session valid.
+Help (the sidebar link, `?`, or the palette's help command) opens an in-app panel: the glossary, how priority and rollouts work, and every keyboard shortcut, with a link to the full documentation. The palette's documentation command uses `window.open`, which browsers can block. Logout clears query data and navigates to sign-in even when its request fails. The shell has no logout-failure panel. A failed request can leave the server session valid.
 
 ### Keyboard and focus behavior
 
@@ -291,6 +293,8 @@ Help opens the Assure wiki in a new tab. Palette help uses `window.open`, which 
 | `j` / `k` | Finding drawer moves through loaded finding IDs |
 | `p` | Finding drawer focuses Plan fix without submission |
 | `a` | Finding drawer opens available acceptance controls |
+| `?` | Shell opens Help unless the target is an input or a dialog is open |
+| Esc | Drawer closes and focus returns to the row last shown (after stepping), or to the page heading |
 
 Shell heading focus runs only after pathname changes. It skips initial mount and hash routes. It waits up to 180 animation frames for a changed title and main heading. Open dialogs prevent heading focus. Title announcement can still occur without successful focus. Search-only changes do not trigger this hook.
 
@@ -320,9 +324,12 @@ Search parsing uses URLSearchParams and keeps the last value for repeated keys. 
 
 | Export | Inputs and behavior |
 | --- | --- |
-| `RemediationPage()` | No props. Reads jobs, user, and assets. Groups jobs and controls approval/cancellation dialogs |
+| `RemediationPage()` | No props. Reads jobs, user, assets and settings. Lays jobs out with `sections()` and controls approval/cancellation dialogs |
+| `sections(jobs)` | Pure. Status sections in the order Needs attention, Needs approval, In progress, Done. A package planned on two or more machines (cancelled jobs aside) is a rollout and sits once, in the first section holding any of its machines. Each section's `jobs` are only those in its own statuses |
+| `RolloutCard({jobs,assets,hold?,onApprove?,card?})` | One rollout: canary and broad tallies from each machine's newest job, where it stands, the machines a fix didn't work on, Approve canary / Approve broad for waiting machines (`hold` names why a machine is left out), and every machine's card grouped by ring, most urgent first. Broad approval stays disabled until every canary machine is fixed |
+| `ringFailures(jobs,job,byId)` | Pure. Machines in `job`'s ring whose newest job for the same action failed. Both approval dialogs show them first, in crimson |
 | `KbFleet()` | No props. Reads cumulative groups. Opening a row enables its KB/product host query |
-| `JobCard({job,onApprove,onCancel})` | Displays typed job data. Optional parent callbacks expose eligible actions through the client admin gate |
+| `JobCard({job,onApprove,onCancel,blocked?,inRollout?})` | Displays typed job data. `blocked` replaces approval and retry with a reason (production remediation off). `inRollout` titles the card by its machine. Optional parent callbacks expose eligible actions through the client admin gate |
 | `ApproveDialog({...})` | Controlled view. A null job closes it. Parent callbacks control open state and submit approval |
 | `PlanFixButton({...})` | Sends one batch-plan request for the supplied action and asset IDs |
 
@@ -345,6 +352,10 @@ The `Sent to host` and `Job succeeded` labels describe stored job state. They do
 | `error` | Optional parent error text |
 | `ownPlan` | Optional self-approval information |
 | `context` | Optional host-context text |
+| `unchecked` | The host has no health checks: an amber caution with a link to set them |
+| `production` | A production machine while production remediation is off: approval is disabled and says why |
+| `ahead` | A broad machine whose fix hasn't succeeded on a canary yet: allowed, and said |
+| `ringFailed`, `onGo` | Machines in the ring where this fix didn't work, each linking to its job; `onGo` closes the dialog |
 
 Forward-only wording covers application installers and servicing-stack changes. The confirmation records acceptance through the parent's request. The component does not independently verify rollback capability or policy eligibility.
 
@@ -354,9 +365,7 @@ Forward-only wording covers application installers and servicing-stack changes. 
 
 `hosts` defaults to `assetIds.length` and affects accessible text only. `label` defaults to `Plan fix`. `className` customizes the wrapper.
 
-Any per-asset errors produce one message with duplicate error text removed. Jobs created for other assets remain created. Success or failure refreshes job-derived queries. Full success navigates to Remediation, with the first job's anchor when present.
-
-Navigation checks whether the current pathname equals its value at click time. Query/hash changes do not affect that test. A user who leaves and returns to the same pathname can still be navigated. The button creates plans without approval or execution.
+Any per-asset errors produce one message with duplicate error text removed. Jobs created for other assets remain created. Success or failure refreshes job-derived queries. Success stays where you are and says what it planned ("Planned on web-1: awaiting approval"), with a link to review and approve it. More than two machines are listed in a confirmation first. The button creates plans without approval or execution.
 
 ## Display helpers
 

@@ -62,7 +62,7 @@ A finding resolved before the review period is excluded. Findings without a life
 | `cvss` | Numeric score or `null` |
 | `kev` | Boolean known-exploitation flag |
 | `status` | Current stored finding status. Use `resolved_at` for resolution within the selected period |
-| `first_seen` | Naive UTC timestamp string from the lifecycle ledger |
+| `first_seen` | Naive UTC timestamp string from the lifecycle ledger: the first `finding_opened`, or the latest `finding_reopened` after a regression (DECISIONS 137) |
 | `resolved_at` | Naive UTC timestamp string, or `null` if not resolved by the period end |
 | `days_open` | Number rounded to one decimal; first detection to resolution or period end |
 | `sla_days` | Deadline in force at first detection, in days |

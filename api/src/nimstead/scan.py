@@ -279,7 +279,8 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
             s.add(f)
             events.append(("finding_opened", f))
         elif f.status == "resolved":  # regression: vulnerable version came back
-            f.status, f.resolved_at = "open", None
+            # a new exposure, timed (and due) from now, as the evidence pack times it; the ledger keeps the first detection
+            f.status, f.resolved_at, f.first_seen = "open", None, t
             events.append(("finding_reopened", f))
         elif f.status == "accepted" and f.accepted_until and f.accepted_until < t:
             f.status, f.accepted_until = "open", None

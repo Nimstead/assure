@@ -97,7 +97,7 @@ All acceptance POST operations require an organisation admin browser session. AP
 
 | Operation | Input and result |
 | --- | --- |
-| `POST /api/findings/{finding_id}/accept` | Reason of 10–2000 characters. `days` defaults to 90, range 1–365. Accepts any owned finding status. Returns a full row |
+| `POST /api/findings/{finding_id}/accept` | Reason of 10–2000 characters. `days` defaults to 90, range 1–365. Accepts an open or already-accepted finding; `409` for a resolved one. Returns a full row |
 | `POST /api/findings/accept` | Same reason/days plus `vuln_id` of 1–200 characters. Accepts currently open matches. Returns integer `accepted`, or `404` if none match |
 | `POST /api/findings/accept-many` | Same reason/days plus 1–1000 `ids`. Counts duplicate IDs once. Accepts owned open rows and returns integer `accepted`/`skipped` |
 | `POST /api/findings/{finding_id}/revoke-acceptance` | Reason of 3–2000 characters. Requires accepted status. Returns a full row, or `409` for another status |

@@ -6388,7 +6388,7 @@
     },
     "/api/assets/{asset_id}/sbom": {
       "post": {
-        "description": "Read raw CycloneDX/SPDX JSON and return parser plus rescan counts.\n\nasset_id selects the asset. request supplies bytes and either its bearer\nkey or an admin session. Read before authentication, with a 10MiB streamed\ncap and HTTP 413 on excess. Preserve agent-origin rows. Defer parse/store\nwork to ingest_sbom. Invalid formats return 422, wrong keys 401. Other\nauthentication/ownership failures and storage/evidence errors can occur.",
+        "description": "Read raw CycloneDX/SPDX JSON and return parser plus rescan counts.\n\nasset_id selects the asset. request supplies bytes and either its bearer\nkey or an admin session. Authenticated from the headers before the body is\nread (an anonymous caller can't make the server buffer 10 MiB), then read with\na 10MiB streamed cap and HTTP 413 on excess. Preserve agent-origin rows. Defer parse/store\nwork to ingest_sbom. Invalid formats return 422, wrong keys 401. Other\nauthentication/ownership failures and storage/evidence errors can occur.",
         "operationId": "upload_sbom_api_assets__asset_id__sbom_post",
         "parameters": [
           {
@@ -9124,7 +9124,7 @@
     },
     "/api/findings/{finding_id}/accept": {
       "post": {
-        "description": "Record time-limited risk acceptance with a reason and return the updated finding.\n\nfinding_id can identify any owned status. body has a reason of 10\u20132000\ncharacters and days from 1\u2013365, default 90. Commit acceptance and ledger\nevent. Existing resolved_at is retained. The full row omits accepted_until.\n\nRequires an organisation admin browser session; API tokens are refused.\n\nOperation-specific HTTP errors: 404. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
+        "description": "Record time-limited risk acceptance with a reason and return the updated finding.\n\nfinding_id must be open or already accepted (409 otherwise). body has a reason of 10\u20132000\ncharacters and days from 1\u2013365, default 90. Commit acceptance and ledger\nevent. Existing resolved_at is retained. The full row omits accepted_until.\n\nRequires an organisation admin browser session; API tokens are refused.\n\nOperation-specific HTTP errors: 404, 409. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
         "operationId": "accept_finding_api_findings__finding_id__accept_post",
         "parameters": [
           {

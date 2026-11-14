@@ -108,20 +108,23 @@ def verify_chain(s: Session, org_id: str, full: bool = True) -> list[str]:
     if done and s.scalar(select(LedgerEntry.hash).where(LedgerEntry.org_id == org_id, LedgerEntry.seq == done[0])) != done[1]:
         done = None  # the anchor changed: check everything
     start, prev_hash = (done[0], done[1]) if done else (0, GENESIS)
-    entries = s.execute(select(*LEDGER_COLS).where(LedgerEntry.org_id == org_id, LedgerEntry.seq > start).order_by(LedgerEntry.seq)).all()
-    problems = []
-    for i, e in enumerate(entries, start + 1):
+    # streamed in batches: a ledger grows with the fleet, and holding every row at once costs gigabytes after a year
+    rows = s.execute(select(*LEDGER_COLS).where(LedgerEntry.org_id == org_id, LedgerEntry.seq > start).order_by(LedgerEntry.seq)
+                     .execution_options(yield_per=5000))
+    problems, by_seq, last = [], {}, None
+    for i, e in enumerate(rows, start + 1):
         d = entry_dict(e)
         if e.seq != i or e.prev_hash != prev_hash:
             problems.append(f"entry {e.seq}: chain broken")
         if entry_hash(d) != e.hash:
             problems.append(f"entry {e.seq}: hash mismatch")
-        prev_hash = e.hash
+        prev_hash, last = e.hash, (e.seq, e.hash)
+        if not done:
+            by_seq[e.seq] = e.hash  # only seq and hash are kept, for the checkpoint comparison below
     if done:  # checkpoints pin history up to the anchor, which the last full check compared them with
-        if not problems and entries:
-            _VERIFIED[org_id] = (entries[-1].seq, entries[-1].hash, done[2])
+        if not problems and last:
+            _VERIFIED[org_id] = (last[0], last[1], done[2])
         return problems
-    by_seq = {e.seq: e.hash for e in entries}
     pubs = verification_keys()  # once: with Vault each load is an HTTP call, and checkpoints grow by one an hour
     for cp in load_checkpoints(org_id):
         if not checkpoint_valid(cp, pubs):
@@ -130,10 +133,10 @@ def verify_chain(s: Session, org_id: str, full: bool = True) -> list[str]:
             problems.append(f"checkpoint at seq {cp['seq']}: entry missing (ledger truncated)")
         elif cp["seq"] > 0 and by_seq[cp["seq"]] != cp["hash"]:
             problems.append(f"checkpoint at seq {cp['seq']}: hash differs (ledger rewritten)")
-    if problems or not entries:
+    if problems or not last:
         _VERIFIED.pop(org_id, None)
     else:
-        _VERIFIED[org_id] = (entries[-1].seq, entries[-1].hash, datetime.now(UTC))
+        _VERIFIED[org_id] = (last[0], last[1], datetime.now(UTC))
     return problems
 
 
@@ -353,10 +356,12 @@ def build_pack(s: Session, org_id: str, start: datetime, end: datetime, with_ent
         ts = datetime.fromisoformat(e.ts).replace(tzinfo=None)
         if e.kind == "finding_resolved":
             closed_at[e.subject] = ts
+        elif e.kind == "finding_reopened":
+            # a regression starts a new exposure: timed from its return, not from a first detection that was fixed
+            opened[e.subject] = ts
+            closed_at.pop(e.subject, None)
         else:
             opened.setdefault(e.subject, ts)
-            if e.kind == "finding_reopened":
-                closed_at.pop(e.subject, None)
     # Each finding is held to the deadline in force when it was detected.
     sla_at = sla_history(s, org_id)
     rows, ttr = [], []

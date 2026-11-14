@@ -30,7 +30,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Stre
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import Integer, and_, case, delete, func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, load_only
 
 from nimstead import (
     ai,
@@ -207,7 +207,6 @@ TEST_ALERT_MAX_PER_HOUR = 5
 RATE_WINDOW = 3600
 SIGNUP_LINK_HOURS = 24
 RESET_LINK_HOURS = 1
-FAILED_JOB = ("failed", "rolled_back", "rollback_failed", "not_fixed", "aborted")  # finished, and not fixed
 SESSION_DAYS, SESSION_IDLE = 14, timedelta(hours=12)
 MFA_SETUP_SECONDS = 600
 INVITE_MAX_PER_HOUR = 20  # per org
@@ -1769,39 +1768,44 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         """Read raw CycloneDX/SPDX JSON and return parser plus rescan counts.
 
         asset_id selects the asset. request supplies bytes and either its bearer
-        key or an admin session. Read before authentication, with a 10MiB streamed
-        cap and HTTP 413 on excess. Preserve agent-origin rows. Defer parse/store
+        key or an admin session. Authenticated from the headers before the body is
+        read (an anonymous caller can't make the server buffer 10 MiB), then read with
+        a 10MiB streamed cap and HTTP 413 on excess. Preserve agent-origin rows. Defer parse/store
         work to ingest_sbom. Invalid formats return 422, wrong keys 401. Other
         authentication/ownership failures and storage/evidence errors can occur."""
+        a, by = await run_in_threadpool(sbom_caller, asset_id, request, s)
         raw = bytearray()  # grows in place: bytes += would copy the whole body again on every chunk
         async for chunk in request.stream():  # cap chunked bodies too, which the middleware can't see
             raw += chunk
             if len(raw) > MAX_BODY:
                 raise HTTPException(413, "Request body too large")
-        return await run_in_threadpool(ingest_sbom, asset_id, request, bytes(raw), s)
+        return await run_in_threadpool(ingest_sbom, a, by, bytes(raw), s)
 
-    def ingest_sbom(asset_id: str, request: Request, raw: bytes, s: Session) -> dict:
+    def sbom_caller(asset_id: str, request: Request, s: Session) -> tuple[Asset, str]:
+        """Return (asset, who) for an SBOM upload from its headers alone.
+
+        An exact Bearer header takes precedence over any browser session: it must match
+        that asset's own key (401 otherwise). Otherwise require an admin session and an
+        owned asset; replacing an SBOM resolves findings, so read-only members can't."""
+        auth = request.headers.get("authorization", "")
+        if auth.startswith("Bearer "):
+            a = s.scalar(select(Asset).where(Asset.agent_key_hash == sha(auth.removeprefix("Bearer "))))
+            if not a or a.id != asset_id:
+                raise HTTPException(401, "Unknown key for this asset")
+            return a, "key"
+        user = admin_user(request, current_user(request, s))
+        return owned_asset(s, user, asset_id), user.email
+
+    def ingest_sbom(a: Asset, by: str, raw: bytes, s: Session) -> dict:
         """Authenticate, replace SBOM-origin rows and return mapping/rescan counts.
 
-        asset_id selects the destination. request supplies headers/session, raw is
-        the full document and s is the Session. Exact Bearer headers take precedence
-        over any browser session. Match any asset's stored key, then require its ID.
-        Otherwise require an admin session and owned asset.
+        a and by come from sbom_caller; raw is the full document and s is the Session.
 
         Parse before replacing. Empty valid inventory clears SBOM rows. Update
         last_seen for any kind, retain agent rows and append a raw-byte digest event.
         Rescan commits storage. It receives inventory_received=False and does not
         perform the agent job-verification/automatic-planning sequence here. Parse
         failures return 422. Other errors can propagate after earlier effects."""
-        auth = request.headers.get("authorization", "")
-        if auth.startswith("Bearer "):  # the asset's own key / upload token, for that asset only
-            a = s.scalar(select(Asset).where(Asset.agent_key_hash == sha(auth.removeprefix("Bearer "))))
-            if not a or a.id != asset_id:
-                raise HTTPException(401, "Unknown key for this asset")
-            by = "key"
-        else:
-            user = admin_user(request, current_user(request, s))  # replacing an SBOM resolves findings: not for read-only members
-            a, by = owned_asset(s, user, asset_id), user.email
         try:
             pkgs, counts = sbom.parse(sbom.load(raw))
         except (ValueError, RecursionError) as e:  # bad JSON, bad UTF-8 or SbomError
@@ -1958,8 +1962,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                 for x, h, due in with_due(s2, org_id, f):
                     d = finding_json(x, h, due)
                     # cells a spreadsheet would run as a formula (package names and summaries come from hosts and advisories)
-                    yield line(["'" + v if isinstance(v, str) and v[:1] in ("=", "+", "-", "@", "\t", "\r") else v
-                                for v in (d[c] for c in CSV_COLUMNS)])
+                    yield line([csv_safe(v) if isinstance(v, str) else v for v in (d[c] for c in CSV_COLUMNS)])
         return StreamingResponse(rows(), media_type="text/csv",
                                  headers={"Content-Disposition": f'attachment; filename="nimstead-findings-{f.status}.csv"'})
 
@@ -2027,17 +2030,20 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def accept_finding(finding_id: str, body: Accept, user: Admin, s: DB):
         """Record time-limited risk acceptance with a reason and return the updated finding.
 
-        finding_id can identify any owned status. body has a reason of 10–2000
+        finding_id must be open or already accepted (409 otherwise). body has a reason of 10–2000
         characters and days from 1–365, default 90. Commit acceptance and ledger
         event. Existing resolved_at is retained. The full row omits accepted_until.
 
         Requires an organisation admin browser session; API tokens are refused.
 
-        Operation-specific HTTP errors: 404. See detail in the response.
+        Operation-specific HTTP errors: 404, 409. See detail in the response.
         Authentication and request-validation errors also apply where required."""
         f = s.get(Finding, finding_id)
         if not f or f.org_id != user.org_id:
             raise HTTPException(404, "Finding not found")
+        # a resolved finding has nothing to accept: accepting it would drop a real fix out of the evidence counts
+        if f.status not in ("open", "accepted"):
+            raise HTTPException(409, f"This finding is {f.status}; only open findings can be accepted")
         accept(s, user, f, body)
         s.commit()
         return finding_json(f, s.get(Asset, f.asset_id).hostname)
@@ -2949,19 +2955,22 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             asset_ids = sorted({r[3] for r in rows})
             # A fix already in flight for this package: Home links to it instead of offering "Plan fix", which the API refuses
             # while one is active. Failed ones are listed under "needs a look" and can be planned again.
-            jobs = s.scalars(select(RemediationJob).where(
-                RemediationJob.org_id == user.org_id, RemediationJob.action_key == f"{eco}|{pkg}", RemediationJob.asset_id.in_(asset_ids),
-            ).order_by(RemediationJob.updated.desc()).limit(50)).all()
-            active = [j for j in jobs if j.status in remediate.ACTIVE]
+            mine = (RemediationJob.org_id == user.org_id, RemediationJob.action_key == f"{eco}|{pkg}", RemediationJob.asset_id.in_(asset_ids))
+            # every job in flight (one per machine at most), not the newest 50 of all statuses: Home counts them as already planned
+            active = s.scalars(select(RemediationJob).where(*mine, RemediationJob.status.in_(remediate.ACTIVE))
+                               .order_by(RemediationJob.updated.desc())).all()
             # The newest finished attempt, if it failed: Home says so rather than offering the same plan blind.
-            last = next((j for j in jobs if j.status not in remediate.ACTIVE), None)
+            last = s.scalar(select(RemediationJob).where(*mine, RemediationJob.status.not_in(remediate.ACTIVE))
+                            .order_by(RemediationJob.updated.desc()).limit(1))
             top.append({"ecosystem": eco, "package": pkg, "fixed_version": fixed, "hosts": sorted({r[2] for r in rows}),
                         "asset_ids": asset_ids, "busy_asset_ids": sorted({j.asset_id for j in active}),
                         "job": {"id": active[0].id, "status": active[0].status} if active else None,
-                        "last_attempt": {"id": last.id, "status": last.status, "error": last.error, "asset_id": last.asset_id} if last and last.status in FAILED_JOB else None,
+                        "last_attempt": {"id": last.id, "status": last.status, "error": last.error, "asset_id": last.asset_id} if last and last.status in remediate.ALERT_STATUSES else None,
                         "vulns": sorted({r[1] for r in rows}), "kev": bool(kev), "max_score": max_score,
                         "summary": rows[0][4] if eco == "WinConfig" else None, **remediate.fix_path(eco, pkg)})
-        hosts = s.scalars(select(Asset).where(Asset.org_id == user.org_id, Asset.kind == "host")).all()
+        # only the four columns the counts read: each host row also carries facts and a collection document
+        hosts = s.scalars(select(Asset).options(load_only(Asset.last_seen, Asset.agent_version, Asset.auto_update, Asset.agent_update_error))
+                          .where(Asset.org_id == user.org_id, Asset.kind == "host")).all()
         paused, release = s.get(Org, user.org_id).agent_updates_paused, signed_release() is not None
         # devices with no agent that a network check found something on: one per MAC, however many machines checked it
         device_open = s.execute(select(Asset.facts, func.count(Finding.id)).join(Finding, Finding.asset_id == Asset.id).where(
@@ -2975,7 +2984,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             "top_actions": top,
             "attention": [job_json(j, h) for j, h in s.execute(
                 select(RemediationJob, Asset.hostname).join(Asset, Asset.id == RemediationJob.asset_id)
-                .where(RemediationJob.org_id == user.org_id, RemediationJob.status.in_(FAILED_JOB))  # a cancel is deliberate, not a problem
+                .where(RemediationJob.org_id == user.org_id, RemediationJob.status.in_(remediate.ALERT_STATUSES))  # a cancel is deliberate, not a problem
                 .order_by(RemediationJob.updated.desc()).limit(20))],
         }
 

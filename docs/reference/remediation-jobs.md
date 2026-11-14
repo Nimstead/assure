@@ -141,9 +141,9 @@ Settings GET/PATCH returns these six policy fields plus `signed_agent_release`, 
 
 Automatic planning skips manual-only base managers. Broad policy approval requires a same-action succeeded canary on a current ring-0 asset, old enough for the soak. Failure states `rolled_back`, `rollback_failed`, `failed`, and `not_fixed` halt rollout. `aborted` and `cancelled` are not halt states.
 
-For KB jobs, a failed earlier target does not necessarily halt a newer release. Canary version reports must show a valid upgrade reaching the requested target. Non-KB packages impose no version test in `proves()`. A succeeded same-action canary can therefore qualify without complete package version evidence.
+For KB jobs, a failed earlier target does not necessarily halt a newer release. Canary version reports must show a valid upgrade reaching the requested target. For non-KB jobs, a canary qualifies only when every package version it reported for the job is at or past the highest fixed version among the job's findings (DECISIONS 137). A canary that reported no versions (an agent older than 0.6) still qualifies.
 
-`pin_to_canary()` selects the newest succeeded same-action canary with nonnull results. It replaces only non-KB targets with readable reported upgrades. Missing or invalid versions leave targets unchanged, potentially unpinned. The helper does not independently repeat soak checks.
+`pin_to_canary()` selects the newest succeeded same-action canary with nonnull results. It pins only when that canary reached the job's fix, and replaces only non-KB targets with readable reported upgrades. A canary below the fix leaves the targets unpinned, so the agent installs the repository's current fix. Missing or invalid versions leave targets unchanged, potentially unpinned. The helper does not independently repeat soak checks.
 
 ## Windows cumulative groups and step planning
 

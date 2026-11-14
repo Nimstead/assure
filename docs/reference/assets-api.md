@@ -148,7 +148,7 @@ Action groups use open findings with a fixed version or a supported configuratio
 | hosts, asset_ids | Sorted distinct hostnames and asset IDs |
 | busy_asset_ids | Sorted asset IDs with selected active jobs |
 | job | Newest selected active job's id/status, or null |
-| last_attempt | Newest selected finished attempt when its status needs attention. id/status/error, or null |
+| last_attempt | Newest selected finished attempt when its status needs attention. id/status/error/asset_id, or null |
 | vulns | Sorted distinct vulnerability identifiers |
 | kev, max_score | Group KEV flag and maximum stored score |
 | summary | One selected finding summary for configuration groups, otherwise null |

@@ -459,7 +459,8 @@ function FindingDrawer({ id, ids = [], total, more, onMove, onClose }: {
             {/* stepping with j/k changes the host as often as the ID: both sit in the title, with where you are in the list */}
             <div className="min-w-0">
               <Dialog.Title ref={title} tabIndex={-1} className={clsx("break-all font-mono text-lg font-semibold", q.isPlaceholderData && "opacity-40")}>{q.data?.vuln_id ?? "Finding"}</Dialog.Title>
-              {q.data && <p className="break-all text-sm">{/* a name opens its detail (DESIGN.md): the machine's drawer on Assets */}
+              {/* dimmed with the title while the next finding loads, so the counter never pairs with the last finding's host */}
+              {q.data && <p className={clsx("break-all text-sm", q.isPlaceholderData && "opacity-40")}>{/* a name opens its detail (DESIGN.md): the machine's drawer on Assets */}
                 <Link to="/assets" search={{ machine: q.data.asset_id }} className="font-medium text-ink underline decoration-line-strong hover:decoration-ink">{q.data.hostname}</Link>{ids.length > 1 && at >= 0 && <span className="num text-muted"> · {at + 1} of {(total ?? ids.length).toLocaleString("en")}</span>}</p>}
             </div>
             {ids.length > 1 && at >= 0 && (

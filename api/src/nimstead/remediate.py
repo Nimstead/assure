@@ -375,6 +375,30 @@ def _proven_upgrade(p: dict, proven: dict, cmp) -> bool:
     return bool(cmp and SAFE_VERSION.match(to) and p.get("from") and cmp(to, str(p["from"])) > 0)
 
 
+def _needed(s: Session, job: RemediationJob, cmp) -> str | None:
+    """The highest fixed version among job's findings: what a non-KB canary must have reached to vouch for this job."""
+    fixed = [v for v in s.scalars(select(Finding.fixed_version).where(Finding.id.in_(job.finding_ids or []))) if v and SAFE_VERSION.match(v)]
+    if not fixed or not cmp:
+        return None
+    best = fixed[0]
+    for v in fixed[1:]:
+        if cmp(v, best) > 0:
+            best = v
+    return best
+
+
+def _reaches_fix(canary: RemediationJob, job: RemediationJob, need: str | None, cmp) -> bool:
+    """A non-KB canary vouches for job only if every package it reported for this job is at or past need.
+
+    One action key spans every release: a canary that installed 3.0.13 in September says nothing about
+    November's CVE fixed in 3.0.15, and pinning to it would abort (or come back not fixed) on every host."""
+    if not need or not cmp:
+        return True
+    got = [str(v) for n, v in (canary.result_versions or {}).items() if any(p["name"] == n and not p.get("kb") for p in job.packages)]
+    # a canary that reported no versions (an older agent) vouches as before; one that reported versions must reach the fix
+    return not got or all(SAFE_VERSION.match(v) and cmp(v, need) >= 0 for v in got)
+
+
 def proves(canary: RemediationJob, job: RemediationJob) -> bool:
     """Return whether canary result versions satisfy job's KB package targets.
 
@@ -410,7 +434,9 @@ def canary_ok(s: Session, org: Org, job: RemediationJob) -> tuple[bool, str]:
         return False, "No canary assets: mark at least one asset as ring 0 to enable automatic rollout"
     soak = now() - timedelta(hours=org.canary_soak_hours)
     soaked = [j for j in same if j.asset_id in canary_ids and j.status == "succeeded" and j.updated <= soak]
-    if any(proves(j, job) for j in soaked):
+    cmp = comparator_for(job.action_key.split("|", 1)[0])
+    need = None if target else _needed(s, job, cmp)
+    if any(proves(j, job) and _reaches_fix(j, job, need, cmp) for j in soaked):
         return True, "Canary succeeded and soaked"
     if soaked:  # one action key spans every release: last month's canary says nothing about this month's update
         return False, f"Waiting for a canary to succeed on this version and soak for {org.canary_soak_hours}h"
@@ -542,8 +568,9 @@ def pin_to_canary(s: Session, job: RemediationJob) -> None:
         RemediationJob.org_id == job.org_id, RemediationJob.action_key == job.action_key,
         RemediationJob.status == "succeeded", Asset.ring == 0, RemediationJob.result_versions.is_not(None),
     ).order_by(RemediationJob.updated.desc()).limit(1))
-    proven = (canary.result_versions or {}) if canary else {}
     cmp = comparator_for(job.action_key.split("|", 1)[0])
+    # a canary below this job's fix would pin the host to a version that doesn't fix it: leave the target unpinned
+    proven = (canary.result_versions or {}) if canary and _reaches_fix(canary, job, _needed(s, job, cmp), cmp) else {}
     job.packages = [{**p, "to": proven[p["name"]]} if not p.get("kb") and _proven_upgrade(p, proven, cmp) else p for p in job.packages]
 
 
@@ -650,8 +677,12 @@ def dispatch(s: Session, asset: Asset) -> list[dict]:
                      RemediationJob.updated >= now() - WIN_TIMEOUT_MARGIN)
     win_busy = s.scalar(select(RemediationJob.id).where(RemediationJob.asset_id == asset.id, RemediationJob.manager == "windows",
                                                         or_(RemediationJob.status == "dispatched", timed_out)).limit(1)) is not None
-    if not win_busy and (group := serial_group(asset)):
-        peers = [a.id for a in s.scalars(select(Asset).where(Asset.org_id == asset.org_id, Asset.id != asset.id)) if serial_group(a) == group]
+    # peers matter only when this host has a Windows job to hand out: a DC's routine poll doesn't load the fleet
+    has_win = s.scalar(select(RemediationJob.id).where(RemediationJob.asset_id == asset.id, RemediationJob.manager == "windows",
+                                                       RemediationJob.status == "approved").limit(1)) is not None
+    if not win_busy and has_win and (group := serial_group(asset)):
+        peers = [aid for aid, facts in s.execute(select(Asset.id, Asset.facts).where(Asset.org_id == asset.org_id, Asset.id != asset.id))
+                 if serial_group(Asset(facts=facts)) == group]
         win_busy = bool(peers) and s.scalar(select(RemediationJob.id).where(
             RemediationJob.asset_id.in_(peers), RemediationJob.manager == "windows",
             RemediationJob.status.in_(("dispatched", "verifying")),

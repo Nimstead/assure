@@ -7,6 +7,7 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 No database migration; the agent is unchanged.
 
 ### Changed
+- Confirmation dialogs are wider (36rem), so package lines fit on one line. Evidence's four numbers sit 2x2 on phones. A rolled-back job on a machine production remediation won't change no longer shows retry advice it can't act on.
 - An aborted fix's "Plan again including …" on Fix first names its machine, as every plan button does (`last_attempt.asset_id` in `/api/summary`). In a ring review, "on 3 of 4 machines (not …)" sits on its own short line. The Internet targets empty state says how to add one.
 - Fix first's plan button for a fix already in flight says how many are planned ("Plan fix on 16 more machines (1 already planned)"), counted from the same machines as "17 of 35 fixable here". On phones the priority counts sit under "Open findings by priority". A machine that isn't reporting says so once in its drawer.
 - Wording: "not reporting" everywhere, "All assets" in the Assets filter, "No internet targets yet", "Approve 4 machines and run", and an aborted job names the packages it will add. A rollout lists its canary machines before its broad ones again; the card already names what broke.

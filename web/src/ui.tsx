@@ -16,7 +16,7 @@ export const chip = (on: boolean) => clsx("inline-flex min-h-[44px] md:min-h-8 c
 export const switchRoot = "relative h-5 w-9 shrink-0 cursor-pointer rounded-full bg-line-strong data-[state=checked]:bg-accent disabled:opacity-50";
 export const switchThumb = "block size-4 translate-x-0.5 rounded-full bg-surface transition-transform data-[state=checked]:translate-x-[18px]";
 // never taller than the screen: a long machine list scrolls inside, so Cancel and confirm stay reachable on a phone
-export const dialogBox = "fixed left-1/2 top-[8vh] z-[51] max-h-[calc(100dvh_-_8vh_-_1rem)] w-[min(30rem,calc(100%-2rem))] overflow-y-auto overscroll-contain -translate-x-1/2 border border-line bg-surface p-5 shadow-[0_24px_48px_-12px_var(--shadow)]";
+export const dialogBox = "fixed left-1/2 top-[8vh] z-[51] max-h-[calc(100dvh_-_8vh_-_1rem)] w-[min(36rem,calc(100%-2rem))] overflow-y-auto overscroll-contain -translate-x-1/2 border border-line bg-surface p-5 shadow-[0_24px_48px_-12px_var(--shadow)]";
 
 /**
  * Radix returns focus only to a Dialog.Trigger; ours open from state, so this hands focus back to whatever opened the

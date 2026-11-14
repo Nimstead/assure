@@ -265,7 +265,8 @@ export function JobCard({ job: j, onApprove, onCancel, blocked, inRollout }: { j
       {j.status === "planned" && <PackageList job={j} />}
       {/* a cancel is deliberate: said plainly, never in the error box */}
       {j.error && (j.status === "cancelled" ? <p className="mt-2 text-sm text-muted">{j.error}.</p> : <RefusalNote error={j.error} />)}
-      {j.status === "rolled_back" && <p className="mt-2 max-w-prose text-sm">Before planning it again, try it on a test machine; the service's log usually says why it wouldn't start.</p>}
+      {/* the retry advice only where a retry can be planned (one muted line per card) */}
+      {j.status === "rolled_back" && !blocked && <p className="mt-2 max-w-prose text-sm">Before planning it again, try it on a test machine; the service's log usually says why it wouldn't start.</p>}
       {AGAIN.includes(j.status) && deps.length === 0 && pkg && (blocked ? <p className="mt-3 text-sm text-muted">Can't plan it again here: {blocked}.</p>
         : <PlanFixButton ecosystem={ecosystem!} pkg={pkg} assetIds={[j.asset_id]} label={`Plan fix again on ${j.hostname}`} className="mt-3" />)}
       {deps.length > 0 && (

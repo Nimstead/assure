@@ -99,7 +99,7 @@ function ReportView({ r, days }: { r: EvidenceReport; days: number }) {
       <p className="-mt-4 text-sm text-muted">
         {date(r.period.from)} to {date(r.period.to)} · as of <time dateTime={parseUtc(r.period.to).toISOString()}>{parseUtc(r.period.to).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}</time>
       </p>
-      <dl className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+      <dl className="grid grid-cols-2 gap-2 lg:grid-cols-4">
         {tile("Controls not met", <span className={counts.not_met ? "text-now-fg" : undefined}>{counts.not_met ?? 0} of {r.controls.length}</span>, `${metClean} met cleanly`)}
         {/* the number an auditor asks about leads to the findings behind it */}
         {tile("Overdue findings", <span className={m.overdue_open > 0 ? "text-now-fg" : undefined}>{m.overdue_open}</span>, m.overdue_open > 0 && (

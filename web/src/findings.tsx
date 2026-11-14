@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
-import { Dialog, Switch } from "radix-ui";
+import { Dialog } from "radix-ui";
 import { ArrowDown, ArrowRight, ArrowUpDown, Bookmark, ChevronDown, ChevronUp, ExternalLink, Search, SlidersHorizontal, Sparkles, Wrench, X } from "lucide-react";
 import clsx from "clsx";
 import {
@@ -10,7 +10,7 @@ import {
   PRIORITIES, PRIORITY_LABEL, refresh, relativeTime, parseUtc, useIsAdmin, useTitle, whyMatched, fixLabel, type AiFilter, type Finding, type FindingGroup, type FindingGroupRow, type FindingSort, type FindingsFilters, type Job, type RawSearch, type Status,
 } from "./lib";
 import { PlanFixButton } from "./planfix";
-import { Alert, btnPrimary, btnQuiet, chip, ConfirmDialog, Done, EmptyState, ErrorState, Field, input, KevBadge, Loading, PriorityPill, StatusPill, switchRoot, switchThumb, useReturnFocus } from "./ui";
+import { Alert, btnPrimary, btnQuiet, chip, ConfirmDialog, Done, EmptyState, ErrorState, Field, input, KevBadge, Loading, PriorityPill, StatusPill, useReturnFocus } from "./ui";
 
 /** "org.apache.logging.log4j:log4j-core" → "log4j-core" then the group, muted: the part that tells packages apart comes
  *  first, so it survives truncation; the cell's title has the full name. */
@@ -48,7 +48,7 @@ export function FindingsPage({ search }: { search: RawSearch }) {
     onSuccess: (a) => { if (here.current !== "/findings") return; const p = aiFilterToPatch(a); setText(p.q ?? ""); setAsked(true); set(p); },
   });
   const [showFilters, setShowFilters] = useState(false);
-  const active = f.priority.length + Number(f.kev) + Number(f.overdue) + Number(!f.fixable) + Number(!!f.asset);
+  const active = f.priority.length + Number(f.kev) + Number(f.overdue) + Number(f.fixable) + Number(!!f.asset) + Number(!!f.ecosystem);
   useEffect(() => {
     if (text === f.q || question) return; // a question is sent on Ask, not searched literally
     const t = setTimeout(() => set({ q: text.trim() }), 250);
@@ -75,16 +75,31 @@ export function FindingsPage({ search }: { search: RawSearch }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [picked.size]);
   const pick = useCallback((id: string, v: boolean) => setPicked((s) => { const n = new Set(s); if (v) n.add(id); else n.delete(id); return n; }), []);
+  // j/k from anywhere on the page start at the first finding: no need to tab into the table first
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.key !== "j" && e.key !== "k") || e.altKey || e.ctrlKey || e.metaKey) return;
+      const t = e.target as HTMLElement;
+      if (t.closest("input, textarea, select, [contenteditable], [role=dialog], [role=alertdialog], [role=rowgroup]")) return;
+      const first = document.querySelector<HTMLElement>('[role=rowgroup] [data-index="0"] [data-c=vuln] button');
+      if (first) { e.preventDefault(); first.focus(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   // the total, asked for alongside the first page
   const count = useQuery({ queryKey: ["findings", "count", filterQs], queryFn: () => api<{ total: number }>(`/api/findings/count?${filterQs}`), enabled: !f.group, placeholderData: (p) => p });
+  // "16,872 with a fix, of 43,970": the same filters without "Has a fix", so the number matches Fix first's
+  const allQs = filtersToApi({ ...f, fixable: false }, false);
+  const all = useQuery({ queryKey: ["findings", "count", allQs], queryFn: () => api<{ total: number }>(`/api/findings/count?${allQs}`), enabled: !f.group && f.fixable, placeholderData: (p) => p });
   const groups = useQuery({ queryKey: ["findings", "groups", f.group, filterQs], queryFn: () => api<FindingGroupRow[]>(`/api/findings/groups?by=${f.group}&${filterQs}`),
     enabled: !!f.group, placeholderData: (p) => p });
   const typing = text.trim() !== f.q && !question;
   const assets = useQuery(assetsQ);
   const host = assets.data?.find((a) => a.id === f.asset)?.hostname;
   const updating = f.group ? groups.isPlaceholderData : list.isPlaceholderData;
-  // back to the default view (fixable only); showing unfixable findings is its own, named action
-  const clearAll = () => { setAsked(false); setText(""); set({ fixable: true, kev: false, overdue: false, q: "", priority: [], asset: "" }); };
+  // back to the default view: every open finding, by risk
+  const clearAll = () => { setAsked(false); setText(""); set({ fixable: false, kev: false, overdue: false, q: "", priority: [], asset: "", ecosystem: "" }); };
 
   return (
     <div className="flex flex-col gap-4">
@@ -94,10 +109,10 @@ export function FindingsPage({ search }: { search: RawSearch }) {
           <p className="num text-sm text-muted" aria-live="polite">
             {typing || updating ? "Updating…"
               : f.group ? groups.data && `${plural(groups.data.length, f.group === "vuln" ? "vulnerability" : "package", f.group === "vuln" ? "vulnerabilities" : undefined)}${groups.data.length === 500 ? " (worst 500)" : ""}`
-              : rows && plural(count.data?.total ?? rows.length, "result")}
-            {f.fixable && !typing && !updating && <> · fixable only (<button className="inline-flex tap cursor-pointer items-center underline" onClick={() => set({ fixable: false })}>show all</button>)</>}
+              : rows && (f.fixable && all.data && count.data ? `${count.data.total.toLocaleString("en")} with a fix, of ${plural(all.data.total, "result")}` : plural(count.data?.total ?? rows.length, "result"))}
+            {f.fixable && !typing && !updating && (all.data?.total ?? 1) > 0 && <> (<button className="inline-flex tap cursor-pointer items-center underline" onClick={() => set({ fixable: false })}>include those with no fix</button>)</>}
           </p>
-          <a className={btnQuiet} href={`/api/findings.csv?${apiQs}`} download>Export CSV</a>
+          <a className={btnQuiet} href={`/api/findings.csv?${apiQs}`} download>Download as CSV</a>
         </div>
       </header>
 
@@ -135,11 +150,14 @@ export function FindingsPage({ search }: { search: RawSearch }) {
           </div>
           {/* On phones the rarer filters fold away so results start on the first screen. */}
           <button className={clsx(chip(active > 0), "md:hidden")} aria-expanded={showFilters} aria-controls="more-filters" onClick={() => setShowFilters((x) => !x)}>
-            <SlidersHorizontal className="size-4" aria-hidden />Filters ({active + Number(f.fixable)})
+            <SlidersHorizontal className="size-4" aria-hidden />Filters ({active})
           </button>
-          <div id="more-filters" className={clsx("w-full flex-wrap items-center gap-x-4 gap-y-2.5 md:flex md:w-auto", showFilters ? "flex" : "hidden")}>
+          <div id="more-filters" className={clsx("w-full flex-wrap items-center gap-x-4 gap-y-2.5 md:contents", showFilters ? "flex" : "hidden")}>
           <ViewControls f={f} set={set} />
           <SavedViews search={filtersToSearch({ ...f, open: "" })} />
+          {/* two rows: what you're looking at (status, view), then what narrows it */}
+          <span aria-hidden className="hidden basis-full md:block" />
+          <span className="text-sm text-muted">Filter</span>
           <div role="group" aria-label="Priority" className="flex flex-wrap gap-1.5">
             {PRIORITIES.map((p) => {
               const on = f.priority.includes(p);
@@ -156,14 +174,17 @@ export function FindingsPage({ search }: { search: RawSearch }) {
           <button aria-pressed={f.overdue} onClick={() => set({ overdue: !f.overdue })} className={chip(f.overdue)}>
             Overdue
           </button>
-          <label className="flex tap cursor-pointer items-center gap-2 text-sm">
-            <Switch.Root checked={f.fixable} onCheckedChange={(fixable) => set({ fixable })} className={switchRoot}>
-              <Switch.Thumb className={switchThumb} />
-            </Switch.Root>
-            Fixable only
-          </label>
-          {(f.priority.length > 0 || f.kev || f.overdue || !!f.asset || !!f.q) && (
+          <button aria-pressed={f.fixable} onClick={() => set({ fixable: !f.fixable })} className={chip(f.fixable)}
+            title="A fix exists: a fixed version to upgrade to, a setting to change, or a service to close. Not only fixes Nimstead can apply for you">
+            Has a fix{f.fixable && all.data && count.data && all.data.total > count.data.total && <span className="num text-muted">hides {(all.data.total - count.data.total).toLocaleString("en")}</span>}
+          </button>
+          {(f.priority.length > 0 || f.kev || f.overdue || !!f.asset || !!f.ecosystem || !!f.q) && (
             <button className="tap cursor-pointer text-sm underline" onClick={clearAll}>Clear filters</button>
+          )}
+          {f.ecosystem && (
+            <button className={clsx(chip(true), "max-w-full")} onClick={() => set({ ecosystem: "" })}>
+              <span className="min-w-0 truncate">Distribution: {f.ecosystem}</span> <X className="size-3.5 shrink-0" aria-hidden /><span className="sr-only">(clear distribution filter)</span>
+            </button>
           )}
           {f.asset && (
             <button className={clsx(chip(true), "max-w-full")} onClick={() => set({ asset: "" })}>
@@ -184,7 +205,7 @@ export function FindingsPage({ search }: { search: RawSearch }) {
       {f.group ? (
         groups.isPending ? <TableSkeleton /> : groups.error ? <ErrorState error={groups.error} retry={() => groups.refetch()} /> : (
           <div aria-busy={updating} className={clsx("transition-opacity", updating && "opacity-60")}>
-            {groups.data.length ? <Groups rows={groups.data} by={f.group} onPick={(key) => { setText(key); set({ q: key, group: "" }, true); }} />
+            {groups.data.length ? <Groups rows={groups.data} by={f.group} onPick={(key, ecosystem) => { setText(key); set({ q: key, group: "", ecosystem }, true); }} />
               : <Results rows={[]} f={f} noAssets={assets.data?.length === 0} onClear={clearAll} onClearText={() => { setText(""); set({ q: "" }); }} onShowUnfixable={() => set({ fixable: false })} onPick={() => {}} />}
           </div>
         )
@@ -227,14 +248,14 @@ function ViewControls({ f, set }: { f: FindingsFilters; set: (p: Partial<Finding
 const SORT_OPTIONS: [FindingSort, string][] = [["score", "Highest score"], ["vuln", "Vulnerability"], ["package", "Package"], ["host", "Host"], ["newest", "Newest"]];
 
 /** One row per vulnerability or package: how far it reaches, and the worst of it. Opening one lists its findings. */
-function Groups({ rows, by, onPick }: { rows: FindingGroupRow[]; by: "vuln" | "package"; onPick: (key: string) => void }) {
+function Groups({ rows, by, onPick }: { rows: FindingGroupRow[]; by: "vuln" | "package"; onPick: (key: string, ecosystem: string) => void }) {
   return (
     <ul className="flex flex-col divide-y divide-line border border-line bg-surface" aria-label={by === "vuln" ? "Vulnerabilities" : "Packages"}>
       {rows.map((g) => (
         <li key={g.key + (g.ecosystem ?? "")} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 text-sm md:flex-nowrap">
           <span className="w-[6.75rem] shrink-0"><PriorityPill priority={g.priority} /></span>
           <div className="min-w-0 flex-1 basis-60">
-            <button className={clsx("min-h-[44px] cursor-pointer break-all text-left font-medium underline decoration-line-strong underline-offset-4 hover:decoration-ink md:min-h-0", by === "vuln" && "text-mono font-mono", "min-w-[44px]")} onClick={() => onPick(g.key)}>
+            <button className={clsx("min-h-[44px] cursor-pointer break-all text-left font-medium underline decoration-line-strong underline-offset-4 hover:decoration-ink md:min-h-0", by === "vuln" && "text-mono font-mono", "min-w-[44px]")} onClick={() => onPick(g.key, by === "package" ? g.ecosystem ?? "" : "")}>
               {by === "vuln" ? g.key : <PackageName name={g.key} />}<span className="sr-only">: list its findings</span>
             </button>
             {by === "package" && g.ecosystem && <span className="ml-2 text-muted">{g.ecosystem}</span>}
@@ -258,7 +279,7 @@ function Results({ rows, total, more, f, noAssets, onClear, onClearText, onShowU
   }
   const narrowed = !!(f.kev || f.overdue || f.priority.length || f.asset);
   const filtered = f.q || narrowed || f.fixable || f.status !== "open";
-  const why = [f.q && `the search “${f.q}”`, narrowed && "the filters", f.fixable && "Fixable only (it hides findings with no upgrade yet)"].filter(Boolean);
+  const why = [f.q && `the search “${f.q}”`, narrowed && "the filters", f.fixable && "Has a fix (it hides findings with no fix yet)"].filter(Boolean);
   return (
     <EmptyState title={f.status === "open" && !filtered ? "No open findings" : "Nothing matches"}
       action={filtered ? (
@@ -324,7 +345,19 @@ function Table({ rows, total, more, sort, onPick, onSort, picked, onPickRow, onP
           );
         })}
       </div>
-      <div role="rowgroup" ref={ref} className="relative" style={{ height: v.getTotalSize() }}>
+      {/* j/k or the arrow keys move between rows, as they do between findings in the drawer */}
+      <div role="rowgroup" ref={ref} className="relative" style={{ height: v.getTotalSize() }} onKeyDown={(e) => {
+        const step = { j: 1, ArrowDown: 1, k: -1, ArrowUp: -1 }[e.key];
+        const row = (e.target as HTMLElement).closest<HTMLElement>("[data-c=vuln]")?.closest<HTMLElement>("[data-index]");
+        if (!step || !row || e.altKey || e.ctrlKey || e.metaKey) return;
+        const to = Number(row.dataset.index) + step;
+        if (to < 0 || to >= rows.length) return;
+        e.preventDefault();
+        const target = () => ref.current?.querySelector<HTMLElement>(`[data-index="${to}"] [data-c=vuln] button`);
+        v.scrollToIndex(to, { align: "auto" });
+        const now = target();  // usually already rendered (overscan): move at once, so fast presses each count
+        if (now) now.focus(); else requestAnimationFrame(() => target()?.focus());
+      }}>
         {v.getVirtualItems().map((vi) => <FindingRow key={rows[vi.index]!.id} r={rows[vi.index]!} index={vi.index} y={vi.start - v.options.scrollMargin} measure={v.measureElement} onPick={onPick}
           picked={picked ? picked.has(rows[vi.index]!.id) : undefined} onPickRow={onPickRow} />)}
       </div>
@@ -336,11 +369,12 @@ const FindingRow = memo(function FindingRow({ r, index, y, measure, onPick, pick
   r: Finding; index: number; y: number; measure: (el: Element | null) => void; onPick: (id: string) => void; picked?: boolean; onPickRow?: (id: string, v: boolean) => void;
 }) {
   return (
-            <div role="row" aria-rowindex={index + 2} data-index={index} ref={measure}
+            <div role="row" aria-rowindex={index + 2} data-index={index} data-id={r.id} ref={measure}
               onClick={(e) => { e.currentTarget.querySelector<HTMLElement>("[data-c=vuln] button")?.focus(); onPick(r.id); }}
               className="frow absolute inset-x-0 top-0 cursor-pointer border-b border-line px-3 py-2.5 text-sm last:border-0 hover:bg-sunken @min-[48em]:py-0"
               style={{ transform: `translateY(${y}px)`, minHeight: 44 }}>
-              <div role="cell" data-c="prio" className="flex items-center gap-2"><CellLabel i={0} />
+              {/* on phones the checkbox sits at the row's edge, not between the ID and its priority */}
+              <div role="cell" data-c="prio" className="flex flex-row-reverse items-center gap-2 @min-[48em]:flex-row"><CellLabel i={0} />
                 {picked !== undefined && onPickRow && (
                   // the label is the 44px target on phones; clicking it doesn't open the drawer
                   <label className="-m-2 flex min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center p-2 md:min-h-0 md:min-w-0" onClick={(e) => e.stopPropagation()}>
@@ -350,7 +384,7 @@ const FindingRow = memo(function FindingRow({ r, index, y, measure, onPick, pick
                 <PriorityPill priority={r.priority} /></div>
               <div role="cell" data-c="vuln" className="flex min-w-0 flex-wrap items-center gap-x-2 @min-[48em]:flex-nowrap">
                 <button title={r.vuln_id} className="text-mono cursor-pointer break-all text-left font-mono font-medium underline-offset-2 hover:underline @min-[48em]:truncate"
-                  onClick={(e) => { e.stopPropagation(); onPick(r.id); }}>{r.vuln_id}</button>
+                  onClick={(e) => { e.stopPropagation(); onPick(r.id); }}>{r.vuln_id}<span className="sr-only"> in {r.package} on {r.hostname}</span></button>
                 {r.kev && <KevBadge />}
               </div>
               {/* every cell that can be cut off carries its full text as a title */}
@@ -392,14 +426,21 @@ function FindingDrawer({ id, ids = [], onMove, onClose }: { id: string; ids?: st
     if (moved.current && q.data) { moved.current = false; announce(`${q.data.vuln_id} on ${q.data.hostname}, ${at + 1} of ${ids.length}`); }
   }, [q.data, at, ids.length]);
   // Focus starts on the title (no ring: the user didn't move it there) and goes back to the row that opened the drawer.
-  const focus = useReturnFocus(title);
+  // after stepping with j/k, Esc goes back to the finding you were on, not the one you opened
+  const shown = useRef(id);  // closing clears id before focus returns, so keep the last one shown
+  if (id) shown.current = id;
+  const focus = useReturnFocus(title, () => document.querySelector<HTMLElement>(`[data-id="${shown.current}"] [data-c=vuln] button`));
   return (
     <Dialog.Root open={!!id} onOpenChange={(o) => !o && onClose()}>
       <Dialog.Portal>
         <Dialog.Overlay className="overlay" />
         <Dialog.Content className="drawer p-5 md:p-6" aria-describedby={undefined} onKeyDown={onKey} {...focus}>
           <div className="mb-4 flex items-start justify-between gap-3">
-            <Dialog.Title ref={title} tabIndex={-1} className="break-all font-mono text-lg font-semibold">{q.data?.vuln_id ?? "Finding"}</Dialog.Title>
+            {/* stepping with j/k changes the host as often as the ID: both sit in the title, with where you are in the list */}
+            <div className="min-w-0">
+              <Dialog.Title ref={title} tabIndex={-1} className="break-all font-mono text-lg font-semibold">{q.data?.vuln_id ?? "Finding"}</Dialog.Title>
+              {q.data && <p className="break-all text-sm"><span className="font-medium">{q.data.hostname}</span>{ids.length > 1 && at >= 0 && <span className="num text-muted"> · {at + 1} of {ids.length.toLocaleString("en")}{ids.length >= FINDINGS_CAP && " loaded"}</span>}</p>}
+            </div>
             {ids.length > 1 && at >= 0 && (
               <span className="ml-auto flex shrink-0 gap-1">
                 <button className={clsx(btnQuiet, "size-[44px] !px-0 md:size-9")} disabled={!prev} onClick={() => { if (prev) { moved.current = true; onMove(prev); } }} aria-label="Previous finding (k)" title="Previous finding (k)"><ChevronUp className="size-4" aria-hidden /></button>
@@ -434,7 +475,7 @@ function FindingDetail({ f }: { f: Finding }) {
       <details className="mt-1 text-sm text-muted"><summary className="flex tap w-fit cursor-pointer items-center">How the score works</summary>
         <p className="mt-1 max-w-prose">0 to 100, from the advisory's severity, how likely it is to be exploited in the next 30 days (EPSS), whether it is being exploited now (KEV), and this machine's criticality and exposure. Fix now is 80 or more, or any KEV.</p></details>
       {f.due && <Due due={f.due} />}
-      {f.summary && <p className="mt-3 max-w-prose text-sm">{f.summary}{f.summary.length >= 200 && !/[.!?…]$/.test(f.summary) && "…"}</p>}
+      {f.summary && <p className="mt-3 max-w-prose text-sm">{f.summary}{f.summary.length >= 200 && !/[.!?…]$/.test(f.summary) && <>… <span className="text-muted">The advisory has the full text.</span></>}</p>}
       {ai && <Explain key={f.id} id={f.id} />}
 
       <H>Why it matched</H>
@@ -468,7 +509,8 @@ function FindingDetail({ f }: { f: Finding }) {
 
       {f.status === "open" && (
         <>
-          <H>Act on it <span className="ml-2 hidden text-xs font-normal text-muted md:inline">keys: p then Enter plan · a accept · j k next/previous</span></H>
+          {/* only the keys that do something here */}
+          <H>Act on it <span className="ml-2 hidden text-xs font-normal text-muted md:inline">keys: {[(f.fixed_version || f.setting_fix) && !job && f.plannable !== false && !refused && "p then Enter plan", "a accept", "j k next/previous"].filter(Boolean).join(" · ")}</span></H>
           {job && <FixInProgress job={job} />}
           {f.fixed_version && f.plannable === false && <p className="mb-3 text-sm text-muted">Nimstead can't plan this one: update it with its own updater or by policy.</p>}
           {refused && f.plannable !== false && <p className="mb-3 text-sm text-muted">This is a production machine, and production remediation is off on this server, so a fix can't be planned here yet. <Link to="/settings" hash="remediation" className="font-medium text-ink underline">How to turn it on</Link></p>}
@@ -589,7 +631,7 @@ function AppliedChips({ f, set, clearText }: { f: FindingsFilters; set: (p: Part
   f.priority.forEach((p) => chips.push([PRIORITY_LABEL[p], () => set({ priority: f.priority.filter((x) => x !== p) })]));
   if (f.kev) chips.push(["Exploited (KEV)", () => set({ kev: false })]);
   if (f.status !== "open") chips.push([`Status: ${f.status}`, () => set({ status: "open" })]);
-  chips.push([f.fixable ? "Fixable only" : "Fix or no fix", () => set({ fixable: !f.fixable })]);
+  chips.push([f.fixable ? "Has a fix" : "Fix or no fix", () => set({ fixable: !f.fixable })]);
   return (
     <div role="group" aria-label="Filters applied from your question" className="flex flex-wrap items-center gap-1.5">
       <span className="text-sm text-muted">Interpreted as:</span>
@@ -630,7 +672,12 @@ function BulkBar({ rows, onClear, onDone }: { rows: Finding[]; onClear: () => vo
   const [reason, setReason] = useState("");
   const [days, setDays] = useState(90);
   const [result, setResult] = useState("");
-  const fixable = rows.filter((r) => r.fixed_version);
+  // only what this server may change: with production remediation off, test machines only (the drawer says the same)
+  const prodOk = useQuery(settingsQ).data?.production_remediation_allowed ?? true;
+  const sandbox = new Set((useQuery(assetsQ).data ?? []).filter((a) => a.sandbox).map((a) => a.id));
+  const withFix = rows.filter((r) => r.fixed_version);
+  const fixable = prodOk ? withFix : withFix.filter((r) => sandbox.has(r.asset_id));
+  const machines = new Set(fixable.map((r) => r.asset_id)).size;
   const groups = [...fixable.reduce((m, r) => m.set(`${r.ecosystem}|${r.package}`, [...(m.get(`${r.ecosystem}|${r.package}`) ?? []), r.asset_id]), new Map<string, string[]>())];
   const plan = useMutation({
     mutationFn: async () => {
@@ -655,11 +702,12 @@ function BulkBar({ rows, onClear, onDone }: { rows: Finding[]; onClear: () => vo
   return (
     <div role="region" aria-label="Act on selected findings" className="fixed inset-x-2 bottom-[calc(var(--tabbar-h,3.5rem)+0.5rem)] z-10 flex max-h-[40dvh] flex-wrap items-center gap-x-4 gap-y-2 overflow-y-auto border border-ink bg-surface px-3 py-2 text-sm shadow-[0_6px_16px_var(--shadow)] md:bottom-4 md:left-[calc(var(--sidebar-w)+2rem)] md:right-8">
       <strong className="num font-semibold">{plural(rows.length, "finding")} selected</strong>
-      <span className="text-muted">{groups.length ? `${plural(groups.length, "package")} to upgrade on ${plural(new Set(fixable.map((r) => r.asset_id)).size, "machine")}` : "None has a fix yet"}</span>
+      <span className="text-muted">{groups.length ? `${plural(groups.length, "package")} to upgrade on ${plural(machines, prodOk ? "machine" : "test machine")}${withFix.length > fixable.length ? `; production machines wait until production remediation is on` : ""}`
+        : withFix.length ? "None is on a test machine, and production remediation is off" : "None has a fix yet"}</span>
       <div className="ml-auto flex flex-wrap gap-2">
         <button className={btnQuiet} onClick={onClear}>Clear selection</button>
         <button className={btnQuiet} onClick={() => { accept.reset(); setAccepting(true); }}>Accept risk…</button>
-        <button className={btnPrimary} disabled={!groups.length || plan.isPending} onClick={() => plan.mutate()}><Wrench className="size-4" aria-hidden />{plan.isPending ? "Planning…" : `Plan ${plural(groups.length, "fix", "fixes")}`}</button>
+        <button className={btnPrimary} disabled={!groups.length || plan.isPending} onClick={() => plan.mutate()}><Wrench className="size-4" aria-hidden />{plan.isPending ? "Planning…" : (groups.length ? `Plan ${plural(groups.length, "fix", "fixes")}${prodOk ? "" : ` on ${plural(machines, "test machine")}`}` : "Plan fix")}</button>
       </div>
       {result && <p role="status" className="w-full text-muted">{result}</p>}
       <Alert error={plan.error ?? null} className="w-full" />

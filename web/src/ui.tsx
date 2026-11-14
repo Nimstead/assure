@@ -1,6 +1,6 @@
 import { cloneElement, isValidElement, useEffect, useId, useRef, useState, type ReactElement, type ReactNode, type RefObject } from "react";
 import { AlertDialog } from "radix-ui";
-import { Check, Copy, TriangleAlert } from "lucide-react";
+import { Ban, Check, Clock, Copy, Loader, Minus, TriangleAlert, Undo2, X } from "lucide-react";
 import clsx from "clsx";
 import { announce, ApiError, JOB_STATUS_LABEL, PRIORITY_CLASS, PRIORITY_LABEL, type JobStatus, type Priority } from "./lib";
 
@@ -21,15 +21,20 @@ export const dialogBox = "fixed left-1/2 top-[15vh] z-[51] w-[min(30rem,calc(100
  * Radix returns focus only to a Dialog.Trigger; ours open from state, so this hands focus back to whatever opened the
  * dialog (DECISIONS 48). Pass `initial` to start focus somewhere other than the first focusable element.
  */
-export function useReturnFocus(initial?: RefObject<HTMLElement | null>) {
+export function useReturnFocus(initial?: RefObject<HTMLElement | null>, returnTo?: () => HTMLElement | null) {
   const opener = useRef<HTMLElement | null>(null);
   return {
     onOpenAutoFocus: (e: Event) => {
       opener.current = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
       if (initial?.current) { e.preventDefault(); initial.current.focus(); }
     },
+    // returnTo names where you are now (a drawer that stepped to another item), else the element that opened it
     onCloseAutoFocus: (e: Event) => {
-      if (opener.current?.isConnected) { e.preventDefault(); opener.current.focus(); }
+      // nothing focused when it opened (page body): the page heading, so focus never falls back to the top of the document
+      const heading = document.querySelector<HTMLElement>("main h1");
+      const to = returnTo?.() ?? opener.current ?? heading;
+      if (to === heading && heading && !heading.hasAttribute("tabindex")) heading.tabIndex = -1;
+      if (to?.isConnected) { e.preventDefault(); to.focus(); }
     },
   };
 }
@@ -38,25 +43,31 @@ export function useReturnFocus(initial?: RefObject<HTMLElement | null>) {
 export function PriorityPill({ priority, count }: { priority: Priority; count?: number }) {
   return (
     <span className={clsx("inline-flex items-center gap-1.5 whitespace-nowrap px-2 py-0.5 text-xs font-medium", PRIORITY_CLASS[priority])}>
-      <span aria-hidden className="size-1.5 bg-current" />
+      {/* a mark per level, not only a shade: filled for Fix now and Next, outlined for Routine, none for Low (a dash would read as an empty cell) */}
+      <span aria-hidden className={{ "fix-now": "size-1.5 bg-current", next: "size-1.5 bg-current", planned: "size-2 border-[1.5px] border-current", low: "hidden" }[priority]} />
       {PRIORITY_LABEL[priority]}
       {count !== undefined && <span className="num font-semibold">{count}</span>}
     </span>
   );
 }
 
-const STATUS_CLASS: Record<JobStatus, string> = {
-  planned: "bg-next-bg text-next-fg", approved: "bg-planned-bg text-planned-fg", dispatched: "bg-planned-bg text-planned-fg", verifying: "bg-planned-bg text-planned-fg",
-  succeeded: "!border-ink bg-surface text-ink", failed: "bg-now-bg text-now-fg", rolled_back: "bg-now-bg text-now-fg", rollback_failed: "bg-now-bg text-now-fg",
-  // outlined only, so a deliberate cancel never looks like a success
-  not_fixed: "bg-now-bg text-now-fg", aborted: "bg-now-bg text-now-fg", cancelled: "border-dashed !border-line-strong bg-transparent text-muted",
+// Job states are outlined with an icon; priorities are filled. So "Aborted" never reads as a second "Fix now".
+const BAD = "border-now-fg text-now-fg", WAIT = "border-line-strong text-ink";
+const STATUS_STYLE: Record<JobStatus, [string, typeof Check]> = {
+  planned: [WAIT, Clock], approved: [WAIT, Clock], dispatched: [WAIT, Loader], verifying: [WAIT, Loader],
+  succeeded: ["border-ink text-ink", Check], failed: [BAD, X], rolled_back: [BAD, Undo2], rollback_failed: [BAD, X],
+  not_fixed: [BAD, X], aborted: [BAD, Ban],
+  cancelled: ["border-dashed border-line-strong text-muted", Minus],  // dashed, so a deliberate cancel never looks like a success
 };
 /** Render a job status with its visible label and status styling. */
-export const StatusPill = ({ status }: { status: JobStatus }) => (
-  <span className={clsx("inline-flex items-center gap-1.5 whitespace-nowrap border border-line px-2 py-0.5 text-xs font-medium", STATUS_CLASS[status])}>
-    {status === "succeeded" ? <Check aria-hidden className="size-3" /> : <span aria-hidden className="size-1.5 bg-current" />}{JOB_STATUS_LABEL[status]}
-  </span>
-);
+export const StatusPill = ({ status }: { status: JobStatus }) => {
+  const [cls, Icon] = STATUS_STYLE[status];
+  return (
+    <span className={clsx("inline-flex items-center gap-1.5 whitespace-nowrap border bg-transparent px-2 py-0.5 text-xs font-medium", cls)}>
+      <Icon aria-hidden className="size-3" />{JOB_STATUS_LABEL[status]}
+    </span>
+  );
+};
 
 /** Small bordered label. `why` is read to screen readers and shown on hover; say anything that matters visibly too. */
 export function Tag({ children, tone = "muted", why, className }: { children: ReactNode; tone?: "muted" | "now" | "ink" | "warn"; why?: string; className?: string }) {
@@ -129,9 +140,11 @@ export function Field({ label, hint, error, children, className }: { label: stri
 }
 
 /** The one confirmation pattern for destructive or high-stakes actions. Focus returns to whatever opened it. */
-export function ConfirmDialog({ open, onOpenChange, title, description, children, confirmLabel, pendingLabel, cancelLabel = "Cancel", destructive, pending, error, onConfirm }: {
+export function ConfirmDialog({ open, onOpenChange, title, description, children, confirmLabel, pendingLabel, cancelLabel = "Cancel", destructive, pending, error, onConfirm, blocked }: {
   open: boolean; onOpenChange: (o: boolean) => void; title: string; description: ReactNode; children?: ReactNode;
   confirmLabel: string; pendingLabel?: string; cancelLabel?: string; destructive?: boolean; pending?: boolean; error?: Error | string | null; onConfirm: () => void;
+  /** the action can't succeed right now; children say why */
+  blocked?: boolean;
 }) {
   const focus = useReturnFocus();
   return (
@@ -145,7 +158,7 @@ export function ConfirmDialog({ open, onOpenChange, title, description, children
           <Alert error={error} className="mt-3" />
           <div className="mt-5 flex flex-wrap justify-end gap-2">
             <AlertDialog.Cancel className={btnQuiet}>{cancelLabel}</AlertDialog.Cancel>
-            <button className={destructive ? btnDanger : btnPrimary} disabled={pending} onClick={onConfirm}>{pending ? pendingLabel ?? "Working…" : confirmLabel}</button>
+            <button className={destructive ? btnDanger : btnPrimary} disabled={pending || blocked} onClick={onConfirm}>{pending ? pendingLabel ?? "Working…" : confirmLabel}</button>
           </div>
         </AlertDialog.Content>
       </AlertDialog.Portal>

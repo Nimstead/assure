@@ -2483,6 +2483,10 @@
             "maxItems": 20,
             "type": "array"
           },
+          "devices_with_issues": {
+            "minimum": 0,
+            "type": "integer"
+          },
           "hosts_not_reporting": {
             "minimum": 0,
             "type": "integer"
@@ -2506,6 +2510,7 @@
           "assets",
           "hosts_not_reporting",
           "agents_need_attention",
+          "devices_with_issues",
           "open_by_priority",
           "top_actions",
           "attention"
@@ -8134,6 +8139,23 @@
           },
           {
             "in": "query",
+            "name": "ecosystem",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ecosystem"
+            }
+          },
+          {
+            "in": "query",
             "name": "limit",
             "required": false,
             "schema": {
@@ -8369,6 +8391,23 @@
                 }
               ],
               "title": "Overdue"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ecosystem",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ecosystem"
             }
           }
         ],
@@ -8725,6 +8764,23 @@
               ],
               "title": "Overdue"
             }
+          },
+          {
+            "in": "query",
+            "name": "ecosystem",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ecosystem"
+            }
           }
         ],
         "responses": {
@@ -8906,6 +8962,23 @@
                 }
               ],
               "title": "Overdue"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ecosystem",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ecosystem"
             }
           },
           {

@@ -185,7 +185,7 @@ Mean resolution time displays `n/a` for null, `under a day` below one, otherwise
 
 Fewer than five resolved findings triggers a sample-size note. Current Fix now and silent-host counts come from the summary query. A failed summary query defaults both to zero. The absence of this warning does not prove that the current fleet has no exceptions.
 
-The overdue link selects open, overdue findings and disables Fixable only. Results are current and can differ from the report snapshot.
+The overdue link selects open, overdue findings, with or without a fix. Results are current and can differ from the report snapshot.
 
 ### Ledger and downloads
 
@@ -296,15 +296,15 @@ Shell heading focus runs only after pathname changes. It skips initial mount and
 
 ### Palette result scope and failures
 
-Opening enables the shared asset query, which can refresh stale data. Finding search waits 150ms after trimmed text changes and requires at least two characters. It requests at most 30 open findings without the UI's default fixable-only restriction.
+Opening enables the shared asset query, which can refresh stale data. Finding search waits 150ms after trimmed text changes and requires at least two characters. It requests the open findings grouped by vulnerability and by package, with or without a fix.
 
-Finding suggestions group returned rows by vulnerability ID/package, across ecosystems. At most eight groups appear. A multiple-result hint counts returned finding rows, not distinct hosts or all matches. Each suggestion opens the first row's drawer with Fixable only disabled.
+Up to three package results (each with its vulnerability and host counts) open Findings grouped by package; up to eight vulnerability results show each vulnerability's real host count and open Findings searched for it. Checked devices match by address or maker and open their drawer on Assets.
 
 Asset suggestions match hostname text case-insensitively. Up to five non-external assets produce findings and context commands. Applications also qualify. These are partial suggestions from the loaded asset list, not an exhaustive server search.
 
 Commands also include pages, theme, help, sign-out and browser saved views. Saved views are read during command recomputation. The palette does not subscribe to saved-view change events. A text change forces recomputation. Its approval-review command opens Remediation without an approval-only filter.
 
-Any nonempty term offers a final findings-search command. That command uses the normal fixable-only default. Results can therefore differ from the unfiltered suggestions. Finding/asset errors have no dedicated error panel. The search command remains available despite failed suggestions.
+Any nonempty term offers a final findings-search command, over every open finding. Finding/asset errors have no dedicated error panel. The search command remains available despite failed suggestions.
 
 An explicit highlight follows command ID while that ID remains present. A missing or unset ID falls back to the first command. Late results can therefore change the default choice. Closing clears text. Callback promises are not awaited or handled by the palette. The parent controls actual dialog closure and callback errors.
 
@@ -418,8 +418,9 @@ This helper does not replace cached data itself. It does not invalidate unrelate
 | URL key | Default and interpretation |
 | --- | --- |
 | `q`, `asset`, `f` | Empty text. `f` becomes the open drawer ID |
+| `eco` | Empty (every distribution). One distribution or ecosystem, such as `Debian:13`, sent to the API as `ecosystem` |
 | `priority` | Empty list. Comma-separated recognized priority names |
-| `fixable` | True unless exact `0` |
+| `fixable` | True only for exact `1` ("Has a fix"); an older link's `0` means every finding |
 | `kev`, `overdue` | True only for exact `1` |
 | `status` | `open`. Other accepted values are `resolved` and `accepted` |
 | `sort` | `score`. Other values are `package`, `host`, `vuln`, `newest` |

@@ -150,16 +150,22 @@ def unmanaged(s: Session, org_id: str) -> list[dict]:
     for d in s.scalars(select(Asset).where(Asset.org_id == org_id, Asset.kind == "device")):
         views.setdefault((d.facts or {}).get("mac"), []).append(d)
     open_ids: dict[str, list[str]] = {}
+    worst_of: dict[str, str] = {}  # each view's most urgent open priority, so the list can rank a device as it ranks a machine
     ids = [v.id for vs in views.values() for v in vs]
-    for aid, vid in s.execute(select(Finding.asset_id, Finding.vuln_id).where(Finding.org_id == org_id, Finding.status == "open",
+    for aid, vid, prio in s.execute(select(Finding.asset_id, Finding.vuln_id, Finding.priority).where(Finding.org_id == org_id, Finding.status == "open",
                                                                           Finding.asset_id.in_(ids))) if ids else ():
         open_ids.setdefault(aid, []).append(vid)
+        if RANK.get(prio, 9) < RANK.get(worst_of.get(aid, ""), 9):
+            worst_of[aid] = prio
     return [{**d, "addresses": sorted(d["addresses"], key=lambda a: (":" in a, a)), "seen_by": sorted(d["seen_by"]),
-             "vendor": oui.vendor(m, names), "checked": _checked(views.get(m, []), open_ids)}
+             "vendor": oui.vendor(m, names), "checked": _checked(views.get(m, []), open_ids, worst_of)}
             for m, d in sorted(by_mac.items(), key=lambda kv: kv[1]["last_seen"], reverse=True)]
 
 
-def _checked(views: list[Asset], open_ids: dict) -> dict | None:
+RANK = {"fix-now": 0, "next": 1, "planned": 2, "low": 3}
+
+
+def _checked(views: list[Asset], open_ids: dict, worst_of: dict | None = None) -> dict | None:
     """What network checks found on a device, across every machine that checked it (each keeps its own view): when last,
     from which machines, the open findings, and the view with the most to link to. None if no machine checked it."""
     if not views:
@@ -167,7 +173,8 @@ def _checked(views: list[Asset], open_ids: dict) -> dict | None:
     worst = max(views, key=lambda v: (len(open_ids.get(v.id, [])), v.last_seen))
     return {"asset_id": worst.id, "at": max(v.last_seen for v in views),
             "from": ", ".join(sorted((v.facts or {}).get("checked_from", "") for v in views)),
-            "open": sorted({vid for v in views for vid in open_ids.get(v.id, [])})}
+            "open": sorted({vid for v in views for vid in open_ids.get(v.id, [])}),
+            "priority": min((p for v in views if (p := (worst_of or {}).get(v.id))), key=lambda p: RANK[p], default=None)}
 
 
 # --- network checks from one opted-in agent (DECISIONS 129) ----------------------------------------------------------

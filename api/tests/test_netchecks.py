@@ -699,3 +699,33 @@ def test_a_device_greeting_that_hides_its_version_but_still_names_the_product_ke
     assert "CVE-2015-3306" in open_ids(c)
     send(c, h, [obs(banners={21: b"220 ProFTPD Server (Debian) [::ffff:192.168.1.64]\r\n"})])  # version hidden, same product
     assert "CVE-2015-3306" in open_ids(c)
+
+
+def test_a_device_ranks_by_what_its_exposure_allows_never_above_the_internet(env):
+    """DECISIONS 133: no password on the network -> fix now; a cleartext login -> next; certificates stay routine."""
+    c, h = setup(env)
+    send(c, h, [obs(open_={6379, 443}, banners={23: b"\r\nlogin: "}, tls={"der": cert(-10), "legacy": False})])
+    got = {x["vuln_id"]: x for x in c.get("/api/findings").json()}
+    assert {v: f["priority"] for v, f in got.items()} == {"NIM-EXPOSED-REDIS": "fix-now", "NIM-EXPOSED-TELNET": "next", "NIM-TLS-EXPIRED": "planned"}
+    assert got["NIM-EXPOSED-TELNET"]["reasons"][0].startswith("A cleartext login")
+    camera = next(d for d in c.get("/api/network/unmanaged").json() if d["mac"] == CAMERA[1])
+    assert camera["checked"]["priority"] == "fix-now"  # the list ranks a device by its most urgent issue
+    assert "Fix available" not in got["NIM-EXPOSED-TELNET"]["reasons"] and "Remedy: a configuration change" in got["NIM-EXPOSED-TELNET"]["reasons"]
+    from nimstead import risk
+    for vid, cvss in (("NIM-EXPOSED-REDIS", 9.8), ("NIM-EXPOSED-TELNET", 9.0)):
+        outside = risk.score(kev=False, epss=None, cvss=cvss, internet_facing=True, likelihood=external.likelihood_of(vid)[0])
+        assert got[vid]["score"] < outside.score
+
+
+def test_evidence_counts_devices_apart_and_names_none_by_address(env):
+    """DECISIONS 133: Evidence's asset count matches the Assets page; a device's findings stay, as host "device"."""
+    c, h = setup(env)
+    send(c, h, [obs(open_={6379})])
+    report = c.get("/api/evidence/report").json()
+    assert report["metrics"]["assets"] == 1 and report["metrics"]["network_devices"] == 1
+    assert [a["hostname"] for a in report["assets"]] == ["web-1"]
+    assert {f["host"] for f in report["findings"] if f["vuln_id"] == "NIM-EXPOSED-REDIS"} == {"device"}
+    assert CAMERA[0] not in str(report)
+    cis = next(x for x in report["controls"] if x["framework"].startswith("CIS"))
+    assert cis["evidence"].startswith("0 open findings past SLA; ")  # what the status turns on, said first
+    assert c.get("/api/summary").json()["devices_with_issues"] == 1  # Fix first names it

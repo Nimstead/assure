@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DropdownMenu } from "radix-ui";
 import { CircleHelp, FileCheck2, ListChecks, LogOut, Monitor, MoreHorizontal, Moon, Plus, Search, Server, Settings, ShieldAlert, Sun, Wrench, type LucideIcon } from "lucide-react";
 import clsx from "clsx";
-import { savedViews, ADMIN_ONLY_ID, announce, api, ApiError, assetsQ, filtersToSearch, meQ, NEXT_THEME, parseFilters, setTheme, THEME_LABEL, themeChoice, type Finding, type ThemeChoice } from "./lib";
+import { savedViews, ADMIN_ONLY_ID, announce, api, ApiError, assetsQ, filtersToSearch, meQ, NEXT_THEME, parseFilters, setTheme, THEME_LABEL, themeChoice, type FindingGroupRow, type ThemeChoice, plural } from "./lib";
 import { ErrorState, LiveRegions, Loading, useReturnFocus } from "./ui";
 
 /** Render the Assure wordmark. */
@@ -81,6 +81,7 @@ const ThemeIcon = ({ theme, className }: { theme: ThemeChoice; className: string
 export function Shell() {
   const me = useQuery(meQ);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [keysOpen, setKeysOpen] = useState(false);
   const signOut = useSignOut();
   const { theme, next } = useTheme();
   const themeLabel = `Theme: ${THEME_LABEL[theme]}. Switch to ${THEME_LABEL[NEXT_THEME[theme]]}`;
@@ -88,8 +89,11 @@ export function Shell() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setPaletteOpen((o) => !o); }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setPaletteOpen((o) => (o ? false : !document.querySelector("[role=dialog], [role=alertdialog]"))); }  // never over an open drawer
       // "/" jumps to the page's search box, as in most tools, unless you're typing somewhere
+      else if (e.key === "?" && !(e.target instanceof HTMLElement && e.target.closest("input, textarea, select, [contenteditable]")) && !document.querySelector("[role=dialog], [role=alertdialog]")) {
+        e.preventDefault(); setKeysOpen(true);
+      }
       else if (e.key === "/" && !(e.target instanceof HTMLElement && e.target.closest("input, textarea, select, [contenteditable]"))) {
         const box = document.querySelector<HTMLInputElement>('main input[type="search"]');
         if (box) { e.preventDefault(); box.focus(); }
@@ -176,6 +180,7 @@ export function Shell() {
       </nav>
 
       <Palette open={paletteOpen} onOpenChange={setPaletteOpen} signOut={() => signOut.mutate()} nextTheme={next} />
+      <KeyboardShortcuts open={keysOpen} onOpenChange={setKeysOpen} />
     </div>
   );
 }
@@ -223,6 +228,15 @@ function MoreMenu({ signOut, extra }: { signOut: () => void; extra: typeof NAV }
 
 // ---- command palette -------------------------------------------------------------
 interface Cmd { id: string; label: string; hint?: string; run: () => void }
+/** The heading a command sits under, from its id: the list reads in groups, not as one long column. */
+export function cmdGroup(id: string): string {
+  if (["home", "findings", "assets", "remediation", "evidence", "settings"].includes(id)) return "Go to";
+  if (["approve", "fixnow", "quiet", "add"].includes(id)) return "Shortcuts";
+  if (["theme", "keys", "help", "out"].includes(id)) return "Account and help";
+  const prefix = id.split("-")[0] ?? "";
+  const groups: Record<string, string> = { view: "Saved views", machine: "Machines", host: "Machines", device: "Devices", pkg: "Packages", vuln: "Vulnerabilities", search: "Search" };
+  return groups[prefix] ?? "";
+}
 
 function useDebounced<T>(value: T, ms: number) {
   const [v, setV] = useState(value);
@@ -242,7 +256,14 @@ export function Palette({ open, onOpenChange, signOut, nextTheme }: { open: bool
   const query = useDebounced(term, 150);
   const found = useQuery({
     queryKey: ["palette", query],
-    queryFn: () => api<Finding[]>(`/api/findings?${new URLSearchParams({ q: query, limit: "30", view: "list" })}`),
+    // grouped by vulnerability: each hit's host count is the real total, not a count within a sample
+    queryFn: () => api<FindingGroupRow[]>(`/api/findings/groups?${new URLSearchParams({ by: "vuln", q: query })}`),
+    enabled: open && query.length > 1,
+  });
+  // a package is what you fix: "curl" finds the package row as well as its vulnerabilities
+  const pkgs = useQuery({
+    queryKey: ["palette-packages", query],
+    queryFn: () => api<FindingGroupRow[]>(`/api/findings/groups?${new URLSearchParams({ by: "package", q: query })}`),
     enabled: open && query.length > 1,
   });
 
@@ -260,26 +281,45 @@ export function Palette({ open, onOpenChange, signOut, nextTheme }: { open: bool
       { id: "quiet", label: "Machines not reporting", run: done(() => navigate({ to: "/assets", search: { show: "quiet" } })) },
       { id: "add", label: "Add a machine", run: done(() => navigate({ to: "/add" })) },
       { id: "theme", label: "Change theme (system, light, dark)", run: done(nextTheme) },
+      { id: "keys", label: "Keyboard shortcuts", hint: "?", run: done(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "?" }))) },
       { id: "help", label: "Help: documentation", hint: "opens a new tab", run: done(() => window.open(DOCS, "_blank", "noopener")) },
       { id: "out", label: "Sign out", run: done(signOut) },
     ].filter((c) => { const t = term.toLowerCase(); return !t || c.label.toLowerCase().includes(t) || c.label.toLowerCase().split(/\W+/).some((w) => w.startsWith(t.slice(0, 4)) && t.length >= 3); });
-    const seen = new Map<string, { f: Finding; hosts: number }>();
-    for (const f of query === term ? found.data ?? [] : []) { const k = `${f.vuln_id}|${f.package}`; const e = seen.get(k); if (e) e.hosts++; else seen.set(k, { f, hosts: 1 }); }
-    const hits: Cmd[] = [...seen.values()].slice(0, 8).map(({ f, hosts }) => ({
-      id: f.id, label: `${f.vuln_id}  ${f.package}`, hint: hosts > 1 ? `${hosts} hosts` : f.hostname,
-      run: done(() => navigate({ to: "/findings", search: filtersToSearch({ ...parseFilters({}), fixable: false, q: term, open: f.id }) })),
+    // one row per package: Findings can't narrow to one distribution, so its rows would all lead to the same place.
+    // The row says how many distributions it spans; Findings, grouped by package, lists each.
+    const byName = new Map<string, { hosts: number; dists: number }>();
+    for (const g of query === term ? pkgs.data ?? [] : []) {
+      if (!g.package.toLowerCase().includes(term.toLowerCase())) continue;
+      const e = byName.get(g.package) ?? { hosts: 0, dists: 0 };
+      byName.set(g.package, { hosts: e.hosts + g.hosts, dists: e.dists + 1 });  // a machine runs one distribution: hosts add up
+    }
+    const packages: Cmd[] = [...byName].slice(0, 3).map(([name, e]) => ({
+      id: `pkg-${name}`, label: `Package: ${name}`, hint: `${e.dists > 1 ? `${e.dists} distributions · ` : ""}${plural(e.hosts, "host")}`,
+      run: done(() => navigate({ to: "/findings", search: filtersToSearch({ ...parseFilters({}), fixable: false, q: name, group: "package" }) })),
+    }));
+    const hits: Cmd[] = (query === term ? found.data ?? [] : []).slice(0, 8).map((g) => ({
+      // a search can match on host names too: then the count is on those hosts only, and says so
+      id: `vuln-${g.key}`, label: `${g.key}  ${g.packages > 1 ? `${g.packages} packages` : g.package}`,
+      hint: `${g.hosts.toLocaleString("en")} ${g.hosts === 1 ? "host" : "hosts"}${`${g.key} ${g.package}`.toLowerCase().includes(term.toLowerCase()) ? "" : ` matching “${term}”`}`,
+      run: done(() => navigate({ to: "/findings", search: filtersToSearch({ ...parseFilters({}), fixable: false, q: g.key }) })),
     }));
     // Hosts come from the already-cached asset list: no extra request, and a host is one jump from its findings.
     const hosts: Cmd[] = term.length > 1 ? (assets.data ?? []).filter((a) => a.kind !== "external" && a.kind !== "device" && a.hostname.toLowerCase().includes(term.toLowerCase())).slice(0, 5)
       .flatMap((a) => [
-        { id: `host-${a.id}`, label: `Host: ${a.hostname}`, hint: "findings", run: done(() => navigate({ to: "/findings", search: filtersToSearch({ ...parseFilters({}), asset: a.id, fixable: false }) })) },
-        { id: `machine-${a.id}`, label: `Machine: ${a.hostname}`, hint: "settings", run: done(() => navigate({ to: "/assets", search: { machine: a.id } })) },
+        // the machine first: a typed name usually means the machine; its findings are one row down
+        { id: `machine-${a.id}`, label: `Machine: ${a.hostname}`, hint: "details", run: done(() => navigate({ to: "/assets", search: { machine: a.id } })) },
+        { id: `host-${a.id}`, label: `Findings on ${a.hostname}`, run: done(() => navigate({ to: "/findings", search: filtersToSearch({ ...parseFilters({}), asset: a.id, fixable: false }) })) },
       ]) : [];
+    // a device a network check looked at, by address or maker: one per MAC, however many machines checked it
+    const byMac = new Map((assets.data ?? []).filter((a) => a.kind === "device" && term.length > 1
+      && `${a.hostname} ${a.facts?.vendor ?? ""}`.toLowerCase().includes(term.toLowerCase())).map((a) => [String(a.facts?.mac ?? a.id), a]));
+    const devices: Cmd[] = [...byMac].slice(0, 5).map(([mac, a]) => ({ id: `device-${mac}`, label: `Device: ${a.hostname}`, hint: String(a.facts?.vendor || "no agent"),
+      run: done(() => navigate({ to: "/assets", search: { device: mac } })) }));
     const views: Cmd[] = savedViews().filter((v) => !term || v.name.toLowerCase().includes(term.toLowerCase()))
       .map((v) => ({ id: `view-${v.name}`, label: `View: ${v.name}`, hint: "saved", run: done(() => navigate({ to: "/findings", search: v.search })) }));
     const all: Cmd[] = term ? [{ id: "search", label: `Search findings for "${term}"`, run: done(() => navigate({ to: "/findings", search: filtersToSearch({ ...parseFilters({}), q: term }) })) }] : [];
-    return term ? [...pages, ...views, ...hosts, ...hits, ...all] : [...views, ...pages];
-  }, [found.data, assets.data, term, query, navigate, onOpenChange, signOut, nextTheme]);
+    return term ? [...pages, ...views, ...hosts, ...devices, ...packages, ...hits, ...all] : [...views, ...pages];
+  }, [found.data, pkgs.data, assets.data, term, query, navigate, onOpenChange, signOut, nextTheme]);
 
   useEffect(() => setActiveId(""), [term]);
   useEffect(() => { if (!open) setText(""); }, [open]);
@@ -305,16 +345,54 @@ export function Palette({ open, onOpenChange, signOut, nextTheme }: { open: bool
           />
           {cmds.length > 0 ? (
             <ul id="palette-list" role="listbox" aria-label="Results" className="max-h-[60vh] overflow-y-auto p-1.5">
+              {term && cmds.every((c) => c.id === "search") && <li role="presentation" className="px-3 py-2 text-sm text-muted">No matches.</li>}
               {cmds.map((c, i) => (
-                <li key={c.id} id={`cmd-${c.id}`} role="option" aria-selected={i === active} data-highlighted={i === active ? "" : undefined} onMouseMove={() => setActiveId(c.id)} onClick={c.run}
+                <Fragment key={c.id}>
+                {cmdGroup(c.id) && cmdGroup(c.id) !== cmdGroup(cmds[i - 1]?.id ?? "") &&
+                  <li role="presentation" className="px-3 pb-1 pt-2.5 text-xs font-medium text-muted first:pt-1">{cmdGroup(c.id)}</li>}
+                <li id={`cmd-${c.id}`} role="option" aria-selected={i === active} data-highlighted={i === active ? "" : undefined} onMouseMove={() => setActiveId(c.id)} onClick={c.run}
                   className={clsx("flex min-h-[44px] cursor-pointer items-center justify-between gap-3 px-3 text-sm", highlight, i === active && "bg-accent-soft")}>
                   <span className="truncate">{c.label}</span>{c.hint && <span className="shrink-0 text-xs text-muted">{c.hint}</span>}
                 </li>
+                </Fragment>
               ))}
             </ul>
           ) : <p id="palette-list" className="px-3 py-6 text-center text-sm text-muted">Nothing matches.</p>}
-          <p className="hidden border-t border-line px-4 py-2 text-xs text-muted md:block">Keys: <kbd>/</kbd> search the page · <kbd>j</kbd> <kbd>k</kbd> next and previous finding · <kbd>p</kbd> plan fix · <kbd>a</kbd> accept risk · <kbd>Esc</kbd> close or clear</p>
-          <p role="status" className="sr-only">{term ? `${cmds.length} result${cmds.length === 1 ? "" : "s"}` : ""}</p>
+          <p className="hidden border-t border-line px-4 py-2 text-xs text-muted md:block">Keys: <kbd>↑</kbd> <kbd>↓</kbd> move · <kbd>Enter</kbd> open · <kbd>Esc</kbd> close · <kbd>?</kbd> every shortcut</p>
+          {/* the "Search findings for …" row is always there: it isn't a match, so it isn't counted */}
+          <p role="status" className="sr-only">{term ? (() => { const n = cmds.filter((c) => c.id !== "search").length; return n ? `${n} result${n === 1 ? "" : "s"}` : "No matches; search findings instead"; })() : ""}</p>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
+const KEYS: [string, string][] = [
+  ["Ctrl K", "Search everything: pages, machines, devices, packages, vulnerabilities"],
+  ["/", "Jump to this page's search box"],
+  ["j  k  or  ↓  ↑", "Next and previous finding, in the table and in its drawer"],
+  ["Enter", "Open the highlighted finding or command"],
+  ["p  then  Enter", "Plan the fix, in a finding's drawer"],
+  ["a", "Accept the risk, in a finding's drawer"],
+  ["Esc", "Close a drawer or dialog; focus goes back to where you were"],
+  ["?", "This list"],
+];
+
+/** The keyboard shortcuts, on "?": every key the app answers to, in one place. */
+export function KeyboardShortcuts({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+  const focus = useReturnFocus();
+  return (
+    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="overlay" />
+        <Dialog.Content className="fixed left-1/2 top-[15vh] z-[51] w-[min(34rem,calc(100%-2rem))] -translate-x-1/2 border border-line bg-surface p-5 shadow-[0_24px_48px_-12px_var(--shadow)]" aria-describedby={undefined} {...focus}>
+          <Dialog.Title className="text-lg font-semibold">Keyboard shortcuts</Dialog.Title>
+          <dl className="mt-3 divide-y divide-line text-sm">
+            {KEYS.map(([k, what]) => (
+              <div key={k} className="grid grid-cols-[9rem_1fr] gap-3 py-2"><dt className="num whitespace-pre font-mono text-ink">{k}</dt><dd className="text-muted">{what}</dd></div>
+            ))}
+          </dl>
+          <Dialog.Close className="mt-4 inline-flex min-h-[44px] items-center border border-line-strong px-3.5 text-sm font-medium md:min-h-9">Close</Dialog.Close>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>

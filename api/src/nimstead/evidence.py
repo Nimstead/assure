@@ -315,9 +315,11 @@ def _controls(m: dict, sla: dict) -> list[dict]:
          "evidence": f"{m['changes_authorised']}/{m['changes']} remediation jobs updated in period have an approver recorded. This count does not prove execution, health checks or rollback"
                      + (f". {m['changes_self_approved']} of them approved by the person who planned them, with no second approver" if m.get("changes_self_approved") else "")},
         {"framework": "NIS2 Directive", "control": "Art. 21(2)(e)", "requirement": "Vulnerability handling in network and information systems maintenance",
-         "status": st(scanned and sla_ok), "evidence": f"{m['assets_reporting']}/{m['assets']} assets with a report timestamp in or after the period; {m['resolved_within_sla']}/{m['resolved']} fixes within SLA"},
+         "status": st(scanned and sla_ok), "evidence": f"{m['assets_reporting']}/{m['assets']} assets with a report timestamp in or after the period; {m['resolved_within_sla']}/{m['resolved']} fixes within SLA; {m['overdue_open']} open findings past SLA"},
+        # the status turns on open findings past their deadline, so the evidence names that count, not only the fixes made
         {"framework": "CIS Controls v8.1", "control": "7.3 / 7.4", "requirement": "Automated OS and application patch management",
-         "status": timely(sla_ok, m["resolved"]), "evidence": (f"Mean time to remediate: {m['mttr_days']} days" if m["mttr_days"] >= 1 else "Mean time to remediate: under a day") if m["mttr_days"] is not None else "Mean time to remediate: no fixes in period"},
+         "status": timely(sla_ok, m["resolved"]), "evidence": f"{m['overdue_open']} open findings past SLA; "
+            + ((f"mean time to remediate: {m['mttr_days']} days" if m["mttr_days"] >= 1 else "mean time to remediate: under a day") if m["mttr_days"] is not None else "no fixes in period")},
     ]
 
 
@@ -333,10 +335,13 @@ def build_pack(s: Session, org_id: str, start: datetime, end: datetime, with_ent
     verification occurs here. Database, checkpoint storage and malformed-record errors propagate.
     """
     org = s.get(Org, org_id)
-    assets = s.scalars(select(Asset).where(Asset.org_id == org_id)).all()
+    every = s.scalars(select(Asset).where(Asset.org_id == org_id)).all()
+    # a device with no agent is named by its address, which can be personal data: "device", as in the ledger, and it is
+    # counted on its own, so "assets" matches the Assets page (DECISIONS 133)
+    assets = [a for a in every if a.kind != "device"]
     findings = s.execute(select(Finding.id, Finding.asset_id, Finding.vuln_id, Finding.package, Finding.status, Finding.priority,
                                 Finding.cvss, Finding.kev).where(Finding.org_id == org_id, Finding.first_seen <= end)).all()
-    host = {a.id: a.hostname for a in assets}
+    host = {a.id: "device" if a.kind == "device" else a.hostname for a in every}
     sla_by_priority = sla_days(org)
 
     # Lifecycle times come from the hash-chained ledger, not the mutable findings table: editing a
@@ -388,6 +393,7 @@ def build_pack(s: Session, org_id: str, start: datetime, end: datetime, with_ent
         })
     m["findings_without_ledger_record"] = sum(1 for f in findings if f.id not in opened)
     m["assets"] = len(assets)
+    m["network_devices"] = len(every) - len(assets)
     m["assets_reporting"] = sum(1 for a in assets if start <= a.last_seen <= end or a.last_seen > end)
     m["assets_silent_now"] = sum(1 for a in assets if a.kind == "host" and a.last_seen < end - timedelta(hours=14))  # as Assets' "not reporting"
     m["mttr_days"] = round(sum(ttr) / len(ttr), 1) if ttr else None

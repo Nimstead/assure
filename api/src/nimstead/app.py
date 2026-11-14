@@ -1849,6 +1849,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         fixable: bool | None = None
         kev: bool | None = None
         overdue: bool | None = None  # open and past its deadline
+        ecosystem: str | None = Field(None, max_length=100)  # one distribution or ecosystem ("Debian:13"): a package's own fix
 
     def with_due(s: Session, org_id: str, f: FindingFilter, limit: int | None = None, sort: str = "score", offset: int = 0):
         """find() plus each finding's deadline; the overdue filter needs the SLA history, so it's applied here."""
@@ -1980,6 +1981,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             stmt = stmt.where(Finding.priority.in_(priority.split(",")))
         if asset_id:
             stmt = stmt.where(Finding.asset_id == asset_id)
+        if f.ecosystem:
+            stmt = stmt.where(Finding.ecosystem == f.ecosystem)
         if kev is not None:
             stmt = stmt.where(Finding.kev == kev)
         if fixable is not None:
@@ -2960,7 +2963,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                         "summary": rows[0][4] if eco == "WinConfig" else None, **remediate.fix_path(eco, pkg)})
         hosts = s.scalars(select(Asset).where(Asset.org_id == user.org_id, Asset.kind == "host")).all()
         paused, release = s.get(Org, user.org_id).agent_updates_paused, signed_release() is not None
+        # devices with no agent that a network check found something on: one per MAC, however many machines checked it
+        device_open = s.execute(select(Asset.facts, func.count(Finding.id)).join(Finding, Finding.asset_id == Asset.id).where(
+            Asset.org_id == user.org_id, Asset.kind == "device", Finding.status == "open").group_by(Asset.id)).all()
         return {
+            "devices_with_issues": len({(facts or {}).get("mac") for facts, _ in device_open}),
             "assets": s.scalar(select(func.count()).select_from(Asset).where(Asset.org_id == user.org_id, Asset.kind != "device")),
             "hosts_not_reporting": sum(a.last_seen < now() - notify.SILENT_AFTER for a in hosts),
             "agents_need_attention": sum(agent_update_status(a, paused, release) in ("failed", "off", "reinstall") for a in hosts),

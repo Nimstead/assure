@@ -1,6 +1,6 @@
 # Nimstead — status
 
-Read this first each session. Decisions and their reasons: DECISIONS.md (items 1–132; 27 is the threat model, 31–33 are signed updates and release channels, 34–40 are security round 4, 51–58 are Windows round 1). Install: docs/install.md. Current plan: tasks/plan-network.md (network services, DECISIONS 126-132; released as 0.9.0). Before it: tasks/plan-windows-round-2.md + tasks/todo-windows-round-2.md (Windows round 2 and the detection engine), after tasks/plan.md (round 1); both released 2026-11-04 as the 0.6.0 public preview (agent 0.5.0). Earlier: tasks/plan-0.6-ux.md, plan-0.5-ux.md (UI/UX rounds, released in 0.5.0).
+Read this first each session. Decisions and their reasons: DECISIONS.md (items 1–135; 27 is the threat model, 31–33 are signed updates and release channels, 34–40 are security round 4, 51–58 are Windows round 1). Install: docs/install.md. Current plan: tasks/plan-network.md (network services, DECISIONS 126-132; released as 0.9.0). Before it: tasks/plan-windows-round-2.md + tasks/todo-windows-round-2.md (Windows round 2 and the detection engine), after tasks/plan.md (round 1); both released 2026-11-04 as the 0.6.0 public preview (agent 0.5.0). Earlier: tasks/plan-0.6-ux.md, plan-0.5-ux.md (UI/UX rounds, released in 0.5.0).
 
 ## Done (with evidence)
 | Area | Where | Evidence |

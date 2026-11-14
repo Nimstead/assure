@@ -4,6 +4,59 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+No database migration; the agent is unchanged.
+
+### Changed
+- **A device with no agent ranks by what its exposure lets an attacker do** (DECISIONS 133). A service with no password by default (Redis, Elasticsearch, MongoDB, Memcached, the Docker API) is at least Fix now. Telnet, FTP, VNC and an exposed `.git/config` or `.env` file are at least Next. Expired certificates and legacy TLS keep their rank. A device never outranks the same exposure on the internet. Telnet on a camera used to rank Routine, due in 90 days. Existing findings take the new rank at their next network check.
+- A network check's remedy reads "Remedy: a configuration change" instead of "Fix available"; banner CVEs, fixed by an upgrade, keep "Fix available".
+- **Devices with no agent are a table** below the machines on Assets: those with issues first, with a search across address, maker, MAC and the machines that saw them, a "With issues" filter, and 25 rows at a time. Each device opens a drawer with what its network check found, a link to review those findings, and its maker, MAC, addresses, first and last seen and every machine that saw it. When devices have issues, a line at the top of Assets says so.
+- Evidence counts assets as the Assets page does, with devices with no agent counted apart (`network_devices`). A device's findings stay in the report with host `device`, as in the ledger, so its address isn't in the pack.
+- Findings can narrow to one distribution or ecosystem (`?eco=Debian:13`, API `ecosystem`), shown as a removable "Distribution" chip. Fix first's "View findings" links and a package picked from Findings' "By package" view use it, so they land on that package's own fix rather than every distribution's.
+- **Findings opens on every open finding**, by risk (DECISIONS 135). "Fixable only" is now **Has a fix**, an opt-in filter that says what it means: a fix exists (a fixed version, a setting to change, or a service to close), whether or not Nimstead can apply it. With it on, the count reads "16,872 with a fix, of 43,970 results". An older link with `fixable=0` still shows every finding.
+- **Fix first lists only the fixes that can be planned here**. One line under them says these are the top fixes by risk, not every one, names each top fix that can't be planned from here with its priority label and KEV badge, each a link to its findings, and links to every fix by package.
+- A rollout's "Where it stands" says what's waiting on you ("Canary fixed: approve the broad machines (4 waiting)"), not that the broad machines will follow by themselves. On phones the Rollouts table stacks each rollout into a labelled card. A folded group of jobs shows an arrow that turns when it opens.
+- Planning a fix on more than two machines lists them all in a short confirmation first ("Planning changes nothing: each machine's fix waits for approval"); one or two machines are named on the button.
+- Ctrl K shows one row per package, with how many distributions and hosts it spans ("openssl · 4 distributions · 203 hosts"), opening Findings grouped by package, where each distribution is listed; it no longer leaves stale rows or traps the arrow keys. A search with no match says "No matches." When a search matches host names, a vulnerability's host count says so ("2 hosts matching "db-prod""). The approve dialog says it runs the machine's health checks "if it has any", so it no longer contradicts a missing-checks warning. On phones a fix's version stays on one line, and the plan confirmation says "test machines" when that's all it can plan.
+- Ctrl K says "No matches" when only the findings search is left, instead of "1 result", and closing it returns focus to the page heading when nothing was focused before. Low has no mark, so it no longer looks like an empty cell, and a cancelled job's note is plain text, not an error box.
+- Ctrl K's commands sit under headings (Go to, Shortcuts, Machines, Devices, Packages, Vulnerabilities, Search, Account and help).
+- After stepping through findings with j/k, Esc returns focus to the finding you were on, not the one you opened.
+- **Self-approval is said once per Remediation section** ("All 3 self-approved: approved by the person who planned them, with no second approver (SOC 2 CC8.1)") instead of a label on every job; each job still shows who planned and who approved it.
+- Fix first opens on the recommended fixes. Failed fixes and machines that need a look are one line under the heading, with the detail after the fixes. A fix's status sits with its priority, so its actions stay on one line.
+- In the Findings table, j and k (or the arrow keys) move between rows, as they do in the drawer. On phones, a row's checkbox sits at its edge instead of between the ID and its priority.
+- Screen readers hear which finding, package and host each row, "View findings" and device-issue link is for.
+- **Plan fix stays where you are** and says what it planned ("Planned on web-prod-02: awaiting approval"), with a link to review and approve it, so several fixes can be planned in a row. On Fix first, a fix for one test machine names it on the button.
+- Fix first is a queue: fixes that didn't work come first, each a direct link to its job. Machines not reporting, agents that can't update, and devices with no agent that have issues (new `devices_with_issues` in `/api/summary`) are listed after the fixes, each linking to the machines concerned. A fix's host list expands in place.
+- A device's drawer lists each issue with its priority, port and what to do, each opening that finding. Ctrl K finds a checked device by address or maker and opens its drawer (`/assets?device=<mac>`). Ctrl K no longer opens on top of a drawer.
+- The Findings toolbar is two rows, status and view, then filters. "Fixable only" is a filter chip that says how many findings it hides.
+- Approving a fix on a machine with no health checks warns that a service the upgrade breaks isn't noticed or rolled back, with a link to set them.
+- Evidence says why a deadline control isn't met when every fix was on time: an open finding past its deadline. The NIS2 and CIS 7.3/7.4 evidence now includes the count of open findings past SLA.
+- **Assets has three views**: Machines, Devices with no agent (with a count of those with issues on the tab) and Internet targets (`/assets?view=devices`, `?view=internet`). A device link opens its view.
+- Evidence leads with how many controls aren't met and what is overdue. Mean time to remediate and "resolved within SLA" say how many fixes they rest on. When Cyber Essentials' "open past 14 days" differs from "Overdue", one sentence says why.
+- A recommended fix says how many of its machines can be fixed from here while production remediation is off ("Only 2 test machines of the 88").
+- Each priority has its own mark as well as its shade: filled for Fix now and Next, outlined for Routine, a dash for Low.
+- Certificate findings say "1 day" or "49 days", not "day(s)".
+- Planning fixes for a selection of findings plans only on machines this server may change: with production remediation off, test machines only, and the bar says so ("Plan 2 fixes on 1 test machine"). It used to offer plans the server then refused.
+- **Remediation shows rollouts**: a fix planned on several machines is one row, with how many canary and broad machines are fixed, running, awaiting approval or didn't work, and where it stands ("Waiting on the canary machines", "A canary didn't work: review it before the rest go"). Each machine is still approved on its own card.
+- **A rollout ring's waiting machines can be approved in one review** ("Approve canary (2)", "Approve broad (4)" on its Rollouts row). The review has a checkbox per machine, so you can approve the whole ring or just one test device. The broad ring's approval waits until the canary machines are fixed. Approving one broad machine on its own card ahead of the canary still works, and the dialog now says it's ahead of the canary. The dialog lists the machines and the package change, warns about machines with no health checks and about self-approval, and approves each machine separately: one ledger entry and one self-approval check per machine, as when approving them one by one. Production machines while production remediation is off, and fixes that can't be undone, stay on their own cards.
+- Approve dialogs put the operational risk first and loudest: no health checks set (red) above the self-approval note (now neutral).
+- In the machine drawer, Delete sits apart at the bottom as a danger action, with what it removes; the Ring and Health units notes show for machines only.
+- A recommended fix says "1 of 35 can be fixed from here (test machine)"; why is said once, above the list.
+- Fix now is a solid red label, the strongest mark on the page; Next, Routine and Low step down from it.
+- Remediation lists jobs that need attention first, then those waiting for approval, then those running. Within each, three or more machines for the same package fold into one block ("curl on 4 machines"), which opens to their cards; a link to one of them opens it.
+- In Findings, j or k starts at the first finding from anywhere on the page. The drawer's key hint lists only the keys that do something for that finding.
+- Plan fix shows which machines it will plan before you click ("On db-staging-12 and auth-prod-30"). An empty Findings list no longer offers "show all".
+- Devices with no agent show and sort by their most urgent issue's priority, as machines do (`checked.priority` in `/api/network/unmanaged`).
+- Ctrl K finds packages ("Package: curl (Ubuntu:24.04) · 4 vulnerabilities · 88 hosts", opening Findings grouped by package), and `?` opens a list of every keyboard shortcut.
+- The evidence ledger folds a run of sign-ins into one row ("17 sign-ins") that opens to every entry, so decisions and fixes aren't pushed off the first screen.
+- Ctrl K offers a machine first ("Machine: db-prod-01", its details) and its findings second ("Findings on db-prod-01").
+- The machine drawer says that its changes save as you make them and that Undo takes back the last one; Settings' org-wide sections keep a Save each.
+- Approving a fix on a production machine while production remediation is off isn't offered: the dialog says the fix can't run yet and links to how to turn it on. It used to record an approval for a job the server then refused.
+- Fix first lists the fixes you can plan from here first; those that can't be planned from here (their own updater, or production machines while production remediation is off) follow, still in risk order.
+- The finding drawer's title shows the host and where you are in the list ("auth-prod-15 · 2 of 500 loaded"), so stepping with j/k visibly moves.
+- Ctrl K's vulnerability results show the real number of hosts each is on, not a count within its first 30 rows.
+- A job's status is an outlined label with its own icon (aborted, rolled back, awaiting approval…), so it no longer looks like a priority.
+- CSV downloads are labelled "Download as CSV" everywhere. A finding description cut off at 200 characters points to the advisory for the full text.
+
 ## [0.9.1] - 2026-11-13 (preview)
 
 Agent 0.7.1. No database migration.

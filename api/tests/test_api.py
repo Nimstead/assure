@@ -441,3 +441,15 @@ def test_accept_a_selection_records_each_and_skips_what_isnt_open(env):
     assert c.post("/api/findings/accept-many", json={"ids": ids, "reason": "short", "days": 30}).status_code == 422
     kinds = [e["kind"] for e in c.get("/api/evidence/ledger").json()["entries"]]
     assert kinds.count("finding_accepted") == 3  # one ledger entry per finding, as a single accept writes
+
+
+def test_findings_filter_to_one_ecosystem(env):
+    """A package's fix is per distribution or ecosystem: list, count and groups all narrow to one."""
+    c = user(env)
+    a = enrol(c)
+    c.post("/api/agent/inventory", json=INV, headers={"Authorization": f"Bearer {a['agent_key']}"})
+    every = c.get("/api/findings").json()
+    pypi = c.get("/api/findings", params={"ecosystem": "PyPI"}).json()
+    assert pypi and {f["ecosystem"] for f in pypi} == {"PyPI"} and len(pypi) < len(every)
+    assert c.get("/api/findings/count", params={"ecosystem": "PyPI"}).json()["total"] == len(pypi)
+    assert {g["ecosystem"] for g in c.get("/api/findings/groups", params={"by": "package", "ecosystem": "PyPI"}).json()} == {"PyPI"}

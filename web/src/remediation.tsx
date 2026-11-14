@@ -3,7 +3,7 @@ import clsx from "clsx";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, TriangleAlert, Wrench, X } from "lucide-react";
-import { adminGate, api, APPROVE_COPY, dependenciesNeeded, filtersToSearch, groupJobs, isActiveJob, JOB_STATUS_LABEL, jobAnchor, jobsQ, kbFleetQ, kbHostsQ, parseFilters, parseUtc, plural, refresh, relativeTime, useHashScroll, useIsAdmin, useTitle, meQ, assetsQ, settingsQ, type Asset, type Job, type KbRow } from "./lib";
+import { adminGate, api, APPROVE_COPY, dependenciesNeeded, filtersToSearch, groupJobs, isActiveJob, jobAnchor, jobsQ, kbFleetQ, kbHostsQ, parseFilters, parseUtc, plural, refresh, relativeTime, useHashScroll, useIsAdmin, useTitle, meQ, assetsQ, settingsQ, type Asset, type Job, type KbRow } from "./lib";
 import { Alert, btnQuiet, ConfirmDialog, EmptyState, ErrorState, Loading, StatusPill } from "./ui";
 
 const CANCELLABLE: Job["status"][] = ["planned", "approved"];
@@ -105,7 +105,7 @@ export function RemediationPage() {
         : groups.length === 0 ? <EmptyState title="No fixes planned yet">Use “Plan fix” on a recommended fix or a finding. Nothing changes on a machine until you approve it.</EmptyState>
         : groups.map((g) => (
           <section key={g.key} aria-labelledby={`g-${g.key}`}>
-            <h2 id={`g-${g.key}`} className="mb-3 flex items-center gap-2 text-lg font-semibold">{g.title}<span className="sr-only">: </span><span className="num border border-line px-2 text-sm font-medium text-muted">{plural(g.jobs.length, "job")}</span></h2>
+            <h2 id={`g-${g.key}`} className="mb-3 flex items-center gap-2 text-lg font-semibold">{g.title}<span className="sr-only">: </span><span className="num border border-line px-2 text-sm font-medium text-muted">{plural(g.rollouts.length + g.singles.length, "fix", "fixes")}</span></h2>
             {(() => { const own = g.jobs.filter((j) => j.approved_by && j.approved_by === j.created_by).length; return own > 0 &&
               <p className="-mt-2 mb-3 text-sm text-warn-fg">{own === g.jobs.length ? (own === 1 ? "Self-approved" : own === 2 ? "Both self-approved" : `All ${own} self-approved`) : `${own} of ${g.jobs.length} self-approved`}: approved by the person who planned {own === 1 ? "it" : "them"}, with no second approver (SOC 2 CC8.1).</p>; })()}
             <ul className="flex flex-col gap-2">
@@ -323,7 +323,7 @@ function RingFailure({ failed, onGo }: { failed: Job[]; onGo?: () => void }) {
   return (
     <p className="mt-3 border border-now-fg p-3 text-sm text-now-fg">This fix didn't work on {failed.map((j, i) => <Fragment key={j.id}>
       <Link to="/remediation" hash={jobAnchor(j.id)} onClick={onGo} className="whitespace-nowrap font-medium text-now-fg underline">{j.hostname}</Link>{i < failed.length - 1 ? ", " : ""}</Fragment>)}{" "}
-      in this ring ({JOB_STATUS_LABEL[failed[0]!.status].toLowerCase()}). Review {failed.length === 1 ? "it" : "them"} before approving more.</p>
+      in this ring. Review {failed.length === 1 ? "it" : "them"} before approving more.</p>
   );
 }
 
@@ -449,9 +449,9 @@ export function ApproveDialog({ job, onOpenChange, onConfirm, pending, error, ow
       <RingFailure failed={ringFailed} onGo={onGo} />
       {ahead && !production && <p className="mt-3 border border-next-fg p-3 text-sm">This fix hasn't succeeded on a canary machine yet. Approving runs it on {job?.hostname} now, ahead of the canary; automatic rollout would wait.</p>}
       {production && <p className="mt-3 border border-now-fg p-3 text-sm">{job?.hostname} is a production machine, and this server changes test machines only, so this fix can't run yet. <Link to="/settings" hash="remediation" className="font-medium underline">How to turn production remediation on</Link></p>}
-      {unchecked && <p className="mt-3 border border-now-fg p-3 text-sm">No health checks are set on {job?.hostname}, so a service this upgrade breaks isn't noticed and isn't rolled back; only a failed upgrade is. <Link to="/assets" search={{ machine: unchecked.assetId }} className="font-medium underline">Set its health checks</Link></p>}
       {context && <p className="mt-2 text-sm text-muted">{context}</p>}
       {job && <PackageList job={job} />}
+      {unchecked && <p className="mt-3 border border-now-fg p-3 text-sm">No health checks on {job?.hostname}: a service this breaks won't be noticed or rolled back. <Link to="/assets" search={{ machine: unchecked.assetId }} className="font-medium underline">Set its health checks</Link></p>}
       {ownPlan && <p className="mt-3 border border-line p-3 text-sm">You planned this fix. Approving it yourself is recorded as self-approved: no second person checked the change (SOC 2 CC8.1).</p>}
       {fwd ? <p className="mt-3 border border-now-fg p-3 text-sm">This app's installer can't go back to the version it replaces, so if the new version breaks something there is no automatic rollback. The machine's health checks still run and a failure is reported. Approving records that you accepted this.</p>
         : <details className="mt-3 text-sm text-muted"><summary className="flex tap w-fit cursor-pointer items-center">How a fix runs</summary><p className="mt-1">{APPROVE_COPY}</p></details>}

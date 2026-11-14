@@ -96,7 +96,7 @@ const JOB_GROUPS = [
 ] as const;
 export const JOB_STATUS_LABEL: Record<JobStatus, string> = {
   planned: "Awaiting approval", approved: "Approved, waiting for the machine", dispatched: "Running on the machine", verifying: "Verifying",
-  succeeded: "Fixed and verified", failed: "Failed", rolled_back: "Rolled back", rollback_failed: "Rollback failed",
+  succeeded: "Fixed and verified", failed: "Didn't work", rolled_back: "Rolled back", rollback_failed: "Rollback failed",
   not_fixed: "Applied, still vulnerable", aborted: "Aborted", cancelled: "Cancelled",
 };
 /** Return the configured job groups with matching jobs, preserving each group's input order. */

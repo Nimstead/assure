@@ -141,10 +141,11 @@ function AssetViews({ view, devices, flagged, external }: { view: AssetView; dev
     ["internet", "Internet targets", external ? <span className="num text-muted">{external}</span> : null],
   ];
   return (
-    <nav aria-label="Asset views" className="-mb-2 flex flex-wrap gap-x-1 border-b border-line">
+    // one tab pattern on phones, as Settings: a strip that scrolls sideways, never a stacked list
+    <nav aria-label="Asset views" className="-mb-2 flex gap-x-1 overflow-x-auto border-b border-line [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {tabs.map(([v, label, count]) => (
         <Link key={v} to="/assets" search={v === "machines" ? {} : { view: v }} aria-current={view === v ? "page" : undefined}
-          className={clsx("-mb-px inline-flex min-h-[44px] items-center gap-2 border-b-2 px-3 text-sm no-underline md:min-h-10",
+          className={clsx("-mb-px inline-flex min-h-[44px] shrink-0 items-center gap-2 whitespace-nowrap border-b-2 px-3 text-sm no-underline md:min-h-10",
             view === v ? "border-ink font-semibold text-ink" : "border-transparent text-muted hover:text-ink")}>
           {label}{count}
         </Link>
@@ -709,8 +710,18 @@ export function AgentUpdateSummary({ assets, onShow }: { assets: Asset[]; onShow
     for (const [why] of reinstall) groups.delete(why);
     groups.set(`Agent version${named.length > 1 ? "s" : ""} ${named.length > 1 ? `${named.slice(0, -1).join(", ")} and ${named.at(-1)}` : named[0]} predate${named.length > 1 ? "" : "s"} self-update. Rerun the install command on each once; the enrolment is kept, and later versions update automatically.`, { failed: false, hosts });
   }
+  // on the Assets list: one line of links, as on Fix first; the list it filters to says the rest (DESIGN.md: copy budget)
+  if (onShow) return (
+    <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+      {[...groups].map(([why, g]) => (
+        <Link key={why} to="/assets" search={{ show: "agent" }} onClick={onShow} title={why} className={clsx("font-medium underline", g.failed ? "text-now-fg" : "text-ink")}>
+          {plural(g.hosts.length, "machine")}: {why.split(/(?<=\.) /)[0]!.replace(/\.$/, "")}
+        </Link>
+      ))}
+    </p>
+  );
   return (
-    <ul className="flex flex-col gap-1.5 border border-line-strong bg-surface px-3 py-2 text-sm [&>li]:max-w-[60ch]">
+    <ul className="flex flex-col gap-1.5 border border-line bg-surface px-3 py-2 text-sm [&>li]:max-w-[60ch]">
       {[...groups].map(([why, g]) => (
         <li key={why} className={clsx(g.failed && "text-now-fg")}>
           <strong className="font-semibold">{plural(g.hosts.length, "machine")}:</strong> {why}

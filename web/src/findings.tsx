@@ -324,7 +324,7 @@ function Table({ rows, total, more, sort, onPick, onSort, picked, onPickRow, onP
   useLayoutEffect(() => { setMargin(ref.current?.offsetTop ?? 0); });  // measured after layout, not read during render
   const v = useWindowVirtualizer({
     count: rows.length, overscan: 12, scrollMargin: margin,
-    estimateSize: () => (window.innerWidth < 768 ? 104 : 44),
+    estimateSize: () => (window.innerWidth < 768 ? 104 : 36),
   });
   const last = v.getVirtualItems().at(-1)?.index ?? 0;
   useEffect(() => { if (more && last >= rows.length - 40) more(); }, [more, last, rows.length]);
@@ -378,7 +378,7 @@ const FindingRow = memo(function FindingRow({ r, index, y, measure, onPick, pick
             <div role="row" aria-rowindex={index + 2} data-index={index} data-id={r.id} ref={measure}
               onClick={(e) => { e.currentTarget.querySelector<HTMLElement>("[data-c=vuln] button")?.focus(); onPick(r.id); }}
               className="frow absolute inset-x-0 top-0 cursor-pointer border-b border-line px-3 py-2.5 text-sm last:border-0 hover:bg-sunken @min-[48em]:py-0"
-              style={{ transform: `translateY(${y}px)`, minHeight: 44 }}>
+              style={{ transform: `translateY(${y}px)`, minHeight: window.innerWidth < 768 ? 44 : 36 }}>
               {/* on phones the checkbox sits at the row's edge, not between the ID and its priority */}
               <div role="cell" data-c="prio" className="flex flex-row-reverse items-center gap-2 @min-[48em]:flex-row"><CellLabel i={0} />
                 {picked !== undefined && onPickRow && (
@@ -397,9 +397,10 @@ const FindingRow = memo(function FindingRow({ r, index, y, measure, onPick, pick
               <div role="cell" data-c="pkg" className="break-all font-medium @min-[48em]:truncate" title={r.package}><CellLabel i={2} /><PackageName name={r.package} /></div>
               {/* the installed version gives way first: the fixed one is what you act on */}
               {/* installed above fixed: each version gets the whole width, so neither is cut */}
-              <div role="cell" data-c="ver" className="text-mono-sm flex min-w-0 flex-col font-mono leading-tight text-muted" title={`${r.installed_version} → ${fixLabel(r)}`}>
-                <CellLabel i={3} /><span className="break-all @min-[48em]:truncate">{r.installed_version}</span>
-                <span className="break-all @min-[48em]:truncate">→ {r.fixed_version ? <span className="text-ink">{r.fixed_version}</span> : fixLabel(r)}</span>
+              <div role="cell" data-c="ver" className="text-mono-sm flex min-w-0 flex-col font-mono leading-tight text-muted @min-[48em]:flex-row @min-[48em]:gap-1" title={`${r.installed_version} → ${fixLabel(r)}`}>
+                <CellLabel i={3} /><span className="break-all @min-[48em]:min-w-0 @min-[48em]:truncate">{r.installed_version}</span>
+                {/* one line from md up, so a row keeps the 36px density (the title has both whole) */}
+                <span className="break-all @min-[48em]:min-w-0 @min-[48em]:shrink-0 @min-[48em]:max-w-[60%] @min-[48em]:truncate">→ {r.fixed_version ? <span className="text-ink">{r.fixed_version}</span> : fixLabel(r)}</span>
               </div>
               <div role="cell" data-c="host" className="min-w-0 break-all text-muted @min-[48em]:truncate" title={r.hostname}><CellLabel i={4} />{r.hostname}</div>
               <div role="cell" data-c="score" className="num text-right text-muted"><span className="sr-only">Score </span>{r.score}</div>
@@ -431,7 +432,8 @@ function FindingDrawer({ id, ids = [], total, more, onMove, onClose }: {
     if (e.key === "j" && (next || more)) { e.preventDefault(); forward(); }
     if (e.key === "k" && prev) { e.preventDefault(); moved.current = true; onMove(prev); }
   };
-  const q = useQuery({ queryKey: ["finding", id], queryFn: () => api<Finding>(`/api/findings/${id}`), enabled: !!id });
+  // stepping keeps the last finding on screen until the next arrives, instead of blanking the drawer
+  const q = useQuery({ queryKey: ["finding", id], queryFn: () => api<Finding>(`/api/findings/${id}`), enabled: !!id, placeholderData: (p) => p });
   const title = useRef<HTMLHeadingElement>(null);
   const moved = useRef(false);
   useEffect(() => {
@@ -501,12 +503,13 @@ function FindingDetail({ f }: { f: Finding }) {
       <H>Why it's ranked here</H>
       <ul className="list-disc space-y-1 pl-5 text-sm">{f.reasons.map((r) => <li key={r}>{r}</li>)}</ul>
 
-      <H>Risk signals</H>
-      <dl className="num grid grid-cols-3 gap-3 text-sm">
-        <div><dt className="text-muted">CVSS</dt><dd className="font-medium">{f.cvss ?? "n/a"}</dd></div>
-        <div><dt className="text-muted">EPSS (30 days)</dt><dd className="font-medium">{f.epss === null ? "n/a" : pct(f.epss)}</dd></div>
-        <div><dt className="text-muted">Known exploited</dt><dd className="font-medium">{f.kev ? "Yes (KEV)" : "No"}</dd></div>
-      </dl>
+      {/* only the signals the reasons above don't already state; KEV is the badge (DESIGN.md: never show the same thing twice) */}
+      {(() => {
+        const said = (w: string) => f.reasons.some((r) => r.includes(w));
+        const rows = [!said("CVSS") && ["CVSS", f.cvss ?? "n/a"], !said("EPSS") && ["EPSS (30 days)", f.epss === null ? "n/a" : pct(f.epss)]].filter((x): x is [string, string | number] => !!x);
+        return rows.length > 0 && <><H>Risk signals</H>
+          <dl className="num grid grid-cols-3 gap-3 text-sm">{rows.map(([k, v]) => <div key={k}><dt className="text-muted">{k}</dt><dd className="font-medium">{v}</dd></div>)}</dl></>;
+      })()}
 
       {ids.length > 0 && <H>Advisories</H>}
       <ul className="flex flex-wrap gap-2">

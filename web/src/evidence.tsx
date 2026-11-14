@@ -102,7 +102,7 @@ function ReportView({ r, days }: { r: EvidenceReport; days: number }) {
       <dl className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
         {tile("Controls not met", <span className={counts.not_met ? "text-now-fg" : undefined}>{counts.not_met ?? 0} of {r.controls.length}</span>, `${metClean} met cleanly`)}
         {/* the number an auditor asks about leads to the findings behind it */}
-        {tile("Overdue and still open", <span className={m.overdue_open > 0 ? "text-now-fg" : undefined}>{m.overdue_open}</span>, m.overdue_open > 0 && (
+        {tile("Open findings past deadline", <span className={m.overdue_open > 0 ? "text-now-fg" : undefined}>{m.overdue_open}</span>, m.overdue_open > 0 && (
           <Link to="/findings" search={filtersToSearch({ ...parseFilters({}), overdue: true, fixable: false })} className="inline-flex tap items-center font-medium text-accent underline">
             View {plural(m.overdue_open, "finding")}
           </Link>))}
@@ -151,7 +151,9 @@ function Exceptions({ resolved, overdue, ce }: { resolved: number; overdue: numb
   const quiet = s?.hosts_not_reporting ?? 0;
   if (resolved >= SMALL_SAMPLE && !now && !quiet && !overdue && !ce) return null;
   // one line says what most affects the result; the reasoning sits behind "How this is judged" (DESIGN.md copy budget)
-  const lead = overdue > 0 ? `${plural(overdue, "open finding is", "open findings are")} past ${overdue === 1 ? "its" : "their"} deadline, so deadline controls aren't met.`
+  // two counts of "late" sit side by side on this page: say which rule each is, in the line that shows
+  const ceNote = ce && ce !== overdue ? ` (Cyber Essentials' own 14-day rule counts ${ce.toLocaleString("en")})` : "";
+  const lead = overdue > 0 ? `${plural(overdue, "open finding is", "open findings are")} past ${overdue === 1 ? "its" : "their"} priority's deadline${ceNote}, so deadline controls aren't met, however quickly resolved findings went.`
     : resolved < SMALL_SAMPLE ? `These rest on ${plural(resolved, "resolved finding")}: read “Met” as “nothing late so far”.` : "Controls are judged on the period.";
   return (
     <div className="mb-3 flex flex-col gap-1 border border-line-strong bg-surface px-3 py-2 text-sm">

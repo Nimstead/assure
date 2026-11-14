@@ -11,7 +11,7 @@ import { PlanFixButton } from "./planfix";
 import { foldRuns } from "./evidence";
 import { ApproveDialog, byPackage, RemediationPage, RolloutCard, sections } from "./remediation";
 import { AgentUpdateSummary, AssetRow, AssetsPage, AttackPaths, Baselines, baselineSummary, filterAssets, NotAssessed, UnmanagedDevices } from "./assets";
-import { cmdGroup, KeyboardShortcuts, Palette } from "./shell";
+import { cmdGroup, HelpPanel, Palette } from "./shell";
 import { Done, errorLead } from "./ui";
 import { Onboarding, TROUBLESHOOT_AFTER_MS } from "./onboarding";
 import { ApiTokensSection, QrCode, UsersSection } from "./people";
@@ -660,9 +660,9 @@ it("approve: a broad machine ahead of its canary may be approved by a person, an
   expect(screen.getByRole("button", { name: "Approve and run" })).toBeEnabled();
 });
 
-it("? lists every keyboard shortcut", () => {
-  render(<KeyboardShortcuts open onOpenChange={() => {}} />);
-  expect(screen.getByRole("dialog", { name: "Keyboard shortcuts" })).toHaveTextContent(/Ctrl K.*Jump to.*j k.*Esc/);
+it("? opens help: the words used here, how priority and rollouts work, and every keyboard shortcut", () => {
+  render(<HelpPanel open onOpenChange={() => {}} />);
+  expect(screen.getByRole("dialog", { name: "Help" })).toHaveTextContent(/Words used here.*Rollout.*canary.*How priority works.*Ctrl K.*Jump to.*j k.*Esc/);
 });
 
 it("the ledger folds a run of one kind into one row, and never folds a failure", () => {

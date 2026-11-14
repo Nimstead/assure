@@ -144,9 +144,10 @@ export function Shell() {
             <Plus className="size-4" aria-hidden />Add machine
           </Link>
         </nav>
-        <a href={DOCS} target="_blank" rel="noopener noreferrer" className="mt-auto flex min-h-9 items-center gap-3 px-3 text-sm text-muted no-underline hover:bg-sunken hover:text-ink">
-          <CircleHelp className="size-4" aria-hidden />Help<span className="sr-only"> (opens in a new tab)</span>
-        </a>
+        {/* help opens in the app (the words, priorities, rollouts, keys); the full docs are one link inside */}
+        <button type="button" onClick={() => setKeysOpen(true)} className="mt-auto flex min-h-9 cursor-pointer items-center gap-3 px-3 text-left text-sm text-muted hover:bg-sunken hover:text-ink">
+          <CircleHelp className="size-4" aria-hidden />Help<span className="ml-auto font-mono text-xs">?</span>
+        </button>
         <div className="flex flex-col gap-1 border-t border-line pt-3">
           <p className="truncate px-2 text-sm font-medium">{me.data.org}</p>
           <p className="truncate px-2 text-xs text-muted">{me.data.email}</p>
@@ -180,7 +181,7 @@ export function Shell() {
       </nav>
 
       <Palette open={paletteOpen} onOpenChange={setPaletteOpen} signOut={() => signOut.mutate()} nextTheme={next} />
-      <KeyboardShortcuts open={keysOpen} onOpenChange={setKeysOpen} />
+      <HelpPanel open={keysOpen} onOpenChange={setKeysOpen} />
     </div>
   );
 }
@@ -281,7 +282,7 @@ export function Palette({ open, onOpenChange, signOut, nextTheme }: { open: bool
       { id: "quiet", label: "Machines not reporting", run: done(() => navigate({ to: "/assets", search: { show: "quiet" } })) },
       { id: "add", label: "Add a machine", run: done(() => navigate({ to: "/add" })) },
       { id: "theme", label: "Change theme (system, light, dark)", run: done(nextTheme) },
-      { id: "keys", label: "Keyboard shortcuts", hint: "?", run: done(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "?" }))) },
+      { id: "keys", label: "Help: words used here and keyboard shortcuts", hint: "?", run: done(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "?" }))) },
       { id: "help", label: "Help: documentation", hint: "opens a new tab", run: done(() => window.open(DOCS, "_blank", "noopener")) },
       { id: "out", label: "Sign out", run: done(signOut) },
     ].filter((c) => { const t = term.toLowerCase(); return !t || c.label.toLowerCase().includes(t) || c.label.toLowerCase().split(/\W+/).some((w) => w.startsWith(t.slice(0, 4)) && t.length >= 3); });
@@ -379,20 +380,46 @@ const KEYS: [string, string][] = [
 ];
 
 /** The keyboard shortcuts, on "?": every key the app answers to, in one place. */
-export function KeyboardShortcuts({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+// DESIGN.md's glossary, said where people work: one word per idea, the same everywhere
+const GLOSSARY: [string, string][] = [
+  ["Finding", "A vulnerability or exposure on one machine."],
+  ["Fix", "An upgrade or setting change that removes findings."],
+  ["Job", "One machine's planned fix: planned, approved, run, then verified."],
+  ["Rollout", "One fix across machines: canary machines first, the broad ring once the canary is fixed."],
+  ["Resolved", "A finding the next inventory proved gone. A job is “Fixed and verified” only then."],
+  ["Has a fix", "A fix exists, whether or not Nimstead can apply it."],
+  ["Test machine", "A machine fixes may run on while production remediation is off."],
+  ["Device", "Something on the network with no agent, seen by the machines around it."],
+];
+
+/** Help in the app (?): the words used here, how priority and rollouts work, and every key; the full docs one link away. */
+export function HelpPanel({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const focus = useReturnFocus();
+  const h = "mt-5 text-sm font-semibold";
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="overlay" />
-        <Dialog.Content className="fixed left-1/2 top-[15vh] z-[51] w-[min(34rem,calc(100%-2rem))] -translate-x-1/2 border border-line bg-surface p-5 shadow-[0_24px_48px_-12px_var(--shadow)]" aria-describedby={undefined} {...focus}>
-          <Dialog.Title className="text-lg font-semibold">Keyboard shortcuts</Dialog.Title>
-          <dl className="mt-3 divide-y divide-line text-sm">
+        <Dialog.Content className="fixed left-1/2 top-[8vh] z-[51] max-h-[84vh] w-[min(38rem,calc(100%-2rem))] -translate-x-1/2 overflow-y-auto border border-line bg-surface p-5 shadow-[0_24px_48px_-12px_var(--shadow)]" aria-describedby={undefined} {...focus}>
+          <Dialog.Title className="text-lg font-semibold">Help</Dialog.Title>
+          <h3 className={h}>Words used here</h3>
+          <dl className="mt-1 divide-y divide-line text-sm">
+            {GLOSSARY.map(([k, what]) => <div key={k} className="grid grid-cols-[8rem_1fr] gap-3 py-2"><dt className="font-medium">{k}</dt><dd className="text-muted">{what}</dd></div>)}
+          </dl>
+          <h3 className={h}>How priority works</h3>
+          <p className="mt-1 max-w-prose text-sm text-muted">Each finding scores 0 to 100 from its advisory's severity, how likely it is to be exploited soon (EPSS), whether it is exploited now (KEV), and the machine's criticality and exposure. Fix now is 80 or more, or any KEV; Next, Routine and Low follow, each with its own deadline.</p>
+          <h3 className={h}>How rollouts work</h3>
+          <p className="mt-1 max-w-prose text-sm text-muted">Plan a fix, approve it, and the machine's agent runs it at its next check-in, rolling back if a health check fails. Approve the canary ring first; the broad ring's approval opens once every canary machine is fixed. Each machine is approved and recorded on its own.</p>
+          <h3 className={h} id="help-keys">Keyboard shortcuts</h3>
+          <dl className="mt-1 divide-y divide-line text-sm">
             {KEYS.map(([k, what]) => (
-              <div key={k} className="grid grid-cols-[9rem_1fr] gap-3 py-2"><dt className="num whitespace-pre font-mono text-ink">{k}</dt><dd className="text-muted">{what}</dd></div>
+              <div key={k} className="grid grid-cols-[8rem_1fr] gap-3 py-2"><dt className="num whitespace-pre font-mono text-ink">{k}</dt><dd className="text-muted">{what}</dd></div>
             ))}
           </dl>
-          <Dialog.Close className="mt-4 inline-flex min-h-[44px] items-center border border-line-strong px-3.5 text-sm font-medium md:min-h-9">Close</Dialog.Close>
+          <div className="mt-5 flex flex-wrap items-center gap-4">
+            <Dialog.Close className="inline-flex min-h-[44px] items-center border border-line-strong px-3.5 text-sm font-medium md:min-h-9">Close</Dialog.Close>
+            <a href={DOCS} target="_blank" rel="noopener noreferrer" className="text-sm font-medium underline">Full documentation<span className="sr-only"> (opens in a new tab)</span></a>
+          </div>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>

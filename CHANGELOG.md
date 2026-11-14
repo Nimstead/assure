@@ -7,6 +7,9 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 No database migration; the agent is unchanged.
 
 ### Changed
+- **Help opens in the app** (sidebar Help, `?`, or Ctrl K): the words used here, how priority and rollouts work, and every keyboard shortcut, with the full documentation one link away.
+- Findings rows are 36px from tablet width up, with the installed and fixed versions on one line. Stepping through findings keeps the last one on screen until the next loads, and the drawer no longer repeats KEV and CVSS already stated in "Why it's ranked here".
+- Assets' agent notices are one line of links, and its view tabs scroll sideways on phones instead of stacking. Evidence names each "late" count by its rule (a priority's deadline, or Cyber Essentials' 14 days).
 - **A rollout shows once on Remediation** (DECISIONS 136): one card per package fixed on several machines, with canary and broad tallies, where it stands, ring approval and every machine's job inside. It sits in the section of its most urgent machine, so a failed canary puts it under Needs attention. The separate Rollouts table is gone. A production machine while production remediation is off says "Can't run: production remediation is off" instead of offering approval. Approve buttons on cards are quiet.
 - **Toolbars show six controls or fewer before the first row.** On Findings, priority, KEV, Overdue and Has a fix sit behind one "More filters" button that shows how many are on. On Assets, the filter chips are one "Show" menu.
 - The finding drawer says where you are in the whole result ("12 of 43,970") and steps past the first 500 by loading more. A waiting job planned for an older version than Fix first now recommends says so ("planned for X; Y is now the fix").

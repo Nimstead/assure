@@ -7,6 +7,7 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 No database migration; the agent is unchanged.
 
 ### Changed
+- Fix first names overdue findings first in its line of links ("6 findings overdue"), the same count as Findings' Overdue filter. Devices count findings, not issues; Remediation sections say "7 jobs". Help defines overdue. Clicking a Settings section marks it even when it's too short to scroll to the top.
 - On phones, Fix first's priority counts sit in one row so the first recommended fix starts on the first screen, and Findings cards label the score and host. Evidence says Cyber Essentials' 14-day count once, on its card. People, API tokens and single sign-on open with one sentence, the rest behind "How this is judged".
 - A rollout's machines are listed under Canary and Broad, and its tallies say "in progress" for approved and running machines alike. Inside a rollout, a machine's card drops what the rollout already says (what it fixes, who planned it). Only versions are set in mono. Devices "with findings", not "with issues"; the first Assets view is "Machines and applications"; Help defines asset and ring. The Assets view tabs fade at the edge on phones to show there are more.
 - **A rollout's approve dialog lists every package any chosen machine changes**, with "on 2 of 4 machines" where they differ; before, it showed only the first machine's packages.

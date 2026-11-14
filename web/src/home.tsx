@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, CheckCircle2, TriangleAlert } from "lucide-react";
-import { assetsQ, dependenciesNeeded, coverageQ, settingsQ, filtersToSearch, jobAnchor, JOB_STATUS_LABEL, parseFilters, plural, PRIORITIES, PRIORITY_LABEL, priorityOf, summaryQ, useTitle, type Action } from "./lib";
+import { api, assetsQ, dependenciesNeeded, filtersToApi, coverageQ, settingsQ, filtersToSearch, jobAnchor, JOB_STATUS_LABEL, parseFilters, plural, PRIORITIES, PRIORITY_LABEL, priorityOf, summaryQ, useTitle, type Action } from "./lib";
 import { PlanFixButton } from "./planfix";
 import { ActionRow, ErrorState, KevBadge, Loading, PriorityPill, StatusPill } from "./ui";
 import clsx from "clsx";
@@ -18,6 +18,9 @@ export function Home() {
   const coverage = useQuery(coverageQ);
   const settings = useQuery(settingsQ);
   const assets = useQuery(assetsQ);
+  // overdue work is what broke too (DESIGN.md: lead with failed fixes and overdue work); the same count as Findings' Overdue filter
+  const overdueQs = filtersToApi({ ...parseFilters({}), overdue: true, fixable: false }, false);
+  const overdue = useQuery({ queryKey: ["findings", "count", overdueQs], queryFn: () => api<{ total: number }>(`/api/findings/count?${overdueQs}`) }).data?.total ?? 0;
   useTitle(q.data?.assets === 0 ? "Add a machine" : "Fix first");
 
   if (q.isPending) return <HomeSkeleton />;
@@ -35,6 +38,7 @@ export function Home() {
   const devices = s.devices_with_issues ?? 0;
   // fleet health is one line of links under the title, each to the list that names them (no second box below)
   const look = [
+    overdue > 0 && <Link key="overdue" to="/findings" search={filtersToSearch({ ...parseFilters({}), overdue: true, fixable: false })} className="font-medium text-now-fg underline">{plural(overdue, "finding")} overdue</Link>,
     s.hosts_not_reporting > 0 && <Link key="quiet" to="/assets" search={{ show: "quiet" }} className="font-medium text-ink underline">{plural(s.hosts_not_reporting, "machine")} stopped reporting</Link>,
     s.agents_need_attention > 0 && <Link key="agent" to="/assets" search={{ show: "agent" }} className="font-medium text-ink underline">{plural(s.agents_need_attention, "agent")} can't update</Link>,
     devices > 0 && <Link key="dev" to="/assets" search={{ view: "devices" }} className="font-medium text-ink underline">{plural(devices, "device")} with no agent {devices === 1 ? "has" : "have"} findings</Link>,

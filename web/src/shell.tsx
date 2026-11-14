@@ -390,6 +390,7 @@ const GLOSSARY: [string, string][] = [
   ["Ring", "Canary (ring 0) machines get a change first; broad (ring 1) machines after it worked there. Set per machine on Assets."],
   ["Resolved", "A finding the next inventory proved gone. A job is “Fixed and verified” only then."],
   ["Has a fix", "A fix exists, whether or not Nimstead can apply it."],
+  ["Overdue", "Open past its priority's deadline (Settings, Remediation deadlines). Standards call this past SLA."],
   ["Test machine", "A machine fixes may run on while production remediation is off."],
   ["Device", "Something on the network with no agent, seen by the machines around it."],
 ];

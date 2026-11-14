@@ -38,13 +38,14 @@ function Group({ id, title, children }: { id: string; title: string; children: R
 /** The section bar: scrolls sideways on phones (with a fade showing there's more) and marks the section in view. */
 function SectionBar() {
   const [current, setCurrent] = useState<string>(GROUPS[0].id);
+  const clicked = useRef(0);  // a click names the section; the observer waits so a short last section stays marked
   useEffect(() => {
     if (typeof IntersectionObserver === "undefined") return;  // old browsers and jsdom: the bar still works, unmarked
     const seen = new Map<string, boolean>();
     const io = new IntersectionObserver((entries) => {
       for (const e of entries) seen.set(e.target.id, e.isIntersecting);
       const first = GROUPS.find((g) => seen.get(g.id));
-      if (first) setCurrent(first.id);
+      if (first && Date.now() - clicked.current > 1000) setCurrent(first.id);
     }, { rootMargin: "-120px 0px -55% 0px" });
     for (const g of GROUPS) { const el = document.getElementById(g.id); if (el) io.observe(el); }
     return () => io.disconnect();
@@ -53,7 +54,7 @@ function SectionBar() {
     <nav aria-label="Settings sections" className="sticky top-[var(--header-h,53px)] z-[5] -mx-4 border-y border-line bg-bg md:top-0 md:mx-0">
       <div className="flex gap-1 overflow-x-auto px-4 py-1.5 [scrollbar-width:none] md:px-0 [&::-webkit-scrollbar]:hidden">
         {GROUPS.map((g) => (
-          <a key={g.id} href={`#${g.id}`} aria-current={current === g.id ? "location" : undefined} onClick={() => setCurrent(g.id)} onFocus={(e) => e.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" })}
+          <a key={g.id} href={`#${g.id}`} aria-current={current === g.id ? "location" : undefined} onClick={() => { clicked.current = Date.now(); setCurrent(g.id); }} onFocus={(e) => e.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" })}
             className="inline-flex min-h-[44px] shrink-0 items-center px-3 text-sm text-muted no-underline hover:bg-sunken hover:text-ink aria-[current]:font-medium aria-[current]:text-ink aria-[current]:shadow-[inset_0_-2px_0_var(--ink)] md:min-h-9">
             {g.title}
           </a>

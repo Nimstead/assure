@@ -221,13 +221,14 @@ Square everything: every radius token is 0. The one exception is real circles, s
 - **Do name the unit of every number:** machines, findings, resolved findings, jobs, hosts. Say when a number is narrowed ("2 hosts matching …", "4 of 500 loaded").
 - **Do use the glossary, the same word everywhere:**
   - **Asset:** anything findings are tracked on: a machine with an agent, an application, an internet target.
-  - **Finding:** a vulnerability or exposure on one asset. Never "issue" or "vulnerability" as a count.
+  - **Finding:** a vulnerability or exposure on one asset. Never "issue" as a count; "vulnerabilities" counts distinct advisories (one CVE on 35 machines is 1 vulnerability, 35 findings).
   - **Fix:** an upgrade or setting change that removes findings.
   - **Job:** one machine's planned fix.
   - **Rollout:** one fix across machines, canary first.
   - **Ring:** canary (ring 0) gets a change first; broad (ring 1) after it worked there.
   - **Resolved:** a finding the next inventory proved gone. A job is "Fixed and verified" only then.
   - **Has a fix:** a fix exists, whether or not Nimstead can apply it.
+  - **Overdue:** open past its priority's deadline. "SLA" only where a standard's own wording is quoted.
   - **Test machine:** a machine production-off remediation may change.
   - **Device:** something on the network with no agent.
 - **Do follow the save rules.**

@@ -230,7 +230,7 @@ export function UnmanagedDevices() {
                   <td className="px-3 py-2">
                     {!r.checked ? <span className="text-muted">Not checked</span>
                       : r.checked.open.length ? <Link to="/findings" search={deviceFindings(r)} className="tap inline-flex items-center gap-2 no-underline">
-                          {r.checked.priority && <PriorityPill priority={r.checked.priority} />}<span className="font-medium text-ink underline decoration-line-strong underline-offset-4">{plural(r.checked.open.length, "issue")}<span className="sr-only"> on {deviceName(r)}</span></span></Link>
+                          {r.checked.priority && <PriorityPill priority={r.checked.priority} />}<span className="font-medium text-ink underline decoration-line-strong underline-offset-4">{plural(r.checked.open.length, "finding")}<span className="sr-only"> on {deviceName(r)}</span></span></Link>
                       : <span className="text-muted">Nothing found</span>}
                     {r.checked && <p className="text-xs text-muted">by <span className="whitespace-nowrap">{r.checked.from}</span></p>}
                   </td>
@@ -290,7 +290,7 @@ function DeviceDrawer({ d, onClose }: { d: UnmanagedDevice | null; onClose: () =
                           </Link>
                         </li>); })}
                     </ul>
-                    <Link to="/findings" search={deviceFindings(d)} className={clsx(btnPrimary, "self-start no-underline")}>Review {plural(d.checked.open.length, "issue")}<ArrowRight className="size-4" aria-hidden /></Link>
+                    <Link to="/findings" search={deviceFindings(d)} className={clsx(btnPrimary, "self-start no-underline")}>Review {plural(d.checked.open.length, "finding")}<ArrowRight className="size-4" aria-hidden /></Link>
                   </> : <p className="text-sm">Nothing exposed was found.</p>}
                 </>}
             </section>

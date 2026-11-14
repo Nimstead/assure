@@ -563,7 +563,7 @@ it("devices with no agent: hidden while there are none, then counted, named and 
   render(<QueryClientProvider client={new QueryClient()}><UnmanagedDevices /></QueryClientProvider>);
   expect(await screen.findByRole("heading", { name: "2 devices on your networks have no agent" })).toBeInTheDocument();
   expect(screen.getByText(/1 checked for exposed services/)).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: /^1 issue ?on 192.168.1.64$/ }).getAttribute("href")).toMatch(/^\/findings\?.*asset=d1/);
+  expect(screen.getByRole("link", { name: /^1 finding ?on 192.168.1.64$/ }).getAttribute("href")).toMatch(/^\/findings\?.*asset=d1/);
   // issues first, then the rest; a device opens its own drawer with what the check found
   expect(screen.getAllByRole("row").slice(1).map((r) => r.textContent)).toEqual([expect.stringMatching(/^192\.168\.1\.64/), expect.stringMatching(/^192\.168\.1\.70/)]);
   fireEvent.click(screen.getByRole("button", { name: "192.168.1.64: device details" }));

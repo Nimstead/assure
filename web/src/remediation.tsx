@@ -101,7 +101,7 @@ export function RemediationPage() {
         : groups.length === 0 ? <EmptyState title="No fixes planned yet">Use “Plan fix” on a recommended fix or a finding. Nothing changes on a machine until you approve it.</EmptyState>
         : groups.map((g) => (
           <section key={g.key} aria-labelledby={`g-${g.key}`}>
-            <h2 id={`g-${g.key}`} className="mb-3 flex items-center gap-2 text-lg font-semibold">{g.title}<span className="sr-only">: </span><span className="num border border-line px-2 text-sm font-medium text-muted">{g.jobs.length}</span></h2>
+            <h2 id={`g-${g.key}`} className="mb-3 flex items-center gap-2 text-lg font-semibold">{g.title}<span className="sr-only">: </span><span className="num border border-line px-2 text-sm font-medium text-muted">{plural(g.jobs.length, "job")}</span></h2>
             {(() => { const own = g.jobs.filter((j) => j.approved_by && j.approved_by === j.created_by).length; return own > 0 &&
               <p className="-mt-2 mb-3 text-sm text-warn-fg">{own === g.jobs.length ? (own === 1 ? "Self-approved" : own === 2 ? "Both self-approved" : `All ${own} self-approved`) : `${own} of ${g.jobs.length} self-approved`}: approved by the person who planned {own === 1 ? "it" : "them"}, with no second approver (SOC 2 CC8.1).</p>; })()}
             <ul className="flex flex-col gap-2">

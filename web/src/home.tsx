@@ -81,7 +81,7 @@ export function Home() {
             >
               <ArrowRight aria-hidden className="absolute right-3 top-3 hidden size-4 text-muted group-hover:text-ink sm:block" />
               <span className={clsx("num text-lg font-semibold sm:text-2xl", tile(p, s.open_by_priority[p] ?? 0))}>{(s.open_by_priority[p] ?? 0).toLocaleString()}</span>
-              <span className="truncate text-xs text-muted sm:text-sm">{PRIORITY_LABEL[p]}</span>
+              <span className="truncate text-xs text-muted sm:text-sm">{PRIORITY_LABEL[p]}<span className="sr-only sm:not-sr-only"> findings</span></span>
             </Link>
           </li>
         ))}

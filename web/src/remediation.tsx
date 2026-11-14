@@ -240,8 +240,9 @@ export function JobCard({ job: j, onApprove, onCancel, blocked, inRollout }: { j
             {j.finding_ids.length > 0 && !inRollout && !/to fix \d/.test(j.summary) && <li>fixes {plural(j.finding_ids.length, "finding")}</li>}
             {/* a name opens that thing's detail (DESIGN.md): the machine's drawer */}
             {!inRollout && <li className="min-w-0 break-all">on <Link to="/assets" search={{ machine: j.asset_id }} className="inline-flex tap items-center font-semibold text-ink underline decoration-line-strong hover:decoration-ink">{j.hostname}</Link></li>}
-            {!inRollout && <li className="break-all">planned by {j.created_by}</li>}
-            {j.approved_by && <li className="break-all">approved by {j.approved_by}</li>}
+            {/* who planned and who approved, as one fact (DESIGN.md: one muted line per card) */}
+            {(!inRollout || j.approved_by) && <li className="break-all">{j.approved_by === j.created_by ? `planned and approved by ${j.created_by}`
+              : [!inRollout && `planned by ${j.created_by}`, j.approved_by && `approved by ${j.approved_by}`].filter(Boolean).join(", ")}</li>}
             {j.forward_only && <li className="text-now-fg">forward-only: no automatic rollback</li>}
             {j.waits_for_window && <li>waits for the maintenance window ({parseUtc(j.waits_for_window).toLocaleString()})</li>}
             {/* shown, not blocked: auditors look for this under SOC 2 CC8.1 */}
@@ -390,7 +391,7 @@ export function RolloutCard({ jobs, assets, hold, onApprove, card }: {
       {card && (
         <details open={linked} className="border-t border-line">
           <summary className="flex tap w-fit cursor-pointer items-center gap-2 px-4 py-2 text-sm font-medium">
-            Machines ({jobs.length > live.length ? `${jobs.length}: ${jobs.length - live.length} cancelled` : jobs.length})
+            Machines ({live.length}{jobs.length > live.length && `, plus ${jobs.length - live.length} cancelled`})
           </summary>
           {/* under their ring, so the tallies above read straight against the list */}
           <div className="flex flex-col gap-2 bg-sunken p-2">

@@ -138,7 +138,7 @@ type AssetView = "machines" | "devices" | "internet";
 function AssetViews({ view, devices, flagged, external }: { view: AssetView; devices: number; flagged: number; external: number }) {
   const tabs: [AssetView, string, ReactNode][] = [
     ["machines", "Machines and applications", null],
-    ["devices", "Devices with no agent", devices ? <span className="num text-muted">{devices}{flagged > 0 && <span className="text-ink"> · {plural(flagged, "with findings", "with findings")}</span>}</span> : null],
+    ["devices", "Devices with no agent", devices ? <span className="num text-muted">{flagged > 0 ? `${flagged} with findings` : devices}</span> : null],
     ["internet", "Internet targets", external ? <span className="num text-muted">{external}</span> : null],
   ];
   return (
@@ -638,7 +638,7 @@ const MachineLine = memo(function MachineLine({ a, picked, saved, onPick, onOpen
           <button className="tap cursor-pointer text-left font-semibold underline decoration-line-strong underline-offset-4 hover:decoration-ink" onClick={() => onOpen(a.id)}>
             <span className="break-all">{a.hostname}</span><span className="sr-only">: details and settings</span>
           </button>
-          {a.not_reporting && <Tag tone="now">Not reporting</Tag>}
+          {a.not_reporting && <Tag tone="warn">Not reporting</Tag>}
           {a.agent_update && !["current", "updating"].includes(a.agent_update) && (!quietAgent || a.agent_update === "failed") && <Tag tone={a.agent_update === "failed" ? "now" : "muted"}>{AGENT_UPDATE[a.agent_update as Exclude<AgentUpdate, "current">].label}</Tag>}
           {a.sandbox && <Tag>Test machine</Tag>}
           {saved && <Done className="text-muted">Saved</Done>}
@@ -750,12 +750,12 @@ export function AssetRow({ a, onPatch, onDelete, saved, error, inDrawer, undo }:
       <div className="min-w-0 flex-1 basis-60">
         <div className="flex flex-wrap items-center gap-2"><h3 className={inDrawer ? "sr-only" : "min-w-0 break-all text-base font-semibold"} title={a.hostname}>{a.hostname}</h3>
           {a.sandbox && <Tag why="Test machine: the only kind automated fixes may change until production remediation is turned on">Test machine</Tag>}
-          {a.not_reporting && <Tag tone="now" why={`Last report ${relativeTime(a.last_seen)}, so findings may be out of date. Check the host is running and the agent's timer or scheduled task.`}>Not reporting</Tag>}
+          {a.not_reporting && <Tag tone="warn" why={`Last report ${relativeTime(a.last_seen)}, so findings may be out of date. Check the host is running and the agent's timer or scheduled task.`}>Not reporting</Tag>}
           {a.agent_update && a.agent_update !== "current" && <Tag tone={a.agent_update === "failed" ? "now" : "muted"}>{AGENT_UPDATE[a.agent_update].label}</Tag>}</div>
         <p className="truncate text-sm text-muted">
           {a.kind === "application" ? "Application (SBOM)" : a.os_name || "Unknown OS"}{a.agent_version && ` · agent ${a.agent_version}`} · seen <time dateTime={parseUtc(a.last_seen).toISOString()} title={parseUtc(a.last_seen).toLocaleString()}>{relativeTime(a.last_seen)}</time>
         </p>
-        {a.not_reporting && <p className="mt-1 text-xs text-now-fg">Last report {relativeTime(a.last_seen)}, so findings may be out of date.</p>}
+        {a.not_reporting && <p className="mt-1 text-xs text-warn-fg">Last report {relativeTime(a.last_seen)}, so findings may be out of date.</p>}
         {a.apps && a.apps.inventory_only > 0 && <p className="mt-1 text-xs text-muted">{a.apps.assessed === 0 ? `None of its ${plural(a.apps.inventory_only, "installed app")} could be checked.` : `${a.apps.assessed} of ${a.apps.assessed + a.apps.inventory_only} installed apps checked; the rest are listed only.`}</p>}
         {a.facts?.os_unmatched && <p className="mt-1 text-xs text-muted">OS not matched to Microsoft's fixes: {a.facts.os_unmatched}. Apps and end of support are still checked.</p>}
         {a.facts?.pending_reboot && <p className="mt-1 text-xs text-next-fg">Updates are installed and waiting for a restart: findings close after it.</p>}

@@ -15,7 +15,7 @@ import { cmdGroup, HelpPanel, Palette } from "./shell";
 import { Done, errorLead } from "./ui";
 import { Onboarding, TROUBLESHOOT_AFTER_MS } from "./onboarding";
 import { ApiTokensSection, QrCode, UsersSection } from "./people";
-import { JobCard, KbFleet, machineContext, stepState } from "./remediation";
+import { JobCard, KbFleet, machineContext, plainRefusal, stepState } from "./remediation";
 import { AcceptRisk, FindingsPage } from "./findings";
 import { EvidencePage } from "./evidence";
 import { SettingsPage } from "./settings";
@@ -259,7 +259,7 @@ it("Home: a fix in flight on one host still lets you plan the others", () => {
   serve({});
   wrap(<ol><ActionCard a={{ ...ACTION, busy_asset_ids: ["a1"], job: { id: "j1", status: "approved" } }} /></ol>);
   expect(screen.getByRole("link", { name: /View fix/ })).toHaveAttribute("href", "/remediation#job-j1");
-  expect(screen.getByRole("button", { name: /Plan fix for 1 more machine/ })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Plan fix on 1 more machine/ })).toBeInTheDocument();
 });
 
 it("Home: after an aborted attempt that needs more packages, it points to the job instead of re-planning blind", () => {
@@ -712,4 +712,10 @@ it("approve: a ring review lists every package any chosen machine changes, and o
   const j = (pk: string[]) => ({ summary: "Upgrade curl to 8.5 on h", packages: pk.map((name) => ({ name, from: "8.4", to: "8.5" })) });
   render(<PackageList job={j(["libcurl4t64"])} jobs={[j(["libcurl4t64"]), j(["libcurl4t64", "curl"])]} />);
   expect(screen.getByRole("list", { name: "Packages this fix changes" })).toHaveTextContent(/libcurl4t64 8\.4 → 8\.5curl 8\.4 → 8\.5 on 1 of 2 machines/);
+});
+
+it("a rolled-back job says in plain words which service didn't come back, with the machine's own text kept", () => {
+  expect(plainRefusal("Change failed and was rolled back: billing-api.service active after change failed: service is activating, restarted 11 times since the change"))
+    .toBe("billing-api didn't start properly after the upgrade (restarted 11 times), so the change was rolled back.");
+  expect(plainRefusal("nginx.service active after change failed: inactive")).toBe("nginx didn't start properly after the upgrade, so the change was rolled back.");
 });

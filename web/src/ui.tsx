@@ -231,12 +231,12 @@ export function ActionRow({ primary, links }: { primary?: ReactNode; links: Reac
 }
 
 /** The copy budget (DESIGN.md): one sentence shows; the rest of the explanation sits behind "How this is judged". */
-export function HowJudged({ lead, children, className }: { lead: ReactNode; children: ReactNode; className?: string }) {
+export function HowJudged({ lead, children, className, label = "How this is judged" }: { lead: ReactNode; children: ReactNode; className?: string; label?: string }) {
   return (
     <div className={clsx("max-w-prose text-sm text-muted", className)}>
       <p>{lead}</p>
       <details className="mt-0.5">
-        <summary className="tap w-fit cursor-pointer text-ink underline decoration-line-strong underline-offset-4 hover:decoration-ink md:min-h-0">How this is judged</summary>
+        <summary className="tap w-fit cursor-pointer text-ink underline decoration-line-strong underline-offset-4 hover:decoration-ink md:min-h-0">{label}</summary>
         <div className="mt-1 flex flex-col gap-1">{children}</div>
       </details>
     </div>

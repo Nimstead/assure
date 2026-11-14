@@ -121,7 +121,7 @@ export function UsersSection() {
   return (
     <section aria-labelledby="people" className="flex flex-col gap-3">
       <h3 id="people" className="text-lg font-semibold">People</h3>
-      <HowJudged lead="Admins can change policy, approve fixes and manage people; everyone else can look.">
+      <HowJudged label="More about this" lead="Admins can change policy, approve fixes and manage people; everyone else can look.">
         Removing someone signs them out at once and ends their API tokens. With single sign-on, people join by signing in.
       </HowJudged>
       {q.isPending ? <Loading className="h-20" /> : q.error ? <ErrorState error={q.error} retry={() => q.refetch()} /> : (
@@ -174,7 +174,7 @@ export function ApiTokensSection() {
   return (
     <section aria-labelledby="api-tokens" className="flex flex-col gap-3">
       <h3 id="api-tokens" className="text-lg font-semibold">API tokens</h3>
-      <HowJudged lead="Read-only access for scripts and other tools: findings (also as CSV), assets, the summary and evidence.">
+      <HowJudged label="More about this" lead="Read-only access for scripts and other tools: findings (also as CSV), assets, the summary and evidence.">
         Send it as <code className="bg-sunken px-1 font-mono">Authorization: Bearer …</code>. A token stops working if its creator stops being an admin.
       </HowJudged>
       {q.isPending ? <Loading className="h-16" /> : q.error ? <ErrorState error={q.error} retry={() => q.refetch()} /> : q.data.length > 0 && (

@@ -168,7 +168,7 @@ export function SettingsPage() {
 
         <section aria-labelledby="canary" className="flex flex-col items-start gap-3">
           <h3 id="canary" className="text-lg font-semibold">Canary soak</h3>
-          <HowJudged lead="Broad machines get a change only after a canary machine has run it healthily for this long.">
+          <HowJudged label="More about this" lead="Broad machines get a change only after a canary machine has run it healthily for this long.">
             Each machine is in a ring: <strong className="font-semibold text-ink">Canary</strong> (ring 0) gets a change first, <strong className="font-semibold text-ink">Broad</strong> (ring 1) after the soak. Set rings and health checks per machine on the Assets page.
           </HowJudged>
           {!admin ? <p className="text-sm">Soak time: <strong className="font-semibold">{s.canary_soak_hours} hours.</strong> <span className="text-muted">Only organisation admins can change this.</span></p> : <form className="flex flex-wrap items-start gap-3" onSubmit={(e) => { e.preventDefault(); if (hoursOk) save.mutate({ canary_soak_hours: n }); }}>
@@ -205,7 +205,7 @@ export function SettingsPage() {
         <section aria-labelledby="agent-updates" className="flex flex-col items-start gap-3">
           <h3 id="agent-updates" className="text-lg font-semibold">Agent updates</h3>
           {/* one sentence shows; the rest behind How this is judged (DESIGN.md: copy budget) */}
-          <HowJudged lead="Agents update themselves to newer signed releases at their next run.">
+          <HowJudged label="More about this" lead="Agents update themselves to newer signed releases at their next run.">
             A release is accepted only if it's signed by the Nimstead release key built into the agent, so this server can hold an update back but can't change one. Each agent tests the new version on its host before switching and keeps the old one if the test fails.
           </HowJudged>
           {!s.signed_agent_release && (
@@ -271,7 +271,7 @@ function MaintenanceSection({ s, admin, pending, onSave, saved, error }: { s: Se
   return (
     <section aria-labelledby="window" className="flex flex-col items-start gap-3">
       <h3 id="window" className="text-lg font-semibold">Maintenance window</h3>
-      <HowJudged lead="Approved fixes start, and servers restart, only inside this window.">
+      <HowJudged label="More about this" lead="Approved fixes start, and servers restart, only inside this window.">
         <p>A machine's own window on the Assets page overrides it. Someone signed in to a workstation is told and can put the restart off for up to the deadline below.</p>
         <p>Nodes of one failover cluster, and one domain's controllers, are always fixed one at a time.</p>
       </HowJudged>
@@ -341,7 +341,7 @@ function TokensSection() {
               return (
                 <li key={t.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 text-sm">
                   <code className="font-mono text-xs">{t.id}</code>
-                  {t.sandbox && <Tag>Test machines</Tag>}
+                  <Tag>{t.sandbox ? "Test machines" : "Any machine"}</Tag>
                   <span className="min-w-[8rem] flex-1 text-muted">
                     {t.revoked ? "Revoked" : expired ? "Expired " : "Expires "}
                     {!t.revoked && <time dateTime={parseUtc(t.expires).toISOString()} title={parseUtc(t.expires).toLocaleString()}>{relativeTime(t.expires)}</time>}

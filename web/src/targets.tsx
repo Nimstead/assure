@@ -69,7 +69,7 @@ export function ExternalTargets({ targets, onDelete }: { targets: Asset[]; onDel
   return (
     <section aria-labelledby="ext-h" className="flex flex-col gap-3">
       <h2 id="ext-h" className="text-lg font-semibold">Internet targets</h2>
-      <HowJudged lead="Checks hosts you prove you own for risky open services, weak TLS and files served by mistake.">
+      <HowJudged label="What is checked" lead="Checks hosts you prove you own for risky open services, weak TLS and files served by mistake.">
         <p>Risky services: RDP, SMB, Telnet, databases, the Docker API and others. TLS: expired, expiring or untrusted certificates, and TLS 1.0/1.1. Files: /.git/config and /.env.</p>
         <p>Only TCP connects, TLS handshakes and read-only requests; nothing is logged into or exploited.</p>
       </HowJudged>

@@ -136,7 +136,7 @@ export function RemediationPage() {
           {(() => { const bare = picked.filter((j) => byId.get(j.asset_id)?.kind === "host" && !byId.get(j.asset_id)?.health_units.length); return bare.length > 0 &&
             <p className="mt-3 border border-now-fg p-3 text-sm">No health checks are set on {bare.map((j) => <Fragment key={j.id}><span className="whitespace-nowrap">{j.hostname},</span>{" "}</Fragment>)}so a service this upgrade breaks there isn't noticed and isn't rolled back; only a failed upgrade is.</p>; })()}
           {picked.some((j) => j.created_by === me) && <p className="mt-3 border border-line p-3 text-sm">You planned {picked.every((j) => j.created_by === me) ? "these fixes" : "some of these fixes"}. Approving them yourself is recorded as self-approved for each machine: no second person checked the change (SOC 2 CC8.1).</p>}
-          <p className="mt-3 border border-line p-3 text-sm">{APPROVE_COPY}</p>
+          <details className="mt-3 text-sm text-muted"><summary className="flex tap w-fit cursor-pointer items-center underline decoration-line-strong">How a fix runs</summary><p className="mt-1">{APPROVE_COPY}</p></details>
         </>}
       </ConfirmDialog>
       <ConfirmDialog open={!!cancelling} onOpenChange={(o) => !o && setCancelling(null)} title="Cancel this fix?"
@@ -350,7 +350,7 @@ export function RolloutCard({ jobs, assets, hold, onApprove, card }: {
     <li className="border border-line bg-surface" aria-label={`${pkg} rollout`}>
       <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <p className="font-medium"><span className="font-semibold">Upgrade {pkg}</span> <span className="text-sm text-muted">{eco}</span> <span className="text-sm">on {plural(new Set(live.map((j) => j.asset_id)).size, "machine")}</span></p>
+          <p className="font-medium"><span className="font-semibold">Upgrade {pkg}{(() => { const t = (/ to (\S+) on \S+$/.exec(jobs[0]!.summary ?? ""))?.[1]; return t && <> to <span className="font-mono text-sm">{t}</span></>; })()}</span> <span className="text-sm text-muted">{eco}</span> <span className="text-sm">on {plural(new Set(live.map((j) => j.asset_id)).size, "machine")}</span></p>
           <p className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm">{cell("Canary", canary)}{cell("Broad", broad)}</p>
           <p className={clsx("mt-1 text-sm", canary.stuck ? "text-now-fg" : "text-ink")}>{stands}</p>
           {reasons.map((r) => <p key={r} className="mt-1 text-sm text-muted">{plural(held.filter((j) => hold!(j) === r).length, "waiting machine")} left out: {r}</p>)}
@@ -420,7 +420,7 @@ export function ApproveDialog({ job, onOpenChange, onConfirm, pending, error, ow
       {unchecked && <p className="mt-3 border border-now-fg p-3 text-sm">No health checks are set on {job?.hostname}, so a service this upgrade breaks isn't noticed and isn't rolled back; only a failed upgrade is. <Link to="/assets" search={{ machine: unchecked.assetId }} className="font-medium underline">Set its health checks</Link></p>}
       {ownPlan && <p className="mt-3 border border-line p-3 text-sm">You planned this fix. Approving it yourself is recorded as self-approved: no second person checked the change (SOC 2 CC8.1).</p>}
       {fwd ? <p className="mt-3 border border-now-fg p-3 text-sm">This app's installer can't go back to the version it replaces, so if the new version breaks something there is no automatic rollback. The machine's health checks still run and a failure is reported. Approving records that you accepted this.</p>
-        : <p className="mt-3 border border-line p-3 text-sm">{APPROVE_COPY}</p>}
+        : <details className="mt-3 text-sm text-muted"><summary className="flex tap w-fit cursor-pointer items-center underline decoration-line-strong">How a fix runs</summary><p className="mt-1">{APPROVE_COPY}</p></details>}
     </ConfirmDialog>
   );
 }
@@ -429,6 +429,12 @@ export function ApproveDialog({ job, onOpenChange, onConfirm, pending, error, ow
 export function plainRefusal(error: string): string | null {
   const deps = dependenciesNeeded(error);
   if (deps.length) return `Nothing was changed. The upgrade would also have changed ${deps.join(", ")}, which wasn't in the plan, so the machine refused it.`;
+  // a health check that failed after the change: the agent's wording names the unit and how often it restarted
+  const unit = /([\w@.-]+?)(?:\.service)? active after change failed/.exec(error);
+  if (unit) {
+    const n = /restarted (\d+) times/.exec(error)?.[1];
+    return `${unit[1]} didn't start properly after the upgrade${n ? ` (restarted ${n} times)` : ""}, so the change was rolled back.`;
+  }
   return null;
 }
 

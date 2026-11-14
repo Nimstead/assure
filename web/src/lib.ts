@@ -95,7 +95,7 @@ const JOB_GROUPS = [
   { key: "done", title: "Done", statuses: ["succeeded", "cancelled"] },
 ] as const;
 export const JOB_STATUS_LABEL: Record<JobStatus, string> = {
-  planned: "Awaiting approval", approved: "Approved, waiting for host", dispatched: "Running on host", verifying: "Verifying",
+  planned: "Awaiting approval", approved: "Approved, waiting for the machine", dispatched: "Running on the machine", verifying: "Verifying",
   succeeded: "Fixed and verified", failed: "Failed", rolled_back: "Rolled back", rollback_failed: "Rollback failed",
   not_fixed: "Applied, still vulnerable", aborted: "Aborted", cancelled: "Cancelled",
 };

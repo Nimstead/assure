@@ -32,7 +32,7 @@ export function SsoSection() {
   return (
     <section aria-labelledby="sso" className="flex flex-col gap-3">
       <h3 id="sso" className="text-lg font-semibold">Single sign-on (OIDC)</h3>
-      <HowJudged lead={<>Let people sign in with your identity provider; register this redirect URI there: <code className="break-all font-mono text-xs text-ink">{s.redirect_uri}</code></>}>
+      <HowJudged label="More about this" lead={<>Let people sign in with your identity provider; register this redirect URI there: <code className="break-all font-mono text-xs text-ink">{s.redirect_uri}</code></>}>
         People whose email is on an allowed domain get an account here the first time they sign in. Leave the issuer empty to switch SSO off.
       </HowJudged>
       <form key={version} onSubmit={submit} onChange={() => { save.reset(); setDirty(true); }} className="grid max-w-xl gap-4">

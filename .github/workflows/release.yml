@@ -61,9 +61,13 @@ jobs:
         run: |
           cp agent/nimstead_agent.py signed/
           if [ "$CHANNEL" = stable ]; then labels="--prerelease=false --latest"; else labels="--prerelease --latest=false"; fi
-          # notes for a new release: its CHANGELOG section (promotion only re-signs and keeps notes edited since)
+          # notes for a new release: its CHANGELOG section, cut before Added/Changed/Fixed when it has a Highlights
+          # summary (promotion only re-signs and keeps notes edited since)
           v="${TAG#v}"
           awk -v h="## [$v]" 'index($0, h) == 1 {on = 1; next} on && /^## \[/ {exit} on' CHANGELOG.md | sed '/./,$!d' > notes.md
+          if grep -q '^### Highlights' notes.md; then
+            awk '/^### (Added|Changed|Deprecated|Removed|Fixed|Security)$/ {exit} 1' notes.md > summary.md && mv summary.md notes.md
+          fi
           [ -s notes.md ] || echo "See CHANGELOG.md." > notes.md
           printf '\nFull list: [CHANGELOG](https://github.com/%s/blob/%s/CHANGELOG.md).\n' "$GITHUB_REPOSITORY" "$TAG" >> notes.md
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --verify-tag --title "Nimstead Assure $v" --notes-file notes.md --prerelease --latest=false

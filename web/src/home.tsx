@@ -20,7 +20,9 @@ export function Home() {
   const assets = useQuery(assetsQ);
   // overdue work is what broke too (DESIGN.md: lead with failed fixes and overdue work); the same count as Findings' Overdue filter
   const overdueQs = filtersToApi({ ...parseFilters({}), overdue: true, fixable: false }, false);
-  const overdue = useQuery({ queryKey: ["findings", "count", overdueQs], queryFn: () => api<{ total: number }>(`/api/findings/count?${overdueQs}`) }).data?.total ?? 0;
+  const overdue = useQuery({ queryKey: ["findings", "count", overdueQs], queryFn: () => api<{ total: number }>(`/api/findings/count?${overdueQs}`),
+    // shortcut: the overdue count works out each open finding's deadline in Python (with_due); move it into /api/summary if Home gets slow on big fleets
+    staleTime: 5 * 60_000 }).data?.total ?? 0;
   useTitle(q.data?.assets === 0 ? "Add a machine" : "Fix first");
 
   if (q.isPending) return <HomeSkeleton />;

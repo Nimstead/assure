@@ -52,7 +52,7 @@ function SectionBar() {
   }, []);
   return (
     <nav aria-label="Settings sections" className="sticky top-[var(--header-h,53px)] z-[5] -mx-4 border-y border-line bg-bg md:top-0 md:mx-0">
-      <div className="flex gap-1 overflow-x-auto px-4 py-1.5 [scrollbar-width:none] md:px-0 [&::-webkit-scrollbar]:hidden">
+      <div className="flex gap-1 overflow-x-auto overflow-y-hidden px-4 py-1.5 [scrollbar-width:none] md:px-0 [&::-webkit-scrollbar]:hidden">
         {GROUPS.map((g) => (
           <a key={g.id} href={`#${g.id}`} aria-current={current === g.id ? "location" : undefined} onClick={() => { clicked.current = Date.now(); setCurrent(g.id); }} onFocus={(e) => e.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" })}
             className="inline-flex min-h-[44px] shrink-0 items-center px-3 text-sm text-muted no-underline hover:bg-sunken hover:text-ink aria-[current]:font-medium aria-[current]:text-ink aria-[current]:shadow-[inset_0_-2px_0_var(--ink)] md:min-h-9">
@@ -65,7 +65,7 @@ function SectionBar() {
   );
 }
 
-const PRODUCTION_HOW = <>To let fixes run on other machines, set <code className="inline-block max-w-full overflow-x-auto whitespace-nowrap bg-sunken px-1 align-bottom font-mono">NIMSTEAD_ALLOW_PRODUCTION_REMEDIATION=1</code> in <code className="bg-sunken px-1">.env</code> on the server and restart it, once you've watched fixes and rollbacks work on test machines.</>;
+const PRODUCTION_HOW = <>To let fixes run on other machines, set <code className="bg-sunken px-1 font-mono [overflow-wrap:anywhere]">NIMSTEAD_ALLOW_PRODUCTION_REMEDIATION=1</code> in <code className="bg-sunken px-1">.env</code> on the server and restart it, once you've watched fixes and rollbacks work on test machines.</>;
 
 /** Render account, organisation policy, integration, and server settings with role-gated mutations. */
 export function SettingsPage() {

@@ -424,9 +424,10 @@ function FindingDrawer({ id, ids = [], total, more, onMove, onClose }: {
   const at = ids.indexOf(id);
   const prev = at > 0 ? ids[at - 1] : undefined, next = at >= 0 && at < ids.length - 1 ? ids[at + 1] : undefined;
   // at the last loaded finding, j loads the next page and moves on: the list is the whole result, not its first 500
-  const [waiting, setWaiting] = useState(false);
-  useEffect(() => { if (waiting && next) { setWaiting(false); moved.current = true; onMove(next); } }, [waiting, next, onMove]);
-  const forward = () => { if (next) { moved.current = true; onMove(next); } else if (more && at === ids.length - 1) { setWaiting(true); void more(); } };
+  // the finding that asked for the next page: an empty or failed page, or stepping back, never moves on later
+  const [waiting, setWaiting] = useState<string | null>(null);
+  useEffect(() => { if (waiting === id && next) { setWaiting(null); moved.current = true; onMove(next); } }, [waiting, id, next, onMove]);
+  const forward = () => { if (next) { moved.current = true; onMove(next); } else if (more && at === ids.length - 1) { setWaiting(id); void more(); } };
   // j / k step through the list without closing the drawer
   const onKey = (e: React.KeyboardEvent) => {
     if (e.target instanceof HTMLElement && e.target.closest("input, textarea, select")) return;

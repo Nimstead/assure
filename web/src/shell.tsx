@@ -282,7 +282,7 @@ export function Palette({ open, onOpenChange, signOut, nextTheme }: { open: bool
       { id: "quiet", label: "Machines not reporting", run: done(() => navigate({ to: "/assets", search: { show: "quiet" } })) },
       { id: "add", label: "Add a machine", run: done(() => navigate({ to: "/add" })) },
       { id: "theme", label: "Change theme (system, light, dark)", run: done(nextTheme) },
-      { id: "keys", label: "Help: words used here and keyboard shortcuts", hint: "?", run: done(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "?" }))) },
+      { id: "keys", label: "Help: words used here and keyboard shortcuts", hint: "?", run: done(() => setTimeout(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "?" })), 0)) },  // after the palette has closed: "?" is ignored while a dialog is open
       { id: "help", label: "Help: documentation", hint: "opens a new tab", run: done(() => window.open(DOCS, "_blank", "noopener")) },
       { id: "out", label: "Sign out", run: done(signOut) },
     ].filter((c) => { const t = term.toLowerCase(); return !t || c.label.toLowerCase().includes(t) || c.label.toLowerCase().split(/\W+/).some((w) => w.startsWith(t.slice(0, 4)) && t.length >= 3); });

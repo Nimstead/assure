@@ -3,7 +3,7 @@ import clsx from "clsx";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronRight, TriangleAlert, Wrench, X } from "lucide-react";
-import { adminGate, api, APPROVE_COPY, dependenciesNeeded, filtersToSearch, groupJobs, isActiveJob, jobAnchor, jobsQ, kbFleetQ, kbHostsQ, parseFilters, parseUtc, plural, refresh, relativeTime, useHashScroll, useIsAdmin, useTitle, meQ, assetsQ, settingsQ, summaryQ, type Asset, type Job, type KbRow } from "./lib";
+import { adminGate, api, APPROVE_COPY, dependenciesNeeded, filtersToSearch, groupJobs, isActiveJob, jobAnchor, jobsQ, kbFleetQ, kbHostsQ, parseFilters, parseUtc, plural, refresh, relativeTime, useHashScroll, useIsAdmin, useTitle, meQ, assetsQ, settingsQ, type Asset, type Job, type KbRow } from "./lib";
 import { Alert, btnQuiet, ConfirmDialog, EmptyState, ErrorState, Loading, StatusPill } from "./ui";
 
 const CANCELLABLE: Job["status"][] = ["planned", "approved"];
@@ -22,20 +22,20 @@ export const stepState = (s: { step: string; ok: boolean; output?: string }) => 
 export function PackageList({ job, jobs }: { job: { packages?: unknown; summary?: string }; jobs?: { packages?: unknown; summary?: string }[] }) {
   // several machines: every package any of them changes, and on how many when not all (DESIGN.md: dialogs list what will change)
   const all = jobs ?? [job];
-  const seen = new Map<string, { p: ReturnType<typeof jobPackages>[number]; target?: string; n: number }>();
+  const seen = new Map<string, { p: ReturnType<typeof jobPackages>[number]; target?: string; n: number; froms: Set<string> }>();
   for (const j of all) {
     // shortcut: the plan's target lives only in its title ("… to X on host", or an older job's "(fixed in X)"); store it on the job if more views need it
     const target = (/ to (\S+) on \S+$/.exec(j.summary ?? "") ?? /\(fixed in ([^)]+)\)$/.exec(j.summary ?? ""))?.[1];
-    for (const p of jobPackages(j)) { const e = seen.get(p.name); seen.set(p.name, { p: e?.p ?? p, target: e?.target ?? target, n: (e?.n ?? 0) + 1 }); }
+    for (const p of jobPackages(j)) { const e = seen.get(p.name); seen.set(p.name, { p: e?.p ?? p, target: e?.target ?? target, n: (e?.n ?? 0) + 1, froms: (e?.froms ?? new Set()).add(p.from ?? "?") }); }
   }
   if (!seen.size) return null;
   return (
     <ul className="mt-2 flex flex-col gap-0.5 text-sm" aria-label="Packages this fix changes">
-      {[...seen.values()].map(({ p, target, n }) => (
+      {[...seen.values()].map(({ p, target, n, froms }) => (
         <li key={p.name} className="break-words"><span className="font-medium">{p.name}</span>{" "}
           {/* a version never wraps mid-token: the arrow is where the line may break */}
           {/* mono only on the versions compared; the words around them are prose */}
-          <span className="text-muted">{p.kb ? <span className="font-mono">{p.kb}</span> : <><span className="whitespace-nowrap font-mono">{p.from ?? "?"}</span> → {p.to || target ? <span className="whitespace-nowrap font-mono">{p.to ?? target}</span> : "the newest fixed version"}{!p.to && target && " or the repository's newer"}</>}</span>
+          <span className="text-muted">{p.kb ? <span className="font-mono">{p.kb}</span> : <>{froms.size > 1 ? "several versions" : <span className="whitespace-nowrap font-mono">{p.from ?? "?"}</span>} → {p.to || target ? <span className="whitespace-nowrap font-mono">{p.to ?? target}</span> : "the newest fixed version"}{!p.to && target && " or the repository's newer"}</>}</span>
           {n < all.length && <span className="text-muted"> on {n} of {plural(all.length, "machine")}</span>}</li>
       ))}
     </ul>
@@ -68,7 +68,8 @@ export function RemediationPage() {
     mutationFn: async (js: Job[]) => {
       const refused: string[] = [];
       for (const j of js) {
-        try { await api<Job>(`/api/remediation/jobs/${j.id}/approve`, { method: "POST", body: { forward_only: false } }); }
+        // untick each machine once approved, so a retry after a partial failure sends only what's still waiting
+        try { await api<Job>(`/api/remediation/jobs/${j.id}/approve`, { method: "POST", body: { forward_only: false } }); setChosen((c) => { const n = new Set(c); n.delete(j.id); return n; }); }
         catch (e) { refused.push(`${j.hostname}: ${(e as Error).message}`); }
       }
       if (refused.length) throw new Error(`${plural(js.length - refused.length, "machine")} approved. Not approved: ${refused.join("; ")}`);
@@ -212,9 +213,6 @@ export function JobCard({ job: j, onApprove, onCancel, blocked, inRollout }: { j
   const deps = j.status === "aborted" ? dependenciesNeeded(j.error) : [];
   const [ecosystem, pkg] = j.action_key.split("|");
   // a waiting job planned for an older version than Fix first now recommends says so (DESIGN.md: numbers that agree)
-  const planned = (/ to (\S+) on \S+$/.exec(j.summary) ?? /\(fixed in ([^)]+)\)$/.exec(j.summary))?.[1];
-  const now = useQuery(summaryQ).data?.top_actions.find((a) => a.ecosystem === ecosystem && a.package === pkg)?.fixed_version;
-  const stale = j.status === "planned" && planned && now && now !== planned ? now : null;
   const replan = useMutation({
     mutationFn: () => api<Job>("/api/remediation/jobs", { method: "POST", body: { asset_id: j.asset_id, ecosystem, package: pkg, include: deps } }),
     onSuccess: () => void refresh(qc, "jobs"),
@@ -232,7 +230,6 @@ export function JobCard({ job: j, onApprove, onCancel, blocked, inRollout }: { j
           {/* no dot separators: on a phone they'd start wrapped lines; spacing alone separates the facts */}
           <ul className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm text-muted">
             <li><StatusPill status={j.status} /></li>
-            {stale && <li className="text-ink">planned for {planned}; {stale} is now the fix</li>}
             {/* the count lives here, not in the title (DESIGN.md: one title format) */}
             {j.finding_ids.length > 0 && !inRollout && !/to fix \d/.test(j.summary) && <li>fixes {plural(j.finding_ids.length, "finding")}</li>}
             {/* a name opens that thing's detail (DESIGN.md): the machine's drawer */}
@@ -313,7 +310,9 @@ export function RolloutCard({ jobs, assets, hold, onApprove, card }: {
   jobs: Job[]; assets: Asset[]; hold?: (j: Job) => string | null; onApprove?: (js: Job[]) => void; card?: (j: Job) => ReactNode;
 }) {
   const ring = new Map(assets.map((a) => [a.id, a.ring]));
-  const live = jobs.filter((j) => j.status !== "cancelled");
+  // one job per machine, its newest (the list is newest first): a canary that failed and was then fixed counts as fixed, as the server judges it
+  const seen = new Set<string>();
+  const live = jobs.filter((j) => j.status !== "cancelled" && !seen.has(j.asset_id) && !!seen.add(j.asset_id));
   const tally = (js: Job[]) => {
     const n = (st: Job["status"][]) => js.filter((j) => st.includes(j.status)).length;
     return { total: js.length, fixed: n(FIXED), moving: n(MOVING), waiting: n(["planned"]), stuck: n(STUCK) };

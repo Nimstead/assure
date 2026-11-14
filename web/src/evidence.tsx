@@ -107,7 +107,7 @@ function ReportView({ r, days }: { r: EvidenceReport; days: number }) {
             View {plural(m.overdue_open, "finding")}
           </Link>))}
         {tile("Mean time to remediate", mttr(m.mttr_days), m.resolved ? basis : undefined)}
-        {tile("Resolved within SLA", `${m.resolved_within_sla} of ${m.resolved}`, m.resolved ? basis : undefined)}
+        {tile("Resolved on time", `${m.resolved_within_sla} of ${m.resolved}`, m.resolved ? basis : undefined)}
       </dl>
 
       <section aria-labelledby="controls">
@@ -229,7 +229,7 @@ export function foldRuns(entries: LedgerEntry[]): LedgerEntry[][] {
   const out: LedgerEntry[][] = [];
   for (const e of entries) {
     const last = out.at(-1);
-    if (last && !FAILED_KIND.test(e.kind) && runKind(e) === runKind(last[0]!)) last.push(e); else out.push([e]);
+    if (last && !FAILED_KIND.test(e.kind) && !FAILED_KIND.test(last[0]!.kind) && runKind(e) === runKind(last[0]!)) last.push(e); else out.push([e]);
   }
   return out;
 }

@@ -671,6 +671,8 @@ it("the ledger folds a run of one kind into one row, and never folds a failure",
   expect(runs.map((r) => r.length)).toEqual([3, 1, 1]);
   const more = foldRuns([e(4, "remediation_approved"), e(3, "remediation_approved"), e(2, "remediation_failed"), e(1, "remediation_failed")] as never);
   expect(more.map((r) => r.length)).toEqual([2, 1, 1]);  // same kind folds; a failure never hides in a fold
+  const bg = foldRuns([e(3, "break_glass_login"), e(2, "password_login"), e(1, "sso_login")] as never);
+  expect(bg.map((r) => r.length)).toEqual([1, 2]);  // nothing joins a failure's run either
 });
 
 it("remediation: jobs for one package stay together, in the order they arrived", () => {
@@ -718,4 +720,13 @@ it("a rolled-back job says in plain words which service didn't come back, with t
   expect(plainRefusal("Change failed and was rolled back: billing-api.service active after change failed: service is activating, restarted 11 times since the change"))
     .toBe("billing-api didn't start properly after the upgrade (restarted 11 times), so the change was rolled back.");
   expect(plainRefusal("nginx.service active after change failed: inactive")).toBe("nginx didn't start properly after the upgrade, so the change was rolled back.");
+});
+
+it("rollouts: a canary that failed and was then fixed counts as fixed, so the broad ring can be approved", () => {
+  const job = (id: string, asset_id: string, status: Job["status"]) => ({ id, asset_id, status, action_key: "Debian:12|openssl", hostname: asset_id } as unknown as Job);
+  const assets = [{ id: "c1", ring: 0 }, { id: "b1", ring: 1 }] as Asset[];
+  // newest first, as the API lists them: B fixed c1 after A failed there
+  render(<ul><RolloutCard jobs={[job("C", "b1", "planned"), job("B", "c1", "succeeded"), job("A", "c1", "rolled_back")]} assets={assets} onApprove={() => {}} /></ul>);
+  expect(screen.getByRole("listitem", { name: "openssl rollout" })).toHaveTextContent(/Canary 1 of 1 fixed/);
+  expect(screen.getByRole("button", { name: /Approve broad \(1\)/ })).toBeEnabled();
 });

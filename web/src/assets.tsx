@@ -142,7 +142,7 @@ function AssetViews({ view, devices, flagged, external }: { view: AssetView; dev
   ];
   return (
     // one tab pattern on phones, as Settings: a strip that scrolls sideways, never a stacked list
-    <nav aria-label="Asset views" className="-mb-2 flex gap-x-1 overflow-x-auto border-b border-line [mask-image:linear-gradient(to_right,black_80%,transparent)] [scrollbar-width:none] md:[mask-image:none] [&::-webkit-scrollbar]:hidden">
+    <nav aria-label="Asset views" className="-mb-2 flex gap-x-1 overflow-x-auto overflow-y-hidden border-b border-line [mask-image:linear-gradient(to_right,black_80%,transparent)] [scrollbar-width:none] md:[mask-image:none] [&::-webkit-scrollbar]:hidden">
       {tabs.map(([v, label, count]) => (
         <Link key={v} to="/assets" search={v === "machines" ? {} : { view: v }} aria-current={view === v ? "page" : undefined}
           className={clsx("-mb-px inline-flex min-h-[44px] shrink-0 items-center gap-2 whitespace-nowrap border-b-2 px-3 text-sm no-underline md:min-h-10",
@@ -691,24 +691,24 @@ function MachineDrawer({ a, onClose, children }: { a: Asset | null; onClose: () 
 
 /** Summarise agents needing attention from assets; onShow optionally opens the relevant view. */
 export function AgentUpdateSummary({ assets, onShow }: { assets: Asset[]; onShow?: () => void }) {
-  const groups = new Map<string, { failed: boolean; hosts: string[] }>();
+  const groups = new Map<string, { failed: boolean; hosts: string[]; ids: string[] }>();
   for (const a of assets) {
     if (!a.agent_update || ["current", "updating"].includes(a.agent_update)) continue;
     const why = AGENT_UPDATE[a.agent_update as Exclude<typeof a.agent_update, "current">].why(a);
-    const g = groups.get(why) ?? { failed: a.agent_update === "failed", hosts: [] };
-    g.hosts.push(a.hostname);
+    const g = groups.get(why) ?? { failed: a.agent_update === "failed", hosts: [], ids: [] };
+    g.hosts.push(a.hostname); g.ids.push(a.id);
     groups.set(why, g);
   }
   if (!groups.size) return null;
   // one reason for most hosts (an old agent that predates self-update) is said once, with the versions
   const reinstall = [...groups].filter(([why]) => /can't update itself/.test(why));
   if (reinstall.length > 1) {
-    const hosts = reinstall.flatMap(([, g]) => g.hosts);
+    const hosts = reinstall.flatMap(([, g]) => g.hosts), ids = new Set(reinstall.flatMap(([, g]) => g.ids));  // by id: two machines may share a name
     // an agent that reported no version ("" or null) is "unknown", never an empty label
-    const versions = assets.filter((a) => hosts.includes(a.hostname)).reduce<Record<string, number>>((n, a) => ({ ...n, [a.agent_version || "unknown"]: (n[a.agent_version || "unknown"] ?? 0) + 1 }), {});
+    const versions = assets.filter((a) => ids.has(a.id)).reduce<Record<string, number>>((n, a) => ({ ...n, [a.agent_version || "unknown"]: (n[a.agent_version || "unknown"] ?? 0) + 1 }), {});
     const named = Object.entries(versions).map(([v, n]) => `${v} (${plural(n, "machine")})`);
     for (const [why] of reinstall) groups.delete(why);
-    groups.set(`Agent version${named.length > 1 ? "s" : ""} ${named.length > 1 ? `${named.slice(0, -1).join(", ")} and ${named.at(-1)}` : named[0]} predate${named.length > 1 ? "" : "s"} self-update. Rerun the install command on each once; the enrolment is kept, and later versions update automatically.`, { failed: false, hosts });
+    groups.set(`Agent version${named.length > 1 ? "s" : ""} ${named.length > 1 ? `${named.slice(0, -1).join(", ")} and ${named.at(-1)}` : named[0]} predate${named.length > 1 ? "" : "s"} self-update. Rerun the install command on each once; the enrolment is kept, and later versions update automatically.`, { failed: false, hosts, ids: [...ids] });
   }
   // on the Assets list: one line of links, as on Fix first; the list it filters to says the rest (DESIGN.md: copy budget)
   if (onShow) return (

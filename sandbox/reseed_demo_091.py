@@ -36,6 +36,9 @@ import agentdoc  # noqa: E402  # the document a current agent sends with its inv
 
 DB = os.environ["NIMSTEAD_DB"]
 path = DB.removeprefix("sqlite:///")
+# NIMSTEAD_DB is also what a real server reads: refuse anything but a demo database, since this rewrites jobs and roles
+if "demo" not in Path(path).name:
+    sys.exit(f"refusing: {path} is not a demo database (its file name must contain 'demo')")
 if not Path(path + ".before-reseed").exists():  # keep the first backup: a rerun starts from the same state
     shutil.copyfile(path, path + ".before-reseed")
 shutil.copyfile(path + ".before-reseed", path)

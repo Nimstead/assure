@@ -123,7 +123,7 @@ export function RemediationPage() {
         error={approve.error?.message} onConfirm={() => target && approve.mutate(target)} />
       <ConfirmDialog open={!!several} onOpenChange={(o) => !o && setMany(null)} title={`Approve this fix on the ${byId.get(several?.[0]?.asset_id ?? "")?.ring === 0 ? "canary" : "broad"} ring?`}
         description={<><strong className="font-semibold">Upgrade {several?.[0]?.action_key.split("|")[1]}</strong>. Each machine is approved and recorded on its own, as if you approved them one by one.</>}
-        confirmLabel={`Approve ${picked.length} and run`} pendingLabel="Approving…" pending={many.isPending} error={many.error} blocked={!picked.length} onConfirm={() => many.mutate(picked)}>
+        confirmLabel={`Approve ${plural(picked.length, "machine")} and run`} pendingLabel="Approving…" pending={many.isPending} error={many.error} blocked={!picked.length} onConfirm={() => many.mutate(picked)}>
         {several && <>
           <RingFailure failed={ringFailures(q.data ?? [], several[0]!, byId)} onGo={() => setMany(null)} />
           <fieldset className="mt-3 text-sm">
@@ -273,7 +273,7 @@ export function JobCard({ job: j, onApprove, onCancel, blocked, inRollout }: { j
           <button className={btnQuiet} onClick={() => replan.mutate()} disabled={replan.isPending || replan.isSuccess} {...adminGate(admin)}>
             <Wrench className="size-4" aria-hidden />{replan.isSuccess ? "Planned" : `Plan again including ${deps.join(", ")}`}
           </button>
-          <span className="text-sm text-muted">They'll be saved and rolled back together with {pkg}.</span>
+          <span className="text-sm text-muted">{deps.join(", ")} will be saved and rolled back together with {pkg}.</span>
           <Alert error={replan.error} />
         </div>
       )}
@@ -396,8 +396,8 @@ export function RolloutCard({ jobs, assets, hold, onApprove, card }: {
           {/* under their ring, so the tallies above read straight against the list */}
           <div className="flex flex-col gap-2 bg-sunken p-2">
             {([["Canary", jobs.filter((j) => ring.get(j.asset_id) === 0)], ["Broad", jobs.filter((j) => ring.get(j.asset_id) !== 0)]] as [string, Job[]][])
-              // the ring with what broke comes first (DESIGN.md: lead with what broke)
-              .sort((x, y) => Math.min(9, ...x[1].map(urgency)) - Math.min(9, ...y[1].map(urgency))).map(([label, js]) => js.length > 0 && (
+              // canary then broad, the rollout's own order; the card above already names what broke
+              .map(([label, js]) => js.length > 0 && (
               <section key={label} aria-label={`${label} machines`}>
                 <h4 className="px-1 pb-1 text-xs font-medium text-muted">{label}</h4>
                 <ul className="flex flex-col gap-2">{[...js].sort((x, y) => urgency(x) - urgency(y)).map(card)}</ul>

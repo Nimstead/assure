@@ -79,7 +79,7 @@ export function ExternalTargets({ targets, onDelete }: { targets: Asset[]; onDel
         </Field>
         <button className={`${btnPrimary} sm:mt-[26px]`} disabled={add.isPending || !hostname.trim()} {...adminGate(admin)}><Plus className="size-4" aria-hidden />{add.isPending ? "Adding…" : "Add target"}</button>
       </form>
-      {targets.length === 0 ? <p className="text-sm text-muted">No external targets yet.</p> : (
+      {targets.length === 0 ? <p className="text-sm text-muted">No internet targets yet.</p> : (
         <ul className="flex flex-col divide-y divide-line overflow-hidden border border-line bg-surface">
           {targets.map((t) => <TargetRow key={t.id} t={t} onDelete={() => onDelete(t)} />)}
         </ul>

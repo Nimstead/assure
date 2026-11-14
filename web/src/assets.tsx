@@ -540,7 +540,7 @@ function MachineList({ assets, saved, failed, onPatch, onDelete, undo }: {
             <span className="text-muted">Show</span>
             <select className={clsx(input, "w-auto md:min-h-9")} value={on.length === 1 ? on[0] : on.length ? "several" : ""}
               onChange={(e) => startTransition(() => { setOn(e.target.value ? [e.target.value as Filter] : []); setShown(PAGE); })}>
-              <option value="">All machines</option>
+              <option value="">All assets</option>
               {on.length > 1 && <option value="several" disabled>{on.map((f) => FILTERS[f]).join(" + ")}</option>}
               {(Object.keys(FILTERS) as Filter[]).filter((f) => counts[f] > 0 || on.includes(f)).map((f) => (
                 <option key={f} value={f} title={FILTER_HELP[f]}>{FILTERS[f]} ({counts[f].toLocaleString()})</option>

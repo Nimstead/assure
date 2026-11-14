@@ -237,7 +237,7 @@ export function HowJudged({ lead, children, className, label = "How this is judg
     <div className={clsx("max-w-prose text-sm text-muted", className)}>
       <p>{lead}</p>
       <details className="mt-0.5">
-        <summary className="tap w-fit cursor-pointer text-ink underline decoration-line-strong underline-offset-4 hover:decoration-ink md:min-h-0">{label}</summary>
+        <summary className="tap flex w-fit cursor-pointer items-center text-ink md:min-h-0">{label}</summary>
         <div className="mt-1 flex flex-col gap-1">{children}</div>
       </details>
     </div>

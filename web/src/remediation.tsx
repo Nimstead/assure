@@ -124,7 +124,7 @@ export function RemediationPage() {
         {several && <>
           <fieldset className="mt-3 text-sm">
             <legend className="text-muted">Machines to approve now</legend>
-            <ul className="mt-1 flex flex-wrap gap-x-4">
+            <ul className="mt-1 flex flex-col sm:flex-row sm:flex-wrap sm:gap-x-4">
               {several.map((j) => (
                 <li key={j.id}><label className="flex tap cursor-pointer items-center gap-2 whitespace-nowrap">
                   <input type="checkbox" className="size-4 accent-[var(--ink)]" checked={chosen.has(j.id)}
@@ -138,7 +138,7 @@ export function RemediationPage() {
           {(() => { const bare = picked.filter((j) => byId.get(j.asset_id)?.kind === "host" && !byId.get(j.asset_id)?.health_units.length); return bare.length > 0 &&
             <p className="mt-3 border border-now-fg p-3 text-sm">No health checks are set on {bare.map((j) => <Fragment key={j.id}><span className="whitespace-nowrap">{j.hostname},</span>{" "}</Fragment>)}so a service this upgrade breaks there isn't noticed and isn't rolled back; only a failed upgrade is.</p>; })()}
           {picked.some((j) => j.created_by === me) && <p className="mt-3 border border-line p-3 text-sm">You planned {picked.every((j) => j.created_by === me) ? "these fixes" : "some of these fixes"}. Approving them yourself is recorded as self-approved for each machine: no second person checked the change (SOC 2 CC8.1).</p>}
-          <details className="mt-3 text-sm text-muted"><summary className="flex tap w-fit cursor-pointer items-center underline decoration-line-strong">How a fix runs</summary><p className="mt-1">{APPROVE_COPY}</p></details>
+          <details className="mt-3 text-sm text-muted"><summary className="flex tap w-fit cursor-pointer items-center">How a fix runs</summary><p className="mt-1">{APPROVE_COPY}</p></details>
         </>}
       </ConfirmDialog>
       <ConfirmDialog open={!!cancelling} onOpenChange={(o) => !o && setCancelling(null)} title="Cancel this fix?"
@@ -175,7 +175,7 @@ function KbFleetRow({ row: r }: { row: KbRow }) {
       <p className="mt-1 break-words text-sm text-muted">{r.product}, build {r.build}</p>
       {left > 0 && (
         <details className="group mt-2" onToggle={(e) => setOpen(e.currentTarget.open)}>
-          <summary className="flex min-h-[44px] w-fit cursor-pointer items-center text-sm font-medium text-accent underline md:min-h-9">
+          <summary className="flex min-h-[44px] w-fit cursor-pointer items-center text-sm font-medium text-accent md:min-h-9">
             <span className="group-open:hidden">Show {plural(left, "machine")} without it</span><span className="hidden group-open:inline">Hide machines</span>
           </summary>
           {q.isPending ? <Loading className="h-16" label="Loading machines…" />
@@ -272,7 +272,7 @@ export function JobCard({ job: j, onApprove, onCancel, blocked, inRollout }: { j
       )}
       {steps.length > 0 && (
         <details className="group mt-3">
-          <summary className="flex min-h-[44px] w-fit cursor-pointer items-center text-sm font-medium text-accent underline md:min-h-9">
+          <summary className="flex min-h-[44px] w-fit cursor-pointer items-center text-sm font-medium text-accent md:min-h-9">
             <span className="group-open:hidden">Show step log ({steps.length})</span><span className="hidden group-open:inline">Hide step log</span>
           </summary>
           {steps.some((s) => !s.ok) && <a href={`#${jobAnchor(j.id)}-fail`} onClick={(e) => { const el = document.getElementById(`${jobAnchor(j.id)}-fail`); if (el) { e.preventDefault(); el.scrollIntoView({ block: "center" }); el.focus(); } }} className="mt-2 inline-flex tap items-center text-sm font-medium text-now-fg underline">Jump to the failed step<span className="sr-only"> on {j.hostname}</span></a>}
@@ -422,7 +422,7 @@ export function ApproveDialog({ job, onOpenChange, onConfirm, pending, error, ow
       {unchecked && <p className="mt-3 border border-now-fg p-3 text-sm">No health checks are set on {job?.hostname}, so a service this upgrade breaks isn't noticed and isn't rolled back; only a failed upgrade is. <Link to="/assets" search={{ machine: unchecked.assetId }} className="font-medium underline">Set its health checks</Link></p>}
       {ownPlan && <p className="mt-3 border border-line p-3 text-sm">You planned this fix. Approving it yourself is recorded as self-approved: no second person checked the change (SOC 2 CC8.1).</p>}
       {fwd ? <p className="mt-3 border border-now-fg p-3 text-sm">This app's installer can't go back to the version it replaces, so if the new version breaks something there is no automatic rollback. The machine's health checks still run and a failure is reported. Approving records that you accepted this.</p>
-        : <details className="mt-3 text-sm text-muted"><summary className="flex tap w-fit cursor-pointer items-center underline decoration-line-strong">How a fix runs</summary><p className="mt-1">{APPROVE_COPY}</p></details>}
+        : <details className="mt-3 text-sm text-muted"><summary className="flex tap w-fit cursor-pointer items-center">How a fix runs</summary><p className="mt-1">{APPROVE_COPY}</p></details>}
     </ConfirmDialog>
   );
 }

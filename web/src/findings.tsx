@@ -118,7 +118,7 @@ export function FindingsPage({ search }: { search: RawSearch }) {
               : rows && (f.fixable && all.data && count.data ? `${count.data.total.toLocaleString("en")} with a fix, of ${plural(all.data.total, "finding")}` : narrowed && base.data && count.data ? `${count.data.total.toLocaleString("en")} of ${plural(base.data.total, "finding")}` : plural(count.data?.total ?? rows.length, "finding"))}
             {f.fixable && !typing && !updating && (all.data?.total ?? 1) > 0 && <> (<button className="inline-flex tap cursor-pointer items-center underline" onClick={() => set({ fixable: false })}>include those with no fix</button>)</>}
           </p>
-          <a className={btnQuiet} href={`/api/findings.csv?${apiQs}`} download>Download as CSV</a>
+          <a className={clsx(btnQuiet, "max-md:border-0 max-md:bg-transparent max-md:px-0 max-md:text-sm max-md:underline")} href={`/api/findings.csv?${apiQs}`} download>Download as CSV</a>
         </div>
       </header>
 

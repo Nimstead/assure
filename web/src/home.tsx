@@ -54,7 +54,7 @@ export function Home() {
             ? `No open findings across ${plural(s.assets, "asset")}.${unchecked ? ` Installed apps not checked: ${unchecked}, listed on Assets.` : ""}`
             : `${plural(total, "open finding")} across ${plural(s.assets, "asset")}. These fixes clear the most risk.`}
         </p>
-        {look.length > 0 && <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">{look}</p>}
+        {look.length > 0 && <p className="mt-2 flex flex-col text-sm sm:flex-row sm:flex-wrap sm:gap-x-4 sm:gap-y-1">{look}</p>}
       </header>
 
       {s.attention.length > 0 && (

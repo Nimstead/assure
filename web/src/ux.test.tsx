@@ -610,7 +610,7 @@ it("rollouts: one package across machines shows canary and broad progress, and h
   const job = (id: string, asset_id: string, status: Job["status"]) => ({ id, asset_id, status, action_key: "Debian:12|openssl", hostname: asset_id } as Job);
   const assets = [{ id: "c1", ring: 0 }, { id: "b1", ring: 1 }, { id: "b2", ring: 1 }] as Asset[];
   const r = render(<ul><RolloutCard jobs={[job("1", "c1", "succeeded"), job("2", "b1", "verifying"), job("3", "b2", "planned")]} assets={assets} /></ul>);
-  expect(screen.getByRole("listitem", { name: "openssl rollout" })).toHaveTextContent(/Canary 1 of 1 fixed.*Broad 0 of 2 fixed · 1 in progress · 1 awaiting approval.*Canary fixed: approve the broad machines/);
+  expect(screen.getByRole("listitem", { name: "openssl rollout" })).toHaveTextContent(/Canary 1 of 1 fixed.*Broad 0 of 2 fixed · 1 approved or running · 1 awaiting approval.*Canary fixed: approve the broad machines/);
   r.unmount();
   render(<ul><RolloutCard jobs={[job("1", "c1", "rolled_back"), job("2", "b1", "planned")]} assets={assets} /></ul>);
   expect(screen.getByRole("listitem", { name: "openssl rollout" })).toHaveTextContent(/didn't work.*A canary didn't work: review it before the rest go/);

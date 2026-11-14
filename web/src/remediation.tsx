@@ -126,8 +126,6 @@ export function RemediationPage() {
         confirmLabel={`Approve ${picked.length} and run`} pendingLabel="Approving…" pending={many.isPending} error={many.error} blocked={!picked.length} onConfirm={() => many.mutate(picked)}>
         {several && <>
           <RingFailure failed={ringFailures(q.data ?? [], several[0]!, byId)} onGo={() => setMany(null)} />
-          {(() => { const bare = picked.filter((j) => byId.get(j.asset_id)?.kind === "host" && !byId.get(j.asset_id)?.health_units.length); return bare.length > 0 &&
-            <p className="mt-3 border border-now-fg p-3 text-sm">No health checks are set on {bare.map((j) => <Fragment key={j.id}><span className="whitespace-nowrap">{j.hostname},</span>{" "}</Fragment>)}so a service this upgrade breaks there isn't noticed and isn't rolled back; only a failed upgrade is.</p>; })()}
           <fieldset className="mt-3 text-sm">
             <legend className="text-muted">Machines to approve now</legend>
             <ul className="mt-1 flex flex-col sm:flex-row sm:flex-wrap sm:gap-x-4">
@@ -141,6 +139,9 @@ export function RemediationPage() {
             </ul>
           </fieldset>
           {picked[0] && <PackageList job={picked[0]} jobs={picked} />}
+          {/* the same sentence and place as the single-machine dialog: after what changes */}
+          {(() => { const bare = picked.filter((j) => byId.get(j.asset_id)?.kind === "host" && !byId.get(j.asset_id)?.health_units.length); return bare.length > 0 &&
+            <p className="mt-3 border border-now-fg p-3 text-sm">No health checks on {bare.map((j, i) => <Fragment key={j.id}>{i > 0 && (i === bare.length - 1 ? " and " : ", ")}<span className="whitespace-nowrap">{j.hostname}</span></Fragment>)}: a service this breaks won't be noticed or rolled back.</p>; })()}
           {picked.some((j) => j.created_by === me) && <p className="mt-3 border border-line p-3 text-sm">You planned {picked.every((j) => j.created_by === me) ? "these fixes" : "some of these fixes"}. Approving them yourself is recorded as self-approved for each machine: no second person checked the change (SOC 2 CC8.1).</p>}
           <details className="mt-3 text-sm text-muted"><summary className="flex tap w-fit cursor-pointer items-center">How a fix runs</summary><p className="mt-1">{APPROVE_COPY}</p></details>
         </>}
@@ -353,7 +354,7 @@ export function RolloutCard({ jobs, assets, hold, onApprove, card }: {
     : canary.total ? "Canary fixed: plan the broad machines" : "No canary machine in this fix";
   const cell = (label: string, t: ReturnType<typeof tally>) => t.total > 0 && (
     <span className="num">{label} <strong className="font-semibold">{t.fixed} of {t.total}</strong> fixed
-      {t.moving > 0 && <span className="text-muted"> · {t.moving} in progress</span>}
+      {t.moving > 0 && <span className="text-muted"> · {t.moving} approved or running</span>}
       {t.waiting > 0 && <span className="text-muted"> · {t.waiting} awaiting approval</span>}
       {t.stuck > 0 && <span className="text-now-fg"> · {t.stuck} didn't work</span>}</span>);
   const waiting = live.filter((j) => j.status === "planned");

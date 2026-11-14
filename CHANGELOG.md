@@ -7,6 +7,7 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 No database migration; the agent is unchanged.
 
 ### Changed
+- Both approve dialogs give the no-health-checks warning in the same words and place, after what changes. A rollout's tallies say "approved or running", matching the statuses in its machine list.
 - A failed job's status reads "Didn't work", the glossary's word. Remediation sections count fixes (a rollout is one fix). In the approve dialog the ring-failure warning leads, and the no-health-checks note is one line after the packages.
 - A rollout card names the machines its fix didn't work on, each a link to its job, before its approve buttons. A ring review names the machines a package isn't on ("on 3 of 4 machines (not cache-dev-32)"). The finding drawer's score disclosure reads "How this is judged".
 - The single-machine approve dialog gives the same first warning as ring approval when this fix didn't work on a machine in its ring, and each named machine opens its job. Inside a rollout, the ring with a failure is listed first.

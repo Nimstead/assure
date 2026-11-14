@@ -16,6 +16,8 @@ Use this procedure to check a downloaded pack without contacting the Assure serv
 
 A reported problem returns status 1. Malformed files can also raise a Python exception; that is a failed verification, not a verified pack. Obtain a fresh export and check the trusted fingerprint before trying again. Do not remove the fingerprint argument to bypass a mismatch.
 
+After a Vault signing-key rotation, a pack lists the earlier public keys under its own signature, and checkpoints signed by them still verify. Use the `verify.py` from Assure 0.9.1 or later; an older verifier reports those checkpoints as failures. You still pin only the current fingerprint.
+
 Verification checks the signature over the exact pack bytes, entry hashes, entry order and links, the ledger head, and included signed checkpoints. It does not prove that a machine was scanned completely or that every claimed control was met. Review the pack's period, coverage, and findings separately.
 
 Related: [inventory to evidence](../explanation/inventory-to-evidence.md), [key configuration](../configuration.md#keys-and-evidence-storage).

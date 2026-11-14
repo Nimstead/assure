@@ -227,7 +227,7 @@ function MoreMenu({ signOut, extra }: { signOut: () => void; extra: typeof NAV }
 }
 
 // ---- command palette -------------------------------------------------------------
-interface Cmd { id: string; label: string; hint?: string; run: () => void }
+interface Cmd { id: string; label: string; code?: string; hint?: string; run: () => void }  // code: an ID shown in mono before the label
 /** The heading a command sits under, from its id: the list reads in groups, not as one long column. */
 export function cmdGroup(id: string): string {
   if (["home", "findings", "assets", "remediation", "evidence", "settings"].includes(id)) return "Go to";
@@ -299,7 +299,7 @@ export function Palette({ open, onOpenChange, signOut, nextTheme }: { open: bool
     }));
     const hits: Cmd[] = (query === term ? found.data ?? [] : []).slice(0, 8).map((g) => ({
       // a search can match on host names too: then the count is on those hosts only, and says so
-      id: `vuln-${g.key}`, label: `${g.key}  ${g.packages > 1 ? `${g.packages} packages` : g.package}`,
+      id: `vuln-${g.key}`, code: g.key, label: g.packages > 1 ? `${g.packages} packages` : g.package,
       hint: `${g.hosts.toLocaleString("en")} ${g.hosts === 1 ? "host" : "hosts"}${`${g.key} ${g.package}`.toLowerCase().includes(term.toLowerCase()) ? "" : ` matching “${term}”`}`,
       run: done(() => navigate({ to: "/findings", search: filtersToSearch({ ...parseFilters({}), fixable: false, q: g.key }) })),
     }));
@@ -352,7 +352,7 @@ export function Palette({ open, onOpenChange, signOut, nextTheme }: { open: bool
                   <li role="presentation" className="px-3 pb-1 pt-2.5 text-xs font-medium text-muted first:pt-1">{cmdGroup(c.id)}</li>}
                 <li id={`cmd-${c.id}`} role="option" aria-selected={i === active} data-highlighted={i === active ? "" : undefined} onMouseMove={() => setActiveId(c.id)} onClick={c.run}
                   className={clsx("flex min-h-[44px] cursor-pointer items-center justify-between gap-3 px-3 text-sm", highlight, i === active && "bg-accent-soft")}>
-                  <span className="truncate">{c.label}</span>{c.hint && <span className="shrink-0 text-xs text-muted">{c.hint}</span>}
+                  <span className="truncate">{c.code && <span className="font-mono">{c.code} </span>}{c.label}</span>{c.hint && <span className="shrink-0 text-xs text-muted">{c.hint}</span>}
                 </li>
                 </Fragment>
               ))}

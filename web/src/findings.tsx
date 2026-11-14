@@ -48,6 +48,8 @@ export function FindingsPage({ search }: { search: RawSearch }) {
     onSuccess: (a) => { if (here.current !== "/findings") return; const p = aiFilterToPatch(a); setText(p.q ?? ""); setAsked(true); set(p); },
   });
   const [showFilters, setShowFilters] = useState(false);
+  const moreOn = f.priority.length + Number(f.kev) + Number(f.overdue) + Number(f.fixable);
+  const [moreOpen, setMoreOpen] = useState(moreOn > 0);
   const active = f.priority.length + Number(f.kev) + Number(f.overdue) + Number(f.fixable) + Number(!!f.asset) + Number(!!f.ecosystem);
   useEffect(() => {
     if (text === f.q || question) return; // a question is sent on Ask, not searched literally
@@ -155,29 +157,32 @@ export function FindingsPage({ search }: { search: RawSearch }) {
           <div id="more-filters" className={clsx("w-full flex-wrap items-center gap-x-4 gap-y-2.5 md:contents", showFilters ? "flex" : "hidden")}>
           <ViewControls f={f} set={set} />
           <SavedViews search={filtersToSearch({ ...f, open: "" })} />
-          {/* two rows: what you're looking at (status, view), then what narrows it */}
-          <span aria-hidden className="hidden basis-full md:block" />
-          <span className="text-sm text-muted">Filter</span>
-          <div role="group" aria-label="Priority" className="flex flex-wrap gap-1.5">
-            {PRIORITIES.map((p) => {
-              const on = f.priority.includes(p);
-              return (
-                <button key={p} aria-pressed={on} onClick={() => set({ priority: on ? f.priority.filter((x) => x !== p) : [...f.priority, p] })} className={chip(on)}>
-                  {PRIORITY_LABEL[p]}
-                </button>
-              );
-            })}
-          </div>
-          <button aria-pressed={f.kev} onClick={() => set({ kev: !f.kev })} className={chip(f.kev)}>
-            Exploited (KEV)
+          {/* the rarer filters behind one control that says how many are on (DESIGN.md: six controls before the first row) */}
+          <button className={chip(moreOn > 0)} aria-expanded={moreOpen} aria-controls="findings-more" onClick={() => setMoreOpen((o) => !o)}>
+            <SlidersHorizontal className="size-4" aria-hidden />More filters{moreOn > 0 && <span className="num">{moreOn}</span>}
           </button>
-          <button aria-pressed={f.overdue} onClick={() => set({ overdue: !f.overdue })} className={chip(f.overdue)}>
-            Overdue
-          </button>
-          <button aria-pressed={f.fixable} onClick={() => set({ fixable: !f.fixable })} className={chip(f.fixable)}
-            title="A fix exists: a fixed version to upgrade to, a setting to change, or a service to close. Not only fixes Nimstead can apply for you">
-            Has a fix{f.fixable && all.data && count.data && all.data.total > count.data.total && <span className="num text-muted">hides {(all.data.total - count.data.total).toLocaleString("en")}</span>}
-          </button>
+          {moreOpen && <div id="findings-more" role="group" aria-label="More filters" className="flex w-full basis-full flex-wrap items-center gap-2">
+            <div role="group" aria-label="Priority" className="flex flex-wrap gap-1.5 border-r border-line pr-2">
+              {PRIORITIES.map((p) => {
+                const on = f.priority.includes(p);
+                return (
+                  <button key={p} aria-pressed={on} onClick={() => set({ priority: on ? f.priority.filter((x) => x !== p) : [...f.priority, p] })} className={chip(on)}>
+                    {PRIORITY_LABEL[p]}
+                  </button>
+                );
+              })}
+            </div>
+            <button aria-pressed={f.kev} onClick={() => set({ kev: !f.kev })} className={chip(f.kev)}>
+              Exploited (KEV)
+            </button>
+            <button aria-pressed={f.overdue} onClick={() => set({ overdue: !f.overdue })} className={chip(f.overdue)}>
+              Overdue
+            </button>
+            <button aria-pressed={f.fixable} onClick={() => set({ fixable: !f.fixable })} className={chip(f.fixable)}
+              title="A fix exists: a fixed version to upgrade to, a setting to change, or a service to close. Not only fixes Nimstead can apply for you">
+              Has a fix{f.fixable && all.data && count.data && all.data.total > count.data.total && <span className="num text-muted">hides {(all.data.total - count.data.total).toLocaleString("en")}</span>}
+            </button>
+          </div>}
           {(f.priority.length > 0 || f.kev || f.overdue || !!f.asset || !!f.ecosystem || !!f.q) && (
             <button className="tap cursor-pointer text-sm underline" onClick={clearAll}>Clear filters</button>
           )}
@@ -219,7 +224,8 @@ export function FindingsPage({ search }: { search: RawSearch }) {
 
       {admin && picked.size > 0 && <div aria-hidden className="h-24" />}
       {admin && picked.size > 0 && rows && <BulkBar rows={rows.filter((r) => picked.has(r.id))} onClear={() => setPicked(new Set())} onDone={(note) => { setPicked(new Set()); setBulkNote(note); }} />}
-      <FindingDrawer id={f.open} ids={rows?.map((r) => r.id)} onMove={(open) => set({ open })} onClose={() => set({ open: "" }, true)} />
+      <FindingDrawer id={f.open} ids={rows?.map((r) => r.id)} total={count.data?.total} more={list.hasNextPage ? () => list.fetchNextPage() : undefined}
+        onMove={(open) => set({ open })} onClose={() => set({ open: "" }, true)} />
     </div>
   );
 }
@@ -406,9 +412,15 @@ function TableSkeleton() {
   return <Loading className="h-11" rows={8} label="Loading findings…" />;
 }
 
-function FindingDrawer({ id, ids = [], onMove, onClose }: { id: string; ids?: string[]; onMove: (id: string) => void; onClose: () => void }) {
+function FindingDrawer({ id, ids = [], total, more, onMove, onClose }: {
+  id: string; ids?: string[]; total?: number; more?: () => Promise<unknown>; onMove: (id: string) => void; onClose: () => void;
+}) {
   const at = ids.indexOf(id);
   const prev = at > 0 ? ids[at - 1] : undefined, next = at >= 0 && at < ids.length - 1 ? ids[at + 1] : undefined;
+  // at the last loaded finding, j loads the next page and moves on: the list is the whole result, not its first 500
+  const [waiting, setWaiting] = useState(false);
+  useEffect(() => { if (waiting && next) { setWaiting(false); moved.current = true; onMove(next); } }, [waiting, next, onMove]);
+  const forward = () => { if (next) { moved.current = true; onMove(next); } else if (more && at === ids.length - 1) { setWaiting(true); void more(); } };
   // j / k step through the list without closing the drawer
   const onKey = (e: React.KeyboardEvent) => {
     if (e.target instanceof HTMLElement && e.target.closest("input, textarea, select")) return;
@@ -416,7 +428,7 @@ function FindingDrawer({ id, ids = [], onMove, onClose }: { id: string; ids?: st
       const b = (e.currentTarget as HTMLElement).querySelector<HTMLButtonElement>(`[data-act=${e.key === "a" ? "accept" : "plan"}] button:not(:disabled):not([aria-disabled=true])`);
       if (b) { e.preventDefault(); if (e.key === "p") b.focus(); else b.click(); }  // p only moves to Plan fix: Enter plans, so a stray key changes nothing
     }
-    if (e.key === "j" && next) { e.preventDefault(); moved.current = true; onMove(next); }
+    if (e.key === "j" && (next || more)) { e.preventDefault(); forward(); }
     if (e.key === "k" && prev) { e.preventDefault(); moved.current = true; onMove(prev); }
   };
   const q = useQuery({ queryKey: ["finding", id], queryFn: () => api<Finding>(`/api/findings/${id}`), enabled: !!id });
@@ -439,12 +451,12 @@ function FindingDrawer({ id, ids = [], onMove, onClose }: { id: string; ids?: st
             {/* stepping with j/k changes the host as often as the ID: both sit in the title, with where you are in the list */}
             <div className="min-w-0">
               <Dialog.Title ref={title} tabIndex={-1} className="break-all font-mono text-lg font-semibold">{q.data?.vuln_id ?? "Finding"}</Dialog.Title>
-              {q.data && <p className="break-all text-sm"><span className="font-medium">{q.data.hostname}</span>{ids.length > 1 && at >= 0 && <span className="num text-muted"> · {at + 1} of {ids.length.toLocaleString("en")}{ids.length >= FINDINGS_CAP && " loaded"}</span>}</p>}
+              {q.data && <p className="break-all text-sm"><span className="font-medium">{q.data.hostname}</span>{ids.length > 1 && at >= 0 && <span className="num text-muted"> · {at + 1} of {(total ?? ids.length).toLocaleString("en")}</span>}</p>}
             </div>
             {ids.length > 1 && at >= 0 && (
               <span className="ml-auto flex shrink-0 gap-1">
                 <button className={clsx(btnQuiet, "size-[44px] !px-0 md:size-9")} disabled={!prev} onClick={() => { if (prev) { moved.current = true; onMove(prev); } }} aria-label="Previous finding (k)" title="Previous finding (k)"><ChevronUp className="size-4" aria-hidden /></button>
-                <button className={clsx(btnQuiet, "size-[44px] !px-0 md:size-9")} disabled={!next} onClick={() => { if (next) { moved.current = true; onMove(next); } }} aria-label="Next finding (j)" title="Next finding (j)"><ChevronDown className="size-4" aria-hidden /></button>
+                <button className={clsx(btnQuiet, "size-[44px] !px-0 md:size-9")} disabled={!next && !more} onClick={forward} aria-label="Next finding (j)" title="Next finding (j)"><ChevronDown className="size-4" aria-hidden /></button>
               </span>
             )}
             <Dialog.Close className={clsx(btnQuiet, "size-[44px] shrink-0 !px-0 md:size-9")} aria-label="Close"><X className="size-4" aria-hidden /></Dialog.Close>

@@ -1,10 +1,10 @@
-import { Fragment, useState } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import clsx from "clsx";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronRight, TriangleAlert, Wrench, X } from "lucide-react";
-import { adminGate, api, APPROVE_COPY, dependenciesNeeded, filtersToSearch, groupJobs, isActiveJob, jobAnchor, jobsQ, kbFleetQ, kbHostsQ, parseFilters, parseUtc, plural, refresh, relativeTime, useHashScroll, useIsAdmin, useTitle, meQ, assetsQ, settingsQ, type Asset, type Job, type KbRow } from "./lib";
-import { Alert, btnPrimary, btnQuiet, ConfirmDialog, EmptyState, ErrorState, Loading, StatusPill } from "./ui";
+import { adminGate, api, APPROVE_COPY, dependenciesNeeded, filtersToSearch, groupJobs, isActiveJob, jobAnchor, jobsQ, kbFleetQ, kbHostsQ, parseFilters, parseUtc, plural, refresh, relativeTime, useHashScroll, useIsAdmin, useTitle, meQ, assetsQ, settingsQ, summaryQ, type Asset, type Job, type KbRow } from "./lib";
+import { Alert, btnQuiet, ConfirmDialog, EmptyState, ErrorState, Loading, StatusPill } from "./ui";
 
 const CANCELLABLE: Job["status"][] = ["planned", "approved"];
 const AGAIN: Job["status"][] = ["failed", "rolled_back", "rollback_failed", "not_fixed"];
@@ -49,7 +49,8 @@ export function RemediationPage() {
   const byId = new Map((assets.data ?? []).map((a) => [a.id, a]));
   const prodOff = settings.data?.production_remediation_allowed === false;
   // what one approval may cover: not a production machine while that's off, not a fix that can't be undone (that one gets its own dialog)
-  const approvable = (j: Job) => !j.forward_only && !(prodOff && byId.get(j.asset_id)?.sandbox === false);
+  const prodBlocked = (j: Job) => prodOff && byId.get(j.asset_id)?.sandbox === false;
+  const hold = (j: Job) => prodBlocked(j) ? "production remediation is off" : j.forward_only ? "can't be undone, so each is approved on its own" : null;
   const [several, setManyJobs] = useState<Job[] | null>(null);
   const [chosen, setChosen] = useState<Set<string>>(new Set());  // which of them to approve: all to start, untick to approve fewer
   const setMany = (js: Job[] | null) => { setManyJobs(js); setChosen(new Set(js?.map((j) => j.id))); };
@@ -76,8 +77,10 @@ export function RemediationPage() {
     mutationFn: (id: string) => api<Job>(`/api/remediation/jobs/${id}/cancel`, { method: "POST" }),
     onSuccess: () => { setCancelling(null); void refresh(qc, "jobs"); },
   });
+  const card = (j: Job) => <JobCard key={j.id} job={j} blocked={prodBlocked(j) ? "production remediation is off" : undefined}
+    onApprove={() => { approve.reset(); setTarget(j); }} onCancel={() => { cancel.reset(); setCancelling(j); }} />;
   useHashScroll(!!q.data);  // #job-<id> from Home, the finding drawer or Plan fix
-  const groups = q.data ? groupJobs(q.data).filter((g) => g.jobs.length) : [];
+  const groups = q.data ? sections(q.data) : [];
 
   return (
     <div className="flex flex-col gap-8">
@@ -85,7 +88,6 @@ export function RemediationPage() {
         <h1 className="text-3xl font-semibold">Remediation</h1>
         <p className="mt-1 max-w-prose text-muted">Fixes are planned, approved, and counted as done once the next inventory proves the vulnerability gone.</p>
       </header>
-      {q.data && <Rollouts jobs={q.data} assets={assets.data ?? []} canApprove={approvable} onApprove={admin ? (js) => { many.reset(); setMany(js); } : undefined} />}
       {q.isPending ? <Loading className="h-24" rows={3} label="Loading fixes…" />
         : q.error ? <ErrorState error={q.error} retry={() => q.refetch()} />
         : groups.length === 0 ? <EmptyState title="No fixes planned yet">Use “Plan fix” on a recommended fix or a finding. Nothing changes on a machine until you approve it.</EmptyState>
@@ -95,25 +97,9 @@ export function RemediationPage() {
             {(() => { const own = g.jobs.filter((j) => j.approved_by && j.approved_by === j.created_by).length; return own > 0 &&
               <p className="-mt-2 mb-3 text-sm text-warn-fg">{own === g.jobs.length ? (own === 1 ? "Self-approved" : own === 2 ? "Both self-approved" : `All ${own} self-approved`) : `${own} of ${g.jobs.length} self-approved`}: approved by the person who planned {own === 1 ? "it" : "them"}, with no second approver (SOC 2 CC8.1).</p>; })()}
             <ul className="flex flex-col gap-2">
-              {byPackage(g.jobs).map((js) => {
-                const card = (j: Job) => <JobCard key={j.id} job={j} onApprove={() => { approve.reset(); setTarget(j); }} onCancel={() => { cancel.reset(); setCancelling(j); }} />;
-                if (js.length < 3) return js.map(card);
-                // three or more machines for one package fold into one block: the Rollouts table above has their totals
-                const linked = js.some((j) => location.hash === `#${jobAnchor(j.id)}`);
-                return (
-                  <li key={js[0]!.action_key + g.key}>
-                    <details open={linked} className="border border-line bg-surface">
-                      <summary className="group/sum flex tap cursor-pointer flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3">
-                        <ChevronRight aria-hidden className="size-4 shrink-0 transition-transform [details[open]_&]:rotate-90" />
-                        <span className="font-semibold">{js[0]!.action_key.split("|")[1]}</span><span className="text-sm text-muted">{js[0]!.action_key.split("|")[0]}</span>
-                        <span className="text-sm">on {plural(js.length, "machine")}</span>
-                        <span className="min-w-0 truncate text-sm text-muted">{js.slice(0, 3).map((j) => j.hostname).join(", ")}{js.length > 3 && ` and ${js.length - 3} more`}</span>
-                      </summary>
-                      <ul className="flex flex-col gap-2 border-t border-line bg-sunken p-2">{js.map(card)}</ul>
-                    </details>
-                  </li>
-                );
-              })}
+              {g.rollouts.map((js) => <RolloutCard key={js[0]!.action_key} jobs={js} assets={assets.data ?? []} hold={hold} card={card}
+                onApprove={admin ? (sel) => { many.reset(); setMany(sel); } : undefined} />)}
+              {g.singles.map(card)}
             </ul>
           </section>
         ))}
@@ -211,12 +197,16 @@ function KbFleetRow({ row: r }: { row: KbRow }) {
 }
 
 /** Render job state, packages, steps, and optional approval/cancellation actions. */
-export function JobCard({ job: j, onApprove, onCancel }: { job: Job; onApprove?: () => void; onCancel?: () => void }) {
+export function JobCard({ job: j, onApprove, onCancel, blocked }: { job: Job; onApprove?: () => void; onCancel?: () => void; blocked?: string }) {
   const admin = useIsAdmin();
   const steps = j.steps ?? [];
   const qc = useQueryClient();
   const deps = j.status === "aborted" ? dependenciesNeeded(j.error) : [];
   const [ecosystem, pkg] = j.action_key.split("|");
+  // a waiting job planned for an older version than Fix first now recommends says so (DESIGN.md: numbers that agree)
+  const planned = (/ to (\S+) on \S+$/.exec(j.summary) ?? /\(fixed in ([^)]+)\)$/.exec(j.summary))?.[1];
+  const now = useQuery(summaryQ).data?.top_actions.find((a) => a.ecosystem === ecosystem && a.package === pkg)?.fixed_version;
+  const stale = j.status === "planned" && planned && now && now !== planned ? now : null;
   const replan = useMutation({
     mutationFn: () => api<Job>("/api/remediation/jobs", { method: "POST", body: { asset_id: j.asset_id, ecosystem, package: pkg, include: deps } }),
     onSuccess: () => void refresh(qc, "jobs"),
@@ -232,6 +222,7 @@ export function JobCard({ job: j, onApprove, onCancel }: { job: Job; onApprove?:
           {/* no dot separators: on a phone they'd start wrapped lines; spacing alone separates the facts */}
           <ul className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm text-muted">
             <li><StatusPill status={j.status} /></li>
+            {stale && <li className="text-ink">planned for {planned}; {stale} is now the fix</li>}
             {/* the count lives here, not in the title (DESIGN.md: one title format) */}
             {j.finding_ids.length > 0 && <li>fixes {plural(j.finding_ids.length, "vulnerability", "vulnerabilities")}</li>}
             {/* a name opens that thing's detail (DESIGN.md): the machine's drawer */}
@@ -249,15 +240,16 @@ export function JobCard({ job: j, onApprove, onCancel }: { job: Job; onApprove?:
           {CANCELLABLE.includes(j.status) && onCancel && (
             <button className={btnQuiet} onClick={onCancel} {...adminGate(admin)}>Cancel fix<span className="sr-only"> on {j.hostname}</span></button>
           )}
-          {j.status === "planned" && onApprove && (
-            <button className={btnPrimary} onClick={onApprove} {...adminGate(admin)}><Check className="size-4" aria-hidden />Review and approve<span className="sr-only"> fix on {j.hostname}</span></button>
+          {j.status === "planned" && blocked && <p className="text-sm text-muted">Can't run: {blocked}</p>}
+          {j.status === "planned" && onApprove && !blocked && (
+            <button className={btnQuiet} onClick={onApprove} {...adminGate(admin)}><Check className="size-4" aria-hidden />Review and approve<span className="sr-only"> fix on {j.hostname}</span></button>
           )}
         </div>
       </div>
       {j.status === "planned" && <PackageList job={j} />}
       {/* a cancel is deliberate: said plainly, never in the error box */}
       {j.error && (j.status === "cancelled" ? <p className="mt-2 text-sm text-muted">{j.error}.</p> : <RefusalNote error={j.error} />)}
-      {j.status === "rolled_back" && <p className="mt-2 max-w-prose text-sm">Before planning it again: try it on a test or canary machine first, and check that the service named above works with the new version (its log usually says why it wouldn't start).</p>}
+      {j.status === "rolled_back" && <p className="mt-2 max-w-prose text-sm">Before planning it again, try it on a test machine; the service's log usually says why it wouldn't start.</p>}
       {AGAIN.includes(j.status) && deps.length === 0 && pkg && <PlanFixButton ecosystem={ecosystem!} pkg={pkg} assetIds={[j.asset_id]} label="Plan fix again" className="mt-3" />}
       {deps.length > 0 && (
         <div className="mt-2 flex flex-wrap items-center gap-3">
@@ -304,69 +296,81 @@ export function byPackage(jobs: Job[]): Job[][] {
 const FIXED: Job["status"][] = ["succeeded"], MOVING: Job["status"][] = ["approved", "dispatched", "verifying"];
 const STUCK: Job["status"][] = ["failed", "rolled_back", "rollback_failed", "not_fixed", "aborted"];
 
-/** One package's fix across several machines, canary ring first: what's fixed, moving, waiting and stuck in each ring.
- * The job cards below stay the place to approve each machine; this is where the rollout as a whole shows. */
-export function Rollouts({ jobs, assets, canApprove, onApprove }: { jobs: Job[]; assets: Asset[]; canApprove?: (j: Job) => boolean; onApprove?: (js: Job[]) => void }) {
+/** One package's fix across several machines, as one card: canary and broad tallies, where it stands, a review per
+ * ring, and every machine's own card inside. It sits once, in the section of its most urgent machine. */
+export function RolloutCard({ jobs, assets, hold, onApprove, card }: {
+  jobs: Job[]; assets: Asset[]; hold?: (j: Job) => string | null; onApprove?: (js: Job[]) => void; card?: (j: Job) => ReactNode;
+}) {
   const ring = new Map(assets.map((a) => [a.id, a.ring]));
-  const by = new Map<string, Job[]>();
-  for (const j of jobs) if (j.status !== "cancelled") by.set(j.action_key, [...(by.get(j.action_key) ?? []), j]);
-  const rows = [...by].filter(([, js]) => new Set(js.map((j) => j.asset_id)).size > 1);
-  if (!rows.length) return null;
+  const live = jobs.filter((j) => j.status !== "cancelled");
   const tally = (js: Job[]) => {
     const n = (st: Job["status"][]) => js.filter((j) => st.includes(j.status)).length;
     return { total: js.length, fixed: n(FIXED), moving: n(MOVING), waiting: n(["planned"]), stuck: n(STUCK) };
   };
-  // one review per ring, canary first: the broad ring's approval waits until every canary machine is fixed, so the
-  // test-then-production order holds. Each machine's own card still approves it alone.
-  const approveRing = (js: Job[], isCanary: boolean, pkg: string, held: boolean) => {
-    const ready = js.filter((j) => (ring.get(j.asset_id) === 0) === isCanary && j.status === "planned" && (canApprove?.(j) ?? true));
-    if (!onApprove || !ready.length) return null;
-    return (
-      <div className="mt-2"><button className={btnQuiet} disabled={held} title={held ? "Approve the broad ring once the canary machines are fixed" : undefined} onClick={() => onApprove(ready)}>
-        <Check className="size-4" aria-hidden />Approve {isCanary ? "canary" : "broad"} ({ready.length})<span className="sr-only">, {pkg}</span>
-      </button></div>
-    );
-  };
-  const cell = (t: ReturnType<typeof tally>) => !t.total ? <span className="text-muted">none</span> : (
-    <span className="num"><strong className="font-semibold">{t.fixed} of {t.total}</strong> fixed
+  const canary = tally(live.filter((j) => ring.get(j.asset_id) === 0)), broad = tally(live.filter((j) => ring.get(j.asset_id) !== 0));
+  const [eco, pkg] = jobs[0]!.action_key.split("|");
+  const stands = canary.stuck ? "A canary didn't work: review it before the rest go"
+    : canary.total && canary.fixed < canary.total ? "Waiting on the canary machines"
+    : broad.fixed + broad.stuck === broad.total ? (broad.stuck ? "Done, with machines to review" : "Done")
+    : broad.waiting ? `${canary.total ? "Canary fixed: " : ""}approve the broad machines`
+    : broad.moving ? `${canary.total ? "Canary fixed: " : ""}broad machines running`
+    : canary.total ? "Canary fixed: plan the broad machines" : "No canary machine in this fix";
+  const cell = (label: string, t: ReturnType<typeof tally>) => t.total > 0 && (
+    <span className="num">{label} <strong className="font-semibold">{t.fixed} of {t.total}</strong> fixed
       {t.moving > 0 && <span className="text-muted"> · {t.moving} running</span>}
       {t.waiting > 0 && <span className="text-muted"> · {t.waiting} awaiting approval</span>}
       {t.stuck > 0 && <span className="text-now-fg"> · {t.stuck} didn't work</span>}</span>);
+  const waiting = live.filter((j) => j.status === "planned");
+  const held = waiting.filter((j) => hold?.(j));
+  // one review per ring, canary first: the broad ring waits until every canary machine is fixed (test, then production)
+  const ringButton = (isCanary: boolean) => {
+    const ready = waiting.filter((j) => (ring.get(j.asset_id) === 0) === isCanary && !hold?.(j));
+    if (!onApprove || !ready.length) return null;
+    const wait = !isCanary && canary.total > 0 && canary.fixed < canary.total;
+    return (
+      <button className={btnQuiet} disabled={wait} title={wait ? "Approve the broad ring once the canary machines are fixed" : undefined} onClick={() => onApprove(ready)}>
+        <Check className="size-4" aria-hidden />Approve {isCanary ? "canary" : "broad"} ({ready.length})<span className="sr-only">, {pkg}</span>
+      </button>
+    );
+  };
+  const reasons = [...new Set(held.map((j) => hold!(j)!))];
+  const linked = typeof location !== "undefined" && jobs.some((j) => location.hash === `#${jobAnchor(j.id)}`);
   return (
-    <section aria-labelledby="rollouts">
-      <h2 id="rollouts" className="mb-1 text-lg font-semibold">Rollouts</h2>
-      <p className="mb-3 max-w-prose text-sm text-muted">Canary machines first; the broad ring once the canary is fixed.</p>
-      {/* a table from md up; on phones each rollout stacks into a card, every cell labelled */}
-      <div className="border border-line bg-surface">
-        <table className="block w-full border-collapse text-sm md:table">
-          <thead className="hidden text-left text-xs text-muted md:table-header-group"><tr className="border-b border-line">
-            <th scope="col" className="px-3 py-2 font-normal">Package</th><th scope="col" className="px-3 py-2 font-normal">Canary</th>
-            <th scope="col" className="px-3 py-2 font-normal">Broad</th><th scope="col" className="px-3 py-2 font-normal">Where it stands</th>
-          </tr></thead>
-          <tbody className="block divide-y divide-line md:table-row-group">
-            {rows.map(([key, js]) => {
-              const [eco, pkg] = key.split("|");
-              const canary = tally(js.filter((j) => ring.get(j.asset_id) === 0)), broad = tally(js.filter((j) => ring.get(j.asset_id) !== 0));
-              const stands = canary.stuck ? "A canary didn't work: review it before the rest go"
-                : canary.total && canary.fixed < canary.total ? "Waiting on the canary machines"
-                : broad.fixed + broad.stuck === broad.total ? (broad.stuck ? "Done, with machines to review" : "Done")
-                : broad.waiting ? `${canary.total ? "Canary fixed: " : ""}approve the broad machines (${broad.waiting} waiting)`
-                : broad.moving ? `${canary.total ? "Canary fixed: " : ""}broad machines running`
-                : canary.total ? "Canary fixed: plan the broad machines" : "No canary machine in this fix";
-              return (
-                <tr key={key} className="block py-1 align-top md:table-row md:py-0">
-                  <td className="block px-3 py-1.5 md:table-cell md:py-2"><span className="font-semibold">{pkg}</span> <span className="text-muted">{eco}</span></td>
-                  <td className="block px-3 py-1.5 md:table-cell md:py-2"><span className="text-xs text-muted md:hidden">Canary: </span>{cell(canary)}{approveRing(js, true, pkg ?? key, false)}</td>
-                  <td className="block px-3 py-1.5 md:table-cell md:py-2"><span className="text-xs text-muted md:hidden">Broad: </span>{cell(broad)}{approveRing(js, false, pkg ?? key, canary.total > 0 && canary.fixed < canary.total)}</td>
-                  <td className={clsx("block px-3 py-1.5 md:table-cell md:py-2", canary.stuck ? "text-now-fg" : "text-ink")}>{stands}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+    <li className="border border-line bg-surface" aria-label={`${pkg} rollout`}>
+      <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <p className="font-medium"><span className="font-semibold">Upgrade {pkg}</span> <span className="text-sm text-muted">{eco}</span> <span className="text-sm">on {plural(new Set(live.map((j) => j.asset_id)).size, "machine")}</span></p>
+          <p className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm">{cell("Canary", canary)}{cell("Broad", broad)}</p>
+          <p className={clsx("mt-1 text-sm", canary.stuck ? "text-now-fg" : "text-ink")}>{stands}</p>
+          {reasons.map((r) => <p key={r} className="mt-1 text-sm text-muted">{plural(held.filter((j) => hold!(j) === r).length, "waiting machine")} left out: {r}</p>)}
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">{ringButton(true)}{ringButton(false)}</div>
       </div>
-    </section>
+      {card && (
+        <details open={linked} className="border-t border-line">
+          <summary className="flex tap w-fit cursor-pointer items-center gap-2 px-4 py-2 text-sm font-medium">
+            <ChevronRight aria-hidden className="size-4 shrink-0 transition-transform [details[open]_&]:rotate-90" />Machines ({jobs.length})
+          </summary>
+          <ul className="flex flex-col gap-2 bg-sunken p-2">{jobs.map(card)}</ul>
+        </details>
+      )}
+    </li>
   );
+}
+
+/** The page's sections, what broke first: a rollout (one package on two or more machines) sits once, in the section
+ * of its most urgent machine; every other job sits in its own status's section. */
+export function sections(jobs: Job[]) {
+  const machines = new Map<string, Set<string>>();
+  for (const j of jobs) if (j.status !== "cancelled") machines.set(j.action_key, (machines.get(j.action_key) ?? new Set()).add(j.asset_id));
+  const isRollout = (j: Job) => (machines.get(j.action_key)?.size ?? 0) > 1;
+  const placed = new Set<string>();
+  return groupJobs(jobs).map((g) => {
+    const rollouts = byPackage(g.jobs.filter((j) => j.status !== "cancelled" && isRollout(j) && !placed.has(j.action_key)))
+      .map((js) => { placed.add(js[0]!.action_key); return jobs.filter((j) => j.action_key === js[0]!.action_key); });
+    const singles = g.jobs.filter((j) => !isRollout(j));
+    return { ...g, rollouts, singles, jobs: [...rollouts.flat(), ...singles] };
+  }).filter((g) => g.jobs.length);
 }
 
 /** Pure view (no network) so the copy can be tested. */

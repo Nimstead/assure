@@ -203,9 +203,10 @@ export function SettingsPage() {
 
         <section aria-labelledby="agent-updates" className="flex flex-col items-start gap-3">
           <h3 id="agent-updates" className="text-lg font-semibold">Agent updates</h3>
-          <p className="max-w-prose text-sm text-muted">
-            Agents replace themselves with newer releases at their next run. A release is accepted only if it's signed by the Nimstead release key built into the agent, so this server can hold an update back but can't change one. Each agent tests the new version on its host before switching and keeps the old one if the test fails.
-          </p>
+          {/* one sentence shows; the rest behind How this is judged (DESIGN.md: copy budget) */}
+          <HowJudged lead="Agents update themselves to newer signed releases at their next run.">
+            A release is accepted only if it's signed by the Nimstead release key built into the agent, so this server can hold an update back but can't change one. Each agent tests the new version on its host before switching and keeps the old one if the test fails.
+          </HowJudged>
           {!s.signed_agent_release && (
             <p className="flex items-start gap-2 border border-line-strong bg-surface p-3 text-sm">
               <Info className="mt-0.5 size-4 shrink-0" aria-hidden />

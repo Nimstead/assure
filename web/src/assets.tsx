@@ -491,7 +491,6 @@ function MachineList({ assets, saved, failed, onPatch, onDelete, undo }: {
   const rows = useMemo(() => filterAssets(assets, typed, on, crit, sort), [assets, typed, on, crit, sort]);
   const pick = useCallback((id: string, v: boolean) => setPicked((s) => { const n = new Set(s); if (v) n.add(id); else n.delete(id); return n; }), []);
   const counts = useMemo(() => Object.fromEntries((Object.keys(FILTERS) as Filter[]).map((f) => [f, assets.filter(MATCH[f]).length])) as Record<Filter, number>, [assets]);
-  const toggle = (f: Filter) => startTransition(() => { setOn((o) => (o.includes(f) ? o.filter((x) => x !== f) : [...o, f])); setShown(PAGE); });
   const visible = rows.slice(0, shown);
   const pickedRows = assets.filter((a) => picked.has(a.id));
   const apps = pickedRows.filter((a) => a.kind !== "host").length;
@@ -533,6 +532,18 @@ function MachineList({ assets, saved, failed, onPatch, onDelete, undo }: {
             <input type="search" className={clsx(input, "pl-9")} placeholder="Search by name, OS or agent version" value={text} onChange={(e) => { setText(e.target.value); setShown(PAGE); }} />
           </label>
           <div id="asset-filters" className={clsx("w-full flex-wrap items-center gap-2 md:flex md:w-auto", filtersOpen ? "flex" : "hidden")}>
+          {/* the quick filters as one control (DESIGN.md: six controls before the first row); a link may still set several */}
+          <label className="flex items-center gap-2 text-sm">
+            <span className="text-muted">Show</span>
+            <select className={clsx(input, "w-auto md:min-h-9")} value={on.length === 1 ? on[0] : on.length ? "several" : ""}
+              onChange={(e) => startTransition(() => { setOn(e.target.value ? [e.target.value as Filter] : []); setShown(PAGE); })}>
+              <option value="">All machines</option>
+              {on.length > 1 && <option value="several" disabled>{on.map((f) => FILTERS[f]).join(" + ")}</option>}
+              {(Object.keys(FILTERS) as Filter[]).filter((f) => counts[f] > 0 || on.includes(f)).map((f) => (
+                <option key={f} value={f} title={FILTER_HELP[f]}>{FILTERS[f]} ({counts[f].toLocaleString()})</option>
+              ))}
+            </select>
+          </label>
           <label className="flex items-center gap-2 text-sm">
             <span className="text-muted">Criticality</span>
             <select className={clsx(input, "w-auto capitalize md:min-h-9")} value={crit} onChange={(e) => setCrit(e.target.value as Criticality | "")}>
@@ -546,11 +557,6 @@ function MachineList({ assets, saved, failed, onPatch, onDelete, undo }: {
             </select>
           </label>
           </div>
-        </div>
-        <div role="group" aria-label="Show only" className={clsx("flex-wrap gap-2 md:flex", filtersOpen ? "flex" : "hidden")}>
-          {(Object.keys(FILTERS) as Filter[]).filter((f) => counts[f] > 0 || on.includes(f)).map((f) => (
-            <button key={f} title={FILTER_HELP[f]} className={chip(on.includes(f))} aria-pressed={on.includes(f)} onClick={() => toggle(f)}>{FILTERS[f]}<span className="num text-muted">{counts[f].toLocaleString()}</span></button>
-          ))}
         </div>
       </div>
       <div className="flex min-h-[44px] flex-wrap items-center gap-x-4 gap-y-2 md:min-h-9">
@@ -697,9 +703,11 @@ export function AgentUpdateSummary({ assets, onShow }: { assets: Asset[]; onShow
   const reinstall = [...groups].filter(([why]) => /can't update itself/.test(why));
   if (reinstall.length > 1) {
     const hosts = reinstall.flatMap(([, g]) => g.hosts);
-    const versions = assets.filter((a) => hosts.includes(a.hostname)).reduce<Record<string, number>>((n, a) => ({ ...n, [a.agent_version ?? "?"]: (n[a.agent_version ?? "?"] ?? 0) + 1 }), {});
+    // an agent that reported no version ("" or null) is "unknown", never an empty label
+    const versions = assets.filter((a) => hosts.includes(a.hostname)).reduce<Record<string, number>>((n, a) => ({ ...n, [a.agent_version || "unknown"]: (n[a.agent_version || "unknown"] ?? 0) + 1 }), {});
+    const named = Object.entries(versions).map(([v, n]) => `${v} (${plural(n, "machine")})`);
     for (const [why] of reinstall) groups.delete(why);
-    groups.set(`Agents ${Object.entries(versions).map(([v, n]) => `${v} (${n})`).join(", ")} predate self-update. Rerun the install command on each once; the enrolment is kept, and later versions update automatically.`, { failed: false, hosts });
+    groups.set(`Agent version${named.length > 1 ? "s" : ""} ${named.length > 1 ? `${named.slice(0, -1).join(", ")} and ${named.at(-1)}` : named[0]} predate${named.length > 1 ? "" : "s"} self-update. Rerun the install command on each once; the enrolment is kept, and later versions update automatically.`, { failed: false, hosts });
   }
   return (
     <ul className="flex flex-col gap-1.5 border border-line-strong bg-surface px-3 py-2 text-sm [&>li]:max-w-[60ch]">

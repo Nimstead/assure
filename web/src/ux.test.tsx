@@ -8,9 +8,9 @@ import { SsoSection } from "./integrations";
 import { ApiError, meQ, type Action, type Asset, type Finding, type Job, type Settings } from "./lib";
 import { ActionCard, Home } from "./home";
 import { PlanFixButton } from "./planfix";
-import { foldSignIns } from "./evidence";
-import { ApproveDialog, byPackage, RemediationPage, Rollouts } from "./remediation";
-import { AssetRow, AssetsPage, AttackPaths, Baselines, baselineSummary, filterAssets, NotAssessed, UnmanagedDevices } from "./assets";
+import { foldRuns } from "./evidence";
+import { ApproveDialog, byPackage, RemediationPage, RolloutCard, sections } from "./remediation";
+import { AgentUpdateSummary, AssetRow, AssetsPage, AttackPaths, Baselines, baselineSummary, filterAssets, NotAssessed, UnmanagedDevices } from "./assets";
 import { cmdGroup, KeyboardShortcuts, Palette } from "./shell";
 import { Done, errorLead } from "./ui";
 import { Onboarding, TROUBLESHOOT_AFTER_MS } from "./onboarding";
@@ -609,31 +609,28 @@ it("devices with no agent: a list that couldn't be read says so, never reads as 
 it("rollouts: one package across machines shows canary and broad progress, and holds the rest when a canary fails", () => {
   const job = (id: string, asset_id: string, status: Job["status"]) => ({ id, asset_id, status, action_key: "Debian:12|openssl", hostname: asset_id } as Job);
   const assets = [{ id: "c1", ring: 0 }, { id: "b1", ring: 1 }, { id: "b2", ring: 1 }] as Asset[];
-  const r = render(<Rollouts jobs={[job("1", "c1", "succeeded"), job("2", "b1", "verifying"), job("3", "b2", "planned")]} assets={assets} />);
-  expect(screen.getByRole("row", { name: /openssl/ })).toHaveTextContent(/1 of 1 fixed.*0 of 2 fixed · 1 running · 1 awaiting approval.*Canary fixed: approve the broad machines \(1 waiting\)/);
+  const r = render(<ul><RolloutCard jobs={[job("1", "c1", "succeeded"), job("2", "b1", "verifying"), job("3", "b2", "planned")]} assets={assets} /></ul>);
+  expect(screen.getByRole("listitem", { name: "openssl rollout" })).toHaveTextContent(/Canary 1 of 1 fixed.*Broad 0 of 2 fixed · 1 running · 1 awaiting approval.*Canary fixed: approve the broad machines/);
   r.unmount();
-  render(<Rollouts jobs={[job("1", "c1", "rolled_back"), job("2", "b1", "planned")]} assets={assets} />);
-  expect(screen.getByRole("row", { name: /openssl/ })).toHaveTextContent(/didn't work.*A canary didn't work: review it before the rest go/);
+  render(<ul><RolloutCard jobs={[job("1", "c1", "rolled_back"), job("2", "b1", "planned")]} assets={assets} /></ul>);
+  expect(screen.getByRole("listitem", { name: "openssl rollout" })).toHaveTextContent(/didn't work.*A canary didn't work: review it before the rest go/);
 });
 
-it("rollouts: a fix on one machine is not a rollout", () => {
-  const { container } = render(<Rollouts jobs={[{ id: "1", asset_id: "a1", status: "planned", action_key: "Debian:12|curl" } as Job]} assets={[]} />);
-  expect(container).toBeEmptyDOMElement();
+it("rollouts: each rollout shows once, in the section of its most urgent machine; a fix on one machine is a plain job", () => {
+  const job = (id: string, asset_id: string, status: Job["status"], pkg = "openssl") => ({ id, asset_id, status, action_key: `Debian:12|${pkg}` } as Job);
+  const s = sections([job("1", "c1", "succeeded"), job("2", "b1", "planned"), job("3", "b2", "rolled_back"), job("4", "a1", "planned", "curl"), job("5", "a2", "cancelled", "zlib")]);
+  expect(s.map((g) => [g.key, g.rollouts.map((r) => r.map((j) => j.id)), g.singles.map((j) => j.id)])).toEqual([
+    ["attention", [["1", "2", "3"]], []], ["approval", [], ["4"]], ["done", [], ["5"]]]);
 });
 
-it("approve: a production machine while production remediation is off can't be approved, and says why", () => {
-  render(<ApproveDialog job={{ summary: "Upgrade curl", hostname: "api-dev-04" }} production onOpenChange={() => {}} onConfirm={() => {}} />);
-  expect(screen.getByText(/api-dev-04 is a production machine/)).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Approve and run" })).toBeDisabled();
-});
-
-it("rollouts: each ring's waiting machines are approved in one review, and a failed canary holds the broad ring", async () => {
+it("rollouts: each ring's waiting machines are approved in one review; held machines are left out and say why", async () => {
   const job = (id: string, asset_id: string, status: Job["status"]) => ({ id, asset_id, status, action_key: "Debian:12|openssl", hostname: asset_id, summary: "s", packages: [], created_by: "x" } as unknown as Job);
   const assets = [{ id: "c1", ring: 0 }, { id: "b1", ring: 1 }, { id: "b2", ring: 1 }, { id: "b3", ring: 1 }] as Asset[];
   const onApprove = vi.fn();
-  render(<Rollouts jobs={[job("1", "c1", "succeeded"), job("2", "b1", "planned"), job("3", "b2", "planned"), job("4", "b3", "planned")]} assets={assets}
-    canApprove={(j) => j.asset_id !== "b3"} onApprove={onApprove} />);
-  await userEvent.click(screen.getByRole("button", { name: /Approve broad \(2\)/ }));  // b3 can't run here: left to its own card
+  render(<ul><RolloutCard jobs={[job("1", "c1", "succeeded"), job("2", "b1", "planned"), job("3", "b2", "planned"), job("4", "b3", "planned")]} assets={assets}
+    hold={(j) => j.asset_id === "b3" ? "production remediation is off" : null} onApprove={onApprove} /></ul>);
+  expect(screen.getByText("1 waiting machine left out: production remediation is off")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: /Approve broad \(2\)/ }));
   expect(onApprove.mock.calls[0]![0].map((j: Job) => j.id)).toEqual(["2", "3"]);
   expect(screen.queryByRole("button", { name: /Approve canary/ })).toBeNull();  // the canary is already fixed
 });
@@ -642,12 +639,18 @@ it("rollouts: the broad ring's approval waits until the canary machines are fixe
   const job = (id: string, asset_id: string, status: Job["status"]) => ({ id, asset_id, status, action_key: "Debian:12|openssl", hostname: asset_id } as unknown as Job);
   const assets = [{ id: "c1", ring: 0 }, { id: "b1", ring: 1 }] as Asset[];
   for (const canary of ["rolled_back", "verifying", "planned"] as const) {
-    const r = render(<Rollouts jobs={[job("1", "c1", canary), job("2", "b1", "planned")]} assets={assets} onApprove={() => {}} />);
+    const r = render(<ul><RolloutCard jobs={[job("1", "c1", canary), job("2", "b1", "planned")]} assets={assets} onApprove={() => {}} /></ul>);
     expect(screen.getByRole("button", { name: /Approve broad \(1\)/ })).toBeDisabled();
     r.unmount();
   }
-  render(<Rollouts jobs={[job("1", "c1", "succeeded"), job("2", "b1", "planned")]} assets={assets} onApprove={() => {}} />);
+  render(<ul><RolloutCard jobs={[job("1", "c1", "succeeded"), job("2", "b1", "planned")]} assets={assets} onApprove={() => {}} /></ul>);
   expect(screen.getByRole("button", { name: /Approve broad \(1\)/ })).toBeEnabled();
+});
+
+it("approve: a production machine while production remediation is off can't be approved, and says why", () => {
+  render(<ApproveDialog job={{ summary: "Upgrade curl", hostname: "api-dev-04" }} production onOpenChange={() => {}} onConfirm={() => {}} />);
+  expect(screen.getByText(/api-dev-04 is a production machine/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Approve and run" })).toBeDisabled();
 });
 
 it("approve: a broad machine ahead of its canary may be approved by a person, and the dialog says so", () => {
@@ -661,10 +664,12 @@ it("? lists every keyboard shortcut", () => {
   expect(screen.getByRole("dialog", { name: "Keyboard shortcuts" })).toHaveTextContent(/Ctrl K.*Jump to.*j k.*Esc/);
 });
 
-it("the ledger folds a run of sign-ins into one row and keeps everything else as it is", () => {
+it("the ledger folds a run of one kind into one row, and never folds a failure", () => {
   const e = (seq: number, kind: string) => ({ seq, kind, ts: "2026-11-13T10:00:00", subject: "x", data: {}, hash: "h", prev_hash: "p" });
-  const runs = foldSignIns([e(9, "password_login"), e(8, "password_login"), e(7, "sso_login"), e(6, "remediation_approved"), e(5, "password_login")] as never);
+  const runs = foldRuns([e(9, "password_login"), e(8, "password_login"), e(7, "sso_login"), e(6, "remediation_approved"), e(5, "password_login")] as never);
   expect(runs.map((r) => r.length)).toEqual([3, 1, 1]);
+  const more = foldRuns([e(4, "remediation_approved"), e(3, "remediation_approved"), e(2, "remediation_failed"), e(1, "remediation_failed")] as never);
+  expect(more.map((r) => r.length)).toEqual([2, 1, 1]);  // same kind folds; a failure never hides in a fold
 });
 
 it("remediation: jobs for one package stay together, in the order they arrived", () => {
@@ -694,4 +699,10 @@ it("Fix first names the top fixes it can't plan, with their priority", async () 
   wrap(<Home />);
   expect(await screen.findByRole("link", { name: "log4j-core" })).toHaveAttribute("href", expect.stringMatching(/q=org\.apache\.logging\.log4j/));
   expect(screen.getAllByText("Fix now").length).toBeGreaterThan(0);  // its priority as a pill, with KEV beside it
+});
+
+it("agent updates: an agent with no version reported is named, never an empty label", () => {
+  const a = (id: string, v: string | null) => ({ id, hostname: id, kind: "host", agent_update: "reinstall", agent_version: v } as unknown as Asset);
+  render(<AgentUpdateSummary assets={[a("h1", "0.6.9"), a("h2", ""), a("h3", null)]} />);
+  expect(screen.getByRole("listitem")).toHaveTextContent("3 machines: Agent versions 0.6.9 (1 machine) and unknown (2 machines) predate self-update.");
 });

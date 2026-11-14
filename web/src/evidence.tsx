@@ -202,12 +202,12 @@ function LedgerView({ problems, entries }: { problems: string[]; entries: Ledger
       )}
       {entries.length === 0 ? <p className="text-sm text-muted">Nothing recorded yet.</p> : (
         <ol className="flex flex-col divide-y divide-line overflow-hidden border border-line bg-surface">
-          {foldSignIns(entries).map((run) => run.length > 2 ? (
-            // a run of sign-ins folds into one row, so decisions and fixes aren't pushed off the page; every entry is still here
+          {foldRuns(entries).map((run) => run.length > 2 ? (
+            // a run of one kind (sign-ins, approvals) folds into one row, so decisions and fixes aren't pushed off the page; every entry is still here
             <li key={run[0]!.seq} className="text-sm">
               <details>
                 <summary className="flex tap cursor-pointer flex-wrap items-baseline gap-x-4 px-4 py-2.5">
-                  <span className="min-w-0 flex-1 basis-48 font-medium">{run.length} sign-ins</span>
+                  <span className="min-w-0 flex-1 basis-48 font-medium">{runKind(run[0]!) === "login" ? `${run.length} sign-ins` : `${humaniseKind(run[0]!.kind)} (${run.length})`}</span>
                   <span className="text-muted">{[...new Set(run.map((e) => ledgerSubject(e)).filter(Boolean))].slice(0, 3).join(", ")}</span>
                   <time className="text-right text-muted" dateTime={parseUtc(run[0]!.ts).toISOString()}>latest {parseUtc(run[0]!.ts).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}</time>
                 </summary>
@@ -222,12 +222,13 @@ function LedgerView({ problems, entries }: { problems: string[]; entries: Ledger
 }
 
 const SIGN_IN = /login/;
-/** Consecutive sign-in entries as one run; every other entry on its own. */
-export function foldSignIns(entries: LedgerEntry[]): LedgerEntry[][] {
+const runKind = (e: LedgerEntry) => (SIGN_IN.test(e.kind) ? "login" : e.kind);
+/** Consecutive entries of one kind as one run (every sign-in method counts as one kind); a failure always stands alone. */
+export function foldRuns(entries: LedgerEntry[]): LedgerEntry[][] {
   const out: LedgerEntry[][] = [];
   for (const e of entries) {
     const last = out.at(-1);
-    if (last && SIGN_IN.test(e.kind) && SIGN_IN.test(last[0]!.kind)) last.push(e); else out.push([e]);
+    if (last && !FAILED_KIND.test(e.kind) && runKind(e) === runKind(last[0]!)) last.push(e); else out.push([e]);
   }
   return out;
 }

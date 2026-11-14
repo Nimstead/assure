@@ -122,7 +122,7 @@ Dark theme is a true inversion of the same tokens (`light-dark()` in `web/src/in
 - **Line** `#E4E4E2` divides. **Line-strong** `#8A8A87` outlines controls and anything you can press.
 
 ### Crimson (the only accent)
-- **Crimson** `#8E0E23`, with its wash `#F8E3E6`, means one of three things: fix this now, this failed, or this can't be undone.
+- **Crimson** `#8E0E23`, with its wash `#F8E3E6`, means one of three things: fix this now, this failed, or this can't be undone. A KEV badge is crimson because a known-exploited vulnerability is fix now by definition.
 - **The Rationing Rule:** crimson never decorates, never marks focus (focus is ink), and never marks a primary action that is merely important.
 
 ### Amber (caution)
@@ -171,13 +171,13 @@ Square everything: every radius token is 0. The one exception is real circles, s
 ## Components
 
 ### Buttons
-- **Primary** (ink fill): one per view or dialog, for the action the view exists for.
+- **Primary** (ink fill): one per view or dialog, for the action the view exists for. Actions repeated on every card or row (Review and approve, Plan fix) are quiet, so a list of twenty doesn't show twenty primaries.
 - **Quiet** (outlined): every other action.
 - **Danger** (crimson): only for an action that can't be undone, confirmed in a dialog.
 - Every button names its action. Context a screen reader needs, such as the package or the host, goes in visually hidden text inside one inline span, so the space before it survives.
 
 ### Action row (the one pattern for "what can I do here")
-- A row offers **one primary action, at most one secondary, and links in a fixed slot at the end**: Fix first cards, job cards, the finding drawer.
+- A row offers **one main action, at most one secondary, and links in a fixed slot at the end**: Fix first cards, job cards, the finding drawer. On a card the main action is quiet (see Buttons).
 - An action that isn't available isn't shown, and neither is its key hint.
 - **Names open; arrows navigate.**
   - An underlined name (a host, a device, a CVE) opens that thing's detail: a drawer where one exists.
@@ -186,7 +186,7 @@ Square everything: every radius token is 0. The one exception is real circles, s
 ### Chips and filters
 - Chips are pressed toggles (`aria-pressed`), outlined when off and ink when on.
 - A filter that hides something says how much ("hides 27,098").
-- A toolbar shows **at most six controls before the first row**. Rarer filters go behind one control that shows how many are on.
+- A toolbar shows **at most six controls before the first row**. Rarer filters (on Findings: priority, KEV, overdue, has a fix) go behind one control that shows how many are on.
 
 ### Priority pills and status labels
 - **Priority is filled**, following the ramp above.
@@ -203,6 +203,7 @@ Square everything: every radius token is 0. The one exception is real circles, s
 ### Rollouts
 - A fix across machines is a rollout: canary ring first, broad ring after the canary is fixed.
 - Rings can be approved together, or any machines chosen. Each machine is still approved and recorded on its own (DECISIONS 134).
+- A rollout shows once, as one card in the section of its most urgent machine (a failed canary puts it under Needs attention), with every machine's job inside. A machine that can't be approved here says why instead of offering the button.
 
 ### Signature: the ledger and evidence
 - Hashes are mono and short (10 characters) with the full value in a title.
@@ -229,6 +230,7 @@ Square everything: every radius token is 0. The one exception is real circles, s
   - **Device:** something on the network with no agent.
 - **Do follow the save rules.**
   - One object's settings (a machine, a device) save as you change them, with a visible Saved and Undo.
+  - A switch whose effect is immediate and reversible (Pause agent updates) also saves on change, even in Settings: it can't switch Auto on.
   - Org-wide policy (Settings) has one Save per section, because a stray keystroke there must never switch on Auto (DECISIONS 46).
 - **Do say what one click will do** before the click, when it touches machines ("On web-1 and web-2").
 

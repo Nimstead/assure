@@ -33,11 +33,12 @@ export function Home() {
   const plannable = (a: Action) => a.plannable && (!prodLocked || a.asset_ids.some((id) => tests.has(id)));
   const now = s.top_actions.filter(plannable), later = s.top_actions.filter((a) => !plannable(a));
   const devices = s.devices_with_issues ?? 0;
-  const fleet = s.hosts_not_reporting > 0 || s.agents_need_attention > 0 || devices > 0;
-  // a queue: what broke comes first, as direct links; fleet health is named in one line and sits after the fixes
-  const look = [s.hosts_not_reporting > 0 && `${plural(s.hosts_not_reporting, "machine")} stopped reporting`,
-    s.agents_need_attention > 0 && `${plural(s.agents_need_attention, "agent")} can't update`,
-    devices > 0 && `${plural(devices, "device")} with no agent ${devices === 1 ? "has" : "have"} issues`].filter((x): x is string => !!x);
+  // fleet health is one line of links under the title, each to the list that names them (no second box below)
+  const look = [
+    s.hosts_not_reporting > 0 && <Link key="quiet" to="/assets" search={{ show: "quiet" }} className="font-medium text-ink underline">{plural(s.hosts_not_reporting, "machine")} stopped reporting</Link>,
+    s.agents_need_attention > 0 && <Link key="agent" to="/assets" search={{ show: "agent" }} className="font-medium text-ink underline">{plural(s.agents_need_attention, "agent")} can't update</Link>,
+    devices > 0 && <Link key="dev" to="/assets" search={{ view: "devices" }} className="font-medium text-ink underline">{plural(devices, "device")} with no agent {devices === 1 ? "has" : "have"} issues</Link>,
+  ].filter(Boolean);
   return (
     <div className="flex flex-col gap-8">
       <header>
@@ -47,7 +48,7 @@ export function Home() {
             ? `No open findings across ${plural(s.assets, "asset")}.${unchecked ? ` Installed apps not checked: ${unchecked}, listed on Assets.` : ""}`
             : `${plural(total, "open finding")} across ${plural(s.assets, "asset")}. These fixes clear the most risk.`}
         </p>
-        {look.length > 0 && <p className="mt-2 text-sm text-muted">{look.join(" · ")}. <a href="#needs-a-look" className="font-medium text-ink underline">Review below</a></p>}
+        {look.length > 0 && <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">{look}</p>}
       </header>
 
       {s.attention.length > 0 && (
@@ -98,7 +99,7 @@ export function Home() {
             {/* these are the top fixes by risk, not all of them: say so, and where the rest are */}
             <p className="mt-3 max-w-prose text-sm text-muted">
               These are the top fixes by risk, not every one.{later.length > 0 && <>
-                {" "}{later.length === 1 ? "One more of the top fixes" : `${later.length} more of the top fixes`} can't be planned from here (their own updater, a policy, or production machines while production remediation is off):{" "}
+                {" "}<span title="Their own updater, a policy, or production machines while production remediation is off">{later.length === 1 ? "One more" : `${later.length} more`} can't be planned here:</span>{" "}
                 {/* named, each a link: a Fix now or KEV fix that can't be planned here is still the work to do */}
                 {later.map((a, i) => <Fragment key={a.ecosystem + a.package}>
                   <span className="inline-flex items-center gap-1.5 whitespace-nowrap align-middle"><PriorityPill priority={priorityOf(a.max_score, a.kev)} />{a.kev && <KevBadge />}
@@ -109,17 +110,6 @@ export function Home() {
           </>
         )}
       </section>
-
-      {fleet && (
-        <section id="needs-a-look" aria-labelledby="fleet" className="scroll-mt-6 border border-line-strong bg-surface p-4">
-          <h2 id="fleet" className="font-semibold">Machines and devices that need a look</h2>
-          <ul className="mt-2 flex flex-col gap-1 text-sm">
-            {s.hosts_not_reporting > 0 && <li><Link to="/assets" search={{ show: "quiet" }} className="underline decoration-line-strong hover:decoration-ink">{plural(s.hosts_not_reporting, "machine")} stopped reporting</Link>, so {s.hosts_not_reporting === 1 ? "its" : "their"} findings may be out of date.</li>}
-            {s.agents_need_attention > 0 && <li><Link to="/assets" search={{ show: "agent" }} className="underline decoration-line-strong hover:decoration-ink">{plural(s.agents_need_attention, "agent")} can't update {s.agents_need_attention === 1 ? "itself" : "themselves"}</Link>; Assets says why and what to do.</li>}
-            {devices > 0 && <li><Link to="/assets" search={{ view: "devices" }} className="underline decoration-line-strong hover:decoration-ink">{plural(devices, "device")} with no agent</Link> {devices === 1 ? "has" : "have"} exposed services found by network checks.</li>}
-          </ul>
-        </section>
-      )}
     </div>
   );
 }
@@ -156,7 +146,7 @@ export function ActionCard({ a }: { a: Action }) {
           {a.kev && <KevBadge />}
           {(a.job || failed) && <StatusPill status={(a.job ?? failed)!.status} />}
           {a.plannable && !prodOk && tests < a.asset_ids.length && (
-            <span className="border border-line-strong px-1.5 text-xs text-muted" title="Production remediation is off: only test machines can be fixed from here">
+            <span className="border border-line px-1.5 text-xs text-muted" title="Production remediation is off: only test machines can be fixed from here">
               {tests ? `${tests} of ${a.asset_ids.length} fixable here` : "none fixable here"}</span>)}
         </p>
         <p className="mt-1 text-sm text-muted">

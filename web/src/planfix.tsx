@@ -48,7 +48,8 @@ export function PlanFixButton({ ecosystem, pkg, assetIds, names, hosts = assetId
         <span className="sr-only"> for {pkg}{names?.length ? ` on ${hostList(names)}` : hosts > 1 ? ` on ${hosts} hosts` : ""}</span>
       </button>
       {/* what one click will plan, said before the click */}
-      {names && names.length > 1 && !plan.isPending && <p className="max-w-xs text-xs text-muted">On {hostList(names)}</p>}
+      {/* aria-hidden: the button's own name already says these hosts to a screen reader */}
+      {names && names.length > 1 && !plan.isPending && <p aria-hidden className="max-w-xs text-xs text-muted">On {hostList(names)}</p>}
       <Alert error={plan.error} className="max-w-sm" />
       <ConfirmDialog open={confirming} onOpenChange={setConfirming} title={`Plan the ${pkg} fix on ${plural(names?.length ?? 0, kind)}?`}
         description="Planning changes nothing: each machine's fix waits for approval." confirmLabel={`Plan on ${plural(names?.length ?? 0, kind)}`}

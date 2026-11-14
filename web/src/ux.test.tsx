@@ -9,7 +9,7 @@ import { ApiError, meQ, type Action, type Asset, type Finding, type Job, type Se
 import { ActionCard, Home } from "./home";
 import { PlanFixButton } from "./planfix";
 import { foldRuns } from "./evidence";
-import { ApproveDialog, byPackage, PackageList, RemediationPage, RolloutCard, sections } from "./remediation";
+import { ApproveDialog, byPackage, PackageList, RemediationPage, RolloutCard, ringFailures, sections } from "./remediation";
 import { AgentUpdateSummary, AssetRow, AssetsPage, AttackPaths, Baselines, baselineSummary, filterAssets, NotAssessed, UnmanagedDevices } from "./assets";
 import { cmdGroup, HelpPanel, Palette } from "./shell";
 import { Done, errorLead } from "./ui";
@@ -737,4 +737,15 @@ it("rollouts: inside each ring, what broke comes first, then what waits, then wh
   render(<ul><RolloutCard jobs={[job("1", "b1", "succeeded"), job("2", "b2", "dispatched"), job("3", "b3", "planned"), job("4", "b4", "failed")]} assets={assets}
     card={(j) => <li key={j.id}>machine {j.asset_id}</li>} /></ul>);
   expect(screen.getAllByText(/^machine /).map((e) => e.textContent)).toEqual(["machine b4", "machine b3", "machine b2", "machine b1"]);
+});
+
+it("approve: a machine whose ring has a failure for this fix says so first, in either dialog", () => {
+  const job = (id: string, asset_id: string, status: Job["status"]) => ({ id, asset_id, status, action_key: "Ubuntu:24.04|curl", hostname: asset_id } as unknown as Job);
+  const byId = new Map([["c1", { ring: 0 }], ["b1", { ring: 1 }], ["b2", { ring: 1 }]].map(([k, v]) => [k, v] as [string, Asset]));
+  // newest first: b1 failed; c1 failed once and was then fixed (not counted); the canary ring's failure isn't the broad ring's
+  const jobs = [job("4", "b2", "planned"), job("3", "b1", "failed"), job("2", "c1", "succeeded"), job("1", "c1", "rolled_back")];
+  expect(ringFailures(jobs, jobs[0]!, byId).map((j) => j.id)).toEqual(["3"]);
+  expect(ringFailures(jobs, jobs[2]!, byId)).toEqual([]);
+  render(<ApproveDialog job={{ summary: "Upgrade curl", hostname: "b2" }} ringFailed={[jobs[1]!]} onOpenChange={() => {}} onConfirm={() => {}} />);
+  expect(screen.getByRole("alertdialog")).toHaveTextContent(/^Approve this fix\?.*This fix didn't work on b1 in this ring/);
 });

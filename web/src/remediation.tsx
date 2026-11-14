@@ -119,18 +119,13 @@ export function RemediationPage() {
       <ApproveDialog job={target} context={machineContext(targetAsset)} unchecked={targetAsset?.kind === "host" && !targetAsset.health_units.length ? { assetId: targetAsset.id } : undefined}
         production={settings.data?.production_remediation_allowed === false && targetAsset?.sandbox === false}
         ahead={!!target && targetAsset?.ring !== 0 && !(q.data ?? []).some((j) => j.action_key === target.action_key && j.status === "succeeded" && byId.get(j.asset_id)?.ring === 0)} onOpenChange={(o) => !o && setTarget(null)} pending={approve.isPending} ownPlan={!!target && target.created_by === me}
+        ringFailed={target ? ringFailures(q.data ?? [], target, byId) : []} onGo={() => setTarget(null)}
         error={approve.error?.message} onConfirm={() => target && approve.mutate(target)} />
       <ConfirmDialog open={!!several} onOpenChange={(o) => !o && setMany(null)} title={`Approve this fix on the ${byId.get(several?.[0]?.asset_id ?? "")?.ring === 0 ? "canary" : "broad"} ring?`}
         description={<><strong className="font-semibold">Upgrade {several?.[0]?.action_key.split("|")[1]}</strong>. Each machine is approved and recorded on its own, as if you approved them one by one.</>}
         confirmLabel={`Approve ${picked.length} and run`} pendingLabel="Approving…" pending={many.isPending} error={many.error} blocked={!picked.length} onConfirm={() => many.mutate(picked)}>
         {several && <>
-          {/* a machine in this ring that this same fix failed on (its newest job): said first, in crimson */}
-          {(() => {
-            const k = several[0]!.action_key, canaryRing = byId.get(several[0]!.asset_id)?.ring === 0, seen = new Set<string>();
-            const failed = (q.data ?? []).filter((j) => j.action_key === k && j.status !== "cancelled" && !seen.has(j.asset_id) && !!seen.add(j.asset_id))
-              .filter((j) => STUCK.includes(j.status) && (byId.get(j.asset_id)?.ring === 0) === canaryRing);
-            return failed.length > 0 && <p className="mt-3 border border-now-fg p-3 text-sm text-now-fg">This fix didn't work on {failed.map((j, i) => <Fragment key={j.id}><span className="whitespace-nowrap">{j.hostname}</span>{i < failed.length - 1 ? ", " : ""}</Fragment>)} in this ring ({JOB_STATUS_LABEL[failed[0]!.status].toLowerCase()}). Review {failed.length === 1 ? "it" : "them"} before approving more.</p>;
-          })()}
+          <RingFailure failed={ringFailures(q.data ?? [], several[0]!, byId)} onGo={() => setMany(null)} />
           {(() => { const bare = picked.filter((j) => byId.get(j.asset_id)?.kind === "host" && !byId.get(j.asset_id)?.health_units.length); return bare.length > 0 &&
             <p className="mt-3 border border-now-fg p-3 text-sm">No health checks are set on {bare.map((j) => <Fragment key={j.id}><span className="whitespace-nowrap">{j.hostname},</span>{" "}</Fragment>)}so a service this upgrade breaks there isn't noticed and isn't rolled back; only a failed upgrade is.</p>; })()}
           <fieldset className="mt-3 text-sm">
@@ -315,6 +310,23 @@ export function byPackage(jobs: Job[]): Job[][] {
 
 const FIXED: Job["status"][] = ["succeeded"], MOVING: Job["status"][] = ["approved", "dispatched", "verifying"];
 const STUCK: Job["status"][] = ["failed", "rolled_back", "rollback_failed", "not_fixed", "aborted"];
+/** Machines in this job's ring where the same fix didn't work, judged by each machine's newest job (a later success lifts it, as on the server). */
+export function ringFailures(jobs: Job[], job: Pick<Job, "action_key" | "asset_id">, byId: Map<string, Asset>): Job[] {
+  const canaryRing = byId.get(job.asset_id)?.ring === 0, seen = new Set<string>();
+  return jobs.filter((j) => j.action_key === job.action_key && j.status !== "cancelled" && !seen.has(j.asset_id) && !!seen.add(j.asset_id))
+    .filter((j) => j.asset_id !== job.asset_id && STUCK.includes(j.status) && (byId.get(j.asset_id)?.ring === 0) === canaryRing);
+}
+
+/** The crimson first line of an approval when its ring has a failure; each machine opens its job (closing the dialog). */
+function RingFailure({ failed, onGo }: { failed: Job[]; onGo?: () => void }) {
+  if (!failed.length) return null;
+  return (
+    <p className="mt-3 border border-now-fg p-3 text-sm text-now-fg">This fix didn't work on {failed.map((j, i) => <Fragment key={j.id}>
+      <Link to="/remediation" hash={jobAnchor(j.id)} onClick={onGo} className="whitespace-nowrap font-medium text-now-fg underline">{j.hostname}</Link>{i < failed.length - 1 ? ", " : ""}</Fragment>)}{" "}
+      in this ring ({JOB_STATUS_LABEL[failed[0]!.status].toLowerCase()}). Review {failed.length === 1 ? "it" : "them"} before approving more.</p>
+  );
+}
+
 /** what broke first, then what waits on you, then what's running, then what's done (DESIGN.md page order) */
 const urgency = (j: Job) => (STUCK.includes(j.status) ? 0 : j.status === "planned" ? 1 : MOVING.includes(j.status) ? 2 : 3);
 
@@ -378,7 +390,9 @@ export function RolloutCard({ jobs, assets, hold, onApprove, card }: {
           </summary>
           {/* under their ring, so the tallies above read straight against the list */}
           <div className="flex flex-col gap-2 bg-sunken p-2">
-            {([["Canary", jobs.filter((j) => ring.get(j.asset_id) === 0)], ["Broad", jobs.filter((j) => ring.get(j.asset_id) !== 0)]] as const).map(([label, js]) => js.length > 0 && (
+            {([["Canary", jobs.filter((j) => ring.get(j.asset_id) === 0)], ["Broad", jobs.filter((j) => ring.get(j.asset_id) !== 0)]] as [string, Job[]][])
+              // the ring with what broke comes first (DESIGN.md: lead with what broke)
+              .sort((x, y) => Math.min(9, ...x[1].map(urgency)) - Math.min(9, ...y[1].map(urgency))).map(([label, js]) => js.length > 0 && (
               <section key={label} aria-label={`${label} machines`}>
                 <h4 className="px-1 pb-1 text-xs font-medium text-muted">{label}</h4>
                 <ul className="flex flex-col gap-2">{[...js].sort((x, y) => urgency(x) - urgency(y)).map(card)}</ul>
@@ -414,7 +428,9 @@ export const machineContext = (a?: Asset) => a && [a.hostname, `${a.criticality}
   a.sandbox ? "test machine" : "production", a.health_units.length ? `health checks: ${a.health_units.join(", ")}` : "no health checks set"].join(" · ");
 
 /** Render a controlled approval dialog with package scope, host context, and forward-only acknowledgement. */
-export function ApproveDialog({ job, onOpenChange, onConfirm, pending, error, ownPlan, context, unchecked, production, ahead }: {
+export function ApproveDialog({ job, onOpenChange, onConfirm, pending, error, ownPlan, context, unchecked, production, ahead, ringFailed = [], onGo }: {
+  /** machines in this job's ring where the same fix didn't work (their newest job): said first */
+  ringFailed?: Job[]; onGo?: () => void;
   job: (Pick<Job, "summary" | "hostname"> & { forward_only?: boolean; packages?: unknown; manager?: string }) | null; onOpenChange: (o: boolean) => void; onConfirm: () => void; pending?: boolean; error?: string; ownPlan?: boolean; context?: string;
   /** the target host has no health checks: say what that means before it runs */
   unchecked?: { assetId: string };
@@ -427,6 +443,7 @@ export function ApproveDialog({ job, onOpenChange, onConfirm, pending, error, ow
   return (
     <ConfirmDialog open={!!job} onOpenChange={onOpenChange} title={fwd ? "Approve a fix that can't be undone?" : "Approve this fix?"} description={<><strong className="font-semibold">{job?.summary}</strong>.</>}
       confirmLabel={fwd ? "Approve: it can't be undone" : "Approve and run"} pendingLabel="Approving…" destructive={fwd} pending={pending} error={error} onConfirm={onConfirm} blocked={production}>
+      <RingFailure failed={ringFailed} onGo={onGo} />
       {ahead && !production && <p className="mt-3 border border-next-fg p-3 text-sm">This fix hasn't succeeded on a canary machine yet. Approving runs it on {job?.hostname} now, ahead of the canary; automatic rollout would wait.</p>}
       {production && <p className="mt-3 border border-now-fg p-3 text-sm">{job?.hostname} is a production machine, and this server changes test machines only, so this fix can't run yet. <Link to="/settings" hash="remediation" className="font-medium underline">How to turn production remediation on</Link></p>}
       {unchecked && <p className="mt-3 border border-now-fg p-3 text-sm">No health checks are set on {job?.hostname}, so a service this upgrade breaks isn't noticed and isn't rolled back; only a failed upgrade is. <Link to="/assets" search={{ machine: unchecked.assetId }} className="font-medium underline">Set its health checks</Link></p>}

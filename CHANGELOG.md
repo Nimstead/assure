@@ -7,6 +7,7 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 No database migration; the agent is unchanged.
 
 ### Changed
+- Every disclosure has the same chevron that turns when open. A rollout card no longer repeats "approve the broad machines" beside its approve button. The filters button reads "More filters" on phones and desktop, with a count only when some are on, and sits after search on Assets as on Findings.
 - A rolled-back job says which service didn't start after the upgrade and how often it restarted, with the machine's own text under "What the machine reported". Rollout titles name their target version. Plan fix buttons all read "Plan fix on …". Job statuses say "machine", not "host". The approve dialogs put "How a fix runs" behind a disclosure. Settings disclosures read "More about this" where nothing is judged. Each enrolment token says "Test machines" or "Any machine".
 - Fix first names overdue findings first in its line of links ("6 findings overdue"), the same count as Findings' Overdue filter. Devices count findings, not issues; Remediation sections say "7 jobs". Help defines overdue. Clicking a Settings section marks it even when it's too short to scroll to the top.
 - On phones, Fix first's priority counts sit in one row so the first recommended fix starts on the first screen, and Findings cards label the score and host. Evidence says Cyber Essentials' 14-day count once, on its card. People, API tokens and single sign-on open with one sentence, the rest behind "How this is judged".

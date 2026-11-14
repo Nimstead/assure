@@ -156,7 +156,7 @@ export function FindingsPage({ search }: { search: RawSearch }) {
           </div>
           {/* On phones the rarer filters fold away so results start on the first screen. */}
           <button className={clsx(chip(active > 0), "md:hidden")} aria-expanded={showFilters} aria-controls="more-filters" onClick={() => setShowFilters((x) => !x)}>
-            <SlidersHorizontal className="size-4" aria-hidden />Filters ({active})
+            <SlidersHorizontal className="size-4" aria-hidden />More filters{active > 0 && <span className="num">{active}</span>}
           </button>
           <div id="more-filters" className={clsx("w-full flex-wrap items-center gap-x-4 gap-y-2.5 md:contents", showFilters ? "flex" : "hidden")}>
           <ViewControls f={f} set={set} />

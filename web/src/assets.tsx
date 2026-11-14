@@ -524,14 +524,15 @@ function MachineList({ assets, saved, failed, onPatch, onDelete, undo }: {
       <AgentUpdateSummary assets={assets.filter((a) => a.kind === "host")} onShow={() => { setOn(["agent"]); setShown(PAGE); }} />
       <div className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          <button className={clsx(chip(on.length > 0 || !!crit), "md:hidden")} aria-expanded={filtersOpen} aria-controls="asset-filters" onClick={() => setFiltersOpen((x) => !x)}>
-            <SlidersHorizontal className="size-4" aria-hidden />Filters ({on.length + Number(!!crit)})
-          </button>
           <label className="relative min-w-0 flex-1 basis-64">
             <span className="sr-only">Search assets</span>
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden />
             <input type="search" className={clsx(input, "pl-9")} placeholder="Search by name, OS or agent version" value={text} onChange={(e) => { setText(e.target.value); setShown(PAGE); }} />
           </label>
+          {/* search first, then the filters button, as on Findings; same label, count only when some are on */}
+          <button className={clsx(chip(on.length > 0 || !!crit), "md:hidden")} aria-expanded={filtersOpen} aria-controls="asset-filters" onClick={() => setFiltersOpen((x) => !x)}>
+            <SlidersHorizontal className="size-4" aria-hidden />More filters{on.length + Number(!!crit) > 0 && <span className="num">{on.length + Number(!!crit)}</span>}
+          </button>
           <div id="asset-filters" className={clsx("w-full flex-wrap items-center gap-2 md:flex md:w-auto", filtersOpen ? "flex" : "hidden")}>
           {/* the quick filters as one control (DESIGN.md: six controls before the first row); a link may still set several */}
           <label className="flex items-center gap-2 text-sm">

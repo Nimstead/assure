@@ -2,7 +2,7 @@ import { Fragment, useState, type ReactNode } from "react";
 import clsx from "clsx";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronRight, TriangleAlert, Wrench, X } from "lucide-react";
+import { Check, TriangleAlert, Wrench, X } from "lucide-react";
 import { adminGate, api, APPROVE_COPY, dependenciesNeeded, filtersToSearch, groupJobs, isActiveJob, jobAnchor, jobsQ, kbFleetQ, kbHostsQ, parseFilters, parseUtc, plural, refresh, relativeTime, useHashScroll, useIsAdmin, useTitle, meQ, assetsQ, settingsQ, type Asset, type Job, type KbRow } from "./lib";
 import { Alert, btnQuiet, ConfirmDialog, EmptyState, ErrorState, Loading, StatusPill } from "./ui";
 
@@ -351,7 +351,8 @@ export function RolloutCard({ jobs, assets, hold, onApprove, card }: {
         <div className="min-w-0">
           <p className="font-medium"><span className="font-semibold">Upgrade {pkg}{(() => { const t = (/ to (\S+) on \S+$/.exec(jobs[0]!.summary ?? ""))?.[1]; return t && <> to <span className="font-mono text-sm">{t}</span></>; })()}</span> <span className="text-sm text-muted">{eco}</span> <span className="text-sm">on {plural(new Set(live.map((j) => j.asset_id)).size, "machine")}</span></p>
           <p className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm">{cell("Canary", canary)}{cell("Broad", broad)}</p>
-          <p className={clsx("mt-1 text-sm", canary.stuck ? "text-now-fg" : "text-ink")}>{stands}</p>
+          {/* "approve the broad machines" is what the button beside it says: said once (DESIGN.md: copy budget) */}
+          {!(onApprove && waiting.some((j) => !hold?.(j)) && stands.endsWith("approve the broad machines")) && <p className={clsx("mt-1 text-sm", canary.stuck ? "text-now-fg" : "text-ink")}>{stands}</p>}
           {reasons.map((r) => <p key={r} className="mt-1 text-sm text-muted">{plural(held.filter((j) => hold!(j) === r).length, "waiting machine")} left out: {r}</p>)}
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">{ringButton(true)}{ringButton(false)}</div>
@@ -359,7 +360,7 @@ export function RolloutCard({ jobs, assets, hold, onApprove, card }: {
       {card && (
         <details open={linked} className="border-t border-line">
           <summary className="flex tap w-fit cursor-pointer items-center gap-2 px-4 py-2 text-sm font-medium">
-            <ChevronRight aria-hidden className="size-4 shrink-0 transition-transform [details[open]_&]:rotate-90" />Machines ({live.length}{jobs.length > live.length && `, ${jobs.length - live.length} cancelled`})
+            Machines ({live.length}{jobs.length > live.length && `, ${jobs.length - live.length} cancelled`})
           </summary>
           {/* under their ring, so the tallies above read straight against the list */}
           <div className="flex flex-col gap-2 bg-sunken p-2">

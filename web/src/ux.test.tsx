@@ -749,3 +749,9 @@ it("approve: a machine whose ring has a failure for this fix says so first, in e
   render(<ApproveDialog job={{ summary: "Upgrade curl", hostname: "b2" }} ringFailed={[jobs[1]!]} onOpenChange={() => {}} onConfirm={() => {}} />);
   expect(screen.getByRole("alertdialog")).toHaveTextContent(/^Approve this fix\?.*This fix didn't work on b1 in this ring/);
 });
+
+it("rollouts: the machine a fix didn't work on is named on the card, not only counted inside the folded list", () => {
+  const job = (id: string, asset_id: string, status: Job["status"]) => ({ id, asset_id, status, action_key: "Ubuntu:24.04|curl", hostname: asset_id } as unknown as Job);
+  render(<ul><RolloutCard jobs={[job("3", "b2", "planned"), job("2", "b1", "failed"), job("1", "c1", "succeeded")]} assets={[{ id: "c1", ring: 0 }, { id: "b1", ring: 1 }, { id: "b2", ring: 1 }] as Asset[]} /></ul>);
+  expect(screen.getByRole("listitem", { name: "curl rollout" })).toHaveTextContent(/Didn't work on b1: review before approving more/);
+});

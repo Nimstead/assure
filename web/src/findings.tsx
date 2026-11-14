@@ -495,7 +495,7 @@ function FindingDetail({ f }: { f: Finding }) {
   return (
     <div>
       <div className="flex flex-wrap items-center gap-2"><PriorityPill priority={f.priority} />{f.kev && <KevBadge />}<span className="num text-sm text-muted">Score {f.score}/100</span></div>
-      <details className="mt-1 text-sm text-muted"><summary className="flex tap w-fit cursor-pointer items-center">How the score works</summary>
+      <details className="mt-1 text-sm text-muted"><summary className="flex tap w-fit cursor-pointer items-center">How this is judged</summary>
         <p className="mt-1 max-w-prose">0 to 100, from the advisory's severity, how likely it is to be exploited in the next 30 days (EPSS), whether it is being exploited now (KEV), and this machine's criticality and exposure. Fix now is 80 or more, or any KEV.</p></details>
       {f.due && <Due due={f.due} />}
       {/* what to do comes right after what it is (DESIGN.md: what broke, then what to do); the evidence follows */}

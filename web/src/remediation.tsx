@@ -22,7 +22,7 @@ const RECOVERED = /not available|rebuilding|rebuilt from|retry \d/i;
 export const stepState = (s: { step: string; ok: boolean; output?: string }) => (!s.ok ? "failed" : RECOVERED.test(s.step) || RECOVERED.test(s.output ?? "") ? "recovered" : "passed");
 
 /** The packages a fix changes, with versions; for several machines, every package any of them changes and on how many. */
-export function PackageList({ job, jobs }: { job: { packages?: unknown; summary?: string }; jobs?: { packages?: unknown; summary?: string }[] }) {
+export function PackageList({ job, jobs }: { job: { packages?: unknown; summary?: string }; jobs?: { packages?: unknown; summary?: string; hostname?: string }[] }) {
   // several machines: every package any of them changes, and on how many when not all (DESIGN.md: dialogs list what will change)
   const all = jobs ?? [job];
   const seen = new Map<string, { p: ReturnType<typeof jobPackages>[number]; target?: string; n: number; froms: Set<string> }>();
@@ -39,7 +39,7 @@ export function PackageList({ job, jobs }: { job: { packages?: unknown; summary?
           {/* a version never wraps mid-token: the arrow is where the line may break */}
           {/* mono only on the versions compared; the words around them are prose */}
           <span className="text-muted">{p.kb ? <span className="font-mono">{p.kb}</span> : <>{froms.size > 1 ? "several versions" : <span className="whitespace-nowrap font-mono">{p.from ?? "?"}</span>} → {p.to || target ? <span className="whitespace-nowrap font-mono">{p.to ?? target}</span> : "the newest fixed version"}{!p.to && target && " or the repository's newer"}</>}</span>
-          {n < all.length && <span className="text-muted"> on {n} of {plural(all.length, "machine")}</span>}</li>
+          {n < all.length && <span className="text-muted"> on {n} of {plural(all.length, "machine")}{(() => { const not = all.filter((j) => !jobPackages(j).some((q) => q.name === p.name)).map((j) => (j as { hostname?: string }).hostname).filter(Boolean); return not.length > 0 && not.length <= 3 ? ` (not ${not.join(", ")})` : ""; })()}</span>}</li>
       ))}
     </ul>
   );
@@ -379,6 +379,9 @@ export function RolloutCard({ jobs, assets, hold, onApprove, card }: {
           <p className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm">{cell("Canary", canary)}{cell("Broad", broad)}</p>
           {/* "approve the broad machines" is what the button beside it says: said once (DESIGN.md: copy budget) */}
           {!(onApprove && waiting.some((j) => !hold?.(j)) && stands.endsWith("approve the broad machines")) && <p className={clsx("mt-1 text-sm", canary.stuck ? "text-now-fg" : "text-ink")}>{stands}</p>}
+          {/* what broke is on the card, each machine a link to its job, not only a count inside the folded list */}
+          {live.some((j) => STUCK.includes(j.status)) && <p className="mt-1 text-sm text-now-fg">Didn't work on {live.filter((j) => STUCK.includes(j.status)).map((j, i, all) => <Fragment key={j.id}>
+            <Link to="/remediation" hash={jobAnchor(j.id)} className="whitespace-nowrap font-medium text-now-fg underline">{j.hostname}</Link>{i < all.length - 1 ? ", " : ""}</Fragment>)}: review before approving more.</p>}
           {reasons.map((r) => <p key={r} className="mt-1 text-sm text-muted">{plural(held.filter((j) => hold!(j) === r).length, "waiting machine")} left out: {r}</p>)}
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">{ringButton(true)}{ringButton(false)}</div>

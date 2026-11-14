@@ -7,6 +7,7 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 No database migration; the agent is unchanged.
 
 ### Changed
+- A rollout card names the machines its fix didn't work on, each a link to its job, before its approve buttons. A ring review names the machines a package isn't on ("on 3 of 4 machines (not cache-dev-32)"). The finding drawer's score disclosure reads "How this is judged".
 - The single-machine approve dialog gives the same first warning as ring approval when this fix didn't work on a machine in its ring, and each named machine opens its job. Inside a rollout, the ring with a failure is listed first.
 - Approving a ring says first, in crimson, when this fix didn't work on a machine in that ring. Approve dialogs put the operational risk (production off, no health checks, can't be undone) before the machine and package lists, and their buttons stay in view while a long dialog scrolls. A job's time names its event ("failed 4 minutes ago"), so it never reads as the approval time. Inside a rollout, each ring lists what broke first, then what waits, then what's running, then what's done. On Fix first, an aborted fix that needs more packages has "Plan again including musl" as its button.
 - Disclosures share one look (the chevron, no underline) and two labels: "How this is judged" where something is judged, "More about this" otherwise. On phones, Fix first's notices sit one per line, the approve dialog lists one machine per line, and Findings' "Download as CSV" is a text link.

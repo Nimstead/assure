@@ -172,9 +172,13 @@ export function ActionCard({ a }: { a: Action }) {
             label={a.job ? `Plan fix on ${plural(free.length, "more machine")} (${prodOk ? a.busy_asset_ids.length : a.busy_asset_ids.filter((id) => sandbox.has(id)).length} already planned)` : failed ? "Plan fix again" : held ? (freeNames.length === 1 ? `Plan fix on ${freeNames[0]}` : `Plan fix on ${plural(free.length, "test machine")}`) : "Plan fix"} />
         ) : needsMore ? (
           // the replan needs packages the plan left out: it lives on the job, so the card's main action goes there (a quiet button, as on Remediation)
-          <Link to="/remediation" hash={jobAnchor(failed!.id)} className={clsx(btnQuiet, "no-underline")}>
-            Plan again including {dependenciesNeeded(failed!.error).join(", ")}<span className="sr-only"> for {a.package}</span>
-          </Link>
+          <div className="flex flex-col items-start gap-1.5">
+            <Link to="/remediation" hash={jobAnchor(failed!.id)} className={clsx(btnQuiet, "no-underline")}>
+              Plan again including {dependenciesNeeded(failed!.error).join(", ")}<span className="sr-only"> for {a.package}</span>
+            </Link>
+            {/* what one click is for, as on every plan button */}
+            {(() => { const h = assets.find((x) => x.id === failed!.asset_id)?.hostname; return h && <p className="text-xs text-muted">On {h}</p>; })()}
+          </div>
         ) : undefined}
         links={[
           (a.job || (failed && !needsMore)) && (

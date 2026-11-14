@@ -112,6 +112,7 @@ def test_summary_says_which_hosts_are_busy_and_what_failed_last(env):
     act = openssl()
     assert act["busy_asset_ids"] == [] and act["job"] is None
     assert act["last_attempt"]["id"] == jid and act["last_attempt"]["status"] == "aborted" and "libcrypto3" in act["last_attempt"]["error"]
+    assert act["last_attempt"]["asset_id"]  # Home names the machine its replan is on
 
 
 def test_agent_claim_is_not_trusted_without_inventory_proof(env):

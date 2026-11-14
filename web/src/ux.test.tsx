@@ -713,7 +713,7 @@ it("agent updates: an agent with no version reported is named, never an empty la
 it("approve: a ring review lists every package any chosen machine changes, and on how many", () => {
   const j = (pk: string[]) => ({ summary: "Upgrade curl to 8.5 on h", packages: pk.map((name) => ({ name, from: "8.4", to: "8.5" })) });
   render(<PackageList job={j(["libcurl4t64"])} jobs={[j(["libcurl4t64"]), j(["libcurl4t64", "curl"])]} />);
-  expect(screen.getByRole("list", { name: "Packages this fix changes" })).toHaveTextContent(/libcurl4t64 8\.4 → 8\.5curl 8\.4 → 8\.5 on 1 of 2 machines/);
+  expect(screen.getByRole("list", { name: "Packages this fix changes" })).toHaveTextContent(/libcurl4t64 8\.4 → 8\.5curl 8\.4 → 8\.5on 1 of 2 machines/);
 });
 
 it("a rolled-back job says in plain words which service didn't come back, with the machine's own text kept", () => {

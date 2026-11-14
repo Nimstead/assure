@@ -39,7 +39,7 @@ export function PackageList({ job, jobs }: { job: { packages?: unknown; summary?
           {/* a version never wraps mid-token: the arrow is where the line may break */}
           {/* mono only on the versions compared; the words around them are prose */}
           <span className="text-muted">{p.kb ? <span className="font-mono">{p.kb}</span> : <>{froms.size > 1 ? "several versions" : <span className="whitespace-nowrap font-mono">{p.from ?? "?"}</span>} → {p.to || target ? <span className="whitespace-nowrap font-mono">{p.to ?? target}</span> : "the newest fixed version"}{!p.to && target && " or the repository's newer"}</>}</span>
-          {n < all.length && <span className="text-muted"> on {n} of {plural(all.length, "machine")}{(() => { const not = all.filter((j) => !jobPackages(j).some((q) => q.name === p.name)).map((j) => (j as { hostname?: string }).hostname).filter(Boolean); return not.length > 0 && not.length <= 3 ? ` (not ${not.join(", ")})` : ""; })()}</span>}</li>
+          {n < all.length && <span className="block text-xs text-muted">on {n} of {plural(all.length, "machine")}{(() => { const not = all.filter((j) => !jobPackages(j).some((q) => q.name === p.name)).map((j) => (j as { hostname?: string }).hostname).filter(Boolean); return not.length > 0 && not.length <= 3 ? ` (not ${not.join(", ")})` : ""; })()}</span>}</li>
       ))}
     </ul>
   );

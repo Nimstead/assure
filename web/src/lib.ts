@@ -71,7 +71,7 @@ export interface Action {
   /** Machines with that fix in flight; the rest can still be planned. */
   busy_asset_ids: string[];
   /** The newest failed attempt for this package, so Home doesn't offer the same plan blind. */
-  last_attempt: { id: string; status: JobStatus; error: string | null } | null;
+  last_attempt: { id: string; status: JobStatus; error: string | null; asset_id?: string } | null;
 }
 export interface Summary {
   assets: number; open_by_priority: Partial<Record<Priority, number>>; top_actions: Action[]; attention: Job[];

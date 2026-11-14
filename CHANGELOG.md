@@ -7,6 +7,7 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 No database migration; the agent is unchanged.
 
 ### Changed
+- An aborted fix's "Plan again including …" on Fix first names its machine, as every plan button does (`last_attempt.asset_id` in `/api/summary`). In a ring review, "on 3 of 4 machines (not …)" sits on its own short line. The Internet targets empty state says how to add one.
 - Fix first's plan button for a fix already in flight says how many are planned ("Plan fix on 16 more machines (1 already planned)"), counted from the same machines as "17 of 35 fixable here". On phones the priority counts sit under "Open findings by priority". A machine that isn't reporting says so once in its drawer.
 - Wording: "not reporting" everywhere, "All assets" in the Assets filter, "No internet targets yet", "Approve 4 machines and run", and an aborted job names the packages it will add. A rollout lists its canary machines before its broad ones again; the card already names what broke.
 - In approve dialogs, cautions (no health checks, self-approval) are amber; crimson is kept for a failure of this fix. Settings' save buttons name their section ("Save trust level", "Save soak time", "Save deadlines", "Save window"). Stepping through findings announces the same position the drawer shows.

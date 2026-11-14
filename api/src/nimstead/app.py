@@ -2958,7 +2958,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             top.append({"ecosystem": eco, "package": pkg, "fixed_version": fixed, "hosts": sorted({r[2] for r in rows}),
                         "asset_ids": asset_ids, "busy_asset_ids": sorted({j.asset_id for j in active}),
                         "job": {"id": active[0].id, "status": active[0].status} if active else None,
-                        "last_attempt": {"id": last.id, "status": last.status, "error": last.error} if last and last.status in FAILED_JOB else None,
+                        "last_attempt": {"id": last.id, "status": last.status, "error": last.error, "asset_id": last.asset_id} if last and last.status in FAILED_JOB else None,
                         "vulns": sorted({r[1] for r in rows}), "kev": bool(kev), "max_score": max_score,
                         "summary": rows[0][4] if eco == "WinConfig" else None, **remediate.fix_path(eco, pkg)})
         hosts = s.scalars(select(Asset).where(Asset.org_id == user.org_id, Asset.kind == "host")).all()

@@ -154,7 +154,7 @@ export function SettingsPage() {
               ))}
             </RadioGroup.Root>
             <div className="flex flex-wrap items-center gap-3">
-              <button className={btnPrimary} disabled={save.isPending || !mode || mode === s.remediation_mode} onClick={saveMode}>{save.isPending && mine("remediation_mode") ? "Saving…" : "Save"}</button>
+              <button className={btnPrimary} disabled={save.isPending || !mode || mode === s.remediation_mode} onClick={saveMode}>{save.isPending && mine("remediation_mode") ? "Saving…" : "Save trust level"}</button>
               {savedHere("remediation_mode")}
               {!confirmAuto && errorHere("remediation_mode")}
             </div>
@@ -175,7 +175,7 @@ export function SettingsPage() {
             <Field label="Soak time (hours)" hint="Whole hours, 1 to 720." error={hoursOk ? null : "Enter whole hours from 1 to 720."} className="w-40">
               <input className={input} type="number" inputMode="numeric" min={1} max={720} value={hours} onChange={(e) => { save.reset(); setHours(e.target.value); }} />
             </Field>
-            <button className={clsx(btnPrimary, "mt-[26px]")} disabled={!hoursOk || save.isPending || n === s.canary_soak_hours}>{save.isPending && mine("canary_soak_hours") ? "Saving…" : "Save"}</button>
+            <button className={clsx(btnPrimary, "mt-[26px]")} disabled={!hoursOk || save.isPending || n === s.canary_soak_hours}>{save.isPending && mine("canary_soak_hours") ? "Saving…" : "Save soak time"}</button>
             {savedHere("canary_soak_hours")}
             {errorHere("canary_soak_hours")}
           </form>}
@@ -196,7 +196,7 @@ export function SettingsPage() {
                   onChange={(e) => { save.reset(); setSla((x) => ({ ...x, [p]: e.target.value })); }} />
               </Field>
             ))}
-            {admin && <button className={clsx(btnPrimary, "mt-[26px]")} disabled={save.isPending || !slaDirty || !slaOk}>{save.isPending && mine("sla_days") ? "Saving…" : "Save"}</button>}
+            {admin && <button className={clsx(btnPrimary, "mt-[26px]")} disabled={save.isPending || !slaDirty || !slaOk}>{save.isPending && mine("sla_days") ? "Saving…" : "Save deadlines"}</button>}
             {savedHere("sla_days")}
             {errorHere("sla_days")}
           </form>
@@ -288,7 +288,7 @@ function MaintenanceSection({ s, admin, pending, onSave, saved, error }: { s: Se
           <Field label="Restart deadline (hours)" hint="How long a signed-in user can put off a restart, 1 to 168." error={dOk ? null : "Enter whole hours from 1 to 168."} className="w-full max-w-56">
             <input className={input} type="number" min={1} max={168} value={deadline} onChange={(e) => setDeadline(e.target.value)} />
           </Field>
-          <button className={btnPrimary} disabled={!ok || !dOk || pending || !dirty}>{pending ? "Saving…" : "Save"}</button>
+          <button className={btnPrimary} disabled={!ok || !dOk || pending || !dirty}>{pending ? "Saving…" : "Save window"}</button>
           {saved}{error}
         </form>)}
     </section>

@@ -68,7 +68,7 @@ it("trust ladder: choosing only selects; Auto needs a confirmation naming the ma
   expect(within(ladder).getByRole("radio", { name: /Auto/ })).toBeChecked();
   expect(calls.filter((c) => c.method === "PATCH")).toHaveLength(0);  // selecting saves nothing
 
-  const save = within(ladder.parentElement!).getByRole("button", { name: "Save" });
+  const save = within(ladder.parentElement!).getByRole("button", { name: "Save trust level" });
   await userEvent.click(save);
   const dialog = await screen.findByRole("alertdialog", { name: "Let Nimstead fix machines without asking?" });
   expect(dialog).toHaveTextContent("your 3 machines");
@@ -85,7 +85,7 @@ it("trust ladder: Suggest saves without a dialog", async () => {
   wrap(<SettingsPage />);
   const ladder = await screen.findByRole("radiogroup", { name: "Trust ladder" });
   await userEvent.click(within(ladder).getByRole("radio", { name: /Suggest/ }));
-  await userEvent.click(within(ladder.parentElement!).getByRole("button", { name: "Save" }));
+  await userEvent.click(within(ladder.parentElement!).getByRole("button", { name: "Save trust level" }));
   expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   await waitFor(() => expect(calls.find((c) => c.method === "PATCH")?.body).toEqual({ remediation_mode: "suggest" }));
   expect(await within(ladder.parentElement!).findByText("Saved")).toBeInTheDocument();

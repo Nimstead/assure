@@ -141,8 +141,8 @@ export function RemediationPage() {
           {picked[0] && <PackageList job={picked[0]} jobs={picked} />}
           {/* the same sentence and place as the single-machine dialog: after what changes */}
           {(() => { const bare = picked.filter((j) => byId.get(j.asset_id)?.kind === "host" && !byId.get(j.asset_id)?.health_units.length); return bare.length > 0 &&
-            <p className="mt-3 border border-now-fg p-3 text-sm">No health checks on {bare.map((j, i) => <Fragment key={j.id}>{i > 0 && (i === bare.length - 1 ? " and " : ", ")}<span className="whitespace-nowrap">{j.hostname}</span></Fragment>)}: a service this breaks won't be noticed or rolled back.</p>; })()}
-          {picked.some((j) => j.created_by === me) && <p className="mt-3 border border-line p-3 text-sm">You planned {picked.every((j) => j.created_by === me) ? "these fixes" : "some of these fixes"}. Approving them yourself is recorded as self-approved for each machine: no second person checked the change (SOC 2 CC8.1).</p>}
+            <p className="mt-3 border border-warn-fg bg-warn-bg p-3 text-sm text-warn-fg">No health checks on {bare.map((j, i) => <Fragment key={j.id}>{i > 0 && (i === bare.length - 1 ? " and " : ", ")}<span className="whitespace-nowrap">{j.hostname}</span></Fragment>)}: a service this breaks won't be noticed or rolled back.</p>; })()}
+          {picked.some((j) => j.created_by === me) && <p className="mt-3 border border-warn-fg bg-warn-bg p-3 text-sm text-warn-fg">You planned {picked.every((j) => j.created_by === me) ? "these fixes" : "some of these fixes"}. Approving them yourself is recorded as self-approved for each machine: no second person checked the change (SOC 2 CC8.1).</p>}
           <details className="mt-3 text-sm text-muted"><summary className="flex tap w-fit cursor-pointer items-center">How a fix runs</summary><p className="mt-1">{APPROVE_COPY}</p></details>
         </>}
       </ConfirmDialog>
@@ -453,8 +453,8 @@ export function ApproveDialog({ job, onOpenChange, onConfirm, pending, error, ow
       {production && <p className="mt-3 border border-now-fg p-3 text-sm">{job?.hostname} is a production machine, and this server changes test machines only, so this fix can't run yet. <Link to="/settings" hash="remediation" className="font-medium underline">How to turn production remediation on</Link></p>}
       {context && <p className="mt-2 text-sm text-muted">{context}</p>}
       {job && <PackageList job={job} />}
-      {unchecked && <p className="mt-3 border border-now-fg p-3 text-sm">No health checks on {job?.hostname}: a service this breaks won't be noticed or rolled back. <Link to="/assets" search={{ machine: unchecked.assetId }} className="font-medium underline">Set its health checks</Link></p>}
-      {ownPlan && <p className="mt-3 border border-line p-3 text-sm">You planned this fix. Approving it yourself is recorded as self-approved: no second person checked the change (SOC 2 CC8.1).</p>}
+      {unchecked && <p className="mt-3 border border-warn-fg bg-warn-bg p-3 text-sm text-warn-fg">No health checks on {job?.hostname}: a service this breaks won't be noticed or rolled back. <Link to="/assets" search={{ machine: unchecked.assetId }} className="font-medium underline">Set its health checks</Link></p>}
+      {ownPlan && <p className="mt-3 border border-warn-fg bg-warn-bg p-3 text-sm text-warn-fg">You planned this fix. Approving it yourself is recorded as self-approved: no second person checked the change (SOC 2 CC8.1).</p>}
       {fwd ? <p className="mt-3 border border-now-fg p-3 text-sm">This app's installer can't go back to the version it replaces, so if the new version breaks something there is no automatic rollback. The machine's health checks still run and a failure is reported. Approving records that you accepted this.</p>
         : <details className="mt-3 text-sm text-muted"><summary className="flex tap w-fit cursor-pointer items-center">How a fix runs</summary><p className="mt-1">{APPROVE_COPY}</p></details>}
     </ConfirmDialog>

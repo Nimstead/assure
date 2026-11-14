@@ -443,7 +443,7 @@ function FindingDrawer({ id, ids = [], total, more, onMove, onClose }: {
   const title = useRef<HTMLHeadingElement>(null);
   const moved = useRef(false);
   useEffect(() => {
-    if (moved.current && q.data) { moved.current = false; announce(`${q.data.vuln_id} on ${q.data.hostname}, ${at + 1} of ${ids.length}`); }
+    if (moved.current && q.data) { moved.current = false; announce(`${q.data.vuln_id} on ${q.data.hostname}, ${at + 1} of ${(total ?? ids.length).toLocaleString("en")}`); }
   }, [q.data, at, ids.length]);
   // Focus starts on the title (no ring: the user didn't move it there) and goes back to the row that opened the drawer.
   // after stepping with j/k, Esc goes back to the finding you were on, not the one you opened

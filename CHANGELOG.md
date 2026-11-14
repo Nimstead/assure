@@ -7,6 +7,7 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 No database migration; the agent is unchanged.
 
 ### Changed
+- In approve dialogs, cautions (no health checks, self-approval) are amber; crimson is kept for a failure of this fix. Settings' save buttons name their section ("Save trust level", "Save soak time", "Save deadlines", "Save window"). Stepping through findings announces the same position the drawer shows.
 - A job card says who planned and who approved it on one line ("planned and approved by …"). Fix first's priority counts say "findings". A rollout's machine list reads "Machines (3, plus 1 cancelled)", matching its title. "Not reporting" is amber, a caution, not crimson. The Devices tab shows how many have findings, not every count at once.
 - Both approve dialogs give the no-health-checks warning in the same words and place, after what changes. A rollout's tallies say "approved or running", matching the statuses in its machine list.
 - A failed job's status reads "Didn't work", the glossary's word. Remediation sections count fixes (a rollout is one fix). In the approve dialog the ring-failure warning leads, and the no-health-checks note is one line after the packages.

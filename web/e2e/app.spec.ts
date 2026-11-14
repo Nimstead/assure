@@ -279,7 +279,7 @@ for (const width of [1440, 375] as const) {
       // open dialogs: the Auto confirmation, a ConfirmDialog, the command palette
       await load(page, SETTINGS);
       await page.getByRole("radio", { name: /^Auto/ }).click();
-      await page.locator("section[aria-labelledby=ladder]").getByRole("button", { name: "Save" }).click();
+      await page.locator("section[aria-labelledby=ladder]").getByRole("button", { name: "Save trust level" }).click();
       await expect(page.getByRole("alertdialog", { name: /without asking/ })).toBeVisible();
       await axe(page, `auto confirm @${width} ${scheme}`);
       await page.keyboard.press("Escape");

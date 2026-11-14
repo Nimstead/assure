@@ -198,7 +198,7 @@ Square everything: every radius token is 0. The one exception is real circles, s
 - **Focus:**
   - Focus lands on the title, or on Cancel in a confirmation.
   - Esc returns focus to where you were (the current row after stepping), or to the page heading.
-- **Confirmation dialogs list what will change:** machines (names whole, wrapping between them), packages and versions. The operational risk comes first, in crimson. A policy note (self-approval) is neutral.
+- **Confirmation dialogs list what will change:** machines (names whole, wrapping between them), packages and versions. A failure on this fix comes first, in crimson. Cautions (no health checks, self-approval) are amber, after what changes.
 
 ### Rollouts
 - A fix across machines is a rollout: canary ring first, broad ring after the canary is fixed.

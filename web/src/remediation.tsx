@@ -21,8 +21,8 @@ export const stepState = (s: { step: string; ok: boolean; output?: string }) => 
 
 function PackageList({ job }: { job: { packages?: unknown; summary?: string } }) {
   const pkgs = jobPackages(job);
-  // shortcut: the plan's target lives only in its summary ("(fixed in X)"); store it on the job if more views need it
-  const target = /\(fixed in ([^)]+)\)$/.exec(job.summary ?? "")?.[1];
+  // shortcut: the plan's target lives only in its title ("… to X on host", or an older job's "(fixed in X)"); store it on the job if more views need it
+  const target = (/ to (\S+) on \S+$/.exec(job.summary ?? "") ?? /\(fixed in ([^)]+)\)$/.exec(job.summary ?? ""))?.[1];
   if (!pkgs.length) return null;
   return (
     <ul className="mt-2 flex flex-col gap-0.5 text-sm" aria-label="Packages this fix changes">
@@ -232,7 +232,10 @@ export function JobCard({ job: j, onApprove, onCancel }: { job: Job; onApprove?:
           {/* no dot separators: on a phone they'd start wrapped lines; spacing alone separates the facts */}
           <ul className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm text-muted">
             <li><StatusPill status={j.status} /></li>
-            <li className="min-w-0 break-all">on <Link to="/findings" search={filtersToSearch({ ...parseFilters({}), asset: j.asset_id, fixable: false })} className="inline-flex tap items-center font-semibold text-ink underline decoration-line-strong hover:decoration-ink">{j.hostname}</Link></li>
+            {/* the count lives here, not in the title (DESIGN.md: one title format) */}
+            {j.finding_ids.length > 0 && <li>fixes {plural(j.finding_ids.length, "vulnerability", "vulnerabilities")}</li>}
+            {/* a name opens that thing's detail (DESIGN.md): the machine's drawer */}
+            <li className="min-w-0 break-all">on <Link to="/assets" search={{ machine: j.asset_id }} className="inline-flex tap items-center font-semibold text-ink underline decoration-line-strong hover:decoration-ink">{j.hostname}</Link></li>
             <li className="break-all">planned by {j.created_by}</li>
             {j.approved_by && <li className="break-all">approved by {j.approved_by}</li>}
             {j.forward_only && <li className="text-now-fg">forward-only: no automatic rollback</li>}

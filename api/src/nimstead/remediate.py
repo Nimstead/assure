@@ -359,9 +359,9 @@ def plan(s: Session, asset: Asset, ecosystem: str, package: str, created_by: str
     job = RemediationJob(
         org_id=asset.org_id, asset_id=asset.id, manager=manager, action_key=key, packages=pkgs,
         finding_ids=[f.id for f in findings], created_by=created_by,
-        summary=f"Upgrade {package}{' with ' + ', '.join(sorted(extra)) if extra else ''} ({len(pkgs)} package{'s' * (len(pkgs) > 1)}) "
-                f"to fix {len(findings)} "
-                f"vulnerabilit{'ies' if len(findings) > 1 else 'y'} on {asset.hostname} (fixed in {target})",
+        # one title format for every manager: what, to which version, where (DESIGN.md). Counts live in packages and
+        # finding_ids, so the title doesn't carry them; older jobs keep the wording they were planned with.
+        summary=f"Upgrade {package}{' with ' + ', '.join(sorted(extra)) if extra else ''} to {target} on {asset.hostname}",
     )
     s.add(job)
     s.flush()

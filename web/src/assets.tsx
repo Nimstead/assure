@@ -698,12 +698,12 @@ export function AgentUpdateSummary({ assets, onShow }: { assets: Asset[]; onShow
       {[...groups].map(([why, g]) => (
         <li key={why} className={clsx(g.failed && "text-now-fg")}>
           <strong className="font-semibold">{plural(g.hosts.length, "machine")}:</strong> {why}
-          {onShow && <> <Link to="/assets" search={{ show: "agent" }} onClick={onShow} className="font-medium underline">List them</Link></>}
-          <details className="mt-1">
+          {/* one link per notice (DESIGN.md): where the list can filter to them, that; otherwise the names in place */}
+          {onShow ? <> <Link to="/assets" search={{ show: "agent" }} onClick={onShow} className="font-medium underline">List them</Link></> : <details className="mt-1">
             <summary className="tap w-fit cursor-pointer py-2 text-muted md:py-0">Show which</summary>
             {/* names never break mid-word: each wraps as a whole */}
             <p className="mt-1">{g.hosts.map((h, i) => <Fragment key={h}><span className="whitespace-nowrap">{h}{i < g.hosts.length - 1 && ","}</span>{" "}</Fragment>)}</p>
-          </details>
+          </details>}
         </li>
       ))}
     </ul>

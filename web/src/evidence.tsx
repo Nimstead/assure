@@ -87,7 +87,7 @@ function ReportView({ r, days }: { r: EvidenceReport; days: number }) {
   const counts = r.controls.reduce((n, c) => ({ ...n, [c.status]: (n[c.status] ?? 0) + 1 }), {} as Partial<Record<ControlStatus, number>>);
   const metClean = r.controls.filter((c) => c.status === "met" && !c.exceptions).length;
   // the control tally and what's late lead; timing rests on the fixes made, so it says how many
-  const basis = m.resolved < SMALL_SAMPLE ? `from ${plural(m.resolved, "fix", "fixes")}: too few for a trend` : `from ${plural(m.resolved, "fix", "fixes")}`;
+  const basis = m.resolved < SMALL_SAMPLE ? `from ${plural(m.resolved, "resolved finding")}: too few for a trend` : `from ${plural(m.resolved, "resolved finding")}`;
   const tile = (k: string, v: ReactNode, note?: ReactNode) => (
     <div key={k} className="border border-line bg-surface px-4 py-3">
       <dt className="text-sm text-muted">{k}</dt><dd className="num mt-0.5 text-2xl font-semibold">{v}</dd>
@@ -154,7 +154,7 @@ function Exceptions({ resolved, overdue, ce }: { resolved: number; overdue: numb
     <div className="mb-3 flex flex-col gap-1 border border-line-strong bg-surface px-3 py-2 text-sm">
       {overdue > 0 && <p>A deadline control isn't met while any open finding is past its deadline, however quickly the fixes that were made went in. {plural(overdue, "open finding is", "open findings are")} past it now.</p>}
       {!!ce && ce !== overdue && <p>Cyber Essentials counts {plural(ce, "high or critical finding")} open over 14 days, whatever its priority; “Overdue” counts findings past their own priority's deadline, which can be longer.</p>}
-      {resolved < SMALL_SAMPLE && <p>Timeliness controls here rest on {plural(resolved, "fix", "fixes")} in this period, too few to show a trend. Read “Met” as “nothing late so far”.</p>}
+      {resolved < SMALL_SAMPLE && <p>Timeliness controls here rest on {plural(resolved, "resolved finding")} in this period, too few to show a trend. Read “Met” as “nothing late so far”.</p>}
       {(now > 0 || quiet > 0) && (
         <p>Right now:{" "}
           {now > 0 && <Link to="/findings" search={filtersToSearch({ ...parseFilters({}), priority: ["fix-now"], fixable: false })} className="font-medium underline">{plural(now, "Fix now finding")} open</Link>}

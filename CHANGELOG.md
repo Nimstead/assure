@@ -7,6 +7,9 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 No database migration; the agent is unchanged.
 
 ### Changed
+- **DESIGN.md** writes down the design system and the rules it runs on: one word per idea (finding, fix, job, rollout, resolved), a copy budget, one action row, names open and arrows navigate, and how things save.
+- A job's title has one format: "Upgrade curl to 8.5.0-2ubuntu10.16 on web-1". How many vulnerabilities it fixes is shown on the job card, not in the title. Jobs planned before keep their wording.
+- A job card's host opens that machine on Assets. Fix first cards put their action first and their links underneath, in the same order on every card. Each agent notice on Assets has one link. Evidence counts "resolved findings", not "fixes".
 - **A device with no agent ranks by what its exposure lets an attacker do** (DECISIONS 133). A service with no password by default (Redis, Elasticsearch, MongoDB, Memcached, the Docker API) is at least Fix now. Telnet, FTP, VNC and an exposed `.git/config` or `.env` file are at least Next. Expired certificates and legacy TLS keep their rank. A device never outranks the same exposure on the internet. Telnet on a camera used to rank Routine, due in 90 days. Existing findings take the new rank at their next network check.
 - A network check's remedy reads "Remedy: a configuration change" instead of "Fix available"; banner CVEs, fixed by an upgrade, keep "Fix available".
 - **Devices with no agent are a table** below the machines on Assets: those with issues first, with a search across address, maker, MAC and the machines that saw them, a "With issues" filter, and 25 rows at a time. Each device opens a drawer with what its network check found, a link to review those findings, and its maker, MAC, addresses, first and last seen and every machine that saw it. When devices have issues, a line at the top of Assets says so.

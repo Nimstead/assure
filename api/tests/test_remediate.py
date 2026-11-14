@@ -47,7 +47,7 @@ def test_full_lifecycle_verified_by_inventory(env):
     assert r.status_code == 201, r.text
     job = r.json()
     assert job["status"] == "planned" and {p["name"] for p in job["packages"]} == {"libssl3", "openssl"}
-    assert "Upgrade openssl (2 packages)" in job["summary"]
+    assert job["summary"].startswith("Upgrade openssl to ") and job["summary"].endswith(" on sbx-1")  # what, to which version, where
     assert plan(c, aid).status_code == 409  # no duplicate in-flight jobs
 
     assert c.post(f"/api/remediation/jobs/{job['id']}/approve").json()["status"] == "approved"

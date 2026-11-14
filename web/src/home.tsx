@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, CheckCircle2, TriangleAlert } from "lucide-react";
 import { assetsQ, dependenciesNeeded, coverageQ, settingsQ, filtersToSearch, jobAnchor, JOB_STATUS_LABEL, parseFilters, plural, PRIORITIES, PRIORITY_LABEL, priorityOf, summaryQ, useTitle, type Action } from "./lib";
 import { PlanFixButton } from "./planfix";
-import { ErrorState, KevBadge, Loading, PriorityPill, StatusPill } from "./ui";
+import { ActionRow, ErrorState, KevBadge, Loading, PriorityPill, StatusPill } from "./ui";
 import clsx from "clsx";
 import { Fragment, lazy, Suspense, useState } from "react";
 
@@ -167,26 +167,22 @@ export function ActionCard({ a }: { a: Action }) {
           {/* the reason is said once, above the list: each card only says how many */}
           {tests ? `${tests} of ${a.asset_ids.length} can be fixed from here (test ${tests === 1 ? "machine" : "machines"})` : `None of the ${a.asset_ids.length} can be fixed from here`}</p>}
       </div>
-      <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">
-        <span className="flex flex-wrap items-center gap-x-4 gap-y-2 sm:justify-end">
-        {(a.job || failed) && (
-            <Link to="/remediation" hash={jobAnchor((a.job ?? failed)!.id)} className="inline-flex min-h-[44px] items-center gap-1.5 text-sm font-medium text-accent underline md:min-h-9">
-              <span>{a.job ? "View fix" : `Last attempt ${JOB_STATUS_LABEL[failed!.status].toLowerCase()}: review`}<span className="sr-only"> for {a.package}</span></span> <ArrowRight className="size-4" aria-hidden />
-            </Link>
-        )}
-        {a.plannable && free.length > 0 && !needsMore && (
+      <ActionRow
+        primary={a.plannable && free.length > 0 && !needsMore ? (
           <PlanFixButton ecosystem={a.ecosystem} pkg={a.package} assetIds={free} names={freeNames} kind={prodOk ? "machine" : "test machine"}
             label={a.job ? `Plan fix for ${plural(free.length, "more host")}` : failed ? "Plan fix again" : held ? (freeNames.length === 1 ? `Plan fix on ${freeNames[0]}` : `Plan fix on ${plural(free.length, "test machine")}`) : "Plan fix"} />
-        )}
-        <Link
-          to="/findings"
-          search={filtersToSearch({ ...parseFilters({}), q: a.package, ecosystem: a.ecosystem })}
-          className="inline-flex min-h-[44px] items-center gap-1.5 text-sm font-medium text-accent underline md:min-h-9"
-        >
-          <span>View findings<span className="sr-only"> for {a.package}</span></span> <ArrowRight className="size-4" aria-hidden />
-        </Link>
-        </span>
-      </div>
+        ) : undefined}
+        links={[
+          (a.job || failed) && (
+            <Link key="job" to="/remediation" hash={jobAnchor((a.job ?? failed)!.id)} className="inline-flex min-h-[44px] items-center gap-1.5 text-sm font-medium text-accent underline md:min-h-9">
+              <span>{a.job ? "View fix" : `Last attempt ${JOB_STATUS_LABEL[failed!.status].toLowerCase()}: review`}<span className="sr-only"> for {a.package}</span></span> <ArrowRight className="size-4" aria-hidden />
+            </Link>
+          ),
+          <Link key="findings" to="/findings" search={filtersToSearch({ ...parseFilters({}), q: a.package, ecosystem: a.ecosystem })}
+            className="inline-flex min-h-[44px] items-center gap-1.5 text-sm font-medium text-accent underline md:min-h-9">
+            <span>View findings<span className="sr-only"> for {a.package}</span></span> <ArrowRight className="size-4" aria-hidden />
+          </Link>,
+        ]} />
     </li>
   );
 }

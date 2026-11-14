@@ -139,7 +139,7 @@ it("only fixes no machine has picked up can be cancelled", () => {
   }
 });
 
-it("a job card links its summary and host to that machine's findings, and has an address", () => {
+it("a job card links its summary to that machine's findings, its host to the machine, and has an address", () => {
   serve({});
   const { container } = wrap(<ul><JobCard job={job("planned")} /></ul>);
   const summary = new URL(screen.getByRole("link", { name: "Upgrade openssl" }).getAttribute("href")!, "http://x");
@@ -147,8 +147,8 @@ it("a job card links its summary and host to that machine's findings, and has an
   expect(summary.searchParams.get("asset")).toBe("a1");
   expect(summary.searchParams.get("q")).toBe("openssl");
   const host = new URL(screen.getByRole("link", { name: "web-1" }).getAttribute("href")!, "http://x");
-  expect(host.pathname).toBe("/findings");
-  expect(host.searchParams.get("asset")).toBe("a1");
+  expect(host.pathname).toBe("/assets");  // a name opens that thing's detail (DESIGN.md)
+  expect(host.searchParams.get("machine")).toBe("a1");
   expect(container.querySelector("li#job-j1")).not.toBeNull();
 });
 
@@ -502,7 +502,7 @@ it("a step that fell back is shown as recovered, not as a plain pass", () => {
 
 it("a plan awaiting approval lists the packages it changes, and self-approval is flagged", () => {
   serve({});
-  const r = wrap(<ul><JobCard job={{ ...job("planned"), summary: "Upgrade acl to fix 1 vulnerability on web-1 (fixed in 2.4.0-1)", packages: [{ name: "acl", from: "2.3.1-4" }] }} onApprove={() => {}} /></ul>);
+  const r = wrap(<ul><JobCard job={{ ...job("planned"), summary: "Upgrade acl to 2.4.0-1 on web-1", packages: [{ name: "acl", from: "2.3.1-4" }], finding_ids: ["f1"] }} onApprove={() => {}} /></ul>);
   expect(screen.getByRole("list", { name: "Packages this fix changes" })).toHaveTextContent(/acl 2.3.1-4 → 2.4.0-1 or the repository's newer/);
   r.unmount();
 });

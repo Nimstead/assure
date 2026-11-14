@@ -217,3 +217,15 @@ export function CopyBlock({ label, text }: { label: string; text: string }) {
     </div>
   );
 }
+
+/** The one shape for "what can I do here" (DESIGN.md, Action row): the primary action on top, then links in a fixed slot
+ * underneath, in the same order on every card. Either may be missing; an action that isn't available isn't shown. */
+export function ActionRow({ primary, links }: { primary?: ReactNode; links: ReactNode[] }) {
+  const shown = links.filter(Boolean);
+  return (
+    <div className="flex shrink-0 flex-col items-start gap-1 sm:items-end">
+      {primary}
+      {shown.length > 0 && <span className="flex flex-wrap items-center gap-x-4 sm:justify-end">{shown}</span>}
+    </div>
+  );
+}

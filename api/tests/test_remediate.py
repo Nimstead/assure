@@ -5,7 +5,7 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import sessionmaker
 
 from nimstead.app import create_app
-from nimstead.db import RemediationJob, make_engine, now
+from nimstead.db import Asset, RemediationJob, make_engine, now
 
 OLD = "3.0.11-1~deb12u1"
 NEW = "3.9.9-1"  # beyond every fixed version in the fixture
@@ -47,7 +47,7 @@ def test_full_lifecycle_verified_by_inventory(env):
     assert r.status_code == 201, r.text
     job = r.json()
     assert job["status"] == "planned" and {p["name"] for p in job["packages"]} == {"libssl3", "openssl"}
-    assert "Upgrade openssl (2 packages)" in job["summary"]
+    assert job["summary"].startswith("Upgrade openssl to ") and job["summary"].endswith(" on sbx-1")  # what, to which version, where
     assert plan(c, aid).status_code == 409  # no duplicate in-flight jobs
 
     assert c.post(f"/api/remediation/jobs/{job['id']}/approve").json()["status"] == "approved"
@@ -112,6 +112,7 @@ def test_summary_says_which_hosts_are_busy_and_what_failed_last(env):
     act = openssl()
     assert act["busy_asset_ids"] == [] and act["job"] is None
     assert act["last_attempt"]["id"] == jid and act["last_attempt"]["status"] == "aborted" and "libcrypto3" in act["last_attempt"]["error"]
+    assert act["last_attempt"]["asset_id"]  # Home names the machine its replan is on
 
 
 def test_agent_claim_is_not_trusted_without_inventory_proof(env):
@@ -333,7 +334,7 @@ def test_broad_ring_pinned_to_canary_version_and_held_on_later_failure(env):
     c.patch(f"/api/assets/{canary}", json={"ring": 0})
     c.post("/api/agent/inventory", json=inv(OLD), headers=hc)
     [cj] = c.get("/api/agent/jobs", headers=hc).json()
-    proven = {"libssl3": "3.0.17-1~deb12u2", "openssl": "3.0.17-1~deb12u2"}
+    proven = {"libssl3": NEW, "openssl": NEW}  # at or past every fix in the fixture: a canary must reach this job's fix to vouch for it
     c.post(f"/api/agent/jobs/{cj['id']}/report", json={"outcome": "applied", "versions": proven}, headers=hc)
     c.post("/api/agent/inventory", json=inv(NEW), headers=hc)
     _age_jobs(env, 2)  # canary soaked
@@ -382,8 +383,9 @@ def test_canary_report_cannot_pin_the_fleet_to_an_older_version(env):
     c.post("/api/agent/inventory", json=inv(NEW), headers=hc)
     _age_jobs(env, 2)
     _, hb = add_host(c, "broad")
-    [bj] = c.get("/api/agent/jobs", headers=hb).json()
-    assert all("to" not in p for p in bj["packages"])  # not pinned: the agent installs the repo's current fix
+    assert c.get("/api/agent/jobs", headers=hb).json() == []  # an old build can't vouch for this fix: not approved by policy
+    held = next(j for j in c.get("/api/remediation/jobs").json() if j["hostname"] == "broad")
+    assert held["status"] == "planned" and all("to" not in p for p in held["packages"])  # and never pinned to it
 
 
 def test_unsupported_ecosystem_not_remediated(env):
@@ -512,3 +514,58 @@ def test_plan_the_rest_in_one_request_keeps_what_it_could_plan(env):
     assert [j["asset_id"] for j in body["jobs"]] == [a1]  # planned once, though named twice
     assert {e["asset_id"]: e["error"] for e in body["errors"]} == {
         a2: "No open, fixable findings for this package on this asset", foreign: "Asset not found"}  # another org's id says nothing more
+
+
+def test_an_old_canary_below_this_fix_neither_approves_nor_pins_the_broad_ring(env):
+    # September's canary installed a version that predates November's fix: it can't vouch for, or pin, this job
+    c = setup(env)
+    c.patch("/api/settings", json={"remediation_mode": "auto", "canary_soak_hours": 1})
+    canary, hc = add_host(c, "canary", version=NEW)
+    c.patch(f"/api/assets/{canary}", json={"ring": 0})
+    c.post("/api/agent/inventory", json=inv(OLD), headers=hc)
+    [cj] = c.get("/api/agent/jobs", headers=hc).json()
+    old = {"libssl3": "3.0.12-1~deb12u1", "openssl": "3.0.12-1~deb12u1"}  # newer than OLD, below every fixture fix
+    c.post(f"/api/agent/jobs/{cj['id']}/report", json={"outcome": "applied", "versions": old}, headers=hc)
+    c.post("/api/agent/inventory", json=inv(NEW), headers=hc)
+    _age_jobs(env, 2)
+    broad, hb = add_host(c, "broad")
+    assert c.get("/api/agent/jobs", headers=hb).json() == []  # not approved by policy
+    held = next(j for j in c.get("/api/remediation/jobs").json() if j["hostname"] == "broad")
+    assert held["status"] == "planned"
+    assert all(p.get("to") != "3.0.12-1~deb12u1" for p in held["packages"])  # and never pinned to it
+
+
+def test_a_newer_canary_below_the_fix_does_not_unpin_the_job_from_the_one_that_vouched(env):
+    # canary A soaked on the fix; canary B, on a lagging mirror, reports an older build later: pin to A's, never to B's or nothing
+    c = setup(env)
+    c.patch("/api/settings", json={"remediation_mode": "auto", "canary_soak_hours": 1})
+    good = {"libssl3": NEW, "openssl": NEW}
+    lag = {"libssl3": "3.0.12-1~deb12u1", "openssl": "3.0.12-1~deb12u1"}
+    for name, versions in (("canary-a", good), ("canary-b", lag)):
+        cid, hc = add_host(c, name, version=NEW)
+        c.patch(f"/api/assets/{cid}", json={"ring": 0})
+        c.post("/api/agent/inventory", json=inv(OLD), headers=hc)
+        [cj] = c.get("/api/agent/jobs", headers=hc).json()
+        c.post(f"/api/agent/jobs/{cj['id']}/report", json={"outcome": "applied", "versions": versions}, headers=hc)
+        c.post("/api/agent/inventory", json=inv(NEW), headers=hc)
+    s = sessionmaker(make_engine(env))()  # both soaked; B finished last, so it's the newest
+    for host, hours in (("canary-a", 3), ("canary-b", 2)):
+        aid = s.scalar(select(Asset.id).where(Asset.hostname == host))
+        s.execute(update(RemediationJob).where(RemediationJob.asset_id == aid).values(updated=now() - timedelta(hours=hours)))
+    s.commit()
+    _, hb = add_host(c, "broad")
+    [bj] = c.get("/api/agent/jobs", headers=hb).json()
+    assert {p["name"]: p.get("to") for p in bj["packages"]} == good
+
+
+def test_a_canary_vouches_only_when_every_binary_of_the_source_reaches_the_highest_fix():
+    from nimstead import remediate
+    from nimstead.versions import comparator_for
+    cmp = comparator_for("Debian:12")
+    need = ("3.0.15-1~deb12u1", {"openssl", "libssl3"})  # two CVEs, fixed in 3.0.13 and 3.0.15: the higher one counts
+    def canary(v):
+        return RemediationJob(result_versions=v)
+    assert not remediate._reaches_fix(canary({"openssl": "3.0.14-1~deb12u1", "libssl3": "3.0.14-1~deb12u1"}), need, cmp)  # between the fixes
+    assert not remediate._reaches_fix(canary({"openssl": "3.0.15-1~deb12u1", "libssl3": "3.0.12-1~deb12u1"}), need, cmp)  # one binary short
+    assert remediate._reaches_fix(canary({"openssl": "3.0.15-1~deb12u1", "libssl3": "3.0.15-1~deb12u1", "libc6": "2.36-9+deb12u4"}), need, cmp)
+    assert remediate._reaches_fix(canary({}), need, cmp)  # an older agent that reported nothing vouches as before

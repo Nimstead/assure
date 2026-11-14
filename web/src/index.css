@@ -134,3 +134,11 @@ input::placeholder { color: var(--muted); }
   .frow > [data-c="reason"] { display: block; }
 }
 }
+
+/* one disclosure style everywhere (DESIGN.md): a chevron that turns when open, never the browser's own marker */
+summary { list-style: none; cursor: pointer; }
+summary::-webkit-details-marker { display: none; }
+summary::before { content: ""; display: inline-block; flex: none; width: 0.4em; height: 0.4em; margin: 0 0.6em 0.15em 0.1em; vertical-align: middle;
+  border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); transition: transform 0.15s; }
+details[open] > summary::before { transform: rotate(45deg); }
+@media (prefers-reduced-motion: reduce) { summary::before { transition: none; } }

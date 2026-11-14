@@ -3,8 +3,8 @@ import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Dialog, Switch } from "radix-ui";
 import { AppWindow, ArrowRight, Plus, Search, SlidersHorizontal, Trash2, Upload, X } from "lucide-react";
-import { adminGate, AGENT_UPDATE, api, refresh, assetsQ, coverageQ, filtersToSearch, parseFilters, parseUtc, plural, PRIORITIES, PRIORITY_LABEL, relativeTime, sbomSummary, updateSource, useIsAdmin, useTitle, type AgentUpdate, type Asset, type Criticality, type SbomResult } from "./lib";
-import { Alert, btnPrimary, btnQuiet, chip, ConfirmDialog, CopyBlock, dialogBox, Done, EmptyState, ErrorState, Field, input, Loading, PriorityPill, switchRoot, switchThumb, Tag, useReturnFocus } from "./ui";
+import { adminGate, AGENT_UPDATE, api, refresh, assetsQ, coverageQ, filtersToApi, filtersToSearch, parseFilters, parseUtc, plural, PRIORITIES, PRIORITY_LABEL, relativeTime, sbomSummary, updateSource, useIsAdmin, useTitle, type AgentUpdate, type Asset, type Criticality, type Finding, type Priority, type SbomResult } from "./lib";
+import { Alert, btnPrimary, btnQuiet, chip, ConfirmDialog, CopyBlock, dialogBox, Done, EmptyState, ErrorState, Field, input, Loading, PriorityPill, switchRoot, switchThumb, Tag, useReturnFocus, HowJudged } from "./ui";
 import clsx from "clsx";
 import { ExternalTargets } from "./targets";
 
@@ -37,6 +37,11 @@ export function AssetsPage() {
     onSettled: () => refresh(qc, "assets"),
   });
 
+  // machines, devices with no agent, internet targets: one view at a time (?view=), a device link opens its view
+  const sp = useSearch({ strict: false }) as { view?: string; device?: string };
+  const view: AssetView = sp.device ? "devices" : sp.view === "devices" || sp.view === "internet" ? sp.view : "machines";
+  const devices = useQuery(devicesQ);
+  const flagged = (devices.data ?? []).filter((r) => r.checked?.open.length).length;
   const [target, setTarget] = useState<Asset | null>(null);
   const [saved, setSaved] = useState("");
   const [last, setLast] = useState<{ id: string; prev: Asset } | null>(null);  // the last single change, for Undo
@@ -50,14 +55,17 @@ export function AssetsPage() {
     <div className="flex flex-col gap-6">
       <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
         <h1 className="w-full text-3xl font-semibold sm:w-auto">Assets</h1>
-        <div className="flex flex-wrap items-center gap-2">
+        {/* each view has its own add action: the internet view adds targets, the devices view adds nothing */}
+        {view === "machines" && <div className="flex flex-wrap items-center gap-2">
           <AddApplication />
           <Link to="/add" className={clsx(btnPrimary, "no-underline")}><Plus className="size-4" aria-hidden />Add machine</Link>
-        </div>
+        </div>}
       </header>
 
+      <AssetViews view={view} devices={devices.data?.length ?? 0} flagged={flagged} external={(q.data ?? []).filter((a) => a.kind === "external").length} />
+
+      {view === "machines" && <>
       <Unmanaged />
-      <UnmanagedDevices />
       <AttackPaths />
       <Baselines />
       <NotAssessed />
@@ -73,7 +81,9 @@ export function AssetsPage() {
             undo={last ? () => { const { id, prev } = last; setLast(null); patch.mutate({ id, criticality: prev.criticality, internet_facing: prev.internet_facing, ring: prev.ring, health_units: prev.health_units }); } : undefined}
             onPatch={(id, p) => { setSaved(""); setFailed(null); patch.mutate({ id, ...p }); }} onDelete={(a) => { del.reset(); setTarget(a); }} />
         )}
-      {q.data && <ExternalTargets targets={q.data.filter((a) => a.kind === "external")} onDelete={(a) => { del.reset(); setTarget(a); }} />}
+      </>}
+      {view === "internet" && q.data && <ExternalTargets targets={q.data.filter((a) => a.kind === "external")} onDelete={(a) => { del.reset(); setTarget(a); }} />}
+      {view === "devices" && <UnmanagedDevices />}
       <ConfirmDialog open={!!target} onOpenChange={(o) => !o && setTarget(null)} title={`Delete ${target?.hostname}?`}
         description="Its findings and installed-software list are removed. The evidence ledger keeps the history of what was detected and fixed, so audit records stay intact. This can't be undone."
         confirmLabel="Delete asset" pendingLabel="Deleting…" destructive pending={del.isPending} error={del.error} onConfirm={() => target && del.mutate(target.id)} />
@@ -108,37 +118,199 @@ function Unmanaged() {
 
 export interface UnmanagedDevice {
   mac: string; vendor: string; addresses: string[]; seen_by: string[]; first_seen: string; last_seen: string;
-  checked: { asset_id: string; at: string; from: string; open: string[] } | null;  // a machine opted in to network checks looked at it (DECISIONS 129)
+  checked: { asset_id: string; at: string; from: string; open: string[]; priority?: Priority | null } | null;  // a machine opted in to network checks looked at it (DECISIONS 129)
+}
+
+// the list is rate-limited per person: five minutes fresh keeps ordinary browsing well inside it
+const devicesQ = { queryKey: ["network-unmanaged"], queryFn: () => api<UnmanagedDevice[]>("/api/network/unmanaged"), staleTime: 300_000 };
+const DEVICE_PAGE = 25;
+const deviceName = (r: UnmanagedDevice) => r.addresses[0] ?? r.mac;
+const rank = (r: UnmanagedDevice) => (r.checked?.priority ? PRIORITIES.indexOf(r.checked.priority) : PRIORITIES.length);
+/** Devices by their most urgent issue, then most issues, then checked ones, then the most recently seen. */
+export const sortDevices = (rows: UnmanagedDevice[]) => [...rows].sort((a, b) =>
+  rank(a) - rank(b) || (b.checked?.open.length ?? -1) - (a.checked?.open.length ?? -1) || b.last_seen.localeCompare(a.last_seen));
+const deviceFindings = (r: UnmanagedDevice) => filtersToSearch({ ...parseFilters({}), asset: r.checked!.asset_id, fixable: false });
+const when = (t: string) => <time dateTime={parseUtc(t).toISOString()} title={parseUtc(t).toLocaleString()}>{relativeTime(t)}</time>;
+
+type AssetView = "machines" | "devices" | "internet";
+
+/** The three kinds of asset as views, with counts; devices with issues say so on the tab. */
+function AssetViews({ view, devices, flagged, external }: { view: AssetView; devices: number; flagged: number; external: number }) {
+  const tabs: [AssetView, string, ReactNode][] = [
+    ["machines", "Machines and applications", null],
+    ["devices", "Devices with no agent", devices ? <span className="num text-muted">{flagged > 0 ? `${flagged} with findings` : devices}</span> : null],
+    ["internet", "Internet targets", external ? <span className="num text-muted">{external}</span> : null],
+  ];
+  return (
+    // one tab pattern on phones, as Settings: a strip that scrolls sideways, never a stacked list
+    <nav aria-label="Asset views" className="-mb-2 flex gap-x-1 overflow-x-auto overflow-y-hidden border-b border-line [mask-image:linear-gradient(to_right,black_80%,transparent)] [scrollbar-width:none] md:[mask-image:none] [&::-webkit-scrollbar]:hidden">
+      {tabs.map(([v, label, count]) => (
+        <Link key={v} to="/assets" search={v === "machines" ? {} : { view: v }} aria-current={view === v ? "page" : undefined}
+          className={clsx("-mb-px inline-flex min-h-[44px] shrink-0 items-center gap-2 whitespace-nowrap border-b-2 px-3 text-sm no-underline md:min-h-10",
+            view === v ? "border-ink font-semibold text-ink" : "border-transparent text-muted hover:text-ink")}>
+          {label}{count}
+        </Link>
+      ))}
+    </nav>
+  );
 }
 
 /** Devices on the fleet's networks that no agent accounts for, from each agent's own neighbour table (DECISIONS 128). Passive:
  * nothing is sent to them. Hidden while there are none, like the Active Directory list. */
 export function UnmanagedDevices() {
-  // the list is rate-limited per person: five minutes fresh keeps ordinary browsing well inside it
-  const q = useQuery({ queryKey: ["network-unmanaged"], queryFn: () => api<UnmanagedDevice[]>("/api/network/unmanaged"), staleTime: 300_000 });
-  const rows = q.data ?? [];
+  const q = useQuery(devicesQ);
+  const [text, setText] = useState("");
+  const [issuesOnly, setIssuesOnly] = useState(false);
+  const [shown, setShown] = useState(DEVICE_PAGE);
+  // ?device=<mac> opens one device's drawer: Ctrl K links to it
+  const sp = useSearch({ strict: false }) as { device?: string };
+  const navigate = useNavigate();
+  const [picked, setPicked] = useState<UnmanagedDevice | null | undefined>();  // a click shows at once; the URL keeps it linkable
+  useEffect(() => setPicked(undefined), [sp.device]);  // a link (Ctrl K, Back) to another device wins over the last click
+  const open = picked !== undefined ? picked : (q.data ?? []).find((r) => r.mac === sp.device) ?? null;
+  const setOpen = (r: UnmanagedDevice | null) => {
+    setPicked(r);
+    void navigate({ to: "/assets", search: (x: Record<string, unknown>) => ({ ...x, view: "devices", device: r?.mac }), resetScroll: false });
+  };
+  const typed = useDeferredValue(text.trim().toLowerCase());
+  const all = useMemo(() => sortDevices(q.data ?? []), [q.data]);
+  const rows = useMemo(() => all.filter((r) => (!issuesOnly || r.checked?.open.length)
+    && (!typed || [r.mac, r.vendor, ...r.addresses, ...r.seen_by].some((v) => v.toLowerCase().includes(typed)))), [all, issuesOnly, typed]);
   if (q.isError) return <Alert error={q.error} prefix="Couldn't load the devices with no agent: " />;
-  if (!rows.length) return null;
-  const named = rows.filter((r) => r.vendor && r.vendor !== "randomised MAC").length;
-  const checkedCount = rows.filter((r) => r.checked).length;
+  if (!all.length) return null;
+  const named = all.filter((r) => r.vendor && r.vendor !== "randomised MAC").length;
+  const checkedCount = all.filter((r) => r.checked).length;
+  const flagged = all.filter((r) => r.checked?.open.length).length;
   return (
-    <section aria-labelledby="unmanaged-devices" className="flex flex-col gap-2 border border-line bg-sunken p-4">
-      <h2 id="unmanaged-devices" className="text-base font-semibold">{rows.length} device{rows.length === 1 ? "" : "s"} on your networks {rows.length === 1 ? "has" : "have"} no agent</h2>
-      <p className="text-sm text-muted">Seen in the last 30 days in your machines' own network tables; nothing was sent to them to find them.{checkedCount ? ` ${checkedCount} checked for exposed services by a machine opted in to network checks.` : " None is checked unless a machine on that network is enrolled with --allow-network-checks."}{named ? ` ${named} named by their network card's maker.` : ""}</p>
-      <details className="text-sm">
-        <summary className="tap cursor-pointer py-2">Show them</summary>
-        <ul className="mt-2 flex flex-col gap-1">
-          {rows.slice(0, 200).map((r) => (
-            <li key={r.mac} className="break-all"><span className="font-medium">{r.addresses.join(", ")}</span> · {r.vendor || "unknown maker"} · {r.mac}
-              <span className="text-muted"> · seen by {r.seen_by.join(", ")} <time dateTime={parseUtc(r.last_seen).toISOString()}>{relativeTime(r.last_seen)}</time></span>
-              {r.checked && (r.checked.open.length
-                ? <> · <Link to="/findings" search={filtersToSearch({ ...parseFilters({}), asset: r.checked.asset_id, fixable: false })} className="font-medium text-now-fg">{plural(r.checked.open.length, "issue")}</Link> found by {r.checked.from}</>
-                : <span className="text-muted"> · checked by {r.checked.from}, nothing found</span>)}</li>
-          ))}
-        </ul>
-      </details>
-      <a href="/api/network/unmanaged?format=csv" className="text-sm">Download as CSV</a>
+    <section aria-labelledby="unmanaged-devices" className="flex flex-col gap-3">
+      <div className="flex flex-col gap-1">
+        <h2 id="unmanaged-devices" className="scroll-mt-6 text-xl font-semibold">{all.length} device{all.length === 1 ? "" : "s"} on your networks {all.length === 1 ? "has" : "have"} no agent</h2>
+        <HowJudged className="max-w-[65ch]" lead={<>Seen in your machines' own network tables in the last 30 days{checkedCount ? `; ${checkedCount} checked for exposed services` : ""}.</>}>
+          <p>Nothing is sent to a device to find it: each agent reports its own machine's neighbour table.{checkedCount ? " Exposed services are checked only by a machine enrolled with --allow-network-checks, on its own subnet." : " None is checked unless a machine on that network is enrolled with --allow-network-checks."}</p>
+          {named > 0 && <p>{named === 1 ? "1 is" : `${named} are`} named by their network card's maker, from the IEEE registry.</p>}
+        </HowJudged>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="relative min-w-0 flex-1 basis-64">
+          <span className="sr-only">Search devices</span>
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden />
+          <input type="search" className={clsx(input, "pl-9")} placeholder="Search by address, maker, MAC or machine" value={text} onChange={(e) => { setText(e.target.value); setShown(DEVICE_PAGE); }} />
+        </label>
+        {flagged > 0 && <button className={chip(issuesOnly)} aria-pressed={issuesOnly} onClick={() => { setIssuesOnly((x) => !x); setShown(DEVICE_PAGE); }}>With findings<span className="num text-muted">{flagged}</span></button>}
+        <a href="/api/network/unmanaged?format=csv" className="tap inline-flex items-center px-1 text-sm">Download as CSV</a>
+      </div>
+      <p className="num text-sm text-muted" role="status">{rows.length === all.length ? `${plural(all.length, "device")}, those with findings first` : `${rows.length.toLocaleString()} of ${plural(all.length, "device")}`}</p>
+      {rows.length === 0 ? (
+        <EmptyState title="No devices match" action={<button className={btnQuiet} onClick={() => { setText(""); setIssuesOnly(false); }}>Clear search and filter</button>}>
+          Nothing matches {text ? `“${text}”` : "this filter"}.
+        </EmptyState>
+      ) : (
+        <div className="border border-line bg-surface">
+          <table className="w-full border-collapse text-sm">
+            <thead className="text-left text-xs text-muted">
+              <tr className="border-b border-line">
+                <th scope="col" className="px-3 py-2 font-normal">Device</th>
+                <th scope="col" className="hidden px-3 py-2 font-normal md:table-cell">MAC</th>
+                <th scope="col" className="hidden px-3 py-2 font-normal lg:table-cell">Seen by</th>
+                <th scope="col" className="hidden px-3 py-2 font-normal sm:table-cell">Last seen</th>
+                <th scope="col" className="px-3 py-2 font-normal">Network check</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {rows.slice(0, shown).map((r) => (
+                <tr key={r.mac} className="align-top">
+                  <td className="px-3 py-2">
+                    <button className="tap cursor-pointer text-left font-semibold underline decoration-line-strong underline-offset-4 hover:decoration-ink" onClick={() => setOpen(r)}>
+                      <span className="num">{deviceName(r)}</span><span className="sr-only">: device details</span>
+                    </button>
+                    <p className="text-muted">{r.vendor || "Unknown maker"}{r.addresses.length > 1 && ` · ${plural(r.addresses.length - 1, "other address", "other addresses")}`}</p>
+                  </td>
+                  <td className="num hidden whitespace-nowrap px-3 py-2 text-muted md:table-cell">{r.mac}</td>
+                  <td className="hidden px-3 py-2 lg:table-cell"><SeenBy names={r.seen_by} /></td>
+                  <td className="hidden whitespace-nowrap px-3 py-2 text-muted sm:table-cell">{when(r.last_seen)}</td>
+                  <td className="px-3 py-2">
+                    {!r.checked ? <span className="text-muted">Not checked</span>
+                      : r.checked.open.length ? <Link to="/findings" search={deviceFindings(r)} className="tap inline-flex items-center gap-2 no-underline">
+                          {r.checked.priority && <PriorityPill priority={r.checked.priority} />}<span className="font-medium text-ink underline decoration-line-strong underline-offset-4">{plural(r.checked.open.length, "finding")}<span className="sr-only"> on {deviceName(r)}</span></span></Link>
+                      : <span className="text-muted">Nothing found</span>}
+                    {r.checked && <p className="text-xs text-muted">by <span className="whitespace-nowrap">{r.checked.from}</span></p>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {rows.length > shown && <button className={clsx(btnQuiet, "self-start")} onClick={() => setShown((n) => n + DEVICE_PAGE * 4)}>{rows.length - shown <= DEVICE_PAGE * 4 ? `Show the other ${rows.length - shown}` : `Show ${DEVICE_PAGE * 4} more (${rows.length - shown} left)`}</button>}
+      <DeviceDrawer d={open} onClose={() => setOpen(null)} />
     </section>
+  );
+}
+
+/** "web-1, db-1 and 8 more": names wrap whole, never mid-name. */
+function SeenBy({ names }: { names: string[] }) {
+  const head = names.slice(0, 2);
+  return <span>{head.map((h, i) => <Fragment key={h}><span className="whitespace-nowrap">{h}{i < head.length - 1 && ","}</span>{" "}</Fragment>)}{names.length > 2 && <span className="text-muted">and {names.length - 2} more</span>}</span>;
+}
+
+/** One device with no agent: who it is, where it was seen, and what a network check found on it. */
+function DeviceDrawer({ d, onClose }: { d: UnmanagedDevice | null; onClose: () => void }) {
+  const issues = useQuery({ queryKey: ["findings", "device", d?.checked?.asset_id], enabled: !!d?.checked?.open.length,
+    queryFn: () => api<Finding[]>(`/api/findings?${filtersToApi({ ...parseFilters({}), asset: d!.checked!.asset_id, fixable: false }, false)}`) });  // full rows: the drawer shows each summary
+  const title = useRef<HTMLHeadingElement>(null);
+  const focus = useReturnFocus(title);
+  const row = (label: string, value: ReactNode) => <div className="grid grid-cols-[8rem_1fr] gap-3 py-2"><dt className="text-muted">{label}</dt><dd className="min-w-0">{value}</dd></div>;
+  return (
+    <Dialog.Root open={!!d} onOpenChange={(o) => !o && onClose()}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="overlay" />
+        <Dialog.Content className="drawer flex flex-col gap-5 p-5 md:p-6" aria-describedby={undefined} {...focus}>
+          {d && <>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <Dialog.Title ref={title} tabIndex={-1} className="num break-all text-lg font-semibold">{deviceName(d)}</Dialog.Title>
+                <p className="text-sm text-muted">{d.vendor || "Unknown maker"} · no agent</p>
+              </div>
+              <Dialog.Close className={clsx(btnQuiet, "size-[44px] shrink-0 !px-0 md:size-9")} aria-label="Close"><X className="size-4" aria-hidden /></Dialog.Close>
+            </div>
+            <section aria-labelledby="device-check" className="flex flex-col gap-2">
+              <h3 id="device-check" className="text-base font-semibold">Network check</h3>
+              {!d.checked ? <p className="max-w-[60ch] text-sm text-muted">Not checked. A machine on this network enrolled with <code className="num">--allow-network-checks</code> checks it for exposed services each report.</p>
+                : <>
+                  <p className="text-sm text-muted">Checked by <span className="text-ink">{d.checked.from}</span> {when(d.checked.at)}.</p>
+                  {d.checked.open.length ? <>
+                    <ul className="flex flex-col divide-y divide-line border border-line">
+                      {d.checked.open.map((id) => { const f = issues.data?.find((x) => x.vuln_id === id); return (
+                        <li key={id}>
+                          <Link to="/findings" search={{ ...deviceFindings(d), f: f?.id }} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm no-underline hover:bg-sunken">
+                            {f && <PriorityPill priority={f.priority} />}
+                            <span className="min-w-0 flex-1">
+                              <span className="block font-medium text-ink underline decoration-line-strong underline-offset-4">{f ? f.package : id}</span>
+                              {f?.summary && <span className="block text-muted">{f.summary}</span>}
+                            </span>
+                          </Link>
+                        </li>); })}
+                    </ul>
+                    <Link to="/findings" search={deviceFindings(d)} className={clsx(btnPrimary, "self-start no-underline")}>Review {plural(d.checked.open.length, "finding")}<ArrowRight className="size-4" aria-hidden /></Link>
+                  </> : <p className="text-sm">Nothing exposed was found.</p>}
+                </>}
+            </section>
+            <section aria-labelledby="device-identity">
+              <h3 id="device-identity" className="text-base font-semibold">Identity</h3>
+              <dl className="divide-y divide-line text-sm">
+                {row("Maker", d.vendor === "randomised MAC" ? "Unknown: the MAC is randomised, as phones and laptops do per network" : d.vendor || "Unknown")}
+                {row("MAC", <span className="num">{d.mac}</span>)}
+                {row(d.addresses.length === 1 ? "Address" : "Addresses", <span className="num">{d.addresses.join(", ")}</span>)}
+                {row("First seen", when(d.first_seen))}
+                {row("Last seen", when(d.last_seen))}
+                {row("Seen by", <span>{d.seen_by.map((h, i) => <Fragment key={h}><span className="whitespace-nowrap">{h}{i < d.seen_by.length - 1 && ","}</span>{" "}</Fragment>)}</span>)}
+              </dl>
+            </section>
+            <p className="max-w-[60ch] text-sm text-muted">Found in your machines' own network tables; nothing is sent to it to find it. It leaves this list 30 days after it was last seen.</p>
+          </>}
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 
@@ -184,7 +356,9 @@ export function Baselines() {
   return (
     <section aria-labelledby="baselines" className="flex flex-col gap-2 border border-line bg-sunken p-4">
       <h2 id="baselines" className="text-base font-semibold">Windows settings compared with published baselines</h2>
-      <p className="max-w-prose text-sm text-muted">A reference, not a conformance result: a pass means the setting read as the baseline expects. Only the checks we can automate are counted, and manual checks are not assessed.{d.no_baseline ? ` ${plural(d.no_baseline, "Windows host")} on other versions ${d.no_baseline === 1 ? "has" : "have"} no baseline here.` : ""}</p>
+      <HowJudged lead="A reference, not a conformance result: a pass means the setting read as the baseline expects.">
+        <p>Only the checks we can automate are counted, and manual checks are not assessed.{d.no_baseline ? ` ${plural(d.no_baseline, "Windows host")} on other versions ${d.no_baseline === 1 ? "has" : "have"} no baseline here.` : ""}</p>
+      </HowJudged>
       {d.baselines.map((b) => (
         <div key={b.baseline_id} className="flex flex-col gap-1">
           <h3 className="text-sm font-semibold">{b.name} {b.version}</h3>
@@ -215,7 +389,10 @@ export function AttackPaths() {
   return (
     <section aria-labelledby="attack-paths" className="flex flex-col gap-2 border border-line bg-sunken p-4">
       <h2 id="attack-paths" className="text-base font-semibold">How these weaknesses combine</h2>
-      <p className="max-w-prose text-sm text-muted">Each step is a vulnerability or a setting read on the host. A path is only as sure as its weakest step, and whether one host can route to another isn't seen, so nothing across hosts is better than reasonable. Each host's part rests on what its own agent reported, so a compromised host could make its own links look worse or better.{unjudged ? ` ${plural(unjudged, "host")} ${unjudged === 1 ? "hasn't" : "haven't"} been judged yet.` : ""}{d.truncated ? " So many hosts link to each other that only the first links are shown: fix the settings named below first." : ""}</p>
+      <HowJudged lead={<>Each step is a vulnerability or a setting read on the host.{d.truncated ? " Only the first links are shown: fix the settings named below first." : ""}</>}>
+        <p>A path is only as sure as its weakest step, and whether one host can route to another isn't seen, so nothing across hosts is better than reasonable.</p>
+        <p>Each host's part rests on what its own agent reported, so a compromised host could make its own links look worse or better.{unjudged ? ` ${plural(unjudged, "host")} ${unjudged === 1 ? "hasn't" : "haven't"} been judged yet.` : ""}</p>
+      </HowJudged>
       {d.chains.map((c) => (
         <div key={c.start} className="flex flex-col gap-1">
           <h3 className="text-sm font-semibold">From {name(c.start)} ({c.why_start}), an attacker can reach {plural(c.reach.length, "other host")}</h3>
@@ -316,7 +493,6 @@ function MachineList({ assets, saved, failed, onPatch, onDelete, undo }: {
   const rows = useMemo(() => filterAssets(assets, typed, on, crit, sort), [assets, typed, on, crit, sort]);
   const pick = useCallback((id: string, v: boolean) => setPicked((s) => { const n = new Set(s); if (v) n.add(id); else n.delete(id); return n; }), []);
   const counts = useMemo(() => Object.fromEntries((Object.keys(FILTERS) as Filter[]).map((f) => [f, assets.filter(MATCH[f]).length])) as Record<Filter, number>, [assets]);
-  const toggle = (f: Filter) => startTransition(() => { setOn((o) => (o.includes(f) ? o.filter((x) => x !== f) : [...o, f])); setShown(PAGE); });
   const visible = rows.slice(0, shown);
   const pickedRows = assets.filter((a) => picked.has(a.id));
   const apps = pickedRows.filter((a) => a.kind !== "host").length;
@@ -349,15 +525,28 @@ function MachineList({ assets, saved, failed, onPatch, onDelete, undo }: {
       <AgentUpdateSummary assets={assets.filter((a) => a.kind === "host")} onShow={() => { setOn(["agent"]); setShown(PAGE); }} />
       <div className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          <button className={clsx(chip(on.length > 0 || !!crit), "md:hidden")} aria-expanded={filtersOpen} aria-controls="asset-filters" onClick={() => setFiltersOpen((x) => !x)}>
-            <SlidersHorizontal className="size-4" aria-hidden />Filters ({on.length + Number(!!crit)})
-          </button>
           <label className="relative min-w-0 flex-1 basis-64">
             <span className="sr-only">Search assets</span>
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden />
             <input type="search" className={clsx(input, "pl-9")} placeholder="Search by name, OS or agent version" value={text} onChange={(e) => { setText(e.target.value); setShown(PAGE); }} />
           </label>
+          {/* search first, then the filters button, as on Findings; same label, count only when some are on */}
+          <button className={clsx(chip(on.length > 0 || !!crit), "md:hidden")} aria-expanded={filtersOpen} aria-controls="asset-filters" onClick={() => setFiltersOpen((x) => !x)}>
+            <SlidersHorizontal className="size-4" aria-hidden />More filters{on.length + Number(!!crit) > 0 && <span className="num">{on.length + Number(!!crit)}</span>}
+          </button>
           <div id="asset-filters" className={clsx("w-full flex-wrap items-center gap-2 md:flex md:w-auto", filtersOpen ? "flex" : "hidden")}>
+          {/* the quick filters as one control (DESIGN.md: six controls before the first row); a link may still set several */}
+          <label className="flex items-center gap-2 text-sm">
+            <span className="text-muted">Show</span>
+            <select className={clsx(input, "w-auto md:min-h-9")} value={on.length === 1 ? on[0] : on.length ? "several" : ""}
+              onChange={(e) => startTransition(() => { setOn(e.target.value ? [e.target.value as Filter] : []); setShown(PAGE); })}>
+              <option value="">All assets</option>
+              {on.length > 1 && <option value="several" disabled>{on.map((f) => FILTERS[f]).join(" + ")}</option>}
+              {(Object.keys(FILTERS) as Filter[]).filter((f) => counts[f] > 0 || on.includes(f)).map((f) => (
+                <option key={f} value={f} title={FILTER_HELP[f]}>{FILTERS[f]} ({counts[f].toLocaleString()})</option>
+              ))}
+            </select>
+          </label>
           <label className="flex items-center gap-2 text-sm">
             <span className="text-muted">Criticality</span>
             <select className={clsx(input, "w-auto capitalize md:min-h-9")} value={crit} onChange={(e) => setCrit(e.target.value as Criticality | "")}>
@@ -371,11 +560,6 @@ function MachineList({ assets, saved, failed, onPatch, onDelete, undo }: {
             </select>
           </label>
           </div>
-        </div>
-        <div role="group" aria-label="Show only" className={clsx("flex-wrap gap-2 md:flex", filtersOpen ? "flex" : "hidden")}>
-          {(Object.keys(FILTERS) as Filter[]).filter((f) => counts[f] > 0 || on.includes(f)).map((f) => (
-            <button key={f} title={FILTER_HELP[f]} className={chip(on.includes(f))} aria-pressed={on.includes(f)} onClick={() => toggle(f)}>{FILTERS[f]}<span className="num text-muted">{counts[f].toLocaleString()}</span></button>
-          ))}
         </div>
       </div>
       <div className="flex min-h-[44px] flex-wrap items-center gap-x-4 gap-y-2 md:min-h-9">
@@ -454,7 +638,7 @@ const MachineLine = memo(function MachineLine({ a, picked, saved, onPick, onOpen
           <button className="tap cursor-pointer text-left font-semibold underline decoration-line-strong underline-offset-4 hover:decoration-ink" onClick={() => onOpen(a.id)}>
             <span className="break-all">{a.hostname}</span><span className="sr-only">: details and settings</span>
           </button>
-          {a.not_reporting && <Tag tone="now">Not reporting</Tag>}
+          {a.not_reporting && <Tag tone="warn">Not reporting</Tag>}
           {a.agent_update && !["current", "updating"].includes(a.agent_update) && (!quietAgent || a.agent_update === "failed") && <Tag tone={a.agent_update === "failed" ? "now" : "muted"}>{AGENT_UPDATE[a.agent_update as Exclude<AgentUpdate, "current">].label}</Tag>}
           {a.sandbox && <Tag>Test machine</Tag>}
           {saved && <Done className="text-muted">Saved</Done>}
@@ -498,11 +682,9 @@ function MachineDrawer({ a, onClose, children }: { a: Asset | null; onClose: () 
             <Dialog.Title ref={title} tabIndex={-1} className="break-all text-lg font-semibold">{a?.hostname}</Dialog.Title>
             <Dialog.Close className={clsx(btnQuiet, "size-[44px] shrink-0 !px-0 md:size-9")} aria-label="Close"><X className="size-4" aria-hidden /></Dialog.Close>
           </div>
+          {/* one machine's settings save as you make them (Undo takes back the last); Settings' org-wide forms have a Save each */}
+          <p className="mt-1 text-sm text-muted">Changes here save as you make them and re-rank this machine's findings. Undo takes back the last one.</p>
           <ul className="-mx-4">{children}</ul>
-          <p className="max-w-[60ch] text-sm text-muted">
-            <strong className="font-medium text-ink">Ring:</strong> canary machines get a fix first; broad machines wait until a canary has stayed healthy.{" "}
-            <strong className="font-medium text-ink">Health units:</strong> systemd units checked before and after a fix, saved when you leave the field.
-          </p>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
@@ -511,34 +693,46 @@ function MachineDrawer({ a, onClose, children }: { a: Asset | null; onClose: () 
 
 /** Summarise agents needing attention from assets; onShow optionally opens the relevant view. */
 export function AgentUpdateSummary({ assets, onShow }: { assets: Asset[]; onShow?: () => void }) {
-  const groups = new Map<string, { failed: boolean; hosts: string[] }>();
+  const groups = new Map<string, { failed: boolean; hosts: string[]; ids: string[] }>();
   for (const a of assets) {
     if (!a.agent_update || ["current", "updating"].includes(a.agent_update)) continue;
     const why = AGENT_UPDATE[a.agent_update as Exclude<typeof a.agent_update, "current">].why(a);
-    const g = groups.get(why) ?? { failed: a.agent_update === "failed", hosts: [] };
-    g.hosts.push(a.hostname);
+    const g = groups.get(why) ?? { failed: a.agent_update === "failed", hosts: [], ids: [] };
+    g.hosts.push(a.hostname); g.ids.push(a.id);
     groups.set(why, g);
   }
   if (!groups.size) return null;
   // one reason for most hosts (an old agent that predates self-update) is said once, with the versions
   const reinstall = [...groups].filter(([why]) => /can't update itself/.test(why));
   if (reinstall.length > 1) {
-    const hosts = reinstall.flatMap(([, g]) => g.hosts);
-    const versions = assets.filter((a) => hosts.includes(a.hostname)).reduce<Record<string, number>>((n, a) => ({ ...n, [a.agent_version ?? "?"]: (n[a.agent_version ?? "?"] ?? 0) + 1 }), {});
+    const hosts = reinstall.flatMap(([, g]) => g.hosts), ids = new Set(reinstall.flatMap(([, g]) => g.ids));  // by id: two machines may share a name
+    // an agent that reported no version ("" or null) is "unknown", never an empty label
+    const versions = assets.filter((a) => ids.has(a.id)).reduce<Record<string, number>>((n, a) => ({ ...n, [a.agent_version || "unknown"]: (n[a.agent_version || "unknown"] ?? 0) + 1 }), {});
+    const named = Object.entries(versions).map(([v, n]) => `${v} (${plural(n, "machine")})`);
     for (const [why] of reinstall) groups.delete(why);
-    groups.set(`Agents ${Object.entries(versions).map(([v, n]) => `${v} (${n})`).join(", ")} predate self-update. Rerun the install command on each once; the enrolment is kept, and later versions update automatically.`, { failed: false, hosts });
+    groups.set(`Agent version${named.length > 1 ? "s" : ""} ${named.length > 1 ? `${named.slice(0, -1).join(", ")} and ${named.at(-1)}` : named[0]} predate${named.length > 1 ? "" : "s"} self-update. Rerun the install command on each once; the enrolment is kept, and later versions update automatically.`, { failed: false, hosts, ids: [...ids] });
   }
+  // on the Assets list: one line of links, as on Fix first; the list it filters to says the rest (DESIGN.md: copy budget)
+  if (onShow) return (
+    <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+      {[...groups].map(([why, g]) => (
+        <Link key={why} to="/assets" search={{ show: "agent" }} onClick={onShow} title={why} className={clsx("inline-flex tap items-center font-medium underline", g.failed ? "text-now-fg" : "text-ink")}>
+          {plural(g.hosts.length, "machine")}: {why.split(/(?<=\.) /)[0]!.replace(/\.$/, "")}
+        </Link>
+      ))}
+    </p>
+  );
   return (
-    <ul className="flex flex-col gap-1.5 border border-line-strong bg-surface px-3 py-2 text-sm [&>li]:max-w-[60ch]">
+    <ul className="flex flex-col gap-1.5 border border-line bg-surface px-3 py-2 text-sm [&>li]:max-w-[60ch]">
       {[...groups].map(([why, g]) => (
         <li key={why} className={clsx(g.failed && "text-now-fg")}>
           <strong className="font-semibold">{plural(g.hosts.length, "machine")}:</strong> {why}
-          {onShow && <> <Link to="/assets" search={{ show: "agent" }} onClick={onShow} className="font-medium underline">List them</Link></>}
-          <details className="mt-1">
+          {/* one link per notice (DESIGN.md): where the list can filter to them, that; otherwise the names in place */}
+          {onShow ? <> <Link to="/assets" search={{ show: "agent" }} onClick={onShow} className="font-medium underline">List them</Link></> : <details className="mt-1">
             <summary className="tap w-fit cursor-pointer py-2 text-muted md:py-0">Show which</summary>
             {/* names never break mid-word: each wraps as a whole */}
             <p className="mt-1">{g.hosts.map((h, i) => <Fragment key={h}><span className="whitespace-nowrap">{h}{i < g.hosts.length - 1 && ","}</span>{" "}</Fragment>)}</p>
-          </details>
+          </details>}
         </li>
       ))}
     </ul>
@@ -556,12 +750,11 @@ export function AssetRow({ a, onPatch, onDelete, saved, error, inDrawer, undo }:
       <div className="min-w-0 flex-1 basis-60">
         <div className="flex flex-wrap items-center gap-2"><h3 className={inDrawer ? "sr-only" : "min-w-0 break-all text-base font-semibold"} title={a.hostname}>{a.hostname}</h3>
           {a.sandbox && <Tag why="Test machine: the only kind automated fixes may change until production remediation is turned on">Test machine</Tag>}
-          {a.not_reporting && <Tag tone="now" why={`Last report ${relativeTime(a.last_seen)}, so findings may be out of date. Check the host is running and the agent's timer or scheduled task.`}>Not reporting</Tag>}
+          {a.not_reporting && <Tag tone="warn" why={`Last report ${relativeTime(a.last_seen)}, so findings may be out of date. Check the host is running and the agent's timer or scheduled task.`}>Not reporting</Tag>}
           {a.agent_update && a.agent_update !== "current" && <Tag tone={a.agent_update === "failed" ? "now" : "muted"}>{AGENT_UPDATE[a.agent_update].label}</Tag>}</div>
         <p className="truncate text-sm text-muted">
           {a.kind === "application" ? "Application (SBOM)" : a.os_name || "Unknown OS"}{a.agent_version && ` · agent ${a.agent_version}`} · seen <time dateTime={parseUtc(a.last_seen).toISOString()} title={parseUtc(a.last_seen).toLocaleString()}>{relativeTime(a.last_seen)}</time>
         </p>
-        {a.not_reporting && <p className="mt-1 text-xs text-now-fg">Last report {relativeTime(a.last_seen)}, so findings may be out of date.</p>}
         {a.apps && a.apps.inventory_only > 0 && <p className="mt-1 text-xs text-muted">{a.apps.assessed === 0 ? `None of its ${plural(a.apps.inventory_only, "installed app")} could be checked.` : `${a.apps.assessed} of ${a.apps.assessed + a.apps.inventory_only} installed apps checked; the rest are listed only.`}</p>}
         {a.facts?.os_unmatched && <p className="mt-1 text-xs text-muted">OS not matched to Microsoft's fixes: {a.facts.os_unmatched}. Apps and end of support are still checked.</p>}
         {a.facts?.pending_reboot && <p className="mt-1 text-xs text-next-fg">Updates are installed and waiting for a restart: findings close after it.</p>}
@@ -611,11 +804,22 @@ export function AssetRow({ a, onPatch, onDelete, saved, error, inDrawer, undo }:
         <SbomUpload a={a} />
         {saved && <Done className="text-muted">Saved. Findings re-ranked.</Done>}
         {saved && undo && <button className={btnQuiet} onClick={undo}>Undo</button>}
-        <button className={clsx(btnQuiet, "ml-auto px-3 md:px-2.5")} onClick={onDelete} title={`Delete ${a.hostname}`} {...adminGate(admin)}>
-          <Trash2 className="size-4" aria-hidden /><span className={inDrawer ? undefined : "md:sr-only"}>Delete</span><span className="sr-only"> {a.hostname}</span>
-        </button>
+        {!inDrawer && <button className={clsx(btnQuiet, "ml-auto px-3 md:px-2.5")} onClick={onDelete} title={`Delete ${a.hostname}`} {...adminGate(admin)}>
+          <Trash2 className="size-4" aria-hidden /><span className="md:sr-only">Delete</span><span className="sr-only"> {a.hostname}</span>
+        </button>}
       </div>
       <Alert error={error} prefix="Couldn't save that change: " />
+      {inDrawer && host && <p className="max-w-[60ch] text-sm text-muted">
+        <strong className="font-medium text-ink">Ring:</strong> canary machines get a fix first; broad machines wait until a canary has stayed healthy.{" "}
+        <strong className="font-medium text-ink">Health units:</strong> systemd units checked before and after a fix, saved when you leave the field or press Enter.
+      </p>}
+      {/* in the drawer, deleting sits apart from the settings, never next to an ordinary action */}
+      {inDrawer && <div className="mt-2 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
+        <p className="text-sm text-muted">Removes its findings and installed-software list; the ledger keeps the history.</p>
+        <button className={clsx(btnQuiet, "border-now-fg text-now-fg hover:bg-now-bg")} onClick={onDelete} {...adminGate(admin)}>
+          <Trash2 className="size-4" aria-hidden />Delete {a.kind === "application" ? "application" : "machine"}<span className="sr-only"> {a.hostname}</span>
+        </button>
+      </div>}
     </li>
   );
 }

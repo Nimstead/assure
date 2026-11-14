@@ -108,20 +108,23 @@ def verify_chain(s: Session, org_id: str, full: bool = True) -> list[str]:
     if done and s.scalar(select(LedgerEntry.hash).where(LedgerEntry.org_id == org_id, LedgerEntry.seq == done[0])) != done[1]:
         done = None  # the anchor changed: check everything
     start, prev_hash = (done[0], done[1]) if done else (0, GENESIS)
-    entries = s.execute(select(*LEDGER_COLS).where(LedgerEntry.org_id == org_id, LedgerEntry.seq > start).order_by(LedgerEntry.seq)).all()
-    problems = []
-    for i, e in enumerate(entries, start + 1):
+    # streamed in batches: a ledger grows with the fleet, and holding every row at once costs gigabytes after a year
+    rows = s.execute(select(*LEDGER_COLS).where(LedgerEntry.org_id == org_id, LedgerEntry.seq > start).order_by(LedgerEntry.seq)
+                     .execution_options(yield_per=5000))
+    problems, by_seq, last = [], {}, None
+    for i, e in enumerate(rows, start + 1):
         d = entry_dict(e)
         if e.seq != i or e.prev_hash != prev_hash:
             problems.append(f"entry {e.seq}: chain broken")
         if entry_hash(d) != e.hash:
             problems.append(f"entry {e.seq}: hash mismatch")
-        prev_hash = e.hash
+        prev_hash, last = e.hash, (e.seq, e.hash)
+        if not done:
+            by_seq[e.seq] = e.hash  # only seq and hash are kept, for the checkpoint comparison below
     if done:  # checkpoints pin history up to the anchor, which the last full check compared them with
-        if not problems and entries:
-            _VERIFIED[org_id] = (entries[-1].seq, entries[-1].hash, done[2])
+        if not problems and last:
+            _VERIFIED[org_id] = (last[0], last[1], done[2])
         return problems
-    by_seq = {e.seq: e.hash for e in entries}
     pubs = verification_keys()  # once: with Vault each load is an HTTP call, and checkpoints grow by one an hour
     for cp in load_checkpoints(org_id):
         if not checkpoint_valid(cp, pubs):
@@ -130,10 +133,10 @@ def verify_chain(s: Session, org_id: str, full: bool = True) -> list[str]:
             problems.append(f"checkpoint at seq {cp['seq']}: entry missing (ledger truncated)")
         elif cp["seq"] > 0 and by_seq[cp["seq"]] != cp["hash"]:
             problems.append(f"checkpoint at seq {cp['seq']}: hash differs (ledger rewritten)")
-    if problems or not entries:
+    if problems or not last:
         _VERIFIED.pop(org_id, None)
     else:
-        _VERIFIED[org_id] = (entries[-1].seq, entries[-1].hash, datetime.now(UTC))
+        _VERIFIED[org_id] = (last[0], last[1], datetime.now(UTC))
     return problems
 
 
@@ -294,7 +297,7 @@ def _controls(m: dict, sla: dict) -> list[dict]:
         {"framework": "UK Cyber Essentials", "control": "Security update management",
          "requirement": "High/critical updates (CVSS ≥ 7 or known exploited) applied within 14 days",
          "status": timely(ce_ok, m["ce_in_scope_resolved"]),
-         "evidence": f"{m['ce_in_scope_resolved_in_14d']}/{m['ce_in_scope_resolved']} in-scope fixes within 14 days; {m['ce_in_scope_overdue']} open past 14 days"},
+         "evidence": f"{m['ce_in_scope_resolved_in_14d']}/{m['ce_in_scope_resolved']} in-scope fixes within 14 days; {m['ce_in_scope_overdue']} open past 14 days (high or critical findings, a different measure from the priority deadlines)"},
         {"framework": "ISO/IEC 27001:2022", "control": "A.8.8", "requirement": "Management of technical vulnerabilities",
          "status": st(scanned and sla_ok),
          "evidence": f"{m['assets_reporting']}/{m['assets']} assets with a report timestamp in or after the period; {m['overdue_open']} findings past SLA"},
@@ -303,7 +306,7 @@ def _controls(m: dict, sla: dict) -> list[dict]:
          "evidence": f"{m['assets_reporting']}/{m['assets']} assets with a report timestamp in or after the period"
                      + (f"; {m['assets_silent_now']} not reporting at the period end" if m.get("assets_silent_now") else "")},
         {"framework": "NIST SP 800-53 Rev. 5", "control": "SI-2", "requirement": "Flaw remediation within organisation-defined time periods",
-         "status": timely(sla_ok, m["resolved"]), "evidence": f"{m['resolved_within_sla']}/{m['resolved']} fixes within the organisation's SLA in force when each was detected (now: {', '.join(f'{SLA_LABEL.get(p, p)} {d} days' for p, d in sla.items())})"
+         "status": timely(sla_ok, m["resolved"]), "evidence": f"{m['overdue_open']} open findings past SLA; {m['resolved_within_sla']}/{m['resolved']} fixes within the organisation's SLA in force when each was detected (now: {', '.join(f'{SLA_LABEL.get(p, p)} {d} days' for p, d in sla.items())})"
                      + (f"; deadlines changed {m['sla_changes']} times in the period (sla_changes)" if m.get("sla_changes") else "")},
         {"framework": "PCI DSS v4.0.1", "control": "6.3.3", "requirement": "Critical security patches installed within one month of release",
          "status": st(m["critical_overdue_30d"] == 0),
@@ -315,9 +318,11 @@ def _controls(m: dict, sla: dict) -> list[dict]:
          "evidence": f"{m['changes_authorised']}/{m['changes']} remediation jobs updated in period have an approver recorded. This count does not prove execution, health checks or rollback"
                      + (f". {m['changes_self_approved']} of them approved by the person who planned them, with no second approver" if m.get("changes_self_approved") else "")},
         {"framework": "NIS2 Directive", "control": "Art. 21(2)(e)", "requirement": "Vulnerability handling in network and information systems maintenance",
-         "status": st(scanned and sla_ok), "evidence": f"{m['assets_reporting']}/{m['assets']} assets with a report timestamp in or after the period; {m['resolved_within_sla']}/{m['resolved']} fixes within SLA"},
+         "status": st(scanned and sla_ok), "evidence": f"{m['assets_reporting']}/{m['assets']} assets with a report timestamp in or after the period; {m['resolved_within_sla']}/{m['resolved']} fixes within SLA; {m['overdue_open']} open findings past SLA"},
+        # the status turns on open findings past their deadline, so the evidence names that count, not only the fixes made
         {"framework": "CIS Controls v8.1", "control": "7.3 / 7.4", "requirement": "Automated OS and application patch management",
-         "status": timely(sla_ok, m["resolved"]), "evidence": (f"Mean time to remediate: {m['mttr_days']} days" if m["mttr_days"] >= 1 else "Mean time to remediate: under a day") if m["mttr_days"] is not None else "Mean time to remediate: no fixes in period"},
+         "status": timely(sla_ok, m["resolved"]), "evidence": f"{m['overdue_open']} open findings past SLA; "
+            + ((f"mean time to remediate: {m['mttr_days']} days" if m["mttr_days"] >= 1 else "mean time to remediate: under a day") if m["mttr_days"] is not None else "no fixes in period")},
     ]
 
 
@@ -333,10 +338,13 @@ def build_pack(s: Session, org_id: str, start: datetime, end: datetime, with_ent
     verification occurs here. Database, checkpoint storage and malformed-record errors propagate.
     """
     org = s.get(Org, org_id)
-    assets = s.scalars(select(Asset).where(Asset.org_id == org_id)).all()
+    every = s.scalars(select(Asset).where(Asset.org_id == org_id)).all()
+    # a device with no agent is named by its address, which can be personal data: "device", as in the ledger, and it is
+    # counted on its own, so "assets" matches the Assets page (DECISIONS 133)
+    assets = [a for a in every if a.kind != "device"]
     findings = s.execute(select(Finding.id, Finding.asset_id, Finding.vuln_id, Finding.package, Finding.status, Finding.priority,
                                 Finding.cvss, Finding.kev).where(Finding.org_id == org_id, Finding.first_seen <= end)).all()
-    host = {a.id: a.hostname for a in assets}
+    host = {a.id: "device" if a.kind == "device" else a.hostname for a in every}
     sla_by_priority = sla_days(org)
 
     # Lifecycle times come from the hash-chained ledger, not the mutable findings table: editing a
@@ -348,10 +356,12 @@ def build_pack(s: Session, org_id: str, start: datetime, end: datetime, with_ent
         ts = datetime.fromisoformat(e.ts).replace(tzinfo=None)
         if e.kind == "finding_resolved":
             closed_at[e.subject] = ts
+        elif e.kind == "finding_reopened":
+            # a regression starts a new exposure: timed from its return, not from a first detection that was fixed
+            opened[e.subject] = ts
+            closed_at.pop(e.subject, None)
         else:
             opened.setdefault(e.subject, ts)
-            if e.kind == "finding_reopened":
-                closed_at.pop(e.subject, None)
     # Each finding is held to the deadline in force when it was detected.
     sla_at = sla_history(s, org_id)
     rows, ttr = [], []
@@ -388,6 +398,7 @@ def build_pack(s: Session, org_id: str, start: datetime, end: datetime, with_ent
         })
     m["findings_without_ledger_record"] = sum(1 for f in findings if f.id not in opened)
     m["assets"] = len(assets)
+    m["network_devices"] = len(every) - len(assets)
     m["assets_reporting"] = sum(1 for a in assets if start <= a.last_seen <= end or a.last_seen > end)
     m["assets_silent_now"] = sum(1 for a in assets if a.kind == "host" and a.last_seen < end - timedelta(hours=14))  # as Assets' "not reporting"
     m["mttr_days"] = round(sum(ttr) / len(ttr), 1) if ttr else None

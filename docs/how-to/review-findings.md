@@ -24,7 +24,7 @@ Use [scan troubleshooting](troubleshoot-scans.md) for incomplete data. Read [sca
 
 An **Asset:** result opens that asset's findings. An **Asset context:** result opens its context drawer. Suggestions are partial. Use the Findings filters for a complete review.
 
-The final **Search findings for** command uses Fixable only by default. Clear that filter if you need findings without a fixed version. A failed suggestion request does not remove this search command.
+The final **Search findings for** command shows every matching open finding. Turn on **Has a fix** to see only those with a fix to apply. A failed suggestion request does not remove this search command.
 
 ## Accept a documented risk
 
@@ -37,7 +37,7 @@ You need an organisation admin browser session. Acceptance changes triage status
 5. Leave the scope checkbox clear to accept only this finding.
 6. Select **Accept risk** to submit the request.
 7. Open the **Accepted** status view.
-8. Clear **Fixable only** if the finding has no fixed version.
+8. Turn off **Has a fix** if it's on and the finding has no fix yet. **Has a fix** means a fix exists (a fixed version, a setting to change, or a service to close), not that Nimstead can apply it.
 9. Confirm the same asset and vulnerability identity appear there.
 
 Select the scope checkbox only to accept all currently open matches for that vulnerability across the organisation. This includes other packages and assets.

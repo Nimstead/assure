@@ -1,18 +1,21 @@
 // UX rounds 1 and 2 (tasks/plan-0.5-ux.md, plan-0.6-ux.md): behaviour that keeps the reviews' fixes fixed.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState, type ReactNode } from "react";
 import { afterEach, vi } from "vitest";
 import { SsoSection } from "./integrations";
 import { ApiError, meQ, type Action, type Asset, type Finding, type Job, type Settings } from "./lib";
-import { ActionCard } from "./home";
-import { AssetRow, AssetsPage, AttackPaths, Baselines, baselineSummary, filterAssets, NotAssessed, UnmanagedDevices } from "./assets";
-import { Palette } from "./shell";
+import { ActionCard, Home } from "./home";
+import { PlanFixButton } from "./planfix";
+import { foldRuns } from "./evidence";
+import { ApproveDialog, byPackage, PackageList, RemediationPage, RolloutCard, ringFailures, sections } from "./remediation";
+import { AgentUpdateSummary, AssetRow, AssetsPage, AttackPaths, Baselines, baselineSummary, filterAssets, NotAssessed, UnmanagedDevices } from "./assets";
+import { cmdGroup, HelpPanel, Palette } from "./shell";
 import { Done, errorLead } from "./ui";
 import { Onboarding, TROUBLESHOOT_AFTER_MS } from "./onboarding";
 import { ApiTokensSection, QrCode, UsersSection } from "./people";
-import { JobCard, KbFleet, machineContext, stepState } from "./remediation";
+import { JobCard, KbFleet, machineContext, plainRefusal, stepState } from "./remediation";
 import { AcceptRisk, FindingsPage } from "./findings";
 import { EvidencePage } from "./evidence";
 import { SettingsPage } from "./settings";
@@ -65,7 +68,7 @@ it("trust ladder: choosing only selects; Auto needs a confirmation naming the ma
   expect(within(ladder).getByRole("radio", { name: /Auto/ })).toBeChecked();
   expect(calls.filter((c) => c.method === "PATCH")).toHaveLength(0);  // selecting saves nothing
 
-  const save = within(ladder.parentElement!).getByRole("button", { name: "Save" });
+  const save = within(ladder.parentElement!).getByRole("button", { name: "Save trust level" });
   await userEvent.click(save);
   const dialog = await screen.findByRole("alertdialog", { name: "Let Nimstead fix machines without asking?" });
   expect(dialog).toHaveTextContent("your 3 machines");
@@ -82,7 +85,7 @@ it("trust ladder: Suggest saves without a dialog", async () => {
   wrap(<SettingsPage />);
   const ladder = await screen.findByRole("radiogroup", { name: "Trust ladder" });
   await userEvent.click(within(ladder).getByRole("radio", { name: /Suggest/ }));
-  await userEvent.click(within(ladder.parentElement!).getByRole("button", { name: "Save" }));
+  await userEvent.click(within(ladder.parentElement!).getByRole("button", { name: "Save trust level" }));
   expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   await waitFor(() => expect(calls.find((c) => c.method === "PATCH")?.body).toEqual({ remediation_mode: "suggest" }));
   expect(await within(ladder.parentElement!).findByText("Saved")).toBeInTheDocument();
@@ -136,7 +139,7 @@ it("only fixes no machine has picked up can be cancelled", () => {
   }
 });
 
-it("a job card links its summary and host to that machine's findings, and has an address", () => {
+it("a job card links its summary to that machine's findings, its host to the machine, and has an address", () => {
   serve({});
   const { container } = wrap(<ul><JobCard job={job("planned")} /></ul>);
   const summary = new URL(screen.getByRole("link", { name: "Upgrade openssl" }).getAttribute("href")!, "http://x");
@@ -144,8 +147,8 @@ it("a job card links its summary and host to that machine's findings, and has an
   expect(summary.searchParams.get("asset")).toBe("a1");
   expect(summary.searchParams.get("q")).toBe("openssl");
   const host = new URL(screen.getByRole("link", { name: "web-1" }).getAttribute("href")!, "http://x");
-  expect(host.pathname).toBe("/findings");
-  expect(host.searchParams.get("asset")).toBe("a1");
+  expect(host.pathname).toBe("/assets");  // a name opens that thing's detail (DESIGN.md)
+  expect(host.searchParams.get("machine")).toBe("a1");
   expect(container.querySelector("li#job-j1")).not.toBeNull();
 });
 
@@ -224,11 +227,14 @@ it("Home: a setting fix reads as a setting, says a person approves it, and plans
   wrap(<ol><ActionCard a={{ ...ACTION, ecosystem: "WinConfig", package: "wdigest", fixed_version: null, vulns: ["CFG:wdigest"], summary: "WDigest keeps passwords in memory.", fix: "winconfig", person_only: true }} /></ol>);
   expect(screen.getByText(/Change setting/)).toHaveTextContent("Change setting wdigest");
   expect(screen.getByText("WDigest keeps passwords in memory.")).toBeInTheDocument();
-  expect(screen.getByText(/Fixes 1 finding on 2 hosts/)).toBeInTheDocument();
+  expect(screen.getByText(/Fixes 1 finding on 2 machines/)).toBeInTheDocument();
   expect(screen.getByText(/A person approves this one/)).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: /Plan fix/ }));
   await waitFor(() => expect(calls.filter((c) => c.method === "POST")).toHaveLength(1));  // both hosts in one request
   expect(calls.find((c) => c.method === "POST")?.body).toEqual({ asset_ids: ["a1", "a2"], ecosystem: "WinConfig", package: "wdigest" });
+  // it stays on the page and says what it planned, with the way to approve it
+  expect(await screen.findByText("Planned: awaiting approval.")).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: /Review and approve/ })).toHaveAttribute("href", "/remediation#job-j2");
 });
 
 it("Home: a winget fix says it can't be undone; a product with no fix path offers no plan", () => {
@@ -241,18 +247,26 @@ it("Home: a winget fix says it can't be undone; a product with no fix path offer
   expect(screen.getByText(/update it with its own updater/)).toBeInTheDocument();
 });
 
+it("Home: with production remediation off, a fix says how many of its machines can be fixed from here", async () => {
+  serve({ "GET /api/settings": { production_remediation_allowed: false },
+    "GET /api/assets": [{ id: "a1", hostname: "web-1", sandbox: true }, { id: "a2", hostname: "web-2", sandbox: false }] });
+  // the test machine already has a fix in flight: it still counts as one this server may change
+  wrap(<ol><ActionCard a={{ ...ACTION, busy_asset_ids: ["a1"], job: { id: "j1", status: "planned" } }} /></ol>);
+  expect(await screen.findByText(/1 of 2 fixable here/)).toBeInTheDocument();
+});
+
 it("Home: a fix in flight on one host still lets you plan the others", () => {
   serve({});
   wrap(<ol><ActionCard a={{ ...ACTION, busy_asset_ids: ["a1"], job: { id: "j1", status: "approved" } }} /></ol>);
   expect(screen.getByRole("link", { name: /View fix/ })).toHaveAttribute("href", "/remediation#job-j1");
-  expect(screen.getByRole("button", { name: /Plan fix for 1 more host/ })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Plan fix on 1 more machine/ })).toBeInTheDocument();
 });
 
 it("Home: after an aborted attempt that needs more packages, it points to the job instead of re-planning blind", () => {
   serve({});
   const aborted = { id: "j9", status: "aborted" as const, error: "No changes made: would also change: musl" };
   const r = wrap(<ol><ActionCard a={{ ...ACTION, last_attempt: aborted }} /></ol>);
-  expect(screen.getByRole("link", { name: /Last attempt aborted: review/ })).toHaveAttribute("href", "/remediation#job-j9");
+  expect(screen.getByRole("link", { name: /^Plan again including / })).toHaveAttribute("href", "/remediation#job-j9");
   expect(screen.queryByRole("button", { name: /Plan fix/ })).not.toBeInTheDocument();
   r.unmount();
   wrap(<ol><ActionCard a={{ ...ACTION, last_attempt: { ...aborted, status: "rolled_back", error: "health check failed" } }} /></ol>);
@@ -270,8 +284,8 @@ it("Windows updates: a count per KB opens to why each machine hasn't got it, and
     "POST /api/remediation/jobs/batch": { jobs: [{ id: "j8" }], errors: [] },
   });
   wrap(<KbFleet />);
-  expect(await screen.findByText("48 of 50 hosts")).toBeInTheDocument();
-  expect(screen.getByText("50 of 50 hosts")).toBeInTheDocument();
+  expect(await screen.findByText("48 of 50 machines")).toBeInTheDocument();
+  expect(screen.getByText("50 of 50 machines")).toBeInTheDocument();
   expect(screen.getAllByText(/machines? without it/)).toHaveLength(1);  // a fully patched update has nothing to open
   expect(calls.some((c) => c.path.endsWith("/5127648"))).toBe(false);  // the hosts load when asked for
   await userEvent.click(screen.getByText(/Show 2 machines without it/));
@@ -327,33 +341,39 @@ it("the palette keeps the highlighted command when late results arrive, and find
   let release: ((v: Response) => void) | null = null;
   vi.stubGlobal("fetch", vi.fn(async (url: string) => String(url).startsWith("/api/assets")
     ? new Response(JSON.stringify([{ ...HOST, hostname: "go-web-1" }]), { status: 200 })
+    : String(url).includes("by=package") ? new Response(JSON.stringify([{ key: "go", package: "go", ecosystem: "Go", packages: 1, vulns: 2, hosts: 3, findings: 6 },
+        { key: "go", package: "go", ecosystem: "Debian:13", packages: 1, vulns: 1, hosts: 1, findings: 1 }]), { status: 200 })  // one package, two distributions
     : new Promise<Response>((r) => { release = r; })));
   wrap(<Palette open onOpenChange={() => {}} signOut={() => {}} nextTheme={() => {}} />);
   const box = screen.getByRole("combobox");
   await userEvent.type(box, "go");
-  await screen.findByRole("option", { name: /Host: go-web-1/ });
+  await screen.findByRole("option", { name: /Machine: go-web-1/ });
   await userEvent.keyboard("{ArrowDown}{ArrowDown}");
   const chosen = box.getAttribute("aria-activedescendant");
   expect(chosen).toBeTruthy();
   await waitFor(() => expect(release).not.toBeNull());  // the debounced findings search has been sent
-  await act(async () => { release!(new Response(JSON.stringify([{ id: "f1", vuln_id: "CVE-1", package: "go", hostname: "h" }]), { status: 200 })); });
-  await screen.findByRole("option", { name: /CVE-1/ });
+  await act(async () => { release!(new Response(JSON.stringify([{ key: "CVE-1", vuln_id: "CVE-1", package: "go", packages: 1, hosts: 34, findings: 34 }]), { status: 200 })); });
+  await screen.findByRole("option", { name: /CVE-1.*34 hosts/ });  // the real total, from the grouped count
+  expect(screen.getByRole("option", { name: /Package: go.*2 distributions · 4 hosts/ })).toBeInTheDocument();  // one row, both distributions
+  const ids = within(screen.getByRole("listbox")).getAllByRole("option").map((o) => o.id);
+  expect(new Set(ids).size).toBe(ids.length);  // every option has its own id, so the arrow keys can reach each
   expect(box.getAttribute("aria-activedescendant")).toBe(chosen);  // a new row arriving above didn't move the highlight
 });
 
-it("the palette offers machines, never the devices network checks found", async () => {
-  serve({ "GET /api/assets": [{ ...HOST, hostname: "go-web-1" }, { ...HOST, id: "d1", kind: "device", hostname: "192.168.1.64", os_name: "Hikvision" }], "GET /api/findings": [] });
+it("the palette offers a device as a device, never as a machine", async () => {
+  serve({ "GET /api/assets": [{ ...HOST, hostname: "go-web-1" }, { ...HOST, id: "d1", kind: "device", hostname: "192.168.1.64", os_name: "Hikvision", facts: { mac: "bc:ba:c2:11:22:33", vendor: "Hikvision" } }], "GET /api/findings/groups": [] });
   wrap(<Palette open onOpenChange={() => {}} signOut={() => {}} nextTheme={() => {}} />);
   await userEvent.type(screen.getByRole("combobox"), "go");
-  await screen.findByRole("option", { name: /Host: go-web-1/ });
+  await screen.findByRole("option", { name: /Machine: go-web-1/ });
   await userEvent.clear(screen.getByRole("combobox"));
   await userEvent.type(screen.getByRole("combobox"), "192.168");
   await screen.findByRole("option", { name: /Search findings/ });
-  expect(screen.queryByRole("option", { name: /Host: 192\.168\.1\.64/ })).toBeNull();
+  expect(screen.queryByRole("option", { name: /Machine: 192\.168\.1\.64/ })).toBeNull();
+  expect(screen.getByRole("option", { name: /Device: 192\.168\.1\.64/ })).toBeInTheDocument();
 });
 
 it("the palette never dead-ends: any text offers a findings search, and the list is a valid listbox", async () => {
-  serve({ "GET /api/assets": [], "GET /api/findings": [] });
+  serve({ "GET /api/assets": [], "GET /api/findings/groups": [] });
   wrap(<Palette open onOpenChange={() => {}} signOut={() => {}} nextTheme={() => {}} />);
   await userEvent.type(screen.getByRole("combobox"), "zzzzzz");
   expect(await screen.findByRole("option", { name: 'Search findings for "zzzzzz"' })).toBeInTheDocument();
@@ -482,11 +502,18 @@ it("a step that fell back is shown as recovered, not as a plain pass", () => {
 
 it("a plan awaiting approval lists the packages it changes, and self-approval is flagged", () => {
   serve({});
-  const r = wrap(<ul><JobCard job={{ ...job("planned"), summary: "Upgrade acl to fix 1 vulnerability on web-1 (fixed in 2.4.0-1)", packages: [{ name: "acl", from: "2.3.1-4" }] }} onApprove={() => {}} /></ul>);
+  const r = wrap(<ul><JobCard job={{ ...job("planned"), summary: "Upgrade acl to 2.4.0-1 on web-1", packages: [{ name: "acl", from: "2.3.1-4" }], finding_ids: ["f1"] }} onApprove={() => {}} /></ul>);
   expect(screen.getByRole("list", { name: "Packages this fix changes" })).toHaveTextContent(/acl 2.3.1-4 → 2.4.0-1 or the repository's newer/);
   r.unmount();
-  wrap(<ul><JobCard job={{ ...job("succeeded"), approved_by: "a@b.c" }} /></ul>);
-  expect(screen.getByText("Self-approved")).toBeInTheDocument();
+});
+
+it("self-approval is said once per Remediation section, with who planned and approved still on each card", async () => {
+  const mine = { ...job("succeeded"), created_by: "a@b.c", approved_by: "a@b.c" };
+  serve({ "GET /api/remediation/jobs": [mine, { ...mine, id: "j2", approved_by: "x@y.z" }], "GET /api/assets": [], "GET /api/settings": {}, "GET /api/me": { email: "a@b.c" },
+    "GET /api/windows-updates": [] });
+  wrap(<RemediationPage />);
+  expect(await screen.findByText(/1 of 2 self-approved: approved by the person who planned it/)).toBeInTheDocument();
+  expect(screen.queryByText("Self-approved")).toBeNull();  // no label on each card
 });
 
 it("the machine list searches, filters and sorts the fleet", () => {
@@ -536,11 +563,22 @@ it("devices with no agent: hidden while there are none, then counted, named and 
   render(<QueryClientProvider client={new QueryClient()}><UnmanagedDevices /></QueryClientProvider>);
   expect(await screen.findByRole("heading", { name: "2 devices on your networks have no agent" })).toBeInTheDocument();
   expect(screen.getByText(/1 checked for exposed services/)).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "1 issue" }).getAttribute("href")).toMatch(/^\/findings\?.*asset=d1/);
-  expect(screen.getByText(/nothing was sent to them to find them/)).toBeInTheDocument();
-  expect(screen.getByText(/1 named by their network card's maker/)).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: /^1 finding ?on 192.168.1.64$/ }).getAttribute("href")).toMatch(/^\/findings\?.*asset=d1/);
+  // issues first, then the rest; a device opens its own drawer with what the check found
+  expect(screen.getAllByRole("row").slice(1).map((r) => r.textContent)).toEqual([expect.stringMatching(/^192\.168\.1\.64/), expect.stringMatching(/^192\.168\.1\.70/)]);
+  fireEvent.click(screen.getByRole("button", { name: "192.168.1.64: device details" }));
+  const drawer = await screen.findByRole("dialog");
+  expect(drawer).toHaveTextContent("NIM-EXPOSED-TELNET");
+  expect(drawer).toHaveTextContent("Checked by web-1");
+  fireEvent.click(screen.getByRole("button", { name: "Close" }));
+  expect(screen.getByText(/Nothing is sent to a device to find it/)).toBeInTheDocument();  // behind "How this is judged"
+  expect(screen.getByText(/1 is named by their network card's maker/)).toBeInTheDocument();
   expect(screen.getByText(/Hangzhou Hikvision/)).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Download as CSV" })).toHaveAttribute("href", "/api/network/unmanaged?format=csv");
+  // search covers the machines that saw a device: only the second was seen by db-1
+  fireEvent.change(screen.getByRole("searchbox", { name: "Search devices" }), { target: { value: "db-1" } });
+  await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(2));
+  expect(screen.getByRole("row", { name: /192\.168\.1\.70/ })).toBeInTheDocument();
   vi.unstubAllGlobals();
 });
 
@@ -548,8 +586,9 @@ it("devices with no agent: a device checked with nothing found says who checked 
   serve({ "GET /api/network/unmanaged": [{ mac: "bc:ba:c2:11:22:33", vendor: "", addresses: ["192.168.1.64"], seen_by: ["web-1"], first_seen: "2026-11-01T00:00:00",
     last_seen: "2026-11-11T00:00:00", checked: { asset_id: "d1", at: "2026-11-11T00:00:00", from: "db-1", open: [] } }] });
   wrap(<UnmanagedDevices />);
-  expect(await screen.findByText(/checked by db-1, nothing found/)).toBeInTheDocument();
-  expect(screen.getByText(/unknown maker/)).toBeInTheDocument();
+  expect(await screen.findByText("Nothing found")).toBeInTheDocument();
+  expect(screen.getByText("db-1")).toBeInTheDocument();
+  expect(screen.getByText(/Unknown maker/)).toBeInTheDocument();
   expect(screen.queryByRole("link", { name: /issue/ })).toBeNull();
 });
 
@@ -565,4 +604,154 @@ it("devices with no agent: a list that couldn't be read says so, never reads as 
   render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><UnmanagedDevices /></QueryClientProvider>);
   expect(await screen.findByRole("alert")).toHaveTextContent(/devices with no agent.*too often this hour/);
   vi.unstubAllGlobals();
+});
+
+it("rollouts: one package across machines shows canary and broad progress, and holds the rest when a canary fails", () => {
+  const job = (id: string, asset_id: string, status: Job["status"]) => ({ id, asset_id, status, action_key: "Debian:12|openssl", hostname: asset_id } as Job);
+  const assets = [{ id: "c1", ring: 0 }, { id: "b1", ring: 1 }, { id: "b2", ring: 1 }] as Asset[];
+  const r = render(<ul><RolloutCard jobs={[job("1", "c1", "succeeded"), job("2", "b1", "verifying"), job("3", "b2", "planned")]} assets={assets} /></ul>);
+  expect(screen.getByRole("listitem", { name: "openssl rollout" })).toHaveTextContent(/Canary 1 of 1 fixed.*Broad 0 of 2 fixed · 1 approved or running · 1 awaiting approval.*Canary fixed: approve the broad machines/);
+  r.unmount();
+  render(<ul><RolloutCard jobs={[job("1", "c1", "rolled_back"), job("2", "b1", "planned")]} assets={assets} /></ul>);
+  expect(screen.getByRole("listitem", { name: "openssl rollout" })).toHaveTextContent(/didn't work.*A canary didn't work: review it before the rest go/);
+});
+
+it("rollouts: each rollout shows once, in the section of its most urgent machine; a fix on one machine is a plain job", () => {
+  const job = (id: string, asset_id: string, status: Job["status"], pkg = "openssl") => ({ id, asset_id, status, action_key: `Debian:12|${pkg}` } as Job);
+  const s = sections([job("1", "c1", "succeeded"), job("2", "b1", "planned"), job("3", "b2", "rolled_back"), job("4", "a1", "planned", "curl"), job("5", "a2", "cancelled", "zlib")]);
+  expect(s.map((g) => [g.key, g.rollouts.map((r) => r.map((j) => j.id)), g.singles.map((j) => j.id)])).toEqual([
+    ["attention", [["1", "2", "3"]], []], ["approval", [], ["4"]], ["done", [], ["5"]]]);
+  expect(s[0]!.jobs.map((j) => j.id)).toEqual(["3"]);  // the section counts its own status only, not the rollout's fixed or waiting machines
+});
+
+it("rollouts: each ring's waiting machines are approved in one review; held machines are left out and say why", async () => {
+  const job = (id: string, asset_id: string, status: Job["status"]) => ({ id, asset_id, status, action_key: "Debian:12|openssl", hostname: asset_id, summary: "s", packages: [], created_by: "x" } as unknown as Job);
+  const assets = [{ id: "c1", ring: 0 }, { id: "b1", ring: 1 }, { id: "b2", ring: 1 }, { id: "b3", ring: 1 }] as Asset[];
+  const onApprove = vi.fn();
+  render(<ul><RolloutCard jobs={[job("1", "c1", "succeeded"), job("2", "b1", "planned"), job("3", "b2", "planned"), job("4", "b3", "planned")]} assets={assets}
+    hold={(j) => j.asset_id === "b3" ? "production remediation is off" : null} onApprove={onApprove} /></ul>);
+  expect(screen.getByText("1 waiting machine left out: production remediation is off")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: /Approve broad \(2\)/ }));
+  expect(onApprove.mock.calls[0]![0].map((j: Job) => j.id)).toEqual(["2", "3"]);
+  expect(screen.queryByRole("button", { name: /Approve canary/ })).toBeNull();  // the canary is already fixed
+});
+
+it("rollouts: the broad ring's approval waits until the canary machines are fixed (test first, then production)", () => {
+  const job = (id: string, asset_id: string, status: Job["status"]) => ({ id, asset_id, status, action_key: "Debian:12|openssl", hostname: asset_id } as unknown as Job);
+  const assets = [{ id: "c1", ring: 0 }, { id: "b1", ring: 1 }] as Asset[];
+  for (const canary of ["rolled_back", "verifying", "planned"] as const) {
+    const r = render(<ul><RolloutCard jobs={[job("1", "c1", canary), job("2", "b1", "planned")]} assets={assets} onApprove={() => {}} /></ul>);
+    expect(screen.getByRole("button", { name: /Approve broad \(1\)/ })).toBeDisabled();
+    r.unmount();
+  }
+  render(<ul><RolloutCard jobs={[job("1", "c1", "succeeded"), job("2", "b1", "planned")]} assets={assets} onApprove={() => {}} /></ul>);
+  expect(screen.getByRole("button", { name: /Approve broad \(1\)/ })).toBeEnabled();
+});
+
+it("approve: a production machine while production remediation is off can't be approved, and says why", () => {
+  render(<ApproveDialog job={{ summary: "Upgrade curl", hostname: "api-dev-04" }} production onOpenChange={() => {}} onConfirm={() => {}} />);
+  expect(screen.getByText(/api-dev-04 is a production machine/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Approve and run" })).toBeDisabled();
+});
+
+it("approve: a broad machine ahead of its canary may be approved by a person, and the dialog says so", () => {
+  render(<ApproveDialog job={{ summary: "Upgrade curl", hostname: "web-9" }} ahead onOpenChange={() => {}} onConfirm={() => {}} />);
+  expect(screen.getByText(/hasn't succeeded on a canary machine yet/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Approve and run" })).toBeEnabled();
+});
+
+it("? opens help: the words used here, how priority and rollouts work, and every keyboard shortcut", () => {
+  render(<HelpPanel open onOpenChange={() => {}} />);
+  expect(screen.getByRole("dialog", { name: "Help" })).toHaveTextContent(/Words used here.*Rollout.*canary.*How priority works.*Ctrl K.*Jump to.*j k.*Esc/);
+});
+
+it("the ledger folds a run of one kind into one row, and never folds a failure", () => {
+  const e = (seq: number, kind: string) => ({ seq, kind, ts: "2026-11-13T10:00:00", subject: "x", data: {}, hash: "h", prev_hash: "p" });
+  const runs = foldRuns([e(9, "password_login"), e(8, "password_login"), e(7, "sso_login"), e(6, "remediation_approved"), e(5, "password_login")] as never);
+  expect(runs.map((r) => r.length)).toEqual([3, 1, 1]);
+  const more = foldRuns([e(4, "remediation_approved"), e(3, "remediation_approved"), e(2, "remediation_failed"), e(1, "remediation_failed")] as never);
+  expect(more.map((r) => r.length)).toEqual([2, 1, 1]);  // same kind folds; a failure never hides in a fold
+  const bg = foldRuns([e(3, "break_glass_login"), e(2, "password_login"), e(1, "sso_login")] as never);
+  expect(bg.map((r) => r.length)).toEqual([1, 2]);  // nothing joins a failure's run either
+});
+
+it("remediation: jobs for one package stay together, in the order they arrived", () => {
+  const j = (id: string, k: string) => ({ id, action_key: k } as Job);
+  expect(byPackage([j("1", "a"), j("2", "b"), j("3", "a")]).map((g) => g.map((x) => x.id))).toEqual([["1", "3"], ["2"]]);
+});
+
+it("the palette's commands sit under headings", () => {
+  expect(["home", "fixnow", "out", "view-x", "machine-1", "host-1", "device-m", "pkg-p", "vuln-CVE-1", "search"].map(cmdGroup))
+    .toEqual(["Go to", "Shortcuts", "Account and help", "Saved views", "Machines", "Machines", "Devices", "Packages", "Vulnerabilities", "Search"]);
+});
+
+it("planning a fix on more than two machines lists them all first", async () => {
+  const calls = serve({ "POST /api/remediation/jobs/batch": { jobs: [{ id: "j3" }], errors: [] } });
+  wrap(<PlanFixButton ecosystem="deb" pkg="curl" assetIds={["a", "b", "c"]} names={["web-1", "web-2", "web-3"]} label="Plan fix on 3 test machines" />);
+  await userEvent.click(screen.getByRole("button", { name: /Plan fix on 3 test machines/ }));
+  expect(calls.some((c) => c.method === "POST")).toBe(false);  // nothing yet
+  expect(screen.getByRole("alertdialog")).toHaveTextContent(/web-1, web-2, web-3/);
+  await userEvent.click(screen.getByRole("button", { name: "Plan on 3 machines" }));
+  await waitFor(() => expect(calls.filter((c) => c.method === "POST")).toHaveLength(1));
+});
+
+it("Fix first names the top fixes it can't plan, with their priority", async () => {
+  serve({ "GET /api/summary": { assets: 2, open_by_priority: { "fix-now": 1 }, attention: [], hosts_not_reporting: 0, agents_need_attention: 0,
+    top_actions: [{ ...ACTION, ecosystem: "Maven", package: "org.apache.logging.log4j:log4j-core", plannable: false, kev: true, max_score: 100 }] },
+    "GET /api/settings": { production_remediation_allowed: true }, "GET /api/assets": [], "GET /api/coverage": { assessed: 0, inventory_only: 0, not_assessed: [] } });
+  wrap(<Home />);
+  expect(await screen.findByRole("link", { name: "log4j-core" })).toHaveAttribute("href", expect.stringMatching(/q=org\.apache\.logging\.log4j/));
+  expect(screen.getAllByText("Fix now").length).toBeGreaterThan(0);  // its priority as a pill, with KEV beside it
+});
+
+it("agent updates: an agent with no version reported is named, never an empty label", () => {
+  const a = (id: string, v: string | null) => ({ id, hostname: id, kind: "host", agent_update: "reinstall", agent_version: v } as unknown as Asset);
+  render(<AgentUpdateSummary assets={[a("h1", "0.6.9"), a("h2", ""), a("h3", null)]} />);
+  expect(screen.getByRole("listitem")).toHaveTextContent("3 machines: Agent versions 0.6.9 (1 machine) and unknown (2 machines) predate self-update.");
+});
+
+it("approve: a ring review lists every package any chosen machine changes, and on how many", () => {
+  const j = (pk: string[]) => ({ summary: "Upgrade curl to 8.5 on h", packages: pk.map((name) => ({ name, from: "8.4", to: "8.5" })) });
+  render(<PackageList job={j(["libcurl4t64"])} jobs={[j(["libcurl4t64"]), j(["libcurl4t64", "curl"])]} />);
+  expect(screen.getByRole("list", { name: "Packages this fix changes" })).toHaveTextContent(/libcurl4t64 8\.4 → 8\.5curl 8\.4 → 8\.5on 1 of 2 machines/);
+});
+
+it("a rolled-back job says in plain words which service didn't come back, with the machine's own text kept", () => {
+  expect(plainRefusal("Change failed and was rolled back: billing-api.service active after change failed: service is activating, restarted 11 times since the change"))
+    .toBe("billing-api didn't start properly after the upgrade (restarted 11 times), so the change was rolled back.");
+  expect(plainRefusal("nginx.service active after change failed: inactive")).toBe("nginx didn't start properly after the upgrade, so the change was rolled back.");
+});
+
+it("rollouts: a canary that failed and was then fixed counts as fixed, so the broad ring can be approved", () => {
+  const job = (id: string, asset_id: string, status: Job["status"]) => ({ id, asset_id, status, action_key: "Debian:12|openssl", hostname: asset_id } as unknown as Job);
+  const assets = [{ id: "c1", ring: 0 }, { id: "b1", ring: 1 }] as Asset[];
+  // newest first, as the API lists them: B fixed c1 after A failed there
+  render(<ul><RolloutCard jobs={[job("C", "b1", "planned"), job("B", "c1", "succeeded"), job("A", "c1", "rolled_back")]} assets={assets} onApprove={() => {}} /></ul>);
+  expect(screen.getByRole("listitem", { name: "openssl rollout" })).toHaveTextContent(/Canary 1 of 1 fixed/);
+  expect(screen.getByRole("button", { name: /Approve broad \(1\)/ })).toBeEnabled();
+});
+
+it("rollouts: inside each ring, what broke comes first, then what waits, then what's running, then what's done", async () => {
+  const job = (id: string, asset_id: string, status: Job["status"]) => ({ id, asset_id, status, action_key: "Debian:12|openssl", hostname: asset_id } as unknown as Job);
+  const assets = [{ id: "b1", ring: 1 }, { id: "b2", ring: 1 }, { id: "b3", ring: 1 }, { id: "b4", ring: 1 }] as Asset[];
+  render(<ul><RolloutCard jobs={[job("1", "b1", "succeeded"), job("2", "b2", "dispatched"), job("3", "b3", "planned"), job("4", "b4", "failed")]} assets={assets}
+    card={(j) => <li key={j.id}>machine {j.asset_id}</li>} /></ul>);
+  expect(screen.getAllByText(/^machine /).map((e) => e.textContent)).toEqual(["machine b4", "machine b3", "machine b2", "machine b1"]);
+});
+
+it("approve: a machine whose ring has a failure for this fix says so first, in either dialog", () => {
+  const job = (id: string, asset_id: string, status: Job["status"]) => ({ id, asset_id, status, action_key: "Ubuntu:24.04|curl", hostname: asset_id } as unknown as Job);
+  const byId = new Map([["c1", { ring: 0 }], ["b1", { ring: 1 }], ["b2", { ring: 1 }]].map(([k, v]) => [k, v] as [string, Asset]));
+  // newest first: b1 failed; c1 failed once and was then fixed (not counted); the canary ring's failure isn't the broad ring's
+  const jobs = [job("4", "b2", "planned"), job("3", "b1", "failed"), job("2", "c1", "succeeded"), job("1", "c1", "rolled_back")];
+  expect(ringFailures(jobs, jobs[0]!, byId).map((j) => j.id)).toEqual(["3"]);
+  expect(ringFailures(jobs, jobs[2]!, byId)).toEqual([]);
+  render(<ApproveDialog job={{ summary: "Upgrade curl", hostname: "b2" }} ringFailed={[jobs[1]!]} onOpenChange={() => {}} onConfirm={() => {}} />);
+  expect(screen.getByRole("alertdialog")).toHaveTextContent(/^Approve this fix\?.*This fix didn't work on b1 in this ring/);
+});
+
+it("rollouts: the machine a fix didn't work on is named on the card, not only counted inside the folded list", () => {
+  const job = (id: string, asset_id: string, status: Job["status"]) => ({ id, asset_id, status, action_key: "Ubuntu:24.04|curl", hostname: asset_id } as unknown as Job);
+  render(<ul><RolloutCard jobs={[job("3", "b2", "planned"), job("2", "b1", "failed"), job("1", "c1", "succeeded")]} assets={[{ id: "c1", ring: 0 }, { id: "b1", ring: 1 }, { id: "b2", ring: 1 }] as Asset[]} /></ul>);
+  expect(screen.getByRole("listitem", { name: "curl rollout" })).toHaveTextContent(/Didn't work on b1: review before approving more/);
 });

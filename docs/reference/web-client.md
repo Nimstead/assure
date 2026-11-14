@@ -185,13 +185,15 @@ Mean resolution time displays `n/a` for null, `under a day` below one, otherwise
 
 Fewer than five resolved findings triggers a sample-size note. Current Fix now and silent-host counts come from the summary query. A failed summary query defaults both to zero. The absence of this warning does not prove that the current fleet has no exceptions.
 
-The overdue link selects open, overdue findings and disables Fixable only. Results are current and can differ from the report snapshot.
+The overdue link selects open, overdue findings, with or without a fix. Results are current and can differ from the report snapshot.
 
 ### Ledger and downloads
 
 The ledger displays at most 50 newest matching events across its whole history. Its total is the matching count before that limit. An empty category does not imply an empty organisation ledger.
 
 An empty server `problems` list produces the integrity-status message. Server checks can reuse a verified prefix for up to one hour. A nonempty list displays only its first five problems. The pack endpoint checks integrity before signing and rehashes its exact period entries.
+
+Consecutive entries of one kind fold into one row that opens to every entry (`foldRuns`); every sign-in method counts as one kind. A failure kind (rolled back, failed, aborted, revoked, break-glass and similar) never folds, and nothing joins its run.
 
 Subject text uses selected event strings, deduplicates them, and falls back to the first eight subject characters. Optional cached asset/job labels can add a hostname. Remediation events link to their job anchor. Highlighted failure kinds use a regular-expression heuristic. Neither label nor colour independently proves an outcome.
 
@@ -278,7 +280,7 @@ Desktop navigation exposes the six main pages and Add machine. Mobile tabs norma
 
 Size observers update root header/tab-height CSS variables and disconnect on cleanup. They do not restore earlier variable values. Theme controls cycle System, Light and Dark. Their local state initializes from the document dataset. It does not subscribe to external theme or storage changes.
 
-Help opens the Assure wiki in a new tab. Palette help uses `window.open`, which browsers can block. Logout clears query data and navigates to sign-in even when its request fails. The shell has no logout-failure panel. A failed request can leave the server session valid.
+Help (the sidebar link, `?`, or the palette's help command) opens an in-app panel: the glossary, how priority and rollouts work, and every keyboard shortcut, with a link to the full documentation. The palette's documentation command uses `window.open`, which browsers can block. Logout clears query data and navigates to sign-in even when its request fails. The shell has no logout-failure panel. A failed request can leave the server session valid.
 
 ### Keyboard and focus behavior
 
@@ -291,20 +293,22 @@ Help opens the Assure wiki in a new tab. Palette help uses `window.open`, which 
 | `j` / `k` | Finding drawer moves through loaded finding IDs |
 | `p` | Finding drawer focuses Plan fix without submission |
 | `a` | Finding drawer opens available acceptance controls |
+| `?` | Shell opens Help unless the target is an input or a dialog is open |
+| Esc | Drawer closes and focus returns to the row last shown (after stepping), or to the page heading |
 
 Shell heading focus runs only after pathname changes. It skips initial mount and hash routes. It waits up to 180 animation frames for a changed title and main heading. Open dialogs prevent heading focus. Title announcement can still occur without successful focus. Search-only changes do not trigger this hook.
 
 ### Palette result scope and failures
 
-Opening enables the shared asset query, which can refresh stale data. Finding search waits 150ms after trimmed text changes and requires at least two characters. It requests at most 30 open findings without the UI's default fixable-only restriction.
+Opening enables the shared asset query, which can refresh stale data. Finding search waits 150ms after trimmed text changes and requires at least two characters. It requests the open findings grouped by vulnerability and by package, with or without a fix.
 
-Finding suggestions group returned rows by vulnerability ID/package, across ecosystems. At most eight groups appear. A multiple-result hint counts returned finding rows, not distinct hosts or all matches. Each suggestion opens the first row's drawer with Fixable only disabled.
+Up to three package results (each with its vulnerability and host counts) open Findings grouped by package; up to eight vulnerability results show each vulnerability's real host count and open Findings searched for it. Checked devices match by address or maker and open their drawer on Assets.
 
 Asset suggestions match hostname text case-insensitively. Up to five non-external assets produce findings and context commands. Applications also qualify. These are partial suggestions from the loaded asset list, not an exhaustive server search.
 
 Commands also include pages, theme, help, sign-out and browser saved views. Saved views are read during command recomputation. The palette does not subscribe to saved-view change events. A text change forces recomputation. Its approval-review command opens Remediation without an approval-only filter.
 
-Any nonempty term offers a final findings-search command. That command uses the normal fixable-only default. Results can therefore differ from the unfiltered suggestions. Finding/asset errors have no dedicated error panel. The search command remains available despite failed suggestions.
+Any nonempty term offers a final findings-search command, over every open finding. Finding/asset errors have no dedicated error panel. The search command remains available despite failed suggestions.
 
 An explicit highlight follows command ID while that ID remains present. A missing or unset ID falls back to the first command. Late results can therefore change the default choice. Closing clears text. Callback promises are not awaited or handled by the palette. The parent controls actual dialog closure and callback errors.
 
@@ -320,9 +324,12 @@ Search parsing uses URLSearchParams and keeps the last value for repeated keys. 
 
 | Export | Inputs and behavior |
 | --- | --- |
-| `RemediationPage()` | No props. Reads jobs, user, and assets. Groups jobs and controls approval/cancellation dialogs |
+| `RemediationPage()` | No props. Reads jobs, user, assets and settings. Lays jobs out with `sections()` and controls approval/cancellation dialogs |
+| `sections(jobs)` | Pure. Status sections in the order Needs attention, Needs approval, In progress, Done. A package planned on two or more machines (cancelled jobs aside) is a rollout and sits once, in the first section holding any of its machines. Each section's `jobs` are only those in its own statuses |
+| `RolloutCard({jobs,assets,hold?,onApprove?,card?})` | One rollout: canary and broad tallies from each machine's newest job, where it stands, the machines a fix didn't work on, Approve canary / Approve broad for waiting machines (`hold` names why a machine is left out), and every machine's card grouped by ring, most urgent first. Broad approval stays disabled until every canary machine is fixed |
+| `ringFailures(jobs,job,byId)` | Pure. Machines in `job`'s ring whose newest job for the same action failed. Both approval dialogs show them first, in crimson |
 | `KbFleet()` | No props. Reads cumulative groups. Opening a row enables its KB/product host query |
-| `JobCard({job,onApprove,onCancel})` | Displays typed job data. Optional parent callbacks expose eligible actions through the client admin gate |
+| `JobCard({job,onApprove,onCancel,blocked?,inRollout?})` | Displays typed job data. `blocked` replaces approval and retry with a reason (production remediation off). `inRollout` titles the card by its machine. Optional parent callbacks expose eligible actions through the client admin gate |
 | `ApproveDialog({...})` | Controlled view. A null job closes it. Parent callbacks control open state and submit approval |
 | `PlanFixButton({...})` | Sends one batch-plan request for the supplied action and asset IDs |
 
@@ -345,6 +352,10 @@ The `Sent to host` and `Job succeeded` labels describe stored job state. They do
 | `error` | Optional parent error text |
 | `ownPlan` | Optional self-approval information |
 | `context` | Optional host-context text |
+| `unchecked` | The host has no health checks: an amber caution with a link to set them |
+| `production` | A production machine while production remediation is off: approval is disabled and says why |
+| `ahead` | A broad machine whose fix hasn't succeeded on a canary yet: allowed, and said |
+| `ringFailed`, `onGo` | Machines in the ring where this fix didn't work, each linking to its job; `onGo` closes the dialog |
 
 Forward-only wording covers application installers and servicing-stack changes. The confirmation records acceptance through the parent's request. The component does not independently verify rollback capability or policy eligibility.
 
@@ -354,9 +365,7 @@ Forward-only wording covers application installers and servicing-stack changes. 
 
 `hosts` defaults to `assetIds.length` and affects accessible text only. `label` defaults to `Plan fix`. `className` customizes the wrapper.
 
-Any per-asset errors produce one message with duplicate error text removed. Jobs created for other assets remain created. Success or failure refreshes job-derived queries. Full success navigates to Remediation, with the first job's anchor when present.
-
-Navigation checks whether the current pathname equals its value at click time. Query/hash changes do not affect that test. A user who leaves and returns to the same pathname can still be navigated. The button creates plans without approval or execution.
+Any per-asset errors produce one message with duplicate error text removed. Jobs created for other assets remain created. Success or failure refreshes job-derived queries. Success stays where you are and says what it planned ("Planned on web-1: awaiting approval"), with a link to review and approve it. More than two machines are listed in a confirmation first. The button creates plans without approval or execution.
 
 ## Display helpers
 
@@ -418,8 +427,9 @@ This helper does not replace cached data itself. It does not invalidate unrelate
 | URL key | Default and interpretation |
 | --- | --- |
 | `q`, `asset`, `f` | Empty text. `f` becomes the open drawer ID |
+| `eco` | Empty (every distribution). One distribution or ecosystem, such as `Debian:13`, sent to the API as `ecosystem` |
 | `priority` | Empty list. Comma-separated recognized priority names |
-| `fixable` | True unless exact `0` |
+| `fixable` | True only for exact `1` ("Has a fix"); an older link's `0` means every finding |
 | `kev`, `overdue` | True only for exact `1` |
 | `status` | `open`. Other accepted values are `resolved` and `accepted` |
 | `sort` | `score`. Other values are `package`, `host`, `vuln`, `newest` |

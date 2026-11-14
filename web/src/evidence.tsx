@@ -2,8 +2,9 @@ import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { CircleAlert, CircleCheck, CircleMinus, CircleX, Download, ShieldAlert, ShieldCheck } from "lucide-react";
 import clsx from "clsx";
+import type { ReactNode } from "react";
 import { api, assetsQ, filtersToSearch, jobsQ, humaniseKind, parseFilters, parseUtc, plural, relativeTime, summaryQ, useTitle, type ControlStatus, type EvidenceReport, type LedgerEntry } from "./lib";
-import { btnPrimary, CopyBlock, ErrorState, input, Loading } from "./ui";
+import { btnPrimary, CopyBlock, ErrorState, HowJudged, input, Loading } from "./ui";
 
 const LEDGER_SHOWN = 50;
 /** Below this many fixes in the period, a "Met" timeliness control is said to rest on little evidence. */
@@ -83,43 +84,38 @@ export function EvidencePage() {
 
 function ReportView({ r, days }: { r: EvidenceReport; days: number }) {
   const m = r.metrics;
-  const stats: [string, string][] = [
-    ["Mean time to remediate", mttr(m.mttr_days)],
-    ["Resolved within SLA", `${m.resolved_within_sla} of ${m.resolved}`],
-  ];
   const counts = r.controls.reduce((n, c) => ({ ...n, [c.status]: (n[c.status] ?? 0) + 1 }), {} as Partial<Record<ControlStatus, number>>);
+  const metClean = r.controls.filter((c) => c.status === "met" && !c.exceptions).length;
+  // the control tally and what's late lead; timing rests on the fixes made, so it says how many
+  const basis = m.resolved < SMALL_SAMPLE ? `from ${plural(m.resolved, "resolved finding")}: too few for a trend` : `from ${plural(m.resolved, "resolved finding")}`;
+  const tile = (k: string, v: ReactNode, note?: ReactNode) => (
+    <div key={k} className="border border-line bg-surface px-4 py-3">
+      <dt className="text-sm text-muted">{k}</dt><dd className="num mt-0.5 text-2xl font-semibold">{v}</dd>
+      {note && <dd className="mt-0.5 text-xs text-muted">{note}</dd>}
+    </div>
+  );
   return (
     <>
       <p className="-mt-4 text-sm text-muted">
         {date(r.period.from)} to {date(r.period.to)} · as of <time dateTime={parseUtc(r.period.to).toISOString()}>{parseUtc(r.period.to).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}</time>
       </p>
-      <dl className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-        {stats.map(([k, v]) => (
-          <div key={k} className="border border-line bg-surface px-4 py-3">
-            <dt className="text-sm text-muted">{k}</dt><dd className="num mt-0.5 text-2xl font-semibold">{v}</dd>
-          </div>
-        ))}
+      <dl className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+        {tile("Controls not met", <span className={counts.not_met ? "text-now-fg" : undefined}>{counts.not_met ?? 0} of {r.controls.length}</span>, `${metClean} met cleanly`)}
         {/* the number an auditor asks about leads to the findings behind it */}
-        <div className="border border-line bg-surface px-4 py-3">
-          <dt className="text-sm text-muted">Overdue and still open</dt>
-          <dd className="num mt-0.5 flex items-baseline justify-between gap-2 text-2xl font-semibold">
-            <span className={m.overdue_open > 0 ? "text-now-fg" : undefined}>{m.overdue_open}</span>
-            {m.overdue_open > 0 && (
-              <Link to="/findings" search={filtersToSearch({ ...parseFilters({}), overdue: true, fixable: false })}
-                className="inline-flex tap items-center text-sm font-medium text-accent underline">
-                View {plural(m.overdue_open, "finding")}
-              </Link>
-            )}
-          </dd>
-        </div>
+        {tile("Overdue findings", <span className={m.overdue_open > 0 ? "text-now-fg" : undefined}>{m.overdue_open}</span>, m.overdue_open > 0 && (
+          <Link to="/findings" search={filtersToSearch({ ...parseFilters({}), overdue: true, fixable: false })} className="inline-flex tap items-center font-medium text-accent underline">
+            View {plural(m.overdue_open, "finding")}
+          </Link>))}
+        {tile("Mean time to remediate", mttr(m.mttr_days), m.resolved ? basis : undefined)}
+        {tile("Resolved on time", `${m.resolved_within_sla} of ${m.resolved}`, m.resolved ? basis : undefined)}
       </dl>
 
       <section aria-labelledby="controls">
         <h2 id="controls" className="text-lg font-semibold">Control status</h2>
         <p className="mb-3 mt-1 text-sm text-muted">
-          {r.controls.filter((c) => c.status === "met" && !c.exceptions).length} met · {r.controls.filter((c) => c.status === "met" && c.exceptions).length} met with exceptions · {counts.not_met ?? 0} not met · {counts.no_activity ?? 0} with no activity in this period
+          {metClean} met · {r.controls.filter((c) => c.status === "met" && c.exceptions).length} met with exceptions · {counts.not_met ?? 0} not met · {counts.no_activity ?? 0} with no activity in this period
         </p>
-        <Exceptions resolved={m.resolved} />
+        <Exceptions resolved={m.resolved} overdue={m.overdue_open} ce={m.ce_in_scope_overdue} />
         <ul className="grid gap-2 md:grid-cols-2">
           {r.controls.map((c) => {
             const st = c.status === "met" && c.exceptions ? EXCEPTED : STATUS[c.status] ?? STATUS.not_met;
@@ -140,7 +136,7 @@ function ReportView({ r, days }: { r: EvidenceReport; days: number }) {
 
       <section className="flex flex-col items-start gap-2 border border-line bg-surface p-4">
         <h2 className="text-lg font-semibold">Signed evidence pack</h2>
-        <p className="max-w-prose text-sm text-muted">Auditors verify this pack offline with the verifier and fingerprint below, which you give them separately from the pack. No access to Nimstead needed.</p>
+        <p className="max-w-prose text-sm text-muted">Auditors check this pack offline with the verifier and fingerprint below; no access to Nimstead needed.</p>
         <a className={clsx(btnPrimary, "no-underline")} href={`/api/evidence/pack?days=${days}`} download><Download className="size-4" aria-hidden />Download signed evidence pack (last {days} days)</a>
         <SigningKey />
       </section>
@@ -149,22 +145,26 @@ function ReportView({ r, days }: { r: EvidenceReport; days: number }) {
 }
 
 /** What a "Met" doesn't say: how little it may rest on, and what is wrong right now. */
-function Exceptions({ resolved }: { resolved: number }) {
+function Exceptions({ resolved, overdue, ce }: { resolved: number; overdue: number; ce?: number }) {
   const s = useQuery(summaryQ).data;
   const now = s?.open_by_priority["fix-now"] ?? 0;
   const quiet = s?.hosts_not_reporting ?? 0;
-  if (resolved >= SMALL_SAMPLE && !now && !quiet) return null;
+  if (resolved >= SMALL_SAMPLE && !now && !quiet && !overdue && !ce) return null;
+  // one line says what most affects the result; the reasoning sits behind "How this is judged" (DESIGN.md copy budget)
+  const lead = overdue > 0 ? `${plural(overdue, "open finding is", "open findings are")} past ${overdue === 1 ? "its" : "their"} priority's deadline, so deadline controls aren't met, however quickly resolved findings went.`
+    : resolved < SMALL_SAMPLE ? `These rest on ${plural(resolved, "resolved finding")}: read “Met” as “nothing late so far”.` : "Controls are judged on the period.";
   return (
     <div className="mb-3 flex flex-col gap-1 border border-line-strong bg-surface px-3 py-2 text-sm">
-      {resolved < SMALL_SAMPLE && <p>Timeliness controls here rest on {plural(resolved, "fix", "fixes")} in this period, too few to show a trend. Read “Met” as “nothing late so far”.</p>}
-      {(now > 0 || quiet > 0) && (
-        <p>Right now:{" "}
-          {now > 0 && <Link to="/findings" search={filtersToSearch({ ...parseFilters({}), priority: ["fix-now"], fixable: false })} className="font-medium underline">{plural(now, "Fix now finding")} open</Link>}
-          {now > 0 && quiet > 0 && ", "}
-          {quiet > 0 && <Link to="/assets" className="font-medium underline">{plural(quiet, "machine")} not reporting</Link>}.
-          {" "}Controls are judged on the period, so these may not show above yet.
-        </p>
-      )}
+      <HowJudged className="!text-ink" lead={<>{lead}{(now > 0 || quiet > 0) && <> Right now:{" "}
+        {now > 0 && <Link to="/findings" search={filtersToSearch({ ...parseFilters({}), priority: ["fix-now"], fixable: false })} className="font-medium underline">{plural(now, "Fix now finding")} open</Link>}
+        {now > 0 && quiet > 0 && ", "}
+        {quiet > 0 && <Link to="/assets" search={{ show: "quiet" }} className="font-medium underline">{plural(quiet, "machine")} not reporting</Link>}.</>}</>}>
+        {overdue > 0 && <p>A deadline control isn't met while any open finding is past its deadline, however quickly the findings that were resolved went.</p>}
+        {/* Cyber Essentials' own 14-day count is said once, on its control's card */}
+        {!!ce && ce !== overdue && <p>Cyber Essentials' card counts by its own 14-day rule, whatever the priority, so its number differs.</p>}
+        {resolved < SMALL_SAMPLE && overdue > 0 && <p>Timeliness controls rest on {plural(resolved, "resolved finding")} in this period, too few to show a trend.</p>}
+        <p>Controls are judged on the period, so what's wrong right now may not show in them yet.</p>
+      </HowJudged>
     </div>
   );
 }
@@ -203,8 +203,40 @@ function LedgerView({ problems, entries }: { problems: string[]; entries: Ledger
       )}
       {entries.length === 0 ? <p className="text-sm text-muted">Nothing recorded yet.</p> : (
         <ol className="flex flex-col divide-y divide-line overflow-hidden border border-line bg-surface">
-          {entries.map((e) => (
-            <li key={e.seq} className={clsx("flex flex-wrap items-baseline gap-x-4 gap-y-0.5 px-4 py-2.5 text-sm", FAILED_KIND.test(e.kind) && "bg-now-bg")}>
+          {foldRuns(entries).map((run) => run.length > 2 ? (
+            // a run of one kind (sign-ins, approvals) folds into one row, so decisions and fixes aren't pushed off the page; every entry is still here
+            <li key={run[0]!.seq} className="text-sm">
+              <details>
+                <summary className="flex tap cursor-pointer flex-wrap items-baseline gap-x-4 px-4 py-2.5">
+                  <span className="min-w-0 flex-1 basis-48 font-medium">{runKind(run[0]!) === "login" ? `${run.length} sign-ins` : `${humaniseKind(run[0]!.kind)} (${run.length})`}</span>
+                  <span className="text-muted">{[...new Set(run.map((e) => ledgerSubject(e)).filter(Boolean))].slice(0, 3).join(", ")}</span>
+                  <time className="text-right text-muted" dateTime={parseUtc(run[0]!.ts).toISOString()}>latest {parseUtc(run[0]!.ts).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}</time>
+                </summary>
+                <ol className="divide-y divide-line border-t border-line bg-sunken">{run.map((e) => <Entry key={e.seq} e={e} jobHost={jobHost} />)}</ol>
+              </details>
+            </li>
+          ) : run.map((e) => <Entry key={e.seq} e={e} jobHost={jobHost} />))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+const SIGN_IN = /login/;
+const runKind = (e: LedgerEntry) => (SIGN_IN.test(e.kind) ? "login" : e.kind);
+/** Consecutive entries of one kind as one run (every sign-in method counts as one kind); a failure always stands alone. */
+export function foldRuns(entries: LedgerEntry[]): LedgerEntry[][] {
+  const out: LedgerEntry[][] = [];
+  for (const e of entries) {
+    const last = out.at(-1);
+    if (last && !FAILED_KIND.test(e.kind) && !FAILED_KIND.test(last[0]!.kind) && runKind(e) === runKind(last[0]!)) last.push(e); else out.push([e]);
+  }
+  return out;
+}
+
+function Entry({ e, jobHost }: { e: LedgerEntry; jobHost: Map<string, string> }) {
+  return (
+            <li className={clsx("flex flex-wrap items-baseline gap-x-4 gap-y-0.5 px-4 py-2.5 text-sm", FAILED_KIND.test(e.kind) && "bg-now-bg")}>
               <span className="min-w-0 flex-1 basis-48 font-medium">{e.kind.startsWith("remediation_")
                 ? <Link to="/remediation" hash={`job-${e.subject}`} className="text-ink underline decoration-line-strong hover:decoration-ink">{humaniseKind(e.kind)}</Link>
                 : humaniseKind(e.kind)}</span>
@@ -212,9 +244,5 @@ function LedgerView({ problems, entries }: { problems: string[]; entries: Ledger
               <code className="font-mono text-xs text-muted" title={e.hash}><span className="sr-only">Hash </span>{e.hash.slice(0, 10)}</code>
               <time className="text-right text-muted" dateTime={parseUtc(e.ts).toISOString()} title={relativeTime(e.ts)}>{parseUtc(e.ts).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}</time>
             </li>
-          ))}
-        </ol>
-      )}
-    </div>
   );
 }

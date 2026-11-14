@@ -30,15 +30,16 @@ describe("findings filters <-> URL", () => {
     expect(fixLabel({ fixed_version: null, ecosystem: "Debian:12" })).toBe("no fix yet");
     expect(fixLabel({ fixed_version: "1.2", ecosystem: "Debian:12" })).toBe("1.2");
   });
-  it("defaults to open + fixable only with a clean URL", () => {
+  it("defaults to every open finding with a clean URL", () => {
     const f = parseFilters({});
-    expect(f).toMatchObject({ status: "open", fixable: true, priority: [], q: "" });
+    expect(f).toMatchObject({ status: "open", fixable: false, priority: [], q: "" });
     expect(filtersToSearch(f)).toEqual({ q: undefined, priority: undefined, fixable: undefined, status: undefined, asset: undefined, f: undefined });
   });
   it("round-trips non-default state", () => {
-    const raw = { q: "openssl", priority: "fix-now,next", fixable: "0", status: "resolved", asset: "a1", f: "x9", kev: "1", overdue: "1", sort: "host", group: "vuln" };
+    const raw = { q: "openssl", priority: "fix-now,next", fixable: "1", status: "resolved", asset: "a1", eco: "Debian:13", f: "x9", kev: "1", overdue: "1", sort: "host", group: "vuln" };
     const f = parseFilters(raw);
-    expect(f).toEqual({ q: "openssl", priority: ["fix-now", "next"], fixable: false, kev: true, status: "resolved", asset: "a1", open: "x9", overdue: true, sort: "host", group: "vuln" });
+    expect(f).toEqual({ q: "openssl", priority: ["fix-now", "next"], fixable: true, kev: true, status: "resolved", asset: "a1", ecosystem: "Debian:13", open: "x9", overdue: true, sort: "host", group: "vuln" });
+    expect(new URLSearchParams(filtersToApi(f)).get("ecosystem")).toBe("Debian:13");
     expect(new URLSearchParams(filtersToApi(f)).get("overdue")).toBe("true");
     expect(new URLSearchParams(filtersToApi(f)).get("sort")).toBe("host");
     expect(new URLSearchParams(filtersToApi(f, false)).has("limit")).toBe(false);  // count and groups take the filters only
@@ -46,9 +47,10 @@ describe("findings filters <-> URL", () => {
   });
   it("ignores junk and builds the API query", () => {
     expect(parseFilters({ priority: "bogus,low", status: "nope" })).toMatchObject({ priority: ["low"], status: "open" });
-    const qs = new URLSearchParams(filtersToApi(parseFilters({ q: "ssl", priority: "next", asset: "a1" })));
+    const qs = new URLSearchParams(filtersToApi(parseFilters({ q: "ssl", priority: "next", asset: "a1", fixable: "1" })));
     expect(Object.fromEntries(qs)).toMatchObject({ status: "open", q: "ssl", priority: "next", asset_id: "a1", fixable: "true" });
-    expect(new URLSearchParams(filtersToApi(parseFilters({ fixable: "0" }))).has("fixable")).toBe(false);
+    expect(new URLSearchParams(filtersToApi(parseFilters({ fixable: "0" }))).has("fixable")).toBe(false);  // an old link: every finding
+    expect(new URLSearchParams(filtersToApi(parseFilters({}))).has("fixable")).toBe(false);
   });
 });
 

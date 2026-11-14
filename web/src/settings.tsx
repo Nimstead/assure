@@ -6,7 +6,7 @@ import clsx from "clsx";
 import { adminGate, api, assetsQ, meQ, refresh, parseUtc, PRIORITIES, PRIORITY_LABEL, relativeTime, settingsQ, useHashScroll, useIsAdmin, useTitle, type EnrollToken, type MaintenanceWindow, type Priority, type Settings } from "./lib";
 import { NotificationsSection, SsoSection } from "./integrations";
 import { AccountSection, ApiTokensSection, UsersSection } from "./people";
-import { Alert, btnPrimary, btnQuiet, ConfirmDialog, Done, ErrorState, Field, input, Loading, switchRoot, switchThumb, Tag } from "./ui";
+import { Alert, btnPrimary, btnQuiet, ConfirmDialog, Done, ErrorState, Field, input, Loading, switchRoot, switchThumb, Tag, HowJudged } from "./ui";
 
 const MODES: { value: Settings["remediation_mode"]; title: string; body: string }[] = [
   { value: "suggest", title: "Suggest", body: "Nimstead recommends upgrades. It never changes a machine; you apply fixes yourself." },
@@ -38,22 +38,23 @@ function Group({ id, title, children }: { id: string; title: string; children: R
 /** The section bar: scrolls sideways on phones (with a fade showing there's more) and marks the section in view. */
 function SectionBar() {
   const [current, setCurrent] = useState<string>(GROUPS[0].id);
+  const clicked = useRef(0);  // a click names the section; the observer waits so a short last section stays marked
   useEffect(() => {
     if (typeof IntersectionObserver === "undefined") return;  // old browsers and jsdom: the bar still works, unmarked
     const seen = new Map<string, boolean>();
     const io = new IntersectionObserver((entries) => {
       for (const e of entries) seen.set(e.target.id, e.isIntersecting);
       const first = GROUPS.find((g) => seen.get(g.id));
-      if (first) setCurrent(first.id);
+      if (first && Date.now() - clicked.current > 1000) setCurrent(first.id);
     }, { rootMargin: "-120px 0px -55% 0px" });
     for (const g of GROUPS) { const el = document.getElementById(g.id); if (el) io.observe(el); }
     return () => io.disconnect();
   }, []);
   return (
     <nav aria-label="Settings sections" className="sticky top-[var(--header-h,53px)] z-[5] -mx-4 border-y border-line bg-bg md:top-0 md:mx-0">
-      <div className="flex gap-1 overflow-x-auto px-4 py-1.5 [scrollbar-width:none] md:px-0 [&::-webkit-scrollbar]:hidden">
+      <div className="flex gap-1 overflow-x-auto overflow-y-hidden px-4 py-1.5 [scrollbar-width:none] md:px-0 [&::-webkit-scrollbar]:hidden">
         {GROUPS.map((g) => (
-          <a key={g.id} href={`#${g.id}`} aria-current={current === g.id ? "location" : undefined} onClick={() => setCurrent(g.id)} onFocus={(e) => e.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" })}
+          <a key={g.id} href={`#${g.id}`} aria-current={current === g.id ? "location" : undefined} onClick={() => { clicked.current = Date.now(); setCurrent(g.id); }} onFocus={(e) => e.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" })}
             className="inline-flex min-h-[44px] shrink-0 items-center px-3 text-sm text-muted no-underline hover:bg-sunken hover:text-ink aria-[current]:font-medium aria-[current]:text-ink aria-[current]:shadow-[inset_0_-2px_0_var(--ink)] md:min-h-9">
             {g.title}
           </a>
@@ -64,7 +65,7 @@ function SectionBar() {
   );
 }
 
-const PRODUCTION_HOW = <>To let fixes run on other machines, set <code className="bg-sunken px-1">NIMSTEAD_ALLOW_PRODUCTION_REMEDIATION=1</code> in <code className="bg-sunken px-1">.env</code> on the server and restart it, once you've watched fixes and rollbacks work on test machines.</>;
+const PRODUCTION_HOW = <>To let fixes run on other machines, set <code className="bg-sunken px-1 font-mono">NIMSTEAD_<wbr />ALLOW_<wbr />PRODUCTION_<wbr />REMEDIATION=1</code> in <code className="bg-sunken px-1">.env</code> on the server and restart it, once you've watched fixes and rollbacks work on test machines.</>;
 
 /** Render account, organisation policy, integration, and server settings with role-gated mutations. */
 export function SettingsPage() {
@@ -130,7 +131,7 @@ export function SettingsPage() {
         {!s.production_remediation_allowed && (
           <p className="flex items-start gap-2 border border-line-strong bg-surface p-3 text-sm">
             <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
-            <span className="min-w-0 [overflow-wrap:anywhere]">Production remediation is switched off on this server. Fixes can only run on machines enrolled as <strong className="font-semibold">test machines</strong> (sandbox); other machines are refused with an explanation. {PRODUCTION_HOW}</span>
+            <span className="min-w-0 [overflow-wrap:anywhere]">Production remediation is off: fixes run only on <strong className="font-semibold">test machines</strong>. {PRODUCTION_HOW}</span>
           </p>
         )}
 
@@ -153,7 +154,7 @@ export function SettingsPage() {
               ))}
             </RadioGroup.Root>
             <div className="flex flex-wrap items-center gap-3">
-              <button className={btnPrimary} disabled={save.isPending || !mode || mode === s.remediation_mode} onClick={saveMode}>{save.isPending && mine("remediation_mode") ? "Saving…" : "Save"}</button>
+              <button className={btnPrimary} disabled={save.isPending || !mode || mode === s.remediation_mode} onClick={saveMode}>{save.isPending && mine("remediation_mode") ? "Saving…" : "Save trust level"}</button>
               {savedHere("remediation_mode")}
               {!confirmAuto && errorHere("remediation_mode")}
             </div>
@@ -167,14 +168,14 @@ export function SettingsPage() {
 
         <section aria-labelledby="canary" className="flex flex-col items-start gap-3">
           <h3 id="canary" className="text-lg font-semibold">Canary soak</h3>
-          <p className="max-w-prose text-sm text-muted">
-            Each machine is in a ring. <strong className="font-semibold text-ink">Canary</strong> (ring 0) machines get a change first. <strong className="font-semibold text-ink">Broad</strong> (ring 1) machines only get it after a canary has succeeded and stayed healthy for the soak period below. Set rings and health checks per machine on the Assets page.
-          </p>
+          <HowJudged label="More about this" lead="Broad machines get a change only after a canary machine has run it healthily for this long.">
+            Each machine is in a ring: <strong className="font-semibold text-ink">Canary</strong> (ring 0) gets a change first, <strong className="font-semibold text-ink">Broad</strong> (ring 1) after the soak. Set rings and health checks per machine on the Assets page.
+          </HowJudged>
           {!admin ? <p className="text-sm">Soak time: <strong className="font-semibold">{s.canary_soak_hours} hours.</strong> <span className="text-muted">Only organisation admins can change this.</span></p> : <form className="flex flex-wrap items-start gap-3" onSubmit={(e) => { e.preventDefault(); if (hoursOk) save.mutate({ canary_soak_hours: n }); }}>
             <Field label="Soak time (hours)" hint="Whole hours, 1 to 720." error={hoursOk ? null : "Enter whole hours from 1 to 720."} className="w-40">
               <input className={input} type="number" inputMode="numeric" min={1} max={720} value={hours} onChange={(e) => { save.reset(); setHours(e.target.value); }} />
             </Field>
-            <button className={clsx(btnPrimary, "mt-[26px]")} disabled={!hoursOk || save.isPending || n === s.canary_soak_hours}>{save.isPending && mine("canary_soak_hours") ? "Saving…" : "Save"}</button>
+            <button className={clsx(btnPrimary, "mt-[26px]")} disabled={!hoursOk || save.isPending || n === s.canary_soak_hours}>{save.isPending && mine("canary_soak_hours") ? "Saving…" : "Save soak time"}</button>
             {savedHere("canary_soak_hours")}
             {errorHere("canary_soak_hours")}
           </form>}
@@ -185,7 +186,9 @@ export function SettingsPage() {
 
         <section aria-labelledby="sla" className="flex flex-col items-start gap-3">
           <h3 id="sla" className="text-lg font-semibold">Remediation deadlines</h3>
-          <p className="max-w-prose text-sm text-muted">Days from first detection to fix, by priority (1 to 365). Evidence packs measure your SLA against these and show them to auditors; Cyber Essentials' 14 days is checked separately.</p>
+          <HowJudged lead="Days from first detection to fix, by priority (1 to 365).">
+            <p>Evidence packs measure your SLA against these and show them to auditors. Cyber Essentials' 14 days is checked separately.</p>
+          </HowJudged>
           <form className="flex flex-wrap items-start gap-3" onSubmit={(e) => { e.preventDefault(); if (slaOk) save.mutate({ sla_days: slaDays }); }}>
             {PRIORITIES.map((p) => (
               <Field key={p} label={PRIORITY_LABEL[p]} error={slaBad(p) ? "1 to 365 days" : null} className="w-28">
@@ -193,7 +196,7 @@ export function SettingsPage() {
                   onChange={(e) => { save.reset(); setSla((x) => ({ ...x, [p]: e.target.value })); }} />
               </Field>
             ))}
-            {admin && <button className={clsx(btnPrimary, "mt-[26px]")} disabled={save.isPending || !slaDirty || !slaOk}>{save.isPending && mine("sla_days") ? "Saving…" : "Save"}</button>}
+            {admin && <button className={clsx(btnPrimary, "mt-[26px]")} disabled={save.isPending || !slaDirty || !slaOk}>{save.isPending && mine("sla_days") ? "Saving…" : "Save deadlines"}</button>}
             {savedHere("sla_days")}
             {errorHere("sla_days")}
           </form>
@@ -201,9 +204,10 @@ export function SettingsPage() {
 
         <section aria-labelledby="agent-updates" className="flex flex-col items-start gap-3">
           <h3 id="agent-updates" className="text-lg font-semibold">Agent updates</h3>
-          <p className="max-w-prose text-sm text-muted">
-            Agents replace themselves with newer releases at their next run. A release is accepted only if it's signed by the Nimstead release key built into the agent, so this server can hold an update back but can't change one. Each agent tests the new version on its host before switching and keeps the old one if the test fails.
-          </p>
+          {/* one sentence shows; the rest behind How this is judged (DESIGN.md: copy budget) */}
+          <HowJudged label="More about this" lead="Agents update themselves to newer signed releases at their next run.">
+            A release is accepted only if it's signed by the Nimstead release key built into the agent, so this server can hold an update back but can't change one. Each agent tests the new version on its host before switching and keeps the old one if the test fails.
+          </HowJudged>
           {!s.signed_agent_release && (
             <p className="flex items-start gap-2 border border-line-strong bg-surface p-3 text-sm">
               <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
@@ -267,7 +271,10 @@ function MaintenanceSection({ s, admin, pending, onSave, saved, error }: { s: Se
   return (
     <section aria-labelledby="window" className="flex flex-col items-start gap-3">
       <h3 id="window" className="text-lg font-semibold">Maintenance window</h3>
-      <p className="max-w-prose text-sm text-muted">Approved fixes start only inside this window, and servers restart only inside it; a machine's own window on the Assets page overrides it. Someone signed in to a workstation is told and can put the restart off for up to the deadline below. Nodes of one failover cluster, and one domain's controllers, are always fixed one at a time.</p>
+      <HowJudged label="More about this" lead="Approved fixes start, and servers restart, only inside this window.">
+        <p>A machine's own window on the Assets page overrides it. Someone signed in to a workstation is told and can put the restart off for up to the deadline below.</p>
+        <p>Nodes of one failover cluster, and one domain's controllers, are always fixed one at a time.</p>
+      </HowJudged>
       {!admin ? <p className="text-sm">Fixes run <strong className="font-semibold">{describe(w)}</strong>; restarts can be put off for {s.reboot_deadline_hours} hours. <span className="text-muted">Only organisation admins can change this.</span></p> : (
         <form className="flex flex-col items-start gap-3" onSubmit={(e) => { e.preventDefault(); if (ok && dOk) onSave({ maintenance_window: on ? { days, start, hours: h, tz } : {}, reboot_deadline_hours: d }); }}>
           <label className="flex tap items-center gap-2 text-sm"><input type="checkbox" checked={on} onChange={(e) => setOn(e.target.checked)} /> Only run fixes inside a window</label>
@@ -281,7 +288,7 @@ function MaintenanceSection({ s, admin, pending, onSave, saved, error }: { s: Se
           <Field label="Restart deadline (hours)" hint="How long a signed-in user can put off a restart, 1 to 168." error={dOk ? null : "Enter whole hours from 1 to 168."} className="w-full max-w-56">
             <input className={input} type="number" min={1} max={168} value={deadline} onChange={(e) => setDeadline(e.target.value)} />
           </Field>
-          <button className={btnPrimary} disabled={!ok || !dOk || pending || !dirty}>{pending ? "Saving…" : "Save"}</button>
+          <button className={btnPrimary} disabled={!ok || !dOk || pending || !dirty}>{pending ? "Saving…" : "Save window"}</button>
           {saved}{error}
         </form>)}
     </section>
@@ -334,7 +341,7 @@ function TokensSection() {
               return (
                 <li key={t.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 text-sm">
                   <code className="font-mono text-xs">{t.id}</code>
-                  {t.sandbox && <Tag>Test machines</Tag>}
+                  <Tag>{t.sandbox ? "Test machines" : "Any machine"}</Tag>
                   <span className="min-w-[8rem] flex-1 text-muted">
                     {t.revoked ? "Revoked" : expired ? "Expired " : "Expires "}
                     {!t.revoked && <time dateTime={parseUtc(t.expires).toISOString()} title={parseUtc(t.expires).toLocaleString()}>{relativeTime(t.expires)}</time>}

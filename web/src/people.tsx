@@ -4,7 +4,7 @@ import { useNavigate } from "@tanstack/react-router";
 import clsx from "clsx";
 import { encode } from "uqr";
 import { api, meQ, refresh, relativeTime, type ApiTokenRow, type MfaSetup, type OrgUser } from "./lib";
-import { Alert, btnPrimary, btnQuiet, ConfirmDialog, CopyBlock, Done, ErrorState, Field, input, Loading } from "./ui";
+import { Alert, btnPrimary, btnQuiet, ConfirmDialog, CopyBlock, Done, ErrorState, Field, HowJudged, input, Loading } from "./ui";
 
 const fd = (e: FormEvent<HTMLFormElement>) => { e.preventDefault(); return new FormData(e.currentTarget); };
 
@@ -121,7 +121,9 @@ export function UsersSection() {
   return (
     <section aria-labelledby="people" className="flex flex-col gap-3">
       <h3 id="people" className="text-lg font-semibold">People</h3>
-      <p className="max-w-prose text-sm text-muted">Admins can change policy, approve fixes and manage people; everyone else can look. Removing someone signs them out at once and ends their API tokens. With single sign-on, people join by signing in.</p>
+      <HowJudged label="More about this" lead="Admins can change policy, approve fixes and manage people; everyone else can look.">
+        Removing someone signs them out at once and ends their API tokens. With single sign-on, people join by signing in.
+      </HowJudged>
       {q.isPending ? <Loading className="h-20" /> : q.error ? <ErrorState error={q.error} retry={() => q.refetch()} /> : (
         <ul className="flex flex-col divide-y divide-line overflow-hidden border border-line bg-surface">
           {q.data.map((u) => {
@@ -172,7 +174,9 @@ export function ApiTokensSection() {
   return (
     <section aria-labelledby="api-tokens" className="flex flex-col gap-3">
       <h3 id="api-tokens" className="text-lg font-semibold">API tokens</h3>
-      <p className="max-w-prose text-sm text-muted">Read-only access for scripts and other tools: findings (also as CSV), assets, the summary and evidence. Send it as <code className="bg-sunken px-1">Authorization: Bearer …</code>. A token stops working if its creator stops being an admin.</p>
+      <HowJudged label="More about this" lead="Read-only access for scripts and other tools: findings (also as CSV), assets, the summary and evidence.">
+        Send it as <code className="bg-sunken px-1 font-mono">Authorization: Bearer …</code>. A token stops working if its creator stops being an admin.
+      </HowJudged>
       {q.isPending ? <Loading className="h-16" /> : q.error ? <ErrorState error={q.error} retry={() => q.refetch()} /> : q.data.length > 0 && (
         <ul className="flex flex-col divide-y divide-line overflow-hidden border border-line bg-surface">
           {q.data.map((t) => (

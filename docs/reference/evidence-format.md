@@ -45,7 +45,7 @@ The ZIP does not contain a trusted verifier. Obtain the verifier and expected fi
 | `metrics` | Counts and timing values defined below |
 | `controls` | Framework/control assessment records defined below |
 | `forward_only_changes` | Winget job records updated in the period, excluding planned/cancelled jobs |
-| `assets` | Current organisation asset records, not a historical inventory snapshot. Omitted by `summary=true` |
+| `assets` | Current organisation asset records, not a historical inventory snapshot; devices with no agent are left out. Omitted by `summary=true` |
 | `findings` | Finding review records defined below. Omitted by `summary=true` |
 | `ledger` | Period entries/count and head information, with endpoint-specific differences below |
 | `earlier_keys` | Signed pack only. PEM public keys of older Vault signing-key versions, oldest first; empty without a rotation. Versions below the transit key's `min_decryption_version` are left out, so raising it retires a leaked key |
@@ -58,11 +58,11 @@ A finding resolved before the review period is excluded. Findings without a life
 
 | Field | Type and meaning |
 | --- | --- |
-| `vuln_id`, `package`, `host`, `priority` | Vulnerability, package, host, and priority strings |
+| `vuln_id`, `package`, `host`, `priority` | Vulnerability, package, host, and priority strings. `host` is `device` for a device with no agent, whose address can be personal data |
 | `cvss` | Numeric score or `null` |
 | `kev` | Boolean known-exploitation flag |
 | `status` | Current stored finding status. Use `resolved_at` for resolution within the selected period |
-| `first_seen` | Naive UTC timestamp string from the lifecycle ledger |
+| `first_seen` | Naive UTC timestamp string from the lifecycle ledger: the first `finding_opened`, or the latest `finding_reopened` after a regression (DECISIONS 137) |
 | `resolved_at` | Naive UTC timestamp string, or `null` if not resolved by the period end |
 | `days_open` | Number rounded to one decimal; first detection to resolution or period end |
 | `sla_days` | Deadline in force at first detection, in days |
@@ -86,7 +86,8 @@ All metrics are integer counts except `mttr_days`.
 | `ce_in_scope_overdue` | In-scope open findings older than 14 days |
 | `critical_overdue_30d` | Open findings older than 30 days with KEV membership or CVSS at least 9 |
 | `findings_without_ledger_record` | Candidate findings with no recorded opening event |
-| `assets` | Current organisation asset count |
+| `assets` | Current organisation asset count: machines, applications and external targets, as on the Assets page |
+| `network_devices` | Devices with no agent that a network check has looked at, counted apart from `assets` |
 | `assets_reporting` | Assets whose latest report is within the period or later than its end |
 | `assets_silent_now` | Host assets whose latest report precedes the period end by more than 14 hours |
 | `mttr_days` | Mean days to resolution, rounded to one decimal; `null` when no included findings were resolved |

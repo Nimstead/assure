@@ -157,7 +157,7 @@ def render() -> dict[str, str]:
     for name, fields in (("job", {"id": {"type": "string"}, "status": {"type": "string"}}),
                          ("last_attempt", {"id": {"type": "string"}, "status": {"type": "string"}, "error": {"type": ["string", "null"]}})):
         action_fields[name] = {"type": ["object", "null"], "properties": fields, "required": list(fields), "additionalProperties": False}
-    summary_fields = {name: {"type": "integer", "minimum": 0} for name in ("assets", "hosts_not_reporting", "agents_need_attention")}
+    summary_fields = {name: {"type": "integer", "minimum": 0} for name in ("assets", "hosts_not_reporting", "agents_need_attention", "devices_with_issues")}
     summary_fields |= {"open_by_priority": asset_fields["open_by_priority"],
                        "top_actions": {"type": "array", "maxItems": 10, "items": {"$ref": "#/components/schemas/SummaryAction"}},
                        "attention": {"type": "array", "maxItems": 20, "items": {"$ref": "#/components/schemas/RemediationJob"}}}

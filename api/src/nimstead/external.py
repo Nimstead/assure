@@ -229,9 +229,9 @@ def tls_findings(host: str, t: dict) -> tuple[list[dict], list[str]]:
     found, skipped = [], []
     days = (t["not_after"] - datetime.now(UTC).timestamp()) / 86400 if t["not_after"] else None
     if days is not None and days < 0:
-        found.append(_tls("NIM-TLS-EXPIRED", 7.5, f"The certificate expired {int(-days)} day(s) ago. Renew it."))
+        found.append(_tls("NIM-TLS-EXPIRED", 7.5, f"The certificate expired {_days(-days)} ago. Renew it."))
     elif days is not None and days < EXPIRY_WARN_DAYS:
-        found.append(_tls("NIM-TLS-EXPIRING", 4.0, f"The certificate expires in {int(days)} day(s). Renew it now."))
+        found.append(_tls("NIM-TLS-EXPIRING", 4.0, f"The certificate expires in {_days(days)}. Renew it now."))
     if t["trusted"] is False and not (days is not None and days < 0):
         msg = t["error"] or "untrusted"
         if "mismatch" in msg.lower() or "hostname" in msg.lower():
@@ -261,12 +261,19 @@ INTERNAL_LIKELIHOOD = {"exposed": (0.6, "Answers on your network: any machine th
                        "tls": (0.3, "Seen by every client on your network")}
 
 
+def internal_kind(check_id: str) -> str | None:
+    """open, exposed, web or tls for a check judged on a device inside a network; None for a banner CVE."""
+    if check_id.startswith("CVE-"):
+        return None
+    if check_id.startswith("NIM-EXPOSED-"):
+        return "open" if check_id.removeprefix("NIM-EXPOSED-") in OPEN_BY_DEFAULT else "exposed"
+    return "web" if check_id.startswith("NIM-WEB-") else "tls"
+
+
 def likelihood_of(check_id: str, internal: bool = False) -> tuple[float, str]:
     """Return the configured (likelihood, reason) tuple for the vulnerability ID check_id: as seen from the internet, or
     with internal, on a device inside a network."""
-    if internal and not check_id.startswith("CVE-"):
-        kind = ("open" if check_id.removeprefix("NIM-EXPOSED-") in OPEN_BY_DEFAULT else "exposed") if check_id.startswith("NIM-EXPOSED-") \
-            else "web" if check_id.startswith("NIM-WEB-") else "tls"
+    if internal and (kind := internal_kind(check_id)):
         return INTERNAL_LIKELIHOOD[kind]
     if check_id.startswith("NIM-EXPOSED-"):
         return OPEN_BY_DEFAULT_LIKELIHOOD if check_id.removeprefix("NIM-EXPOSED-") in OPEN_BY_DEFAULT else EXPOSED_LIKELIHOOD
@@ -275,6 +282,10 @@ def likelihood_of(check_id: str, internal: bool = False) -> tuple[float, str]:
     if check_id.startswith("CVE-"):
         return BANNER_LIKELIHOOD
     return TLS_LIKELIHOOD
+
+
+def _days(n: float) -> str:
+    return f"{int(n)} day" if int(n) == 1 else f"{int(n)} days"
 
 
 def _tls(cid, cvss, text):
@@ -382,15 +393,15 @@ def apply(s: Session, asset: Asset, verdicts: list, rep: dict, ecosystem: str = 
     events, seen = [], set()
     for c in found:
         seen.add((c["id"], c["package"]))
-        r = _score(asset, c)
+        r = _score(asset, c, c["id"])
         f = existing.get((c["id"], c["package"]))
         if f is None:
             f = Finding(org_id=asset.org_id, asset_id=asset.id, ecosystem=ecosystem, package=c["package"], vuln_id=c["id"],
                         first_seen=t, advisory_ids=[c["id"]], installed_version=c["installed"], fixed_version=c["fixed"])
             s.add(f)
             events.append(("finding_opened", f))
-        elif f.status == "resolved":
-            f.status, f.resolved_at = "open", None
+        elif f.status == "resolved":  # a new exposure: due from its return, as the pack times it (DECISIONS 137)
+            f.status, f.resolved_at, f.first_seen = "open", None, t
             events.append(("finding_reopened", f))
         f.summary, f.cvss, f.epss, f.kev = c["summary"], c["cvss"], None, False
         f.installed_version, f.fixed_version = c["installed"], c["fixed"]
@@ -414,9 +425,25 @@ def apply(s: Session, asset: Asset, verdicts: list, rep: dict, ecosystem: str = 
     return seen, resolved, still
 
 
-def _score(asset: Asset, c: dict):
-    return risk.score(kev=False, epss=None, cvss=c["cvss"], criticality=asset.criticality, internet_facing=asset.kind == "external",
-                      fix_available=True, likelihood=c["likelihood"][0], likelihood_reason=c["likelihood"][1])
+# A device inside a network ranks by what its exposure lets an attacker do (DECISIONS 133): the lowest score each kind
+# reaches, whatever the device's criticality. Expired certificates and legacy TLS weaken a service but are no way in.
+INTERNAL_FLOOR = {"open": (75, "Gives anything on your network control of it without a password: fix now"),
+                  "exposed": (50, "A cleartext login: anything on your network can read the password as it's typed"),
+                  "web": (50, "Files like this usually hold credentials, readable by anything on your network")}
+
+
+def _score(asset: Asset, c: dict, vuln_id: str = ""):
+    r = risk.score(kev=False, epss=None, cvss=c["cvss"], criticality=asset.criticality, internet_facing=asset.kind == "external",
+                   fix_available=True, likelihood=c["likelihood"][0], likelihood_reason=c["likelihood"][1])
+    if not vuln_id.startswith("CVE-"):  # a check's remedy is a configuration change, never a package update
+        r.reasons = ["Remedy: a configuration change" if x == "Fix available" else x for x in r.reasons]
+    if asset.kind == "device" and (kind := internal_kind(vuln_id)) in INTERNAL_FLOOR:
+        floor, why = INTERNAL_FLOOR[kind]
+        outside = likelihood_of(vuln_id)[0]  # never above the same exposure on the internet
+        cap = risk.score(kev=False, epss=None, cvss=c["cvss"], criticality=asset.criticality, internet_facing=True, likelihood=outside).score - 1
+        if (s := min(floor, cap)) > r.score:
+            r = risk.Risk(s, risk._tier(s), [why, *r.reasons])
+    return r
 
 
 def rescore(s: Session, asset: Asset) -> dict:
@@ -427,7 +454,7 @@ def rescore(s: Session, asset: Asset) -> dict:
     Database and malformed score-input errors propagate without automatic rollback."""
     n = 0
     for f in s.scalars(select(Finding).where(Finding.asset_id == asset.id, Finding.status == "open")):
-        r = _score(asset, {"cvss": f.cvss, "likelihood": likelihood_of(f.vuln_id, asset.kind == "device")})
+        r = _score(asset, {"cvss": f.cvss, "likelihood": likelihood_of(f.vuln_id, asset.kind == "device")}, f.vuln_id)
         f.score, f.priority = r.score, r.priority
         f.reasons = r.reasons + [x for x in f.reasons or [] if x.startswith("Still open: ")]  # the last scan's word on why it's open stays
         n += 1

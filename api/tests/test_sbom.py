@@ -357,3 +357,15 @@ def test_one_feed_failing_cannot_stop_the_hourly_update(env, monkeypatch):
     out = feeds.update_all(s)
     assert "AttributeError" in out["kev"]["error"] and "AttributeError" in out["msrc"]["error"] and out["office"] == {}
     assert out["rescanned"] == 1
+
+
+def test_an_anonymous_sbom_upload_is_refused_before_its_body_is_read(env):
+    # the server is reachable by agents: an unauthenticated caller mustn't make it buffer 10 MiB first
+    c = user(env)
+    agent = enrol(c)
+    anon = TestClient(c.app)  # no session cookie, no key
+    def chunks():  # chunked, so no Content-Length for the size middleware to refuse up front
+        for _ in range(11):
+            yield b" " * (1024 * 1024)
+    r = anon.post(f"/api/assets/{agent['asset_id']}/sbom", content=chunks())
+    assert r.status_code == 401  # not 413: authentication came before reading the body

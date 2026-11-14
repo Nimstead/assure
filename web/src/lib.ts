@@ -39,7 +39,7 @@ export const AGENT_UPDATE: Record<Exclude<AgentUpdate, "current">, { label: stri
   updating: { label: "Agent updating", why: (a) => `Agent ${a.agent_version} will replace itself with this server's signed release at its next run.` },
   failed: { label: "Agent update failed", why: (a) => `${a.agent_update_error ?? "The last self-update failed."} The agent kept running ${a.agent_version} and will try again at its next run.` },
   paused: { label: "Agent update paused", why: () => "Agent updates are paused for your organisation (Settings)." },
-  off: { label: "Agent outdated", why: () => "Automatic updates are switched off on this host. Rerun the install command to update it; the enrolment is kept." },
+  off: { label: "Agent outdated", why: () => "Automatic agent updates are switched off. Rerun the install command to update it; the enrolment is kept." },
   reinstall: { label: "Agent outdated", why: (a) => `${a.agent_version ? `Agent ${a.agent_version}` : "This agent"} can't update itself. Rerun the install command on this host once; the enrolment is kept, and later versions update automatically.` },
 };
 export interface Coverage { assessed: number; inventory_only: number; not_assessed: { name: string; publisher: string | null; hosts: number }[] }
@@ -71,11 +71,11 @@ export interface Action {
   /** Machines with that fix in flight; the rest can still be planned. */
   busy_asset_ids: string[];
   /** The newest failed attempt for this package, so Home doesn't offer the same plan blind. */
-  last_attempt: { id: string; status: JobStatus; error: string | null } | null;
+  last_attempt: { id: string; status: JobStatus; error: string | null; asset_id?: string } | null;
 }
 export interface Summary {
   assets: number; open_by_priority: Partial<Record<Priority, number>>; top_actions: Action[]; attention: Job[];
-  hosts_not_reporting: number; agents_need_attention: number;
+  hosts_not_reporting: number; agents_need_attention: number; devices_with_issues?: number;
 }
 
 // ---- remediation -----------------------------------------------------------------
@@ -88,14 +88,15 @@ export interface Job {
   forward_only?: boolean; waits_for_window?: string | null; // plan T22, T40
 }
 const JOB_GROUPS = [
+  // what broke first, as on Fix first; then what waits on you; then what's running
+  { key: "attention", title: "Needs attention", statuses: ["failed", "rolled_back", "rollback_failed", "not_fixed", "aborted"] },
   { key: "approval", title: "Needs approval", statuses: ["planned"] },
   { key: "progress", title: "In progress", statuses: ["approved", "dispatched", "verifying"] },
-  { key: "attention", title: "Needs attention", statuses: ["failed", "rolled_back", "rollback_failed", "not_fixed", "aborted"] },
   { key: "done", title: "Done", statuses: ["succeeded", "cancelled"] },
 ] as const;
 export const JOB_STATUS_LABEL: Record<JobStatus, string> = {
-  planned: "Awaiting approval", approved: "Approved, waiting for host", dispatched: "Running on host", verifying: "Verifying",
-  succeeded: "Fixed and verified", failed: "Failed", rolled_back: "Rolled back", rollback_failed: "Rollback failed",
+  planned: "Awaiting approval", approved: "Approved, waiting for the machine", dispatched: "Running on the machine", verifying: "Verifying",
+  succeeded: "Fixed and verified", failed: "Didn't work", rolled_back: "Rolled back", rollback_failed: "Rollback failed",
   not_fixed: "Applied, still vulnerable", aborted: "Aborted", cancelled: "Cancelled",
 };
 /** Return the configured job groups with matching jobs, preserving each group's input order. */
@@ -118,7 +119,7 @@ export const jobsQ = queryOptions({ queryKey: ["jobs"], queryFn: () => api<Job[]
 /** Address of a job card on the Remediation page. */
 export const jobAnchor = (id: string) => `job-${id}`;
 
-export const APPROVE_COPY = "Saves a rollback copy of each package, upgrades, checks health, rolls back automatically on failure. Success is confirmed by the next inventory.";
+export const APPROVE_COPY = "Saves a rollback copy of each package, upgrades, runs the machine's health checks if it has any, and rolls back automatically on failure. Success is confirmed by the next inventory.";
 
 /** "remediation_not_fixed" -> "Remediation not fixed". */
 export const humaniseKind = (k: string) => { const t = k.replace(/_/g, " ").trim(); return t.charAt(0).toUpperCase() + t.slice(1); };
@@ -129,7 +130,7 @@ export interface Control { framework: string; control: string; requirement: stri
 export type ControlStatus = "met" | "not_met" | "no_activity";
 export interface EvidenceReport {
   controls: Control[]; period: { from: string; to: string };
-  metrics: { resolved: number; resolved_within_sla: number; overdue_open: number; mttr_days: number | null };
+  metrics: { resolved: number; resolved_within_sla: number; overdue_open: number; mttr_days: number | null; ce_in_scope_overdue?: number };
   ledger: { head_hash: string; entries: number };
 }
 export interface EnrollToken { id: string; created: string; expires: string; revoked: boolean; sandbox: boolean }
@@ -200,8 +201,9 @@ async function errorMessage(res: Response): Promise<string> {
 // "planned" stays the stored value; it reads as "Routine" so it can't be mistaken for a planned fix (DECISIONS 50).
 export const PRIORITY_LABEL: Record<Priority, string> = { "fix-now": "Fix now", next: "Next", planned: "Routine", low: "Low" };
 export const PRIORITY_CLASS: Record<Priority, string> = {
-  "fix-now": "bg-now-bg text-now-fg", next: "bg-next-bg text-next-fg",
-  planned: "bg-planned-bg text-planned-fg", low: "bg-low-bg text-low-fg",  // one fill ramp, Fix now darkest to Low none
+  // one weight ramp, strongest first: Fix now solid red, Next a grey fill, Routine lighter, Low none
+  "fix-now": "bg-now-fg text-accent-ink", next: "bg-next-bg text-next-fg",
+  planned: "bg-planned-bg text-planned-fg", low: "bg-low-bg text-low-fg",
 };
 
 /** Same thresholds as api/src/nimstead/risk.py. */
@@ -262,6 +264,8 @@ export function installCommands(origin: string, token: string) {
 // ---- findings filters <-> URL ----------------------------------------------------
 export interface FindingsFilters {
   q: string; priority: Priority[]; fixable: boolean; kev: boolean; status: Status; asset: string; open: string;
+  /** One distribution or ecosystem ("Debian:13"), as a package's fix is: "" for all. */
+  ecosystem: string;
   /** Open and past its deadline (as evidence packs count it). */
   overdue: boolean;
   sort: FindingSort; group: FindingGroup;
@@ -272,13 +276,14 @@ export type FindingGroup = "" | "vuln" | "package";
 export interface FindingGroupRow { key: string; findings: number; hosts: number; score: number; kev: boolean; priority: Priority; fixed_version: string | null; packages: number; package: string; vuln_id: string; vulns: number; ecosystem: string | null }
 export type RawSearch = Record<string, string | undefined>;
 
-/** Defaults: open findings, fixable only (noise reduction). Unknown values fall back to defaults. */
+/** Defaults: every open finding, by risk; "Has a fix" (fixable=1) narrows to those with something to apply. Unknown
+ * values fall back to defaults. An old link's fixable=0 still means every finding. */
 export function parseFilters(raw: RawSearch): FindingsFilters {
   const status = (["open", "resolved", "accepted"] as const).find((s) => s === raw.status) ?? "open";
   const priority = (raw.priority ?? "").split(",").filter((p): p is Priority => (PRIORITIES as readonly string[]).includes(p));
   const sort = (["score", "package", "host", "vuln", "newest"] as const).find((s) => s === raw.sort) ?? "score";
   const group = (["vuln", "package"] as const).find((g) => g === raw.group) ?? "";
-  return { q: raw.q ?? "", priority, fixable: raw.fixable !== "0", kev: raw.kev === "1", status, asset: raw.asset ?? "", open: raw.f ?? "", overdue: raw.overdue === "1", sort, group };
+  return { q: raw.q ?? "", priority, fixable: raw.fixable === "1", kev: raw.kev === "1", status, asset: raw.asset ?? "", ecosystem: raw.eco ?? "", open: raw.f ?? "", overdue: raw.overdue === "1", sort, group };
 }
 
 /** Inverse of parseFilters: only non-default values reach the URL. */
@@ -286,10 +291,11 @@ export function filtersToSearch(f: FindingsFilters): RawSearch {
   return {
     q: f.q || undefined,
     priority: f.priority.length ? PRIORITIES.filter((p) => f.priority.includes(p)).join(",") : undefined,
-    fixable: f.fixable ? undefined : "0",
+    fixable: f.fixable ? "1" : undefined,
     kev: f.kev ? "1" : undefined,
     status: f.status === "open" ? undefined : f.status,
     asset: f.asset || undefined,
+    eco: f.ecosystem || undefined,
     f: f.open || undefined,
     overdue: f.overdue ? "1" : undefined,
     sort: f.sort === "score" ? undefined : f.sort,
@@ -307,6 +313,7 @@ export function filtersToApi(f: FindingsFilters, list = true): string {
   if (f.q) p.set("q", f.q);
   if (f.priority.length) p.set("priority", f.priority.join(","));
   if (f.asset) p.set("asset_id", f.asset);
+  if (f.ecosystem) p.set("ecosystem", f.ecosystem);
   if (f.fixable) p.set("fixable", "true");
   if (f.kev) p.set("kev", "true");
   if (f.overdue) p.set("overdue", "true");

@@ -3,7 +3,7 @@ import io
 import json
 import re
 import zipfile
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -103,6 +103,12 @@ def test_sla_metrics(env):
     statuses = {(x["framework"], x["control"]): x["status"] for x in pack["controls"]}
     assert statuses[("NIST SP 800-53 Rev. 5", "SI-2")] == "not_met"
     assert statuses[("NIST SP 800-53 Rev. 5", "RA-5")] == "met"
+    # what the status turns on is said first, so "27/27 within SLA" never reads as the reason for Not met
+    si2 = next(x for x in pack["controls"] if x["control"] == "SI-2")["evidence"]
+    assert si2.startswith(f"{m['overdue_open']} open findings past SLA; ")
+    # Cyber Essentials' 14-day count says what it measures, so it isn't read against "Overdue"
+    ce = next(x for x in pack["controls"] if x["framework"] == "UK Cyber Essentials" and x["control"] == "Security update management")["evidence"]
+    assert "a different measure from the priority deadlines" in ce
 
 
 def test_overdue_filter_matches_the_evidence_count(env):
@@ -451,3 +457,34 @@ def test_the_hourly_checkpoint_reads_only_the_newest_one_from_s3(env, monkeypatc
     assert evidence.checkpoint(s, org)["seq"] == s.scalar(select(func.max(LedgerEntry.seq)))  # unchanged head: the newest is returned
     assert s3.gets == 1 and len(s3.objects) == 5
     assert evidence.verify_chain(s, org) == []
+
+
+def test_a_resolved_finding_cannot_be_accepted(env):
+    # accepting a fixed finding would drop a real fix out of the pack's resolved counts and time-to-fix
+    c, _ = setup_flow(env)
+    fid = c.get("/api/findings").json()[0]["id"]
+    s = sessionmaker(make_engine(env))()
+    s.execute(update(Finding).where(Finding.id == fid).values(status="resolved", resolved_at=now()))
+    s.commit()
+    r = c.post(f"/api/findings/{fid}/accept", json={"reason": "Compensating WAF rule in place, ticket SEC-12", "days": 30})
+    assert r.status_code == 409 and "resolved" in r.json()["detail"]
+    assert c.get(f"/api/findings/{fid}").json()["status"] == "resolved"
+
+
+def test_a_reopened_finding_is_timed_from_its_return(env):
+    # resolved months ago, back now: the pack and the due date count from its return, not its first detection
+    c, a = setup_flow(env)  # requests' findings opened, then resolved by the upgrade
+    s = sessionmaker(make_engine(env))()
+    s.execute(update(Finding).where(Finding.status == "resolved").values(first_seen=now() - timedelta(days=200)))
+    s.commit()
+    c.post("/api/agent/inventory", json=INV, headers={"Authorization": f"Bearer {a['agent_key']}"})  # the old version is back
+    entries = c.get("/api/evidence/ledger?limit=200").json()["entries"]
+    back = {e["subject"]: e["ts"] for e in entries if e["kind"] == "finding_reopened"}
+    first = {e["subject"]: e["ts"] for e in entries if e["kind"] == "finding_opened"}
+    fid = next(iter(back))
+    s.expire_all()
+    f = s.get(Finding, fid)
+    assert f.status == "open" and f.first_seen > now() - timedelta(minutes=5)  # due from its return, not 200 days ago
+    pack = evidence.build_pack(s, f.org_id, now() - timedelta(days=30), now() + timedelta(minutes=1))
+    row = next(r for r in pack["findings"] if r["vuln_id"] == f.vuln_id and r["package"] == f.package and r["status"] == "open")
+    assert row["first_seen"] == datetime.fromisoformat(back[fid]).replace(tzinfo=None).isoformat() != datetime.fromisoformat(first[fid]).replace(tzinfo=None).isoformat()

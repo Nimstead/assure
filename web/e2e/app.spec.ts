@@ -96,8 +96,11 @@ test("sign up, enrol a sandbox host, plan and approve a fix, see evidence", asyn
   await expect(drawer.getByRole("heading", { name: "Why it matched" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Explain in plain English" })).toHaveCount(0); // AI is off here
 
-  // Plan fix -> Remediation, landing on the new fix
+  // Plan fix stays in the drawer and says what it planned; its link goes to the new fix
   await drawer.getByRole("button", { name: /Plan fix/ }).click();
+  // once the jobs list refreshes, the drawer shows the fix in progress in place of the button
+  await expect(drawer.getByText("Fix in progress:")).toBeVisible();
+  await drawer.getByRole("link", { name: "View this fix" }).click();
   await expect(page).toHaveURL(/\/remediation#job-/);
   await expect(page.getByRole("heading", { name: "Needs approval" })).toBeVisible();
 
@@ -107,13 +110,13 @@ test("sign up, enrol a sandbox host, plan and approve a fix, see evidence", asyn
   await expect(dlg.getByText("Approve this fix?")).toBeVisible();
   await dlg.getByRole("button", { name: "Approve and run" }).click();
   await expect(page.getByRole("heading", { name: "In progress" })).toBeVisible();
-  await expect(page.getByText("Approved, waiting for host")).toBeVisible();
+  await expect(page.getByText("Approved, waiting for the machine")).toBeVisible();
 
   // Home links to the fix in flight; the other host with openssl can still be planned from there
   await page.getByRole("link", { name: "Fix first", exact: true }).first().click();
   await expect(page.locator("h1")).toBeFocused();  // focus follows navigation to the new page's heading
   const action = page.getByRole("listitem").filter({ hasText: /Upgrade\s+openssl/ });
-  await expect(action.getByRole("button", { name: /Plan fix for 1 more host/ })).toBeVisible();
+  await expect(action.getByRole("button", { name: /Plan fix on 1 more machine/ })).toBeVisible();
   await action.getByRole("link", { name: /View fix/ }).click();
   await expect(page).toHaveURL(/\/remediation#job-/);
   const card = page.locator(`li#${new URL(page.url()).hash.slice(1)}`);
@@ -127,11 +130,11 @@ test("sign up, enrol a sandbox host, plan and approve a fix, see evidence", asyn
   await expect(page.getByRole("dialog").getByRole("button", { name: /Plan fix/ })).toHaveCount(0);
   await page.keyboard.press("Escape");
 
-  // A job's host links to that machine's findings
+  // A job's host opens that machine (DESIGN.md: a name opens its detail)
   await page.getByRole("link", { name: "Remediation", exact: true }).first().click();
   await page.getByRole("link", { name: "sbx-1", exact: true }).click();
-  await expect(page).toHaveURL(/\/findings\?.*asset=/);
-  await expect(page.getByRole("button", { name: /Host: sbx-1/ })).toBeVisible();
+  await expect(page).toHaveURL(/\/assets\?machine=/);
+  await expect(page.getByRole("dialog")).toContainText("sbx-1");
 
   // Cancel a fix no machine has picked up: "Keep it" returns focus to the button; cancelling files it under Done
   await page.goto("/remediation");
@@ -276,7 +279,7 @@ for (const width of [1440, 375] as const) {
       // open dialogs: the Auto confirmation, a ConfirmDialog, the command palette
       await load(page, SETTINGS);
       await page.getByRole("radio", { name: /^Auto/ }).click();
-      await page.locator("section[aria-labelledby=ladder]").getByRole("button", { name: "Save" }).click();
+      await page.locator("section[aria-labelledby=ladder]").getByRole("button", { name: "Save trust level" }).click();
       await expect(page.getByRole("alertdialog", { name: /without asking/ })).toBeVisible();
       await axe(page, `auto confirm @${width} ${scheme}`);
       await page.keyboard.press("Escape");
@@ -321,14 +324,14 @@ test("Windows updates: who has a KB, why the others don't, and planning the rest
   }
   await page.goto("/remediation");
   const row = page.getByRole("listitem").filter({ hasText: "October 2026 cumulative KB5127648" });
-  await expect(row.getByText("1 of 2 hosts")).toBeVisible();
+  await expect(row.getByText("1 of 2 machines")).toBeVisible();
   await row.getByText("Show 1 machine without it").click();
   await expect(row.getByText("win-old")).toBeVisible();
   await expect(row.getByText("No job yet")).toBeVisible();
   await expect(row.getByText(/No canary machine has proven this update/)).toBeVisible();
   await axe(page, "Windows updates open");
   await row.getByRole("button", { name: /Plan the rest \(1\)/ }).click();
-  await expect(page).toHaveURL(/\/remediation#job-/);
+  // Plan fix stays where you are (the row updates to say it is planned)
   await expect(row.getByText("Planned, waiting for approval")).toBeVisible();
   await expect(row.getByRole("button", { name: /Plan the rest/ })).toHaveCount(0);  // it's in flight now
   await context.close();
@@ -356,7 +359,7 @@ test("an external target's last scan report: dropped ports read as not checked, 
         await route.fulfill({ response: real, json: [...(await real.json()), target] });
       });
       await page.route("**/api/assets/ext-e2e/scan-report", (route) => route.fulfill({ json: report }));
-      await page.goto("/assets");
+      await page.goto("/assets?view=internet");  // internet targets have their own view
       await page.getByText("What the last scan checked").click();
       await expect(page.getByRole("row", { name: /3389.*no answer: not checked/ })).toBeVisible();
       await expect(page.getByText(/^reasonable: /)).toBeVisible();
@@ -374,11 +377,10 @@ test("devices with no agent: listed on Assets from agents' neighbour tables, and
     for (const scheme of ["light", "dark"] as const) {
       const { context, page } = await ctx(browser, width, scheme);
       await page.route("**/api/network/unmanaged", (route) => route.fulfill({ json: rows }));
-      await page.goto("/assets");
+      await page.goto("/assets?view=devices");  // devices have their own view, as a table
       const section = page.getByRole("region", { name: "1 device on your networks has no agent" });
-      await section.getByText("Show them").click();
-      await expect(section.getByText(/Hangzhou Hikvision/)).toBeVisible();
-      await expect(section.getByRole("link", { name: "1 issue" })).toBeVisible();
+      await expect(section.getByText(/Hangzhou Hikvision/).first()).toBeVisible();
+      await expect(section.getByRole("link", { name: /^1 finding/ })).toBeVisible();
       await axe(page, `unmanaged devices @${width} ${scheme}`);
       await context.close();
     }

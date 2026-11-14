@@ -83,7 +83,7 @@ export function RemediationPage() {
     <div className="flex flex-col gap-8">
       <header>
         <h1 className="text-3xl font-semibold">Remediation</h1>
-        <p className="mt-1 max-w-prose text-muted">Every fix is planned first, approved by a person (unless you enable auto), and only counted as done once the next inventory proves the vulnerability is gone.</p>
+        <p className="mt-1 max-w-prose text-muted">Fixes are planned, approved, and counted as done once the next inventory proves the vulnerability gone.</p>
       </header>
       {q.data && <Rollouts jobs={q.data} assets={assets.data ?? []} canApprove={approvable} onApprove={admin ? (js) => { many.reset(); setMany(js); } : undefined} />}
       {q.isPending ? <Loading className="h-24" rows={3} label="Loading fixes…" />
@@ -335,7 +335,7 @@ export function Rollouts({ jobs, assets, canApprove, onApprove }: { jobs: Job[];
   return (
     <section aria-labelledby="rollouts">
       <h2 id="rollouts" className="mb-1 text-lg font-semibold">Rollouts</h2>
-      <p className="mb-3 max-w-prose text-sm text-muted">A fix on several machines goes to canary machines first; broad machines follow once a canary has stayed healthy.</p>
+      <p className="mb-3 max-w-prose text-sm text-muted">Canary machines first; the broad ring once the canary is fixed.</p>
       {/* a table from md up; on phones each rollout stacks into a card, every cell labelled */}
       <div className="border border-line bg-surface">
         <table className="block w-full border-collapse text-sm md:table">

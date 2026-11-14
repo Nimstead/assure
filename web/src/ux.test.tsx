@@ -252,7 +252,7 @@ it("Home: with production remediation off, a fix says how many of its machines c
     "GET /api/assets": [{ id: "a1", hostname: "web-1", sandbox: true }, { id: "a2", hostname: "web-2", sandbox: false }] });
   // the test machine already has a fix in flight: it still counts as one this server may change
   wrap(<ol><ActionCard a={{ ...ACTION, busy_asset_ids: ["a1"], job: { id: "j1", status: "planned" } }} /></ol>);
-  expect(await screen.findByText(/1 of 2 can be fixed from here \(test machine\)/)).toBeInTheDocument();
+  expect(await screen.findByText(/1 of 2 fixable here/)).toBeInTheDocument();
 });
 
 it("Home: a fix in flight on one host still lets you plan the others", () => {
@@ -571,8 +571,8 @@ it("devices with no agent: hidden while there are none, then counted, named and 
   expect(drawer).toHaveTextContent("NIM-EXPOSED-TELNET");
   expect(drawer).toHaveTextContent("Checked by web-1");
   fireEvent.click(screen.getByRole("button", { name: "Close" }));
-  expect(screen.getByText(/nothing was sent to them to find them/)).toBeInTheDocument();
-  expect(screen.getByText(/1 named by their network card's maker/)).toBeInTheDocument();
+  expect(screen.getByText(/Nothing is sent to a device to find it/)).toBeInTheDocument();  // behind "How this is judged"
+  expect(screen.getByText(/1 is named by their network card's maker/)).toBeInTheDocument();
   expect(screen.getByText(/Hangzhou Hikvision/)).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Download as CSV" })).toHaveAttribute("href", "/api/network/unmanaged?format=csv");
   // search covers the machines that saw a device: only the second was seen by db-1

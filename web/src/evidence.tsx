@@ -4,7 +4,7 @@ import { CircleAlert, CircleCheck, CircleMinus, CircleX, Download, ShieldAlert, 
 import clsx from "clsx";
 import type { ReactNode } from "react";
 import { api, assetsQ, filtersToSearch, jobsQ, humaniseKind, parseFilters, parseUtc, plural, relativeTime, summaryQ, useTitle, type ControlStatus, type EvidenceReport, type LedgerEntry } from "./lib";
-import { btnPrimary, CopyBlock, ErrorState, input, Loading } from "./ui";
+import { btnPrimary, CopyBlock, ErrorState, HowJudged, input, Loading } from "./ui";
 
 const LEDGER_SHOWN = 50;
 /** Below this many fixes in the period, a "Met" timeliness control is said to rest on little evidence. */
@@ -150,19 +150,20 @@ function Exceptions({ resolved, overdue, ce }: { resolved: number; overdue: numb
   const now = s?.open_by_priority["fix-now"] ?? 0;
   const quiet = s?.hosts_not_reporting ?? 0;
   if (resolved >= SMALL_SAMPLE && !now && !quiet && !overdue && !ce) return null;
+  // one line says what most affects the result; the reasoning sits behind "How this is judged" (DESIGN.md copy budget)
+  const lead = overdue > 0 ? `${plural(overdue, "open finding is", "open findings are")} past its deadline, so deadline controls aren't met.`
+    : resolved < SMALL_SAMPLE ? `These rest on ${plural(resolved, "resolved finding")}: read “Met” as “nothing late so far”.` : "Controls are judged on the period.";
   return (
     <div className="mb-3 flex flex-col gap-1 border border-line-strong bg-surface px-3 py-2 text-sm">
-      {overdue > 0 && <p>A deadline control isn't met while any open finding is past its deadline, however quickly the fixes that were made went in. {plural(overdue, "open finding is", "open findings are")} past it now.</p>}
-      {!!ce && ce !== overdue && <p>Cyber Essentials counts {plural(ce, "high or critical finding")} open over 14 days, whatever its priority; “Overdue” counts findings past their own priority's deadline, which can be longer.</p>}
-      {resolved < SMALL_SAMPLE && <p>Timeliness controls here rest on {plural(resolved, "resolved finding")} in this period, too few to show a trend. Read “Met” as “nothing late so far”.</p>}
-      {(now > 0 || quiet > 0) && (
-        <p>Right now:{" "}
-          {now > 0 && <Link to="/findings" search={filtersToSearch({ ...parseFilters({}), priority: ["fix-now"], fixable: false })} className="font-medium underline">{plural(now, "Fix now finding")} open</Link>}
-          {now > 0 && quiet > 0 && ", "}
-          {quiet > 0 && <Link to="/assets" className="font-medium underline">{plural(quiet, "machine")} not reporting</Link>}.
-          {" "}Controls are judged on the period, so these may not show above yet.
-        </p>
-      )}
+      <HowJudged className="!text-ink" lead={<>{lead}{(now > 0 || quiet > 0) && <> Right now:{" "}
+        {now > 0 && <Link to="/findings" search={filtersToSearch({ ...parseFilters({}), priority: ["fix-now"], fixable: false })} className="font-medium underline">{plural(now, "Fix now finding")} open</Link>}
+        {now > 0 && quiet > 0 && ", "}
+        {quiet > 0 && <Link to="/assets" search={{ show: "quiet" }} className="font-medium underline">{plural(quiet, "machine")} not reporting</Link>}.</>}</>}>
+        {overdue > 0 && <p>A deadline control isn't met while any open finding is past its deadline, however quickly the findings that were resolved went.</p>}
+        {!!ce && ce !== overdue && <p>Cyber Essentials counts {plural(ce, "high or critical finding")} open over 14 days, whatever its priority; “Overdue” counts findings past their own priority's deadline, which can be longer.</p>}
+        {resolved < SMALL_SAMPLE && overdue > 0 && <p>Timeliness controls rest on {plural(resolved, "resolved finding")} in this period, too few to show a trend.</p>}
+        <p>Controls are judged on the period, so what's wrong right now may not show in them yet.</p>
+      </HowJudged>
     </div>
   );
 }

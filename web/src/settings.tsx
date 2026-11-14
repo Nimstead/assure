@@ -6,7 +6,7 @@ import clsx from "clsx";
 import { adminGate, api, assetsQ, meQ, refresh, parseUtc, PRIORITIES, PRIORITY_LABEL, relativeTime, settingsQ, useHashScroll, useIsAdmin, useTitle, type EnrollToken, type MaintenanceWindow, type Priority, type Settings } from "./lib";
 import { NotificationsSection, SsoSection } from "./integrations";
 import { AccountSection, ApiTokensSection, UsersSection } from "./people";
-import { Alert, btnPrimary, btnQuiet, ConfirmDialog, Done, ErrorState, Field, input, Loading, switchRoot, switchThumb, Tag } from "./ui";
+import { Alert, btnPrimary, btnQuiet, ConfirmDialog, Done, ErrorState, Field, input, Loading, switchRoot, switchThumb, Tag, HowJudged } from "./ui";
 
 const MODES: { value: Settings["remediation_mode"]; title: string; body: string }[] = [
   { value: "suggest", title: "Suggest", body: "Nimstead recommends upgrades. It never changes a machine; you apply fixes yourself." },
@@ -185,7 +185,9 @@ export function SettingsPage() {
 
         <section aria-labelledby="sla" className="flex flex-col items-start gap-3">
           <h3 id="sla" className="text-lg font-semibold">Remediation deadlines</h3>
-          <p className="max-w-prose text-sm text-muted">Days from first detection to fix, by priority (1 to 365). Evidence packs measure your SLA against these and show them to auditors; Cyber Essentials' 14 days is checked separately.</p>
+          <HowJudged lead="Days from first detection to fix, by priority (1 to 365).">
+            <p>Evidence packs measure your SLA against these and show them to auditors. Cyber Essentials' 14 days is checked separately.</p>
+          </HowJudged>
           <form className="flex flex-wrap items-start gap-3" onSubmit={(e) => { e.preventDefault(); if (slaOk) save.mutate({ sla_days: slaDays }); }}>
             {PRIORITIES.map((p) => (
               <Field key={p} label={PRIORITY_LABEL[p]} error={slaBad(p) ? "1 to 365 days" : null} className="w-28">
@@ -267,7 +269,10 @@ function MaintenanceSection({ s, admin, pending, onSave, saved, error }: { s: Se
   return (
     <section aria-labelledby="window" className="flex flex-col items-start gap-3">
       <h3 id="window" className="text-lg font-semibold">Maintenance window</h3>
-      <p className="max-w-prose text-sm text-muted">Approved fixes start only inside this window, and servers restart only inside it; a machine's own window on the Assets page overrides it. Someone signed in to a workstation is told and can put the restart off for up to the deadline below. Nodes of one failover cluster, and one domain's controllers, are always fixed one at a time.</p>
+      <HowJudged lead="Approved fixes start, and servers restart, only inside this window.">
+        <p>A machine's own window on the Assets page overrides it. Someone signed in to a workstation is told and can put the restart off for up to the deadline below.</p>
+        <p>Nodes of one failover cluster, and one domain's controllers, are always fixed one at a time.</p>
+      </HowJudged>
       {!admin ? <p className="text-sm">Fixes run <strong className="font-semibold">{describe(w)}</strong>; restarts can be put off for {s.reboot_deadline_hours} hours. <span className="text-muted">Only organisation admins can change this.</span></p> : (
         <form className="flex flex-col items-start gap-3" onSubmit={(e) => { e.preventDefault(); if (ok && dOk) onSave({ maintenance_window: on ? { days, start, hours: h, tz } : {}, reboot_deadline_hours: d }); }}>
           <label className="flex tap items-center gap-2 text-sm"><input type="checkbox" checked={on} onChange={(e) => setOn(e.target.checked)} /> Only run fixes inside a window</label>

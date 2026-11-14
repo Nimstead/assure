@@ -150,22 +150,23 @@ export function ActionCard({ a }: { a: Action }) {
           {" "}<span className="text-sm text-muted">{a.ecosystem}</span>
         </p>
         {a.summary && <p className="mt-1 max-w-prose break-words text-sm text-muted">{a.summary}</p>}
-        <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm text-muted">
+        {/* the same two lines on every card: labels, then what it fixes and where (DESIGN.md copy budget) */}
+        <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm">
           <PriorityPill priority={priorityOf(a.max_score, a.kev)} />
           {a.kev && <KevBadge />}
           {(a.job || failed) && <StatusPill status={(a.job ?? failed)!.status} />}
-          <span>
-            Fixes {a.fixed_version ? plural(a.vulns.length, "vulnerability", "vulnerabilities") : plural(a.vulns.length, "finding")} on {plural(a.hosts.length, "host")}
-            <span className="hidden md:inline">: {(allHosts ? a.hosts : a.hosts.slice(0, 3)).join(", ")}{a.hosts.length > 3 && !allHosts && <>{" "}
-              <button className="cursor-pointer text-ink underline decoration-line-strong hover:decoration-ink" onClick={() => setAllHosts(true)}>and {a.hosts.length - 3} more<span className="sr-only"> hosts for {a.package}</span></button></>}</span>
-          </span>
+          {a.plannable && !prodOk && tests < a.asset_ids.length && (
+            <span className="border border-line-strong px-1.5 text-xs text-muted" title="Production remediation is off: only test machines can be fixed from here">
+              {tests ? `${tests} of ${a.asset_ids.length} fixable here` : "none fixable here"}</span>)}
+        </p>
+        <p className="mt-1 text-sm text-muted">
+          Fixes {a.fixed_version ? plural(a.vulns.length, "vulnerability", "vulnerabilities") : plural(a.vulns.length, "finding")} on {plural(a.hosts.length, "host")}
+          <span className="hidden md:inline">: {(allHosts ? a.hosts : a.hosts.slice(0, 3)).join(", ")}{a.hosts.length > 3 && !allHosts && <>{" "}
+            <button className="cursor-pointer text-ink underline decoration-line-strong hover:decoration-ink" onClick={() => setAllHosts(true)}>and {a.hosts.length - 3} more<span className="sr-only"> hosts for {a.package}</span></button></>}</span>
         </p>
         {a.plannable
           ? (a.person_only || a.forward_only) && <p className="mt-1 text-sm text-muted">{a.person_only && "A person approves this one, never the trust ladder."}{a.forward_only && " It can't be undone."}</p>
           : <p className="mt-1 text-sm text-muted">Nimstead can't plan this one: update it with its own updater or by policy.</p>}
-        {a.plannable && !prodOk && tests < a.asset_ids.length && <p className="mt-1 text-sm text-muted">
-          {/* the reason is said once, above the list: each card only says how many */}
-          {tests ? `${tests} of ${a.asset_ids.length} can be fixed from here (test ${tests === 1 ? "machine" : "machines"})` : `None of the ${a.asset_ids.length} can be fixed from here`}</p>}
       </div>
       <ActionRow
         primary={a.plannable && free.length > 0 && !needsMore ? (

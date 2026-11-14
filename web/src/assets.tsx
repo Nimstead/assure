@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Dialog, Switch } from "radix-ui";
 import { AppWindow, ArrowRight, Plus, Search, SlidersHorizontal, Trash2, Upload, X } from "lucide-react";
 import { adminGate, AGENT_UPDATE, api, refresh, assetsQ, coverageQ, filtersToApi, filtersToSearch, parseFilters, parseUtc, plural, PRIORITIES, PRIORITY_LABEL, relativeTime, sbomSummary, updateSource, useIsAdmin, useTitle, type AgentUpdate, type Asset, type Criticality, type Finding, type Priority, type SbomResult } from "./lib";
-import { Alert, btnPrimary, btnQuiet, chip, ConfirmDialog, CopyBlock, dialogBox, Done, EmptyState, ErrorState, Field, input, Loading, PriorityPill, switchRoot, switchThumb, Tag, useReturnFocus } from "./ui";
+import { Alert, btnPrimary, btnQuiet, chip, ConfirmDialog, CopyBlock, dialogBox, Done, EmptyState, ErrorState, Field, input, Loading, PriorityPill, switchRoot, switchThumb, Tag, useReturnFocus, HowJudged } from "./ui";
 import clsx from "clsx";
 import { ExternalTargets } from "./targets";
 
@@ -183,7 +183,10 @@ export function UnmanagedDevices() {
     <section aria-labelledby="unmanaged-devices" className="flex flex-col gap-3">
       <div className="flex flex-col gap-1">
         <h2 id="unmanaged-devices" className="scroll-mt-6 text-xl font-semibold">{all.length} device{all.length === 1 ? "" : "s"} on your networks {all.length === 1 ? "has" : "have"} no agent</h2>
-        <p className="max-w-[65ch] text-sm text-muted">Seen in the last 30 days in your machines' own network tables; nothing was sent to them to find them.{checkedCount ? ` ${checkedCount} checked for exposed services by a machine opted in to network checks.` : " None is checked unless a machine on that network is enrolled with --allow-network-checks."}{named ? ` ${named} named by their network card's maker.` : ""}</p>
+        <HowJudged className="max-w-[65ch]" lead={<>Seen in your machines' own network tables in the last 30 days{checkedCount ? `; ${checkedCount} checked for exposed services` : ""}.</>}>
+          <p>Nothing is sent to a device to find it: each agent reports its own machine's neighbour table.{checkedCount ? " Exposed services are checked only by a machine enrolled with --allow-network-checks, on its own subnet." : " None is checked unless a machine on that network is enrolled with --allow-network-checks."}</p>
+          {named > 0 && <p>{named === 1 ? "1 is" : `${named} are`} named by their network card's maker, from the IEEE registry.</p>}
+        </HowJudged>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <label className="relative min-w-0 flex-1 basis-64">
@@ -351,7 +354,9 @@ export function Baselines() {
   return (
     <section aria-labelledby="baselines" className="flex flex-col gap-2 border border-line bg-sunken p-4">
       <h2 id="baselines" className="text-base font-semibold">Windows settings compared with published baselines</h2>
-      <p className="max-w-prose text-sm text-muted">A reference, not a conformance result: a pass means the setting read as the baseline expects. Only the checks we can automate are counted, and manual checks are not assessed.{d.no_baseline ? ` ${plural(d.no_baseline, "Windows host")} on other versions ${d.no_baseline === 1 ? "has" : "have"} no baseline here.` : ""}</p>
+      <HowJudged lead="A reference, not a conformance result: a pass means the setting read as the baseline expects.">
+        <p>Only the checks we can automate are counted, and manual checks are not assessed.{d.no_baseline ? ` ${plural(d.no_baseline, "Windows host")} on other versions ${d.no_baseline === 1 ? "has" : "have"} no baseline here.` : ""}</p>
+      </HowJudged>
       {d.baselines.map((b) => (
         <div key={b.baseline_id} className="flex flex-col gap-1">
           <h3 className="text-sm font-semibold">{b.name} {b.version}</h3>
@@ -382,7 +387,10 @@ export function AttackPaths() {
   return (
     <section aria-labelledby="attack-paths" className="flex flex-col gap-2 border border-line bg-sunken p-4">
       <h2 id="attack-paths" className="text-base font-semibold">How these weaknesses combine</h2>
-      <p className="max-w-prose text-sm text-muted">Each step is a vulnerability or a setting read on the host. A path is only as sure as its weakest step, and whether one host can route to another isn't seen, so nothing across hosts is better than reasonable. Each host's part rests on what its own agent reported, so a compromised host could make its own links look worse or better.{unjudged ? ` ${plural(unjudged, "host")} ${unjudged === 1 ? "hasn't" : "haven't"} been judged yet.` : ""}{d.truncated ? " So many hosts link to each other that only the first links are shown: fix the settings named below first." : ""}</p>
+      <HowJudged lead={<>Each step is a vulnerability or a setting read on the host.{d.truncated ? " Only the first links are shown: fix the settings named below first." : ""}</>}>
+        <p>A path is only as sure as its weakest step, and whether one host can route to another isn't seen, so nothing across hosts is better than reasonable.</p>
+        <p>Each host's part rests on what its own agent reported, so a compromised host could make its own links look worse or better.{unjudged ? ` ${plural(unjudged, "host")} ${unjudged === 1 ? "hasn't" : "haven't"} been judged yet.` : ""}</p>
+      </HowJudged>
       {d.chains.map((c) => (
         <div key={c.start} className="flex flex-col gap-1">
           <h3 className="text-sm font-semibold">From {name(c.start)} ({c.why_start}), an attacker can reach {plural(c.reach.length, "other host")}</h3>

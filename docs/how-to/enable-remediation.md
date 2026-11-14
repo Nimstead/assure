@@ -36,6 +36,18 @@ Plans that cannot be undone require explicit acknowledgement. Do not assume ever
 
 To withdraw a plan before dispatch, cancel it on **Remediation**. Cancellation is available only for planned or approved jobs. A dispatched job can already run on the host. Use the host's recovery procedure if execution fails.
 
+## Approve a fix ring by ring
+
+A fix planned on several machines shows as one rollout on **Remediation**, with its canary and broad machines and where it stands, such as "Waiting on the canary machines" or "Canary fixed: approve the broad machines".
+
+1. On **Assets**, set **Ring** to **Canary** for the machines that should go first.
+2. On the rollout, select **Approve canary** to review the canary machines' changes in one dialog. Untick any machine you don't want to approve yet.
+3. After the canary machines are fixed, select **Approve broad** to approve the rest.
+
+If this fix didn't work on a machine in a ring, the approve dialog says so first and links to that machine's job. Each machine is still approved on its own card if you prefer.
+
+In **Auto** mode, a canary vouches for the broad ring only if the versions it installed reach this fix. The broad machines are then pinned to those versions. See [canary limits](../reference/remediation-jobs.md#canary-limits).
+
 ## Inspect a failed execution
 
 1. Inspect the job steps and the host before another attempt.

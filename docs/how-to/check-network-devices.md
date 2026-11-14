@@ -5,8 +5,8 @@ See the devices on your networks that have no agent, such as printers, cameras a
 ## See the devices
 
 1. Update your agents to 0.7.0 or later. Each one then reports its own neighbour table: the addresses and network cards (MACs) its machine already talks to.
-2. Open **Assets**. The **devices on your networks have no agent** section lists every device none of your machines accounts for, newest first, with its addresses, its network card's maker, which machines saw it and when.
-3. Select **Show them** to see the list, or **Download as CSV** to export it.
+2. Open **Assets** and select the **Devices with no agent** view. It lists every device none of your machines accounts for, those with findings first, with its addresses, its network card's maker, which machines saw it and when.
+3. Search by address, maker, MAC or machine, or select **With findings** to see only devices with issues. **Download as CSV** exports the whole list.
 
 Nothing is sent to these devices to find them. A device not seen for 30 days drops off the list. A machine whose MAC changes on each network (most phones and laptops) shows as "randomised MAC".
 
@@ -39,7 +39,9 @@ It never logs in or exploits anything. A web file's contents never leave the net
 
 ## Read the results
 
-A checked device shows **checked by** the machine that checked it, with a link to its issues, or "nothing found". Its findings appear in **Findings** with the reason "Seen on your network". On a network an open SMB or RDP port is normal, so only services that answer without a password or in cleartext become findings.
+Select a device to open its details: each issue with its priority, port and what to do, the machine that checked it, its addresses and every machine that saw it. A device checked with nothing found says so. Its findings appear in **Findings** with the reason "Seen on your network". On a network an open SMB or RDP port is normal, so only services that answer without a password or in cleartext become findings.
+
+A device's finding is ranked by what the exposure lets an attacker do. A service with no password by default (Redis, Elasticsearch, MongoDB, Memcached, the Docker API) is at least **Fix now**. Telnet, FTP, VNC and an exposed `.git/config` or `.env` file are at least **Next**. Expired certificates and legacy TLS keep their usual rank. Fixing these is a configuration change on the device, so Assure can't plan the fix for you.
 
 A finding closes only on evidence, such as the port refusing the connection. A device that stops answering, or a check that couldn't finish, keeps its findings open. A network card that answers at several addresses at once, such as a Wi-Fi extender's, isn't checked, because one device's result must not close another's finding.
 

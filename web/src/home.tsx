@@ -40,10 +40,10 @@ export function Home() {
   const devices = s.devices_with_issues ?? 0;
   // fleet health is one line of links under the title, each to the list that names them (no second box below)
   const look = [
-    overdue > 0 && <Link key="overdue" to="/findings" search={filtersToSearch({ ...parseFilters({}), overdue: true, fixable: false })} className="font-medium text-now-fg underline">{plural(overdue, "finding")} overdue</Link>,
-    s.hosts_not_reporting > 0 && <Link key="quiet" to="/assets" search={{ show: "quiet" }} className="font-medium text-ink underline">{plural(s.hosts_not_reporting, "machine")} stopped reporting</Link>,
-    s.agents_need_attention > 0 && <Link key="agent" to="/assets" search={{ show: "agent" }} className="font-medium text-ink underline">{plural(s.agents_need_attention, "agent")} can't update</Link>,
-    devices > 0 && <Link key="dev" to="/assets" search={{ view: "devices" }} className="font-medium text-ink underline">{plural(devices, "device")} with no agent {devices === 1 ? "has" : "have"} findings</Link>,
+    overdue > 0 && <Link key="overdue" to="/findings" search={filtersToSearch({ ...parseFilters({}), overdue: true, fixable: false })} className="inline-flex tap items-center font-medium text-now-fg underline">{plural(overdue, "finding")} overdue</Link>,
+    s.hosts_not_reporting > 0 && <Link key="quiet" to="/assets" search={{ show: "quiet" }} className="inline-flex tap items-center font-medium text-ink underline">{plural(s.hosts_not_reporting, "machine")} stopped reporting</Link>,
+    s.agents_need_attention > 0 && <Link key="agent" to="/assets" search={{ show: "agent" }} className="inline-flex tap items-center font-medium text-ink underline">{plural(s.agents_need_attention, "agent")} can't update</Link>,
+    devices > 0 && <Link key="dev" to="/assets" search={{ view: "devices" }} className="inline-flex tap items-center font-medium text-ink underline">{plural(devices, "device")} with no agent {devices === 1 ? "has" : "have"} findings</Link>,
   ].filter(Boolean);
   return (
     <div className="flex flex-col gap-8">

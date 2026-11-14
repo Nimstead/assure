@@ -715,7 +715,7 @@ export function AgentUpdateSummary({ assets, onShow }: { assets: Asset[]; onShow
   if (onShow) return (
     <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
       {[...groups].map(([why, g]) => (
-        <Link key={why} to="/assets" search={{ show: "agent" }} onClick={onShow} title={why} className={clsx("font-medium underline", g.failed ? "text-now-fg" : "text-ink")}>
+        <Link key={why} to="/assets" search={{ show: "agent" }} onClick={onShow} title={why} className={clsx("inline-flex tap items-center font-medium underline", g.failed ? "text-now-fg" : "text-ink")}>
           {plural(g.hosts.length, "machine")}: {why.split(/(?<=\.) /)[0]!.replace(/\.$/, "")}
         </Link>
       ))}

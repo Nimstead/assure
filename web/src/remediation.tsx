@@ -19,6 +19,7 @@ const RECOVERED = /not available|rebuilding|rebuilt from|retry \d/i;
 /** Return failed for a false result, recovered for recognised fallback text, or passed otherwise. */
 export const stepState = (s: { step: string; ok: boolean; output?: string }) => (!s.ok ? "failed" : RECOVERED.test(s.step) || RECOVERED.test(s.output ?? "") ? "recovered" : "passed");
 
+/** The packages a fix changes, with versions; for several machines, every package any of them changes and on how many. */
 export function PackageList({ job, jobs }: { job: { packages?: unknown; summary?: string }; jobs?: { packages?: unknown; summary?: string }[] }) {
   // several machines: every package any of them changes, and on how many when not all (DESIGN.md: dialogs list what will change)
   const all = jobs ?? [job];
@@ -360,7 +361,7 @@ export function RolloutCard({ jobs, assets, hold, onApprove, card }: {
       {card && (
         <details open={linked} className="border-t border-line">
           <summary className="flex tap w-fit cursor-pointer items-center gap-2 px-4 py-2 text-sm font-medium">
-            Machines ({live.length}{jobs.length > live.length && `, ${jobs.length - live.length} cancelled`})
+            Machines ({jobs.length > live.length ? `${jobs.length}: ${jobs.length - live.length} cancelled` : jobs.length})
           </summary>
           {/* under their ring, so the tallies above read straight against the list */}
           <div className="flex flex-col gap-2 bg-sunken p-2">

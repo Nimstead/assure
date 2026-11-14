@@ -76,6 +76,7 @@ No database migration; the agent is unchanged.
 - CSV downloads are labelled "Download as CSV" everywhere. A finding description cut off at 200 characters points to the advisory for the full text.
 
 ### Fixed
+- Confirmation dialogs never grow taller than the screen: a long machine list scrolls inside, so Cancel and Approve stay reachable on a phone. The finding drawer's host opens that machine. A rollout's machine list counts cancelled machines in its total ("Machines (4: 1 cancelled)"). Evidence's tile says "Overdue findings". Fix first's and Assets' notice links are 44px touch targets on phones.
 - A rollout counts each machine's newest job, so a canary fixed after a failed attempt counts as fixed and the broad ring can be approved. Approving several machines unticks each one as it's approved, so a retry after a partial failure sends only what's left. Stepping past the last loaded finding no longer jumps ahead later when the next page is empty. A break-glass sign-in is never folded with the sign-ins after it. The Ctrl K help command opens Help.
 - Agent update notices name an agent that reported no version "unknown" instead of showing an empty label ("(2)"), and count machines per version.
 

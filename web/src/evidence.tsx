@@ -102,7 +102,7 @@ function ReportView({ r, days }: { r: EvidenceReport; days: number }) {
       <dl className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
         {tile("Controls not met", <span className={counts.not_met ? "text-now-fg" : undefined}>{counts.not_met ?? 0} of {r.controls.length}</span>, `${metClean} met cleanly`)}
         {/* the number an auditor asks about leads to the findings behind it */}
-        {tile("Open findings past deadline", <span className={m.overdue_open > 0 ? "text-now-fg" : undefined}>{m.overdue_open}</span>, m.overdue_open > 0 && (
+        {tile("Overdue findings", <span className={m.overdue_open > 0 ? "text-now-fg" : undefined}>{m.overdue_open}</span>, m.overdue_open > 0 && (
           <Link to="/findings" search={filtersToSearch({ ...parseFilters({}), overdue: true, fixable: false })} className="inline-flex tap items-center font-medium text-accent underline">
             View {plural(m.overdue_open, "finding")}
           </Link>))}

@@ -136,7 +136,7 @@ function ReportView({ r, days }: { r: EvidenceReport; days: number }) {
 
       <section className="flex flex-col items-start gap-2 border border-line bg-surface p-4">
         <h2 className="text-lg font-semibold">Signed evidence pack</h2>
-        <p className="max-w-prose text-sm text-muted">Auditors verify this pack offline with the verifier and fingerprint below, which you give them separately from the pack. No access to Nimstead needed.</p>
+        <p className="max-w-prose text-sm text-muted">Auditors check this pack offline with the verifier and fingerprint below; no access to Nimstead needed.</p>
         <a className={clsx(btnPrimary, "no-underline")} href={`/api/evidence/pack?days=${days}`} download><Download className="size-4" aria-hidden />Download signed evidence pack (last {days} days)</a>
         <SigningKey />
       </section>
@@ -151,9 +151,7 @@ function Exceptions({ resolved, overdue, ce }: { resolved: number; overdue: numb
   const quiet = s?.hosts_not_reporting ?? 0;
   if (resolved >= SMALL_SAMPLE && !now && !quiet && !overdue && !ce) return null;
   // one line says what most affects the result; the reasoning sits behind "How this is judged" (DESIGN.md copy budget)
-  // two counts of "late" sit side by side on this page: say which rule each is, in the line that shows
-  const ceNote = ce && ce !== overdue ? ` (Cyber Essentials' own 14-day rule counts ${ce.toLocaleString("en")})` : "";
-  const lead = overdue > 0 ? `${plural(overdue, "open finding is", "open findings are")} past ${overdue === 1 ? "its" : "their"} priority's deadline${ceNote}, so deadline controls aren't met, however quickly resolved findings went.`
+  const lead = overdue > 0 ? `${plural(overdue, "open finding is", "open findings are")} past ${overdue === 1 ? "its" : "their"} priority's deadline, so deadline controls aren't met, however quickly resolved findings went.`
     : resolved < SMALL_SAMPLE ? `These rest on ${plural(resolved, "resolved finding")}: read “Met” as “nothing late so far”.` : "Controls are judged on the period.";
   return (
     <div className="mb-3 flex flex-col gap-1 border border-line-strong bg-surface px-3 py-2 text-sm">
@@ -162,7 +160,8 @@ function Exceptions({ resolved, overdue, ce }: { resolved: number; overdue: numb
         {now > 0 && quiet > 0 && ", "}
         {quiet > 0 && <Link to="/assets" search={{ show: "quiet" }} className="font-medium underline">{plural(quiet, "machine")} not reporting</Link>}.</>}</>}>
         {overdue > 0 && <p>A deadline control isn't met while any open finding is past its deadline, however quickly the findings that were resolved went.</p>}
-        {!!ce && ce !== overdue && <p>Cyber Essentials counts {plural(ce, "high or critical finding")} open over 14 days, whatever its priority; “Overdue” counts findings past their own priority's deadline, which can be longer.</p>}
+        {/* Cyber Essentials' own 14-day count is said once, on its control's card */}
+        {!!ce && ce !== overdue && <p>Cyber Essentials' card counts by its own 14-day rule, whatever the priority, so its number differs.</p>}
         {resolved < SMALL_SAMPLE && overdue > 0 && <p>Timeliness controls rest on {plural(resolved, "resolved finding")} in this period, too few to show a trend.</p>}
         <p>Controls are judged on the period, so what's wrong right now may not show in them yet.</p>
       </HowJudged>

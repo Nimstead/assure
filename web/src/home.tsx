@@ -64,17 +64,18 @@ export function Home() {
         </section>
       )}
 
-      <ul className="grid grid-cols-2 gap-2 sm:grid-cols-4" aria-label="Open findings by priority">
+      {/* one row on phones too, so the first recommended fix starts on the first screen */}
+      <ul className="grid grid-cols-4 gap-1.5 sm:gap-2" aria-label="Open findings by priority">
         {PRIORITIES.map((p) => (
           <li key={p}>
             <Link
               to="/findings"
               search={filtersToSearch({ ...parseFilters({}), priority: [p], fixable: false })}
-              className="group relative flex flex-col border border-line bg-surface px-3.5 py-2.5 no-underline hover:border-ink"
+              className="group relative flex flex-col border border-line bg-surface px-2 py-1.5 no-underline hover:border-ink sm:px-3.5 sm:py-2.5"
             >
-              <ArrowRight aria-hidden className="absolute right-3 top-3 size-4 text-muted group-hover:text-ink" />
-              <span className={clsx("num text-2xl font-semibold", tile(p, s.open_by_priority[p] ?? 0))}>{(s.open_by_priority[p] ?? 0).toLocaleString()}</span>
-              <span className="text-sm text-muted">{PRIORITY_LABEL[p]}</span>
+              <ArrowRight aria-hidden className="absolute right-3 top-3 hidden size-4 text-muted group-hover:text-ink sm:block" />
+              <span className={clsx("num text-lg font-semibold sm:text-2xl", tile(p, s.open_by_priority[p] ?? 0))}>{(s.open_by_priority[p] ?? 0).toLocaleString()}</span>
+              <span className="truncate text-xs text-muted sm:text-sm">{PRIORITY_LABEL[p]}</span>
             </Link>
           </li>
         ))}

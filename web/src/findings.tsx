@@ -316,7 +316,8 @@ const HEADS = ["Priority", "Vulnerability", "Package", "Installed → fixed", "H
 // the column each header sorts by; priority follows score
 const SORT_BY: (FindingSort | null)[] = ["score", "vuln", "package", null, "host", "score", null];
 // Phones hide the header row, so each cell names its column for screen readers there.
-const CellLabel = ({ i }: { i: number }) => <span className="sr-only md:hidden">{HEADS[i]}: </span>;
+// on phones a row is a card with no header row: shown labels for the bare values (score, host), sr-only for the rest
+const CellLabel = ({ i, shown }: { i: number; shown?: boolean }) => <span className={shown ? "text-xs md:hidden" : "sr-only md:hidden"}>{HEADS[i]}{shown ? " " : ": "}</span>;
 
 function Table({ rows, total, more, sort, onPick, onSort, picked, onPickRow, onPickAll }: {
   rows: Finding[]; total: number; more?: () => void; sort: FindingSort; onPick: (id: string) => void; onSort: (s: FindingSort) => void;
@@ -406,8 +407,8 @@ const FindingRow = memo(function FindingRow({ r, index, y, measure, onPick, pick
                 {/* one line from md up, so a row keeps the 36px density (the title has both whole) */}
                 <span className="break-all @min-[48em]:min-w-0 @min-[48em]:shrink-0 @min-[48em]:max-w-[60%] @min-[48em]:truncate">→ {r.fixed_version ? <span className="text-ink">{r.fixed_version}</span> : fixLabel(r)}</span>
               </div>
-              <div role="cell" data-c="host" className="min-w-0 break-all text-muted @min-[48em]:truncate" title={r.hostname}><CellLabel i={4} />{r.hostname}</div>
-              <div role="cell" data-c="score" className="num text-right text-muted"><span className="sr-only">Score </span>{r.score}</div>
+              <div role="cell" data-c="host" className="min-w-0 break-all text-muted @min-[48em]:truncate" title={r.hostname}><CellLabel i={4} shown />{r.hostname}</div>
+              <div role="cell" data-c="score" className="num text-right text-muted"><span className="text-xs md:sr-only">Score </span>{r.score}</div>
               <div role="cell" data-c="reason" className="truncate text-muted" title={r.reasons[0]}>{r.reasons[0]}</div>
             </div>
   );

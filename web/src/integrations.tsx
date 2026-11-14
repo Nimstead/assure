@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleCheck, TriangleAlert } from "lucide-react";
 import { api, parseUtc, relativeTime, type NotifySettings, type SsoSettings } from "./lib";
-import { Alert, btnPrimary, btnQuiet, Done, ErrorState, Field, input, Loading, Notice } from "./ui";
+import { Alert, btnPrimary, btnQuiet, Done, ErrorState, Field, HowJudged, input, Loading, Notice } from "./ui";
 
 const list = (s: string) => s.split(/[\s,]+/).filter(Boolean);
 
@@ -32,9 +32,9 @@ export function SsoSection() {
   return (
     <section aria-labelledby="sso" className="flex flex-col gap-3">
       <h3 id="sso" className="text-lg font-semibold">Single sign-on (OIDC)</h3>
-      <p className="max-w-prose text-sm text-muted">
-        Let people sign in with your identity provider. Register this redirect URI there: <code className="break-all font-mono text-xs text-ink">{s.redirect_uri}</code>. People whose email is on an allowed domain get an account here the first time they sign in. Leave the issuer empty to switch SSO off.
-      </p>
+      <HowJudged lead={<>Let people sign in with your identity provider; register this redirect URI there: <code className="break-all font-mono text-xs text-ink">{s.redirect_uri}</code></>}>
+        People whose email is on an allowed domain get an account here the first time they sign in. Leave the issuer empty to switch SSO off.
+      </HowJudged>
       <form key={version} onSubmit={submit} onChange={() => { save.reset(); setDirty(true); }} className="grid max-w-xl gap-4">
         <Field label="Issuer URL"><input className={input} name="issuer" type="url" defaultValue={s.issuer} placeholder="https://login.example.com" autoComplete="off" /></Field>
         <Field label="Client ID"><input className={input} name="client_id" defaultValue={s.client_id} autoComplete="off" /></Field>

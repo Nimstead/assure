@@ -151,7 +151,7 @@ function Exceptions({ resolved, overdue, ce }: { resolved: number; overdue: numb
   const quiet = s?.hosts_not_reporting ?? 0;
   if (resolved >= SMALL_SAMPLE && !now && !quiet && !overdue && !ce) return null;
   // one line says what most affects the result; the reasoning sits behind "How this is judged" (DESIGN.md copy budget)
-  const lead = overdue > 0 ? `${plural(overdue, "open finding is", "open findings are")} past its deadline, so deadline controls aren't met.`
+  const lead = overdue > 0 ? `${plural(overdue, "open finding is", "open findings are")} past ${overdue === 1 ? "its" : "their"} deadline, so deadline controls aren't met.`
     : resolved < SMALL_SAMPLE ? `These rest on ${plural(resolved, "resolved finding")}: read “Met” as “nothing late so far”.` : "Controls are judged on the period.";
   return (
     <div className="mb-3 flex flex-col gap-1 border border-line-strong bg-surface px-3 py-2 text-sm">

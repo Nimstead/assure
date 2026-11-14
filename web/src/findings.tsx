@@ -111,7 +111,7 @@ export function FindingsPage({ search }: { search: RawSearch }) {
           <p className="num text-sm text-muted" aria-live="polite">
             {typing || updating ? "Updating…"
               : f.group ? groups.data && `${plural(groups.data.length, f.group === "vuln" ? "vulnerability" : "package", f.group === "vuln" ? "vulnerabilities" : undefined)}${groups.data.length === 500 ? " (worst 500)" : ""}`
-              : rows && (f.fixable && all.data && count.data ? `${count.data.total.toLocaleString("en")} with a fix, of ${plural(all.data.total, "result")}` : plural(count.data?.total ?? rows.length, "result"))}
+              : rows && (f.fixable && all.data && count.data ? `${count.data.total.toLocaleString("en")} with a fix, of ${plural(all.data.total, "finding")}` : plural(count.data?.total ?? rows.length, "finding"))}
             {f.fixable && !typing && !updating && (all.data?.total ?? 1) > 0 && <> (<button className="inline-flex tap cursor-pointer items-center underline" onClick={() => set({ fixable: false })}>include those with no fix</button>)</>}
           </p>
           <a className={btnQuiet} href={`/api/findings.csv?${apiQs}`} download>Download as CSV</a>
@@ -268,7 +268,7 @@ function Groups({ rows, by, onPick }: { rows: FindingGroupRow[]; by: "vuln" | "p
             {g.kev && <span className="ml-2 align-middle"><KevBadge /></span>}
             <p className="truncate text-muted">{by === "vuln" ? (g.packages > 1 ? `${g.packages} packages` : g.package) : plural(g.vulns, "vulnerability", "vulnerabilities")}{g.fixed_version && (g.ecosystem ? <> · fixed in <span className="font-mono">{g.fixed_version}</span></> : " · fixed versions differ by distro")}</p>
           </div>
-          <span className="num shrink-0 text-muted">{plural(g.hosts, "host")}</span>
+          <span className="num shrink-0 text-muted">{plural(g.hosts, "machine")}</span>
           <span className="num w-16 shrink-0 text-right text-muted">score {g.score}</span>
         </li>
       ))}

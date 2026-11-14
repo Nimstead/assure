@@ -150,7 +150,7 @@ export function ActionCard({ a }: { a: Action }) {
               {tests ? `${tests} of ${a.asset_ids.length} fixable here` : "none fixable here"}</span>)}
         </p>
         <p className="mt-1 text-sm text-muted">
-          Fixes {a.fixed_version ? plural(a.vulns.length, "vulnerability", "vulnerabilities") : plural(a.vulns.length, "finding")} on {plural(a.hosts.length, "host")}
+          Fixes {a.fixed_version ? plural(a.vulns.length, "vulnerability", "vulnerabilities") : plural(a.vulns.length, "finding")} on {plural(a.hosts.length, "machine")}
           <span className="hidden md:inline">: {(allHosts ? a.hosts : a.hosts.slice(0, 3)).join(", ")}{a.hosts.length > 3 && !allHosts && <>{" "}
             <button className="cursor-pointer text-ink underline decoration-line-strong hover:decoration-ink" onClick={() => setAllHosts(true)}>and {a.hosts.length - 3} more<span className="sr-only"> hosts for {a.package}</span></button></>}</span>
         </p>

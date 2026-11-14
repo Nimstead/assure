@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Radar, ShieldCheck, Trash2 } from "lucide-react";
 import { adminGate, api, parseUtc, plural, refresh, relativeTime, useIsAdmin, type Asset } from "./lib";
-import { Alert, btnPrimary, btnQuiet, CopyBlock, Field, input, Loading, Tag } from "./ui";
+import { Alert, btnPrimary, btnQuiet, CopyBlock, Field, HowJudged, input, Loading, Tag } from "./ui";
 
 interface ScanResult { address: string; open: number; resolved: number; still_open: number; skipped: string[] }
 
@@ -68,11 +68,11 @@ export function ExternalTargets({ targets, onDelete }: { targets: Asset[]; onDel
   });
   return (
     <section aria-labelledby="ext-h" className="flex flex-col gap-3">
-      <h2 id="ext-h" className="text-lg font-semibold">External targets</h2>
-      <p className="max-w-prose text-sm text-muted">
-        Checks exposed risky services (RDP, SMB, Telnet, databases, Docker API…), TLS (expired, expiring or untrusted certificates, TLS 1.0/1.1) and source or config files served by mistake.
-        TCP connects, TLS handshakes and read-only requests for /.git/config and /.env; nothing is logged into or exploited. We only scan hosts you prove you own.
-      </p>
+      <h2 id="ext-h" className="text-lg font-semibold">Internet targets</h2>
+      <HowJudged lead="Checks hosts you prove you own for risky open services, weak TLS and files served by mistake.">
+        <p>Risky services: RDP, SMB, Telnet, databases, the Docker API and others. TLS: expired, expiring or untrusted certificates, and TLS 1.0/1.1. Files: /.git/config and /.env.</p>
+        <p>Only TCP connects, TLS handshakes and read-only requests; nothing is logged into or exploited.</p>
+      </HowJudged>
       <form className="flex flex-wrap items-start gap-2" onSubmit={(e) => { e.preventDefault(); if (hostname.trim()) add.mutate(hostname.trim()); }}>
         <Field label="Hostname to scan" error={add.error?.message} className="w-full sm:w-72">
           <input className={input} value={hostname} onChange={(e) => { add.reset(); setHostname(e.target.value); }} placeholder="www.example.com" autoComplete="off" maxLength={255} required />

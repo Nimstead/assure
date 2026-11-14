@@ -64,7 +64,7 @@ function SectionBar() {
   );
 }
 
-const PRODUCTION_HOW = <>To let fixes run on other machines, set <code className="bg-sunken px-1">NIMSTEAD_ALLOW_PRODUCTION_REMEDIATION=1</code> in <code className="bg-sunken px-1">.env</code> on the server and restart it, once you've watched fixes and rollbacks work on test machines.</>;
+const PRODUCTION_HOW = <>To let fixes run on other machines, set <code className="break-all bg-sunken px-1 font-mono">NIMSTEAD_ALLOW_PRODUCTION_REMEDIATION=1</code> in <code className="bg-sunken px-1">.env</code> on the server and restart it, once you've watched fixes and rollbacks work on test machines.</>;
 
 /** Render account, organisation policy, integration, and server settings with role-gated mutations. */
 export function SettingsPage() {
@@ -130,7 +130,7 @@ export function SettingsPage() {
         {!s.production_remediation_allowed && (
           <p className="flex items-start gap-2 border border-line-strong bg-surface p-3 text-sm">
             <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
-            <span className="min-w-0 [overflow-wrap:anywhere]">Production remediation is switched off on this server. Fixes can only run on machines enrolled as <strong className="font-semibold">test machines</strong> (sandbox); other machines are refused with an explanation. {PRODUCTION_HOW}</span>
+            <span className="min-w-0 [overflow-wrap:anywhere]">Production remediation is off: fixes run only on <strong className="font-semibold">test machines</strong>. {PRODUCTION_HOW}</span>
           </p>
         )}
 
@@ -167,9 +167,9 @@ export function SettingsPage() {
 
         <section aria-labelledby="canary" className="flex flex-col items-start gap-3">
           <h3 id="canary" className="text-lg font-semibold">Canary soak</h3>
-          <p className="max-w-prose text-sm text-muted">
-            Each machine is in a ring. <strong className="font-semibold text-ink">Canary</strong> (ring 0) machines get a change first. <strong className="font-semibold text-ink">Broad</strong> (ring 1) machines only get it after a canary has succeeded and stayed healthy for the soak period below. Set rings and health checks per machine on the Assets page.
-          </p>
+          <HowJudged lead="Broad machines get a change only after a canary machine has run it healthily for this long.">
+            Each machine is in a ring: <strong className="font-semibold text-ink">Canary</strong> (ring 0) gets a change first, <strong className="font-semibold text-ink">Broad</strong> (ring 1) after the soak. Set rings and health checks per machine on the Assets page.
+          </HowJudged>
           {!admin ? <p className="text-sm">Soak time: <strong className="font-semibold">{s.canary_soak_hours} hours.</strong> <span className="text-muted">Only organisation admins can change this.</span></p> : <form className="flex flex-wrap items-start gap-3" onSubmit={(e) => { e.preventDefault(); if (hoursOk) save.mutate({ canary_soak_hours: n }); }}>
             <Field label="Soak time (hours)" hint="Whole hours, 1 to 720." error={hoursOk ? null : "Enter whole hours from 1 to 720."} className="w-40">
               <input className={input} type="number" inputMode="numeric" min={1} max={720} value={hours} onChange={(e) => { save.reset(); setHours(e.target.value); }} />

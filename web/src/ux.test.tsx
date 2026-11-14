@@ -227,7 +227,7 @@ it("Home: a setting fix reads as a setting, says a person approves it, and plans
   wrap(<ol><ActionCard a={{ ...ACTION, ecosystem: "WinConfig", package: "wdigest", fixed_version: null, vulns: ["CFG:wdigest"], summary: "WDigest keeps passwords in memory.", fix: "winconfig", person_only: true }} /></ol>);
   expect(screen.getByText(/Change setting/)).toHaveTextContent("Change setting wdigest");
   expect(screen.getByText("WDigest keeps passwords in memory.")).toBeInTheDocument();
-  expect(screen.getByText(/Fixes 1 finding on 2 hosts/)).toBeInTheDocument();
+  expect(screen.getByText(/Fixes 1 finding on 2 machines/)).toBeInTheDocument();
   expect(screen.getByText(/A person approves this one/)).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: /Plan fix/ }));
   await waitFor(() => expect(calls.filter((c) => c.method === "POST")).toHaveLength(1));  // both hosts in one request
@@ -621,6 +621,7 @@ it("rollouts: each rollout shows once, in the section of its most urgent machine
   const s = sections([job("1", "c1", "succeeded"), job("2", "b1", "planned"), job("3", "b2", "rolled_back"), job("4", "a1", "planned", "curl"), job("5", "a2", "cancelled", "zlib")]);
   expect(s.map((g) => [g.key, g.rollouts.map((r) => r.map((j) => j.id)), g.singles.map((j) => j.id)])).toEqual([
     ["attention", [["1", "2", "3"]], []], ["approval", [], ["4"]], ["done", [], ["5"]]]);
+  expect(s[0]!.jobs.map((j) => j.id)).toEqual(["3"]);  // the section counts its own status only, not the rollout's fixed or waiting machines
 });
 
 it("rollouts: each ring's waiting machines are approved in one review; held machines are left out and say why", async () => {

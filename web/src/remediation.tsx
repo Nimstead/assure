@@ -77,7 +77,7 @@ export function RemediationPage() {
     mutationFn: (id: string) => api<Job>(`/api/remediation/jobs/${id}/cancel`, { method: "POST" }),
     onSuccess: () => { setCancelling(null); void refresh(qc, "jobs"); },
   });
-  const card = (j: Job) => <JobCard key={j.id} job={j} blocked={prodBlocked(j) ? "production remediation is off" : undefined}
+  const card = (j: Job, inRollout?: boolean) => <JobCard key={j.id} job={j} inRollout={inRollout} blocked={prodBlocked(j) ? "production remediation is off" : undefined}
     onApprove={() => { approve.reset(); setTarget(j); }} onCancel={() => { cancel.reset(); setCancelling(j); }} />;
   useHashScroll(!!q.data);  // #job-<id> from Home, the finding drawer or Plan fix
   const groups = q.data ? sections(q.data) : [];
@@ -86,7 +86,7 @@ export function RemediationPage() {
     <div className="flex flex-col gap-8">
       <header>
         <h1 className="text-3xl font-semibold">Remediation</h1>
-        <p className="mt-1 max-w-prose text-muted">Fixes are planned, approved, and counted as done once the next inventory proves the vulnerability gone.</p>
+        <p className="mt-1 max-w-prose text-muted">A fix is done once the next inventory proves the vulnerability gone.</p>
       </header>
       {q.isPending ? <Loading className="h-24" rows={3} label="Loading fixes…" />
         : q.error ? <ErrorState error={q.error} retry={() => q.refetch()} />
@@ -97,9 +97,9 @@ export function RemediationPage() {
             {(() => { const own = g.jobs.filter((j) => j.approved_by && j.approved_by === j.created_by).length; return own > 0 &&
               <p className="-mt-2 mb-3 text-sm text-warn-fg">{own === g.jobs.length ? (own === 1 ? "Self-approved" : own === 2 ? "Both self-approved" : `All ${own} self-approved`) : `${own} of ${g.jobs.length} self-approved`}: approved by the person who planned {own === 1 ? "it" : "them"}, with no second approver (SOC 2 CC8.1).</p>; })()}
             <ul className="flex flex-col gap-2">
-              {g.rollouts.map((js) => <RolloutCard key={js[0]!.action_key} jobs={js} assets={assets.data ?? []} hold={hold} card={card}
+              {g.rollouts.map((js) => <RolloutCard key={js[0]!.action_key} jobs={js} assets={assets.data ?? []} hold={hold} card={(j) => card(j, true)}
                 onApprove={admin ? (sel) => { many.reset(); setMany(sel); } : undefined} />)}
-              {g.singles.map(card)}
+              {g.singles.map((j) => card(j))}
             </ul>
           </section>
         ))}
@@ -197,7 +197,7 @@ function KbFleetRow({ row: r }: { row: KbRow }) {
 }
 
 /** Render job state, packages, steps, and optional approval/cancellation actions. */
-export function JobCard({ job: j, onApprove, onCancel, blocked }: { job: Job; onApprove?: () => void; onCancel?: () => void; blocked?: string }) {
+export function JobCard({ job: j, onApprove, onCancel, blocked, inRollout }: { job: Job; onApprove?: () => void; onCancel?: () => void; blocked?: string; inRollout?: boolean }) {
   const admin = useIsAdmin();
   const steps = j.steps ?? [];
   const qc = useQueryClient();
@@ -217,7 +217,9 @@ export function JobCard({ job: j, onApprove, onCancel, blocked }: { job: Job; on
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <p className="font-medium">
-            <Link to="/findings" search={filtersToSearch({ ...parseFilters({}), asset: j.asset_id, q: pkg ?? "", fixable: false })} className="text-ink underline decoration-line-strong hover:decoration-ink">{j.summary}</Link>
+            {/* inside a rollout the card above says the fix: each machine's card is titled by its machine */}
+            {inRollout ? <Link to="/assets" search={{ machine: j.asset_id }} className="text-ink underline decoration-line-strong hover:decoration-ink">{j.hostname}</Link>
+              : <Link to="/findings" search={filtersToSearch({ ...parseFilters({}), asset: j.asset_id, q: pkg ?? "", fixable: false })} className="text-ink underline decoration-line-strong hover:decoration-ink">{j.summary}</Link>}
           </p>
           {/* no dot separators: on a phone they'd start wrapped lines; spacing alone separates the facts */}
           <ul className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm text-muted">
@@ -226,7 +228,7 @@ export function JobCard({ job: j, onApprove, onCancel, blocked }: { job: Job; on
             {/* the count lives here, not in the title (DESIGN.md: one title format) */}
             {j.finding_ids.length > 0 && <li>fixes {plural(j.finding_ids.length, "vulnerability", "vulnerabilities")}</li>}
             {/* a name opens that thing's detail (DESIGN.md): the machine's drawer */}
-            <li className="min-w-0 break-all">on <Link to="/assets" search={{ machine: j.asset_id }} className="inline-flex tap items-center font-semibold text-ink underline decoration-line-strong hover:decoration-ink">{j.hostname}</Link></li>
+            {!inRollout && <li className="min-w-0 break-all">on <Link to="/assets" search={{ machine: j.asset_id }} className="inline-flex tap items-center font-semibold text-ink underline decoration-line-strong hover:decoration-ink">{j.hostname}</Link></li>}
             <li className="break-all">planned by {j.created_by}</li>
             {j.approved_by && <li className="break-all">approved by {j.approved_by}</li>}
             {j.forward_only && <li className="text-now-fg">forward-only: no automatic rollback</li>}
@@ -349,7 +351,7 @@ export function RolloutCard({ jobs, assets, hold, onApprove, card }: {
       {card && (
         <details open={linked} className="border-t border-line">
           <summary className="flex tap w-fit cursor-pointer items-center gap-2 px-4 py-2 text-sm font-medium">
-            <ChevronRight aria-hidden className="size-4 shrink-0 transition-transform [details[open]_&]:rotate-90" />Machines ({jobs.length})
+            <ChevronRight aria-hidden className="size-4 shrink-0 transition-transform [details[open]_&]:rotate-90" />Machines ({live.length}{jobs.length > live.length && `, ${jobs.length - live.length} cancelled`})
           </summary>
           <ul className="flex flex-col gap-2 bg-sunken p-2">{jobs.map(card)}</ul>
         </details>
@@ -369,8 +371,10 @@ export function sections(jobs: Job[]) {
     const rollouts = byPackage(g.jobs.filter((j) => j.status !== "cancelled" && isRollout(j) && !placed.has(j.action_key)))
       .map((js) => { placed.add(js[0]!.action_key); return jobs.filter((j) => j.action_key === js[0]!.action_key); });
     const singles = g.jobs.filter((j) => !isRollout(j));
-    return { ...g, rollouts, singles, jobs: [...rollouts.flat(), ...singles] };
-  }).filter((g) => g.jobs.length);
+    // the count and the self-approval line are about jobs in this section's own statuses, not a rollout's others
+    const shown = [...rollouts.flat(), ...singles];
+    return { ...g, rollouts, singles, jobs: shown.filter((j) => (g.statuses as readonly string[]).includes(j.status)) };
+  }).filter((g) => g.rollouts.length || g.singles.length);
 }
 
 /** Pure view (no network) so the copy can be tested. */

@@ -157,7 +157,8 @@ export function ConfirmDialog({ open, onOpenChange, title, description, children
           <AlertDialog.Description className="mt-2 break-words text-sm">{description}</AlertDialog.Description>
           {children}
           <Alert error={error} className="mt-3" />
-          <div className="mt-5 flex flex-wrap justify-end gap-2">
+          {/* stays in view while a long dialog scrolls */}
+          <div className="sticky -bottom-5 -mx-5 -mb-5 mt-5 flex flex-wrap justify-end gap-2 border-t border-line bg-surface px-5 py-3">
             <AlertDialog.Cancel className={btnQuiet}>{cancelLabel}</AlertDialog.Cancel>
             <button className={destructive ? btnDanger : btnPrimary} disabled={pending || blocked} onClick={onConfirm}>{pending ? pendingLabel ?? "Working…" : confirmLabel}</button>
           </div>

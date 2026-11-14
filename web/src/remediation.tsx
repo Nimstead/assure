@@ -3,10 +3,12 @@ import clsx from "clsx";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, TriangleAlert, Wrench, X } from "lucide-react";
-import { adminGate, api, APPROVE_COPY, dependenciesNeeded, filtersToSearch, groupJobs, isActiveJob, jobAnchor, jobsQ, kbFleetQ, kbHostsQ, parseFilters, parseUtc, plural, refresh, relativeTime, useHashScroll, useIsAdmin, useTitle, meQ, assetsQ, settingsQ, type Asset, type Job, type KbRow } from "./lib";
+import { adminGate, api, APPROVE_COPY, dependenciesNeeded, filtersToSearch, groupJobs, isActiveJob, JOB_STATUS_LABEL, jobAnchor, jobsQ, kbFleetQ, kbHostsQ, parseFilters, parseUtc, plural, refresh, relativeTime, useHashScroll, useIsAdmin, useTitle, meQ, assetsQ, settingsQ, type Asset, type Job, type KbRow } from "./lib";
 import { Alert, btnQuiet, ConfirmDialog, EmptyState, ErrorState, Loading, StatusPill } from "./ui";
 
 const CANCELLABLE: Job["status"][] = ["planned", "approved"];
+const LAST_EVENT: Record<Job["status"], string> = { planned: "planned", approved: "approved", dispatched: "started", verifying: "applied", succeeded: "verified",
+  failed: "failed", rolled_back: "rolled back", rollback_failed: "rollback failed", not_fixed: "checked", aborted: "aborted", cancelled: "cancelled" };
 const AGAIN: Job["status"][] = ["failed", "rolled_back", "rollback_failed", "not_fixed"];
 
 /** The packages a job changes, as the plan recorded them ({name, from, to?}). */
@@ -122,6 +124,15 @@ export function RemediationPage() {
         description={<><strong className="font-semibold">Upgrade {several?.[0]?.action_key.split("|")[1]}</strong>. Each machine is approved and recorded on its own, as if you approved them one by one.</>}
         confirmLabel={`Approve ${picked.length} and run`} pendingLabel="Approving…" pending={many.isPending} error={many.error} blocked={!picked.length} onConfirm={() => many.mutate(picked)}>
         {several && <>
+          {/* a machine in this ring that this same fix failed on (its newest job): said first, in crimson */}
+          {(() => {
+            const k = several[0]!.action_key, canaryRing = byId.get(several[0]!.asset_id)?.ring === 0, seen = new Set<string>();
+            const failed = (q.data ?? []).filter((j) => j.action_key === k && j.status !== "cancelled" && !seen.has(j.asset_id) && !!seen.add(j.asset_id))
+              .filter((j) => STUCK.includes(j.status) && (byId.get(j.asset_id)?.ring === 0) === canaryRing);
+            return failed.length > 0 && <p className="mt-3 border border-now-fg p-3 text-sm text-now-fg">This fix didn't work on {failed.map((j, i) => <Fragment key={j.id}><span className="whitespace-nowrap">{j.hostname}</span>{i < failed.length - 1 ? ", " : ""}</Fragment>)} in this ring ({JOB_STATUS_LABEL[failed[0]!.status].toLowerCase()}). Review {failed.length === 1 ? "it" : "them"} before approving more.</p>;
+          })()}
+          {(() => { const bare = picked.filter((j) => byId.get(j.asset_id)?.kind === "host" && !byId.get(j.asset_id)?.health_units.length); return bare.length > 0 &&
+            <p className="mt-3 border border-now-fg p-3 text-sm">No health checks are set on {bare.map((j) => <Fragment key={j.id}><span className="whitespace-nowrap">{j.hostname},</span>{" "}</Fragment>)}so a service this upgrade breaks there isn't noticed and isn't rolled back; only a failed upgrade is.</p>; })()}
           <fieldset className="mt-3 text-sm">
             <legend className="text-muted">Machines to approve now</legend>
             <ul className="mt-1 flex flex-col sm:flex-row sm:flex-wrap sm:gap-x-4">
@@ -135,8 +146,6 @@ export function RemediationPage() {
             </ul>
           </fieldset>
           {picked[0] && <PackageList job={picked[0]} jobs={picked} />}
-          {(() => { const bare = picked.filter((j) => byId.get(j.asset_id)?.kind === "host" && !byId.get(j.asset_id)?.health_units.length); return bare.length > 0 &&
-            <p className="mt-3 border border-now-fg p-3 text-sm">No health checks are set on {bare.map((j) => <Fragment key={j.id}><span className="whitespace-nowrap">{j.hostname},</span>{" "}</Fragment>)}so a service this upgrade breaks there isn't noticed and isn't rolled back; only a failed upgrade is.</p>; })()}
           {picked.some((j) => j.created_by === me) && <p className="mt-3 border border-line p-3 text-sm">You planned {picked.every((j) => j.created_by === me) ? "these fixes" : "some of these fixes"}. Approving them yourself is recorded as self-approved for each machine: no second person checked the change (SOC 2 CC8.1).</p>}
           <details className="mt-3 text-sm text-muted"><summary className="flex tap w-fit cursor-pointer items-center">How a fix runs</summary><p className="mt-1">{APPROVE_COPY}</p></details>
         </>}
@@ -241,7 +250,8 @@ export function JobCard({ job: j, onApprove, onCancel, blocked, inRollout }: { j
             {j.waits_for_window && <li>waits for the maintenance window ({parseUtc(j.waits_for_window).toLocaleString()})</li>}
             {/* shown, not blocked: auditors look for this under SOC 2 CC8.1 */}
             {/* self-approval is said once per section (the owner's call); the card still shows who planned and who approved */}
-            <li><time dateTime={parseUtc(j.updated).toISOString()} title={parseUtc(j.updated).toLocaleString()}>{relativeTime(j.updated)}</time></li>
+            {/* the time of the latest event, named, so it never reads as the approval time */}
+            <li>{LAST_EVENT[j.status]} <time dateTime={parseUtc(j.updated).toISOString()} title={parseUtc(j.updated).toLocaleString()}>{relativeTime(j.updated)}</time></li>
           </ul>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -305,6 +315,8 @@ export function byPackage(jobs: Job[]): Job[][] {
 
 const FIXED: Job["status"][] = ["succeeded"], MOVING: Job["status"][] = ["approved", "dispatched", "verifying"];
 const STUCK: Job["status"][] = ["failed", "rolled_back", "rollback_failed", "not_fixed", "aborted"];
+/** what broke first, then what waits on you, then what's running, then what's done (DESIGN.md page order) */
+const urgency = (j: Job) => (STUCK.includes(j.status) ? 0 : j.status === "planned" ? 1 : MOVING.includes(j.status) ? 2 : 3);
 
 /** One package's fix across several machines, as one card: canary and broad tallies, where it stands, a review per
  * ring, and every machine's own card inside. It sits once, in the section of its most urgent machine. */
@@ -369,7 +381,7 @@ export function RolloutCard({ jobs, assets, hold, onApprove, card }: {
             {([["Canary", jobs.filter((j) => ring.get(j.asset_id) === 0)], ["Broad", jobs.filter((j) => ring.get(j.asset_id) !== 0)]] as const).map(([label, js]) => js.length > 0 && (
               <section key={label} aria-label={`${label} machines`}>
                 <h4 className="px-1 pb-1 text-xs font-medium text-muted">{label}</h4>
-                <ul className="flex flex-col gap-2">{js.map(card)}</ul>
+                <ul className="flex flex-col gap-2">{[...js].sort((x, y) => urgency(x) - urgency(y)).map(card)}</ul>
               </section>
             ))}
           </div>
@@ -417,9 +429,9 @@ export function ApproveDialog({ job, onOpenChange, onConfirm, pending, error, ow
       confirmLabel={fwd ? "Approve: it can't be undone" : "Approve and run"} pendingLabel="Approving…" destructive={fwd} pending={pending} error={error} onConfirm={onConfirm} blocked={production}>
       {ahead && !production && <p className="mt-3 border border-next-fg p-3 text-sm">This fix hasn't succeeded on a canary machine yet. Approving runs it on {job?.hostname} now, ahead of the canary; automatic rollout would wait.</p>}
       {production && <p className="mt-3 border border-now-fg p-3 text-sm">{job?.hostname} is a production machine, and this server changes test machines only, so this fix can't run yet. <Link to="/settings" hash="remediation" className="font-medium underline">How to turn production remediation on</Link></p>}
+      {unchecked && <p className="mt-3 border border-now-fg p-3 text-sm">No health checks are set on {job?.hostname}, so a service this upgrade breaks isn't noticed and isn't rolled back; only a failed upgrade is. <Link to="/assets" search={{ machine: unchecked.assetId }} className="font-medium underline">Set its health checks</Link></p>}
       {context && <p className="mt-2 text-sm text-muted">{context}</p>}
       {job && <PackageList job={job} />}
-      {unchecked && <p className="mt-3 border border-now-fg p-3 text-sm">No health checks are set on {job?.hostname}, so a service this upgrade breaks isn't noticed and isn't rolled back; only a failed upgrade is. <Link to="/assets" search={{ machine: unchecked.assetId }} className="font-medium underline">Set its health checks</Link></p>}
       {ownPlan && <p className="mt-3 border border-line p-3 text-sm">You planned this fix. Approving it yourself is recorded as self-approved: no second person checked the change (SOC 2 CC8.1).</p>}
       {fwd ? <p className="mt-3 border border-now-fg p-3 text-sm">This app's installer can't go back to the version it replaces, so if the new version breaks something there is no automatic rollback. The machine's health checks still run and a failure is reported. Approving records that you accepted this.</p>
         : <details className="mt-3 text-sm text-muted"><summary className="flex tap w-fit cursor-pointer items-center">How a fix runs</summary><p className="mt-1">{APPROVE_COPY}</p></details>}

@@ -730,3 +730,11 @@ it("rollouts: a canary that failed and was then fixed counts as fixed, so the br
   expect(screen.getByRole("listitem", { name: "openssl rollout" })).toHaveTextContent(/Canary 1 of 1 fixed/);
   expect(screen.getByRole("button", { name: /Approve broad \(1\)/ })).toBeEnabled();
 });
+
+it("rollouts: inside each ring, what broke comes first, then what waits, then what's running, then what's done", async () => {
+  const job = (id: string, asset_id: string, status: Job["status"]) => ({ id, asset_id, status, action_key: "Debian:12|openssl", hostname: asset_id } as unknown as Job);
+  const assets = [{ id: "b1", ring: 1 }, { id: "b2", ring: 1 }, { id: "b3", ring: 1 }, { id: "b4", ring: 1 }] as Asset[];
+  render(<ul><RolloutCard jobs={[job("1", "b1", "succeeded"), job("2", "b2", "dispatched"), job("3", "b3", "planned"), job("4", "b4", "failed")]} assets={assets}
+    card={(j) => <li key={j.id}>machine {j.asset_id}</li>} /></ul>);
+  expect(screen.getAllByText(/^machine /).map((e) => e.textContent)).toEqual(["machine b4", "machine b3", "machine b2", "machine b1"]);
+});

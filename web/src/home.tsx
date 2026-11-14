@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, CheckCircle2, TriangleAlert } from "lucide-react";
 import { api, assetsQ, dependenciesNeeded, filtersToApi, coverageQ, settingsQ, filtersToSearch, jobAnchor, JOB_STATUS_LABEL, parseFilters, plural, PRIORITIES, PRIORITY_LABEL, priorityOf, summaryQ, useTitle, type Action } from "./lib";
 import { PlanFixButton } from "./planfix";
-import { ActionRow, ErrorState, KevBadge, Loading, PriorityPill, StatusPill } from "./ui";
+import { ActionRow, btnQuiet, ErrorState, KevBadge, Loading, PriorityPill, StatusPill } from "./ui";
 import clsx from "clsx";
 import { Fragment, lazy, Suspense, useState } from "react";
 
@@ -169,11 +169,16 @@ export function ActionCard({ a }: { a: Action }) {
         primary={a.plannable && free.length > 0 && !needsMore ? (
           <PlanFixButton ecosystem={a.ecosystem} pkg={a.package} assetIds={free} names={freeNames} kind={prodOk ? "machine" : "test machine"}
             label={a.job ? `Plan fix on ${plural(free.length, "more machine")}` : failed ? "Plan fix again" : held ? (freeNames.length === 1 ? `Plan fix on ${freeNames[0]}` : `Plan fix on ${plural(free.length, "test machine")}`) : "Plan fix"} />
+        ) : needsMore ? (
+          // the replan needs packages the plan left out: it lives on the job, so the card's main action goes there (a quiet button, as on Remediation)
+          <Link to="/remediation" hash={jobAnchor(failed!.id)} className={clsx(btnQuiet, "no-underline")}>
+            Plan again including {dependenciesNeeded(failed!.error).join(", ")}<span className="sr-only"> for {a.package}</span>
+          </Link>
         ) : undefined}
         links={[
-          (a.job || failed) && (
+          (a.job || (failed && !needsMore)) && (
             <Link key="job" to="/remediation" hash={jobAnchor((a.job ?? failed)!.id)} className="inline-flex min-h-[44px] items-center gap-1.5 text-sm font-medium text-accent underline md:min-h-9">
-              <span>{a.job ? "View fix" : needsMore ? `Plan again including ${dependenciesNeeded(failed!.error).join(", ")}` : `Last attempt ${JOB_STATUS_LABEL[failed!.status].toLowerCase()}: review`}<span className="sr-only"> for {a.package}</span></span> <ArrowRight className="size-4" aria-hidden />
+              <span>{a.job ? "View fix" : `Last attempt ${JOB_STATUS_LABEL[failed!.status].toLowerCase()}: review`}<span className="sr-only"> for {a.package}</span></span> <ArrowRight className="size-4" aria-hidden />
             </Link>
           ),
           <Link key="findings" to="/findings" search={filtersToSearch({ ...parseFilters({}), q: a.package, ecosystem: a.ecosystem })}

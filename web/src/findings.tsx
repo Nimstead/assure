@@ -94,6 +94,10 @@ export function FindingsPage({ search }: { search: RawSearch }) {
   // "16,872 with a fix, of 43,970": the same filters without "Has a fix", so the number matches Fix first's
   const allQs = filtersToApi({ ...f, fixable: false }, false);
   const all = useQuery({ queryKey: ["findings", "count", allQs], queryFn: () => api<{ total: number }>(`/api/findings/count?${allQs}`), enabled: !f.group && f.fixable, placeholderData: (p) => p });
+  // a narrowed list says of how many (DESIGN.md: a filter that hides something says how much)
+  const narrowed = f.priority.length > 0 || f.kev || f.overdue || !!f.asset || !!f.ecosystem || !!f.q;
+  const baseQs = filtersToApi({ ...parseFilters({}), status: f.status, fixable: false }, false);
+  const base = useQuery({ queryKey: ["findings", "count", baseQs], queryFn: () => api<{ total: number }>(`/api/findings/count?${baseQs}`), enabled: !f.group && narrowed && !f.fixable, placeholderData: (p) => p });
   const groups = useQuery({ queryKey: ["findings", "groups", f.group, filterQs], queryFn: () => api<FindingGroupRow[]>(`/api/findings/groups?by=${f.group}&${filterQs}`),
     enabled: !!f.group, placeholderData: (p) => p });
   const typing = text.trim() !== f.q && !question;
@@ -111,7 +115,7 @@ export function FindingsPage({ search }: { search: RawSearch }) {
           <p className="num text-sm text-muted" aria-live="polite">
             {typing || updating ? "Updating…"
               : f.group ? groups.data && `${plural(groups.data.length, f.group === "vuln" ? "vulnerability" : "package", f.group === "vuln" ? "vulnerabilities" : undefined)}${groups.data.length === 500 ? " (worst 500)" : ""}`
-              : rows && (f.fixable && all.data && count.data ? `${count.data.total.toLocaleString("en")} with a fix, of ${plural(all.data.total, "finding")}` : plural(count.data?.total ?? rows.length, "finding"))}
+              : rows && (f.fixable && all.data && count.data ? `${count.data.total.toLocaleString("en")} with a fix, of ${plural(all.data.total, "finding")}` : narrowed && base.data && count.data ? `${count.data.total.toLocaleString("en")} of ${plural(base.data.total, "finding")}` : plural(count.data?.total ?? rows.length, "finding"))}
             {f.fixable && !typing && !updating && (all.data?.total ?? 1) > 0 && <> (<button className="inline-flex tap cursor-pointer items-center underline" onClick={() => set({ fixable: false })}>include those with no fix</button>)</>}
           </p>
           <a className={btnQuiet} href={`/api/findings.csv?${apiQs}`} download>Download as CSV</a>
@@ -452,7 +456,7 @@ function FindingDrawer({ id, ids = [], total, more, onMove, onClose }: {
           <div className="mb-4 flex items-start justify-between gap-3">
             {/* stepping with j/k changes the host as often as the ID: both sit in the title, with where you are in the list */}
             <div className="min-w-0">
-              <Dialog.Title ref={title} tabIndex={-1} className="break-all font-mono text-lg font-semibold">{q.data?.vuln_id ?? "Finding"}</Dialog.Title>
+              <Dialog.Title ref={title} tabIndex={-1} className={clsx("break-all font-mono text-lg font-semibold", q.isPlaceholderData && "opacity-40")}>{q.data?.vuln_id ?? "Finding"}</Dialog.Title>
               {q.data && <p className="break-all text-sm"><span className="font-medium">{q.data.hostname}</span>{ids.length > 1 && at >= 0 && <span className="num text-muted"> · {at + 1} of {(total ?? ids.length).toLocaleString("en")}</span>}</p>}
             </div>
             {ids.length > 1 && at >= 0 && (
@@ -468,7 +472,9 @@ function FindingDrawer({ id, ids = [], total, more, onMove, onClose }: {
               <EmptyState title="This finding no longer exists" action={<Dialog.Close className={btnQuiet}>Back to the list</Dialog.Close>}>
                 It was probably resolved by a later inventory, or its machine was removed. The evidence ledger keeps its history.
               </EmptyState>
-            ) : q.error ? <ErrorState error={q.error} retry={() => q.refetch()} /> : <FindingDetail f={q.data} />}
+            ) : q.error ? <ErrorState error={q.error} retry={() => q.refetch()} />
+            // stepping: the last finding stays, dimmed and marked busy, until the next arrives
+            : <div aria-busy={q.isPlaceholderData} className={clsx("transition-opacity", q.isPlaceholderData && "opacity-40")}><FindingDetail f={q.data} /></div>}
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
@@ -489,12 +495,33 @@ function FindingDetail({ f }: { f: Finding }) {
       <details className="mt-1 text-sm text-muted"><summary className="flex tap w-fit cursor-pointer items-center">How the score works</summary>
         <p className="mt-1 max-w-prose">0 to 100, from the advisory's severity, how likely it is to be exploited in the next 30 days (EPSS), whether it is being exploited now (KEV), and this machine's criticality and exposure. Fix now is 80 or more, or any KEV.</p></details>
       {f.due && <Due due={f.due} />}
+      {/* what to do comes right after what it is (DESIGN.md: what broke, then what to do); the evidence follows */}
+      {f.status === "open" && (
+        <>
+          {/* only the keys that do something here */}
+          <H>Act on it <span className="ml-2 hidden text-xs font-normal text-muted md:inline">keys: {[(f.fixed_version || f.setting_fix) && !job && f.plannable !== false && !refused && "p then Enter plan", "a accept", "j k next/previous"].filter(Boolean).join(" · ")}</span></H>
+          {job && <FixInProgress job={job} />}
+          {f.fixed_version && f.plannable === false && <p className="mb-3 text-sm text-muted">Nimstead can't plan this one: update it with its own updater or by policy.</p>}
+          {refused && f.plannable !== false && <p className="mb-3 text-sm text-muted">This is a production machine, and production remediation is off on this server, so a fix can't be planned here yet. <Link to="/settings" hash="remediation" className="font-medium text-ink underline">How to turn it on</Link></p>}
+          <div className="flex flex-wrap items-start gap-2">
+            {(f.fixed_version || f.setting_fix) && !job && f.plannable !== false && !refused && <span data-act="plan"><PlanFixButton ecosystem={f.ecosystem} pkg={f.package} assetIds={[f.asset_id]} /></span>}
+            <span data-act="accept" className="contents"><AcceptRisk f={f} /></span>
+          </div>
+        </>
+      )}
+      {f.status === "accepted" && (
+        <>
+          <H>Accepted risk</H>
+          <RevokeAcceptance id={f.id} />
+        </>
+      )}
+
       {f.summary && <p className="mt-3 max-w-prose text-sm">{f.summary}{f.summary.length >= 200 && !/[.!?…]$/.test(f.summary) && <>… <span className="text-muted">The advisory has the full text.</span></>}</p>}
       {ai && <Explain key={f.id} id={f.id} />}
 
       <H>Why it matched</H>
       <p className="break-words text-sm"><strong className="break-all font-semibold">{f.package}</strong> on <strong className="break-all font-semibold">{f.hostname}</strong></p>
-      <p className="text-mono mt-1 break-words bg-sunken p-3 font-mono">{whyMatched(f)}</p>
+      <p className="text-mono mt-1 overflow-x-auto whitespace-pre-wrap bg-sunken p-3 font-mono [word-break:keep-all]">{whyMatched(f)}</p>
       {f.fixed_version && (f.package_fix && f.package_fix.open > 1
         ? <p className="mt-2 text-sm text-muted">Fix: upgrade {f.package} to {f.package_fix.version} or later. That clears all {f.package_fix.open} open findings for {f.package} on this host; {f.fixed_version} fixes only this one.</p>
         : <p className="mt-2 text-sm text-muted">Fix: upgrade {f.package} to {f.fixed_version} or later.</p>)}
@@ -521,26 +548,6 @@ function FindingDetail({ f }: { f: Finding }) {
           </li>
         ))}
       </ul>
-
-      {f.status === "open" && (
-        <>
-          {/* only the keys that do something here */}
-          <H>Act on it <span className="ml-2 hidden text-xs font-normal text-muted md:inline">keys: {[(f.fixed_version || f.setting_fix) && !job && f.plannable !== false && !refused && "p then Enter plan", "a accept", "j k next/previous"].filter(Boolean).join(" · ")}</span></H>
-          {job && <FixInProgress job={job} />}
-          {f.fixed_version && f.plannable === false && <p className="mb-3 text-sm text-muted">Nimstead can't plan this one: update it with its own updater or by policy.</p>}
-          {refused && f.plannable !== false && <p className="mb-3 text-sm text-muted">This is a production machine, and production remediation is off on this server, so a fix can't be planned here yet. <Link to="/settings" hash="remediation" className="font-medium text-ink underline">How to turn it on</Link></p>}
-          <div className="flex flex-wrap items-start gap-2">
-            {(f.fixed_version || f.setting_fix) && !job && f.plannable !== false && !refused && <span data-act="plan"><PlanFixButton ecosystem={f.ecosystem} pkg={f.package} assetIds={[f.asset_id]} /></span>}
-            <span data-act="accept" className="contents"><AcceptRisk f={f} /></span>
-          </div>
-        </>
-      )}
-      {f.status === "accepted" && (
-        <>
-          <H>Accepted risk</H>
-          <RevokeAcceptance id={f.id} />
-        </>
-      )}
 
       <p className="mt-6 text-sm text-muted">
         First seen {when(f.first_seen)}, last seen {when(f.last_seen)}{f.resolved_at && <>, resolved {when(f.resolved_at)}</>}.

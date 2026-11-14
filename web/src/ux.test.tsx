@@ -9,7 +9,7 @@ import { ApiError, meQ, type Action, type Asset, type Finding, type Job, type Se
 import { ActionCard, Home } from "./home";
 import { PlanFixButton } from "./planfix";
 import { foldRuns } from "./evidence";
-import { ApproveDialog, byPackage, RemediationPage, RolloutCard, sections } from "./remediation";
+import { ApproveDialog, byPackage, PackageList, RemediationPage, RolloutCard, sections } from "./remediation";
 import { AgentUpdateSummary, AssetRow, AssetsPage, AttackPaths, Baselines, baselineSummary, filterAssets, NotAssessed, UnmanagedDevices } from "./assets";
 import { cmdGroup, HelpPanel, Palette } from "./shell";
 import { Done, errorLead } from "./ui";
@@ -259,7 +259,7 @@ it("Home: a fix in flight on one host still lets you plan the others", () => {
   serve({});
   wrap(<ol><ActionCard a={{ ...ACTION, busy_asset_ids: ["a1"], job: { id: "j1", status: "approved" } }} /></ol>);
   expect(screen.getByRole("link", { name: /View fix/ })).toHaveAttribute("href", "/remediation#job-j1");
-  expect(screen.getByRole("button", { name: /Plan fix for 1 more host/ })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Plan fix for 1 more machine/ })).toBeInTheDocument();
 });
 
 it("Home: after an aborted attempt that needs more packages, it points to the job instead of re-planning blind", () => {
@@ -284,8 +284,8 @@ it("Windows updates: a count per KB opens to why each machine hasn't got it, and
     "POST /api/remediation/jobs/batch": { jobs: [{ id: "j8" }], errors: [] },
   });
   wrap(<KbFleet />);
-  expect(await screen.findByText("48 of 50 hosts")).toBeInTheDocument();
-  expect(screen.getByText("50 of 50 hosts")).toBeInTheDocument();
+  expect(await screen.findByText("48 of 50 machines")).toBeInTheDocument();
+  expect(screen.getByText("50 of 50 machines")).toBeInTheDocument();
   expect(screen.getAllByText(/machines? without it/)).toHaveLength(1);  // a fully patched update has nothing to open
   expect(calls.some((c) => c.path.endsWith("/5127648"))).toBe(false);  // the hosts load when asked for
   await userEvent.click(screen.getByText(/Show 2 machines without it/));
@@ -706,4 +706,10 @@ it("agent updates: an agent with no version reported is named, never an empty la
   const a = (id: string, v: string | null) => ({ id, hostname: id, kind: "host", agent_update: "reinstall", agent_version: v } as unknown as Asset);
   render(<AgentUpdateSummary assets={[a("h1", "0.6.9"), a("h2", ""), a("h3", null)]} />);
   expect(screen.getByRole("listitem")).toHaveTextContent("3 machines: Agent versions 0.6.9 (1 machine) and unknown (2 machines) predate self-update.");
+});
+
+it("approve: a ring review lists every package any chosen machine changes, and on how many", () => {
+  const j = (pk: string[]) => ({ summary: "Upgrade curl to 8.5 on h", packages: pk.map((name) => ({ name, from: "8.4", to: "8.5" })) });
+  render(<PackageList job={j(["libcurl4t64"])} jobs={[j(["libcurl4t64"]), j(["libcurl4t64", "curl"])]} />);
+  expect(screen.getByRole("list", { name: "Packages this fix changes" })).toHaveTextContent(/libcurl4t64 8\.4 → 8\.5curl 8\.4 → 8\.5 on 1 of 2 machines/);
 });

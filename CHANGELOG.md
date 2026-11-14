@@ -7,6 +7,8 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 No database migration; the agent is unchanged.
 
 ### Changed
+- **A rollout's approve dialog lists every package any chosen machine changes**, with "on 2 of 4 machines" where they differ; before, it showed only the first machine's packages.
+- The finding drawer puts "Act on it" straight after the priority and deadline, and dims the last finding while the next loads. A narrowed Findings list says "37 of 43,944 findings". Evidence's SI-2 says "6 open findings past SLA" before "27/27 fixes within SLA". Machines are "machines" on Fix first, in Plan fix and in Windows updates. On a job card, Cancel fix is a trailing link after Review and approve. The Devices tab's "with issues" count is ink, not crimson. Versions and the production setting no longer wrap mid-token. Help puts focus on its title.
 - **Help opens in the app** (sidebar Help, `?`, or Ctrl K): the words used here, how priority and rollouts work, and every keyboard shortcut, with the full documentation one link away.
 - Findings rows are 36px from tablet width up, with the installed and fixed versions on one line. Stepping through findings keeps the last one on screen until the next loads, and the drawer no longer repeats KEV and CVSS already stated in "Why it's ranked here".
 - Assets' agent notices are one line of links, and its view tabs scroll sideways on phones instead of stacking. Evidence names each "late" count by its rule (a priority's deadline, or Cyber Essentials' 14 days).

@@ -161,7 +161,7 @@ export function ActionCard({ a }: { a: Action }) {
       <ActionRow
         primary={a.plannable && free.length > 0 && !needsMore ? (
           <PlanFixButton ecosystem={a.ecosystem} pkg={a.package} assetIds={free} names={freeNames} kind={prodOk ? "machine" : "test machine"}
-            label={a.job ? `Plan fix for ${plural(free.length, "more host")}` : failed ? "Plan fix again" : held ? (freeNames.length === 1 ? `Plan fix on ${freeNames[0]}` : `Plan fix on ${plural(free.length, "test machine")}`) : "Plan fix"} />
+            label={a.job ? `Plan fix for ${plural(free.length, "more machine")}` : failed ? "Plan fix again" : held ? (freeNames.length === 1 ? `Plan fix on ${freeNames[0]}` : `Plan fix on ${plural(free.length, "test machine")}`) : "Plan fix"} />
         ) : undefined}
         links={[
           (a.job || failed) && (

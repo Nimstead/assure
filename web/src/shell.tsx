@@ -394,14 +394,15 @@ const GLOSSARY: [string, string][] = [
 
 /** Help in the app (?): the words used here, how priority and rollouts work, and every key; the full docs one link away. */
 export function HelpPanel({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
-  const focus = useReturnFocus();
+  const title = useRef<HTMLHeadingElement>(null);
+  const focus = useReturnFocus(title);  // focus lands on the title (DESIGN.md), not on Close
   const h = "mt-5 text-sm font-semibold";
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="overlay" />
         <Dialog.Content className="fixed left-1/2 top-[8vh] z-[51] max-h-[84vh] w-[min(38rem,calc(100%-2rem))] -translate-x-1/2 overflow-y-auto border border-line bg-surface p-5 shadow-[0_24px_48px_-12px_var(--shadow)]" aria-describedby={undefined} {...focus}>
-          <Dialog.Title className="text-lg font-semibold">Help</Dialog.Title>
+          <Dialog.Title ref={title} tabIndex={-1} className="text-lg font-semibold outline-none">Help</Dialog.Title>
           <h3 className={h}>Words used here</h3>
           <dl className="mt-1 divide-y divide-line text-sm">
             {GLOSSARY.map(([k, what]) => <div key={k} className="grid grid-cols-[8rem_1fr] gap-3 py-2"><dt className="font-medium">{k}</dt><dd className="text-muted">{what}</dd></div>)}

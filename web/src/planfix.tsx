@@ -45,7 +45,7 @@ export function PlanFixButton({ ecosystem, pkg, assetIds, names, hosts = assetId
       {/* more than two machines: list them all before planning; one or two are named on the button already */}
       <button className={btnQuiet} disabled={plan.isPending} onClick={() => (names && names.length > 2 ? setConfirming(true) : plan.mutate())} {...adminGate(admin)}>
         <Wrench className="size-4" aria-hidden />{plan.isPending ? "Planning…" : label}
-        <span className="sr-only"> for {pkg}{names?.length ? ` on ${hostList(names)}` : hosts > 1 ? ` on ${hosts} hosts` : ""}</span>
+        <span className="sr-only"> for {pkg}{names?.length ? ` on ${hostList(names)}` : hosts > 1 ? ` on ${hosts} machines` : ""}</span>
       </button>
       {/* what one click will plan, said before the click */}
       {/* aria-hidden: the button's own name already says these hosts to a screen reader */}

@@ -64,7 +64,7 @@ function SectionBar() {
   );
 }
 
-const PRODUCTION_HOW = <>To let fixes run on other machines, set <code className="break-all bg-sunken px-1 font-mono">NIMSTEAD_ALLOW_PRODUCTION_REMEDIATION=1</code> in <code className="bg-sunken px-1">.env</code> on the server and restart it, once you've watched fixes and rollbacks work on test machines.</>;
+const PRODUCTION_HOW = <>To let fixes run on other machines, set <code className="inline-block max-w-full overflow-x-auto whitespace-nowrap bg-sunken px-1 align-bottom font-mono">NIMSTEAD_ALLOW_PRODUCTION_REMEDIATION=1</code> in <code className="bg-sunken px-1">.env</code> on the server and restart it, once you've watched fixes and rollbacks work on test machines.</>;
 
 /** Render account, organisation policy, integration, and server settings with role-gated mutations. */
 export function SettingsPage() {

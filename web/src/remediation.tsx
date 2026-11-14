@@ -19,16 +19,23 @@ const RECOVERED = /not available|rebuilding|rebuilt from|retry \d/i;
 /** Return failed for a false result, recovered for recognised fallback text, or passed otherwise. */
 export const stepState = (s: { step: string; ok: boolean; output?: string }) => (!s.ok ? "failed" : RECOVERED.test(s.step) || RECOVERED.test(s.output ?? "") ? "recovered" : "passed");
 
-function PackageList({ job }: { job: { packages?: unknown; summary?: string } }) {
-  const pkgs = jobPackages(job);
-  // shortcut: the plan's target lives only in its title ("… to X on host", or an older job's "(fixed in X)"); store it on the job if more views need it
-  const target = (/ to (\S+) on \S+$/.exec(job.summary ?? "") ?? /\(fixed in ([^)]+)\)$/.exec(job.summary ?? ""))?.[1];
-  if (!pkgs.length) return null;
+export function PackageList({ job, jobs }: { job: { packages?: unknown; summary?: string }; jobs?: { packages?: unknown; summary?: string }[] }) {
+  // several machines: every package any of them changes, and on how many when not all (DESIGN.md: dialogs list what will change)
+  const all = jobs ?? [job];
+  const seen = new Map<string, { p: ReturnType<typeof jobPackages>[number]; target?: string; n: number }>();
+  for (const j of all) {
+    // shortcut: the plan's target lives only in its title ("… to X on host", or an older job's "(fixed in X)"); store it on the job if more views need it
+    const target = (/ to (\S+) on \S+$/.exec(j.summary ?? "") ?? /\(fixed in ([^)]+)\)$/.exec(j.summary ?? ""))?.[1];
+    for (const p of jobPackages(j)) { const e = seen.get(p.name); seen.set(p.name, { p: e?.p ?? p, target: e?.target ?? target, n: (e?.n ?? 0) + 1 }); }
+  }
+  if (!seen.size) return null;
   return (
     <ul className="mt-2 flex flex-col gap-0.5 text-sm" aria-label="Packages this fix changes">
-      {pkgs.map((p) => (
+      {[...seen.values()].map(({ p, target, n }) => (
         <li key={p.name} className="break-words"><span className="font-medium">{p.name}</span>{" "}
-          <span className="font-mono text-muted">{p.kb ? p.kb : <>{p.from ?? "?"} → {p.to ?? (target ? `${target} or the repository's newer` : "the newest fixed version")}</>}</span></li>
+          {/* a version never wraps mid-token: the arrow is where the line may break */}
+          <span className="font-mono text-muted">{p.kb ? p.kb : <><span className="whitespace-nowrap">{p.from ?? "?"}</span> → <span className="whitespace-nowrap">{p.to ?? (target ?? "the newest fixed version")}</span>{!p.to && target && " or the repository's newer"}</>}</span>
+          {n < all.length && <span className="text-muted"> on {n} of {plural(all.length, "machine")}</span>}</li>
       ))}
     </ul>
   );
@@ -124,7 +131,7 @@ export function RemediationPage() {
               ))}
             </ul>
           </fieldset>
-          {several[0] && <PackageList job={several[0]} />}
+          {picked[0] && <PackageList job={picked[0]} jobs={picked} />}
           {(() => { const bare = picked.filter((j) => byId.get(j.asset_id)?.kind === "host" && !byId.get(j.asset_id)?.health_units.length); return bare.length > 0 &&
             <p className="mt-3 border border-now-fg p-3 text-sm">No health checks are set on {bare.map((j) => <Fragment key={j.id}><span className="whitespace-nowrap">{j.hostname},</span>{" "}</Fragment>)}so a service this upgrade breaks there isn't noticed and isn't rolled back; only a failed upgrade is.</p>; })()}
           {picked.some((j) => j.created_by === me) && <p className="mt-3 border border-line p-3 text-sm">You planned {picked.every((j) => j.created_by === me) ? "these fixes" : "some of these fixes"}. Approving them yourself is recorded as self-approved for each machine: no second person checked the change (SOC 2 CC8.1).</p>}
@@ -160,7 +167,7 @@ function KbFleetRow({ row: r }: { row: KbRow }) {
     <li className="border border-line bg-surface p-4">
       <p className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <span className="min-w-0 break-words font-medium">{r.title}</span>
-        <span className="num text-sm">{r.fixed} of {plural(r.hosts, "host")}</span>
+        <span className="num text-sm">{r.fixed} of {plural(r.hosts, "machine")}</span>
       </p>
       <p className="mt-1 break-words text-sm text-muted">{r.product}, build {r.build}</p>
       {left > 0 && (
@@ -238,13 +245,14 @@ export function JobCard({ job: j, onApprove, onCancel, blocked, inRollout }: { j
             <li><time dateTime={parseUtc(j.updated).toISOString()} title={parseUtc(j.updated).toLocaleString()}>{relativeTime(j.updated)}</time></li>
           </ul>
         </div>
-        <div className="flex shrink-0 flex-wrap gap-2">
-          {CANCELLABLE.includes(j.status) && onCancel && (
-            <button className={btnQuiet} onClick={onCancel} {...adminGate(admin)}>Cancel fix<span className="sr-only"> on {j.hostname}</span></button>
-          )}
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
           {j.status === "planned" && blocked && <p className="text-sm text-muted">Can't run: {blocked}</p>}
           {j.status === "planned" && onApprove && !blocked && (
             <button className={btnQuiet} onClick={onApprove} {...adminGate(admin)}><Check className="size-4" aria-hidden />Review and approve<span className="sr-only"> fix on {j.hostname}</span></button>
+          )}
+          {/* the main action first; cancelling is the trailing link (DESIGN.md: action row) */}
+          {CANCELLABLE.includes(j.status) && onCancel && (
+            <button className="tap inline-flex cursor-pointer items-center px-1 text-sm underline decoration-line-strong hover:decoration-ink disabled:cursor-not-allowed disabled:opacity-50" onClick={onCancel} {...adminGate(admin)}>Cancel fix<span className="sr-only"> on {j.hostname}</span></button>
           )}
         </div>
       </div>

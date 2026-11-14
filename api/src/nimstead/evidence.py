@@ -303,7 +303,7 @@ def _controls(m: dict, sla: dict) -> list[dict]:
          "evidence": f"{m['assets_reporting']}/{m['assets']} assets with a report timestamp in or after the period"
                      + (f"; {m['assets_silent_now']} not reporting at the period end" if m.get("assets_silent_now") else "")},
         {"framework": "NIST SP 800-53 Rev. 5", "control": "SI-2", "requirement": "Flaw remediation within organisation-defined time periods",
-         "status": timely(sla_ok, m["resolved"]), "evidence": f"{m['resolved_within_sla']}/{m['resolved']} fixes within the organisation's SLA in force when each was detected (now: {', '.join(f'{SLA_LABEL.get(p, p)} {d} days' for p, d in sla.items())})"
+         "status": timely(sla_ok, m["resolved"]), "evidence": f"{m['overdue_open']} open findings past SLA; {m['resolved_within_sla']}/{m['resolved']} fixes within the organisation's SLA in force when each was detected (now: {', '.join(f'{SLA_LABEL.get(p, p)} {d} days' for p, d in sla.items())})"
                      + (f"; deadlines changed {m['sla_changes']} times in the period (sla_changes)" if m.get("sla_changes") else "")},
         {"framework": "PCI DSS v4.0.1", "control": "6.3.3", "requirement": "Critical security patches installed within one month of release",
          "status": st(m["critical_overdue_30d"] == 0),

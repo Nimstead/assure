@@ -137,7 +137,7 @@ type AssetView = "machines" | "devices" | "internet";
 function AssetViews({ view, devices, flagged, external }: { view: AssetView; devices: number; flagged: number; external: number }) {
   const tabs: [AssetView, string, ReactNode][] = [
     ["machines", "Machines", null],
-    ["devices", "Devices with no agent", devices ? <span className="num text-muted">{devices}{flagged > 0 && <span className="text-now-fg"> · {plural(flagged, "with issues", "with issues")}</span>}</span> : null],
+    ["devices", "Devices with no agent", devices ? <span className="num text-muted">{devices}{flagged > 0 && <span className="text-ink"> · {plural(flagged, "with issues", "with issues")}</span>}</span> : null],
     ["internet", "Internet targets", external ? <span className="num text-muted">{external}</span> : null],
   ];
   return (

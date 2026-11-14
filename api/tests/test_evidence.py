@@ -103,6 +103,9 @@ def test_sla_metrics(env):
     statuses = {(x["framework"], x["control"]): x["status"] for x in pack["controls"]}
     assert statuses[("NIST SP 800-53 Rev. 5", "SI-2")] == "not_met"
     assert statuses[("NIST SP 800-53 Rev. 5", "RA-5")] == "met"
+    # what the status turns on is said first, so "27/27 within SLA" never reads as the reason for Not met
+    si2 = next(x for x in pack["controls"] if x["control"] == "SI-2")["evidence"]
+    assert si2.startswith(f"{m['overdue_open']} open findings past SLA; ")
 
 
 def test_overdue_filter_matches_the_evidence_count(env):

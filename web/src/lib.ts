@@ -39,7 +39,7 @@ export const AGENT_UPDATE: Record<Exclude<AgentUpdate, "current">, { label: stri
   updating: { label: "Agent updating", why: (a) => `Agent ${a.agent_version} will replace itself with this server's signed release at its next run.` },
   failed: { label: "Agent update failed", why: (a) => `${a.agent_update_error ?? "The last self-update failed."} The agent kept running ${a.agent_version} and will try again at its next run.` },
   paused: { label: "Agent update paused", why: () => "Agent updates are paused for your organisation (Settings)." },
-  off: { label: "Agent outdated", why: () => "Automatic updates are switched off on this host. Rerun the install command to update it; the enrolment is kept." },
+  off: { label: "Agent outdated", why: () => "Automatic agent updates are switched off. Rerun the install command to update it; the enrolment is kept." },
   reinstall: { label: "Agent outdated", why: (a) => `${a.agent_version ? `Agent ${a.agent_version}` : "This agent"} can't update itself. Rerun the install command on this host once; the enrolment is kept, and later versions update automatically.` },
 };
 export interface Coverage { assessed: number; inventory_only: number; not_assessed: { name: string; publisher: string | null; hosts: number }[] }

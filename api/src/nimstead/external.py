@@ -349,9 +349,12 @@ def held_open(vid: str, package: str, verdicts: list, rep: dict) -> str | None:
     (R4.6, DECISIONS 126). rep is the scan's report, whose coverage holds each port's state.
 
     Exposed services and web paths close on their own not-vulnerable or not-applicable verdict. TLS findings close when
-    the handshake ran without showing them, or nothing listens on 443; legacy TLS also needs this scanner to have tried
+    the handshake ran without showing them (untrusted or name not while it showed an expired certificate), or nothing
+    listens on 443; legacy TLS also needs this scanner to have tried
     TLS 1.0/1.1. A banner finding closes on its port refusing, or answering with a greeting that no longer names it."""
     own = [v for v in verdicts if (v.vuln_id == vid and v.product == package) or v.check == vid]
+    if not own and vid in ("NIM-TLS-UNTRUSTED", "NIM-TLS-NAME") and any(v.vuln_id == "NIM-TLS-EXPIRED" and v.outcome == "vulnerable" for v in verdicts):
+        return "not-reassessed"  # verification stops at the expiry date, so trust and name went untested (tls_findings)
     if not own and vid.startswith("NIM-TLS-"):
         own = [v for v in verdicts if v.check == "tls"]  # 443 as a whole: refused, dropped or timed out
         if not own:

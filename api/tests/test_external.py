@@ -149,6 +149,18 @@ def test_a_target_that_stops_answering_closes_nothing(world, monkeypatch):
     assert c.get(f"/api/assets/{t['id']}/scan-report").json()["headline"]["status"] == "not-assessed"
 
 
+def test_an_untrusted_certificate_that_expires_keeps_its_untrusted_finding_open(world, monkeypatch):
+    """Verification stops at the expiry date: an expired self-signed certificate says nothing about trust, so that's no fix."""
+    c, dns = world
+    t = add(c, dns)
+    c.post(f"/api/targets/{t['id']}/verify")
+    fake_net(monkeypatch, tls={"trusted": False, "error": "self-signed certificate", "legacy": False})
+    c.post(f"/api/targets/{t['id']}/scan")
+    fake_net(monkeypatch, tls=EXPIRED)  # the same certificate, a few months on
+    assert c.post(f"/api/targets/{t['id']}/scan").json()["resolved"] == 0
+    assert {f["vuln_id"] for f in c.get("/api/findings").json()} == {"NIM-TLS-UNTRUSTED", "NIM-TLS-EXPIRED"}
+
+
 def test_tls_findings_close_when_nothing_listens_on_443(world, monkeypatch):
     c, dns = world
     t = add(c, dns)

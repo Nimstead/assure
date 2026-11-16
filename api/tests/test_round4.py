@@ -301,11 +301,15 @@ def test_invitations_are_refused_while_sso_is_required(env, mail):
 
     from nimstead.db import Org
     admin = user(env)
+    assert admin.post("/api/users/invite", json={"email": "bob@example.com"}).status_code == 202
     s = sessionmaker(make_engine(env))()
     s.execute(update(Org).values(sso_required=True))
     s.commit()
-    r = admin.post("/api/users/invite", json={"email": "bob@example.com"})
+    r = admin.post("/api/users/invite", json={"email": "carol@example.com"})
     assert r.status_code == 409 and "single sign-on" in r.json()["detail"]
+    bob = TestClient(admin.app)  # a link sent before SSO was required
+    r = bob.post(link_in(mail("bob@example.com")), data={"password": "bob's own password"}, follow_redirects=False)
+    assert r.status_code == 409 and bob.get("/api/me").status_code == 401
 
 
 def test_invite_promote_demote_and_remove(env, mail):

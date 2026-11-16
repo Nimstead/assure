@@ -21,9 +21,9 @@ The export defines success payloads and selected shared errors. Inspect the link
 | `POST` | [`/api/agent/jobs/{job_id}/report`](../../api/src/nimstead/app.py#L1452) | Asset agent key | Record an outcome for a job owned by this agent and return its resulting status. |
 | `GET` | [`/api/agent/manifest`](../../api/src/nimstead/app.py#L1419) | Asset agent key | Return the organisation's update pause flag and any valid signed release for the served agent. |
 | `POST` | [`/api/agent/network-checks`](../../api/src/nimstead/app.py#L1299) | Asset agent key | Judge what this host's opted-in agent observed on devices it chose itself (DECISIONS 129) and return counts. |
-| `POST` | [`/api/ai/explain/{finding_id}`](../../api/src/nimstead/app.py#L2789) | Browser session | Return text/model for finding_id's owned detail through ai.explain. |
-| `POST` | [`/api/ai/search`](../../api/src/nimstead/app.py#L2807) | Browser session | Return five validated filter fields from body.text via ai.parse_search. |
-| `GET` | [`/api/ai/status`](../../api/src/nimstead/app.py#L2769) | Session or read-only API token | Return enabled configuration Boolean without a provider request. |
+| `POST` | [`/api/ai/explain/{finding_id}`](../../api/src/nimstead/app.py#L2793) | Browser session | Return text/model for finding_id's owned detail through ai.explain. |
+| `POST` | [`/api/ai/search`](../../api/src/nimstead/app.py#L2811) | Browser session | Return five validated filter fields from body.text via ai.parse_search. |
+| `GET` | [`/api/ai/status`](../../api/src/nimstead/app.py#L2773) | Session or read-only API token | Return enabled configuration Boolean without a provider request. |
 | `GET` | [`/api/assets`](../../api/src/nimstead/app.py#L1507) | Session or read-only API token | Return organisation assets with finding counts, agent status, and application coverage. |
 | `POST` | [`/api/assets`](../../api/src/nimstead/app.py#L1753) | Admin browser session | Create an application asset and return its record plus upload_token. |
 | `DELETE` | [`/api/assets/{asset_id}`](../../api/src/nimstead/app.py#L1553) | Admin browser session | Delete an owned asset and its findings, packages, jobs and scan records. |
@@ -47,11 +47,11 @@ The export defines success payloads and selected shared errors. Inspect the link
 | `POST` | [`/api/enroll-tokens`](../../api/src/nimstead/app.py#L871) | Admin browser session | Return token/id/expires once for a new enrolment credential, with HTTP 201. |
 | `GET` | [`/api/enroll-tokens`](../../api/src/nimstead/app.py#L886) | Session or read-only API token | Return id/created/expires/revoked/sandbox rows, newest created first. |
 | `DELETE` | [`/api/enroll-tokens/{token_id}`](../../api/src/nimstead/app.py#L897) | Admin browser session | Mark one matching organisation enrolment token revoked and return 204. |
-| `GET` | [`/api/evidence/ledger`](../../api/src/nimstead/app.py#L2831) | Session or read-only API token | Return problems, newest entries and matching total for the user's ledger. |
-| `GET` | [`/api/evidence/pack`](../../api/src/nimstead/app.py#L2882) | Session or read-only API token | Return an application/zip evidence attachment for trailing days, default 90. |
-| `GET` | [`/api/evidence/public-key`](../../api/src/nimstead/app.py#L2849) | No user-session dependency | Return pem, fingerprint_sha256 and verifier_sha256 without authentication. |
-| `GET` | [`/api/evidence/report`](../../api/src/nimstead/app.py#L2867) | Session or read-only API token | Return current evidence data for trailing days, default 90 and range 1..730. |
-| `GET` | [`/api/evidence/verify.py`](../../api/src/nimstead/app.py#L2859) | No user-session dependency | Return current offline verifier source as text/x-python, without authentication. |
+| `GET` | [`/api/evidence/ledger`](../../api/src/nimstead/app.py#L2835) | Session or read-only API token | Return problems, newest entries and matching total for the user's ledger. |
+| `GET` | [`/api/evidence/pack`](../../api/src/nimstead/app.py#L2886) | Session or read-only API token | Return an application/zip evidence attachment for trailing days, default 90. |
+| `GET` | [`/api/evidence/public-key`](../../api/src/nimstead/app.py#L2853) | No user-session dependency | Return pem, fingerprint_sha256 and verifier_sha256 without authentication. |
+| `GET` | [`/api/evidence/report`](../../api/src/nimstead/app.py#L2871) | Session or read-only API token | Return current evidence data for trailing days, default 90 and range 1..730. |
+| `GET` | [`/api/evidence/verify.py`](../../api/src/nimstead/app.py#L2863) | No user-session dependency | Return current offline verifier source as text/x-python, without authentication. |
 | `GET` | [`/api/findings`](../../api/src/nimstead/app.py#L1884) | Session or read-only API token | Return an array of organisation findings matching the query filters. |
 | `GET` | [`/api/findings.csv`](../../api/src/nimstead/app.py#L1944) | Session or read-only API token | Stream all matching findings as CSV, escaping spreadsheet formula prefixes. |
 | `POST` | [`/api/findings/accept`](../../api/src/nimstead/app.py#L2072) | Admin browser session | Accept currently open findings for body.vuln_id in the admin's organisation. |
@@ -78,11 +78,11 @@ The export defines success payloads and selected shared errors. Inspect the link
 | `PATCH` | [`/api/settings`](../../api/src/nimstead/app.py#L2311) | Admin browser session | Update organisation policy, record the decision, and return current settings. |
 | `GET` | [`/api/settings/notifications`](../../api/src/nimstead/app.py#L2558) | Admin browser session | Return webhook/email configuration, confirmation state, and recent notification outcomes. |
 | `PUT` | [`/api/settings/notifications`](../../api/src/nimstead/app.py#L2569) | Admin browser session | Save notification settings and request confirmation for newly added email recipients. |
-| `POST` | [`/api/settings/notifications/test`](../../api/src/nimstead/app.py#L2747) | Admin browser session | Queue a test notification to the saved destinations and return queued=true with HTTP 202. |
+| `POST` | [`/api/settings/notifications/test`](../../api/src/nimstead/app.py#L2751) | Admin browser session | Queue a test notification to the saved destinations and return queued=true with HTTP 202. |
 | `GET` | [`/api/settings/sso`](../../api/src/nimstead/app.py#L2493) | Admin browser session | Return saved SSO fields and proof instructions for an admin browser user. |
 | `PUT` | [`/api/settings/sso`](../../api/src/nimstead/app.py#L2501) | Admin browser session | Replace saved SSO configuration and return sso_json after commit. |
 | `POST` | [`/api/settings/sso/verify`](../../api/src/nimstead/app.py#L2472) | Admin browser session | Check only unverified, unclaimed saved domains and return sso_json. |
-| `GET` | [`/api/summary`](../../api/src/nimstead/app.py#L2935) | Session or read-only API token | Return asset/priority counts, up to ten actions and twenty attention jobs. |
+| `GET` | [`/api/summary`](../../api/src/nimstead/app.py#L2939) | Session or read-only API token | Return asset/priority counts, up to ten actions and twenty attention jobs. |
 | `POST` | [`/api/targets`](../../api/src/nimstead/app.py#L1663) | Admin browser session | Create an external target for a public DNS hostname and return its asset record. |
 | `POST` | [`/api/targets/{target_id}/scan`](../../api/src/nimstead/app.py#L1727) | Admin browser session | Recheck ownership, scan the external target, and return its findings result. |
 | `POST` | [`/api/targets/{target_id}/verify`](../../api/src/nimstead/app.py#L1692) | Admin browser session | Verify DNS and address ownership for an external target and return its asset record. |

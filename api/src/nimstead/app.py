@@ -2706,7 +2706,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         12..200 returns 422 without consuming the link. Then stage token deletion.
         Reset updates a password user, revokes sessions/API tokens and redirects to
         sign-in. Signup creates a new admin/org and redirects to sign-in. Invitation
-        creates a member/session when its org still exists. Existing users return
+        creates a member/session when its org still exists and doesn't require SSO (409 otherwise). Existing users return
         409 with token consumption. MFA secrets remain unchanged. Commit failures,
         hashing/evidence/backend errors can propagate. Concurrent use is not locked."""
         p, org = pending_link(s, token)
@@ -2730,6 +2730,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         if user or (p.purpose == "invite" and not org):
             s.commit()
             return Response(CONFIRM_PAGE.format("<p>This address already has an account. <a href='/signin'>Sign in</a>.</p>"),
+                            409, media_type="text/html")
+        if p.purpose == "invite" and org.sso_required:  # sent before SSO was required: a password member would be locked out
+            s.commit()
+            return Response(CONFIRM_PAGE.format("<p>This organisation now requires single sign-on. <a href='/signin'>Sign in with SSO</a>.</p>"),
                             409, media_type="text/html")
         if p.purpose == "invite":
             user = User(org_id=org.id, email=p.email, password_hash=ph.hash(password))

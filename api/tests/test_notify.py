@@ -490,3 +490,28 @@ def test_a_webhook_reply_is_never_read_into_memory(sent, monkeypatch):
     monkeypatch.setattr(notify, "http_client", httpx.Client(transport=httpx.MockTransport(lambda req: httpx.Response(200, content=endless()))))
     notify._send_webhook(HOOK, "slack", "test", "hello", False)
     assert len(read) < 5
+
+
+def test_a_guarded_request_has_a_total_deadline(monkeypatch):
+    """httpx's timeouts apply to each read: a server sending its headers a byte at a time held a worker for hours."""
+    import socket
+    import threading
+    monkeypatch.setattr(netguard, "check_public_url", lambda url: ["127.0.0.1"])  # a local server stands in for a public one
+    srv = socket.create_server(("127.0.0.1", 0))
+
+    def dribble():
+        conn, _ = srv.accept()
+        conn.recv(4096)
+        try:
+            for b in b"HTTP/1.1 200 OK\r\nX-Slow: " + b"a" * 200:
+                conn.sendall(bytes([b]))
+                time.sleep(0.05)
+        except OSError:
+            pass  # the client gave up
+        conn.close()
+    threading.Thread(target=dribble, daemon=True).start()
+    start = time.monotonic()
+    with pytest.raises(httpx.TimeoutException), netguard.guarded_client(timeout=0.5) as client:
+        client.get(f"http://127.0.0.1:{srv.getsockname()[1]}/")
+    assert time.monotonic() - start < 4
+    srv.close()

@@ -85,7 +85,8 @@ print(json.dumps({"outcome": sys.argv[1], "from": sys.argv[2], "to": sys.argv[3]
   $DC run --rm --no-deps -T --entrypoint sh app -c 'mkdir -p /data/release && cat > /data/release/update-status.json' \
     < "$WORK/status.json" >/dev/null 2>&1 || echo "warning: couldn't record the outcome in the data volume" >&2
 }
-refuse() { echo "update refused: $2" >&2; [ "$DRY" = 1 ] || status refused "$1" "$2"; exit 1; }
+# a refusal doesn't replace a rollback's record: that's what keeps the rolled-back release from being retried
+refuse() { echo "update refused: $2" >&2; [ "$DRY" = 1 ] || [ "$(last outcome)" = rolled_back ] || status refused "$1" "$2"; exit 1; }
 # last FIELD: the previous run's outcome. After a failed rollback the database is half-restored, so nothing goes on top of
 # it (and the record stays as it is); a release that was rolled back is only retried when asked for with --to.
 last() { python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1])).get(sys.argv[2]) or "")' deploy/last-update.json "$1" 2>/dev/null || true; }

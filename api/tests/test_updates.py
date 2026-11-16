@@ -275,7 +275,7 @@ def test_running_channel_shows_only_from_a_verified_cache(gh):
     assert updates.status()["running_channel"] == "stable"
 
 
-def run_update_sh(tmp_path, last: dict):
+def run_update_sh(tmp_path, last: dict, origin: str | None = None):
     """deploy/update.sh in a release checkout at 0.9.1 with tag v0.9.2, after a run that ended in last. curl always fails,
     so nothing is downloaded."""
     import os
@@ -288,7 +288,7 @@ def run_update_sh(tmp_path, last: dict):
     shutil.copy(Path(__file__).parents[2] / "deploy" / "update.sh", repo / "deploy" / "update.sh")
     (repo / "api" / "pyproject.toml").write_text('[project]\nversion = "0.9.1"\n', newline="\n")
     (repo / ".gitignore").write_text("deploy/last-update.json\n", newline="\n")
-    for args in (["init", "-q"], ["add", "."], ["commit", "-qm", "release"], ["tag", "v0.9.2"], ["remote", "add", "origin", str(repo)]):
+    for args in (["init", "-q"], ["add", "."], ["commit", "-qm", "release"], ["tag", "v0.9.2"], ["remote", "add", "origin", origin or str(repo)]):
         subprocess.run(["git", "-c", "user.email=t@example.com", "-c", "user.name=t", *args], cwd=repo, check=True, capture_output=True)
     (repo / "deploy" / "last-update.json").write_text(json.dumps(last), newline="\n")
     (fake / "curl").write_text("#!/bin/sh\nexit 22\n", newline="\n")
@@ -315,3 +315,13 @@ def test_update_sh_doesnt_retry_a_release_it_rolled_back(tmp_path):
     """Retrying nightly meant an outage and two full database dumps every night until someone noticed."""
     r, _ = run_update_sh(tmp_path, {"outcome": "rolled_back", "from": "0.9.1", "to": "0.9.2", "error": "not healthy", "at": "2026-11-16T03:10:00"})
     assert r.returncode == 0 and "skipping v0.9.2: it was rolled back" in r.stdout and "--to v0.9.2" in r.stdout, r.stdout + r.stderr
+
+
+
+@needs_sh
+def test_update_sh_remembers_a_rolled_back_release_through_a_later_refusal(tmp_path):
+    """A failed fetch the next night must not overwrite the record, or the night after retries the broken release."""
+    last = {"outcome": "rolled_back", "from": "0.9.1", "to": "0.9.2", "error": "not healthy", "at": "2026-11-16T03:10:00"}
+    r, after = run_update_sh(tmp_path, last, origin=str(tmp_path / "gone"))
+    assert r.returncode == 1 and "git fetch failed" in r.stderr, r.stdout + r.stderr
+    assert after == last

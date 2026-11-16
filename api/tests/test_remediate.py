@@ -291,6 +291,20 @@ def test_auto_rollout_halts_after_any_failure(env):
     assert c.get("/api/agent/jobs", headers=hb).json() == []
 
 
+def test_auto_mode_doesnt_repeat_a_fix_that_just_failed_on_this_host(env):
+    """A canary whose fix rolled back gets a person's look, not the same fix again on every report."""
+    c = setup(env)
+    c.patch("/api/settings", json={"remediation_mode": "auto"})
+    canary, hc = add_host(c, "canary", version=NEW)
+    c.patch(f"/api/assets/{canary}", json={"ring": 0})
+    c.post("/api/agent/inventory", json=inv(OLD), headers=hc)
+    [cj] = c.get("/api/agent/jobs", headers=hc).json()
+    c.post(f"/api/agent/jobs/{cj['id']}/report", json={"outcome": "rolled_back", "error": "health"}, headers=hc)
+    c.post("/api/agent/inventory", json=inv(OLD), headers=hc)
+    assert c.get("/api/agent/jobs", headers=hc).json() == []
+    assert [j["status"] for j in c.get("/api/remediation/jobs").json()] == ["rolled_back"]
+
+
 def _dispatched(c, aid, h):
     jid = plan(c, aid).json()["id"]
     c.post(f"/api/remediation/jobs/{jid}/approve")
@@ -500,6 +514,61 @@ def test_a_windows_failure_halts_only_its_own_release(env):
     job("10.0.26100.4000", "failed")
     assert remediate.canary_ok(s, org, job("10.0.26100.3000", "planned"))[1].startswith("This change failed")
     assert not remediate.canary_ok(s, org, job("10.0.26100.5000", "planned"))[1].startswith("This change failed")
+
+
+def test_a_failed_stepped_windows_job_halts_the_update_it_was_planned_towards(env):
+    """A host far behind is offered September or October: its failure counts against October too."""
+    from nimstead import remediate
+    from nimstead.db import Asset, Org
+    s = sessionmaker(make_engine(env), expire_on_commit=False)()
+    org = Org(name="o", canary_soak_hours=1)
+    s.add(org)
+    s.flush()
+    s.add(Asset(org_id=org.id, hostname="canary", ring=0, agent_key_hash="c"))
+    host = Asset(org_id=org.id, hostname="h", agent_key_hash="h")
+    s.add(host)
+    s.flush()
+    october = {"name": "Windows 11 24H2", "kb": "5000002", "from": "10.0.26100.1000", "to": "10.0.26100.4000"}
+    for packages, status in (([{**october, "alt": {"kb": "5000001", "to": "10.0.26100.3000"}}], "rolled_back"), ([october], "planned")):
+        s.add(job := RemediationJob(org_id=org.id, asset_id=host.id, status=status, manager="windows", action_key="Windows|Windows 11 24H2",
+                                    packages=packages, finding_ids=[], summary="s", created_by="policy"))
+        s.flush()
+    assert remediate.canary_ok(s, org, job)[1].startswith("This change failed")
+
+
+def test_a_windows_update_is_handed_out_after_the_other_jobs(env):
+    """The agent stops at a Windows update's restart: a job handed out after it would sit there until it timed out."""
+    from nimstead import remediate
+    from nimstead.db import Org
+    s = sessionmaker(make_engine(env), expire_on_commit=False)()
+    s.add(org := Org(name="o"))
+    s.flush()
+    s.add(host := Asset(org_id=org.id, hostname="h", agent_key_hash="h", sandbox=True))
+    s.flush()
+    for manager, key in (("windows", "Windows|Windows 11 24H2"), ("winget", "WinApp|7-Zip")):
+        s.add(RemediationJob(org_id=org.id, asset_id=host.id, status="approved", approved_by="a@example.com", manager=manager,
+                             action_key=key, packages=[{"name": "x", "to": "1"}], finding_ids=[], summary="s", created_by="a@example.com"))
+        s.flush()
+    assert [j["manager"] for j in remediate.dispatch(s, host)] == ["winget", "windows"]
+
+
+def test_a_fix_isnt_judged_on_an_app_list_read_in_part(env):
+    """A partly read Uninstall list may simply have missed the upgraded app: the job waits for a full read."""
+    from nimstead import remediate, winapps
+    from nimstead.db import Org
+    s = sessionmaker(make_engine(env), expire_on_commit=False)()
+    s.add(org := Org(name="o"))
+    s.flush()
+    s.add(host := Asset(org_id=org.id, hostname="h", agent_key_hash="h", collection={"sources": {"uninstall": {"state": "partial", "count": 3}}}))
+    s.flush()
+    s.add(job := RemediationJob(org_id=org.id, asset_id=host.id, status="verifying", manager="winget", action_key=f"{winapps.ECOSYSTEM}|7-Zip",
+                                packages=[{"name": "7-Zip", "to": "24.09"}], finding_ids=[], summary="s", created_by="a@example.com"))
+    s.flush()
+    remediate.verify(s, host)
+    assert job.status == "verifying"
+    host.collection = {"sources": {"uninstall": {"state": "ok", "count": 40}}}
+    remediate.verify(s, host)
+    assert job.status == "succeeded"
 
 
 def test_plan_the_rest_in_one_request_keeps_what_it_could_plan(env):

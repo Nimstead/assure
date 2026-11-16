@@ -21,7 +21,7 @@ from nimstead import evidence, msproducts
 from nimstead.db import Advisory, Asset, Finding, InstalledPackage, LedgerEntry, Org, RemediationJob, now
 from nimstead.match import normalize_ecosystem
 from nimstead.notify import SILENT_AFTER, notify
-from nimstead.scan import HOTPATCH
+from nimstead.scan import HOTPATCH, unread
 from nimstead.versions import comparator_for, sort_key, windows_cmp
 
 # apt: rollback = old .deb; apk/dnf: rollback = file + package-database snapshot (DECISIONS 16)
@@ -212,7 +212,10 @@ def _rollout(plannable: list[Asset], jobs: list[RemediationJob], ring0: set[str]
 
 
 def _aims(job: RemediationJob):
-    """The build a job installs: a stepped or servicing job's earlier step, not the cumulative it's planned towards."""
+    """The build a job installs: a stepped or servicing job's earlier step, not the cumulative it's planned towards.
+    A failure counts against the newest build too, since the host may have been offered either."""
+    if _halts(job):
+        return job.packages[0].get("to")
     return (job.packages[0].get("alt") or {}).get("to") or job.packages[0].get("to")
 
 
@@ -536,7 +539,8 @@ def auto_remediate(s: Session, asset: Asset) -> None:
     """Plan/approve eligible open fixed-version actions for asset in Session s.
 
     Do nothing outside auto mode. Skip MANUAL_ONLY base managers, including Office
-    and Microsoft application paths. Broad rings attempt canary pinning after approval.
+    and Microsoft application paths, and actions whose newest job on this asset is in ALERT_STATUSES.
+    Broad rings attempt canary pinning after approval.
     Suppress RemediationError per action. Other errors propagate. Pending mutations
     are not rolled back here. The caller commits all changes."""
     org = s.get(Org, asset.org_id)
@@ -545,12 +549,14 @@ def auto_remediate(s: Session, asset: Asset) -> None:
     actions = {(f.ecosystem, f.package) for f in s.scalars(select(Finding).where(
         Finding.asset_id == asset.id, Finding.status == "open", Finding.fixed_version.is_not(None)))}
     for eco, pkg in sorted(actions):
-        job = s.scalar(select(RemediationJob).where(RemediationJob.asset_id == asset.id,
-                                                    RemediationJob.action_key == f"{eco}|{pkg}", RemediationJob.status == "planned"))
+        job = s.scalar(select(RemediationJob).where(RemediationJob.asset_id == asset.id, RemediationJob.action_key == f"{eco}|{pkg}")
+                       .order_by(RemediationJob.created.desc()).limit(1))
         if MANAGERS.get(eco.split(":", 1)[0]) in MANUAL_ONLY:  # never planned or approved by policy (plan T22, T38)
             continue
+        if job and job.status in ALERT_STATUSES:  # a failure here gets a person's look first, as kb_fleet: never the same fix again
+            continue
         try:
-            job = job or plan(s, asset, eco, pkg, "policy")
+            job = job if job and job.status == "planned" else plan(s, asset, eco, pkg, "policy")
             approve(s, job, "policy", policy=True)
             if asset.ring > 0:
                 pin_to_canary(s, job)
@@ -693,7 +699,9 @@ def dispatch(s: Session, asset: Asset) -> list[dict]:
             # a silent peer can't hold the group forever, but a Windows install is silent for hours: the same limit sweep() gives it.
             # With DISPATCH_TIMEOUT (2 h) a real DC's update outlasted it and the second DC was handed its update alongside (W8 lab)
             RemediationJob.updated >= now() - timedelta(hours=org.reboot_deadline_hours or 24) - WIN_TIMEOUT_MARGIN).limit(1)) is not None
-    for job in s.scalars(select(RemediationJob).where(RemediationJob.asset_id == asset.id, RemediationJob.status == "approved")):
+    # a Windows update last: the agent stops at its restart, so a job listed after it would be stranded
+    for job in s.scalars(select(RemediationJob).where(RemediationJob.asset_id == asset.id, RemediationJob.status == "approved")
+                         .order_by(RemediationJob.manager == "windows")):
         if not asset.sandbox and not production_allowed():  # flags may have changed since approval
             job.status, job.error = "failed", "Blocked: asset is not a sandbox"
             _log(s, job, "remediation_failed", error=job.error)
@@ -762,9 +770,13 @@ def verify(s: Session, asset: Asset) -> None:
     Open/accepted findings normally mean not_fixed. A Windows alternative build
     present in any reported version value instead permits stepped success while
     findings remain. No matching open/accepted rows means success, including missing
-    finding rows. The caller must establish inventory freshness and commit.
+    finding rows. A job whose ecosystem scan.unread() names stays verifying.
+    The caller must establish inventory freshness and commit.
     Evidence, stored-data and database errors propagate after possible mutation."""
+    blocked = unread(asset.collection)
     for job in s.scalars(select(RemediationJob).where(RemediationJob.asset_id == asset.id, RemediationJob.status == "verifying")):
+        if job.action_key.split("|", 1)[0] in blocked:  # a list read in part may just have missed the upgraded app
+            continue
         # accepted is not fixed: accepting a risk mid-verification must not turn the job into a success (or a canary proof)
         still_open = [f.vuln_id for f in s.scalars(select(Finding).where(Finding.id.in_(job.finding_ids),
                                                                          Finding.status.in_(("open", "accepted"))))]

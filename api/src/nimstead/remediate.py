@@ -21,7 +21,7 @@ from nimstead import evidence, msproducts
 from nimstead.db import Advisory, Asset, Finding, InstalledPackage, LedgerEntry, Org, RemediationJob, now
 from nimstead.match import normalize_ecosystem
 from nimstead.notify import SILENT_AFTER, notify
-from nimstead.scan import HOTPATCH, unread
+from nimstead.scan import HOTPATCH, unproven
 from nimstead.versions import comparator_for, sort_key, windows_cmp
 
 # apt: rollback = old .deb; apk/dnf: rollback = file + package-database snapshot (DECISIONS 16)
@@ -539,21 +539,25 @@ def auto_remediate(s: Session, asset: Asset) -> None:
     """Plan/approve eligible open fixed-version actions for asset in Session s.
 
     Do nothing outside auto mode. Skip MANUAL_ONLY base managers, including Office
-    and Microsoft application paths, and actions whose newest job on this asset is in ALERT_STATUSES.
+    and Microsoft application paths, and an action whose newest job on this asset failed
+    (ALERT_STATUSES, except a verification timeout) and covered every finding still open for it.
     Broad rings attempt canary pinning after approval.
     Suppress RemediationError per action. Other errors propagate. Pending mutations
     are not rolled back here. The caller commits all changes."""
     org = s.get(Org, asset.org_id)
     if org.remediation_mode != "auto":
         return
-    actions = {(f.ecosystem, f.package) for f in s.scalars(select(Finding).where(
-        Finding.asset_id == asset.id, Finding.status == "open", Finding.fixed_version.is_not(None)))}
-    for eco, pkg in sorted(actions):
+    actions: dict[tuple[str, str], set[str]] = defaultdict(set)
+    for f in s.scalars(select(Finding).where(Finding.asset_id == asset.id, Finding.status == "open", Finding.fixed_version.is_not(None))):
+        actions[f.ecosystem, f.package].add(f.id)
+    for (eco, pkg), open_ids in sorted(actions.items()):
         job = s.scalar(select(RemediationJob).where(RemediationJob.asset_id == asset.id, RemediationJob.action_key == f"{eco}|{pkg}")
                        .order_by(RemediationJob.created.desc()).limit(1))
         if MANAGERS.get(eco.split(":", 1)[0]) in MANUAL_ONLY:  # never planned or approved by policy (plan T22, T38)
             continue
-        if job and job.status in ALERT_STATUSES:  # a failure here gets a person's look first, as kb_fleet: never the same fix again
+        # the same fix just failed here: a person looks first, never a loop. A later release's findings (one action key spans
+        # every release) plan again, and so does a fix that applied but couldn't be proven in time
+        if job and job.status in ALERT_STATUSES and job.error != VERIFY_TIMEOUT_ERROR and open_ids <= set(job.finding_ids):
             continue
         try:
             job = job if job and job.status == "planned" else plan(s, asset, eco, pkg, "policy")
@@ -770,12 +774,12 @@ def verify(s: Session, asset: Asset) -> None:
     Open/accepted findings normally mean not_fixed. A Windows alternative build
     present in any reported version value instead permits stepped success while
     findings remain. No matching open/accepted rows means success, including missing
-    finding rows. A job whose ecosystem scan.unread() names stays verifying.
+    finding rows. A job whose ecosystem scan.unproven() names stays verifying.
     The caller must establish inventory freshness and commit.
     Evidence, stored-data and database errors propagate after possible mutation."""
-    blocked = unread(asset.collection)
+    blocked = unproven(asset)
     for job in s.scalars(select(RemediationJob).where(RemediationJob.asset_id == asset.id, RemediationJob.status == "verifying")):
-        if job.action_key.split("|", 1)[0] in blocked:  # a list read in part may just have missed the upgraded app
+        if job.action_key.split("|", 1)[0] in blocked:  # e.g. a list read in part may just have missed the upgraded app
             continue
         # accepted is not fixed: accepting a risk mid-verification must not turn the job into a success (or a canary proof)
         still_open = [f.vuln_id for f in s.scalars(select(Finding).where(Finding.id.in_(job.finding_ids),

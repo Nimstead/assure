@@ -303,6 +303,12 @@ def test_auto_mode_doesnt_repeat_a_fix_that_just_failed_on_this_host(env):
     c.post("/api/agent/inventory", json=inv(OLD), headers=hc)
     assert c.get("/api/agent/jobs", headers=hc).json() == []
     assert [j["status"] for j in c.get("/api/remediation/jobs").json()] == ["rolled_back"]
+    # a finding that job didn't cover (next month's release: one action key spans every release) plans again
+    s = sessionmaker(make_engine(env))()
+    s.execute(update(RemediationJob).where(RemediationJob.id == cj["id"]).values(finding_ids=[]))
+    s.commit()
+    c.post("/api/agent/inventory", json=inv(OLD), headers=hc)
+    assert len(c.get("/api/agent/jobs", headers=hc).json()) == 1
 
 
 def _dispatched(c, aid, h):
@@ -569,6 +575,22 @@ def test_a_fix_isnt_judged_on_an_app_list_read_in_part(env):
     host.collection = {"sources": {"uninstall": {"state": "ok", "count": 40}}}
     remediate.verify(s, host)
     assert job.status == "succeeded"
+
+
+def test_a_setting_fix_isnt_judged_on_a_report_without_the_settings_read(env):
+    """No facts.config (the settings check timed out) proves nothing either way: the job waits, as the finding does."""
+    from nimstead import remediate
+    from nimstead.db import Org
+    s = sessionmaker(make_engine(env), expire_on_commit=False)()
+    s.add(org := Org(name="o"))
+    s.flush()
+    s.add(host := Asset(org_id=org.id, hostname="h", agent_key_hash="h", facts={"installation_type": "Server"}))
+    s.flush()
+    s.add(job := RemediationJob(org_id=org.id, asset_id=host.id, status="verifying", manager="winconfig", action_key="WinConfig|smb1",
+                                packages=[{"name": "smb1", "from": "current", "to": "fixed"}], finding_ids=[], summary="s", created_by="a@example.com"))
+    s.flush()
+    remediate.verify(s, host)
+    assert job.status == "verifying"
 
 
 def test_plan_the_rest_in_one_request_keeps_what_it_could_plan(env):

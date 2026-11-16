@@ -26,6 +26,7 @@ def now_code(secret: str, offset: int = 0) -> str:
 def mail(monkeypatch):
     monkeypatch.setenv("NIMSTEAD_SMTP_URL", "smtp://mail.example.com:587")
     monkeypatch.setenv("NIMSTEAD_SMTP_FROM", "nimstead@example.com")
+    monkeypatch.setenv("NIMSTEAD_PUBLIC_URL", "http://testserver")
     monkeypatch.setattr(notify.smtplib, "SMTP", FakeSMTP)
     FakeSMTP.sent, FakeSMTP.fail, FakeSMTP.tls = [], False, True
 

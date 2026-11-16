@@ -544,17 +544,21 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         evidence.append(s, org.id, "org_created", org.id, {"by": email, "name": org_name})
         return user
 
-    def public_base(request: Request) -> str:
-        """Return NIMSTEAD_PUBLIC_URL or request.base_url without trailing slashes.
+    def public_base() -> str | None:
+        """Return NIMSTEAD_PUBLIC_URL without trailing slashes, or None when it isn't set.
 
-        The environment value is not independently URL-validated here. Proxy/Host
-        configuration determines the fallback origin."""
-        return (os.environ.get("NIMSTEAD_PUBLIC_URL") or str(request.base_url)).rstrip("/")
+        Never the request's own address: anyone sets the Host header, and a reset link built
+        from it would carry its token to their site. The value is not URL-validated here."""
+        return (os.environ.get("NIMSTEAD_PUBLIC_URL") or "").rstrip("/") or None
 
-    def email_link(s: Session, request: Request, email: str, purpose: str, org_name: str = "", org_id: str | None = None) -> None:
+    def links_by_mail() -> bool:
+        """Return whether account and confirmation links can be emailed: SMTP and NIMSTEAD_PUBLIC_URL are both set."""
+        return notify.smtp_configured() and public_base() is not None
+
+    def email_link(s: Session, email: str, purpose: str, org_name: str = "", org_id: str | None = None) -> None:
         """Commit a pending account link, then request best-effort account mail.
 
-        s/request provide storage and base URL. email/purpose/org_name/org_id select
+        s provides storage, NIMSTEAD_PUBLIC_URL the base URL. email/purpose/org_name/org_id select
         the operation. Replace same-email/purpose/organisation links. Reset expires
         after RESET_LINK_HOURS, others after SIGNUP_LINK_HOURS. Store only a token
         hash. Commit caller changes before mail. Failure does not restore older
@@ -565,9 +569,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         s.add(PendingSignup(token_hash=sha(token), email=email, purpose=purpose, org_name=org_name, org_id=org_id,
                             expires=now() + timedelta(hours=RESET_LINK_HOURS if purpose == "reset" else SIGNUP_LINK_HOURS)))
         s.commit()
-        notify.send_account_email(email, purpose, f"{public_base(request)}/api/auth/signup/confirm?{urlencode({'token': token})}")
+        notify.send_account_email(email, purpose, f"{public_base()}/api/auth/signup/confirm?{urlencode({'token': token})}")
 
-    NEEDS_SMTP = "this server needs email to be set up (NIMSTEAD_SMTP_URL). Ask your Nimstead administrator, or sign in with single sign-on."
+    NEEDS_SMTP = ("this server needs email to be set up (NIMSTEAD_SMTP_URL and NIMSTEAD_PUBLIC_URL). Ask your Nimstead administrator, "
+                  "or sign in with single sign-on.")
 
     @app.post("/api/auth/signup", status_code=201)
     def signup(body: Signup, request: Request, resp: Response, s: DB):
@@ -599,14 +604,14 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             return {"email": user.email, "org": body.org_name}
         # From here the answer is the same whether or not the email has an account: the address owner gets the next step,
         # and chooses the password from the link, so nobody can pre-set one for an address they don't own.
-        if not notify.smtp_configured():
+        if not links_by_mail():
             raise HTTPException(403, "Sign-up on " + NEEDS_SMTP)
         s.execute(delete(PendingSignup).where(PendingSignup.expires < now()))
         if not over_limit(s, "signup-mail:" + email, 3):  # nobody can flood an inbox with sign-up emails
             if s.scalar(select(User.id).where(User.email == email)):
-                notify.send_account_email(email, "exists", public_base(request) + "/signin")
+                notify.send_account_email(email, "exists", public_base() + "/signin")
             else:
-                email_link(s, request, email, "signup", org_name=body.org_name)
+                email_link(s, email, "signup", org_name=body.org_name)
         resp.status_code = 202
         return {"status": "check_email", "email": email}
 
@@ -624,12 +629,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         occur. No password or session changes here. Mail receipt is not guaranteed."""
         if over_limit(s, "reset:" + client_key(request), RESET_MAX_PER_HOUR):
             raise HTTPException(429, "Too many reset requests from this address; try again in an hour")
-        if not notify.smtp_configured():
+        if not links_by_mail():
             raise HTTPException(403, "Password reset on " + NEEDS_SMTP)
         email = body.email.lower()
         user = s.scalar(select(User).where(User.email == email))
         if user and user.origin == "password" and not over_limit(s, "reset-mail:" + email, 3):
-            email_link(s, request, email, "reset")
+            email_link(s, email, "reset")
         return {"status": "check_email", "email": email}
 
     def failures(s: Session, key: str) -> int:
@@ -1000,8 +1005,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         suppress mail. Existing accounts receive a sign-in message rather than
         membership transfer. New addresses receive a scoped invitation link. Return
         403/429 on configuration/quota refusal. Mail acknowledgement is not delivery."""
-        if not notify.smtp_configured():
-            raise HTTPException(403, "Inviting by email needs SMTP (NIMSTEAD_SMTP_URL). With single sign-on, people join by signing in.")
+        if not links_by_mail():
+            raise HTTPException(403, "Inviting by email needs SMTP (NIMSTEAD_SMTP_URL) and NIMSTEAD_PUBLIC_URL. With single sign-on, "
+                                     "people join by signing in.")
         if over_limit(s, "invite:" + user.org_id, INVITE_MAX_PER_HOUR):
             raise HTTPException(429, f"At most {INVITE_MAX_PER_HOUR} invitations an hour")
         email = body.email.lower()
@@ -1009,9 +1015,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         s.commit()
         if not over_limit(s, "signup-mail:" + email, 3):
             if s.scalar(select(User.id).where(User.email == email)):
-                notify.send_account_email(email, "exists", public_base(request) + "/signin")
+                notify.send_account_email(email, "exists", public_base() + "/signin")
             else:
-                email_link(s, request, email, "invite", org_name=s.get(Org, user.org_id).name, org_id=user.org_id)
+                email_link(s, email, "invite", org_name=s.get(Org, user.org_id).name, org_id=user.org_id)
         return {"status": "invited", "email": email}
 
     class TokenNew(BaseModel):
@@ -2537,7 +2543,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         url = notify.webhook_url(o)
         return {
             "webhook_set": bool(url), "webhook_host": urlsplit(url).hostname if url else None, "webhook_format": o.notify_webhook_format,
-            "emails": o.notify_emails, "emails_confirmed": notify.recipients(o), "email_available": notify.smtp_configured(),
+            "emails": o.notify_emails, "emails_confirmed": notify.recipients(o), "email_available": links_by_mail(),
             # per channel: a dead webhook must not be hidden by an email that went through a second later
             "last_delivery_failed": any(not next(n for n in recent if n.channel == ch).ok for ch in {n.channel for n in recent}),
             "recent": [{"ts": n.ts, "kind": n.kind, "channel": n.channel, "urgent": n.urgent, "ok": n.ok, "error": n.error} for n in recent],
@@ -2589,9 +2595,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             "format": o.notify_webhook_format, "emails": o.notify_emails,
         })
         s.commit()
-        base = public_base(request)
+        base = public_base()
         for e in added:  # each new address must confirm before it gets alerts; the email itself is fixed text
-            if notify.smtp_configured() and not over_limit(s, "confirm-mail:" + o.id, CONFIRM_MAIL_MAX_PER_HOUR):
+            if links_by_mail() and not over_limit(s, "confirm-mail:" + o.id, CONFIRM_MAIL_MAX_PER_HOUR):
                 q = urlencode({"org": o.id, "email": e, "token": notify.confirm_token(o.id, e)})
                 notify.send_confirmation(s.get_bind(), o.id, e, f"{base}/api/notify/confirm?{q}")
         return notify_json(o, s)

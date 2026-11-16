@@ -216,6 +216,7 @@ class FakeSMTP:
 def test_email_channel(env, sent, monkeypatch):
     monkeypatch.setenv("NIMSTEAD_SMTP_URL", "smtp://bot:pw@mail.example.com:587")
     monkeypatch.setenv("NIMSTEAD_SMTP_FROM", "nimstead@example.com")
+    monkeypatch.setenv("NIMSTEAD_PUBLIC_URL", "http://testserver")
     monkeypatch.setattr(notify.smtplib, "SMTP", FakeSMTP)
     FakeSMTP.sent, FakeSMTP.fail, FakeSMTP.tls = [], False, True
     c = setup(env)
@@ -259,6 +260,7 @@ def test_unconfirmed_recipients_get_no_alerts(env, sent, monkeypatch):
     """An admin (anyone can sign up as one) can't use the server's mail relay to send its text to arbitrary people."""
     monkeypatch.setenv("NIMSTEAD_SMTP_URL", "smtp://bot:pw@mail.example.com:587")
     monkeypatch.setenv("NIMSTEAD_SMTP_FROM", "nimstead@example.com")
+    monkeypatch.setenv("NIMSTEAD_PUBLIC_URL", "http://testserver")
     monkeypatch.setattr(notify.smtplib, "SMTP", FakeSMTP)
     FakeSMTP.sent, FakeSMTP.fail, FakeSMTP.tls = [], False, True
     c = setup(env)
@@ -404,6 +406,7 @@ def test_ipv6_forms_hiding_private_ipv4_are_refused(url):
 def test_email_never_sends_credentials_without_tls(env, sent, monkeypatch):
     monkeypatch.setenv("NIMSTEAD_SMTP_URL", "smtp://bot:pw@mail.example.com:587")
     monkeypatch.setenv("NIMSTEAD_SMTP_FROM", "nimstead@example.com")
+    monkeypatch.setenv("NIMSTEAD_PUBLIC_URL", "http://testserver")
     monkeypatch.setattr(notify.smtplib, "SMTP", FakeSMTP)
     FakeSMTP.sent, FakeSMTP.fail, FakeSMTP.tls = [], False, False  # STARTTLS offer stripped
     c = setup(env)

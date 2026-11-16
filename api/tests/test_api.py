@@ -288,6 +288,28 @@ def test_ipv6_clients_are_throttled_by_their_64():
     assert key("2001:db8:1:3::1") != key("2001:db8:1:2::1") and key("203.0.113.7") == "203.0.113.7"
 
 
+def test_account_links_never_come_from_the_host_header(env, monkeypatch):
+    """Anyone sets Host: a reset link built from it would carry the victim's token to evil.example."""
+    from test_notify import FakeSMTP
+
+    from nimstead import notify
+    monkeypatch.delenv("NIMSTEAD_OPEN_SIGNUP")
+    monkeypatch.delenv("NIMSTEAD_PUBLIC_URL", raising=False)
+    monkeypatch.setenv("NIMSTEAD_SMTP_URL", "smtp://mail.example.com:587")
+    monkeypatch.setenv("NIMSTEAD_SMTP_FROM", "nimstead@example.com")
+    monkeypatch.setattr(notify.smtplib, "SMTP", FakeSMTP)
+    FakeSMTP.sent, FakeSMTP.fail, FakeSMTP.tls = [], False, True
+    c = TestClient(create_app(env))
+    c.post("/api/auth/signup", json={"email": "victim@example.com", "password": "correct horse battery", "org_name": "Acme"})
+    attacker = TestClient(c.app, base_url="http://evil.example")
+    assert attacker.post("/api/auth/password/reset", json={"email": "victim@example.com"}).status_code == 403  # no public URL: no links
+    monkeypatch.setenv("NIMSTEAD_PUBLIC_URL", "https://assure.example.com")
+    assert attacker.post("/api/auth/password/reset", json={"email": "victim@example.com"}).status_code == 202
+    notify.flush()
+    [mail] = [m.get_content() for m in FakeSMTP.sent if not isinstance(m, tuple)]
+    assert "https://assure.example.com/api/auth/signup/confirm?" in mail and "evil.example" not in mail
+
+
 def test_signup_never_says_whether_an_email_has_an_account(env, monkeypatch):
     """Default mode: the first account sets the server up; after that the response is the same for a new address and a
     taken one, and the next step goes to the address itself."""
@@ -304,6 +326,7 @@ def test_signup_never_says_whether_an_email_has_an_account(env, monkeypatch):
 
     monkeypatch.setenv("NIMSTEAD_SMTP_URL", "smtp://mail.example.com:587")
     monkeypatch.setenv("NIMSTEAD_SMTP_FROM", "nimstead@example.com")
+    monkeypatch.setenv("NIMSTEAD_PUBLIC_URL", "http://testserver")
     monkeypatch.setattr(notify.smtplib, "SMTP", FakeSMTP)
     FakeSMTP.sent, FakeSMTP.fail, FakeSMTP.tls = [], False, True
     taken, new = c.post("/api/auth/signup", json=body("first@example.com")), c.post("/api/auth/signup", json=body("new@example.com"))

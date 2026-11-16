@@ -2291,6 +2291,52 @@ WINGET_IDS = {  # curated product key (server: winapps.py / msproducts.py) -> wi
     "qbittorrent:qbittorrent": "qBittorrent.qBittorrent", "imagemagick:imagemagick": "ImageMagick.ImageMagick",
     "pdf-xchange:pdf-xchange_editor": "TrackerSoftware.PDF-XChangeEditor", "devolutions:remote_desktop_manager": "Devolutions.RemoteDesktopManager",
     "uvnc:ultravnc": "uvncbvba.UltraVNC", "anysphere:cursor": "Anysphere.Cursor"}
+# product key -> (DisplayName, Publisher or None) full-match patterns, the server's own (winapps.py, msproducts.py; a test keeps
+# them equal): winget runs only when this exact product is installed at the planned version, so a server can't install an app
+# that isn't there or move one to an older build
+WINGET_NAMES = {
+    "google:chrome": (r"Google Chrome", None),
+    "mozilla:firefox": (r"Mozilla Firefox(?: [\d.]+)? \((?:x64|x86|arm64) [A-Za-z-]+\)", None),
+    "mozilla:firefox_esr": (r"Mozilla Firefox ESR(?: [\d.]+)? \((?:x64|x86|arm64) [A-Za-z-]+\)", None),
+    "7-zip:7-zip": (r"7-Zip \d+\.\d+(?: \((?:x64|x86|arm64)(?: edition)?\))?", None),
+    "notepad-plus-plus:notepad++": (r"Notepad\+\+ \((?:64-bit x64|32-bit x86|ARM 64-bit|x64|x86|arm64)\)", None),
+    "videolan:vlc_media_player": (r"VLC media player", None),
+    "zoom:workplace_desktop": (r"Zoom(?: Workplace| Meetings)?(?: \((?:32|64)-bit\))?", r"Zoom(?: Video Communications, Inc\.)?"),
+    "adobe:acrobat_reader": (r"Adobe Acrobat Reader(?: DC)?(?: \((?:32|64)-bit\))?", None),
+    "git-scm:git": (r"Git", r"The Git Development Community"),
+    "putty:putty": (r"PuTTY release \d+\.\d+(?: \((?:32|64)-bit\))?", None),
+    "rarlab:winrar": (r"WinRAR \d+\.\d+(?: \((?:32|64)-bit\))?", None),
+    "wireshark:wireshark": (r"Wireshark \d+\.\d+\.\d+(?: (?:x64|x86|arm64|(?:32|64)-bit))?", None),
+    "winscp:winscp": (r"WinSCP \d+\.\d+(?:\.\d+)?", r"Martin Prikryl"),
+    "filezilla-project:filezilla_client": (r"FileZilla(?: Client)? \d+\.\d+\.\d+", r"Tim Kosse"),
+    "keepass:keepass": (r"KeePass(?: Password Safe)? 2\.\d+(?:\.\d+)?", None),
+    "vivaldi:vivaldi": (r"Vivaldi", r"Vivaldi Technologies AS\.?"),
+    "opera:opera_browser": (r"Opera Stable [\d.]+", r"Opera Software"),
+    "mozilla:thunderbird": (r"Mozilla Thunderbird(?: [\d.]+)? \((?:x64|x86|arm64) [A-Za-z-]+\)", None),
+    "libreoffice:libreoffice": (r"LibreOffice \d+\.\d+(?:\.\d+)*", r"The Document Foundation"),
+    "foxit:pdf_reader": (r"Foxit PDF Reader", r"Foxit Software Inc\."),
+    "teamviewer:teamviewer": (r"TeamViewer(?: \d+)?", r"TeamViewer(?: Germany GmbH)?"),
+    "anydesk:anydesk": (r"AnyDesk", r"AnyDesk Software GmbH"),
+    "oracle:vm_virtualbox": (r"Oracle VirtualBox \d+\.\d+\.\d+|Oracle VM VirtualBox \d+\.\d+\.\d+", r"Oracle Corporation|Oracle and/or its affiliates"),
+    "docker:desktop": (r"Docker Desktop", r"Docker Inc\."),
+    "Microsoft Edge": (r"Microsoft Edge", r"Microsoft Corporation"),
+    "Visual Studio Code": (r"Microsoft Visual Studio Code(?: \((?:User|System)\))?", r"Microsoft Corporation"),
+    "irfanview:irfanview": (r"IrfanView \d+\.\d+ \((?:32|64)-bit\)", r"Irfan Skiljan"),
+    "gimp:gimp": (r"GIMP \d+\.\d+\.\d+", r"The GIMP Team"),
+    "golang:go": (r"Go Programming Language (?:amd64|386|arm64) go\d+\.\d+(?:\.\d+)?", None),
+    "grafana:grafana": (r"GrafanaOSS", r"Grafana Labs"),
+    "calibre-ebook:calibre": (r"calibre (?:32|64)bit", r"Kovid Goyal"),
+    "tigervnc:tigervnc": (r"TigerVNC \d+\.\d+\.\d+ \(\)", r"TigerVNC team"),
+    "sumatrapdfreader:sumatrapdf": (r"SumatraPDF", r"Krzysztof Kowalczyk"),
+    "nextcloud:desktop": (r"Nextcloud", r"Nextcloud GmbH"),
+    "nomachine:nomachine": (r"NoMachine", r"NoMachine S\.a\.r\.l\."),
+    "gpg4win:gpg4win": (r"Gpg4win \(\d+\.\d+\.\d+\)", r"The Gpg4win Project"),
+    "qbittorrent:qbittorrent": (r"qBittorrent", r"The qBittorrent project"),
+    "imagemagick:imagemagick": (r"ImageMagick \d+\.\d+\.\d+-\d+ Q\d+(?:-HDRI)? \((?:32|64)-bit\) \(\d{4}-\d\d-\d\d\)", r"ImageMagick Studio LLC"),
+    "pdf-xchange:pdf-xchange_editor": (r"PDF-XChange Editor", r"PDF-XChange Co Ltd\."),
+    "devolutions:remote_desktop_manager": (r"Remote Desktop Manager", r"Devolutions inc\."),
+    "uvnc:ultravnc": (r"UltraVNC", r"uvnc"),
+    "anysphere:cursor": (r"Cursor(?: \(User\))?", r"Anysphere")}
 # check id (server: winconfig.py) -> (registry key, value name, type, secure value); rollback restores what was there
 CONFIG_FIXES = {
     "wdigest": (r"HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\WDigest", "UseLogonCredential", "REG_DWORD", "0"),
@@ -2340,8 +2386,9 @@ class WinAppJob:
     is in memory only. Winget has no undo. Services are sampled, not exhaustively
     tested. Invalid input/runner shapes can fail during construction or execution."""
 
-    def __init__(self, job, run=sh, fail_after_apply=False):
+    def __init__(self, job, run=sh, fail_after_apply=False, apps=None):
         self.run, self.steps, self.mgr = run, [], job.get("manager")
+        self.apps = apps or (lambda: windows_apps(__import__("winreg")))  # installed WinApp rows, as inventory reads them
         self.pkgs, self.units = job.get("packages") or [], job.get("health_units") or []
         self.inject, self.result_versions = fail_after_apply, None
         self.changed, self.undo = False, None  # set by the handler before its first change
@@ -2408,12 +2455,19 @@ class WinAppJob:
             return "rollback_failed", self.steps, f"ROLLBACK FAILED, host needs attention. Change error: {err}; rollback error: {e}"
 
     def _winget(self, p):
-        wid = WINGET_IDS[p["name"]]
+        wid, (name, pub) = WINGET_IDS[p["name"]], WINGET_NAMES[p["name"]]
         rc, exe = ps(self.run, PS_WINGET)
         exe = exe.strip().splitlines()[-1] if rc == 0 and exe.strip() else ""
         self.step("winget found (App Installer under WindowsApps, admin-owned)", ok=bool(exe), output=exe or "winget unavailable")
         rc, vc = ps(self.run, PS_VCLIBS)
         cwd = ntpath.dirname(vc.strip().splitlines()[-1]) if rc == 0 and vc.strip() else None
+        # the planned version is the registry's, maybe cut to three parts or stripped of "esr" / "ad " (winapps.py): compare numbers
+        found = [m[0] for a in self.apps() if re.fullmatch(name, a["name"]) and (pub is None or re.fullmatch(pub, a["source"] or ""))
+                 and (m := re.search(r"\d+(?:\.\d+)*", a["version"]))]
+        want = windows_version_key(p["from"])
+        cur = next((v for v in found if windows_version_key(v)[:len(want)] == want), None)
+        self.step(f"installed at {p['from']} and older than {p['to']}", ok=cur is not None and windows_version_key(p["to"]) > windows_version_key(cur),
+                  output=", ".join(found) or "not installed")
         common = ["--id", wid, "--exact", "--source", "winget", "--version", p["to"], "--accept-source-agreements", "--disable-interactivity"]
         out = self.step(f"winget lists {wid} {p['to']} with an installer hash", [exe, "show", *common], cwd=cwd)
         self.step("installer SHA-256 published", ok=bool(re.search(r"(?im):\s*[0-9a-f]{64}\s*$", out)), output=out)  # by the value: winget's labels are localised
@@ -3891,25 +3945,74 @@ def remove_link(path):
     (os.rmdir if os.path.isdir(path) else os.remove)(path)  # removes the link itself, not what it points at
 
 
+def dir_owner(path):
+    """Return (is a link, owner SID) of path itself on Windows, both read through one handle that never follows a link.
+
+    Read separately, a user could swap the folder for a junction between the two reads. OSError if it can't be opened."""
+    import ctypes
+    from ctypes import wintypes as w
+    k32, adv = ctypes.WinDLL("kernel32", use_last_error=True), ctypes.WinDLL("advapi32", use_last_error=True)
+    k32.CreateFileW.restype, k32.CreateFileW.argtypes = w.HANDLE, [w.LPCWSTR, w.DWORD, w.DWORD, w.LPVOID, w.DWORD, w.DWORD, w.HANDLE]
+    k32.GetFileInformationByHandle.argtypes, k32.CloseHandle.argtypes, k32.LocalFree.argtypes = [w.HANDLE, w.LPVOID], [w.HANDLE], [w.LPVOID]
+    adv.GetSecurityInfo.argtypes = [w.HANDLE, ctypes.c_int, w.DWORD, ctypes.POINTER(w.LPVOID), w.LPVOID, w.LPVOID, w.LPVOID, ctypes.POINTER(w.LPVOID)]
+    adv.ConvertSidToStringSidW.argtypes = [w.LPVOID, ctypes.POINTER(w.LPWSTR)]
+    # READ_CONTROL, share everything, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS (a folder) | FILE_FLAG_OPEN_REPARSE_POINT (the link itself)
+    h = k32.CreateFileW(path, 0x20000, 7, None, 3, 0x02200000, None)
+    if h in (None, w.HANDLE(-1).value):
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        info, sid, sd, text = (w.DWORD * 13)(), w.LPVOID(), w.LPVOID(), w.LPWSTR()  # BY_HANDLE_FILE_INFORMATION starts with the attributes
+        if not k32.GetFileInformationByHandle(h, info):
+            raise ctypes.WinError(ctypes.get_last_error())
+        err = adv.GetSecurityInfo(h, 1, 1, ctypes.byref(sid), None, None, None, ctypes.byref(sd))  # SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION
+        if err:
+            raise ctypes.WinError(err)
+        try:
+            if not adv.ConvertSidToStringSidW(sid, ctypes.byref(text)):
+                raise ctypes.WinError(ctypes.get_last_error())
+            owner = text.value
+            k32.LocalFree(text)
+        finally:
+            k32.LocalFree(sd)
+        return bool(info[0] & 0x400), owner  # FILE_ATTRIBUTE_REPARSE_POINT
+    finally:
+        k32.CloseHandle(h)
+
+
 def secure_windows_dir(run=sh, d=None):
     """Apply Windows state-directory ownership/ACL commands and attempt selected child cleanup.
 
     run accepts argv and PowerShell runner keywords, returning (status,output). d defaults to
-    WIN_STATE's parent. Remove a linked root, create the directory, set/reset root ownership
-    and ACLs, read original descendant owners, then reset descendant ownership/ACLs.
+    WIN_STATE's parent. Remove a linked root, move aside a root a non-admin owns (a user who
+    made it may hold a handle opened before the lockdown, which keeps its access), create the
+    directory protected, set root ownership and ACLs, read original descendant owners, then
+    reset descendant ownership/ACLs.
     Attempt removal of listed links and entries whose recorded owners are outside TRUSTED_OWNERS.
     Return selected cleanup paths. Ignored directory-removal errors mean this is not proof
     that every path disappeared. Earlier ACL/deletion effects remain after a later failure.
-    Nonzero command status raises AgentError. Filesystem, malformed listing and runner errors
-    can propagate. Listing/point-in-time path guards are not a general filesystem isolation
-    proof. The supplied runner and directory must be trusted. No rollback occurs.
+    Nonzero command status or a root that can't be moved aside raises AgentError. Filesystem,
+    malformed listing and runner errors can propagate. Listing/point-in-time path guards are
+    not a general filesystem isolation proof. The supplied runner and directory must be trusted.
+    No rollback occurs.
     """
     d = d or os.path.dirname(WIN_STATE)
-    if is_link(d):  # our folder itself planted as a junction would aim the lockdown, and our files, somewhere else
-        remove_link(d)
-    os.makedirs(d, exist_ok=True)
+    if os.path.lexists(d):
+        link, owner = dir_owner(d)
+        if link:  # our folder itself planted as a junction would aim the lockdown, and our files, somewhere else
+            remove_link(d)
+        elif owner not in TRUSTED_OWNERS:  # a user made it: never reuse it, or they could swap it for a junction mid-lockdown
+            aside = f"{d}.untrusted-{os.urandom(4).hex()}"
+            try:
+                os.rename(d, aside)  # by name: moves whatever is there now, link or folder, never a link's target
+            except OSError as e:
+                raise AgentError(f"{d} was created by a non-admin user and can't be moved aside ({e}): delete it, then rerun")
+            print(f"moved {d} aside to {aside}: a non-admin user created it", file=sys.stderr)
+    if not os.path.lexists(d):
+        # shortcut: created SYSTEM + Administrators only from Python 3.13 (the bundled runtime is 3.15); older Pythons ignore
+        # the mode, leaving a moment before /inheritance:r when a user could open it, so move such hosts to the runtime
+        os.mkdir(d, 0o700)
     take = [["icacls", d, "/setowner", "*S-1-5-32-544", "/Q"],  # an owner can always rewrite the ACL, so owner first
-            ["icacls", d, "/reset", "/Q"],  # drops explicit ACEs that /grant:r would keep (it replaces only the SIDs it names)
+            # no /reset here: it would open the folder to ProgramData's inherited user ACEs until the next step
             ["icacls", d, "/inheritance:r", "/grant:r", "*S-1-5-18:(OI)(CI)F", "/grant:r", "*S-1-5-32-544:(OI)(CI)F", "/Q"]]
     for cmd in take:
         rc, out = run(cmd)

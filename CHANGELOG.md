@@ -4,6 +4,10 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Security
+- **Windows agent: a standard user can no longer redirect the folder lockdown.** A user who created `C:\ProgramData\Nimstead` before install could keep a handle open and swap the folder for a junction while the agent locked it down. SYSTEM would then lock, delete in, and write the agent key into a folder that user chose. The agent now moves such a folder aside and creates a fresh one that only SYSTEM and Administrators can open.
+- **Windows agent: winget fixes check what's installed.** The agent ran winget after comparing only the two versions the server sent, so a compromised server could install a curated app that wasn't there (TeamViewer, AnyDesk and VNC servers are in the list) or force an older build. It now runs only when the registry shows that exact product at the planned version, and the fix is newer.
+
 ## [0.9.1] - 2026-11-14 (preview)
 
 Agent 0.7.1. No database migration. Released after the design-critique and repo-audit work below; the 2026-11-13 build was never published.

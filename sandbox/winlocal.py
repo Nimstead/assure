@@ -3,9 +3,11 @@
 1. creates C:\\ProgramData\\Nimstead and grants themselves full control on it (an explicit ACE: `icacls /grant:r` for
    SYSTEM and Administrators alone left it in place, and agent.json, holding the agent key, inherited it);
 2. plants a junction in it pointing at another standard user's files (the old lockdown deleted through it as admin).
-Then the real install.ps1 runs elevated. PASS: the agent enrolled and reported; nimuser can't read agent.json or write in
-the folder; no ACE names nimuser and Administrators own the folder; the junction is gone and the other user's files are
-untouched.
+3. while install.ps1 runs elevated, races to rename the folder away and put a junction to their own folder in its place
+   as soon as it stops being theirs (round 3, 2026-11-15: the lockdown used to take their folder in place).
+PASS: the agent enrolled and reported; the race never won and their folder was moved aside, not reused; nimuser can't
+read agent.json or write in the folder; no ACE names nimuser and Administrators own the folder; the junction is gone and
+the other user's files are untouched.
 
 Run from api/:  uv run python ../sandbox/winlocal.py VM_NAME
 Logs to sandbox/last_run_windows_local.json. Destroys the VM on PASS.
@@ -16,6 +18,7 @@ import os
 import secrets
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -26,6 +29,19 @@ from signin import signup  # noqa: E402  first account + its admin's TOTP sign-i
 ROOT = Path(__file__).resolve().parents[1]
 DIR = r"C:\ProgramData\Nimstead"
 VICTIM = r"C:\Users\Public\nimvictim"
+TARGET, STOP = r"C:\Users\Public\nimtarget", r"C:\Users\Public\nimstop"
+# as the standard user, until the install is over: once the folder is no longer theirs (or unreadable), rename it away and
+# put a junction to their own folder in its place. WON=True means the agent's lockdown, and its key, could go there
+SWAP = rf"""$tries = 0; $won = $false
+while (-not (Test-Path -LiteralPath '{STOP}') -and -not $won) {{
+  try {{ $own = (Get-Acl -LiteralPath '{DIR}').Owner }} catch {{ $own = '?' }}
+  if ($own -ne $env:COMPUTERNAME + '\nimuser' -and (Test-Path -LiteralPath '{DIR}')) {{
+    $tries++
+    try {{ Rename-Item -LiteralPath '{DIR}' 'Nimstead.swapped' -ErrorAction Stop; cmd /c mklink /J {DIR} {TARGET} | Out-Null; $won = $true }} catch {{}}
+  }}
+}}
+"TRIES=$tries WON=$won"
+"""
 
 
 def as_user(user, cmd):
@@ -75,8 +91,23 @@ def main() -> int:
                owner=h.guest(f"(Get-Acl -LiteralPath '{DIR}').Owner").strip())
         assert "PLANTED" in out and "nimuser" in planted_acl.lower(), (out[-400:], planted_acl)
 
+        # 3. during the install, the same user races to swap the folder for a junction to a folder of theirs as soon as
+        # Administrators own it (the old lockdown took their folder in place, so they could still rename it, 2026-11-15)
+        out = as_user(attacker, f"New-Item -ItemType Directory -Force '{TARGET}' | Out-Null; Set-Content '{TARGET}\\keep.txt' 'mine'; 'OK'")
+        assert "OK" in out, out[-400:]
+        race = []
+        racer = threading.Thread(target=lambda: race.append(h.winvm.run(h.NAME, SWAP, user=attacker, timeout=3600)[1]))
+        racer.start()
+        time.sleep(20)  # the loop is spinning before the agent starts
         out = h.guest(rf"""$env:NIMSTEAD_TOKEN = '{token}'
             try {{ irm http://10.0.2.2:{h.PORT}/install.ps1 | iex }} catch {{ "INSTALL FAILED: $_"; exit 1 }}""", timeout=1800, check=False)
+        h.guest(f"New-Item -ItemType File -Force '{STOP}' | Out-Null")
+        racer.join(300)
+        swapped = h.guest(f"(Get-Item -LiteralPath '{DIR}' -Force).Attributes -band [IO.FileAttributes]::ReparsePoint", check=False).strip()
+        in_target = h.guest(f"(Get-ChildItem -LiteralPath '{TARGET}' -Force).Name -join ','").strip()
+        aside = h.guest(r"(Get-ChildItem -LiteralPath C:\ProgramData -Directory -Filter 'Nimstead.untrusted-*').Name -join ','").strip()
+        h.note("swap race during install", racer=(race or ["no answer"])[0].strip()[-300:], dir_is_link=swapped, target_files=in_target, moved_aside=aside)
+        assert race and "WON=False" in race[0] and swapped in ("0", "") and in_target == "keep.txt" and aside, (race, swapped, in_target, aside)
         assets = api.get("/api/assets").json()
         h.note("install.ps1 ran elevated", output=out.strip()[-1500:], assets=[(a["hostname"], a["agent_version"]) for a in assets])
         assert len(assets) == 1 and assets[0]["last_seen"], (assets, out[-2000:])

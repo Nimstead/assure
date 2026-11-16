@@ -295,6 +295,19 @@ def test_reset_and_invite_need_smtp(env):
 
 # --- I1: user management -----------------------------------------------------------------------------------------------
 
+def test_invitations_are_refused_while_sso_is_required(env, mail):
+    """An invited outside address would join with a password once, then be locked out by the SSO requirement for good."""
+    from sqlalchemy import update
+
+    from nimstead.db import Org
+    admin = user(env)
+    s = sessionmaker(make_engine(env))()
+    s.execute(update(Org).values(sso_required=True))
+    s.commit()
+    r = admin.post("/api/users/invite", json={"email": "bob@example.com"})
+    assert r.status_code == 409 and "single sign-on" in r.json()["detail"]
+
+
 def test_invite_promote_demote_and_remove(env, mail):
     admin = user(env)
     assert admin.post("/api/users/invite", json={"email": "bob@example.com"}).status_code == 202

@@ -71,6 +71,8 @@ See [notification reference](reference/notifications.md) for consent, payloads, 
 
 Set up in **Settings** by an org admin, not with environment variables. Register `<NIMSTEAD_PUBLIC_URL>/api/auth/sso/callback` at your identity provider. Each email domain must be proven with a DNS TXT record before it routes sign-ins.
 
+Anyone your identity provider lets in from a verified domain gets an account at their first SSO sign-in. So removing someone in **People** signs them out, but they can sign back in until you also remove them at the identity provider. While SSO is required, invitations are refused: people join by signing in with SSO.
+
 | Variable | Default | What it does |
 |---|---|---|
 | `NIMSTEAD_DNS_SERVER` | system resolver | `host[:port]` used for domain and external-target TXT checks. |

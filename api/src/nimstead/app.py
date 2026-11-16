@@ -1006,7 +1006,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         enforce organisation quota, append evidence and commit. Address quota can
         suppress mail. Existing accounts receive a sign-in message rather than
         membership transfer. New addresses receive a scoped invitation link. Return
-        403/429 on configuration/quota refusal. Mail acknowledgement is not delivery."""
+        403/429 on configuration/quota refusal, 409 while the organisation requires SSO.
+        Mail acknowledgement is not delivery."""
+        if s.get(Org, user.org_id).sso_required:  # a password member would be locked out at their next sign-in
+            raise HTTPException(409, "This organisation requires single sign-on: people join by signing in with SSO, not by invitation")
         if not links_by_mail():
             raise HTTPException(403, "Inviting by email needs SMTP (NIMSTEAD_SMTP_URL) and NIMSTEAD_PUBLIC_URL. With single sign-on, "
                                      "people join by signing in.")

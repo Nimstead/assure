@@ -103,6 +103,18 @@ def test_config_findings_end_to_end(env):
     assert not [x for x in c.get("/api/findings").json() if x["ecosystem"] == "WinConfig"]
 
 
+def test_a_failed_settings_read_closes_no_setting_finding(env):
+    """No config in the facts (the agent's settings check timed out) says nothing about the settings: they stay open."""
+    c = user(env)
+    token = c.post("/api/enroll-tokens").json()["token"]
+    a = c.post("/api/agent/enroll", json={"token": token, "hostname": "srv", "ecosystem": "Windows"}).json()
+    h = {"Authorization": f"Bearer {a['agent_key']}"}
+    for facts in ({"installation_type": "Server", "config": {**GOOD, "wdigest": 1}}, {"installation_type": "Server"}):
+        c.post("/api/agent/inventory", headers=h, json={"ecosystem": "Windows", "facts": facts, "packages": [
+            {"ecosystem": "Windows", "name": "Windows Server 2019", "version": WS19, "source": None}]})
+    assert "CFG:wdigest" in {x["vuln_id"] for x in c.get("/api/findings", params={"status": "open"}).json()}
+
+
 @pytest.mark.parametrize("config,vuln", [
     ({"uac_lua": 0}, "CFG:uac"), ({"uac_lua": 1, "uac_admin_prompt": 0}, "CFG:uac-prompt"), ({"remote_uac_off": 1}, "CFG:remote-uac"),
     ({"autologon_stored": True}, "CFG:autologon-password"), ({"guest_enabled": True}, "CFG:guest-account"),

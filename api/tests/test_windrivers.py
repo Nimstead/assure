@@ -111,6 +111,18 @@ def test_only_an_exact_hash_opens_a_finding_and_a_partial_scan_closes_nothing(en
     assert inv([], done) == {}  # a complete scan proves it's gone
 
 
+def test_the_same_driver_file_in_two_folders_is_one_finding(env):
+    """Two copies of one file are one finding, the loaded one: two rows for one unique key failed every report."""
+    store_list(env)
+    c = user(env)
+    h = enrol(c)
+    r = c.post("/api/agent/inventory", headers=h, json={"ecosystem": "Windows", "facts": {"driver_scan": {"complete": True}},
+                                                         "packages": [drv("rtcore64.sys", RTCORE), drv("rtcore64.sys", RTCORE, "loaded")]})
+    assert r.status_code == 200, r.text
+    [f] = c.get("/api/findings", params={"status": "open"}).json()
+    assert f["priority"] == "next"
+
+
 def test_old_agents_without_drivers_change_nothing(env):
     store_list(env)
     c = user(env)

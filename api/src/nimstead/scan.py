@@ -305,6 +305,8 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
     scan = (asset.facts or {}).get("driver_scan")
     drivers_complete = isinstance(scan, dict) and scan.get("complete") is True
     blocked = unread(asset.collection)  # the latest report's: the hourly re-match reads the same short list
+    if not isinstance((asset.facts or {}).get("config"), dict):  # the settings check failed: no setting is proven changed
+        blocked.add(winconfig.ECOSYSTEM)
     index = None  # built on the first finding that needs a closing decision: most rescans close none
     for key, f in existing.items():
         if key[0] == windrivers.ECOSYSTEM and not drivers_complete:  # a scan that failed or stopped early proves nothing is gone

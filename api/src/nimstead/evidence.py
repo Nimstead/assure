@@ -151,13 +151,7 @@ def entry_problems(org_id: str, entries: list[dict]) -> list[str]:
     Missing fields and non-serializable data raise errors instead of returning problem text.
     No database query, checkpoint validation, signing or commit occurs here.
     """
-    problems, prev = [], None
-    for e in entries:
-        if entry_hash(e) != e["hash"]:
-            problems.append(f"entry {e['seq']}: hash mismatch")
-        if prev is not None and (e["seq"] != prev["seq"] + 1 or e["prev_hash"] != prev["hash"]):
-            problems.append(f"entry {e['seq']}: chain broken")
-        prev = e
+    problems = verify_pack.chain_problems(entries)  # the auditor's own check, so the two can't drift apart
     if problems:
         _VERIFIED.pop(org_id, None)
     return problems
@@ -266,13 +260,6 @@ def signing_key() -> Ed25519PrivateKey | keys.Vault:
     with os.fdopen(fd, "wb") as f:
         f.write(key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
     return key
-
-
-def fingerprint(pem: bytes) -> str:
-    """Return the SHA-256 hex fingerprint of the raw public key in PEM bytes pem.
-
-    Invalid or incompatible public-key encodings propagate cryptography errors."""
-    return verify_pack.fingerprint(pem)
 
 
 def public_pem(key: Ed25519PrivateKey | keys.Vault) -> bytes:
@@ -507,7 +494,7 @@ def pack_zip(pack: dict) -> bytes:
         z.writestr("pack.json", body)
         z.writestr("pack.sig", sig)
         z.writestr("public_key.pem", public_pem(key))  # verify.py is not shipped here: the checker can't come with what it checks
-        z.writestr("README.txt", README.format(fp=fingerprint(public_pem(key))))
+        z.writestr("README.txt", README.format(fp=verify_pack.fingerprint(public_pem(key))))
     return buf.getvalue()
 
 

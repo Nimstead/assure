@@ -46,6 +46,7 @@ from nimstead import (
     sbom,
     sso,
     updates,
+    verify_pack,
     winbaseline,
     windrivers,
 )
@@ -427,17 +428,6 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     Admin = Annotated[User, Depends(admin_user)]
 
-    def signed_in(request: Request, user: CurrentUser) -> User:
-        """Return current_user when authenticated by a browser session.
-
-        request carries the API-token marker. Refuse organisation API tokens with
-        HTTP 403. No admin-role or fresh-authentication requirement is added."""
-        if getattr(request.state, "api_token", False):
-            raise HTTPException(403, "Sign in to do this")
-        return user
-
-    Person = Annotated[User, Depends(signed_in)]  # a signed-in browser, never an API token
-
     def start_session(s: Session, user: User, resp: Response) -> None:
         """Create a hashed user session, commit s, then set its raw cookie on resp.
 
@@ -451,32 +441,29 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     # --- agent distribution -----------------------------------------------
 
+    def server_origin(request: Request) -> str:
+        """Return NIMSTEAD_PUBLIC_URL, else the request's own base URL, without trailing slashes. Not validated here."""
+        return (os.environ.get("NIMSTEAD_PUBLIC_URL") or str(request.base_url)).rstrip("/")
+
+    def installer(request: Request, template: Path, media_type: str) -> Response:
+        """Return template's text with the server origin and current channel substituted.
+
+        Require a strict HTTP(S) hostname/port origin, since it's substituted into a script, or
+        return 400. Paths and IPv6 literals are outside that pattern. File/channel errors propagate."""
+        server = server_origin(request)
+        if not re.fullmatch(r"https?://[A-Za-z0-9.\-]+(:\d{1,5})?", server):
+            raise HTTPException(400, "Server URL is not safe to embed; set NIMSTEAD_PUBLIC_URL")
+        return Response(template.read_text().replace("__SERVER__", server).replace("__CHANNEL__", updates.channel()), media_type=media_type)
+
     @app.get("/install.sh")
     def install_sh(request: Request):
-        """Return Linux installer text with server origin and current channel substituted.
-
-        request supplies fallback base URL unless NIMSTEAD_PUBLIC_URL is truthy.
-        Require the configured HTTP(S) hostname/port pattern or return 400. Paths,
-        trailing slash and IPv6 literals are outside that pattern. No host install
-        occurs. File/channel errors propagate. No user authentication is required."""
-        server = os.environ.get("NIMSTEAD_PUBLIC_URL") or str(request.base_url).rstrip("/")
-        if not re.fullmatch(r"https?://[A-Za-z0-9.\-]+(:\d{1,5})?", server):  # substituted into shell: strict
-            raise HTTPException(400, "Server URL is not safe to embed; set NIMSTEAD_PUBLIC_URL")
-        return Response(INSTALL_SH.read_text().replace("__SERVER__", server).replace("__CHANNEL__", updates.channel()),
-                        media_type="text/x-shellscript")
+        """Return the Linux installer with this server's origin and channel (installer()). No authentication is required."""
+        return installer(request, INSTALL_SH, "text/x-shellscript")
 
     @app.get("/install.ps1")
     def install_ps1(request: Request):
-        """Return PowerShell installer text with server origin/channel substituted.
-
-        request supplies fallback base URL unless NIMSTEAD_PUBLIC_URL is truthy.
-        Require the same strict HTTP(S) origin pattern as install_sh, otherwise 400.
-        File/channel errors propagate. No installation or authentication occurs here."""
-        server = os.environ.get("NIMSTEAD_PUBLIC_URL") or str(request.base_url).rstrip("/")
-        if not re.fullmatch(r"https?://[A-Za-z0-9.\-]+(:\d{1,5})?", server):  # substituted into a script: strict
-            raise HTTPException(400, "Server URL is not safe to embed; set NIMSTEAD_PUBLIC_URL")
-        return Response(INSTALL_PS1.read_text().replace("__SERVER__", server).replace("__CHANNEL__", updates.channel()),
-                        media_type="text/plain")
+        """Return the PowerShell installer with this server's origin and channel (installer()). No authentication is required."""
+        return installer(request, INSTALL_PS1, "text/plain")
 
     @app.get("/agent/nimstead_agent.py")
     def agent_file():
@@ -800,7 +787,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                 "mfa": bool(user.totp_secret), "recovery_codes_left": len(user.recovery_codes)}
 
     @app.post("/api/me/sessions/revoke", status_code=204)
-    def sign_out_everywhere(user: Person, resp: Response, s: DB):
+    def sign_out_everywhere(user: CurrentUser, resp: Response, s: DB):
         """Delete this user's WebSession and ApiToken rows, commit, then clear cookie.
 
         user requires a browser session, not a fresh code. Append revocation
@@ -818,7 +805,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         code: str | None = Field(None, max_length=40)
 
     @app.post("/api/me/password", status_code=204)
-    def change_password(body: PasswordChange, request: Request, user: Person, s: DB):
+    def change_password(body: PasswordChange, request: Request, user: CurrentUser, s: DB):
         """Return 204 after a password-origin user's credential update.
 
         body supplies current/new passwords and optional second factor. user needs
@@ -844,7 +831,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         s.commit()
 
     @app.post("/api/me/mfa/setup")
-    def start_mfa(user: Person):
+    def start_mfa(user: CurrentUser):
         """Return setup/secret/uri for a browser-authenticated password user.
 
         SSO-origin users return HTTP 409. This creates a proposal without changing
@@ -859,7 +846,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         current_code: str | None = Field(None, max_length=40)  # replacing an authenticator needs the old one (or a recovery code)
 
     @app.post("/api/me/mfa")
-    def confirm_mfa(body: MfaConfirm, user: Person, s: DB):
+    def confirm_mfa(body: MfaConfirm, user: CurrentUser, s: DB):
         """Return recovery_codes after staging and committing an authenticator setup.
 
         body supplies setup/new code and optional current_code. user needs a browser
@@ -1937,7 +1924,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         rank = func.min(case(*((sub.c.priority == p, n) for p, n in PRIORITY_RANK.items()), else_=9))
         rows = s.execute(
             select(k, func.count(), func.count(sub.c.asset_id.distinct()), func.max(sub.c.score), func.max(case((sub.c.kev, 1), else_=0)),
-                   rank, func.max(sub.c.fixed_version), func.count(sub.c.package.distinct()), func.min(sub.c.package), func.min(sub.c.vuln_id),
+                   rank, func.count(sub.c.package.distinct()), func.min(sub.c.package), func.min(sub.c.vuln_id),
                    func.count(sub.c.vuln_id.distinct()), func.min(sub.c.ecosystem), func.count(sub.c.ecosystem.distinct()))
             .group_by(k, *([] if by == "vuln" else [sub.c.ecosystem]))
             .order_by(rank, func.max(sub.c.score).desc(), func.count().desc()).limit(500)).all()
@@ -1948,8 +1935,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             cur = highest.get((key, eco))
             highest[(key, eco)] = v if cur is None or (cmp(v, cur) > 0 if cmp else v > cur) else cur
         return [{"key": r[0], "findings": r[1], "hosts": r[2], "score": r[3], "kev": bool(r[4]), "priority": names.get(r[5], "low"),
-                 "fixed_version": highest.get((r[0], r[11])) if r[12] == 1 else None, "packages": r[7], "package": r[8], "vuln_id": r[9], "vulns": r[10],
-                 "ecosystem": r[11] if r[12] == 1 else None} for r in rows]  # one distro's rows, or (by vulnerability) several
+                 "fixed_version": highest.get((r[0], r[10])) if r[11] == 1 else None, "packages": r[6], "package": r[7], "vuln_id": r[8], "vulns": r[9],
+                 "ecosystem": r[10] if r[11] == 1 else None} for r in rows]  # one distro's rows, or (by vulnerability) several
 
     CSV_COLUMNS = ["hostname", "package", "installed_version", "fixed_version", "vuln_id", "priority", "score", "cvss", "epss",
                    "kev", "status", "first_seen", "last_seen", "resolved_at", "summary"]
@@ -2364,10 +2351,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                      if domain and domain in o.sso_verified_domains), None)
 
     def sso_redirect_uri(request: Request) -> str:
-        """Return configured/fallback public origin plus the fixed callback path.
-
-        request.base_url supplies fallback. No independent origin validation occurs."""
-        return (os.environ.get("NIMSTEAD_PUBLIC_URL") or str(request.base_url)).rstrip("/") + "/api/auth/sso/callback"
+        """Return server_origin(request) plus the fixed callback path."""
+        return server_origin(request) + "/api/auth/sso/callback"
 
     def sso_fail(reason: str) -> RedirectResponse:
         """Return a 303 sign-in redirect with reason and delete the scoped SSO cookie.
@@ -2869,7 +2854,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         identify returned public key/verifier bytes. This response is not its own
         independent trust channel. File/key/backend/encoding errors propagate."""
         pem = evidence.public_pem(evidence.signing_key())
-        return {"pem": pem.decode(), "fingerprint_sha256": evidence.fingerprint(pem), "verifier_sha256": evidence.verifier_sha256()}
+        return {"pem": pem.decode(), "fingerprint_sha256": verify_pack.fingerprint(pem), "verifier_sha256": evidence.verifier_sha256()}
 
     @app.get("/api/evidence/verify.py")
     def evidence_verifier():

@@ -13,7 +13,7 @@ from test_api import INV, enrol, user
 
 from nimstead import evidence
 from nimstead.db import Finding, LedgerEntry, make_engine, now
-from nimstead.verify_pack import verify
+from nimstead.verify_pack import fingerprint, verify
 
 
 def setup_flow(env):
@@ -250,7 +250,7 @@ def test_the_offline_verifier_catches_a_ledger_cut_off_after_its_last_checkpoint
     s.commit()
     z = zipfile.ZipFile(io.BytesIO(evidence.pack_zip(evidence.build_pack(s, org_id, *evidence.default_period(90)))))
     body, sig, key = z.read("pack.json"), z.read("pack.sig").decode(), z.read("public_key.pem")
-    assert any("past the ledger's head" in p for p in verify(body, sig, key, evidence.fingerprint(key)))
+    assert any("past the ledger's head" in p for p in verify(body, sig, key, fingerprint(key)))
 
 
 def test_pack_carries_checkpoints_and_verifier_checks_them(env):

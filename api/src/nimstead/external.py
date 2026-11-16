@@ -250,15 +250,6 @@ def tls_findings(host: str, t: dict) -> tuple[list[dict], list[str]]:
     return found, skipped
 
 
-def observe(host: str, ip: str) -> tuple[list, dict]:
-    """Return (verdicts, report) from the engine's prober on pinned ip, using host for TLS and HTTP identity.
-
-    One probe pass (DECISIONS 126). Does not validate scope or persist: scan() proves scope first."""
-    from nimstead.engine import network  # network imports this module
-    verdicts, rep, _ = network.probe(host, ip)
-    return verdicts, rep
-
-
 # The same checks on a device inside a network (DECISIONS 129): reachable by what's on that network, not the internet
 INTERNAL_LIKELIHOOD = {"exposed": (0.6, "Answers on your network: any machine there, or anything that gets onto it, can reach it"),
                        "open": (0.8, "No authentication by default: anything on your network can use it"),
@@ -374,7 +365,7 @@ def scan(s: Session, asset: Asset, lookup=None) -> dict:
     """Re-prove scope, probe Asset asset with the engine, store its report, update findings/ledger and commit Session s.
 
     lookup follows prove_scope(). Caller checks ownership. Findings come from the
-    engine's verdicts (observe()). Return address, open (unique observed issue count),
+    engine's verdicts (network.probe()). Return address, open (unique observed issue count),
     resolved (new transitions), still_open (unseen, but not proven fixed) and skipped.
     Accepted observed findings stay accepted. An unseen open/accepted finding resolves
     only on evidence (held_open); otherwise it gets one "Still open: ..." reason.
@@ -382,7 +373,8 @@ def scan(s: Session, asset: Asset, lookup=None) -> dict:
     ScanRefused and other scope/probe/database errors propagate. Refusal can itself
     commit through prove_scope(). No automatic rollback handles later exceptions."""
     ip = prove_scope(s, asset, lookup)
-    verdicts, rep = observe(asset.hostname, ip)
+    from nimstead.engine import network  # network imports this module
+    verdicts, rep, _ = network.probe(asset.hostname, ip)  # one probe pass on the pinned address (DECISIONS 126)
     skipped = [v.detail for v in verdicts if v.reason == "scanner-limited"]
     engine.record(s, asset, rep, {"host": asset.hostname, "address": ip})
     seen, resolved, still = apply(s, asset, verdicts, rep)

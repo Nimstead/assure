@@ -50,6 +50,20 @@ def checkpoint_signed(key, cp: dict) -> bool:
         return False
 
 
+def chain_problems(entries: list) -> list:
+    """Return hash and link problems for ordered ledger entry dictionaries; [] means each hashes right and follows the last.
+
+    Checks links between the given entries only, not what came before them. Missing fields raise KeyError."""
+    problems, prev = [], None
+    for e in entries:
+        if entry_hash(e) != e["hash"]:
+            problems.append(f"ledger entry {e['seq']}: hash mismatch (entry altered)")
+        if prev is not None and (e["seq"] != prev["seq"] + 1 or e["prev_hash"] != prev["hash"]):
+            problems.append(f"ledger entry {e['seq']}: chain broken (entry missing or reordered)")
+        prev = e
+    return problems
+
+
 def verify(pack_bytes: bytes, sig_b64: str, pubkey_pem: bytes, expect_fingerprint=None) -> list:
     """Return a list of signature, fingerprint, ledger, and checkpoint problems; [] means verification passed.
 
@@ -67,14 +81,9 @@ def verify(pack_bytes: bytes, sig_b64: str, pubkey_pem: bytes, expect_fingerprin
     except Exception:
         problems.append("signature does not match pack contents or key")
     pack = json.loads(pack_bytes)
-    prev = None
-    for e in pack["ledger"]["entries"]:
-        if entry_hash(e) != e["hash"]:
-            problems.append(f"ledger entry {e['seq']}: hash mismatch (entry altered)")
-        if prev is not None and (e["seq"] != prev["seq"] + 1 or e["prev_hash"] != prev["hash"]):
-            problems.append(f"ledger entry {e['seq']}: chain broken (entry missing or reordered)")
-        prev = e
-    if prev is not None and prev["hash"] != pack["ledger"]["head_hash"]:
+    entries = pack["ledger"]["entries"]
+    problems += chain_problems(entries)
+    if entries and entries[-1]["hash"] != pack["ledger"]["head_hash"]:
         problems.append("ledger head hash mismatch")
     # signed off-database checkpoints must agree with any entry they cover
     in_pack = {e["seq"]: e["hash"] for e in pack["ledger"]["entries"]}

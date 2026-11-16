@@ -232,6 +232,7 @@ def open_signup() -> bool:
         return True
     return False
 INVENTORY_MIN_SECONDS = int(os.environ.get("NIMSTEAD_INVENTORY_MIN_SECONDS", "30"))
+SBOM_MAX_PER_HOUR = 60  # uploads per asset: a large SBOM takes seconds to ingest, on the shared worker threads
 
 
 def sha(token: str) -> str:
@@ -1789,7 +1790,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         key or an admin session. Authenticated from the headers before the body is
         read (an anonymous caller can't make the server buffer 10 MiB), then read with
         a 10MiB streamed cap and HTTP 413 on excess. Preserve agent-origin rows. Defer parse/store
-        work to ingest_sbom. Invalid formats return 422, wrong keys 401. Other
+        work to ingest_sbom. Invalid formats return 422, wrong keys 401, too many uploads 429. Other
         authentication/ownership failures and storage/evidence errors can occur."""
         a, by = await run_in_threadpool(sbom_caller, asset_id, request, s)
         raw = bytearray()  # grows in place: bytes += would copy the whole body again on every chunk
@@ -1804,15 +1805,20 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
         An exact Bearer header takes precedence over any browser session: it must match
         that asset's own key (401 otherwise). Otherwise require an admin session and an
-        owned asset; replacing an SBOM resolves findings, so read-only members can't."""
+        owned asset; replacing an SBOM resolves findings, so read-only members can't.
+        Then count the upload: 429 past SBOM_MAX_PER_HOUR for the asset or the org's inventory quota."""
         auth = request.headers.get("authorization", "")
         if auth.startswith("Bearer "):
             a = s.scalar(select(Asset).where(Asset.agent_key_hash == sha(auth.removeprefix("Bearer "))))
             if not a or a.id != asset_id:
                 raise HTTPException(401, "Unknown key for this asset")
-            return a, "key"
-        user = admin_user(request, current_user(request, s))
-        return owned_asset(s, user, asset_id), user.email
+            who = "key"
+        else:
+            user = admin_user(request, current_user(request, s))
+            a, who = owned_asset(s, user, asset_id), user.email
+        if over_limit(s, "sbom:" + a.id, SBOM_MAX_PER_HOUR) or over_limit(s, "inventory:" + a.org_id, ORG_INVENTORY_MAX_PER_HOUR):
+            raise HTTPException(429, f"At most {SBOM_MAX_PER_HOUR} SBOM uploads an hour per asset, within the organisation's inventory limit")
+        return a, who
 
     def ingest_sbom(a: Asset, by: str, raw: bytes, s: Session) -> dict:
         """Authenticate, replace SBOM-origin rows and return mapping/rescan counts.

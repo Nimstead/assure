@@ -287,12 +287,14 @@ def run_update_sh(tmp_path, last: dict, origin: str | None = None):
         d.mkdir(parents=True)
     shutil.copy(Path(__file__).parents[2] / "deploy" / "update.sh", repo / "deploy" / "update.sh")
     (repo / "api" / "pyproject.toml").write_text('[project]\nversion = "0.9.1"\n', newline="\n")
-    (repo / ".gitignore").write_text("deploy/last-update.json\n", newline="\n")
+    shutil.copy(Path(__file__).parents[2] / ".gitignore", repo / ".gitignore")  # the real one: update.sh writes files it lists
     for args in (["init", "-q"], ["add", "."], ["commit", "-qm", "release"], ["tag", "v0.9.2"], ["remote", "add", "origin", origin or str(repo)]):
         subprocess.run(["git", "-c", "user.email=t@example.com", "-c", "user.name=t", *args], cwd=repo, check=True, capture_output=True)
     (repo / "deploy" / "last-update.json").write_text(json.dumps(last), newline="\n")
     (fake / "curl").write_text("#!/bin/sh\nexit 22\n", newline="\n")
-    (fake / "curl").chmod(0o755)
+    (fake / "flock").write_text("#!/bin/sh\nexit 0\n", newline="\n")  # so it takes its lock file everywhere, as on Linux
+    for tool in ("curl", "flock"):
+        (fake / tool).chmod(0o755)
     env = {**os.environ, "PATH": f"{fake}{os.pathsep}{os.environ['PATH']}", "NIMSTEAD_UPDATE_CHANNEL": "preview"}
     r = subprocess.run(["sh", "deploy/update.sh"], cwd=repo, env=env, capture_output=True, text=True, timeout=120)
     return r, json.loads((repo / "deploy" / "last-update.json").read_text())

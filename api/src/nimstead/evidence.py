@@ -108,6 +108,9 @@ def verify_chain(s: Session, org_id: str, full: bool = True) -> list[str]:
     if done and s.scalar(select(LedgerEntry.hash).where(LedgerEntry.org_id == org_id, LedgerEntry.seq == done[0])) != done[1]:
         done = None  # the anchor changed: check everything
     start, prev_hash = (done[0], done[1]) if done else (0, GENESIS)
+    # loaded first, so only the hashes at checkpoint positions are kept: every hash costs ~180 MB per million entries
+    cps = [] if done else load_checkpoints(org_id)
+    pinned = {cp.get("seq") for cp in cps}
     # streamed in batches: a ledger grows with the fleet, and holding every row at once costs gigabytes after a year
     rows = s.execute(select(*LEDGER_COLS).where(LedgerEntry.org_id == org_id, LedgerEntry.seq > start).order_by(LedgerEntry.seq)
                      .execution_options(yield_per=5000))
@@ -119,14 +122,14 @@ def verify_chain(s: Session, org_id: str, full: bool = True) -> list[str]:
         if entry_hash(d) != e.hash:
             problems.append(f"entry {e.seq}: hash mismatch")
         prev_hash, last = e.hash, (e.seq, e.hash)
-        if not done:
-            by_seq[e.seq] = e.hash  # only seq and hash are kept, for the checkpoint comparison below
+        if e.seq in pinned:
+            by_seq[e.seq] = e.hash  # for the checkpoint comparison below
     if done:  # checkpoints pin history up to the anchor, which the last full check compared them with
         if not problems and last:
             _VERIFIED[org_id] = (last[0], last[1], done[2])
         return problems
     pubs = verification_keys()  # once: with Vault each load is an HTTP call, and checkpoints grow by one an hour
-    for cp in load_checkpoints(org_id):
+    for cp in cps:
         if not checkpoint_valid(cp, pubs):
             problems.append(f"checkpoint at seq {cp.get('seq')}: bad signature")
         elif cp["seq"] not in by_seq and cp["seq"] > 0:

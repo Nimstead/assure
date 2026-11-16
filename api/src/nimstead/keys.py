@@ -148,17 +148,24 @@ def s3_latest_checkpoint(org_id: str) -> dict | None:
         token = page["NextContinuationToken"]
 
 
+# shortcut: one entry per org per hour, kept for the process's life (a few MB per org a year); move to local files if that matters
+_CHECKPOINTS: dict[str, dict] = {}  # "bucket/key" -> checkpoint: object lock means one never changes, so it's fetched once
+
+
 def s3_load_checkpoints(org_id: str) -> list[dict]:
     """Return all checkpoint dictionaries for org_id, sorted by seq, following S3 pagination.
 
-    Configuration, S3 service, and malformed JSON errors propagate."""
+    Every page is listed, but each object is fetched once per process and then served from
+    memory. Configuration, S3 service, and malformed JSON errors propagate."""
     bucket, prefix = _bucket_prefix()
     out, token = [], None
     while True:
         kw = {"Bucket": bucket, "Prefix": f"{prefix}/{org_id}/"} | ({"ContinuationToken": token} if token else {})
         page = _s3().list_objects_v2(**kw)
         for o in page.get("Contents", []):
-            out.append(json.loads(_s3().get_object(Bucket=bucket, Key=o["Key"])["Body"].read()))
+            if (k := f"{bucket}/{o['Key']}") not in _CHECKPOINTS:
+                _CHECKPOINTS[k] = json.loads(_s3().get_object(Bucket=bucket, Key=o["Key"])["Body"].read())
+            out.append(_CHECKPOINTS[k])
         if not page.get("IsTruncated"):
             return sorted(out, key=lambda c: c["seq"])
         token = page["NextContinuationToken"]

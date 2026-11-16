@@ -67,6 +67,18 @@ def test_any_failure_keeps_the_runtime_and_tasks_as_they_were(host, breakage, wh
     assert not state["scheduled"] and [p.name for p in root.iterdir()] == [old.name]
 
 
+def test_a_schedule_that_fails_after_moving_the_tasks_keeps_the_runtime_they_start(host, monkeypatch):
+    """Tasks re-pointed, then saving the config failed (a full disk): deleting the new runtime would break both tasks."""
+    go, state, root, old, rel = host
+
+    def schedule(cfg, run=None):
+        state["scheduled"].append(cfg["python"])
+        raise OSError("No space left on device")
+    monkeypatch.setattr(agent, "schedule", schedule)
+    assert "No space left" in go()
+    assert (root / rel["runtimes"]["amd64"]["sha256"][:12] / "python.exe").exists()
+
+
 def test_unsafe_archive_paths_are_refused(host):
     go, state, root, old, _ = host
     state["body"] = runtime_zip({r"..\..\evil.exe": b"x", "python.exe": b"MZ"})

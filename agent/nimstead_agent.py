@@ -1885,6 +1885,7 @@ def zypper_touched(xml, sections=ZYPPER_SECTIONS):
 
 
 TOOLS = {"apt": "apt-get", "apk": "apk", "dnf": "dnf", "zypper": "zypper"}
+APT_WAIT = ("-o", "DPkg::Lock::Timeout=600")  # wait out unattended-upgrades' lock instead of failing (older apt ignores it)
 
 
 class Job:
@@ -2133,7 +2134,7 @@ class Job:
         injected test failure raise StepFailed. Other filesystem errors propagate."""
         if self.mgr == "apt":
             self.step("upgrade", ["apt-get", "install", "-y", "--only-upgrade", "--no-remove",
-                                  "-o", "Dpkg::Options::=--force-confold", *self.targets()])
+                                  "-o", "Dpkg::Options::=--force-confold", *APT_WAIT, *self.targets()])
             out = self.step("package database check", ["dpkg", "--audit"])
             if out.strip():
                 self.step("package database consistent", ok=False, output=out)
@@ -2163,7 +2164,9 @@ class Job:
             intact = os.path.exists(path) and _sha256(path) == digest
             self.step("rollback artefact intact " + os.path.basename(path), ok=intact, output="" if intact else "sha256 mismatch or missing")
         if self.mgr == "apt":
-            self.step("rollback install", ["dpkg", "-i", *[p for p, _ in self.artefacts]])
+            # apt, not dpkg -i: it waits for the lock and keeps changed config files without asking
+            self.step("rollback install", ["apt-get", "install", "-y", "--allow-downgrades", "--no-remove",
+                                           "-o", "Dpkg::Options::=--force-confold", *APT_WAIT, *[p for p, _ in self.artefacts]])
         elif getattr(self, "snap_pre", None):
             self._snap_post()
             self.step("snapper undo of all changes", ["snapper", "-c", "root", "undochange", f"{self.snap_pre}..{self.snap_post}"])
@@ -2247,7 +2250,7 @@ class Job:
             self.step("free space for the rollback copy", ok=free >= MIN_FREE_BYTES,
                       output=f"{free // 2**20} MiB free; at least {MIN_FREE_BYTES // 2**20} MiB needed")
             self.health("before change")
-            self.step("refresh package index", {"apt": ["apt-get", "update"], "apk": ["apk", "update"],
+            self.step("refresh package index", {"apt": ["apt-get", "update", *APT_WAIT], "apk": ["apk", "update"],
                                                 "dnf": ["dnf", "makecache"],
                                                 "zypper": ["zypper", "--non-interactive", "refresh"]}[self.mgr])
             self.simulate()
@@ -2683,8 +2686,8 @@ def run_jobs(server, key, insecure_http, run=sh, outcome_dir=None, win_state=Non
             if w.s["phase"] in ("verify", "rolled_back_pending") and rc == 0 and pending.strip().lower() == "true":
                 return problems, True  # its restart hasn't happened yet (a user put it off): judge nothing until it has
             res = w.advance()
-            if res["outcome"] == "pending_reboot":
-                return problems, True
+            if res["outcome"] == "pending_reboot":  # still "start": servicing was busy, look again next poll without a restart
+                return problems, w.s["phase"] != "start"
             record(w.s["job"]["id"], res)
     jobs = post(server, "/api/agent/jobs", None, insecure_http, key)
     if not (isinstance(jobs, list) and all(isinstance(j, dict) for j in jobs)):  # e.g. an intercepting proxy's answer
@@ -3788,7 +3791,8 @@ def runtime_update(cfg, rel, insecure_http, run=None, root=None, executable=None
     Skip missing architectures and pending Windows jobs. Block older Python only
     when the current executable is already bundled under root. Remove unused old
     runtime directories, verify bytes/program signatures, self-test and reschedule.
-    Mutate cfg.python on success. Scheduling can persist configuration and task changes.
+    Mutate cfg.python once the new runtime passed its self-test, before rescheduling, so a failed
+    reschedule never deletes the runtime the tasks may already start. Scheduling can persist configuration and task changes.
     Return None on success/no-op or a problem string on handled failure. Cleanup is
     not a transaction over task/config changes. Malformed inputs before the protected
     download/install attempt can raise attribute, type, path or conversion errors."""
@@ -3826,9 +3830,8 @@ def runtime_update(cfg, rel, insecure_http, run=None, root=None, executable=None
         problem = (smoke or _smoke_test)(os.path.abspath(__file__), new_exe)
         if problem:
             raise AgentError(f"agent failed on runtime {want['version']}: {problem}")
-        new_cfg = {**cfg, "python": new_exe}
-        schedule(new_cfg, run=run)  # the tasks now start the new runtime; the old folder goes on the next run
-        cfg.update(python=new_exe)
+        cfg.update(python=new_exe)  # first: a schedule() that fails after moving the tasks must not have this folder deleted
+        schedule(cfg, run=run)  # the tasks now start the new runtime; the old folder goes on the next run
         return None
     except Exception as e:  # the host keeps its runtime and tasks exactly as they were
         shutil.rmtree(tmp, ignore_errors=True)

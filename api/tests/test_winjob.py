@@ -567,6 +567,25 @@ def test_a_job_whose_restart_was_put_off_is_not_judged_early(tmp_path):
     assert reboot and json.loads((tmp_path / "state.json").read_text())["phase"] == "verify"
 
 
+def test_a_power_cut_while_servicing_is_busy_waits_for_the_next_poll_instead_of_restarting(tmp_path):
+    """DISM often fails for minutes after a boot: restarting for that would restart the machine on every boot."""
+    import os
+    if os.name != "nt":
+        pytest.skip("Windows resume path")
+    h = FakeWin()
+    w = make(tmp_path, h)
+    w.s.update(installing=True, baseline={BASE_PKG: "Installed"})
+    w.save()
+
+    def run(cmd, cwd=None):
+        if cmd[:3] == ["dism", "/online", "/get-packages"]:
+            return 1, "Error: 0x800f0816 servicing is busy"
+        return h(cmd)
+    problems, reboot = agent.run_jobs("https://s", "k", False, run=run, outcome_dir=str(tmp_path / "out"),
+                                      win_state=str(tmp_path / "state.json"))
+    assert not reboot and json.loads((tmp_path / "state.json").read_text())["installing"] is True  # looked at again next poll
+
+
 def test_microsoft_update_source_is_local_only(tmp_path, monkeypatch):
     h = FakeWin()
     make(tmp_path, h).advance()

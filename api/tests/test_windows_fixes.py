@@ -18,6 +18,13 @@ def test_agent_and_server_maps_are_the_same():
     assert remediate.WINGET_KEYS - {"Microsoft Edge", "Visual Studio Code"} <= {p.key for p in winapps.PRODUCTS}
 
 
+def test_agent_names_each_winget_product_as_the_server_does():
+    from nimstead import msproducts, winapps
+    server = {p.key: (p.name.pattern, p.publisher.pattern if p.publisher else None) for p in winapps.PRODUCTS}
+    server.update({f(None, "1.0"): (n, p) for n, p, f in msproducts.UNINSTALL[:2]})  # Edge, VS Code
+    assert agent.WINGET_NAMES == {k: server[k] for k in agent.WINGET_IDS}
+
+
 class Host:
     """A fake Windows host for WinAppJob: winget, the Click-to-Run client and the registry."""
 
@@ -67,9 +74,13 @@ def job(mgr, name, frm="23.01", to="24.09", units=()):
     return {"id": "j1", "manager": mgr, "health_units": list(units), "packages": [{"name": name, "from": frm, "to": to}]}
 
 
+SEVEN_ZIP = [{"ecosystem": "WinApp", "name": "7-Zip 23.01 (x64)", "version": "23.01", "source": "Igor Pavlov"}]
+GIT = [{"ecosystem": "WinApp", "name": "Git", "version": "2.47.0.2", "source": "The Git Development Community"}]
+
+
 def test_winget_upgrades_only_a_pinned_id_with_a_published_hash():
     h = Host()
-    outcome, steps, err = agent.WinAppJob(job("winget", "7-zip:7-zip"), run=h).execute()
+    outcome, steps, err = agent.WinAppJob(job("winget", "7-zip:7-zip"), run=h, apps=lambda: SEVEN_ZIP).execute()
     assert outcome == "applied", (steps, err)
     inst = next(c for c in h.log if c[0].endswith("winget.exe") and c[1] == "install")
     assert inst[inst.index("--id") + 1] == "7zip.7zip" and "--exact" in inst and inst[inst.index("--source") + 1] == "winget"
@@ -83,7 +94,7 @@ def test_winget_finds_the_hash_by_its_value_not_its_label(line, want):
     class German(Host):
         def __call__(self, cmd, **kw):
             return (0, f"Installer:\n{line}\n") if cmd[0].endswith("winget.exe") and cmd[1] == "show" else super().__call__(cmd, **kw)
-    outcome, steps, err = agent.WinAppJob(job("winget", "7-zip:7-zip"), run=German()).execute()
+    outcome, steps, err = agent.WinAppJob(job("winget", "7-zip:7-zip"), run=German(), apps=lambda: SEVEN_ZIP).execute()
     assert outcome == want, (steps, err)
 
 
@@ -101,8 +112,27 @@ def test_winget_refuses_before_anything_runs(j, why):
 
 def test_winget_without_an_installer_hash_changes_nothing():
     h = Host(show_hash=False)
-    outcome, _, _ = agent.WinAppJob(job("winget", "7-zip:7-zip"), run=h).execute()
+    outcome, _, _ = agent.WinAppJob(job("winget", "7-zip:7-zip"), run=h, apps=lambda: SEVEN_ZIP).execute()
     assert outcome == "aborted" and not [c for c in h.log if c[0].endswith("winget.exe") and c[1] == "install"]
+
+
+@pytest.mark.parametrize("j,apps", [
+    (job("winget", "7-zip:7-zip"), []),  # not installed: a server can't add an app (remote-access tools are in the map)
+    (job("winget", "7-zip:7-zip", frm="22.01"), SEVEN_ZIP),  # the plan isn't what's installed
+    (job("winget", "git-scm:git", frm="2.47", to="2.47.0"), GIT),  # newer than a cut-down "from", older than what's installed
+    (job("winget", "git-scm:git", frm="2.47.0", to="2.47.1"), [{**GIT[0], "source": "Someone Else"}]),  # same name, other publisher
+])
+def test_winget_runs_only_on_the_app_installed_at_the_planned_version(j, apps):
+    h = Host()
+    outcome, steps, err = agent.WinAppJob(j, run=h, apps=lambda: apps).execute()
+    assert outcome == "aborted" and err.startswith("No changes made"), (steps, err)
+    assert not [c for c in h.log if c[0].endswith("winget.exe")]
+
+
+def test_winget_takes_the_planned_version_as_the_server_read_it():
+    h = Host()  # Git for Windows 2.47.0.2 is upstream 2.47.0, which is what the server plans from (winapps.py)
+    outcome, steps, err = agent.WinAppJob(job("winget", "git-scm:git", frm="2.47.0", to="2.47.1"), run=h, apps=lambda: GIT).execute()
+    assert outcome == "applied", (steps, err)
 
 
 def test_office_rolls_back_to_the_build_it_found(monkeypatch):
@@ -289,5 +319,5 @@ def test_a_failed_winget_install_says_it_needs_attention():
         if cmd[0].endswith("winget.exe") and cmd[1] == "install":
             return 1, "Installer failed with exit code: 1603"
         return real(cmd, cwd=cwd, timeout=timeout)
-    outcome, _, err = agent.WinAppJob(job("winget", "7-zip:7-zip"), run=run).execute()
+    outcome, _, err = agent.WinAppJob(job("winget", "7-zip:7-zip"), run=run, apps=lambda: SEVEN_ZIP).execute()
     assert outcome == "rollback_failed" and "No changes made" not in err

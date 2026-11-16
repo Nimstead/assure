@@ -120,6 +120,10 @@ def main(keep=False) -> int:
         vs = [v.strip() for v in lines[next(i for i, x in enumerate(lines) if x.startswith("---")) + 1:] if v.strip()]
         newest, old = vs[0], vs[1]
         h.guest("winget uninstall --id 7zip.7zip --exact --silent --disable-interactivity", check=False)  # a rerun finds the newest
+        # a server can't install an app that isn't there (round 3, 2026-11-15: the agent used to trust the server's "from")
+        r = job("winget-absent", {"manager": "winget", "packages": [{"name": "7-zip:7-zip", "from": old, "to": newest}]})
+        checks["app that isn't installed refused, still not installed"] = (r["outcome"] == "aborted" and r["error"].startswith("No changes made")
+                                                                          and not sevenzip())
         h.guest(f"winget install --id 7zip.7zip --exact --version {old} --silent --accept-package-agreements "
                 "--accept-source-agreements --disable-interactivity --scope machine")
         before = sevenzip()

@@ -84,6 +84,8 @@ def _agent_never_touches_this_host(monkeypatch, request, tmp_path):
         monkeypatch.setattr(mod, "LOG_PATH", str(tmp_path / "nimstead-test-log" / "agent.log"))
     if mod is not None and hasattr(mod, "secure_windows_dir") and not request.node.get_closest_marker("real_lockdown"):
         monkeypatch.setattr(mod, "secure_windows_dir", lambda *a, **k: [])
+    elif mod is not None and hasattr(mod, "dir_owner"):  # the folder as the agent left it: Administrators own it
+        monkeypatch.setattr(mod, "dir_owner", lambda p: (mod.is_link(p), "S-1-5-32-544"))
 
 
 def pytest_configure(config):

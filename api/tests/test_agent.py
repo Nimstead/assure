@@ -128,11 +128,48 @@ def test_lockdown_removes_files_users_planted_then_restricts_the_folder(tmp_path
     assert agent.secure_windows_dir(run, str(d)) == [str(d / "pending-job.json")]
     assert (d / "agent.json").exists() and not (d / "pending-job.json").exists()
     steps = [c[2:] if c[0] == "icacls" else "list" for c in calls]
-    # the folder is taken before anything is listed: owner first, then every explicit ACE dropped (a user who created the
-    # folder could have granted themselves access, and /grant:r alone keeps such an ACE), then SYSTEM + Administrators only
-    assert steps[:4] == [["/setowner", "*S-1-5-32-544", "/Q"], ["/reset", "/Q"],
+    # the folder is taken before anything is listed: owner first, then SYSTEM + Administrators only. Never /reset on the
+    # folder itself: that opens it to ProgramData's user ACEs for a moment, and a handle opened then keeps its access
+    assert steps[:3] == [["/setowner", "*S-1-5-32-544", "/Q"],
                          ["/inheritance:r", "/grant:r", "*S-1-5-18:(OI)(CI)F", "/grant:r", "*S-1-5-32-544:(OI)(CI)F", "/Q"], "list"]
-    assert steps[4:] == [["/setowner", "*S-1-5-32-544", "/T", "/C", "/Q"], ["/reset", "/T", "/C", "/Q"]]
+    assert steps[3:] == [["/setowner", "*S-1-5-32-544", "/T", "/C", "/Q"], ["/reset", "/T", "/C", "/Q"]]
+
+
+@pytest.mark.real_lockdown
+def test_lockdown_moves_aside_a_folder_a_user_created(tmp_path, monkeypatch):
+    d = tmp_path / "Nimstead"
+    d.mkdir()
+    (d / "planted.txt").write_text("x")  # a standard user made it before install, and may still hold it open to swap it mid-lockdown
+    monkeypatch.setattr(agent, "dir_owner", lambda p: (False, "S-1-5-21-1-2-3-1001"))
+    calls = []
+    agent.secure_windows_dir(lambda cmd, cwd=None: (calls.append(cmd), (0, ""))[1], str(d))
+    aside = [p for p in tmp_path.iterdir() if p.name.startswith("Nimstead.untrusted-")]
+    assert len(aside) == 1 and (aside[0] / "planted.txt").exists()  # left for a person to look at, never reused
+    assert d.is_dir() and not list(d.iterdir()) and all(c[1] == str(d) for c in calls if c[0] == "icacls")
+
+
+@pytest.mark.real_lockdown
+def test_lockdown_stops_when_a_users_folder_cant_be_moved_aside(tmp_path, monkeypatch):
+    monkeypatch.setattr(agent, "dir_owner", lambda p: (False, "S-1-5-21-1-2-3-1001"))
+
+    def in_use(*a):
+        raise PermissionError(32, "The process cannot access the file because it is being used by another process")
+    monkeypatch.setattr(agent.os, "rename", in_use)
+    calls = []
+    with pytest.raises(agent.AgentError, match="delete it, then rerun"):
+        agent.secure_windows_dir(lambda cmd, cwd=None: (calls.append(cmd), (0, ""))[1], str(tmp_path))
+    assert calls == []  # nothing locked down, listed or deleted in a folder a user controls
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows API")
+def test_dir_owner_reads_the_link_itself_not_its_target(tmp_path):
+    import _winapi
+    import re
+    (tmp_path / "real").mkdir()
+    _winapi.CreateJunction(str(tmp_path / "real"), str(tmp_path / "link"))
+    link, owner = agent.dir_owner(str(tmp_path / "real"))
+    assert link is False and re.fullmatch(r"S-1-\d+(-\d+)+", owner)
+    assert agent.dir_owner(str(tmp_path / "link"))[0] is True
 
 
 @pytest.mark.real_lockdown

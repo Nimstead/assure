@@ -135,6 +135,8 @@ def clone(iso: str, memory: int = 4096, image: int = 1) -> str:
     shutil.copy(STATE / base / "creds.json", STATE / name / "creds.json")
     vbox("clonevm", base, "--snapshot", "ready", "--options", "link", "--name", name, "--basefolder", str(STATE / name), "--register")
     vbox("modifyvm", name, "--memory", str(memory))
+    # the base's unattended-setup disc is a temporary file that gets cleaned away, and a clone can't boot without it (2026-11-16)
+    vbox("storageattach", name, "--storagectl", "SATA", "--port", "1", "--device", "0", "--type", "dvddrive", "--medium", "emptydrive", check=False)
     vbox("startvm", name, "--type", "headless")
     print(name)
     return name

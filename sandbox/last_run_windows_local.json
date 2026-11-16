@@ -16,12 +16,19 @@
     "owner": "NIMSTEAD-SBX\\nimuser"
   },
   {
+    "step": "swap race during install",
+    "racer": "TRIES=12634 WON=False",
+    "dir_is_link": "0",
+    "target_files": "keep.txt",
+    "moved_aside": "Nimstead.untrusted-9cf357a6"
+  },
+  {
     "step": "install.ps1 ran elevated",
-    "output": "5698ac0278e275e4681ea3ec5e58a06</ToString><Props><Obj N=\"MessageData\" RefId=\"4\"><TNRef RefId=\"1\" /><ToString>agent sha256: cac800b79ec2e35b12bf14d9c2cd3230c5698ac0278e275e4681ea3ec5e58a06</ToString><Props><S N=\"Message\">agent sha256: cac800b79ec2e35b12bf14d9c2cd3230c5698ac0278e275e4681ea3ec5e58a06</S><B N=\"NoNewLine\">false</B><S N=\"ForegroundColor\">Gray</S><S N=\"BackgroundColor\">Black</S></Props></Obj><S N=\"Source\">Write-Host</S><DT N=\"TimeGenerated\">2026-10-30T19:37:01.5620108-07:00</DT><Obj N=\"Tags\" RefId=\"5\"><TNRef RefId=\"2\" /><LST><S>PSHOST</S></LST></Obj><S N=\"User\">NIMSTEAD-SBX\\Administrator</S><S N=\"Computer\">nimstead-sbx</S><U32 N=\"ProcessId\">8084</U32><U32 N=\"NativeThreadId\">7332</U32><U32 N=\"ManagedThreadId\">9</U32></Props></Obj><S S=\"warning\">Plain HTTP server (dev only)</S><Obj S=\"information\" RefId=\"6\"><TNRef RefId=\"0\" /><ToString>Nimstead agent installed.</ToString><Props><Obj N=\"MessageData\" RefId=\"7\"><TNRef RefId=\"1\" /><ToString>Nimstead agent installed.</ToString><Props><S N=\"Message\">Nimstead agent installed.</S><B N=\"NoNewLine\">false</B><S N=\"ForegroundColor\">Gray</S><S N=\"BackgroundColor\">Black</S></Props></Obj><S N=\"Source\">Write-Host</S><DT N=\"TimeGenerated\">2026-10-30T19:38:09.4095639-07:00</DT><Obj N=\"Tags\" RefId=\"8\"><TNRef RefId=\"2\" /><LST><S>PSHOST</S></LST></Obj><S N=\"User\">NIMSTEAD-SBX\\Administrator</S><S N=\"Computer\">nimstead-sbx</S><U32 N=\"ProcessId\">8084</U32><U32 N=\"NativeThreadId\">7332</U32><U32 N=\"ManagedThreadId\">9</U32></Props></Obj></Objs>",
+    "output": "d0320035b04146ac209e2ed830072f3</ToString><Props><Obj N=\"MessageData\" RefId=\"4\"><TNRef RefId=\"1\" /><ToString>agent sha256: 5752c7c3508bbf14dbdc4174e73cf9c49d0320035b04146ac209e2ed830072f3</ToString><Props><S N=\"Message\">agent sha256: 5752c7c3508bbf14dbdc4174e73cf9c49d0320035b04146ac209e2ed830072f3</S><B N=\"NoNewLine\">false</B><S N=\"ForegroundColor\">Gray</S><S N=\"BackgroundColor\">Black</S></Props></Obj><S N=\"Source\">Write-Host</S><DT N=\"TimeGenerated\">2026-11-16T03:19:08.3670645-08:00</DT><Obj N=\"Tags\" RefId=\"5\"><TNRef RefId=\"2\" /><LST><S>PSHOST</S></LST></Obj><S N=\"User\">NIMSTEAD-SBX\\Administrator</S><S N=\"Computer\">nimstead-sbx</S><U32 N=\"ProcessId\">8644</U32><U32 N=\"NativeThreadId\">1364</U32><U32 N=\"ManagedThreadId\">8</U32></Props></Obj><S S=\"warning\">Plain HTTP server (dev only)</S><Obj S=\"information\" RefId=\"6\"><TNRef RefId=\"0\" /><ToString>Nimstead agent installed.</ToString><Props><Obj N=\"MessageData\" RefId=\"7\"><TNRef RefId=\"1\" /><ToString>Nimstead agent installed.</ToString><Props><S N=\"Message\">Nimstead agent installed.</S><B N=\"NoNewLine\">false</B><S N=\"ForegroundColor\">Gray</S><S N=\"BackgroundColor\">Black</S></Props></Obj><S N=\"Source\">Write-Host</S><DT N=\"TimeGenerated\">2026-11-16T03:20:43.6438691-08:00</DT><Obj N=\"Tags\" RefId=\"8\"><TNRef RefId=\"2\" /><LST><S>PSHOST</S></LST></Obj><S N=\"User\">NIMSTEAD-SBX\\Administrator</S><S N=\"Computer\">nimstead-sbx</S><U32 N=\"ProcessId\">8644</U32><U32 N=\"NativeThreadId\">1364</U32><U32 N=\"ManagedThreadId\">8</U32></Props></Obj></Objs>",
     "assets": [
       [
         "nimstead-sbx",
-        "0.4.0"
+        "0.7.1"
       ]
     ]
   },
@@ -34,8 +41,8 @@
     "attacker_read_key": false,
     "attacker_wrote": false,
     "acl": [
-      "C:\\ProgramData\\Nimstead BUILTIN\\Administrators:(OI)(CI)(F)",
-      "                        NT AUTHORITY\\SYSTEM:(OI)(CI)(F)",
+      "C:\\ProgramData\\Nimstead NT AUTHORITY\\SYSTEM:(OI)(CI)(F)",
+      "                        BUILTIN\\Administrators:(OI)(CI)(F)",
       "",
       "Successfully processed 1 files; Failed processing 0 files"
     ],

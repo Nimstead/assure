@@ -326,3 +326,13 @@ def test_idp_endpoints_must_be_https():
     oidc = sso.Oidc(httpx.Client(transport=httpx.MockTransport(lambda req: httpx.Response(200, json=doc))))
     with pytest.raises(sso.SSOError, match="idp_misconfigured"):
         oidc.discover(ISSUER)
+
+
+def test_an_oversized_idp_reply_is_refused():
+    """A provider an org admin names can't make the server read an endless document into memory."""
+    from nimstead import sso
+    doc = {"issuer": ISSUER, "authorization_endpoint": f"{ISSUER}/auth", "token_endpoint": f"{ISSUER}/token", "jwks_uri": f"{ISSUER}/jwks",
+           "padding": "x" * (2 << 20)}
+    oidc = sso.Oidc(httpx.Client(transport=httpx.MockTransport(lambda req: httpx.Response(200, json=doc))))
+    with pytest.raises(sso.SSOError, match="idp_unreachable"):
+        oidc.discover(ISSUER)

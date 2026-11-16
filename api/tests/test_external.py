@@ -308,6 +308,14 @@ def test_manual_scans_are_rate_limited_per_org(world, monkeypatch):
     assert codes[:10] == [200] * 10 and codes[10] == 429
 
 
+def test_ownership_checks_are_rate_limited_per_org(world):
+    """Each check fetches from a server the org names: unbounded, a tenant could keep many workers waiting on its own."""
+    c, dns = world
+    t = add(c, dns)
+    codes = [c.post(f"/api/targets/{t['id']}/verify").status_code for _ in range(31)]
+    assert codes[:30] == [200] * 30 and codes[30] == 429
+
+
 def test_context_rescore_never_closes_external_findings(world, monkeypatch):
     c, dns = world
     t = add(c, dns)
@@ -394,6 +402,32 @@ def test_address_proof_reads_the_value_from_that_exact_address():
     finally:
         srv.shutdown()
     assert not external.address_proven("127.0.0.1", "www.example.com", "nimstead-verify=abc", ports=port, timeout=1)  # nothing listening
+
+
+def test_a_server_that_dribbles_its_answer_is_cut_off_at_the_deadline():
+    """One byte just inside each read's timeout held a request worker for hours; forty such targets stalled every org."""
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    class H(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+            for _ in range(100):
+                time.sleep(0.1)
+                self.wfile.write(b"x")
+                self.wfile.flush()
+
+        def log_message(self, *a):
+            pass
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        start = time.monotonic()
+        assert not external.address_proven("127.0.0.1", "www.example.com", "v", ports=[(srv.server_address[1], False)], timeout=0.5)
+        assert time.monotonic() - start < 3
+    finally:
+        srv.shutdown()
 
 
 def test_a_tls_handshake_that_times_out_keeps_tls_findings_open(world, monkeypatch):

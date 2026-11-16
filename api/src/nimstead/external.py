@@ -14,6 +14,7 @@ the first returned address. Checks cover:
 import re
 import socket
 import ssl
+import time
 from datetime import UTC, datetime
 
 from sqlalchemy import select
@@ -85,8 +86,8 @@ def address_proven(ip: str, host: str, value: str, ports=PROOF_PORTS, timeout: f
     self-signed certificate is one of the things the scan exists to report.
 
     ip, host and value are strings. ports contains (integer port, TLS boolean) pairs,
-    tried in order. timeout is a per-socket-operation limit in seconds, not a total
-    deadline. Accept HTTP 200 with value anywhere in the first 4096 body bytes.
+    tried in order. timeout bounds the connect, the handshake, the send and the whole
+    read, each, so a port costs at most four times it. Accept HTTP 200 with value anywhere in the first 4096 body bytes.
     Ordinary socket/TLS failures try the next port and eventually return False.
     Invalid argument types or unexpected TLS configuration errors can propagate.
     This helper does not check ownership, public addresses or the DNS name."""
@@ -101,8 +102,11 @@ def address_proven(ip: str, host: str, value: str, ports=PROOF_PORTS, timeout: f
                 else:
                     conn = raw
                 conn.sendall(req)
-                data = b""
-                while len(data) < 8192 and (chunk := conn.recv(4096)):
+                data, end = b"", time.monotonic() + timeout  # a deadline: one byte per read must not hold a worker for hours
+                while len(data) < 8192 and (left := end - time.monotonic()) > 0:
+                    conn.settimeout(left)
+                    if not (chunk := conn.recv(4096)):
+                        break
                     data += chunk
         except (OSError, ssl.SSLError):
             continue

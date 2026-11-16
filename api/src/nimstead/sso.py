@@ -7,6 +7,7 @@ SSRF-guarded: the issuer, token and JWKS URLs are admin- or IdP-supplied.
 import base64
 import hashlib
 import hmac
+import json
 import os
 import secrets
 import time
@@ -19,7 +20,7 @@ import jwt
 from cryptography.fernet import Fernet
 
 from nimstead import keys
-from nimstead.netguard import guarded_client
+from nimstead.netguard import guarded_client, read_capped
 
 ALGS = ["RS256", "RS384", "RS512", "PS256", "ES256", "ES384"]  # asymmetric only: never accept HS* (key-confusion)
 CACHE_SECONDS = 600
@@ -47,9 +48,9 @@ class Oidc:
 
     def _get(self, url: str) -> dict:
         try:
-            r = self.http.get(url, headers={"Accept": "application/json"})
-            r.raise_for_status()
-            return r.json()
+            with self.http.stream("GET", url, headers={"Accept": "application/json"}) as r:
+                r.raise_for_status()
+                return json.loads(read_capped(r))
         except (httpx.HTTPError, ValueError) as e:
             raise SSOError("idp_unreachable") from e
 
@@ -106,12 +107,12 @@ class Oidc:
         required claims, and nonce. Raise SSOError for provider, exchange, or token failures."""
         doc = self.discover(issuer)
         try:
-            r = self.http.post(doc["token_endpoint"], data={
+            with self.http.stream("POST", doc["token_endpoint"], data={
                 "grant_type": "authorization_code", "code": code, "redirect_uri": redirect_uri,
                 "client_id": client_id, "client_secret": client_secret, "code_verifier": flow["verifier"],
-            }, headers={"Accept": "application/json"})
-            r.raise_for_status()
-            id_token = r.json()["id_token"]
+            }, headers={"Accept": "application/json"}) as r:
+                r.raise_for_status()
+                id_token = json.loads(read_capped(r))["id_token"]
         except (httpx.HTTPError, ValueError, KeyError) as e:
             raise SSOError("token_exchange_failed") from e
         try:

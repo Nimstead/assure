@@ -78,6 +78,19 @@ class GuardedTransport(httpx.HTTPTransport):
         return super().handle_request(request)
 
 
+MAX_REPLY_BYTES = 1 << 20  # replies from servers an org admin names (SSO providers): never more than this in memory
+
+
+def read_capped(r: httpx.Response, limit: int = MAX_REPLY_BYTES) -> bytes:
+    """Return a streamed response's body. Raise ValueError once it passes limit bytes, without reading the rest."""
+    body = bytearray()
+    for chunk in r.iter_bytes():
+        body += chunk
+        if len(body) > limit:
+            raise ValueError(f"reply larger than {limit} bytes")
+    return bytes(body)
+
+
 def guarded_client(timeout: float = 5.0) -> httpx.Client:
     # No keep-alive: the pool is keyed by the rewritten IP, not the hostname, so a connection whose certificate was
     # checked for one name could otherwise be reused for another name on the same address without a new TLS check.

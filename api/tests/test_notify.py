@@ -477,3 +477,16 @@ def test_notification_reference_and_schema_cover_recent_sample(env, sent):
     reference = (root / "notifications.md").read_text()
     assert all(f"`{key}`" in reference for key in set(out) | recent_fields)
     assert all(set(row) == recent_fields for row in out["recent"])
+
+
+def test_a_webhook_reply_is_never_read_into_memory(sent, monkeypatch):
+    """Only the status matters: an endless reply from a receiver an admin named must not fill the server's memory."""
+    read = []
+
+    def endless():
+        for _ in range(5000):
+            read.append(1)
+            yield b"x" * 1024
+    monkeypatch.setattr(notify, "http_client", httpx.Client(transport=httpx.MockTransport(lambda req: httpx.Response(200, content=endless()))))
+    notify._send_webhook(HOOK, "slack", "test", "hello", False)
+    assert len(read) < 5

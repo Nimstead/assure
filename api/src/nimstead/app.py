@@ -202,6 +202,7 @@ LOGIN_MAX_FAILURES, LOGIN_WINDOW = 10, 15 * 60
 LOGIN_MAX_PER_EMAIL = 100  # across all addresses, but only stops addresses that already failed: no one can lock out the owner
 SIGNUP_MAX_PER_HOUR = 10  # per client address: signup necessarily says whether an email is taken, so keep probing slow
 EXTSCAN_MAX_PER_HOUR = 10  # manual outside-in scans per org (the hourly feed run scans every verified target anyway)
+EXTVERIFY_MAX_PER_HOUR = 30  # ownership checks per org: each one fetches from a server the org names
 CONFIRM_MAIL_MAX_PER_HOUR = 20  # alert-recipient confirmation emails per org
 TEST_ALERT_MAX_PER_HOUR = 5
 RATE_WINDOW = 3600
@@ -1706,9 +1707,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
         Requires an organisation admin browser session; API tokens are refused.
 
-        Operation-specific HTTP errors: 404 for unavailable target or 409 for failed proof/address checks.
+        Operation-specific HTTP errors: 404 for unavailable target, 409 for failed proof/address checks,
+        or 429 for more than EXTVERIFY_MAX_PER_HOUR checks per organisation per hour.
         Authentication and request-validation errors also apply where required."""
         a = owned_target(s, user, target_id)
+        if over_limit(s, "extverify:" + user.org_id, EXTVERIFY_MAX_PER_HOUR):
+            raise HTTPException(429, f"At most {EXTVERIFY_MAX_PER_HOUR} ownership checks an hour")
         value = external.txt_value(a.org_id, a.hostname)
         if not external.owned(a.org_id, a.hostname, dns_lookup or sso.txt_records):
             raise HTTPException(409, f"TXT record not found: add {external.txt_name(a.hostname)} = {value}")

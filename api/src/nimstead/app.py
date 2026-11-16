@@ -866,7 +866,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         Setup success replaces secret/recovery hashes and appends evidence. Existing
         sessions/API tokens remain. Return 403/422/429 for refusal. Backend/shape,
         evidence and storage errors can propagate."""
-        if over_limit(s, "mfa:" + user.id, LOGIN_MAX_FAILURES, LOGIN_WINDOW):
+        if over_limit(s, "mfa-setup:" + user.id, LOGIN_MAX_FAILURES, LOGIN_WINDOW):  # not "mfa:": that's sign-in guessing
             raise HTTPException(429, "Too many attempts; try again in 15 minutes")
         if user.totp_secret and not second_factor(s, user, body.current_code):
             raise HTTPException(403, "Enter a code from your current authenticator, or a recovery code")

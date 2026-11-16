@@ -220,6 +220,22 @@ def test_wrong_codes_count_toward_the_sign_in_throttle(env):
     assert [c.post("/api/auth/login", json=pw).status_code for _ in range(11)][-1] == 429
 
 
+def test_fumbled_authenticator_setups_never_lock_sign_in(env):
+    """Wrong codes while replacing an authenticator aren't sign-in guesses: they mustn't page the org or lock the person out."""
+    c = user(env)
+    totp = mfa_login(TestClient(c.app), "a@example.com").secret
+    new = c.post("/api/me/mfa/setup").json()
+    for _ in range(10):
+        c.post("/api/me/mfa", json={"setup": new["setup"], "code": "000000", "current_code": "000000"})
+    r = TestClient(c.app).post("/api/auth/login", json={"email": "a@example.com", "password": PW, "code": now_code(totp, 1)})
+    assert r.status_code == 200, r.text
+
+
+def test_a_code_in_other_scripts_digits_is_just_wrong():
+    """str.isdigit() accepts Arabic-Indic digits, which then crashed the comparison: sign-in answered 500."""
+    assert mfa.verify(mfa.new_secret(), "١٢٣٤٥٦", 0) is None
+
+
 def test_non_admins_may_enrol_and_replacing_needs_the_old_authenticator(env):
     c = user(env)
     s = c.post("/api/me/mfa/setup").json()

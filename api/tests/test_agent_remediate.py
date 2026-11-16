@@ -118,16 +118,21 @@ def test_failed_health_check_rolls_back(tmp_path):
     assert steps[-1]["step"] == "nginx.service active after rollback"
 
 
-def test_apt_waits_for_the_package_lock_on_upgrade_and_rollback(tmp_path):
-    """Unattended upgrades take the package lock daily: giving up at once failed the fix, then its rollback, for nothing."""
+def test_apt_waits_for_the_package_lock_on_upgrade_and_rollback(tmp_path, monkeypatch):
+    """Unattended upgrades take apt's locks daily: giving up at once failed the fix, then its rollback, for nothing."""
+    monkeypatch.setattr(agent, "APT_LISTS_RETRY_SECONDS", 0)
     h = FakeApt(tmp_path, OLD, NEW, break_unit_on_upgrade=True)
+    held = {"update": 2}  # apt-get update can't wait for apt's lists lock (seen on real Debian 13), so it's tried again
 
-    def locked(cmd, cwd=None):  # apt waits only when told to; dpkg itself can't wait
-        if (cmd[:2] in (["apt-get", "update"], ["apt-get", "install"]) and "DPkg::Lock::Timeout=600" not in cmd) or cmd[:2] == ["dpkg", "-i"]:
+    def locked(cmd, cwd=None):  # apt-get install waits when told to (DPkg::Lock::Timeout); dpkg -i can't wait
+        if cmd[:2] == ["apt-get", "update"] and held["update"]:
+            held["update"] -= 1
+            return 100, "E: Could not get lock /var/lib/apt/lists/lock. It is held by process 812 (apt-get)"
+        if (cmd[:2] == ["apt-get", "install"] and "DPkg::Lock::Timeout=600" not in cmd) or cmd[:2] == ["dpkg", "-i"]:
             return 100, "E: Could not get lock /var/lib/dpkg/lock-frontend. It is held by process 812 (unattended-upgr)"
         return h(cmd, cwd)
     outcome, _, err = run(tmp_path, locked)
-    assert outcome == "rolled_back" and h.installed == OLD, err
+    assert outcome == "rolled_back" and h.installed == OLD and held["update"] == 0, err
 
 
 def test_crash_looping_service_rolls_back_even_when_sampled_active(tmp_path):

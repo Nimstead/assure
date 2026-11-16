@@ -1885,7 +1885,8 @@ def zypper_touched(xml, sections=ZYPPER_SECTIONS):
 
 
 TOOLS = {"apt": "apt-get", "apk": "apk", "dnf": "dnf", "zypper": "zypper"}
-APT_WAIT = ("-o", "DPkg::Lock::Timeout=600")  # wait out unattended-upgrades' lock instead of failing (older apt ignores it)
+APT_WAIT = ("-o", "DPkg::Lock::Timeout=600")  # wait out unattended-upgrades' dpkg lock instead of failing (older apt ignores it)
+APT_LISTS_RETRY_SECONDS = 10  # apt-get update can't wait for apt's lists lock (that option is dpkg's only): retried, 10 min at most
 
 
 class Job:
@@ -2250,9 +2251,15 @@ class Job:
             self.step("free space for the rollback copy", ok=free >= MIN_FREE_BYTES,
                       output=f"{free // 2**20} MiB free; at least {MIN_FREE_BYTES // 2**20} MiB needed")
             self.health("before change")
-            self.step("refresh package index", {"apt": ["apt-get", "update", *APT_WAIT], "apk": ["apk", "update"],
-                                                "dnf": ["dnf", "makecache"],
-                                                "zypper": ["zypper", "--non-interactive", "refresh"]}[self.mgr])
+            refresh = {"apt": ["apt-get", "update"], "apk": ["apk", "update"], "dnf": ["dnf", "makecache"],
+                       "zypper": ["zypper", "--non-interactive", "refresh"]}[self.mgr]
+            rc, out = self.run(refresh)
+            for _ in range(60):  # apt-daily holds apt's lists lock while it refreshes them
+                if not (rc == 100 and "Could not get lock" in out):
+                    break
+                time.sleep(APT_LISTS_RETRY_SECONDS)
+                rc, out = self.run(refresh)
+            self.step("refresh package index", ok=rc == 0, output=out)
             self.simulate()
             self.save_rollback()
         except Exception as e:

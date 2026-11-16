@@ -1,7 +1,7 @@
 [
   {
     "step": "creating sandbox distro",
-    "name": "nimstead-sbx-eae80e94",
+    "name": "nimstead-sbx-81c5cf10",
     "distro": "Debian"
   },
   {
@@ -15,37 +15,37 @@
   },
   {
     "step": "feeds synced",
-    "kev": 1760,
-    "epss": 396966,
+    "kev": 1781,
+    "epss": 406741,
     "osv": {
-      "inserted": 60732,
+      "inserted": 62306,
       "updated": 0,
       "skipped": 0
     },
-    "seconds": 9
+    "seconds": 13
   },
   {
     "step": "first inventory",
-    "open": 276,
+    "open": 335,
     "resolved": 0
   },
   {
     "step": "findings",
     "open_by_priority": {
-      "low": 260,
-      "planned": 16
+      "low": 316,
+      "planned": 19
     },
     "top_actions": [
       "openssl",
       "perl",
       "glibc",
       "expat",
-      "sqlite3",
+      "vim",
+      "zlib",
       "pcre2",
-      "util-linux",
-      "gzip",
-      "krb5",
-      "dhcpcd"
+      "sqlite3",
+      "apt",
+      "util-linux"
     ]
   },
   {
@@ -57,6 +57,7 @@
     "steps": [
       "ok  job validated",
       "ok  apt-get available",
+      "ok  installed for one architecture only",
       "ok  installed versions match plan",
       "ok  fix is newer than installed",
       "ok  no rollback copy kept from an earlier job with this id",
@@ -65,6 +66,7 @@
       "ok  simulate upgrade",
       "ok  no package downgraded",
       "ok  change limited to planned packages",
+      "ok  repository has a newer version",
       "ok  archive copy of libssl3t64=3.5.6-1~deb13u1 not available (superseded); rebuilding",
       "ok  rollback package libssl3t64=3.5.6-1~deb13u1",
       "ok  rollback package saved libssl3t64_3.5.6-1~deb13u1_amd64.deb",
@@ -83,10 +85,11 @@
     "package": "perl",
     "outcome": "rolled_back",
     "status": "rolled_back",
-    "error": "Change failed and was rolled back: nimstead-canary.service active after change failed: service is activating, restarted 11 times since the change",
+    "error": "Change failed and was rolled back: nimstead-canary.service active after change failed: service is activating, restarted 12 times since the change",
     "steps": [
       "ok  job validated",
       "ok  apt-get available",
+      "ok  installed for one architecture only",
       "ok  installed versions match plan",
       "ok  fix is newer than installed",
       "ok  no rollback copy kept from an earlier job with this id",
@@ -96,6 +99,7 @@
       "ok  simulate upgrade",
       "ok  no package downgraded",
       "ok  change limited to planned packages",
+      "ok  repository has a newer version",
       "ok  archive copy of perl-base=5.40.1-6 not available (superseded); rebuilding",
       "ok  rollback package perl-base=5.40.1-6",
       "ok  rollback package saved perl-base_5.40.1-6_amd64.deb",
@@ -140,9 +144,5 @@
     "step": "RESULT: PASS",
     "rollback_tested": true,
     "rollback_trigger": "service health check"
-  },
-  {
-    "step": "sandbox destroyed",
-    "name": "nimstead-sbx-eae80e94"
   }
 ]

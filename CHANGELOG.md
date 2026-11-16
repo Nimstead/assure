@@ -4,6 +4,15 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-11-16 (preview)
+
+Agent 0.7.2. No database migration. A security release for the Windows agent: update Windows hosts.
+
+### Highlights
+- **A standard user on a Windows host can no longer aim the agent's folder lockdown, or its key, at a folder of their choice.**
+- **Winget fixes run only on an app installed at the planned version**, so a compromised server can't add an app or move one to an older build.
+- Both were proven on real Windows 11 VMs, including a standard user racing to swap the folder during install.
+
 ### Security
 - **Windows agent: a standard user can no longer redirect the folder lockdown.** A user who created `C:\ProgramData\Nimstead` before install could keep a handle open and swap the folder for a junction while the agent locked it down. SYSTEM would then lock, delete in, and write the agent key into a folder that user chose. The agent now moves such a folder aside and creates a fresh one that only SYSTEM and Administrators can open.
 - **Windows agent: winget fixes check what's installed.** The agent ran winget after comparing only the two versions the server sent, so a compromised server could install a curated app that wasn't there (TeamViewer, AnyDesk and VNC servers are in the list) or force an older build. It now runs only when the registry shows that exact product at the planned version, and the fix is newer.
@@ -603,7 +612,8 @@ The first early-access release. Everything listed is proven by tests and, for an
 
 Licensed under FSL-1.1-ALv2: this release becomes available under Apache 2.0 on 2028-10-27.
 
-[Unreleased]: https://github.com/Nimstead/assure/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/Nimstead/assure/compare/v0.9.2...HEAD
+[0.9.2]: https://github.com/Nimstead/assure/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/Nimstead/assure/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/Nimstead/assure/compare/v0.8.0...v0.9.0
 [0.6.0]: https://github.com/Nimstead/assure/compare/v0.5.0...v0.6.0

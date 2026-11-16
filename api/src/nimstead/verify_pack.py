@@ -5,7 +5,8 @@ never run a copy that came inside a pack. Needs Python 3.9+ and `cryptography`.
 Usage: python verify.py pack.json pack.sig public_key.pem --expect-fingerprint SHA256HEX
 The fingerprint must come from Nimstead out of band; without it, a forger could re-sign with their own key.
 Checks: (1) Ed25519 signature over pack.json, (2) every ledger entry's hash,
-(3) entries link to each other by prev_hash with no gaps, (4) signed off-database checkpoints agree.
+(3) entries link to each other by prev_hash with no gaps, (4) signed off-database checkpoints agree, and none is past
+the chain head (entries removed from the end).
 """
 
 import base64
@@ -79,10 +80,13 @@ def verify(pack_bytes: bytes, sig_b64: str, pubkey_pem: bytes, expect_fingerprin
     in_pack = {e["seq"]: e["hash"] for e in pack["ledger"]["entries"]}
     # older checkpoints may be signed by keys rotated out since; the pack lists them under its own signature
     cp_keys = [load_pem_public_key(pubkey_pem)] + [load_pem_public_key(p.encode()) for p in pack.get("earlier_keys", [])]
+    head_seq = (pack["ledger"].get("chain_head") or {}).get("seq")
     for cp in pack["ledger"].get("checkpoints", []):
         if not any(checkpoint_signed(k, cp) for k in cp_keys):
             problems.append(f"checkpoint at seq {cp.get('seq')}: bad signature")
             continue
+        if head_seq is not None and cp["seq"] > head_seq:  # the server signed the checkpoint, so that entry existed
+            problems.append(f"checkpoint at seq {cp['seq']} is past the ledger's head (seq {head_seq}): newer entries were removed")
         if cp["seq"] in in_pack and in_pack[cp["seq"]] != cp["hash"]:
             problems.append(f"checkpoint at seq {cp['seq']}: ledger entry differs (history rewritten)")
     return problems

@@ -239,6 +239,20 @@ def test_checkpoint_detects_truncation(env):
     assert any("truncated" in p for p in evidence.verify_chain(s, org_id))
 
 
+def test_the_offline_verifier_catches_a_ledger_cut_off_after_its_last_checkpoint(env):
+    """Deleting the newest entries leaves a consistent chain: only the signed checkpoint past its end shows they existed."""
+    from sqlalchemy import delete
+    setup_flow(env)
+    s = sessionmaker(make_engine(env))()
+    org_id = s.scalar(select(Finding.org_id))
+    cp = evidence.checkpoint(s, org_id)
+    s.execute(delete(LedgerEntry).where(LedgerEntry.seq >= cp["seq"] - 1))
+    s.commit()
+    z = zipfile.ZipFile(io.BytesIO(evidence.pack_zip(evidence.build_pack(s, org_id, *evidence.default_period(90)))))
+    body, sig, key = z.read("pack.json"), z.read("pack.sig").decode(), z.read("public_key.pem")
+    assert any("past the ledger's head" in p for p in verify(body, sig, key, evidence.fingerprint(key)))
+
+
 def test_pack_carries_checkpoints_and_verifier_checks_them(env):
     c, _ = setup_flow(env)
     r = c.get("/api/evidence/pack")  # takes a checkpoint first

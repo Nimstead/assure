@@ -420,6 +420,9 @@ def build_pack(s: Session, org_id: str, start: datetime, end: datetime, with_ent
         select(LedgerEntry.ts, LedgerEntry.data).where(LedgerEntry.org_id == org_id, LedgerEntry.kind == "policy_changed",
                                                        LedgerEntry.ts >= s_iso, LedgerEntry.ts <= e_iso)) if "sla_days" in d]
     m["sla_changes"] = len(sla_changes)
+    # checkpoints before the head: one the hourly run writes in between would otherwise sit past it, and the verifier
+    # reads a checkpoint past the head as removed entries
+    checkpoints = load_checkpoints(org_id) if with_entries else []  # the Evidence page shows none of them
     head = s.scalar(select(LedgerEntry).where(LedgerEntry.org_id == org_id).order_by(LedgerEntry.seq.desc()).limit(1))
     in_period = (LedgerEntry.org_id == org_id, LedgerEntry.ts >= s_iso, LedgerEntry.ts <= e_iso)
     if with_entries:
@@ -454,7 +457,7 @@ def build_pack(s: Session, org_id: str, start: datetime, end: datetime, with_ent
         # chain_head pins the whole chain at signing time; compare across successive packs to detect rewritten history
         "ledger": {"entries": entries, "head_hash": period_head,
                    "chain_head": {"seq": head.seq, "hash": head.hash} if head else {"seq": 0, "hash": GENESIS},
-                   "checkpoints": load_checkpoints(org_id) if with_entries else []},  # the Evidence page shows none of them
+                   "checkpoints": checkpoints},
         # keys rotated out of Vault that signed older checkpoints; this pack's signature vouches for them
         **({"earlier_keys": [_pem(k).decode() for k in verification_keys()[:-1]]} if with_entries else {}),
     }

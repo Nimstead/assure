@@ -17,6 +17,7 @@ import ssl
 import time
 from datetime import UTC, datetime
 
+import dns.exception
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -305,7 +306,7 @@ def prove_scope(s: Session, asset: Asset, lookup=None) -> str:
     The netguard development bypass can allow private addresses.
 
     Raise ScanRefused for wrong asset kind, missing verification, lapsed DNS proof,
-    refused resolution or absent address proof. Lapsed DNS clears verified_at and
+    a failed DNS lookup (verification kept), refused resolution or absent address proof. Lapsed DNS clears verified_at and
     commits an unverified event. Missing address proof commits a refusal event but
     retains verified_at. These commits include other pending changes in s.
     Database, custom lookup and key-backend errors propagate. Caller checks tenant ownership."""
@@ -313,7 +314,11 @@ def prove_scope(s: Session, asset: Asset, lookup=None) -> str:
         raise ScanRefused("Only external targets are scanned from outside")
     if asset.verified_at is None:
         raise ScanRefused("Prove you own this host first (DNS TXT record), then verify")
-    if not owned(asset.org_id, asset.hostname, lookup or sso.txt_records):
+    try:
+        still_owned = owned(asset.org_id, asset.hostname, lookup or sso.txt_records)
+    except dns.exception.DNSException:  # says nothing about the record: skip this time, keep the verification
+        raise ScanRefused("DNS didn't answer the ownership check; not scanned this time") from None
+    if not still_owned:
         asset.verified_at = None
         evidence.append(s, asset.org_id, "external_target_unverified", asset.id, {"host": asset.hostname})
         s.commit()

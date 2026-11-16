@@ -184,12 +184,12 @@ def domain_token(org_id: str, domain: str) -> str:
 
 
 def txt_records(name: str) -> list[str]:
-    """Return decoded TXT record strings for DNS name, or an empty list on lookup failure.
+    """Return decoded TXT record strings for DNS name, or an empty list when the name or record doesn't exist.
 
     name is the complete DNS query name. The system resolver is the default.
     NIMSTEAD_DNS_SERVER=host:port selects an explicit resolver and TCP transport.
-    Each request has a five-second lifetime. Resolver, configuration, and decoding failures
-    are suppressed, so an empty result does not distinguish absence from a failed lookup."""
+    Each request has a five-second lifetime. A lookup that failed (timeout, no server answered)
+    raises dns.exception.DNSException: it says nothing about whether the record is there."""
     try:
         if server := os.environ.get("NIMSTEAD_DNS_SERVER"):
             host, _, port = server.partition(":")
@@ -199,7 +199,7 @@ def txt_records(name: str) -> list[str]:
         else:
             answer = dns.resolver.resolve(name, "TXT", lifetime=5)
         return [b"".join(rr.strings).decode(errors="replace") for rr in answer]
-    except Exception:
+    except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
         return []
 
 
@@ -208,6 +208,6 @@ def domain_verified(org_id: str, domain: str, lookup=txt_records) -> bool:
 
     org_id is the organisation identifier; domain is the email domain to prove.
 
-    lookup accepts a DNS name and returns a list of TXT strings; its default suppresses DNS failures.
-    Errors from a custom lookup or the token backend propagate."""
+    lookup accepts a DNS name and returns a list of TXT strings; its default raises
+    dns.exception.DNSException when the lookup failed. Lookup and token backend errors propagate."""
     return f"nimstead-verify={domain_token(org_id, domain)}" in lookup(f"_nimstead-verify.{domain}")

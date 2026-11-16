@@ -270,6 +270,23 @@ def test_ownership_is_rechecked_before_every_scan(world, monkeypatch):
     assert next(a for a in c.get("/api/assets").json() if a["id"] == t["id"])["verified"] is False
 
 
+def test_a_dns_failure_skips_the_scan_but_keeps_the_target_verified(world, monkeypatch):
+    """A resolver timeout says nothing about the TXT record: it must not stop the target's scans until someone re-verifies."""
+    import dns.exception
+    c, fake = world
+    t = add(c, fake)
+    c.post(f"/api/targets/{t['id']}/verify")
+
+    def down(self, name):
+        raise dns.exception.Timeout()
+    monkeypatch.setattr(DNS, "__call__", down)
+    no_probe(monkeypatch, "scanned without the ownership check")
+    r = c.post(f"/api/targets/{t['id']}/scan")
+    assert r.status_code == 409 and "DNS" in r.json()["detail"]
+    assert next(a for a in c.get("/api/assets").json() if a["id"] == t["id"])["verified"] is True
+    assert c.post(f"/api/targets/{t['id']}/verify").status_code == 503
+
+
 def test_names_that_resolve_to_private_addresses_are_refused(world, monkeypatch):
     c, dns = world
     t = add(c, dns, "intranet.example.com")

@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Annotated, Any, Literal
 from urllib.parse import parse_qs, urlencode, urlsplit
 
+import dns.exception
 import httpx
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
@@ -1714,7 +1715,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         if over_limit(s, "extverify:" + user.org_id, EXTVERIFY_MAX_PER_HOUR):
             raise HTTPException(429, f"At most {EXTVERIFY_MAX_PER_HOUR} ownership checks an hour")
         value = external.txt_value(a.org_id, a.hostname)
-        if not external.owned(a.org_id, a.hostname, dns_lookup or sso.txt_records):
+        try:
+            found = external.owned(a.org_id, a.hostname, dns_lookup or sso.txt_records)
+        except dns.exception.DNSException:
+            raise HTTPException(503, "DNS didn't answer; try again in a minute") from None
+        if not found:
             raise HTTPException(409, f"TXT record not found: add {external.txt_name(a.hostname)} = {value}")
         try:  # the name is yours; now the server it points at must say so too (re-checked against every scanned address)
             ip = check_public_url(f"https://{a.hostname}/")[0]
@@ -2480,8 +2485,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         No live provider-login test occurs. Backend/storage errors can propagate."""
         o = s.get(Org, user.org_id)
         taken = {d for other in s.scalars(select(Org).where(Org.id != o.id)) for d in other.sso_verified_domains}
-        newly = [d for d in o.sso_domains
-                 if d not in o.sso_verified_domains and d not in taken and sso.domain_verified(o.id, d, dns_lookup or sso.txt_records)]
+        try:
+            newly = [d for d in o.sso_domains
+                     if d not in o.sso_verified_domains and d not in taken and sso.domain_verified(o.id, d, dns_lookup or sso.txt_records)]
+        except dns.exception.DNSException:
+            raise HTTPException(503, "DNS didn't answer; try again in a minute") from None
         if newly:
             o.sso_verified_domains = sorted({*o.sso_verified_domains, *newly})
             evidence.append(s, o.id, "sso_domain_verified", o.id, {"by": user.email, "domains": newly})

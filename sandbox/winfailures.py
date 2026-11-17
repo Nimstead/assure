@@ -220,8 +220,19 @@ class Run:
         while time.time() < end and not busy:
             # the agent's own flag, saved just before it installs: Windows Update's IsBusy never read True through a whole real install
             busy = '"installing": true' in h.guest(f"Get-Content '{PENDING}' -Raw -ErrorAction SilentlyContinue", timeout=120, check=False)
-            if not busy and lab_.jobs_by_id(self.api)[jid]["status"] in lab_.DONE:
-                break
+            jobs = lab_.jobs_by_id(self.api)
+            if not busy and jobs[jid]["status"] in lab_.DONE:
+                # a host far behind: the abort planned the earlier cumulative Windows Update offers as a step (DECISIONS 95).
+                # Approve it as a person would and cut that install instead (2026-11-17: fresh Server 2025 media needed 2026-09 first)
+                step = jobs[jid]["status"] == "aborted" and next(
+                    (j for j in jobs.values() if j["status"] == "planned" and j["asset_id"] == self.asset["id"]), None)
+                if not step:
+                    break
+                h.note("stepping", error=(jobs[jid].get("error") or "")[:300], planned=step["summary"])
+                assert self.api.post(f"/api/remediation/jobs/{step['id']}/approve",
+                                     json={"forward_only": True} if step.get("forward_only") else None).status_code == 200
+                jid = step["id"]
+                h.guest("Start-ScheduledTask -TaskName 'Nimstead jobs'")
             time.sleep(10)
         h.note("power cut during the install" if busy else "Windows Update never seen installing")
         time.sleep(60 if busy else 0)

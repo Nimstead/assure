@@ -101,7 +101,7 @@ Request limits are 200 step dictionaries, 500 version entries, 5000 error charac
 
 Verification normally treats accepted findings as unresolved. Missing finding rows count as no remaining open/accepted findings. The helper does not prove inventory freshness itself. Its caller must establish that prerequisite.
 
-Jobs remain `verifying` when the latest report cannot establish coverage for their ecosystem. Failed or partial application sources block verification. Windows configuration jobs also wait when `facts.config` is not a dictionary. A missing settings read cannot prove repair.
+Jobs remain `verifying` when the latest report cannot establish coverage for their ecosystem. A failed or partial Windows build, application or Microsoft-products read, or an empty Uninstall list, blocks verification for the ecosystems it feeds. Windows configuration jobs also wait when `facts.config` is not a dictionary. A missing settings read cannot prove repair.
 
 A Windows job can succeed as a step when its alternative build appears in any reported version value. Selected findings can remain open. This is an intermediate success, not proof that the final target was installed or every finding resolved.
 

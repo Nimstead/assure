@@ -46,7 +46,7 @@ Eligible agents check for updates at their next run, subject to local consent an
 
 The updater refuses further updates while that file records `rollback_failed`. This prevents an update over a partially restored database.
 
-After a successful rollback, the updater remembers the refused release and skips it automatically. Later refusals preserve that record. Once the problem is corrected, use `deploy/update.sh --to vX.Y.Z` to request that release explicitly.
+After a successful rollback, the updater remembers the rolled-back release and skips it automatically. Later refusals preserve that record. Once the problem is corrected, use `deploy/update.sh --to vX.Y.Z` to request that release explicitly.
 
 ## Enable nightly updates
 

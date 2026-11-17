@@ -4,6 +4,31 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-11-17 (preview)
+
+Agent 0.7.3. No database migration. Fixes from a whole-repo audit and its review: update Linux and Windows hosts.
+
+### Upgrade notes
+- **Set `NIMSTEAD_PUBLIC_URL` if this server sends email.** Sign-up, password-reset, invitation and alert-confirmation emails now need it (Docker installs set it by default). Without it those emails aren't sent; alerts to recipients who already confirmed still are.
+- **New limits:** 60 SBOM uploads an hour per asset and 30 ownership checks an hour per organisation (HTTP 429 beyond).
+- **Single sign-on:** while an organisation requires SSO, invitations (and invite links sent earlier) are refused, and people join by signing in with SSO. Removing someone in People doesn't stop them signing in with SSO: remove them at your identity provider too.
+- **`update.sh`** refuses to run after a rollback that failed until you restore the backup and delete `deploy/last-update.json`, and doesn't retry a release it rolled back unless you pass `--to`.
+
+### Highlights
+- **Automatic fixes stop when they fail.** Auto mode no longer repeats a fix that just failed on a machine, and a canary that failed a Windows update now halts that update everywhere.
+- **Findings close only on proof.** A failed settings read, an expired certificate or a DNS timeout no longer marks issues fixed or un-verifies an internet target.
+- **Linux fixes wait for unattended-upgrades** instead of failing on apt's locks, and a rollback restores through apt (proven on real Debian 13 and Ubuntu 24.04 hosts).
+- **One organisation can't stall the server for the others:** every outbound fetch has a total deadline and a size cap, with new rate limits.
+- **The offline evidence verifier catches a ledger whose newest entries were deleted.**
+
+### Fixes that matter
+- Password-reset links can't be pointed at another site with a forged `Host` header.
+- Windows: no reboot loop when DISM is busy after a power cut during an update, and a failed runtime update never deletes the Python the agent's tasks start.
+- One driver file in two folders no longer stops a machine's inventory from updating.
+- The hourly re-match no longer judges a machine on facts from before it last reported.
+- A fumbled authenticator setup no longer locks sign-in or alerts the whole organisation.
+- Evidence packs no longer slow down with every hour of history when checkpoints are on S3.
+
 ### Security
 - **Emailed links are built only from `NIMSTEAD_PUBLIC_URL`.** Without it, a password reset requested with a forged `Host` header mailed the victim a valid link to the requester's site. Sign-up, reset, invitation and alert-confirmation emails now need `NIMSTEAD_PUBLIC_URL` set, as they already needed SMTP.
 - **One organisation can't stall or exhaust the server.** The ownership-proof fetch has a total deadline (a server sending one byte at a time held a worker for hours), ownership checks are limited to 30 an hour per org, webhook replies are never read, SSO provider replies stop at 1 MB, and SBOM uploads are limited to 60 an hour per asset, counted before the body is read.
@@ -14,7 +39,7 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 - Automatic remediation no longer repeats a fix that just failed on the same host, and a canary whose stepped Windows update failed now halts that update's rollout.
 - A failed settings read no longer closes every Windows setting finding; the hourly re-match reads each host as it is now; one driver file in two folders no longer stops a host's inventory; an expired certificate keeps its untrusted or wrong-name finding open; a DNS timeout no longer un-verifies an internet-facing target.
 - A Windows update is handed out after a host's other jobs, and a fix isn't judged on an app list that was read only in part.
-- Agent: no reboot loop when DISM is busy after a power cut during an update; apt waits up to 10 minutes for the package lock on upgrade and rollback (the rollback now installs the saved packages through apt); a failed runtime update never deletes the Python the scheduled tasks start.
+- Agent: no reboot loop when DISM is busy after a power cut during an update; apt waits up to 10 minutes for the package lock on upgrade and rollback (the rollback now installs the saved packages through apt), and retries its index refresh while apt's lists lock is held; a failed runtime update never deletes the Python the scheduled tasks start.
 - Fumbling an authenticator setup no longer locks sign-in or alerts the organisation; a code in non-ASCII digits is refused instead of failing with an error.
 - `update.sh` stops after a rollback that failed until the backup is restored by hand, and doesn't retry a release it rolled back unless asked with `--to`.
 - Evidence packs fetch each S3 checkpoint once per process, and the hourly chain check keeps hashes only at checkpoint positions.
@@ -627,7 +652,8 @@ The first early-access release. Everything listed is proven by tests and, for an
 
 Licensed under FSL-1.1-ALv2: this release becomes available under Apache 2.0 on 2028-10-27.
 
-[Unreleased]: https://github.com/Nimstead/assure/compare/v0.9.2...HEAD
+[Unreleased]: https://github.com/Nimstead/assure/compare/v0.9.3...HEAD
+[0.9.3]: https://github.com/Nimstead/assure/compare/v0.9.2...v0.9.3
 [0.9.2]: https://github.com/Nimstead/assure/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/Nimstead/assure/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/Nimstead/assure/compare/v0.8.0...v0.9.0

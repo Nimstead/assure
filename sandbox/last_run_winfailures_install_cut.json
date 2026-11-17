@@ -4,19 +4,24 @@
     "msrc": {
       "documents": 2,
       "skipped_documents": 0,
-      "inserted": 48974,
+      "inserted": 49190,
       "updated": 0,
       "skipped": 0
     }
   },
   {
     "step": "install.ps1 ran",
-    "vm": "nimstead-sbx-win-44418e"
+    "vm": "nimstead-sbx-win-f7cc96"
   },
   {
     "step": "agent installed",
-    "os": "Windows 11 Pro 26H2 (AMD64) build 10.0.26300.9457",
-    "build": "10.0.26300.9457"
+    "os": "Windows Server 2025 Standard Evaluation 24H2 (AMD64) build 10.0.26100.1742",
+    "build": "10.0.26100.1742"
+  },
+  {
+    "step": "stepping",
+    "error": "Windows Update must install KB5122871 (2026-09) first; planned as a step. No changes made: Windows Update offers exactly one of KB5131080 / KB5135386 failed: KB5131080: 0 offered; KB5135386: 0 offered; []; Windows Update didn't offer it (not needed, superseded, or not released for this build); it of",
+    "planned": "Install KB5122871 (2026-09) on nimstead-sbx as a stepping stone to KB5131080: Windows Update offers this machine only that earlier cumulative update. Findings it doesn't fix stay open for the next step."
   },
   {
     "step": "power cut during the install"
@@ -33,15 +38,15 @@
     "step": "after the cut",
     "status": "aborted",
     "error": "No changes made: the machine stopped during the install and nothing new is installed. Plan the fix again.",
-    "build": "10.0.26300.9457",
-    "was": "10.0.26300.9457",
+    "build": "10.0.26100.1742",
+    "was": "10.0.26100.1742",
     "steps": [
       [
         "at least 10 GB free on the system drive",
         true
       ],
       [
-        "Windows Update offers exactly KB5127648",
+        "Windows Update offers exactly one of KB5131080 / KB5122871",
         true
       ],
       [
@@ -49,7 +54,7 @@
         true
       ],
       [
-        "KB5127648 downloaded",
+        "KB5122871 downloaded",
         true
       ],
       [

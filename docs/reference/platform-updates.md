@@ -97,6 +97,8 @@ An agent replacement requires a strictly newer signed agent version, the local c
 
 An eligible manifest for the same agent version can still update its Windows runtime. The runtime step precedes the agent replacement decision. Older runtime versions are refused when the current interpreter already belongs to the bundled runtime tree. A system-Python migration does not use that same downgrade test.
 
+After a new Windows runtime passes its self-test, the agent updates `cfg.python` before rescheduling tasks. If rescheduling fails, cleanup preserves that runtime because tasks may already reference it. Task and configuration changes are not atomic.
+
 ## Related
 
 - [Release manifest and keys](../release-keys.md)

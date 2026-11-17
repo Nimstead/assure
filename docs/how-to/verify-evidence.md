@@ -20,4 +20,6 @@ After a Vault signing-key rotation, a pack lists the earlier public keys under i
 
 Verification checks the signature over the exact pack bytes, entry hashes, entry order and links, the ledger head, and included signed checkpoints. It does not prove that a machine was scanned completely or that every claimed control was met. Review the pack's period, coverage, and findings separately.
 
+If a checkpoint is past the ledger head, newer ledger entries are missing. Obtain the newest recoverable database or investigate the restore history before exporting again. Keep the original failed pack for the investigation.
+
 Related: [inventory to evidence](../explanation/inventory-to-evidence.md), [key configuration](../configuration.md#keys-and-evidence-storage).

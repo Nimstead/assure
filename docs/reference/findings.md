@@ -125,7 +125,7 @@ Read APIs do not expire acceptance. Expiry is applied to matching identities dur
 
 The expiry rule requires a stored acceptance timestamp. An accepted row without that timestamp is not reopened by this rule.
 
-Outside the slice, resolution guards cover explicit failed/partial Windows source declarations and empty Uninstall counts, and driver findings also require `driver_scan.complete=true` before absent identities resolve. There, a feed change or a missing match can still resolve a finding without proof of a repair.
+Outside the slice, explicit failed/partial Windows sources and empty Uninstall counts block resolution for the affected ecosystems. Windows settings also require `facts.config` to be a dictionary. Driver findings require `driver_scan.complete=true` before absent identities resolve. There, a feed change or a missing match can still resolve a finding without proof of a repair.
 
 A version fixed by hand on a distribution release past end of support resolves: end of support stops new advisories, it doesn't undo a fix. If the engine fails on a host, that reassessment opens nothing in the slice and resolves nothing. `inventory_received=false` (the hourly re-match and re-scoring) suppresses receipt logging; it still opens and resolves findings. External assets instead rescore their open findings through the separate external path.
 

@@ -14,7 +14,9 @@ This reference defines account, session, token and SSO operations. The [HTTP ref
 
 Invalid/expired credentials return 401. Read-token writes and role/session refusals return 403. A valid browser cookie does not override an invalid nmt_ bearer.
 
-Browser sessions have a 14-day absolute lifetime and 12-hour idle limit. Last-use refresh occurs after five minutes. That refresh commits database changes, including on GET. Token last_used refresh uses the same interval. Proxy/Host configuration determines request identity and fallback public origins.
+Browser sessions have a 14-day absolute lifetime and 12-hour idle limit. Last-use refresh occurs after five minutes. That refresh commits database changes, including on GET. Token last_used refresh uses the same interval.
+
+Proxy/Host configuration determines request identity. Emailed links use only `NIMSTEAD_PUBLIC_URL`. Installer URLs and SSO callback URLs can still fall back to the request origin.
 
 start_session commits the session and pending caller changes before setting the cookie. Response loss does not undo the session. It does not revoke earlier sessions. Cookies are HttpOnly and SameSite=Strict, with Secure controlled by server configuration.
 
@@ -26,7 +28,7 @@ Admin checks inspect stored MFA configuration. They do not independently require
 | --- | --- |
 | POST /api/auth/signup, first account | HTTP 201: email, org, next=signin. Create organisation/admin. No session |
 | Signup with open-signup development mode | HTTP 201: email and org. Create organisation/admin and a session |
-| Later production signup | HTTP 202: status=check_email and email. SMTP configuration required. Mail can be suppressed or fail |
+| Later production signup | HTTP 202: status=check_email and email. SMTP and `NIMSTEAD_PUBLIC_URL` required. Mail can be suppressed or fail |
 | POST /api/auth/login, existing authenticator without code | HTTP 200: mfa=required. No new session |
 | Password-admin login without configured authenticator | HTTP 200: mfa=setup, setup, secret and uri. No new session |
 | Successful password login | HTTP 200: email, with recovery_codes only after initial authenticator setup. Create a session |
@@ -46,6 +48,10 @@ A 200 login response can be an unfinished challenge. Only successful completion 
 | POST /api/users/invite | Admin browser operation. HTTP 202: status=invited/email regardless of existing account. SMTP and quota checks apply |
 | GET /api/auth/signup/confirm?token=… | Password-selection HTML. Does not consume the token or create a session |
 | POST to the same URL | URL-encoded password field. Completes signup, invitation or reset |
+
+Account email links require configured SMTP and `NIMSTEAD_PUBLIC_URL`. Signup after the first account, password reset, and invitations return HTTP 403 without both. First-account and development signup retain their separate rules.
+
+Invitations return HTTP 409 while the organisation requires SSO. Confirmation of an earlier invitation also returns HTML 409 and consumes the link. No member or session is created.
 
 Signup/invitation links expire after 24 hours. Reset links expire after one hour. A newer link replaces the same email/purpose/organisation link. Invitations from different organisations do not replace each other. Only token hashes are stored.
 
@@ -73,6 +79,8 @@ Reset preserves the authenticator secret and recovery codes. It does not bypass 
 
 Setup proposals expire after 600 seconds. Replacement requires the existing authenticator or an unused recovery code when local MFA exists. Successful replacement overwrites secret/recovery hashes. It leaves existing sessions and API tokens intact.
 
+Authenticator codes must contain six ASCII digits after spaces are removed. Non-ASCII digits are refused. MFA confirmation uses a separate attempt bucket from MFA sign-in, so setup attempts do not consume the sign-in quota.
+
 TOTP time steps and recovery codes are consumed when their transaction commits. The helper stages these changes and uses row locking where supported. SQLite does not provide PostgreSQL's row-lock behavior.
 
 Password change preserves the current cookie's session and deletes other sessions and creator API tokens. It preserves the authenticator. Sign out everywhere requires no fresh code. Neither action selects agent, upload or enrolment credentials for revocation.
@@ -94,6 +102,8 @@ Admin browser operations manage members:
 Each user record has id, email, admin, origin, mfa and created. User lookup uses the first 32 ID characters. Missing/differently owned users return 404. The organisation row is locked where supported before last-admin changes.
 
 Promotion deletes existing browser sessions. Demotion deletes API tokens but preserves browser sessions. An unchanged role returns the record without a role-change commit. Removal and changed roles append evidence and commit. Other asset credentials remain independent.
+
+Removing an SSO user from Assure does not remove access at the identity provider. A later eligible SSO sign-in can create a new member account. Revoke provider access as well when removing access permanently.
 
 ## Read-only organisation API tokens
 
@@ -130,6 +140,10 @@ PUT replaces the configuration. Omitted issuer defaults empty and disables SSO, 
 Input limits are issuer 500 characters, client ID 300, secret 500 and at most twenty domain strings. Invalid URL/domain/configuration returns 422. A domain already verified by another configured organisation returns 409. Saving does not test provider login.
 
 Verify checks only saved domains that are unverified and not claimed elsewhere. Previously verified domains retain that state without another TXT check. Removal of their TXT records does not independently revoke stored verification. The response describes saved state.
+
+A DNS timeout or resolver failure during domain verification returns HTTP 503. Existing verification remains unchanged. An absent name or TXT record produces an unsuccessful proof.
+
+OIDC discovery, key and token responses have a 1 MiB body limit. The default guarded client uses operation timeouts and a connection deadline of four times its configured timeout. System DNS resolution is outside that deadline. Provider-read failures become `idp_unreachable`. Token-exchange failures become `token_exchange_failed`.
 
 POST /api/auth/sso/start accepts URL-encoded email or org. An organisation ID takes precedence over email-domain selection. It creates a state/nonce/PKCE flow with a 600-second expiry, commits it and returns 303 to the provider. A scoped HttpOnly/Lax cookie binds the browser flow. A newer flow replaces that cookie.
 

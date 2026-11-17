@@ -230,7 +230,7 @@ Password success resets the form. The server retains the current session, remove
 
 Exact email comparison hides role/removal buttons on the current user's row. Other rows require confirmation. Successful changes refresh people-related queries. The server preserves at least one admin. Promotion ends the promoted user's existing sessions. Demotion revokes their tokens. Removal deletes their user access while retaining ledger events.
 
-Invitation success resets its form and displays an acknowledgement. It does not prove delivery or membership. Existing accounts, mail quotas and SMTP delivery can affect the result. A new invitation link lasts 24 hours. Invited users choose their own password.
+Invitation success resets its form and displays an acknowledgement. It does not prove delivery or membership. Existing accounts, mail quotas and SMTP delivery can affect the result. A new invitation link lasts 24 hours. Invited users choose their own password. Required SSO refuses new invitations and confirmation of earlier invitation links. SSO users must also lose access at their identity provider to prevent a new account after removal.
 
 Token names use a required native input with a 100-character limit and no client trimming. Duration choices are 30, 90 and 365 days, default 90. A cached MFA flag adds the code input. The server checks current authorization and credentials regardless of the displayed fields.
 
@@ -244,7 +244,7 @@ SSO sends issuer, client ID, domains and required state. Empty secret input omit
 
 Domain verification updates the SSO cache separately. It does not submit unsaved form edits or invalidate the ledger query. The server verifies pending stored domains. A successful response can still contain unverified domains.
 
-Notification save sends comma/whitespace-separated recipient entries. Empty webhook input omits that field to retain the saved URL. The removal checkbox sends an empty string. New-recipient confirmation depends on SMTP configuration and quota. Saving unchanged unconfirmed addresses does not resend confirmation.
+Notification save sends comma/whitespace-separated recipient entries. Empty webhook input omits that field to retain the saved URL. The removal checkbox sends an empty string. New-recipient confirmation requires SMTP, `NIMSTEAD_PUBLIC_URL`, and available quota. Saving unchanged unconfirmed addresses does not resend confirmation.
 
 Test alert uses saved server settings, including when the form has unsaved edits. Its button uses saved webhook/confirmed-recipient flags. Success schedules one notification-query invalidation after 1500ms. There is no delivery poll or timer cleanup. This acknowledgement does not prove durable enqueue or delivery. The last-delivery label uses only the newest of at most five recorded attempts.
 

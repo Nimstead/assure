@@ -36,7 +36,17 @@ The new server applies migrations at startup. The updater waits up to five minut
 2. Confirm that the feed updater runs.
 3. Check the update outcome in **Settings**.
 
-Agents update from the new release at their next run. If automatic rollback reports a failure, use the [restore procedure](restore.md). Until you then delete `deploy/last-update.json`, the updater refuses to run, so it never backs up or upgrades a half-restored database. A release that was rolled back isn't tried again automatically; once it's fixed, install it with `deploy/update.sh --to vX.Y.Z`.
+Eligible agents check for updates at their next run, subject to local consent and the organisation's pause setting.
+
+## Recover from a failed update
+
+1. If automatic rollback failed, complete the [restore procedure](restore.md).
+2. Confirm that the restored server and database are healthy.
+3. Only then delete `deploy/last-update.json` to clear the updater's refusal.
+
+The updater refuses further updates while that file records `rollback_failed`. This prevents an update over a partially restored database.
+
+After a successful rollback, the updater remembers the refused release and skips it automatically. Later refusals preserve that record. Once the problem is corrected, use `deploy/update.sh --to vX.Y.Z` to request that release explicitly.
 
 ## Enable nightly updates
 

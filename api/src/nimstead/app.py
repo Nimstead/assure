@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Annotated, Any, Literal
 from urllib.parse import parse_qs, urlencode, urlsplit
 
+import dns.exception
 import httpx
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
@@ -45,6 +46,7 @@ from nimstead import (
     sbom,
     sso,
     updates,
+    verify_pack,
     winbaseline,
     windrivers,
 )
@@ -202,6 +204,7 @@ LOGIN_MAX_FAILURES, LOGIN_WINDOW = 10, 15 * 60
 LOGIN_MAX_PER_EMAIL = 100  # across all addresses, but only stops addresses that already failed: no one can lock out the owner
 SIGNUP_MAX_PER_HOUR = 10  # per client address: signup necessarily says whether an email is taken, so keep probing slow
 EXTSCAN_MAX_PER_HOUR = 10  # manual outside-in scans per org (the hourly feed run scans every verified target anyway)
+EXTVERIFY_MAX_PER_HOUR = 30  # ownership checks per org: each one fetches from a server the org names
 CONFIRM_MAIL_MAX_PER_HOUR = 20  # alert-recipient confirmation emails per org
 TEST_ALERT_MAX_PER_HOUR = 5
 RATE_WINDOW = 3600
@@ -230,6 +233,7 @@ def open_signup() -> bool:
         return True
     return False
 INVENTORY_MIN_SECONDS = int(os.environ.get("NIMSTEAD_INVENTORY_MIN_SECONDS", "30"))
+SBOM_MAX_PER_HOUR = 60  # uploads per asset: a large SBOM takes seconds to ingest, on the shared worker threads
 
 
 def sha(token: str) -> str:
@@ -424,17 +428,6 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     Admin = Annotated[User, Depends(admin_user)]
 
-    def signed_in(request: Request, user: CurrentUser) -> User:
-        """Return current_user when authenticated by a browser session.
-
-        request carries the API-token marker. Refuse organisation API tokens with
-        HTTP 403. No admin-role or fresh-authentication requirement is added."""
-        if getattr(request.state, "api_token", False):
-            raise HTTPException(403, "Sign in to do this")
-        return user
-
-    Person = Annotated[User, Depends(signed_in)]  # a signed-in browser, never an API token
-
     def start_session(s: Session, user: User, resp: Response) -> None:
         """Create a hashed user session, commit s, then set its raw cookie on resp.
 
@@ -448,32 +441,29 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     # --- agent distribution -----------------------------------------------
 
+    def server_origin(request: Request) -> str:
+        """Return NIMSTEAD_PUBLIC_URL, else the request's own base URL, without trailing slashes. Not validated here."""
+        return (os.environ.get("NIMSTEAD_PUBLIC_URL") or str(request.base_url)).rstrip("/")
+
+    def installer(request: Request, template: Path, media_type: str) -> Response:
+        """Return template's text with the server origin and current channel substituted.
+
+        Require a strict HTTP(S) hostname/port origin, since it's substituted into a script, or
+        return 400. Paths and IPv6 literals are outside that pattern. File/channel errors propagate."""
+        server = server_origin(request)
+        if not re.fullmatch(r"https?://[A-Za-z0-9.\-]+(:\d{1,5})?", server):
+            raise HTTPException(400, "Server URL is not safe to embed; set NIMSTEAD_PUBLIC_URL")
+        return Response(template.read_text().replace("__SERVER__", server).replace("__CHANNEL__", updates.channel()), media_type=media_type)
+
     @app.get("/install.sh")
     def install_sh(request: Request):
-        """Return Linux installer text with server origin and current channel substituted.
-
-        request supplies fallback base URL unless NIMSTEAD_PUBLIC_URL is truthy.
-        Require the configured HTTP(S) hostname/port pattern or return 400. Paths,
-        trailing slash and IPv6 literals are outside that pattern. No host install
-        occurs. File/channel errors propagate. No user authentication is required."""
-        server = os.environ.get("NIMSTEAD_PUBLIC_URL") or str(request.base_url).rstrip("/")
-        if not re.fullmatch(r"https?://[A-Za-z0-9.\-]+(:\d{1,5})?", server):  # substituted into shell: strict
-            raise HTTPException(400, "Server URL is not safe to embed; set NIMSTEAD_PUBLIC_URL")
-        return Response(INSTALL_SH.read_text().replace("__SERVER__", server).replace("__CHANNEL__", updates.channel()),
-                        media_type="text/x-shellscript")
+        """Return the Linux installer with this server's origin and channel (installer()). No authentication is required."""
+        return installer(request, INSTALL_SH, "text/x-shellscript")
 
     @app.get("/install.ps1")
     def install_ps1(request: Request):
-        """Return PowerShell installer text with server origin/channel substituted.
-
-        request supplies fallback base URL unless NIMSTEAD_PUBLIC_URL is truthy.
-        Require the same strict HTTP(S) origin pattern as install_sh, otherwise 400.
-        File/channel errors propagate. No installation or authentication occurs here."""
-        server = os.environ.get("NIMSTEAD_PUBLIC_URL") or str(request.base_url).rstrip("/")
-        if not re.fullmatch(r"https?://[A-Za-z0-9.\-]+(:\d{1,5})?", server):  # substituted into a script: strict
-            raise HTTPException(400, "Server URL is not safe to embed; set NIMSTEAD_PUBLIC_URL")
-        return Response(INSTALL_PS1.read_text().replace("__SERVER__", server).replace("__CHANNEL__", updates.channel()),
-                        media_type="text/plain")
+        """Return the PowerShell installer with this server's origin and channel (installer()). No authentication is required."""
+        return installer(request, INSTALL_PS1, "text/plain")
 
     @app.get("/agent/nimstead_agent.py")
     def agent_file():
@@ -544,17 +534,21 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         evidence.append(s, org.id, "org_created", org.id, {"by": email, "name": org_name})
         return user
 
-    def public_base(request: Request) -> str:
-        """Return NIMSTEAD_PUBLIC_URL or request.base_url without trailing slashes.
+    def public_base() -> str | None:
+        """Return NIMSTEAD_PUBLIC_URL without trailing slashes, or None when it isn't set.
 
-        The environment value is not independently URL-validated here. Proxy/Host
-        configuration determines the fallback origin."""
-        return (os.environ.get("NIMSTEAD_PUBLIC_URL") or str(request.base_url)).rstrip("/")
+        Never the request's own address: anyone sets the Host header, and a reset link built
+        from it would carry its token to their site. The value is not URL-validated here."""
+        return (os.environ.get("NIMSTEAD_PUBLIC_URL") or "").rstrip("/") or None
 
-    def email_link(s: Session, request: Request, email: str, purpose: str, org_name: str = "", org_id: str | None = None) -> None:
+    def links_by_mail() -> bool:
+        """Return whether account and confirmation links can be emailed: SMTP and NIMSTEAD_PUBLIC_URL are both set."""
+        return notify.smtp_configured() and public_base() is not None
+
+    def email_link(s: Session, email: str, purpose: str, org_name: str = "", org_id: str | None = None) -> None:
         """Commit a pending account link, then request best-effort account mail.
 
-        s/request provide storage and base URL. email/purpose/org_name/org_id select
+        s provides storage, NIMSTEAD_PUBLIC_URL the base URL. email/purpose/org_name/org_id select
         the operation. Replace same-email/purpose/organisation links. Reset expires
         after RESET_LINK_HOURS, others after SIGNUP_LINK_HOURS. Store only a token
         hash. Commit caller changes before mail. Failure does not restore older
@@ -565,9 +559,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         s.add(PendingSignup(token_hash=sha(token), email=email, purpose=purpose, org_name=org_name, org_id=org_id,
                             expires=now() + timedelta(hours=RESET_LINK_HOURS if purpose == "reset" else SIGNUP_LINK_HOURS)))
         s.commit()
-        notify.send_account_email(email, purpose, f"{public_base(request)}/api/auth/signup/confirm?{urlencode({'token': token})}")
+        notify.send_account_email(email, purpose, f"{public_base()}/api/auth/signup/confirm?{urlencode({'token': token})}")
 
-    NEEDS_SMTP = "this server needs email to be set up (NIMSTEAD_SMTP_URL). Ask your Nimstead administrator, or sign in with single sign-on."
+    NEEDS_SMTP = ("this server needs email to be set up (NIMSTEAD_SMTP_URL and NIMSTEAD_PUBLIC_URL). Ask your Nimstead administrator, "
+                  "or sign in with single sign-on.")
 
     @app.post("/api/auth/signup", status_code=201)
     def signup(body: Signup, request: Request, resp: Response, s: DB):
@@ -599,14 +594,14 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             return {"email": user.email, "org": body.org_name}
         # From here the answer is the same whether or not the email has an account: the address owner gets the next step,
         # and chooses the password from the link, so nobody can pre-set one for an address they don't own.
-        if not notify.smtp_configured():
+        if not links_by_mail():
             raise HTTPException(403, "Sign-up on " + NEEDS_SMTP)
         s.execute(delete(PendingSignup).where(PendingSignup.expires < now()))
         if not over_limit(s, "signup-mail:" + email, 3):  # nobody can flood an inbox with sign-up emails
             if s.scalar(select(User.id).where(User.email == email)):
-                notify.send_account_email(email, "exists", public_base(request) + "/signin")
+                notify.send_account_email(email, "exists", public_base() + "/signin")
             else:
-                email_link(s, request, email, "signup", org_name=body.org_name)
+                email_link(s, email, "signup", org_name=body.org_name)
         resp.status_code = 202
         return {"status": "check_email", "email": email}
 
@@ -624,12 +619,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         occur. No password or session changes here. Mail receipt is not guaranteed."""
         if over_limit(s, "reset:" + client_key(request), RESET_MAX_PER_HOUR):
             raise HTTPException(429, "Too many reset requests from this address; try again in an hour")
-        if not notify.smtp_configured():
+        if not links_by_mail():
             raise HTTPException(403, "Password reset on " + NEEDS_SMTP)
         email = body.email.lower()
         user = s.scalar(select(User).where(User.email == email))
         if user and user.origin == "password" and not over_limit(s, "reset-mail:" + email, 3):
-            email_link(s, request, email, "reset")
+            email_link(s, email, "reset")
         return {"status": "check_email", "email": email}
 
     def failures(s: Session, key: str) -> int:
@@ -792,7 +787,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                 "mfa": bool(user.totp_secret), "recovery_codes_left": len(user.recovery_codes)}
 
     @app.post("/api/me/sessions/revoke", status_code=204)
-    def sign_out_everywhere(user: Person, resp: Response, s: DB):
+    def sign_out_everywhere(user: CurrentUser, resp: Response, s: DB):
         """Delete this user's WebSession and ApiToken rows, commit, then clear cookie.
 
         user requires a browser session, not a fresh code. Append revocation
@@ -810,7 +805,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         code: str | None = Field(None, max_length=40)
 
     @app.post("/api/me/password", status_code=204)
-    def change_password(body: PasswordChange, request: Request, user: Person, s: DB):
+    def change_password(body: PasswordChange, request: Request, user: CurrentUser, s: DB):
         """Return 204 after a password-origin user's credential update.
 
         body supplies current/new passwords and optional second factor. user needs
@@ -836,7 +831,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         s.commit()
 
     @app.post("/api/me/mfa/setup")
-    def start_mfa(user: Person):
+    def start_mfa(user: CurrentUser):
         """Return setup/secret/uri for a browser-authenticated password user.
 
         SSO-origin users return HTTP 409. This creates a proposal without changing
@@ -851,7 +846,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         current_code: str | None = Field(None, max_length=40)  # replacing an authenticator needs the old one (or a recovery code)
 
     @app.post("/api/me/mfa")
-    def confirm_mfa(body: MfaConfirm, user: Person, s: DB):
+    def confirm_mfa(body: MfaConfirm, user: CurrentUser, s: DB):
         """Return recovery_codes after staging and committing an authenticator setup.
 
         body supplies setup/new code and optional current_code. user needs a browser
@@ -859,7 +854,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         Setup success replaces secret/recovery hashes and appends evidence. Existing
         sessions/API tokens remain. Return 403/422/429 for refusal. Backend/shape,
         evidence and storage errors can propagate."""
-        if over_limit(s, "mfa:" + user.id, LOGIN_MAX_FAILURES, LOGIN_WINDOW):
+        if over_limit(s, "mfa-setup:" + user.id, LOGIN_MAX_FAILURES, LOGIN_WINDOW):  # not "mfa:": that's sign-in guessing
             raise HTTPException(429, "Too many attempts; try again in 15 minutes")
         if user.totp_secret and not second_factor(s, user, body.current_code):
             raise HTTPException(403, "Enter a code from your current authenticator, or a recovery code")
@@ -999,9 +994,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         enforce organisation quota, append evidence and commit. Address quota can
         suppress mail. Existing accounts receive a sign-in message rather than
         membership transfer. New addresses receive a scoped invitation link. Return
-        403/429 on configuration/quota refusal. Mail acknowledgement is not delivery."""
-        if not notify.smtp_configured():
-            raise HTTPException(403, "Inviting by email needs SMTP (NIMSTEAD_SMTP_URL). With single sign-on, people join by signing in.")
+        403/429 on configuration/quota refusal, 409 while the organisation requires SSO.
+        Mail acknowledgement is not delivery."""
+        if s.get(Org, user.org_id).sso_required:  # a password member would be locked out at their next sign-in
+            raise HTTPException(409, "This organisation requires single sign-on: people join by signing in with SSO, not by invitation")
+        if not links_by_mail():
+            raise HTTPException(403, "Inviting by email needs SMTP (NIMSTEAD_SMTP_URL) and NIMSTEAD_PUBLIC_URL. With single sign-on, "
+                                     "people join by signing in.")
         if over_limit(s, "invite:" + user.org_id, INVITE_MAX_PER_HOUR):
             raise HTTPException(429, f"At most {INVITE_MAX_PER_HOUR} invitations an hour")
         email = body.email.lower()
@@ -1009,9 +1008,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         s.commit()
         if not over_limit(s, "signup-mail:" + email, 3):
             if s.scalar(select(User.id).where(User.email == email)):
-                notify.send_account_email(email, "exists", public_base(request) + "/signin")
+                notify.send_account_email(email, "exists", public_base() + "/signin")
             else:
-                email_link(s, request, email, "invite", org_name=s.get(Org, user.org_id).name, org_id=user.org_id)
+                email_link(s, email, "invite", org_name=s.get(Org, user.org_id).name, org_id=user.org_id)
         return {"status": "invited", "email": email}
 
     class TokenNew(BaseModel):
@@ -1700,11 +1699,18 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
         Requires an organisation admin browser session; API tokens are refused.
 
-        Operation-specific HTTP errors: 404 for unavailable target or 409 for failed proof/address checks.
+        Operation-specific HTTP errors: 404 for unavailable target, 409 for failed proof/address checks,
+        or 429 for more than EXTVERIFY_MAX_PER_HOUR checks per organisation per hour.
         Authentication and request-validation errors also apply where required."""
         a = owned_target(s, user, target_id)
+        if over_limit(s, "extverify:" + user.org_id, EXTVERIFY_MAX_PER_HOUR):
+            raise HTTPException(429, f"At most {EXTVERIFY_MAX_PER_HOUR} ownership checks an hour")
         value = external.txt_value(a.org_id, a.hostname)
-        if not external.owned(a.org_id, a.hostname, dns_lookup or sso.txt_records):
+        try:
+            found = external.owned(a.org_id, a.hostname, dns_lookup or sso.txt_records)
+        except dns.exception.DNSException:
+            raise HTTPException(503, "DNS didn't answer; try again in a minute") from None
+        if not found:
             raise HTTPException(409, f"TXT record not found: add {external.txt_name(a.hostname)} = {value}")
         try:  # the name is yours; now the server it points at must say so too (re-checked against every scanned address)
             ip = check_public_url(f"https://{a.hostname}/")[0]
@@ -1771,7 +1777,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         key or an admin session. Authenticated from the headers before the body is
         read (an anonymous caller can't make the server buffer 10 MiB), then read with
         a 10MiB streamed cap and HTTP 413 on excess. Preserve agent-origin rows. Defer parse/store
-        work to ingest_sbom. Invalid formats return 422, wrong keys 401. Other
+        work to ingest_sbom. Invalid formats return 422, wrong keys 401, too many uploads 429. Other
         authentication/ownership failures and storage/evidence errors can occur."""
         a, by = await run_in_threadpool(sbom_caller, asset_id, request, s)
         raw = bytearray()  # grows in place: bytes += would copy the whole body again on every chunk
@@ -1786,15 +1792,20 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
         An exact Bearer header takes precedence over any browser session: it must match
         that asset's own key (401 otherwise). Otherwise require an admin session and an
-        owned asset; replacing an SBOM resolves findings, so read-only members can't."""
+        owned asset; replacing an SBOM resolves findings, so read-only members can't.
+        Then count the upload: 429 past SBOM_MAX_PER_HOUR for the asset or the org's inventory quota."""
         auth = request.headers.get("authorization", "")
         if auth.startswith("Bearer "):
             a = s.scalar(select(Asset).where(Asset.agent_key_hash == sha(auth.removeprefix("Bearer "))))
             if not a or a.id != asset_id:
                 raise HTTPException(401, "Unknown key for this asset")
-            return a, "key"
-        user = admin_user(request, current_user(request, s))
-        return owned_asset(s, user, asset_id), user.email
+            who = "key"
+        else:
+            user = admin_user(request, current_user(request, s))
+            a, who = owned_asset(s, user, asset_id), user.email
+        if over_limit(s, "sbom:" + a.id, SBOM_MAX_PER_HOUR) or over_limit(s, "inventory:" + a.org_id, ORG_INVENTORY_MAX_PER_HOUR):
+            raise HTTPException(429, f"At most {SBOM_MAX_PER_HOUR} SBOM uploads an hour per asset, within the organisation's inventory limit")
+        return a, who
 
     def ingest_sbom(a: Asset, by: str, raw: bytes, s: Session) -> dict:
         """Authenticate, replace SBOM-origin rows and return mapping/rescan counts.
@@ -1913,7 +1924,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         rank = func.min(case(*((sub.c.priority == p, n) for p, n in PRIORITY_RANK.items()), else_=9))
         rows = s.execute(
             select(k, func.count(), func.count(sub.c.asset_id.distinct()), func.max(sub.c.score), func.max(case((sub.c.kev, 1), else_=0)),
-                   rank, func.max(sub.c.fixed_version), func.count(sub.c.package.distinct()), func.min(sub.c.package), func.min(sub.c.vuln_id),
+                   rank, func.count(sub.c.package.distinct()), func.min(sub.c.package), func.min(sub.c.vuln_id),
                    func.count(sub.c.vuln_id.distinct()), func.min(sub.c.ecosystem), func.count(sub.c.ecosystem.distinct()))
             .group_by(k, *([] if by == "vuln" else [sub.c.ecosystem]))
             .order_by(rank, func.max(sub.c.score).desc(), func.count().desc()).limit(500)).all()
@@ -1924,8 +1935,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             cur = highest.get((key, eco))
             highest[(key, eco)] = v if cur is None or (cmp(v, cur) > 0 if cmp else v > cur) else cur
         return [{"key": r[0], "findings": r[1], "hosts": r[2], "score": r[3], "kev": bool(r[4]), "priority": names.get(r[5], "low"),
-                 "fixed_version": highest.get((r[0], r[11])) if r[12] == 1 else None, "packages": r[7], "package": r[8], "vuln_id": r[9], "vulns": r[10],
-                 "ecosystem": r[11] if r[12] == 1 else None} for r in rows]  # one distro's rows, or (by vulnerability) several
+                 "fixed_version": highest.get((r[0], r[10])) if r[11] == 1 else None, "packages": r[6], "package": r[7], "vuln_id": r[8], "vulns": r[9],
+                 "ecosystem": r[10] if r[11] == 1 else None} for r in rows]  # one distro's rows, or (by vulnerability) several
 
     CSV_COLUMNS = ["hostname", "package", "installed_version", "fixed_version", "vuln_id", "priority", "score", "cvss", "epss",
                    "kev", "status", "first_seen", "last_seen", "resolved_at", "summary"]
@@ -2340,10 +2351,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                      if domain and domain in o.sso_verified_domains), None)
 
     def sso_redirect_uri(request: Request) -> str:
-        """Return configured/fallback public origin plus the fixed callback path.
-
-        request.base_url supplies fallback. No independent origin validation occurs."""
-        return (os.environ.get("NIMSTEAD_PUBLIC_URL") or str(request.base_url)).rstrip("/") + "/api/auth/sso/callback"
+        """Return server_origin(request) plus the fixed callback path."""
+        return server_origin(request) + "/api/auth/sso/callback"
 
     def sso_fail(reason: str) -> RedirectResponse:
         """Return a 303 sign-in redirect with reason and delete the scoped SSO cookie.
@@ -2470,8 +2479,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         No live provider-login test occurs. Backend/storage errors can propagate."""
         o = s.get(Org, user.org_id)
         taken = {d for other in s.scalars(select(Org).where(Org.id != o.id)) for d in other.sso_verified_domains}
-        newly = [d for d in o.sso_domains
-                 if d not in o.sso_verified_domains and d not in taken and sso.domain_verified(o.id, d, dns_lookup or sso.txt_records)]
+        try:
+            newly = [d for d in o.sso_domains
+                     if d not in o.sso_verified_domains and d not in taken and sso.domain_verified(o.id, d, dns_lookup or sso.txt_records)]
+        except dns.exception.DNSException:
+            raise HTTPException(503, "DNS didn't answer; try again in a minute") from None
         if newly:
             o.sso_verified_domains = sorted({*o.sso_verified_domains, *newly})
             evidence.append(s, o.id, "sso_domain_verified", o.id, {"by": user.email, "domains": newly})
@@ -2537,7 +2549,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         url = notify.webhook_url(o)
         return {
             "webhook_set": bool(url), "webhook_host": urlsplit(url).hostname if url else None, "webhook_format": o.notify_webhook_format,
-            "emails": o.notify_emails, "emails_confirmed": notify.recipients(o), "email_available": notify.smtp_configured(),
+            "emails": o.notify_emails, "emails_confirmed": notify.recipients(o), "email_available": links_by_mail(),
             # per channel: a dead webhook must not be hidden by an email that went through a second later
             "last_delivery_failed": any(not next(n for n in recent if n.channel == ch).ok for ch in {n.channel for n in recent}),
             "recent": [{"ts": n.ts, "kind": n.kind, "channel": n.channel, "urgent": n.urgent, "ok": n.ok, "error": n.error} for n in recent],
@@ -2589,9 +2601,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             "format": o.notify_webhook_format, "emails": o.notify_emails,
         })
         s.commit()
-        base = public_base(request)
+        base = public_base()
         for e in added:  # each new address must confirm before it gets alerts; the email itself is fixed text
-            if notify.smtp_configured() and not over_limit(s, "confirm-mail:" + o.id, CONFIRM_MAIL_MAX_PER_HOUR):
+            if links_by_mail() and not over_limit(s, "confirm-mail:" + o.id, CONFIRM_MAIL_MAX_PER_HOUR):
                 q = urlencode({"org": o.id, "email": e, "token": notify.confirm_token(o.id, e)})
                 notify.send_confirmation(s.get_bind(), o.id, e, f"{base}/api/notify/confirm?{q}")
         return notify_json(o, s)
@@ -2694,7 +2706,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         12..200 returns 422 without consuming the link. Then stage token deletion.
         Reset updates a password user, revokes sessions/API tokens and redirects to
         sign-in. Signup creates a new admin/org and redirects to sign-in. Invitation
-        creates a member/session when its org still exists. Existing users return
+        creates a member/session when its org still exists and doesn't require SSO (409 otherwise). Existing users return
         409 with token consumption. MFA secrets remain unchanged. Commit failures,
         hashing/evidence/backend errors can propagate. Concurrent use is not locked."""
         p, org = pending_link(s, token)
@@ -2718,6 +2730,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         if user or (p.purpose == "invite" and not org):
             s.commit()
             return Response(CONFIRM_PAGE.format("<p>This address already has an account. <a href='/signin'>Sign in</a>.</p>"),
+                            409, media_type="text/html")
+        if p.purpose == "invite" and org.sso_required:  # sent before SSO was required: a password member would be locked out
+            s.commit()
+            return Response(CONFIRM_PAGE.format("<p>This organisation now requires single sign-on. <a href='/signin'>Sign in with SSO</a>.</p>"),
                             409, media_type="text/html")
         if p.purpose == "invite":
             user = User(org_id=org.id, email=p.email, password_hash=ph.hash(password))
@@ -2842,7 +2858,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         identify returned public key/verifier bytes. This response is not its own
         independent trust channel. File/key/backend/encoding errors propagate."""
         pem = evidence.public_pem(evidence.signing_key())
-        return {"pem": pem.decode(), "fingerprint_sha256": evidence.fingerprint(pem), "verifier_sha256": evidence.verifier_sha256()}
+        return {"pem": pem.decode(), "fingerprint_sha256": verify_pack.fingerprint(pem), "verifier_sha256": evidence.verifier_sha256()}
 
     @app.get("/api/evidence/verify.py")
     def evidence_verifier():

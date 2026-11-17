@@ -13,7 +13,7 @@ from test_api import INV, enrol, user
 
 from nimstead import evidence
 from nimstead.db import Finding, LedgerEntry, make_engine, now
-from nimstead.verify_pack import verify
+from nimstead.verify_pack import fingerprint, verify
 
 
 def setup_flow(env):
@@ -239,6 +239,20 @@ def test_checkpoint_detects_truncation(env):
     assert any("truncated" in p for p in evidence.verify_chain(s, org_id))
 
 
+def test_the_offline_verifier_catches_a_ledger_cut_off_after_its_last_checkpoint(env):
+    """Deleting the newest entries leaves a consistent chain: only the signed checkpoint past its end shows they existed."""
+    from sqlalchemy import delete
+    setup_flow(env)
+    s = sessionmaker(make_engine(env))()
+    org_id = s.scalar(select(Finding.org_id))
+    cp = evidence.checkpoint(s, org_id)
+    s.execute(delete(LedgerEntry).where(LedgerEntry.seq >= cp["seq"] - 1))
+    s.commit()
+    z = zipfile.ZipFile(io.BytesIO(evidence.pack_zip(evidence.build_pack(s, org_id, *evidence.default_period(90)))))
+    body, sig, key = z.read("pack.json"), z.read("pack.sig").decode(), z.read("public_key.pem")
+    assert any("past the ledger's head" in p for p in verify(body, sig, key, fingerprint(key)))
+
+
 def test_pack_carries_checkpoints_and_verifier_checks_them(env):
     c, _ = setup_flow(env)
     r = c.get("/api/evidence/pack")  # takes a checkpoint first
@@ -425,25 +439,26 @@ def test_basis_describes_resolution_without_assuming_a_package_update(env):
     assert "first inventory showing a fixed version" not in basis
 
 
+class FakeS3:
+    def __init__(self):
+        self.objects, self.gets = {}, 0
+
+    def put_object(self, Bucket, Key, Body, **k):
+        self.objects[Key] = Body
+
+    def list_objects_v2(self, Bucket, Prefix, ContinuationToken=None):
+        names = sorted(k for k in self.objects if k.startswith(Prefix))
+        start = int(ContinuationToken or 0)
+        return {"Contents": [{"Key": k} for k in names[start:start + 2]], "IsTruncated": start + 2 < len(names),
+                "NextContinuationToken": str(start + 2)}
+
+    def get_object(self, Bucket, Key):
+        self.gets += 1
+        return {"Body": io.BytesIO(self.objects[Key])}
+
+
 def test_the_hourly_checkpoint_reads_only_the_newest_one_from_s3(env, monkeypatch):
     from nimstead import keys
-
-    class FakeS3:
-        def __init__(self):
-            self.objects, self.gets = {}, 0
-
-        def put_object(self, Bucket, Key, Body, **k):
-            self.objects[Key] = Body
-
-        def list_objects_v2(self, Bucket, Prefix, ContinuationToken=None):
-            names = sorted(k for k in self.objects if k.startswith(Prefix))
-            start = int(ContinuationToken or 0)
-            return {"Contents": [{"Key": k} for k in names[start:start + 2]], "IsTruncated": start + 2 < len(names),
-                    "NextContinuationToken": str(start + 2)}
-
-        def get_object(self, Bucket, Key):
-            self.gets += 1
-            return {"Body": io.BytesIO(self.objects[Key])}
     s3 = FakeS3()
     monkeypatch.setenv("NIMSTEAD_CHECKPOINT_S3", "s3://bucket/cp")
     monkeypatch.setattr(keys, "_s3", lambda: s3)
@@ -488,3 +503,23 @@ def test_a_reopened_finding_is_timed_from_its_return(env):
     pack = evidence.build_pack(s, f.org_id, now() - timedelta(days=30), now() + timedelta(minutes=1))
     row = next(r for r in pack["findings"] if r["vuln_id"] == f.vuln_id and r["package"] == f.package and r["status"] == "open")
     assert row["first_seen"] == datetime.fromisoformat(back[fid]).replace(tzinfo=None).isoformat() != datetime.fromisoformat(first[fid]).replace(tzinfo=None).isoformat()
+
+
+def test_checkpoints_already_read_from_s3_are_not_fetched_again(env, monkeypatch):
+    """Object lock means a checkpoint never changes: fetching every one again took a request per hour of history per pack."""
+    from nimstead import keys
+    s3 = FakeS3()
+    monkeypatch.setenv("NIMSTEAD_CHECKPOINT_S3", "s3://bucket/cp")
+    monkeypatch.setattr(keys, "_s3", lambda: s3)
+    c = user(env)
+    s = sessionmaker(make_engine(env))()
+    org = s.scalar(select(LedgerEntry.org_id))
+    for _ in range(3):
+        c.post("/api/enroll-tokens")
+        evidence.checkpoint(s, org)
+    assert len(evidence.load_checkpoints(org)) == 3
+    c.post("/api/enroll-tokens")
+    evidence.checkpoint(s, org)
+    s3.gets = 0
+    assert [cp["seq"] for cp in evidence.load_checkpoints(org)] == sorted(json.loads(b)["seq"] for b in s3.objects.values())
+    assert s3.gets == 1  # only the new one

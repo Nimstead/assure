@@ -273,3 +273,57 @@ def test_running_channel_shows_only_from_a_verified_cache(gh):
     assert updates.status()["running_channel"] is None
     (d / "release.json.sig").write_text("ok")
     assert updates.status()["running_channel"] == "stable"
+
+
+def run_update_sh(tmp_path, last: dict, origin: str | None = None):
+    """deploy/update.sh in a release checkout at 0.9.1 with tag v0.9.2, after a run that ended in last. curl always fails,
+    so nothing is downloaded."""
+    import os
+    import shutil
+    import subprocess
+    from pathlib import Path
+    repo, fake = tmp_path / "repo", tmp_path / "bin"
+    for d in (repo / "deploy", repo / "api", fake):
+        d.mkdir(parents=True)
+    shutil.copy(Path(__file__).parents[2] / "deploy" / "update.sh", repo / "deploy" / "update.sh")
+    (repo / "api" / "pyproject.toml").write_text('[project]\nversion = "0.9.1"\n', newline="\n")
+    shutil.copy(Path(__file__).parents[2] / ".gitignore", repo / ".gitignore")  # the real one: update.sh writes files it lists
+    for args in (["init", "-q"], ["add", "."], ["commit", "-qm", "release"], ["tag", "v0.9.2"], ["remote", "add", "origin", origin or str(repo)]):
+        subprocess.run(["git", "-c", "user.email=t@example.com", "-c", "user.name=t", *args], cwd=repo, check=True, capture_output=True)
+    (repo / "deploy" / "last-update.json").write_text(json.dumps(last), newline="\n")
+    (fake / "curl").write_text("#!/bin/sh\nexit 22\n", newline="\n")
+    (fake / "flock").write_text("#!/bin/sh\nexit 0\n", newline="\n")  # so it takes its lock file everywhere, as on Linux
+    for tool in ("curl", "flock"):
+        (fake / tool).chmod(0o755)
+    env = {**os.environ, "PATH": f"{fake}{os.pathsep}{os.environ['PATH']}", "NIMSTEAD_UPDATE_CHANNEL": "preview"}
+    r = subprocess.run(["sh", "deploy/update.sh"], cwd=repo, env=env, capture_output=True, text=True, timeout=120)
+    return r, json.loads((repo / "deploy" / "last-update.json").read_text())
+
+
+needs_sh = pytest.mark.skipif(not __import__("shutil").which("sh"), reason="needs a POSIX shell")
+
+
+@needs_sh
+def test_update_sh_stops_after_a_rollback_that_failed(tmp_path):
+    """The database is half-restored: backing it up and upgrading on top of it would make that the new normal."""
+    last = {"outcome": "rollback_failed", "from": "0.9.1", "to": "0.9.2", "error": "restore stopped: disk full", "at": "2026-11-16T03:10:00"}
+    r, after = run_update_sh(tmp_path, last)
+    assert r.returncode == 1 and "by hand" in r.stderr, r.stdout + r.stderr
+    assert after == last  # still says so tomorrow
+
+
+@needs_sh
+def test_update_sh_doesnt_retry_a_release_it_rolled_back(tmp_path):
+    """Retrying nightly meant an outage and two full database dumps every night until someone noticed."""
+    r, _ = run_update_sh(tmp_path, {"outcome": "rolled_back", "from": "0.9.1", "to": "0.9.2", "error": "not healthy", "at": "2026-11-16T03:10:00"})
+    assert r.returncode == 0 and "skipping v0.9.2: it was rolled back" in r.stdout and "--to v0.9.2" in r.stdout, r.stdout + r.stderr
+
+
+
+@needs_sh
+def test_update_sh_remembers_a_rolled_back_release_through_a_later_refusal(tmp_path):
+    """A failed fetch the next night must not overwrite the record, or the night after retries the broken release."""
+    last = {"outcome": "rolled_back", "from": "0.9.1", "to": "0.9.2", "error": "not healthy", "at": "2026-11-16T03:10:00"}
+    r, after = run_update_sh(tmp_path, last, origin=str(tmp_path / "gone"))
+    assert r.returncode == 1 and "git fetch failed" in r.stderr, r.stdout + r.stderr
+    assert after == last

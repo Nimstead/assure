@@ -38,7 +38,7 @@ class FakeApt:
                 return (0, "") if self.units_ok else (3, "inactive")
             case ["systemctl", "show", "-p", "NRestarts", "--value", _]:
                 return 0, str(self.restart_n)
-            case ["apt-get", "update"]:
+            case ["apt-get", "update", *_]:
                 return 0, "ok"
             case ["apt-get", "-s", "install", "--only-upgrade", "--no-remove", *specs]:
                 names = [s.split("=")[0] for s in specs if self.candidate] + self.also
@@ -49,7 +49,7 @@ class FakeApt:
                 name, ver = spec_.split("=")
                 Path(cwd, f"{name}_{ver.replace(':', '%3a')}_amd64.deb").write_text(f"{name} {ver}")
                 return 0, ""
-            case ["apt-get", "install", "-y", "--only-upgrade", "--no-remove", "-o", _, *specs]:
+            case ["apt-get", "install", "-y", "--only-upgrade", "--no-remove", "-o", _, "-o", "DPkg::Lock::Timeout=600", *specs]:
                 for s in specs:
                     n, _, pin = s.partition("=")
                     self.installed[n] = pin or self.candidate[n]
@@ -66,7 +66,7 @@ class FakeApt:
                 return (0 if dpkg_cmp(a, b) > 0 else 1), ""
             case ["dpkg", "--audit"]:
                 return 0, ""
-            case ["dpkg", "-i", *files]:
+            case ["apt-get", "install", "-y", "--allow-downgrades", "--no-remove", "-o", _, "-o", "DPkg::Lock::Timeout=600", *files]:
                 if self.dpkg_i_fails:
                     return 1, "dpkg: error processing archive"
                 for f in files:
@@ -116,6 +116,23 @@ def test_failed_health_check_rolls_back(tmp_path):
     assert outcome == "rolled_back" and err.endswith("nginx.service active after change failed: service is inactive")
     assert h.installed == OLD and h.units_ok
     assert steps[-1]["step"] == "nginx.service active after rollback"
+
+
+def test_apt_waits_for_the_package_lock_on_upgrade_and_rollback(tmp_path, monkeypatch):
+    """Unattended upgrades take apt's locks daily: giving up at once failed the fix, then its rollback, for nothing."""
+    monkeypatch.setattr(agent, "APT_LISTS_RETRY_SECONDS", 0)
+    h = FakeApt(tmp_path, OLD, NEW, break_unit_on_upgrade=True)
+    held = {"update": 2}  # apt-get update can't wait for apt's lists lock (seen on real Debian 13), so it's tried again
+
+    def locked(cmd, cwd=None):  # apt-get install waits when told to (DPkg::Lock::Timeout); dpkg -i can't wait
+        if cmd[:2] == ["apt-get", "update"] and held["update"]:
+            held["update"] -= 1
+            return 100, "E: Could not get lock /var/lib/apt/lists/lock. It is held by process 812 (apt-get)"
+        if (cmd[:2] == ["apt-get", "install"] and "DPkg::Lock::Timeout=600" not in cmd) or cmd[:2] == ["dpkg", "-i"]:
+            return 100, "E: Could not get lock /var/lib/dpkg/lock-frontend. It is held by process 812 (unattended-upgr)"
+        return h(cmd, cwd)
+    outcome, _, err = run(tmp_path, locked)
+    assert outcome == "rolled_back" and h.installed == OLD and held["update"] == 0, err
 
 
 def test_crash_looping_service_rolls_back_even_when_sampled_active(tmp_path):
@@ -173,7 +190,7 @@ def test_tampered_rollback_artefact_is_detected(tmp_path):
     j.apply = apply_then_tamper
     outcome, steps, err = j.execute()
     assert outcome == "rollback_failed" and err.startswith("ROLLBACK FAILED")
-    assert not any(c[:2] == ["dpkg", "-i"] for c in h.log)  # never installs an unverified package
+    assert not any("--allow-downgrades" in c for c in h.log)  # never installs an unverified package
 
 
 def test_pinned_version_installed(tmp_path):

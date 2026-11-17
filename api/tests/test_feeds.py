@@ -114,3 +114,27 @@ def test_osv_only_keeps_releases_in_use():
     z = zip_of(rec("USN-1", "2024-01-01", eco="Ubuntu:22.04:LTS"), rec("USN-2", "2024-01-01", eco="Ubuntu:24.04:LTS"))
     sync_osv(s, ["Ubuntu"], client(z), only={"Ubuntu:24.04"})
     assert {a.ecosystem for a in s.scalars(select(Advisory))} == {"Ubuntu:24.04"}
+
+
+def test_the_hourly_rematch_reads_each_host_as_it_is_now(env, monkeypatch):
+    """A host that reports while the run is going is re-matched with the facts it just sent, not the ones the run began with."""
+    from test_api import user
+    from test_neighbours import Manuf, agent
+
+    from nimstead import feeds
+    from nimstead.db import Asset
+    c = user(env)
+    agent(c, "web-1")
+    agent(c, "web-2")
+    seen = []
+
+    def rescan(session, asset, **k):
+        if not seen:  # while the first host is re-matched, both report new facts
+            other = make_sessionmaker(env)()
+            for a in other.scalars(select(Asset)):
+                a.facts = {"fresh": True}
+            other.commit()
+        seen.append(asset.facts)
+    monkeypatch.setattr(feeds, "rescan", rescan)
+    feeds.update_all(make_sessionmaker(env)(), client=Manuf())
+    assert len(seen) == 2 and seen[1] == {"fresh": True}

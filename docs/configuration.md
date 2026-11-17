@@ -6,7 +6,7 @@ Nimstead Assure is configured with environment variables. With Docker Compose, p
 
 | Variable | Default | What it does |
 |---|---|---|
-| `NIMSTEAD_PUBLIC_URL` | the request's own address | The address agents and browsers use, such as `https://assure.example.com`. Baked into the agent install scripts and SSO callbacks. Set it in production. |
+| `NIMSTEAD_PUBLIC_URL` | the request's own address | The address agents and browsers use, such as `https://assure.example.com`. Baked into the agent install scripts and SSO callbacks. Set it in production. Emailed links (sign-up, password reset, invitations, alert-recipient confirmations) are built only from it, never from the request's own address, so without it those emails aren't sent. |
 | `NIMSTEAD_DB` | `sqlite:///./nimstead.db` | Database URL. Use `postgresql+psycopg://user:pass@host/db` in production and run `alembic upgrade head` (the Docker image does this on start). |
 | `NIMSTEAD_SECURE_COOKIES` | `1` | `0` allows sign-in over plain HTTP from a non-localhost address. Development only. |
 | `NIMSTEAD_ALLOWED_ORIGINS` | none | Extra comma-separated origins allowed to make changes (the same origin always is). |
@@ -70,6 +70,8 @@ See [notification reference](reference/notifications.md) for consent, payloads, 
 ## Single sign-on
 
 Set up in **Settings** by an org admin, not with environment variables. Register `<NIMSTEAD_PUBLIC_URL>/api/auth/sso/callback` at your identity provider. Each email domain must be proven with a DNS TXT record before it routes sign-ins.
+
+Anyone your identity provider lets in from a verified domain gets an account at their first SSO sign-in. So removing someone in **People** signs them out, but they can sign back in until you also remove them at the identity provider. While SSO is required, invitations are refused: people join by signing in with SSO.
 
 | Variable | Default | What it does |
 |---|---|---|

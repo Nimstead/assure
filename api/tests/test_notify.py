@@ -216,6 +216,7 @@ class FakeSMTP:
 def test_email_channel(env, sent, monkeypatch):
     monkeypatch.setenv("NIMSTEAD_SMTP_URL", "smtp://bot:pw@mail.example.com:587")
     monkeypatch.setenv("NIMSTEAD_SMTP_FROM", "nimstead@example.com")
+    monkeypatch.setenv("NIMSTEAD_PUBLIC_URL", "http://testserver")
     monkeypatch.setattr(notify.smtplib, "SMTP", FakeSMTP)
     FakeSMTP.sent, FakeSMTP.fail, FakeSMTP.tls = [], False, True
     c = setup(env)
@@ -259,6 +260,7 @@ def test_unconfirmed_recipients_get_no_alerts(env, sent, monkeypatch):
     """An admin (anyone can sign up as one) can't use the server's mail relay to send its text to arbitrary people."""
     monkeypatch.setenv("NIMSTEAD_SMTP_URL", "smtp://bot:pw@mail.example.com:587")
     monkeypatch.setenv("NIMSTEAD_SMTP_FROM", "nimstead@example.com")
+    monkeypatch.setenv("NIMSTEAD_PUBLIC_URL", "http://testserver")
     monkeypatch.setattr(notify.smtplib, "SMTP", FakeSMTP)
     FakeSMTP.sent, FakeSMTP.fail, FakeSMTP.tls = [], False, True
     c = setup(env)
@@ -404,6 +406,7 @@ def test_ipv6_forms_hiding_private_ipv4_are_refused(url):
 def test_email_never_sends_credentials_without_tls(env, sent, monkeypatch):
     monkeypatch.setenv("NIMSTEAD_SMTP_URL", "smtp://bot:pw@mail.example.com:587")
     monkeypatch.setenv("NIMSTEAD_SMTP_FROM", "nimstead@example.com")
+    monkeypatch.setenv("NIMSTEAD_PUBLIC_URL", "http://testserver")
     monkeypatch.setattr(notify.smtplib, "SMTP", FakeSMTP)
     FakeSMTP.sent, FakeSMTP.fail, FakeSMTP.tls = [], False, False  # STARTTLS offer stripped
     c = setup(env)
@@ -474,3 +477,41 @@ def test_notification_reference_and_schema_cover_recent_sample(env, sent):
     reference = (root / "notifications.md").read_text()
     assert all(f"`{key}`" in reference for key in set(out) | recent_fields)
     assert all(set(row) == recent_fields for row in out["recent"])
+
+
+def test_a_webhook_reply_is_never_read_into_memory(sent, monkeypatch):
+    """Only the status matters: an endless reply from a receiver an admin named must not fill the server's memory."""
+    read = []
+
+    def endless():
+        for _ in range(5000):
+            read.append(1)
+            yield b"x" * 1024
+    monkeypatch.setattr(notify, "http_client", httpx.Client(transport=httpx.MockTransport(lambda req: httpx.Response(200, content=endless()))))
+    notify._send_webhook(HOOK, "slack", "test", "hello", False)
+    assert len(read) < 5
+
+
+def test_a_guarded_request_has_a_total_deadline(monkeypatch):
+    """httpx's timeouts apply to each read: a server sending its headers a byte at a time held a worker for hours."""
+    import socket
+    import threading
+    monkeypatch.setattr(netguard, "check_public_url", lambda url: ["127.0.0.1"])  # a local server stands in for a public one
+    srv = socket.create_server(("127.0.0.1", 0))
+
+    def dribble():
+        conn, _ = srv.accept()
+        conn.recv(4096)
+        try:
+            for b in b"HTTP/1.1 200 OK\r\nX-Slow: " + b"a" * 200:
+                conn.sendall(bytes([b]))
+                time.sleep(0.05)
+        except OSError:
+            pass  # the client gave up
+        conn.close()
+    threading.Thread(target=dribble, daemon=True).start()
+    start = time.monotonic()
+    with pytest.raises(httpx.TimeoutException), netguard.guarded_client(timeout=0.5) as client:
+        client.get(f"http://127.0.0.1:{srv.getsockname()[1]}/")
+    assert time.monotonic() - start < 4
+    srv.close()

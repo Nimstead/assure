@@ -85,7 +85,15 @@ print(json.dumps({"outcome": sys.argv[1], "from": sys.argv[2], "to": sys.argv[3]
   $DC run --rm --no-deps -T --entrypoint sh app -c 'mkdir -p /data/release && cat > /data/release/update-status.json' \
     < "$WORK/status.json" >/dev/null 2>&1 || echo "warning: couldn't record the outcome in the data volume" >&2
 }
-refuse() { echo "update refused: $2" >&2; [ "$DRY" = 1 ] || status refused "$1" "$2"; exit 1; }
+# a refusal doesn't replace a rollback's record: that's what keeps the rolled-back release from being retried
+refuse() { echo "update refused: $2" >&2; [ "$DRY" = 1 ] || [ "$(last outcome)" = rolled_back ] || status refused "$1" "$2"; exit 1; }
+# last FIELD: the previous run's outcome. After a failed rollback the database is half-restored, so nothing goes on top of
+# it (and the record stays as it is); a release that was rolled back is only retried when asked for with --to.
+last() { python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1])).get(sys.argv[2]) or "")' deploy/last-update.json "$1" 2>/dev/null || true; }
+if [ "$(last outcome)" = rollback_failed ]; then
+  echo "update refused: the last update's rollback failed ($(last error)). Restore the backup by hand (docs/install.md), then delete deploy/last-update.json." >&2
+  exit 1
+fi
 
 # --- choose and verify the target release --------------------------------------------------------------------------
 # The channel this install follows (DECISIONS 33): preview, beta or stable; it takes its channel and anything more stable.
@@ -126,6 +134,10 @@ else
   # Releases are exactly vX.Y.Z (a stray tag like v1.0.0-rc1 is never picked); newest first, above the running version
   for t in $(git tag -l 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sed 's/^v//' | sort -rV | sed 's/^/v/'); do
     [ "$(printf '%s\n%s\n' "$CUR" "${t#v}" | sort -V | tail -n1)" = "$CUR" ] && break  # reached our own version
+    if [ "$(last outcome)" = rolled_back ] && [ "$(last to)" = "${t#v}" ]; then
+      echo "skipping $t: it was rolled back at $(last at) (deploy/last-update.json); install it with --to $t once that's fixed"
+      continue
+    fi
     if verified "$t"; then
       if [ "$(rank "$(channel_of)")" -ge "$(rank "$CHANNEL")" ]; then TARGET=$t; break; fi
       echo "skipping $t: a $(channel_of) release (this install follows the $CHANNEL channel)"

@@ -7,6 +7,7 @@ SSRF-guarded: the issuer, token and JWKS URLs are admin- or IdP-supplied.
 import base64
 import hashlib
 import hmac
+import json
 import os
 import secrets
 import time
@@ -19,7 +20,7 @@ import jwt
 from cryptography.fernet import Fernet
 
 from nimstead import keys
-from nimstead.netguard import guarded_client
+from nimstead.netguard import guarded_client, read_capped
 
 ALGS = ["RS256", "RS384", "RS512", "PS256", "ES256", "ES384"]  # asymmetric only: never accept HS* (key-confusion)
 CACHE_SECONDS = 600
@@ -47,9 +48,9 @@ class Oidc:
 
     def _get(self, url: str) -> dict:
         try:
-            r = self.http.get(url, headers={"Accept": "application/json"})
-            r.raise_for_status()
-            return r.json()
+            with self.http.stream("GET", url, headers={"Accept": "application/json"}) as r:
+                r.raise_for_status()
+                return json.loads(read_capped(r))
         except (httpx.HTTPError, ValueError) as e:
             raise SSOError("idp_unreachable") from e
 
@@ -106,12 +107,12 @@ class Oidc:
         required claims, and nonce. Raise SSOError for provider, exchange, or token failures."""
         doc = self.discover(issuer)
         try:
-            r = self.http.post(doc["token_endpoint"], data={
+            with self.http.stream("POST", doc["token_endpoint"], data={
                 "grant_type": "authorization_code", "code": code, "redirect_uri": redirect_uri,
                 "client_id": client_id, "client_secret": client_secret, "code_verifier": flow["verifier"],
-            }, headers={"Accept": "application/json"})
-            r.raise_for_status()
-            id_token = r.json()["id_token"]
+            }, headers={"Accept": "application/json"}) as r:
+                r.raise_for_status()
+                id_token = json.loads(read_capped(r))["id_token"]
         except (httpx.HTTPError, ValueError, KeyError) as e:
             raise SSOError("token_exchange_failed") from e
         try:
@@ -183,12 +184,12 @@ def domain_token(org_id: str, domain: str) -> str:
 
 
 def txt_records(name: str) -> list[str]:
-    """Return decoded TXT record strings for DNS name, or an empty list on lookup failure.
+    """Return decoded TXT record strings for DNS name, or an empty list when the name or record doesn't exist.
 
     name is the complete DNS query name. The system resolver is the default.
     NIMSTEAD_DNS_SERVER=host:port selects an explicit resolver and TCP transport.
-    Each request has a five-second lifetime. Resolver, configuration, and decoding failures
-    are suppressed, so an empty result does not distinguish absence from a failed lookup."""
+    Each request has a five-second lifetime. A lookup that failed (timeout, no server answered)
+    raises dns.exception.DNSException: it says nothing about whether the record is there."""
     try:
         if server := os.environ.get("NIMSTEAD_DNS_SERVER"):
             host, _, port = server.partition(":")
@@ -198,7 +199,7 @@ def txt_records(name: str) -> list[str]:
         else:
             answer = dns.resolver.resolve(name, "TXT", lifetime=5)
         return [b"".join(rr.strings).decode(errors="replace") for rr in answer]
-    except Exception:
+    except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
         return []
 
 
@@ -207,6 +208,6 @@ def domain_verified(org_id: str, domain: str, lookup=txt_records) -> bool:
 
     org_id is the organisation identifier; domain is the email domain to prove.
 
-    lookup accepts a DNS name and returns a list of TXT strings; its default suppresses DNS failures.
-    Errors from a custom lookup or the token backend propagate."""
+    lookup accepts a DNS name and returns a list of TXT strings; its default raises
+    dns.exception.DNSException when the lookup failed. Lookup and token backend errors propagate."""
     return f"nimstead-verify={domain_token(org_id, domain)}" in lookup(f"_nimstead-verify.{domain}")

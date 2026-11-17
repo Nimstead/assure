@@ -17,7 +17,7 @@ Use this guide to replace an application's package inventory after a build. You 
 
 5. Check `unique_packages` and both `skipped` counters in the response. Compare them with the build inventory. Open the application in Assure and review its findings and scan coverage.
 
-The token only works for that asset. Organisation API tokens (`nmt_`) are read-only and cannot upload. An asset's agent key can also upload an SBOM for its own asset.
+The token only works for that asset. Organisation API tokens (`nmt_`) are read-only and cannot upload. An asset's agent key can also upload an SBOM for its own asset. Each asset takes at most 60 uploads an hour; more answer HTTP 429.
 
 Every successful upload replaces the previous SBOM packages. Keep the previous build's SBOM if you need to restore its inventory. Re-upload that complete document to restore it; doing so records a new scan and ledger event.
 

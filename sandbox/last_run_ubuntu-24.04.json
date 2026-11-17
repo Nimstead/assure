@@ -1,7 +1,7 @@
 [
   {
     "step": "creating sandbox distro",
-    "name": "nimstead-sbx-1f99dec9",
+    "name": "nimstead-sbx-3efb688d",
     "distro": "Ubuntu-24.04"
   },
   {
@@ -15,114 +15,139 @@
   },
   {
     "step": "feeds synced",
-    "kev": 1756,
-    "epss": 395308,
+    "kev": 1781,
+    "epss": 406741,
     "osv": {
-      "inserted": 509852,
+      "inserted": 536609,
       "updated": 0,
       "skipped": 0
     },
-    "seconds": 108
+    "seconds": 93
   },
   {
     "step": "first inventory",
-    "open": 369,
+    "open": 456,
     "resolved": 0
   },
   {
     "step": "findings",
     "open_by_priority": {
-      "low": 359,
-      "planned": 10
+      "fix-now": 1,
+      "low": 435,
+      "planned": 20
     },
     "top_actions": [
+      "brotli",
+      "expat",
       "curl",
       "glib2.0",
-      "expat",
-      "python3.12",
-      "python-urllib3",
+      "pyjwt",
       "libxml2",
+      "python-urllib3",
+      "python3.12",
       "openssl",
-      "zlib",
-      "libevent",
-      "sudo"
+      "zlib"
     ]
   },
   {
     "step": "remediation attempt",
-    "package": "curl",
+    "package": "brotli",
+    "outcome": "aborted",
+    "status": "aborted",
+    "error": "No changes made: refresh package index failed: Packages [45.4 kB]\nGet:15 http://security.ubuntu.com/ubuntu noble-security/multiverse Translation-en [12.7 kB]\nGet:16 http://security.ubuntu.com/ubuntu noble-security/multiverse amd64 Components [208 B]\nGet:17 http://security.ubuntu.com/ubuntu noble-security/multiverse amd64 c-n-f Metadata [468 B]",
+    "steps": [
+      "ok  job validated",
+      "ok  apt-get available",
+      "ok  installed for one architecture only",
+      "ok  installed versions match plan",
+      "ok  fix is newer than installed",
+      "ok  no rollback copy kept from an earlier job with this id",
+      "ok  free space for the rollback copy",
+      "FAIL refresh package index"
+    ]
+  },
+  {
+    "step": "remediation attempt",
+    "package": "expat",
     "outcome": "applied",
     "status": "succeeded",
     "error": null,
     "steps": [
       "ok  job validated",
       "ok  apt-get available",
+      "ok  installed for one architecture only",
       "ok  installed versions match plan",
+      "ok  fix is newer than installed",
+      "ok  no rollback copy kept from an earlier job with this id",
+      "ok  free space for the rollback copy",
       "ok  refresh package index",
       "ok  simulate upgrade",
+      "ok  no package downgraded",
       "ok  change limited to planned packages",
-      "ok  archive copy of curl=8.5.0-2ubuntu10.13 not available (superseded); rebuilding",
-      "ok  rollback package curl=8.5.0-2ubuntu10.13",
-      "ok  rollback package saved curl_8.5.0-2ubuntu10.13_amd64.deb",
-      "ok  archive copy of libcurl3t64-gnutls=8.5.0-2ubuntu10.13 not available (superseded); rebuilding",
-      "ok  rollback package libcurl3t64-gnutls=8.5.0-2ubuntu10.13",
-      "ok  rollback package saved libcurl3t64-gnutls_8.5.0-2ubuntu10.13_amd64.deb",
-      "ok  archive copy of libcurl4t64=8.5.0-2ubuntu10.13 not available (superseded); rebuilding",
-      "ok  rollback package libcurl4t64=8.5.0-2ubuntu10.13",
-      "ok  rollback package saved libcurl4t64_8.5.0-2ubuntu10.13_amd64.deb",
+      "ok  repository has a newer version",
+      "ok  archive copy of libexpat1=2.6.1-2ubuntu0.4 not available (superseded); rebuilding",
+      "ok  rollback package libexpat1=2.6.1-2ubuntu0.4",
+      "ok  rollback package saved libexpat1_2.6.1-2ubuntu0.4_amd64.deb",
       "ok  upgrade",
       "ok  package database check"
     ]
   },
   {
     "step": "rollback attempt",
-    "package": "glib2.0",
+    "package": "brotli",
     "outcome": "rolled_back",
     "status": "rolled_back",
-    "error": "Change failed and was rolled back: nimstead-canary.service active after change failed: ",
+    "error": "Change failed and was rolled back: nimstead-canary.service active after change failed: service is activating, restarted 11 times since the change",
     "steps": [
       "ok  job validated",
       "ok  apt-get available",
+      "ok  installed for one architecture only",
       "ok  installed versions match plan",
+      "ok  fix is newer than installed",
+      "ok  no rollback copy kept from an earlier job with this id",
+      "ok  free space for the rollback copy",
       "ok  nimstead-canary.service active before change",
       "ok  refresh package index",
       "ok  simulate upgrade",
+      "ok  no package downgraded",
       "ok  change limited to planned packages",
-      "ok  archive copy of gir1.2-glib-2.0=2.80.0-6ubuntu3.8 not available (superseded); rebuilding",
-      "ok  rollback package gir1.2-glib-2.0=2.80.0-6ubuntu3.8",
-      "ok  rollback package saved gir1.2-glib-2.0_2.80.0-6ubuntu3.8_amd64.deb",
-      "ok  archive copy of libglib2.0-0t64=2.80.0-6ubuntu3.8 not available (superseded); rebuilding",
-      "ok  rollback package libglib2.0-0t64=2.80.0-6ubuntu3.8",
-      "ok  rollback package saved libglib2.0-0t64_2.80.0-6ubuntu3.8_amd64.deb",
-      "ok  archive copy of libglib2.0-bin=2.80.0-6ubuntu3.8 not available (superseded); rebuilding",
-      "ok  rollback package libglib2.0-bin=2.80.0-6ubuntu3.8",
-      "ok  rollback package saved libglib2.0-bin_2.80.0-6ubuntu3.8_amd64.deb",
-      "ok  archive copy of libglib2.0-data=2.80.0-6ubuntu3.8 not available (superseded); rebuilding",
-      "ok  rollback package libglib2.0-data=2.80.0-6ubuntu3.8",
-      "ok  rollback package saved libglib2.0-data_2.80.0-6ubuntu3.8_all.deb",
+      "ok  repository has a newer version",
+      "ok  archive copy of libbrotli1=1.1.0-2build2",
+      "ok  rollback package saved libbrotli1_1.1.0-2build2_amd64.deb",
       "ok  upgrade",
       "ok  package database check",
       "FAIL nimstead-canary.service active after change",
-      "ok  rollback artefact intact gir1.2-glib-2.0_2.80.0-6ubuntu3.8_amd64.deb",
-      "ok  rollback artefact intact libglib2.0-0t64_2.80.0-6ubuntu3.8_amd64.deb",
-      "ok  rollback artefact intact libglib2.0-bin_2.80.0-6ubuntu3.8_amd64.deb",
-      "ok  rollback artefact intact libglib2.0-data_2.80.0-6ubuntu3.8_all.deb",
+      "ok  rollback artefact intact libbrotli1_1.1.0-2build2_amd64.deb",
       "ok  rollback install",
       "ok  versions restored",
+      "ok  restart nimstead-canary.service on the restored version",
       "ok  nimstead-canary.service active after rollback"
     ],
     "restored": true
   },
   {
+    "step": "rollback copies left after success and rollback",
+    "count": "0"
+  },
+  {
+    "step": "forged downgrade job",
+    "outcome": "aborted",
+    "error": "No changes made: fix is newer than installed failed: not newer: libexpat1 0.0.1-1",
+    "unchanged": true
+  },
+  {
     "step": "evidence pack",
     "problems": [],
-    "resolved": 13,
+    "resolved": 23,
     "controls": {
       "UK Cyber Essentials Security update management": "met",
       "ISO/IEC 27001:2022 A.8.8": "met",
       "NIST SP 800-53 Rev. 5 RA-5": "met",
       "NIST SP 800-53 Rev. 5 SI-2": "met",
       "PCI DSS v4.0.1 6.3.3": "met",
+      "SOC 2 (TSC 2017) CC7.1": "met",
+      "SOC 2 (TSC 2017) CC8.1": "met",
+      "NIS2 Directive Art. 21(2)(e)": "met",
       "CIS Controls v8.1 7.3 / 7.4": "met"
     }
   },
@@ -133,6 +158,6 @@
   },
   {
     "step": "sandbox destroyed",
-    "name": "nimstead-sbx-1f99dec9"
+    "name": "nimstead-sbx-3efb688d"
   }
 ]

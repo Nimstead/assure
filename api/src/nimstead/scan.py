@@ -34,6 +34,15 @@ def unread(collection: dict | None) -> set[str]:
     return {eco for eco, names in READ_FROM.items() if any(bad(n) for n in names)}
 
 
+def unproven(asset: Asset) -> set[str]:
+    """Finding ecosystems asset's latest report proves nothing about: those unread() names, and Windows settings when the
+    report carries no settings read (facts.config), since the agent's check failed or timed out."""
+    out = unread(asset.collection)
+    if not isinstance((asset.facts or {}).get("config"), dict):
+        out.add(winconfig.ECOSYSTEM)
+    return out
+
+
 def _eol_unread(key: tuple, collection: dict | None) -> bool:
     """Whether a Windows, Microsoft or app end-of-support finding's source failed or stopped early, so its absence proves nothing.
 
@@ -304,7 +313,7 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
     resolved = 0
     scan = (asset.facts or {}).get("driver_scan")
     drivers_complete = isinstance(scan, dict) and scan.get("complete") is True
-    blocked = unread(asset.collection)  # the latest report's: the hourly re-match reads the same short list
+    blocked = unproven(asset)  # the latest report's: the hourly re-match reads the same short list
     index = None  # built on the first finding that needs a closing decision: most rescans close none
     for key, f in existing.items():
         if key[0] == windrivers.ECOSYSTEM and not drivers_complete:  # a scan that failed or stopped early proves nothing is gone

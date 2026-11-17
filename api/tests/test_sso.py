@@ -326,3 +326,33 @@ def test_idp_endpoints_must_be_https():
     oidc = sso.Oidc(httpx.Client(transport=httpx.MockTransport(lambda req: httpx.Response(200, json=doc))))
     with pytest.raises(sso.SSOError, match="idp_misconfigured"):
         oidc.discover(ISSUER)
+
+
+def test_an_oversized_idp_reply_is_refused():
+    """A provider an org admin names can't make the server read an endless document into memory."""
+    from nimstead import sso
+    doc = {"issuer": ISSUER, "authorization_endpoint": f"{ISSUER}/auth", "token_endpoint": f"{ISSUER}/token", "jwks_uri": f"{ISSUER}/jwks",
+           "padding": "x" * (2 << 20)}
+    oidc = sso.Oidc(httpx.Client(transport=httpx.MockTransport(lambda req: httpx.Response(200, json=doc))))
+    with pytest.raises(sso.SSOError, match="idp_unreachable"):
+        oidc.discover(ISSUER)
+
+
+def test_txt_lookups_tell_a_missing_record_from_a_failed_lookup(monkeypatch):
+    """A timeout says nothing about the record: reading it as "no record" un-verified targets after one bad DNS minute."""
+    import dns.exception
+    import dns.resolver
+
+    from nimstead import sso
+    monkeypatch.delenv("NIMSTEAD_DNS_SERVER", raising=False)
+
+    def fails(exc):
+        def resolve(*a, **k):
+            raise exc
+        return resolve
+    for missing in (dns.resolver.NXDOMAIN(), dns.resolver.NoAnswer()):
+        monkeypatch.setattr(dns.resolver, "resolve", fails(missing))
+        assert sso.txt_records("_nimstead-verify.example.com") == []
+    monkeypatch.setattr(dns.resolver, "resolve", fails(dns.exception.Timeout()))
+    with pytest.raises(dns.exception.DNSException):
+        sso.txt_records("_nimstead-verify.example.com")

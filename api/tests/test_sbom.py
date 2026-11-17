@@ -369,3 +369,12 @@ def test_an_anonymous_sbom_upload_is_refused_before_its_body_is_read(env):
             yield b" " * (1024 * 1024)
     r = anon.post(f"/api/assets/{agent['asset_id']}/sbom", content=chunks())
     assert r.status_code == 401  # not 413: authentication came before reading the body
+
+
+def test_sbom_uploads_are_rate_limited_per_asset_before_the_body_is_read(env):
+    """A 50,000-component SBOM takes seconds to ingest: one leaked CI token in a loop must not hold the shared workers."""
+    c = user(env)
+    a = app_asset(c)
+    anon, tok = TestClient(create_app(env)), {"Authorization": f"Bearer {a['upload_token']}"}
+    codes = [put(anon, a["id"], bom(), headers=tok).status_code for _ in range(61)]
+    assert codes[:60] == [200] * 60 and codes[60] == 429

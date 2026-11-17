@@ -144,7 +144,7 @@ export function UsersSection() {
       )}
       <ConfirmDialog open={!!ask} onOpenChange={(o) => !o && setAsk(null)} pending={act.isPending} error={act.error} onConfirm={() => ask && act.mutate(ask.u)}
         title={ask?.kind === "remove" ? `Remove ${ask.u.email}?` : ask?.u.admin ? `Make ${ask.u.email} a member?` : `Make ${ask?.u.email} an admin?`}
-        description={ask?.kind === "remove" ? "They're signed out at once and their API tokens stop working. The evidence ledger keeps what they did."
+        description={ask?.kind === "remove" ? "They're signed out at once and their API tokens stop working. The evidence ledger keeps what they did. If your organisation uses single sign-on, remove them at your identity provider too, or they can sign back in."
           : ask?.u.admin ? "They'll keep read access but can't change policy, approve fixes or manage people. API tokens they created stop working."
           : "They'll be able to change policy, approve fixes and manage people. Admins must use two-step sign-in."}
         confirmLabel={ask?.kind === "remove" ? "Remove" : ask?.u.admin ? "Make member" : "Make admin"} destructive={ask?.kind === "remove"} pendingLabel="Saving…" />

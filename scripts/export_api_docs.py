@@ -306,15 +306,13 @@ def render() -> dict[str, str]:
             operation = schema["paths"][route.path][method.lower()]
             if "admin_user" in dependencies:
                 auth = "Admin browser session"
-            elif "signed_in" in dependencies:
-                auth = "Browser session; no API token"
             elif "current_agent" in dependencies:
                 auth = "Asset agent key"
             elif "current_user" in dependencies:
                 auth = "Session or read-only API token" if method in {"GET", "HEAD"} else "Browser session"
             else:
                 auth = SPECIAL_AUTH.get(route.path, "No user-session dependency")
-            if "admin_user" in dependencies or "signed_in" in dependencies:
+            if "admin_user" in dependencies:
                 operation["security"] = [{"SessionCookie": []}]
             elif "current_agent" in dependencies:
                 operation["security"] = [{"AgentToken": []}]
@@ -328,10 +326,10 @@ def render() -> dict[str, str]:
                 # Body tokens and SSO cookies are described separately; no HTTP auth scheme represents them.
                 operation["security"] = []
             operation["x-authentication"] = auth
-            if dependencies & {"admin_user", "signed_in", "current_agent", "current_user"}:
+            if dependencies & {"admin_user", "current_agent", "current_user"}:
                 operation["responses"].setdefault("401", {"description": "Missing, expired or invalid credential.",
                     "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AuthenticationError"}}}})
-            if dependencies & {"admin_user", "signed_in"} or ("current_user" in dependencies and method not in {"GET", "HEAD"}):
+            if "admin_user" in dependencies or ("current_user" in dependencies and method not in {"GET", "HEAD"}):
                 operation["responses"].setdefault("403", {"description": "Role, browser-session or local MFA requirement refused the operation.",
                     "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AuthenticationError"}}}})
             account_response = None

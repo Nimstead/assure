@@ -14,8 +14,10 @@ the first returned address. Checks cover:
 import re
 import socket
 import ssl
+import time
 from datetime import UTC, datetime
 
+import dns.exception
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -85,8 +87,8 @@ def address_proven(ip: str, host: str, value: str, ports=PROOF_PORTS, timeout: f
     self-signed certificate is one of the things the scan exists to report.
 
     ip, host and value are strings. ports contains (integer port, TLS boolean) pairs,
-    tried in order. timeout is a per-socket-operation limit in seconds, not a total
-    deadline. Accept HTTP 200 with value anywhere in the first 4096 body bytes.
+    tried in order. timeout bounds the connect, the handshake, the send and the whole
+    read, each, so a port costs at most four times it. Accept HTTP 200 with value anywhere in the first 4096 body bytes.
     Ordinary socket/TLS failures try the next port and eventually return False.
     Invalid argument types or unexpected TLS configuration errors can propagate.
     This helper does not check ownership, public addresses or the DNS name."""
@@ -101,8 +103,11 @@ def address_proven(ip: str, host: str, value: str, ports=PROOF_PORTS, timeout: f
                 else:
                     conn = raw
                 conn.sendall(req)
-                data = b""
-                while len(data) < 8192 and (chunk := conn.recv(4096)):
+                data, end = b"", time.monotonic() + timeout  # a deadline: one byte per read must not hold a worker for hours
+                while len(data) < 8192 and (left := end - time.monotonic()) > 0:
+                    conn.settimeout(left)
+                    if not (chunk := conn.recv(4096)):
+                        break
                     data += chunk
         except (OSError, ssl.SSLError):
             continue
@@ -245,15 +250,6 @@ def tls_findings(host: str, t: dict) -> tuple[list[dict], list[str]]:
     return found, skipped
 
 
-def observe(host: str, ip: str) -> tuple[list, dict]:
-    """Return (verdicts, report) from the engine's prober on pinned ip, using host for TLS and HTTP identity.
-
-    One probe pass (DECISIONS 126). Does not validate scope or persist: scan() proves scope first."""
-    from nimstead.engine import network  # network imports this module
-    verdicts, rep, _ = network.probe(host, ip)
-    return verdicts, rep
-
-
 # The same checks on a device inside a network (DECISIONS 129): reachable by what's on that network, not the internet
 INTERNAL_LIKELIHOOD = {"exposed": (0.6, "Answers on your network: any machine there, or anything that gets onto it, can reach it"),
                        "open": (0.8, "No authentication by default: anything on your network can use it"),
@@ -301,7 +297,7 @@ def prove_scope(s: Session, asset: Asset, lookup=None) -> str:
     The netguard development bypass can allow private addresses.
 
     Raise ScanRefused for wrong asset kind, missing verification, lapsed DNS proof,
-    refused resolution or absent address proof. Lapsed DNS clears verified_at and
+    a failed DNS lookup (verification kept), refused resolution or absent address proof. Lapsed DNS clears verified_at and
     commits an unverified event. Missing address proof commits a refusal event but
     retains verified_at. These commits include other pending changes in s.
     Database, custom lookup and key-backend errors propagate. Caller checks tenant ownership."""
@@ -309,7 +305,11 @@ def prove_scope(s: Session, asset: Asset, lookup=None) -> str:
         raise ScanRefused("Only external targets are scanned from outside")
     if asset.verified_at is None:
         raise ScanRefused("Prove you own this host first (DNS TXT record), then verify")
-    if not owned(asset.org_id, asset.hostname, lookup or sso.txt_records):
+    try:
+        still_owned = owned(asset.org_id, asset.hostname, lookup or sso.txt_records)
+    except dns.exception.DNSException:  # says nothing about the record: skip this time, keep the verification
+        raise ScanRefused("DNS didn't answer the ownership check; not scanned this time") from None
+    if not still_owned:
         asset.verified_at = None
         evidence.append(s, asset.org_id, "external_target_unverified", asset.id, {"host": asset.hostname})
         s.commit()
@@ -340,9 +340,12 @@ def held_open(vid: str, package: str, verdicts: list, rep: dict) -> str | None:
     (R4.6, DECISIONS 126). rep is the scan's report, whose coverage holds each port's state.
 
     Exposed services and web paths close on their own not-vulnerable or not-applicable verdict. TLS findings close when
-    the handshake ran without showing them, or nothing listens on 443; legacy TLS also needs this scanner to have tried
+    the handshake ran without showing them (untrusted or name not while it showed an expired certificate), or nothing
+    listens on 443; legacy TLS also needs this scanner to have tried
     TLS 1.0/1.1. A banner finding closes on its port refusing, or answering with a greeting that no longer names it."""
     own = [v for v in verdicts if (v.vuln_id == vid and v.product == package) or v.check == vid]
+    if not own and vid in ("NIM-TLS-UNTRUSTED", "NIM-TLS-NAME") and any(v.vuln_id == "NIM-TLS-EXPIRED" and v.outcome == "vulnerable" for v in verdicts):
+        return "not-reassessed"  # verification stops at the expiry date, so trust and name went untested (tls_findings)
     if not own and vid.startswith("NIM-TLS-"):
         own = [v for v in verdicts if v.check == "tls"]  # 443 as a whole: refused, dropped or timed out
         if not own:
@@ -362,7 +365,7 @@ def scan(s: Session, asset: Asset, lookup=None) -> dict:
     """Re-prove scope, probe Asset asset with the engine, store its report, update findings/ledger and commit Session s.
 
     lookup follows prove_scope(). Caller checks ownership. Findings come from the
-    engine's verdicts (observe()). Return address, open (unique observed issue count),
+    engine's verdicts (network.probe()). Return address, open (unique observed issue count),
     resolved (new transitions), still_open (unseen, but not proven fixed) and skipped.
     Accepted observed findings stay accepted. An unseen open/accepted finding resolves
     only on evidence (held_open); otherwise it gets one "Still open: ..." reason.
@@ -370,7 +373,8 @@ def scan(s: Session, asset: Asset, lookup=None) -> dict:
     ScanRefused and other scope/probe/database errors propagate. Refusal can itself
     commit through prove_scope(). No automatic rollback handles later exceptions."""
     ip = prove_scope(s, asset, lookup)
-    verdicts, rep = observe(asset.hostname, ip)
+    from nimstead.engine import network  # network imports this module
+    verdicts, rep, _ = network.probe(asset.hostname, ip)  # one probe pass on the pinned address (DECISIONS 126)
     skipped = [v.detail for v in verdicts if v.reason == "scanner-limited"]
     engine.record(s, asset, rep, {"host": asset.hostname, "address": ip})
     seen, resolved, still = apply(s, asset, verdicts, rep)

@@ -4,8 +4,10 @@ import ipaddress
 import logging
 import os
 import socket
+import time
 from urllib.parse import urlsplit
 
+import httpcore
 import httpx
 
 log = logging.getLogger(__name__)
@@ -78,13 +80,74 @@ class GuardedTransport(httpx.HTTPTransport):
         return super().handle_request(request)
 
 
+class _DeadlineStream(httpcore.NetworkStream):
+    """A connection that ends at a fixed time. httpx's timeouts apply to each read and write, so a server sending a byte
+    at a time (headers or body) could otherwise hold the caller, and a worker thread, for hours."""
+
+    def __init__(self, stream: httpcore.NetworkStream, end: float):
+        self._stream, self._end = stream, end
+
+    def _left(self, timeout: float | None) -> float:
+        left = self._end - time.monotonic()
+        if left <= 0:
+            raise httpcore.ReadTimeout("the server took too long to answer")
+        return left if timeout is None else min(timeout, left)
+
+    def read(self, max_bytes: int, timeout: float | None = None) -> bytes:
+        """Read at most max_bytes within the per-read timeout and what is left of the deadline."""
+        return self._stream.read(max_bytes, self._left(timeout))
+
+    def write(self, buffer: bytes, timeout: float | None = None) -> None:
+        """Write buffer within the per-write timeout and what is left of the deadline."""
+        self._stream.write(buffer, self._left(timeout))
+
+    def close(self) -> None:
+        """Close the underlying connection."""
+        self._stream.close()
+
+    def start_tls(self, ssl_context, server_hostname: str | None = None, timeout: float | None = None) -> _DeadlineStream:
+        """Upgrade to TLS within the deadline; the TLS stream keeps the same deadline."""
+        return _DeadlineStream(self._stream.start_tls(ssl_context, server_hostname, self._left(timeout)), self._end)
+
+    def get_extra_info(self, info: str):
+        """Return the underlying stream's extra info (socket, TLS object)."""
+        return self._stream.get_extra_info(info)
+
+
+class _DeadlineBackend(httpcore.SyncBackend):
+    """Gives every connection a total deadline of seconds from when it opens (one request each: no keep-alive)."""
+
+    def __init__(self, seconds: float):
+        self.seconds = seconds
+
+    def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None) -> _DeadlineStream:
+        """Connect as SyncBackend does and start the deadline."""
+        end = time.monotonic() + self.seconds
+        return _DeadlineStream(super().connect_tcp(host, port, timeout, local_address, socket_options), end)
+
+
+MAX_REPLY_BYTES = 1 << 20  # replies from servers an org admin names (SSO providers): never more than this in memory
+
+
+def read_capped(r: httpx.Response, limit: int = MAX_REPLY_BYTES) -> bytes:
+    """Return a streamed response's body. Raise ValueError once it passes limit bytes, without reading the rest."""
+    body = bytearray()
+    for chunk in r.iter_bytes():
+        body += chunk
+        if len(body) > limit:
+            raise ValueError(f"reply larger than {limit} bytes")
+    return bytes(body)
+
+
 def guarded_client(timeout: float = 5.0) -> httpx.Client:
     # No keep-alive: the pool is keyed by the rewritten IP, not the hostname, so a connection whose certificate was
     # checked for one name could otherwise be reused for another name on the same address without a new TLS check.
     """Return an HTTPS client with DNS pinning, no redirects, and no connection reuse.
 
-    timeout sets HTTPX operation timeouts in seconds. It does not bound the system DNS lookup.
+    timeout sets HTTPX operation timeouts in seconds, and each connection ends 4 x timeout after it
+    opens however the server paces its answer. It does not bound the system DNS lookup.
     The caller must close the returned httpx.Client.
     Requests can raise ValueError for refused targets or httpx transport errors."""
     transport = GuardedTransport(limits=httpx.Limits(max_keepalive_connections=0))
+    transport._pool._network_backend = _DeadlineBackend(timeout * 4)  # httpx has no total timeout; httpcore takes a backend
     return httpx.Client(transport=transport, timeout=timeout, follow_redirects=False)

@@ -6388,7 +6388,7 @@
     },
     "/api/assets/{asset_id}/sbom": {
       "post": {
-        "description": "Read raw CycloneDX/SPDX JSON and return parser plus rescan counts.\n\nasset_id selects the asset. request supplies bytes and either its bearer\nkey or an admin session. Authenticated from the headers before the body is\nread (an anonymous caller can't make the server buffer 10 MiB), then read with\na 10MiB streamed cap and HTTP 413 on excess. Preserve agent-origin rows. Defer parse/store\nwork to ingest_sbom. Invalid formats return 422, wrong keys 401. Other\nauthentication/ownership failures and storage/evidence errors can occur.",
+        "description": "Read raw CycloneDX/SPDX JSON and return parser plus rescan counts.\n\nasset_id selects the asset. request supplies bytes and either its bearer\nkey or an admin session. Authenticated from the headers before the body is\nread (an anonymous caller can't make the server buffer 10 MiB), then read with\na 10MiB streamed cap and HTTP 413 on excess. Preserve agent-origin rows. Defer parse/store\nwork to ingest_sbom. Invalid formats return 422, wrong keys 401, too many uploads 429. Other\nauthentication/ownership failures and storage/evidence errors can occur.",
         "operationId": "upload_sbom_api_assets__asset_id__sbom_post",
         "parameters": [
           {
@@ -9414,7 +9414,7 @@
           }
         ],
         "summary": "Confirm Mfa",
-        "x-authentication": "Browser session; no API token"
+        "x-authentication": "Browser session"
       }
     },
     "/api/me/mfa/setup": {
@@ -9469,7 +9469,7 @@
           }
         ],
         "summary": "Start Mfa",
-        "x-authentication": "Browser session; no API token"
+        "x-authentication": "Browser session"
       }
     },
     "/api/me/password": {
@@ -9537,7 +9537,7 @@
           }
         ],
         "summary": "Change Password",
-        "x-authentication": "Browser session; no API token"
+        "x-authentication": "Browser session"
       }
     },
     "/api/me/sessions/revoke": {
@@ -9585,7 +9585,7 @@
           }
         ],
         "summary": "Sign Out Everywhere",
-        "x-authentication": "Browser session; no API token"
+        "x-authentication": "Browser session"
       }
     },
     "/api/network/unmanaged": {
@@ -11003,7 +11003,7 @@
     },
     "/api/targets/{target_id}/verify": {
       "post": {
-        "description": "Verify DNS and address ownership for an external target and return its asset record.\n\ntarget_id identifies an owned external asset. Performs DNS and HTTP(S) proof\nrequests against the first checked address. On first success, commit verification\nand its ledger event. Return the asset record with proof fields.\n\nRequires an organisation admin browser session; API tokens are refused.\n\nOperation-specific HTTP errors: 404 for unavailable target or 409 for failed proof/address checks.\nAuthentication and request-validation errors also apply where required.",
+        "description": "Verify DNS and address ownership for an external target and return its asset record.\n\ntarget_id identifies an owned external asset. Performs DNS and HTTP(S) proof\nrequests against the first checked address. On first success, commit verification\nand its ledger event. Return the asset record with proof fields.\n\nRequires an organisation admin browser session; API tokens are refused.\n\nOperation-specific HTTP errors: 404 for unavailable target, 409 for failed proof/address checks,\nor 429 for more than EXTVERIFY_MAX_PER_HOUR checks per organisation per hour.\nAuthentication and request-validation errors also apply where required.",
         "operationId": "verify_target_api_targets__target_id__verify_post",
         "parameters": [
           {
@@ -11337,7 +11337,7 @@
     },
     "/api/users/invite": {
       "post": {
-        "description": "Return 202 status=invited/email after an invitation request.\n\nbody.email is lowercased. user needs an admin browser session. Require SMTP,\nenforce organisation quota, append evidence and commit. Address quota can\nsuppress mail. Existing accounts receive a sign-in message rather than\nmembership transfer. New addresses receive a scoped invitation link. Return\n403/429 on configuration/quota refusal. Mail acknowledgement is not delivery.",
+        "description": "Return 202 status=invited/email after an invitation request.\n\nbody.email is lowercased. user needs an admin browser session. Require SMTP,\nenforce organisation quota, append evidence and commit. Address quota can\nsuppress mail. Existing accounts receive a sign-in message rather than\nmembership transfer. New addresses receive a scoped invitation link. Return\n403/429 on configuration/quota refusal, 409 while the organisation requires SSO.\nMail acknowledgement is not delivery.",
         "operationId": "invite_user_api_users_invite_post",
         "requestBody": {
           "content": {
@@ -11708,7 +11708,7 @@
     },
     "/install.ps1": {
       "get": {
-        "description": "Return PowerShell installer text with server origin/channel substituted.\n\nrequest supplies fallback base URL unless NIMSTEAD_PUBLIC_URL is truthy.\nRequire the same strict HTTP(S) origin pattern as install_sh, otherwise 400.\nFile/channel errors propagate. No installation or authentication occurs here.",
+        "description": "Return the PowerShell installer with this server's origin and channel (installer()). No authentication is required.",
         "operationId": "install_ps1_install_ps1_get",
         "responses": {
           "200": {
@@ -11749,7 +11749,7 @@
     },
     "/install.sh": {
       "get": {
-        "description": "Return Linux installer text with server origin and current channel substituted.\n\nrequest supplies fallback base URL unless NIMSTEAD_PUBLIC_URL is truthy.\nRequire the configured HTTP(S) hostname/port pattern or return 400. Paths,\ntrailing slash and IPv6 literals are outside that pattern. No host install\noccurs. File/channel errors propagate. No user authentication is required.",
+        "description": "Return the Linux installer with this server's origin and channel (installer()). No authentication is required.",
         "operationId": "install_sh_install_sh_get",
         "responses": {
           "200": {

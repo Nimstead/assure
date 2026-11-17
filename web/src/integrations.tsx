@@ -148,7 +148,7 @@ export function NotificationsSection() {
             <option value="json">Generic JSON (kind, urgent, text)</option>
           </select>
         </Field>
-        <Field label="Email recipients" hint={s.email_available ? "Comma or space separated. Each new address gets a confirmation email and receives alerts only after confirming." : "Email isn't set up on this server (NIMSTEAD_SMTP_URL and NIMSTEAD_SMTP_FROM), so these won't be sent."}>
+        <Field label="Email recipients" hint={s.email_available ? "Comma or space separated. Each new address gets a confirmation email and receives alerts only after confirming." : "Email isn't fully set up on this server (NIMSTEAD_SMTP_URL, NIMSTEAD_SMTP_FROM and NIMSTEAD_PUBLIC_URL), so new addresses can't be confirmed and won't get alerts."}>
           <input className={input} name="emails" type="text" defaultValue={s.emails.join(", ")} autoComplete="off" />
         </Field>
         {s.emails.some((e) => !s.emails_confirmed.includes(e)) && (

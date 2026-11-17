@@ -149,6 +149,18 @@ def test_a_target_that_stops_answering_closes_nothing(world, monkeypatch):
     assert c.get(f"/api/assets/{t['id']}/scan-report").json()["headline"]["status"] == "not-assessed"
 
 
+def test_an_untrusted_certificate_that_expires_keeps_its_untrusted_finding_open(world, monkeypatch):
+    """Verification stops at the expiry date: an expired self-signed certificate says nothing about trust, so that's no fix."""
+    c, dns = world
+    t = add(c, dns)
+    c.post(f"/api/targets/{t['id']}/verify")
+    fake_net(monkeypatch, tls={"trusted": False, "error": "self-signed certificate", "legacy": False})
+    c.post(f"/api/targets/{t['id']}/scan")
+    fake_net(monkeypatch, tls=EXPIRED)  # the same certificate, a few months on
+    assert c.post(f"/api/targets/{t['id']}/scan").json()["resolved"] == 0
+    assert {f["vuln_id"] for f in c.get("/api/findings").json()} == {"NIM-TLS-UNTRUSTED", "NIM-TLS-EXPIRED"}
+
+
 def test_tls_findings_close_when_nothing_listens_on_443(world, monkeypatch):
     c, dns = world
     t = add(c, dns)
@@ -270,6 +282,23 @@ def test_ownership_is_rechecked_before_every_scan(world, monkeypatch):
     assert next(a for a in c.get("/api/assets").json() if a["id"] == t["id"])["verified"] is False
 
 
+def test_a_dns_failure_skips_the_scan_but_keeps_the_target_verified(world, monkeypatch):
+    """A resolver timeout says nothing about the TXT record: it must not stop the target's scans until someone re-verifies."""
+    import dns.exception
+    c, fake = world
+    t = add(c, fake)
+    c.post(f"/api/targets/{t['id']}/verify")
+
+    def down(self, name):
+        raise dns.exception.Timeout()
+    monkeypatch.setattr(DNS, "__call__", down)
+    no_probe(monkeypatch, "scanned without the ownership check")
+    r = c.post(f"/api/targets/{t['id']}/scan")
+    assert r.status_code == 409 and "DNS" in r.json()["detail"]
+    assert next(a for a in c.get("/api/assets").json() if a["id"] == t["id"])["verified"] is True
+    assert c.post(f"/api/targets/{t['id']}/verify").status_code == 503
+
+
 def test_names_that_resolve_to_private_addresses_are_refused(world, monkeypatch):
     c, dns = world
     t = add(c, dns, "intranet.example.com")
@@ -306,6 +335,14 @@ def test_manual_scans_are_rate_limited_per_org(world, monkeypatch):
     fake_net(monkeypatch)
     codes = [c.post(f"/api/targets/{t['id']}/scan").status_code for _ in range(11)]
     assert codes[:10] == [200] * 10 and codes[10] == 429
+
+
+def test_ownership_checks_are_rate_limited_per_org(world):
+    """Each check fetches from a server the org names: unbounded, a tenant could keep many workers waiting on its own."""
+    c, dns = world
+    t = add(c, dns)
+    codes = [c.post(f"/api/targets/{t['id']}/verify").status_code for _ in range(31)]
+    assert codes[:30] == [200] * 30 and codes[30] == 429
 
 
 def test_context_rescore_never_closes_external_findings(world, monkeypatch):
@@ -394,6 +431,32 @@ def test_address_proof_reads_the_value_from_that_exact_address():
     finally:
         srv.shutdown()
     assert not external.address_proven("127.0.0.1", "www.example.com", "nimstead-verify=abc", ports=port, timeout=1)  # nothing listening
+
+
+def test_a_server_that_dribbles_its_answer_is_cut_off_at_the_deadline():
+    """One byte just inside each read's timeout held a request worker for hours; forty such targets stalled every org."""
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    class H(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+            for _ in range(100):
+                time.sleep(0.1)
+                self.wfile.write(b"x")
+                self.wfile.flush()
+
+        def log_message(self, *a):
+            pass
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        start = time.monotonic()
+        assert not external.address_proven("127.0.0.1", "www.example.com", "v", ports=[(srv.server_address[1], False)], timeout=0.5)
+        assert time.monotonic() - start < 3
+    finally:
+        srv.shutdown()
 
 
 def test_a_tls_handshake_that_times_out_keeps_tls_findings_open(world, monkeypatch):

@@ -284,9 +284,9 @@ def _send_webhook(url: str, fmt: str, kind: str, text: str, urgent: bool) -> Non
     body = {"text": msg} if fmt == "slack" else {"kind": kind, "urgent": urgent, "text": msg, "source": "nimstead"}
     client = http_client or guarded_client()
     try:
-        r = client.post(url, json=body)
-        if not r.is_success:  # redirects aren't followed (guarded_client), so a 3xx never reached the receiver
-            raise RuntimeError(f"webhook returned HTTP {r.status_code}")
+        with client.stream("POST", url, json=body) as r:  # the status only: the reply is never read into memory
+            if not r.is_success:  # redirects aren't followed (guarded_client), so a 3xx never reached the receiver
+                raise RuntimeError(f"webhook returned HTTP {r.status_code}")
     finally:
         if http_client is None:
             client.close()

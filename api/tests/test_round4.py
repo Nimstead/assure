@@ -26,6 +26,7 @@ def now_code(secret: str, offset: int = 0) -> str:
 def mail(monkeypatch):
     monkeypatch.setenv("NIMSTEAD_SMTP_URL", "smtp://mail.example.com:587")
     monkeypatch.setenv("NIMSTEAD_SMTP_FROM", "nimstead@example.com")
+    monkeypatch.setenv("NIMSTEAD_PUBLIC_URL", "http://testserver")
     monkeypatch.setattr(notify.smtplib, "SMTP", FakeSMTP)
     FakeSMTP.sent, FakeSMTP.fail, FakeSMTP.tls = [], False, True
 
@@ -219,6 +220,22 @@ def test_wrong_codes_count_toward_the_sign_in_throttle(env):
     assert [c.post("/api/auth/login", json=pw).status_code for _ in range(11)][-1] == 429
 
 
+def test_fumbled_authenticator_setups_never_lock_sign_in(env):
+    """Wrong codes while replacing an authenticator aren't sign-in guesses: they mustn't page the org or lock the person out."""
+    c = user(env)
+    totp = mfa_login(TestClient(c.app), "a@example.com").secret
+    new = c.post("/api/me/mfa/setup").json()
+    for _ in range(10):
+        c.post("/api/me/mfa", json={"setup": new["setup"], "code": "000000", "current_code": "000000"})
+    r = TestClient(c.app).post("/api/auth/login", json={"email": "a@example.com", "password": PW, "code": now_code(totp, 1)})
+    assert r.status_code == 200, r.text
+
+
+def test_a_code_in_other_scripts_digits_is_just_wrong():
+    """str.isdigit() accepts Arabic-Indic digits, which then crashed the comparison: sign-in answered 500."""
+    assert mfa.verify(mfa.new_secret(), "١٢٣٤٥٦", 0) is None
+
+
 def test_non_admins_may_enrol_and_replacing_needs_the_old_authenticator(env):
     c = user(env)
     s = c.post("/api/me/mfa/setup").json()
@@ -277,6 +294,23 @@ def test_reset_and_invite_need_smtp(env):
 
 
 # --- I1: user management -----------------------------------------------------------------------------------------------
+
+def test_invitations_are_refused_while_sso_is_required(env, mail):
+    """An invited outside address would join with a password once, then be locked out by the SSO requirement for good."""
+    from sqlalchemy import update
+
+    from nimstead.db import Org
+    admin = user(env)
+    assert admin.post("/api/users/invite", json={"email": "bob@example.com"}).status_code == 202
+    s = sessionmaker(make_engine(env))()
+    s.execute(update(Org).values(sso_required=True))
+    s.commit()
+    r = admin.post("/api/users/invite", json={"email": "carol@example.com"})
+    assert r.status_code == 409 and "single sign-on" in r.json()["detail"]
+    bob = TestClient(admin.app)  # a link sent before SSO was required
+    r = bob.post(link_in(mail("bob@example.com")), data={"password": "bob's own password"}, follow_redirects=False)
+    assert r.status_code == 409 and bob.get("/api/me").status_code == 401
+
 
 def test_invite_promote_demote_and_remove(env, mail):
     admin = user(env)

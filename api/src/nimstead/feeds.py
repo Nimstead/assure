@@ -596,7 +596,10 @@ def update_all(session: Session, client=None) -> dict:
     out["rescanned"] = 0
     cache: dict = {}  # advisories decoded once per pass: hosts on one release share most packages
     out["external"] = {"scanned": 0, "refused": 0}
-    for asset in session.scalars(select(Asset)).all():
+    for asset_id in session.scalars(select(Asset.id)).all():
+        # each host as it is now: one that reported since the run began must not be re-matched with its old facts
+        if (asset := session.get(Asset, asset_id, populate_existing=True)) is None:
+            continue  # deleted meanwhile
         if asset.kind == "external":  # outside-in targets: re-prove ownership, then scan (never if it lapsed)
             if asset.verified_at is not None:
                 try:

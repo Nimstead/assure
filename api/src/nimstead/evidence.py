@@ -108,6 +108,9 @@ def verify_chain(s: Session, org_id: str, full: bool = True) -> list[str]:
     if done and s.scalar(select(LedgerEntry.hash).where(LedgerEntry.org_id == org_id, LedgerEntry.seq == done[0])) != done[1]:
         done = None  # the anchor changed: check everything
     start, prev_hash = (done[0], done[1]) if done else (0, GENESIS)
+    # loaded first, so only the hashes at checkpoint positions are kept: every hash costs ~180 MB per million entries
+    cps = [] if done else load_checkpoints(org_id)
+    pinned = {cp.get("seq") for cp in cps}
     # streamed in batches: a ledger grows with the fleet, and holding every row at once costs gigabytes after a year
     rows = s.execute(select(*LEDGER_COLS).where(LedgerEntry.org_id == org_id, LedgerEntry.seq > start).order_by(LedgerEntry.seq)
                      .execution_options(yield_per=5000))
@@ -119,14 +122,14 @@ def verify_chain(s: Session, org_id: str, full: bool = True) -> list[str]:
         if entry_hash(d) != e.hash:
             problems.append(f"entry {e.seq}: hash mismatch")
         prev_hash, last = e.hash, (e.seq, e.hash)
-        if not done:
-            by_seq[e.seq] = e.hash  # only seq and hash are kept, for the checkpoint comparison below
+        if e.seq in pinned:
+            by_seq[e.seq] = e.hash  # for the checkpoint comparison below
     if done:  # checkpoints pin history up to the anchor, which the last full check compared them with
         if not problems and last:
             _VERIFIED[org_id] = (last[0], last[1], done[2])
         return problems
     pubs = verification_keys()  # once: with Vault each load is an HTTP call, and checkpoints grow by one an hour
-    for cp in load_checkpoints(org_id):
+    for cp in cps:
         if not checkpoint_valid(cp, pubs):
             problems.append(f"checkpoint at seq {cp.get('seq')}: bad signature")
         elif cp["seq"] not in by_seq and cp["seq"] > 0:
@@ -148,13 +151,7 @@ def entry_problems(org_id: str, entries: list[dict]) -> list[str]:
     Missing fields and non-serializable data raise errors instead of returning problem text.
     No database query, checkpoint validation, signing or commit occurs here.
     """
-    problems, prev = [], None
-    for e in entries:
-        if entry_hash(e) != e["hash"]:
-            problems.append(f"entry {e['seq']}: hash mismatch")
-        if prev is not None and (e["seq"] != prev["seq"] + 1 or e["prev_hash"] != prev["hash"]):
-            problems.append(f"entry {e['seq']}: chain broken")
-        prev = e
+    problems = verify_pack.chain_problems(entries)  # the auditor's own check, so the two can't drift apart
     if problems:
         _VERIFIED.pop(org_id, None)
     return problems
@@ -263,13 +260,6 @@ def signing_key() -> Ed25519PrivateKey | keys.Vault:
     with os.fdopen(fd, "wb") as f:
         f.write(key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
     return key
-
-
-def fingerprint(pem: bytes) -> str:
-    """Return the SHA-256 hex fingerprint of the raw public key in PEM bytes pem.
-
-    Invalid or incompatible public-key encodings propagate cryptography errors."""
-    return verify_pack.fingerprint(pem)
 
 
 def public_pem(key: Ed25519PrivateKey | keys.Vault) -> bytes:
@@ -420,6 +410,9 @@ def build_pack(s: Session, org_id: str, start: datetime, end: datetime, with_ent
         select(LedgerEntry.ts, LedgerEntry.data).where(LedgerEntry.org_id == org_id, LedgerEntry.kind == "policy_changed",
                                                        LedgerEntry.ts >= s_iso, LedgerEntry.ts <= e_iso)) if "sla_days" in d]
     m["sla_changes"] = len(sla_changes)
+    # checkpoints before the head: one the hourly run writes in between would otherwise sit past it, and the verifier
+    # reads a checkpoint past the head as removed entries
+    checkpoints = load_checkpoints(org_id) if with_entries else []  # the Evidence page shows none of them
     head = s.scalar(select(LedgerEntry).where(LedgerEntry.org_id == org_id).order_by(LedgerEntry.seq.desc()).limit(1))
     in_period = (LedgerEntry.org_id == org_id, LedgerEntry.ts >= s_iso, LedgerEntry.ts <= e_iso)
     if with_entries:
@@ -454,7 +447,7 @@ def build_pack(s: Session, org_id: str, start: datetime, end: datetime, with_ent
         # chain_head pins the whole chain at signing time; compare across successive packs to detect rewritten history
         "ledger": {"entries": entries, "head_hash": period_head,
                    "chain_head": {"seq": head.seq, "hash": head.hash} if head else {"seq": 0, "hash": GENESIS},
-                   "checkpoints": load_checkpoints(org_id) if with_entries else []},  # the Evidence page shows none of them
+                   "checkpoints": checkpoints},
         # keys rotated out of Vault that signed older checkpoints; this pack's signature vouches for them
         **({"earlier_keys": [_pem(k).decode() for k in verification_keys()[:-1]]} if with_entries else {}),
     }
@@ -501,7 +494,7 @@ def pack_zip(pack: dict) -> bytes:
         z.writestr("pack.json", body)
         z.writestr("pack.sig", sig)
         z.writestr("public_key.pem", public_pem(key))  # verify.py is not shipped here: the checker can't come with what it checks
-        z.writestr("README.txt", README.format(fp=fingerprint(public_pem(key))))
+        z.writestr("README.txt", README.format(fp=verify_pack.fingerprint(public_pem(key))))
     return buf.getvalue()
 
 

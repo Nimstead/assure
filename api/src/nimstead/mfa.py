@@ -40,7 +40,7 @@ def verify(secret_b32: str, given: str, last_step: int, at: float | None = None)
     Check the current counter and one on either side; persist the returned counter to prevent replay.
     Malformed stored secrets propagate decoding errors."""
     given = (given or "").strip().replace(" ", "")
-    if len(given) != DIGITS or not given.isdigit():
+    if len(given) != DIGITS or not (given.isascii() and given.isdigit()):  # isdigit() alone accepts other scripts' digits
         return None
     now = int((time.time() if at is None else at) // STEP)
     for step in range(now - WINDOW, now + WINDOW + 1):

@@ -4,6 +4,21 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Security
+- **Emailed links are built only from `NIMSTEAD_PUBLIC_URL`.** Without it, a password reset requested with a forged `Host` header mailed the victim a valid link to the requester's site. Sign-up, reset, invitation and alert-confirmation emails now need `NIMSTEAD_PUBLIC_URL` set, as they already needed SMTP.
+- **One organisation can't stall or exhaust the server.** The ownership-proof fetch has a total deadline (a server sending one byte at a time held a worker for hours), ownership checks are limited to 30 an hour per org, webhook replies are never read, SSO provider replies stop at 1 MB, and SBOM uploads are limited to 60 an hour per asset, counted before the body is read.
+- **The offline verifier catches a ledger cut off after its last checkpoint**: a signed checkpoint past the pack's chain head fails verification.
+- Invitations are refused while an organisation requires SSO. The remove dialog says a removed person can sign back in with SSO until they're removed at the identity provider too.
+
+### Fixed
+- Automatic remediation no longer repeats a fix that just failed on the same host, and a canary whose stepped Windows update failed now halts that update's rollout.
+- A failed settings read no longer closes every Windows setting finding; the hourly re-match reads each host as it is now; one driver file in two folders no longer stops a host's inventory; an expired certificate keeps its untrusted or wrong-name finding open; a DNS timeout no longer un-verifies an internet-facing target.
+- A Windows update is handed out after a host's other jobs, and a fix isn't judged on an app list that was read only in part.
+- Agent: no reboot loop when DISM is busy after a power cut during an update; apt waits up to 10 minutes for the package lock on upgrade and rollback (the rollback now installs the saved packages through apt); a failed runtime update never deletes the Python the scheduled tasks start.
+- Fumbling an authenticator setup no longer locks sign-in or alerts the organisation; a code in non-ASCII digits is refused instead of failing with an error.
+- `update.sh` stops after a rollback that failed until the backup is restored by hand, and doesn't retry a release it rolled back unless asked with `--to`.
+- Evidence packs fetch each S3 checkpoint once per process, and the hourly chain check keeps hashes only at checkpoint positions.
+
 ## [0.9.2] - 2026-11-16 (preview)
 
 Agent 0.7.2. No database migration. A security release for the Windows agent: update Windows hosts.

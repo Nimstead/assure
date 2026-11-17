@@ -49,15 +49,16 @@ def findings(pkgs: list, listed: dict) -> list[dict]:
 
     Each package needs ecosystem/name/version/source attributes. listed is parse()'s
     mapping. source equal to loaded sets the loaded state. Other sources mean on disk.
-    Preserve matched input rows, including duplicates. Each result has package,
+    One finding per name and hash, loaded if any copy is. Each result has package,
     version, vuln_id, summary (at most 1000 characters), and a Risk object.
     No I/O or mutation occurs. Missing attributes or malformed entries can raise
     AttributeError, ValueError or TypeError."""
-    out = []
-    for p in pkgs:
+    out, seen = [], set()
+    for p in sorted(pkgs, key=lambda p: p.source != "loaded"):  # one file in two folders is one finding (its unique key)
         hit = listed.get(p.version) if p.ecosystem == ECOSYSTEM else None
-        if not hit:
+        if not hit or (p.name, p.version) in seen:
             continue
+        seen.add((p.name, p.version))
         name, category, entry = hit
         malicious = category == "malicious"
         loaded = p.source == "loaded"

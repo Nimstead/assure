@@ -120,7 +120,8 @@ def clone(iso: str, memory: int = 4096, image: int = 1) -> str:
     bases = json.loads(BASES.read_text()) if BASES.exists() else {}
     key = f"{Path(iso).stem}-{image}"
     base = bases.get(key)
-    if not base or f'"{base}"' not in vbox("list", "vms"):
+    # a base whose password file the temp folder lost can't be signed in to: make a new one (2026-11-17)
+    if not base or f'"{base}"' not in vbox("list", "vms") or not (STATE / base / "creds.json").exists():
         base = create(iso, memory, image=image)
         wait_ready(base)
         vbox("controlvm", base, "acpipowerbutton", check=False)

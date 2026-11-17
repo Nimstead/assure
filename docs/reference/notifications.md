@@ -18,7 +18,7 @@ These operations require an organisation admin browser session. API tokens are r
 | `webhook_format` | `slack` or `json`. Omitted/`null` keeps the format |
 | `emails` | At most ten valid email addresses. Omitted/`null` keeps the list. Empty list clears it |
 
-Email addresses are lowercased, deduplicated, and sorted. Confirmation remains valid only for addresses retained in the list. Newly added addresses request confirmation when SMTP configuration exists and the 20-per-hour organisation quota permits.
+Email addresses are lowercased, deduplicated, and sorted. Confirmation remains valid only for addresses retained in the list. Newly added addresses request confirmation when SMTP and `NIMSTEAD_PUBLIC_URL` are configured and the 20-per-hour organisation quota permits.
 
 Settings save commits before confirmation submission. A later queue or backend error can occur after the settings change. Saving an unchanged unconfirmed address does not request mail again.
 
@@ -33,7 +33,7 @@ Webhook configuration checks URL syntax and literal IP eligibility without DNS r
 | `webhook_format` | Saved format string |
 | `emails` | Configured email strings |
 | `emails_confirmed` | Configured addresses also present in the confirmed list |
-| `email_available` | Both SMTP URL and sender variables are nonempty. This does not test the connection |
+| `email_available` | SMTP URL, sender, and `NIMSTEAD_PUBLIC_URL` are nonempty. This does not test the connection |
 | `last_delivery_failed` | Whether the latest row for any channel in the recent sample failed |
 | `recent` | At most five delivery rows, newest ID first |
 
@@ -46,6 +46,8 @@ Each recent row has UTC timestamp `ts`, `kind`, `channel`, boolean `urgent`, boo
 The token binds the organisation and email through the secret-key backend. Email text is lowercased and organisation lookup uses the first 32 query characters. Generated tokens are ASCII text. There is no time-based expiry or single-use check here. Repeated confirmation is valid while the address remains configured. Removing an address makes its link invalid while absent.
 
 Confirmation mail bypasses the confirmed-recipient list by design. It uses fixed text and the supplied link. It is not automatically retried.
+
+Account and alert-confirmation links use `NIMSTEAD_PUBLIC_URL` only. Request Host headers do not supply the origin for these emails.
 
 Account mail also uses fixed templates: `signup`, `exists`, `invite`, and `reset`. Its failures are logged without an organisation delivery row. The account-mail helper does not automatically retry.
 
@@ -60,7 +62,7 @@ Urgent messages prepend `URGENT: ` to text. Slack text escapes `&`, `<`, and `>`
 
 Any response other than 2xx counts as a failed delivery. Redirects are not followed, so a 3xx means the alert never reached the receiver and is recorded as failed (and retried). A receiver's successful HTTP response does not prove that a person saw the alert.
 
-The default client has HTTPX operation timeouts and no connection reuse. System DNS resolution has no explicit deadline. An injected test client can use different transport behavior.
+The default client has five-second HTTPX operation timeouts, a twenty-second connection deadline, and no connection reuse. Webhook delivery checks the response status without reading its body. System DNS resolution has no explicit deadline. An injected test client can use different transport behavior.
 
 ## SMTP behavior
 

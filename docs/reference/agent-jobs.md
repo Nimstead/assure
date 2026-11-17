@@ -33,6 +33,12 @@ Job supports apt, apk, dnf and zypper. It reads packages and health_units from t
 
 The minimum free-space check is 1 GiB. It does not reserve space or estimate the actual recovery size. Job.path only joins a path below the configured root after removal of leading slashes. It does not provide traversal or link containment.
 
+### APT lock waits
+
+APT install and rollback pass `DPkg::Lock::Timeout=600`. Older APT versions can ignore this option. Index refresh retries exit code 100 with `Could not get lock` up to 60 times, ten seconds apart. Other failures stop preparation.
+
+Rollback installs the saved `.deb` files through `apt-get install --allow-downgrades --no-remove` with `--force-confold`. This waits for the dpkg lock and preserves changed configuration files without an interactive prompt.
+
 ### Versions and dry runs
 
 versions returns planned names with observed versions or null. APK database read failure acts as an empty database. Apt accepts successful query text. RPM requires one whitespace token and refuses multiple installed versions.
@@ -136,6 +142,10 @@ save creates a parent directory and truncates/writes JSON. It inherits existing 
 Cluster drain/resume uses fixed commands when detection succeeds. Resume records command status, without requiring final Up output. Runner errors can propagate. A recorded failed resume does not independently convert an otherwise applied result to failure.
 
 result attempts cluster resume, clears saved state, then reads the applied product version. A later build-read failure can occur after state removal. run_jobs writes the terminal outcome only after advance returns. An intervening failure can therefore leave no saved terminal report.
+
+### Resume while servicing is busy
+
+If a resumed Windows job remains in `start` because DISM is busy, the loop returns without requesting a restart. It retries on a later poll. Later phases that require a restart retain their reboot handling.
 
 ## Outcome files and retry loop
 

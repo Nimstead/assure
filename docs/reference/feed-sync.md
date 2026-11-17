@@ -105,7 +105,7 @@ The result always starts with `kev`, `epss`, `nvd`, and `osv`. Successful option
 
 The result also includes `rescanned`, `external` with `scanned`/`refused`, `webhooks_sealed`, `alerts_retried`, `hosts_not_reporting_alerted`, and `platform`. Failed host rescans add `rescan_failed` asset IDs. External scan failures outside refusal are logged without a separate result count.
 
-Verified external targets are re-proven and scanned. Other assets are rescanned from stored inventory. The run then checkpoints organisations, seals legacy webhook secrets, retries alerts, checks silent hosts, and checks releases. These stages can write files, use key storage, and send notifications. The supplied feed client does not replace external-scan or release transports.
+Verified external targets are re-proven and scanned. Other assets are rescanned from stored inventory. The run reloads each asset immediately before its rescan, so a newer report can replace previously loaded facts. Assets deleted since the initial ID query are skipped. The run then checkpoints organisations, seals legacy webhook secrets, retries alerts, checks silent hosts, and checks releases. These stages can write files, use key storage, and send notifications. The supplied feed client does not replace external-scan or release transports.
 
 Feed and per-asset guards do not cover every stage. Checkpoint and notification-upkeep failures can stop the run after earlier changes commit. A returned result can also contain failures. It does not establish that every feed or asset succeeded.
 

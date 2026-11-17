@@ -14,6 +14,8 @@ Assure accepts raw JSON at `POST /api/assets/{asset_id}/sbom`. The body is the d
 
 The parser checks supported format/version markers and component/container limits. It does not validate every field against the complete upstream SBOM schemas.
 
+Uploads require the asset's upload token or agent key, or an owning admin session. Authentication and quota checks precede body reads. The limit is 60 uploads per asset per hour, within the organisation inventory quota. A quota refusal returns HTTP 429. Invalid uploads also consume quota after authentication.
+
 ## Package URL mapping
 
 | purl type | Advisory ecosystem | Name handling |

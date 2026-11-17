@@ -101,6 +101,8 @@ Request limits are 200 step dictionaries, 500 version entries, 5000 error charac
 
 Verification normally treats accepted findings as unresolved. Missing finding rows count as no remaining open/accepted findings. The helper does not prove inventory freshness itself. Its caller must establish that prerequisite.
 
+Jobs remain `verifying` when the latest report cannot establish coverage for their ecosystem. A failed or partial Windows build, application or Microsoft-products read, or an empty Uninstall list, blocks verification for the ecosystems it feeds. Windows configuration jobs also wait when `facts.config` is not a dictionary. A missing settings read cannot prove repair.
+
 A Windows job can succeed as a step when its alternative build appears in any reported version value. Selected findings can remain open. This is an intermediate success, not proof that the final target was installed or every finding resolved.
 
 ### Timeouts and dispatch
@@ -108,6 +110,8 @@ A Windows job can succeed as a step when its alternative build appears in any re
 Ordinary dispatched jobs time out after two hours since `updated`. Windows waits the current organisation restart deadline plus four hours, with a 24-hour deadline fallback. Timeout handling changes `updated` and commits all pending session changes. It does not stop a host process.
 
 Dispatch first sweeps timeouts. It then checks the effective window, production permission, suggest-mode switch, and broad policy canary state. Outside the window, it returns before those later checks. Approved jobs can therefore remain pending cancellation until an eligible poll.
+
+Dispatch lists non-Windows jobs before Windows update jobs. The agent can finish those jobs before a Windows update requires a restart.
 
 Windows sequencing blocks another Windows dispatch for the same host while one is dispatched or recently timeout-failed. A verifying job on that same host does not independently hold this check. Peer cluster/DC jobs in dispatched or verifying state can block within the restart-deadline horizon. Other managers are not serialized by this Windows check.
 
@@ -137,11 +141,17 @@ No extra keys are accepted. Windows start in local wall time and last elapsed UT
 
 Settings GET/PATCH returns these six policy fields plus `signed_agent_release`, `platform`, and `production_remediation_allowed`. The platform object uses the [update status fields](platform-updates.md#settings-status-fields). PATCH commits before that response's cache/key reads, which can still fail.
 
+### Automatic retry limits
+
+Auto mode checks the newest job for each asset and action. The failure states are `rolled_back`, `rollback_failed`, `failed`, `not_fixed`, and `aborted`. After one of these outcomes, auto mode skips the action if the job covered every currently open, fixable finding. A verification timeout does not block another attempt. New finding IDs can make the action eligible again.
+
+Manual retries use the normal planning and approval operations. See [enable remediation](../how-to/enable-remediation.md) for the procedure.
+
 ### Canary limits
 
-Automatic planning skips manual-only base managers. Broad policy approval requires a same-action succeeded canary on a current ring-0 asset, old enough for the soak. Failure states `rolled_back`, `rollback_failed`, `failed`, and `not_fixed` halt rollout. `aborted` and `cancelled` are not halt states.
+Automatic planning skips manual-only base managers. Broad policy approval requires a same-action succeeded canary on a current ring-0 asset, old enough for the soak. Failure states `rolled_back`, `rollback_failed`, `failed`, and `not_fixed` halt rollout. `aborted` and `cancelled` are not halt states. A failure caused only by the seven-day verification timeout also does not halt rollout.
 
-For KB jobs, a failed earlier target does not necessarily halt a newer release. Canary version reports must show a valid upgrade reaching the requested target. For non-KB jobs, a canary qualifies only when every package version it reported for the job is at or past the highest fixed version among the job's findings (DECISIONS 137). A canary that reported no versions (an agent older than 0.6) still qualifies.
+For KB jobs, a failed stepped update counts against its newest planned target, because the host could have received either build. A failure whose target is below a newer release does not necessarily halt that newer release. Canary version reports must show a valid upgrade reaching the requested target. For non-KB jobs, a canary qualifies only when every package version it reported for the job is at or past the highest fixed version among the job's findings (DECISIONS 137). A canary that reported no versions (an agent older than 0.6) still qualifies.
 
 `pin_to_canary()` selects the newest succeeded same-action canary with nonnull results. It pins only when that canary reached the job's fix, and replaces only non-KB targets with readable reported upgrades. A canary below the fix leaves the targets unpinned, so the agent installs the repository's current fix. Missing or invalid versions leave targets unchanged, potentially unpinned. The helper does not independently repeat soak checks.
 

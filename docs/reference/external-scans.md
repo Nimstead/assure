@@ -20,7 +20,8 @@ Creation trims whitespace, converts the hostname to lowercase, and removes trail
 | `403` | The organisation asset quota refuses creation |
 | `409` | Duplicate target at creation, or failed verification/scope proof |
 | `422` | Invalid hostname or request fields |
-| `429` | Manual scans exceed 10 per organisation per hour |
+| `429` | Manual scans exceed 10, or ownership checks exceed 30, per organisation per hour |
+| `503` | DNS fails during the verification endpoint's ownership check |
 
 Authentication, origin, two-step sign-in, database, and configured key-backend failures also apply. The scan uses the server's network vantage point. It does not use the operator's browser connection.
 
@@ -33,13 +34,15 @@ The asset response includes `txt_name`, `txt_value`, and `proof_path` for extern
 | DNS name | `_nimstead-verify.<hostname>` TXT contains the organisation/hostname-bound `nimstead-verify=…` value |
 | Selected address | `/.well-known/nimstead-verify.txt` returns HTTP `200` with that value within the first 4096 body bytes |
 
-Address proof tries HTTPS on 443, then HTTP on 80. It sends the hostname in Host/SNI and connects to the selected IP. It does not follow redirects or require certificate trust for this proof. Its timeout defaults to five seconds per socket operation, rather than five seconds for the entire proof.
+Address proof tries HTTPS on 443, then HTTP on 80. It sends the hostname in Host/SNI and connects to the selected IP. It does not follow redirects or require certificate trust for this proof. Its five-second timeout applies separately to connection, TLS handshake, send, and the entire response read. Each port therefore takes at most twenty seconds for these operations. A slow response cannot extend the read deadline by sending more bytes.
 
 Every resolved address must pass the public-address guard. The explicit development setting `NIMSTEAD_ALLOW_PRIVATE_TARGETS=1` bypasses the non-public-address refusal. Keep that setting disabled in production.
 
 The first returned address is selected and pinned. A scan does not check every address of a name with multiple addresses. Service checks do not begin until DNS and address proof pass. DNS and HTTP(S) proof requests occur during this gate.
 
 The normal scanner repeats proof before every scan. Missing DNS proof clears verification and records an unverified event. Missing address proof records a refusal but keeps the verification timestamp. Both paths can commit the caller's database session. Refused scans return `409` without service checks.
+
+A DNS timeout or resolver failure does not clear verification. The verification endpoint returns HTTP 503. A manual scan returns HTTP 409 through `ScanRefused`, and a scheduled scan skips that attempt. A confirmed missing TXT record still clears verification during scope checks.
 
 Verified external targets are also scanned during scheduled feed runs. An hourly schedule is configured by the standard deployment. Manual rate limits do not replace that schedule.
 
@@ -75,7 +78,7 @@ TLS checks run only on TCP 443 after a successful connection:
 | `NIM-TLS-UNTRUSTED` | Other certificate trust failure | 5.9 |
 | `NIM-TLS-LEGACY` | A TLS 1.0/1.1 handshake succeeds | 5.3 |
 
-An expired certificate suppresses the separate name/untrusted finding. An untestable legacy protocol adds a `skipped` description when TLS trust facts exist. A failed TLS handshake can produce neither a TLS finding nor a skipped description.
+An expired certificate produces no new name/untrusted verdict. Existing name or untrusted findings remain open with `not-reassessed`, because expiry prevented those checks. An untestable legacy protocol adds a `skipped` description when TLS trust facts exist. A failed TLS handshake can produce neither a TLS finding nor a skipped description.
 
 TLS socket operations default to five-second timeouts. Several connections can each use that limit. The normal scanner has no overall wall-clock deadline.
 

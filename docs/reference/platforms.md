@@ -44,7 +44,7 @@ Driver detection matches the exact reported file hash against verified LOLDriver
 | Vulnerable and reported loaded | 70 | `next` |
 | Vulnerable and other reported state | 45 | `planned` |
 
-Only source text equal to `loaded` selects the loaded state. Other values use the on-disk state. The parser requires at least 1000 unique file hashes. It uses the first entry for duplicate hashes and excludes Authenticode-only samples. See [`windrivers.py`](../../api/src/nimstead/windrivers.py) for parser refusal rules.
+Matching produces one finding per driver name and hash, even when copies occur in different folders. If any copy is reported loaded, that state takes precedence. Only source text equal to `loaded` selects the loaded state. Other values use the on-disk state. The parser requires at least 1000 unique file hashes. It uses the first entry for duplicate hashes and excludes Authenticode-only samples. See [`windrivers.py`](../../api/src/nimstead/windrivers.py) for parser refusal rules.
 
 ## Limits by operation
 

@@ -120,6 +120,10 @@ Ledger entry records contain `seq` (integer), `ts`, `kind`, `subject`, `prev_has
 
 `head_hash` identifies the last entry in the selected period, or 64 zeroes for an empty period. `chain_head` identifies the latest whole-chain `seq` and `hash` at generation, which can be outside the period.
 
+When `ledger.chain_head.seq` is present, the offline verifier rejects a valid signed checkpoint whose sequence exceeds it. This detects removal of newer entries, even when the exported period contains an intact older slice. Checkpoints outside that period can still be valid if they do not exceed the whole-chain head.
+
+S3 checkpoint loading lists every page on each call. Each checkpoint object is fetched once per process and then cached by bucket/key. The full chain check retains entry hashes only at checkpoint positions.
+
 Each checkpoint contains `org_id`, `seq`, `hash`, `ts`, and `sig`. Its base64 signature covers canonical JSON of the first four fields. Checkpoints can cover history outside the pack's selected period. A checkpoint signed before a Vault key rotation verifies under one of `earlier_keys`; the pack's own signature, checked against the pinned fingerprint, vouches for that list.
 
 See [verify an evidence pack](../how-to/verify-evidence.md) for the procedure and [evidence trust](../explanation/evidence-trust.md) for the limits.

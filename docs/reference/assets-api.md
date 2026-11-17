@@ -120,9 +120,11 @@ The response has open and resolved integer counts. open counts currently matched
 
 ## SBOM authentication and effects
 
-The endpoint reads the streamed body before authentication, with a 10 MiB cap. An exact Bearer header takes precedence over a browser session. A wrong key therefore fails even when the request also has a valid session.
+The endpoint authenticates and checks upload quotas before reading the body. It then reads the streamed body with a 10 MiB cap. An exact Bearer header takes precedence over a browser session. A wrong key therefore fails even when the request also has a valid session.
 
-The key must match the selected asset. Without that header, an admin session must own the asset. The parser runs before replacement. A valid empty document clears SBOM rows, while agent-origin rows remain.
+The key must match the selected asset. Application upload tokens and host agent keys both permit uploads for their own asset. Without that header, an admin session must own the asset. The parser runs before replacement. A valid empty document clears SBOM rows, while agent-origin rows remain.
+
+Uploads are limited to 60 per asset per hour and share the organisation inventory quota. Exceeding either checked quota returns HTTP 429 before body parsing. Authenticated attempts count even when parsing later fails.
 
 SBOM upload updates last_seen for any asset kind. It records a raw-byte digest and parser counts in the ledger. It rescans with inventory_received=false. This path does not perform the agent endpoint's job verification and automatic planning sequence.
 

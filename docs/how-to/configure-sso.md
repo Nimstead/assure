@@ -26,4 +26,16 @@ Domain verification uses saved domains. Save a changed domain list before **Veri
 
 If you disable SSO, keep a working password-admin account available. SSO-origin users have no local password sign-in. Recheck the intended sign-in route after the change.
 
+## Manage access after enforcement
+
+Use the identity provider to grant new users access. Required SSO blocks invitations and confirmation of earlier invitation links.
+
+To remove an SSO user permanently:
+
+1. Revoke their application access at the identity provider.
+2. Remove their account from Assure to revoke its sessions and API tokens.
+3. Confirm that the user can no longer sign in through the provider.
+
+If provider access remains, the user can create a new member account through SSO.
+
 For stored domain verification and callback limits, see [SSO API contracts](../reference/authentication.md#sso-configuration-and-browser-flow).

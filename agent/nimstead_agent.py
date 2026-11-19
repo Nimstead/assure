@@ -37,7 +37,7 @@ import urllib.request
 import warnings
 import zipfile
 
-AGENT_VERSION = "0.7.3"  # the server reads this line to flag outdated agents; bump on every agent change
+AGENT_VERSION = "0.8.0"  # the server reads this line to flag outdated agents; bump on every agent change
 # Ed25519 public keys (hex) allowed to sign releases (DECISIONS 31): primary (GitHub Actions) and offline backup.
 # The server only relays signed releases, so it can withhold an update but never forge one. Empty = never self-update.
 RELEASE_KEYS = ["a91fa6539c6c2593009fc71b1c1fba341b5685ba7bc97c127c068b1d732b21d2", "2438f2ccebab5bf26edf9e21a8aa8f09abd1861f52fbe0d6641b28b90f8b0e5a"]  # noqa: E501
@@ -282,6 +282,391 @@ def collect_linux(query=_query, files=OS_RELEASE, apk_db=APK_DB, which=shutil.wh
     return {"os_name": r.get("PRETTY_NAME") or r.get("NAME", ""), "ecosystem": eco, "agent_version": AGENT_VERSION, "facts": facts,
             "collection": {"v": 1, "sources": {"os_release": _source(1 if text else 0, problem), "package_db": db}},
             "packages": [dict(p, ecosystem=eco) for p in pkgs]}
+
+
+# ---- containers (DECISIONS 138) ---------------------------------------------
+# A running container's files are read through /proc/<pid>/root as hostile input: every path is resolved one component at a
+# time inside that root, a link never leaves it, only regular files are opened, and nothing from the container ever runs.
+
+CONTAINER_READ_MAX = 64 * 1024 * 1024  # one file; a package database far larger than any real image's is refused, not truncated
+CONTAINER_LINK_HOPS = 8
+DPKG_INSTALLED = ("installed", "triggers-awaited", "triggers-pending")  # dpkg-query's "i", "W" and "t": every file is on disk
+
+
+class ContainerReadError(Exception):
+    """A path in a container that can't be read safely; the message says why, in the collection document's words."""
+
+
+class ContainerRoot:
+    """A container's filesystem through a descriptor for its root. Opened with O_PATH, so nothing is opened for real until
+    it is known to be a regular file: a device or FIFO planted in an image is never opened, and a file can't be swapped
+    for one between the check and the read (the reopen goes through the descriptor itself, /proc/self/fd)."""
+
+    def __init__(self, fd):
+        self.fd = fd
+
+    @classmethod
+    def of_dir(cls, path):
+        return cls(os.open(path, os.O_PATH | os.O_DIRECTORY | os.O_CLOEXEC))
+
+    @classmethod
+    def of_pid(cls, pid, own_ns=None):
+        """The root of a process in another mount namespace. The namespace is read before and after the root is taken, so a
+        PID that exited and was reused by a host process (whose namespace is ours) is refused, not read as a container."""
+        own = own_ns if own_ns is not None else os.stat("/proc/self/ns/mnt").st_ino
+        before = os.stat(f"/proc/{int(pid)}/ns/mnt").st_ino
+        fd = os.open(f"/proc/{int(pid)}/root", os.O_PATH | os.O_DIRECTORY | os.O_CLOEXEC)
+        try:
+            after = os.stat(f"/proc/{int(pid)}/ns/mnt").st_ino
+        except OSError:
+            after = None
+        if before == own or after != before:
+            os.close(fd)
+            raise ContainerReadError("the process isn't in a container of its own any more")
+        return cls(fd)
+
+    def close(self):
+        os.close(self.fd)
+
+    def _resolve(self, path):
+        """An O_PATH descriptor for `path` inside the root, links followed inside it; the caller closes it.
+
+        O_PATH with O_NOFOLLOW gives a descriptor for a link itself, so each component's type is read from that descriptor:
+        a link is resolved from its directory (an absolute one from the container's root, never the host's), and ".." never
+        climbs above the root. FileNotFoundError when a component isn't there."""
+        parts = collections.deque(p for p in path.split("/") if p)
+        stack = [os.dup(self.fd)]  # descriptors from the root down
+        hops = 0
+        try:
+            while parts:
+                name = parts.popleft()
+                if name == ".":
+                    continue
+                if name == "..":
+                    if len(stack) > 1:
+                        os.close(stack.pop())
+                    continue
+                fd = os.open(name, os.O_PATH | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=stack[-1])
+                mode = os.fstat(fd).st_mode
+                if stat.S_ISLNK(mode):
+                    os.close(fd)
+                    hops += 1
+                    if hops > CONTAINER_LINK_HOPS:
+                        raise ContainerReadError(f"{path}: too many links")
+                    target = os.readlink(name, dir_fd=stack[-1])  # swapped meanwhile? Still resolved inside the root
+                    if target.startswith("/"):
+                        while len(stack) > 1:
+                            os.close(stack.pop())
+                    parts.extendleft(reversed([p for p in target.split("/") if p]))
+                    continue
+                stack.append(fd)
+                if parts and not stat.S_ISDIR(mode):
+                    raise ContainerReadError(f"{path}: not a directory on the way")
+            return os.dup(stack[-1])
+        finally:
+            for d in stack:
+                os.close(d)
+
+    def read(self, path, limit=CONTAINER_READ_MAX):
+        """The bytes of a regular file, or ContainerReadError (FileNotFoundError when it doesn't exist)."""
+        pfd = self._resolve(path)
+        try:
+            st = os.fstat(pfd)
+            if not stat.S_ISREG(st.st_mode):
+                raise ContainerReadError(f"{path}: not a regular file")
+            if st.st_size > limit:
+                raise ContainerReadError(f"{path}: larger than {limit // (1024 * 1024)} MB")
+            fd = os.open(f"/proc/self/fd/{pfd}", os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)  # the same inode, checked above
+        finally:
+            os.close(pfd)
+        try:
+            chunks, size = [], 0
+            while size <= limit:
+                b = os.read(fd, 1 << 20)
+                if not b:
+                    return b"".join(chunks)
+                chunks.append(b)
+                size += len(b)
+            raise ContainerReadError(f"{path}: larger than {limit // (1024 * 1024)} MB")
+        finally:
+            os.close(fd)
+
+    def exists(self, path):
+        try:
+            os.close(self._resolve(path))
+            return True
+        except (OSError, ContainerReadError):
+            return False
+
+    def listdir(self, path):
+        """Names in a directory (entries aren't followed: each is read through read() and resolved again)."""
+        pfd = self._resolve(path)
+        try:
+            if not stat.S_ISDIR(os.fstat(pfd).st_mode):
+                raise ContainerReadError(f"{path}: not a directory")
+            fd = os.open(f"/proc/self/fd/{pfd}", os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+        finally:
+            os.close(pfd)
+        try:
+            with os.scandir(fd) as it:
+                return sorted(e.name for e in it)
+        finally:
+            os.close(fd)
+
+
+def parse_dpkg_status(text, require_status=True):
+    """Return package dictionaries from a dpkg status file (or a distroless status.d entry) in parse_dpkg's form.
+
+    Keep installed stanzas (DPKG_INSTALLED); a distroless entry carries no Status line (require_status False). Source and
+    source_version follow dpkg-query's ${source:Package} and ${source:Version}: the Source field's name and parenthesised
+    version, else the binary's own; source_version only where it differs. Continuation lines are ignored. No I/O."""
+    pkgs = []
+    for block in re.split(r"\n[ \t]*\n", text):
+        f = {}
+        for line in block.splitlines():
+            if line[:1] not in (" ", "\t") and ":" in line:
+                k, _, v = line.partition(":")
+                f.setdefault(k.strip().lower(), v.strip())
+        status = f.get("status", "").split()
+        if (status or require_status) and (len(status) != 3 or status[2] not in DPKG_INSTALLED):
+            continue
+        name, ver = f.get("package"), f.get("version")
+        if not name or not ver:
+            continue
+        m = re.fullmatch(r"(\S+)(?:\s+\((\S+)\))?", f.get("source", ""))
+        source, sv = (m[1], m[2] or "") if m else (name, "")
+        pkgs.append({"name": name, "version": ver, "source": source, **({"source_version": sv} if sv and sv != ver else {})})
+    return pkgs
+
+
+_RPM_TAGS = {1000: "name", 1001: "version", 1002: "release", 1003: "epoch", 1044: "sourcerpm"}
+
+
+def parse_rpm_header(blob):
+    """(name, "E:V-R", SOURCERPM) from one header blob as rpm stores it in its database, or None if it isn't one.
+
+    The blob is the header without its lead: index count and data length (big-endian int32), 16-byte index entries (tag,
+    type, offset, count), then the data. Every offset and length is checked against the blob; nothing is trusted."""
+    if len(blob) < 8:
+        return None
+    il, dl = int.from_bytes(blob[0:4], "big"), int.from_bytes(blob[4:8], "big")
+    if not (0 < il <= 0xFFFF and dl <= 256 * 1024 * 1024 and 8 + 16 * il + dl <= len(blob)):
+        return None
+    data = blob[8 + 16 * il: 8 + 16 * il + dl]
+    got = {}
+    for i in range(il):
+        e = blob[8 + 16 * i: 24 + 16 * i]
+        tag, typ, off, count = (int.from_bytes(e[j:j + 4], "big") for j in (0, 4, 8, 12))
+        key = _RPM_TAGS.get(tag)
+        if key is None or off >= dl:
+            continue
+        if typ == 6 and key != "epoch":  # STRING, NUL-terminated
+            end = data.find(b"\0", off)
+            if end < 0:
+                return None
+            got[key] = data[off:end].decode("utf-8", "replace")
+        elif typ == 4 and key == "epoch" and count >= 1 and off + 4 <= dl:  # INT32
+            got[key] = int.from_bytes(data[off:off + 4], "big")
+    if not all(k in got for k in ("name", "version", "release")):
+        return None
+    return got["name"], f"{got.get('epoch', 0)}:{got['version']}-{got['release']}", got.get("sourcerpm", "")
+
+
+def parse_rpm_sqlite(raw, wal=None):
+    """Package dictionaries in parse_rpm's form from the bytes of rpm's SQLite database (and its -wal file, if any).
+
+    The bytes are written to a private temporary folder and opened there, with SQLite's own defences for untrusted
+    files on; only the Packages table's header blobs are read, each parsed by parse_rpm_header. Raises ContainerReadError
+    when SQLite isn't available or the file isn't an rpm database."""
+    try:
+        import sqlite3
+    except ImportError:
+        raise ContainerReadError("this Python has no sqlite3 module, so rpm's SQLite database can't be read") from None
+    with tempfile.TemporaryDirectory(prefix="nimstead-rpmdb-") as d:
+        path = os.path.join(d, "rpmdb.sqlite")
+        with open(path, "wb") as f:
+            f.write(raw)
+        if wal:
+            with open(path + "-wal", "wb") as f:
+                f.write(wal)
+        con = None
+        try:
+            con = sqlite3.connect(path)
+            if hasattr(con, "setconfig") and hasattr(sqlite3, "SQLITE_DBCONFIG_DEFENSIVE"):  # Python 3.12+
+                con.setconfig(sqlite3.SQLITE_DBCONFIG_DEFENSIVE, True)
+            for pragma in ("trusted_schema = OFF", "cell_size_check = ON", "mmap_size = 0"):
+                con.execute("PRAGMA " + pragma)
+            if con.execute("SELECT type FROM sqlite_master WHERE name = 'Packages'").fetchone() != ("table",):
+                raise ContainerReadError("rpmdb.sqlite has no Packages table")
+            rows = [parse_rpm_header(bytes(b)) for (b,) in con.execute("SELECT blob FROM Packages") if isinstance(b, bytes)]
+        except sqlite3.Error as e:
+            raise ContainerReadError(f"rpmdb.sqlite: {e}") from None
+        finally:
+            if con is not None:
+                con.close()
+    return parse_rpm("".join(f"{n}\t{v}\t{s}\n" for n, v, s in (r for r in rows if r)))
+
+
+CONTAINER_OS_RELEASE = ("/etc/os-release", "/usr/lib/os-release")
+DPKG_STATUS, DPKG_STATUS_D = "/var/lib/dpkg/status", "/var/lib/dpkg/status.d"
+RPM_SQLITE = ("/var/lib/rpm/rpmdb.sqlite", "/usr/lib/sysimage/rpm/rpmdb.sqlite")
+RPM_UNREAD = {"/var/lib/rpm/Packages": "rpm's Berkeley DB format", "/usr/lib/sysimage/rpm/Packages.db": "rpm's ndb format",
+              "/var/lib/rpm/Packages.db": "rpm's ndb format"}
+
+
+def container_package_db(root):
+    """(packages, collection-source line) from the package database inside a container root, as package_db does on a host.
+
+    Same order: the apk database, then dpkg (its status file, or distroless's status.d entries), then rpm's SQLite database.
+    A database in a format this agent doesn't read, or none at all, is a failed line saying so, never an empty success."""
+    def line(pkgs, bad=0):
+        return _source(len(pkgs), f"{bad} entries couldn't be read" if bad else None)
+    try:
+        if root.exists(APK_DB):
+            text = root.read(APK_DB).decode("utf-8", "replace")
+            pkgs = parse_apk(text)
+            return pkgs, line(pkgs, sum(1 for b in text.split("\n\n") if b.strip() and not ("\nP:" in "\n" + b and "\nV:" in "\n" + b)))
+        if root.exists(DPKG_STATUS):
+            return (pkgs := parse_dpkg_status(root.read(DPKG_STATUS).decode("utf-8", "replace"))), line(pkgs)
+        if root.exists(DPKG_STATUS_D):
+            pkgs = []
+            for name in root.listdir(DPKG_STATUS_D):
+                if not name.endswith(".md5sums"):
+                    pkgs += parse_dpkg_status(root.read(f"{DPKG_STATUS_D}/{name}").decode("utf-8", "replace"), require_status=False)
+            return pkgs, line(pkgs)
+        for path in RPM_SQLITE:
+            if root.exists(path):
+                wal = root.read(path + "-wal") if root.exists(path + "-wal") else None
+                return (pkgs := parse_rpm_sqlite(root.read(path), wal)), line(pkgs)
+        unread = next((what for path, what in RPM_UNREAD.items() if root.exists(path)), None)
+        return [], _source(0, f"{unread} isn't read yet" if unread else "no package database found (apk, dpkg or rpm SQLite)")
+    except (OSError, ContainerReadError, UnicodeError) as e:
+        return [], _source(0, str(e) if isinstance(e, ContainerReadError) else f"{e.strerror or e}")
+
+
+def read_container(root):
+    """What a host inventory says of itself, for a container root: os_name, ecosystem, facts, collection and packages.
+
+    The os-release file is the first of CONTAINER_OS_RELEASE that exists (a link to the other resolves inside the root).
+    No kernel or restart facts: a container has neither of its own. Never raises for anything inside the container."""
+    text, problem = "", "no os-release file"
+    for path in CONTAINER_OS_RELEASE:
+        if root.exists(path):
+            try:
+                text, problem = root.read(path, 1 << 16).decode("utf-8", "replace"), None
+            except (OSError, ContainerReadError) as e:
+                problem = str(e) if isinstance(e, ContainerReadError) else f"{path}: {e.strerror or e}"
+            break
+    r = parse_os_release(text)
+    eco = ecosystem_from_os_release(text)
+    pkgs, db = container_package_db(root)
+    facts = {"os_id": r.get("ID", "")[:100], "os_version_id": r.get("VERSION_ID", "")[:100]}
+    if not eco:
+        facts["os_unmatched"] = f"no advisory feed maps this platform: ID={r.get('ID', '?')} VERSION_ID={r.get('VERSION_ID', '?')}"[:300]
+    return {"os_name": (r.get("PRETTY_NAME") or r.get("NAME", ""))[:255], "ecosystem": eco, "facts": facts,
+            "collection": {"v": 1, "sources": {"os_release": _source(1 if text else 0, problem), "package_db": db}},
+            "packages": pkgs}
+
+
+CONTAINER_RUNTIMES = ("docker", "podman")  # each asked through its own CLI, read-only: ps and inspect (DECISIONS 138)
+CONTAINER_MAX = 128         # containers read per report; the rest wait for the next one
+CONTAINER_SECONDS = 120     # the whole pass
+CONTAINER_BODY_MAX = 8 * 1024 * 1024  # under the server's 10 MB request cap, with room for the JSON around it
+_CONTAINER_ID = re.compile(r"^[0-9a-f]{64}\Z")
+_IMAGE_ID = re.compile(r"^(?:sha256:)?([0-9a-f]{64})\Z")  # Docker says "sha256:<id>", Podman the bare id: the same digest
+
+
+def _last_line(err):
+    return (err.strip().splitlines() or [""])[-1][:200]
+
+
+def list_containers(runtime, query=_query):
+    """(running containers, problem or None) from one runtime's CLI: id, name, PID, image id and reference of each.
+
+    `ps -q --no-trunc` names them and one `inspect --type container` describes them. A container that stopped in between
+    is left out (it isn't running); anything else unexpected (the CLI failing, unreadable output, an entry without a PID
+    or image id) is a problem, so the list can't be taken as complete."""
+    rc, out, err = query([runtime, "ps", "-q", "--no-trunc"], timeout=60)
+    if rc != 0:
+        return [], f"{runtime} ps " + ("couldn't run" if rc is None else f"exited {rc}") + (f": {_last_line(err)}" if err.strip() else "")
+    listed = [x.strip() for x in out.splitlines() if x.strip()]
+    ids = [x for x in listed if _CONTAINER_ID.match(x)]
+    problems = [f"{len(listed) - len(ids)} unreadable container ids"] if len(ids) != len(listed) else []
+    if not ids:
+        return [], "; ".join(problems) or None
+    rc, out, err = query([runtime, "inspect", "--type", "container", *ids], timeout=60)
+    try:
+        items = json.loads(out) if out.strip() else []
+    except ValueError:
+        return [], f"{runtime} inspect: unreadable output"
+    found = []
+    for it in items if isinstance(items, list) else []:
+        state = it.get("State") if isinstance(it, dict) and isinstance(it.get("State"), dict) else {}
+        if state.get("Running") is not True:  # stopped since ps: not running, so not a problem
+            continue
+        cid, pid = it.get("Id"), state.get("Pid")
+        m = _IMAGE_ID.match(str(it.get("Image") or ""))
+        ref = (it.get("Config") or {}).get("Image") if isinstance(it.get("Config"), dict) else None
+        if not (isinstance(cid, str) and _CONTAINER_ID.match(cid) and type(pid) is int and pid > 0 and m):
+            problems.append(f"{runtime} described a container without its id, PID or image")
+            continue
+        found.append({"id": cid, "name": str(it.get("Name") or "").lstrip("/")[:255], "runtime": runtime, "pid": pid,
+                      "image_id": "sha256:" + m[1], "ref": str(ref or it.get("ImageName") or "")[:255]})
+    if rc != 0 and not found and ids:  # one that vanished makes inspect exit non-zero; one that answered nothing at all is a failure
+        problems.append(f"{runtime} inspect " + ("couldn't run" if rc is None else f"exited {rc}") + (f": {_last_line(err)}" if err.strip() else ""))
+    return found, "; ".join(problems)[:300] or None
+
+
+def containers(query=_query, which=shutil.which, root_of=ContainerRoot.of_pid, read=read_container, clock=time.monotonic, euid=None):
+    """The body for POST /api/agent/containers: each running container's image and what is installed in it.
+
+    Containers of one image with the same contents are read and sent once, listed together. `complete` is True only when
+    every runtime listed its containers without a problem and every one was read: only then may the server take a
+    container missing from the list as stopped (DECISIONS 140). Budgets (CONTAINER_MAX, CONTAINER_SECONDS,
+    CONTAINER_BODY_MAX) end the pass early, never silently. `line` is the host inventory's collection line for it."""
+    start = clock()
+    if (os.geteuid() if euid is None else euid) != 0:
+        why = "the agent isn't running as root, so it can't read containers"
+        return {"v": 1, "complete": False, "runtimes": {}, "images": [], "error": why, "line": _source(0, why, failed=True)}
+    runtimes, listed, problems = {}, {}, []
+    for rt in CONTAINER_RUNTIMES:
+        if which(rt):
+            found, problem = list_containers(rt, query)
+            runtimes[rt] = _source(len(found), problem, failed=bool(problem and not found))
+            for c in found:
+                listed.setdefault(c["id"], c)  # podman-docker answers as docker too: one container, once
+    if which("crictl"):
+        runtimes["crictl"] = {"state": "off", "count": 0, "error": "Kubernetes (CRI) containers aren't read yet"}
+    complete = all(r["state"] == "ok" for name, r in runtimes.items() if name != "crictl")
+    images, size, own = {}, 0, os.stat("/proc/self/ns/mnt").st_ino if listed else None
+    todo = sorted(listed.values(), key=lambda c: (c["image_id"], c["id"]))
+    if len(todo) > CONTAINER_MAX:
+        problems.append(f"{len(todo) - CONTAINER_MAX} more containers than one report reads ({CONTAINER_MAX})")
+        todo = todo[:CONTAINER_MAX]
+    for i, c in enumerate(todo):
+        if clock() - start > CONTAINER_SECONDS or size > CONTAINER_BODY_MAX:
+            problems.append(f"{len(todo) - i} containers not read: the pass reached its {'time' if size <= CONTAINER_BODY_MAX else 'size'} budget")
+            break
+        try:
+            root = root_of(c["pid"], own)
+        except (OSError, ContainerReadError):
+            problems.append(f"container {c['name'] or c['id'][:12]} stopped before it was read")
+            continue
+        try:
+            got = read(root)
+        finally:
+            root.close()
+        key = hashlib.sha256(json.dumps([c["image_id"], got["ecosystem"], got["packages"]], sort_keys=True).encode()).hexdigest()
+        img = images.get(key)
+        if img is None:
+            img = images[key] = {"image_id": c["image_id"], "ref": c["ref"], **got, "containers": []}
+            size += len(json.dumps(img))
+        img["containers"].append({"id": c["id"], "name": c["name"], "runtime": c["runtime"]})
+    complete = complete and not problems
+    said = [f"{name}: {r['error']}" for name, r in runtimes.items() if r.get("error")] + problems  # crictl too: coverage, not completeness
+    n = sum(len(img["containers"]) for img in images.values())
+    return {"v": 1, "complete": complete, "runtimes": runtimes, "images": list(images.values()), "error": "; ".join(said)[:300] or None,
+            "line": _source(n, "; ".join(said) or None)}
 
 
 # MSRC names Windows Server by build; client names come from the feature-update version.
@@ -4972,6 +5357,9 @@ def _main(argv):
                     help="Windows, domain member: also report the domain's enabled computers, to list those with no agent")
     en.add_argument("--scan-jars", action="store_true",
                     help="also look for Java libraries (jar/war/ear) on local disks at each report, with a 5-minute soft budget")
+    en.add_argument("--no-containers", action="store_true",
+                    help="Linux: don't read the packages inside this host's running Docker and Podman containers "
+                         "(default: read them at each report; local choice, the server cannot turn it back on)")
     app_flags(en)
     en.add_argument("--no-auto-update", action="store_true",
                     help="never replace this agent with newer signed releases (default: update automatically)")
@@ -5010,7 +5398,7 @@ def _main(argv):
             log_event(f"run start: {a.cmd}, agent {AGENT_VERSION}")
         if a.cmd == "collect":
             print(json.dumps({**with_apps(collect(), {"scan_jars": a.scan_jars, "scan_apps": a.scan_apps, "app_roots": app_roots(a)}),
-                              "neighbours": network_view()}, indent=2))
+                              "neighbours": network_view(), **({"containers": containers()} if os.name != "nt" else {})}, indent=2))
         elif a.cmd == "doctor":
             return doctor(a.insecure_http)
         elif a.cmd == "scan-remote":
@@ -5033,7 +5421,7 @@ def _main(argv):
             # only the fields we expect from the server, and local choices last: the server can't opt a host in
             cfg = {"asset_id": res.get("asset_id"), "agent_key": res["agent_key"], "server": a.server,
                    "allow_remediation": a.allow_remediation, "network_checks": a.allow_network_checks,
-                   "auto_update": not a.no_auto_update, "channel": a.channel,
+                   "auto_update": not a.no_auto_update, "channel": a.channel, "containers": not a.no_containers,
                    "scan_jars": a.scan_jars, "scan_apps": a.scan_apps, "app_roots": app_roots(a), "ad_discovery": a.ad_discovery,
                    **({"windows_update_source": "microsoft"} if a.windows_update_source == "microsoft" else {}),
                    **({"proxy": a.proxy} if a.proxy else {})}
@@ -5092,9 +5480,26 @@ def _main(argv):
         else:
             cfg = load_config()
             inv = inventory(cfg)
+            ctr = None
+            if os.name != "nt":  # read before the inventory goes, so its collection document can say how far the read got
+                ctr = containers() if cfg.get("containers", True) else None
+                if isinstance((inv.get("collection") or {}).get("sources"), dict):
+                    inv["collection"]["sources"]["containers"] = ctr.pop("line") if ctr else {"state": "off", "count": 0}
             post(cfg["server"], "/api/agent/inventory", inv, a.insecure_http, cfg["agent_key"])
             print(f"reported {len(inv['packages'])} packages")
             log_event(f"reported {len(inv['packages'])} packages")
+            # after the inventory: a refusal here never costs the host's own report. Nothing read and nothing complete (not root,
+            # every runtime failing) would change nothing on the server; the inventory's collection line already says why
+            if ctr is not None and (ctr["images"] or ctr["complete"]):
+                n = sum(len(i["containers"]) for i in ctr["images"])
+                try:
+                    post(cfg["server"], "/api/agent/containers", ctr, a.insecure_http, cfg["agent_key"])
+                    print(f"reported {n} containers in {len(ctr['images'])} images")
+                    log_event(f"reported {n} containers in {len(ctr['images'])} images" + (f" ({ctr['error']})" if ctr["error"] else ""))
+                except AgentError as e:
+                    if not str(e).startswith("server returned 404"):  # a server older than 0.10.0 doesn't take them: nothing to say
+                        print(f"nimstead-agent: containers not sent: {e}", file=sys.stderr)
+                        log_event(f"containers not sent: {e}")
             if cfg.get("network_checks") and inv.get("neighbours"):  # local opt-in only (DECISIONS 129): the agent picks every target
                 checked = network_checks(inv["neighbours"]["seen"])
                 try:

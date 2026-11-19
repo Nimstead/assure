@@ -1,0 +1,6 @@
+bash	0:5.1.8-9.el9	bash-5.1.8-9.el9.src.rpm
+glibc-common	0:2.34-290.el9_9	glibc-2.34-290.el9_9.src.rpm
+glibc	0:2.34-290.el9_9	glibc-2.34-290.el9_9.src.rpm
+openssl-libs	1:3.5.9-1.el9_9	openssl-3.5.9-1.el9_9.src.rpm
+libcurl-minimal	0:7.76.1-43.el9	curl-7.76.1-43.el9.src.rpm
+curl-minimal	0:7.76.1-43.el9	curl-7.76.1-43.el9.src.rpm

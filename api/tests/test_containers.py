@@ -274,3 +274,26 @@ def test_assets_say_where_each_image_runs_and_what_each_host_runs(env):
     assert r.status_code == 409 and "follow the hosts" in r.json()["detail"]
     c.patch(f"/api/assets/{a_id}", json={"criticality": "critical"})  # changed on the host: its images follow
     assert {x["hostname"]: x for x in c.get("/api/assets").json()}["nginx:1.25"]["criticality"] == "critical"
+
+
+@pytest.mark.skipif(not __import__("conftest").PG, reason="SQLite serialises writers; the race is Postgres-only")
+def test_two_hosts_reporting_one_new_image_at_once_make_one_asset(env, monkeypatch):
+    import threading
+    import time
+    c = user(env)
+    hosts = [host(c, f"web-{n}") for n in (1, 2)]
+    create = containers._create
+    monkeypatch.setattr(containers, "_create", lambda *a: (time.sleep(0.5), create(*a))[1])  # both past the lookup before either inserts
+    gate, codes = threading.Barrier(2), []
+
+    def post(h, n):
+        gate.wait()
+        codes.append(c.post("/api/agent/containers", headers=h, json={"v": 1, "complete": True, "images": [entry(ctrs=((n, f"web{n}"),))]}).status_code)
+    threads = [threading.Thread(target=post, args=(h, n)) for n, (_, h) in enumerate(hosts, 1)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(30)
+    s, imgs = images(env)
+    assert codes == [200, 200] and len(imgs) == 1
+    assert sorted(s.scalars(select(Container.asset_id).where(Container.image_asset_id == imgs[0].id))) == sorted(h_id for h_id, _ in hosts)

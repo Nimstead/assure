@@ -48,6 +48,25 @@ From agent 0.7.0, `inventory(cfg)` also adds `neighbours`: `{"seen": [...], "own
 
 With the local `--allow-network-checks` opt-in, `report` then runs `network_checks` (DECISIONS 129). The agent picks every target itself: at most 32 rows of its own neighbour table whose address is inside an RFC 1918 IPv4 subnet it is directly attached to (/16 to /30) and isn't its own, starting each run at a random point in a larger table so every device is reached over a few runs. For each it records each fixed port's state (open, closed or filtered, 3-second connects), the greeting on banner ports and whether a nonce sent there comes back, the certificate on 443 and whether TLS 1.0/1.1 completes, and on 80 a request for a path that can't exist plus `/.git/config` and `/.env`. The agent judges each web body itself (the same markers as the server's engine) and sends only the status, whether the marker matched, the body's SHA-256 and whether it had content: a file's contents never leave the network it's on. Each read has a total deadline (9 seconds), so a reply dripped a byte at a time can't hold it, and a web reply cut off by it counts as no response. One device's ports get 60 seconds (a port not done reads as no answer), and the run 5 minutes; checks run on daemon threads the agent stops waiting for, so a device that never lets go can't stall the report or the ones after it. It posts the observations to `/api/agent/network-checks`; the server judges them. The server can't set the opt-in, name a target, or make the agent run outside its own report schedule.
 
+## Containers
+
+From agent 0.8.0, `report` on Linux reads the host's running containers before sending its inventory, unless the configuration says `"containers": false` (`enroll --no-containers`), and sends them to `/api/agent/containers` after it (DECISIONS 138). The inventory's collection document gains a `containers` line saying how far the read got; a body that read nothing and isn't complete (not root, every runtime failing) isn't sent, since it would change nothing.
+
+| Interface | Contract |
+| --- | --- |
+| `list_containers(runtime, query)` | `(containers, problem)` from one runtime's CLI: `ps -q --no-trunc`, then one `inspect --type container`. Each container's id, name, PID, image id (`sha256:` and 64 hex, Docker's and Podman's alike) and reference. One that stopped in between is left out; anything else unexpected is a problem |
+| `containers(...)` | The report body: `v`, `complete`, `runtimes` (a collection line each), `images`, `error`, and `line` for the inventory's document. Runtimes `docker` and `podman`; `crictl` alone is reported as not read. Replicas of one image with the same contents are read and sent once, listed together |
+| `ContainerRoot.of_pid(pid)` | A descriptor for a process's root. The PID's mount namespace is read before and after: it must differ from the agent's own and not change, or the PID was reused and is refused |
+| `ContainerRoot.read(path, limit)` | A regular file's bytes, resolved one component at a time with `O_PATH` and `O_NOFOLLOW`: links followed inside the root only (absolute ones from its top, `..` never above it, 8 hops), only a regular file opened, through `/proc/self/fd` of the checked descriptor, at most 64 MB |
+| `read_container(root)` | `os_name`, `ecosystem`, `facts`, `collection` and `packages` for a container root, as a host inventory has them: no kernel or restart facts |
+| `container_package_db(root)` | The apk database, then dpkg's status file or distroless's `status.d`, then rpm's SQLite database (`/var/lib/rpm/rpmdb.sqlite` or `/usr/lib/sysimage/rpm/rpmdb.sqlite`). Berkeley DB and ndb are reported as not read; no database is a failed line |
+| `parse_dpkg_status(text, require_status)` | A dpkg status file in `parse_dpkg`'s form: installed stanzas only, source and source version as `dpkg-query` gives them |
+| `parse_rpm_sqlite(raw, wal)` | rpm's SQLite database from a private copy, SQLite's defences for untrusted files on, header blobs parsed by `parse_rpm_header` with every offset checked |
+
+Budgets end a pass early as partial, never silently: 128 containers, 120 seconds and 8 MB a report. Nothing from a container runs, and the host's `rpm` is never pointed at a container's database. Requires root; Linux only.
+
+## Collection helpers
+
 `with_apps(inv,cfg)` returns the same inventory object. It replaces the package list, can replace facts, and updates an existing collection-source mapping in place. It does not create that mapping when absent. Local scan_jars/scan_apps flags enable metadata scans. Disabled sources receive off/count-zero entries. No package code is intentionally executed by these metadata collectors.
 
 ## Configuration and state

@@ -222,6 +222,7 @@ def resolve_not_running(s: Session, image: Asset) -> int:
 
 
 def is_running(s: Session, image: Asset) -> bool:
+    """Whether any host's container rows point at this image."""
     return s.scalar(select(Container.container_id).where(Container.image_asset_id == image.id).limit(1)) is not None
 
 

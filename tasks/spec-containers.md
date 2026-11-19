@@ -130,8 +130,10 @@ Agent code uses only the standard library and keeps every reader injectable for 
 6. **Hostile containers can't steer the reader:** a container whose `/var/lib/dpkg/status` is an absolute symlink to a
    host-only path, one where it is a FIFO, and one with a 200 MB file there: the agent reads nothing outside the
    container, never hangs, stays within its time and memory budget, and reports each as not assessed.
-7. **Image SBOMs:** real Syft and Trivy CycloneDX output for `debian:11` and `alpine:3.18` matches the agent's findings
-   for the same image (OS packages), graded unverified.
+7. **Image SBOMs:** real Syft and Trivy CycloneDX output for `debian:11`, `alpine:3.18`, `ubuntu:24.04` and distroless
+   Debian 12 matches the agent's findings for the same image (end of support and CVEs alike), graded unverified. (Debian 11
+   and Alpine 3.18 are past their end of support, so their distributions publish no more advisories: the CVEs are in the
+   other two.)
 8. Remediation on an image is refused by the API and never offered by the UI.
 9. **Performance:** 1,000 hosts with 10 containers each over 50 images: the containers report's median under 1 s, and
    the hourly re-match grows by about what 50 more hosts cost.

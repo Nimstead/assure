@@ -30,6 +30,12 @@ The device list comes from your machines' own neighbour tables, so it shows only
 
 A compromised enrolled machine can report false results about the devices it checks; these change only its own view of each device. It can also take up to 64 devices off the list by claiming their addresses. DECISIONS 130–132 record these limits.
 
+## Containers
+
+The agent reads the distribution packages inside running Docker and Podman containers. "Nothing found" in an image means nothing was found in its package database, not that the image is safe. Not read yet: Python, npm and Java packages inside containers (upload the image's SBOM from CI for those), software copied into an image outside its package manager, containers run by Kubernetes through containerd or CRI-O, rootless containers, stopped containers and images at rest, and rpm's Berkeley DB and ndb databases (RHEL 8 family, UBI 8 and openSUSE images). Each image that couldn't be read says so and why; none is shown as clean.
+
+A container is seen only while it runs at report time, so a short-lived job container's findings can open and close between reports. An image's findings close when every machine that ran it reports its containers without it; a machine that stops reporting keeps its images open. A compromised enrolled machine can add images of its own invention, or stop listing an image only it runs, but it can't change or close an image another machine reported (DECISIONS 139, 140).
+
 ## Agentless Windows
 
 Agentless Windows scans depend on PowerShell remoting and the caller's permissions. They provide findings, but fixes need an installed agent.

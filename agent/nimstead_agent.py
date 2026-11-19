@@ -307,6 +307,7 @@ class ContainerRoot:
 
     @classmethod
     def of_dir(cls, path):
+        """A directory taken as a container's root (tests, and any root that isn't a process's)."""
         return cls(os.open(path, os.O_PATH | os.O_DIRECTORY | os.O_CLOEXEC))
 
     @classmethod
@@ -326,6 +327,7 @@ class ContainerRoot:
         return cls(fd)
 
     def close(self):
+        """Release the root's descriptor."""
         os.close(self.fd)
 
     def _resolve(self, path):
@@ -392,6 +394,7 @@ class ContainerRoot:
             os.close(fd)
 
     def exists(self, path):
+        """Whether path resolves to anything inside the root (a link leading nowhere inside it doesn't)."""
         try:
             os.close(self._resolve(path))
             return True

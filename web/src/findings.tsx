@@ -500,6 +500,7 @@ function RebuildImage({ f }: { f: Finding }) {
   );
 }
 
+/** One finding in the drawer: what to do first (plan, rebuild or accept), then why it matched and why it ranks there. */
 export function FindingDetail({ f }: { f: Finding }) {
   const ai = useQuery(aiStatusQ).data?.enabled === true;
   const prodOk = useQuery(settingsQ).data?.production_remediation_allowed ?? true;

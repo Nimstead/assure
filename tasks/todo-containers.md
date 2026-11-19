@@ -17,9 +17,9 @@ input"); `parse_dpkg_status` reads `/var/lib/dpkg/status` and distroless `status
 `rpmdb.sqlite` header blobs; `parse_apk` is reused. `read_container(root)` returns the os-release fields, ecosystem,
 packages and a collection document like `collect_linux`'s.
 **Acceptance criteria:**
-- [ ] An absolute symlink, a relative one climbing past the top with `..`, and a symlink loop all resolve inside the root or fail; nothing outside is opened (test builds a fake root and a "host" file next to it)
-- [ ] A FIFO, a device and a 200 MB file at the package database's path: refused or capped without blocking; the source says why
-- [ ] Rows equal `parse_dpkg`/`parse_rpm`'s for the same packages (source, source_version, epoch kept), from real files
+- [x] An absolute symlink, a relative one climbing past the top with `..`, and a symlink loop all resolve inside the root or fail; nothing outside is opened (test builds a fake root and a "host" file next to it)
+- [x] A FIFO, a device and a 200 MB file at the package database's path: refused or capped without blocking; the source says why
+- [x] Rows equal `parse_dpkg`/`parse_rpm`'s for the same packages (source, source_version, epoch kept), from real files
 **Verification:** `uv run pytest -q tests/test_agent_containers.py` (POSIX parts in WSL too); standard checks
 **Dependencies:** None · **Files:** `agent/nimstead_agent.py`, `api/tests/test_agent_containers.py`, `api/tests/fixtures/containers/*` · **Scope:** M
 
@@ -29,9 +29,9 @@ each PID's mount namespace, reads each root once per (image id, content), and bu
 /api/agent/containers`, sent after the inventory by `report`. `enroll --no-containers` turns it off locally; `collect`
 prints it; `crictl` alone is reported as not read. Agent 0.8.0.
 **Acceptance criteria:**
-- [ ] Captured real `inspect` output → the right id, name, PID, image id and reference for both runtimes; a runtime that fails makes the report partial (never complete)
-- [ ] Replicas of one image are read once and listed together; budgets (128 containers, 120 s, 8 MB) end the pass as partial
-- [ ] Not root, no runtime, opted out: the body says so; a 404 from an older server doesn't fail the run
+- [x] Captured real `inspect` output → the right id, name, PID, image id and reference for both runtimes; a runtime that fails makes the report partial (never complete)
+- [x] Replicas of one image are read once and listed together; budgets (128 containers, 120 s, 8 MB) end the pass as partial
+- [x] Not root, no runtime, opted out: the body says so; a 404 from an older server doesn't fail the run
 **Verification:** tests as C1; `collect` in the disposable distro against real Docker containers
 **Dependencies:** C1 · **Files:** `agent/nimstead_agent.py`, `api/tests/test_agent_containers.py` · **Scope:** M
 
@@ -43,8 +43,8 @@ prints it; `crictl` alone is reported as not read. Agent 0.8.0.
 **Description:** Model + Alembic migration: (asset_id, container_id) primary key, image_asset_id, org_id, name, runtime,
 first_seen, last_seen; both foreign keys cascade; index on image_asset_id. `Asset.kind` comment gains `image`.
 **Acceptance criteria:**
-- [ ] Upgrade and downgrade on SQLite and PostgreSQL; `test_migrations` passes (single head)
-- [ ] Deleting a host or an image deletes its rows
+- [x] Upgrade and downgrade on SQLite and PostgreSQL; `test_migrations` passes (single head)
+- [x] Deleting a host or an image deletes its rows
 **Verification:** `uv run pytest -q tests/test_migrations.py`; `sandbox/pg.py`
 **Dependencies:** None · **Files:** `api/src/nimstead/db.py`, `api/migrations/versions/<new>.py`, `api/tests/test_migrations.py` · **Scope:** S
 
@@ -54,9 +54,9 @@ inventory). Validates every field, computes each image's key, creates or finds t
 stores its packages and document once, replaces or refreshes the host's container rows, sets each image's risk context
 from its hosts, rescans new images, writes one `containers_reported` ledger entry. DECISIONS 138, 139.
 **Acceptance criteria:**
-- [ ] Two hosts with the same image content → one asset listing both; the same image id with different packages → two
-- [ ] A forged or oversized report changes nothing another host's report made; caps refuse and count, never crash
-- [ ] A new image's findings open through the engine (same verdicts as a host with those packages)
+- [x] Two hosts with the same image content → one asset listing both; the same image id with different packages → two
+- [x] A forged or oversized report changes nothing another host's report made; caps refuse and count, never crash
+- [x] A new image's findings open through the engine (same verdicts as a host with those packages)
 **Verification:** `uv run pytest -q tests/test_containers.py`; standard checks
 **Dependencies:** C3 · **Files:** `api/src/nimstead/containers.py`, `api/src/nimstead/app.py`, `api/tests/test_containers.py` · **Scope:** M
 
@@ -65,9 +65,9 @@ from its hosts, rescans new images, writes one `containers_reported` ledger entr
 hourly loop re-matches running images; host deletion removes the images only it ran; images not running for 30 days are
 deleted in the clean-up. DECISIONS 140.
 **Acceptance criteria:**
-- [ ] Complete list without the image → resolved with the reason and a ledger entry; partial list or a silent host → open
-- [ ] Running again → reopened (a regression in the ledger), on the same asset
-- [ ] Host deleted → its only images gone; an image another host still runs stays
+- [x] Complete list without the image → resolved with the reason and a ledger entry; partial list or a silent host → open
+- [x] Running again → reopened (a regression in the ledger), on the same asset
+- [x] Host deleted → its only images gone; an image another host still runs stays
 **Verification:** `uv run pytest -q tests/test_containers.py tests/test_engine_*.py`; standard checks
 **Dependencies:** C4 · **Files:** `api/src/nimstead/scan.py`, `api/src/nimstead/containers.py`, `api/src/nimstead/feeds.py`, `api/src/nimstead/app.py`, tests · **Scope:** M
 
@@ -76,9 +76,9 @@ deleted in the clean-up. DECISIONS 140.
 `images_to_rebuild` lists images; `GET /api/assets` and `/api/assets/{id}` carry an image's references, base OS and where
 it runs, and a host's running containers. DECISIONS 141.
 **Acceptance criteria:**
-- [ ] Single, batch and auto plan on an image → refused with "rebuild" wording, no job row
-- [ ] An image's openssl finding never joins a host's openssl action; it appears in `images_to_rebuild` with its fix
-- [ ] Asset JSON: image `running_on` (hosts, containers), host `containers`; another org's image → 404
+- [x] Single, batch and auto plan on an image → refused with "rebuild" wording, no job row
+- [x] An image's openssl finding never joins a host's openssl action; it appears in `images_to_rebuild` with its fix
+- [x] Asset JSON: image `running_on` (hosts, containers), host `containers`; another org's image → 404
 **Verification:** `uv run pytest -q tests/test_containers.py tests/test_api.py`; standard checks; `sandbox/pg.py`
 **Dependencies:** C5 · **Files:** `api/src/nimstead/remediate.py`, `api/src/nimstead/app.py`, tests · **Scope:** M
 
@@ -91,8 +91,8 @@ it runs, and a host's running containers. DECISIONS 141.
 image's reference, base OS, hosts it runs on, open findings by priority; its drawer lists containers by host, the scan
 report, and links to its findings. A machine's drawer lists the containers running on it.
 **Acceptance criteria:**
-- [ ] Images sorted by most urgent finding; an unread image says "Not assessed" and why
-- [ ] Drawer and links keyboard reachable; axe clean at 1440 and 375, light and dark
+- [x] Images sorted by most urgent finding; an unread image says "Not assessed" and why
+- [x] Drawer and links keyboard reachable; axe clean at 1440 and 375, light and dark
 **Verification:** `npm test`, `npm run e2e`
 **Dependencies:** C6 · **Files:** `web/src/assets.tsx`, `web/src/lib.ts`, `web/src/ux.test.tsx`, `web/e2e/*` · **Scope:** M
 
@@ -100,8 +100,8 @@ report, and links to its findings. A machine's drawer lists the containers runni
 **Description:** Findings name the image and where it runs; the drawer says to rebuild with the fixed packages and
 redeploy, and offers no plan; bulk plan skips images; Home shows "Images to rebuild" apart from fixes it can plan.
 **Acceptance criteria:**
-- [ ] No plan action anywhere for an image finding; the rebuild text names package → fixed version and the base OS
-- [ ] Home's rebuild group lists images by urgency and links to each image
+- [x] No plan action anywhere for an image finding; the rebuild text names package → fixed version and the base OS
+- [x] Home's rebuild group lists images by urgency and links to each image
 **Verification:** `npm test`, `npm run e2e`
 **Dependencies:** C6 · **Files:** `web/src/findings.tsx`, `web/src/home.tsx`, `web/src/planfix.tsx`, tests · **Scope:** M
 
@@ -114,8 +114,8 @@ redeploy, and offers no plan; bulk plan skips images; Home shows "Images to rebu
 package (Syft `upstream`, Trivy `SrcName`/`SrcVersion`/`SrcEpoch`), keeps one distro per SBOM, and the upload stores
 source rows and the application's ecosystem. DECISIONS 142.
 **Acceptance criteria:**
-- [ ] Real Syft and Trivy CycloneDX + Syft SPDX for debian:11 and alpine:3.18 → rows with the right ecosystem, source and source version
-- [ ] No distro qualifier, an unmapped distro, a second distro: counted as skipped with a reason; on a host asset, OS purls skipped
+- [x] Real Syft and Trivy CycloneDX + Syft SPDX for debian:11 and alpine:3.18 → rows with the right ecosystem, source and source version
+- [x] No distro qualifier, an unmapped distro, a second distro: counted as skipped with a reason; on a host asset, OS purls skipped
 **Verification:** `uv run pytest -q tests/test_sbom.py`; standard checks
 **Dependencies:** None · **Files:** `api/src/nimstead/sbom.py`, `api/src/nimstead/app.py`, `api/tests/test_sbom.py`, fixtures · **Scope:** M
 
@@ -123,8 +123,8 @@ source rows and the application's ecosystem. DECISIONS 142.
 **Description:** An application inventory whose ecosystem is a distro goes through the Linux path with the SBOM as its
 package list (grade unverified), with end of support; its report shows both families.
 **Acceptance criteria:**
-- [ ] Same packages as an image asset → same vulnerable set, graded unverified, with "An SBOM states what was built" said
-- [ ] A later SBOM without a package closes its findings (removed, read in full); language components still judged
+- [x] Same packages as an image asset → same vulnerable set, graded unverified, with "An SBOM states what was built" said
+- [x] A later SBOM without a package closes its findings (removed, read in full); language components still judged
 **Verification:** `uv run pytest -q tests/test_engine_*.py tests/test_sbom.py`; standard checks
 **Dependencies:** C9 · **Files:** `api/src/nimstead/engine/collection.py`, `evaluate.py`, `report.py`, tests · **Scope:** M
 
@@ -133,7 +133,7 @@ package list (grade unverified), with end of support; its report shows both fami
 ### C11: Real-host proof
 **Description:** `sandbox/containers.py`: fresh WSL Debian 13 with Docker and Podman, the app from this tree, the real
 agent; every spec success criterion 1-8 as a step with PASS/FAIL into `last_run_containers.json`; distro destroyed.
-**Acceptance criteria:** [ ] Every criterion PASS, or a real bug found, fixed with a test, and rerun
+**Acceptance criteria:** [x] Every criterion PASS, or a real bug found, fixed with a test, and rerun
 **Dependencies:** C2, C5, C10 · **Files:** `sandbox/containers.py`, `sandbox/last_run_containers.json` · **Scope:** M
 
 ### C12: Performance
@@ -145,7 +145,7 @@ hourly re-match before and after. **Acceptance:** [ ] report median < 1 s; re-ma
 **Description:** How-to (containers on Docker/Podman hosts, image SBOMs from CI), reference (agent flag, API, asset
 kind), explanation (how containers are read safely and closed on evidence); CHANGELOG with Highlights; STATUS; README;
 DECISIONS 138-142.
-**Acceptance:** [ ] `scripts` docs checks pass; every new flag and endpoint documented
+**Acceptance:** [x] `scripts` docs checks pass; every new flag and endpoint documented
 **Dependencies:** all · **Files:** `docs/**`, `CHANGELOG.md`, `STATUS.md`, `README.md`, `DECISIONS.md` · **Scope:** M
 
 ### Checkpoint D (release gate): every spec success criterion met; all suites green; review findings fixed

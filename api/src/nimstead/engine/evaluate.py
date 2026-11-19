@@ -303,10 +303,13 @@ def _end_of_life(inv: Inventory, c: Content, eco: str) -> Verdict | None:
         why = "no end-of-support data is loaded for it" if c.eol is None else f"endoflife.date lists no {product} {release}" if end is None else "when the inventory was read isn't known"
         return Verdict(outcome=Outcome.UNDETERMINED, reason="eol-unknown", detail=why, **base)
     raise_ = "The date is endoflife.date's summary of the distribution's own lifecycle page"
+    grade = Grade.REASONABLE
+    if inv.kind == "application":  # the release is the SBOM's word, about what was built (DECISIONS 142)
+        base["observed"], grade, raise_ = f"{eco} (SBOM)", Grade.UNVERIFIED, _RAISE["sbom"]
     if end is True or (isinstance(end, str) and end < read):
-        return Verdict(outcome=Outcome.VULNERABLE, grade=Grade.REASONABLE, detail=raise_,
+        return Verdict(outcome=Outcome.VULNERABLE, grade=grade, detail=raise_,
                        summary=f"{product} {release}: no security updates" + (f" since {end}" if isinstance(end, str) else ""), **base)
-    return Verdict(outcome=Outcome.NOT_VULNERABLE, grade=Grade.REASONABLE, detail=raise_,
+    return Verdict(outcome=Outcome.NOT_VULNERABLE, grade=grade, detail=raise_,
                    summary=f"{product} {release}: supported" + (f" until {end}" if isinstance(end, str) else ", no end date announced"), **base)
 
 

@@ -139,6 +139,8 @@ def test_an_end_of_life_base_image_opens_its_finding(env):
     upload(c, aid, h, json.loads((FIX / "sbom" / "syft-debian_11.cdx.json").read_text(encoding="utf-8")))
     vulns = {f["vuln_id"] for f in c.get("/api/findings", params={"asset_id": aid}).json()}
     assert "EOL:debian-11" in vulns
+    eol = next(g for g in c.get(f"/api/assets/{aid}/scan-report").json()["vulnerable"] if g["product"] == "debian 11")
+    assert eol["grade"] == "unverified" and "An SBOM states what was built" in eol["raise_confidence"]  # the base OS is the SBOM's word too
 
 
 def test_a_hosts_sbom_never_adds_os_packages_or_says_they_went_unjudged(env):

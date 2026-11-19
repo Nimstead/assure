@@ -3012,9 +3012,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def images_to_rebuild(s: Session, org_id: str, limit: int = 10) -> list[dict]:
         """Container images with open findings, most urgent first (KEV, worst score, count, as Fix first ranks upgrades), each
         with the packages its rebuild must bring (highest fixed version per package) and the hosts that run it."""
+        images = select(Asset.id).where(Asset.org_id == org_id, Asset.kind == "image")  # the image's findings by asset_id, not every open one
         ranked = s.execute(select(Finding.asset_id, func.max(Finding.kev.cast(Integer)), func.max(Finding.score), func.count(Finding.id))
-                           .join(Asset, Asset.id == Finding.asset_id)
-                           .where(Finding.org_id == org_id, Finding.status == "open", Asset.kind == "image").group_by(Finding.asset_id)).all()
+                           .where(Finding.asset_id.in_(images), Finding.status == "open").group_by(Finding.asset_id)).all()
         out = []
         for aid, kev, max_score, n in sorted(ranked, key=lambda r: (bool(r[1]), r[2] or 0, r[3]), reverse=True)[:limit]:
             a = s.get(Asset, aid)
@@ -3056,11 +3056,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         by_priority = dict(s.execute(select(Finding.priority, func.count()).where(*is_open).group_by(Finding.priority)).all())
         # Group fixes into actions: "upgrade openssl to X" clears N findings on M hosts. Rank in SQL, detail only the top 10.
         # A container image's findings are fixed by a rebuild, never a plan (DECISIONS 141): images_to_rebuild lists them.
-        not_image = Asset.kind != "image"
+        # By the org's few image ids, not a join: a join looks up the asset of every open finding (home page 0.3 s -> 0.7 s at 300k)
+        not_image = Finding.asset_id.not_in(select(Asset.id).where(Asset.org_id == user.org_id, Asset.kind == "image"))
         ranked = s.execute(
             select(Finding.ecosystem, Finding.package, func.max(Finding.kev.cast(Integer)), func.max(Finding.score),
                    func.count(Finding.vuln_id.distinct()))
-            .join(Asset, Asset.id == Finding.asset_id).where(*is_open, fixable, not_image).group_by(Finding.ecosystem, Finding.package)
+            .where(*is_open, fixable, not_image).group_by(Finding.ecosystem, Finding.package)
         ).all()
         top = []
         for eco, pkg, kev, max_score, _ in sorted(ranked, key=lambda r: (bool(r[2]), r[3], r[4]), reverse=True)[:10]:

@@ -25,8 +25,11 @@ from nimstead.engine.collection import valid_document
 
 MAX_IMAGES_PER_REPORT = 128  # the agent reads at most 128 containers a report
 MAX_CONTAINERS_PER_REPORT = 256
-MAX_PACKAGES_PER_IMAGE = 20_000
+MAX_PACKAGES_PER_IMAGE = 10_000  # as the agent's own cap; real images rarely pass 3,000
 MAX_IMAGES_PER_ORG = int(os.environ.get("NIMSTEAD_MAX_IMAGES_PER_ORG", "2000"))  # outside the asset quota, so its own cap
+# one compromised host can't take the org's share (security review): its rows, the images it runs, and the images it
+# introduces a day. 48 a day for the 30 days an unrun image is kept stays under the org's 2,000, whatever it does
+MAX_CONTAINERS_PER_HOST, MAX_IMAGES_PER_HOST, MAX_NEW_IMAGES_PER_HOST_DAY = 512, 256, 48
 KEEP = timedelta(days=30)  # an image no host has run for this long is deleted; its findings were resolved when it stopped
 RUNTIMES = ("docker", "podman")
 CRITICALITY = ("low", "medium", "high", "critical")
@@ -81,17 +84,18 @@ def image(raw) -> dict | None:
 
 
 def key(org_id: str, img: dict) -> str:
-    """The image asset's lookup hash, kept in its (unique, never handed out) agent_key_hash: everything stored for the image,
-    so a host whose answer differs in anything gets an asset of its own instead of changing a shared one."""
+    """The image asset's lookup key, kept in its unique agent_key_hash: a hash of everything stored for the image, so a host
+    whose answer differs in anything gets an asset of its own instead of changing a shared one. "img:" can never be a hex
+    SHA-256, so the reporting host, which knows the hash's input, can't present it as any asset's key (security review)."""
     body = {k: img[k] for k in ("image_id", "os_name", "ecosystem", "facts", "collection", "packages")}
-    return hashlib.sha256(("image\0" + org_id + "\0" + json.dumps(body, sort_keys=True)).encode()).hexdigest()
+    return "img:" + hashlib.sha256(("image\0" + org_id + "\0" + json.dumps(body, sort_keys=True)).encode()).hexdigest()[:60]
 
 
 def _create(s: Session, host: Asset, img: dict, h: str) -> tuple[Asset | None, bool]:
     """(asset, created): a new image asset with its packages, or the one another host's report stored a moment ago."""
     t = now()
     a = Asset(org_id=host.org_id, hostname=img["ref"] or img["image_id"][:19], kind="image", os_name=img["os_name"], ecosystem=img["ecosystem"],
-              facts={"image_id": img["image_id"], **img["facts"]}, collection=img["collection"], agent_key_hash=h, internet_facing=False,
+              facts={"image_id": img["image_id"], **img["facts"], "first_host": host.id}, collection=img["collection"], agent_key_hash=h, internet_facing=False,
               agent_version=host.agent_version, first_seen=t, last_seen=t, last_inventory_at=t)  # its contents never change: read once
     try:
         with s.begin_nested():
@@ -113,18 +117,24 @@ def _running(s: Session, image_ids: set[str]) -> dict[str, int]:
 
 
 def refresh(s: Session, images: list[Asset]) -> set[str]:
-    """Each image's name and risk context from the hosts that run it: the most common reference its containers were started
-    from, the most critical host's criticality, internet-facing if any host is. Returns the ids whose score inputs changed."""
+    """Each image's name and risk context from the hosts that run it: the reference the most hosts started it from (one vote
+    per host, however many containers it claims; a tie keeps the current name), the most critical host's criticality,
+    internet-facing if any host is. Returns the ids whose score inputs changed."""
     changed = set()
     for a in images:
-        rows = s.execute(select(Container.ref, Container.last_seen, Asset.criticality, Asset.internet_facing)
+        rows = s.execute(select(Container.asset_id, Container.ref, Container.last_seen, Asset.criticality, Asset.internet_facing)
                          .join(Asset, Asset.id == Container.asset_id).where(Container.image_asset_id == a.id)).all()
         if not rows:
             continue
-        refs = Counter(r.ref for r in rows if r.ref)
-        newest = {r.ref: r.last_seen for r in sorted(rows, key=lambda r: r.last_seen)}
-        if refs:
-            a.hostname = max(refs, key=lambda ref: (refs[ref], newest[ref]))
+        per_host: dict[str, Counter] = {}
+        for r in rows:
+            if r.ref:
+                per_host.setdefault(r.asset_id, Counter())[r.ref] += 1
+        votes = Counter(c.most_common(1)[0][0] for c in per_host.values())
+        if votes:
+            top = max(votes.values())
+            tied = sorted(ref for ref, n in votes.items() if n == top)
+            a.hostname = a.hostname if a.hostname in tied else tied[0]
         crit = max((r.criticality for r in rows), key=lambda c: CRITICALITY.index(c) if c in CRITICALITY else 1)
         facing = any(r.internet_facing for r in rows)
         if (a.criticality, a.internet_facing) != (crit, facing):
@@ -133,32 +143,65 @@ def refresh(s: Session, images: list[Asset]) -> set[str]:
     return changed
 
 
+MAX_LISTED = 4096  # container ids one runtime's listing may carry; a longer one proves nothing
+
+
+def listed(body: dict) -> dict[str, set[str]]:
+    """Each runtime whose running containers the agent listed in full (its `ps` answered): runtime -> their ids. Only a
+    container missing from its own runtime's full listing has stopped, so only these can take rows away (DECISIONS 140).
+    The listing is cheap and outside the agent's read budget, so a host with more containers than one report reads, or a
+    second runtime that failed, still closes what it proves stopped. A listing that doesn't fit proves nothing."""
+    out = {}
+    raw = body.get("listed")
+    for rt, ids in (raw.items() if isinstance(raw, dict) else ()):
+        if rt in RUNTIMES and isinstance(ids, list) and len(ids) <= MAX_LISTED and all(isinstance(i, str) and _CONTAINER_ID.match(i) for i in ids):
+            out[rt] = set(ids)
+    return out
+
+
+def _new_today(s: Session, host: Asset) -> int:
+    """Images this host was first to report in the last 24 hours (the cap on what one host can introduce)."""
+    return s.scalar(select(func.count()).select_from(Asset).where(
+        Asset.org_id == host.org_id, Asset.kind == "image", Asset.first_seen >= now() - timedelta(days=1),
+        Asset.facts["first_host"].as_string() == host.id)) or 0
+
+
 def store(s: Session, host: Asset, body: dict) -> tuple[dict, list[Asset], list[Asset]]:
     """Record what host's agent sent to POST /api/agent/containers; return (counts, new images, other images to rescan:
     stopped, back, or re-scored). No commit.
 
-    Every image entry is checked (image()); one that can't be stored, or one past the caps, is refused and makes the report
-    incomplete, so none of this host's rows go. A complete report replaces this host's rows; any other only adds and
-    refreshes them. One `containers_reported` ledger entry when what this host runs changed."""
+    Every image entry is checked (image()); one that can't be stored, or past a cap (per report, per host, per org, new
+    images a day), is refused. A row goes only when its runtime listed its running containers in full without it
+    (`listed`); a refused entry's containers are still listed, so their rows stay. Ledger entries come last, after every
+    insert: an append locks the org row, and holding it while inserting could deadlock two hosts' reports (as rescan)."""
     s.execute(select(Asset.id).where(Asset.id == host.id).with_for_update())  # one host's reports one at a time
     t = now()
-    complete = body.get("complete") is True
     sent = body.get("images") if isinstance(body.get("images"), list) else []
-    if len(sent) > MAX_IMAGES_PER_REPORT:
-        sent, complete = sent[:MAX_IMAGES_PER_REPORT], False
+    refused = max(0, len(sent) - MAX_IMAGES_PER_REPORT)
+    sent = sent[:MAX_IMAGES_PER_REPORT]
+    full = listed(body)
+    have = {c.container_id: c for c in s.scalars(select(Container).where(Container.asset_id == host.id))}
+    kept = {cid for cid, row in have.items() if row.runtime not in full or cid in full[row.runtime]}  # still running, or not proven stopped
+    held = {have[cid].image_asset_id for cid in kept}  # the images this host runs, for its cap
     running: dict[str, tuple[Asset, dict, str]] = {}  # container id -> (image asset, container, reference)
     created: list[Asset] = []
-    refused, count = 0, None
+    count = today = None
     for raw in sent:
         img = image(raw)
-        if img is None or len(running) + len(img["containers"]) > MAX_CONTAINERS_PER_REPORT:
+        new_rows = {c["id"] for c in img["containers"]} - kept - running.keys() if img else set()
+        if img is None or len(running) + len(img["containers"]) > MAX_CONTAINERS_PER_REPORT or len(kept | running.keys()) + len(new_rows) > MAX_CONTAINERS_PER_HOST:
             refused += 1
             continue
         h = key(host.org_id, img)
         a = s.scalar(select(Asset).where(Asset.agent_key_hash == h))
+        if (a is None or a.id not in held) and len(held) >= MAX_IMAGES_PER_HOST:
+            refused += 1
+            continue
         if a is None:
-            count = count if count is not None else s.scalar(select(func.count()).select_from(Asset).where(Asset.org_id == host.org_id, Asset.kind == "image"))
-            if count >= MAX_IMAGES_PER_ORG:
+            if count is None:
+                count = s.scalar(select(func.count()).select_from(Asset).where(Asset.org_id == host.org_id, Asset.kind == "image"))
+                today = _new_today(s, host)
+            if count >= MAX_IMAGES_PER_ORG or today >= MAX_NEW_IMAGES_PER_HOST_DAY:
                 refused += 1
                 continue
             a, new = _create(s, host, img, h)
@@ -167,13 +210,11 @@ def store(s: Session, host: Asset, body: dict) -> tuple[dict, list[Asset], list[
                 continue
             if new:
                 created.append(a)
-                count += 1
-                evidence.append(s, host.org_id, "asset_created", a.id, {"by": host.hostname, "name": a.hostname, "kind": "image"})
+                count, today = count + 1, today + 1
         a.last_seen = t
+        held.add(a.id)
         for c in img["containers"]:
             running[c["id"]] = (a, c, img["ref"])
-    complete = complete and not refused
-    have = {c.container_id: c for c in s.scalars(select(Container).where(Container.asset_id == host.id))}
     touched = {c.image_asset_id for c in have.values()} | {a.id for a, _, _ in running.values()}
     before = _running(s, touched)
     changed = False
@@ -186,7 +227,7 @@ def store(s: Session, host: Asset, body: dict) -> tuple[dict, list[Asset], list[
         else:
             changed |= row.image_asset_id != a.id
             row.image_asset_id, row.name, row.runtime, row.ref, row.last_seen = a.id, c["name"], c["runtime"], ref, t
-    gone = [row for cid, row in have.items() if cid not in running] if complete else []
+    gone = [row for cid, row in have.items() if cid not in kept and cid not in running]
     for row in gone:
         s.delete(row)
     s.flush()
@@ -195,10 +236,13 @@ def store(s: Session, host: Asset, body: dict) -> tuple[dict, list[Asset], list[
     rescored = refresh(s, list(images.values()))
     stopped = sorted(i for i in touched if before.get(i) and not after.get(i))
     back = sorted(i for i in touched if not before.get(i) and after.get(i) and i not in {a.id for a in created})
+    complete = body.get("complete") is True and not refused and set(full) >= {r.runtime for r in have.values()} | {c["runtime"] for _, c, _ in running.values()}
+    for a in created:
+        evidence.append(s, host.org_id, "asset_created", a.id, {"by": host.hostname, "name": a.hostname, "kind": "image"})
     if changed or gone or refused:
         evidence.append(s, host.org_id, "containers_reported", host.id, {
             "host": host.hostname, "complete": complete, "containers": len(running), "images": sorted({a.id for a, _, _ in running.values()}),
-            "new": [a.id for a in created], "stopped": stopped, "refused": refused})
+            "new": [a.id for a in created], "stopped": stopped, "refused": refused, "listed": sorted(full)})
     s.flush()
     others = [images[i] for i in sorted(set(stopped) | set(back) | (rescored - {a.id for a in created})) if i in images]
     return ({"images": len({a.id for a, _, _ in running.values()}), "containers": len(running), "new": len(created), "stopped": len(stopped),

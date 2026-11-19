@@ -200,7 +200,7 @@ class Container(Base):
     asset_id: Mapped[str] = mapped_column(ForeignKey("asset.id", ondelete="CASCADE"), primary_key=True)  # the host
     container_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     image_asset_id: Mapped[str] = mapped_column(ForeignKey("asset.id", ondelete="CASCADE"), index=True)
-    org_id: Mapped[str] = mapped_column(ForeignKey("org.id"))
+    org_id: Mapped[str] = mapped_column(ForeignKey("org.id"), index=True)  # the assets list reads the org's rows
     name: Mapped[str] = mapped_column(String(255), default="")
     runtime: Mapped[str] = mapped_column(String(20), default="")
     ref: Mapped[str] = mapped_column(String(255), default="")  # the reference it was started from: one host names its own containers, never the image others share

@@ -893,6 +893,9 @@
             "title": "Images",
             "type": "array"
           },
+          "listed": {
+            "title": "Listed"
+          },
           "runtimes": {
             "title": "Runtimes"
           },

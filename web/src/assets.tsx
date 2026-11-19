@@ -255,10 +255,10 @@ export function UnmanagedDevices() {
   );
 }
 
-/** "web-1, db-1 and 8 more": names wrap whole, never mid-name. */
-function SeenBy({ names }: { names: string[] }) {
+/** "web-1, db-1 and 8 more": names wrap whole, never mid-name. `total` when the names are only the first of them. */
+function SeenBy({ names, total = names.length }: { names: string[]; total?: number }) {
   const head = names.slice(0, 2);
-  return <span>{head.map((h, i) => <Fragment key={h}><span className="whitespace-nowrap">{h}{i < head.length - 1 && ","}</span>{" "}</Fragment>)}{names.length > 2 && <span className="text-muted">and {names.length - 2} more</span>}</span>;
+  return <span>{head.map((h, i) => <Fragment key={h}><span className="whitespace-nowrap">{h}{i < head.length - 1 && ","}</span>{" "}</Fragment>)}{total > 2 && <span className="text-muted">and {total - 2} more</span>}</span>;
 }
 
 /** One device with no agent: who it is, where it was seen, and what a network check found on it. */
@@ -348,7 +348,7 @@ export function ContainerImages({ images }: { images: Asset[] }) {
       The agent on each Linux machine reads the Docker and Podman containers running there at every report, unless it was enrolled with <code className="num">--no-containers</code>.
     </EmptyState>
   );
-  const machines = new Set(all.flatMap(hostsOf)).size;
+  const machines = Math.max(new Set(all.flatMap(hostsOf)).size, ...all.map((a) => a.hosts_total ?? 0));  // each list stops at 100 rows
   const unread = all.filter((a) => !a.packages_read).length;
   return (
     <section aria-labelledby="container-images" className="flex flex-col gap-3">
@@ -382,7 +382,7 @@ export function ContainerImages({ images }: { images: Asset[] }) {
                     {!hosts.length && <Tag why="Every machine that ran it has since reported its containers without it, so its findings are closed">Not running</Tag>}
                   </div>
                   <p className="truncate text-sm text-muted">
-                    {a.os_name || "Unknown OS"} · {hosts.length ? <>runs on <SeenBy names={hosts} />{(a.containers_total ?? 0) > hosts.length && ` · ${plural(a.containers_total ?? 0, "container")}`}</> : "no machine runs it now"}
+                    {a.os_name || "Unknown OS"} · {hosts.length ? <>runs on <SeenBy names={hosts} total={a.hosts_total ?? hosts.length} />{(a.containers_total ?? 0) > (a.hosts_total ?? hosts.length) && ` · ${plural(a.containers_total ?? 0, "container")}`}</> : "no machine runs it now"}
                   </p>
                 </div>
                 <PriorityLinks a={a} columns />
@@ -429,7 +429,7 @@ function ImageDrawer({ a, onClose }: { a: Asset | null; onClose: () => void }) {
               {n > 0 && <Link to="/findings" search={filtersToSearch({ ...parseFilters({}), asset: a.id, group: "package" })} className={clsx(btnPrimary, "self-start no-underline")}>What the rebuild must fix, by package<ArrowRight className="size-4" aria-hidden /></Link>}
             </section>
             <section aria-labelledby="image-runs">
-              <h3 id="image-runs" className="text-base font-semibold">{byHost.size ? `Runs on ${plural(byHost.size, "machine")}` : "Not running"}</h3>
+              <h3 id="image-runs" className="text-base font-semibold">{byHost.size ? `Runs on ${plural(Math.max(byHost.size, a.hosts_total ?? 0), "machine")}` : "Not running"}</h3>
               {byHost.size === 0 ? <p className="max-w-[60ch] text-sm text-muted">Every machine that ran it has since reported its containers without it, so its findings are closed. It leaves this list 30 days after it last ran.</p> : (
                 <ul className="mt-1 flex flex-col divide-y divide-line text-sm">
                   {[...byHost].map(([host, h]) => (

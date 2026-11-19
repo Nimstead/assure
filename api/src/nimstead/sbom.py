@@ -235,11 +235,11 @@ def parse(doc: object, os_packages: bool = True) -> tuple[list[tuple[str, str, s
         if not isinstance(purl, str) or not purl:
             skipped["no_purl"] += 1
         elif purl.startswith(("pkg:deb/", "pkg:apk/", "pkg:rpm/")):
-            row = parse_os_purl(purl, hints)
-            if isinstance(row, str):
-                skipped["unsupported_or_invalid_purl" if row == "invalid" else row] += 1
-            elif not os_packages:
+            row = None if not os_packages else parse_os_purl(purl, hints)
+            if row is None:  # a host's own upload: its agent reads these, mapped or not
                 skipped["os_package_on_host"] += 1
+            elif isinstance(row, str):
+                skipped["unsupported_or_invalid_purl" if row == "invalid" else row] += 1
             else:
                 os_rows.append(row)
         elif (p := parse_purl(purl)) is None:

@@ -36,9 +36,11 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint('asset_id', 'container_id'),
     )
     op.create_index(op.f('ix_container_image_asset_id'), 'container', ['image_asset_id'], unique=False)
+    op.create_index(op.f('ix_container_org_id'), 'container', ['org_id'], unique=False)
 
 
 def downgrade() -> None:
     """Downgrade schema."""
+    op.drop_index(op.f('ix_container_org_id'), table_name='container')
     op.drop_index(op.f('ix_container_image_asset_id'), table_name='container')
     op.drop_table('container')

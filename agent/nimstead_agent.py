@@ -297,6 +297,15 @@ class ContainerReadError(Exception):
     """A path in a container that can't be read safely; the message says why, in the collection document's words."""
 
 
+def _mount_id(fd):
+    """The id of the mount a descriptor was opened through (/proc/self/fdinfo, Linux 3.15+), or None where it isn't said."""
+    try:
+        with open(f"/proc/self/fdinfo/{fd}") as f:
+            return next((line.split()[1] for line in f if line.startswith("mnt_id:")), None)
+    except OSError:
+        return None
+
+
 class ContainerRoot:
     """A container's filesystem through a descriptor for its root. Opened with O_PATH, so nothing is opened for real until
     it is known to be a regular file: a device or FIFO planted in an image is never opened, and a file can't be swapped
@@ -304,6 +313,7 @@ class ContainerRoot:
 
     def __init__(self, fd):
         self.fd = fd
+        self.mount = _mount_id(fd)
 
     @classmethod
     def of_dir(cls, path):
@@ -311,19 +321,27 @@ class ContainerRoot:
         return cls(os.open(path, os.O_PATH | os.O_DIRECTORY | os.O_CLOEXEC))
 
     @classmethod
-    def of_pid(cls, pid, own_ns=None):
-        """The root of a process in another mount namespace. The namespace is read before and after the root is taken, so a
-        PID that exited and was reused by a host process (whose namespace is ours) is refused, not read as a container."""
+    def of_pid(cls, pid, own_ns=None, container_id=None):
+        """The root of a process in another mount namespace, still the container that was listed. Its mount namespace and
+        its cgroup are read before and after the root is taken: a PID that exited and was reused by a host process (whose
+        namespace is ours), or by any process outside that container (whose cgroup doesn't name it), is refused."""
         own = own_ns if own_ns is not None else os.stat("/proc/self/ns/mnt").st_ino
+
+        def cgroup_ok():  # Docker's and Podman's cgroups name the container: docker-<id>.scope, /docker/<id>, libpod-<id>
+            if container_id is None:
+                return True
+            with open(f"/proc/{int(pid)}/cgroup") as f:
+                return container_id in f.read(1 << 16)
         before = os.stat(f"/proc/{int(pid)}/ns/mnt").st_ino
+        named = cgroup_ok()
         fd = os.open(f"/proc/{int(pid)}/root", os.O_PATH | os.O_DIRECTORY | os.O_CLOEXEC)
         try:
-            after = os.stat(f"/proc/{int(pid)}/ns/mnt").st_ino
+            after, named = os.stat(f"/proc/{int(pid)}/ns/mnt").st_ino, named and cgroup_ok()
         except OSError:
             after = None
-        if before == own or after != before:
+        if before == own or after != before or not named:
             os.close(fd)
-            raise ContainerReadError("the process isn't in a container of its own any more")
+            raise ContainerReadError("the process isn't that container any more")
         return cls(fd)
 
     def close(self):
@@ -362,6 +380,8 @@ class ContainerRoot:
                     parts.extendleft(reversed([p for p in target.split("/") if p]))
                     continue
                 stack.append(fd)
+                if _mount_id(fd) != self.mount:  # a mount inside the container (procfs, a volume, FUSE) is never read (security review)
+                    raise ContainerReadError(f"{path}: crosses into another mount")
                 if parts and not stat.S_ISDIR(mode):
                     raise ContainerReadError(f"{path}: not a directory on the way")
             return os.dup(stack[-1])
@@ -475,12 +495,18 @@ def parse_rpm_header(blob):
     return got["name"], f"{got.get('epoch', 0)}:{got['version']}-{got['release']}", got.get("sourcerpm", "")
 
 
-def parse_rpm_sqlite(raw, wal=None):
+CONTAINER_MAX_PACKAGES = 10_000  # far more than any real image; past it a database is refused before it costs memory
+RPM_SCHEMA = [("hnum", "INTEGER", 1, 0), ("blob", "BLOB", 0, 0)]  # (name, type, pk, hidden), as rpm creates its Packages table
+
+
+def parse_rpm_sqlite(raw, wal=None, seconds=30, max_rows=CONTAINER_MAX_PACKAGES):
     """Package dictionaries in parse_rpm's form from the bytes of rpm's SQLite database (and its -wal file, if any).
 
-    The bytes are written to a private temporary folder and opened there, with SQLite's own defences for untrusted
-    files on; only the Packages table's header blobs are read, each parsed by parse_rpm_header. Raises ContainerReadError
-    when SQLite isn't available or the file isn't an rpm database."""
+    The bytes are written to a private temporary folder and opened there, with SQLite's own defences for untrusted files
+    on, and read only if the Packages table is laid out exactly as rpm creates it: a generated or virtual column could make
+    one SELECT build gigabyte blobs (security review). Bounded besides: a time limit through the progress handler, a heap
+    limit, a 16 MB value limit (Python 3.11+), and max_rows. Each header blob is parsed by parse_rpm_header. Raises
+    ContainerReadError when SQLite isn't available or any of this doesn't hold."""
     try:
         import sqlite3
     except ImportError:
@@ -495,13 +521,25 @@ def parse_rpm_sqlite(raw, wal=None):
         con = None
         try:
             con = sqlite3.connect(path)
+            deadline = time.monotonic() + seconds
+            con.set_progress_handler(lambda: time.monotonic() > deadline, 10_000)
+            if hasattr(con, "setlimit"):  # Python 3.11+
+                con.setlimit(sqlite3.SQLITE_LIMIT_LENGTH, 16 * 1024 * 1024)
             if hasattr(con, "setconfig") and hasattr(sqlite3, "SQLITE_DBCONFIG_DEFENSIVE"):  # Python 3.12+
                 con.setconfig(sqlite3.SQLITE_DBCONFIG_DEFENSIVE, True)
-            for pragma in ("trusted_schema = OFF", "cell_size_check = ON", "mmap_size = 0"):
+            for pragma in ("trusted_schema = OFF", "cell_size_check = ON", "mmap_size = 0", "hard_heap_limit = 268435456"):
                 con.execute("PRAGMA " + pragma)
-            if con.execute("SELECT type FROM sqlite_master WHERE name = 'Packages'").fetchone() != ("table",):
-                raise ContainerReadError("rpmdb.sqlite has no Packages table")
-            rows = [parse_rpm_header(bytes(b)) for (b,) in con.execute("SELECT blob FROM Packages") if isinstance(b, bytes)]
+            master = con.execute("SELECT type, sql FROM sqlite_master WHERE name = 'Packages'").fetchone()
+            # table_xinfo shows a generated column as hidden; a SQLite too old for it (before 3.26) is too old for those too
+            cols = [(r[1], (r[2] or "").upper(), r[5], r[6]) for r in con.execute("PRAGMA table_xinfo(Packages)")] or \
+                [(r[1], (r[2] or "").upper(), r[5], 0) for r in con.execute("PRAGMA table_info(Packages)")]
+            if not master or master[0] != "table" or (master[1] or "").lstrip().upper().startswith("CREATE VIRTUAL") or cols != RPM_SCHEMA:
+                raise ContainerReadError("rpmdb.sqlite isn't laid out as rpm's database")
+            rows = []
+            for (b,) in con.execute("SELECT blob FROM Packages"):
+                if len(rows) >= max_rows:
+                    raise ContainerReadError(f"more than {max_rows:,} packages, more than any real image")
+                rows.append(parse_rpm_header(bytes(b)) if isinstance(b, bytes) else None)
         except sqlite3.Error as e:
             raise ContainerReadError(f"rpmdb.sqlite: {e}") from None
         finally:
@@ -524,18 +562,31 @@ def container_package_db(root):
     A database in a format this agent doesn't read, or none at all, is a failed line saying so, never an empty success."""
     def line(pkgs, bad=0):
         return _source(len(pkgs), f"{bad} entries couldn't be read" if bad else None)
+
+    def counted(text, field):  # stanzas counted before any is parsed: tiny ones would cost ~30x their size in memory (security review)
+        if text.count("\n" + field) + text.startswith(field) > CONTAINER_MAX_PACKAGES:
+            raise ContainerReadError(f"more than {CONTAINER_MAX_PACKAGES:,} packages, more than any real image")
+        return text
     try:
         if root.exists(APK_DB):
-            text = root.read(APK_DB).decode("utf-8", "replace")
+            text = counted(root.read(APK_DB).decode("utf-8", "replace"), "P:")
             pkgs = parse_apk(text)
             return pkgs, line(pkgs, sum(1 for b in text.split("\n\n") if b.strip() and not ("\nP:" in "\n" + b and "\nV:" in "\n" + b)))
         if root.exists(DPKG_STATUS):
-            return (pkgs := parse_dpkg_status(root.read(DPKG_STATUS).decode("utf-8", "replace"))), line(pkgs)
+            return (pkgs := parse_dpkg_status(counted(root.read(DPKG_STATUS).decode("utf-8", "replace"), "Package:"))), line(pkgs)
         if root.exists(DPKG_STATUS_D):
-            pkgs = []
-            for name in root.listdir(DPKG_STATUS_D):
-                if not name.endswith(".md5sums"):
-                    pkgs += parse_dpkg_status(root.read(f"{DPKG_STATUS_D}/{name}").decode("utf-8", "replace"), require_status=False)
+            entries = [name for name in root.listdir(DPKG_STATUS_D) if not name.endswith(".md5sums")]
+            if len(entries) > CONTAINER_MAX_PACKAGES:
+                raise ContainerReadError(f"more than {CONTAINER_MAX_PACKAGES:,} packages, more than any real image")
+            pkgs, total = [], 0
+            for name in entries:
+                data = root.read(f"{DPKG_STATUS_D}/{name}")
+                total += len(data)
+                if total > CONTAINER_READ_MAX:  # one entry each is capped; all of them together are too
+                    raise ContainerReadError(f"{DPKG_STATUS_D}: larger than {CONTAINER_READ_MAX // (1024 * 1024)} MB in all")
+                pkgs += parse_dpkg_status(counted(data.decode("utf-8", "replace"), "Package:"), require_status=False)
+                if len(pkgs) > CONTAINER_MAX_PACKAGES:
+                    raise ContainerReadError(f"more than {CONTAINER_MAX_PACKAGES:,} packages, more than any real image")
             return pkgs, line(pkgs)
         for path in RPM_SQLITE:
             if root.exists(path):
@@ -583,25 +634,30 @@ def _last_line(err):
     return (err.strip().splitlines() or [""])[-1][:200]
 
 
-def list_containers(runtime, query=_query):
-    """(running containers, problem or None) from one runtime's CLI: id, name, PID, image id and reference of each.
+CONTAINER_LISTED_MAX = 4096  # ids one runtime's listing may carry, as the server's own cap
 
-    `ps -q --no-trunc` names them and one `inspect --type container` describes them. A container that stopped in between
-    is left out (it isn't running); anything else unexpected (the CLI failing, unreadable output, an entry without a PID
-    or image id) is a problem, so the list can't be taken as complete."""
+
+def list_containers(runtime, query=_query):
+    """(running containers, problem or None, every running container's id or None) from one runtime's CLI.
+
+    `ps -q --no-trunc` names them and one `inspect --type container` describes them: id, name, PID, image id and reference.
+    A container that stopped in between is left out (it isn't running); anything else unexpected (the CLI failing,
+    unreadable output, an entry without a PID or image id) is a problem. The third value is the whole `ps` listing, which the
+    server takes as proof of which containers stopped (DECISIONS 140): None unless `ps` answered with nothing but ids."""
     rc, out, err = query([runtime, "ps", "-q", "--no-trunc"], timeout=60)
     if rc != 0:
-        return [], f"{runtime} ps " + ("couldn't run" if rc is None else f"exited {rc}") + (f": {_last_line(err)}" if err.strip() else "")
+        return [], f"{runtime} ps " + ("couldn't run" if rc is None else f"exited {rc}") + (f": {_last_line(err)}" if err.strip() else ""), None
     listed = [x.strip() for x in out.splitlines() if x.strip()]
     ids = [x for x in listed if _CONTAINER_ID.match(x)]
     problems = [f"{len(listed) - len(ids)} unreadable container ids"] if len(ids) != len(listed) else []
+    whole = ids if not problems and len(ids) <= CONTAINER_LISTED_MAX else None
     if not ids:
-        return [], "; ".join(problems) or None
-    rc, out, err = query([runtime, "inspect", "--type", "container", *ids], timeout=60)
+        return [], "; ".join(problems) or None, whole
+    rc, out, err = query([runtime, "inspect", "--type", "container", *ids[:CONTAINER_LISTED_MAX]], timeout=60)
     try:
         items = json.loads(out) if out.strip() else []
     except ValueError:
-        return [], f"{runtime} inspect: unreadable output"
+        return [], f"{runtime} inspect: unreadable output", whole
     found = []
     for it in items if isinstance(items, list) else []:
         state = it.get("State") if isinstance(it, dict) and isinstance(it.get("State"), dict) else {}
@@ -617,25 +673,28 @@ def list_containers(runtime, query=_query):
                       "image_id": "sha256:" + m[1], "ref": str(ref or it.get("ImageName") or "")[:255]})
     if rc != 0 and not found and ids:  # one that vanished makes inspect exit non-zero; one that answered nothing at all is a failure
         problems.append(f"{runtime} inspect " + ("couldn't run" if rc is None else f"exited {rc}") + (f": {_last_line(err)}" if err.strip() else ""))
-    return found, "; ".join(problems)[:300] or None
+    return found, "; ".join(problems)[:300] or None, whole
 
 
 def containers(query=_query, which=shutil.which, root_of=ContainerRoot.of_pid, read=read_container, clock=time.monotonic, euid=None):
     """The body for POST /api/agent/containers: each running container's image and what is installed in it.
 
-    Containers of one image with the same contents are read and sent once, listed together. `complete` is True only when
-    every runtime listed its containers without a problem and every one was read: only then may the server take a
-    container missing from the list as stopped (DECISIONS 140). Budgets (CONTAINER_MAX, CONTAINER_SECONDS,
-    CONTAINER_BODY_MAX) end the pass early, never silently. `line` is the host inventory's collection line for it."""
+    Containers of one image with the same contents are read and sent once, listed together. `listed` carries each runtime's
+    whole `ps` listing, so the server can take a container missing from its own runtime's listing as stopped (DECISIONS
+    140) however many were read. `complete` says every runtime answered and every container was read. Budgets
+    (CONTAINER_MAX, CONTAINER_SECONDS, CONTAINER_BODY_MAX) end the pass early, never silently; an image that would carry
+    the body past its budget is left out. `line` is the host inventory's collection line for it."""
     start = clock()
     if (os.geteuid() if euid is None else euid) != 0:
         why = "the agent isn't running as root, so it can't read containers"
-        return {"v": 1, "complete": False, "runtimes": {}, "images": [], "error": why, "line": _source(0, why, failed=True)}
-    runtimes, listed, problems = {}, {}, []
+        return {"v": 1, "complete": False, "runtimes": {}, "listed": {}, "images": [], "error": why, "line": _source(0, why, failed=True)}
+    runtimes, whole, listed, problems = {}, {}, {}, []
     for rt in CONTAINER_RUNTIMES:
         if which(rt):
-            found, problem = list_containers(rt, query)
+            found, problem, ids = list_containers(rt, query)
             runtimes[rt] = _source(len(found), problem, failed=bool(problem and not found))
+            if ids is not None:
+                whole[rt] = ids
             for c in found:
                 listed.setdefault(c["id"], c)  # podman-docker answers as docker too: one container, once
     if which("crictl"):
@@ -647,11 +706,11 @@ def containers(query=_query, which=shutil.which, root_of=ContainerRoot.of_pid, r
         problems.append(f"{len(todo) - CONTAINER_MAX} more containers than one report reads ({CONTAINER_MAX})")
         todo = todo[:CONTAINER_MAX]
     for i, c in enumerate(todo):
-        if clock() - start > CONTAINER_SECONDS or size > CONTAINER_BODY_MAX:
-            problems.append(f"{len(todo) - i} containers not read: the pass reached its {'time' if size <= CONTAINER_BODY_MAX else 'size'} budget")
+        if clock() - start > CONTAINER_SECONDS:
+            problems.append(f"{len(todo) - i} containers not read: the pass reached its time budget")
             break
         try:
-            root = root_of(c["pid"], own)
+            root = root_of(c["pid"], own, c["id"])
         except (OSError, ContainerReadError):
             problems.append(f"container {c['name'] or c['id'][:12]} stopped before it was read")
             continue
@@ -662,14 +721,28 @@ def containers(query=_query, which=shutil.which, root_of=ContainerRoot.of_pid, r
         key = hashlib.sha256(json.dumps([c["image_id"], got["ecosystem"], got["packages"]], sort_keys=True).encode()).hexdigest()
         img = images.get(key)
         if img is None:
-            img = images[key] = {"image_id": c["image_id"], "ref": c["ref"], **got, "containers": []}
-            size += len(json.dumps(img))
+            img = {"image_id": c["image_id"], "ref": c["ref"], **got, "containers": []}
+            cost = len(json.dumps(img))
+            if size + cost > CONTAINER_BODY_MAX:  # left out whole, never cut: the server's cap would refuse the whole report
+                problems.append(f"container {c['name'] or c['id'][:12]} not sent: the report reached its size budget")
+                continue
+            images[key], size = img, size + cost
         img["containers"].append({"id": c["id"], "name": c["name"], "runtime": c["runtime"]})
+        size += 200  # one container's entry, generously
     complete = complete and not problems
     said = [f"{name}: {r['error']}" for name, r in runtimes.items() if r.get("error")] + problems  # crictl too: coverage, not completeness
     n = sum(len(img["containers"]) for img in images.values())
-    return {"v": 1, "complete": complete, "runtimes": runtimes, "images": list(images.values()), "error": "; ".join(said)[:300] or None,
-            "line": _source(n, "; ".join(said) or None)}
+    return {"v": 1, "complete": complete, "runtimes": runtimes, "listed": whole, "images": list(images.values()),
+            "error": "; ".join(said)[:300] or None, "line": _source(n, "; ".join(said) or None)}
+
+
+def safe_containers(read=None):
+    """containers(), but an error it didn't expect becomes a failed body: the host's own inventory goes out regardless."""
+    try:
+        return containers() if read is None else read()
+    except Exception as e:  # noqa: BLE001 — anything at all: a container must never cost the host its report
+        why = f"containers not read: {type(e).__name__}: {e}"[:300]
+        return {"v": 1, "complete": False, "runtimes": {}, "listed": {}, "images": [], "error": why, "line": _source(0, why, failed=True)}
 
 
 # MSRC names Windows Server by build; client names come from the feature-update version.
@@ -5401,7 +5474,7 @@ def _main(argv):
             log_event(f"run start: {a.cmd}, agent {AGENT_VERSION}")
         if a.cmd == "collect":
             print(json.dumps({**with_apps(collect(), {"scan_jars": a.scan_jars, "scan_apps": a.scan_apps, "app_roots": app_roots(a)}),
-                              "neighbours": network_view(), **({"containers": containers()} if os.name != "nt" else {})}, indent=2))
+                              "neighbours": network_view(), **({"containers": safe_containers()} if os.name != "nt" else {})}, indent=2))
         elif a.cmd == "doctor":
             return doctor(a.insecure_http)
         elif a.cmd == "scan-remote":
@@ -5485,15 +5558,15 @@ def _main(argv):
             inv = inventory(cfg)
             ctr = None
             if os.name != "nt":  # read before the inventory goes, so its collection document can say how far the read got
-                ctr = containers() if cfg.get("containers", True) else None
+                ctr = safe_containers() if cfg.get("containers", True) else None
                 if isinstance((inv.get("collection") or {}).get("sources"), dict):
                     inv["collection"]["sources"]["containers"] = ctr.pop("line") if ctr else {"state": "off", "count": 0}
             post(cfg["server"], "/api/agent/inventory", inv, a.insecure_http, cfg["agent_key"])
             print(f"reported {len(inv['packages'])} packages")
             log_event(f"reported {len(inv['packages'])} packages")
-            # after the inventory: a refusal here never costs the host's own report. Nothing read and nothing complete (not root,
-            # every runtime failing) would change nothing on the server; the inventory's collection line already says why
-            if ctr is not None and (ctr["images"] or ctr["complete"]):
+            # after the inventory: a refusal here never costs the host's own report. Nothing read, nothing listed (not root, every
+            # runtime failing) would change nothing on the server; the inventory's collection line already says why
+            if ctr is not None and (ctr["images"] or ctr["complete"] or ctr["listed"]):
                 n = sum(len(i["containers"]) for i in ctr["images"])
                 try:
                     post(cfg["server"], "/api/agent/containers", ctr, a.insecure_http, cfg["agent_key"])

@@ -1,14 +1,14 @@
 """Container images the org's hosts run (tasks/plan-containers.md C4-C6, DECISIONS 139-141): one content-addressed asset per
 image, judged by the engine like a host, running where the hosts' complete lists say, closed only on that evidence."""
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import pytest
 from sqlalchemy import select
 from test_api import user
 
 from nimstead import containers
-from nimstead.db import Asset, Container, Finding, LedgerEntry, make_sessionmaker, now
+from nimstead.db import Advisory, Asset, Container, Finding, LedgerEntry, make_sessionmaker, now
 from nimstead.scan import rescan
 
 IMG = "sha256:" + "ab" * 32
@@ -41,8 +41,13 @@ def host(c, name, eco="Debian:12"):
     return a["asset_id"], h
 
 
-def send(c, h, images, complete=True, status=200):
-    r = c.post("/api/agent/containers", headers=h, json={"v": 1, "complete": complete, "images": images, "runtimes": {}, "error": None})
+def send(c, h, images, complete=True, status=200, listed=None):
+    """As the agent sends it: a complete report lists every runtime's running containers; an incomplete one (a runtime that
+    didn't answer) lists none, unless the test names what was listed."""
+    if listed is None:
+        listed = {rt: [x["id"] for i in images if isinstance(i, dict) for x in i.get("containers", []) if isinstance(x, dict) and x.get("runtime") == rt]
+                  for rt in ("docker", "podman")} if complete else {}
+    r = c.post("/api/agent/containers", headers=h, json={"v": 1, "complete": complete, "images": images, "runtimes": {}, "listed": listed, "error": None})
     assert r.status_code == status, r.text
     return r.json()
 
@@ -145,7 +150,7 @@ def test_entries_that_dont_fit_are_refused_and_make_the_report_incomplete(env):
     _, a = host(c, "web-1")
     send(c, a, [entry(ctrs=((1, "web"),)), entry(OTHER, OPENSSL[2:], ctrs=((2, "db"),), ref="postgres:16")])
     bad = [entry(ctrs=((1, "web"),)), dict(entry(), image_id="latest"), dict(entry(), containers=[{"id": "x", "runtime": "docker"}])]
-    out = send(c, a, bad)  # says complete, but two entries were refused: postgres's container isn't taken as stopped
+    out = send(c, a, bad, listed={"docker": [cid(1), cid(2)]})  # two entries refused: postgres's container is still listed, so it stays
     assert out["refused"] == 2 and out["complete"] is False
     s, imgs = images(env)
     assert len(s.scalars(select(Container)).all()) == 2
@@ -297,3 +302,88 @@ def test_two_hosts_reporting_one_new_image_at_once_make_one_asset(env, monkeypat
     s, imgs = images(env)
     assert codes == [200, 200] and len(imgs) == 1
     assert sorted(s.scalars(select(Container.asset_id).where(Container.image_asset_id == imgs[0].id))) == sorted(h_id for h_id, _ in hosts)
+
+
+# ---- security and code review (DECISIONS 143) ------------------------------------------------------------------------
+
+def test_a_stopped_container_closes_by_its_own_runtimes_listing_whatever_else_failed(env):
+    c = user(env)
+    _, a = host(c, "web-1")
+    send(c, a, [entry(ctrs=((1, "web"),)), entry(OTHER, OPENSSL[2:], ctrs=((2, "tools"),), runtime="podman")])
+    s, imgs = images(env)
+    web = next(i for i in imgs if i.facts["image_id"] == IMG)
+    # web stopped; podman broke (not listed); and the agent read nothing at all this time (its budget, say)
+    out = send(c, a, [], complete=False, listed={"docker": []})
+    s, _ = images(env)
+    assert out["stopped"] == 1 and open_on(s, web.id) == []  # docker's whole listing proves web stopped
+    assert [r.name for r in s.scalars(select(Container))] == ["tools"]  # podman's container isn't taken as stopped
+    # a container listed as running but not read keeps its row
+    send(c, a, [entry(ctrs=((3, "web"),))])
+    out = send(c, a, [], complete=False, listed={"docker": [cid(3)]})
+    s, _ = images(env)
+    assert out["stopped"] == 0 and open_on(s, web.id) != []
+
+
+def test_one_host_cant_take_the_orgs_share_of_images(env, monkeypatch):
+    c = user(env)
+    _, a = host(c, "evil-1")
+    _, b = host(c, "web-1")
+    monkeypatch.setattr(containers, "MAX_NEW_IMAGES_PER_HOST_DAY", 2)
+    many = [entry("sha256:" + f"{n:064x}", OPENSSL[2:], ctrs=((n, f"c{n}"),)) for n in range(1, 5)]
+    out = send(c, a, many)
+    assert out["new"] == 2 and out["refused"] == 2  # two new images a day from one host
+    assert send(c, b, [entry(ctrs=((9, "web"),))])["new"] == 1  # the next host is unaffected
+    monkeypatch.setattr(containers, "MAX_NEW_IMAGES_PER_HOST_DAY", 99)
+    monkeypatch.setattr(containers, "MAX_IMAGES_PER_HOST", 3)
+    assert send(c, a, many, complete=False)["refused"] == 1  # it runs two already: room for one more image
+    monkeypatch.setattr(containers, "MAX_CONTAINERS_PER_HOST", 4)
+    out = send(c, a, [entry("sha256:" + f"{n:064x}", OPENSSL[2:], ctrs=tuple((n * 10 + k, "x") for k in range(5))) for n in range(1, 2)], complete=False)
+    assert out["refused"] == 1  # five more containers than the host may hold
+
+
+def test_a_host_gets_one_vote_on_a_shared_images_name(env):
+    c = user(env)
+    _, a = host(c, "web-1")
+    _, b = host(c, "evil-1")
+    send(c, a, [entry(ctrs=((1, "web"),))])
+    send(c, b, [entry(ctrs=tuple((n, f"x{n}") for n in range(2, 12)), ref="PAYROLL-DB do-not-patch")])
+    s, (img,) = images(env)
+    assert img.hostname == "nginx:1.25"  # ten containers are still one vote, and a tie keeps the name
+    assert img.agent_key_hash.startswith("img:")  # never a hex SHA-256: no key hashes to it
+
+
+def test_an_image_seen_running_after_its_releases_end_is_judged_as_of_then(env):
+    s = make_sessionmaker(env)()
+    s.add(Advisory(id="debian", ecosystem="EOL", package="debian", record={"cycles": {"12": "2026-06-01"}}))
+    s.commit()
+    c = user(env)
+    _, a = host(c, "web-1")
+    send(c, a, [entry()])
+    s, (img,) = images(env)
+    assert "EOL:debian-12" in open_on(s, img.id)
+    img.last_inventory_at = img.first_seen = datetime(2026, 1, 1)  # first stored before the end date, still running now
+    s.commit()
+    rescan(s, img, inventory_received=False)
+    assert "EOL:debian-12" in open_on(s, img.id)
+
+
+def test_an_image_on_a_platform_no_feed_maps_is_not_assessed(env):
+    c = user(env)
+    _, a = host(c, "web-1")
+    wolfi = entry(OTHER, [{"name": "glibc", "version": "2.40-r1", "source": "glibc"}], ref="cgr.dev/chainguard/wolfi-base", eco="")
+    wolfi["facts"] = {"os_id": "wolfi", "os_version_id": "20230201", "os_unmatched": "no advisory feed maps this platform: ID=wolfi VERSION_ID=20230201"}
+    send(c, a, [wolfi])
+    row = next(x for x in c.get("/api/assets").json() if x["kind"] == "image")
+    assert row["packages_read"] is False and row["not_read_why"].startswith("no advisory feed maps this platform")
+
+
+def test_images_dont_count_against_the_asset_quota_and_take_no_sbom(env, monkeypatch):
+    import nimstead.app as appmod
+    c = user(env)
+    _, a = host(c, "web-1")
+    send(c, a, [entry()])
+    monkeypatch.setattr(appmod, "MAX_ASSETS_PER_ORG", 2)
+    assert c.post("/api/assets", json={"name": "billing", "criticality": "high"}).status_code == 201  # host + application; the image is apart
+    _, (img,) = images(env)
+    r = c.post(f"/api/assets/{img.id}/sbom", content=b'{"bomFormat": "CycloneDX", "specVersion": "1.5", "components": []}')
+    assert r.status_code == 409

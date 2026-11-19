@@ -223,7 +223,9 @@ def _os_blocked(inv: Inventory) -> Verdict:
 def _read_in_full(inv: Inventory, eco: str) -> bool:
     """Whether every source that would list a product of `eco` was read whole this time, so its absence is evidence (R4.6)."""
     from nimstead.scan import READ_FROM
-    if linux(eco):  # another release of the distro (an upgrade) is gone once the platform and the new package list are both read
+    if linux(eco) and inv.kind == "application":  # an image's SBOM is its whole package list, release included (DECISIONS 142)
+        names = ("sbom",)
+    elif linux(eco):  # another release of the distro (an upgrade) is gone once the platform and the new package list are both read
         names = ("package_db",) if eco == normalize_ecosystem(inv.ecosystem) else ("os_release", "package_db")
     elif eco == msproducts.ECOSYSTEM:  # per-user installs come from the user hives; .NET and Store product names carry the OS's
         names = (*READ_FROM[eco], "user_hives", "windows_build")
@@ -333,6 +335,16 @@ def _applications(inv: Inventory, c: Content, agent_read: bool = True, blocked_b
     return out
 
 
+def _eol_removed(inv: Inventory, prior, current: str | None) -> list[Verdict]:
+    """An old release's end of support is gone once the platform was read in full and names another release (an upgrade, or
+    one with no lifecycle): the host's os-release, or an image SBOM read whole, which names its release or none at all."""
+    if inv.source("sbom" if inv.kind == "application" else "os_release").state != "ok":
+        return []
+    ends = tuple(f"EOL:{p}-" for p in lifecycle.DISTRO_EOL.values())
+    return [Verdict(vuln, "distro", e, product, Outcome.NOT_APPLICABLE, vuln_id=vuln, reason="removed", instance=product)
+            for e, product, vuln in sorted(set(prior)) if e == lifecycle.ECOSYSTEM and vuln.startswith(ends) and vuln != current]
+
+
 def _sorted(verdicts: list[Verdict]) -> list[Verdict]:
     return sorted(verdicts, key=attrgetter("order"))
 
@@ -358,10 +370,7 @@ def _evaluate_linux(inv: Inventory, c: Content, prior) -> list[Verdict]:
         if eol.outcome == Outcome.VULNERABLE:
             out = [replace(v, outcome=Outcome.UNDETERMINED, reason="end-of-life", grade=None) if v.outcome == Outcome.NOT_VULNERABLE else v for v in out]
         out.append(eol)
-    if inv.source("os_release").state == "ok":  # read in full, another release (an upgrade, or one with no lifecycle) proves an old release's end of support gone
-        ends = tuple(f"EOL:{p}-" for p in lifecycle.DISTRO_EOL.values())
-        out += [Verdict(vuln, "distro", e, product, Outcome.NOT_APPLICABLE, vuln_id=vuln, reason="removed", instance=product)
-                for e, product, vuln in sorted(set(prior)) if e == lifecycle.ECOSYSTEM and vuln.startswith(ends) and vuln != (eol and eol.vuln_id)]
+    out += _eol_removed(inv, prior, eol and eol.vuln_id)
     out += _applications(inv, c, db.state == "ok", db)  # after end of support: a distro's lifecycle says nothing of PyPI's advisories
     out += _carry_forward(out, prior, inv, c)
     return _sorted(out)
@@ -372,7 +381,7 @@ def evaluate(inv: Inventory, content: Content, prior: tuple | list = ()) -> list
     if inv.kind == "application":  # an SBOM and nothing else
         if linux(inv.ecosystem) and inv.source("sbom").state == "ok":  # an image's SBOM: its OS packages as that release's (DECISIONS 142)
             return _evaluate_linux(inv, content, prior)
-        out = (_applications(inv, content) if inv.source("sbom").state == "ok"
+        out = (_applications(inv, content) + _eol_removed(inv, prior, None) if inv.source("sbom").state == "ok"
                else [Verdict("product:sbom", "application", "SBOM", "SBOM", Outcome.NOT_RUN, reason="no-sbom")])
         return _sorted(out + _carry_forward(out, prior, inv, content))
     if not inv.received:

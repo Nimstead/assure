@@ -152,3 +152,26 @@ def test_a_hosts_sbom_never_adds_os_packages_or_says_they_went_unjudged(env):
     assert out["skipped"]["os_package_on_host"] == 3 and out["distro"] is None
     report = c.get(f"/api/assets/{a['asset_id']}/scan-report").json()
     assert not any("os_package_on_host" in json.dumps(g) or "which this host's agent reads" in json.dumps(g) for g in report["undetermined"])
+
+
+def test_an_image_rebuilt_on_a_newer_release_closes_the_old_releases_findings(env):
+    s = make_sessionmaker(env)()
+    s.add(Advisory(id="debian", ecosystem="EOL", package="debian", record={"cycles": {"11": "2026-08-31", "12": "2028-06-30"}}))
+    s.commit()
+    c = user(env)
+    aid, h = app(c)
+    upload(c, aid, h, json.loads((FIX / "sbom" / "syft-debian_11.cdx.json").read_text(encoding="utf-8")))
+    upload(c, aid, h, IMAGE_SBOM)  # the same build, now on Debian 12
+    s = make_sessionmaker(env)()
+    eol = s.scalars(select(Finding).where(Finding.asset_id == aid, Finding.vuln_id == "EOL:debian-11")).one()
+    assert eol.status == "resolved"  # read whole, the SBOM names another release: the old one's end of support is gone
+    on12 = {f.vuln_id for f in s.scalars(select(Finding).where(Finding.asset_id == aid, Finding.status == "open", Finding.ecosystem == "Debian:12"))}
+    upload(c, aid, h, bom(comp("pkg:pypi/requests@2.31.0")))  # and rebuilt again on no distribution at all
+    s = make_sessionmaker(env)()
+    assert on12 and not s.scalars(select(Finding).where(Finding.asset_id == aid, Finding.status == "open", Finding.ecosystem == "Debian:12")).all()
+
+
+def test_a_hosts_os_packages_are_skipped_as_its_own_whether_or_not_they_map():
+    _, counts = sbom.parse(bom(comp("pkg:deb/debian/openssl@3.0.11-1~deb12u2?distro=debian-12.4"), comp("pkg:deb/debian/curl@7"),
+                               comp("pkg:rpm/redhat/bash@5.1.8-6.el9?distro=rhel-9.3")), os_packages=False)
+    assert counts["skipped"] == {"no_purl": 0, "unsupported_or_invalid_purl": 0, "os_package_on_host": 3}

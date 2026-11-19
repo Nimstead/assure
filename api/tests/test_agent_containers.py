@@ -98,7 +98,7 @@ def test_rpm_sqlite_refuses_what_isnt_an_rpm_database(tmp_path):
     con.execute("CREATE VIEW Packages AS SELECT 1 AS blob")
     con.commit()
     con.close()
-    with pytest.raises(agent.ContainerReadError, match="no Packages table"):
+    with pytest.raises(agent.ContainerReadError, match="isn't laid out as rpm's database"):  # a view is no table
         agent.parse_rpm_sqlite(p.read_bytes())
 
 
@@ -218,7 +218,7 @@ def test_distroless_root_is_read_from_status_d(tmp_path):
 
 @POSIX
 def test_a_pid_in_the_agents_own_namespace_is_not_a_container():
-    with pytest.raises(agent.ContainerReadError, match="isn't in a container"):
+    with pytest.raises(agent.ContainerReadError, match="isn't that container any more"):
         agent.ContainerRoot.of_pid(os.getpid())
     own = os.stat("/proc/self/ns/mnt").st_ino
     cr = agent.ContainerRoot.of_pid(os.getpid(), own_ns=own + 1)  # as if the agent lived elsewhere: our root is taken
@@ -253,28 +253,28 @@ def cli(answers):
 
 def test_list_containers_from_real_docker_and_podman_output():
     q = cli({("docker", "ps"): (0, f"{LEGACY}\n{WEB2}\n{WEB1}\n", ""), ("docker", "inspect"): (0, DOCKER_INSPECT, "")})
-    found, problem = agent.list_containers("docker", q)
-    assert problem is None and q.calls[1] == ["docker", "inspect", "--type", "container", LEGACY, WEB2, WEB1]
+    found, problem, ids = agent.list_containers("docker", q)
+    assert problem is None and q.calls[1] == ["docker", "inspect", "--type", "container", LEGACY, WEB2, WEB1] and ids == [LEGACY, WEB2, WEB1]
     assert found[0] == {"id": LEGACY, "name": "legacy", "runtime": "docker", "pid": 7375, "image_id": f"sha256:{DEBIAN_ID}", "ref": "debian:11"}
     q = cli({("podman", "ps"): (0, POD1 + "\n", ""), ("podman", "inspect"): (0, PODMAN_INSPECT, "")})
-    found, problem = agent.list_containers("podman", q)
+    found, problem, ids = agent.list_containers("podman", q)
     assert problem is None and found == [{"id": POD1, "name": "pod1", "runtime": "podman", "pid": 7504,
                                           "image_id": f"sha256:{ALPINE_ID}", "ref": "docker.io/library/alpine:3.18"}]
 
 
 def test_list_containers_never_calls_a_failure_complete():
-    found, problem = agent.list_containers("docker", cli({("docker", "ps"): (1, "", "Cannot connect to the Docker daemon at unix:///var/run/docker.sock\n")}))
+    found, problem, ids = agent.list_containers("docker", cli({("docker", "ps"): (1, "", "Cannot connect to the Docker daemon at unix:///var/run/docker.sock\n")}))
     assert found == [] and problem == "docker ps exited 1: Cannot connect to the Docker daemon at unix:///var/run/docker.sock"
-    found, problem = agent.list_containers("docker", cli({("docker", "ps"): (0, f"{LEGACY}\n", ""), ("docker", "inspect"): (0, "[{not json", "")}))
+    found, problem, ids = agent.list_containers("docker", cli({("docker", "ps"): (0, f"{LEGACY}\n", ""), ("docker", "inspect"): (0, "[{not json", "")}))
     assert found == [] and problem == "docker inspect: unreadable output"
     broken = json.dumps([{"Id": LEGACY, "State": {"Running": True, "Pid": 0}, "Image": "sha256:" + DEBIAN_ID}])
-    found, problem = agent.list_containers("docker", cli({("docker", "ps"): (0, f"{LEGACY}\n", ""), ("docker", "inspect"): (0, broken, "")}))
+    found, problem, ids = agent.list_containers("docker", cli({("docker", "ps"): (0, f"{LEGACY}\n", ""), ("docker", "inspect"): (0, broken, "")}))
     assert found == [] and "without its id, PID or image" in problem
     stopped = json.dumps([{"Id": LEGACY, "State": {"Running": False, "Pid": 0}, "Image": "sha256:" + DEBIAN_ID}])  # stopped since ps
-    found, problem = agent.list_containers("docker", cli({("docker", "ps"): (0, f"{LEGACY}\n", ""), ("docker", "inspect"): (0, stopped, "")}))
+    found, problem, ids = agent.list_containers("docker", cli({("docker", "ps"): (0, f"{LEGACY}\n", ""), ("docker", "inspect"): (0, stopped, "")}))
     assert found == [] and problem is None
-    found, problem = agent.list_containers("docker", cli({("docker", "ps"): (0, "$(rm -rf /)\n", "")}))
-    assert found == [] and problem == "1 unreadable container ids"  # never passed on to inspect
+    found, problem, ids = agent.list_containers("docker", cli({("docker", "ps"): (0, "$(rm -rf /)\n", "")}))
+    assert found == [] and problem == "1 unreadable container ids" and ids is None  # never passed on to inspect, and proves nothing
 
 
 class FakeRoot:
@@ -300,7 +300,7 @@ def both_runtimes():
 
 
 def report(q, which=lambda n: n in ("docker", "podman"), **kw):
-    kw.setdefault("root_of", lambda pid, own: FakeRoot(pid))
+    kw.setdefault("root_of", lambda pid, own, cid: FakeRoot(pid))
     kw.setdefault("read", lambda root: image_of(root.pid))
     return agent.containers(q, which, euid=0, **kw)
 
@@ -334,7 +334,7 @@ def test_a_runtime_failure_or_a_vanished_container_makes_the_report_partial():
     assert body["complete"] is False and body["runtimes"]["podman"]["state"] == "failed" and len(body["images"]) == 1
     assert body["line"]["state"] == "partial" and "podman: podman ps exited 125: Error: database is locked" in body["error"]
 
-    def gone(pid, own):
+    def gone(pid, own, cid):
         if pid == 7299:
             raise agent.ContainerReadError("the process isn't in a container of its own any more")
         return FakeRoot(pid)
@@ -357,7 +357,7 @@ def test_not_root_no_runtime_and_kubernetes_are_said():
     body = agent.containers(cli({}), lambda n: None, euid=1000)
     assert body["complete"] is False and body["line"]["state"] == "failed" and "isn't running as root" in body["error"]
     body = agent.containers(cli({}), lambda n: None, euid=0)
-    assert body == {"v": 1, "complete": True, "runtimes": {}, "images": [], "error": None, "line": {"state": "ok", "count": 0}}
+    assert body == {"v": 1, "complete": True, "runtimes": {}, "listed": {}, "images": [], "error": None, "line": {"state": "ok", "count": 0}}
     body = agent.containers(cli({}), lambda n: n == "crictl", euid=0)
     assert body["complete"] is True and body["line"]["state"] == "failed"  # nothing listed from Docker or Podman to take as stopped
     assert body["error"] == "crictl: Kubernetes (CRI) containers aren't read yet"
@@ -374,3 +374,122 @@ def test_enrol_records_the_local_opt_out(monkeypatch, tmp_path):
     assert saved["containers"] is False
     agent._main(["enroll", "--server", "https://s"])
     assert saved["containers"] is True
+
+
+# ---- security and code review (DECISIONS 143) ------------------------------------------------------------------------
+
+def rpmdb(tmp_path, ddl, rows=1):
+    p = tmp_path / "rpmdb.sqlite"
+    con = sqlite3.connect(p)
+    con.execute(ddl)
+    for _ in range(rows):
+        con.execute("INSERT INTO Packages (hnum) VALUES (NULL)")
+    con.commit()
+    con.close()
+    return p.read_bytes()
+
+
+def test_an_rpm_database_not_laid_out_as_rpms_is_never_queried(tmp_path):
+    # a generated column would build a gigabyte blob per row on one SELECT: refused from the schema, before any row is read
+    raw = rpmdb(tmp_path, "CREATE TABLE Packages(hnum INTEGER PRIMARY KEY, blob BLOB GENERATED ALWAYS AS (zeroblob(999999999)) VIRTUAL)")
+    with pytest.raises(agent.ContainerReadError, match="isn't laid out as rpm's database"):
+        agent.parse_rpm_sqlite(raw)
+    (tmp_path / "rpmdb.sqlite").unlink()
+    raw = rpmdb(tmp_path, "CREATE TABLE Packages(hnum INTEGER PRIMARY KEY, blob BLOB, extra TEXT)")
+    with pytest.raises(agent.ContainerReadError, match="isn't laid out"):
+        agent.parse_rpm_sqlite(raw)
+    real = (FIX / "almalinux9-rpmdb-sample.sqlite").read_bytes()
+    with pytest.raises(agent.ContainerReadError, match="more than 3 packages"):
+        agent.parse_rpm_sqlite(real, max_rows=3)
+    assert len(agent.parse_rpm_sqlite(real)) == 6  # rpm's own layout still reads
+
+
+class TreeRoot:
+    """A container root held in memory, for the package-database logic on any platform."""
+    def __init__(self, files):
+        self.files = files
+
+    def exists(self, path):
+        return path in self.files or any(k.startswith(path + "/") for k in self.files)
+
+    def read(self, path, limit=agent.CONTAINER_READ_MAX):
+        if path not in self.files:
+            raise FileNotFoundError(path)
+        return self.files[path]
+
+    def listdir(self, path):
+        return sorted(k[len(path) + 1:] for k in self.files if k.startswith(path + "/"))
+
+
+def test_package_databases_past_the_cap_are_refused_before_they_are_parsed(monkeypatch):
+    monkeypatch.setattr(agent, "CONTAINER_MAX_PACKAGES", 3)
+    tiny = "".join(f"P:p{i}\nV:1\n\n" for i in range(4)).encode()
+    pkgs, line = agent.container_package_db(TreeRoot({agent.APK_DB: tiny}))
+    assert pkgs == [] and line["state"] == "failed" and "more than 3 packages" in line["error"]
+    status = "".join(f"Package: p{i}\nStatus: install ok installed\nVersion: 1\n\n" for i in range(4)).encode()
+    assert agent.container_package_db(TreeRoot({agent.DPKG_STATUS: status}))[1]["state"] == "failed"
+    many = {f"{agent.DPKG_STATUS_D}/p{i}": f"Package: p{i}\nVersion: 1\n".encode() for i in range(4)}
+    assert "more than 3 packages" in agent.container_package_db(TreeRoot(many))[1]["error"]
+    three = {f"{agent.DPKG_STATUS_D}/p{i}": f"Package: p{i}\nVersion: 1\n".encode() for i in range(3)}
+    assert agent.container_package_db(TreeRoot(three))[1] == {"state": "ok", "count": 3}
+
+
+def test_status_d_entries_are_capped_together_too(monkeypatch):
+    monkeypatch.setattr(agent, "CONTAINER_READ_MAX", 100)
+    files = {f"{agent.DPKG_STATUS_D}/p{i}": (f"Package: p{i}\nVersion: 1\n" + "x" * 40).encode() for i in range(3)}
+    assert "MB in all" in agent.container_package_db(TreeRoot(files))[1]["error"]
+
+
+@POSIX
+def test_each_runtimes_whole_listing_is_sent_even_past_the_read_budget(monkeypatch):
+    monkeypatch.setattr(agent, "CONTAINER_MAX", 1)
+    body = report(both_runtimes())
+    assert body["listed"] == {"docker": [LEGACY, WEB2, WEB1], "podman": [POD1]}  # every running container, though one was read
+    assert body["complete"] is False and sum(len(i["containers"]) for i in body["images"]) == 1
+    q = cli({("docker", "ps"): (0, f"{LEGACY}\n", ""), ("docker", "inspect"): (0, json.dumps(json.loads(DOCKER_INSPECT)[:1]), ""),
+             ("podman", "ps"): (125, "", "Error: database is locked\n")})
+    assert report(q)["listed"] == {"docker": [LEGACY]}  # a runtime that didn't answer proves nothing
+
+
+@POSIX
+def test_an_image_that_would_overrun_the_body_budget_is_left_out_whole(monkeypatch):
+    monkeypatch.setattr(agent, "CONTAINER_BODY_MAX", 900)
+
+    def read(root):
+        got = image_of(root.pid)
+        return dict(got, packages=got["packages"] * (40 if root.pid == 7375 else 1))  # debian's entry alone is past the budget
+    body = report(both_runtimes(), read=read)
+    assert [i["ecosystem"] for i in body["images"]] == ["Alpine:v3.18"] and "legacy not sent: the report reached its size budget" in body["error"]
+    assert body["listed"]["docker"] == [LEGACY, WEB2, WEB1]  # still listed as running: its row isn't taken as stopped
+
+
+def test_an_unexpected_error_in_the_container_pass_never_costs_the_inventory():
+    def boom():
+        raise RuntimeError("something nobody expected")
+    body = agent.safe_containers(boom)
+    assert body["line"] == {"state": "failed", "count": 0, "error": "containers not read: RuntimeError: something nobody expected"}
+    assert body["images"] == [] and body["listed"] == {} and body["complete"] is False
+
+
+@POSIX
+def test_a_path_that_crosses_into_another_mount_is_refused(root, monkeypatch):
+    r, cr = root
+    real = agent._mount_id
+    usr = os.open(str(r / "usr"), os.O_PATH)
+    usr_ino = os.fstat(usr).st_ino
+    os.close(usr)
+    monkeypatch.setattr(agent, "_mount_id", lambda fd: "elsewhere" if os.fstat(fd).st_ino == usr_ino else real(fd))  # /usr as a mount
+    with pytest.raises(agent.ContainerReadError, match="crosses into another mount"):
+        cr.read("/usr/lib/os-release")
+    with pytest.raises(agent.ContainerReadError, match="crosses into another mount"):
+        cr.read("/etc/os-release")  # a link into it too
+
+
+@POSIX
+def test_a_reused_pid_that_isnt_the_listed_container_is_refused():
+    own = os.stat("/proc/self/ns/mnt").st_ino
+    with pytest.raises(agent.ContainerReadError, match="isn't that container any more"):
+        agent.ContainerRoot.of_pid(os.getpid(), own_ns=own + 1, container_id="f" * 64)  # our cgroup doesn't name it
+    with open("/proc/self/cgroup") as f:
+        mine = f.read().strip().rsplit("/", 1)[-1] or "0::"
+    agent.ContainerRoot.of_pid(os.getpid(), own_ns=own + 1, container_id=mine).close()

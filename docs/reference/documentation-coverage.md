@@ -1,6 +1,6 @@
 # Documentation coverage
 
-Documented callable/class declarations: **725/725**.
+Documented callable/class declarations: **727/727**.
 
 Regenerate with `python scripts/check_docs.py --report` from the repository root.
 
@@ -16,10 +16,10 @@ This metric checks documentation presence. It does not prove complete parameter,
 
 | File | Documented | Total |
 | --- | ---: | ---: |
-| [agent\nimstead_agent.py](../../agent\nimstead_agent.py) | 148 | 148 |
+| [agent\nimstead_agent.py](../../agent\nimstead_agent.py) | 149 | 149 |
 | [api\src\nimstead\ai.py](../../api\src\nimstead\ai.py) | 6 | 6 |
 | [api\src\nimstead\app.py](../../api\src\nimstead\app.py) | 105 | 105 |
-| [api\src\nimstead\containers.py](../../api\src\nimstead\containers.py) | 9 | 9 |
+| [api\src\nimstead\containers.py](../../api\src\nimstead\containers.py) | 10 | 10 |
 | [api\src\nimstead\db.py](../../api\src\nimstead\db.py) | 27 | 27 |
 | [api\src\nimstead\engine\__init__.py](../../api\src\nimstead\engine\__init__.py) | 6 | 6 |
 | [api\src\nimstead\engine\__main__.py](../../api\src\nimstead\engine\__main__.py) | 1 | 1 |

@@ -1106,7 +1106,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
         s is the Session and org_id selects all asset kinds. Raise HTTP 403 at the
         limit. This query is not a reservation or a concurrency-safe quota lock."""
-        if s.scalar(select(func.count()).select_from(Asset).where(Asset.org_id == org_id, Asset.kind != "device")) >= MAX_ASSETS_PER_ORG:
+        # devices and container images have caps of their own (DECISIONS 129, 139)
+        if s.scalar(select(func.count()).select_from(Asset).where(Asset.org_id == org_id, Asset.kind.not_in(("device", "image")))) >= MAX_ASSETS_PER_ORG:
             raise HTTPException(403, f"This organisation has reached its limit of {MAX_ASSETS_PER_ORG} assets "
                                      "(NIMSTEAD_MAX_ASSETS_PER_ORG); delete unused ones or ask your Nimstead administrator")
 
@@ -1294,6 +1295,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         v: int = 1
         complete: bool = False  # True only when every runtime listed its containers and each was read (agent `containers`)
         images: list[Any] = Field(default_factory=list, max_length=containers.MAX_IMAGES_PER_REPORT)  # checked one by one by containers.image
+        listed: Any = None  # each runtime's whole `ps` listing, checked by containers.listed: only it takes rows away
         runtimes: Any = None
         error: str | None = Field(None, max_length=300)
 
@@ -1523,7 +1525,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             release = signed_release() is not None
         runs = runs or []
         db_line = ((a.collection or {}).get("sources") or {}).get("package_db") or {}
-        read = db_line.get("state") == "ok" and bool(db_line.get("count"))
+        # read and judged: an empty list counts as unread, as the engine counts it (R4.3), and so does a platform no feed maps
+        read = db_line.get("state") == "ok" and bool(db_line.get("count")) and bool(a.ecosystem)
         return {
             "id": a.id, "hostname": a.hostname, "os_name": a.os_name, "ecosystem": a.ecosystem,
             "kind": a.kind, "criticality": a.criticality, "internet_facing": a.internet_facing, "directory_source": a.directory_source, "sandbox": a.sandbox,
@@ -1538,8 +1541,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             **({"verified": a.verified_at is not None, "verified_at": a.verified_at, "txt_name": external.txt_name(a.hostname),
                 "txt_value": external.txt_value(a.org_id, a.hostname), "proof_path": external.PROOF_PATH} if a.kind == "external" else {}),
             **({"image_id": (a.facts or {}).get("image_id"), "running_on": runs[:100], "containers_total": len(runs),
-                "hosts_total": len({r["host_id"] for r in runs}), "packages_read": read,  # an empty list counts as unread, as the engine counts it (R4.3)
-                "not_read_why": None if read else db_line.get("error") or (a.facts or {}).get("os_unmatched")
+                "hosts_total": len({r["host_id"] for r in runs}), "packages_read": read,
+                "not_read_why": None if read else (a.facts or {}).get("os_unmatched") or db_line.get("error")
                 or ("read to its end, with nothing in it" if db_line.get("state") == "ok" else "no package list was read")}
                if a.kind == "image" else {}),
             **({"containers": runs[:100], "containers_total": len(runs)} if a.kind == "host" and runs else {}),
@@ -1862,6 +1865,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         else:
             user = admin_user(request, current_user(request, s))
             a, who = owned_asset(s, user, asset_id), user.email
+        if a.kind not in ("host", "application"):  # an image's packages are what hosts read from it; a target or device has none
+            raise HTTPException(409, "SBOMs are uploaded to applications or machines")
         if over_limit(s, "sbom:" + a.id, SBOM_MAX_PER_HOUR) or over_limit(s, "inventory:" + a.org_id, ORG_INVENTORY_MAX_PER_HOUR):
             raise HTTPException(429, f"At most {SBOM_MAX_PER_HOUR} SBOM uploads an hour per asset, within the organisation's inventory limit")
         return a, who

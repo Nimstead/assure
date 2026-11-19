@@ -8,7 +8,7 @@ Agent 0.8.0. One database migration (`c9e1a3f5b7d2`, the `container` table): the
 
 ### Upgrade notes
 - **Agents at 0.8.0 read the packages inside a Linux host's running Docker and Podman containers at each report, by default.** Nothing is installed in a container and nothing in one is run. To turn it off on a host, enrol with `--no-containers`, or set `"containers": false` in `/etc/nimstead/agent.json`; the server can't turn it back on.
-- **New limit:** `NIMSTEAD_MAX_IMAGES_PER_ORG` (2,000) caps container images per organisation; they don't count against the asset quota.
+- **New limits:** `NIMSTEAD_MAX_IMAGES_PER_ORG` (2,000) caps container images per organisation; they don't count against the asset quota. One machine reports at most 512 containers, 256 images and 48 new images a day, and an image with more than 10,000 packages isn't read.
 - **Image SBOMs:** an application's SBOM with `pkg:deb`, `pkg:apk` or `pkg:rpm` components is now judged as that distribution's packages, so an image SBOM uploaded before can open many findings at its next upload.
 
 ### Highlights

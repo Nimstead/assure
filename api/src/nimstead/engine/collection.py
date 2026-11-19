@@ -145,8 +145,11 @@ class Inventory:
         Sort packages for stable hashing and retain the distinction between agent and SBOM origins.
         Does not query or write. Asset facts and collection metadata remain shared.
         Rows and asset must have compatible populated attributes. Attribute/type errors propagate."""
+        # an image's contents are read once, but it is as current as the last report that found it running: its end of
+        # support is judged as of then, or an image first seen before its release's end date would read supported for ever
+        read_at = asset.last_seen if asset.kind == "image" and asset.last_inventory_at else asset.last_inventory_at
         return cls(asset.hostname, asset.os_name, asset.ecosystem, asset.agent_version,
-                   asset.last_inventory_at.isoformat() + "Z" if asset.last_inventory_at else None, asset.facts or {},
+                   read_at.isoformat() + "Z" if read_at else None, asset.facts or {},
                    [{"ecosystem": p.ecosystem, "name": p.name, "version": p.version, "source": p.source,
                      **({"source_version": p.source_version} if p.source_version else {}),  # absent for old rows: their hash doesn't move
                      **({"origin": "sbom"} if p.origin == "sbom" else {})}

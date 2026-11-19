@@ -21,6 +21,22 @@ The token only works for that asset. Organisation API tokens (`nmt_`) are read-o
 
 Every successful upload replaces the previous SBOM packages. Keep the previous build's SBOM if you need to restore its inventory. Re-upload that complete document to restore it; doing so records a new scan and ledger event.
 
+## Container images
+
+An image's SBOM is mostly operating-system packages. Assure matches them against the distribution's own advisories, using the source package each was built from, as the agent does for a machine. Generate the SBOM with Syft or Trivy (CycloneDX or SPDX JSON, both tools' default format), then upload it as above:
+
+```bash
+syft "registry.example.com/billing-api:${GIT_SHA}" -o cyclonedx-json > sbom.json
+```
+
+```bash
+trivy image --format cyclonedx --output sbom.json "registry.example.com/billing-api:${GIT_SHA}"
+```
+
+The response's `distro` names the release the OS packages belong to, such as `Debian:12`. Findings from an SBOM are graded unverified, because an SBOM states what was built, not what is running. If the base image is past its end of support, that is a finding too. Assure never plans a fix on an image: rebuild it and upload the new SBOM, and the findings it no longer has close.
+
+One SBOM is one image. OS packages of a second release are skipped and counted as `other_distro`. To see what actually runs, rather than what was built, let the agents read the running containers: see [Find vulnerabilities in running containers](scan-containers.md).
+
 ## Resolve an upload failure
 
 | Response | Action |

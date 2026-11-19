@@ -78,6 +78,10 @@ class RemediationError(Exception):
     pass
 
 
+REBUILD = ("A container image is fixed by rebuilding it with the fixed packages (or a newer base image) and redeploying it; "
+           "Nimstead never changes a running container")
+
+
 def production_allowed() -> bool:
     """Return whether NIMSTEAD_ALLOW_PRODUCTION_REMEDIATION equals exact text 1.
 
@@ -324,7 +328,10 @@ def plan(s: Session, asset: Asset, ecosystem: str, package: str, created_by: str
     WinApp/Microsoft/WinConfig delegate and ignore include/step. Active duplicate
     actions, absent findings, unsupported managers or invalid packages raise
     RemediationError. Other field/comparator/database errors propagate.
-    Planning does not enforce approval gates or local consent. The caller commits."""
+    Planning does not enforce approval gates or local consent. The caller commits. Only a host with an agent is ever
+    planned on: an image or an SBOM is fixed in its build (DECISIONS 141)."""
+    if asset.kind != "host":
+        raise RemediationError(REBUILD if asset.kind == "image" else "Automatic remediation runs only on machines with an agent; fix this in its build")
     manager = MANAGERS.get(ecosystem.split(":", 1)[0])
     if not manager:
         raise RemediationError(f"Automatic remediation is not supported for {ecosystem} packages")

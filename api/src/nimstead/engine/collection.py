@@ -145,8 +145,11 @@ class Inventory:
         Sort packages for stable hashing and retain the distinction between agent and SBOM origins.
         Does not query or write. Asset facts and collection metadata remain shared.
         Rows and asset must have compatible populated attributes. Attribute/type errors propagate."""
+        # an image's contents are read once, but it is as current as the last report that found it running: its end of
+        # support is judged as of then, or an image first seen before its release's end date would read supported for ever
+        read_at = asset.last_seen if asset.kind == "image" and asset.last_inventory_at else asset.last_inventory_at
         return cls(asset.hostname, asset.os_name, asset.ecosystem, asset.agent_version,
-                   asset.last_inventory_at.isoformat() + "Z" if asset.last_inventory_at else None, asset.facts or {},
+                   read_at.isoformat() + "Z" if read_at else None, asset.facts or {},
                    [{"ecosystem": p.ecosystem, "name": p.name, "version": p.version, "source": p.source,
                      **({"source_version": p.source_version} if p.source_version else {}),  # absent for old rows: their hash doesn't move
                      **({"origin": "sbom"} if p.origin == "sbom" else {})}
@@ -199,7 +202,8 @@ class Inventory:
         return got
 
     def _source(self, name: str) -> Source:
-        if name == "sbom":  # an upload is read whole or refused whole (sbom.parse); what it couldn't name is counted in `self.sbom`
+        if name == "sbom" or (name == "package_db" and self.kind == "application"):  # an image's SBOM is its package list (DECISIONS 142)
+            # an upload is read whole or refused whole (sbom.parse); what it couldn't name is counted in `self.sbom`
             if self.sbom is None and not self.sbom_rows:
                 return Source(name, NOT_REPORTED, reason="no-sbom", error="no SBOM has been uploaded")
             return Source(name, "ok", self.sbom_rows)
@@ -289,6 +293,7 @@ def linux_installs(inv: Inventory) -> list[Install]:
     inv supplies packages, ecosystem and kernel facts. This maps rows without checking
     collection status. Does not modify inv. Malformed package rows can raise KeyError or TypeError."""
     eco, mgr, running = normalize_ecosystem(inv.ecosystem), manager(inv.ecosystem), inv.facts.get("kernel_release")
+    sbom_doc = inv.kind == "application"  # an image's SBOM: what was built, graded as SBOM evidence, not a reading (DECISIONS 142)
     groups: dict[tuple[str, str], list[str]] = {}
     kernels, live = set(), set()
     for p in inv.packages:
@@ -307,7 +312,11 @@ def linux_installs(inv: Inventory) -> list[Install]:
         if (src, ver) in kernels:
             state = "running" if (src, ver) in live else "not-running" if isinstance(running, str) else ""
         shown = ", ".join(sorted(names)[:5]) + (f" and {len(names) - 5} more" if len(names) > 5 else "")
-        out.append(Install("distro", eco, (src,), ver, f"{src} {ver}", f"{mgr} database: {shown}", "package_db", True, kernel=state))
+        if sbom_doc:
+            when = f", received {inv.sbom['received'][:10]}" if inv.sbom and inv.sbom.get("received") else ""
+            out.append(Install("distro", eco, (src,), ver, f"{src} {ver}", f"SBOM components{when}: {shown}", "sbom", kernel=state))
+        else:
+            out.append(Install("distro", eco, (src,), ver, f"{src} {ver}", f"{mgr} database: {shown}", "package_db", True, kernel=state))
     return out
 
 

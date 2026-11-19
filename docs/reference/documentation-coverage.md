@@ -1,6 +1,6 @@
 # Documentation coverage
 
-Documented callable/class declarations: **693/693**.
+Documented callable/class declarations: **727/727**.
 
 Regenerate with `python scripts/check_docs.py --report` from the repository root.
 
@@ -16,10 +16,11 @@ This metric checks documentation presence. It does not prove complete parameter,
 
 | File | Documented | Total |
 | --- | ---: | ---: |
-| [agent/nimstead_agent.py](../../agent/nimstead_agent.py) | 133 | 133 |
+| [agent/nimstead_agent.py](../../agent/nimstead_agent.py) | 149 | 149 |
 | [api/src/nimstead/ai.py](../../api/src/nimstead/ai.py) | 6 | 6 |
-| [api/src/nimstead/app.py](../../api/src/nimstead/app.py) | 104 | 104 |
-| [api/src/nimstead/db.py](../../api/src/nimstead/db.py) | 26 | 26 |
+| [api/src/nimstead/app.py](../../api/src/nimstead/app.py) | 105 | 105 |
+| [api/src/nimstead/containers.py](../../api/src/nimstead/containers.py) | 10 | 10 |
+| [api/src/nimstead/db.py](../../api/src/nimstead/db.py) | 27 | 27 |
 | [api/src/nimstead/engine/__init__.py](../../api/src/nimstead/engine/__init__.py) | 6 | 6 |
 | [api/src/nimstead/engine/__main__.py](../../api/src/nimstead/engine/__main__.py) | 1 | 1 |
 | [api/src/nimstead/engine/collection.py](../../api/src/nimstead/engine/collection.py) | 19 | 19 |
@@ -46,7 +47,7 @@ This metric checks documentation presence. It does not prove complete parameter,
 | [api/src/nimstead/oui.py](../../api/src/nimstead/oui.py) | 4 | 4 |
 | [api/src/nimstead/remediate.py](../../api/src/nimstead/remediate.py) | 23 | 23 |
 | [api/src/nimstead/risk.py](../../api/src/nimstead/risk.py) | 4 | 4 |
-| [api/src/nimstead/sbom.py](../../api/src/nimstead/sbom.py) | 4 | 4 |
+| [api/src/nimstead/sbom.py](../../api/src/nimstead/sbom.py) | 6 | 6 |
 | [api/src/nimstead/scan.py](../../api/src/nimstead/scan.py) | 9 | 9 |
 | [api/src/nimstead/sso.py](../../api/src/nimstead/sso.py) | 11 | 11 |
 | [api/src/nimstead/updates.py](../../api/src/nimstead/updates.py) | 12 | 12 |
@@ -61,11 +62,11 @@ This metric checks documentation presence. It does not prove complete parameter,
 | [scripts/fetch_runtimes.py](../../scripts/fetch_runtimes.py) | 1 | 1 |
 | [scripts/sign_release.py](../../scripts/sign_release.py) | 4 | 4 |
 | [scripts/xccdf_rules.py](../../scripts/xccdf_rules.py) | 14 | 14 |
-| [web/src/assets.tsx](../../web/src/assets.tsx) | 11 | 11 |
+| [web/src/assets.tsx](../../web/src/assets.tsx) | 13 | 13 |
 | [web/src/auth.tsx](../../web/src/auth.tsx) | 2 | 2 |
 | [web/src/evidence.tsx](../../web/src/evidence.tsx) | 2 | 2 |
-| [web/src/findings.tsx](../../web/src/findings.tsx) | 2 | 2 |
-| [web/src/home.tsx](../../web/src/home.tsx) | 2 | 2 |
+| [web/src/findings.tsx](../../web/src/findings.tsx) | 3 | 3 |
+| [web/src/home.tsx](../../web/src/home.tsx) | 3 | 3 |
 | [web/src/integrations.tsx](../../web/src/integrations.tsx) | 2 | 2 |
 | [web/src/lib.ts](../../web/src/lib.ts) | 33 | 33 |
 | [web/src/onboarding.tsx](../../web/src/onboarding.tsx) | 2 | 2 |

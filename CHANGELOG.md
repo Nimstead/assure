@@ -4,6 +4,38 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-19 (preview)
+
+Agent 0.8.0. One database migration (`c9e1a3f5b7d2`, the `container` table): the Docker image applies it on start; without Docker, run `alembic upgrade head`. Update Linux hosts to read their containers.
+
+### Upgrade notes
+- **Agents at 0.8.0 read the packages inside a Linux host's running Docker and Podman containers at each report, by default.** Nothing is installed in a container and nothing in one is run. To turn it off on a host, enrol with `--no-containers`, or set `"containers": false` in `/etc/nimstead/agent.json`; the server can't turn it back on.
+- **New limits:** `NIMSTEAD_MAX_IMAGES_PER_ORG` (2,000) caps container images per organisation; they don't count against the asset quota. One machine reports at most 512 containers, 256 images and 48 new images a day, and an image with more than 10,000 packages isn't read.
+- **Image SBOMs:** an application's SBOM with `pkg:deb`, `pkg:apk` or `pkg:rpm` components is now judged as that distribution's packages, so an image SBOM uploaded before can open many findings at its next upload.
+
+### Highlights
+- **Containers are no longer a blind spot.** The agent already on a Linux host reads its running Docker and Podman containers: no sensor, no Docker socket handed to anyone. Each image is listed once on Assets, however many machines run it, with its base OS, where it runs and what's vulnerable in it, judged with each distribution's own rules exactly as a machine is.
+- **Fix it once.** Fix first lists the container images to rebuild and the packages each rebuild must bring. When every machine that ran an image reports without it, its findings close; a machine going quiet closes nothing.
+- **Never "clean" by accident.** An image with no package database, or one in a format not read yet, says "Not assessed" and why.
+- **Image SBOMs from Syft and Trivy now count.** Their OS packages are matched with the distribution's advisories, end of support included, and their default CycloneDX 1.7 output is accepted (it was refused).
+
+### Added
+- **Container images** (agent 0.8.0, DECISIONS 138-141): the agent lists running containers with `docker` and `podman` (`ps`, `inspect`) and reads each one's os-release and package database (dpkg, distroless `status.d`, apk, rpm SQLite) through the container's own root. Each distinct image is one asset of the organisation, shared by every host that runs it, ranked by the most critical and most exposed host that runs it. New **Container images** view on Assets with each image's containers by machine; a machine's details list the containers running on it; the palette finds images. `POST /api/agent/containers`; `GET /api/assets` adds where each image runs; `GET /api/summary` adds `images_to_rebuild`; every finding carries `asset_kind`.
+- **Image SBOM OS packages** (DECISIONS 142): `pkg:deb`, `pkg:apk` and `pkg:rpm` with a `distro` qualifier map to Debian, Ubuntu, Alpine, AlmaLinux, Rocky Linux, openSUSE Leap or SLES, with the source package from Syft's `upstream` qualifier, Trivy's `Src*` properties or SPDX `sourceInfo`. Real Syft and Trivy output for debian:11, alpine:3.18 and almalinux:9 gives row for row what the agent reads from the same image. The upload response adds `distro` and new skip reasons.
+- `enroll --no-containers` and the Linux installer's `--no-containers`.
+
+### Changed
+- Remediation is planned only on a machine with an agent: an image or an application asset is refused by every planning path. Fix first's recommended fixes and the Findings bulk bar count machines only.
+- The Container images and image findings say how an image is fixed: rebuild with the fixed packages, or a newer base image, and redeploy.
+- The e2e accessibility checks now wait for a drawer's fade-in before measuring contrast.
+
+### Fixed
+- **CycloneDX 1.7 SBOMs were refused** with HTTP 422. Syft and Trivy write 1.7 by default, so an SBOM straight from either tool couldn't be uploaded.
+
+### Known limits
+- Not read yet: Kubernetes (containerd, CRI-O) containers, rootless containers, stopped containers and images at rest, Python, npm and Java packages inside containers, and rpm's Berkeley DB and ndb databases (RHEL 8 family, UBI 8, openSUSE images), which say "Not assessed".
+- A container is seen while it runs at report time, so a short-lived job container's findings can open and close between reports.
+
 ## [0.9.3] - 2026-11-17 (preview)
 
 Agent 0.7.3. No database migration. Fixes from a whole-repo audit and its review: update Linux and Windows hosts.
@@ -652,7 +684,8 @@ The first early-access release. Everything listed is proven by tests and, for an
 
 Licensed under FSL-1.1-ALv2: this release becomes available under Apache 2.0 on 2028-10-27.
 
-[Unreleased]: https://github.com/Nimstead/assure/compare/v0.9.3...HEAD
+[Unreleased]: https://github.com/Nimstead/assure/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/Nimstead/assure/compare/v0.9.3...v0.10.0
 [0.9.3]: https://github.com/Nimstead/assure/compare/v0.9.2...v0.9.3
 [0.9.2]: https://github.com/Nimstead/assure/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/Nimstead/assure/compare/v0.9.0...v0.9.1

@@ -1,0 +1,3244 @@
+{
+ "bomFormat": "CycloneDX",
+ "components": [
+  {
+   "name": "alma",
+   "type": "operating-system",
+   "version": "9.9"
+  },
+  {
+   "name": "acl",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "acl"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "2.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.4.0"
+    }
+   ],
+   "purl": "pkg:rpm/alma/acl@2.4.0-2.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "2.4.0-2.el9"
+  },
+  {
+   "name": "almalinux-gpg-keys",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "almalinux-release"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "9.9"
+    }
+   ],
+   "purl": "pkg:rpm/alma/almalinux-gpg-keys@9.9-1.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "9.9-1.el9"
+  },
+  {
+   "name": "almalinux-release",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "almalinux-release"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "9.9"
+    }
+   ],
+   "purl": "pkg:rpm/alma/almalinux-release@9.9-1.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "9.9-1.el9"
+  },
+  {
+   "name": "almalinux-repos",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "almalinux-release"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "9.9"
+    }
+   ],
+   "purl": "pkg:rpm/alma/almalinux-repos@9.9-1.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "9.9-1.el9"
+  },
+  {
+   "name": "alternatives",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "chkconfig"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "2.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.24"
+    }
+   ],
+   "purl": "pkg:rpm/alma/alternatives@1.24-2.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "1.24-2.el9"
+  },
+  {
+   "name": "attr",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "attr"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "2.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.6.0"
+    }
+   ],
+   "purl": "pkg:rpm/alma/attr@2.6.0-2.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "2.6.0-2.el9"
+  },
+  {
+   "name": "audit-libs",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "audit"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "9.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.1.5"
+    }
+   ],
+   "purl": "pkg:rpm/alma/audit-libs@3.1.5-9.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "3.1.5-9.el9"
+  },
+  {
+   "name": "basesystem",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "basesystem"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "13.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "11"
+    }
+   ],
+   "purl": "pkg:rpm/alma/basesystem@11-13.el9?arch=noarch&distro=alma-9.9",
+   "type": "library",
+   "version": "11-13.el9"
+  },
+  {
+   "name": "bash",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "bash"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "9.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "5.1.8"
+    }
+   ],
+   "purl": "pkg:rpm/alma/bash@5.1.8-9.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "5.1.8-9.el9"
+  },
+  {
+   "name": "binutils-gold",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "binutils"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "72.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.35.2"
+    }
+   ],
+   "purl": "pkg:rpm/alma/binutils-gold@2.35.2-72.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "2.35.2-72.el9"
+  },
+  {
+   "name": "binutils",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "binutils"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "72.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.35.2"
+    }
+   ],
+   "purl": "pkg:rpm/alma/binutils@2.35.2-72.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "2.35.2-72.el9"
+  },
+  {
+   "name": "bzip2-libs",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "bzip2"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "11.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.0.8"
+    }
+   ],
+   "purl": "pkg:rpm/alma/bzip2-libs@1.0.8-11.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "1.0.8-11.el9"
+  },
+  {
+   "name": "ca-certificates",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "ca-certificates"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "90.3.el9_8"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2026.2.92_v9.0.319"
+    }
+   ],
+   "purl": "pkg:rpm/alma/ca-certificates@2026.2.92_v9.0.319-90.3.el9_8?arch=noarch&distro=alma-9.9",
+   "type": "library",
+   "version": "2026.2.92_v9.0.319-90.3.el9_8"
+  },
+  {
+   "name": "coreutils-single",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "coreutils"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "43.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "8.32"
+    }
+   ],
+   "purl": "pkg:rpm/alma/coreutils-single@8.32-43.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "8.32-43.el9"
+  },
+  {
+   "name": "cracklib-dicts",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "cracklib"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "28.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.9.6"
+    }
+   ],
+   "purl": "pkg:rpm/alma/cracklib-dicts@2.9.6-28.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "2.9.6-28.el9"
+  },
+  {
+   "name": "cracklib",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "cracklib"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "28.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.9.6"
+    }
+   ],
+   "purl": "pkg:rpm/alma/cracklib@2.9.6-28.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "2.9.6-28.el9"
+  },
+  {
+   "name": "crypto-policies-scripts",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "crypto-policies"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1.git65b74f7.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "20260714"
+    }
+   ],
+   "purl": "pkg:rpm/alma/crypto-policies-scripts@20260714-1.git65b74f7.el9?arch=noarch&distro=alma-9.9",
+   "type": "library",
+   "version": "20260714-1.git65b74f7.el9"
+  },
+  {
+   "name": "crypto-policies",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "crypto-policies"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1.git65b74f7.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "20260714"
+    }
+   ],
+   "purl": "pkg:rpm/alma/crypto-policies@20260714-1.git65b74f7.el9?arch=noarch&distro=alma-9.9",
+   "type": "library",
+   "version": "20260714-1.git65b74f7.el9"
+  },
+  {
+   "name": "curl-minimal",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "curl"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "43.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "7.76.1"
+    }
+   ],
+   "purl": "pkg:rpm/alma/curl-minimal@7.76.1-43.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "7.76.1-43.el9"
+  },
+  {
+   "name": "cyrus-sasl-lib",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "cyrus-sasl"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "22.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.1.27"
+    }
+   ],
+   "purl": "pkg:rpm/alma/cyrus-sasl-lib@2.1.27-22.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "2.1.27-22.el9"
+  },
+  {
+   "name": "dbus-broker",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "dbus-broker"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "10.el9_9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "28"
+    }
+   ],
+   "purl": "pkg:rpm/alma/dbus-broker@28-10.el9_9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "28-10.el9_9"
+  },
+  {
+   "name": "dbus-common",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcEpoch",
+     "value": "1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "dbus"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "10.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.12.20"
+    }
+   ],
+   "purl": "pkg:rpm/alma/dbus-common@1.12.20-10.el9?arch=noarch&distro=alma-9.9&epoch=1",
+   "type": "library",
+   "version": "1:1.12.20-10.el9"
+  },
+  {
+   "name": "dbus-libs",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcEpoch",
+     "value": "1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "dbus"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "10.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.12.20"
+    }
+   ],
+   "purl": "pkg:rpm/alma/dbus-libs@1.12.20-10.el9?arch=x86_64&distro=alma-9.9&epoch=1",
+   "type": "library",
+   "version": "1:1.12.20-10.el9"
+  },
+  {
+   "name": "dbus",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcEpoch",
+     "value": "1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "dbus"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "10.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.12.20"
+    }
+   ],
+   "purl": "pkg:rpm/alma/dbus@1.12.20-10.el9?arch=x86_64&distro=alma-9.9&epoch=1",
+   "type": "library",
+   "version": "1:1.12.20-10.el9"
+  },
+  {
+   "name": "dnf-data",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "dnf"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "37.el9.alma.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "4.14.0"
+    }
+   ],
+   "purl": "pkg:rpm/alma/dnf-data@4.14.0-37.el9.alma.1?arch=noarch&distro=alma-9.9",
+   "type": "library",
+   "version": "4.14.0-37.el9.alma.1"
+  },
+  {
+   "name": "dnf",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "dnf"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "37.el9.alma.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "4.14.0"
+    }
+   ],
+   "purl": "pkg:rpm/alma/dnf@4.14.0-37.el9.alma.1?arch=noarch&distro=alma-9.9",
+   "type": "library",
+   "version": "4.14.0-37.el9.alma.1"
+  },
+  {
+   "name": "elfutils-debuginfod-client",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "elfutils"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1.el9.alma.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "0.195"
+    }
+   ],
+   "purl": "pkg:rpm/alma/elfutils-debuginfod-client@0.195-1.el9.alma.1?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "0.195-1.el9.alma.1"
+  },
+  {
+   "name": "elfutils-default-yama-scope",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "elfutils"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1.el9.alma.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "0.195"
+    }
+   ],
+   "purl": "pkg:rpm/alma/elfutils-default-yama-scope@0.195-1.el9.alma.1?arch=noarch&distro=alma-9.9",
+   "type": "library",
+   "version": "0.195-1.el9.alma.1"
+  },
+  {
+   "name": "elfutils-libelf",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "elfutils"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1.el9.alma.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "0.195"
+    }
+   ],
+   "purl": "pkg:rpm/alma/elfutils-libelf@0.195-1.el9.alma.1?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "0.195-1.el9.alma.1"
+  },
+  {
+   "name": "elfutils-libs",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "elfutils"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1.el9.alma.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "0.195"
+    }
+   ],
+   "purl": "pkg:rpm/alma/elfutils-libs@0.195-1.el9.alma.1?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "0.195-1.el9.alma.1"
+  },
+  {
+   "name": "expat",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "expat"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "9.el9_9.4"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.5.0"
+    }
+   ],
+   "purl": "pkg:rpm/alma/expat@2.5.0-9.el9_9.4?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "2.5.0-9.el9_9.4"
+  },
+  {
+   "name": "file-libs",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "file"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "19.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "5.39"
+    }
+   ],
+   "purl": "pkg:rpm/alma/file-libs@5.39-19.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "5.39-19.el9"
+  },
+  {
+   "name": "filesystem",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "filesystem"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "5.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.16"
+    }
+   ],
+   "purl": "pkg:rpm/alma/filesystem@3.16-5.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "3.16-5.el9"
+  },
+  {
+   "name": "findutils",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcEpoch",
+     "value": "1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "findutils"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "7.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "4.8.0"
+    }
+   ],
+   "purl": "pkg:rpm/alma/findutils@4.8.0-7.el9?arch=x86_64&distro=alma-9.9&epoch=1",
+   "type": "library",
+   "version": "1:4.8.0-7.el9"
+  },
+  {
+   "name": "gawk",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gawk"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "7.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "5.1.0"
+    }
+   ],
+   "purl": "pkg:rpm/alma/gawk@5.1.0-7.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "5.1.0-7.el9"
+  },
+  {
+   "name": "gdbm-libs",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcEpoch",
+     "value": "1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gdbm"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.23"
+    }
+   ],
+   "purl": "pkg:rpm/alma/gdbm-libs@1.23-1.el9?arch=x86_64&distro=alma-9.9&epoch=1",
+   "type": "library",
+   "version": "1:1.23-1.el9"
+  },
+  {
+   "name": "glib2",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "glib2"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "29.el9_9.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.68.4"
+    }
+   ],
+   "purl": "pkg:rpm/alma/glib2@2.68.4-29.el9_9.1?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "2.68.4-29.el9_9.1"
+  },
+  {
+   "name": "glibc-common",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "glibc"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "290.el9_9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.34"
+    }
+   ],
+   "purl": "pkg:rpm/alma/glibc-common@2.34-290.el9_9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "2.34-290.el9_9"
+  },
+  {
+   "name": "glibc-minimal-langpack",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "glibc"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "290.el9_9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.34"
+    }
+   ],
+   "purl": "pkg:rpm/alma/glibc-minimal-langpack@2.34-290.el9_9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "2.34-290.el9_9"
+  },
+  {
+   "name": "glibc",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "glibc"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "290.el9_9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.34"
+    }
+   ],
+   "purl": "pkg:rpm/alma/glibc@2.34-290.el9_9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "2.34-290.el9_9"
+  },
+  {
+   "name": "gmp",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcEpoch",
+     "value": "1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gmp"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "13.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "6.2.0"
+    }
+   ],
+   "purl": "pkg:rpm/alma/gmp@6.2.0-13.el9?arch=x86_64&distro=alma-9.9&epoch=1",
+   "type": "library",
+   "version": "1:6.2.0-13.el9"
+  },
+  {
+   "name": "gnupg2",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gnupg2"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "5.el9_7"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.3.3"
+    }
+   ],
+   "purl": "pkg:rpm/alma/gnupg2@2.3.3-5.el9_7?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "2.3.3-5.el9_7"
+  },
+  {
+   "name": "gnutls",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gnutls"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "9.el9_8"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.8.10"
+    }
+   ],
+   "purl": "pkg:rpm/alma/gnutls@3.8.10-9.el9_8?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "3.8.10-9.el9_8"
+  },
+  {
+   "name": "gpg-pubkey",
+   "purl": "pkg:rpm/alma/gpg-pubkey@b86b3716-61e69f29?arch=None&distro=alma-9.9",
+   "type": "library",
+   "version": "b86b3716-61e69f29"
+  },
+  {
+   "name": "gpgme",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gpgme"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "6.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.15.1"
+    }
+   ],
+   "purl": "pkg:rpm/alma/gpgme@1.15.1-6.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "1.15.1-6.el9"
+  },
+  {
+   "name": "grep",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "grep"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "5.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.6"
+    }
+   ],
+   "purl": "pkg:rpm/alma/grep@3.6-5.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "3.6-5.el9"
+  },
+  {
+   "name": "gzip",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gzip"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "2.el9_8"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.12"
+    }
+   ],
+   "purl": "pkg:rpm/alma/gzip@1.12-2.el9_8?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "1.12-2.el9_8"
+  },
+  {
+   "name": "hostname",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "hostname"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "6.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.23"
+    }
+   ],
+   "purl": "pkg:rpm/alma/hostname@3.23-6.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "3.23-6.el9"
+  },
+  {
+   "name": "ima-evm-utils",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "ima-evm-utils"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "4.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.6.2"
+    }
+   ],
+   "purl": "pkg:rpm/alma/ima-evm-utils@1.6.2-4.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "1.6.2-4.el9"
+  },
+  {
+   "name": "iputils",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "iputils"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "15.el9_7"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "20210202"
+    }
+   ],
+   "purl": "pkg:rpm/alma/iputils@20210202-15.el9_7?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "20210202-15.el9_7"
+  },
+  {
+   "name": "json-c",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "json-c"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "11.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "0.14"
+    }
+   ],
+   "purl": "pkg:rpm/alma/json-c@0.14-11.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "0.14-11.el9"
+  },
+  {
+   "name": "keyutils-libs",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "keyutils"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.6.3"
+    }
+   ],
+   "purl": "pkg:rpm/alma/keyutils-libs@1.6.3-1.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "1.6.3-1.el9"
+  },
+  {
+   "name": "keyutils",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "keyutils"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.6.3"
+    }
+   ],
+   "purl": "pkg:rpm/alma/keyutils@1.6.3-1.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "1.6.3-1.el9"
+  },
+  {
+   "name": "kmod-libs",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "kmod"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "11.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "28"
+    }
+   ],
+   "purl": "pkg:rpm/alma/kmod-libs@28-11.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "28-11.el9"
+  },
+  {
+   "name": "krb5-libs",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "krb5"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "10.el9_8.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.21.1"
+    }
+   ],
+   "purl": "pkg:rpm/alma/krb5-libs@1.21.1-10.el9_8.1?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "1.21.1-10.el9_8.1"
+  },
+  {
+   "name": "less",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "less"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "6.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "590"
+    }
+   ],
+   "purl": "pkg:rpm/alma/less@590-6.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "590-6.el9"
+  },
+  {
+   "name": "libacl",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "acl"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "2.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.4.0"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libacl@2.4.0-2.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "2.4.0-2.el9"
+  },
+  {
+   "name": "libarchive",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libarchive"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "11.el9_8"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.5.3"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libarchive@3.5.3-11.el9_8?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "3.5.3-11.el9_8"
+  },
+  {
+   "name": "libassuan",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libassuan"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "3.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.5.5"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libassuan@2.5.5-3.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "2.5.5-3.el9"
+  },
+  {
+   "name": "libattr",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "attr"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "2.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.6.0"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libattr@2.6.0-2.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "2.6.0-2.el9"
+  },
+  {
+   "name": "libblkid",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "util-linux"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "28.el9_9.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.37.4"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libblkid@2.37.4-28.el9_9.1?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "2.37.4-28.el9_9.1"
+  },
+  {
+   "name": "libcap-ng",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libcap-ng"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "7.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "0.8.2"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libcap-ng@0.8.2-7.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "0.8.2-7.el9"
+  },
+  {
+   "name": "libcap",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libcap"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "10.el9_8.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.48"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libcap@2.48-10.el9_8.1?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "2.48-10.el9_8.1"
+  },
+  {
+   "name": "libcom_err",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "e2fsprogs"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "8.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.46.5"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libcom_err@1.46.5-8.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "1.46.5-8.el9"
+  },
+  {
+   "name": "libcomps",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libcomps"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "0.1.18"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libcomps@0.1.18-1.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "0.1.18-1.el9"
+  },
+  {
+   "name": "libcurl-minimal",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "curl"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "43.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "7.76.1"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libcurl-minimal@7.76.1-43.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "7.76.1-43.el9"
+  },
+  {
+   "name": "libdb",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libdb"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "57.el9_6"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "5.3.28"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libdb@5.3.28-57.el9_6?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "5.3.28-57.el9_6"
+  },
+  {
+   "name": "libdnf",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libdnf"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "20.el9.alma.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "0.69.0"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libdnf@0.69.0-20.el9.alma.1?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "0.69.0-20.el9.alma.1"
+  },
+  {
+   "name": "libeconf",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libeconf"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "7.el9_8"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "0.4.1"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libeconf@0.4.1-7.el9_8?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "0.4.1-7.el9_8"
+  },
+  {
+   "name": "libevent",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libevent"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1.el9_8"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.1.13"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libevent@2.1.13-1.el9_8?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "2.1.13-1.el9_8"
+  },
+  {
+   "name": "libfdisk",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "util-linux"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "28.el9_9.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.37.4"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libfdisk@2.37.4-28.el9_9.1?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "2.37.4-28.el9_9.1"
+  },
+  {
+   "name": "libffi",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libffi"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "8.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.4.2"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libffi@3.4.2-8.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "3.4.2-8.el9"
+  },
+  {
+   "name": "libgcc",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gcc"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "17.el9_9.alma.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "11.5.0"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libgcc@11.5.0-17.el9_9.alma.1?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "11.5.0-17.el9_9.alma.1"
+  },
+  {
+   "name": "libgcrypt",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libgcrypt"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "13.el9_8"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.10.0"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libgcrypt@1.10.0-13.el9_8?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "1.10.0-13.el9_8"
+  },
+  {
+   "name": "libgomp",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gcc"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "17.el9_9.alma.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "11.5.0"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libgomp@11.5.0-17.el9_9.alma.1?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "11.5.0-17.el9_9.alma.1"
+  },
+  {
+   "name": "libgpg-error",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libgpg-error"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "5.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.42"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libgpg-error@1.42-5.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "1.42-5.el9"
+  },
+  {
+   "name": "libidn2",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libidn2"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "7.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.3.0"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libidn2@2.3.0-7.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "2.3.0-7.el9"
+  },
+  {
+   "name": "libksba",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libksba"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "7.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.5.1"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libksba@1.5.1-7.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "1.5.1-7.el9"
+  },
+  {
+   "name": "libmodulemd",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libmodulemd"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "2.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.13.0"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libmodulemd@2.13.0-2.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "2.13.0-2.el9"
+  },
+  {
+   "name": "libmount",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "util-linux"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "28.el9_9.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.37.4"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libmount@2.37.4-28.el9_9.1?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "2.37.4-28.el9_9.1"
+  },
+  {
+   "name": "libnghttp2",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "nghttp2"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "8.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.43.0"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libnghttp2@1.43.0-8.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "1.43.0-8.el9"
+  },
+  {
+   "name": "libpwquality",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libpwquality"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "8.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.4.4"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libpwquality@1.4.4-8.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "1.4.4-8.el9"
+  },
+  {
+   "name": "librepo",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "librepo"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.19.0"
+    }
+   ],
+   "purl": "pkg:rpm/alma/librepo@1.19.0-1.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "1.19.0-1.el9"
+  },
+  {
+   "name": "libreport-filesystem",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libreport"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "6.el9.alma"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.15.2"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libreport-filesystem@2.15.2-6.el9.alma?arch=noarch&distro=alma-9.9",
+   "type": "library",
+   "version": "2.15.2-6.el9.alma"
+  },
+  {
+   "name": "libseccomp",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libseccomp"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.5.6"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libseccomp@2.5.6-1.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "2.5.6-1.el9"
+  },
+  {
+   "name": "libselinux",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libselinux"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "4.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.6"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libselinux@3.6-4.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "3.6-4.el9"
+  },
+  {
+   "name": "libsemanage",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libsemanage"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "5.el9_6"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.6"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libsemanage@3.6-5.el9_6?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "3.6-5.el9_6"
+  },
+  {
+   "name": "libsepol",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libsepol"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "3.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.6"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libsepol@3.6-3.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "3.6-3.el9"
+  },
+  {
+   "name": "libsigsegv",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libsigsegv"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "4.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.13"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libsigsegv@2.13-4.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "2.13-4.el9"
+  },
+  {
+   "name": "libsmartcols",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "util-linux"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "28.el9_9.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.37.4"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libsmartcols@2.37.4-28.el9_9.1?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "2.37.4-28.el9_9.1"
+  },
+  {
+   "name": "libsolv",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libsolv"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "6.el9_8"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "0.7.24"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libsolv@0.7.24-6.el9_8?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "0.7.24-6.el9_8"
+  },
+  {
+   "name": "libstdc++",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gcc"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "17.el9_9.alma.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "11.5.0"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libstdc%2B%2B@11.5.0-17.el9_9.alma.1?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "11.5.0-17.el9_9.alma.1"
+  },
+  {
+   "name": "libtasn1",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libtasn1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "10.el9_8"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "4.16.0"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libtasn1@4.16.0-10.el9_8?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "4.16.0-10.el9_8"
+  },
+  {
+   "name": "libtool-ltdl",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libtool"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "46.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.4.6"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libtool-ltdl@2.4.6-46.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "2.4.6-46.el9"
+  },
+  {
+   "name": "libunistring",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libunistring"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "15.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "0.9.10"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libunistring@0.9.10-15.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "0.9.10-15.el9"
+  },
+  {
+   "name": "libutempter",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libutempter"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "6.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.2.1"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libutempter@1.2.1-6.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "1.2.1-6.el9"
+  },
+  {
+   "name": "libuuid",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "util-linux"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "28.el9_9.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.37.4"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libuuid@2.37.4-28.el9_9.1?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "2.37.4-28.el9_9.1"
+  },
+  {
+   "name": "libverto",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libverto"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "3.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "0.3.2"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libverto@0.3.2-3.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "0.3.2-3.el9"
+  },
+  {
+   "name": "libxcrypt",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libxcrypt"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "3.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "4.4.18"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libxcrypt@4.4.18-3.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "4.4.18-3.el9"
+  },
+  {
+   "name": "libxml2",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libxml2"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "18.el9_9.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.9.13"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libxml2@2.9.13-18.el9_9.1?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "2.9.13-18.el9_9.1"
+  },
+  {
+   "name": "libyaml",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libyaml"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "7.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "0.2.5"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libyaml@0.2.5-7.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "0.2.5-7.el9"
+  },
+  {
+   "name": "libzstd",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "zstd"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.5.5"
+    }
+   ],
+   "purl": "pkg:rpm/alma/libzstd@1.5.5-1.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "1.5.5-1.el9"
+  },
+  {
+   "name": "lua-libs",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "lua"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "4.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "5.4.4"
+    }
+   ],
+   "purl": "pkg:rpm/alma/lua-libs@5.4.4-4.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "5.4.4-4.el9"
+  },
+  {
+   "name": "lz4-libs",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "lz4"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "5.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.9.3"
+    }
+   ],
+   "purl": "pkg:rpm/alma/lz4-libs@1.9.3-5.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "1.9.3-5.el9"
+  },
+  {
+   "name": "mpfr",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "mpfr"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "10.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "4.1.0"
+    }
+   ],
+   "purl": "pkg:rpm/alma/mpfr@4.1.0-10.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "4.1.0-10.el9"
+  },
+  {
+   "name": "ncurses-base",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "ncurses"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "12.20210508.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "6.2"
+    }
+   ],
+   "purl": "pkg:rpm/alma/ncurses-base@6.2-12.20210508.el9?arch=noarch&distro=alma-9.9",
+   "type": "library",
+   "version": "6.2-12.20210508.el9"
+  },
+  {
+   "name": "ncurses-libs",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "ncurses"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "12.20210508.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "6.2"
+    }
+   ],
+   "purl": "pkg:rpm/alma/ncurses-libs@6.2-12.20210508.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "6.2-12.20210508.el9"
+  },
+  {
+   "name": "nettle",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "nettle"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.10.1"
+    }
+   ],
+   "purl": "pkg:rpm/alma/nettle@3.10.1-1.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "3.10.1-1.el9"
+  },
+  {
+   "name": "npth",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "npth"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "8.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.6"
+    }
+   ],
+   "purl": "pkg:rpm/alma/npth@1.6-8.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "1.6-8.el9"
+  },
+  {
+   "name": "openldap",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "openldap"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.6.13"
+    }
+   ],
+   "purl": "pkg:rpm/alma/openldap@2.6.13-1.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "2.6.13-1.el9"
+  },
+  {
+   "name": "openssl-fips-provider",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcEpoch",
+     "value": "1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "openssl"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1.el9_9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.5.9"
+    }
+   ],
+   "purl": "pkg:rpm/alma/openssl-fips-provider@3.5.9-1.el9_9?arch=x86_64&distro=alma-9.9&epoch=1",
+   "type": "library",
+   "version": "1:3.5.9-1.el9_9"
+  },
+  {
+   "name": "openssl-libs",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcEpoch",
+     "value": "1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "openssl"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1.el9_9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.5.9"
+    }
+   ],
+   "purl": "pkg:rpm/alma/openssl-libs@3.5.9-1.el9_9?arch=x86_64&distro=alma-9.9&epoch=1",
+   "type": "library",
+   "version": "1:3.5.9-1.el9_9"
+  },
+  {
+   "name": "openssl",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcEpoch",
+     "value": "1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "openssl"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1.el9_9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.5.9"
+    }
+   ],
+   "purl": "pkg:rpm/alma/openssl@3.5.9-1.el9_9?arch=x86_64&distro=alma-9.9&epoch=1",
+   "type": "library",
+   "version": "1:3.5.9-1.el9_9"
+  },
+  {
+   "name": "p11-kit-trust",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "p11-kit"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1.el9_8"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "0.26.4"
+    }
+   ],
+   "purl": "pkg:rpm/alma/p11-kit-trust@0.26.4-1.el9_8?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "0.26.4-1.el9_8"
+  },
+  {
+   "name": "p11-kit",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "p11-kit"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1.el9_8"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "0.26.4"
+    }
+   ],
+   "purl": "pkg:rpm/alma/p11-kit@0.26.4-1.el9_8?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "0.26.4-1.el9_8"
+  },
+  {
+   "name": "pam",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "pam"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "29.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.5.1"
+    }
+   ],
+   "purl": "pkg:rpm/alma/pam@1.5.1-29.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "1.5.1-29.el9"
+  },
+  {
+   "name": "pcre2-syntax",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "pcre2"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "7.el9_8"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "10.40"
+    }
+   ],
+   "purl": "pkg:rpm/alma/pcre2-syntax@10.40-7.el9_8?arch=noarch&distro=alma-9.9",
+   "type": "library",
+   "version": "10.40-7.el9_8"
+  },
+  {
+   "name": "pcre2",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "pcre2"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "7.el9_8"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "10.40"
+    }
+   ],
+   "purl": "pkg:rpm/alma/pcre2@10.40-7.el9_8?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "10.40-7.el9_8"
+  },
+  {
+   "name": "pcre",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "pcre"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "4.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "8.44"
+    }
+   ],
+   "purl": "pkg:rpm/alma/pcre@8.44-4.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "8.44-4.el9"
+  },
+  {
+   "name": "popt",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "popt"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "8.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.18"
+    }
+   ],
+   "purl": "pkg:rpm/alma/popt@1.18-8.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "1.18-8.el9"
+  },
+  {
+   "name": "python3-dateutil",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcEpoch",
+     "value": "1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "python-dateutil"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1.el9_7"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.9.0.post0"
+    }
+   ],
+   "purl": "pkg:rpm/alma/python3-dateutil@2.9.0.post0-1.el9_7?arch=noarch&distro=alma-9.9&epoch=1",
+   "type": "library",
+   "version": "1:2.9.0.post0-1.el9_7"
+  },
+  {
+   "name": "python3-dbus",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "dbus-python"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "2.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.2.18"
+    }
+   ],
+   "purl": "pkg:rpm/alma/python3-dbus@1.2.18-2.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "1.2.18-2.el9"
+  },
+  {
+   "name": "python3-dnf-plugins-core",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "dnf-plugins-core"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "27.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "4.3.0"
+    }
+   ],
+   "purl": "pkg:rpm/alma/python3-dnf-plugins-core@4.3.0-27.el9?arch=noarch&distro=alma-9.9",
+   "type": "library",
+   "version": "4.3.0-27.el9"
+  },
+  {
+   "name": "python3-dnf",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "dnf"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "37.el9.alma.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "4.14.0"
+    }
+   ],
+   "purl": "pkg:rpm/alma/python3-dnf@4.14.0-37.el9.alma.1?arch=noarch&distro=alma-9.9",
+   "type": "library",
+   "version": "4.14.0-37.el9.alma.1"
+  },
+  {
+   "name": "python3-gpg",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gpgme"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "6.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.15.1"
+    }
+   ],
+   "purl": "pkg:rpm/alma/python3-gpg@1.15.1-6.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "1.15.1-6.el9"
+  },
+  {
+   "name": "python3-hawkey",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libdnf"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "20.el9.alma.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "0.69.0"
+    }
+   ],
+   "purl": "pkg:rpm/alma/python3-hawkey@0.69.0-20.el9.alma.1?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "0.69.0-20.el9.alma.1"
+  },
+  {
+   "name": "python3-libcomps",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libcomps"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "0.1.18"
+    }
+   ],
+   "purl": "pkg:rpm/alma/python3-libcomps@0.1.18-1.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "0.1.18-1.el9"
+  },
+  {
+   "name": "python3-libdnf",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libdnf"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "20.el9.alma.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "0.69.0"
+    }
+   ],
+   "purl": "pkg:rpm/alma/python3-libdnf@0.69.0-20.el9.alma.1?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "0.69.0-20.el9.alma.1"
+  },
+  {
+   "name": "python3-libs",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "python3.9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "16.el9_9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.9.25"
+    }
+   ],
+   "purl": "pkg:rpm/alma/python3-libs@3.9.25-16.el9_9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "3.9.25-16.el9_9"
+  },
+  {
+   "name": "python3-pip-wheel",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "python-pip"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "2.el9_8"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "21.3.1"
+    }
+   ],
+   "purl": "pkg:rpm/alma/python3-pip-wheel@21.3.1-2.el9_8?arch=noarch&distro=alma-9.9",
+   "type": "library",
+   "version": "21.3.1-2.el9_8"
+  },
+  {
+   "name": "python3-rpm",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "rpm"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "43.el9_9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "4.16.1.3"
+    }
+   ],
+   "purl": "pkg:rpm/alma/python3-rpm@4.16.1.3-43.el9_9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "4.16.1.3-43.el9_9"
+  },
+  {
+   "name": "python3-setuptools-wheel",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "python-setuptools"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "15.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "53.0.0"
+    }
+   ],
+   "purl": "pkg:rpm/alma/python3-setuptools-wheel@53.0.0-15.el9?arch=noarch&distro=alma-9.9",
+   "type": "library",
+   "version": "53.0.0-15.el9"
+  },
+  {
+   "name": "python3-six",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "python-six"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "9.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.15.0"
+    }
+   ],
+   "purl": "pkg:rpm/alma/python3-six@1.15.0-9.el9?arch=noarch&distro=alma-9.9",
+   "type": "library",
+   "version": "1.15.0-9.el9"
+  },
+  {
+   "name": "python3-systemd",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "python-systemd"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "19.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "234"
+    }
+   ],
+   "purl": "pkg:rpm/alma/python3-systemd@234-19.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "234-19.el9"
+  },
+  {
+   "name": "python3",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "python3.9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "16.el9_9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.9.25"
+    }
+   ],
+   "purl": "pkg:rpm/alma/python3@3.9.25-16.el9_9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "3.9.25-16.el9_9"
+  },
+  {
+   "name": "readline",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "readline"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "4.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "8.1"
+    }
+   ],
+   "purl": "pkg:rpm/alma/readline@8.1-4.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "8.1-4.el9"
+  },
+  {
+   "name": "rootfiles",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "rootfiles"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "35.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "8.1"
+    }
+   ],
+   "purl": "pkg:rpm/alma/rootfiles@8.1-35.el9?arch=noarch&distro=alma-9.9",
+   "type": "library",
+   "version": "8.1-35.el9"
+  },
+  {
+   "name": "rpm-build-libs",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "rpm"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "43.el9_9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "4.16.1.3"
+    }
+   ],
+   "purl": "pkg:rpm/alma/rpm-build-libs@4.16.1.3-43.el9_9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "4.16.1.3-43.el9_9"
+  },
+  {
+   "name": "rpm-libs",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "rpm"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "43.el9_9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "4.16.1.3"
+    }
+   ],
+   "purl": "pkg:rpm/alma/rpm-libs@4.16.1.3-43.el9_9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "4.16.1.3-43.el9_9"
+  },
+  {
+   "name": "rpm-sign-libs",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "rpm"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "43.el9_9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "4.16.1.3"
+    }
+   ],
+   "purl": "pkg:rpm/alma/rpm-sign-libs@4.16.1.3-43.el9_9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "4.16.1.3-43.el9_9"
+  },
+  {
+   "name": "rpm",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "rpm"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "43.el9_9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "4.16.1.3"
+    }
+   ],
+   "purl": "pkg:rpm/alma/rpm@4.16.1.3-43.el9_9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "4.16.1.3-43.el9_9"
+  },
+  {
+   "name": "sed",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "sed"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "10.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "4.8"
+    }
+   ],
+   "purl": "pkg:rpm/alma/sed@4.8-10.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "4.8-10.el9"
+  },
+  {
+   "name": "setup",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "setup"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "10.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.13.7"
+    }
+   ],
+   "purl": "pkg:rpm/alma/setup@2.13.7-10.el9?arch=noarch&distro=alma-9.9",
+   "type": "library",
+   "version": "2.13.7-10.el9"
+  },
+  {
+   "name": "shadow-utils",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcEpoch",
+     "value": "2"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "shadow-utils"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "17.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "4.9"
+    }
+   ],
+   "purl": "pkg:rpm/alma/shadow-utils@4.9-17.el9?arch=x86_64&distro=alma-9.9&epoch=2",
+   "type": "library",
+   "version": "2:4.9-17.el9"
+  },
+  {
+   "name": "sqlite-libs",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "sqlite"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "11.el9_8"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.34.1"
+    }
+   ],
+   "purl": "pkg:rpm/alma/sqlite-libs@3.34.1-11.el9_8?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "3.34.1-11.el9_8"
+  },
+  {
+   "name": "systemd-libs",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "systemd"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "79.el9_9.alma.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "252"
+    }
+   ],
+   "purl": "pkg:rpm/alma/systemd-libs@252-79.el9_9.alma.1?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "252-79.el9_9.alma.1"
+  },
+  {
+   "name": "systemd-pam",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "systemd"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "79.el9_9.alma.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "252"
+    }
+   ],
+   "purl": "pkg:rpm/alma/systemd-pam@252-79.el9_9.alma.1?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "252-79.el9_9.alma.1"
+  },
+  {
+   "name": "systemd-rpm-macros",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "systemd"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "79.el9_9.alma.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "252"
+    }
+   ],
+   "purl": "pkg:rpm/alma/systemd-rpm-macros@252-79.el9_9.alma.1?arch=noarch&distro=alma-9.9",
+   "type": "library",
+   "version": "252-79.el9_9.alma.1"
+  },
+  {
+   "name": "systemd",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "systemd"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "79.el9_9.alma.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "252"
+    }
+   ],
+   "purl": "pkg:rpm/alma/systemd@252-79.el9_9.alma.1?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "252-79.el9_9.alma.1"
+  },
+  {
+   "name": "tar",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcEpoch",
+     "value": "2"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "tar"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "13.el9_8"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.34"
+    }
+   ],
+   "purl": "pkg:rpm/alma/tar@1.34-13.el9_8?arch=x86_64&distro=alma-9.9&epoch=2",
+   "type": "library",
+   "version": "2:1.34-13.el9_8"
+  },
+  {
+   "name": "tpm2-tss",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "tpm2-tss"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.2.3"
+    }
+   ],
+   "purl": "pkg:rpm/alma/tpm2-tss@3.2.3-1.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "3.2.3-1.el9"
+  },
+  {
+   "name": "tzdata",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "tzdata"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1.el9_9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2026f"
+    }
+   ],
+   "purl": "pkg:rpm/alma/tzdata@2026f-1.el9_9?arch=noarch&distro=alma-9.9",
+   "type": "library",
+   "version": "2026f-1.el9_9"
+  },
+  {
+   "name": "util-linux-core",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "util-linux"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "28.el9_9.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.37.4"
+    }
+   ],
+   "purl": "pkg:rpm/alma/util-linux-core@2.37.4-28.el9_9.1?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "2.37.4-28.el9_9.1"
+  },
+  {
+   "name": "util-linux",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "util-linux"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "28.el9_9.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.37.4"
+    }
+   ],
+   "purl": "pkg:rpm/alma/util-linux@2.37.4-28.el9_9.1?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "2.37.4-28.el9_9.1"
+  },
+  {
+   "name": "vim-minimal",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcEpoch",
+     "value": "2"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "vim"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "43.el9_9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "8.2.2637"
+    }
+   ],
+   "purl": "pkg:rpm/alma/vim-minimal@8.2.2637-43.el9_9?arch=x86_64&distro=alma-9.9&epoch=2",
+   "type": "library",
+   "version": "2:8.2.2637-43.el9_9"
+  },
+  {
+   "name": "xz-libs",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "xz"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "8.el9_9.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "5.2.5"
+    }
+   ],
+   "purl": "pkg:rpm/alma/xz-libs@5.2.5-8.el9_9.1?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "5.2.5-8.el9_9.1"
+  },
+  {
+   "name": "xz",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "xz"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "8.el9_9.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "5.2.5"
+    }
+   ],
+   "purl": "pkg:rpm/alma/xz@5.2.5-8.el9_9.1?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "5.2.5-8.el9_9.1"
+  },
+  {
+   "name": "yum",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "dnf"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "37.el9.alma.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "4.14.0"
+    }
+   ],
+   "purl": "pkg:rpm/alma/yum@4.14.0-37.el9.alma.1?arch=noarch&distro=alma-9.9",
+   "type": "library",
+   "version": "4.14.0-37.el9.alma.1"
+  },
+  {
+   "name": "zlib",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "zlib"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "40.el9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.2.11"
+    }
+   ],
+   "purl": "pkg:rpm/alma/zlib@1.2.11-40.el9?arch=x86_64&distro=alma-9.9",
+   "type": "library",
+   "version": "1.2.11-40.el9"
+  }
+ ],
+ "metadata": {
+  "tools": {
+   "components": [
+    {
+     "group": "aquasecurity",
+     "manufacturer": {
+      "name": "Aqua Security Software Ltd."
+     },
+     "name": "trivy",
+     "type": "application",
+     "version": "0.76.2"
+    }
+   ]
+  }
+ },
+ "specVersion": "1.7"
+}

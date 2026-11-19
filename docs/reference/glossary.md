@@ -2,7 +2,8 @@
 
 | Term | Meaning in Assure |
 | --- | --- |
-| Asset | A host, application inventory, or external target belonging to an organisation |
+| Asset | A host, application inventory, external target, network device or container image belonging to an organisation |
+| Container image | The contents a running container was started from, read by the agent on the host that runs it; one asset however many hosts run it, fixed by a rebuild |
 | Inventory | Packages and host facts reported at a point in time |
 | Advisory | Published information used to evaluate an affected product or version |
 | Finding | A recorded affected state for an asset |

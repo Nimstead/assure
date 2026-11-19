@@ -1,0 +1,58 @@
+{
+  "assets": 1000,
+  "db": "sqlite",
+  "advisories": 99000,
+  "inventory_ingest": {
+    "median_s": 1.098,
+    "p95_s": 1.274,
+    "max_s": 1.928
+  },
+  "containers_per_host": 10,
+  "images": 50,
+  "rematch_before_containers_s": 36.0,
+  "containers_report": {
+    "median_s": 0.024,
+    "p95_s": 0.031,
+    "max_s": 4.446,
+    "first_s": 4.446
+  },
+  "GET /api/summary (home page)": {
+    "median_s": 0.385,
+    "max_s": 0.387
+  },
+  "open_findings": 305250,
+  "GET /api/findings (default 500)": {
+    "median_s": 0.301,
+    "max_s": 0.301
+  },
+  "GET /api/findings?limit=5000": {
+    "median_s": 0.519,
+    "max_s": 0.525
+  },
+  "GET /api/findings?q=pkg42": {
+    "median_s": 0.434,
+    "max_s": 0.499
+  },
+  "GET /api/assets": {
+    "median_s": 0.597,
+    "max_s": 0.919
+  },
+  "GET /api/evidence/pack": {
+    "median_s": 12.937,
+    "max_s": 12.937
+  },
+  "rematch_all_s": 38.0,
+  "GET /api/windows-updates": {
+    "median_s": 0.123,
+    "max_s": 0.133
+  },
+  "GET /api/windows-updates/{kb} (drill down)": {
+    "median_s": 0.133,
+    "max_s": 0.28
+  },
+  "windows_updates_drilldown_kib": 197,
+  "GET /api/summary (with Windows hosts)": {
+    "median_s": 0.59,
+    "max_s": 0.608
+  }
+}

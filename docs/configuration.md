@@ -55,6 +55,14 @@ Each agent from 0.7.0 reports its own neighbour table (the addresses its machine
 
 A host can also check the devices next to it for exposed services, with fixed read-only checks it chooses itself (DECISIONS 129). Like remediation, only the host can turn this on: `--allow-network-checks` at install (Linux installer), or `$env:NIMSTEAD_ALLOW_NETWORK_CHECKS = "1"` before running the Windows installer. The server can't turn it on or choose what is checked. To turn it off, set `"network_checks": false` in that agent's configuration file.
 
+## Containers
+
+Agents from 0.8.0 read the packages inside a Linux host's running Docker and Podman containers at each report. To stop one host doing so, enrol it with `--no-containers` or set `"containers": false` in that agent's configuration file; the server can't turn it back on.
+
+| Variable | Default | Effect |
+| --- | --- | --- |
+| `NIMSTEAD_MAX_IMAGES_PER_ORG` | `2000` | Container images one organisation can hold. Images don't count against `NIMSTEAD_MAX_ASSETS_PER_ORG`; past this cap a new image is refused and the report that carried it counts as incomplete |
+
 ## Alerts
 
 | Variable | Default | What it does |

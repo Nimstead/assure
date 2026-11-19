@@ -33,11 +33,11 @@ PY
 You should see:
 
 ```text
-[('PyPI', 'requests', '2.31.0')]
-{'components': 1, 'mapped': 1, 'unique_packages': 1, 'skipped': {'no_purl': 0, 'unsupported_or_invalid_purl': 0}}
+[('PyPI', 'requests', '2.31.0', None, None)]
+{'components': 1, 'mapped': 1, 'unique_packages': 1, 'skipped': {'no_purl': 0, 'unsupported_or_invalid_purl': 0}, 'distro': None}
 ```
 
-`mapped` counts components with a usable package URL. `unique_packages` counts distinct package identities after duplicates are removed. These counts describe the inventory; they do not say whether the package is vulnerable.
+Each package is `(ecosystem, name, version, source, source_version)`. The last two are set only for a container image's OS packages, where a distribution's advisories name the source package (`libssl3` is built from `openssl`). `mapped` counts components with a usable package URL. `unique_packages` counts distinct package identities after duplicates are removed. `distro` is the distribution release of an image's OS packages, `None` here. These counts describe the inventory; they do not say whether the package is vulnerable.
 
 If Python cannot import `nimstead`, check that you ran the command from the repository root and completed the dependency installation.
 

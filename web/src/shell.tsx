@@ -235,7 +235,7 @@ export function cmdGroup(id: string): string {
   if (["approve", "fixnow", "quiet", "add"].includes(id)) return "Shortcuts";
   if (["theme", "keys", "help", "out"].includes(id)) return "Account and help";
   const prefix = id.split("-")[0] ?? "";
-  const groups: Record<string, string> = { view: "Saved views", machine: "Machines", host: "Machines", device: "Devices", pkg: "Packages", vuln: "Vulnerabilities", search: "Search" };
+  const groups: Record<string, string> = { view: "Saved views", machine: "Machines", host: "Machines", device: "Devices", image: "Container images", pkg: "Packages", vuln: "Vulnerabilities", search: "Search" };
   return groups[prefix] ?? "";
 }
 
@@ -305,7 +305,7 @@ export function Palette({ open, onOpenChange, signOut, nextTheme }: { open: bool
       run: done(() => navigate({ to: "/findings", search: filtersToSearch({ ...parseFilters({}), fixable: false, q: g.key }) })),
     }));
     // Hosts come from the already-cached asset list: no extra request, and a host is one jump from its findings.
-    const hosts: Cmd[] = term.length > 1 ? (assets.data ?? []).filter((a) => a.kind !== "external" && a.kind !== "device" && a.hostname.toLowerCase().includes(term.toLowerCase())).slice(0, 5)
+    const hosts: Cmd[] = term.length > 1 ? (assets.data ?? []).filter((a) => a.kind !== "external" && a.kind !== "device" && a.kind !== "image" && a.hostname.toLowerCase().includes(term.toLowerCase())).slice(0, 5)
       .flatMap((a) => [
         // the machine first: a typed name usually means the machine; its findings are one row down
         { id: `machine-${a.id}`, label: `Machine: ${a.hostname}`, hint: "details", run: done(() => navigate({ to: "/assets", search: { machine: a.id } })) },
@@ -316,10 +316,14 @@ export function Palette({ open, onOpenChange, signOut, nextTheme }: { open: bool
       && `${a.hostname} ${a.facts?.vendor ?? ""}`.toLowerCase().includes(term.toLowerCase())).map((a) => [String(a.facts?.mac ?? a.id), a]));
     const devices: Cmd[] = [...byMac].slice(0, 5).map(([mac, a]) => ({ id: `device-${mac}`, label: `Device: ${a.hostname}`, hint: String(a.facts?.vendor || "no agent"),
       run: done(() => navigate({ to: "/assets", search: { device: mac } })) }));
+    // a container image, by its reference or base OS: one row however many machines run it
+    const images: Cmd[] = term.length > 1 ? (assets.data ?? []).filter((a) => a.kind === "image" && `${a.hostname} ${a.os_name}`.toLowerCase().includes(term.toLowerCase())).slice(0, 5)
+      .map((a) => ({ id: `image-${a.id}`, label: `Image: ${a.hostname}`, hint: a.os_name || "container image",
+        run: done(() => navigate({ to: "/assets", search: { view: "containers", image: a.id } })) })) : [];
     const views: Cmd[] = savedViews().filter((v) => !term || v.name.toLowerCase().includes(term.toLowerCase()))
       .map((v) => ({ id: `view-${v.name}`, label: `View: ${v.name}`, hint: "saved", run: done(() => navigate({ to: "/findings", search: v.search })) }));
     const all: Cmd[] = term ? [{ id: "search", label: `Search findings for "${term}"`, run: done(() => navigate({ to: "/findings", search: filtersToSearch({ ...parseFilters({}), q: term }) })) }] : [];
-    return term ? [...pages, ...views, ...hosts, ...devices, ...packages, ...hits, ...all] : [...views, ...pages];
+    return term ? [...pages, ...views, ...hosts, ...devices, ...images, ...packages, ...hits, ...all] : [...views, ...pages];
   }, [found.data, pkgs.data, assets.data, term, query, navigate, onOpenChange, signOut, nextTheme]);
 
   useEffect(() => setActiveId(""), [term]);

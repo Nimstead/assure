@@ -1,0 +1,2185 @@
+{
+ "SPDXID": "SPDXRef-DOCUMENT",
+ "creationInfo": {
+  "created": "2026-11-19T02:42:26Z",
+  "creators": [
+   "Organization: Anchore, Inc",
+   "Tool: syft-1.57.2"
+  ],
+  "licenseListVersion": "3.29"
+ },
+ "name": "almalinux",
+ "packages": [
+  {
+   "SPDXID": "SPDXRef-Package-rpm-acl-8fcd269d6c400f0c",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/acl@2.4.0-2.el9?arch=x86_64&distro=almalinux-9.9&upstream=acl-2.4.0-2.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "acl",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "2.4.0-2.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-almalinux-gpg-keys-ccc4995c092345e8",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/almalinux-gpg-keys@9.9-1.el9?arch=x86_64&distro=almalinux-9.9&upstream=almalinux-release-9.9-1.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "almalinux-gpg-keys",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "9.9-1.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-almalinux-release-b4a943f07405c151",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/almalinux-release@9.9-1.el9?arch=x86_64&distro=almalinux-9.9&upstream=almalinux-release-9.9-1.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "almalinux-release",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "9.9-1.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-almalinux-repos-1f014da9bc8ea281",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/almalinux-repos@9.9-1.el9?arch=x86_64&distro=almalinux-9.9&upstream=almalinux-release-9.9-1.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "almalinux-repos",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "9.9-1.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-alternatives-968f69af48c9e5be",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/alternatives@1.24-2.el9?arch=x86_64&distro=almalinux-9.9&upstream=chkconfig-1.24-2.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "alternatives",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "1.24-2.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-attr-c5ffccb1bb796ced",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/attr@2.6.0-2.el9?arch=x86_64&distro=almalinux-9.9&upstream=attr-2.6.0-2.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "attr",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "2.6.0-2.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-audit-libs-dbdadc95b40b1714",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/audit-libs@3.1.5-9.el9?arch=x86_64&distro=almalinux-9.9&upstream=audit-3.1.5-9.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "audit-libs",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "3.1.5-9.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-basesystem-a8d12563f1259cb2",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/basesystem@11-13.el9?arch=noarch&distro=almalinux-9.9&upstream=basesystem-11-13.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "basesystem",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "11-13.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-bash-b2b7b67ba771b248",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/bash@5.1.8-9.el9?arch=x86_64&distro=almalinux-9.9&upstream=bash-5.1.8-9.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "bash",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "5.1.8-9.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-binutils-ad38a27a75be6bfa",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/binutils@2.35.2-72.el9?arch=x86_64&distro=almalinux-9.9&upstream=binutils-2.35.2-72.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "binutils",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "2.35.2-72.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-binutils-gold-25ca696f4c3097c1",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/binutils-gold@2.35.2-72.el9?arch=x86_64&distro=almalinux-9.9&upstream=binutils-2.35.2-72.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "binutils-gold",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "2.35.2-72.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-bzip2-libs-d576f2db074e8b48",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/bzip2-libs@1.0.8-11.el9?arch=x86_64&distro=almalinux-9.9&upstream=bzip2-1.0.8-11.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "bzip2-libs",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "1.0.8-11.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-ca-certificates-b85c2eb2c99d0feb",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/ca-certificates@2026.2.92_v9.0.319-90.3.el9_8?arch=noarch&distro=almalinux-9.9&upstream=ca-certificates-2026.2.92_v9.0.319-90.3.el9_8.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "ca-certificates",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "2026.2.92_v9.0.319-90.3.el9_8"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-coreutils-single-a8e7f51a58747084",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/coreutils-single@8.32-43.el9?arch=x86_64&distro=almalinux-9.9&upstream=coreutils-8.32-43.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "coreutils-single",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "8.32-43.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-cracklib-b9b7cedfc7304b78",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/cracklib@2.9.6-28.el9?arch=x86_64&distro=almalinux-9.9&upstream=cracklib-2.9.6-28.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "cracklib",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "2.9.6-28.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-cracklib-dicts-7c7d627773efa2a4",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/cracklib-dicts@2.9.6-28.el9?arch=x86_64&distro=almalinux-9.9&upstream=cracklib-2.9.6-28.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "cracklib-dicts",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "2.9.6-28.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-crypto-policies-0281dbe9a755aee3",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/crypto-policies@20260714-1.git65b74f7.el9?arch=noarch&distro=almalinux-9.9&upstream=crypto-policies-20260714-1.git65b74f7.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "crypto-policies",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "20260714-1.git65b74f7.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-crypto-policies-scripts-dfff3c8433030326",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/crypto-policies-scripts@20260714-1.git65b74f7.el9?arch=noarch&distro=almalinux-9.9&upstream=crypto-policies-20260714-1.git65b74f7.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "crypto-policies-scripts",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "20260714-1.git65b74f7.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-curl-minimal-f99b2068ea6d1c06",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/curl-minimal@7.76.1-43.el9?arch=x86_64&distro=almalinux-9.9&upstream=curl-7.76.1-43.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "curl-minimal",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "7.76.1-43.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-cyrus-sasl-lib-96a992dbf2abb56c",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/cyrus-sasl-lib@2.1.27-22.el9?arch=x86_64&distro=almalinux-9.9&upstream=cyrus-sasl-2.1.27-22.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "cyrus-sasl-lib",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "2.1.27-22.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-dbus-933f230086fb62aa",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/dbus@1.12.20-10.el9?arch=x86_64&distro=almalinux-9.9&epoch=1&upstream=dbus-1.12.20-10.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "dbus",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "1:1.12.20-10.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-dbus-broker-87cefcd4617e1467",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/dbus-broker@28-10.el9_9?arch=x86_64&distro=almalinux-9.9&upstream=dbus-broker-28-10.el9_9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "dbus-broker",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "28-10.el9_9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-dbus-common-2fd52424eb25b8fc",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/dbus-common@1.12.20-10.el9?arch=noarch&distro=almalinux-9.9&epoch=1&upstream=dbus-1.12.20-10.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "dbus-common",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "1:1.12.20-10.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-dbus-libs-9aca6c1db00e97e0",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/dbus-libs@1.12.20-10.el9?arch=x86_64&distro=almalinux-9.9&epoch=1&upstream=dbus-1.12.20-10.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "dbus-libs",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "1:1.12.20-10.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-python-dbus-python-2830d4788444c709",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:pypi/dbus-python@1.2.18",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "dbus-python",
+   "sourceInfo": "acquired package info from installed python package manifest file: /usr/lib64/python3.9/site-packages/dbus_python-1.2.18-py3.9.egg-info/PKG-INFO, /usr/lib64/python3.9/site-packages/dbus_python-1.2.18-py3.9.egg-info/top_level.txt",
+   "versionInfo": "1.2.18"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-dnf-e448ae826fbee7d5",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/dnf@4.14.0-37.el9.alma.1?arch=noarch&distro=almalinux-9.9&upstream=dnf-4.14.0-37.el9.alma.1.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "dnf",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "4.14.0-37.el9.alma.1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-dnf-data-d93ea3aa964c9471",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/dnf-data@4.14.0-37.el9.alma.1?arch=noarch&distro=almalinux-9.9&upstream=dnf-4.14.0-37.el9.alma.1.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "dnf-data",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "4.14.0-37.el9.alma.1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-elfutils-debuginfod-client-45f502740fb4f267",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/elfutils-debuginfod-client@0.195-1.el9.alma.1?arch=x86_64&distro=almalinux-9.9&upstream=elfutils-0.195-1.el9.alma.1.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "elfutils-debuginfod-client",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "0.195-1.el9.alma.1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-elfutils-default-yama-scope-1146b22ed75d48e5",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/elfutils-default-yama-scope@0.195-1.el9.alma.1?arch=noarch&distro=almalinux-9.9&upstream=elfutils-0.195-1.el9.alma.1.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "elfutils-default-yama-scope",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "0.195-1.el9.alma.1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-elfutils-libelf-5a80df5d02ab9ab0",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/elfutils-libelf@0.195-1.el9.alma.1?arch=x86_64&distro=almalinux-9.9&upstream=elfutils-0.195-1.el9.alma.1.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "elfutils-libelf",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "0.195-1.el9.alma.1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-elfutils-libs-0d90bd12f3401b2a",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/elfutils-libs@0.195-1.el9.alma.1?arch=x86_64&distro=almalinux-9.9&upstream=elfutils-0.195-1.el9.alma.1.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "elfutils-libs",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "0.195-1.el9.alma.1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-expat-57dcf6473160433f",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/expat@2.5.0-9.el9_9.4?arch=x86_64&distro=almalinux-9.9&upstream=expat-2.5.0-9.el9_9.4.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "expat",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "2.5.0-9.el9_9.4"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-file-libs-796b74b6225fb0f4",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/file-libs@5.39-19.el9?arch=x86_64&distro=almalinux-9.9&upstream=file-5.39-19.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "file-libs",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "5.39-19.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-filesystem-a83b066f6ab3ac31",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/filesystem@3.16-5.el9?arch=x86_64&distro=almalinux-9.9&upstream=filesystem-3.16-5.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "filesystem",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "3.16-5.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-findutils-898f289e4d85a34c",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/findutils@4.8.0-7.el9?arch=x86_64&distro=almalinux-9.9&epoch=1&upstream=findutils-4.8.0-7.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "findutils",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "1:4.8.0-7.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-gawk-c6760edd97cf4118",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/gawk@5.1.0-7.el9?arch=x86_64&distro=almalinux-9.9&upstream=gawk-5.1.0-7.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "gawk",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "5.1.0-7.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-gdbm-libs-bd27bae4e10c3e36",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/gdbm-libs@1.23-1.el9?arch=x86_64&distro=almalinux-9.9&epoch=1&upstream=gdbm-1.23-1.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "gdbm-libs",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "1:1.23-1.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-glib2-895e41690678ef3f",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/glib2@2.68.4-29.el9_9.1?arch=x86_64&distro=almalinux-9.9&upstream=glib2-2.68.4-29.el9_9.1.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "glib2",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "2.68.4-29.el9_9.1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-glibc-86ad92f2f1aadf4b",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/glibc@2.34-290.el9_9?arch=x86_64&distro=almalinux-9.9&upstream=glibc-2.34-290.el9_9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "glibc",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "2.34-290.el9_9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-glibc-common-89d953bb7500044d",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/glibc-common@2.34-290.el9_9?arch=x86_64&distro=almalinux-9.9&upstream=glibc-2.34-290.el9_9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "glibc-common",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "2.34-290.el9_9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-glibc-minimal-langpack-2df5fb1d685c1ec7",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/glibc-minimal-langpack@2.34-290.el9_9?arch=x86_64&distro=almalinux-9.9&upstream=glibc-2.34-290.el9_9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "glibc-minimal-langpack",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "2.34-290.el9_9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-gmp-23d9df57d9c14975",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/gmp@6.2.0-13.el9?arch=x86_64&distro=almalinux-9.9&epoch=1&upstream=gmp-6.2.0-13.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "gmp",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "1:6.2.0-13.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-gnupg2-00371677667013ad",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/gnupg2@2.3.3-5.el9_7?arch=x86_64&distro=almalinux-9.9&upstream=gnupg2-2.3.3-5.el9_7.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "gnupg2",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "2.3.3-5.el9_7"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-gnutls-29e712ec0314ee36",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/gnutls@3.8.10-9.el9_8?arch=x86_64&distro=almalinux-9.9&upstream=gnutls-3.8.10-9.el9_8.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "gnutls",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "3.8.10-9.el9_8"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-python-gpg-c86815c9c5d69c75",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:pypi/gpg@1.15.1",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "gpg",
+   "sourceInfo": "acquired package info from installed python package manifest file: /usr/lib64/python3.9/site-packages/gpg-1.15.1-py3.9.egg-info",
+   "versionInfo": "1.15.1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-gpg-pubkey-181b963cd95e6f12",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/gpg-pubkey@b86b3716-61e69f29?distro=almalinux-9.9",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "gpg-pubkey",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "b86b3716-61e69f29"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-gpgme-05f890aa0eb4e27a",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/gpgme@1.15.1-6.el9?arch=x86_64&distro=almalinux-9.9&upstream=gpgme-1.15.1-6.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "gpgme",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "1.15.1-6.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-grep-d1e694cd1542d049",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/grep@3.6-5.el9?arch=x86_64&distro=almalinux-9.9&upstream=grep-3.6-5.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "grep",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "3.6-5.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-gzip-2a35d71bd08a4d50",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/gzip@1.12-2.el9_8?arch=x86_64&distro=almalinux-9.9&upstream=gzip-1.12-2.el9_8.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "gzip",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "1.12-2.el9_8"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-hostname-dca8bf6536c6628c",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/hostname@3.23-6.el9?arch=x86_64&distro=almalinux-9.9&upstream=hostname-3.23-6.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "hostname",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "3.23-6.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-ima-evm-utils-a2f90e9ac04786c4",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/ima-evm-utils@1.6.2-4.el9?arch=x86_64&distro=almalinux-9.9&upstream=ima-evm-utils-1.6.2-4.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "ima-evm-utils",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "1.6.2-4.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-iputils-200c69100b3a6921",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/iputils@20210202-15.el9_7?arch=x86_64&distro=almalinux-9.9&upstream=iputils-20210202-15.el9_7.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "iputils",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "20210202-15.el9_7"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-json-c-197ba2635a8795b1",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/json-c@0.14-11.el9?arch=x86_64&distro=almalinux-9.9&upstream=json-c-0.14-11.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "json-c",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "0.14-11.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-keyutils-0feaf1a98b7afd4c",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/keyutils@1.6.3-1.el9?arch=x86_64&distro=almalinux-9.9&upstream=keyutils-1.6.3-1.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "keyutils",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "1.6.3-1.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-keyutils-libs-660b997a69ec685f",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/keyutils-libs@1.6.3-1.el9?arch=x86_64&distro=almalinux-9.9&upstream=keyutils-1.6.3-1.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "keyutils-libs",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "1.6.3-1.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-kmod-libs-259d656b9be59896",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/kmod-libs@28-11.el9?arch=x86_64&distro=almalinux-9.9&upstream=kmod-28-11.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "kmod-libs",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "28-11.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-krb5-libs-fe7d582a98a42b20",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/krb5-libs@1.21.1-10.el9_8.1?arch=x86_64&distro=almalinux-9.9&upstream=krb5-1.21.1-10.el9_8.1.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "krb5-libs",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "1.21.1-10.el9_8.1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-less-5e585eb1b7672da7",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/less@590-6.el9?arch=x86_64&distro=almalinux-9.9&upstream=less-590-6.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "less",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "590-6.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libacl-543dd2a0bdbcc027",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libacl@2.4.0-2.el9?arch=x86_64&distro=almalinux-9.9&upstream=acl-2.4.0-2.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libacl",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "2.4.0-2.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libarchive-c5b99ecb4a227406",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libarchive@3.5.3-11.el9_8?arch=x86_64&distro=almalinux-9.9&upstream=libarchive-3.5.3-11.el9_8.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libarchive",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "3.5.3-11.el9_8"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libassuan-798d24f54bbb7c34",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libassuan@2.5.5-3.el9?arch=x86_64&distro=almalinux-9.9&upstream=libassuan-2.5.5-3.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libassuan",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "2.5.5-3.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libattr-964c6f4f0edf12a1",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libattr@2.6.0-2.el9?arch=x86_64&distro=almalinux-9.9&upstream=attr-2.6.0-2.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libattr",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "2.6.0-2.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libblkid-dc9bf8e2a182200b",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libblkid@2.37.4-28.el9_9.1?arch=x86_64&distro=almalinux-9.9&upstream=util-linux-2.37.4-28.el9_9.1.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libblkid",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "2.37.4-28.el9_9.1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libcap-5ebcc049d28f3823",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libcap@2.48-10.el9_8.1?arch=x86_64&distro=almalinux-9.9&upstream=libcap-2.48-10.el9_8.1.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libcap",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "2.48-10.el9_8.1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libcap-ng-a831c4226ee0bf79",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libcap-ng@0.8.2-7.el9?arch=x86_64&distro=almalinux-9.9&upstream=libcap-ng-0.8.2-7.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libcap-ng",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "0.8.2-7.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libcom-err-44bd3b2fe06abf25",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libcom_err@1.46.5-8.el9?arch=x86_64&distro=almalinux-9.9&upstream=e2fsprogs-1.46.5-8.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libcom_err",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "1.46.5-8.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-python-libcomps-2666adbea71856c1",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:pypi/libcomps@0.1.18",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libcomps",
+   "sourceInfo": "acquired package info from installed python package manifest file: /usr/lib64/python3.9/site-packages/libcomps-0.1.18-py3.9.egg-info/PKG-INFO, /usr/lib64/python3.9/site-packages/libcomps-0.1.18-py3.9.egg-info/top_level.txt",
+   "versionInfo": "0.1.18"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libcomps-3f926819e6dad5a4",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libcomps@0.1.18-1.el9?arch=x86_64&distro=almalinux-9.9&upstream=libcomps-0.1.18-1.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libcomps",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "0.1.18-1.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libcurl-minimal-f0165ca9da5d9ffb",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libcurl-minimal@7.76.1-43.el9?arch=x86_64&distro=almalinux-9.9&upstream=curl-7.76.1-43.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libcurl-minimal",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "7.76.1-43.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libdb-086eac07eccd1090",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libdb@5.3.28-57.el9_6?arch=x86_64&distro=almalinux-9.9&upstream=libdb-5.3.28-57.el9_6.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libdb",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "5.3.28-57.el9_6"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libdnf-b7deb14b87892882",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libdnf@0.69.0-20.el9.alma.1?arch=x86_64&distro=almalinux-9.9&upstream=libdnf-0.69.0-20.el9.alma.1.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libdnf",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "0.69.0-20.el9.alma.1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libeconf-3ebcbf254ef6678f",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libeconf@0.4.1-7.el9_8?arch=x86_64&distro=almalinux-9.9&upstream=libeconf-0.4.1-7.el9_8.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libeconf",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "0.4.1-7.el9_8"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libevent-20b2aba8e26b483b",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libevent@2.1.13-1.el9_8?arch=x86_64&distro=almalinux-9.9&upstream=libevent-2.1.13-1.el9_8.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libevent",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "2.1.13-1.el9_8"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libfdisk-51bdba499d5261bd",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libfdisk@2.37.4-28.el9_9.1?arch=x86_64&distro=almalinux-9.9&upstream=util-linux-2.37.4-28.el9_9.1.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libfdisk",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "2.37.4-28.el9_9.1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libffi-5970da591cd26861",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libffi@3.4.2-8.el9?arch=x86_64&distro=almalinux-9.9&upstream=libffi-3.4.2-8.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libffi",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "3.4.2-8.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libgcc-f79bb50631360473",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libgcc@11.5.0-17.el9_9.alma.1?arch=x86_64&distro=almalinux-9.9&upstream=gcc-11.5.0-17.el9_9.alma.1.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libgcc",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "11.5.0-17.el9_9.alma.1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libgcrypt-70766b60fe9db773",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libgcrypt@1.10.0-13.el9_8?arch=x86_64&distro=almalinux-9.9&upstream=libgcrypt-1.10.0-13.el9_8.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libgcrypt",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "1.10.0-13.el9_8"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libgomp-f1245d5c4c47aef1",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libgomp@11.5.0-17.el9_9.alma.1?arch=x86_64&distro=almalinux-9.9&upstream=gcc-11.5.0-17.el9_9.alma.1.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libgomp",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "11.5.0-17.el9_9.alma.1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libgpg-error-2f85b38f7be79016",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libgpg-error@1.42-5.el9?arch=x86_64&distro=almalinux-9.9&upstream=libgpg-error-1.42-5.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libgpg-error",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "1.42-5.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libidn2-5eeda8b431f83673",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libidn2@2.3.0-7.el9?arch=x86_64&distro=almalinux-9.9&upstream=libidn2-2.3.0-7.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libidn2",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "2.3.0-7.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libksba-d3ab7d8b789d3bfc",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libksba@1.5.1-7.el9?arch=x86_64&distro=almalinux-9.9&upstream=libksba-1.5.1-7.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libksba",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "1.5.1-7.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libmodulemd-7fd73a1f3db99505",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libmodulemd@2.13.0-2.el9?arch=x86_64&distro=almalinux-9.9&upstream=libmodulemd-2.13.0-2.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libmodulemd",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "2.13.0-2.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libmount-53c820072f084ac1",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libmount@2.37.4-28.el9_9.1?arch=x86_64&distro=almalinux-9.9&upstream=util-linux-2.37.4-28.el9_9.1.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libmount",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "2.37.4-28.el9_9.1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libnghttp2-351bc7ca30874b4d",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libnghttp2@1.43.0-8.el9?arch=x86_64&distro=almalinux-9.9&upstream=nghttp2-1.43.0-8.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libnghttp2",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "1.43.0-8.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libpwquality-4b3c1b121e2bd2f6",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libpwquality@1.4.4-8.el9?arch=x86_64&distro=almalinux-9.9&upstream=libpwquality-1.4.4-8.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libpwquality",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "1.4.4-8.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-librepo-99f961fbd9187cc9",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/librepo@1.19.0-1.el9?arch=x86_64&distro=almalinux-9.9&upstream=librepo-1.19.0-1.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "librepo",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "1.19.0-1.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libreport-filesystem-aa7064cef17b38c0",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libreport-filesystem@2.15.2-6.el9.alma?arch=noarch&distro=almalinux-9.9&upstream=libreport-2.15.2-6.el9.alma.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libreport-filesystem",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "2.15.2-6.el9.alma"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libseccomp-4e7749f99f0f0abc",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libseccomp@2.5.6-1.el9?arch=x86_64&distro=almalinux-9.9&upstream=libseccomp-2.5.6-1.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libseccomp",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "2.5.6-1.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libselinux-8d17846854196ad6",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libselinux@3.6-4.el9?arch=x86_64&distro=almalinux-9.9&upstream=libselinux-3.6-4.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libselinux",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "3.6-4.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libsemanage-2aa7a726103118af",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libsemanage@3.6-5.el9_6?arch=x86_64&distro=almalinux-9.9&upstream=libsemanage-3.6-5.el9_6.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libsemanage",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "3.6-5.el9_6"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libsepol-d5e2a301d0052549",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libsepol@3.6-3.el9?arch=x86_64&distro=almalinux-9.9&upstream=libsepol-3.6-3.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libsepol",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "3.6-3.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libsigsegv-9923c17784acd45a",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libsigsegv@2.13-4.el9?arch=x86_64&distro=almalinux-9.9&upstream=libsigsegv-2.13-4.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libsigsegv",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "2.13-4.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libsmartcols-9025f3ed5c162448",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libsmartcols@2.37.4-28.el9_9.1?arch=x86_64&distro=almalinux-9.9&upstream=util-linux-2.37.4-28.el9_9.1.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libsmartcols",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "2.37.4-28.el9_9.1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libsolv-2c9cae79c6ff4888",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libsolv@0.7.24-6.el9_8?arch=x86_64&distro=almalinux-9.9&upstream=libsolv-0.7.24-6.el9_8.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libsolv",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "0.7.24-6.el9_8"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libstdc---edeec8cbb24d2db9",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libstdc%2B%2B@11.5.0-17.el9_9.alma.1?arch=x86_64&distro=almalinux-9.9&upstream=gcc-11.5.0-17.el9_9.alma.1.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libstdc++",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "11.5.0-17.el9_9.alma.1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libtasn1-26c9dd900dca4c8b",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libtasn1@4.16.0-10.el9_8?arch=x86_64&distro=almalinux-9.9&upstream=libtasn1-4.16.0-10.el9_8.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libtasn1",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "4.16.0-10.el9_8"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libtool-ltdl-f9dc4c4cd6c20f9d",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libtool-ltdl@2.4.6-46.el9?arch=x86_64&distro=almalinux-9.9&upstream=libtool-2.4.6-46.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libtool-ltdl",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "2.4.6-46.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libunistring-fdc01b0db6793b06",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libunistring@0.9.10-15.el9?arch=x86_64&distro=almalinux-9.9&upstream=libunistring-0.9.10-15.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libunistring",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "0.9.10-15.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libutempter-c5b03a6ea2009d8f",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libutempter@1.2.1-6.el9?arch=x86_64&distro=almalinux-9.9&upstream=libutempter-1.2.1-6.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libutempter",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "1.2.1-6.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libuuid-d7a369fe8d0192f8",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libuuid@2.37.4-28.el9_9.1?arch=x86_64&distro=almalinux-9.9&upstream=util-linux-2.37.4-28.el9_9.1.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libuuid",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "2.37.4-28.el9_9.1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libverto-d49aed155057403b",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libverto@0.3.2-3.el9?arch=x86_64&distro=almalinux-9.9&upstream=libverto-0.3.2-3.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libverto",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "0.3.2-3.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libxcrypt-764a84021fecaeff",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libxcrypt@4.4.18-3.el9?arch=x86_64&distro=almalinux-9.9&upstream=libxcrypt-4.4.18-3.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libxcrypt",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "4.4.18-3.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libxml2-98b57c67c9b04103",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libxml2@2.9.13-18.el9_9.1?arch=x86_64&distro=almalinux-9.9&upstream=libxml2-2.9.13-18.el9_9.1.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libxml2",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "2.9.13-18.el9_9.1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libyaml-9e321dc826378022",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libyaml@0.2.5-7.el9?arch=x86_64&distro=almalinux-9.9&upstream=libyaml-0.2.5-7.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libyaml",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "0.2.5-7.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-libzstd-a26a8dc072c935ab",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/libzstd@1.5.5-1.el9?arch=x86_64&distro=almalinux-9.9&upstream=zstd-1.5.5-1.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libzstd",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "1.5.5-1.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-lua-libs-25ee89baacbde415",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/lua-libs@5.4.4-4.el9?arch=x86_64&distro=almalinux-9.9&upstream=lua-5.4.4-4.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "lua-libs",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "5.4.4-4.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-lz4-libs-222797f2f8d623f0",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/lz4-libs@1.9.3-5.el9?arch=x86_64&distro=almalinux-9.9&upstream=lz4-1.9.3-5.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "lz4-libs",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "1.9.3-5.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-mpfr-aaf0dd2622d70ab9",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/mpfr@4.1.0-10.el9?arch=x86_64&distro=almalinux-9.9&upstream=mpfr-4.1.0-10.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "mpfr",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "4.1.0-10.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-ncurses-base-93e631091c4d5256",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/ncurses-base@6.2-12.20210508.el9?arch=noarch&distro=almalinux-9.9&upstream=ncurses-6.2-12.20210508.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "ncurses-base",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "6.2-12.20210508.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-ncurses-libs-f4db59d838d7c22b",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/ncurses-libs@6.2-12.20210508.el9?arch=x86_64&distro=almalinux-9.9&upstream=ncurses-6.2-12.20210508.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "ncurses-libs",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "6.2-12.20210508.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-nettle-fee157dd1ef5f060",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/nettle@3.10.1-1.el9?arch=x86_64&distro=almalinux-9.9&upstream=nettle-3.10.1-1.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "nettle",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "3.10.1-1.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-npth-b26bff37e38ac61d",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/npth@1.6-8.el9?arch=x86_64&distro=almalinux-9.9&upstream=npth-1.6-8.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "npth",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "1.6-8.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-openldap-e495813ce03ca892",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/openldap@2.6.13-1.el9?arch=x86_64&distro=almalinux-9.9&upstream=openldap-2.6.13-1.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "openldap",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "2.6.13-1.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-openssl-0b2ddf087c4c9c08",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/openssl@3.5.9-1.el9_9?arch=x86_64&distro=almalinux-9.9&epoch=1&upstream=openssl-3.5.9-1.el9_9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "openssl",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "1:3.5.9-1.el9_9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-openssl-fips-provider-387b8f6c21a378bf",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/openssl-fips-provider@3.5.9-1.el9_9?arch=x86_64&distro=almalinux-9.9&epoch=1&upstream=openssl-3.5.9-1.el9_9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "openssl-fips-provider",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "1:3.5.9-1.el9_9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-openssl-libs-3edb3dde90a81a03",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/openssl-libs@3.5.9-1.el9_9?arch=x86_64&distro=almalinux-9.9&epoch=1&upstream=openssl-3.5.9-1.el9_9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "openssl-libs",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "1:3.5.9-1.el9_9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-p11-kit-80665a382446d600",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/p11-kit@0.26.4-1.el9_8?arch=x86_64&distro=almalinux-9.9&upstream=p11-kit-0.26.4-1.el9_8.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "p11-kit",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "0.26.4-1.el9_8"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-p11-kit-trust-18b6503041ea7432",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/p11-kit-trust@0.26.4-1.el9_8?arch=x86_64&distro=almalinux-9.9&upstream=p11-kit-0.26.4-1.el9_8.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "p11-kit-trust",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "0.26.4-1.el9_8"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-pam-fb07c21902e453bf",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/pam@1.5.1-29.el9?arch=x86_64&distro=almalinux-9.9&upstream=pam-1.5.1-29.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "pam",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "1.5.1-29.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-pcre-07f1ab803f081f99",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/pcre@8.44-4.el9?arch=x86_64&distro=almalinux-9.9&upstream=pcre-8.44-4.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "pcre",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "8.44-4.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-pcre2-3daea3d623667f21",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/pcre2@10.40-7.el9_8?arch=x86_64&distro=almalinux-9.9&upstream=pcre2-10.40-7.el9_8.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "pcre2",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "10.40-7.el9_8"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-pcre2-syntax-a88b83ec982e47bf",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/pcre2-syntax@10.40-7.el9_8?arch=noarch&distro=almalinux-9.9&upstream=pcre2-10.40-7.el9_8.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "pcre2-syntax",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "10.40-7.el9_8"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-popt-6228b08e81430705",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/popt@1.18-8.el9?arch=x86_64&distro=almalinux-9.9&upstream=popt-1.18-8.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "popt",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "1.18-8.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-python-python-dateutil-1a8f929020f0f1d1",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:pypi/python-dateutil@2.9.0.post0",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "python-dateutil",
+   "sourceInfo": "acquired package info from installed python package manifest file: /usr/lib/python3.9/site-packages/python_dateutil-2.9.0.post0.dist-info/METADATA, /usr/lib/python3.9/site-packages/python_dateutil-2.9.0.post0.dist-info/top_level.txt",
+   "versionInfo": "2.9.0.post0"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-python3-9d9fa46a83045e51",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/python3@3.9.25-16.el9_9?arch=x86_64&distro=almalinux-9.9&upstream=python3.9-3.9.25-16.el9_9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "python3",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "3.9.25-16.el9_9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-python3-dateutil-be980e6bc34b30de",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/python3-dateutil@2.9.0.post0-1.el9_7?arch=noarch&distro=almalinux-9.9&epoch=1&upstream=python-dateutil-2.9.0.post0-1.el9_7.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "python3-dateutil",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "1:2.9.0.post0-1.el9_7"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-python3-dbus-739729d79d57593a",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/python3-dbus@1.2.18-2.el9?arch=x86_64&distro=almalinux-9.9&upstream=dbus-python-1.2.18-2.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "python3-dbus",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "1.2.18-2.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-python3-dnf-99a0b08a33f4f329",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/python3-dnf@4.14.0-37.el9.alma.1?arch=noarch&distro=almalinux-9.9&upstream=dnf-4.14.0-37.el9.alma.1.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "python3-dnf",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "4.14.0-37.el9.alma.1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-python3-dnf-plugins-core-34a65a2680049a3d",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/python3-dnf-plugins-core@4.3.0-27.el9?arch=noarch&distro=almalinux-9.9&upstream=dnf-plugins-core-4.3.0-27.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "python3-dnf-plugins-core",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "4.3.0-27.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-python3-gpg-a9a1d4efa7a03087",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/python3-gpg@1.15.1-6.el9?arch=x86_64&distro=almalinux-9.9&upstream=gpgme-1.15.1-6.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "python3-gpg",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "1.15.1-6.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-python3-hawkey-24caa412b8f436eb",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/python3-hawkey@0.69.0-20.el9.alma.1?arch=x86_64&distro=almalinux-9.9&upstream=libdnf-0.69.0-20.el9.alma.1.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "python3-hawkey",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "0.69.0-20.el9.alma.1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-python3-libcomps-a9278b644624813f",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/python3-libcomps@0.1.18-1.el9?arch=x86_64&distro=almalinux-9.9&upstream=libcomps-0.1.18-1.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "python3-libcomps",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "0.1.18-1.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-python3-libdnf-6b20678bd06eb103",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/python3-libdnf@0.69.0-20.el9.alma.1?arch=x86_64&distro=almalinux-9.9&upstream=libdnf-0.69.0-20.el9.alma.1.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "python3-libdnf",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "0.69.0-20.el9.alma.1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-python3-libs-207a85ff5a525f82",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/python3-libs@3.9.25-16.el9_9?arch=x86_64&distro=almalinux-9.9&upstream=python3.9-3.9.25-16.el9_9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "python3-libs",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "3.9.25-16.el9_9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-python3-pip-wheel-46e910a7dc71b168",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/python3-pip-wheel@21.3.1-2.el9_8?arch=noarch&distro=almalinux-9.9&upstream=python-pip-21.3.1-2.el9_8.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "python3-pip-wheel",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "21.3.1-2.el9_8"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-python3-rpm-d47e9dd757244e04",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/python3-rpm@4.16.1.3-43.el9_9?arch=x86_64&distro=almalinux-9.9&upstream=rpm-4.16.1.3-43.el9_9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "python3-rpm",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "4.16.1.3-43.el9_9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-python3-setuptools-wheel-5a824d2ee69fa846",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/python3-setuptools-wheel@53.0.0-15.el9?arch=noarch&distro=almalinux-9.9&upstream=python-setuptools-53.0.0-15.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "python3-setuptools-wheel",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "53.0.0-15.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-python3-six-91f4d73cb11337a4",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/python3-six@1.15.0-9.el9?arch=noarch&distro=almalinux-9.9&upstream=python-six-1.15.0-9.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "python3-six",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "1.15.0-9.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-python3-systemd-0218c663fac1e277",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/python3-systemd@234-19.el9?arch=x86_64&distro=almalinux-9.9&upstream=python-systemd-234-19.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "python3-systemd",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "234-19.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-readline-91b0ff7d3a7d89d1",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/readline@8.1-4.el9?arch=x86_64&distro=almalinux-9.9&upstream=readline-8.1-4.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "readline",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "8.1-4.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-rootfiles-6930d03dfcb72585",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/rootfiles@8.1-35.el9?arch=noarch&distro=almalinux-9.9&upstream=rootfiles-8.1-35.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "rootfiles",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "8.1-35.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-python-rpm-c25f876745d22522",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:pypi/rpm@4.16.1.3",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "rpm",
+   "sourceInfo": "acquired package info from installed python package manifest file: /usr/lib64/python3.9/site-packages/rpm-4.16.1.3-py3.9.egg-info",
+   "versionInfo": "4.16.1.3"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-rpm-2b238c624023a9e9",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/rpm@4.16.1.3-43.el9_9?arch=x86_64&distro=almalinux-9.9&upstream=rpm-4.16.1.3-43.el9_9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "rpm",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "4.16.1.3-43.el9_9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-rpm-build-libs-6f51967963014b18",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/rpm-build-libs@4.16.1.3-43.el9_9?arch=x86_64&distro=almalinux-9.9&upstream=rpm-4.16.1.3-43.el9_9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "rpm-build-libs",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "4.16.1.3-43.el9_9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-rpm-libs-081095ccdfcb32fb",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/rpm-libs@4.16.1.3-43.el9_9?arch=x86_64&distro=almalinux-9.9&upstream=rpm-4.16.1.3-43.el9_9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "rpm-libs",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "4.16.1.3-43.el9_9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-rpm-sign-libs-4df9116bf5f7b3e5",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/rpm-sign-libs@4.16.1.3-43.el9_9?arch=x86_64&distro=almalinux-9.9&upstream=rpm-4.16.1.3-43.el9_9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "rpm-sign-libs",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "4.16.1.3-43.el9_9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-sed-d822ca76064276ec",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/sed@4.8-10.el9?arch=x86_64&distro=almalinux-9.9&upstream=sed-4.8-10.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "sed",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "4.8-10.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-setup-11ef68350a853245",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/setup@2.13.7-10.el9?arch=noarch&distro=almalinux-9.9&upstream=setup-2.13.7-10.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "setup",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "2.13.7-10.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-shadow-utils-ac3ef5cca20fd553",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/shadow-utils@4.9-17.el9?arch=x86_64&distro=almalinux-9.9&epoch=2&upstream=shadow-utils-4.9-17.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "shadow-utils",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "2:4.9-17.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-python-six-f5999e892a6c5902",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:pypi/six@1.15.0",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "six",
+   "sourceInfo": "acquired package info from installed python package manifest file: /usr/lib/python3.9/site-packages/six-1.15.0.dist-info/METADATA, /usr/lib/python3.9/site-packages/six-1.15.0.dist-info/RECORD, /usr/lib/python3.9/site-packages/six-1.15.0.dist-info/top_level.txt",
+   "versionInfo": "1.15.0"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-sqlite-libs-6c0e534ce0fb878e",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/sqlite-libs@3.34.1-11.el9_8?arch=x86_64&distro=almalinux-9.9&upstream=sqlite-3.34.1-11.el9_8.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "sqlite-libs",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "3.34.1-11.el9_8"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-systemd-28cfaf006a322207",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/systemd@252-79.el9_9.alma.1?arch=x86_64&distro=almalinux-9.9&upstream=systemd-252-79.el9_9.alma.1.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "systemd",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "252-79.el9_9.alma.1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-systemd-libs-ad6740bb7c1d3477",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/systemd-libs@252-79.el9_9.alma.1?arch=x86_64&distro=almalinux-9.9&upstream=systemd-252-79.el9_9.alma.1.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "systemd-libs",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "252-79.el9_9.alma.1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-systemd-pam-c488f39ec5f29ba2",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/systemd-pam@252-79.el9_9.alma.1?arch=x86_64&distro=almalinux-9.9&upstream=systemd-252-79.el9_9.alma.1.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "systemd-pam",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "252-79.el9_9.alma.1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-python-systemd-python-4029da0e7e7877a9",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:pypi/systemd-python@234",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "systemd-python",
+   "sourceInfo": "acquired package info from installed python package manifest file: /usr/lib64/python3.9/site-packages/systemd_python-234-py3.9.egg-info",
+   "versionInfo": "234"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-systemd-rpm-macros-f53653ba94aed284",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/systemd-rpm-macros@252-79.el9_9.alma.1?arch=noarch&distro=almalinux-9.9&upstream=systemd-252-79.el9_9.alma.1.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "systemd-rpm-macros",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "252-79.el9_9.alma.1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-tar-29e63ea20bbee4af",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/tar@1.34-13.el9_8?arch=x86_64&distro=almalinux-9.9&epoch=2&upstream=tar-1.34-13.el9_8.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "tar",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "2:1.34-13.el9_8"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-tpm2-tss-59c17c0a11a4982e",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/tpm2-tss@3.2.3-1.el9?arch=x86_64&distro=almalinux-9.9&upstream=tpm2-tss-3.2.3-1.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "tpm2-tss",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "3.2.3-1.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-tzdata-cf574f967dc960e0",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/tzdata@2026f-1.el9_9?arch=noarch&distro=almalinux-9.9&upstream=tzdata-2026f-1.el9_9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "tzdata",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "2026f-1.el9_9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-util-linux-9195f0ba6fefd713",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/util-linux@2.37.4-28.el9_9.1?arch=x86_64&distro=almalinux-9.9&upstream=util-linux-2.37.4-28.el9_9.1.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "util-linux",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "2.37.4-28.el9_9.1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-util-linux-core-619a4a7804e400d7",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/util-linux-core@2.37.4-28.el9_9.1?arch=x86_64&distro=almalinux-9.9&upstream=util-linux-2.37.4-28.el9_9.1.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "util-linux-core",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "2.37.4-28.el9_9.1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-vim-minimal-07d86118b34c1aea",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/vim-minimal@8.2.2637-43.el9_9?arch=x86_64&distro=almalinux-9.9&epoch=2&upstream=vim-8.2.2637-43.el9_9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "vim-minimal",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "2:8.2.2637-43.el9_9"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-xz-57c55d182f9096a1",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/xz@5.2.5-8.el9_9.1?arch=x86_64&distro=almalinux-9.9&upstream=xz-5.2.5-8.el9_9.1.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "xz",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "5.2.5-8.el9_9.1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-xz-libs-0318d3353faa7da2",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/xz-libs@5.2.5-8.el9_9.1?arch=x86_64&distro=almalinux-9.9&upstream=xz-5.2.5-8.el9_9.1.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "xz-libs",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "5.2.5-8.el9_9.1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-yum-c23cc2c426ce5484",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/yum@4.14.0-37.el9.alma.1?arch=noarch&distro=almalinux-9.9&upstream=dnf-4.14.0-37.el9.alma.1.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "yum",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "4.14.0-37.el9.alma.1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-rpm-zlib-1c265c92a1af6397",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:rpm/almalinux/zlib@1.2.11-40.el9?arch=x86_64&distro=almalinux-9.9&upstream=zlib-1.2.11-40.el9.src.rpm",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "zlib",
+   "sourceInfo": "acquired package info from RPM DB: /var/lib/rpm/rpmdb.sqlite",
+   "versionInfo": "1.2.11-40.el9"
+  },
+  {
+   "SPDXID": "SPDXRef-DocumentRoot-Image-almalinux",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:oci/almalinux@sha256%3A0e7037e76f15ba0e4aa909bceec51022646e00a619475741c9215b5dd9824b94?arch=amd64&tag=9",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "almalinux",
+   "versionInfo": "9"
+  }
+ ],
+ "spdxVersion": "SPDX-2.3"
+}

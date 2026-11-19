@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Dialog, Switch } from "radix-ui";
 import { AppWindow, ArrowRight, Plus, Search, SlidersHorizontal, Trash2, Upload, X } from "lucide-react";
-import { adminGate, AGENT_UPDATE, api, refresh, assetsQ, coverageQ, filtersToApi, filtersToSearch, parseFilters, parseUtc, plural, PRIORITIES, PRIORITY_LABEL, relativeTime, sbomSummary, updateSource, useIsAdmin, useTitle, type AgentUpdate, type Asset, type Criticality, type Finding, type Priority, type SbomResult } from "./lib";
+import { adminGate, AGENT_UPDATE, api, refresh, assetsQ, coverageQ, filtersToApi, filtersToSearch, parseFilters, parseUtc, plural, PRIORITIES, PRIORITY_LABEL, relativeTime, sbomSummary, updateSource, useIsAdmin, useTitle, type AgentUpdate, type Asset, type ContainerRun, type Criticality, type Finding, type Priority, type SbomResult } from "./lib";
 import { Alert, btnPrimary, btnQuiet, chip, ConfirmDialog, CopyBlock, dialogBox, Done, EmptyState, ErrorState, Field, input, Loading, PriorityPill, switchRoot, switchThumb, Tag, useReturnFocus, HowJudged } from "./ui";
 import clsx from "clsx";
 import { ExternalTargets } from "./targets";
@@ -37,11 +37,12 @@ export function AssetsPage() {
     onSettled: () => refresh(qc, "assets"),
   });
 
-  // machines, devices with no agent, internet targets: one view at a time (?view=), a device link opens its view
-  const sp = useSearch({ strict: false }) as { view?: string; device?: string };
-  const view: AssetView = sp.device ? "devices" : sp.view === "devices" || sp.view === "internet" ? sp.view : "machines";
+  // machines, devices with no agent, internet targets, container images: one view at a time (?view=); a device or image link opens its view
+  const sp = useSearch({ strict: false }) as { view?: string; device?: string; image?: string };
+  const view: AssetView = sp.device ? "devices" : sp.image ? "containers" : (VIEWS as readonly string[]).includes(sp.view ?? "") ? sp.view as AssetView : "machines";
   const devices = useQuery(devicesQ);
   const flagged = (devices.data ?? []).filter((r) => r.checked?.open.length).length;
+  const images = (q.data ?? []).filter((a) => a.kind === "image");
   const [target, setTarget] = useState<Asset | null>(null);
   const [saved, setSaved] = useState("");
   const [last, setLast] = useState<{ id: string; prev: Asset } | null>(null);  // the last single change, for Undo
@@ -62,7 +63,8 @@ export function AssetsPage() {
         </div>}
       </header>
 
-      <AssetViews view={view} devices={devices.data?.length ?? 0} flagged={flagged} external={(q.data ?? []).filter((a) => a.kind === "external").length} />
+      <AssetViews view={view} devices={devices.data?.length ?? 0} flagged={flagged} external={(q.data ?? []).filter((a) => a.kind === "external").length}
+        images={images.length} imagesFlagged={images.filter((a) => openCount(a) > 0).length} />
 
       {view === "machines" && <>
       <Unmanaged />
@@ -72,18 +74,20 @@ export function AssetsPage() {
 
       {q.isPending ? <Loading className="h-20" rows={3} label="Loading assets…" />
         : q.error ? <ErrorState error={q.error} retry={() => q.refetch()} />
-        : q.data.every((a) => a.kind === "external" || a.kind === "device") ? (
+        : q.data.every((a) => !MACHINE_KINDS.includes(a.kind)) ? (
           <EmptyState title="No machines yet" action={<Link to="/add" className={clsx(btnPrimary, "no-underline")}>Add your first machine</Link>}>
             Machines show up here once they report in.
           </EmptyState>
         ) : (
-          <MachineList assets={q.data.filter((a) => a.kind !== "external" && a.kind !== "device")} saved={patch.isPending ? "" : saved} failed={failed}
+          <MachineList assets={q.data.filter((a) => MACHINE_KINDS.includes(a.kind))} saved={patch.isPending ? "" : saved} failed={failed}
             undo={last ? () => { const { id, prev } = last; setLast(null); patch.mutate({ id, criticality: prev.criticality, internet_facing: prev.internet_facing, ring: prev.ring, health_units: prev.health_units }); } : undefined}
             onPatch={(id, p) => { setSaved(""); setFailed(null); patch.mutate({ id, ...p }); }} onDelete={(a) => { del.reset(); setTarget(a); }} />
         )}
       </>}
       {view === "internet" && q.data && <ExternalTargets targets={q.data.filter((a) => a.kind === "external")} onDelete={(a) => { del.reset(); setTarget(a); }} />}
       {view === "devices" && <UnmanagedDevices />}
+      {view === "containers" && (q.isPending ? <Loading className="h-20" rows={3} label="Loading container images…" />
+        : q.error ? <ErrorState error={q.error} retry={() => q.refetch()} /> : <ContainerImages images={images} />)}
       <ConfirmDialog open={!!target} onOpenChange={(o) => !o && setTarget(null)} title={`Delete ${target?.hostname}?`}
         description="Its findings and installed-software list are removed. The evidence ledger keeps the history of what was detected and fixed, so audit records stay intact. This can't be undone."
         confirmLabel="Delete asset" pendingLabel="Deleting…" destructive pending={del.isPending} error={del.error} onConfirm={() => target && del.mutate(target.id)} />
@@ -132,14 +136,18 @@ export const sortDevices = (rows: UnmanagedDevice[]) => [...rows].sort((a, b) =>
 const deviceFindings = (r: UnmanagedDevice) => filtersToSearch({ ...parseFilters({}), asset: r.checked!.asset_id, fixable: false });
 const when = (t: string) => <time dateTime={parseUtc(t).toISOString()} title={parseUtc(t).toLocaleString()}>{relativeTime(t)}</time>;
 
-type AssetView = "machines" | "devices" | "internet";
+const VIEWS = ["machines", "devices", "internet", "containers"] as const;
+type AssetView = (typeof VIEWS)[number];
+const MACHINE_KINDS: Asset["kind"][] = ["host", "application"];  // the machines view; devices, internet targets and images have their own
+const openCount = (a: Asset) => PRIORITIES.reduce((n, p) => n + (a.open_by_priority[p] ?? 0), 0);
 
-/** The three kinds of asset as views, with counts; devices with issues say so on the tab. */
-function AssetViews({ view, devices, flagged, external }: { view: AssetView; devices: number; flagged: number; external: number }) {
+/** The kinds of asset as views, with counts; devices and images with issues say so on the tab. */
+function AssetViews({ view, devices, flagged, external, images, imagesFlagged }: { view: AssetView; devices: number; flagged: number; external: number; images: number; imagesFlagged: number }) {
   const tabs: [AssetView, string, ReactNode][] = [
     ["machines", "Machines and applications", null],
     ["devices", "Devices with no agent", devices ? <span className="num text-muted">{flagged > 0 ? `${flagged} with findings` : devices}</span> : null],
     ["internet", "Internet targets", external ? <span className="num text-muted">{external}</span> : null],
+    ["containers", "Container images", images ? <span className="num text-muted">{imagesFlagged > 0 ? `${imagesFlagged} with findings` : images}</span> : null],
   ];
   return (
     // one tab pattern on phones, as Settings: a strip that scrolls sideways, never a stacked list
@@ -247,10 +255,10 @@ export function UnmanagedDevices() {
   );
 }
 
-/** "web-1, db-1 and 8 more": names wrap whole, never mid-name. */
-function SeenBy({ names }: { names: string[] }) {
+/** "web-1, db-1 and 8 more": names wrap whole, never mid-name. `total` when the names are only the first of them. */
+function SeenBy({ names, total = names.length }: { names: string[]; total?: number }) {
   const head = names.slice(0, 2);
-  return <span>{head.map((h, i) => <Fragment key={h}><span className="whitespace-nowrap">{h}{i < head.length - 1 && ","}</span>{" "}</Fragment>)}{names.length > 2 && <span className="text-muted">and {names.length - 2} more</span>}</span>;
+  return <span>{head.map((h, i) => <Fragment key={h}><span className="whitespace-nowrap">{h}{i < head.length - 1 && ","}</span>{" "}</Fragment>)}{total > 2 && <span className="text-muted">and {total - 2} more</span>}</span>;
 }
 
 /** One device with no agent: who it is, where it was seen, and what a network check found on it. */
@@ -307,6 +315,135 @@ function DeviceDrawer({ d, onClose }: { d: UnmanagedDevice | null; onClose: () =
               </dl>
             </section>
             <p className="max-w-[60ch] text-sm text-muted">Found in your machines' own network tables; nothing is sent to it to find it. It leaves this list 30 days after it was last seen.</p>
+          </>}
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
+const IMAGE_PAGE = 25;
+const imageRank = (a: Asset) => { const i = PRIORITIES.findIndex((p) => a.open_by_priority[p]); return i < 0 ? PRIORITIES.length : i; };
+const hostsOf = (a: Asset) => [...new Set((a.running_on ?? []).map((r) => r.hostname ?? ""))].filter(Boolean);
+const shortId = (id?: string | null) => (id ? id.replace(/^sha256:/, "").slice(0, 12) : "unknown");
+/** Images by their most urgent finding, then most findings; an unread image before a clean one (not assessed is never clean),
+ * and one nothing runs any more last. */
+export const sortImages = (rows: Asset[]) => [...rows].sort((a, b) => imageRank(a) - imageRank(b) || openCount(b) - openCount(a)
+  || Number(!!a.packages_read) - Number(!!b.packages_read) || Number(!a.running_on?.length) - Number(!b.running_on?.length) || a.hostname.localeCompare(b.hostname));
+
+/** Container images the machines' agents found running (DECISIONS 138-141): one row per image, however many machines run it. */
+export function ContainerImages({ images }: { images: Asset[] }) {
+  const [text, setText] = useState("");
+  const [shown, setShown] = useState(IMAGE_PAGE);
+  const sp = useSearch({ strict: false }) as { image?: string };
+  const navigate = useNavigate();
+  const open = images.find((a) => a.id === sp.image) ?? null;
+  const setOpen = (a: Asset | null) => void navigate({ to: "/assets", search: (x: Record<string, unknown>) => ({ ...x, view: "containers", image: a?.id }), resetScroll: false });
+  const typed = useDeferredValue(text.trim().toLowerCase());
+  const all = useMemo(() => sortImages(images), [images]);
+  const rows = useMemo(() => all.filter((a) => !typed || [a.hostname, a.os_name, ...hostsOf(a), ...(a.running_on ?? []).map((r) => r.name)]
+    .some((v) => v.toLowerCase().includes(typed))), [all, typed]);
+  if (!all.length) return (
+    <EmptyState title="No containers seen yet">
+      The agent on each Linux machine reads the Docker and Podman containers running there at every report, unless it was enrolled with <code className="num">--no-containers</code>.
+    </EmptyState>
+  );
+  const machines = Math.max(new Set(all.flatMap(hostsOf)).size, ...all.map((a) => a.hosts_total ?? 0));  // each list stops at 100 rows
+  const unread = all.filter((a) => !a.packages_read).length;
+  return (
+    <section aria-labelledby="container-images" className="flex flex-col gap-3">
+      <div className="flex flex-col gap-1">
+        <h2 id="container-images" className="scroll-mt-6 text-xl font-semibold">{plural(all.length, "container image")} on {plural(machines, "machine")}</h2>
+        <HowJudged className="max-w-[65ch]" lead={<>Read by each machine's agent from the running container's own package database.{unread ? ` ${unread} couldn't be read, so ${unread === 1 ? "it isn't" : "they aren't"} assessed.` : ""}</>}>
+          <p>Nothing is installed in a container and nothing in it is run: the agent reads its os-release and package list through the container's own root. One image is one row, however many machines run it.</p>
+          <p>An image is fixed by rebuilding it and redeploying it; Nimstead never changes a container. Its findings close once every machine that ran it reports its containers without it.</p>
+        </HowJudged>
+      </div>
+      {all.length > 5 && <label className="relative min-w-0 max-w-xl">
+        <span className="sr-only">Search container images</span>
+        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden />
+        <input type="search" className={clsx(input, "pl-9")} placeholder="Search by image, OS, machine or container" value={text} onChange={(e) => { setText(e.target.value); setShown(IMAGE_PAGE); }} />
+      </label>}
+      <p className="num text-sm text-muted" role="status">{rows.length === all.length ? `${plural(all.length, "image")}, most urgent first` : `${rows.length.toLocaleString()} of ${plural(all.length, "image")}`}</p>
+      {rows.length === 0 ? (
+        <EmptyState title="No images match" action={<button className={btnQuiet} onClick={() => setText("")}>Clear search</button>}>Nothing matches “{text}”.</EmptyState>
+      ) : (
+        <ul className="flex flex-col divide-y divide-line border border-line bg-surface">
+          {rows.slice(0, shown).map((a) => {
+            const hosts = hostsOf(a);
+            return (
+              <li key={a.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2">
+                <div className="min-w-[min(12rem,100%)] flex-1 basis-56">
+                  <div className="flex flex-wrap items-center gap-x-2">
+                    <button className="tap cursor-pointer text-left font-semibold underline decoration-line-strong underline-offset-4 hover:decoration-ink" onClick={() => setOpen(a)}>
+                      <span className="break-all">{a.hostname}</span><span className="sr-only">: where it runs and how it's fixed</span>
+                    </button>
+                    {!a.packages_read && <Tag tone="warn" why={a.not_read_why ?? undefined}>Not assessed</Tag>}
+                    {!hosts.length && <Tag why="Every machine that ran it has since reported its containers without it, so its findings are closed">Not running</Tag>}
+                  </div>
+                  <p className="truncate text-sm text-muted">
+                    {a.os_name || "Unknown OS"} · {hosts.length ? <>runs on <SeenBy names={hosts} total={a.hosts_total ?? hosts.length} />{(a.containers_total ?? 0) > (a.hosts_total ?? hosts.length) && ` · ${plural(a.containers_total ?? 0, "container")}`}</> : "no machine runs it now"}
+                  </p>
+                </div>
+                <PriorityLinks a={a} columns />
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {rows.length > shown && <button className={clsx(btnQuiet, "self-start")} onClick={() => setShown((n) => n + IMAGE_PAGE * 4)}>{rows.length - shown <= IMAGE_PAGE * 4 ? `Show the other ${rows.length - shown}` : `Show ${IMAGE_PAGE * 4} more (${rows.length - shown} left)`}</button>}
+      <ImageDrawer a={open} onClose={() => setOpen(null)} />
+    </section>
+  );
+}
+
+/** One container image: whether it could be read, how it's fixed, and every container that runs it, by machine. */
+function ImageDrawer({ a, onClose }: { a: Asset | null; onClose: () => void }) {
+  const title = useRef<HTMLHeadingElement>(null);
+  const focus = useReturnFocus(title);
+  const byHost = new Map<string, { id: string; runs: ContainerRun[] }>();
+  for (const r of a?.running_on ?? []) {
+    const h = byHost.get(r.hostname ?? "") ?? { id: r.host_id ?? "", runs: [] };
+    h.runs.push(r);
+    byHost.set(r.hostname ?? "", h);
+  }
+  const n = a ? openCount(a) : 0;
+  return (
+    <Dialog.Root open={!!a} onOpenChange={(o) => !o && onClose()}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="overlay" />
+        <Dialog.Content className="drawer flex flex-col gap-5 p-5 md:p-6" aria-describedby={undefined} {...focus}>
+          {a && <>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <Dialog.Title ref={title} tabIndex={-1} className="break-all text-lg font-semibold">{a.hostname}</Dialog.Title>
+                <p className="text-sm text-muted">{a.os_name || "Unknown OS"} · image <span className="num" title={a.image_id ?? undefined}>{shortId(a.image_id)}</span></p>
+              </div>
+              <Dialog.Close className={clsx(btnQuiet, "size-[44px] shrink-0 !px-0 md:size-9")} aria-label="Close"><X className="size-4" aria-hidden /></Dialog.Close>
+            </div>
+            {!a.packages_read && <p className="max-w-[60ch] border border-line-strong bg-sunken p-3 text-sm"><strong className="font-semibold">Not assessed:</strong> {a.not_read_why}. No findings here doesn't mean it's clean.</p>}
+            <section aria-labelledby="image-fix" className="flex flex-col gap-2">
+              <h3 id="image-fix" className="text-base font-semibold">How it's fixed</h3>
+              <p className="max-w-[60ch] text-sm">Rebuild it from a fixed base image, or with the fixed packages, and redeploy it. Nimstead never changes a running container. Once every machine that runs it reports the new image instead, these findings close.</p>
+              <PriorityLinks a={a} />
+              {n > 0 && <Link to="/findings" search={filtersToSearch({ ...parseFilters({}), asset: a.id, group: "package" })} className={clsx(btnPrimary, "self-start no-underline")}>What the rebuild must fix, by package<ArrowRight className="size-4" aria-hidden /></Link>}
+            </section>
+            <section aria-labelledby="image-runs">
+              <h3 id="image-runs" className="text-base font-semibold">{byHost.size ? `Runs on ${plural(Math.max(byHost.size, a.hosts_total ?? 0), "machine")}` : "Not running"}</h3>
+              {byHost.size === 0 ? <p className="max-w-[60ch] text-sm text-muted">Every machine that ran it has since reported its containers without it, so its findings are closed. It leaves this list 30 days after it last ran.</p> : (
+                <ul className="mt-1 flex flex-col divide-y divide-line text-sm">
+                  {[...byHost].map(([host, h]) => (
+                    <li key={host} className="py-2">
+                      <Link to="/assets" search={{ machine: h.id }} className="font-medium text-ink underline decoration-line-strong underline-offset-4">{host}</Link>
+                      <ul className="mt-1 flex flex-col gap-0.5 text-muted">
+                        {h.runs.map((r) => <li key={r.name + r.since}><span className="text-ink">{r.name || "unnamed"}</span> · {r.runtime}{r.ref && r.ref !== a.hostname && <> · started as <span className="break-all">{r.ref}</span></>} · since {when(r.since)}</li>)}
+                      </ul>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {(a.containers_total ?? 0) > (a.running_on?.length ?? 0) && <p className="mt-1 text-sm text-muted">Showing {a.running_on?.length} of {a.containers_total} containers.</p>}
+            </section>
           </>}
         </Dialog.Content>
       </Dialog.Portal>
@@ -761,6 +898,14 @@ export function AssetRow({ a, onPatch, onDelete, saved, error, inDrawer, undo }:
         {updateSource(a.facts) && <p className="mt-1 text-xs text-muted">{updateSource(a.facts)}</p>}
         {inDrawer && a.agent_update && a.agent_update !== "current" && <p className="mt-2 text-sm">{AGENT_UPDATE[a.agent_update].why(a)} <Link to="/add" className="font-medium underline">Install command</Link></p>}
         {inDrawer && open.length > 0 && <p className="mt-2 text-sm"><Link to="/findings" search={filtersToSearch({ ...parseFilters({}), asset: a.id, group: "package" })} className="inline-flex tap items-center font-medium underline">Fixes for this machine, by package</Link></p>}
+        {inDrawer && !!a.containers?.length && <div className="mt-3 text-sm">
+          <p className="font-medium">{plural(a.containers_total ?? a.containers.length, "container")} running here</p>
+          {/* each image's findings are its own (one image, one set of findings, wherever it runs): link to it, never repeat them here */}
+          <ul className="mt-1 flex flex-col gap-0.5">
+            {a.containers.map((c) => <li key={c.name + c.since} className="break-words"><span>{c.name || "unnamed"}</span>{" "}
+              <Link to="/assets" search={{ view: "containers", image: c.image_id }} className="text-muted underline decoration-line-strong underline-offset-4 hover:text-ink">{c.ref || "image"}</Link></li>)}
+          </ul>
+        </div>}
       </div>
       <PriorityLinks a={a} />
       </div>

@@ -19,6 +19,12 @@ spec.loader.exec_module(docs)
 
 
 class DocumentationChecks(unittest.TestCase):
+    def test_the_coverage_report_links_with_forward_slashes_on_every_os(self):
+        # A report regenerated on Windows once linked agent\nimstead_agent.py, which only Windows resolves (CI failed)
+        paths = list(docs.coverage())
+        self.assertIn("agent/nimstead_agent.py", paths)
+        self.assertFalse([p for p in paths if "\\" in p])
+
     def test_same_page_and_duplicate_anchors(self):
         source = "# Start\n## Retry\n## Retry\n<a id=\"legacy\"></a>"
         self.assertEqual(docs.markdown_anchors(source), {"start", "retry", "retry-1", "legacy"})

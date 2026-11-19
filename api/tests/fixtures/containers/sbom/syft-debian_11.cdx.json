@@ -1,0 +1,599 @@
+{
+ "bomFormat": "CycloneDX",
+ "components": [
+  {
+   "name": "adduser",
+   "purl": "pkg:deb/debian/adduser@3.118%2Bdeb11u1?arch=all&distro=debian-11.11",
+   "type": "library",
+   "version": "3.118+deb11u1"
+  },
+  {
+   "name": "apt",
+   "purl": "pkg:deb/debian/apt@2.2.4?arch=amd64&distro=debian-11.11",
+   "type": "library",
+   "version": "2.2.4"
+  },
+  {
+   "name": "base-files",
+   "purl": "pkg:deb/debian/base-files@11.1%2Bdeb11u11?arch=amd64&distro=debian-11.11",
+   "type": "library",
+   "version": "11.1+deb11u11"
+  },
+  {
+   "name": "base-passwd",
+   "purl": "pkg:deb/debian/base-passwd@3.5.51?arch=amd64&distro=debian-11.11",
+   "type": "library",
+   "version": "3.5.51"
+  },
+  {
+   "name": "bash",
+   "purl": "pkg:deb/debian/bash@5.1-2%2Bdeb11u1?arch=amd64&distro=debian-11.11",
+   "type": "library",
+   "version": "5.1-2+deb11u1"
+  },
+  {
+   "name": "bsdutils",
+   "purl": "pkg:deb/debian/bsdutils@1%3A2.36.1-8%2Bdeb11u2?arch=amd64&distro=debian-11.11&upstream=util-linux%402.36.1-8%2Bdeb11u2",
+   "type": "library",
+   "version": "1:2.36.1-8+deb11u2"
+  },
+  {
+   "name": "coreutils",
+   "purl": "pkg:deb/debian/coreutils@8.32-4%2Bb1?arch=amd64&distro=debian-11.11&upstream=coreutils%408.32-4",
+   "type": "library",
+   "version": "8.32-4+b1"
+  },
+  {
+   "name": "dash",
+   "purl": "pkg:deb/debian/dash@0.5.11%2Bgit20200708%2Bdd9ef66-5?arch=amd64&distro=debian-11.11",
+   "type": "library",
+   "version": "0.5.11+git20200708+dd9ef66-5"
+  },
+  {
+   "name": "debconf",
+   "purl": "pkg:deb/debian/debconf@1.5.77?arch=all&distro=debian-11.11",
+   "type": "library",
+   "version": "1.5.77"
+  },
+  {
+   "name": "debian-archive-keyring",
+   "purl": "pkg:deb/debian/debian-archive-keyring@2021.1.1%2Bdeb11u1?arch=all&distro=debian-11.11",
+   "type": "library",
+   "version": "2021.1.1+deb11u1"
+  },
+  {
+   "name": "debianutils",
+   "purl": "pkg:deb/debian/debianutils@4.11.2?arch=amd64&distro=debian-11.11",
+   "type": "library",
+   "version": "4.11.2"
+  },
+  {
+   "name": "diffutils",
+   "purl": "pkg:deb/debian/diffutils@1%3A3.7-5?arch=amd64&distro=debian-11.11",
+   "type": "library",
+   "version": "1:3.7-5"
+  },
+  {
+   "name": "dpkg",
+   "purl": "pkg:deb/debian/dpkg@1.20.14?arch=amd64&distro=debian-11.11",
+   "type": "library",
+   "version": "1.20.14"
+  },
+  {
+   "name": "e2fsprogs",
+   "purl": "pkg:deb/debian/e2fsprogs@1.46.2-2%2Bdeb11u1?arch=amd64&distro=debian-11.11",
+   "type": "library",
+   "version": "1.46.2-2+deb11u1"
+  },
+  {
+   "name": "findutils",
+   "purl": "pkg:deb/debian/findutils@4.8.0-1?arch=amd64&distro=debian-11.11",
+   "type": "library",
+   "version": "4.8.0-1"
+  },
+  {
+   "name": "gcc-10-base",
+   "purl": "pkg:deb/debian/gcc-10-base@10.2.1-6?arch=amd64&distro=debian-11.11&upstream=gcc-10",
+   "type": "library",
+   "version": "10.2.1-6"
+  },
+  {
+   "name": "gcc-9-base",
+   "purl": "pkg:deb/debian/gcc-9-base@9.3.0-22?arch=amd64&distro=debian-11.11&upstream=gcc-9",
+   "type": "library",
+   "version": "9.3.0-22"
+  },
+  {
+   "name": "gpgv",
+   "purl": "pkg:deb/debian/gpgv@2.2.27-2%2Bdeb11u3?arch=amd64&distro=debian-11.11&upstream=gnupg2",
+   "type": "library",
+   "version": "2.2.27-2+deb11u3"
+  },
+  {
+   "name": "grep",
+   "purl": "pkg:deb/debian/grep@3.6-1%2Bdeb11u1?arch=amd64&distro=debian-11.11",
+   "type": "library",
+   "version": "3.6-1+deb11u1"
+  },
+  {
+   "name": "gzip",
+   "purl": "pkg:deb/debian/gzip@1.10-4%2Bdeb11u1?arch=amd64&distro=debian-11.11",
+   "type": "library",
+   "version": "1.10-4+deb11u1"
+  },
+  {
+   "name": "hostname",
+   "purl": "pkg:deb/debian/hostname@3.23?arch=amd64&distro=debian-11.11",
+   "type": "library",
+   "version": "3.23"
+  },
+  {
+   "name": "init-system-helpers",
+   "purl": "pkg:deb/debian/init-system-helpers@1.60?arch=all&distro=debian-11.11",
+   "type": "library",
+   "version": "1.60"
+  },
+  {
+   "name": "libacl1",
+   "purl": "pkg:deb/debian/libacl1@2.2.53-10?arch=amd64&distro=debian-11.11&upstream=acl",
+   "type": "library",
+   "version": "2.2.53-10"
+  },
+  {
+   "name": "libapt-pkg6.0",
+   "purl": "pkg:deb/debian/libapt-pkg6.0@2.2.4?arch=amd64&distro=debian-11.11&upstream=apt",
+   "type": "library",
+   "version": "2.2.4"
+  },
+  {
+   "name": "libattr1",
+   "purl": "pkg:deb/debian/libattr1@1%3A2.4.48-6?arch=amd64&distro=debian-11.11&upstream=attr",
+   "type": "library",
+   "version": "1:2.4.48-6"
+  },
+  {
+   "name": "libaudit-common",
+   "purl": "pkg:deb/debian/libaudit-common@1%3A3.0-2?arch=all&distro=debian-11.11&upstream=audit",
+   "type": "library",
+   "version": "1:3.0-2"
+  },
+  {
+   "name": "libaudit1",
+   "purl": "pkg:deb/debian/libaudit1@1%3A3.0-2?arch=amd64&distro=debian-11.11&upstream=audit",
+   "type": "library",
+   "version": "1:3.0-2"
+  },
+  {
+   "name": "libblkid1",
+   "purl": "pkg:deb/debian/libblkid1@2.36.1-8%2Bdeb11u2?arch=amd64&distro=debian-11.11&upstream=util-linux",
+   "type": "library",
+   "version": "2.36.1-8+deb11u2"
+  },
+  {
+   "name": "libbz2-1.0",
+   "purl": "pkg:deb/debian/libbz2-1.0@1.0.8-4?arch=amd64&distro=debian-11.11&upstream=bzip2",
+   "type": "library",
+   "version": "1.0.8-4"
+  },
+  {
+   "name": "libc-bin",
+   "purl": "pkg:deb/debian/libc-bin@2.31-13%2Bdeb11u14?arch=amd64&distro=debian-11.11&upstream=glibc",
+   "type": "library",
+   "version": "2.31-13+deb11u14"
+  },
+  {
+   "name": "libc6",
+   "purl": "pkg:deb/debian/libc6@2.31-13%2Bdeb11u14?arch=amd64&distro=debian-11.11&upstream=glibc",
+   "type": "library",
+   "version": "2.31-13+deb11u14"
+  },
+  {
+   "name": "libcap-ng0",
+   "purl": "pkg:deb/debian/libcap-ng0@0.7.9-2.2%2Bb1?arch=amd64&distro=debian-11.11&upstream=libcap-ng%400.7.9-2.2",
+   "type": "library",
+   "version": "0.7.9-2.2+b1"
+  },
+  {
+   "name": "libcom-err2",
+   "purl": "pkg:deb/debian/libcom-err2@1.46.2-2%2Bdeb11u1?arch=amd64&distro=debian-11.11&upstream=e2fsprogs",
+   "type": "library",
+   "version": "1.46.2-2+deb11u1"
+  },
+  {
+   "name": "libcrypt1",
+   "purl": "pkg:deb/debian/libcrypt1@1%3A4.4.18-4?arch=amd64&distro=debian-11.11&upstream=libxcrypt",
+   "type": "library",
+   "version": "1:4.4.18-4"
+  },
+  {
+   "name": "libdb5.3",
+   "purl": "pkg:deb/debian/libdb5.3@5.3.28%2Bdfsg1-0.8?arch=amd64&distro=debian-11.11&upstream=db5.3",
+   "type": "library",
+   "version": "5.3.28+dfsg1-0.8"
+  },
+  {
+   "name": "libdebconfclient0",
+   "purl": "pkg:deb/debian/libdebconfclient0@0.260?arch=amd64&distro=debian-11.11&upstream=cdebconf",
+   "type": "library",
+   "version": "0.260"
+  },
+  {
+   "name": "libext2fs2",
+   "purl": "pkg:deb/debian/libext2fs2@1.46.2-2%2Bdeb11u1?arch=amd64&distro=debian-11.11&upstream=e2fsprogs",
+   "type": "library",
+   "version": "1.46.2-2+deb11u1"
+  },
+  {
+   "name": "libffi7",
+   "purl": "pkg:deb/debian/libffi7@3.3-6?arch=amd64&distro=debian-11.11&upstream=libffi",
+   "type": "library",
+   "version": "3.3-6"
+  },
+  {
+   "name": "libgcc-s1",
+   "purl": "pkg:deb/debian/libgcc-s1@10.2.1-6?arch=amd64&distro=debian-11.11&upstream=gcc-10",
+   "type": "library",
+   "version": "10.2.1-6"
+  },
+  {
+   "name": "libgcrypt20",
+   "purl": "pkg:deb/debian/libgcrypt20@1.8.7-6?arch=amd64&distro=debian-11.11",
+   "type": "library",
+   "version": "1.8.7-6"
+  },
+  {
+   "name": "libgmp10",
+   "purl": "pkg:deb/debian/libgmp10@2%3A6.2.1%2Bdfsg-1%2Bdeb11u1?arch=amd64&distro=debian-11.11&upstream=gmp",
+   "type": "library",
+   "version": "2:6.2.1+dfsg-1+deb11u1"
+  },
+  {
+   "name": "libgnutls30",
+   "purl": "pkg:deb/debian/libgnutls30@3.7.1-5%2Bdeb11u10?arch=amd64&distro=debian-11.11&upstream=gnutls28",
+   "type": "library",
+   "version": "3.7.1-5+deb11u10"
+  },
+  {
+   "name": "libgpg-error0",
+   "purl": "pkg:deb/debian/libgpg-error0@1.38-2?arch=amd64&distro=debian-11.11&upstream=libgpg-error",
+   "type": "library",
+   "version": "1.38-2"
+  },
+  {
+   "name": "libgssapi-krb5-2",
+   "purl": "pkg:deb/debian/libgssapi-krb5-2@1.18.3-6%2Bdeb11u8?arch=amd64&distro=debian-11.11&upstream=krb5",
+   "type": "library",
+   "version": "1.18.3-6+deb11u8"
+  },
+  {
+   "name": "libhogweed6",
+   "purl": "pkg:deb/debian/libhogweed6@3.7.3-1?arch=amd64&distro=debian-11.11&upstream=nettle",
+   "type": "library",
+   "version": "3.7.3-1"
+  },
+  {
+   "name": "libidn2-0",
+   "purl": "pkg:deb/debian/libidn2-0@2.3.0-5?arch=amd64&distro=debian-11.11&upstream=libidn2",
+   "type": "library",
+   "version": "2.3.0-5"
+  },
+  {
+   "name": "libk5crypto3",
+   "purl": "pkg:deb/debian/libk5crypto3@1.18.3-6%2Bdeb11u8?arch=amd64&distro=debian-11.11&upstream=krb5",
+   "type": "library",
+   "version": "1.18.3-6+deb11u8"
+  },
+  {
+   "name": "libkeyutils1",
+   "purl": "pkg:deb/debian/libkeyutils1@1.6.1-2?arch=amd64&distro=debian-11.11&upstream=keyutils",
+   "type": "library",
+   "version": "1.6.1-2"
+  },
+  {
+   "name": "libkrb5-3",
+   "purl": "pkg:deb/debian/libkrb5-3@1.18.3-6%2Bdeb11u8?arch=amd64&distro=debian-11.11&upstream=krb5",
+   "type": "library",
+   "version": "1.18.3-6+deb11u8"
+  },
+  {
+   "name": "libkrb5support0",
+   "purl": "pkg:deb/debian/libkrb5support0@1.18.3-6%2Bdeb11u8?arch=amd64&distro=debian-11.11&upstream=krb5",
+   "type": "library",
+   "version": "1.18.3-6+deb11u8"
+  },
+  {
+   "name": "liblz4-1",
+   "purl": "pkg:deb/debian/liblz4-1@1.9.3-2?arch=amd64&distro=debian-11.11&upstream=lz4",
+   "type": "library",
+   "version": "1.9.3-2"
+  },
+  {
+   "name": "liblzma5",
+   "purl": "pkg:deb/debian/liblzma5@5.2.5-2.1~deb11u2?arch=amd64&distro=debian-11.11&upstream=xz-utils",
+   "type": "library",
+   "version": "5.2.5-2.1~deb11u2"
+  },
+  {
+   "name": "libmount1",
+   "purl": "pkg:deb/debian/libmount1@2.36.1-8%2Bdeb11u2?arch=amd64&distro=debian-11.11&upstream=util-linux",
+   "type": "library",
+   "version": "2.36.1-8+deb11u2"
+  },
+  {
+   "name": "libnettle8",
+   "purl": "pkg:deb/debian/libnettle8@3.7.3-1?arch=amd64&distro=debian-11.11&upstream=nettle",
+   "type": "library",
+   "version": "3.7.3-1"
+  },
+  {
+   "name": "libnsl2",
+   "purl": "pkg:deb/debian/libnsl2@1.3.0-2?arch=amd64&distro=debian-11.11&upstream=libnsl",
+   "type": "library",
+   "version": "1.3.0-2"
+  },
+  {
+   "name": "libp11-kit0",
+   "purl": "pkg:deb/debian/libp11-kit0@0.23.22-1?arch=amd64&distro=debian-11.11&upstream=p11-kit",
+   "type": "library",
+   "version": "0.23.22-1"
+  },
+  {
+   "name": "libpam-modules",
+   "purl": "pkg:deb/debian/libpam-modules@1.4.0-9%2Bdeb11u2?arch=amd64&distro=debian-11.11&upstream=pam",
+   "type": "library",
+   "version": "1.4.0-9+deb11u2"
+  },
+  {
+   "name": "libpam-modules-bin",
+   "purl": "pkg:deb/debian/libpam-modules-bin@1.4.0-9%2Bdeb11u2?arch=amd64&distro=debian-11.11&upstream=pam",
+   "type": "library",
+   "version": "1.4.0-9+deb11u2"
+  },
+  {
+   "name": "libpam-runtime",
+   "purl": "pkg:deb/debian/libpam-runtime@1.4.0-9%2Bdeb11u2?arch=all&distro=debian-11.11&upstream=pam",
+   "type": "library",
+   "version": "1.4.0-9+deb11u2"
+  },
+  {
+   "name": "libpam0g",
+   "purl": "pkg:deb/debian/libpam0g@1.4.0-9%2Bdeb11u2?arch=amd64&distro=debian-11.11&upstream=pam",
+   "type": "library",
+   "version": "1.4.0-9+deb11u2"
+  },
+  {
+   "name": "libpcre2-8-0",
+   "purl": "pkg:deb/debian/libpcre2-8-0@10.36-2%2Bdeb11u1?arch=amd64&distro=debian-11.11&upstream=pcre2",
+   "type": "library",
+   "version": "10.36-2+deb11u1"
+  },
+  {
+   "name": "libpcre3",
+   "purl": "pkg:deb/debian/libpcre3@2%3A8.39-13?arch=amd64&distro=debian-11.11&upstream=pcre3",
+   "type": "library",
+   "version": "2:8.39-13"
+  },
+  {
+   "name": "libseccomp2",
+   "purl": "pkg:deb/debian/libseccomp2@2.5.1-1%2Bdeb11u1?arch=amd64&distro=debian-11.11&upstream=libseccomp",
+   "type": "library",
+   "version": "2.5.1-1+deb11u1"
+  },
+  {
+   "name": "libselinux1",
+   "purl": "pkg:deb/debian/libselinux1@3.1-3?arch=amd64&distro=debian-11.11&upstream=libselinux",
+   "type": "library",
+   "version": "3.1-3"
+  },
+  {
+   "name": "libsemanage-common",
+   "purl": "pkg:deb/debian/libsemanage-common@3.1-1?arch=all&distro=debian-11.11&upstream=libsemanage",
+   "type": "library",
+   "version": "3.1-1"
+  },
+  {
+   "name": "libsemanage1",
+   "purl": "pkg:deb/debian/libsemanage1@3.1-1%2Bb2?arch=amd64&distro=debian-11.11&upstream=libsemanage%403.1-1",
+   "type": "library",
+   "version": "3.1-1+b2"
+  },
+  {
+   "name": "libsepol1",
+   "purl": "pkg:deb/debian/libsepol1@3.1-1%2Bdeb11u1?arch=amd64&distro=debian-11.11&upstream=libsepol",
+   "type": "library",
+   "version": "3.1-1+deb11u1"
+  },
+  {
+   "name": "libsmartcols1",
+   "purl": "pkg:deb/debian/libsmartcols1@2.36.1-8%2Bdeb11u2?arch=amd64&distro=debian-11.11&upstream=util-linux",
+   "type": "library",
+   "version": "2.36.1-8+deb11u2"
+  },
+  {
+   "name": "libss2",
+   "purl": "pkg:deb/debian/libss2@1.46.2-2%2Bdeb11u1?arch=amd64&distro=debian-11.11&upstream=e2fsprogs",
+   "type": "library",
+   "version": "1.46.2-2+deb11u1"
+  },
+  {
+   "name": "libssl1.1",
+   "purl": "pkg:deb/debian/libssl1.1@1.1.1w-0%2Bdeb11u8?arch=amd64&distro=debian-11.11&upstream=openssl",
+   "type": "library",
+   "version": "1.1.1w-0+deb11u8"
+  },
+  {
+   "name": "libstdc++6",
+   "purl": "pkg:deb/debian/libstdc%2B%2B6@10.2.1-6?arch=amd64&distro=debian-11.11&upstream=gcc-10",
+   "type": "library",
+   "version": "10.2.1-6"
+  },
+  {
+   "name": "libsystemd0",
+   "purl": "pkg:deb/debian/libsystemd0@247.3-7%2Bdeb11u8?arch=amd64&distro=debian-11.11&upstream=systemd",
+   "type": "library",
+   "version": "247.3-7+deb11u8"
+  },
+  {
+   "name": "libtasn1-6",
+   "purl": "pkg:deb/debian/libtasn1-6@4.16.0-2%2Bdeb11u2?arch=amd64&distro=debian-11.11",
+   "type": "library",
+   "version": "4.16.0-2+deb11u2"
+  },
+  {
+   "name": "libtinfo6",
+   "purl": "pkg:deb/debian/libtinfo6@6.2%2B20201114-2%2Bdeb11u2?arch=amd64&distro=debian-11.11&upstream=ncurses",
+   "type": "library",
+   "version": "6.2+20201114-2+deb11u2"
+  },
+  {
+   "name": "libtirpc-common",
+   "purl": "pkg:deb/debian/libtirpc-common@1.3.1-1%2Bdeb11u1?arch=all&distro=debian-11.11&upstream=libtirpc",
+   "type": "library",
+   "version": "1.3.1-1+deb11u1"
+  },
+  {
+   "name": "libtirpc3",
+   "purl": "pkg:deb/debian/libtirpc3@1.3.1-1%2Bdeb11u1?arch=amd64&distro=debian-11.11&upstream=libtirpc",
+   "type": "library",
+   "version": "1.3.1-1+deb11u1"
+  },
+  {
+   "name": "libudev1",
+   "purl": "pkg:deb/debian/libudev1@247.3-7%2Bdeb11u8?arch=amd64&distro=debian-11.11&upstream=systemd",
+   "type": "library",
+   "version": "247.3-7+deb11u8"
+  },
+  {
+   "name": "libunistring2",
+   "purl": "pkg:deb/debian/libunistring2@0.9.10-4?arch=amd64&distro=debian-11.11&upstream=libunistring",
+   "type": "library",
+   "version": "0.9.10-4"
+  },
+  {
+   "name": "libuuid1",
+   "purl": "pkg:deb/debian/libuuid1@2.36.1-8%2Bdeb11u2?arch=amd64&distro=debian-11.11&upstream=util-linux",
+   "type": "library",
+   "version": "2.36.1-8+deb11u2"
+  },
+  {
+   "name": "libxxhash0",
+   "purl": "pkg:deb/debian/libxxhash0@0.8.0-2?arch=amd64&distro=debian-11.11&upstream=xxhash",
+   "type": "library",
+   "version": "0.8.0-2"
+  },
+  {
+   "name": "libzstd1",
+   "purl": "pkg:deb/debian/libzstd1@1.4.8%2Bdfsg-2.1?arch=amd64&distro=debian-11.11&upstream=libzstd",
+   "type": "library",
+   "version": "1.4.8+dfsg-2.1"
+  },
+  {
+   "name": "login",
+   "purl": "pkg:deb/debian/login@1%3A4.8.1-1%2Bdeb11u1?arch=amd64&distro=debian-11.11&upstream=shadow",
+   "type": "library",
+   "version": "1:4.8.1-1+deb11u1"
+  },
+  {
+   "name": "logsave",
+   "purl": "pkg:deb/debian/logsave@1.46.2-2%2Bdeb11u1?arch=amd64&distro=debian-11.11&upstream=e2fsprogs",
+   "type": "library",
+   "version": "1.46.2-2+deb11u1"
+  },
+  {
+   "name": "lsb-base",
+   "purl": "pkg:deb/debian/lsb-base@11.1.0?arch=all&distro=debian-11.11&upstream=lsb",
+   "type": "library",
+   "version": "11.1.0"
+  },
+  {
+   "name": "mawk",
+   "purl": "pkg:deb/debian/mawk@1.3.4.20200120-2?arch=amd64&distro=debian-11.11",
+   "type": "library",
+   "version": "1.3.4.20200120-2"
+  },
+  {
+   "name": "mount",
+   "purl": "pkg:deb/debian/mount@2.36.1-8%2Bdeb11u2?arch=amd64&distro=debian-11.11&upstream=util-linux",
+   "type": "library",
+   "version": "2.36.1-8+deb11u2"
+  },
+  {
+   "name": "ncurses-base",
+   "purl": "pkg:deb/debian/ncurses-base@6.2%2B20201114-2%2Bdeb11u2?arch=all&distro=debian-11.11&upstream=ncurses",
+   "type": "library",
+   "version": "6.2+20201114-2+deb11u2"
+  },
+  {
+   "name": "ncurses-bin",
+   "purl": "pkg:deb/debian/ncurses-bin@6.2%2B20201114-2%2Bdeb11u2?arch=amd64&distro=debian-11.11&upstream=ncurses",
+   "type": "library",
+   "version": "6.2+20201114-2+deb11u2"
+  },
+  {
+   "name": "passwd",
+   "purl": "pkg:deb/debian/passwd@1%3A4.8.1-1%2Bdeb11u1?arch=amd64&distro=debian-11.11&upstream=shadow",
+   "type": "library",
+   "version": "1:4.8.1-1+deb11u1"
+  },
+  {
+   "name": "perl-base",
+   "purl": "pkg:deb/debian/perl-base@5.32.1-4%2Bdeb11u5?arch=amd64&distro=debian-11.11&upstream=perl",
+   "type": "library",
+   "version": "5.32.1-4+deb11u5"
+  },
+  {
+   "name": "sed",
+   "purl": "pkg:deb/debian/sed@4.7-1?arch=amd64&distro=debian-11.11",
+   "type": "library",
+   "version": "4.7-1"
+  },
+  {
+   "name": "sysvinit-utils",
+   "purl": "pkg:deb/debian/sysvinit-utils@2.96-7%2Bdeb11u1?arch=amd64&distro=debian-11.11&upstream=sysvinit",
+   "type": "library",
+   "version": "2.96-7+deb11u1"
+  },
+  {
+   "name": "tar",
+   "purl": "pkg:deb/debian/tar@1.34%2Bdfsg-1%2Bdeb11u1?arch=amd64&distro=debian-11.11",
+   "type": "library",
+   "version": "1.34+dfsg-1+deb11u1"
+  },
+  {
+   "name": "tzdata",
+   "purl": "pkg:deb/debian/tzdata@2026b-0%2Bdeb11u1?arch=all&distro=debian-11.11",
+   "type": "library",
+   "version": "2026b-0+deb11u1"
+  },
+  {
+   "name": "util-linux",
+   "purl": "pkg:deb/debian/util-linux@2.36.1-8%2Bdeb11u2?arch=amd64&distro=debian-11.11",
+   "type": "library",
+   "version": "2.36.1-8+deb11u2"
+  },
+  {
+   "name": "zlib1g",
+   "purl": "pkg:deb/debian/zlib1g@1%3A1.2.11.dfsg-2%2Bdeb11u2?arch=amd64&distro=debian-11.11&upstream=zlib",
+   "type": "library",
+   "version": "1:1.2.11.dfsg-2+deb11u2"
+  },
+  {
+   "name": "debian",
+   "type": "operating-system",
+   "version": "11.11"
+  }
+ ],
+ "metadata": {
+  "tools": {
+   "components": [
+    {
+     "author": "anchore",
+     "name": "syft",
+     "type": "application",
+     "version": "1.57.2"
+    }
+   ]
+  }
+ },
+ "specVersion": "1.7"
+}

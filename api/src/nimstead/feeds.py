@@ -20,7 +20,7 @@ import httpx
 from sqlalchemy import delete, insert, select, update
 from sqlalchemy.orm import Session
 
-from nimstead import evidence, external, lifecycle, msproducts, neighbours, notify, office, oui, updates, winapps, windrivers
+from nimstead import containers, evidence, external, lifecycle, msproducts, neighbours, notify, office, oui, updates, winapps, windrivers
 from nimstead.db import Advisory, Asset, Cvss, Epss, InstalledPackage, Kev, Neighbour, Org, make_sessionmaker, now
 from nimstead.match import normalize_ecosystem
 from nimstead.scan import HOTPATCH, rescan
@@ -578,8 +578,8 @@ def update_all(session: Session, client=None) -> dict:
             session.rollback()
             log.error("LOLDrivers skipped, kept the stored hashes: %s", e)
             out["loldrivers"] = {"error": str(e)[:200]}
-    def prune():  # every org's 30-day clean-up, whether or not its agents still report (DECISIONS 128)
-        done = neighbours.prune(session)
+    def prune():  # every org's 30-day clean-up, whether or not its agents still report (DECISIONS 128, 140)
+        done = {**neighbours.prune(session), "images": containers.prune(session)}
         session.commit()
         return done
     out["neighbours_pruned"] = guarded("neighbour clean-up", prune)

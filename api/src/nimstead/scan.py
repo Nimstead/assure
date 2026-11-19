@@ -11,7 +11,7 @@ from datetime import timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from nimstead import evidence, lifecycle, msproducts, risk, winapps, winconfig, windrivers
+from nimstead import containers, evidence, lifecycle, msproducts, risk, winapps, winconfig, windrivers
 from nimstead.db import Advisory, Asset, Cvss, Epss, Finding, InstalledPackage, Kev, now
 from nimstead.match import Match, canonical_id
 from nimstead.notify import notify
@@ -214,6 +214,13 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
     if asset.kind in ("external", "device"):  # no inventory: findings come from network scans and checks; only re-score here
         from nimstead import external
         return external.rescore(s, asset)
+    if asset.kind == "image":
+        # a report resolving it and the hourly pass reopening it from a stale "running" can't interleave (code review)
+        s.execute(select(Asset.id).where(Asset.id == asset.id).with_for_update())
+        if not containers.is_running(s, asset):  # every host that ran it reported without it (DECISIONS 140)
+            resolved = containers.resolve_not_running(s, asset)
+            s.commit()
+            return {"open": 0, "resolved": resolved}
     t = now()
     pkgs = s.scalars(select(InstalledPackage).where(InstalledPackage.asset_id == asset.id)).all()
     existing = {

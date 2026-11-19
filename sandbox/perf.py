@@ -1,9 +1,11 @@
 """Performance check at realistic scale: N hosts x ~600 packages, ~100k advisories, ~300 findings per host.
 
-Run from api/:  uv run python ../sandbox/perf.py [--assets 1000] [--db postgresql+psycopg://...]
+Run from api/:  uv run python ../sandbox/perf.py [--assets 1000] [--containers 10] [--db postgresql+psycopg://...]
 Sizes follow the real-host runs (Debian 13: 164 pkgs / 274 findings, Ubuntu 24.04: 523 / 369). Times every
 user-facing endpoint the home page and findings views hit, agent inventory ingest, and the hourly re-match.
-Writes sandbox/last_run_perf_<sqlite|postgresql>.json.
+--containers N: each host also reports N running containers drawn from IMAGES shared images (tasks/plan-containers.md
+C12), timing those reports and the hourly re-match before and after the images exist.
+Writes sandbox/last_run_perf_<sqlite|postgresql>[_containers].json.
 """
 
 import json
@@ -29,6 +31,8 @@ from nimstead.app import create_app  # noqa: E402
 from nimstead.db import Advisory, make_sessionmaker  # noqa: E402
 
 ASSETS = int(sys.argv[sys.argv.index("--assets") + 1]) if "--assets" in sys.argv else 1000
+CONTAINERS = int(sys.argv[sys.argv.index("--containers") + 1]) if "--containers" in sys.argv else 0
+IMAGES, IMAGE_PKGS, IMAGE_VULN = 50, 200, 5  # a fleet's distinct images: far fewer than its containers
 DB = sys.argv[sys.argv.index("--db") + 1] if "--db" in sys.argv else f"sqlite:///{(TMP / 'perf.db').as_posix()}"
 ECO, UNIVERSE, PER_HOST, ADV_PER_PKG, VULN_PER_HOST = "Debian:12", 3000, 600, 33, 9
 rnd = random.Random(7)  # noqa: S311 — reproducible test data, not security
@@ -59,6 +63,22 @@ def advisories():
     return rows
 
 
+def rematch() -> float:
+    """The hourly re-match of every asset (feeds.update_all's loop), in seconds."""
+    from nimstead.db import Asset
+    from nimstead.scan import rescan
+    with make_sessionmaker(DB)() as s:
+        assets = s.query(Asset).all()
+        t = time.perf_counter()
+        cache: dict = {}  # as feeds.update_all does
+        for a in assets:
+            rescan(s, a, inventory_received=False, cache=cache)
+        s.commit()
+        took = round(time.perf_counter() - t, 1)
+        print(f"re-match all {len(assets)} assets (hourly feed update): {took}s", flush=True)
+        return took
+
+
 def main():
     app = create_app(DB)
     with make_sessionmaker(DB)() as s:
@@ -73,14 +93,15 @@ def main():
     signup(c, {"email": "perf@example.com", "password": "perf-test-password", "org_name": "Perf"})
     token = c.post("/api/enroll-tokens").json()["token"]
 
-    ingest = []
+    ingest, headers = [], []
     for n in range(ASSETS):
         a = c.post("/api/agent/enroll", json={"token": token, "hostname": f"host{n}", "ecosystem": ECO}).json()
+        headers.append({"Authorization": f"Bearer {a['agent_key']}"})
         names = rnd.sample(range(UNIVERSE), PER_HOST)
         vuln = set(names[:VULN_PER_HOST])
         pkgs = [{"ecosystem": ECO, "name": f"pkg{p}", "version": "1.0-1" if p in vuln else "9.0-1", "source": f"pkg{p}"} for p in names]
         t = time.perf_counter()
-        r = c.post("/api/agent/inventory", json=with_document({"ecosystem": ECO, "packages": pkgs}), headers={"Authorization": f"Bearer {a['agent_key']}"})
+        r = c.post("/api/agent/inventory", json=with_document({"ecosystem": ECO, "packages": pkgs}), headers=headers[-1])
         ingest.append(time.perf_counter() - t)
         assert r.status_code == 200, r.text
         if n % 100 == 99:
@@ -89,6 +110,33 @@ def main():
     result["inventory_ingest"] = {"median_s": round(statistics.median(ingest), 3), "p95_s": round(ingest[int(len(ingest) * .95)], 3),
                                   "max_s": round(ingest[-1], 3)}
     print("inventory ingest", result["inventory_ingest"], flush=True)
+    if CONTAINERS:
+        result["containers_per_host"], result["images"] = CONTAINERS, IMAGES
+        result["rematch_before_containers_s"] = rematch()
+        images = []
+        for i in range(IMAGES):
+            names = rnd.sample(range(UNIVERSE), IMAGE_PKGS)
+            vuln = set(names[:IMAGE_VULN])
+            images.append({"image_id": f"sha256:{i:064x}", "ref": f"registry.example/app{i}:1", "os_name": "Debian GNU/Linux 12 (bookworm)", "ecosystem": ECO,
+                           "facts": {"os_id": "debian", "os_version_id": "12"},
+                           "collection": {"v": 1, "sources": {"os_release": {"state": "ok", "count": 1}, "package_db": {"state": "ok", "count": IMAGE_PKGS}}},
+                           "packages": [{"name": f"pkg{p}", "version": "1.0-1" if p in vuln else "9.0-1", "source": f"pkg{p}"} for p in names]})
+        reports = []
+        for n, h in enumerate(headers):
+            picked = rnd.sample(range(IMAGES), CONTAINERS)
+            body = {"v": 1, "complete": True, "runtimes": {}, "error": None,
+                    "images": [{**images[i], "containers": [{"id": f"{n:032x}{i:032x}", "name": f"c{i}", "runtime": "docker"}]} for i in picked]}
+            t = time.perf_counter()
+            r = c.post("/api/agent/containers", json=body, headers=h)
+            reports.append(time.perf_counter() - t)
+            assert r.status_code == 200, r.text
+            if n % 100 == 99:
+                print(f"  {n + 1} container reports, last {reports[-1]:.3f}s", flush=True)
+        first = reports[0]  # the first host's report creates (and judges) its images; most later ones only record where they run
+        reports.sort()
+        result["containers_report"] = {"median_s": round(statistics.median(reports), 3), "p95_s": round(reports[int(len(reports) * .95)], 3),
+                                       "max_s": round(reports[-1], 3), "first_s": round(first, 3)}
+        print("containers report", result["containers_report"], flush=True)
 
     summ = timed("GET /api/summary (home page)", lambda: c.get("/api/summary").json(), 3)
     result["open_findings"] = sum(summ["open_by_priority"].values())
@@ -99,17 +147,7 @@ def main():
     timed("GET /api/assets", lambda: c.get("/api/assets").json(), 3)
     timed("GET /api/evidence/pack", lambda: c.get("/api/evidence/pack").content, 1)
 
-    from nimstead.db import Asset
-    from nimstead.scan import rescan
-    with make_sessionmaker(DB)() as s:
-        assets = s.query(Asset).all()
-        t = time.perf_counter()
-        cache: dict = {}  # as feeds.update_all does
-        for a in assets:
-            rescan(s, a, inventory_received=False, cache=cache)
-        s.commit()
-        result["rematch_all_s"] = round(time.perf_counter() - t, 1)
-        print(f"re-match all {len(assets)} hosts (hourly feed update): {result['rematch_all_s']}s", flush=True)
+    result["rematch_all_s"] = rematch()
     # Windows fleet view (W22): the same number of Windows hosts, three months of updates, most hosts behind. Last, so the numbers above stay comparable.
     product = "Windows Server 2025"
     with make_sessionmaker(DB)() as s:
@@ -131,7 +169,7 @@ def main():
     hosts = timed("GET /api/windows-updates/{kb} (drill down)", lambda: c.get(f"/api/windows-updates/{rows[0]['kb']}", params={"product": product}), 3)
     result["windows_updates_drilldown_kib"] = round(len(hosts.content) / 1024)
     timed("GET /api/summary (with Windows hosts)", lambda: c.get("/api/summary").json(), 3)
-    (ROOT / "sandbox" / f"last_run_perf_{result['db'].split('+')[0]}.json").write_text(json.dumps(result, indent=2))
+    (ROOT / "sandbox" / f"last_run_perf_{result['db'].split('+')[0]}{'_containers' if CONTAINERS else ''}.json").write_text(json.dumps(result, indent=2))
 
 
 if __name__ == "__main__":

@@ -56,18 +56,21 @@ def render() -> dict[str, str]:
     }
     finding_fields = {name: {"type": "string"} for name in (
         "id", "asset_id", "hostname", "ecosystem", "package", "installed_version", "vuln_id", "summary", "priority", "status", "first_seen", "last_seen")}
+    finding_fields["asset_kind"] = {"enum": ["host", "application", "external", "device", "image"], "type": "string"}
     finding_fields |= {name: {"type": ["string", "null"]} for name in ("fixed_version", "rule_evidence", "resolved_at", "due")}
     finding_fields |= {name: {"type": "boolean"} for name in ("setting_fix", "plannable", "kev")}
     finding_fields |= {name: {"type": ["number", "null"]} for name in ("cvss", "epss")}
     finding_fields |= {name: {"type": "array", "items": {"type": "string"}} for name in ("advisory_ids", "reasons")}
     finding_fields["score"] = {"type": "integer"}
     compact_fields = {name: finding_fields[name] for name in (
-        "id", "asset_id", "hostname", "ecosystem", "package", "installed_version", "fixed_version", "vuln_id", "kev", "score", "priority", "reasons")}
+        "id", "asset_id", "hostname", "asset_kind", "ecosystem", "package", "installed_version", "fixed_version", "vuln_id", "kev", "score", "priority", "reasons")}
     detail_fields = {**finding_fields, "package_fix": {"type": ["object", "null"], "properties": {
         "version": {"type": "string"}, "open": {"type": "integer", "minimum": 0}}, "required": ["version", "open"], "additionalProperties": False}}
     group_fields = {name: {"type": "string"} for name in ("key", "priority", "package", "vuln_id")}
     group_fields |= {name: {"type": "integer", "minimum": 0} for name in ("findings", "hosts", "score", "packages", "vulns")}
     group_fields |= {"kev": {"type": "boolean"}, "fixed_version": {"type": ["string", "null"]}, "ecosystem": {"type": ["string", "null"]}}
+    # a container image's finding also says how it's fixed and where the image runs (DECISIONS 141); null for other kinds
+    detail_fields |= {"rebuild": {"type": ["string", "null"]}, "runs_on": {"type": ["array", "null"], "items": {"type": "string"}}}
     for name, fields in (("FindingRow", finding_fields), ("FindingCompact", compact_fields), ("FindingDetail", detail_fields), ("FindingGroup", group_fields)):
         schema["components"]["schemas"][name] = {"type": "object", "properties": fields, "required": list(fields), "additionalProperties": False}
     rule_fields = {name: {"type": "string"} for name in ("id", "v", "severity", "status", "setting", "expected", "found", "note")}
@@ -135,13 +138,21 @@ def render() -> dict[str, str]:
                     "maintenance_window": {"type": ["object", "null"]}}
     external_fields = {name: {"type": "string"} for name in ("txt_name", "txt_value", "proof_path")}
     external_fields |= {"verified": {"type": "boolean"}, "verified_at": {"type": ["string", "null"]}}
-    for name, kind, extra in (("HostAsset", "host", host_fields), ("ApplicationAsset", "application", {}),
-                               ("ExternalAsset", "external", external_fields)):
-        fields = {**asset_fields, **extra, "kind": {"const": kind, "type": "string"}, "apps": app_counts}
+    run = {"name": {"type": "string"}, "runtime": {"type": "string"}, "ref": {"type": "string"}, "since": {"type": "string"}}
+    image_run = {"type": "object", "properties": {**run, "host_id": {"type": "string"}, "hostname": {"type": "string"}},
+                 "required": [*run, "host_id", "hostname"], "additionalProperties": False}
+    host_run = {"type": "object", "properties": {**run, "image_id": {"type": "string"}}, "required": [*run, "image_id"], "additionalProperties": False}
+    image_fields = {"image_id": {"type": ["string", "null"]}, "running_on": {"type": "array", "maxItems": 100, "items": image_run},
+                    "containers_total": {"type": "integer", "minimum": 0}, "hosts_total": {"type": "integer", "minimum": 0},
+                    "packages_read": {"type": "boolean"}, "not_read_why": {"type": ["string", "null"]}}
+    host_optional = {"containers": {"type": "array", "maxItems": 100, "items": host_run}, "containers_total": {"type": "integer", "minimum": 0}}
+    for name, kind, extra, optional in (("HostAsset", "host", host_fields, host_optional), ("ApplicationAsset", "application", {}, {}),
+                                        ("ExternalAsset", "external", external_fields, {}), ("ImageAsset", "image", image_fields, {})):
+        fields = {**asset_fields, **extra, **optional, "kind": {"const": kind, "type": "string"}, "apps": app_counts}
         schema["components"]["schemas"][name] = {"type": "object", "properties": fields,
                                                    "required": [*asset_fields, *extra], "additionalProperties": False}
     schema["components"]["schemas"]["AssetRow"] = {"oneOf": [{"$ref": f"#/components/schemas/{name}"}
-                                                                            for name in ("HostAsset", "ApplicationAsset", "ExternalAsset")]}
+                                                                            for name in ("HostAsset", "ApplicationAsset", "ExternalAsset", "ImageAsset")]}
     created_fields = {**schema["components"]["schemas"]["ApplicationAsset"]["properties"], "upload_token": {"type": "string"}}
     schema["components"]["schemas"]["CreatedApplication"] = {"type": "object", "properties": created_fields,
                                                                "required": [*asset_fields, "upload_token"], "additionalProperties": False}
@@ -160,8 +171,18 @@ def render() -> dict[str, str]:
     summary_fields = {name: {"type": "integer", "minimum": 0} for name in ("assets", "hosts_not_reporting", "agents_need_attention", "devices_with_issues")}
     summary_fields |= {"open_by_priority": asset_fields["open_by_priority"],
                        "top_actions": {"type": "array", "maxItems": 10, "items": {"$ref": "#/components/schemas/SummaryAction"}},
+                       "images_to_rebuild": {"type": "array", "maxItems": 10, "items": {"$ref": "#/components/schemas/SummaryImage"}},
                        "attention": {"type": "array", "maxItems": 20, "items": {"$ref": "#/components/schemas/RemediationJob"}}}
+    fix = {"type": "object", "properties": {"package": {"type": "string"}, "fixed_version": {"type": "string"}, "vulns": {"type": "integer", "minimum": 0}},
+           "required": ["package", "fixed_version", "vulns"], "additionalProperties": False}
+    image_summary = {name: {"type": "string"} for name in ("asset_id", "name", "os_name", "ecosystem", "priority")}
+    image_summary |= {"kev": {"type": "boolean"}, "max_score": {"type": ["integer", "null"]}, "findings": {"type": "integer", "minimum": 0},
+                      "unfixed": {"type": "integer", "minimum": 0}, "hosts": {"type": "array", "items": {"type": "string"}},
+                      "fixes": {"type": "array", "maxItems": 8, "items": fix}}
+    containers_result = {name: {"type": "integer", "minimum": 0} for name in ("images", "containers", "new", "stopped", "refused")}
+    containers_result["complete"] = {"type": "boolean"}
     for name, fields in (("ApplicationCoverage", coverage_fields), ("SummaryAction", action_fields), ("FleetSummary", summary_fields),
+                         ("SummaryImage", image_summary), ("ContainersResult", containers_result),
                          ("AgentEnrolment", {"asset_id": {"type": "string"}, "agent_key": {"type": "string"}}),
                          ("InventoryResult", {name: {"type": "integer", "minimum": 0} for name in ("open", "resolved")})):
         schema["components"]["schemas"][name] = {"type": "object", "properties": fields, "required": list(fields), "additionalProperties": False}
@@ -419,9 +440,9 @@ def render() -> dict[str, str]:
             elif route.path == "/api/targets" or route.path == "/api/targets/{target_id}/verify":
                 asset_response = {"$ref": "#/components/schemas/ExternalAsset"}
                 asset_status = "201" if route.path == "/api/targets" else "200"
-            elif route.path in {"/api/coverage", "/api/summary", "/api/agent/enroll", "/api/agent/inventory"}:
-                response_name = {"/api/coverage": "ApplicationCoverage", "/api/summary": "FleetSummary",
-                                 "/api/agent/enroll": "AgentEnrolment", "/api/agent/inventory": "InventoryResult"}[route.path]
+            elif route.path in {"/api/coverage", "/api/summary", "/api/agent/enroll", "/api/agent/inventory", "/api/agent/containers"}:
+                response_name = {"/api/coverage": "ApplicationCoverage", "/api/summary": "FleetSummary", "/api/agent/enroll": "AgentEnrolment",
+                                 "/api/agent/inventory": "InventoryResult", "/api/agent/containers": "ContainersResult"}[route.path]
                 asset_response = {"$ref": f"#/components/schemas/{response_name}"}
                 asset_status = "201" if route.path == "/api/agent/enroll" else "200"
             if asset_response:

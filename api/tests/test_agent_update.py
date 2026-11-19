@@ -401,11 +401,11 @@ def test_enrol_keeps_local_choices_whatever_the_server_answers(monkeypatch, tmp_
     saved = {}
     monkeypatch.setattr(agent, "collect", lambda: {"os_name": "x", "ecosystem": "Debian:13", "packages": []})
     monkeypatch.setattr(agent, "post", lambda *a, **kw: {"asset_id": "a1", "agent_key": "nma_k", "allow_remediation": True, "network_checks": True,
-                                                         "auto_update": True, "server": "http://evil.example", "schedule_version": 99})
+                                                         "auto_update": True, "server": "http://evil.example", "schedule_version": 99, "containers": False})
     monkeypatch.setattr(agent, "save_config", lambda cfg: saved.update(cfg) or "cfg")
     assert agent.main(["enroll", "--server", "https://nimstead.example", "--token", "t", "--no-auto-update"]) == 0
     assert saved == {"asset_id": "a1", "agent_key": "nma_k", "server": "https://nimstead.example", "allow_remediation": False, "network_checks": False, "auto_update": False,
-                     "channel": "stable", "scan_jars": False, "scan_apps": False, "app_roots": [], "ad_discovery": False}  # local opt-ins stay local
+                     "channel": "stable", "containers": True, "scan_jars": False, "scan_apps": False, "app_roots": [], "ad_discovery": False}  # local choices stay local
 
 
 def test_no_not_reporting_storm_after_the_server_itself_was_down(env, monkeypatch, tmp_path):

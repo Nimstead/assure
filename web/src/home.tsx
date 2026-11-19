@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, CheckCircle2, TriangleAlert } from "lucide-react";
-import { api, assetsQ, dependenciesNeeded, filtersToApi, coverageQ, settingsQ, filtersToSearch, jobAnchor, JOB_STATUS_LABEL, parseFilters, plural, PRIORITIES, PRIORITY_LABEL, priorityOf, summaryQ, useTitle, type Action } from "./lib";
+import { api, assetsQ, dependenciesNeeded, filtersToApi, coverageQ, settingsQ, filtersToSearch, jobAnchor, JOB_STATUS_LABEL, parseFilters, plural, PRIORITIES, PRIORITY_LABEL, priorityOf, summaryQ, useTitle, type Action, type ImageToRebuild } from "./lib";
 import { PlanFixButton } from "./planfix";
 import { ActionRow, btnQuiet, ErrorState, KevBadge, Loading, PriorityPill, StatusPill } from "./ui";
 import clsx from "clsx";
@@ -118,7 +118,37 @@ export function Home() {
           </>
         )}
       </section>
+      {!!s.images_to_rebuild?.length && <RebuildImages images={s.images_to_rebuild} />}
     </div>
+  );
+}
+
+/** Container images with findings: fixed by a rebuild and redeploy, never a plan here (DECISIONS 141), so apart from the fixes above. */
+export function RebuildImages({ images }: { images: ImageToRebuild[] }) {
+  return (
+    <section aria-labelledby="rebuild">
+      <h2 id="rebuild" className="text-lg font-semibold">Container images to rebuild</h2>
+      <p className="mb-3 mt-1 max-w-prose text-sm text-muted">Rebuild each with the fixed packages (or a newer base image) and redeploy it. Its findings close once every machine that runs it reports the rebuilt one.</p>
+      <ol className="flex flex-col gap-2">
+        {images.map((i) => (
+          <li key={i.asset_id} className="flex flex-col gap-3 border border-line bg-surface p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-base"><strong className="break-all font-semibold">{i.name}</strong>{" "}<span className="text-sm text-muted">{i.os_name || i.ecosystem}</span></p>
+              <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm"><PriorityPill priority={i.priority} />{i.kev && <KevBadge />}</p>
+              <p className="mt-1 text-sm text-muted">{plural(i.findings, "finding")}{i.hosts.length ? <> on {plural(i.hosts.length, "machine")}<span className="hidden md:inline">: {i.hosts.slice(0, 3).join(", ")}{i.hosts.length > 3 && ` and ${i.hosts.length - 3} more`}</span></> : null}</p>
+              {i.fixes.length > 0 && <p className="mt-1 max-w-prose break-words text-sm">Bring {i.fixes.slice(0, 3).map((f, n) => <Fragment key={f.package}>{n > 0 && (n === Math.min(3, i.fixes.length) - 1 ? " and " : ", ")}<strong className="font-semibold">{f.package}</strong> to <code className="text-mono whitespace-nowrap bg-sunken px-1 font-mono">{f.fixed_version}</code></Fragment>)}{i.fixes.length > 3 && `, plus ${plural(i.fixes.length - 3, "more package")}`}.</p>}
+              {i.unfixed > 0 && <p className="mt-1 text-sm text-muted">{plural(i.unfixed, "finding")} with no fix published yet.</p>}
+            </div>
+            <ActionRow links={[
+              <Link key="image" to="/assets" search={{ view: "containers", image: i.asset_id }} className="inline-flex min-h-[44px] items-center gap-1.5 text-sm font-medium text-accent underline md:min-h-9">
+                <span>View image<span className="sr-only"> {i.name}</span></span> <ArrowRight className="size-4" aria-hidden /></Link>,
+              <Link key="findings" to="/findings" search={filtersToSearch({ ...parseFilters({}), asset: i.asset_id, group: "package" })} className="inline-flex min-h-[44px] items-center gap-1.5 text-sm font-medium text-accent underline md:min-h-9">
+                <span>View findings<span className="sr-only"> for {i.name}</span></span> <ArrowRight className="size-4" aria-hidden /></Link>,
+            ]} />
+          </li>
+        ))}
+      </ol>
+    </section>
   );
 }
 

@@ -4,7 +4,7 @@ Assure accepts raw JSON at `POST /api/assets/{asset_id}/sbom`. The body is the d
 
 | Property | Accepted value or limit |
 | --- | --- |
-| CycloneDX | `bomFormat: CycloneDX`, `specVersion: 1.4`, `1.5`, or `1.6` |
+| CycloneDX | `bomFormat: CycloneDX`, `specVersion: 1.4`, `1.5`, `1.6` or `1.7` |
 | SPDX | `spdxVersion: SPDX-2.2` or `SPDX-2.3` |
 | Request size | 10 MiB, including streamed requests |
 | Component count | At most 50,000, before deduplication |
@@ -33,15 +33,41 @@ Uploads require the asset's upload token or agent key, or an owning admin sessio
 
 SPDX uses the first `externalRefs` entry whose `referenceType` is `purl`. If that URL has no version, `versionInfo` supplies it. CycloneDX uses each component's `purl`, including nested components. The CycloneDX display `version` does not replace a missing purl version.
 
+### Operating-system packages (container images)
+
+`deb`, `apk` and `rpm` package URLs map to the distribution release their `distro` qualifier names, only on an application asset. On a host's own upload they are skipped as `os_package_on_host`: its agent reads them from the machine.
+
+| purl type | Distributions (`distro` qualifier) | Advisory ecosystem |
+| --- | --- | --- |
+| `deb` | `debian-12.8` | `Debian:12` |
+| `deb` | `ubuntu-24.04` | `Ubuntu:24.04` |
+| `apk` | `alpine-3.18.12` (Syft), `3.18.12` (Trivy, namespace `alpine`) | `Alpine:v3.18` |
+| `rpm` | `almalinux-9.9` (Syft), `alma-9.9` (Trivy) | `AlmaLinux:9` |
+| `rpm` | `rocky-9.3` | `Rocky Linux:9` |
+| `rpm` | `opensuse-leap-15.6`, `opensuse.leap-15.6` | `openSUSE:Leap 15.6` |
+| `rpm` | `sles-15.5` | `SUSE:Linux Enterprise Server 15 SP5` |
+
+Distribution advisories name the source package, so Assure takes it, in this order, from Syft's `upstream` qualifier (`util-linux@2.36.1-8+deb11u2`, `openssl`, or an rpm's source file name), Trivy's `aquasecurity:trivy:SrcName`, `SrcVersion`, `SrcRelease` and `SrcEpoch` properties, or SPDX `sourceInfo` (`built package from: openssl 1.1.1w-0+deb11u8`). Without any of these, the binary's own name is used. An rpm version always carries its epoch (`0:1.2-3`); a dpkg version carries it only when it isn't zero, as the agent writes them. rpm's `gpg-pubkey` entries are signing keys, not software, and are skipped as `not_a_package`.
+
+One SBOM is one image: the release with the most OS packages is kept, and the rest are skipped as `other_distro`. An application whose SBOM names a release is judged as that release's packages, graded unverified, including its end of support.
+
 ## Result fields
 
 | Field | Meaning |
 | --- | --- |
 | `components` | Components visited, including skipped entries and duplicates |
 | `mapped` | Components with supported, versioned package URLs, including duplicates |
-| `unique_packages` | Distinct `(ecosystem, name, version)` triples |
+| `unique_packages` | Distinct `(ecosystem, name, version, source, source_version)` rows |
+| `distro` | The distribution release of the OS packages kept, such as `Debian:12`, or null |
 | `skipped.no_purl` | Missing, empty, or non-string package URL |
 | `skipped.unsupported_or_invalid_purl` | Unsupported type, malformed identity, or missing version |
+| `skipped.no_distro` | An OS package URL with no `distro` qualifier |
+| `skipped.unsupported_distro` | An OS package of a release no advisory feed here covers |
+| `skipped.other_distro` | An OS package of a second release |
+| `skipped.os_package_on_host` | An OS package in a host's own upload; its agent reads them, so they aren't reported as unjudged |
+| `skipped.not_a_package` | rpm's `gpg-pubkey` entries; not reported as unjudged |
+
+Reasons that never occurred are absent, except the first two, which are always present.
 
 The HTTP response also includes two integer scan results:
 

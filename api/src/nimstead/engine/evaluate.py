@@ -41,6 +41,11 @@ _RAISE = {"unread": "A source it depends on wasn't fully read: fix that and scan
           "app": "The version is the install's own metadata, read from its files; the fix is an advisory database's, not the maintainer's own statement",
           "sbom": "An SBOM states what was built, not what's running: an agent reading the deployed files would raise this"}
 _ADVISORY_DB = {"GHSA": "GitHub Advisory Database", "PYSEC": "PyPA Advisory Database", "MAL": "OpenSSF Malicious Packages"}
+_SKIPPED = {"no_purl": "{n} with no package URL",  # an SBOM's components that weren't judged, by sbom.parse's reason
+            "no_distro": "{n} OS packages whose package URL names no distribution release",
+            "unsupported_distro": "{n} OS packages of a distribution release no advisory feed here covers",
+            "other_distro": "{n} OS packages of a second distribution release (one SBOM is judged as one image)",
+            "os_package_on_host": "{n} OS packages, which this host's agent reads from the machine itself"}
 
 
 def _ceiling(i: Install) -> Grade:
@@ -147,7 +152,7 @@ def _judge_once(inv: Inventory, i: Install, c: Content) -> list[Verdict]:
     grade = _ceiling(i)
     if read.state != "ok" or (i.family == "os" and pending is None):  # R6.1: the method actually used lowers the ceiling
         grade, why = Grade.UNVERIFIED, _RAISE["unread"]
-    elif i.family == "application":
+    elif i.family == "application" or i.source == "sbom":  # an image's distribution packages from its SBOM, too
         why = _RAISE["sbom" if i.source == "sbom" else "app"]
     else:
         why = None if grade == Grade.CONFIRMED else _RAISE["self-reported" if _fix_source(recs[0], i.ecosystem) in ("NVD", "CVE List") else "self-reported-vendor"]
@@ -218,7 +223,9 @@ def _os_blocked(inv: Inventory) -> Verdict:
 def _read_in_full(inv: Inventory, eco: str) -> bool:
     """Whether every source that would list a product of `eco` was read whole this time, so its absence is evidence (R4.6)."""
     from nimstead.scan import READ_FROM
-    if linux(eco):  # another release of the distro (an upgrade) is gone once the platform and the new package list are both read
+    if linux(eco) and inv.kind == "application":  # an image's SBOM is its whole package list, release included (DECISIONS 142)
+        names = ("sbom",)
+    elif linux(eco):  # another release of the distro (an upgrade) is gone once the platform and the new package list are both read
         names = ("package_db",) if eco == normalize_ecosystem(inv.ecosystem) else ("os_release", "package_db")
     elif eco == msproducts.ECOSYSTEM:  # per-user installs come from the user hives; .NET and Store product names carry the OS's
         names = (*READ_FROM[eco], "user_hives", "windows_build")
@@ -293,15 +300,18 @@ def _end_of_life(inv: Inventory, c: Content, eco: str) -> Verdict | None:
     vid = f"EOL:{product}-{release}"
     base = {"check": vid, "family": "distro", "ecosystem": lifecycle.ECOSYSTEM, "product": f"{product} {release}", "vuln_id": vid,
             "instance": f"{product} {release}", "source": "endoflife.date", "observed": f"{eco} (os-release)"}
-    end, read = (c.eol or {}).get(release), (inv.collected_at or "")[:10]
+    end, read = (c.eol or {}).get(release), (inv.collected_at or (inv.sbom or {}).get("received") or "")[:10]  # an SBOM's: when it arrived
     if end is None or (isinstance(end, str) and not read):
         why = "no end-of-support data is loaded for it" if c.eol is None else f"endoflife.date lists no {product} {release}" if end is None else "when the inventory was read isn't known"
         return Verdict(outcome=Outcome.UNDETERMINED, reason="eol-unknown", detail=why, **base)
     raise_ = "The date is endoflife.date's summary of the distribution's own lifecycle page"
+    grade = Grade.REASONABLE
+    if inv.kind == "application":  # the release is the SBOM's word, about what was built (DECISIONS 142)
+        base["observed"], grade, raise_ = f"{eco} (SBOM)", Grade.UNVERIFIED, _RAISE["sbom"]
     if end is True or (isinstance(end, str) and end < read):
-        return Verdict(outcome=Outcome.VULNERABLE, grade=Grade.REASONABLE, detail=raise_,
+        return Verdict(outcome=Outcome.VULNERABLE, grade=grade, detail=raise_,
                        summary=f"{product} {release}: no security updates" + (f" since {end}" if isinstance(end, str) else ""), **base)
-    return Verdict(outcome=Outcome.NOT_VULNERABLE, grade=Grade.REASONABLE, detail=raise_,
+    return Verdict(outcome=Outcome.NOT_VULNERABLE, grade=grade, detail=raise_,
                    summary=f"{product} {release}: supported" + (f" until {end}" if isinstance(end, str) else ", no end date announced"), **base)
 
 
@@ -319,10 +329,20 @@ def _applications(inv: Inventory, c: Content, agent_read: bool = True, blocked_b
         if inv.source(src).state in ("partial", "failed"):  # an install could be missing from it (R4.2)
             out.append(_absent_or_blocked(src, "application", eco, label, True, inv.source(src)))
     for why, n in sorted(((inv.sbom or {}).get("skipped") or {}).items()):  # R4.4: what no advisory can name is counted, never clean
-        if isinstance(n, int) and n > 0:
+        if isinstance(n, int) and n > 0 and why not in sbom.IGNORED:  # judged from the agent's own reading, or not software at all
             out.append(Verdict(f"product:sbom-{why}", "application", "SBOM", "SBOM components", Outcome.NOT_RUN, instance=f"{n:,} component{'s' * (n != 1)}",
-                               reason="sbom-unmapped", detail={"no_purl": f"{n:,} with no package URL"}.get(why, f"{n:,} with a package URL no advisory feed covers")))
+                               reason="sbom-unmapped", detail=_SKIPPED.get(why, "{n} with a package URL no advisory feed covers").format(n=f"{n:,}")))
     return out
+
+
+def _eol_removed(inv: Inventory, prior, current: str | None) -> list[Verdict]:
+    """An old release's end of support is gone once the platform was read in full and names another release (an upgrade, or
+    one with no lifecycle): the host's os-release, or an image SBOM read whole, which names its release or none at all."""
+    if inv.source("sbom" if inv.kind == "application" else "os_release").state != "ok":
+        return []
+    ends = tuple(f"EOL:{p}-" for p in lifecycle.DISTRO_EOL.values())
+    return [Verdict(vuln, "distro", e, product, Outcome.NOT_APPLICABLE, vuln_id=vuln, reason="removed", instance=product)
+            for e, product, vuln in sorted(set(prior)) if e == lifecycle.ECOSYSTEM and vuln.startswith(ends) and vuln != current]
 
 
 def _sorted(verdicts: list[Verdict]) -> list[Verdict]:
@@ -350,10 +370,7 @@ def _evaluate_linux(inv: Inventory, c: Content, prior) -> list[Verdict]:
         if eol.outcome == Outcome.VULNERABLE:
             out = [replace(v, outcome=Outcome.UNDETERMINED, reason="end-of-life", grade=None) if v.outcome == Outcome.NOT_VULNERABLE else v for v in out]
         out.append(eol)
-    if inv.source("os_release").state == "ok":  # read in full, another release (an upgrade, or one with no lifecycle) proves an old release's end of support gone
-        ends = tuple(f"EOL:{p}-" for p in lifecycle.DISTRO_EOL.values())
-        out += [Verdict(vuln, "distro", e, product, Outcome.NOT_APPLICABLE, vuln_id=vuln, reason="removed", instance=product)
-                for e, product, vuln in sorted(set(prior)) if e == lifecycle.ECOSYSTEM and vuln.startswith(ends) and vuln != (eol and eol.vuln_id)]
+    out += _eol_removed(inv, prior, eol and eol.vuln_id)
     out += _applications(inv, c, db.state == "ok", db)  # after end of support: a distro's lifecycle says nothing of PyPI's advisories
     out += _carry_forward(out, prior, inv, c)
     return _sorted(out)
@@ -362,7 +379,9 @@ def _evaluate_linux(inv: Inventory, c: Content, prior) -> list[Verdict]:
 def evaluate(inv: Inventory, content: Content, prior: tuple | list = ()) -> list[Verdict]:
     """`prior`: (ecosystem, package, vuln_id) of findings already open on this host."""
     if inv.kind == "application":  # an SBOM and nothing else
-        out = (_applications(inv, content) if inv.source("sbom").state == "ok"
+        if linux(inv.ecosystem) and inv.source("sbom").state == "ok":  # an image's SBOM: its OS packages as that release's (DECISIONS 142)
+            return _evaluate_linux(inv, content, prior)
+        out = (_applications(inv, content) + _eol_removed(inv, prior, None) if inv.source("sbom").state == "ok"
                else [Verdict("product:sbom", "application", "SBOM", "SBOM", Outcome.NOT_RUN, reason="no-sbom")])
         return _sorted(out + _carry_forward(out, prior, inv, content))
     if not inv.received:

@@ -41,11 +41,12 @@ Global options precede the command. `--insecure-http` permits plain HTTP for loc
 | `--proxy URL` | Explicit proxy; Windows otherwise uses the machine WinHTTP proxy when available |
 | `--windows-update-source default\|microsoft` | `default`; `microsoft` bypasses WSUS for Assure jobs |
 | `--ad-discovery` | Off; report enabled domain computers from a Windows domain member |
+| `--no-containers` | Containers read by default on Linux; this flag stops the agent reading the packages inside the host's running Docker and Podman containers (DECISIONS 138). The Linux installer takes `--no-containers`. On an enrolled host, set `"containers": false` in the configuration file |
 | `--scan-jars` | Off; inspect local Java archives with a five-minute soft budget |
 | `--scan-apps` | Off; inspect Python and npm metadata with a two-minute soft budget |
 | `--app-root DIR` | Repeatable with `--scan-apps`; only the first 20 extra roots are retained, searched eight levels deep |
 
-`collect` also accepts `--scan-jars`, `--scan-apps`, and `--app-root`. It does not automatically reuse the enrolment scan options.
+`collect` also accepts `--scan-jars`, `--scan-apps`, and `--app-root`. It does not automatically reuse the enrolment scan options. On Linux it also prints `containers`, the body `report` would send to `/api/agent/containers` (it reads containers only when run as root).
 
 Use `--help` or `COMMAND --help` for the parser's exact options. Prefer the environment variable over `--token` to keep the enrolment credential out of command-line arguments.
 

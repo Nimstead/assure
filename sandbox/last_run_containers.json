@@ -1,0 +1,311 @@
+[
+  {
+    "step": "distro",
+    "name": "nimstead-sbx-ctr-f7e607",
+    "reused": false
+  },
+  {
+    "step": "runtimes",
+    "versions": [
+      "Docker version 26.1.5+dfsg1, build a72d7cd",
+      "podman version 5.4.2"
+    ],
+    "os": "Debian GNU/Linux 13 (trixie)"
+  },
+  {
+    "step": "containers running",
+    "docker": [
+      "dl",
+      "hostile-big",
+      "hostile-fifo",
+      "hostile-rel",
+      "hostile-abs",
+      "bb",
+      "ubu",
+      "alma",
+      "web2",
+      "web1",
+      "legacy"
+    ],
+    "podman": [
+      "pod1"
+    ]
+  },
+  {
+    "step": "feeds synced",
+    "seconds": 118,
+    "kev": 1786,
+    "epss": 408395,
+    "eol": "{'almalinux': 3, 'alpine-linux': 32, 'clamav': 13, 'confluence': 91, 'debian': 18, 'elasticsearch': 12, 'firefox': 61, '",
+    "AlmaLinux": "{'inserted': 27965, 'updated': 0, 'skipped': 0}",
+    "Alpine": "{'inserted': 7577, 'updated': 0, 'skipped': 0}",
+    "Debian": "{'inserted': 66240, 'updated': 0, 'skipped': 0}",
+    "Ubuntu": "{'inserted': 536580, 'updated': 0, 'skipped': 0}"
+  },
+  {
+    "step": "first report",
+    "collect_seconds": 2.3,
+    "sent_complete": true,
+    "error": null,
+    "runtimes": {
+      "docker": {
+        "state": "ok",
+        "count": 11
+      },
+      "podman": {
+        "state": "ok",
+        "count": 1
+      }
+    },
+    "server": {
+      "images": 10,
+      "containers": 12,
+      "new": 10,
+      "stopped": 0,
+      "refused": 0,
+      "complete": true
+    }
+  },
+  {
+    "step": "PASS: 1. each image's packages equal its own package manager's; busybox is not assessed",
+    "images": {
+      "legacy": {
+        "image": "debian:11",
+        "ecosystem": "Debian:11",
+        "packages": 96,
+        "own_manager": 96,
+        "equal": true
+      },
+      "web1": {
+        "image": "alpine:3.18",
+        "ecosystem": "Alpine:v3.18",
+        "packages": 15,
+        "own_manager": 15,
+        "equal": true
+      },
+      "alma": {
+        "image": "almalinux:9",
+        "ecosystem": "AlmaLinux:9",
+        "packages": 158,
+        "own_manager": 158,
+        "equal": true
+      },
+      "ubu": {
+        "image": "ubuntu:24.04",
+        "ecosystem": "Ubuntu:24.04",
+        "packages": 92,
+        "own_manager": 92,
+        "equal": true
+      },
+      "dl": {
+        "image": "gcr.io/distroless/base-debian12:debug",
+        "ecosystem": "Debian:12",
+        "packages": 7,
+        "own_manager": 7,
+        "equal": true
+      }
+    },
+    "busybox": {
+      "state": "failed",
+      "count": 0,
+      "error": "no package database found (apk, dpkg or rpm SQLite)"
+    }
+  },
+  {
+    "step": "PASS: 4. two Docker replicas and a Podman container of one image are one image asset",
+    "runs": [
+      [
+        "pod1",
+        "podman"
+      ],
+      [
+        "web1",
+        "docker"
+      ],
+      [
+        "web2",
+        "docker"
+      ]
+    ]
+  },
+  {
+    "step": "PASS: 6. hostile containers (absolute and climbing links to a host-only file, a FIFO, a 200 MB file) read nothing outside, never hang, are not assessed",
+    "host_file_read": false,
+    "collect_seconds": 2.3,
+    "package_db": {
+      "hostile-abs": {
+        "state": "failed",
+        "count": 0,
+        "error": "no package database found (apk, dpkg or rpm SQLite)"
+      },
+      "hostile-rel": {
+        "state": "failed",
+        "count": 0,
+        "error": "no package database found (apk, dpkg or rpm SQLite)"
+      },
+      "hostile-fifo": {
+        "state": "failed",
+        "count": 0,
+        "error": "/var/lib/dpkg/status: not a regular file"
+      },
+      "hostile-big": {
+        "state": "failed",
+        "count": 0,
+        "error": "/var/lib/dpkg/status: larger than 64 MB"
+      }
+    }
+  },
+  {
+    "step": "PASS: 3. Debian 11 and Alpine 3.18 open their end-of-support findings; AlmaLinux 9 doesn't",
+    "eol": {
+      "legacy": [
+        "EOL:debian-11"
+      ],
+      "web1": [
+        "EOL:alpine-linux-3.18"
+      ],
+      "alma": []
+    }
+  },
+  {
+    "step": "PASS: 2. every image's findings agree with the OSV API's answers for its source packages",
+    "agreement": {
+      "debian:11": {
+        "ours": 0,
+        "osv": 0,
+        "only_ours": [],
+        "only_osv": []
+      },
+      "alpine:3.18": {
+        "ours": 0,
+        "osv": 0,
+        "only_ours": [],
+        "only_osv": []
+      },
+      "almalinux:9": {
+        "ours": 0,
+        "osv": 0,
+        "only_ours": [],
+        "only_osv": []
+      },
+      "ubuntu:24.04": {
+        "ours": 43,
+        "osv": 43,
+        "only_ours": [],
+        "only_osv": []
+      },
+      "gcr.io/distroless/base-debian12:debug": {
+        "ours": 51,
+        "osv": 51,
+        "only_ours": [],
+        "only_osv": []
+      }
+    }
+  },
+  {
+    "step": "PASS: 8. remediation on an image is refused",
+    "status": 409,
+    "detail": "A container image is fixed by rebuilding it with the fixed packages (or a newer base image) and redeploying it; Nimstead never changes a running container"
+  },
+  {
+    "step": "PASS: 7. real Syft and Trivy image SBOMs give the agent's findings for the same images (end of support and CVEs), graded unverified",
+    "sboms": {
+      "syft debian:11": {
+        "status": 200,
+        "distro": "Debian:11",
+        "ours": 1,
+        "sbom": 1,
+        "only_agent": [],
+        "only_sbom": []
+      },
+      "trivy debian:11": {
+        "status": 200,
+        "distro": "Debian:11",
+        "ours": 1,
+        "sbom": 1,
+        "only_agent": [],
+        "only_sbom": []
+      },
+      "syft alpine:3.18": {
+        "status": 200,
+        "distro": "Alpine:v3.18",
+        "ours": 1,
+        "sbom": 1,
+        "only_agent": [],
+        "only_sbom": []
+      },
+      "trivy alpine:3.18": {
+        "status": 200,
+        "distro": "Alpine:v3.18",
+        "ours": 1,
+        "sbom": 1,
+        "only_agent": [],
+        "only_sbom": []
+      },
+      "syft ubuntu:24.04": {
+        "status": 200,
+        "distro": "Ubuntu:24.04",
+        "ours": 43,
+        "sbom": 43,
+        "only_agent": [],
+        "only_sbom": []
+      },
+      "trivy ubuntu:24.04": {
+        "status": 200,
+        "distro": "Ubuntu:24.04",
+        "ours": 43,
+        "sbom": 43,
+        "only_agent": [],
+        "only_sbom": []
+      },
+      "syft gcr.io/distroless/base-debian12:debug": {
+        "status": 200,
+        "distro": "Debian:12",
+        "ours": 51,
+        "sbom": 51,
+        "only_agent": [],
+        "only_sbom": []
+      },
+      "trivy gcr.io/distroless/base-debian12:debug": {
+        "status": 200,
+        "distro": "Debian:12",
+        "ours": 51,
+        "sbom": 51,
+        "only_agent": [],
+        "only_sbom": []
+      }
+    },
+    "grades": [
+      "unverified"
+    ]
+  },
+  {
+    "step": "PASS: 5a. a failing runtime closes nothing of its own; the other runtime's whole listing still proves what stopped",
+    "complete": false,
+    "listed": [
+      "docker"
+    ],
+    "error": "podman: podman ps exited 125: Error: database is locked",
+    "alpine_runs": [
+      "pod1",
+      "web2"
+    ]
+  },
+  {
+    "step": "PASS: 5b. after redeploying on debian:12, debian:11's findings are resolved as not running, and debian:12's are open",
+    "stopped": 1,
+    "debian11_resolved": 1,
+    "debian11_were_open": 1,
+    "debian12_open": 106
+  },
+  {
+    "step": "PASS: evidence pack verifies, its findings including the images'",
+    "problems": [],
+    "resolved": 1,
+    "containers_reported": 3
+  },
+  {
+    "result": "PASS",
+    "failures": []
+  }
+]

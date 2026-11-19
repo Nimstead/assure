@@ -60,7 +60,7 @@ def coverage() -> dict[str, list[tuple[str, bool]]]:
         for path in sorted((ROOT / folder).rglob("*.py")):
             rows = python_symbols(ast.parse(path.read_text()))
             if rows:
-                out[str(path.relative_to(ROOT))] = rows
+                out[path.relative_to(ROOT).as_posix()] = rows
     for path in sorted((ROOT / "web/src").rglob("*")):
         if path.suffix not in {".ts", ".tsx"} or ".test." in path.name or path.name == "setup-tests.ts":
             continue
@@ -71,7 +71,7 @@ def coverage() -> dict[str, list[tuple[str, bool]]]:
             documented = before.endswith("*/") and before.rfind("/**") > before.rfind("*/", 0, len(before) - 2)
             rows.append((match[1] or match[2], documented))
         if rows:
-            out[str(path.relative_to(ROOT))] = rows
+            out[path.relative_to(ROOT).as_posix()] = rows
     return out
 
 

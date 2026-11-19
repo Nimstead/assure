@@ -12,6 +12,7 @@ This reference defines asset records, enrolment, inventory replacement and fleet
 | DELETE /api/assets/{asset_id} | HTTP 204. Delete asset, findings, installed packages, jobs and scan records. Preserve the ledger |
 | POST /api/agent/enroll | HTTP 201 with new asset_id and one-time agent_key. Commit a new host asset |
 | POST /api/agent/inventory | Replace eligible agent inventory and return open/resolved counts. Can commit before later job/background work |
+| POST /api/agent/containers | Record the host's running containers and the images they run; return counts. See [container images](#container-images) |
 | POST /api/assets/{asset_id}/sbom | Replace SBOM-origin inventory and return mapping/rescan counts |
 | GET /api/coverage | Windows application mapping counts and at most 200 unmatched groups |
 | GET /api/summary | Fleet counts, up to ten action groups and twenty attention jobs. Sweep/commit job timeouts first |
@@ -139,9 +140,10 @@ See the [SBOM input reference](sbom.md) for formats, parser limits, response cou
 | agents_need_attention | Hosts classified failed, off or reinstall |
 | open_by_priority | Counts of status=open findings by priority |
 | top_actions | Up to ten action groups below |
+| images_to_rebuild | Up to ten container images with open findings, below |
 | attention | Up to twenty newest failed, rolled_back, rollback_failed, not_fixed or aborted jobs in [public job format](remediation-jobs.md#public-job-fields) |
 
-Action groups use open findings with a fixed version or a supported configuration fix. Ranking uses KEV first, maximum score second and distinct vulnerability count third. Ties have no explicit stable ordering.
+Action groups use open findings with a fixed version or a supported configuration fix, on every asset kind except container images (an image is rebuilt, never planned). Ranking uses KEV first, maximum score second and distinct vulnerability count third. Ties have no explicit stable ordering.
 
 | Action field | Value |
 | --- | --- |
@@ -159,6 +161,30 @@ Action groups use open findings with a fixed version or a supported configuratio
 Each action inspects at most fifty newest matching jobs. Older active or failed attempts can be absent from its hints. The displayed highest fix is a stored-data recommendation, not proof that one upgrade resolves every grouped issue.
 
 GET summary first sweeps job timeouts and commits. It does not collect fresh host inventory. Queries can observe different moments, and comparator/distribution/storage failures can follow the sweep commit.
+
+| images_to_rebuild field | Value |
+| --- | --- |
+| asset_id, name, os_name, ecosystem | The image asset, its newest common reference and its base OS |
+| kev, max_score, priority, findings | Ranking (KEV, maximum score, open finding count, as actions rank) and its most urgent open priority |
+| hosts | Sorted hostnames that run it |
+| fixes | Up to eight `{package, fixed_version, vulns}`: the highest fixed version per package, most findings first |
+| unfixed | Open findings whose package has no published fix |
+
+## Container images
+
+An agent at 0.8.0 or later sends `POST /api/agent/containers` after each inventory (DECISIONS 138-143). The body carries `listed`, each runtime's whole `ps` listing (`{"docker": [ids], "podman": [ids]}`, only runtimes that answered), one entry per distinct image content it read: `image_id` (`sha256:` and 64 hex), `ref`, `os_name`, `ecosystem`, `facts` (`os_id`, `os_version_id`, `os_unmatched`), a `collection` document and `packages`, and its `containers` (`id`, `name`, `runtime` of `docker` or `podman`), and `complete` (every runtime answered and every container was read). The server checks every field: an entry with no valid image id or container is refused, and a package row it can't hold marks that image's package list partial.
+
+Each distinct image content is one `image` asset, found by the server's own hash of everything stored for it, so hosts running one image share it and one host's report can't change or close another's. It is judged like a host with those packages, its end of support as of when it was last reported running. The `container` table records which host runs which container. A row goes only when its own runtime's listing came in whole without it, so a host with more containers than one report reads, or a second runtime that failed, still closes what it proves stopped, and a container listed but not read keeps its row. An image no host runs any more has its findings resolved; one no host has run for 30 days is deleted. An image's name is the reference the most hosts started it from (one vote per host; a tie keeps the name). Images sit outside the asset quota, capped at `NIMSTEAD_MAX_IMAGES_PER_ORG`.
+
+| Response field | Value |
+| --- | --- |
+| images, containers | Distinct images and containers stored from this report |
+| new | Image assets this report created |
+| stopped | Images no host runs any more after this report |
+| refused | Entries refused, or past a cap |
+| complete | Every runtime this host runs containers in was listed whole, and nothing was refused |
+
+Limits: 128 entries, 256 containers and 10,000 packages an image per report; four reports an hour per host; per host, 512 containers, 256 images and 48 new images a day (so one host can't take the organisation's share). An SBOM upload to an image returns 409: its packages are what hosts read from it. In `GET /api/assets`, an image row adds `image_id`, `running_on` (up to 100 `{host_id, hostname, name, runtime, ref, since}`), `containers_total`, `hosts_total`, `packages_read` and `not_read_why`; a host row that runs containers adds `containers` (up to 100 `{image_id, name, runtime, ref, since}`) and `containers_total`. `PATCH` on an image returns 409: its criticality and exposure follow its hosts. Remediation on an image returns 409.
 
 ## Related
 

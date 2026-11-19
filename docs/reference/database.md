@@ -39,11 +39,12 @@ The model does not make the evidence ledger immutable. The unique `(org_id, seq)
 | `WebSession` | Hashed browser token linked to a user, with expiry and idle timestamp |
 | `ApiToken` | Hashed read-only token linked to an organisation and creating user |
 | `EnrollToken` | Hashed enrolment token with tenant, expiry, revocation, and sandbox assignment |
-| `Asset` | Tenant-owned host, application, or external target with collection and policy state |
+| `Asset` | Tenant-owned host, application, external target, network device or container image with collection and policy state. An image is content-addressed: its hash sits in `agent_key_hash`, which no agent is ever given |
 | `InstalledPackage` | Observed asset package, source version, and agent/SBOM origin |
 | `Advisory` | Composite ID/ecosystem/package key for advisory and auxiliary feed records |
 | `DirectoryComputer` | Composite organisation/domain/name key for directory-discovered computers |
 | `Neighbour` | Composite asset/IP/MAC key for one row of a host's own neighbour table, with first and last seen (deleted 30 days after last seen) |
+| `Container` | Composite host/container-id key for a container a host's agent reported running, the image asset it runs, its name, runtime and reference, with first and last seen. Only that host's complete container list removes it |
 | `Kev` | CVE-keyed known-exploitation metadata |
 | `Epss` | CVE-keyed probability and percentile |
 | `Cvss` | CVE-keyed fallback impact score/vector |

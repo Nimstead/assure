@@ -8,7 +8,7 @@ import json
 import re
 from collections import Counter, defaultdict
 
-from nimstead import lifecycle
+from nimstead import lifecycle, sbom
 from nimstead.engine import paths
 from nimstead.engine.collection import AGENT_APPS, NOT_REPORTED, Inventory, app_installs
 from nimstead.engine.content import Content
@@ -25,9 +25,11 @@ SOURCE_NAMES = {"windows_build": "Windows build", "uninstall": "Uninstall entrie
 NOT_YET = ("End of support, Windows settings and drivers aren't judged by this report yet: they stay findings in the normal view. "
            "Settings are read here only to show how they combine with vulnerabilities into attack paths.")
 NOT_YET_LINUX = ("Livepatch, services still running replaced libraries, and software outside the package manager other than Python and npm packages "
-                 "and Java archives (vendored binaries, containers, self-installed tools) aren't judged by this report yet. "
-                 "Kernels installed but not running are judged, and marked so.")
+                 "and Java archives (vendored binaries, self-installed tools) aren't judged by this report yet. "
+                 "Kernels installed but not running are judged, and marked so. Containers running on it are judged as images of their own.")
 NOT_YET_SBOM = "Only components with a package URL in an ecosystem the advisory feeds cover are judged."
+NOT_YET_IMAGE = ("A container image: its distribution packages are judged, read from the running container's own package database. "
+                 "Python, npm and Java packages inside it, and anything installed outside its package manager, aren't read yet.")
 SBOM_IS_NOT_RUNNING = "An SBOM states what was built, not what's running, so nothing judged from it is better than unverified."
 DETERMINED = (Outcome.VULNERABLE, Outcome.NOT_VULNERABLE, Outcome.NOT_APPLICABLE)
 _GRADES = ("unverified", "reasonable", "confirmed")  # weakest first: an install is as sure as its weakest reading
@@ -97,7 +99,7 @@ def _applications(inv: Inventory, content: Content, verdicts: list[Verdict]) -> 
     """R4.4 for software outside the package manager, as counts and as sentences: what wasn't looked for, what the agent left to the
     package manager (R7.9), what has no advisory at all, and what an SBOM couldn't name. Each said, so none of it reads as clean."""
     out, found, sb = [], app_installs(inv), inv.sbom or {}
-    off = [] if inv.kind == "application" else [label for src, _, label in AGENT_APPS if inv.source(src).state in ("off", NOT_REPORTED)]
+    off = [] if inv.kind in ("application", "image") else [label for src, _, label in AGENT_APPS if inv.source(src).state in ("off", NOT_REPORTED)]
     if off:
         out.append(f"Not looked for on this host, so not assessed: {', '.join(off)} (the agent's opt-in scans are off, or it predates them).")
     owned = sum(x for x in ((inv.facts.get("app_scan") or {}).get("owned"), (inv.facts.get("jar_scan") or {}).get("owned")) if isinstance(x, int))
@@ -106,7 +108,7 @@ def _applications(inv: Inventory, content: Content, verdicts: list[Verdict]) -> 
     quiet = sum(not content.records.get((i.ecosystem, i.keys[0])) and i.ecosystem in content.feeds for i in found)
     if quiet:
         out.append(f"{quiet:,} of {len(found):,} installs outside the package manager have no published advisory: no known vulnerability, which isn't proof of none.")
-    skipped = sum(n for n in (sb.get("skipped") or {}).values() if isinstance(n, int))
+    skipped = sum(n for why, n in (sb.get("skipped") or {}).items() if isinstance(n, int) and why not in sbom.IGNORED)  # nothing left unjudged
     if any(i.source == "sbom" for i in found) or inv.kind == "application":
         when = f" (received {sb['received'][:10]})" if sb.get("received") else ""
         out.append(f"SBOM{when}: {SBOM_IS_NOT_RUNNING}" + (f" {skipped:,} of its {sb.get('components') or 0:,} components weren't assessed." if skipped else ""))
@@ -129,9 +131,16 @@ def _installs(verdicts: list[Verdict]) -> list[dict]:
     return [{"ecosystem": e, "product": p, "instance": i, "grade": grade.get((e, p, i)), "outcomes": dict(sorted(n.items()))} for (e, p, i), n in sorted(rows.items())]
 
 
+def _subject(inv: Inventory) -> str:
+    """What the report is about, as its sentences name it."""
+    return ("this image's packages" if inv.kind == "image" else "this application's components" if inv.kind == "application"
+            else f"this host's {'package' if inv.is_linux else 'Windows'} patch state")
+
+
 def _coverage(inv: Inventory, content: Content, verdicts: list[Verdict]) -> dict:
     families = {}
-    main = ("application",) if inv.kind == "application" else ("distro", "application") if inv.is_linux else ("os", "microsoft", "app", "application")
+    main = (("application",) if inv.kind == "application" and not inv.is_linux else ("distro", "application") if inv.is_linux
+            else ("os", "microsoft", "app", "application"))
     for fam, label in FAMILIES.items():
         vs = [v for v in verdicts if v.family == fam]
         n = Counter(v.outcome.value for v in vs)
@@ -139,15 +148,15 @@ def _coverage(inv: Inventory, content: Content, verdicts: list[Verdict]) -> dict
             families[fam] = {"label": label, "attempted": len(vs), "determined": sum(v.outcome in DETERMINED for v in vs), "outcomes": dict(sorted(n.items()))}
     stated = []
     if not _assessed(verdicts, inv):
-        stated.append("This application's components were not assessed." if inv.kind == "application" else
-                      f"This host's {'package' if inv.is_linux else 'Windows'} patch state was not assessed.")
+        subject = _subject(inv)
+        stated.append(f"{subject[0].upper()}{subject[1:]} {'were' if inv.kind in ('image', 'application') else 'was'} not assessed.")
     for fam, label in (("microsoft", "Microsoft products"), ("app", "third-party apps"), ("distro", "distribution packages"),
                        ("application", "applications outside the package manager")):
         f = families.get(fam)
         if not f or (fam == "distro" and not _assessed(verdicts, inv)):
             continue
         if f["attempted"] and not f["determined"]:
-            stated.append(f"This host's {label} were not assessed.")
+            stated.append(f"This {inv.kind if inv.kind in ('image', 'application') else 'host'}'s {label} were not assessed.")
         elif f["determined"] < f["attempted"]:
             stated.append(f"{label[0].upper()}{label[1:]}: {f['attempted'] - f['determined']:,} of {f['attempted']:,} checks couldn't be determined.")
     if inv.is_linux and inv.facts.get("pending_reboot"):
@@ -155,13 +164,14 @@ def _coverage(inv: Inventory, content: Content, verdicts: list[Verdict]) -> dict
     said, apps = _applications(inv, content, verdicts)
     return {"sources": [{"name": s.name, "label": SOURCE_NAMES.get(s.name, s.name), "state": s.state, "count": s.count, "error": s.error} for s in inv.sources()],
             "families": families, "applications": apps,
-            "statements": [*stated, *said, NOT_YET_SBOM if inv.kind == "application" else NOT_YET_LINUX if inv.is_linux else NOT_YET]}
+            "statements": [*stated, *said, NOT_YET_SBOM if inv.kind == "application" else NOT_YET_IMAGE if inv.kind == "image"
+                           else NOT_YET_LINUX if inv.is_linux else NOT_YET]}
 
 
 def _assessed(verdicts: list[Verdict], inv: Inventory) -> bool:
-    """Patch state was judged: an OS or package verdict with evidence (an SBOM's components, for an application). A release's
-    end-of-support date alone isn't that."""
-    fams = ("application",) if inv.kind == "application" else ("os", "distro")
+    """Patch state was judged: an OS or package verdict with evidence (an SBOM's components, for an application; its distribution
+    packages too, for an image's SBOM). A release's end-of-support date alone isn't that."""
+    fams = ("application", "distro") if inv.kind == "application" else ("os", "distro")
     return any(v.outcome in DETERMINED and v.family in fams and v.ecosystem != lifecycle.ECOSYSTEM for v in verdicts)
 
 
@@ -174,7 +184,7 @@ def _headline(verdicts: list[Verdict], inv: Inventory) -> dict:
     if vuln:
         return {"status": "vulnerable", "text": f"VULNERABLE: {vuln:,} vulnerabilities across {installs} install{'s' * (installs > 1)}.{tail}"}
     if not assessed:
-        what = "this application's components weren't" if inv.kind == "application" else "this host's patch state wasn't"
+        what = _subject(inv) + (" weren't" if inv.kind in ("image", "application") else " wasn't")
         return {"status": "not-assessed", "text": f"NOT ASSESSED: {what} determined, so this is not a clean result.{tail}"}
     if open_:
         return {"status": "undetermined", "text": f"NOT CLEAN, NOT PROVEN VULNERABLE: nothing found in what was read, but {open_:,} checks couldn't be determined."}
@@ -210,7 +220,9 @@ def render(r: dict) -> str:
     C0, DEL and C1 control characters within output lines with question marks.
     Does not modify r or write output. Missing or incompatible fields can raise
     KeyError, TypeError or ValueError. JSON report fields retain their original text."""
-    who = "Application, from its SBOM (no agent)" if r.get("kind") == "application" else f"{r['os'] or 'Unknown OS'}, agent {r['agent_version'] or 'unknown'}"
+    who = ("Application, from its SBOM (no agent)" if r.get("kind") == "application" else
+           f"Container image, {r['os'] or 'unknown OS'}, read by agent {r['agent_version'] or 'unknown'}" if r.get("kind") == "image"
+           else f"{r['os'] or 'Unknown OS'}, agent {r['agent_version'] or 'unknown'}")
     out = [f"Scan report: {r['host'] or 'this host'}", who + (f", inventory read {r['inventory_read_at']}" if r["inventory_read_at"] else ""),
            "", r["headline"]["text"]]
     host = [g for g in r["vulnerable"] if g["family"] != "application"]

@@ -600,6 +600,9 @@
           },
           {
             "$ref": "#/components/schemas/ExternalAsset"
+          },
+          {
+            "$ref": "#/components/schemas/ImageAsset"
           }
         ]
       },
@@ -862,6 +865,80 @@
           "expected",
           "found",
           "note"
+        ],
+        "type": "object"
+      },
+      "ContainersReport": {
+        "properties": {
+          "complete": {
+            "default": false,
+            "title": "Complete",
+            "type": "boolean"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "images": {
+            "items": {},
+            "maxItems": 128,
+            "title": "Images",
+            "type": "array"
+          },
+          "runtimes": {
+            "title": "Runtimes"
+          },
+          "v": {
+            "default": 1,
+            "title": "V",
+            "type": "integer"
+          }
+        },
+        "title": "ContainersReport",
+        "type": "object"
+      },
+      "ContainersResult": {
+        "additionalProperties": false,
+        "properties": {
+          "complete": {
+            "type": "boolean"
+          },
+          "containers": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "images": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "new": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "refused": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "stopped": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "images",
+          "containers",
+          "new",
+          "stopped",
+          "refused",
+          "complete"
         ],
         "type": "object"
       },
@@ -1885,6 +1962,16 @@
           "asset_id": {
             "type": "string"
           },
+          "asset_kind": {
+            "enum": [
+              "host",
+              "application",
+              "external",
+              "device",
+              "image"
+            ],
+            "type": "string"
+          },
           "ecosystem": {
             "type": "string"
           },
@@ -1929,6 +2016,7 @@
           "id",
           "asset_id",
           "hostname",
+          "asset_kind",
           "ecosystem",
           "package",
           "installed_version",
@@ -1951,6 +2039,16 @@
             "type": "array"
           },
           "asset_id": {
+            "type": "string"
+          },
+          "asset_kind": {
+            "enum": [
+              "host",
+              "application",
+              "external",
+              "device",
+              "image"
+            ],
             "type": "string"
           },
           "cvss": {
@@ -2033,6 +2131,12 @@
             },
             "type": "array"
           },
+          "rebuild": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "resolved_at": {
             "type": [
               "string",
@@ -2042,6 +2146,15 @@
           "rule_evidence": {
             "type": [
               "string",
+              "null"
+            ]
+          },
+          "runs_on": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
               "null"
             ]
           },
@@ -2074,6 +2187,7 @@
           "status",
           "first_seen",
           "last_seen",
+          "asset_kind",
           "fixed_version",
           "rule_evidence",
           "resolved_at",
@@ -2086,7 +2200,9 @@
           "advisory_ids",
           "reasons",
           "score",
-          "package_fix"
+          "package_fix",
+          "rebuild",
+          "runs_on"
         ],
         "type": "object"
       },
@@ -2167,6 +2283,16 @@
             "type": "array"
           },
           "asset_id": {
+            "type": "string"
+          },
+          "asset_kind": {
+            "enum": [
+              "host",
+              "application",
+              "external",
+              "device",
+              "image"
+            ],
             "type": "string"
           },
           "cvss": {
@@ -2270,6 +2396,7 @@
           "status",
           "first_seen",
           "last_seen",
+          "asset_kind",
           "fixed_version",
           "rule_evidence",
           "resolved_at",
@@ -2491,6 +2618,13 @@
             "minimum": 0,
             "type": "integer"
           },
+          "images_to_rebuild": {
+            "items": {
+              "$ref": "#/components/schemas/SummaryImage"
+            },
+            "maxItems": 10,
+            "type": "array"
+          },
           "open_by_priority": {
             "additionalProperties": {
               "minimum": 0,
@@ -2513,6 +2647,7 @@
           "devices_with_issues",
           "open_by_priority",
           "top_actions",
+          "images_to_rebuild",
           "attention"
         ],
         "type": "object"
@@ -2593,6 +2728,42 @@
               "inventory_only"
             ],
             "type": "object"
+          },
+          "containers": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "image_id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "ref": {
+                  "type": "string"
+                },
+                "runtime": {
+                  "type": "string"
+                },
+                "since": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "runtime",
+                "ref",
+                "since",
+                "image_id"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "type": "array"
+          },
+          "containers_total": {
+            "minimum": 0,
+            "type": "integer"
           },
           "criticality": {
             "type": "string"
@@ -2836,6 +3007,161 @@
         },
         "required": [
           "detail"
+        ],
+        "type": "object"
+      },
+      "ImageAsset": {
+        "additionalProperties": false,
+        "properties": {
+          "apps": {
+            "additionalProperties": false,
+            "properties": {
+              "assessed": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "inventory_only": {
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "assessed",
+              "inventory_only"
+            ],
+            "type": "object"
+          },
+          "containers_total": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "criticality": {
+            "type": "string"
+          },
+          "directory_source": {
+            "type": "boolean"
+          },
+          "ecosystem": {
+            "type": "string"
+          },
+          "first_seen": {
+            "type": "string"
+          },
+          "health_units": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "hosts_total": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "image_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "internet_facing": {
+            "type": "boolean"
+          },
+          "kind": {
+            "const": "image",
+            "type": "string"
+          },
+          "last_seen": {
+            "type": "string"
+          },
+          "not_read_why": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "open_by_priority": {
+            "additionalProperties": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "os_name": {
+            "type": "string"
+          },
+          "packages_read": {
+            "type": "boolean"
+          },
+          "ring": {
+            "type": "integer"
+          },
+          "running_on": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "host_id": {
+                  "type": "string"
+                },
+                "hostname": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "ref": {
+                  "type": "string"
+                },
+                "runtime": {
+                  "type": "string"
+                },
+                "since": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "runtime",
+                "ref",
+                "since",
+                "host_id",
+                "hostname"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "type": "array"
+          },
+          "sandbox": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "hostname",
+          "os_name",
+          "ecosystem",
+          "kind",
+          "criticality",
+          "first_seen",
+          "last_seen",
+          "internet_facing",
+          "directory_source",
+          "sandbox",
+          "ring",
+          "health_units",
+          "open_by_priority",
+          "image_id",
+          "running_on",
+          "containers_total",
+          "hosts_total",
+          "packages_read",
+          "not_read_why"
         ],
         "type": "object"
       },
@@ -4636,6 +4962,88 @@
         ],
         "type": "object"
       },
+      "SummaryImage": {
+        "additionalProperties": false,
+        "properties": {
+          "asset_id": {
+            "type": "string"
+          },
+          "ecosystem": {
+            "type": "string"
+          },
+          "findings": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "fixes": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "fixed_version": {
+                  "type": "string"
+                },
+                "package": {
+                  "type": "string"
+                },
+                "vulns": {
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "package",
+                "fixed_version",
+                "vulns"
+              ],
+              "type": "object"
+            },
+            "maxItems": 8,
+            "type": "array"
+          },
+          "hosts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "kev": {
+            "type": "boolean"
+          },
+          "max_score": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "os_name": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "string"
+          },
+          "unfixed": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "asset_id",
+          "name",
+          "os_name",
+          "ecosystem",
+          "priority",
+          "kev",
+          "max_score",
+          "findings",
+          "unfixed",
+          "hosts",
+          "fixes"
+        ],
+        "type": "object"
+      },
       "TargetNew": {
         "properties": {
           "criticality": {
@@ -5282,6 +5690,99 @@
         "security": [],
         "summary": "Agent Runtime",
         "x-authentication": "No user-session dependency"
+      }
+    },
+    "/api/agent/containers": {
+      "post": {
+        "description": "Record the running containers this host's agent read and the images they run (DECISIONS 138-140); return counts.\n\nAt most four reports an hour per host (the agent sends one per report, 6-hourly). New images, images that stopped\nor came back, and images whose hosts' criticality changed are rescanned here; each new image's engine report is\nstored after the response, as an inventory's is. Commits.",
+        "operationId": "agent_containers_api_agent_containers_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContainersReport"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContainersResult"
+                }
+              }
+            },
+            "description": "Asset/inventory contract; see assets-api.md for state and count semantics."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "An Origin-bearing write failed the shared origin check."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "AgentToken": []
+          }
+        ],
+        "summary": "Agent Containers",
+        "x-authentication": "Asset agent key"
       }
     },
     "/api/agent/directory": {
@@ -6418,7 +6919,8 @@
             "cyclonedx_versions": [
               "1.4",
               "1.5",
-              "1.6"
+              "1.6",
+              "1.7"
             ],
             "spdx_versions": [
               "SPDX-2.2",

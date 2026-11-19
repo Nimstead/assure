@@ -56,7 +56,7 @@ PURLS = [
     ("pkg:gem/rack@2.2.8", ("RubyGems", "rack", "2.2.8")),
     ("pkg:golang/github.com/gin-gonic/gin@v1.9.0", ("Go", "github.com/gin-gonic/gin", "1.9.0")),
     ("pkg:cargo/serde@1.0.190#sub", ("crates.io", "serde", "1.0.190")),
-    ("pkg:deb/debian/openssl@3.0.11", None),  # OS packages come from the agent
+    ("pkg:deb/debian/openssl@3.0.11", None),  # language packages only: an OS package URL is parse_os_purl's
     ("pkg:maven/onlyname@1.0", None),
     ("pkg:npm/lodash", None),  # no version: never guess
     ("not-a-purl", None),
@@ -75,8 +75,8 @@ def test_nested_components_and_counts():
         comp("pkg:deb/debian/curl@7"), {"type": "file", "name": "no-purl"},
     )
     pkgs, counts = sbom.parse(doc)
-    assert pkgs == [("RubyGems", "rack", "2.2.8"), ("npm", "a", "1.0.0"), ("npm", "b", "2.0.0")]
-    assert counts == {"components": 6, "mapped": 4, "unique_packages": 3, "skipped": {"no_purl": 1, "unsupported_or_invalid_purl": 1}}
+    assert pkgs == [("RubyGems", "rack", "2.2.8", None, None), ("npm", "a", "1.0.0", None, None), ("npm", "b", "2.0.0", None, None)]
+    assert counts == {"components": 6, "mapped": 4, "unique_packages": 3, "skipped": {"no_purl": 1, "unsupported_or_invalid_purl": 0, "no_distro": 1}, "distro": None}
 
 
 def test_log4shell_found_then_resolved_and_ledger(maven_env):
@@ -87,8 +87,8 @@ def test_log4shell_found_then_resolved_and_ledger(maven_env):
     r = put(c, a["id"], doc)
     assert r.status_code == 200, r.text
     assert r.json()["components"] == 3 and r.json()["mapped"] == 2 and r.json()["open"] >= 1
-    assert set(r.json()) == {"components", "mapped", "unique_packages", "skipped", "open", "resolved"}
-    assert set(r.json()["skipped"]) == {"no_purl", "unsupported_or_invalid_purl"}
+    assert set(r.json()) == {"components", "mapped", "unique_packages", "skipped", "distro", "open", "resolved"}
+    assert set(r.json()["skipped"]) == {"no_purl", "unsupported_or_invalid_purl", "no_distro"}
     ids = {f["vuln_id"]: f for f in c.get("/api/findings", params={"asset_id": a["id"]}).json()}
     assert "CVE-2021-44228" in ids and ids["CVE-2021-44228"]["package"] == "org.apache.logging.log4j:log4j-core"
     assert ids["CVE-2021-44228"]["fixed_version"] == "2.15.0"
@@ -293,9 +293,9 @@ def test_spdx_parse_counts_and_skips():
         version="SPDX-2.2",
     )
     pkgs, counts = sbom.parse(doc)
-    assert pkgs == [("Maven", "org.apache.logging.log4j:log4j-core", "2.14.1"), ("Packagist", "laravel/framework", "10.48.29"),
-                    ("npm", "lodash", "4.17.21")]
-    assert counts == {"components": 7, "mapped": 4, "unique_packages": 3, "skipped": {"no_purl": 2, "unsupported_or_invalid_purl": 1}}
+    assert pkgs == [("Maven", "org.apache.logging.log4j:log4j-core", "2.14.1", None, None), ("Packagist", "laravel/framework", "10.48.29", None, None),
+                    ("npm", "lodash", "4.17.21", None, None)]
+    assert counts == {"components": 7, "mapped": 4, "unique_packages": 3, "skipped": {"no_purl": 2, "unsupported_or_invalid_purl": 0, "no_distro": 1}, "distro": None}
 
 
 def test_spdx_log4shell_end_to_end(maven_env):

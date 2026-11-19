@@ -12,7 +12,7 @@ import logging
 import os
 import re
 import secrets
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -35,6 +35,7 @@ from sqlalchemy.orm import Session, load_only
 
 from nimstead import (
     ai,
+    containers,
     engine,
     evidence,
     external,
@@ -54,6 +55,7 @@ from nimstead.db import (
     ApiToken,
     Asset,
     AuthFailure,
+    Container,
     DirectoryComputer,
     EnrollToken,
     Finding,
@@ -1288,6 +1290,33 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             return Response(buf.getvalue(), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=unmanaged-windows.csv"})
         return out
 
+    class ContainersReport(BaseModel):
+        v: int = 1
+        complete: bool = False  # True only when every runtime listed its containers and each was read (agent `containers`)
+        images: list[Any] = Field(default_factory=list, max_length=containers.MAX_IMAGES_PER_REPORT)  # checked one by one by containers.image
+        runtimes: Any = None
+        error: str | None = Field(None, max_length=300)
+
+    @app.post("/api/agent/containers")
+    def agent_containers(body: ContainersReport, s: DB, asset: Annotated[Asset, Depends(current_agent)], tasks: BackgroundTasks):
+        """Record the running containers this host's agent read and the images they run (DECISIONS 138-140); return counts.
+
+        At most four reports an hour per host (the agent sends one per report, 6-hourly). New images, images that stopped
+        or came back, and images whose hosts' criticality changed are rescanned here; each new image's engine report is
+        stored after the response, as an inventory's is. Commits."""
+        if over_limit(s, "containers:" + asset.id, 4):
+            raise HTTPException(429, "Containers already received this hour")
+        if over_limit(s, "containers-org:" + asset.org_id, ORG_INVENTORY_MAX_PER_HOUR):
+            raise HTTPException(429, "This organisation is sending too many container reports; try again later")
+        out, created, others = containers.store(s, asset, body.model_dump())
+        s.commit()
+        for image in created:  # its contents go on the record once, as an inventory's do
+            rescan(s, image)
+            tasks.add_task(store_scan_report, image.id, s.info.pop(("engine_scan", image.id), None))
+        for image in others:
+            rescan(s, image, inventory_received=False)
+        return out
+
     class NetworkChecks(BaseModel):
         devices: list[Any] = Field(max_length=32)  # each checked row by row by neighbours.record_checks
 
@@ -1478,17 +1507,23 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     # the facts the asset list shows; the rest (up to 64 KB a host: listeners, certificates, baseline) stays server-side (DECISIONS 101)
     LIST_FACTS = ("os_unmatched", "pending_reboot", "wsus", "wufb_quality_deferral_days", "last_update_success", "domain_role", "edition_id", "esu")
 
-    def asset_json(a: Asset, counts: dict, paused: bool = False, release: bool | None = None, apps: dict | None = None) -> dict:
+    def asset_json(a: Asset, counts: dict, paused: bool = False, release: bool | None = None, apps: dict | None = None,
+                   runs: list | None = None) -> dict:
         """Return common and kind-specific fields for database Asset a.
 
         counts supplies open_by_priority without recalculation. Optional apps is
         included only when truthy. paused/release control host update classification.
         An omitted release probes signed distribution availability for hosts. Host
         facts retain LIST_FACTS names only. Non-host rows omit host metadata.
+        runs: the container rows list_assets gathered for it (an image's: where it
+        runs; a host's: what it runs), at most 100 listed with the total.
         No database write occurs. Source/cache/key and malformed-value errors can
         propagate. Callers can pass empty counts/default policy context."""
         if release is None and a.kind == "host":
             release = signed_release() is not None
+        runs = runs or []
+        db_line = ((a.collection or {}).get("sources") or {}).get("package_db") or {}
+        read = db_line.get("state") == "ok" and bool(db_line.get("count"))
         return {
             "id": a.id, "hostname": a.hostname, "os_name": a.os_name, "ecosystem": a.ecosystem,
             "kind": a.kind, "criticality": a.criticality, "internet_facing": a.internet_facing, "directory_source": a.directory_source, "sandbox": a.sandbox,
@@ -1502,6 +1537,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                if a.kind == "host" else {}),
             **({"verified": a.verified_at is not None, "verified_at": a.verified_at, "txt_name": external.txt_name(a.hostname),
                 "txt_value": external.txt_value(a.org_id, a.hostname), "proof_path": external.PROOF_PATH} if a.kind == "external" else {}),
+            **({"image_id": (a.facts or {}).get("image_id"), "running_on": runs[:100], "containers_total": len(runs),
+                "hosts_total": len({r["host_id"] for r in runs}), "packages_read": read,  # an empty list counts as unread, as the engine counts it (R4.3)
+                "not_read_why": None if read else db_line.get("error") or (a.facts or {}).get("os_unmatched")
+                or ("read to its end, with nothing in it" if db_line.get("state") == "ok" else "no package list was read")}
+               if a.kind == "image" else {}),
+            **({"containers": runs[:100], "containers_total": len(runs)} if a.kind == "host" and runs else {}),
         }
 
     @app.get("/api/assets")
@@ -1524,7 +1565,14 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         assets = s.scalars(select(Asset).where(Asset.org_id == user.org_id).order_by(Asset.hostname)).all()
         paused, release = s.get(Org, user.org_id).agent_updates_paused, signed_release() is not None
         apps = app_coverage(s, user.org_id)[0]
-        return [asset_json(a, counts[a.id], paused, release, apps.get(a.id)) for a in assets]
+        # where each image runs, and what each host runs: one query for the org (DECISIONS 139)
+        runs: dict[str, list] = defaultdict(list)
+        for c, hostname in s.execute(select(Container, Asset.hostname).join(Asset, Asset.id == Container.asset_id)
+                                     .where(Container.org_id == user.org_id).order_by(Asset.hostname, Container.name)):
+            row = {"name": c.name, "runtime": c.runtime, "ref": c.ref, "since": c.first_seen}
+            runs[c.image_asset_id].append({**row, "host_id": c.asset_id, "hostname": hostname})
+            runs[c.asset_id].append({**row, "image_id": c.image_asset_id})
+        return [asset_json(a, counts[a.id], paused, release, apps.get(a.id), runs.get(a.id, [])) for a in assets]
 
     @app.get("/api/coverage")
     def coverage(user: CurrentUser, s: DB):
@@ -1563,10 +1611,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         a = owned_asset(s, user, asset_id)
         views = [d for d in s.scalars(select(Asset).where(Asset.org_id == a.org_id, Asset.kind == "device"))
                  if (d.facts or {}).get("checked_by") == a.id] if a.kind == "host" else []
-        for gone in (a, *views):  # a device's name is its address: personal data, kept out of the permanent ledger
+        images = containers.only_on(s, a) if a.kind == "host" else []  # images no other host runs go with it, as its device views do
+        for gone in (a, *views, *images):  # a device's name is its address: personal data, kept out of the permanent ledger
             evidence.append(s, user.org_id, "asset_deleted", gone.id, {"by": user.email, "hostname": "device" if gone.kind == "device" else gone.hostname})
-            for model in (Finding, InstalledPackage, Neighbour, RemediationJob, ScanRecord):
+            for model in (Finding, InstalledPackage, Neighbour, RemediationJob, ScanRecord, Container):
                 s.execute(delete(model).where(model.asset_id == gone.id))
+            s.execute(delete(Container).where(Container.image_asset_id == gone.id))
             s.delete(gone)
         s.commit()
 
@@ -1631,6 +1681,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         services/windows return 422. Rescan can commit before response construction,
         whose source/cache reads can still fail. Other storage/evidence errors propagate."""
         a = owned_asset(s, user, asset_id)
+        if a.kind == "image":
+            raise HTTPException(409, "An image's criticality and internet exposure follow the hosts that run it: change them on those hosts")
         if body.health_units and not all(remediate.SAFE_NAME.match(u) for u in body.health_units):
             raise HTTPException(422, "Invalid systemd unit name")
         if body.maintenance_window and not remediate.valid_window(body.maintenance_window):
@@ -1640,6 +1692,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         s.flush()
         evidence.append(s, a.org_id, "asset_context_changed", a.id, {"by": user.email, **body.model_dump(exclude_none=True)})
         rescan(s, a, inventory_received=False)  # context changed -> scores change
+        if a.kind == "host":  # the images it runs rank by their most critical host (DECISIONS 139)
+            ran = list(s.scalars(select(Asset).where(Asset.id.in_(select(Container.image_asset_id).where(Container.asset_id == a.id)))))
+            changed = containers.refresh(s, ran)
+            for image in ran:
+                if image.id in changed:
+                    rescan(s, image, inventory_received=False)
+            s.commit()
         return asset_json(a, {})
 
     # --- applications & SBOM upload ----------------------------------------
@@ -1817,12 +1876,15 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         Rescan commits storage. It receives inventory_received=False and does not
         perform the agent job-verification/automatic-planning sequence here. Parse
         failures return 422. Other errors can propagate after earlier effects."""
-        try:
-            pkgs, counts = sbom.parse(sbom.load(raw))
+        try:  # a container image's OS packages only on an application: a host's agent reads its own (DECISIONS 142)
+            pkgs, counts = sbom.parse(sbom.load(raw), os_packages=a.kind == "application")
         except (ValueError, RecursionError) as e:  # bad JSON, bad UTF-8 or SbomError
             raise HTTPException(422, f"Invalid SBOM: {e}") from None
         s.execute(delete(InstalledPackage).where(InstalledPackage.asset_id == a.id, InstalledPackage.origin == "sbom"))
-        s.add_all(InstalledPackage(asset_id=a.id, origin="sbom", ecosystem=e, name=n, version=v) for e, n, v in pkgs)
+        s.add_all(InstalledPackage(asset_id=a.id, origin="sbom", ecosystem=e, name=n, version=v, source=src, source_version=sv)
+                  for e, n, v, src, sv in pkgs)
+        if a.kind == "application":  # the image's base OS, so the engine judges its packages as that release's (C10)
+            a.ecosystem = counts["distro"] or ""
         a.last_seen = now()
         s.flush()
         evidence.append(s, a.org_id, "sbom_received", a.id, {
@@ -1838,17 +1900,18 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         Unknown priority uses 180 days. Incompatible timestamps/policy values propagate errors."""
         return f.first_seen + timedelta(days=sla_at(f.first_seen).get(f.priority, 180)) if f.status == "open" else None
 
-    def finding_json(f: Finding, hostname: str, due: datetime | None = None) -> dict:
-        """Return a full finding row with caller-supplied hostname and optional deadline.
+    def finding_json(f: Finding, hostname: str, due: datetime | None = None, kind: str = "host") -> dict:
+        """Return a full finding row with caller-supplied hostname, asset kind and optional deadline.
 
         accepted_until is omitted. Without due, the returned due field is None even
         for an open finding. Does not query or change f. Model/plan-helper errors propagate."""
         return {
             "due": due.isoformat() if due else None,
-            "id": f.id, "asset_id": f.asset_id, "hostname": hostname, "ecosystem": f.ecosystem,
+            "id": f.id, "asset_id": f.asset_id, "hostname": hostname, "asset_kind": kind, "ecosystem": f.ecosystem,
             "package": f.package, "installed_version": f.installed_version, "fixed_version": f.fixed_version,
             "setting_fix": f.ecosystem == "WinConfig" and f.package in remediate.CONFIG_FIXES,
-            "plannable": remediate.fix_path(f.ecosystem, f.package)["plannable"],  # the same rule Home's recommended fixes use
+            # the same rule Home's recommended fixes use; only a host is ever planned on (DECISIONS 141)
+            "plannable": kind == "host" and remediate.fix_path(f.ecosystem, f.package)["plannable"],
             # how far the curated rule behind a Windows app finding was proven on a real VM (W13; sandbox/winapps_evidence.py)
             "rule_evidence": (WINAPP_EVIDENCE.get(f.package, ("pattern",))[0] if f.ecosystem == "WinApp" else None),
             "vuln_id": f.vuln_id, "advisory_ids": f.advisory_ids, "summary": f.summary, "cvss": f.cvss,
@@ -1869,14 +1932,14 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
     def with_due(s: Session, org_id: str, f: FindingFilter, limit: int | None = None, sort: str = "score", offset: int = 0):
         """find() plus each finding's deadline; the overdue filter needs the SLA history, so it's applied here."""
         sla_at, t, n, skip = evidence.sla_history(s, org_id), now(), 0, offset if f.overdue else 0
-        for x, h in find(s, org_id, f, None if f.overdue else limit, sort, 0 if f.overdue else offset):
+        for x, h, kind in find(s, org_id, f, None if f.overdue else limit, sort, 0 if f.overdue else offset):
             due = due_of(x, sla_at)
             if f.overdue and not (due and due < t):
                 continue
             if skip:
                 skip -= 1
                 continue
-            yield x, h, due
+            yield x, h, due, kind
             n += 1
             if limit and n >= limit:
                 return
@@ -1893,10 +1956,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         Requires a user session or a read-only organisation API token. API tokens cannot use write methods."""
         rows = with_due(s, user.org_id, f, limit, sort, offset)
         if view == "list":  # what the table shows (one reason); the drawer fetches the rest by id
-            return [{"id": x.id, "asset_id": x.asset_id, "hostname": h, "ecosystem": x.ecosystem, "package": x.package, "installed_version": x.installed_version,
-                     "fixed_version": x.fixed_version, "vuln_id": x.vuln_id, "kev": x.kev, "score": x.score, "priority": x.priority,
-                     "reasons": x.reasons[:1]} for x, h, _ in rows]
-        return [finding_json(x, h, due) for x, h, due in rows]
+            return [{"id": x.id, "asset_id": x.asset_id, "hostname": h, "asset_kind": kind, "ecosystem": x.ecosystem, "package": x.package,
+                     "installed_version": x.installed_version, "fixed_version": x.fixed_version, "vuln_id": x.vuln_id, "kev": x.kev, "score": x.score,
+                     "priority": x.priority, "reasons": x.reasons[:1]} for x, h, _, kind in rows]
+        return [finding_json(x, h, due, kind) for x, h, due, kind in rows]
 
     @app.get("/api/findings/count")
     def count_findings(user: CurrentUser, s: DB, f: Annotated[FindingFilter, Query()]):
@@ -1970,8 +2033,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                 return buf.getvalue()
             yield line(CSV_COLUMNS)
             with Sessions() as s2:
-                for x, h, due in with_due(s2, org_id, f):
-                    d = finding_json(x, h, due)
+                for x, h, due, kind in with_due(s2, org_id, f):
+                    d = finding_json(x, h, due, kind)
                     # cells a spreadsheet would run as a formula (package names and summaries come from hosts and advisories)
                     yield line([csv_safe(v) if isinstance(v, str) else v for v in (d[c] for c in CSV_COLUMNS)])
         return StreamingResponse(rows(), media_type="text/csv",
@@ -1985,10 +2048,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         return s.execute(stmt.limit(limit) if limit else stmt, execution_options={"yield_per": 1000})
 
     def find_stmt(org_id: str, f: FindingFilter):
-        """The filtered findings with their host's name, unordered."""
+        """The filtered findings with their asset's name and kind, unordered."""
         status, priority, asset_id, q, fixable, kev = f.status, f.priority, f.asset_id, f.q, f.fixable, f.kev
         stmt = (
-            select(Finding, Asset.hostname).join(Asset, Asset.id == Finding.asset_id)
+            select(Finding, Asset.hostname, Asset.kind).join(Asset, Asset.id == Finding.asset_id)
             .where(Finding.org_id == org_id, Finding.status == status)
         )
         if priority:
@@ -2024,7 +2087,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         f = s.get(Finding, finding_id)
         if not f or f.org_id != user.org_id:
             raise HTTPException(404, "Finding not found")
-        out = finding_json(f, s.get(Asset, f.asset_id).hostname, due_of(f, evidence.sla_history(s, user.org_id)))
+        a = s.get(Asset, f.asset_id)
+        out = finding_json(f, a.hostname, due_of(f, evidence.sla_history(s, user.org_id)), a.kind)
+        image = a.kind == "image"  # how it's fixed, and where it runs (DECISIONS 141); null for every other kind
+        out["rebuild"] = remediate.REBUILD if image else None
+        out["runs_on"] = sorted(set(s.scalars(select(Asset.hostname).join(Container, Container.asset_id == Asset.id)
+                                              .where(Container.image_asset_id == a.id)))) if image else None
         fixes = s.scalars(select(Finding.fixed_version).where(Finding.asset_id == f.asset_id, Finding.ecosystem == f.ecosystem,
                                                               Finding.package == f.package, Finding.status == "open")).all()
         cmp = comparator_for(f.ecosystem)
@@ -2057,7 +2125,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             raise HTTPException(409, f"This finding is {f.status}; only open findings can be accepted")
         accept(s, user, f, body)
         s.commit()
-        return finding_json(f, s.get(Asset, f.asset_id).hostname)
+        return finding_json(f, (a := s.get(Asset, f.asset_id)).hostname, kind=a.kind)
 
     def accept(s: Session, user: User, f: Finding, body: Accept, everywhere: bool = False) -> None:
         f.status, f.accepted_until = "accepted", now() + timedelta(days=body.days)
@@ -2125,7 +2193,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         evidence.append(s, user.org_id, "finding_acceptance_revoked", f.id, {"by": user.email, "reason": body.reason,
                                                                              "vuln_id": f.vuln_id, "package": f.package})
         s.commit()
-        return finding_json(f, s.get(Asset, f.asset_id).hostname)
+        return finding_json(f, (a := s.get(Asset, f.asset_id)).hostname, kind=a.kind)
 
     # --- remediation -------------------------------------------------------
 
@@ -2936,6 +3004,32 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         return JSONResponse({"status": "ok" if ok else "error", "version": updates.current_version(), "db": "ok", "migrations": at},
                             200 if ok else 503)
 
+    def images_to_rebuild(s: Session, org_id: str, limit: int = 10) -> list[dict]:
+        """Container images with open findings, most urgent first (KEV, worst score, count, as Fix first ranks upgrades), each
+        with the packages its rebuild must bring (highest fixed version per package) and the hosts that run it."""
+        ranked = s.execute(select(Finding.asset_id, func.max(Finding.kev.cast(Integer)), func.max(Finding.score), func.count(Finding.id))
+                           .join(Asset, Asset.id == Finding.asset_id)
+                           .where(Finding.org_id == org_id, Finding.status == "open", Asset.kind == "image").group_by(Finding.asset_id)).all()
+        out = []
+        for aid, kev, max_score, n in sorted(ranked, key=lambda r: (bool(r[1]), r[2] or 0, r[3]), reverse=True)[:limit]:
+            a = s.get(Asset, aid)
+            fixes: dict[str, set] = defaultdict(set)
+            vulns: Counter = Counter()
+            prio = "low"
+            for pkg, fixed, p in s.execute(select(Finding.package, Finding.fixed_version, Finding.priority).where(Finding.asset_id == aid, Finding.status == "open")):
+                vulns[pkg] += 1
+                if fixed:
+                    fixes[pkg].add(fixed)
+                prio = min(prio, p, key=lambda x: PRIORITY_RANK.get(x, 9))
+            order = functools.cmp_to_key(cmp) if (cmp := comparator_for(a.ecosystem)) else None  # the highest fix clears them all, as on Home
+            hosts = sorted(set(s.scalars(select(Asset.hostname).join(Container, Container.asset_id == Asset.id).where(Container.image_asset_id == aid))))
+            out.append({"asset_id": aid, "name": a.hostname, "os_name": a.os_name, "ecosystem": a.ecosystem, "kev": bool(kev), "max_score": max_score,
+                        "findings": n, "priority": prio, "hosts": hosts,
+                        "fixes": [{"package": p, "fixed_version": max(fixes[p], key=order) if order else sorted(fixes[p])[-1], "vulns": vulns[p]}
+                                  for p in sorted(fixes, key=lambda p: -vulns[p])][:8],
+                        "unfixed": sum(v for p, v in vulns.items() if p not in fixes)})
+        return out
+
     @app.get("/api/summary")
     def summary(user: CurrentUser, s: DB):
         """Return asset/priority counts, up to ten actions and twenty attention jobs.
@@ -2956,15 +3050,17 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         fixable = or_(Finding.fixed_version.is_not(None), and_(Finding.ecosystem == "WinConfig", Finding.package.in_(remediate.CONFIG_FIXES)))
         by_priority = dict(s.execute(select(Finding.priority, func.count()).where(*is_open).group_by(Finding.priority)).all())
         # Group fixes into actions: "upgrade openssl to X" clears N findings on M hosts. Rank in SQL, detail only the top 10.
+        # A container image's findings are fixed by a rebuild, never a plan (DECISIONS 141): images_to_rebuild lists them.
+        not_image = Asset.kind != "image"
         ranked = s.execute(
             select(Finding.ecosystem, Finding.package, func.max(Finding.kev.cast(Integer)), func.max(Finding.score),
                    func.count(Finding.vuln_id.distinct()))
-            .where(*is_open, fixable).group_by(Finding.ecosystem, Finding.package)
+            .join(Asset, Asset.id == Finding.asset_id).where(*is_open, fixable, not_image).group_by(Finding.ecosystem, Finding.package)
         ).all()
         top = []
         for eco, pkg, kev, max_score, _ in sorted(ranked, key=lambda r: (bool(r[2]), r[3], r[4]), reverse=True)[:10]:
             rows = s.execute(select(Finding.fixed_version, Finding.vuln_id, Asset.hostname, Asset.id, Finding.summary).join(Asset, Asset.id == Finding.asset_id)
-                             .where(*is_open, Finding.ecosystem == eco, Finding.package == pkg, fixable)).all()
+                             .where(*is_open, Finding.ecosystem == eco, Finding.package == pkg, fixable, not_image)).all()
             cmp = comparator_for(eco)
             fixes = {r[0] for r in rows if r[0]}
             fixed = None if not fixes else max(fixes, key=functools.cmp_to_key(cmp)) if cmp else sorted(fixes)[-1]  # highest fix clears them all
@@ -2992,6 +3088,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         device_open = s.execute(select(Asset.facts, func.count(Finding.id)).join(Finding, Finding.asset_id == Asset.id).where(
             Asset.org_id == user.org_id, Asset.kind == "device", Finding.status == "open").group_by(Asset.id)).all()
         return {
+            "images_to_rebuild": images_to_rebuild(s, user.org_id),
             "devices_with_issues": len({(facts or {}).get("mac") for facts, _ in device_open}),
             "assets": s.scalar(select(func.count()).select_from(Asset).where(Asset.org_id == user.org_id, Asset.kind != "device")),
             "hosts_not_reporting": sum(a.last_seen < now() - notify.SILENT_AFTER for a in hosts),

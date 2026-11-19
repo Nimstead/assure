@@ -11,7 +11,7 @@ GET operations accept a user session or an eligible read-only organisation API t
 | `GET /api/findings` | Array of full or compact rows |
 | `GET /api/findings/count` | Object with integer `total` |
 | `GET /api/findings/groups` | Up to 500 group rows |
-| `GET /api/findings/{finding_id}` | Full row plus `package_fix`. Unavailable IDs return `404` |
+| `GET /api/findings/{finding_id}` | Full row plus `package_fix`; for a container image also `rebuild` (how it's fixed) and `runs_on` (the hosts that run it). Unavailable IDs return `404` |
 | `GET /api/findings.csv` | Streamed CSV attachment |
 
 List, count, group, and CSV operations accept these filters:
@@ -40,6 +40,7 @@ Every full row contains these fields. Compact rows contain only fields marked ye
 | --- | --- | --- |
 | `id`, `asset_id` | Finding and asset ID strings | Yes |
 | `hostname`, `ecosystem`, `package` | Identity strings | Yes |
+| `asset_kind` | The asset's kind: `host`, `application`, `external`, `device` or `image` (a container image, fixed by a rebuild) | Yes |
 | `installed_version` | Compared/normalized version string | Yes |
 | `fixed_version` | Known fixed version string or `null` | Yes |
 | `vuln_id` | Persistent vulnerability/check identity | Yes |
@@ -50,7 +51,7 @@ Every full row contains these fields. Compact rows contain only fields marked ye
 | `summary` | Finding summary string | No |
 | `cvss`, `epss` | Numeric values or `null` | No |
 | `setting_fix` | Whether a curated WinConfig fix exists | No |
-| `plannable` | Whether the ecosystem/package has a supported planning path | No |
+| `plannable` | Whether the ecosystem/package has a supported planning path on this asset; never for anything but a host with an agent | No |
 | `rule_evidence` | WinApp proof label, with `pattern` fallback. Other ecosystems use `null` | No |
 | `status` | `open`, `accepted`, or `resolved` | No |
 | `first_seen`, `last_seen` | UTC timestamps without a timezone suffix | No |

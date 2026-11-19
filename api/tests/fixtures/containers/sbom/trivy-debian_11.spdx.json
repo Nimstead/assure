@@ -1,0 +1,1273 @@
+{
+ "SPDXID": "SPDXRef-DOCUMENT",
+ "creationInfo": {
+  "created": "2026-11-19T02:43:46Z",
+  "creators": [
+   "Organization: aquasecurity",
+   "Tool: trivy-0.76.2"
+  ]
+ },
+ "name": "debian:11",
+ "packages": [
+  {
+   "SPDXID": "SPDXRef-ContainerImage-724d13e3b36c99da",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:oci/debian@sha256:6f519a81440354a85eb592c5f32109ab80605f6b892455983a6f618bf87fabe9?arch=amd64&repository_url=index.docker.io%2Flibrary%2Fdebian",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "debian:11"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-ce11db63b04c37ef",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/adduser@3.118%2Bdeb11u1?arch=all&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "adduser",
+   "sourceInfo": "built package from: adduser 3.118+deb11u1",
+   "versionInfo": "3.118+deb11u1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-c532a77816de3e97",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/apt@2.2.4?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "apt",
+   "sourceInfo": "built package from: apt 2.2.4",
+   "versionInfo": "2.2.4"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-fb5da21954af1d84",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/base-files@11.1%2Bdeb11u11?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "base-files",
+   "sourceInfo": "built package from: base-files 11.1+deb11u11",
+   "versionInfo": "11.1+deb11u11"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-e269d50b6f0a061c",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/base-passwd@3.5.51?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "base-passwd",
+   "sourceInfo": "built package from: base-passwd 3.5.51",
+   "versionInfo": "3.5.51"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-d15df77a185a77f4",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/bash@5.1-2%2Bdeb11u1?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "bash",
+   "sourceInfo": "built package from: bash 5.1-2+deb11u1",
+   "versionInfo": "5.1-2+deb11u1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-8ee5e3e114094241",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/bsdutils@2.36.1-8%2Bdeb11u2?arch=amd64&distro=debian-11.11&epoch=1",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "bsdutils",
+   "sourceInfo": "built package from: util-linux 2.36.1-8+deb11u2",
+   "versionInfo": "1:2.36.1-8+deb11u2"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-e8830f8abe91c2e",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/coreutils@8.32-4%2Bb1?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "coreutils",
+   "sourceInfo": "built package from: coreutils 8.32-4",
+   "versionInfo": "8.32-4+b1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-b3dbfac2c444b5ca",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/dash@0.5.11%2Bgit20200708%2Bdd9ef66-5?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "dash",
+   "sourceInfo": "built package from: dash 0.5.11+git20200708+dd9ef66-5",
+   "versionInfo": "0.5.11+git20200708+dd9ef66-5"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-e967aeeb4b4e411b",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/debconf@1.5.77?arch=all&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "debconf",
+   "sourceInfo": "built package from: debconf 1.5.77",
+   "versionInfo": "1.5.77"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-1407aff6aa747fcd",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/debian-archive-keyring@2021.1.1%2Bdeb11u1?arch=all&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "debian-archive-keyring",
+   "sourceInfo": "built package from: debian-archive-keyring 2021.1.1+deb11u1",
+   "versionInfo": "2021.1.1+deb11u1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-7fdfc82b182b16d2",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/debianutils@4.11.2?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "debianutils",
+   "sourceInfo": "built package from: debianutils 4.11.2",
+   "versionInfo": "4.11.2"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-bf80be2e73ce9a6b",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/diffutils@3.7-5?arch=amd64&distro=debian-11.11&epoch=1",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "diffutils",
+   "sourceInfo": "built package from: diffutils 1:3.7-5",
+   "versionInfo": "1:3.7-5"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-6ba3904ebf467303",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/dpkg@1.20.14?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "dpkg",
+   "sourceInfo": "built package from: dpkg 1.20.14",
+   "versionInfo": "1.20.14"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-c9a2ccebe4d06d86",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/e2fsprogs@1.46.2-2%2Bdeb11u1?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "e2fsprogs",
+   "sourceInfo": "built package from: e2fsprogs 1.46.2-2+deb11u1",
+   "versionInfo": "1.46.2-2+deb11u1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-874ba266ac851a9a",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/findutils@4.8.0-1?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "findutils",
+   "sourceInfo": "built package from: findutils 4.8.0-1",
+   "versionInfo": "4.8.0-1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-51fc363e0adff59",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/gcc-10-base@10.2.1-6?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "gcc-10-base",
+   "sourceInfo": "built package from: gcc-10 10.2.1-6",
+   "versionInfo": "10.2.1-6"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-b179dd1ab58a07ea",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/gcc-9-base@9.3.0-22?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "gcc-9-base",
+   "sourceInfo": "built package from: gcc-9 9.3.0-22",
+   "versionInfo": "9.3.0-22"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-6787de74f49512e6",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/gpgv@2.2.27-2%2Bdeb11u3?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "gpgv",
+   "sourceInfo": "built package from: gnupg2 2.2.27-2+deb11u3",
+   "versionInfo": "2.2.27-2+deb11u3"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-ef53bff40dd51ef2",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/grep@3.6-1%2Bdeb11u1?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "grep",
+   "sourceInfo": "built package from: grep 3.6-1+deb11u1",
+   "versionInfo": "3.6-1+deb11u1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-fa2e984d5d02aaf",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/gzip@1.10-4%2Bdeb11u1?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "gzip",
+   "sourceInfo": "built package from: gzip 1.10-4+deb11u1",
+   "versionInfo": "1.10-4+deb11u1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-95142539b82bd30f",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/hostname@3.23?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "hostname",
+   "sourceInfo": "built package from: hostname 3.23",
+   "versionInfo": "3.23"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-57c1836d6af48b1c",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/init-system-helpers@1.60?arch=all&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "init-system-helpers",
+   "sourceInfo": "built package from: init-system-helpers 1.60",
+   "versionInfo": "1.60"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-491193d0b95ab6a",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libacl1@2.2.53-10?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libacl1",
+   "sourceInfo": "built package from: acl 2.2.53-10",
+   "versionInfo": "2.2.53-10"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-f9bca99c75f1d909",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libapt-pkg6.0@2.2.4?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libapt-pkg6.0",
+   "sourceInfo": "built package from: apt 2.2.4",
+   "versionInfo": "2.2.4"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-674edbccd9631972",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libattr1@2.4.48-6?arch=amd64&distro=debian-11.11&epoch=1",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libattr1",
+   "sourceInfo": "built package from: attr 1:2.4.48-6",
+   "versionInfo": "1:2.4.48-6"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-a36456c9d0c48c23",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libaudit-common@3.0-2?arch=all&distro=debian-11.11&epoch=1",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libaudit-common",
+   "sourceInfo": "built package from: audit 1:3.0-2",
+   "versionInfo": "1:3.0-2"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-f4f25a54bbf9ba46",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libaudit1@3.0-2?arch=amd64&distro=debian-11.11&epoch=1",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libaudit1",
+   "sourceInfo": "built package from: audit 1:3.0-2",
+   "versionInfo": "1:3.0-2"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-ab681e4e0718897d",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libblkid1@2.36.1-8%2Bdeb11u2?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libblkid1",
+   "sourceInfo": "built package from: util-linux 2.36.1-8+deb11u2",
+   "versionInfo": "2.36.1-8+deb11u2"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-66a36697462517a1",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libbz2-1.0@1.0.8-4?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libbz2-1.0",
+   "sourceInfo": "built package from: bzip2 1.0.8-4",
+   "versionInfo": "1.0.8-4"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-afe6be789a04d701",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libc-bin@2.31-13%2Bdeb11u14?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libc-bin",
+   "sourceInfo": "built package from: glibc 2.31-13+deb11u14",
+   "versionInfo": "2.31-13+deb11u14"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-267ee7fceea4371d",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libc6@2.31-13%2Bdeb11u14?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libc6",
+   "sourceInfo": "built package from: glibc 2.31-13+deb11u14",
+   "versionInfo": "2.31-13+deb11u14"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-7efdf4959e370861",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libcap-ng0@0.7.9-2.2%2Bb1?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libcap-ng0",
+   "sourceInfo": "built package from: libcap-ng 0.7.9-2.2",
+   "versionInfo": "0.7.9-2.2+b1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-83e3561b4292b593",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libcom-err2@1.46.2-2%2Bdeb11u1?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libcom-err2",
+   "sourceInfo": "built package from: e2fsprogs 1.46.2-2+deb11u1",
+   "versionInfo": "1.46.2-2+deb11u1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-d8ef7a66d7dfaa0c",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libcrypt1@4.4.18-4?arch=amd64&distro=debian-11.11&epoch=1",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libcrypt1",
+   "sourceInfo": "built package from: libxcrypt 1:4.4.18-4",
+   "versionInfo": "1:4.4.18-4"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-8ae78b8b96069839",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libdb5.3@5.3.28%2Bdfsg1-0.8?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libdb5.3",
+   "sourceInfo": "built package from: db5.3 5.3.28+dfsg1-0.8",
+   "versionInfo": "5.3.28+dfsg1-0.8"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-ce4a139dd325860f",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libdebconfclient0@0.260?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libdebconfclient0",
+   "sourceInfo": "built package from: cdebconf 0.260",
+   "versionInfo": "0.260"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-3f329c1f8073a058",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libext2fs2@1.46.2-2%2Bdeb11u1?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libext2fs2",
+   "sourceInfo": "built package from: e2fsprogs 1.46.2-2+deb11u1",
+   "versionInfo": "1.46.2-2+deb11u1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-e7154a99d03ef0f8",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libffi7@3.3-6?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libffi7",
+   "sourceInfo": "built package from: libffi 3.3-6",
+   "versionInfo": "3.3-6"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-768007e8bdb6600e",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libgcc-s1@10.2.1-6?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libgcc-s1",
+   "sourceInfo": "built package from: gcc-10 10.2.1-6",
+   "versionInfo": "10.2.1-6"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-17f78d3649ec02e6",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libgcrypt20@1.8.7-6?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libgcrypt20",
+   "sourceInfo": "built package from: libgcrypt20 1.8.7-6",
+   "versionInfo": "1.8.7-6"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-2a45673a57d95973",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libgmp10@6.2.1%2Bdfsg-1%2Bdeb11u1?arch=amd64&distro=debian-11.11&epoch=2",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libgmp10",
+   "sourceInfo": "built package from: gmp 2:6.2.1+dfsg-1+deb11u1",
+   "versionInfo": "2:6.2.1+dfsg-1+deb11u1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-3fada90db99b2f9a",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libgnutls30@3.7.1-5%2Bdeb11u10?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libgnutls30",
+   "sourceInfo": "built package from: gnutls28 3.7.1-5+deb11u10",
+   "versionInfo": "3.7.1-5+deb11u10"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-207462d12641cae4",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libgpg-error0@1.38-2?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libgpg-error0",
+   "sourceInfo": "built package from: libgpg-error 1.38-2",
+   "versionInfo": "1.38-2"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-267ff2cee6d0d1aa",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libgssapi-krb5-2@1.18.3-6%2Bdeb11u8?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libgssapi-krb5-2",
+   "sourceInfo": "built package from: krb5 1.18.3-6+deb11u8",
+   "versionInfo": "1.18.3-6+deb11u8"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-2f8143086ba03441",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libhogweed6@3.7.3-1?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libhogweed6",
+   "sourceInfo": "built package from: nettle 3.7.3-1",
+   "versionInfo": "3.7.3-1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-9bac65eb63c74b3c",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libidn2-0@2.3.0-5?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libidn2-0",
+   "sourceInfo": "built package from: libidn2 2.3.0-5",
+   "versionInfo": "2.3.0-5"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-d4cfd54e4f1de7aa",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libk5crypto3@1.18.3-6%2Bdeb11u8?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libk5crypto3",
+   "sourceInfo": "built package from: krb5 1.18.3-6+deb11u8",
+   "versionInfo": "1.18.3-6+deb11u8"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-dfa14b8c360045b2",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libkeyutils1@1.6.1-2?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libkeyutils1",
+   "sourceInfo": "built package from: keyutils 1.6.1-2",
+   "versionInfo": "1.6.1-2"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-fcf431d648a6fffb",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libkrb5-3@1.18.3-6%2Bdeb11u8?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libkrb5-3",
+   "sourceInfo": "built package from: krb5 1.18.3-6+deb11u8",
+   "versionInfo": "1.18.3-6+deb11u8"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-c87586cd4cae509",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libkrb5support0@1.18.3-6%2Bdeb11u8?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libkrb5support0",
+   "sourceInfo": "built package from: krb5 1.18.3-6+deb11u8",
+   "versionInfo": "1.18.3-6+deb11u8"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-518307e965e996dc",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/liblz4-1@1.9.3-2?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "liblz4-1",
+   "sourceInfo": "built package from: lz4 1.9.3-2",
+   "versionInfo": "1.9.3-2"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-789f82900aa5862a",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/liblzma5@5.2.5-2.1~deb11u2?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "liblzma5",
+   "sourceInfo": "built package from: xz-utils 5.2.5-2.1~deb11u2",
+   "versionInfo": "5.2.5-2.1~deb11u2"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-3a8564ddecd2d7ce",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libmount1@2.36.1-8%2Bdeb11u2?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libmount1",
+   "sourceInfo": "built package from: util-linux 2.36.1-8+deb11u2",
+   "versionInfo": "2.36.1-8+deb11u2"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-2b03436ccd099305",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libnettle8@3.7.3-1?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libnettle8",
+   "sourceInfo": "built package from: nettle 3.7.3-1",
+   "versionInfo": "3.7.3-1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-b5b9057f7c460717",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libnsl2@1.3.0-2?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libnsl2",
+   "sourceInfo": "built package from: libnsl 1.3.0-2",
+   "versionInfo": "1.3.0-2"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-83e7e0d12f6c35d8",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libp11-kit0@0.23.22-1?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libp11-kit0",
+   "sourceInfo": "built package from: p11-kit 0.23.22-1",
+   "versionInfo": "0.23.22-1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-c322a1f99ba3f0d7",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libpam-modules@1.4.0-9%2Bdeb11u2?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libpam-modules",
+   "sourceInfo": "built package from: pam 1.4.0-9+deb11u2",
+   "versionInfo": "1.4.0-9+deb11u2"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-6fa48960b20ef4e9",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libpam-modules-bin@1.4.0-9%2Bdeb11u2?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libpam-modules-bin",
+   "sourceInfo": "built package from: pam 1.4.0-9+deb11u2",
+   "versionInfo": "1.4.0-9+deb11u2"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-e7d2c6020f88be9c",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libpam-runtime@1.4.0-9%2Bdeb11u2?arch=all&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libpam-runtime",
+   "sourceInfo": "built package from: pam 1.4.0-9+deb11u2",
+   "versionInfo": "1.4.0-9+deb11u2"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-fa8301717d980be1",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libpam0g@1.4.0-9%2Bdeb11u2?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libpam0g",
+   "sourceInfo": "built package from: pam 1.4.0-9+deb11u2",
+   "versionInfo": "1.4.0-9+deb11u2"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-da5aa9564f1950be",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libpcre2-8-0@10.36-2%2Bdeb11u1?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libpcre2-8-0",
+   "sourceInfo": "built package from: pcre2 10.36-2+deb11u1",
+   "versionInfo": "10.36-2+deb11u1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-65589238bcd1aa53",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libpcre3@8.39-13?arch=amd64&distro=debian-11.11&epoch=2",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libpcre3",
+   "sourceInfo": "built package from: pcre3 2:8.39-13",
+   "versionInfo": "2:8.39-13"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-2a3daa34f3a59f79",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libseccomp2@2.5.1-1%2Bdeb11u1?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libseccomp2",
+   "sourceInfo": "built package from: libseccomp 2.5.1-1+deb11u1",
+   "versionInfo": "2.5.1-1+deb11u1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-29a60bb64340a952",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libselinux1@3.1-3?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libselinux1",
+   "sourceInfo": "built package from: libselinux 3.1-3",
+   "versionInfo": "3.1-3"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-dfdf56edada3a781",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libsemanage-common@3.1-1?arch=all&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libsemanage-common",
+   "sourceInfo": "built package from: libsemanage 3.1-1",
+   "versionInfo": "3.1-1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-8d58617351fe6f01",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libsemanage1@3.1-1%2Bb2?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libsemanage1",
+   "sourceInfo": "built package from: libsemanage 3.1-1",
+   "versionInfo": "3.1-1+b2"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-19cfe462234f473a",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libsepol1@3.1-1%2Bdeb11u1?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libsepol1",
+   "sourceInfo": "built package from: libsepol 3.1-1+deb11u1",
+   "versionInfo": "3.1-1+deb11u1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-9738815adb8f64e1",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libsmartcols1@2.36.1-8%2Bdeb11u2?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libsmartcols1",
+   "sourceInfo": "built package from: util-linux 2.36.1-8+deb11u2",
+   "versionInfo": "2.36.1-8+deb11u2"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-9672aeb8a0b4574f",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libss2@1.46.2-2%2Bdeb11u1?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libss2",
+   "sourceInfo": "built package from: e2fsprogs 1.46.2-2+deb11u1",
+   "versionInfo": "1.46.2-2+deb11u1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-fb0179d58c769237",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libssl1.1@1.1.1w-0%2Bdeb11u8?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libssl1.1",
+   "sourceInfo": "built package from: openssl 1.1.1w-0+deb11u8",
+   "versionInfo": "1.1.1w-0+deb11u8"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-191898000b3d0216",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libstdc%2B%2B6@10.2.1-6?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libstdc++6",
+   "sourceInfo": "built package from: gcc-10 10.2.1-6",
+   "versionInfo": "10.2.1-6"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-543e07e4408b44e3",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libsystemd0@247.3-7%2Bdeb11u8?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libsystemd0",
+   "sourceInfo": "built package from: systemd 247.3-7+deb11u8",
+   "versionInfo": "247.3-7+deb11u8"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-9b7d28a7879b2bf",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libtasn1-6@4.16.0-2%2Bdeb11u2?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libtasn1-6",
+   "sourceInfo": "built package from: libtasn1-6 4.16.0-2+deb11u2",
+   "versionInfo": "4.16.0-2+deb11u2"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-186381660963766f",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libtinfo6@6.2%2B20201114-2%2Bdeb11u2?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libtinfo6",
+   "sourceInfo": "built package from: ncurses 6.2+20201114-2+deb11u2",
+   "versionInfo": "6.2+20201114-2+deb11u2"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-3a1c3cadeb5fffe3",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libtirpc-common@1.3.1-1%2Bdeb11u1?arch=all&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libtirpc-common",
+   "sourceInfo": "built package from: libtirpc 1.3.1-1+deb11u1",
+   "versionInfo": "1.3.1-1+deb11u1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-83bff1d2936c80d3",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libtirpc3@1.3.1-1%2Bdeb11u1?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libtirpc3",
+   "sourceInfo": "built package from: libtirpc 1.3.1-1+deb11u1",
+   "versionInfo": "1.3.1-1+deb11u1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-8b9baf989df14da5",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libudev1@247.3-7%2Bdeb11u8?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libudev1",
+   "sourceInfo": "built package from: systemd 247.3-7+deb11u8",
+   "versionInfo": "247.3-7+deb11u8"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-10f9b2b984a774b8",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libunistring2@0.9.10-4?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libunistring2",
+   "sourceInfo": "built package from: libunistring 0.9.10-4",
+   "versionInfo": "0.9.10-4"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-a15904c1570565d2",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libuuid1@2.36.1-8%2Bdeb11u2?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libuuid1",
+   "sourceInfo": "built package from: util-linux 2.36.1-8+deb11u2",
+   "versionInfo": "2.36.1-8+deb11u2"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-a51bb7828175a2a6",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libxxhash0@0.8.0-2?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libxxhash0",
+   "sourceInfo": "built package from: xxhash 0.8.0-2",
+   "versionInfo": "0.8.0-2"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-4339afb9d21b69c9",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/libzstd1@1.4.8%2Bdfsg-2.1?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "libzstd1",
+   "sourceInfo": "built package from: libzstd 1.4.8+dfsg-2.1",
+   "versionInfo": "1.4.8+dfsg-2.1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-fce149ce912c2db",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/login@4.8.1-1%2Bdeb11u1?arch=amd64&distro=debian-11.11&epoch=1",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "login",
+   "sourceInfo": "built package from: shadow 1:4.8.1-1+deb11u1",
+   "versionInfo": "1:4.8.1-1+deb11u1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-3e194f510552cc84",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/logsave@1.46.2-2%2Bdeb11u1?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "logsave",
+   "sourceInfo": "built package from: e2fsprogs 1.46.2-2+deb11u1",
+   "versionInfo": "1.46.2-2+deb11u1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-195e723cec851cd3",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/lsb-base@11.1.0?arch=all&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "lsb-base",
+   "sourceInfo": "built package from: lsb 11.1.0",
+   "versionInfo": "11.1.0"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-2da5c68b056c23a1",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/mawk@1.3.4.20200120-2?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "mawk",
+   "sourceInfo": "built package from: mawk 1.3.4.20200120-2",
+   "versionInfo": "1.3.4.20200120-2"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-3c6cc0caaba58140",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/mount@2.36.1-8%2Bdeb11u2?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "mount",
+   "sourceInfo": "built package from: util-linux 2.36.1-8+deb11u2",
+   "versionInfo": "2.36.1-8+deb11u2"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-a76825ea11a0e016",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/ncurses-base@6.2%2B20201114-2%2Bdeb11u2?arch=all&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "ncurses-base",
+   "sourceInfo": "built package from: ncurses 6.2+20201114-2+deb11u2",
+   "versionInfo": "6.2+20201114-2+deb11u2"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-c14b7d684bf2cdea",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/ncurses-bin@6.2%2B20201114-2%2Bdeb11u2?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "ncurses-bin",
+   "sourceInfo": "built package from: ncurses 6.2+20201114-2+deb11u2",
+   "versionInfo": "6.2+20201114-2+deb11u2"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-c08d3b766b954f66",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/passwd@4.8.1-1%2Bdeb11u1?arch=amd64&distro=debian-11.11&epoch=1",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "passwd",
+   "sourceInfo": "built package from: shadow 1:4.8.1-1+deb11u1",
+   "versionInfo": "1:4.8.1-1+deb11u1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-2891cd21599e6111",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/perl-base@5.32.1-4%2Bdeb11u5?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "perl-base",
+   "sourceInfo": "built package from: perl 5.32.1-4+deb11u5",
+   "versionInfo": "5.32.1-4+deb11u5"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-d08072ec6154cac1",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/sed@4.7-1?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "sed",
+   "sourceInfo": "built package from: sed 4.7-1",
+   "versionInfo": "4.7-1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-31c20bf93bbd5747",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/sysvinit-utils@2.96-7%2Bdeb11u1?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "sysvinit-utils",
+   "sourceInfo": "built package from: sysvinit 2.96-7+deb11u1",
+   "versionInfo": "2.96-7+deb11u1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-1bcab7cfe05f706f",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/tar@1.34%2Bdfsg-1%2Bdeb11u1?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "tar",
+   "sourceInfo": "built package from: tar 1.34+dfsg-1+deb11u1",
+   "versionInfo": "1.34+dfsg-1+deb11u1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-c18cdd650471b109",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/tzdata@2026b-0%2Bdeb11u1?arch=all&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "tzdata",
+   "sourceInfo": "built package from: tzdata 2026b-0+deb11u1",
+   "versionInfo": "2026b-0+deb11u1"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-36b07fed74792041",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/util-linux@2.36.1-8%2Bdeb11u2?arch=amd64&distro=debian-11.11",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "util-linux",
+   "sourceInfo": "built package from: util-linux 2.36.1-8+deb11u2",
+   "versionInfo": "2.36.1-8+deb11u2"
+  },
+  {
+   "SPDXID": "SPDXRef-Package-c3897063a4ab26c2",
+   "externalRefs": [
+    {
+     "referenceCategory": "PACKAGE-MANAGER",
+     "referenceLocator": "pkg:deb/debian/zlib1g@1.2.11.dfsg-2%2Bdeb11u2?arch=amd64&distro=debian-11.11&epoch=1",
+     "referenceType": "purl"
+    }
+   ],
+   "name": "zlib1g",
+   "sourceInfo": "built package from: zlib 1:1.2.11.dfsg-2+deb11u2",
+   "versionInfo": "1:1.2.11.dfsg-2+deb11u2"
+  }
+ ],
+ "spdxVersion": "SPDX-2.3"
+}

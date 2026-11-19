@@ -1,0 +1,1019 @@
+{
+ "bomFormat": "CycloneDX",
+ "components": [
+  {
+   "name": "acl",
+   "purl": "pkg:rpm/almalinux/acl@2.4.0-2.el9?arch=x86_64&distro=almalinux-9.9&upstream=acl-2.4.0-2.el9.src.rpm",
+   "type": "library",
+   "version": "2.4.0-2.el9"
+  },
+  {
+   "name": "almalinux-gpg-keys",
+   "purl": "pkg:rpm/almalinux/almalinux-gpg-keys@9.9-1.el9?arch=x86_64&distro=almalinux-9.9&upstream=almalinux-release-9.9-1.el9.src.rpm",
+   "type": "library",
+   "version": "9.9-1.el9"
+  },
+  {
+   "name": "almalinux-release",
+   "purl": "pkg:rpm/almalinux/almalinux-release@9.9-1.el9?arch=x86_64&distro=almalinux-9.9&upstream=almalinux-release-9.9-1.el9.src.rpm",
+   "type": "library",
+   "version": "9.9-1.el9"
+  },
+  {
+   "name": "almalinux-repos",
+   "purl": "pkg:rpm/almalinux/almalinux-repos@9.9-1.el9?arch=x86_64&distro=almalinux-9.9&upstream=almalinux-release-9.9-1.el9.src.rpm",
+   "type": "library",
+   "version": "9.9-1.el9"
+  },
+  {
+   "name": "alternatives",
+   "purl": "pkg:rpm/almalinux/alternatives@1.24-2.el9?arch=x86_64&distro=almalinux-9.9&upstream=chkconfig-1.24-2.el9.src.rpm",
+   "type": "library",
+   "version": "1.24-2.el9"
+  },
+  {
+   "name": "attr",
+   "purl": "pkg:rpm/almalinux/attr@2.6.0-2.el9?arch=x86_64&distro=almalinux-9.9&upstream=attr-2.6.0-2.el9.src.rpm",
+   "type": "library",
+   "version": "2.6.0-2.el9"
+  },
+  {
+   "name": "audit-libs",
+   "purl": "pkg:rpm/almalinux/audit-libs@3.1.5-9.el9?arch=x86_64&distro=almalinux-9.9&upstream=audit-3.1.5-9.el9.src.rpm",
+   "type": "library",
+   "version": "3.1.5-9.el9"
+  },
+  {
+   "name": "basesystem",
+   "purl": "pkg:rpm/almalinux/basesystem@11-13.el9?arch=noarch&distro=almalinux-9.9&upstream=basesystem-11-13.el9.src.rpm",
+   "type": "library",
+   "version": "11-13.el9"
+  },
+  {
+   "name": "bash",
+   "purl": "pkg:rpm/almalinux/bash@5.1.8-9.el9?arch=x86_64&distro=almalinux-9.9&upstream=bash-5.1.8-9.el9.src.rpm",
+   "type": "library",
+   "version": "5.1.8-9.el9"
+  },
+  {
+   "name": "binutils",
+   "purl": "pkg:rpm/almalinux/binutils@2.35.2-72.el9?arch=x86_64&distro=almalinux-9.9&upstream=binutils-2.35.2-72.el9.src.rpm",
+   "type": "library",
+   "version": "2.35.2-72.el9"
+  },
+  {
+   "name": "binutils-gold",
+   "purl": "pkg:rpm/almalinux/binutils-gold@2.35.2-72.el9?arch=x86_64&distro=almalinux-9.9&upstream=binutils-2.35.2-72.el9.src.rpm",
+   "type": "library",
+   "version": "2.35.2-72.el9"
+  },
+  {
+   "name": "bzip2-libs",
+   "purl": "pkg:rpm/almalinux/bzip2-libs@1.0.8-11.el9?arch=x86_64&distro=almalinux-9.9&upstream=bzip2-1.0.8-11.el9.src.rpm",
+   "type": "library",
+   "version": "1.0.8-11.el9"
+  },
+  {
+   "name": "ca-certificates",
+   "purl": "pkg:rpm/almalinux/ca-certificates@2026.2.92_v9.0.319-90.3.el9_8?arch=noarch&distro=almalinux-9.9&upstream=ca-certificates-2026.2.92_v9.0.319-90.3.el9_8.src.rpm",
+   "type": "library",
+   "version": "2026.2.92_v9.0.319-90.3.el9_8"
+  },
+  {
+   "name": "coreutils-single",
+   "purl": "pkg:rpm/almalinux/coreutils-single@8.32-43.el9?arch=x86_64&distro=almalinux-9.9&upstream=coreutils-8.32-43.el9.src.rpm",
+   "type": "library",
+   "version": "8.32-43.el9"
+  },
+  {
+   "name": "cracklib",
+   "purl": "pkg:rpm/almalinux/cracklib@2.9.6-28.el9?arch=x86_64&distro=almalinux-9.9&upstream=cracklib-2.9.6-28.el9.src.rpm",
+   "type": "library",
+   "version": "2.9.6-28.el9"
+  },
+  {
+   "name": "cracklib-dicts",
+   "purl": "pkg:rpm/almalinux/cracklib-dicts@2.9.6-28.el9?arch=x86_64&distro=almalinux-9.9&upstream=cracklib-2.9.6-28.el9.src.rpm",
+   "type": "library",
+   "version": "2.9.6-28.el9"
+  },
+  {
+   "name": "crypto-policies",
+   "purl": "pkg:rpm/almalinux/crypto-policies@20260714-1.git65b74f7.el9?arch=noarch&distro=almalinux-9.9&upstream=crypto-policies-20260714-1.git65b74f7.el9.src.rpm",
+   "type": "library",
+   "version": "20260714-1.git65b74f7.el9"
+  },
+  {
+   "name": "crypto-policies-scripts",
+   "purl": "pkg:rpm/almalinux/crypto-policies-scripts@20260714-1.git65b74f7.el9?arch=noarch&distro=almalinux-9.9&upstream=crypto-policies-20260714-1.git65b74f7.el9.src.rpm",
+   "type": "library",
+   "version": "20260714-1.git65b74f7.el9"
+  },
+  {
+   "name": "curl-minimal",
+   "purl": "pkg:rpm/almalinux/curl-minimal@7.76.1-43.el9?arch=x86_64&distro=almalinux-9.9&upstream=curl-7.76.1-43.el9.src.rpm",
+   "type": "library",
+   "version": "7.76.1-43.el9"
+  },
+  {
+   "name": "cyrus-sasl-lib",
+   "purl": "pkg:rpm/almalinux/cyrus-sasl-lib@2.1.27-22.el9?arch=x86_64&distro=almalinux-9.9&upstream=cyrus-sasl-2.1.27-22.el9.src.rpm",
+   "type": "library",
+   "version": "2.1.27-22.el9"
+  },
+  {
+   "name": "dbus",
+   "purl": "pkg:rpm/almalinux/dbus@1.12.20-10.el9?arch=x86_64&distro=almalinux-9.9&epoch=1&upstream=dbus-1.12.20-10.el9.src.rpm",
+   "type": "library",
+   "version": "1:1.12.20-10.el9"
+  },
+  {
+   "name": "dbus-broker",
+   "purl": "pkg:rpm/almalinux/dbus-broker@28-10.el9_9?arch=x86_64&distro=almalinux-9.9&upstream=dbus-broker-28-10.el9_9.src.rpm",
+   "type": "library",
+   "version": "28-10.el9_9"
+  },
+  {
+   "name": "dbus-common",
+   "purl": "pkg:rpm/almalinux/dbus-common@1.12.20-10.el9?arch=noarch&distro=almalinux-9.9&epoch=1&upstream=dbus-1.12.20-10.el9.src.rpm",
+   "type": "library",
+   "version": "1:1.12.20-10.el9"
+  },
+  {
+   "name": "dbus-libs",
+   "purl": "pkg:rpm/almalinux/dbus-libs@1.12.20-10.el9?arch=x86_64&distro=almalinux-9.9&epoch=1&upstream=dbus-1.12.20-10.el9.src.rpm",
+   "type": "library",
+   "version": "1:1.12.20-10.el9"
+  },
+  {
+   "name": "dbus-python",
+   "purl": "pkg:pypi/dbus-python@1.2.18",
+   "type": "library",
+   "version": "1.2.18"
+  },
+  {
+   "name": "dnf",
+   "purl": "pkg:rpm/almalinux/dnf@4.14.0-37.el9.alma.1?arch=noarch&distro=almalinux-9.9&upstream=dnf-4.14.0-37.el9.alma.1.src.rpm",
+   "type": "library",
+   "version": "4.14.0-37.el9.alma.1"
+  },
+  {
+   "name": "dnf-data",
+   "purl": "pkg:rpm/almalinux/dnf-data@4.14.0-37.el9.alma.1?arch=noarch&distro=almalinux-9.9&upstream=dnf-4.14.0-37.el9.alma.1.src.rpm",
+   "type": "library",
+   "version": "4.14.0-37.el9.alma.1"
+  },
+  {
+   "name": "elfutils-debuginfod-client",
+   "purl": "pkg:rpm/almalinux/elfutils-debuginfod-client@0.195-1.el9.alma.1?arch=x86_64&distro=almalinux-9.9&upstream=elfutils-0.195-1.el9.alma.1.src.rpm",
+   "type": "library",
+   "version": "0.195-1.el9.alma.1"
+  },
+  {
+   "name": "elfutils-default-yama-scope",
+   "purl": "pkg:rpm/almalinux/elfutils-default-yama-scope@0.195-1.el9.alma.1?arch=noarch&distro=almalinux-9.9&upstream=elfutils-0.195-1.el9.alma.1.src.rpm",
+   "type": "library",
+   "version": "0.195-1.el9.alma.1"
+  },
+  {
+   "name": "elfutils-libelf",
+   "purl": "pkg:rpm/almalinux/elfutils-libelf@0.195-1.el9.alma.1?arch=x86_64&distro=almalinux-9.9&upstream=elfutils-0.195-1.el9.alma.1.src.rpm",
+   "type": "library",
+   "version": "0.195-1.el9.alma.1"
+  },
+  {
+   "name": "elfutils-libs",
+   "purl": "pkg:rpm/almalinux/elfutils-libs@0.195-1.el9.alma.1?arch=x86_64&distro=almalinux-9.9&upstream=elfutils-0.195-1.el9.alma.1.src.rpm",
+   "type": "library",
+   "version": "0.195-1.el9.alma.1"
+  },
+  {
+   "name": "expat",
+   "purl": "pkg:rpm/almalinux/expat@2.5.0-9.el9_9.4?arch=x86_64&distro=almalinux-9.9&upstream=expat-2.5.0-9.el9_9.4.src.rpm",
+   "type": "library",
+   "version": "2.5.0-9.el9_9.4"
+  },
+  {
+   "name": "file-libs",
+   "purl": "pkg:rpm/almalinux/file-libs@5.39-19.el9?arch=x86_64&distro=almalinux-9.9&upstream=file-5.39-19.el9.src.rpm",
+   "type": "library",
+   "version": "5.39-19.el9"
+  },
+  {
+   "name": "filesystem",
+   "purl": "pkg:rpm/almalinux/filesystem@3.16-5.el9?arch=x86_64&distro=almalinux-9.9&upstream=filesystem-3.16-5.el9.src.rpm",
+   "type": "library",
+   "version": "3.16-5.el9"
+  },
+  {
+   "name": "findutils",
+   "purl": "pkg:rpm/almalinux/findutils@4.8.0-7.el9?arch=x86_64&distro=almalinux-9.9&epoch=1&upstream=findutils-4.8.0-7.el9.src.rpm",
+   "type": "library",
+   "version": "1:4.8.0-7.el9"
+  },
+  {
+   "name": "gawk",
+   "purl": "pkg:rpm/almalinux/gawk@5.1.0-7.el9?arch=x86_64&distro=almalinux-9.9&upstream=gawk-5.1.0-7.el9.src.rpm",
+   "type": "library",
+   "version": "5.1.0-7.el9"
+  },
+  {
+   "name": "gdbm-libs",
+   "purl": "pkg:rpm/almalinux/gdbm-libs@1.23-1.el9?arch=x86_64&distro=almalinux-9.9&epoch=1&upstream=gdbm-1.23-1.el9.src.rpm",
+   "type": "library",
+   "version": "1:1.23-1.el9"
+  },
+  {
+   "name": "glib2",
+   "purl": "pkg:rpm/almalinux/glib2@2.68.4-29.el9_9.1?arch=x86_64&distro=almalinux-9.9&upstream=glib2-2.68.4-29.el9_9.1.src.rpm",
+   "type": "library",
+   "version": "2.68.4-29.el9_9.1"
+  },
+  {
+   "name": "glibc",
+   "purl": "pkg:rpm/almalinux/glibc@2.34-290.el9_9?arch=x86_64&distro=almalinux-9.9&upstream=glibc-2.34-290.el9_9.src.rpm",
+   "type": "library",
+   "version": "2.34-290.el9_9"
+  },
+  {
+   "name": "glibc-common",
+   "purl": "pkg:rpm/almalinux/glibc-common@2.34-290.el9_9?arch=x86_64&distro=almalinux-9.9&upstream=glibc-2.34-290.el9_9.src.rpm",
+   "type": "library",
+   "version": "2.34-290.el9_9"
+  },
+  {
+   "name": "glibc-minimal-langpack",
+   "purl": "pkg:rpm/almalinux/glibc-minimal-langpack@2.34-290.el9_9?arch=x86_64&distro=almalinux-9.9&upstream=glibc-2.34-290.el9_9.src.rpm",
+   "type": "library",
+   "version": "2.34-290.el9_9"
+  },
+  {
+   "name": "gmp",
+   "purl": "pkg:rpm/almalinux/gmp@6.2.0-13.el9?arch=x86_64&distro=almalinux-9.9&epoch=1&upstream=gmp-6.2.0-13.el9.src.rpm",
+   "type": "library",
+   "version": "1:6.2.0-13.el9"
+  },
+  {
+   "name": "gnupg2",
+   "purl": "pkg:rpm/almalinux/gnupg2@2.3.3-5.el9_7?arch=x86_64&distro=almalinux-9.9&upstream=gnupg2-2.3.3-5.el9_7.src.rpm",
+   "type": "library",
+   "version": "2.3.3-5.el9_7"
+  },
+  {
+   "name": "gnutls",
+   "purl": "pkg:rpm/almalinux/gnutls@3.8.10-9.el9_8?arch=x86_64&distro=almalinux-9.9&upstream=gnutls-3.8.10-9.el9_8.src.rpm",
+   "type": "library",
+   "version": "3.8.10-9.el9_8"
+  },
+  {
+   "name": "gpg",
+   "purl": "pkg:pypi/gpg@1.15.1",
+   "type": "library",
+   "version": "1.15.1"
+  },
+  {
+   "name": "gpg-pubkey",
+   "purl": "pkg:rpm/almalinux/gpg-pubkey@b86b3716-61e69f29?distro=almalinux-9.9",
+   "type": "library",
+   "version": "b86b3716-61e69f29"
+  },
+  {
+   "name": "gpgme",
+   "purl": "pkg:rpm/almalinux/gpgme@1.15.1-6.el9?arch=x86_64&distro=almalinux-9.9&upstream=gpgme-1.15.1-6.el9.src.rpm",
+   "type": "library",
+   "version": "1.15.1-6.el9"
+  },
+  {
+   "name": "grep",
+   "purl": "pkg:rpm/almalinux/grep@3.6-5.el9?arch=x86_64&distro=almalinux-9.9&upstream=grep-3.6-5.el9.src.rpm",
+   "type": "library",
+   "version": "3.6-5.el9"
+  },
+  {
+   "name": "gzip",
+   "purl": "pkg:rpm/almalinux/gzip@1.12-2.el9_8?arch=x86_64&distro=almalinux-9.9&upstream=gzip-1.12-2.el9_8.src.rpm",
+   "type": "library",
+   "version": "1.12-2.el9_8"
+  },
+  {
+   "name": "hostname",
+   "purl": "pkg:rpm/almalinux/hostname@3.23-6.el9?arch=x86_64&distro=almalinux-9.9&upstream=hostname-3.23-6.el9.src.rpm",
+   "type": "library",
+   "version": "3.23-6.el9"
+  },
+  {
+   "name": "ima-evm-utils",
+   "purl": "pkg:rpm/almalinux/ima-evm-utils@1.6.2-4.el9?arch=x86_64&distro=almalinux-9.9&upstream=ima-evm-utils-1.6.2-4.el9.src.rpm",
+   "type": "library",
+   "version": "1.6.2-4.el9"
+  },
+  {
+   "name": "iputils",
+   "purl": "pkg:rpm/almalinux/iputils@20210202-15.el9_7?arch=x86_64&distro=almalinux-9.9&upstream=iputils-20210202-15.el9_7.src.rpm",
+   "type": "library",
+   "version": "20210202-15.el9_7"
+  },
+  {
+   "name": "json-c",
+   "purl": "pkg:rpm/almalinux/json-c@0.14-11.el9?arch=x86_64&distro=almalinux-9.9&upstream=json-c-0.14-11.el9.src.rpm",
+   "type": "library",
+   "version": "0.14-11.el9"
+  },
+  {
+   "name": "keyutils",
+   "purl": "pkg:rpm/almalinux/keyutils@1.6.3-1.el9?arch=x86_64&distro=almalinux-9.9&upstream=keyutils-1.6.3-1.el9.src.rpm",
+   "type": "library",
+   "version": "1.6.3-1.el9"
+  },
+  {
+   "name": "keyutils-libs",
+   "purl": "pkg:rpm/almalinux/keyutils-libs@1.6.3-1.el9?arch=x86_64&distro=almalinux-9.9&upstream=keyutils-1.6.3-1.el9.src.rpm",
+   "type": "library",
+   "version": "1.6.3-1.el9"
+  },
+  {
+   "name": "kmod-libs",
+   "purl": "pkg:rpm/almalinux/kmod-libs@28-11.el9?arch=x86_64&distro=almalinux-9.9&upstream=kmod-28-11.el9.src.rpm",
+   "type": "library",
+   "version": "28-11.el9"
+  },
+  {
+   "name": "krb5-libs",
+   "purl": "pkg:rpm/almalinux/krb5-libs@1.21.1-10.el9_8.1?arch=x86_64&distro=almalinux-9.9&upstream=krb5-1.21.1-10.el9_8.1.src.rpm",
+   "type": "library",
+   "version": "1.21.1-10.el9_8.1"
+  },
+  {
+   "name": "less",
+   "purl": "pkg:rpm/almalinux/less@590-6.el9?arch=x86_64&distro=almalinux-9.9&upstream=less-590-6.el9.src.rpm",
+   "type": "library",
+   "version": "590-6.el9"
+  },
+  {
+   "name": "libacl",
+   "purl": "pkg:rpm/almalinux/libacl@2.4.0-2.el9?arch=x86_64&distro=almalinux-9.9&upstream=acl-2.4.0-2.el9.src.rpm",
+   "type": "library",
+   "version": "2.4.0-2.el9"
+  },
+  {
+   "name": "libarchive",
+   "purl": "pkg:rpm/almalinux/libarchive@3.5.3-11.el9_8?arch=x86_64&distro=almalinux-9.9&upstream=libarchive-3.5.3-11.el9_8.src.rpm",
+   "type": "library",
+   "version": "3.5.3-11.el9_8"
+  },
+  {
+   "name": "libassuan",
+   "purl": "pkg:rpm/almalinux/libassuan@2.5.5-3.el9?arch=x86_64&distro=almalinux-9.9&upstream=libassuan-2.5.5-3.el9.src.rpm",
+   "type": "library",
+   "version": "2.5.5-3.el9"
+  },
+  {
+   "name": "libattr",
+   "purl": "pkg:rpm/almalinux/libattr@2.6.0-2.el9?arch=x86_64&distro=almalinux-9.9&upstream=attr-2.6.0-2.el9.src.rpm",
+   "type": "library",
+   "version": "2.6.0-2.el9"
+  },
+  {
+   "name": "libblkid",
+   "purl": "pkg:rpm/almalinux/libblkid@2.37.4-28.el9_9.1?arch=x86_64&distro=almalinux-9.9&upstream=util-linux-2.37.4-28.el9_9.1.src.rpm",
+   "type": "library",
+   "version": "2.37.4-28.el9_9.1"
+  },
+  {
+   "name": "libcap",
+   "purl": "pkg:rpm/almalinux/libcap@2.48-10.el9_8.1?arch=x86_64&distro=almalinux-9.9&upstream=libcap-2.48-10.el9_8.1.src.rpm",
+   "type": "library",
+   "version": "2.48-10.el9_8.1"
+  },
+  {
+   "name": "libcap-ng",
+   "purl": "pkg:rpm/almalinux/libcap-ng@0.8.2-7.el9?arch=x86_64&distro=almalinux-9.9&upstream=libcap-ng-0.8.2-7.el9.src.rpm",
+   "type": "library",
+   "version": "0.8.2-7.el9"
+  },
+  {
+   "name": "libcom_err",
+   "purl": "pkg:rpm/almalinux/libcom_err@1.46.5-8.el9?arch=x86_64&distro=almalinux-9.9&upstream=e2fsprogs-1.46.5-8.el9.src.rpm",
+   "type": "library",
+   "version": "1.46.5-8.el9"
+  },
+  {
+   "name": "libcomps",
+   "purl": "pkg:pypi/libcomps@0.1.18",
+   "type": "library",
+   "version": "0.1.18"
+  },
+  {
+   "name": "libcomps",
+   "purl": "pkg:rpm/almalinux/libcomps@0.1.18-1.el9?arch=x86_64&distro=almalinux-9.9&upstream=libcomps-0.1.18-1.el9.src.rpm",
+   "type": "library",
+   "version": "0.1.18-1.el9"
+  },
+  {
+   "name": "libcurl-minimal",
+   "purl": "pkg:rpm/almalinux/libcurl-minimal@7.76.1-43.el9?arch=x86_64&distro=almalinux-9.9&upstream=curl-7.76.1-43.el9.src.rpm",
+   "type": "library",
+   "version": "7.76.1-43.el9"
+  },
+  {
+   "name": "libdb",
+   "purl": "pkg:rpm/almalinux/libdb@5.3.28-57.el9_6?arch=x86_64&distro=almalinux-9.9&upstream=libdb-5.3.28-57.el9_6.src.rpm",
+   "type": "library",
+   "version": "5.3.28-57.el9_6"
+  },
+  {
+   "name": "libdnf",
+   "purl": "pkg:rpm/almalinux/libdnf@0.69.0-20.el9.alma.1?arch=x86_64&distro=almalinux-9.9&upstream=libdnf-0.69.0-20.el9.alma.1.src.rpm",
+   "type": "library",
+   "version": "0.69.0-20.el9.alma.1"
+  },
+  {
+   "name": "libeconf",
+   "purl": "pkg:rpm/almalinux/libeconf@0.4.1-7.el9_8?arch=x86_64&distro=almalinux-9.9&upstream=libeconf-0.4.1-7.el9_8.src.rpm",
+   "type": "library",
+   "version": "0.4.1-7.el9_8"
+  },
+  {
+   "name": "libevent",
+   "purl": "pkg:rpm/almalinux/libevent@2.1.13-1.el9_8?arch=x86_64&distro=almalinux-9.9&upstream=libevent-2.1.13-1.el9_8.src.rpm",
+   "type": "library",
+   "version": "2.1.13-1.el9_8"
+  },
+  {
+   "name": "libfdisk",
+   "purl": "pkg:rpm/almalinux/libfdisk@2.37.4-28.el9_9.1?arch=x86_64&distro=almalinux-9.9&upstream=util-linux-2.37.4-28.el9_9.1.src.rpm",
+   "type": "library",
+   "version": "2.37.4-28.el9_9.1"
+  },
+  {
+   "name": "libffi",
+   "purl": "pkg:rpm/almalinux/libffi@3.4.2-8.el9?arch=x86_64&distro=almalinux-9.9&upstream=libffi-3.4.2-8.el9.src.rpm",
+   "type": "library",
+   "version": "3.4.2-8.el9"
+  },
+  {
+   "name": "libgcc",
+   "purl": "pkg:rpm/almalinux/libgcc@11.5.0-17.el9_9.alma.1?arch=x86_64&distro=almalinux-9.9&upstream=gcc-11.5.0-17.el9_9.alma.1.src.rpm",
+   "type": "library",
+   "version": "11.5.0-17.el9_9.alma.1"
+  },
+  {
+   "name": "libgcrypt",
+   "purl": "pkg:rpm/almalinux/libgcrypt@1.10.0-13.el9_8?arch=x86_64&distro=almalinux-9.9&upstream=libgcrypt-1.10.0-13.el9_8.src.rpm",
+   "type": "library",
+   "version": "1.10.0-13.el9_8"
+  },
+  {
+   "name": "libgomp",
+   "purl": "pkg:rpm/almalinux/libgomp@11.5.0-17.el9_9.alma.1?arch=x86_64&distro=almalinux-9.9&upstream=gcc-11.5.0-17.el9_9.alma.1.src.rpm",
+   "type": "library",
+   "version": "11.5.0-17.el9_9.alma.1"
+  },
+  {
+   "name": "libgpg-error",
+   "purl": "pkg:rpm/almalinux/libgpg-error@1.42-5.el9?arch=x86_64&distro=almalinux-9.9&upstream=libgpg-error-1.42-5.el9.src.rpm",
+   "type": "library",
+   "version": "1.42-5.el9"
+  },
+  {
+   "name": "libidn2",
+   "purl": "pkg:rpm/almalinux/libidn2@2.3.0-7.el9?arch=x86_64&distro=almalinux-9.9&upstream=libidn2-2.3.0-7.el9.src.rpm",
+   "type": "library",
+   "version": "2.3.0-7.el9"
+  },
+  {
+   "name": "libksba",
+   "purl": "pkg:rpm/almalinux/libksba@1.5.1-7.el9?arch=x86_64&distro=almalinux-9.9&upstream=libksba-1.5.1-7.el9.src.rpm",
+   "type": "library",
+   "version": "1.5.1-7.el9"
+  },
+  {
+   "name": "libmodulemd",
+   "purl": "pkg:rpm/almalinux/libmodulemd@2.13.0-2.el9?arch=x86_64&distro=almalinux-9.9&upstream=libmodulemd-2.13.0-2.el9.src.rpm",
+   "type": "library",
+   "version": "2.13.0-2.el9"
+  },
+  {
+   "name": "libmount",
+   "purl": "pkg:rpm/almalinux/libmount@2.37.4-28.el9_9.1?arch=x86_64&distro=almalinux-9.9&upstream=util-linux-2.37.4-28.el9_9.1.src.rpm",
+   "type": "library",
+   "version": "2.37.4-28.el9_9.1"
+  },
+  {
+   "name": "libnghttp2",
+   "purl": "pkg:rpm/almalinux/libnghttp2@1.43.0-8.el9?arch=x86_64&distro=almalinux-9.9&upstream=nghttp2-1.43.0-8.el9.src.rpm",
+   "type": "library",
+   "version": "1.43.0-8.el9"
+  },
+  {
+   "name": "libpwquality",
+   "purl": "pkg:rpm/almalinux/libpwquality@1.4.4-8.el9?arch=x86_64&distro=almalinux-9.9&upstream=libpwquality-1.4.4-8.el9.src.rpm",
+   "type": "library",
+   "version": "1.4.4-8.el9"
+  },
+  {
+   "name": "librepo",
+   "purl": "pkg:rpm/almalinux/librepo@1.19.0-1.el9?arch=x86_64&distro=almalinux-9.9&upstream=librepo-1.19.0-1.el9.src.rpm",
+   "type": "library",
+   "version": "1.19.0-1.el9"
+  },
+  {
+   "name": "libreport-filesystem",
+   "purl": "pkg:rpm/almalinux/libreport-filesystem@2.15.2-6.el9.alma?arch=noarch&distro=almalinux-9.9&upstream=libreport-2.15.2-6.el9.alma.src.rpm",
+   "type": "library",
+   "version": "2.15.2-6.el9.alma"
+  },
+  {
+   "name": "libseccomp",
+   "purl": "pkg:rpm/almalinux/libseccomp@2.5.6-1.el9?arch=x86_64&distro=almalinux-9.9&upstream=libseccomp-2.5.6-1.el9.src.rpm",
+   "type": "library",
+   "version": "2.5.6-1.el9"
+  },
+  {
+   "name": "libselinux",
+   "purl": "pkg:rpm/almalinux/libselinux@3.6-4.el9?arch=x86_64&distro=almalinux-9.9&upstream=libselinux-3.6-4.el9.src.rpm",
+   "type": "library",
+   "version": "3.6-4.el9"
+  },
+  {
+   "name": "libsemanage",
+   "purl": "pkg:rpm/almalinux/libsemanage@3.6-5.el9_6?arch=x86_64&distro=almalinux-9.9&upstream=libsemanage-3.6-5.el9_6.src.rpm",
+   "type": "library",
+   "version": "3.6-5.el9_6"
+  },
+  {
+   "name": "libsepol",
+   "purl": "pkg:rpm/almalinux/libsepol@3.6-3.el9?arch=x86_64&distro=almalinux-9.9&upstream=libsepol-3.6-3.el9.src.rpm",
+   "type": "library",
+   "version": "3.6-3.el9"
+  },
+  {
+   "name": "libsigsegv",
+   "purl": "pkg:rpm/almalinux/libsigsegv@2.13-4.el9?arch=x86_64&distro=almalinux-9.9&upstream=libsigsegv-2.13-4.el9.src.rpm",
+   "type": "library",
+   "version": "2.13-4.el9"
+  },
+  {
+   "name": "libsmartcols",
+   "purl": "pkg:rpm/almalinux/libsmartcols@2.37.4-28.el9_9.1?arch=x86_64&distro=almalinux-9.9&upstream=util-linux-2.37.4-28.el9_9.1.src.rpm",
+   "type": "library",
+   "version": "2.37.4-28.el9_9.1"
+  },
+  {
+   "name": "libsolv",
+   "purl": "pkg:rpm/almalinux/libsolv@0.7.24-6.el9_8?arch=x86_64&distro=almalinux-9.9&upstream=libsolv-0.7.24-6.el9_8.src.rpm",
+   "type": "library",
+   "version": "0.7.24-6.el9_8"
+  },
+  {
+   "name": "libstdc++",
+   "purl": "pkg:rpm/almalinux/libstdc%2B%2B@11.5.0-17.el9_9.alma.1?arch=x86_64&distro=almalinux-9.9&upstream=gcc-11.5.0-17.el9_9.alma.1.src.rpm",
+   "type": "library",
+   "version": "11.5.0-17.el9_9.alma.1"
+  },
+  {
+   "name": "libtasn1",
+   "purl": "pkg:rpm/almalinux/libtasn1@4.16.0-10.el9_8?arch=x86_64&distro=almalinux-9.9&upstream=libtasn1-4.16.0-10.el9_8.src.rpm",
+   "type": "library",
+   "version": "4.16.0-10.el9_8"
+  },
+  {
+   "name": "libtool-ltdl",
+   "purl": "pkg:rpm/almalinux/libtool-ltdl@2.4.6-46.el9?arch=x86_64&distro=almalinux-9.9&upstream=libtool-2.4.6-46.el9.src.rpm",
+   "type": "library",
+   "version": "2.4.6-46.el9"
+  },
+  {
+   "name": "libunistring",
+   "purl": "pkg:rpm/almalinux/libunistring@0.9.10-15.el9?arch=x86_64&distro=almalinux-9.9&upstream=libunistring-0.9.10-15.el9.src.rpm",
+   "type": "library",
+   "version": "0.9.10-15.el9"
+  },
+  {
+   "name": "libutempter",
+   "purl": "pkg:rpm/almalinux/libutempter@1.2.1-6.el9?arch=x86_64&distro=almalinux-9.9&upstream=libutempter-1.2.1-6.el9.src.rpm",
+   "type": "library",
+   "version": "1.2.1-6.el9"
+  },
+  {
+   "name": "libuuid",
+   "purl": "pkg:rpm/almalinux/libuuid@2.37.4-28.el9_9.1?arch=x86_64&distro=almalinux-9.9&upstream=util-linux-2.37.4-28.el9_9.1.src.rpm",
+   "type": "library",
+   "version": "2.37.4-28.el9_9.1"
+  },
+  {
+   "name": "libverto",
+   "purl": "pkg:rpm/almalinux/libverto@0.3.2-3.el9?arch=x86_64&distro=almalinux-9.9&upstream=libverto-0.3.2-3.el9.src.rpm",
+   "type": "library",
+   "version": "0.3.2-3.el9"
+  },
+  {
+   "name": "libxcrypt",
+   "purl": "pkg:rpm/almalinux/libxcrypt@4.4.18-3.el9?arch=x86_64&distro=almalinux-9.9&upstream=libxcrypt-4.4.18-3.el9.src.rpm",
+   "type": "library",
+   "version": "4.4.18-3.el9"
+  },
+  {
+   "name": "libxml2",
+   "purl": "pkg:rpm/almalinux/libxml2@2.9.13-18.el9_9.1?arch=x86_64&distro=almalinux-9.9&upstream=libxml2-2.9.13-18.el9_9.1.src.rpm",
+   "type": "library",
+   "version": "2.9.13-18.el9_9.1"
+  },
+  {
+   "name": "libyaml",
+   "purl": "pkg:rpm/almalinux/libyaml@0.2.5-7.el9?arch=x86_64&distro=almalinux-9.9&upstream=libyaml-0.2.5-7.el9.src.rpm",
+   "type": "library",
+   "version": "0.2.5-7.el9"
+  },
+  {
+   "name": "libzstd",
+   "purl": "pkg:rpm/almalinux/libzstd@1.5.5-1.el9?arch=x86_64&distro=almalinux-9.9&upstream=zstd-1.5.5-1.el9.src.rpm",
+   "type": "library",
+   "version": "1.5.5-1.el9"
+  },
+  {
+   "name": "lua-libs",
+   "purl": "pkg:rpm/almalinux/lua-libs@5.4.4-4.el9?arch=x86_64&distro=almalinux-9.9&upstream=lua-5.4.4-4.el9.src.rpm",
+   "type": "library",
+   "version": "5.4.4-4.el9"
+  },
+  {
+   "name": "lz4-libs",
+   "purl": "pkg:rpm/almalinux/lz4-libs@1.9.3-5.el9?arch=x86_64&distro=almalinux-9.9&upstream=lz4-1.9.3-5.el9.src.rpm",
+   "type": "library",
+   "version": "1.9.3-5.el9"
+  },
+  {
+   "name": "mpfr",
+   "purl": "pkg:rpm/almalinux/mpfr@4.1.0-10.el9?arch=x86_64&distro=almalinux-9.9&upstream=mpfr-4.1.0-10.el9.src.rpm",
+   "type": "library",
+   "version": "4.1.0-10.el9"
+  },
+  {
+   "name": "ncurses-base",
+   "purl": "pkg:rpm/almalinux/ncurses-base@6.2-12.20210508.el9?arch=noarch&distro=almalinux-9.9&upstream=ncurses-6.2-12.20210508.el9.src.rpm",
+   "type": "library",
+   "version": "6.2-12.20210508.el9"
+  },
+  {
+   "name": "ncurses-libs",
+   "purl": "pkg:rpm/almalinux/ncurses-libs@6.2-12.20210508.el9?arch=x86_64&distro=almalinux-9.9&upstream=ncurses-6.2-12.20210508.el9.src.rpm",
+   "type": "library",
+   "version": "6.2-12.20210508.el9"
+  },
+  {
+   "name": "nettle",
+   "purl": "pkg:rpm/almalinux/nettle@3.10.1-1.el9?arch=x86_64&distro=almalinux-9.9&upstream=nettle-3.10.1-1.el9.src.rpm",
+   "type": "library",
+   "version": "3.10.1-1.el9"
+  },
+  {
+   "name": "npth",
+   "purl": "pkg:rpm/almalinux/npth@1.6-8.el9?arch=x86_64&distro=almalinux-9.9&upstream=npth-1.6-8.el9.src.rpm",
+   "type": "library",
+   "version": "1.6-8.el9"
+  },
+  {
+   "name": "openldap",
+   "purl": "pkg:rpm/almalinux/openldap@2.6.13-1.el9?arch=x86_64&distro=almalinux-9.9&upstream=openldap-2.6.13-1.el9.src.rpm",
+   "type": "library",
+   "version": "2.6.13-1.el9"
+  },
+  {
+   "name": "openssl",
+   "purl": "pkg:rpm/almalinux/openssl@3.5.9-1.el9_9?arch=x86_64&distro=almalinux-9.9&epoch=1&upstream=openssl-3.5.9-1.el9_9.src.rpm",
+   "type": "library",
+   "version": "1:3.5.9-1.el9_9"
+  },
+  {
+   "name": "openssl-fips-provider",
+   "purl": "pkg:rpm/almalinux/openssl-fips-provider@3.5.9-1.el9_9?arch=x86_64&distro=almalinux-9.9&epoch=1&upstream=openssl-3.5.9-1.el9_9.src.rpm",
+   "type": "library",
+   "version": "1:3.5.9-1.el9_9"
+  },
+  {
+   "name": "openssl-libs",
+   "purl": "pkg:rpm/almalinux/openssl-libs@3.5.9-1.el9_9?arch=x86_64&distro=almalinux-9.9&epoch=1&upstream=openssl-3.5.9-1.el9_9.src.rpm",
+   "type": "library",
+   "version": "1:3.5.9-1.el9_9"
+  },
+  {
+   "name": "p11-kit",
+   "purl": "pkg:rpm/almalinux/p11-kit@0.26.4-1.el9_8?arch=x86_64&distro=almalinux-9.9&upstream=p11-kit-0.26.4-1.el9_8.src.rpm",
+   "type": "library",
+   "version": "0.26.4-1.el9_8"
+  },
+  {
+   "name": "p11-kit-trust",
+   "purl": "pkg:rpm/almalinux/p11-kit-trust@0.26.4-1.el9_8?arch=x86_64&distro=almalinux-9.9&upstream=p11-kit-0.26.4-1.el9_8.src.rpm",
+   "type": "library",
+   "version": "0.26.4-1.el9_8"
+  },
+  {
+   "name": "pam",
+   "purl": "pkg:rpm/almalinux/pam@1.5.1-29.el9?arch=x86_64&distro=almalinux-9.9&upstream=pam-1.5.1-29.el9.src.rpm",
+   "type": "library",
+   "version": "1.5.1-29.el9"
+  },
+  {
+   "name": "pcre",
+   "purl": "pkg:rpm/almalinux/pcre@8.44-4.el9?arch=x86_64&distro=almalinux-9.9&upstream=pcre-8.44-4.el9.src.rpm",
+   "type": "library",
+   "version": "8.44-4.el9"
+  },
+  {
+   "name": "pcre2",
+   "purl": "pkg:rpm/almalinux/pcre2@10.40-7.el9_8?arch=x86_64&distro=almalinux-9.9&upstream=pcre2-10.40-7.el9_8.src.rpm",
+   "type": "library",
+   "version": "10.40-7.el9_8"
+  },
+  {
+   "name": "pcre2-syntax",
+   "purl": "pkg:rpm/almalinux/pcre2-syntax@10.40-7.el9_8?arch=noarch&distro=almalinux-9.9&upstream=pcre2-10.40-7.el9_8.src.rpm",
+   "type": "library",
+   "version": "10.40-7.el9_8"
+  },
+  {
+   "name": "popt",
+   "purl": "pkg:rpm/almalinux/popt@1.18-8.el9?arch=x86_64&distro=almalinux-9.9&upstream=popt-1.18-8.el9.src.rpm",
+   "type": "library",
+   "version": "1.18-8.el9"
+  },
+  {
+   "name": "python-dateutil",
+   "purl": "pkg:pypi/python-dateutil@2.9.0.post0",
+   "type": "library",
+   "version": "2.9.0.post0"
+  },
+  {
+   "name": "python3",
+   "purl": "pkg:rpm/almalinux/python3@3.9.25-16.el9_9?arch=x86_64&distro=almalinux-9.9&upstream=python3.9-3.9.25-16.el9_9.src.rpm",
+   "type": "library",
+   "version": "3.9.25-16.el9_9"
+  },
+  {
+   "name": "python3-dateutil",
+   "purl": "pkg:rpm/almalinux/python3-dateutil@2.9.0.post0-1.el9_7?arch=noarch&distro=almalinux-9.9&epoch=1&upstream=python-dateutil-2.9.0.post0-1.el9_7.src.rpm",
+   "type": "library",
+   "version": "1:2.9.0.post0-1.el9_7"
+  },
+  {
+   "name": "python3-dbus",
+   "purl": "pkg:rpm/almalinux/python3-dbus@1.2.18-2.el9?arch=x86_64&distro=almalinux-9.9&upstream=dbus-python-1.2.18-2.el9.src.rpm",
+   "type": "library",
+   "version": "1.2.18-2.el9"
+  },
+  {
+   "name": "python3-dnf",
+   "purl": "pkg:rpm/almalinux/python3-dnf@4.14.0-37.el9.alma.1?arch=noarch&distro=almalinux-9.9&upstream=dnf-4.14.0-37.el9.alma.1.src.rpm",
+   "type": "library",
+   "version": "4.14.0-37.el9.alma.1"
+  },
+  {
+   "name": "python3-dnf-plugins-core",
+   "purl": "pkg:rpm/almalinux/python3-dnf-plugins-core@4.3.0-27.el9?arch=noarch&distro=almalinux-9.9&upstream=dnf-plugins-core-4.3.0-27.el9.src.rpm",
+   "type": "library",
+   "version": "4.3.0-27.el9"
+  },
+  {
+   "name": "python3-gpg",
+   "purl": "pkg:rpm/almalinux/python3-gpg@1.15.1-6.el9?arch=x86_64&distro=almalinux-9.9&upstream=gpgme-1.15.1-6.el9.src.rpm",
+   "type": "library",
+   "version": "1.15.1-6.el9"
+  },
+  {
+   "name": "python3-hawkey",
+   "purl": "pkg:rpm/almalinux/python3-hawkey@0.69.0-20.el9.alma.1?arch=x86_64&distro=almalinux-9.9&upstream=libdnf-0.69.0-20.el9.alma.1.src.rpm",
+   "type": "library",
+   "version": "0.69.0-20.el9.alma.1"
+  },
+  {
+   "name": "python3-libcomps",
+   "purl": "pkg:rpm/almalinux/python3-libcomps@0.1.18-1.el9?arch=x86_64&distro=almalinux-9.9&upstream=libcomps-0.1.18-1.el9.src.rpm",
+   "type": "library",
+   "version": "0.1.18-1.el9"
+  },
+  {
+   "name": "python3-libdnf",
+   "purl": "pkg:rpm/almalinux/python3-libdnf@0.69.0-20.el9.alma.1?arch=x86_64&distro=almalinux-9.9&upstream=libdnf-0.69.0-20.el9.alma.1.src.rpm",
+   "type": "library",
+   "version": "0.69.0-20.el9.alma.1"
+  },
+  {
+   "name": "python3-libs",
+   "purl": "pkg:rpm/almalinux/python3-libs@3.9.25-16.el9_9?arch=x86_64&distro=almalinux-9.9&upstream=python3.9-3.9.25-16.el9_9.src.rpm",
+   "type": "library",
+   "version": "3.9.25-16.el9_9"
+  },
+  {
+   "name": "python3-pip-wheel",
+   "purl": "pkg:rpm/almalinux/python3-pip-wheel@21.3.1-2.el9_8?arch=noarch&distro=almalinux-9.9&upstream=python-pip-21.3.1-2.el9_8.src.rpm",
+   "type": "library",
+   "version": "21.3.1-2.el9_8"
+  },
+  {
+   "name": "python3-rpm",
+   "purl": "pkg:rpm/almalinux/python3-rpm@4.16.1.3-43.el9_9?arch=x86_64&distro=almalinux-9.9&upstream=rpm-4.16.1.3-43.el9_9.src.rpm",
+   "type": "library",
+   "version": "4.16.1.3-43.el9_9"
+  },
+  {
+   "name": "python3-setuptools-wheel",
+   "purl": "pkg:rpm/almalinux/python3-setuptools-wheel@53.0.0-15.el9?arch=noarch&distro=almalinux-9.9&upstream=python-setuptools-53.0.0-15.el9.src.rpm",
+   "type": "library",
+   "version": "53.0.0-15.el9"
+  },
+  {
+   "name": "python3-six",
+   "purl": "pkg:rpm/almalinux/python3-six@1.15.0-9.el9?arch=noarch&distro=almalinux-9.9&upstream=python-six-1.15.0-9.el9.src.rpm",
+   "type": "library",
+   "version": "1.15.0-9.el9"
+  },
+  {
+   "name": "python3-systemd",
+   "purl": "pkg:rpm/almalinux/python3-systemd@234-19.el9?arch=x86_64&distro=almalinux-9.9&upstream=python-systemd-234-19.el9.src.rpm",
+   "type": "library",
+   "version": "234-19.el9"
+  },
+  {
+   "name": "readline",
+   "purl": "pkg:rpm/almalinux/readline@8.1-4.el9?arch=x86_64&distro=almalinux-9.9&upstream=readline-8.1-4.el9.src.rpm",
+   "type": "library",
+   "version": "8.1-4.el9"
+  },
+  {
+   "name": "rootfiles",
+   "purl": "pkg:rpm/almalinux/rootfiles@8.1-35.el9?arch=noarch&distro=almalinux-9.9&upstream=rootfiles-8.1-35.el9.src.rpm",
+   "type": "library",
+   "version": "8.1-35.el9"
+  },
+  {
+   "name": "rpm",
+   "purl": "pkg:pypi/rpm@4.16.1.3",
+   "type": "library",
+   "version": "4.16.1.3"
+  },
+  {
+   "name": "rpm",
+   "purl": "pkg:rpm/almalinux/rpm@4.16.1.3-43.el9_9?arch=x86_64&distro=almalinux-9.9&upstream=rpm-4.16.1.3-43.el9_9.src.rpm",
+   "type": "library",
+   "version": "4.16.1.3-43.el9_9"
+  },
+  {
+   "name": "rpm-build-libs",
+   "purl": "pkg:rpm/almalinux/rpm-build-libs@4.16.1.3-43.el9_9?arch=x86_64&distro=almalinux-9.9&upstream=rpm-4.16.1.3-43.el9_9.src.rpm",
+   "type": "library",
+   "version": "4.16.1.3-43.el9_9"
+  },
+  {
+   "name": "rpm-libs",
+   "purl": "pkg:rpm/almalinux/rpm-libs@4.16.1.3-43.el9_9?arch=x86_64&distro=almalinux-9.9&upstream=rpm-4.16.1.3-43.el9_9.src.rpm",
+   "type": "library",
+   "version": "4.16.1.3-43.el9_9"
+  },
+  {
+   "name": "rpm-sign-libs",
+   "purl": "pkg:rpm/almalinux/rpm-sign-libs@4.16.1.3-43.el9_9?arch=x86_64&distro=almalinux-9.9&upstream=rpm-4.16.1.3-43.el9_9.src.rpm",
+   "type": "library",
+   "version": "4.16.1.3-43.el9_9"
+  },
+  {
+   "name": "sed",
+   "purl": "pkg:rpm/almalinux/sed@4.8-10.el9?arch=x86_64&distro=almalinux-9.9&upstream=sed-4.8-10.el9.src.rpm",
+   "type": "library",
+   "version": "4.8-10.el9"
+  },
+  {
+   "name": "setup",
+   "purl": "pkg:rpm/almalinux/setup@2.13.7-10.el9?arch=noarch&distro=almalinux-9.9&upstream=setup-2.13.7-10.el9.src.rpm",
+   "type": "library",
+   "version": "2.13.7-10.el9"
+  },
+  {
+   "name": "shadow-utils",
+   "purl": "pkg:rpm/almalinux/shadow-utils@4.9-17.el9?arch=x86_64&distro=almalinux-9.9&epoch=2&upstream=shadow-utils-4.9-17.el9.src.rpm",
+   "type": "library",
+   "version": "2:4.9-17.el9"
+  },
+  {
+   "name": "six",
+   "purl": "pkg:pypi/six@1.15.0",
+   "type": "library",
+   "version": "1.15.0"
+  },
+  {
+   "name": "sqlite-libs",
+   "purl": "pkg:rpm/almalinux/sqlite-libs@3.34.1-11.el9_8?arch=x86_64&distro=almalinux-9.9&upstream=sqlite-3.34.1-11.el9_8.src.rpm",
+   "type": "library",
+   "version": "3.34.1-11.el9_8"
+  },
+  {
+   "name": "systemd",
+   "purl": "pkg:rpm/almalinux/systemd@252-79.el9_9.alma.1?arch=x86_64&distro=almalinux-9.9&upstream=systemd-252-79.el9_9.alma.1.src.rpm",
+   "type": "library",
+   "version": "252-79.el9_9.alma.1"
+  },
+  {
+   "name": "systemd-libs",
+   "purl": "pkg:rpm/almalinux/systemd-libs@252-79.el9_9.alma.1?arch=x86_64&distro=almalinux-9.9&upstream=systemd-252-79.el9_9.alma.1.src.rpm",
+   "type": "library",
+   "version": "252-79.el9_9.alma.1"
+  },
+  {
+   "name": "systemd-pam",
+   "purl": "pkg:rpm/almalinux/systemd-pam@252-79.el9_9.alma.1?arch=x86_64&distro=almalinux-9.9&upstream=systemd-252-79.el9_9.alma.1.src.rpm",
+   "type": "library",
+   "version": "252-79.el9_9.alma.1"
+  },
+  {
+   "name": "systemd-python",
+   "purl": "pkg:pypi/systemd-python@234",
+   "type": "library",
+   "version": "234"
+  },
+  {
+   "name": "systemd-rpm-macros",
+   "purl": "pkg:rpm/almalinux/systemd-rpm-macros@252-79.el9_9.alma.1?arch=noarch&distro=almalinux-9.9&upstream=systemd-252-79.el9_9.alma.1.src.rpm",
+   "type": "library",
+   "version": "252-79.el9_9.alma.1"
+  },
+  {
+   "name": "tar",
+   "purl": "pkg:rpm/almalinux/tar@1.34-13.el9_8?arch=x86_64&distro=almalinux-9.9&epoch=2&upstream=tar-1.34-13.el9_8.src.rpm",
+   "type": "library",
+   "version": "2:1.34-13.el9_8"
+  },
+  {
+   "name": "tpm2-tss",
+   "purl": "pkg:rpm/almalinux/tpm2-tss@3.2.3-1.el9?arch=x86_64&distro=almalinux-9.9&upstream=tpm2-tss-3.2.3-1.el9.src.rpm",
+   "type": "library",
+   "version": "3.2.3-1.el9"
+  },
+  {
+   "name": "tzdata",
+   "purl": "pkg:rpm/almalinux/tzdata@2026f-1.el9_9?arch=noarch&distro=almalinux-9.9&upstream=tzdata-2026f-1.el9_9.src.rpm",
+   "type": "library",
+   "version": "2026f-1.el9_9"
+  },
+  {
+   "name": "util-linux",
+   "purl": "pkg:rpm/almalinux/util-linux@2.37.4-28.el9_9.1?arch=x86_64&distro=almalinux-9.9&upstream=util-linux-2.37.4-28.el9_9.1.src.rpm",
+   "type": "library",
+   "version": "2.37.4-28.el9_9.1"
+  },
+  {
+   "name": "util-linux-core",
+   "purl": "pkg:rpm/almalinux/util-linux-core@2.37.4-28.el9_9.1?arch=x86_64&distro=almalinux-9.9&upstream=util-linux-2.37.4-28.el9_9.1.src.rpm",
+   "type": "library",
+   "version": "2.37.4-28.el9_9.1"
+  },
+  {
+   "name": "vim-minimal",
+   "purl": "pkg:rpm/almalinux/vim-minimal@8.2.2637-43.el9_9?arch=x86_64&distro=almalinux-9.9&epoch=2&upstream=vim-8.2.2637-43.el9_9.src.rpm",
+   "type": "library",
+   "version": "2:8.2.2637-43.el9_9"
+  },
+  {
+   "name": "xz",
+   "purl": "pkg:rpm/almalinux/xz@5.2.5-8.el9_9.1?arch=x86_64&distro=almalinux-9.9&upstream=xz-5.2.5-8.el9_9.1.src.rpm",
+   "type": "library",
+   "version": "5.2.5-8.el9_9.1"
+  },
+  {
+   "name": "xz-libs",
+   "purl": "pkg:rpm/almalinux/xz-libs@5.2.5-8.el9_9.1?arch=x86_64&distro=almalinux-9.9&upstream=xz-5.2.5-8.el9_9.1.src.rpm",
+   "type": "library",
+   "version": "5.2.5-8.el9_9.1"
+  },
+  {
+   "name": "yum",
+   "purl": "pkg:rpm/almalinux/yum@4.14.0-37.el9.alma.1?arch=noarch&distro=almalinux-9.9&upstream=dnf-4.14.0-37.el9.alma.1.src.rpm",
+   "type": "library",
+   "version": "4.14.0-37.el9.alma.1"
+  },
+  {
+   "name": "zlib",
+   "purl": "pkg:rpm/almalinux/zlib@1.2.11-40.el9?arch=x86_64&distro=almalinux-9.9&upstream=zlib-1.2.11-40.el9.src.rpm",
+   "type": "library",
+   "version": "1.2.11-40.el9"
+  },
+  {
+   "name": "almalinux",
+   "type": "operating-system",
+   "version": "9.9"
+  }
+ ],
+ "metadata": {
+  "tools": {
+   "components": [
+    {
+     "author": "anchore",
+     "name": "syft",
+     "type": "application",
+     "version": "1.57.2"
+    }
+   ]
+  }
+ },
+ "specVersion": "1.7"
+}

@@ -138,7 +138,7 @@ agent; every spec success criterion 1-8 as a step with PASS/FAIL into `last_run_
 
 ### C12: Performance
 **Description:** `perf.py --containers N`: 1,000 hosts × 10 containers over 50 images; containers report median and the
-hourly re-match before and after. **Acceptance:** [ ] report median < 1 s; re-match growth ≈ 50 hosts' worth
+hourly re-match before and after. **Acceptance:** [x] report median < 1 s; re-match growth ≈ 50 hosts' worth
 **Dependencies:** C5 · **Files:** `sandbox/perf.py` · **Scope:** S
 
 ### C13: Docs and release notes

@@ -24,14 +24,19 @@ export function updateSource(f?: HostFacts): string {
   return from + defer + last;
 }
 
+/** Where one container runs, or what one host runs (DECISIONS 139): an image lists its hosts, a host its images. */
+export interface ContainerRun { name: string; runtime: string; ref: string; since: string; host_id?: string; hostname?: string; image_id?: string }
 export interface Asset {
-  id: string; hostname: string; os_name: string; ecosystem: string; kind: "host" | "application" | "external" | "device";
+  id: string; hostname: string; os_name: string; ecosystem: string; kind: "host" | "application" | "external" | "device" | "image";
   criticality: Criticality; internet_facing: boolean; directory_source?: boolean; sandbox: boolean; ring: 0 | 1; health_units: string[];
   first_seen: string; last_seen: string; open_by_priority: Partial<Record<Priority, number>>;
   apps?: { assessed: number; inventory_only: number }; // Windows hosts: installed apps checked against those only listed
   agent_version?: string; agent_outdated?: boolean; agent_update?: AgentUpdate; agent_update_error?: string | null; not_reporting?: boolean; // hosts only
   facts?: HostFacts; // hosts only: what the agent reports about the host itself
   verified?: boolean; verified_at?: string | null; txt_name?: string; txt_value?: string; proof_path?: string; // external targets only
+  // container images only: where it runs, and whether its packages could be read (an unread image is never clean)
+  image_id?: string | null; running_on?: ContainerRun[]; hosts_total?: number; packages_read?: boolean; not_read_why?: string | null;
+  containers?: ContainerRun[]; containers_total?: number; // hosts: the containers running on it; images: how many run it
 }
 // What happens to a host's agent next (app.py agent_update_status)
 export type AgentUpdate = "current" | "updating" | "failed" | "paused" | "off" | "reinstall";
@@ -50,6 +55,8 @@ export const sbomSummary = (r: SbomResult) =>
   `${r.mapped} of ${r.components} components recognised (${r.unique_packages} unique packages), ${r.components - r.mapped} skipped. ${r.open} open finding${r.open === 1 ? "" : "s"}, ${r.resolved} resolved.`;
 export interface Finding {
   id: string; asset_id: string; hostname: string; ecosystem: string; package: string;
+  /** The asset's kind: an "image" finding is fixed by a rebuild, never planned. Drawer only for an image: how, and where it runs. */
+  asset_kind?: Asset["kind"]; rebuild?: string | null; runs_on?: string[] | null;
   installed_version: string; fixed_version: string | null; setting_fix: boolean; plannable?: boolean;
   /** Drawer only: the upgrade that clears every open finding for this package on this host. */
   package_fix?: { version: string; open: number } | null; vuln_id: string; advisory_ids: string[];
@@ -73,9 +80,14 @@ export interface Action {
   /** The newest failed attempt for this package, so Home doesn't offer the same plan blind. */
   last_attempt: { id: string; status: JobStatus; error: string | null; asset_id?: string } | null;
 }
+/** A container image with open findings: fixed by a rebuild bringing these packages, never planned (DECISIONS 141). */
+export interface ImageToRebuild {
+  asset_id: string; name: string; os_name: string; ecosystem: string; kev: boolean; max_score: number | null; findings: number;
+  priority: Priority; hosts: string[]; fixes: { package: string; fixed_version: string; vulns: number }[]; unfixed: number;
+}
 export interface Summary {
   assets: number; open_by_priority: Partial<Record<Priority, number>>; top_actions: Action[]; attention: Job[];
-  hosts_not_reporting: number; agents_need_attention: number; devices_with_issues?: number;
+  hosts_not_reporting: number; agents_need_attention: number; devices_with_issues?: number; images_to_rebuild?: ImageToRebuild[];
 }
 
 // ---- remediation -----------------------------------------------------------------

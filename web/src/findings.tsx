@@ -485,7 +485,22 @@ function FindingDrawer({ id, ids = [], total, more, onMove, onClose }: {
   );
 }
 
-function FindingDetail({ f }: { f: Finding }) {
+/** A container image's finding is fixed by a rebuild, never a plan (DECISIONS 141): what to bring, and where it runs. */
+function RebuildImage({ f }: { f: Finding }) {
+  const to = f.package_fix?.version ?? f.fixed_version;
+  const where = f.runs_on?.length ? <> on {f.runs_on.slice(0, 3).join(", ")}{f.runs_on.length > 3 && ` and ${f.runs_on.length - 3} more`}</> : null;
+  return (
+    <div className="mb-3 flex max-w-prose flex-col gap-1 text-sm">
+      <p><strong className="font-semibold">Rebuild this image.</strong>{" "}
+        {to ? <>Bring {f.package} to <code className="text-mono whitespace-nowrap bg-sunken px-1 font-mono">{to}</code> or later, from a fixed base image or the package itself, and redeploy it{where}.</>
+          : <>No fixed version of {f.package} is published yet for {f.ecosystem}; when one is, rebuild with it and redeploy{where}.</>}</p>
+      <p className="text-muted">Nimstead never changes a running container. This closes once every machine that runs the image reports the rebuilt one instead.{" "}
+        <Link to="/assets" search={{ view: "containers", image: f.asset_id }} className="font-medium text-ink underline">The image</Link></p>
+    </div>
+  );
+}
+
+export function FindingDetail({ f }: { f: Finding }) {
   const ai = useQuery(aiStatusQ).data?.enabled === true;
   const prodOk = useQuery(settingsQ).data?.production_remediation_allowed ?? true;
   const testMachine = useQuery(assetsQ).data?.find((a) => a.id === f.asset_id)?.sandbox;
@@ -505,7 +520,8 @@ function FindingDetail({ f }: { f: Finding }) {
           {/* only the keys that do something here */}
           <H>Act on it <span className="ml-2 hidden text-xs font-normal text-muted md:inline">keys: {[(f.fixed_version || f.setting_fix) && !job && f.plannable !== false && !refused && "p then Enter plan", "a accept", "j k next/previous"].filter(Boolean).join(" · ")}</span></H>
           {job && <FixInProgress job={job} />}
-          {f.fixed_version && f.plannable === false && <p className="mb-3 text-sm text-muted">Nimstead can't plan this one: update it with its own updater or by policy.</p>}
+          {f.asset_kind === "image" ? <RebuildImage f={f} />
+            : f.fixed_version && f.plannable === false && <p className="mb-3 text-sm text-muted">Nimstead can't plan this one: update it with its own updater or by policy.</p>}
           {refused && f.plannable !== false && <p className="mb-3 text-sm text-muted">This is a production machine, and production remediation is off on this server, so a fix can't be planned here yet. <Link to="/settings" hash="remediation" className="font-medium text-ink underline">How to turn it on</Link></p>}
           <div className="flex flex-wrap items-start gap-2">
             {(f.fixed_version || f.setting_fix) && !job && f.plannable !== false && !refused && <span data-act="plan"><PlanFixButton ecosystem={f.ecosystem} pkg={f.package} assetIds={[f.asset_id]} /></span>}
@@ -524,7 +540,7 @@ function FindingDetail({ f }: { f: Finding }) {
       {ai && <Explain key={f.id} id={f.id} />}
 
       <H>Why it matched</H>
-      <p className="break-words text-sm"><strong className="break-all font-semibold">{f.package}</strong> on <strong className="break-all font-semibold">{f.hostname}</strong></p>
+      <p className="break-words text-sm"><strong className="break-all font-semibold">{f.package}</strong> {f.asset_kind === "image" ? "in container image" : "on"} <strong className="break-all font-semibold">{f.hostname}</strong></p>
       <p className="text-mono mt-1 overflow-x-auto whitespace-pre bg-sunken p-3 font-mono">{whyMatched(f)}</p>
       {f.fixed_version && (f.package_fix && f.package_fix.open > 1
         ? <p className="mt-2 text-sm text-muted">Fix: upgrade {f.package} to {f.package_fix.version} or later. That clears all {f.package_fix.open} open findings for {f.package} on this host; {f.fixed_version} fixes only this one.</p>
@@ -701,7 +717,9 @@ function BulkBar({ rows, onClear, onDone }: { rows: Finding[]; onClear: () => vo
   // only what this server may change: with production remediation off, test machines only (the drawer says the same)
   const prodOk = useQuery(settingsQ).data?.production_remediation_allowed ?? true;
   const sandbox = new Set((useQuery(assetsQ).data ?? []).filter((a) => a.sandbox).map((a) => a.id));
-  const withFix = rows.filter((r) => r.fixed_version);
+  // only a machine with an agent is ever planned on: an image is rebuilt, an SBOM fixed in its build (DECISIONS 141)
+  const withFix = rows.filter((r) => r.fixed_version && (r.asset_kind ?? "host") === "host");
+  const inImages = rows.filter((r) => r.asset_kind === "image").length;
   const fixable = prodOk ? withFix : withFix.filter((r) => sandbox.has(r.asset_id));
   const machines = new Set(fixable.map((r) => r.asset_id)).size;
   const groups = [...fixable.reduce((m, r) => m.set(`${r.ecosystem}|${r.package}`, [...(m.get(`${r.ecosystem}|${r.package}`) ?? []), r.asset_id]), new Map<string, string[]>())];
@@ -729,7 +747,8 @@ function BulkBar({ rows, onClear, onDone }: { rows: Finding[]; onClear: () => vo
     <div role="region" aria-label="Act on selected findings" className="fixed inset-x-2 bottom-[calc(var(--tabbar-h,3.5rem)+0.5rem)] z-10 flex max-h-[40dvh] flex-wrap items-center gap-x-4 gap-y-2 overflow-y-auto border border-ink bg-surface px-3 py-2 text-sm shadow-[0_6px_16px_var(--shadow)] md:bottom-4 md:left-[calc(var(--sidebar-w)+2rem)] md:right-8">
       <strong className="num font-semibold">{plural(rows.length, "finding")} selected</strong>
       <span className="text-muted">{groups.length ? `${plural(groups.length, "package")} to upgrade on ${plural(machines, prodOk ? "machine" : "test machine")}${withFix.length > fixable.length ? `; production machines wait until production remediation is on` : ""}`
-        : withFix.length ? "None is on a test machine, and production remediation is off" : "None has a fix yet"}</span>
+        : withFix.length ? "None is on a test machine, and production remediation is off" : inImages ? "None is on a machine" : "None has a fix yet"}
+        {inImages > 0 && `; ${plural(inImages, "is", "are")} in container images, fixed by rebuilding them`}</span>
       <div className="ml-auto flex flex-wrap gap-2">
         <button className={btnQuiet} onClick={onClear}>Clear selection</button>
         <button className={btnQuiet} onClick={() => { accept.reset(); setAccepting(true); }}>Accept risk…</button>

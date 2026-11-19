@@ -261,8 +261,10 @@ async function ctx(browser: Browser, width: number, colorScheme: "light" | "dark
 }
 
 async function axe(page: Page, label: string) {
-  // a theme or viewport switch starts colour transitions; contrast read mid-fade is neither theme's
-  await page.evaluate(() => Promise.all(document.getAnimations().filter((a) => a instanceof CSSTransition).map((a) => a.finished.catch(() => {}))));
+  // a theme or viewport switch starts colour transitions, and a drawer fades in (an animation): contrast read mid-fade is
+  // neither theme's. Infinite animations (the loading pulse) never finish, so only finite ones are waited for.
+  await page.evaluate(() => Promise.all(document.getAnimations().filter((a) => a instanceof CSSTransition || a.effect?.getTiming().iterations !== Infinity)
+    .map((a) => a.finished.catch(() => {}))));
   const { violations } = await new AxeBuilder({ page }).analyze();
   const bad = violations.filter((v) => v.impact === "serious" || v.impact === "critical");
   expect(bad.map((v) => `${label}: ${v.id} (${v.impact}) ${v.nodes.slice(0, 3).map((n) => n.target.join(" ")).join(" | ")}`), label).toEqual([]);
@@ -382,6 +384,53 @@ test("devices with no agent: listed on Assets from agents' neighbour tables, and
       await expect(section.getByText(/Hangzhou Hikvision/).first()).toBeVisible();
       await expect(section.getByRole("link", { name: /^1 finding/ })).toBeVisible();
       await axe(page, `unmanaged devices @${width} ${scheme}`);
+      await context.close();
+    }
+  }
+});
+
+test("container images: one row wherever an image runs, rebuilt not planned, unread never clean, and it passes axe", async ({ browser }) => {
+  const setup = await browser.newContext({ storageState: STATE });
+  const api = (await setup.newPage()).request;
+  const tok = await (await api.post("/api/enroll-tokens", { data: { sandbox: true } })).json();
+  const doc = (n: number, db: object = { state: "ok", count: n }) => ({ v: 1, sources: { os_release: { state: "ok", count: 1 }, package_db: db } });
+  const pkgs = [{ name: "libssl3", version: "3.0.11-1~deb12u1", source: "openssl" }, { name: "openssl", version: "3.0.11-1~deb12u1", source: "openssl" }];
+  const image = (n: number, name: string) => ({ image_id: "sha256:" + "e2".repeat(32), ref: "registry.example/billing-api:4.2", os_name: "Debian GNU/Linux 12 (bookworm)",
+    ecosystem: "Debian:12", facts: { os_id: "debian", os_version_id: "12" }, collection: doc(2), packages: pkgs, containers: [{ id: n.toString(16).padStart(64, "0"), name, runtime: "docker" }] });
+  const unread = { image_id: "sha256:" + "bb".repeat(32), ref: "busybox:1.36", os_name: "", ecosystem: "", facts: { os_unmatched: "no advisory feed maps this platform: ID=? VERSION_ID=?" },
+    collection: doc(0, { state: "failed", count: 0, error: "no package database found (apk, dpkg or rpm SQLite)" }), packages: [], containers: [{ id: "f".repeat(64), name: "tools", runtime: "podman" }] };
+  for (const [hostname, n, extra] of [["ctr-web-1", 1, [unread]], ["ctr-web-2", 2, []]] as const) {
+    const a = await (await api.post("/api/agent/enroll", { data: { token: tok.token, hostname, ecosystem: "Debian:12" } })).json();
+    const h = { Authorization: `Bearer ${a.agent_key}` };
+    expect((await api.post("/api/agent/inventory", { data: current({ os_name: "Debian 12", ecosystem: "Debian:12", packages: [] }), headers: h })).ok()).toBe(true);
+    const r = await api.post("/api/agent/containers", { data: { v: 1, complete: true, images: [image(n, "billing"), ...extra], runtimes: {}, error: null }, headers: h });
+    expect(r.ok(), await r.text()).toBe(true);
+  }
+  const assets = await (await api.get("/api/assets")).json();
+  const billing = assets.find((a: { hostname: string }) => a.hostname === "registry.example/billing-api:4.2");
+  const finding = (await (await api.get(`/api/findings?asset_id=${billing.id}`)).json())[0];
+  await setup.close();
+  for (const width of [1440, 375] as const) {
+    for (const scheme of ["light", "dark"] as const) {
+      const { context, page } = await ctx(browser, width, scheme);
+      await page.goto("/assets?view=containers");
+      const section = page.getByRole("region", { name: /container images on 2 machines/ });
+      await expect(section.getByRole("button", { name: /registry\.example\/billing-api:4\.2/ })).toBeVisible();  // one row for both machines
+      await expect(section.getByText("Not assessed")).toBeVisible();
+      await axe(page, `container images @${width} ${scheme}`);
+      await section.getByRole("button", { name: /registry\.example\/billing-api:4\.2/ }).click();
+      const drawer = page.getByRole("dialog", { name: "registry.example/billing-api:4.2" });
+      await expect(drawer.getByText("Runs on 2 machines")).toBeVisible();
+      await expect(drawer.getByRole("button", { name: /Plan/ })).toHaveCount(0);
+      await axe(page, `image drawer @${width} ${scheme}`);
+      await page.goto(`/findings?f=${finding.id}`);
+      await expect(page.getByRole("dialog").getByText("Rebuild this image.")).toBeVisible();
+      await expect(page.getByRole("dialog").getByRole("button", { name: /Plan fix/ })).toHaveCount(0);
+      await axe(page, `image finding @${width} ${scheme}`);
+      await page.goto("/");
+      await expect(page.getByRole("heading", { name: "Container images to rebuild" })).toBeVisible();
+      await axe(page, `fix first with images @${width} ${scheme}`);
+      if (width === 375) expect(await smallTargets(page), "controls under 44px on Fix first").toEqual([]);
       await context.close();
     }
   }

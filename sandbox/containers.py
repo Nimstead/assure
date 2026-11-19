@@ -257,7 +257,8 @@ def main(keep=False):
               all(v["status"] == 200 and not v["only_agent"] and not v["only_sbom"] for v in sbom_cmp.values())
               and sum(v["ours"] for v in sbom_cmp.values()) > 4 * 2 and grades == {"unverified"}, sboms=sbom_cmp, grades=sorted(grades))
 
-        # 5a. a partial list closes nothing: podman fails, and web1 stops
+        # 5a. a runtime that fails proves nothing about its own containers, and costs nothing for the other's: podman fails and
+        # web1 (docker) stops. Docker's whole listing proves web1 stopped; pod1's row stays; alpine still runs on web2 and pod1
         before = {n: open_ids(s, by_ctr[n].id) for n in ("legacy", "web1")}
         wsl("mv /usr/bin/podman /usr/bin/podman.real && printf '#!/bin/sh\\necho \"Error: database is locked\" >&2\\nexit 125\\n' > /usr/bin/podman && chmod +x /usr/bin/podman")
         wsl("docker rm -f web1 >/dev/null")
@@ -266,8 +267,9 @@ def main(keep=False):
         wsl("mv -f /usr/bin/podman.real /usr/bin/podman")
         s = Session()
         still = sorted(r.name for r in s.scalars(select(Container).where(Container.image_asset_id == alpine.id)))
-        check("5a. a partial container list (a runtime failing) closes nothing", ctr["complete"] is False and out["complete"] is False and "web1" in still
-              and open_ids(s, alpine.id) == before["web1"], complete=ctr["complete"], error=ctr["error"], alpine_runs=still)
+        check("5a. a failing runtime closes nothing of its own; the other runtime's whole listing still proves what stopped",
+              ctr["complete"] is False and out["complete"] is False and sorted(ctr["listed"]) == ["docker"] and still == ["pod1", "web2"]
+              and open_ids(s, alpine.id) == before["web1"], complete=ctr["complete"], listed=sorted(ctr["listed"]), error=ctr["error"], alpine_runs=still)
 
         # 5b. rebuild and redeploy: the old image's findings close on the evidence, the new image's are there
         wsl("docker rm -f legacy >/dev/null && docker run -d --name legacy debian:12 sleep infinity >/dev/null")
@@ -282,7 +284,7 @@ def main(keep=False):
         check("5b. after redeploying on debian:12, debian:11's findings are resolved as not running, and debian:12's are open",
               ctr["complete"] and resolved and all(f.status == "resolved" and ctrmod.NOT_RUNNING in f.reasons for f in resolved)
               and sum(e.data.get("why") == "not running on any host" for e in ledger) >= len(before["legacy"]) and not any(v.startswith("EOL:") for v in new_open)
-              and open_ids(s, alpine.id) == before["web1"],  # web1 is gone, but web2 and pod1 still run alpine:3.18
+              and open_ids(s, alpine.id) == before["web1"],  # web2 and pod1 still run alpine:3.18
               stopped=out["stopped"], debian11_resolved=len(resolved), debian11_were_open=len(before["legacy"]), debian12_open=len(new_open))
 
         # the evidence pack over all of it verifies offline, as an auditor would check it

@@ -423,6 +423,9 @@ test("container images: one row wherever an image runs, rebuilt not planned, unr
       await expect(drawer.getByText("Runs on 2 machines")).toBeVisible();
       await expect(drawer.getByRole("button", { name: /Plan/ })).toHaveCount(0);
       await axe(page, `image drawer @${width} ${scheme}`);
+      const shot = width === 1440 && scheme === "light";
+      if (shot) mkdirSync(SHOTS, { recursive: true });
+      if (shot) await page.screenshot({ path: `${SHOTS}/containers-1440.png` });
       await page.goto(`/findings?f=${finding.id}`);
       await expect(page.getByRole("dialog").getByText("Rebuild this image.")).toBeVisible();
       await expect(page.getByRole("dialog").getByRole("button", { name: /Plan fix/ })).toHaveCount(0);
@@ -430,6 +433,8 @@ test("container images: one row wherever an image runs, rebuilt not planned, unr
       await page.goto("/");
       await expect(page.getByRole("heading", { name: "Container images to rebuild" })).toBeVisible();
       await axe(page, `fix first with images @${width} ${scheme}`);
+      if (shot) await page.getByRole("heading", { name: "Container images to rebuild" }).scrollIntoViewIfNeeded();
+      if (shot) await page.screenshot({ path: `${SHOTS}/home-rebuild-1440.png` });
       if (width === 375) expect(await smallTargets(page), "controls under 44px on Fix first").toEqual([]);
       await context.close();
     }

@@ -4,6 +4,18 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-11-19 (preview)
+
+Agent 0.8.1. No database migration. Two container fixes from a review of 0.10.0: update Linux hosts that run containers.
+
+### Highlights
+- **A machine that drops Docker for Podman (or the reverse) no longer keeps the old runtime's containers "running" for ever.** Their images stop showing as running there, their findings close if nothing else runs them, and Fix first stops asking to rebuild them.
+- **Deleting a machine re-ranks the container images it shared straight away.** An image stops taking its priority from a critical machine that's gone, instead of waiting for the other machines' next report.
+
+### Fixed
+- **A runtime removed from a host kept its containers open** (agent 0.8.1, DECISIONS 144). The agent now sends an empty listing for Docker or Podman when it finds the runtime neither on its PATH nor in systemd's default PATH and `/snap/bin`, so the server closes the containers that runtime ran. A runtime found only off the agent's PATH (cron's is shorter) still closes nothing.
+- **Deleting a host left the images it shared ranked by it** (DECISIONS 144): their criticality and internet exposure, and so their findings' priority, now follow the hosts left at once, as they do when a host's context changes.
+
 ## [0.10.0] - 2026-11-19 (preview)
 
 Agent 0.8.0. One database migration (`c9e1a3f5b7d2`, the `container` table): the Docker image applies it on start; without Docker, run `alembic upgrade head`. Update Linux hosts to read their containers.
@@ -684,7 +696,8 @@ The first early-access release. Everything listed is proven by tests and, for an
 
 Licensed under FSL-1.1-ALv2: this release becomes available under Apache 2.0 on 2028-10-27.
 
-[Unreleased]: https://github.com/Nimstead/assure/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/Nimstead/assure/compare/v0.10.1...HEAD
+[0.10.1]: https://github.com/Nimstead/assure/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/Nimstead/assure/compare/v0.9.3...v0.10.0
 [0.9.3]: https://github.com/Nimstead/assure/compare/v0.9.2...v0.9.3
 [0.9.2]: https://github.com/Nimstead/assure/compare/v0.9.1...v0.9.2

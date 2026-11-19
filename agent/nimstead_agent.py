@@ -37,7 +37,7 @@ import urllib.request
 import warnings
 import zipfile
 
-AGENT_VERSION = "0.8.0"  # the server reads this line to flag outdated agents; bump on every agent change
+AGENT_VERSION = "0.8.1"  # the server reads this line to flag outdated agents; bump on every agent change
 # Ed25519 public keys (hex) allowed to sign releases (DECISIONS 31): primary (GitHub Actions) and offline backup.
 # The server only relays signed releases, so it can withhold an update but never forge one. Empty = never self-update.
 RELEASE_KEYS = ["a91fa6539c6c2593009fc71b1c1fba341b5685ba7bc97c127c068b1d732b21d2", "2438f2ccebab5bf26edf9e21a8aa8f09abd1861f52fbe0d6641b28b90f8b0e5a"]  # noqa: E501
@@ -623,6 +623,7 @@ def read_container(root):
 
 
 CONTAINER_RUNTIMES = ("docker", "podman")  # each asked through its own CLI, read-only: ps and inspect (DECISIONS 138)
+CONTAINER_RUNTIME_DIRS = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"  # systemd's PATH and snap's: cron's is shorter
 CONTAINER_MAX = 128         # containers read per report; the rest wait for the next one
 CONTAINER_SECONDS = 120     # the whole pass
 CONTAINER_BODY_MAX = 8 * 1024 * 1024  # under the server's 10 MB request cap, with room for the JSON around it
@@ -681,7 +682,8 @@ def containers(query=_query, which=shutil.which, root_of=ContainerRoot.of_pid, r
 
     Containers of one image with the same contents are read and sent once, listed together. `listed` carries each runtime's
     whole `ps` listing, so the server can take a container missing from its own runtime's listing as stopped (DECISIONS
-    140) however many were read. `complete` says every runtime answered and every container was read. Budgets
+    140) however many were read; a runtime installed nowhere lists none, so a host that dropped Docker for Podman closes
+    Docker's. `complete` says every runtime answered and every container was read. Budgets
     (CONTAINER_MAX, CONTAINER_SECONDS, CONTAINER_BODY_MAX) end the pass early, never silently; an image that would carry
     the body past its budget is left out. `line` is the host inventory's collection line for it."""
     start = clock()
@@ -697,6 +699,8 @@ def containers(query=_query, which=shutil.which, root_of=ContainerRoot.of_pid, r
                 whole[rt] = ids
             for c in found:
                 listed.setdefault(c["id"], c)  # podman-docker answers as docker too: one container, once
+        elif not which(rt, path=CONTAINER_RUNTIME_DIRS):  # not installed at all: the containers it ran have stopped
+            whole[rt] = []
     if which("crictl"):
         runtimes["crictl"] = {"state": "off", "count": 0, "error": "Kubernetes (CRI) containers aren't read yet"}
     complete = all(r["state"] == "ok" for name, r in runtimes.items() if name != "crictl")

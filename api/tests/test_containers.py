@@ -203,6 +203,23 @@ def test_deleting_a_host_deletes_the_images_only_it_ran(env):
     assert len(s.scalars(select(Container)).all()) == 1
 
 
+def test_deleting_a_host_re_ranks_the_images_it_shared(env):
+    c = user(env)
+    _, a = host(c, "web-1")
+    b_id, b = host(c, "pay-1")
+    c.patch(f"/api/assets/{b_id}", json={"internet_facing": True, "criticality": "critical"})
+    send(c, a, [entry(ctrs=((1, "web"),))])
+    send(c, b, [entry(ctrs=((2, "pay"),))])
+    s, (img,) = images(env)
+    assert (img.criticality, img.internet_facing) == ("critical", True)
+    high = {f.vuln_id: f.score for f in s.scalars(select(Finding).where(Finding.asset_id == img.id))}
+    assert c.delete(f"/api/assets/{b_id}").status_code == 204
+    s, (img,) = images(env)
+    assert (img.criticality, img.internet_facing) == ("medium", False)  # web-1 alone runs it now, before it next reports
+    low = {f.vuln_id: f.score for f in s.scalars(select(Finding).where(Finding.asset_id == img.id))}
+    assert low.keys() == high.keys() and all(low[v] < high[v] for v in low)
+
+
 def test_images_nothing_runs_for_30_days_are_pruned(env):
     c = user(env)
     _, a = host(c, "web-1")

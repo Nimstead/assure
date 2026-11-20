@@ -356,11 +356,23 @@ def test_budgets_end_the_pass_early_and_say_so(monkeypatch):
 def test_not_root_no_runtime_and_kubernetes_are_said():
     body = agent.containers(cli({}), lambda n: None, euid=1000)
     assert body["complete"] is False and body["line"]["state"] == "failed" and "isn't running as root" in body["error"]
-    body = agent.containers(cli({}), lambda n: None, euid=0)
-    assert body == {"v": 1, "complete": True, "runtimes": {}, "listed": {}, "images": [], "error": None, "line": {"state": "ok", "count": 0}}
-    body = agent.containers(cli({}), lambda n: n == "crictl", euid=0)
-    assert body["complete"] is True and body["line"]["state"] == "failed"  # nothing listed from Docker or Podman to take as stopped
+    body = agent.containers(cli({}), lambda n, path=None: None, euid=0)
+    assert body == {"v": 1, "complete": True, "runtimes": {}, "listed": {"docker": [], "podman": []}, "images": [], "error": None,
+                    "line": {"state": "ok", "count": 0}}  # installed nowhere: nothing runs in them
+    body = agent.containers(cli({}), lambda n, path=None: n == "crictl", euid=0)
+    assert body["complete"] is True and body["line"]["state"] == "failed"  # no Docker or Podman containers, but CRI's aren't read
     assert body["error"] == "crictl: Kubernetes (CRI) containers aren't read yet"
+
+
+@POSIX
+def test_a_runtime_dropped_from_the_host_lists_none_but_one_off_the_path_proves_nothing():
+    # Docker uninstalled for Podman: Docker's empty listing lets the server close the containers it ran
+    q = cli({("podman", "ps"): (0, POD1 + "\n", ""), ("podman", "inspect"): (0, PODMAN_INSPECT, "")})
+    body = report(q, which=lambda n, path=None: n == "podman")
+    assert body["listed"]["docker"] == [] and body["listed"]["podman"] == [POD1] and "docker" not in body["runtimes"]
+    # docker in /usr/local/bin, which cron's PATH leaves out: not read this time, and not taken as gone
+    body = report(q, which=lambda n, path=None: n == "podman" or (n == "docker" and path == agent.CONTAINER_RUNTIME_DIRS))
+    assert "docker" not in body["listed"] and body["listed"]["podman"] == [POD1]
 
 
 def test_enrol_records_the_local_opt_out(monkeypatch, tmp_path):

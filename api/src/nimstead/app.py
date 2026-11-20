@@ -1601,6 +1601,17 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             raise HTTPException(404, "Asset not found")
         return a
 
+    def images_run_by(s: Session, host: Asset) -> list[Asset]:
+        return list(s.scalars(select(Asset).where(Asset.id.in_(select(Container.image_asset_id).where(Container.asset_id == host.id)))))
+
+    def rerank_images(s: Session, images: list[Asset]) -> None:
+        """Re-score the images whose ranking changed: each ranks by the most critical, most exposed host that runs it
+        (DECISIONS 139). rescan commits."""
+        changed = containers.refresh(s, images)
+        for image in images:
+            if image.id in changed:
+                rescan(s, image, inventory_received=False)
+
     @app.delete("/api/assets/{asset_id}", status_code=204)
     def delete_asset(asset_id: str, user: Admin, s: DB):
         """Delete an owned asset and its findings, packages, jobs and scan records.
@@ -1609,11 +1620,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         Append deletion evidence, delete rows and commit. Return HTTP 204 without
         a body. The ledger remains. This does not stop a resident agent or dispatched
         host process. A host's views of devices it checked go with it (they're its
-        evidence alone). Missing/unowned assets return 404. Storage/evidence errors
-        can propagate."""
+        evidence alone), as do the images no other host runs; the images it shared
+        are re-ranked by the hosts left. Missing/unowned assets return 404.
+        Storage/evidence errors can propagate."""
         a = owned_asset(s, user, asset_id)
         views = [d for d in s.scalars(select(Asset).where(Asset.org_id == a.org_id, Asset.kind == "device"))
                  if (d.facts or {}).get("checked_by") == a.id] if a.kind == "host" else []
+        ran = images_run_by(s, a) if a.kind == "host" else []
         images = containers.only_on(s, a) if a.kind == "host" else []  # images no other host runs go with it, as its device views do
         for gone in (a, *views, *images):  # a device's name is its address: personal data, kept out of the permanent ledger
             evidence.append(s, user.org_id, "asset_deleted", gone.id, {"by": user.email, "hostname": "device" if gone.kind == "device" else gone.hostname})
@@ -1621,6 +1634,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                 s.execute(delete(model).where(model.asset_id == gone.id))
             s.execute(delete(Container).where(Container.image_asset_id == gone.id))
             s.delete(gone)
+        rerank_images(s, [i for i in ran if i not in images])  # the hosts left decide how the rest rank
         s.commit()
 
     @app.get("/api/assets/{asset_id}/scan-report")
@@ -1695,12 +1709,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         s.flush()
         evidence.append(s, a.org_id, "asset_context_changed", a.id, {"by": user.email, **body.model_dump(exclude_none=True)})
         rescan(s, a, inventory_received=False)  # context changed -> scores change
-        if a.kind == "host":  # the images it runs rank by their most critical host (DECISIONS 139)
-            ran = list(s.scalars(select(Asset).where(Asset.id.in_(select(Container.image_asset_id).where(Container.asset_id == a.id)))))
-            changed = containers.refresh(s, ran)
-            for image in ran:
-                if image.id in changed:
-                    rescan(s, image, inventory_received=False)
+        if a.kind == "host":
+            rerank_images(s, images_run_by(s, a))
             s.commit()
         return asset_json(a, {})
 

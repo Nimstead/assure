@@ -223,6 +223,7 @@ const PAGES = [
   { name: "evidence", path: "/evidence", ready: /Evidence/ },
   { name: "settings", path: "/settings", ready: /Settings/ },
   { name: "add", path: "/add", ready: /Add a machine/ },
+  { name: "progress", path: "/progress", ready: /Progress/ },
 ] as const;
 const SETTINGS = PAGES[5];
 
@@ -313,6 +314,31 @@ for (const width of [1440, 375] as const) {
     });
   }
 }
+
+test("owners: set on a machine, counted on Progress, and an owner's name opens their findings", async ({ browser }) => {
+  const { context, page } = await ctx(browser, 1440, "light");
+  const host = (await (await page.request.get("/api/assets")).json()).find((a: { hostname: string }) => a.hostname === "sbx-1");
+  const r = await page.request.patch(`/api/assets/${host.id}`, { data: { owner: "e2e team" } });
+  expect(r.ok()).toBe(true);
+  await page.goto("/progress");
+  await expect(page.locator("h1")).toHaveText("Progress");
+  await expect(page.getByText(/^Open findings (fell|rose|held)/)).toBeVisible();
+  const owners = page.locator("section[aria-labelledby=owners]");
+  const open = Number((await owners.getByRole("row", { name: /e2e team/ }).getByRole("cell").nth(2).textContent())!.replace(/,/g, ""));
+  await owners.getByRole("link", { name: "e2e team" }).click();
+  await expect(page.locator("h1")).toHaveText("Findings");
+  await expect(page).toHaveURL(/owner=e2e\+team|owner=e2e%20team/);
+  await expect(page.getByText(new RegExp(`^${open} of `))).toBeVisible();  // the same count, narrowed to that owner
+  // the day-by-day panels step with the keyboard, and every number is in a table too
+  await page.goto("/progress");
+  const panels = page.getByRole("group", { name: /Open findings by day/ });
+  await panels.focus();
+  await page.keyboard.press("ArrowLeft");
+  await expect(page.locator("section[aria-labelledby=over-time] [aria-live=polite]")).not.toHaveText(/^Today/);
+  await page.getByText("Show these numbers as a table").first().click();
+  await expect(page.getByRole("table", { name: /Open findings by day/ })).toBeVisible();
+  await context.close();
+});
 
 test("Windows updates: who has a KB, why the others don't, and planning the rest", async ({ browser }) => {
   const context = await browser.newContext({ storageState: STATE });

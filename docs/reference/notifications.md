@@ -17,6 +17,7 @@ These operations require an organisation admin browser session. API tokens are r
 | `webhook_url` | HTTPS URL of at most 500 characters. Omitted/`null` keeps the value. Empty string removes it |
 | `webhook_format` | `slack` or `json`. Omitted/`null` keeps the format |
 | `emails` | At most ten valid email addresses. Omitted/`null` keeps the list. Empty list clears it |
+| `weekly_summary` | Boolean. Omitted/`null` keeps the setting. Off by default; see [Weekly summary](#weekly-summary) |
 
 Email addresses are lowercased, deduplicated, and sorted. Confirmation remains valid only for addresses retained in the list. Newly added addresses request confirmation when SMTP and `NIMSTEAD_PUBLIC_URL` are configured and the 20-per-hour organisation quota permits.
 
@@ -35,9 +36,16 @@ Webhook configuration checks URL syntax and literal IP eligibility without DNS r
 | `emails_confirmed` | Configured addresses also present in the confirmed list |
 | `email_available` | SMTP URL, sender, and `NIMSTEAD_PUBLIC_URL` are nonempty. This does not test the connection |
 | `last_delivery_failed` | Whether the latest row for any channel in the recent sample failed |
+| `weekly_summary` | Whether the weekly summary is on |
 | `recent` | At most five delivery rows, newest ID first |
 
 Each recent row has UTC timestamp `ts`, `kind`, `channel`, boolean `urgent`, boolean `ok`, and nullable `error`. A channel absent from those five rows contributes no failure state. This sample does not establish current receiver availability.
+
+## Weekly summary
+
+With `weekly_summary` on, the hourly feed run sends one message of kind `weekly_summary` to the organisation's webhook and confirmed email recipients each ISO week, from Monday 08:00 UTC (or the first run after it, if the server was down then). Switching it on marks the current week as sent unless it's a Monday before 08:00 UTC, so the first summary goes the Monday after, never in the hour it was switched on. It gives open findings, fix-now and overdue findings now with their change since the same weekday last week, findings resolved since then and how many on time, and the owners with the most overdue findings, then a link to Progress when `NIMSTEAD_PUBLIC_URL` is set. It never names a host or an address: it goes to chat tools. When the evidence ledger fails its integrity check, the summary says so and that its numbers can't be trusted.
+
+The week is recorded on the organisation before the message is queued, so a restart or a second run never sends it twice; a failed delivery is retried like any other alert. A week with no usable destination is recorded too, and nothing is sent for it. The first line, `Weekly summary for ORGANISATION`, is the email subject.
 
 ## Email consent and account mail
 

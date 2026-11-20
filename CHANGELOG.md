@@ -4,6 +4,29 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-20 (preview)
+
+Agent 0.8.1, unchanged. One database migration (`d4f6a8c0e2b4`: an owner on assets and enrolment tokens, and the weekly summary switch): the Docker image applies it on start; without Docker, run `alembic upgrade head`.
+
+### Upgrade notes
+- **Nothing changes until you use it.** Assets start with no owner and the weekly summary is off.
+- **The findings CSV has a new last column, `owner`.** The columns before it are unchanged, so a script that reads them by position keeps working; one that checks the column count needs updating.
+- **`GET /api/assets`, a finding's detail and enrolment tokens now carry `owner`** (`null` for none).
+
+### Highlights
+- **Progress: is it working, and who is behind?** A new page shows, day by day over 30 days to a year, overdue findings, open findings at each priority and findings accepted as a risk, then what was found and fixed each week. One sentence says whether it's getting better and, for fix-now findings, how long the rest would take at the last four weeks' pace.
+- **It agrees with your evidence.** Progress is rebuilt from the signed ledger, so the history is there the day you upgrade, today's numbers are the Findings page's, and a period's on-time share and mean time to resolve equal the evidence pack's.
+- **Owners.** Give each machine, application or container image a team: in its drawer, in bulk, or on the install command so new machines arrive owned. Progress lists owners by overdue findings and opens each one's findings; Assets and Findings filter by owner.
+- **A weekly summary to Slack or email.** Switch it on in Settings and every Monday morning brings the week's numbers and who is behind, without naming a machine.
+- **The Assets page loads faster with containers.**
+
+### Added
+- **Progress** (`/progress`, DECISIONS 146): six small charts (overdue, fix now, next, routine, low, accepted risk), each on its own scale from zero and read together by one crosshair, by pointer or arrow keys; findings opened and resolved per week; owners with their overdue, fix-now and open findings, change over the range, findings resolved on time and mean time to resolve; a table view of every chart, CSV downloads, and "How this is judged" naming the ledger entry it was rebuilt up to. A finding with no ledger record, or whose history disagrees with its current state, is counted there and left out of the charts. 0.45-0.55 s for a year on the 206-machine, 44,000-finding demo.
+- **`GET /api/progress` and `GET /api/progress.csv`** (`days` 7 to 365; CSV by day or by owner), for sessions and read-only API tokens; at most 120 reads an hour per organisation. Each carries the ledger's integrity check, and Progress says when it fails rather than presenting the numbers as evidence. See the [progress reference](docs/reference/progress.md).
+- **Owners** (DECISIONS 145): `owner` on assets and on enrolment tokens (an asset enrolled with a token starts with its owner); names are tidied and take the spelling the organisation already uses, in any case; retyping a team in another case respells it on every asset and token; names can't hide or reverse characters; each change is recorded in the ledger as `asset_context_changed` and changes no priority. An image takes an owner too. The owner filter on Assets and Findings (`owner=`, empty for none), the owner field in the asset and image drawers, the bulk bar and **Add a machine**.
+- **Weekly summary** (DECISIONS 147): off by default; the first goes the Monday after it's switched on, then from Monday 08:00 UTC the hourly feed run sends one message a week to the alert destinations with open, fix-now and overdue findings and their change, what was resolved and how much on time, and the owners most overdue. Counts and owner names only. The week is recorded before the message is queued, so it never goes twice, and one organisation's failure costs no other its summary. Reviewed by an independent code review and security audit; every finding fixed (DECISIONS 148).
+- `sandbox/progress_demo.py` gives a copy of a demo database simulated history over its real findings, with a valid hash chain, for screenshots and review.
+
 ### Changed
 - **The Assets page loads faster when machines run containers.** With 1,000 machines running 10 containers each, `GET /api/assets` takes 0.44 s instead of 0.60 s (0.36 s with no containers). Pydantic now writes the response, and the container rows are read as columns rather than objects. The response itself is unchanged.
 
@@ -702,7 +725,8 @@ The first early-access release. Everything listed is proven by tests and, for an
 
 Licensed under FSL-1.1-ALv2: this release becomes available under Apache 2.0 on 2028-10-27.
 
-[Unreleased]: https://github.com/Nimstead/assure/compare/v0.10.1...HEAD
+[Unreleased]: https://github.com/Nimstead/assure/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/Nimstead/assure/compare/v0.10.1...v0.11.0
 [0.10.1]: https://github.com/Nimstead/assure/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/Nimstead/assure/compare/v0.9.3...v0.10.0
 [0.9.3]: https://github.com/Nimstead/assure/compare/v0.9.2...v0.9.3

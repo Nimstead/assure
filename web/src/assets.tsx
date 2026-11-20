@@ -3,12 +3,12 @@ import { Link, useNavigate, useRouter, useSearch } from "@tanstack/react-router"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Dialog, Switch } from "radix-ui";
 import { AppWindow, ArrowRight, Plus, Search, SlidersHorizontal, Trash2, Upload, X } from "lucide-react";
-import { adminGate, AGENT_UPDATE, api, refresh, assetsQ, coverageQ, filtersToApi, filtersToSearch, parseFilters, parseUtc, plural, PRIORITIES, PRIORITY_LABEL, relativeTime, sbomSummary, updateSource, useIsAdmin, useTitle, type AgentUpdate, type Asset, type ContainerRun, type Criticality, type Finding, type Priority, type SbomResult } from "./lib";
+import { adminGate, AGENT_UPDATE, api, refresh, assetsQ, coverageQ, filtersToApi, filtersToSearch, NO_OWNER, ownersOf, parseFilters, parseUtc, plural, PRIORITIES, PRIORITY_LABEL, relativeTime, sbomSummary, updateSource, useIsAdmin, useTitle, type AgentUpdate, type Asset, type ContainerRun, type Criticality, type Finding, type Priority, type SbomResult } from "./lib";
 import { Alert, btnPrimary, btnQuiet, chip, ConfirmDialog, CopyBlock, dialogBox, Done, EmptyState, ErrorState, Field, input, Loading, PriorityPill, switchRoot, switchThumb, Tag, useReturnFocus, HowJudged } from "./ui";
 import clsx from "clsx";
 import { ExternalTargets } from "./targets";
 
-type AssetPatch = Partial<Pick<Asset, "criticality" | "internet_facing" | "directory_source" | "ring" | "health_units">>;
+type AssetPatch = Partial<Pick<Asset, "criticality" | "internet_facing" | "directory_source" | "ring" | "health_units">> & { owner?: string };  // owner "" = none
 const LEVELS: Criticality[] = ["low", "medium", "high", "critical"];
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -80,7 +80,8 @@ export function AssetsPage() {
           </EmptyState>
         ) : (
           <MachineList assets={q.data.filter((a) => MACHINE_KINDS.includes(a.kind))} saved={patch.isPending ? "" : saved} failed={failed}
-            undo={last ? () => { const { id, prev } = last; setLast(null); patch.mutate({ id, criticality: prev.criticality, internet_facing: prev.internet_facing, ring: prev.ring, health_units: prev.health_units }); } : undefined}
+            reranked={!patch.variables || Object.keys(patch.variables).some((k) => k !== "id" && k !== "owner")}
+            undo={last ? () => { const { id, prev } = last; setLast(null); patch.mutate({ id, criticality: prev.criticality, internet_facing: prev.internet_facing, ring: prev.ring, health_units: prev.health_units, owner: prev.owner ?? "" }); } : undefined}
             onPatch={(id, p) => { setSaved(""); setFailed(null); patch.mutate({ id, ...p }); }} onDelete={(a) => { del.reset(); setTarget(a); }} />
         )}
       </>}
@@ -399,6 +400,14 @@ export function ContainerImages({ images }: { images: Asset[] }) {
 
 /** One container image: whether it could be read, how it's fixed, and every container that runs it, by machine. */
 function ImageDrawer({ a, onClose }: { a: Asset | null; onClose: () => void }) {
+  const admin = useIsAdmin();
+  const qc = useQueryClient();
+  const all = useQuery(assetsQ);
+  const owner = useMutation({
+    mutationFn: (o: string) => api(`/api/assets/${a?.id}`, { method: "PATCH", body: { owner: o } }),
+    onSettled: () => refresh(qc, "assets"),
+  });
+  useEffect(() => owner.reset(), [a?.id]);  // one image's "Saved." or error never shows on the next
   const title = useRef<HTMLHeadingElement>(null);
   const focus = useReturnFocus(title);
   const byHost = new Map<string, { id: string; runs: ContainerRun[] }>();
@@ -421,6 +430,11 @@ function ImageDrawer({ a, onClose }: { a: Asset | null; onClose: () => void }) {
               </div>
               <Dialog.Close className={clsx(btnQuiet, "size-[44px] shrink-0 !px-0 md:size-9")} aria-label="Close"><X className="size-4" aria-hidden /></Dialog.Close>
             </div>
+            {admin ? <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <OwnerField value={a.owner} owners={ownersOf(all.data ?? [])} onSave={(o) => owner.mutate(o)} />
+              {owner.isSuccess && <Done className="text-sm text-muted">Saved.</Done>}
+              <Alert error={owner.error} prefix="Couldn't save the owner: " />
+            </div> : a.owner && <p className="text-sm text-muted">Owner: <span className="text-ink">{a.owner}</span></p>}
             {!a.packages_read && <p className="max-w-[60ch] border border-line-strong bg-sunken p-3 text-sm"><strong className="font-semibold">Not assessed:</strong> {a.not_read_why}. No findings here doesn't mean it's clean.</p>}
             <section aria-labelledby="image-fix" className="flex flex-col gap-2">
               <h3 id="image-fix" className="text-base font-semibold">How it's fixed</h3>
@@ -593,21 +607,22 @@ const urgency = (a: Asset) => Object.entries(a.open_by_priority).reduce((n, [p, 
 const PAGE = 40;
 
 /** Search, filter and sort the fleet (pure, so it can be tested). */
-export function filterAssets(assets: Asset[], text: string, on: Filter[], crit: Criticality | "", sort: Sort) {
+export function filterAssets(assets: Asset[], text: string, on: Filter[], crit: Criticality | "", sort: Sort, owner = "") {
   const t = text.trim().toLowerCase();
-  const rows = assets.filter((a) => (!t || `${a.hostname} ${a.os_name} ${a.agent_version ?? ""}`.toLowerCase().includes(t))
-    && on.every((f) => MATCH[f](a)) && (!crit || a.criticality === crit));
+  const rows = assets.filter((a) => (!t || `${a.hostname} ${a.os_name} ${a.agent_version ?? ""} ${a.owner ?? ""}`.toLowerCase().includes(t))
+    && on.every((f) => MATCH[f](a)) && (!crit || a.criticality === crit) && (!owner || (owner === NO_OWNER ? !a.owner : a.owner === owner)));
   return rows.sort(sort === "name" ? (x, y) => x.hostname.localeCompare(y.hostname)
     : sort === "seen" ? (x, y) => x.last_seen.localeCompare(y.last_seen) : (x, y) => urgency(y) - urgency(x) || x.hostname.localeCompare(y.hostname));
 }
 
 /** The fleet as one line per machine; editing happens in a drawer, or for several at once through the bulk bar. */
-function MachineList({ assets, saved, failed, onPatch, onDelete, undo }: {
+function MachineList({ assets, saved, failed, onPatch, onDelete, undo, reranked }: {
   assets: Asset[]; saved: string; failed: { id: string; message: string } | null; onPatch: (id: string, p: AssetPatch) => void; onDelete: (a: Asset) => void; undo?: () => void;
+  reranked?: boolean;  // false after an owner-only change: no score reads the owner
 }) {
   const admin = useIsAdmin();
   // ?show=quiet,agent and ?machine=<id> make a filtered list or one machine's drawer linkable (the palette uses them)
-  const sp = useSearch({ strict: false }) as { show?: string; machine?: string; q?: string; crit?: string; sort?: string };
+  const sp = useSearch({ strict: false }) as { show?: string; machine?: string; q?: string; crit?: string; sort?: string; owner?: string; noowner?: string };
   const navigate = useNavigate();
   const router = useRouter();
   const [text, setText] = useState(sp.q ?? "");
@@ -615,6 +630,8 @@ function MachineList({ assets, saved, failed, onPatch, onDelete, undo }: {
   useEffect(() => { if (sp.show) setOn(sp.show.split(",").filter((f): f is Filter => f in FILTERS)); }, [sp.show]);
   const [crit, setCrit] = useState<Criticality | "">(() => (LEVELS as string[]).includes(sp.crit ?? "") ? sp.crit as Criticality : "");
   const [sort, setSort] = useState<Sort>(() => (["urgent", "name", "seen"].includes(sp.sort ?? "") ? sp.sort as Sort : "urgent"));
+  const [owner, setOwner] = useState(() => (sp.noowner === "1" ? NO_OWNER : sp.owner ?? ""));
+  const owners = useMemo(() => ownersOf(assets), [assets]);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [shown, setShown] = useState(PAGE);
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -627,10 +644,11 @@ function MachineList({ assets, saved, failed, onPatch, onDelete, undo }: {
     // already leaving (a page still loading): a list that mounts or catches up late mustn't pull the user back here
     if (router.latestLocation.pathname !== "/assets") return;
     void navigate({ to: "/assets", replace: true, resetScroll: false,
-      search: (s: Record<string, unknown>) => ({ ...s, q: typed || undefined, show: on.join(",") || undefined, crit: crit || undefined, sort: sort === "urgent" ? undefined : sort }) });
-  }, [typed, on, crit, sort, navigate, router]);
+      search: (s: Record<string, unknown>) => ({ ...s, q: typed || undefined, show: on.join(",") || undefined, crit: crit || undefined, sort: sort === "urgent" ? undefined : sort,
+        owner: owner && owner !== NO_OWNER ? owner : undefined, noowner: owner === NO_OWNER ? "1" : undefined }) });
+  }, [typed, on, crit, sort, owner, navigate, router]);
   const fleetwideAgent = assets.filter(MATCH.agent).length > assets.length / 2;  // said once in the banner, not on every row
-  const rows = useMemo(() => filterAssets(assets, typed, on, crit, sort), [assets, typed, on, crit, sort]);
+  const rows = useMemo(() => filterAssets(assets, typed, on, crit, sort, owner), [assets, typed, on, crit, sort, owner]);
   const pick = useCallback((id: string, v: boolean) => setPicked((s) => { const n = new Set(s); if (v) n.add(id); else n.delete(id); return n; }), []);
   const counts = useMemo(() => Object.fromEntries((Object.keys(FILTERS) as Filter[]).map((f) => [f, assets.filter(MATCH[f]).length])) as Record<Filter, number>, [assets]);
   const visible = rows.slice(0, shown);
@@ -639,11 +657,11 @@ function MachineList({ assets, saved, failed, onPatch, onDelete, undo }: {
   const allPicked = rows.length > 0 && rows.every((a) => picked.has(a.id));
   const [staged, setStaged] = useState<AssetPatch>({});
   const [applied, setApplied] = useState<{ text: string; undo: { id: string; p: AssetPatch }[] } | null>(null);
-  const describe = (p: AssetPatch) => [p.criticality && `criticality ${p.criticality}`, p.ring !== undefined && `ring ${p.ring === 0 ? "canary" : "broad"}`,
+  const describe = (p: AssetPatch) => [p.owner && `owner ${p.owner}`, p.criticality && `criticality ${p.criticality}`, p.ring !== undefined && `ring ${p.ring === 0 ? "canary" : "broad"}`,
     p.internet_facing !== undefined && (p.internet_facing ? "internet-facing" : "not internet-facing")].filter(Boolean).join(", ");
   const apply = () => {
     // what each machine had before, so the whole change can be undone
-    const undo = pickedRows.map((a) => ({ id: a.id, p: Object.fromEntries(Object.keys(staged).map((k) => [k, a[k as keyof AssetPatch]])) as AssetPatch }));
+    const undo = pickedRows.map((a) => ({ id: a.id, p: Object.fromEntries(Object.keys(staged).map((k) => [k, k === "owner" ? a.owner ?? "" : a[k as keyof AssetPatch]])) as AssetPatch }));
     // ring and health units mean nothing for an application (no agent runs fixes there)
     const forRow = (a: Asset) => (a.kind === "host" ? staged : { ...staged, ring: undefined });
     pickedRows.forEach((a) => { const p = forRow(a); if (describe(p)) onPatch(a.id, p); });
@@ -658,7 +676,8 @@ function MachineList({ assets, saved, failed, onPatch, onDelete, undo }: {
     if (barOpen && bar.current) root.style.setProperty("--bulk-bar", `${bar.current.offsetHeight + 8}px`);
     return () => { root.style.removeProperty("--bulk-bar"); };
   }, [barOpen]);
-  const clear = () => { setText(""); setOn([]); setCrit(""); setShown(PAGE); };
+  const clear = () => { setText(""); setOn([]); setCrit(""); setOwner(""); setShown(PAGE); };
+  const narrowing = on.length + Number(!!crit) + Number(!!owner);
   return (
     <section aria-labelledby="machines-h" className="flex flex-col gap-3">
       <h2 id="machines-h" className="sr-only">Machines and applications</h2>
@@ -671,8 +690,8 @@ function MachineList({ assets, saved, failed, onPatch, onDelete, undo }: {
             <input type="search" className={clsx(input, "pl-9")} placeholder="Search by name, OS or agent version" value={text} onChange={(e) => { setText(e.target.value); setShown(PAGE); }} />
           </label>
           {/* search first, then the filters button, as on Findings; same label, count only when some are on */}
-          <button className={clsx(chip(on.length > 0 || !!crit), "md:hidden")} aria-expanded={filtersOpen} aria-controls="asset-filters" onClick={() => setFiltersOpen((x) => !x)}>
-            <SlidersHorizontal className="size-4" aria-hidden />More filters{on.length + Number(!!crit) > 0 && <span className="num">{on.length + Number(!!crit)}</span>}
+          <button className={clsx(chip(narrowing > 0), "md:hidden")} aria-expanded={filtersOpen} aria-controls="asset-filters" onClick={() => setFiltersOpen((x) => !x)}>
+            <SlidersHorizontal className="size-4" aria-hidden />More filters{narrowing > 0 && <span className="num">{narrowing}</span>}
           </button>
           <div id="asset-filters" className={clsx("w-full flex-wrap items-center gap-2 md:flex md:w-auto", filtersOpen ? "flex" : "hidden")}>
           {/* the quick filters as one control (DESIGN.md: six controls before the first row); a link may still set several */}
@@ -693,6 +712,12 @@ function MachineList({ assets, saved, failed, onPatch, onDelete, undo }: {
               <option value="">Any</option>{LEVELS.map((l) => <option key={l} value={l}>{cap(l)}</option>)}
             </select>
           </label>
+          {(owners.length > 0 || owner) && <label className="flex items-center gap-2 text-sm">
+            <span className="text-muted">Owner</span>
+            <select className={clsx(input, "w-auto max-w-48 md:min-h-9")} value={owner} onChange={(e) => { setOwner(e.target.value); setShown(PAGE); }}>
+              <option value="">Any</option>{owners.map((o) => <option key={o} value={o}>{o}</option>)}<option value={NO_OWNER}>No owner</option>
+            </select>
+          </label>}
           <label className="flex items-center gap-2 text-sm">
             <span className="text-muted">Sort</span>
             <select className={clsx(input, "w-auto md:min-h-9")} value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
@@ -714,6 +739,10 @@ function MachineList({ assets, saved, failed, onPatch, onDelete, undo }: {
       {admin && picked.size > 0 && (
         <div role="region" aria-label="Change selected machines" ref={bar} className="fixed inset-x-2 bottom-[calc(var(--tabbar-h,3.5rem)+0.5rem)] z-10 flex max-h-[40dvh] flex-wrap items-center gap-x-4 gap-y-2 overflow-y-auto border border-ink bg-surface px-3 py-2 text-sm shadow-[0_6px_16px_var(--shadow)] md:bottom-4 md:left-[calc(var(--sidebar-w)+1.5rem)] md:right-6">
           <SlidersHorizontal className="size-4" aria-hidden /><strong className="num font-semibold">{picked.size} selected</strong>
+          <label className="flex w-full items-center gap-2 sm:w-auto"><span className="text-muted">Owner</span>
+            <input className={clsx(input, "min-w-0 flex-1 sm:w-40 sm:flex-none md:min-h-9")} list="bulk-owners" placeholder="Unchanged" maxLength={100} value={staged.owner ?? ""}
+              onChange={(e) => setStaged((s) => ({ ...s, owner: e.target.value.trim() ? e.target.value : undefined }))} />
+            <datalist id="bulk-owners">{owners.map((o) => <option key={o} value={o} />)}</datalist></label>
           <label className="flex w-full items-center gap-2 sm:w-auto"><span className="text-muted">Criticality</span>
             <select className={clsx(input, "min-w-0 flex-1 capitalize sm:w-auto sm:flex-none md:min-h-9")} value={staged.criticality ?? ""} onChange={(e) => setStaged((s) => ({ ...s, criticality: (e.target.value || undefined) as Criticality | undefined }))}>
               <option value="">Unchanged</option>{LEVELS.map((l) => <option key={l} value={l}>{cap(l)}</option>)}
@@ -757,7 +786,7 @@ function MachineList({ assets, saved, failed, onPatch, onDelete, undo }: {
       {barOpen && <div aria-hidden style={{ height: "var(--bulk-bar, 6rem)" }} />}
       {rows.length > shown && <button className={clsx(btnQuiet, "self-start")} onClick={() => setShown((n) => n + PAGE * 5)}>{rows.length - shown <= PAGE * 5 ? `Show the other ${rows.length - shown}` : `Show ${PAGE * 5} more (${rows.length - shown} left)`}</button>}
       <MachineDrawer a={current} onClose={() => setEditing(null)}>
-        {current && <AssetRow a={current} saved={saved === current.id} inDrawer undo={saved === current.id ? undo : undefined} error={failed?.id === current.id ? failed.message : undefined}
+        {current && <AssetRow a={current} owners={owners} saved={saved === current.id} reranked={reranked} inDrawer undo={saved === current.id ? undo : undefined} error={failed?.id === current.id ? failed.message : undefined}
           onPatch={(p) => onPatch(current.id, p)} onDelete={() => { setEditing(null); onDelete(current); }} />}
       </MachineDrawer>
     </section>
@@ -784,7 +813,7 @@ const MachineLine = memo(function MachineLine({ a, picked, saved, onPick, onOpen
           {saved && <Done className="text-muted">Saved</Done>}
         </div>
         <p className="truncate text-sm text-muted">
-          {a.kind === "application" ? "Application (SBOM)" : a.os_name || "Unknown OS"} · <span className="capitalize">{a.criticality}</span>
+          {a.kind === "application" ? "Application (SBOM)" : a.os_name || "Unknown OS"} · <span className="capitalize">{a.criticality}</span>{a.owner && <> · {a.owner}</>}
           {a.kind === "host" && a.ring === 0 && " · canary"}{a.internet_facing && " · internet-facing"} · seen <time dateTime={parseUtc(a.last_seen).toISOString()} title={parseUtc(a.last_seen).toLocaleString()}>{relativeTime(a.last_seen)}</time>
         </p>
       </div>
@@ -880,7 +909,7 @@ export function AgentUpdateSummary({ assets, onShow }: { assets: Asset[]; onShow
 }
 
 /** Render asset a and editable details; invoke onPatch/onDelete for mutations and display saved/error/undo state. */
-export function AssetRow({ a, onPatch, onDelete, saved, error, inDrawer, undo }: { a: Asset; onPatch: (p: AssetPatch) => void; onDelete: () => void; saved?: boolean; error?: string; inDrawer?: boolean; undo?: () => void }) {
+export function AssetRow({ a, onPatch, onDelete, saved, error, inDrawer, undo, owners = [], reranked = true }: { a: Asset; onPatch: (p: AssetPatch) => void; onDelete: () => void; saved?: boolean; error?: string; inDrawer?: boolean; undo?: () => void; owners?: string[]; reranked?: boolean }) {
   const admin = useIsAdmin();
   const open = PRIORITIES.filter((p) => a.open_by_priority[p]);
   const host = a.kind === "host";
@@ -916,10 +945,11 @@ export function AssetRow({ a, onPatch, onDelete, saved, error, inDrawer, undo }:
         {/* The API only lets admins change these; everyone else reads them (as in Settings). */}
         {!admin ? (
           <p className="text-sm text-muted">
-            Criticality: <span className="capitalize text-ink">{a.criticality}</span> · {a.internet_facing ? "Internet-facing" : "Not internet-facing"}
+            Owner: <span className="text-ink">{a.owner || "none"}</span> · Criticality: <span className="capitalize text-ink">{a.criticality}</span> · {a.internet_facing ? "Internet-facing" : "Not internet-facing"}
             {host && <> · Ring: <span className="text-ink">{a.ring === 0 ? "Canary" : "Broad"}</span> · Health units: <span className="text-ink">{a.health_units.join(", ") || "none"}</span></>}
           </p>
         ) : <>
+        <OwnerField value={a.owner} owners={owners} onSave={(owner) => onPatch({ owner })} />
         <label className="flex items-center gap-2 text-sm">
           <span className="whitespace-nowrap text-muted">Criticality</span>
           <select className={clsx(input, "w-auto capitalize md:min-h-9")} value={a.criticality} onChange={(e) => onPatch({ criticality: e.target.value as Criticality })}>
@@ -950,7 +980,7 @@ export function AssetRow({ a, onPatch, onDelete, saved, error, inDrawer, undo }:
         <HealthUnits a={a} onPatch={onPatch} /></>}
         </>}
         <SbomUpload a={a} />
-        {saved && <Done className="text-muted">Saved. Findings re-ranked.</Done>}
+        {saved && <Done className="text-muted">{reranked ? "Saved. Findings re-ranked." : "Saved."}</Done>}
         {saved && undo && <button className={btnQuiet} onClick={undo}>Undo</button>}
         {!inDrawer && <button className={clsx(btnQuiet, "ml-auto px-3 md:px-2.5")} onClick={onDelete} title={`Delete ${a.hostname}`} {...adminGate(admin)}>
           <Trash2 className="size-4" aria-hidden /><span className="md:sr-only">Delete</span><span className="sr-only"> {a.hostname}</span>
@@ -969,6 +999,23 @@ export function AssetRow({ a, onPatch, onDelete, saved, error, inDrawer, undo }:
         </button>
       </div>}
     </li>
+  );
+}
+
+/** The team accountable for an asset (DECISIONS 145): typed once, offered again from the org's other owners, saved on leaving
+ * the field or Enter. Emptying it leaves the asset with no owner. */
+export function OwnerField({ value, owners, onSave }: { value: string | null | undefined; owners: string[]; onSave: (owner: string) => void }) {
+  const list = useId();
+  const [text, setText] = useState(value ?? "");
+  useEffect(() => setText(value ?? ""), [value]);  // re-sync after a save, an undo or a rollback
+  const commit = () => { const v = text.trim().replace(/\s+/g, " "); if (v !== (value ?? "")) onSave(v); };
+  return (
+    <label className="flex items-center gap-2 text-sm">
+      <span className="whitespace-nowrap text-muted">Owner</span>
+      <input className={clsx(input, "w-44 md:min-h-9")} value={text} list={list} placeholder="No owner" maxLength={100}
+        onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === "Enter" && commit()} />
+      <datalist id={list}>{owners.filter((o) => o !== value).map((o) => <option key={o} value={o} />)}</datalist>
+    </label>
   );
 }
 

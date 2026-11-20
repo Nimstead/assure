@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { useState, type ReactNode } from "react";
 import { afterEach, vi } from "vitest";
 import { SsoSection } from "./integrations";
-import { ApiError, meQ, type Action, type Asset, type Finding, type Job, type Settings } from "./lib";
+import { ApiError, meQ, NO_OWNER, type Action, type Asset, type Finding, type Job, type Settings } from "./lib";
 import { ActionCard, Home } from "./home";
 import { PlanFixButton } from "./planfix";
 import { foldRuns } from "./evidence";
@@ -519,8 +519,8 @@ it("self-approval is said once per Remediation section, with who planned and app
 it("the machine list searches, filters and sorts the fleet", () => {
   const base = { kind: "host", os_name: "Debian 13", criticality: "medium", internet_facing: false, sandbox: false, ring: 1, health_units: [], open_by_priority: {}, last_seen: "2026-01-02T00:00:00" };
   const fleet = [
-    { ...base, id: "1", hostname: "db-prod-01", criticality: "critical", open_by_priority: { low: 40 } },
-    { ...base, id: "2", hostname: "web-prod-01", open_by_priority: { "fix-now": 1 }, internet_facing: true },
+    { ...base, id: "1", hostname: "db-prod-01", criticality: "critical", open_by_priority: { low: 40 }, owner: "Data" },
+    { ...base, id: "2", hostname: "web-prod-01", open_by_priority: { "fix-now": 1 }, internet_facing: true, owner: "Payments" },
     { ...base, id: "3", hostname: "web-dev-02", not_reporting: true, last_seen: "2025-12-01T00:00:00" },
   ] as unknown as Asset[];
   expect(filterAssets(fleet, "", [], "", "urgent").map((a) => a.id)).toEqual(["2", "1", "3"]);  // one fix-now outranks 40 low
@@ -528,6 +528,9 @@ it("the machine list searches, filters and sorts the fleet", () => {
   expect(filterAssets(fleet, "", ["quiet"], "", "urgent").map((a) => a.id)).toEqual(["3"]);
   expect(filterAssets(fleet, "", [], "critical", "urgent").map((a) => a.id)).toEqual(["1"]);
   expect(filterAssets(fleet, "", [], "", "seen")[0]!.id).toBe("3");
+  expect(filterAssets(fleet, "", [], "", "urgent", "Payments").map((a) => a.id)).toEqual(["2"]);
+  expect(filterAssets(fleet, "", [], "", "urgent", NO_OWNER).map((a) => a.id)).toEqual(["3"]);
+  expect(filterAssets(fleet, "data", [], "", "urgent").map((a) => a.id)).toEqual(["1"]);  // search finds an owner too
 });
 
 it("closing the palette hands focus back to what opened it", async () => {

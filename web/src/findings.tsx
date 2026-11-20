@@ -6,7 +6,7 @@ import { Dialog } from "radix-ui";
 import { ArrowDown, ArrowRight, ArrowUpDown, Bookmark, ChevronDown, ChevronUp, ExternalLink, Search, SlidersHorizontal, Sparkles, Wrench, X } from "lucide-react";
 import clsx from "clsx";
 import {
-  ACTIVE_JOB_STATUSES, adminGate, announce, ApiError, savedViews, saveViews, settingsQ, type SavedView, aiFilterToPatch, aiStatusQ, api, assetsQ, FINDINGS_CAP, filtersToApi, filtersToSearch, jobAnchor, looksLikeQuestion, parseFilters, pct, plural,
+  ACTIVE_JOB_STATUSES, adminGate, announce, ApiError, savedViews, saveViews, settingsQ, type SavedView, aiFilterToPatch, aiStatusQ, api, assetsQ, FINDINGS_CAP, filtersToApi, filtersToSearch, jobAnchor, looksLikeQuestion, NO_OWNER, ownersOf, parseFilters, pct, plural,
   PRIORITIES, PRIORITY_LABEL, refresh, relativeTime, parseUtc, useIsAdmin, useTitle, whyMatched, fixLabel, type AiFilter, type Finding, type FindingGroup, type FindingGroupRow, type FindingSort, type FindingsFilters, type Job, type RawSearch, type Status,
 } from "./lib";
 import { PlanFixButton } from "./planfix";
@@ -48,9 +48,9 @@ export function FindingsPage({ search }: { search: RawSearch }) {
     onSuccess: (a) => { if (here.current !== "/findings") return; const p = aiFilterToPatch(a); setText(p.q ?? ""); setAsked(true); set(p); },
   });
   const [showFilters, setShowFilters] = useState(false);
-  const moreOn = f.priority.length + Number(f.kev) + Number(f.overdue) + Number(f.fixable);
+  const moreOn = f.priority.length + Number(f.kev) + Number(f.overdue) + Number(f.fixable) + Number(!!f.owner || f.noOwner);
   const [moreOpen, setMoreOpen] = useState(moreOn > 0);
-  const active = f.priority.length + Number(f.kev) + Number(f.overdue) + Number(f.fixable) + Number(!!f.asset) + Number(!!f.ecosystem);
+  const active = moreOn + Number(!!f.asset) + Number(!!f.ecosystem);
   useEffect(() => {
     if (text === f.q || question) return; // a question is sent on Ask, not searched literally
     const t = setTimeout(() => set({ q: text.trim() }), 250);
@@ -95,7 +95,7 @@ export function FindingsPage({ search }: { search: RawSearch }) {
   const allQs = filtersToApi({ ...f, fixable: false }, false);
   const all = useQuery({ queryKey: ["findings", "count", allQs], queryFn: () => api<{ total: number }>(`/api/findings/count?${allQs}`), enabled: !f.group && f.fixable, placeholderData: (p) => p });
   // a narrowed list says of how many (DESIGN.md: a filter that hides something says how much)
-  const narrowed = f.priority.length > 0 || f.kev || f.overdue || !!f.asset || !!f.ecosystem || !!f.q;
+  const narrowed = f.priority.length > 0 || f.kev || f.overdue || !!f.asset || !!f.ecosystem || !!f.q || !!f.owner || f.noOwner;
   const baseQs = filtersToApi({ ...parseFilters({}), status: f.status, fixable: false }, false);
   const base = useQuery({ queryKey: ["findings", "count", baseQs], queryFn: () => api<{ total: number }>(`/api/findings/count?${baseQs}`), enabled: !f.group && narrowed && !f.fixable, placeholderData: (p) => p });
   const groups = useQuery({ queryKey: ["findings", "groups", f.group, filterQs], queryFn: () => api<FindingGroupRow[]>(`/api/findings/groups?by=${f.group}&${filterQs}`),
@@ -103,9 +103,10 @@ export function FindingsPage({ search }: { search: RawSearch }) {
   const typing = text.trim() !== f.q && !question;
   const assets = useQuery(assetsQ);
   const host = assets.data?.find((a) => a.id === f.asset)?.hostname;
+  const owners = useMemo(() => ownersOf(assets.data ?? []), [assets.data]);
   const updating = f.group ? groups.isPlaceholderData : list.isPlaceholderData;
   // back to the default view: every open finding, by risk
-  const clearAll = () => { setAsked(false); setText(""); set({ fixable: false, kev: false, overdue: false, q: "", priority: [], asset: "", ecosystem: "" }); };
+  const clearAll = () => { setAsked(false); setText(""); set({ fixable: false, kev: false, overdue: false, q: "", priority: [], asset: "", ecosystem: "", owner: "", noOwner: false }); };
 
   return (
     <div className="flex flex-col gap-4">
@@ -186,8 +187,15 @@ export function FindingsPage({ search }: { search: RawSearch }) {
               title="A fix exists: a fixed version to upgrade to, a setting to change, or a service to close. Not only fixes Nimstead can apply for you">
               Has a fix{f.fixable && all.data && count.data && all.data.total > count.data.total && <span className="num text-muted">hides {(all.data.total - count.data.total).toLocaleString("en")}</span>}
             </button>
+            {(owners.length > 0 || f.owner || f.noOwner) && <label className="flex items-center gap-2 text-sm">
+              <span className="text-muted">Owner</span>
+              <select className={clsx(input, "w-auto max-w-48 md:min-h-8")} value={f.noOwner ? NO_OWNER : f.owner}
+                onChange={(e) => set({ owner: e.target.value === NO_OWNER ? "" : e.target.value, noOwner: e.target.value === NO_OWNER })}>
+                <option value="">Any</option>{[...new Set([...owners, ...(f.owner ? [f.owner] : [])])].map((o) => <option key={o} value={o}>{o}</option>)}<option value={NO_OWNER}>No owner</option>
+              </select>
+            </label>}
           </div>}
-          {(f.priority.length > 0 || f.kev || f.overdue || !!f.asset || !!f.ecosystem || !!f.q) && (
+          {narrowed && (
             <button className="tap cursor-pointer text-sm underline" onClick={clearAll}>Clear filters</button>
           )}
           {f.ecosystem && (

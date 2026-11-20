@@ -145,6 +145,7 @@ def main():
     timed("GET /api/findings?limit=5000", lambda: c.get("/api/findings", params={"limit": 5000}).json(), 3)
     timed("GET /api/findings?q=pkg42", lambda: c.get("/api/findings", params={"q": "pkg42"}).json(), 3)
     timed("GET /api/assets", lambda: c.get("/api/assets").json(), 3)
+    timed("GET /api/progress?days=365 (ledger replay)", lambda: c.get("/api/progress", params={"days": 365}).json(), 3)
     timed("GET /api/evidence/pack", lambda: c.get("/api/evidence/pack").content, 1)
 
     result["rematch_all_s"] = rematch()

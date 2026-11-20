@@ -52,6 +52,21 @@ it("settings show when the last alert delivery failed", async () => {
   vi.unstubAllGlobals();
 });
 
+it("the weekly summary is off until switched on, and saves with the alert settings", async () => {
+  const body = { webhook_set: true, webhook_host: "hooks.slack.com", webhook_format: "slack", emails: [], emails_confirmed: [], email_available: false,
+    last_delivery_failed: false, weekly_summary: false, recent: [] };
+  const fetchMock = vi.fn(async () => new Response(JSON.stringify(body), { status: 200 }));
+  vi.stubGlobal("fetch", fetchMock);
+  render(<QueryClientProvider client={new QueryClient()}><NotificationsSection /></QueryClientProvider>);
+  const box = await screen.findByRole("checkbox", { name: /Weekly summary/ });
+  expect(box).not.toBeChecked();
+  await userEvent.click(box);
+  await userEvent.click(screen.getByRole("button", { name: "Save alert settings" }));
+  const put = (fetchMock.mock.calls as unknown as [string, RequestInit][]).find(([, init]) => init?.method === "PUT")!;
+  expect(JSON.parse(String(put[1].body))).toMatchObject({ weekly_summary: true });
+  vi.unstubAllGlobals();
+});
+
 const signedIn = (admin: boolean) => {
   const qc = new QueryClient();
   qc.setQueryData(meQ.queryKey, { email: "a@example.com", org: "Acme", admin, origin: "password", mfa: admin, recovery_codes_left: 10 });
@@ -165,4 +180,18 @@ test("a forward-only fix says it can't be undone before approval (plan T22)", ()
   expect(screen.getByRole("alertdialog", { name: "Approve a fix that can't be undone?" })).toBeTruthy();
   expect(screen.getByText(/no automatic rollback/)).toBeTruthy();
   expect(screen.getByRole("button", { name: "Approve: it can't be undone" })).toBeTruthy();
+});
+
+it("the drawer's owner field saves the tidied name on Enter, and an owner-only save re-ranks nothing", async () => {
+  const qc = signedIn(true);
+  const a = { id: "a1", hostname: "web-1", kind: "host", os_name: "Debian 13", criticality: "medium", internet_facing: false, sandbox: false, ring: 1,
+    health_units: [], open_by_priority: {}, last_seen: "2026-01-01T00:00:00", owner: null } as unknown as Asset;
+  const onPatch = vi.fn();
+  const { rerender } = render(<QueryClientProvider client={qc}><ul><AssetRow a={a} owners={["Payments"]} onPatch={onPatch} onDelete={() => {}} inDrawer /></ul></QueryClientProvider>);
+  const field = screen.getByRole("combobox", { name: "Owner" });
+  await userEvent.type(field, "  Payments   team {Enter}");
+  expect(onPatch).toHaveBeenCalledWith({ owner: "Payments team" });
+  rerender(<QueryClientProvider client={qc}><ul><AssetRow a={{ ...a, owner: "Payments team" }} owners={["Payments"]} onPatch={onPatch} onDelete={() => {}} inDrawer saved reranked={false} /></ul></QueryClientProvider>);
+  expect(screen.getByText("Saved.")).toBeInTheDocument();
+  expect(screen.queryByText(/re-ranked/)).toBeNull();
 });

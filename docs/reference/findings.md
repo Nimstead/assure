@@ -11,7 +11,7 @@ GET operations accept a user session or an eligible read-only organisation API t
 | `GET /api/findings` | Array of full or compact rows |
 | `GET /api/findings/count` | Object with integer `total` |
 | `GET /api/findings/groups` | Up to 500 group rows |
-| `GET /api/findings/{finding_id}` | Full row plus `package_fix`; for a container image also `rebuild` (how it's fixed) and `runs_on` (the hosts that run it). Unavailable IDs return `404` |
+| `GET /api/findings/{finding_id}` | Full row plus `package_fix` and `owner` (its asset's owner, or `null`); for a container image also `rebuild` (how it's fixed) and `runs_on` (the hosts that run it). Unavailable IDs return `404` |
 | `GET /api/findings.csv` | Streamed CSV attachment |
 
 List, count, group, and CSV operations accept these filters:
@@ -25,6 +25,7 @@ List, count, group, and CSV operations accept these filters:
 | `fixable` | No filter. True selects a nonnull fixed version or a WinConfig, Lifecycle, External, or WinDriver result. False selects the inverse |
 | `kev` | No filter. True/false selects the corresponding flag |
 | `overdue` | No filter. True selects open findings past their computed deadline. False behaves like no filter. Groups ignore this parameter |
+| `owner` | No filter. An owner name selects findings on assets with exactly that owner; an empty value (`owner=`) selects findings on assets with no owner. At most 100 characters |
 
 `q` preserves SQL LIKE wildcards: `%` matches any sequence and `_` matches one character. It is not a literal-substring-only search.
 
@@ -84,7 +85,7 @@ Version-comparison failures can propagate as server errors in group/detail fix s
 
 ## CSV contract
 
-Columns appear in this order: `hostname`, `package`, `installed_version`, `fixed_version`, `vuln_id`, `priority`, `score`, `cvss`, `epss`, `kev`, `status`, `first_seen`, `last_seen`, `resolved_at`, `summary`.
+Columns appear in this order: `hostname`, `package`, `installed_version`, `fixed_version`, `vuln_id`, `priority`, `score`, `cvss`, `epss`, `kev`, `status`, `first_seen`, `last_seen`, `resolved_at`, `summary`, `owner` (the asset's owner, empty when it has none). New columns are added at the end, so a script that reads columns by position keeps working.
 
 The attachment filename is `nimstead-findings-STATUS.csv`. Null cells are empty. Boolean cells use Python's `True`/`False` text. Timestamp cells use the datetime string representation, with a space between date and time.
 

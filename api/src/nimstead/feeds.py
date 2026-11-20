@@ -20,7 +20,21 @@ import httpx
 from sqlalchemy import delete, insert, select, update
 from sqlalchemy.orm import Session
 
-from nimstead import containers, evidence, external, lifecycle, msproducts, neighbours, notify, office, oui, updates, winapps, windrivers
+from nimstead import (
+    containers,
+    evidence,
+    external,
+    lifecycle,
+    msproducts,
+    neighbours,
+    notify,
+    office,
+    oui,
+    progress,
+    updates,
+    winapps,
+    windrivers,
+)
 from nimstead.db import Advisory, Asset, Cvss, Epss, InstalledPackage, Kev, Neighbour, Org, make_sessionmaker, now
 from nimstead.match import normalize_ecosystem
 from nimstead.scan import HOTPATCH, rescan
@@ -625,6 +639,7 @@ def update_all(session: Session, client=None) -> dict:
     out["webhooks_sealed"] = guarded("webhook sealing", lambda: notify.seal_legacy(session))
     out["alerts_retried"] = guarded("alert retries", lambda: notify.retry_failed(session))
     out["hosts_not_reporting_alerted"] = guarded("not-reporting alerts", lambda: notify.alert_silent_hosts(session))
+    out["weekly_summaries"] = guarded("weekly summaries", lambda: progress.send_weekly_summaries(session))
     try:  # a release-check problem must never stop the feed update
         out["platform"] = updates.check(session)
     except Exception as e:

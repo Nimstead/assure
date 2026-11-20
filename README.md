@@ -27,6 +27,7 @@ Nimstead Assure scans your Linux and Windows machines and your applications' dep
 - **Works at fleet scale.** Findings page through tens of thousands of rows, sort by any column, and group by vulnerability or package. Select findings to plan the fix on every machine they're on, or accept the risk with one recorded reason. Save filter sets as views, search everything with Ctrl K, and step through findings with the keyboard. Assets has search, filters and bulk edit.
 - **Fixes things without surprises.** You approve a fix, after seeing every package it changes and the machine it runs on. It goes to canary machines first, with a dry run that refuses anything outside the plan, a rollback copy taken before every change, health checks after, and automatic rollback if they fail. A fix only counts once the next inventory shows the vulnerability is gone.
 - **Proves the work.** Every detection, fix and decision lands in a hash-chained ledger with signed off-database checkpoints. Ed25519-signed evidence packs map to Cyber Essentials, ISO 27001 A.8.8, NIST RA-5/SI-2, PCI DSS 6.3.3 and CIS 7, and verify offline against a pinned key fingerprint.
+- **Shows whether it's working, and who is behind.** Give each machine an owner (or let its install command do it), and Progress shows day by day whether overdue, fix-now and open findings are falling, whether fixes keep up with what's found, and which team has the most overdue. It's rebuilt from the same signed ledger the evidence packs use, so its numbers match theirs, and a weekly summary can go to Slack or email.
 - **Watches your edge, and what's on your network.** Internet hosts you prove you own (DNS TXT) are checked for exposed risky services, weak TLS, source and config files served by mistake, and known-bad service versions, and a finding there closes only when the scan proves it fixed. Devices on your networks with no agent are listed by maker, from your machines' own network tables, without sending them anything; a machine you opt in locally can check its neighbours for exposed services too.
 - **Keeps itself current, safely.** Agents update themselves only from releases signed by the Nimstead release key, which your server never holds, so a compromised server can't push code to your machines. The server tells you when a release is out, and `deploy/update.sh` installs it with a database backup and automatic rollback. Machines that stop reporting are flagged.
 - **Fits your organisation.** OIDC single sign-on with verified domains, admin and read-only roles, webhook and email alerts for failed fixes and new urgent findings, keys in Vault and checkpoints in object-locked S3.
@@ -44,6 +45,10 @@ Every screenshot here is from a real run ([`sandbox/demo.py`](sandbox/demo.py)):
 | 44,000 findings on 206 machines: three selected, one upgrade to plan across all of them |
 |---|
 | ![Findings at fleet scale: 16,854 fixable results with sortable columns, a saved-view button and three brotli findings selected; the bar at the bottom offers Accept risk and Plan 1 fix on 3 machines](docs/images/findings-fleet-1440.png) |
+
+| Progress over 90 days: overdue first, the weekly flow of found and fixed, and each owner's numbers. The findings are the 206-machine demo's real ones; the history is simulated over them by [`sandbox/progress_demo.py`](sandbox/progress_demo.py) |
+|---|
+| ![Progress: open findings rose from 26,844 to 27,235 in 90 days with 2,534 overdue; six small charts for overdue, fix now, next, routine, low and accepted risk; weekly bars of findings opened and resolved; a table of owners ordered by overdue findings](docs/images/progress-1440.png) |
 
 ## Get started
 

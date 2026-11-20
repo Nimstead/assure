@@ -4,6 +4,16 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-11-20 (preview)
+
+Agent 0.8.1, unchanged. No database migration. One fix: risk acceptances on internet targets and network devices now end when they say they do.
+
+### Upgrade notes
+- **An accepted finding on an internet target or a network device whose acceptance has already ended opens again** at the target's next scan or the device's next network check after you upgrade. Fix first, Progress and the weekly summary count it as open from then on. To keep accepting it, accept it again with a new end date.
+
+### Highlights
+- **Accepting a risk on an internet target or a network device now lasts only until the date you set**, as it always has on a machine. Until now it lasted for ever while the finding was still seen, and Progress counted it as accepted risk.
+
 ### Fixed
 - **An accepted finding on an internet target or a network device never expired.** Only a machine's rescan checked when an acceptance ended, so accepting a risk on a target or a device lasted for ever while it was still seen, and Progress counted it as accepted risk. It now opens again at the target's next scan or the device's next network check after its acceptance ends, recorded in the ledger as `acceptance_expired`, exactly as on a machine (DECISIONS 149).
 
@@ -728,7 +738,8 @@ The first early-access release. Everything listed is proven by tests and, for an
 
 Licensed under FSL-1.1-ALv2: this release becomes available under Apache 2.0 on 2028-10-27.
 
-[Unreleased]: https://github.com/Nimstead/assure/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/Nimstead/assure/compare/v0.11.1...HEAD
+[0.11.1]: https://github.com/Nimstead/assure/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/Nimstead/assure/compare/v0.10.1...v0.11.0
 [0.10.1]: https://github.com/Nimstead/assure/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/Nimstead/assure/compare/v0.9.3...v0.10.0

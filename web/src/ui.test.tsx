@@ -181,3 +181,17 @@ test("a forward-only fix says it can't be undone before approval (plan T22)", ()
   expect(screen.getByText(/no automatic rollback/)).toBeTruthy();
   expect(screen.getByRole("button", { name: "Approve: it can't be undone" })).toBeTruthy();
 });
+
+it("the drawer's owner field saves the tidied name on Enter, and an owner-only save re-ranks nothing", async () => {
+  const qc = signedIn(true);
+  const a = { id: "a1", hostname: "web-1", kind: "host", os_name: "Debian 13", criticality: "medium", internet_facing: false, sandbox: false, ring: 1,
+    health_units: [], open_by_priority: {}, last_seen: "2026-01-01T00:00:00", owner: null } as unknown as Asset;
+  const onPatch = vi.fn();
+  const { rerender } = render(<QueryClientProvider client={qc}><ul><AssetRow a={a} owners={["Payments"]} onPatch={onPatch} onDelete={() => {}} inDrawer /></ul></QueryClientProvider>);
+  const field = screen.getByRole("combobox", { name: "Owner" });
+  await userEvent.type(field, "  Payments   team {Enter}");
+  expect(onPatch).toHaveBeenCalledWith({ owner: "Payments team" });
+  rerender(<QueryClientProvider client={qc}><ul><AssetRow a={{ ...a, owner: "Payments team" }} owners={["Payments"]} onPatch={onPatch} onDelete={() => {}} inDrawer saved reranked={false} /></ul></QueryClientProvider>);
+  expect(screen.getByText("Saved.")).toBeInTheDocument();
+  expect(screen.queryByText(/re-ranked/)).toBeNull();
+});

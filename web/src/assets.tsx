@@ -80,6 +80,7 @@ export function AssetsPage() {
           </EmptyState>
         ) : (
           <MachineList assets={q.data.filter((a) => MACHINE_KINDS.includes(a.kind))} saved={patch.isPending ? "" : saved} failed={failed}
+            reranked={!patch.variables || Object.keys(patch.variables).some((k) => k !== "id" && k !== "owner")}
             undo={last ? () => { const { id, prev } = last; setLast(null); patch.mutate({ id, criticality: prev.criticality, internet_facing: prev.internet_facing, ring: prev.ring, health_units: prev.health_units, owner: prev.owner ?? "" }); } : undefined}
             onPatch={(id, p) => { setSaved(""); setFailed(null); patch.mutate({ id, ...p }); }} onDelete={(a) => { del.reset(); setTarget(a); }} />
         )}
@@ -614,8 +615,9 @@ export function filterAssets(assets: Asset[], text: string, on: Filter[], crit: 
 }
 
 /** The fleet as one line per machine; editing happens in a drawer, or for several at once through the bulk bar. */
-function MachineList({ assets, saved, failed, onPatch, onDelete, undo }: {
+function MachineList({ assets, saved, failed, onPatch, onDelete, undo, reranked }: {
   assets: Asset[]; saved: string; failed: { id: string; message: string } | null; onPatch: (id: string, p: AssetPatch) => void; onDelete: (a: Asset) => void; undo?: () => void;
+  reranked?: boolean;  // false after an owner-only change: no score reads the owner
 }) {
   const admin = useIsAdmin();
   // ?show=quiet,agent and ?machine=<id> make a filtered list or one machine's drawer linkable (the palette uses them)
@@ -780,7 +782,7 @@ function MachineList({ assets, saved, failed, onPatch, onDelete, undo }: {
       {barOpen && <div aria-hidden style={{ height: "var(--bulk-bar, 6rem)" }} />}
       {rows.length > shown && <button className={clsx(btnQuiet, "self-start")} onClick={() => setShown((n) => n + PAGE * 5)}>{rows.length - shown <= PAGE * 5 ? `Show the other ${rows.length - shown}` : `Show ${PAGE * 5} more (${rows.length - shown} left)`}</button>}
       <MachineDrawer a={current} onClose={() => setEditing(null)}>
-        {current && <AssetRow a={current} owners={owners} saved={saved === current.id} inDrawer undo={saved === current.id ? undo : undefined} error={failed?.id === current.id ? failed.message : undefined}
+        {current && <AssetRow a={current} owners={owners} saved={saved === current.id} reranked={reranked} inDrawer undo={saved === current.id ? undo : undefined} error={failed?.id === current.id ? failed.message : undefined}
           onPatch={(p) => onPatch(current.id, p)} onDelete={() => { setEditing(null); onDelete(current); }} />}
       </MachineDrawer>
     </section>
@@ -903,7 +905,7 @@ export function AgentUpdateSummary({ assets, onShow }: { assets: Asset[]; onShow
 }
 
 /** Render asset a and editable details; invoke onPatch/onDelete for mutations and display saved/error/undo state. */
-export function AssetRow({ a, onPatch, onDelete, saved, error, inDrawer, undo, owners = [] }: { a: Asset; onPatch: (p: AssetPatch) => void; onDelete: () => void; saved?: boolean; error?: string; inDrawer?: boolean; undo?: () => void; owners?: string[] }) {
+export function AssetRow({ a, onPatch, onDelete, saved, error, inDrawer, undo, owners = [], reranked = true }: { a: Asset; onPatch: (p: AssetPatch) => void; onDelete: () => void; saved?: boolean; error?: string; inDrawer?: boolean; undo?: () => void; owners?: string[]; reranked?: boolean }) {
   const admin = useIsAdmin();
   const open = PRIORITIES.filter((p) => a.open_by_priority[p]);
   const host = a.kind === "host";
@@ -974,7 +976,7 @@ export function AssetRow({ a, onPatch, onDelete, saved, error, inDrawer, undo, o
         <HealthUnits a={a} onPatch={onPatch} /></>}
         </>}
         <SbomUpload a={a} />
-        {saved && <Done className="text-muted">Saved. Findings re-ranked.</Done>}
+        {saved && <Done className="text-muted">{reranked ? "Saved. Findings re-ranked." : "Saved."}</Done>}
         {saved && undo && <button className={btnQuiet} onClick={undo}>Undo</button>}
         {!inDrawer && <button className={clsx(btnQuiet, "ml-auto px-3 md:px-2.5")} onClick={onDelete} title={`Delete ${a.hostname}`} {...adminGate(admin)}>
           <Trash2 className="size-4" aria-hidden /><span className="md:sr-only">Delete</span><span className="sr-only"> {a.hostname}</span>

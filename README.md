@@ -10,12 +10,12 @@
   <img alt="PostgreSQL 17" src="https://img.shields.io/badge/postgresql-17-111111">
 </p>
 
-<p align="center"><img src="docs/images/home-1440.png" alt="Fix first: 1,183 open findings across five real Linux machines and an application, two fixes that need a look, and the upgrades that clear the most risk" width="900"></p>
+<p align="center"><img src="docs/images/home-1440.png" alt="Fix first on a 206-machine fleet: 18,574 open findings, 1,783 overdue, three fixes that didn't work, and the upgrades that clear the most risk, the first a known-exploited brotli fix" width="900"></p>
 
-Nimstead Assure scans your Linux and Windows machines and your applications' dependencies for known vulnerabilities, tells you which few upgrades clear the most real risk, can apply them for you with automatic rollback, and keeps a tamper-evident record your auditor can check without asking us.
+Nimstead Assure scans your Linux and Windows machines, their containers and your applications' dependencies for known vulnerabilities, tells you which few upgrades clear the most real risk, can apply them for you with automatic rollback, shows whether your risk is going down and which team is behind, and keeps a tamper-evident record your auditor can check without asking us.
 
 > [!NOTE]
-> **Early access (v0.7).** Everything below works and is proven on real systems, but expect rough edges and breaking changes before 1.0. Until a release is promoted to the stable channel (none has been yet), set `NIMSTEAD_UPDATE_CHANNEL=preview` (or `beta` once one exists) in `.env` so your server hears about updates. Run it on test machines first; automated fixes stay limited to machines you enrol as test machines until you turn them on for production. Tell us what breaks: [open an issue](https://github.com/Nimstead/assure/issues/new/choose) or email dev@nimstead.systems.
+> **Early access (v0.11).** Everything below works and is proven on real systems, but expect rough edges and breaking changes before 1.0. Until a release is promoted to the stable channel (none has been yet), set `NIMSTEAD_UPDATE_CHANNEL=preview` (or `beta` once one exists) in `.env` so your server hears about updates. Run it on test machines first; automated fixes stay limited to machines you enrol as test machines until you turn them on for production. Tell us what breaks: [open an issue](https://github.com/Nimstead/assure/issues/new/choose) or email dev@nimstead.systems.
 
 ## What it does
 
@@ -30,25 +30,25 @@ Nimstead Assure scans your Linux and Windows machines and your applications' dep
 - **Shows whether it's working, and who is behind.** Give each machine an owner (or let its install command do it), and Progress shows day by day whether overdue, fix-now and open findings are falling, whether fixes keep up with what's found, and which team has the most overdue. It's rebuilt from the same signed ledger the evidence packs use, so its numbers match theirs, and a weekly summary can go to Slack or email.
 - **Watches your edge, and what's on your network.** Internet hosts you prove you own (DNS TXT) are checked for exposed risky services, weak TLS, source and config files served by mistake, and known-bad service versions, and a finding there closes only when the scan proves it fixed. Devices on your networks with no agent are listed by maker, from your machines' own network tables, without sending them anything; a machine you opt in locally can check its neighbours for exposed services too.
 - **Keeps itself current, safely.** Agents update themselves only from releases signed by the Nimstead release key, which your server never holds, so a compromised server can't push code to your machines. The server tells you when a release is out, and `deploy/update.sh` installs it with a database backup and automatic rollback. Machines that stop reporting are flagged.
-- **Fits your organisation.** OIDC single sign-on with verified domains, admin and read-only roles, webhook and email alerts for failed fixes and new urgent findings, keys in Vault and checkpoints in object-locked S3.
+- **Fits your organisation.** An owner (team) on every asset, set once on the install command; OIDC single sign-on with verified domains, admin and read-only roles, webhook and email alerts for failed fixes and new urgent findings, keys in Vault and checkpoints in object-locked S3.
 
-Every screenshot here is from a real run ([`sandbox/demo.py`](sandbox/demo.py)): five disposable Linux machines (Ubuntu 24.04, Debian 13, AlmaLinux 9, Alpine 3.21) running the real agent, real vulnerability feeds, an application SBOM, and real fixes on those machines. The fleet view below is the same demo grown to 206 machines by cloning those real inventories.
+The screenshots come from a demo built on a real run ([`sandbox/demo.py`](sandbox/demo.py)): five disposable Linux machines (Ubuntu 24.04, Debian 13, AlmaLinux 9, Alpine 3.21) running the real agent against real vulnerability feeds, with real fixes, a real rollback and a fix the dry run refused. It was grown to 206 machines by cloning those real inventories, with 200 devices found in the machines' own network tables. Its curl rollout and its 120 days of history are simulated over those real findings ([`sandbox/progress_demo.py`](sandbox/progress_demo.py)), so Progress has a past to show; everything on screen is the product's own output.
 
-| A fix verified, a fix rolled back when it broke a service, and one the dry run refused | Why a finding matched, and why it's ranked there |
+| Is it working, and who is behind? Progress over 90 days, rebuilt from the signed ledger |
+|---|
+| ![Progress: open findings fell from 23,533 to 18,574 in 90 days and 1,783 are overdue; six small charts for overdue, fix now, next, routine, low and accepted risk; weekly bars of findings opened beside findings resolved; owners ordered by overdue findings, IT Operations first with 703, each with their change, findings resolved on time and mean time to resolve; the ledger entry it was rebuilt up to](docs/images/progress-full-1440.png) |
+
+| A rollout canary first, a fix the dry run refused, and one rolled back when it broke a service | Why a finding matched, and why it's ranked there |
 |---|---|
-| ![Remediation: acl awaiting approval with each package's from and to versions; openssl on Alpine refused because it would also change musl, with Plan again including musl; openssl on Debian rolled back after billing-api.service kept restarting, with advice before planning it again; both marked self-approved](docs/images/remediation-1440.png) | ![Log4Shell (CVE-2021-44228) on billing-service: installed 2.14.1, fixed 2.15.0, with 2.25.4 named as the upgrade that clears all seven open findings; ranked by CISA KEV, CVSS 10, internet-facing and high criticality](docs/images/findings-1440.png) |
+| ![Remediation: a curl rollout with both canaries fixed and one broad machine that didn't work, held for review; openssl on edge-proxy-01 refused because it would also have changed musl, with Plan again including musl; openssl on db-prod-01 rolled back after billing-api kept restarting](docs/images/remediation-1440.png) | ![A known-exploited brotli finding on ci-runner-dev-23: installed 1.1.0-2build2 is older than the fixed 1.1.0-2ubuntu0.1 per Ubuntu's advisory; ranked fix now by CISA KEV, CVSS 9.2 and a fix being available; 105 days overdue](docs/images/findings-1440.png) |
 
-| Every machine, filtered and sorted by urgency | Controls an auditor can check | Light and dark, down to phone width |
+| Every machine with its owner, sorted by urgency | 200 devices with no agent, from your machines' own network tables |
+|---|---|
+| ![Assets: 206 machines and an application, each line naming its OS, criticality, owner team and last report, with open findings by priority and filters for owner and criticality](docs/images/assets-1440.png) | ![Devices with no agent: printers, cameras, a firewall and switches listed by maker and MAC, which machines saw them, and what the network check found on them](docs/images/devices-1440.png) |
+
+| The fixes, by package, across the fleet | Controls an auditor can check | Light and dark, down to phone width |
 |---|---|---|
-| ![Assets: five Linux machines and an application with search, filters, sort and open findings by priority; ring and health checks are set in each machine's drawer](docs/images/assets-1440.png) | ![Evidence: Cyber Essentials, ISO 27001, NIST, PCI DSS, SOC 2 and CIS control status, with a note that the period rests on one fix and RA-5 met with five machines not reporting now](docs/images/evidence-1440.png) | ![Fix first in dark mode at 375px](docs/images/home-375-dark.png) |
-
-| 44,000 findings on 206 machines: three selected, one upgrade to plan across all of them |
-|---|
-| ![Findings at fleet scale: 16,854 fixable results with sortable columns, a saved-view button and three brotli findings selected; the bar at the bottom offers Accept risk and Plan 1 fix on 3 machines](docs/images/findings-fleet-1440.png) |
-
-| Progress over 90 days: overdue first, the weekly flow of found and fixed, and each owner's numbers. The findings are the 206-machine demo's real ones; the history is simulated over them by [`sandbox/progress_demo.py`](sandbox/progress_demo.py) |
-|---|
-| ![Progress: open findings rose from 26,844 to 27,235 in 90 days with 2,534 overdue; six small charts for overdue, fix now, next, routine, low and accepted risk; weekly bars of findings opened and resolved; a table of owners ordered by overdue findings](docs/images/progress-1440.png) |
+| ![Findings grouped by package: brotli first with a known-exploited fix on one machine, then jackson-databind, openssl on 34 machines, perl, curl on 88, each with the version that fixes it](docs/images/findings-fleet-1440.png) | ![Evidence: Cyber Essentials, ISO 27001, NIST, PCI DSS, SOC 2 and CIS control status for the last 90 days, with overdue findings and mean time to remediate](docs/images/evidence-1440.png) | ![Progress in dark mode at 375px](docs/images/progress-375-dark.png) |
 
 ## Get started
 

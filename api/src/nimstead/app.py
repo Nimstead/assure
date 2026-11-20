@@ -876,16 +876,30 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         sandbox: bool = False
         owner: str | None = Field(None, max_length=100, pattern=OWNER_PATTERN)  # every asset enrolled with it starts with this owner (DECISIONS 145)
 
+    def tidy_owner(v: str | None) -> str | None:
+        return " ".join((v or "").split()) or None
+
     def owner_name(s: Session, org_id: str, v: str | None) -> str | None:
         """An owner as typed, tidied: spaces collapsed, empty = no owner, and the spelling the org already uses for the
-        same name in any case ("payments" saves as "Payments"), so one team never splits in two (DECISIONS 145)."""
-        v = " ".join((v or "").split())
-        if not v:
+        same name in any case ("payments" saves as "Payments"), so one team never splits in two (DECISIONS 145). Assets'
+        spellings first, then tokens that can still enrol. Compared with casefold in Python, not SQL lower(), which
+        folds only ASCII on SQLite; an org has few distinct owners."""
+        if not (v := tidy_owner(v)):
             return None
-        low = v.lower()
-        return (s.scalar(select(Asset.owner).where(Asset.org_id == org_id, func.lower(Asset.owner) == low).limit(1))
-                or s.scalar(select(EnrollToken.owner).where(EnrollToken.org_id == org_id, func.lower(EnrollToken.owner) == low).limit(1))
-                or v)
+        live = EnrollToken.revoked.is_(False) & (EnrollToken.expires.is_(None) | (EnrollToken.expires > now()))
+        known = [*s.scalars(select(Asset.owner).where(Asset.org_id == org_id, Asset.owner.is_not(None)).distinct()),
+                 *s.scalars(select(EnrollToken.owner).where(EnrollToken.org_id == org_id, EnrollToken.owner.is_not(None), live).distinct())]
+        return next((o for o in known if o.casefold() == v.casefold()), v)
+
+    def respell_owner(s: Session, org_id: str, old: str, new: str) -> int:
+        """Give every asset and enrolment token of the team `old` the spelling `new` (the same name in another case).
+        Return the number of assets respelt. No commit."""
+        rows = [*s.scalars(select(Asset).where(Asset.org_id == org_id, Asset.owner.is_not(None))),
+                *s.scalars(select(EnrollToken).where(EnrollToken.org_id == org_id, EnrollToken.owner.is_not(None)))]
+        hit = [r for r in rows if r.owner.casefold() == old.casefold()]
+        for r in hit:
+            r.owner = new
+        return sum(isinstance(r, Asset) for r in hit)
 
     @app.post("/api/enroll-tokens", status_code=201)
     def create_enroll_token(user: Admin, s: DB, body: TokenReq | None = None):
@@ -1726,12 +1740,19 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             raise HTTPException(422, "Invalid systemd unit name")
         if body.maintenance_window and not remediate.valid_window(body.maintenance_window):
             raise HTTPException(422, "Maintenance window needs days (0-6, Monday=0), start HH:MM, hours 1-24 and a time zone")
+        respelt = {}
         if "owner" in context:
-            context["owner"] = owner_name(s, a.org_id, context["owner"])
+            typed = tidy_owner(context["owner"])
+            if typed and a.owner and typed != a.owner and typed.casefold() == a.owner.casefold():
+                # the same team spelt another way: respell it everywhere rather than split it (DECISIONS 145)
+                respelt = {"renamed_from": a.owner, "assets_renamed": respell_owner(s, a.org_id, a.owner, typed)}
+                context["owner"] = typed
+            else:
+                context["owner"] = owner_name(s, a.org_id, typed)
         for k, v in context.items():
             setattr(a, k, v or None if k in ("maintenance_window", "owner") else v)
         s.flush()
-        evidence.append(s, a.org_id, "asset_context_changed", a.id, {"by": user.email, **context})
+        evidence.append(s, a.org_id, "asset_context_changed", a.id, {"by": user.email, **context, **respelt})
         if owner_only:  # no score depends on the owner
             s.commit()
             return asset_json(a, {})
@@ -2712,6 +2733,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             added = [e for e in emails if e not in o.notify_emails]
             o.notify_emails, o.notify_emails_confirmed = emails, [e for e in o.notify_emails_confirmed if e in emails]
         if body.weekly_summary is not None:
+            if body.weekly_summary and not o.weekly_summary:  # the first one goes the Monday after, not the hour it's switched on
+                o.weekly_summary_sent = progress.due_week(progress.now()) or o.weekly_summary_sent
             o.weekly_summary = body.weekly_summary
         url = notify.webhook_url(o)
         evidence.append(s, o.id, "notifications_configured", o.id, {

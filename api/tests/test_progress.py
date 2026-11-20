@@ -52,8 +52,8 @@ def moves(events):
 
 def oracle(findings, days, end, sla_at):
     dates = [(end - (days - 1 - i) * progress.DAY).date() for i in range(days)]
-    start = datetime.combine(dates[0], time())
     instants = [datetime.combine(d + progress.DAY, time()) for d in dates[:-1]] + [end]
+    start = instants[0]  # resolutions count from the first reading, as the change in open findings does
     out = []
     for t in instants:
         row = {"open": dict.fromkeys(progress.PRIORITIES, 0), "overdue": 0, "accepted": 0}
@@ -122,7 +122,7 @@ def test_replay_matches_a_brute_force_oracle_on_generated_histories():
 def test_the_range_has_one_point_a_day_and_weeks_start_on_monday():
     got = progress.build([], 90, END, lambda t: SLA)
     assert len(got["days"]) == 90 and got["days"][-1]["date"] == "2026-11-20" and got["days"][0]["date"] == "2026-08-23"
-    assert got["start"] == "2026-08-23T00:00:00"
+    assert got["start"] == "2026-08-24T00:00:00"  # the end of the first day: the first reading
     assert got["weeks"][0]["start"] == "2026-08-17" and got["weeks"][-1] == {"start": "2026-11-16", "opened": 0, "resolved": 0, "partial": True}
     assert all(datetime.fromisoformat(w["start"]).weekday() == 0 for w in got["weeks"])
     assert got["totals"]["mean_days_to_resolve"] is None and got["owners"] == []
@@ -221,6 +221,7 @@ def test_the_weekly_summary_goes_once_a_week_from_monday_morning_and_names_no_ho
     sent = []
     monkeypatch.setattr(progress.notify, "notify", lambda s_, o, kind, text, urgent=False: sent.append((o, kind, text)) or True)
     monkeypatch.setenv("NIMSTEAD_PUBLIC_URL", "https://nimstead.example/")
+    monkeypatch.setattr(progress, "now", lambda: datetime(2026, 11, 20, 12))  # switched on the Friday before
     monday = datetime(2026, 11, 23, 7, 59)  # ISO week 48
     assert progress.send_weekly_summaries(s, monday + timedelta(hours=1)) == 0  # off by default: nobody asked for it
     r = c.put("/api/settings/notifications", json={"weekly_summary": True})
@@ -253,8 +254,9 @@ def test_the_summary_reads_as_plain_counts():
     ]
 
 
-def test_a_week_with_nowhere_to_send_is_marked_and_nothing_goes_twice(env):
+def test_a_week_with_nowhere_to_send_is_marked_and_nothing_goes_twice(env, monkeypatch):
     c, s, org_id = flow(env)
+    monkeypatch.setattr(progress, "now", lambda: datetime(2026, 11, 20, 12))
     assert c.put("/api/settings/notifications", json={"weekly_summary": True}).status_code == 200  # but no webhook, no email
     monday = datetime(2026, 11, 23, 9, 0)
     assert progress.send_weekly_summaries(s, monday) == 0  # notify() had no destination
@@ -287,6 +289,7 @@ def test_one_orgs_failing_summary_costs_no_other_org_its_summary(env, monkeypatc
     c1, s, org1 = flow(env)
     c2 = user(env, "b@example.com")
     org2 = next(o for o in s.scalars(select(Org.id)) if o != org1)
+    monkeypatch.setattr(progress, "now", lambda: datetime(2026, 11, 20, 12))
     for c in (c1, c2):
         assert c.put("/api/settings/notifications", json={"weekly_summary": True}).status_code == 200
     sent, real = [], progress.replay
@@ -294,3 +297,31 @@ def test_one_orgs_failing_summary_costs_no_other_org_its_summary(env, monkeypatc
     monkeypatch.setattr(progress, "replay", lambda s_, o, days: (_ for _ in ()).throw(RuntimeError("bad history")) if o == org1 else real(s_, o, days))
     assert progress.send_weekly_summaries(s, datetime(2026, 11, 23, 9)) == 1
     assert sent == [org2]
+
+
+def test_the_first_summary_waits_for_monday_unless_it_is_monday_before_eight(env, monkeypatch):
+    c, s, org_id = flow(env)
+    sent = []
+    monkeypatch.setattr(progress.notify, "notify", lambda s_, o, kind, text, urgent=False: sent.append(o) or True)
+    monkeypatch.setattr(progress, "now", lambda: datetime(2026, 11, 26, 15))  # switched on on a Thursday afternoon
+    c.put("/api/settings/notifications", json={"weekly_summary": True})
+    assert progress.send_weekly_summaries(s, datetime(2026, 11, 26, 16)) == 0  # not that Thursday
+    assert progress.send_weekly_summaries(s, datetime(2026, 11, 30, 8, 5)) == 1  # the Monday after
+    c.put("/api/settings/notifications", json={"weekly_summary": False})
+    monkeypatch.setattr(progress, "now", lambda: datetime(2026, 12, 7, 7, 30))  # back on early on a Monday
+    c.put("/api/settings/notifications", json={"weekly_summary": True})
+    assert progress.send_weekly_summaries(s, datetime(2026, 12, 7, 8, 1)) == 1  # that morning's summary still goes
+    assert len(sent) == 2
+
+
+def test_change_and_resolved_count_over_the_same_window():
+    first = datetime(2026, 11, 14, 6)  # opened and fixed on the range's first day, before it is read
+    late = datetime(2026, 11, 18, 6)
+    f = lambda ev, p="next": {"priority": p, "owner": None, **progress.history(ev)}  # noqa: E731
+    got = progress.build([f([(first - timedelta(days=3), "finding_opened"), (first, "finding_resolved")]),
+                          f([(first - timedelta(days=3), "finding_opened"), (late, "finding_resolved")]),
+                          f([(late, "finding_opened")], "mystery")], 7, datetime(2026, 11, 20, 12), lambda t: SLA)
+    t = got["totals"]
+    assert got["start"] == "2026-11-15T00:00:00"  # the end of the first day, where open_at_start is read
+    assert (t["open_at_start"], t["resolved"], t["open"]) == (1, 1, 1)  # 1 open then; 1 fixed since; the change adds up
+    assert got["days"][-1]["open"]["low"] == 1  # a priority the page doesn't know is counted as low, not a crash

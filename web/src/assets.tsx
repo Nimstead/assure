@@ -407,6 +407,7 @@ function ImageDrawer({ a, onClose }: { a: Asset | null; onClose: () => void }) {
     mutationFn: (o: string) => api(`/api/assets/${a?.id}`, { method: "PATCH", body: { owner: o } }),
     onSettled: () => refresh(qc, "assets"),
   });
+  useEffect(() => owner.reset(), [a?.id]);  // one image's "Saved." or error never shows on the next
   const title = useRef<HTMLHeadingElement>(null);
   const focus = useReturnFocus(title);
   const byHost = new Map<string, { id: string; runs: ContainerRun[] }>();

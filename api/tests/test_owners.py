@@ -90,3 +90,34 @@ def test_an_owner_cant_hide_or_reverse_characters(env):
         assert c.patch(f"/api/assets/{a}", json={"owner": bad}).status_code == 422, repr(bad)
         assert c.post("/api/enroll-tokens", json={"owner": bad}).status_code == 422, repr(bad)
     assert c.patch(f"/api/assets/{a}", json={"owner": "Zahlungsverkehr Ä"}).json()["owner"] == "Zahlungsverkehr Ä"  # letters are fine
+
+
+# ---- review round (code review of the branch) -------------------------------------------------------------------------
+
+def test_retyping_a_team_in_another_case_respells_it_everywhere(env):
+    c = user(env)
+    token, a = enrol_as(c, "pay-1", "payments")
+    _, b = enrol_as(c, "pay-2")
+    c.patch(f"/api/assets/{b}", json={"owner": "PAYMENTS"})  # reuses "payments": one team
+    r = c.patch(f"/api/assets/{a}", json={"owner": "Payments"})  # the same team, spelt properly
+    assert r.status_code == 200 and r.json()["owner"] == "Payments"
+    assert {x["id"]: x["owner"] for x in c.get("/api/assets").json() if x["id"] in (a, b)} == {a: "Payments", b: "Payments"}
+    assert next(t for t in c.get("/api/enroll-tokens").json() if t["id"] == token["id"])["owner"] == "Payments"
+    s = make_sessionmaker(env)()
+    last = s.scalars(select(LedgerEntry).where(LedgerEntry.kind == "asset_context_changed").order_by(LedgerEntry.seq.desc())).first()
+    assert last.data["owner"] == "Payments" and last.data["renamed_from"] == "payments" and last.data["assets_renamed"] == 2
+
+
+def test_a_revoked_or_expired_tokens_spelling_isnt_reused(env):
+    c = user(env)
+    t = c.post("/api/enroll-tokens", json={"owner": "data team"}).json()
+    assert c.delete(f"/api/enroll-tokens/{t['id']}").status_code == 204
+    _, a = enrol_as(c, "web-1")
+    assert c.patch(f"/api/assets/{a}", json={"owner": "Data Team"}).json()["owner"] == "Data Team"
+
+
+def test_owner_names_match_in_any_case_beyond_ascii(env):
+    c = user(env)
+    _, a = enrol_as(c, "web-1", "Équipe Sécurité")
+    _, b = enrol_as(c, "web-2")
+    assert c.patch(f"/api/assets/{b}", json={"owner": "équipe sécurité"}).json()["owner"] == "Équipe Sécurité"

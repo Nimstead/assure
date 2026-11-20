@@ -13,7 +13,7 @@
 
 | Field | Value |
 | --- | --- |
-| `start`, `end` | The range: midnight UTC at the start of its first day, and now (naive UTC timestamps) |
+| `start`, `end` | The range: the first day's reading (midnight UTC at its end) and now (naive UTC timestamps). The change in open findings and the resolutions both count from `start`, so they add up |
 | `days` | One row per UTC day, oldest first: `date`, `open` (counts by priority: `fix-now`, `next`, `planned`, `low`), `overdue`, `accepted` |
 | `weeks` | One row per week from the Monday on or before the first day: `start` (the Monday), `opened`, `resolved`, `partial` (true for the current week) |
 | `owners` | One row per owner, most overdue first, then most fix-now, then most open; `owner` is `null` for assets with none |
@@ -25,15 +25,15 @@ Each owner row and `totals` has:
 | Field | Meaning |
 | --- | --- |
 | `open`, `fix_now`, `overdue`, `accepted` | Now |
-| `open_at_start` | Open at the end of the range's first day |
-| `resolved`, `resolved_on_time` | Findings whose latest resolution is in the range and that are still resolved, and how many within their deadline |
+| `open_at_start` | Open at `start` |
+| `resolved`, `resolved_on_time` | Findings whose latest resolution is between `start` and `end` and that are still resolved, and how many within their deadline |
 | `mean_days_to_resolve` | Mean days from detection (or return) to that resolution, one decimal; `null` when none |
 
 ## Rules
 
 - A past day counts the state at its midnight end; today counts the state now, which equals the open findings on Findings by priority.
 - Events are the ledger's `finding_opened`, `finding_reopened`, `finding_resolved`, `finding_accepted`, `finding_acceptance_revoked` and `acceptance_expired`, in ledger order. A reopen starts a new exposure, timed from its return.
-- Each finding counts at its current priority. It is overdue when open longer than the deadline in force when its exposure began, as the evidence pack judges it. An accepted finding isn't overdue; when acceptance ends it is judged from its original exposure.
+- Each finding counts for its asset's current owner (moving a machine to another team moves its history) and at its current priority. It is overdue when open longer than the deadline in force when its exposure began, as the evidence pack judges it. An accepted finding isn't overdue; when acceptance ends it is judged from its original exposure.
 - `resolved`, `resolved_on_time` and `mean_days_to_resolve` follow the evidence pack's period rules, so they equal a pack's `resolved`, `resolved_within_sla` and `mttr_days` for the same period.
 - Findings on deleted assets aren't counted. A finding with no ledger event is counted in `no_ledger_record`; one whose replayed final state differs from its row's status is counted in `mismatched`; neither is charted.
 - Weekly `opened` counts first detections and returns; `resolved` counts every resolution, including one later undone by a return.

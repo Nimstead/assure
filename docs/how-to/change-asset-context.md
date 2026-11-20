@@ -9,7 +9,7 @@ These controls change server context and derived findings. They do not configure
 1. Open **Assets**.
 2. Search for the asset by name, OS, or agent version.
 3. Select its name to open the details drawer.
-4. Type the team accountable for it under **Owner**, then leave the field or press Enter. See [Track progress](track-progress.md).
+4. Type the team accountable for it under **Owner**, then leave the field or press Enter. A name the organisation already uses takes its existing spelling; retyping a team in another case respells it on every asset. See [Track progress](track-progress.md).
 5. Select the required **Criticality**.
 6. Set **Internet-facing** from the asset's actual exposure.
 7. For a host, select **Canary** or **Broad** under **Ring**.

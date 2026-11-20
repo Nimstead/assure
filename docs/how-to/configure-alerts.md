@@ -29,7 +29,7 @@ Confirm the test at the destination. HTTP 202 and `queued=true` mean the alert w
 1. Add a webhook or confirmed email recipients as above.
 2. Select **Weekly summary** in the alert settings and save.
 
-The first summary goes out at the next hourly feed run (after 08:00 UTC if it's a Monday), then one each week from Monday 08:00 UTC: open, fix-now and overdue findings with their change in the week, what was resolved, and the owners most overdue. It names no machine. See [Track progress](track-progress.md) and the [notification reference](../reference/notifications.md#weekly-summary).
+The first summary goes the Monday after you switch it on (that morning, if you switch it on before 08:00 UTC on a Monday), then one each week from Monday 08:00 UTC: open, fix-now and overdue findings with their change in the week, what was resolved, and the owners most overdue. It names no machine. See [Track progress](track-progress.md) and the [notification reference](../reference/notifications.md#weekly-summary).
 
 ## Request another confirmation
 

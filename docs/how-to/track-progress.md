@@ -11,7 +11,7 @@ An owner is the team accountable for an asset, such as `Payments` or `IT`. Each 
 - **New machines:** on **Add a machine**, type the team under **Owner** before you select **Create install command**. Every machine enrolled with that command starts with that owner.
 - **Container images:** open the image on **Assets → Container images** and set its owner: usually the team that builds it.
 
-Names are reused: typing `payments` when `Payments` already exists saves `Payments`, so one team never splits in two. Empty the field to remove an owner. Each change is recorded in the evidence ledger. An owner changes no finding's priority.
+Names are reused: typing `payments` when `Payments` already exists saves `Payments`, so one team never splits in two. To correct a team's spelling, retype it in an asset that has it (for example `Payments` over `payments`): every asset and enrolment token of that team takes the new spelling. Empty the field to remove an owner. Each change is recorded in the evidence ledger. An owner changes no finding's priority.
 
 Filter **Assets** or **Findings** by owner (Findings keeps it under **More filters**), including **No owner**. The findings CSV has an `owner` column at the end.
 
@@ -33,7 +33,7 @@ Each small chart runs from zero on its own scale. Compare the numbers, not the h
 Progress is rebuilt from the evidence ledger every time it loads, not from stored snapshots, so the history is there the day you upgrade and a database edit can't change it unseen. **How this is judged** names the ledger entry it read up to.
 
 - Today's point is the open findings now, as **Findings** shows them. A past day counts what was open at its end (midnight UTC).
-- Each finding counts at its current priority. It is overdue once it has been open longer than the deadline in force when it was detected, as the evidence pack judges it.
+- Each finding counts for its asset's current owner and at its current priority. It is overdue once it has been open longer than the deadline in force when it was detected, as the evidence pack judges it.
 - Accepted findings aren't open; they have their own chart.
 - Resolved on time and mean time to resolve cover findings resolved in the range and still resolved now, the evidence pack's rule, so they match a pack for the same period.
 - Findings on deleted assets aren't counted, as in the evidence pack. A finding with no ledger record, or whose ledger history disagrees with its current state, is counted under **How this is judged** and left out of the charts.
@@ -44,7 +44,7 @@ Progress is rebuilt from the evidence ledger every time it loads, not from store
 2. Configure a webhook or confirmed email recipients. See [Configure alerts](configure-alerts.md).
 3. Select **Weekly summary** and save.
 
-From Monday 08:00 UTC, the hourly feed run sends one summary a week to those destinations: open, fix-now and overdue findings with their change since the same day last week, what was resolved and how much on time, and the owners with the most overdue findings. It names no machine. Set `NIMSTEAD_PUBLIC_URL` for it to link to Progress.
+The first goes the Monday after you switch it on (that morning, if you switch it on early on a Monday). From then, from Monday 08:00 UTC, the hourly feed run sends one summary a week to those destinations: open, fix-now and overdue findings with their change since the same day last week, what was resolved and how much on time, and the owners with the most overdue findings. It names no machine. Set `NIMSTEAD_PUBLIC_URL` for it to link to Progress.
 
 ## Use the API
 

@@ -62,8 +62,8 @@ def build(findings: list, days: int, end: datetime, sla_at) -> dict:
     force when its exposure began, at its current priority (`sla_at(t)` gives that policy, as evidence.sla_history).
     Owner rows and totals use the pack's period rules: resolved means resolved now, last resolved in [start, end]."""
     dates = [(end - (days - 1 - i) * DAY).date() for i in range(days)]
-    start = datetime.combine(dates[0], time())
     ts = [datetime.combine(d + DAY, time()) for d in dates[:-1]] + [end]  # the instant each day is read at
+    start = ts[0]  # the range's change and its resolutions both count from the first reading, so they add up
     opens = {p: [0] * (days + 1) for p in PRIORITIES}
     overdue, accepted = [0] * (days + 1), [0] * (days + 1)
     monday = dates[0] - timedelta(days=dates[0].weekday())
@@ -72,9 +72,9 @@ def build(findings: list, days: int, end: datetime, sla_at) -> dict:
     week0 = datetime.combine(monday, time())
     owners, totals = {}, _row(None)
     for f in findings:
-        p = f["priority"]
+        p = f["priority"] if f["priority"] in opens else "low"  # a priority the page doesn't know counts as low, as its 180 days
 
-        def due(x, p=p):
+        def due(x, p=f["priority"]):
             return x + timedelta(days=sla_at(x).get(p, 180))
         for state, a, b, x in f["intervals"]:
             i, j = bisect_left(ts, a), days if b is None else bisect_left(ts, b)  # counted on the days a <= T < b
@@ -105,7 +105,7 @@ def build(findings: list, days: int, end: datetime, sla_at) -> dict:
             elif f["final"] == "resolved" and f["resolved"] and start <= f["resolved"] <= end:
                 d = (f["resolved"] - f["exposure"]).total_seconds() / 86400
                 r["resolved"] += 1
-                r["resolved_on_time"] += d <= sla_at(f["exposure"]).get(p, 180)
+                r["resolved_on_time"] += d <= sla_at(f["exposure"]).get(f["priority"], 180)
                 r["_ttr"].append(d)
     for r in (*owners.values(), totals):
         ttr = r.pop("_ttr")
@@ -138,8 +138,24 @@ def replay(s: Session, org_id: str, days: int) -> dict:
     record or their history disagrees with their current state (each counted, never guessed), and the ledger's own
     integrity check (problems; empty when the chain verifies), so a history edited in the database is said, not charted
     as proof. No write."""
-    head = s.execute(select(LedgerEntry.seq, LedgerEntry.hash).where(LedgerEntry.org_id == org_id)
+    for _ in range(2):  # a report committing between the reads below shows as mismatched: read again if the ledger moved
+        head, rows, events, read, findings, mismatched = _read(s, org_id)
+        if not mismatched or _head(s, org_id) == head:
+            break
+    out = build(findings, days, now(), evidence.sla_history(s, org_id))
+    out["basis"] = {"entries": read, "head_seq": head.seq if head else 0, "head_hash": head.hash if head else evidence.GENESIS,
+                    "findings": len(rows), "no_ledger_record": len(rows) - len(events), "mismatched": mismatched,
+                    "problems": evidence.verify_chain(s, org_id, full=False)}  # cached: an unchanged chain isn't re-read
+    return out
+
+
+def _head(s: Session, org_id: str):
+    return s.execute(select(LedgerEntry.seq, LedgerEntry.hash).where(LedgerEntry.org_id == org_id)
                      .order_by(LedgerEntry.seq.desc()).limit(1)).first()
+
+
+def _read(s: Session, org_id: str):
+    head = _head(s, org_id)
     rows = {i: (p, st, o) for i, p, st, o in s.execute(
         select(Finding.id, Finding.priority, Finding.status, Asset.owner).join(Asset, Asset.id == Finding.asset_id)
         .where(Finding.org_id == org_id))}
@@ -159,15 +175,11 @@ def replay(s: Session, org_id: str, days: int) -> dict:
             mismatched += 1
             continue
         findings.append({"priority": priority, "owner": owner, **h})
-    out = build(findings, days, now(), evidence.sla_history(s, org_id))
-    out["basis"] = {"entries": read, "head_seq": head.seq if head else 0, "head_hash": head.hash if head else evidence.GENESIS,
-                    "findings": len(rows), "no_ledger_record": len(rows) - len(events), "mismatched": mismatched,
-                    "problems": evidence.verify_chain(s, org_id, full=False)}  # cached: an unchanged chain isn't re-read
-    return out
+    return head, rows, events, read, findings, mismatched
 
 
 SUMMARY_AT = 8  # hour (UTC) on Monday from which the week's summary goes out
-SUMMARY_DAYS = 8  # today and the seven days before: "since" the same weekday last week
+SUMMARY_DAYS = 9  # read from the end of its first day: "since" the same weekday last week
 
 
 def summary_text(org_name: str, r: dict, base_url: str | None) -> str:
@@ -194,6 +206,12 @@ def summary_text(org_name: str, r: dict, base_url: str | None) -> str:
     return "\n".join(lines)
 
 
+def due_week(at: datetime) -> str | None:
+    """The ISO week whose summary is due at `at` ("2026-W48"), or None on a Monday before SUMMARY_AT:00 UTC."""
+    year, week, weekday = at.isocalendar()
+    return None if weekday == 1 and at.hour < SUMMARY_AT else f"{year}-W{week:02d}"
+
+
 def send_weekly_summaries(s: Session, at: datetime | None = None) -> int:
     """For each org with the weekly summary on, send it once per ISO week, from Monday SUMMARY_AT:00 UTC on (DECISIONS 147).
 
@@ -202,14 +220,12 @@ def send_weekly_summaries(s: Session, at: datetime | None = None) -> int:
     org takes it); a delivery that fails is retried by notify.retry_failed like any alert. An org with no destination is
     marked too (there was nothing to send). One org's failure is logged and costs only that org its week. Commits per
     org. Return the number of summaries queued."""
-    at = at or now()
-    year, week, weekday = at.isocalendar()
-    if weekday == 1 and at.hour < SUMMARY_AT:
-        return 0  # Monday before the hour: last week's summary has gone; this one waits until Monday next
-    label, sent = f"{year}-W{week:02d}", 0
-    for org_id in s.scalars(select(Org.id).where(Org.weekly_summary.is_(True))).all():
+    if not (label := due_week(at or now())):
+        return 0  # Monday before the hour: last week's summary has gone; this one waits until then
+    sent = 0
+    for org_id in s.scalars(select(Org.id).where(Org.weekly_summary.is_(True), Org.weekly_summary_sent.is_distinct_from(label))).all():
         org = s.get(Org, org_id, with_for_update=True, populate_existing=True)
-        if org is None or org.weekly_summary_sent == label:
+        if org is None or not org.weekly_summary or org.weekly_summary_sent == label:
             s.rollback()
             continue
         org.weekly_summary_sent, name = label, org.name

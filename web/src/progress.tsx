@@ -112,7 +112,8 @@ function ProgressView({ p, days, updating }: { p: Progress; days: number; updati
           {left > 0 && <> {plural(left, "finding")} {left === 1 ? "isn't" : "aren't"} charted.</>}</>}>
           <p>Each finding counts at its current priority and is overdue once it has been open longer than the deadline in force when it was detected, as the evidence pack judges it. Accepted findings aren't open: they're shown on their own.</p>
           <p>A past day counts what was open at its end (midnight UTC); today counts what is open now, which is what Findings shows. Findings on deleted assets aren't counted, as in the evidence pack.</p>
-          <p>Resolved on time and mean days to resolve cover findings resolved in the range and still resolved now, the evidence pack's rule for a period.</p>
+          <p>Each finding counts for its asset's owner now: a machine moved to another team takes its history with it.</p>
+          <p>Resolved on time and mean time to resolve cover findings resolved since the first day's reading and still resolved now, the evidence pack's rule for a period, so they add up with the change in open findings.</p>
           {p.basis.no_ledger_record > 0 && <p>{plural(p.basis.no_ledger_record, "finding")} {p.basis.no_ledger_record === 1 ? "has" : "have"} no ledger record (stored before the ledger began), so {p.basis.no_ledger_record === 1 ? "it isn't" : "they aren't"} charted.</p>}
           {p.basis.mismatched > 0 && <p>{plural(p.basis.mismatched, "finding")} {p.basis.mismatched === 1 ? "has" : "have"} a ledger history that disagrees with {p.basis.mismatched === 1 ? "its" : "their"} current state, so {p.basis.mismatched === 1 ? "it isn't" : "they aren't"} charted. Check the ledger's chain on Evidence.</p>}
         </HowJudged>

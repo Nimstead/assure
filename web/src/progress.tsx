@@ -140,11 +140,12 @@ function Multiples({ days }: { days: ProgressDay[] }) {
         <h2 id="over-time" className="text-lg font-semibold">Open findings, day by day</h2>
         <p className="num text-sm text-muted" aria-live="polite">{at === null ? `Today, ${dayLabel(day.date)}` : dayLabel(day.date)}</p>
       </div>
-      <ul role="group" tabIndex={0} aria-label={`Open findings by day, ${dayLabel(days[0]!.date)} to today. Left and right arrows step through the days.`}
-        onKeyDown={stepper(days.length, at, setAt)} onBlur={() => setAt(null)}
-        className="grid grid-cols-2 gap-2 outline-offset-4 lg:grid-cols-3">
-        {SERIES.map((s) => <Panel key={s.key} s={s} days={days} at={at} onPoint={setAt} />)}
-      </ul>
+      <div role="group" tabIndex={0} aria-label={`Open findings by day, ${dayLabel(days[0]!.date)} to today. Left and right arrows step through the days.`}
+        onKeyDown={stepper(days.length, at, setAt)} onBlur={() => setAt(null)} className="outline-offset-4">
+        <ul className="grid grid-cols-2 gap-2 lg:grid-cols-3">
+          {SERIES.map((s) => <Panel key={s.key} s={s} days={days} at={at} onPoint={setAt} />)}
+        </ul>
+      </div>
       <p className="text-xs text-muted">Each line runs from {dayLabel(days[0]!.date)} on the left to today on the right, in UTC days, on its own scale from zero.</p>
       <details className="text-sm">
         <summary className="tap flex w-fit cursor-pointer items-center md:min-h-0">Show these numbers as a table</summary>
@@ -176,7 +177,7 @@ function Panel({ s, days, at, onPoint }: { s: Series; days: ProgressDay[]; at: n
   const since = `since ${dayLabel(days[0]!.date)}`;
   return (
     <li className="flex min-w-0 flex-col border border-line bg-surface px-3 pb-3 pt-2.5">
-      <Link to="/findings" search={findingsLink(s.filter)} className="flex w-fit items-center gap-1.5 text-sm font-medium text-ink underline decoration-line-strong underline-offset-4 hover:decoration-ink">
+      <Link to="/findings" search={findingsLink(s.filter)} className="tap flex w-fit items-center gap-1.5 text-sm font-medium text-ink underline decoration-line-strong underline-offset-4 hover:decoration-ink">
         {s.mark && <span aria-hidden className={s.mark} />}{s.label}
       </Link>
       <p className="mt-1 text-2xl font-semibold">{n(vals[i]!)}</p>

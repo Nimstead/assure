@@ -154,7 +154,7 @@ export function NotificationsSection() {
         {s.emails.some((e) => !s.emails_confirmed.includes(e)) && (
           <p className="text-sm text-muted">Waiting for confirmation: {s.emails.filter((e) => !s.emails_confirmed.includes(e)).join(", ")}</p>
         )}
-        <label className="flex cursor-pointer items-start gap-2 text-sm">
+        <label className="tap flex cursor-pointer items-start gap-2 text-sm">
           <input type="checkbox" name="weekly_summary" defaultChecked={!!s.weekly_summary} className="mt-0.5 size-4 shrink-0 accent-[var(--ink)]" />
           <span><span className="font-medium">Weekly summary</span>
             <span className="block text-muted">Every Monday morning (UTC), to these destinations: open, fix-now and overdue findings, what was resolved, and which owners are behind. It never names a machine.</span></span>

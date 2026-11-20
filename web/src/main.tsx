@@ -37,6 +37,11 @@ const evidence = createRoute({
   validateSearch: (raw: Record<string, unknown>): { period?: string; show?: string } => ({ ...(raw.period ? { period: String(raw.period) } : {}), ...(raw.show ? { show: String(raw.show) } : {}) }),
   component: lazyRouteComponent(() => import("./evidence"), "EvidencePage"),
 });
+const progress = createRoute({
+  getParentRoute: () => shell, path: "/progress",
+  validateSearch: (raw: Record<string, unknown>): { days?: string } => (raw.days ? { days: String(raw.days) } : {}),
+  component: lazyRouteComponent(() => import("./progress"), "ProgressPage"),
+});
 const settings = createRoute({ getParentRoute: () => shell, path: "/settings", component: lazyRouteComponent(() => import("./settings"), "SettingsPage") });
 const findings = createRoute({
   getParentRoute: () => shell, path: "/findings",
@@ -46,7 +51,7 @@ const findings = createRoute({
 
 // Plain `?q=openssl&priority=fix-now,next` URLs instead of JSON-encoded values.
 const router = createRouter({
-  routeTree: root.addChildren([signin, signup, shell.addChildren([home, add, assets, findings, remediation, evidence, settings])]),
+  routeTree: root.addChildren([signin, signup, shell.addChildren([home, add, assets, findings, remediation, progress, evidence, settings])]),
   parseSearch: (s) => Object.fromEntries(new URLSearchParams(s)),
   stringifySearch: (o) => {
     const p = new URLSearchParams();

@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DropdownMenu } from "radix-ui";
-import { CircleHelp, FileCheck2, ListChecks, LogOut, Monitor, MoreHorizontal, Moon, Plus, Search, Server, Settings, ShieldAlert, Sun, Wrench, type LucideIcon } from "lucide-react";
+import { ChartLine, CircleHelp, FileCheck2, ListChecks, LogOut, Monitor, MoreHorizontal, Moon, Plus, Search, Server, Settings, ShieldAlert, Sun, Wrench, type LucideIcon } from "lucide-react";
 import clsx from "clsx";
 import { savedViews, ADMIN_ONLY_ID, announce, api, ApiError, assetsQ, filtersToSearch, meQ, NEXT_THEME, parseFilters, setTheme, THEME_LABEL, themeChoice, type FindingGroupRow, type ThemeChoice, plural } from "./lib";
 import { ErrorState, LiveRegions, Loading, useReturnFocus } from "./ui";
@@ -15,12 +15,13 @@ export const Logo = () => (
   </span>
 );
 
-type NavTo = "/" | "/findings" | "/assets" | "/remediation" | "/evidence" | "/settings";
+type NavTo = "/" | "/findings" | "/assets" | "/remediation" | "/progress" | "/evidence" | "/settings";
 const NAV: { to: NavTo; label: string; icon: LucideIcon }[] = [
   { to: "/", label: "Fix first", icon: ListChecks },
   { to: "/findings", label: "Findings", icon: ShieldAlert },
   { to: "/assets", label: "Assets", icon: Server },
   { to: "/remediation", label: "Remediation", icon: Wrench },
+  { to: "/progress", label: "Progress", icon: ChartLine },
   { to: "/evidence", label: "Evidence", icon: FileCheck2 },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
@@ -275,6 +276,7 @@ export function Palette({ open, onOpenChange, signOut, nextTheme }: { open: bool
       { id: "findings", label: "Go to Findings", run: done(() => navigate({ to: "/findings" })) },
       { id: "assets", label: "Go to Assets", run: done(() => navigate({ to: "/assets" })) },
       { id: "remediation", label: "Go to Remediation", run: done(() => navigate({ to: "/remediation" })) },
+      { id: "progress", label: "Go to Progress", run: done(() => navigate({ to: "/progress" })) },
       { id: "evidence", label: "Go to Evidence", run: done(() => navigate({ to: "/evidence" })) },
       { id: "settings", label: "Go to Settings", run: done(() => navigate({ to: "/settings" })) },
       { id: "approve", label: "Fixes waiting for approval", run: done(() => navigate({ to: "/remediation" })) },

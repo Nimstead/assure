@@ -292,6 +292,10 @@ def test_assets_say_where_each_image_runs_and_what_each_host_runs(env):
     assert img["packages_read"] is True and img["not_read_why"] is None
     assert bb["packages_read"] is False and bb["not_read_why"]  # never shown as clean
     assert sorted(x["name"] for x in assets["web-1"]["containers"]) == ["tools", "web", "worker"]
+    on_host = next(x for x in assets["web-1"]["containers"] if x["name"] == "web")  # every field of a row, both ways round
+    assert img["running_on"][0] == {"name": "web", "runtime": "docker", "ref": "nginx:1.25", "since": on_host["since"], "host_id": a_id, "hostname": "web-1"}
+    assert on_host == {"name": "web", "runtime": "docker", "ref": "nginx:1.25", "since": on_host["since"], "image_id": img["id"]}
+    assert datetime.fromisoformat(on_host["since"]) <= now()
     r = c.patch(f"/api/assets/{img['id']}", json={"criticality": "critical"})
     assert r.status_code == 409 and "follow the hosts" in r.json()["detail"]
     c.patch(f"/api/assets/{a_id}", json={"criticality": "critical"})  # changed on the host: its images follow

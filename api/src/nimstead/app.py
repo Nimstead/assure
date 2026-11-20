@@ -1548,7 +1548,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             **({"containers": runs[:100], "containers_total": len(runs)} if a.kind == "host" and runs else {}),
         }
 
-    @app.get("/api/assets")
+    @app.get("/api/assets", response_model=list[dict[str, Any]])  # written by pydantic's serializer: jsonable_encoder took most of the time
     def list_assets(user: CurrentUser, s: DB):
         """Return organisation assets with finding counts, agent status, and application coverage.
 
@@ -1570,10 +1570,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         apps = app_coverage(s, user.org_id)[0]
         # where each image runs, and what each host runs: one query for the org (DECISIONS 139)
         runs: dict[str, list] = defaultdict(list)
-        for c, hostname in s.execute(select(Container, Asset.hostname).join(Asset, Asset.id == Container.asset_id)
-                                     .where(Container.org_id == user.org_id).order_by(Asset.hostname, Container.name)):
+        for c in s.execute(select(Container.name, Container.runtime, Container.ref, Container.first_seen, Container.asset_id,
+                                  Container.image_asset_id, Asset.hostname).join(Asset, Asset.id == Container.asset_id)
+                           .where(Container.org_id == user.org_id).order_by(Asset.hostname, Container.name)):  # columns, not objects: an org can run 10,000 containers
             row = {"name": c.name, "runtime": c.runtime, "ref": c.ref, "since": c.first_seen}
-            runs[c.image_asset_id].append({**row, "host_id": c.asset_id, "hostname": hostname})
+            runs[c.image_asset_id].append({**row, "host_id": c.asset_id, "hostname": c.hostname})
             runs[c.asset_id].append({**row, "image_id": c.image_asset_id})
         return [asset_json(a, counts[a.id], paused, release, apps.get(a.id), runs.get(a.id, [])) for a in assets]
 

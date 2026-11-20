@@ -1,16 +1,17 @@
-// README screenshots from a served demo database (sandbox/demo.py builds it from real hosts).
-//   1. cd api && uv run python ../sandbox/demo.py
-//   2. serve api/demo/nimstead-demo.db as the demo's docstring shows (port 8000)
+// README screenshots from a served demo database: the 206-machine fleet (five real Linux hosts running the real agent,
+// grown by cloning their inventories), brought to today with owners and 120 days of history by sandbox/progress_demo.py.
+//   1. copy a fleet demo database, run `alembic upgrade head` on it, then `uv run python ../sandbox/progress_demo.py <url> --to-now`
+//   2. serve it (NIMSTEAD_DB=..., the demo's signing and key files, a fresh NIMSTEAD_CHECKPOINT_DIR)
 //   3. cd web && node scripts/readme-shots.mjs [http://127.0.0.1:8000]
-// Signs in with the account in api/demo/login.txt (password + a code from its TOTP key: admins need both)
-// and writes docs/images/*.png at the sizes the README uses.
+// Signs in with the account in api/demo/login.txt (or the file NIMSTEAD_DEMO_LOGIN names), with a code from its TOTP key,
+// as admins need both. Writes docs/images/*.png at the sizes the README uses.
 import { chromium } from "@playwright/test";
 import { createHmac } from "node:crypto";
 import { readFileSync } from "node:fs";
 
 const BASE = process.argv[2] ?? "http://127.0.0.1:8000";
 const OUT = "../docs/images";
-const login = Object.fromEntries(readFileSync("../api/demo/login.txt", "utf8").split(/\r?\n/)
+const login = Object.fromEntries(readFileSync(process.env.NIMSTEAD_DEMO_LOGIN ?? "../api/demo/login.txt", "utf8").split(/\r?\n/)
   .map((l) => l.match(/^([\w ]+?)(?: \(.*\))?:\s*(.+)$/)).filter(Boolean).map((m) => [m[1], m[2].trim()]));
 
 function totp(secret, at = Date.now()) {
@@ -48,15 +49,22 @@ async function shot(p, path, name, ready) {
 }
 
 const desk = await page(1440, 900);
-await shot(desk, "/", "home-1440", (p) => p.getByRole("heading", { name: "Recommended fixes" }).waitFor());
-await shot(desk, "/remediation", "remediation-1440", (p) => p.getByRole("heading", { name: "Remediation" }).waitFor());
+const heading = (name) => (p) => p.getByRole("heading", { name, exact: true }).first().waitFor();
+await shot(desk, "/", "home-1440", heading("Recommended fixes"));
+await shot(desk, "/progress", "progress-1440", heading("By owner"));
+await shot(desk, "/remediation", "remediation-1440", heading("Remediation"));
 await shot(desk, "/findings", "findings-1440", async (p) => {
-  await p.getByRole("row").filter({ hasText: "CVE-2021-44228" }).first().click();
+  await p.locator("[role=rowgroup] [data-c=vuln] button").first().click();  // the most urgent finding's drawer
   await p.getByRole("dialog").getByText("Why it matched").waitFor();
   await p.evaluate(() => document.activeElement?.blur());  // no focus ring in the picture
 });
-await shot(desk, "/assets", "assets-1440", (p) => p.getByRole("heading", { name: "Assets" }).waitFor());
-await shot(desk, "/evidence", "evidence-1440", (p) => p.getByRole("heading", { name: "Evidence" }).waitFor());
+await shot(desk, "/findings?group=package", "findings-fleet-1440", heading("Findings"));
+await shot(desk, "/assets", "assets-1440", heading("Assets"));
+await shot(desk, "/assets?view=devices", "devices-1440", heading("Assets"));
+await shot(desk, "/evidence", "evidence-1440", heading("Evidence"));
+const tall = await page(1440, 1400);
+await shot(tall, "/progress", "progress-full-1440", heading("By owner"));
 const phone = await page(375, 812, "dark");
-await shot(phone, "/", "home-375-dark", (p) => p.getByRole("heading", { name: "Fix first" }).waitFor());
+await shot(phone, "/", "home-375-dark", heading("Fix first"));
+await shot(phone, "/progress", "progress-375-dark", heading("Progress"));
 await browser.close();

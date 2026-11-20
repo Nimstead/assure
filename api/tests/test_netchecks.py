@@ -740,3 +740,23 @@ def test_evidence_counts_devices_apart_and_names_none_by_address(env):
     cis = next(x for x in report["controls"] if x["framework"].startswith("CIS"))
     assert cis["evidence"].startswith("0 open findings past SLA; ")  # what the status turns on, said first
     assert c.get("/api/summary").json()["devices_with_issues"] == 1  # Fix first names it
+
+
+def test_an_accepted_finding_on_a_device_comes_back_when_its_acceptance_ends(env):
+    """Prove-It: a device's accepted finding never expired, since only host rescans checked accepted_until."""
+    from sqlalchemy import update
+
+    from nimstead.db import Finding, LedgerEntry
+    c, h = setup(env)
+    send(c, h, [obs(open_={6379})])
+    finding = c.get("/api/findings").json()[0]
+    assert c.post(f"/api/findings/{finding['id']}/accept", json={"reason": "Isolated lab VLAN for now", "days": 30}).status_code == 200
+    send(c, h, [obs(open_={6379})])
+    assert not c.get("/api/findings").json()  # still within its acceptance
+    s = make_sessionmaker(env)()
+    s.execute(update(Finding).where(Finding.id == finding["id"]).values(accepted_until=now() - timedelta(hours=1)))
+    s.commit()
+    send(c, h, [obs(open_={6379})])
+    assert [f["id"] for f in c.get("/api/findings").json()] == [finding["id"]]
+    expired = s.scalars(select(LedgerEntry).where(LedgerEntry.kind == "acceptance_expired")).all()
+    assert [(e.subject, e.data["host"]) for e in expired] == [(finding["id"], "device")]  # no address in the ledger

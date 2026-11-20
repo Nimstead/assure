@@ -611,3 +611,32 @@ def test_the_stored_report_says_when_the_last_scan_ran_even_when_nothing_changed
     c.post(f"/api/targets/{t['id']}/scan")
     c.post(f"/api/targets/{t['id']}/scan")
     assert c.get(f"/api/assets/{t['id']}/scan-report").json()["inventory_read_at"].startswith("2026-11-02")
+
+
+def test_an_accepted_finding_on_a_target_comes_back_when_its_acceptance_ends(world, monkeypatch, env):
+    """Prove-It: only host rescans expired an acceptance, so a target's accepted finding stayed accepted for ever."""
+    from datetime import timedelta
+
+    from sqlalchemy import select, update
+
+    from nimstead import progress
+    from nimstead.db import Finding, LedgerEntry, make_sessionmaker, now
+    c, dns = world
+    t = add(c, dns)
+    c.post(f"/api/targets/{t['id']}/verify")
+    fake_net(monkeypatch, tls=EXPIRED)
+    c.post(f"/api/targets/{t['id']}/scan")
+    finding = c.get("/api/findings").json()[0]
+    assert c.post(f"/api/findings/{finding['id']}/accept", json={"reason": "Test compensating control", "days": 30}).status_code == 200
+    c.post(f"/api/targets/{t['id']}/scan")
+    assert not c.get("/api/findings").json()  # still within its acceptance
+    s = make_sessionmaker(env)()
+    s.execute(update(Finding).where(Finding.id == finding["id"]).values(accepted_until=now() - timedelta(hours=1)))
+    s.commit()
+    c.post(f"/api/targets/{t['id']}/scan")  # seen again after its acceptance ended
+    assert [f["id"] for f in c.get("/api/findings").json()] == [finding["id"]]
+    expired = s.scalars(select(LedgerEntry).where(LedgerEntry.kind == "acceptance_expired")).all()
+    assert [(e.subject, e.data["vuln_id"]) for e in expired] == [(finding["id"], finding["vuln_id"])]
+    org = s.scalar(select(Finding.org_id).where(Finding.id == finding["id"]))
+    got = progress.replay(s, org, 30)
+    assert got["basis"]["mismatched"] == 0 and (sum(got["days"][-1]["open"].values()), got["days"][-1]["accepted"]) == (1, 0)

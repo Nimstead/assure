@@ -4,6 +4,9 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Changed
+- **The Assets page loads faster when machines run containers.** With 1,000 machines running 10 containers each, `GET /api/assets` takes 0.44 s instead of 0.60 s (0.36 s with no containers). Pydantic now writes the response, and the container rows are read as columns rather than objects. The response itself is unchanged.
+
 ## [0.10.1] - 2026-11-19 (preview)
 
 Agent 0.8.1. No database migration. Two container fixes from a review of 0.10.0: update Linux hosts that run containers.

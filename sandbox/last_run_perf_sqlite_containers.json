@@ -3,56 +3,56 @@
   "db": "sqlite",
   "advisories": 99000,
   "inventory_ingest": {
-    "median_s": 1.098,
-    "p95_s": 1.274,
-    "max_s": 1.928
+    "median_s": 1.077,
+    "p95_s": 1.193,
+    "max_s": 1.227
   },
   "containers_per_host": 10,
   "images": 50,
-  "rematch_before_containers_s": 36.0,
+  "rematch_before_containers_s": 35.5,
   "containers_report": {
     "median_s": 0.024,
-    "p95_s": 0.031,
-    "max_s": 4.446,
-    "first_s": 4.446
+    "p95_s": 0.03,
+    "max_s": 4.034,
+    "first_s": 4.034
   },
   "GET /api/summary (home page)": {
-    "median_s": 0.385,
-    "max_s": 0.387
+    "median_s": 0.368,
+    "max_s": 0.378
   },
   "open_findings": 305250,
   "GET /api/findings (default 500)": {
-    "median_s": 0.301,
-    "max_s": 0.301
+    "median_s": 0.289,
+    "max_s": 0.293
   },
   "GET /api/findings?limit=5000": {
-    "median_s": 0.519,
-    "max_s": 0.525
+    "median_s": 0.515,
+    "max_s": 0.843
   },
   "GET /api/findings?q=pkg42": {
-    "median_s": 0.434,
-    "max_s": 0.499
+    "median_s": 0.41,
+    "max_s": 0.413
   },
   "GET /api/assets": {
-    "median_s": 0.597,
-    "max_s": 0.919
+    "median_s": 0.438,
+    "max_s": 0.44
   },
   "GET /api/evidence/pack": {
-    "median_s": 12.937,
-    "max_s": 12.937
+    "median_s": 12.32,
+    "max_s": 12.32
   },
-  "rematch_all_s": 38.0,
+  "rematch_all_s": 37.4,
   "GET /api/windows-updates": {
-    "median_s": 0.123,
+    "median_s": 0.125,
     "max_s": 0.133
   },
   "GET /api/windows-updates/{kb} (drill down)": {
     "median_s": 0.133,
-    "max_s": 0.28
+    "max_s": 0.287
   },
   "windows_updates_drilldown_kib": 197,
   "GET /api/summary (with Windows hosts)": {
-    "median_s": 0.59,
-    "max_s": 0.608
+    "median_s": 0.573,
+    "max_s": 0.578
   }
 }

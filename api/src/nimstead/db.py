@@ -58,6 +58,7 @@ class Org(Base):
     # signed-in user may put off a restart
     maintenance_window: Mapped[dict | None]
     reboot_deadline_hours: Mapped[int] = mapped_column(Integer, default=24, server_default="24")
+    weekly_summary: Mapped[bool] = mapped_column(Boolean, default=False)  # Monday's progress message to the alert destinations (DECISIONS 147)
 
 
 class User(Base):
@@ -106,6 +107,7 @@ class EnrollToken(Base):
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
     sandbox: Mapped[bool] = mapped_column(Boolean, default=False)  # assets enrolled with it are disposable test targets
     expires: Mapped[datetime | None]
+    owner: Mapped[str | None] = mapped_column(String(100))  # every asset enrolled with it starts with this owner (DECISIONS 145)
 
 
 class Asset(Base):
@@ -117,6 +119,7 @@ class Asset(Base):
     os_name: Mapped[str] = mapped_column(String(255), default="")
     ecosystem: Mapped[str] = mapped_column(String(100), default="")  # OSV distro ecosystem, e.g. Debian:12
     criticality: Mapped[str] = mapped_column(String(20), default="medium")
+    owner: Mapped[str | None] = mapped_column(String(100))  # the team accountable for it (DECISIONS 145); None = no owner
     internet_facing: Mapped[bool] = mapped_column(Boolean, default=False)
     directory_source: Mapped[bool] = mapped_column(Boolean, default=False)  # an admin chose it to send the AD list (DECISIONS 102)
     sandbox: Mapped[bool] = mapped_column(Boolean, default=False)  # disposable test target; remediation dev-guard

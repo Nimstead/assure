@@ -43,6 +43,7 @@ from nimstead import (
     mfa,
     neighbours,
     notify,
+    progress,
     remediate,
     sbom,
     sso,
@@ -869,6 +870,18 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     class TokenReq(BaseModel):
         sandbox: bool = False
+        owner: str | None = Field(None, max_length=100, pattern=r"^[^\x00-\x1f\x7f]*$")  # every asset enrolled with it starts with this owner (DECISIONS 145)
+
+    def owner_name(s: Session, org_id: str, v: str | None) -> str | None:
+        """An owner as typed, tidied: spaces collapsed, empty = no owner, and the spelling the org already uses for the
+        same name in any case ("payments" saves as "Payments"), so one team never splits in two (DECISIONS 145)."""
+        v = " ".join((v or "").split())
+        if not v:
+            return None
+        low = v.lower()
+        return (s.scalar(select(Asset.owner).where(Asset.org_id == org_id, func.lower(Asset.owner) == low).limit(1))
+                or s.scalar(select(EnrollToken.owner).where(EnrollToken.org_id == org_id, func.lower(EnrollToken.owner) == low).limit(1))
+                or v)
 
     @app.post("/api/enroll-tokens", status_code=201)
     def create_enroll_token(user: Admin, s: DB, body: TokenReq | None = None):
@@ -879,11 +892,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         code challenge occurs here. Later response loss does not undo creation."""
         token = "nme_" + secrets.token_urlsafe(24)
         et = EnrollToken(token_hash=sha(token), org_id=user.org_id, sandbox=bool(body and body.sandbox),
-                         expires=now() + timedelta(days=ENROLL_TOKEN_DAYS))
+                         expires=now() + timedelta(days=ENROLL_TOKEN_DAYS), owner=owner_name(s, user.org_id, body and body.owner))
         s.add(et)
-        evidence.append(s, user.org_id, "enroll_token_created", et.token_hash[:12], {"by": user.email, "sandbox": et.sandbox})
+        evidence.append(s, user.org_id, "enroll_token_created", et.token_hash[:12], {"by": user.email, "sandbox": et.sandbox,
+                                                                                     **({"owner": et.owner} if et.owner else {})})
         s.commit()
-        return {"token": token, "id": et.token_hash[:12], "expires": et.expires}  # token shown once
+        return {"token": token, "id": et.token_hash[:12], "expires": et.expires, "owner": et.owner}  # token shown once
 
     @app.get("/api/enroll-tokens")
     def list_enroll_tokens(user: CurrentUser, s: DB):
@@ -893,8 +907,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         Secrets are omitted. No pagination/filter excludes expired or revoked rows.
         Display IDs are twelve-character hash prefixes, not collision-free identities."""
         rows = s.scalars(select(EnrollToken).where(EnrollToken.org_id == user.org_id).order_by(EnrollToken.created.desc()))
-        return [{"id": e.token_hash[:12], "created": e.created, "expires": e.expires, "revoked": e.revoked, "sandbox": e.sandbox}
-                for e in rows]
+        return [{"id": e.token_hash[:12], "created": e.created, "expires": e.expires, "revoked": e.revoked, "sandbox": e.sandbox,
+                 "owner": e.owner} for e in rows]
 
     @app.delete("/api/enroll-tokens/{token_id}", status_code=204)
     def revoke_enroll_token(token_id: str, user: Admin, s: DB):
@@ -1094,7 +1108,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         room_for_asset(s, et.org_id)
         key = "nma_" + secrets.token_urlsafe(32)
         asset = Asset(org_id=et.org_id, hostname=body.hostname, os_name=body.os_name, ecosystem=body.ecosystem,
-                      agent_key_hash=sha(key), sandbox=et.sandbox, enrolled_by=et.token_hash[:12])
+                      agent_key_hash=sha(key), sandbox=et.sandbox, enrolled_by=et.token_hash[:12], owner=et.owner)
         s.add(asset)
         s.flush()
         evidence.append(s, et.org_id, "asset_enrolled", asset.id, {"token": et.token_hash[:12], "hostname": body.hostname})
@@ -1529,7 +1543,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         read = db_line.get("state") == "ok" and bool(db_line.get("count")) and bool(a.ecosystem)
         return {
             "id": a.id, "hostname": a.hostname, "os_name": a.os_name, "ecosystem": a.ecosystem,
-            "kind": a.kind, "criticality": a.criticality, "internet_facing": a.internet_facing, "directory_source": a.directory_source, "sandbox": a.sandbox,
+            "kind": a.kind, "owner": a.owner, "criticality": a.criticality, "internet_facing": a.internet_facing, "directory_source": a.directory_source, "sandbox": a.sandbox,
             "ring": a.ring, "health_units": a.health_units,
             "first_seen": a.first_seen, "last_seen": a.last_seen, "open_by_priority": counts,
             **({"apps": apps} if apps else {}),
@@ -1684,6 +1698,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         ring: Literal[0, 1] | None = None
         health_units: list[str] | None = Field(None, max_length=20)
         maintenance_window: dict | None = None  # {} = use the organisation's
+        owner: str | None = Field(None, max_length=100, pattern=r"^[^\x00-\x1f\x7f]*$")  # "" = no owner
 
     @app.patch("/api/assets/{asset_id}")
     def update_asset(asset_id: str, body: AssetPatch, user: Admin, s: DB):
@@ -1699,16 +1714,23 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         services/windows return 422. Rescan can commit before response construction,
         whose source/cache reads can still fail. Other storage/evidence errors propagate."""
         a = owned_asset(s, user, asset_id)
-        if a.kind == "image":
+        context = body.model_dump(exclude_none=True)
+        owner_only = context.keys() == {"owner"}
+        if a.kind == "image" and not owner_only:  # an image's owner is the team that builds it, so that one is its own
             raise HTTPException(409, "An image's criticality and internet exposure follow the hosts that run it: change them on those hosts")
         if body.health_units and not all(remediate.SAFE_NAME.match(u) for u in body.health_units):
             raise HTTPException(422, "Invalid systemd unit name")
         if body.maintenance_window and not remediate.valid_window(body.maintenance_window):
             raise HTTPException(422, "Maintenance window needs days (0-6, Monday=0), start HH:MM, hours 1-24 and a time zone")
-        for k, v in body.model_dump(exclude_none=True).items():
-            setattr(a, k, v or None if k == "maintenance_window" else v)
+        if "owner" in context:
+            context["owner"] = owner_name(s, a.org_id, context["owner"])
+        for k, v in context.items():
+            setattr(a, k, v or None if k in ("maintenance_window", "owner") else v)
         s.flush()
-        evidence.append(s, a.org_id, "asset_context_changed", a.id, {"by": user.email, **body.model_dump(exclude_none=True)})
+        evidence.append(s, a.org_id, "asset_context_changed", a.id, {"by": user.email, **context})
+        if owner_only:  # no score depends on the owner
+            s.commit()
+            return asset_json(a, {})
         rescan(s, a, inventory_received=False)  # context changed -> scores change
         if a.kind == "host":
             rerank_images(s, images_run_by(s, a))
@@ -1944,6 +1966,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         kev: bool | None = None
         overdue: bool | None = None  # open and past its deadline
         ecosystem: str | None = Field(None, max_length=100)  # one distribution or ecosystem ("Debian:13"): a package's own fix
+        owner: str | None = Field(None, max_length=100)  # the asset's owner; "" = assets with no owner (DECISIONS 145)
 
     def with_due(s: Session, org_id: str, f: FindingFilter, limit: int | None = None, sort: str = "score", offset: int = 0):
         """find() plus each finding's deadline; the overdue filter needs the SLA history, so it's applied here."""
@@ -2018,7 +2041,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                  "ecosystem": r[10] if r[11] == 1 else None} for r in rows]  # one distro's rows, or (by vulnerability) several
 
     CSV_COLUMNS = ["hostname", "package", "installed_version", "fixed_version", "vuln_id", "priority", "score", "cvss", "epss",
-                   "kev", "status", "first_seen", "last_seen", "resolved_at", "summary"]
+                   "kev", "status", "first_seen", "last_seen", "resolved_at", "summary", "owner"]  # new columns go last: scripts read by position
 
     @app.get("/api/findings.csv")
     def export_findings(user: CurrentUser, s: DB, f: Annotated[FindingFilter, Query()]):
@@ -2049,8 +2072,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                 return buf.getvalue()
             yield line(CSV_COLUMNS)
             with Sessions() as s2:
+                owners = dict(s2.execute(select(Asset.id, Asset.owner).where(Asset.org_id == org_id)).all())
                 for x, h, due, kind in with_due(s2, org_id, f):
-                    d = finding_json(x, h, due, kind)
+                    d = {**finding_json(x, h, due, kind), "owner": owners.get(x.asset_id)}
                     # cells a spreadsheet would run as a formula (package names and summaries come from hosts and advisories)
                     yield line([csv_safe(v) if isinstance(v, str) else v for v in (d[c] for c in CSV_COLUMNS)])
         return StreamingResponse(rows(), media_type="text/csv",
@@ -2076,6 +2100,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             stmt = stmt.where(Finding.asset_id == asset_id)
         if f.ecosystem:
             stmt = stmt.where(Finding.ecosystem == f.ecosystem)
+        if f.owner is not None:
+            stmt = stmt.where(Asset.owner == f.owner if f.owner else Asset.owner.is_(None))
         if kev is not None:
             stmt = stmt.where(Finding.kev == kev)
         if fixable is not None:
@@ -2104,7 +2130,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         if not f or f.org_id != user.org_id:
             raise HTTPException(404, "Finding not found")
         a = s.get(Asset, f.asset_id)
-        out = finding_json(f, a.hostname, due_of(f, evidence.sla_history(s, user.org_id)), a.kind)
+        out = {**finding_json(f, a.hostname, due_of(f, evidence.sla_history(s, user.org_id)), a.kind), "owner": a.owner}
         image = a.kind == "image"  # how it's fixed, and where it runs (DECISIONS 141); null for every other kind
         out["rebuild"] = remediate.REBUILD if image else None
         out["runs_on"] = sorted(set(s.scalars(select(Asset.hostname).join(Container, Container.asset_id == Asset.id)
@@ -2904,6 +2930,43 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             return ai.parse_search(body.text).model_dump()
         except ai.AIUnavailable as e:
             raise HTTPException(503, str(e)) from None
+
+    # --- progress over time (DECISIONS 146) --------------------------------
+
+    @app.get("/api/progress")
+    def get_progress(user: CurrentUser, s: DB, days: int = Query(90, ge=7, le=365)):  # the page offers 30, 90 and 365
+        """Return open findings per day, findings opened and resolved per week, and each owner's numbers.
+
+        Days are UTC, by priority, with overdue and accepted; rebuilt from the ledger and the current findings, with the
+        basis they rest on (entries read, ledger head, findings left out). The last day equals the open findings now. Range totals use the evidence pack's period rules. Nothing is stored
+        or written. Requires a user session or a read-only organisation API token."""
+        return progress.replay(s, user.org_id, days)
+
+    PROGRESS_DAY_COLUMNS = ["date", *(f"open_{p}" for p in progress.PRIORITIES), "overdue", "accepted"]
+    PROGRESS_OWNER_COLUMNS = ["owner", "open", "fix_now", "overdue", "accepted", "open_at_start", "resolved", "resolved_on_time",
+                              "mean_days_to_resolve"]
+
+    @app.get("/api/progress.csv")
+    def export_progress(user: CurrentUser, s: DB, days: int = Query(90, ge=7, le=365), table: Literal["days", "owners"] = "days"):
+        """Return /api/progress as CSV: one row per day (table=days) or per owner (table=owners, no owner as an empty cell).
+
+        Owner names that a spreadsheet would run as a formula get a leading apostrophe. Shares the 30/hour export quota
+        with the findings export. Requires a user session or a read-only organisation API token.
+
+        Operation-specific HTTP errors: 429. See detail in the response."""
+        if over_limit(s, "export:" + user.org_id, EXPORT_MAX_PER_HOUR):
+            raise HTTPException(429, f"At most {EXPORT_MAX_PER_HOUR} exports an hour")
+        r = progress.replay(s, user.org_id, days)
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        if table == "days":
+            w.writerow(PROGRESS_DAY_COLUMNS)
+            w.writerows([d["date"], *(d["open"][p] for p in progress.PRIORITIES), d["overdue"], d["accepted"]] for d in r["days"])
+        else:
+            w.writerow(PROGRESS_OWNER_COLUMNS)
+            w.writerows([csv_safe(o["owner"] or ""), *(o[k] for k in PROGRESS_OWNER_COLUMNS[1:])] for o in r["owners"])
+        return Response(buf.getvalue(), media_type="text/csv",
+                        headers={"Content-Disposition": f'attachment; filename="nimstead-progress-{table}-{days}d.csv"'})
 
     # --- evidence ----------------------------------------------------------
 

@@ -71,6 +71,7 @@ def render() -> dict[str, str]:
     group_fields |= {"kev": {"type": "boolean"}, "fixed_version": {"type": ["string", "null"]}, "ecosystem": {"type": ["string", "null"]}}
     # a container image's finding also says how it's fixed and where the image runs (DECISIONS 141); null for other kinds
     detail_fields |= {"rebuild": {"type": ["string", "null"]}, "runs_on": {"type": ["array", "null"], "items": {"type": "string"}}}
+    detail_fields |= {"owner": {"type": ["string", "null"]}}  # its asset's owner (DECISIONS 145)
     for name, fields in (("FindingRow", finding_fields), ("FindingCompact", compact_fields), ("FindingDetail", detail_fields), ("FindingGroup", group_fields)):
         schema["components"]["schemas"][name] = {"type": "object", "properties": fields, "required": list(fields), "additionalProperties": False}
     rule_fields = {name: {"type": "string"} for name in ("id", "v", "severity", "status", "setting", "expected", "found", "note")}
@@ -128,6 +129,7 @@ def render() -> dict[str, str]:
         "type": "object", "properties": update_detail, "required": list(update_detail), "additionalProperties": False}
     asset_fields = {name: {"type": "string"} for name in ("id", "hostname", "os_name", "ecosystem", "kind", "criticality", "first_seen", "last_seen")}
     asset_fields |= {name: {"type": "boolean"} for name in ("internet_facing", "directory_source", "sandbox")}
+    asset_fields |= {"owner": {"type": ["string", "null"]}}
     asset_fields |= {"ring": {"type": "integer"}, "health_units": {"type": "array", "items": {"type": "string"}},
                      "open_by_priority": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}}}
     app_counts = {"type": "object", "properties": {name: {"type": "integer", "minimum": 0} for name in ("assessed", "inventory_only")},
@@ -193,7 +195,7 @@ def render() -> dict[str, str]:
     setup_fields = {name: {"type": "string"} for name in ("setup", "secret", "uri")}
     recovery_field = {"type": "array", "items": {"type": "string"}}
     enrol_fields = {name: {"type": ["string", "null"] if name == "expires" else "string"} for name in ("id", "created", "expires")}
-    enrol_fields |= {"revoked": {"type": "boolean"}, "sandbox": {"type": "boolean"}}
+    enrol_fields |= {"revoked": {"type": "boolean"}, "sandbox": {"type": "boolean"}, "owner": {"type": ["string", "null"]}}
     token_fields = {name: {"type": "string"} for name in ("id", "name", "created_by", "created")}
     token_fields |= {name: {"type": ["string", "null"]} for name in ("expires", "last_used")}
     domain_fields = {name: {"type": "string"} for name in ("domain", "txt_name", "txt_value")}
@@ -206,7 +208,7 @@ def render() -> dict[str, str]:
     for name, fields in (("UserRecord", user_fields), ("CurrentIdentity", me_fields), ("AuthenticatorSetup", setup_fields),
                          ("RecoveryCodes", {"recovery_codes": recovery_field}), ("EnrolmentTokenMetadata", enrol_fields),
                          ("ApiTokenMetadata", token_fields), ("SSOSettings", sso_fields), ("AuthenticationError", {"detail": {"type": "string"}}),
-                         ("CreatedEnrolmentToken", {name: {"type": "string"} for name in ("id", "token", "expires")}),
+                         ("CreatedEnrolmentToken", {**{name: {"type": "string"} for name in ("id", "token", "expires")}, "owner": {"type": ["string", "null"]}}),
                          ("CreatedApiToken", {name: {"type": "string"} for name in ("id", "token", "name", "expires")})):
         schema["components"]["schemas"][name] = {"type": "object", "properties": fields, "required": list(fields), "additionalProperties": False}
     login_success = {"type": "object", "properties": {"email": {"type": "string"}, "recovery_codes": recovery_field},
@@ -267,6 +269,19 @@ def render() -> dict[str, str]:
         "ledger": {"type": "object", "properties": {"entries": integer, "head_hash": string},
                    "required": ["entries", "head_hash"], "additionalProperties": False}}
     record("EvidenceReport", report_fields, optional=("assets", "findings"))
+    # progress over time (DECISIONS 146): rebuilt from the ledger, so it names the head it was read up to
+    count = {"type": "integer", "minimum": 0}
+    day = record("ProgressDay", {"date": string, "open": {"type": "object", "properties": {p: count for p in ("fix-now", "next", "planned", "low")},
+                                                          "required": ["fix-now", "next", "planned", "low"], "additionalProperties": False},
+                                 "overdue": count, "accepted": count})
+    week = record("ProgressWeek", {"start": string, "opened": count, "resolved": count, "partial": boolean})
+    owner_counts = {**{k: count for k in ("open", "fix_now", "overdue", "accepted", "open_at_start", "resolved", "resolved_on_time")},
+                    "mean_days_to_resolve": number_or_null}
+    owner_row = record("ProgressOwner", {"owner": nullable_text, **owner_counts})
+    totals = record("ProgressTotals", owner_counts)
+    basis = record("ProgressBasis", {**{k: count for k in ("entries", "head_seq", "findings", "no_ledger_record", "mismatched")}, "head_hash": string})
+    record("Progress", {"start": string, "end": string, "days": {"type": "array", "items": day}, "weeks": {"type": "array", "items": week},
+                        "owners": {"type": "array", "items": owner_row}, "totals": totals, "basis": basis})
     checkpoint = record("EvidenceCheckpoint", {**{k: string for k in ("org_id", "hash", "ts", "sig")}, "seq": integer})
     pack_fields = {**report_fields, "ledger": {"type": "object", "properties": {
         "entries": {"type": "array", "items": entry}, "head_hash": string,
@@ -394,7 +409,8 @@ def render() -> dict[str, str]:
                     "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HttpError"}}}})
             report_name = {"/api/ai/status": "AIStatus", "/api/ai/explain/{finding_id}": "AIExplanation", "/api/ai/search": "AISearchFilter",
                 "/api/agent/directory": "DirectoryReceipt", "/api/evidence/ledger": "LedgerPage", "/api/evidence/public-key": "EvidencePublicKey",
-                "/api/evidence/report": "EvidenceReport", "/api/assets/{asset_id}/scan-report": "ScanReport", "/api/attack-paths": "FleetPaths"}.get(route.path)
+                "/api/evidence/report": "EvidenceReport", "/api/assets/{asset_id}/scan-report": "ScanReport", "/api/attack-paths": "FleetPaths",
+                "/api/progress": "Progress"}.get(route.path)
             if report_name:
                 operation["responses"]["200"] = {"description": "Source-backed response fields. Consult the matching reference for observation, integrity and persistence limits.",
                     "content": {"application/json": {"schema": {"$ref": f"#/components/schemas/{report_name}"}}}}
@@ -516,6 +532,9 @@ def render() -> dict[str, str]:
                     operation["responses"][status] = {"description": description, "content": {"text/html": {"schema": {"type": "string"}}}}
             if route.path == "/api/baselines.csv":
                 operation["responses"]["200"] = {"description": "CSV attachment with automated and explicit manual rule rows.",
+                                                 "content": {"text/csv": {"schema": {"type": "string"}}}}
+            if route.path == "/api/progress.csv":
+                operation["responses"]["200"] = {"description": "CSV attachment: one row per UTC day (table=days) or per owner (table=owners).",
                                                  "content": {"text/csv": {"schema": {"type": "string"}}}}
             if route.path == "/api/findings.csv":
                 operation["responses"]["200"] = {"description": "CSV attachment in the documented column order, without list pagination.",

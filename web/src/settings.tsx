@@ -342,6 +342,7 @@ function TokensSection() {
                 <li key={t.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 text-sm">
                   <code className="font-mono text-xs">{t.id}</code>
                   <Tag>{t.sandbox ? "Test machines" : "Any machine"}</Tag>
+                  {t.owner && <span>Owner: {t.owner}</span>}
                   <span className="min-w-[8rem] flex-1 text-muted">
                     {t.revoked ? "Revoked" : expired ? "Expired " : "Expires "}
                     {!t.revoked && <time dateTime={parseUtc(t.expires).toISOString()} title={parseUtc(t.expires).toLocaleString()}>{relativeTime(t.expires)}</time>}

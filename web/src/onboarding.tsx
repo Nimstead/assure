@@ -4,8 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { RadioGroup } from "radix-ui";
 import { ArrowRight } from "lucide-react";
 import clsx from "clsx";
-import { adminGate, api, assetsQ, installCommands, useIsAdmin, useTitle } from "./lib";
-import { Alert, btnPrimary, CopyBlock } from "./ui";
+import { adminGate, api, assetsQ, installCommands, ownersOf, useIsAdmin, useTitle } from "./lib";
+import { Alert, btnPrimary, CopyBlock, input } from "./ui";
 
 /** Pure view so the rendered commands can be tested without a network. */
 export function InstallCommands({ origin, token }: { origin: string; token: string }) {
@@ -38,7 +38,8 @@ export function Onboarding() {
   const admin = useIsAdmin();
   // No default: sandbox is fixed per machine at enrolment, so the choice must be deliberate (DECISIONS 46).
   const [kind, setKind] = useState<Kind | null>(null);
-  const token = useMutation({ mutationFn: () => api<{ token: string }>("/api/enroll-tokens", { method: "POST", body: { sandbox: kind === "test" } }) });
+  const [owner, setOwner] = useState("");
+  const token = useMutation({ mutationFn: () => api<{ token: string }>("/api/enroll-tokens", { method: "POST", body: { sandbox: kind === "test", owner: owner.trim() || undefined } }) });
   const [connected, setConnected] = useState(false);
   const [slow, setSlow] = useState(false);
   const baseline = useRef<number | null>(null);
@@ -123,6 +124,12 @@ export function Onboarding() {
               </RadioGroup.Root>
               <p id="kind-note" className="text-xs text-muted">This is fixed for every machine enrolled with this command.</p>
             </fieldset>
+            <label className="flex w-full flex-col gap-1.5 text-sm">
+              <span className="font-semibold">Owner <span className="font-normal text-muted">(optional)</span></span>
+              <input className={clsx(input, "sm:w-72")} list="enrol-owners" maxLength={100} placeholder="The team these machines belong to" value={owner} onChange={(e) => setOwner(e.target.value)} />
+              <datalist id="enrol-owners">{ownersOf(assets.data ?? []).map((o) => <option key={o} value={o} />)}</datalist>
+              <span className="text-xs text-muted">Every machine enrolled with this command starts with this owner. Change it any time in Assets.</span>
+            </label>
             <button className={btnPrimary} onClick={() => token.mutate()} disabled={token.isPending || !kind} {...adminGate(admin)}>
               {token.isPending ? "Creating…" : "Create install command"}
             </button>

@@ -29,6 +29,7 @@ export interface ContainerRun { name: string; runtime: string; ref: string; sinc
 export interface Asset {
   id: string; hostname: string; os_name: string; ecosystem: string; kind: "host" | "application" | "external" | "device" | "image";
   criticality: Criticality; internet_facing: boolean; directory_source?: boolean; sandbox: boolean; ring: 0 | 1; health_units: string[];
+  owner?: string | null; // the team accountable for it (DECISIONS 145)
   first_seen: string; last_seen: string; open_by_priority: Partial<Record<Priority, number>>;
   apps?: { assessed: number; inventory_only: number }; // Windows hosts: installed apps checked against those only listed
   agent_version?: string; agent_outdated?: boolean; agent_update?: AgentUpdate; agent_update_error?: string | null; not_reporting?: boolean; // hosts only
@@ -145,7 +146,25 @@ export interface EvidenceReport {
   metrics: { resolved: number; resolved_within_sla: number; overdue_open: number; mttr_days: number | null; ce_in_scope_overdue?: number };
   ledger: { head_hash: string; entries: number };
 }
-export interface EnrollToken { id: string; created: string; expires: string; revoked: boolean; sandbox: boolean }
+export interface EnrollToken { id: string; created: string; expires: string; revoked: boolean; sandbox: boolean; owner?: string | null }
+/** The owner filters' "No owner" value: no real owner can hold a control character (the API refuses them). */
+export const NO_OWNER = "\u0000none";
+/** The org's owner names, as typed once and reused (the API keeps one spelling per name). */
+export const ownersOf = (assets: Pick<Asset, "owner">[]) => [...new Set(assets.map((a) => a.owner).filter((o): o is string => !!o))].sort((x, y) => x.localeCompare(y));
+
+// ---- progress over time (GET /api/progress, DECISIONS 146) -------------------------------------------------------------
+export const PROGRESS_RANGES = [30, 90, 365] as const;
+export interface ProgressDay { date: string; open: Record<Priority, number>; overdue: number; accepted: number }
+export interface ProgressWeek { start: string; opened: number; resolved: number; partial: boolean }
+export interface ProgressOwner {
+  owner: string | null; open: number; fix_now: number; overdue: number; accepted: number; open_at_start: number;
+  resolved: number; resolved_on_time: number; mean_days_to_resolve: number | null;
+}
+export interface Progress {
+  start: string; end: string; days: ProgressDay[]; weeks: ProgressWeek[]; owners: ProgressOwner[]; totals: Omit<ProgressOwner, "owner">;
+  basis: { entries: number; head_seq: number; head_hash: string; findings: number; no_ledger_record: number; mismatched: number };
+}
+export const progressQ = (days: number) => queryOptions({ queryKey: ["progress", days], queryFn: () => api<Progress>(`/api/progress?days=${days}`) });
 export interface Settings {
   remediation_mode: "suggest" | "approve" | "auto"; canary_soak_hours: number; production_remediation_allowed: boolean;
   agent_updates_paused: boolean; signed_agent_release: boolean; platform: Platform; sla_days: Record<Priority, number>;
@@ -280,6 +299,8 @@ export interface FindingsFilters {
   ecosystem: string;
   /** Open and past its deadline (as evidence packs count it). */
   overdue: boolean;
+  /** The asset's owner ("" for any); noOwner: only assets with none. */
+  owner: string; noOwner: boolean;
   sort: FindingSort; group: FindingGroup;
 }
 export type FindingSort = "score" | "package" | "host" | "vuln" | "newest";
@@ -295,7 +316,7 @@ export function parseFilters(raw: RawSearch): FindingsFilters {
   const priority = (raw.priority ?? "").split(",").filter((p): p is Priority => (PRIORITIES as readonly string[]).includes(p));
   const sort = (["score", "package", "host", "vuln", "newest"] as const).find((s) => s === raw.sort) ?? "score";
   const group = (["vuln", "package"] as const).find((g) => g === raw.group) ?? "";
-  return { q: raw.q ?? "", priority, fixable: raw.fixable === "1", kev: raw.kev === "1", status, asset: raw.asset ?? "", ecosystem: raw.eco ?? "", open: raw.f ?? "", overdue: raw.overdue === "1", sort, group };
+  return { q: raw.q ?? "", priority, fixable: raw.fixable === "1", kev: raw.kev === "1", status, asset: raw.asset ?? "", ecosystem: raw.eco ?? "", open: raw.f ?? "", overdue: raw.overdue === "1", owner: raw.owner ?? "", noOwner: raw.noowner === "1", sort, group };
 }
 
 /** Inverse of parseFilters: only non-default values reach the URL. */
@@ -310,6 +331,8 @@ export function filtersToSearch(f: FindingsFilters): RawSearch {
     eco: f.ecosystem || undefined,
     f: f.open || undefined,
     overdue: f.overdue ? "1" : undefined,
+    owner: f.noOwner ? undefined : f.owner || undefined,
+    noowner: f.noOwner ? "1" : undefined,
     sort: f.sort === "score" ? undefined : f.sort,
     group: f.group || undefined,
   };
@@ -329,6 +352,8 @@ export function filtersToApi(f: FindingsFilters, list = true): string {
   if (f.fixable) p.set("fixable", "true");
   if (f.kev) p.set("kev", "true");
   if (f.overdue) p.set("overdue", "true");
+  if (f.noOwner) p.set("owner", "");
+  else if (f.owner) p.set("owner", f.owner);
   return p.toString();
 }
 
@@ -350,8 +375,8 @@ export function aiFilterToPatch(a: AiFilter): Partial<FindingsFilters> {
 /** Everything derived from these changes together; one place decides what a change makes stale. */
 const STALE = {
   jobs: ["jobs", "summary", "ledger", "kb-fleet"],
-  findings: ["findings", "finding", "summary", "ledger"],
-  assets: ["assets", "findings", "finding", "summary", "ledger", "jobs", "kb-fleet"],
+  findings: ["findings", "finding", "summary", "ledger", "progress"],
+  assets: ["assets", "findings", "finding", "summary", "ledger", "jobs", "kb-fleet", "progress"],
   people: ["users", "api-tokens", "enroll-tokens", "ledger"],
 } as const;
 /** Invalidate query groups affected by what and return a Promise for all invalidations on qc. */

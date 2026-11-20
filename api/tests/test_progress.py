@@ -1,3 +1,5 @@
+import csv
+import io
 import random
 from datetime import datetime, time, timedelta
 
@@ -193,3 +195,19 @@ def test_a_deleted_assets_findings_drop_out_as_they_do_from_the_pack(env):
     assert c.delete(f"/api/assets/{aid}").status_code in (200, 204)
     got = progress.replay(s, org_id, 30)
     assert got["totals"]["open"] == 0 and got["basis"]["findings"] == 0 and got["basis"]["entries"] > 0
+
+
+def test_the_api_and_its_csv_say_the_same_and_a_read_only_token_can_read_them(env):
+    c, s, org_id = flow(env)
+    aid = s.scalar(select(Asset.id).where(Asset.org_id == org_id))
+    assert c.patch(f"/api/assets/{aid}", json={"owner": "=HYPERLINK(1)"}).status_code == 200  # a name a spreadsheet would run
+    ro = {"Authorization": "Bearer " + c.post("/api/tokens", json={"name": "ro"}).json()["token"]}
+    got = c.get("/api/progress", params={"days": 30}, headers=ro).json()
+    assert len(got["days"]) == 30 and got["owners"][0]["owner"] == "=HYPERLINK(1)" and got["basis"]["mismatched"] == 0
+    assert [c.get("/api/progress", params={"days": n}).status_code for n in (6, 45, 366)] == [422, 200, 422]
+    rows = list(csv.DictReader(io.StringIO(c.get("/api/progress.csv", params={"days": 30}, headers=ro).text)))
+    assert len(rows) == 30 and rows[-1]["date"] == got["days"][-1]["date"]
+    assert int(rows[-1]["open_fix-now"]) == got["days"][-1]["open"]["fix-now"] and int(rows[-1]["overdue"]) == got["days"][-1]["overdue"]
+    owners = list(csv.DictReader(io.StringIO(c.get("/api/progress.csv", params={"days": 30, "table": "owners"}).text)))
+    assert owners[0]["owner"] == "'=HYPERLINK(1)" and int(owners[0]["open"]) == got["owners"][0]["open"]
+    assert c.get("/api/progress.csv", params={"table": "all"}).status_code == 422

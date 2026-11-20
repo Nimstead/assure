@@ -371,6 +371,12 @@
           "os_name": {
             "type": "string"
           },
+          "owner": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "ring": {
             "type": "integer"
           },
@@ -390,6 +396,7 @@
           "internet_facing",
           "directory_source",
           "sandbox",
+          "owner",
           "ring",
           "health_units",
           "open_by_priority"
@@ -570,6 +577,19 @@
               }
             ],
             "title": "Maintenance Window"
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner"
           },
           "ring": {
             "anyOf": [
@@ -1034,6 +1054,12 @@
           "os_name": {
             "type": "string"
           },
+          "owner": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "ring": {
             "type": "integer"
           },
@@ -1056,6 +1082,7 @@
           "internet_facing",
           "directory_source",
           "sandbox",
+          "owner",
           "ring",
           "health_units",
           "open_by_priority",
@@ -1072,6 +1099,12 @@
           "id": {
             "type": "string"
           },
+          "owner": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "token": {
             "type": "string"
           }
@@ -1079,7 +1112,8 @@
         "required": [
           "id",
           "token",
-          "expires"
+          "expires",
+          "owner"
         ],
         "type": "object"
       },
@@ -1266,6 +1300,12 @@
           "id": {
             "type": "string"
           },
+          "owner": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "revoked": {
             "type": "boolean"
           },
@@ -1278,7 +1318,8 @@
           "created",
           "expires",
           "revoked",
-          "sandbox"
+          "sandbox",
+          "owner"
         ],
         "type": "object"
       },
@@ -1911,6 +1952,12 @@
           "os_name": {
             "type": "string"
           },
+          "owner": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "proof_path": {
             "type": "string"
           },
@@ -1948,6 +1995,7 @@
           "internet_facing",
           "directory_source",
           "sandbox",
+          "owner",
           "ring",
           "health_units",
           "open_by_priority",
@@ -2099,6 +2147,12 @@
           "last_seen": {
             "type": "string"
           },
+          "owner": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "package": {
             "type": "string"
           },
@@ -2205,7 +2259,8 @@
           "score",
           "package_fix",
           "rebuild",
-          "runs_on"
+          "runs_on",
+          "owner"
         ],
         "type": "object"
       },
@@ -2824,6 +2879,12 @@
           "os_name": {
             "type": "string"
           },
+          "owner": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "ring": {
             "type": "integer"
           },
@@ -2843,6 +2904,7 @@
           "internet_facing",
           "directory_source",
           "sandbox",
+          "owner",
           "ring",
           "health_units",
           "open_by_priority",
@@ -3098,6 +3160,12 @@
           "os_name": {
             "type": "string"
           },
+          "owner": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "packages_read": {
             "type": "boolean"
           },
@@ -3156,6 +3224,7 @@
           "internet_facing",
           "directory_source",
           "sandbox",
+          "owner",
           "ring",
           "health_units",
           "open_by_priority",
@@ -4096,6 +4165,272 @@
           }
         },
         "title": "Policy",
+        "type": "object"
+      },
+      "Progress": {
+        "additionalProperties": false,
+        "properties": {
+          "basis": {
+            "$ref": "#/components/schemas/ProgressBasis"
+          },
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/ProgressDay"
+            },
+            "type": "array"
+          },
+          "end": {
+            "type": "string"
+          },
+          "owners": {
+            "items": {
+              "$ref": "#/components/schemas/ProgressOwner"
+            },
+            "type": "array"
+          },
+          "start": {
+            "type": "string"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/ProgressTotals"
+          },
+          "weeks": {
+            "items": {
+              "$ref": "#/components/schemas/ProgressWeek"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "days",
+          "weeks",
+          "owners",
+          "totals",
+          "basis"
+        ],
+        "type": "object"
+      },
+      "ProgressBasis": {
+        "additionalProperties": false,
+        "properties": {
+          "entries": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "findings": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "head_hash": {
+            "type": "string"
+          },
+          "head_seq": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "mismatched": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "no_ledger_record": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "entries",
+          "head_seq",
+          "findings",
+          "no_ledger_record",
+          "mismatched",
+          "head_hash"
+        ],
+        "type": "object"
+      },
+      "ProgressDay": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "date": {
+            "type": "string"
+          },
+          "open": {
+            "additionalProperties": false,
+            "properties": {
+              "fix-now": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "low": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "next": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "planned": {
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "fix-now",
+              "next",
+              "planned",
+              "low"
+            ],
+            "type": "object"
+          },
+          "overdue": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "date",
+          "open",
+          "overdue",
+          "accepted"
+        ],
+        "type": "object"
+      },
+      "ProgressOwner": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "fix_now": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "mean_days_to_resolve": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "open": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "open_at_start": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "overdue": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "owner": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resolved": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "resolved_on_time": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "owner",
+          "open",
+          "fix_now",
+          "overdue",
+          "accepted",
+          "open_at_start",
+          "resolved",
+          "resolved_on_time",
+          "mean_days_to_resolve"
+        ],
+        "type": "object"
+      },
+      "ProgressTotals": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "fix_now": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "mean_days_to_resolve": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "open": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "open_at_start": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "overdue": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "resolved": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "resolved_on_time": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "open",
+          "fix_now",
+          "overdue",
+          "accepted",
+          "open_at_start",
+          "resolved",
+          "resolved_on_time",
+          "mean_days_to_resolve"
+        ],
+        "type": "object"
+      },
+      "ProgressWeek": {
+        "additionalProperties": false,
+        "properties": {
+          "opened": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "partial": {
+            "type": "boolean"
+          },
+          "resolved": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "start": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "opened",
+          "resolved",
+          "partial"
+        ],
         "type": "object"
       },
       "RecoveryCodes": {
@@ -5109,6 +5444,19 @@
       },
       "TokenReq": {
         "properties": {
+          "owner": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner"
+          },
           "sandbox": {
             "default": false,
             "title": "Sandbox",
@@ -8661,6 +9009,23 @@
           },
           {
             "in": "query",
+            "name": "owner",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Owner"
+            }
+          },
+          {
+            "in": "query",
             "name": "limit",
             "required": false,
             "schema": {
@@ -8913,6 +9278,23 @@
                 }
               ],
               "title": "Ecosystem"
+            }
+          },
+          {
+            "in": "query",
+            "name": "owner",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Owner"
             }
           }
         ],
@@ -9286,6 +9668,23 @@
               ],
               "title": "Ecosystem"
             }
+          },
+          {
+            "in": "query",
+            "name": "owner",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Owner"
+            }
           }
         ],
         "responses": {
@@ -9484,6 +9883,23 @@
                 }
               ],
               "title": "Ecosystem"
+            }
+          },
+          {
+            "in": "query",
+            "name": "owner",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Owner"
             }
           },
           {
@@ -10349,6 +10765,164 @@
         "security": [],
         "summary": "Confirm Email",
         "x-authentication": "Confirmation token"
+      }
+    },
+    "/api/progress": {
+      "get": {
+        "description": "Return open findings per day, findings opened and resolved per week, and each owner's numbers.\n\nDays are UTC, by priority, with overdue and accepted; rebuilt from the ledger and the current findings, with the\nbasis they rest on (entries read, ledger head, findings left out). The last day equals the open findings now. Range totals use the evidence pack's period rules. Nothing is stored\nor written. Requires a user session or a read-only organisation API token.",
+        "operationId": "get_progress_api_progress_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 90,
+              "maximum": 365,
+              "minimum": 7,
+              "title": "Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Progress"
+                }
+              }
+            },
+            "description": "Source-backed response fields. Consult the matching reference for observation, integrity and persistence limits."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SessionCookie": []
+          },
+          {
+            "ReadToken": []
+          }
+        ],
+        "summary": "Get Progress",
+        "x-authentication": "Session or read-only API token"
+      }
+    },
+    "/api/progress.csv": {
+      "get": {
+        "description": "Return /api/progress as CSV: one row per day (table=days) or per owner (table=owners, no owner as an empty cell).\n\nOwner names that a spreadsheet would run as a formula get a leading apostrophe. Shares the 30/hour export quota\nwith the findings export. Requires a user session or a read-only organisation API token.\n\nOperation-specific HTTP errors: 429. See detail in the response.",
+        "operationId": "export_progress_api_progress_csv_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 90,
+              "maximum": 365,
+              "minimum": 7,
+              "title": "Days",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "table",
+            "required": false,
+            "schema": {
+              "default": "days",
+              "enum": [
+                "days",
+                "owners"
+              ],
+              "title": "Table",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "CSV attachment: one row per UTC day (table=days) or per owner (table=owners)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SessionCookie": []
+          },
+          {
+            "ReadToken": []
+          }
+        ],
+        "summary": "Export Progress",
+        "x-authentication": "Session or read-only API token"
       }
     },
     "/api/remediation/jobs": {

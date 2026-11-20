@@ -164,6 +164,7 @@ export interface Progress {
   start: string; end: string; days: ProgressDay[]; weeks: ProgressWeek[]; owners: ProgressOwner[]; totals: Omit<ProgressOwner, "owner">;
   basis: { entries: number; head_seq: number; head_hash: string; findings: number; no_ledger_record: number; mismatched: number; problems: string[] };
 }
+/** Progress over the last `days` UTC days, rebuilt from the ledger on each read (GET /api/progress). */
 export const progressQ = (days: number) => queryOptions({ queryKey: ["progress", days], queryFn: () => api<Progress>(`/api/progress?days=${days}`) });
 export interface Settings {
   remediation_mode: "suggest" | "approve" | "auto"; canary_soak_hours: number; production_remediation_allowed: boolean;

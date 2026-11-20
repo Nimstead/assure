@@ -1,5 +1,5 @@
 import { Fragment, memo, startTransition, useCallback, useDeferredValue, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
-import { Link, useNavigate, useSearch } from "@tanstack/react-router";
+import { Link, useNavigate, useRouter, useSearch } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Dialog, Switch } from "radix-ui";
 import { AppWindow, ArrowRight, Plus, Search, SlidersHorizontal, Trash2, Upload, X } from "lucide-react";
@@ -624,6 +624,7 @@ function MachineList({ assets, saved, failed, onPatch, onDelete, undo, reranked 
   // ?show=quiet,agent and ?machine=<id> make a filtered list or one machine's drawer linkable (the palette uses them)
   const sp = useSearch({ strict: false }) as { show?: string; machine?: string; q?: string; crit?: string; sort?: string; owner?: string; noowner?: string };
   const navigate = useNavigate();
+  const router = useRouter();
   const [text, setText] = useState(sp.q ?? "");
   const [on, setOn] = useState<Filter[]>(() => (sp.show ?? "").split(",").filter((f): f is Filter => f in FILTERS));
   useEffect(() => { if (sp.show) setOn(sp.show.split(",").filter((f): f is Filter => f in FILTERS)); }, [sp.show]);
@@ -640,10 +641,12 @@ function MachineList({ assets, saved, failed, onPatch, onDelete, undo, reranked 
   const typed = useDeferredValue(text);  // the list catches up after the keystroke, never blocking it
   // the list's state lives in the URL too, so Back, refresh and a shared link keep it
   useEffect(() => {
+    // already leaving (a page still loading): a list that mounts or catches up late mustn't pull the user back here
+    if (router.latestLocation.pathname !== "/assets") return;
     void navigate({ to: "/assets", replace: true, resetScroll: false,
       search: (s: Record<string, unknown>) => ({ ...s, q: typed || undefined, show: on.join(",") || undefined, crit: crit || undefined, sort: sort === "urgent" ? undefined : sort,
         owner: owner && owner !== NO_OWNER ? owner : undefined, noowner: owner === NO_OWNER ? "1" : undefined }) });
-  }, [typed, on, crit, sort, owner, navigate]);
+  }, [typed, on, crit, sort, owner, navigate, router]);
   const fleetwideAgent = assets.filter(MATCH.agent).length > assets.length / 2;  // said once in the banner, not on every row
   const rows = useMemo(() => filterAssets(assets, typed, on, crit, sort, owner), [assets, typed, on, crit, sort, owner]);
   const pick = useCallback((id: string, v: boolean) => setPicked((s) => { const n = new Set(s); if (v) n.add(id); else n.delete(id); return n; }), []);

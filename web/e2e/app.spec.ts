@@ -528,6 +528,24 @@ test("navigating to a page that loads on demand moves focus to its heading and n
   await context.close();
 });
 
+test("leaving the assets page before its list loads doesn't pull you back to it", async ({ browser }) => {
+  // CI once caught this by chance: the list arrived while Settings was still loading, and its URL sync navigated back to /assets
+  const { context, page } = await ctx(browser, 1440, "light");
+  const hold = () => { let open!: () => void; const gate = new Promise<void>((r) => { open = r; }); return { gate, open }; };
+  const list = hold(), settings = hold();
+  await page.route("**/api/assets", async (route) => { await list.gate; await route.continue(); });
+  await page.route("**/src/settings.tsx", async (route) => { await settings.gate; await route.continue(); });
+  await page.goto("/assets");
+  await expect(page.locator("h1")).toHaveText("Assets");
+  await page.locator("aside nav").getByRole("link", { name: "Settings", exact: true }).click();  // Settings is still loading...
+  list.open();
+  await expect(page.getByText("Search assets")).toBeAttached();  // ...when the list arrives on the page being left
+  settings.open();
+  await expect(page.locator("h1")).toHaveText("Settings");
+  await expect(page).toHaveURL(/\/settings$/);
+  await context.close();
+});
+
 test("keyboard: choosing on the trust ladder saves nothing; findings open with Enter and close with Escape", async ({ browser }) => {
   const { context, page } = await ctx(browser, 1440, "light");
   await load(page, SETTINGS);

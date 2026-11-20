@@ -3755,12 +3755,16 @@
           },
           "webhook_set": {
             "type": "boolean"
+          },
+          "weekly_summary": {
+            "type": "boolean"
           }
         },
         "required": [
           "webhook_set",
           "email_available",
           "last_delivery_failed",
+          "weekly_summary",
           "webhook_host",
           "webhook_format",
           "emails",
@@ -3813,6 +3817,17 @@
               }
             ],
             "title": "Webhook Url"
+          },
+          "weekly_summary": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weekly Summary"
           }
         },
         "title": "NotifyConfig",

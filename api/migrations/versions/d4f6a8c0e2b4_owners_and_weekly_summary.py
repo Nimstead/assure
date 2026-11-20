@@ -22,10 +22,12 @@ def upgrade() -> None:
     op.add_column('asset', sa.Column('owner', sa.String(length=100), nullable=True))
     op.add_column('enroll_token', sa.Column('owner', sa.String(length=100), nullable=True))
     op.add_column('org', sa.Column('weekly_summary', sa.Boolean(), nullable=False, server_default=sa.false()))
+    op.add_column('org', sa.Column('weekly_summary_sent', sa.String(length=10), nullable=True))
 
 
 def downgrade() -> None:
     """Downgrade schema."""
+    op.drop_column('org', 'weekly_summary_sent')
     op.drop_column('org', 'weekly_summary')
     op.drop_column('enroll_token', 'owner')
     op.drop_column('asset', 'owner')

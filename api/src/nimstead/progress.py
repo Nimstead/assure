@@ -3,14 +3,15 @@ numbers, rebuilt from the hash-chained ledger and the current finding rows on th
 counts at its current priority, against the deadline in force when its exposure began; a deleted asset's findings drop
 out, as they drop out of the pack. Nothing is stored: the same ledger always gives the same chart."""
 
+import os
 from bisect import bisect_left, bisect_right
 from datetime import datetime, time, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from nimstead import evidence
-from nimstead.db import Asset, Finding, LedgerEntry, now
+from nimstead import evidence, notify
+from nimstead.db import Asset, Finding, LedgerEntry, Org, now
 
 KINDS = ("finding_opened", "finding_reopened", "finding_resolved", "finding_accepted", "finding_acceptance_revoked",
          "acceptance_expired")
@@ -158,3 +159,52 @@ def replay(s: Session, org_id: str, days: int) -> dict:
     out["basis"] = {"entries": read, "head_seq": head.seq if head else 0, "head_hash": head.hash if head else evidence.GENESIS,
                     "findings": len(rows), "no_ledger_record": len(rows) - len(events), "mismatched": mismatched}
     return out
+
+
+SUMMARY_AT = 8  # hour (UTC) on Monday from which the week's summary goes out
+SUMMARY_DAYS = 8  # today and the seven days before: "since" the same weekday last week
+
+
+def summary_text(org_name: str, r: dict, base_url: str | None) -> str:
+    """The weekly summary (DECISIONS 147): counts and owner names only, never a hostname or address, since it goes to
+    chat tools. The first line is the email subject."""
+    def change(now_, then):
+        d = now_ - then
+        return f"{d:+,}".replace("-", "\u2212") if d else "no change"
+    first, last, t = r["days"][0], r["days"][-1], r["totals"]
+    start = datetime.fromisoformat(r["start"])
+    since = f"{start.day} {start:%b}"
+    open_now, open_then = sum(last["open"].values()), sum(first["open"].values())
+    lines = [f"Weekly summary for {org_name}",
+             f"Open findings: {open_now:,} ({change(open_now, open_then)} since {since}); fix now: {last['open']['fix-now']:,} "
+             f"({change(last['open']['fix-now'], first['open']['fix-now'])}); overdue: {last['overdue']:,} ({change(last['overdue'], first['overdue'])}).",
+             f"Resolved since {since}: {t['resolved']:,}" + (f", {t['resolved_on_time']:,} of them on time." if t["resolved"] else ".")]
+    behind = [o for o in r["owners"] if o["overdue"]][:5]
+    if behind:
+        lines.append("Most overdue: " + ", ".join(f"{o['owner'] or 'no owner'} {o['overdue']:,}" for o in behind) + ".")
+    if base_url:
+        lines.append(f"Progress: {base_url}/progress")
+    return "\n".join(lines)
+
+
+def send_weekly_summaries(s: Session, at: datetime | None = None) -> int:
+    """For each org with the weekly summary on, send it once per ISO week, from Monday SUMMARY_AT:00 UTC on (DECISIONS 147).
+
+    The week is marked on the org row, under its lock, before the message is queued, so two runs or a restart never send
+    it twice; a delivery that fails is retried by notify.retry_failed like any alert. An org with no destination is
+    marked too (there was nothing to send). Commits per org. Return the number of summaries queued."""
+    at = at or now()
+    year, week, weekday = at.isocalendar()
+    if weekday == 1 and at.hour < SUMMARY_AT:
+        return 0  # Monday before the hour: last week's summary has gone; this one waits until Monday next
+    label, sent = f"{year}-W{week:02d}", 0
+    for org_id in s.scalars(select(Org.id).where(Org.weekly_summary.is_(True))).all():
+        org = s.get(Org, org_id, with_for_update=True, populate_existing=True)
+        if org is None or org.weekly_summary_sent == label:
+            s.rollback()
+            continue
+        org.weekly_summary_sent = label
+        text = summary_text(org.name, replay(s, org_id, SUMMARY_DAYS), (os.environ.get("NIMSTEAD_PUBLIC_URL") or "").rstrip("/") or None)
+        s.commit()
+        sent += notify.notify(s, org_id, "weekly_summary", text)
+    return sent

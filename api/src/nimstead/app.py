@@ -2653,6 +2653,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         webhook_url: str | None = Field(None, max_length=500)  # omit to keep, "" to remove (Slack URLs are secrets: never echoed back)
         webhook_format: Literal["slack", "json"] | None = None
         emails: list[EmailStr] | None = Field(None, max_length=10)
+        weekly_summary: bool | None = None  # Monday's progress summary to these destinations (DECISIONS 147); omit to keep
 
     def notify_json(o: Org, s: Session) -> dict:
         recent = s.scalars(select(Notification).where(Notification.org_id == o.id).order_by(Notification.id.desc()).limit(5)).all()
@@ -2660,6 +2661,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         return {
             "webhook_set": bool(url), "webhook_host": urlsplit(url).hostname if url else None, "webhook_format": o.notify_webhook_format,
             "emails": o.notify_emails, "emails_confirmed": notify.recipients(o), "email_available": links_by_mail(),
+            "weekly_summary": o.weekly_summary,
             # per channel: a dead webhook must not be hidden by an email that went through a second later
             "last_delivery_failed": any(not next(n for n in recent if n.channel == ch).ok for ch in {n.channel for n in recent}),
             "recent": [{"ts": n.ts, "kind": n.kind, "channel": n.channel, "urgent": n.urgent, "ok": n.ok, "error": n.error} for n in recent],
@@ -2705,10 +2707,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             emails = sorted({e.lower() for e in body.emails})
             added = [e for e in emails if e not in o.notify_emails]
             o.notify_emails, o.notify_emails_confirmed = emails, [e for e in o.notify_emails_confirmed if e in emails]
+        if body.weekly_summary is not None:
+            o.weekly_summary = body.weekly_summary
         url = notify.webhook_url(o)
         evidence.append(s, o.id, "notifications_configured", o.id, {
             "by": user.email, "webhook_host": urlsplit(url).hostname if url else None,
-            "format": o.notify_webhook_format, "emails": o.notify_emails,
+            "format": o.notify_webhook_format, "emails": o.notify_emails, "weekly_summary": o.weekly_summary,
         })
         s.commit()
         base = public_base()

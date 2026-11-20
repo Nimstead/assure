@@ -52,6 +52,21 @@ it("settings show when the last alert delivery failed", async () => {
   vi.unstubAllGlobals();
 });
 
+it("the weekly summary is off until switched on, and saves with the alert settings", async () => {
+  const body = { webhook_set: true, webhook_host: "hooks.slack.com", webhook_format: "slack", emails: [], emails_confirmed: [], email_available: false,
+    last_delivery_failed: false, weekly_summary: false, recent: [] };
+  const fetchMock = vi.fn(async () => new Response(JSON.stringify(body), { status: 200 }));
+  vi.stubGlobal("fetch", fetchMock);
+  render(<QueryClientProvider client={new QueryClient()}><NotificationsSection /></QueryClientProvider>);
+  const box = await screen.findByRole("checkbox", { name: /Weekly summary/ });
+  expect(box).not.toBeChecked();
+  await userEvent.click(box);
+  await userEvent.click(screen.getByRole("button", { name: "Save alert settings" }));
+  const put = (fetchMock.mock.calls as unknown as [string, RequestInit][]).find(([, init]) => init?.method === "PUT")!;
+  expect(JSON.parse(String(put[1].body))).toMatchObject({ weekly_summary: true });
+  vi.unstubAllGlobals();
+});
+
 const signedIn = (admin: boolean) => {
   const qc = new QueryClient();
   qc.setQueryData(meQ.queryKey, { email: "a@example.com", org: "Acme", admin, origin: "password", mfa: admin, recovery_codes_left: 10 });

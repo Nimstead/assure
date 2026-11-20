@@ -82,7 +82,7 @@ def render() -> dict[str, str]:
     baseline_summary = {**baseline_fields, **{name: {"type": "string"} for name in ("asset_id", "hostname", "last_seen")}}
     baseline_aggregate = {name: baseline_fields[name] for name in baseline_fields if name != "date"}
     baseline_aggregate["hosts"] = {"type": "integer", "minimum": 0}
-    notification_fields = {name: {"type": "boolean"} for name in ("webhook_set", "email_available", "last_delivery_failed")}
+    notification_fields = {name: {"type": "boolean"} for name in ("webhook_set", "email_available", "last_delivery_failed", "weekly_summary")}
     notification_fields |= {"webhook_host": {"type": ["string", "null"]}, "webhook_format": {"type": "string"}}
     notification_fields |= {name: {"type": "array", "items": {"type": "string"}} for name in ("emails", "emails_confirmed")}
     delivery_fields = {name: {"type": "string"} for name in ("ts", "kind", "channel")}

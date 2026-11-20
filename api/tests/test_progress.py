@@ -8,7 +8,7 @@ from sqlalchemy.orm import sessionmaker
 from test_api import INV, enrol, user
 
 from nimstead import evidence, progress
-from nimstead.db import Asset, Finding, make_engine, now
+from nimstead.db import Asset, Finding, LedgerEntry, make_engine, now
 
 SLA = dict(evidence.SLA_DAYS)
 END = datetime(2026, 11, 20, 13, 30, 7)
@@ -211,3 +211,42 @@ def test_the_api_and_its_csv_say_the_same_and_a_read_only_token_can_read_them(en
     owners = list(csv.DictReader(io.StringIO(c.get("/api/progress.csv", params={"days": 30, "table": "owners"}).text)))
     assert owners[0]["owner"] == "'=HYPERLINK(1)" and int(owners[0]["open"]) == got["owners"][0]["open"]
     assert c.get("/api/progress.csv", params={"table": "all"}).status_code == 422
+
+
+def test_the_weekly_summary_goes_once_a_week_from_monday_morning_and_names_no_host(env, monkeypatch):
+    c, s, org_id = flow(env)
+    aid = s.scalar(select(Asset.id).where(Asset.org_id == org_id))
+    c.patch(f"/api/assets/{aid}", json={"owner": "Payments"})
+    sent = []
+    monkeypatch.setattr(progress.notify, "notify", lambda s_, o, kind, text, urgent=False: sent.append((o, kind, text)) or True)
+    monkeypatch.setenv("NIMSTEAD_PUBLIC_URL", "https://nimstead.example/")
+    monday = datetime(2026, 11, 23, 7, 59)  # ISO week 48
+    assert progress.send_weekly_summaries(s, monday + timedelta(hours=1)) == 0  # off by default: nobody asked for it
+    r = c.put("/api/settings/notifications", json={"weekly_summary": True})
+    assert r.status_code == 200 and r.json()["weekly_summary"] is True
+    assert progress.send_weekly_summaries(s, monday) == 0  # Monday before 08:00 UTC
+    assert progress.send_weekly_summaries(s, monday + timedelta(minutes=1)) == 1
+    for later in (timedelta(hours=1), timedelta(days=3)):  # every later run that week: already sent
+        assert progress.send_weekly_summaries(s, monday + later) == 0
+    assert progress.send_weekly_summaries(s, monday + timedelta(days=7, hours=1)) == 1  # week 49
+    (o, kind, text), _ = sent
+    assert (o, kind) == (org_id, "weekly_summary") and text.splitlines()[0] == "Weekly summary for Acme"
+    assert "Open findings: " in text and "Progress: https://nimstead.example/progress" in text
+    assert "web-1" not in text  # it goes to chat tools: counts and owner names, never a host
+    assert c.put("/api/settings/notifications", json={"weekly_summary": False}).json()["weekly_summary"] is False
+    assert progress.send_weekly_summaries(s, monday + timedelta(days=14, hours=1)) == 0
+    logged = [e.data for e in s.scalars(select(LedgerEntry).where(LedgerEntry.kind == "notifications_configured").order_by(LedgerEntry.seq))]
+    assert [d["weekly_summary"] for d in logged] == [True, False]
+
+
+def test_the_summary_reads_as_plain_counts():
+    days = [{"date": "2026-11-16", "open": {"fix-now": 5, "next": 3, "planned": 10, "low": 2}, "overdue": 4, "accepted": 0},
+            {"date": "2026-11-23", "open": {"fix-now": 2, "next": 3, "planned": 10, "low": 2}, "overdue": 4, "accepted": 0}]
+    r = {"start": "2026-11-16T00:00:00", "days": days, "owners": [{"owner": "IT", "overdue": 3}, {"owner": None, "overdue": 1}, {"owner": "Data", "overdue": 0}],
+         "totals": {"resolved": 1200, "resolved_on_time": 1100}}
+    assert progress.summary_text("Acme", r, None).splitlines() == [
+        "Weekly summary for Acme",
+        "Open findings: 17 (−3 since 16 Nov); fix now: 2 (−3); overdue: 4 (no change).",
+        "Resolved since 16 Nov: 1,200, 1,100 of them on time.",
+        "Most overdue: IT 3, no owner 1.",
+    ]

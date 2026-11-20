@@ -184,7 +184,7 @@ export interface SsoSettings {
 }
 export interface NotifySettings {
   webhook_set: boolean; webhook_host: string | null; webhook_format: "slack" | "json"; emails: string[]; emails_confirmed: string[]; email_available: boolean;
-  last_delivery_failed: boolean; recent: { ts: string; kind: string; channel: string; urgent: boolean; ok: boolean; error: string | null }[];
+  last_delivery_failed: boolean; weekly_summary?: boolean; recent: { ts: string; kind: string; channel: string; urgent: boolean; ok: boolean; error: string | null }[];
 }
 export const settingsQ = queryOptions({ queryKey: ["settings"], queryFn: () => api<Settings>("/api/settings") });
 

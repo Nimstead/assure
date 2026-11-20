@@ -59,6 +59,7 @@ class Org(Base):
     maintenance_window: Mapped[dict | None]
     reboot_deadline_hours: Mapped[int] = mapped_column(Integer, default=24, server_default="24")
     weekly_summary: Mapped[bool] = mapped_column(Boolean, default=False)  # Monday's progress message to the alert destinations (DECISIONS 147)
+    weekly_summary_sent: Mapped[str | None] = mapped_column(String(10))  # the ISO week last summarised ("2026-W47"): one a week
 
 
 class User(Base):

@@ -72,10 +72,9 @@ def build(findings: list, days: int, end: datetime, sla_at) -> dict:
     week0 = datetime.combine(monday, time())
     owners, totals = {}, _row(None)
     for f in findings:
-        p = f["priority"] if f["priority"] in opens else "low"  # a priority the page doesn't know counts as low, as its 180 days
-
-        def due(x, p=f["priority"]):
-            return x + timedelta(days=sla_at(x).get(p, 180))
+        prio, final, exposure = f["priority"], f["final"], f["exposure"]
+        p = prio if prio in opens else "low"  # a priority the page doesn't know counts as low, as its 180 days
+        dues = {}  # exposure start -> deadline: worked out once, not per interval and per row (300k findings)
         for state, a, b, x in f["intervals"]:
             i, j = bisect_left(ts, a), days if b is None else bisect_left(ts, b)  # counted on the days a <= T < b
             if i >= j:
@@ -84,7 +83,8 @@ def build(findings: list, days: int, end: datetime, sla_at) -> dict:
             arr[i] += 1
             arr[j] -= 1
             if state == "open":
-                k = max(i, bisect_right(ts, due(x)))  # overdue once T is past the deadline
+                due = dues[x] = dues.get(x) or x + timedelta(days=sla_at(x).get(prio, 180))
+                k = max(i, bisect_right(ts, due))  # overdue once T is past the deadline
                 if k < j:
                     overdue[k] += 1
                     overdue[j] -= 1
@@ -92,21 +92,23 @@ def build(findings: list, days: int, end: datetime, sla_at) -> dict:
             w = (t - week0).days // 7
             if 0 <= w < weeks:
                 flow[w][move == "resolved"] += 1
-        row = owners.setdefault(f["owner"], _row(f["owner"]))
         was_open = any(st == "open" and a <= ts[0] and (b is None or ts[0] < b) for st, a, b, _ in f["intervals"])
-        for r in (row, totals):
+        late = final == "open" and end > (dues.get(exposure) or exposure + timedelta(days=sla_at(exposure).get(prio, 180)))
+        done = final == "resolved" and f["resolved"] and start <= f["resolved"] <= end
+        took = (f["resolved"] - exposure).total_seconds() / 86400 if done else 0
+        on_time = done and took <= sla_at(exposure).get(prio, 180)
+        for r in (owners.setdefault(f["owner"], _row(f["owner"])), totals):
             r["open_at_start"] += was_open
-            if f["final"] == "open":
+            if final == "open":
                 r["open"] += 1
                 r["fix_now"] += p == "fix-now"
-                r["overdue"] += end > due(f["exposure"])
-            elif f["final"] == "accepted":
+                r["overdue"] += late
+            elif final == "accepted":
                 r["accepted"] += 1
-            elif f["final"] == "resolved" and f["resolved"] and start <= f["resolved"] <= end:
-                d = (f["resolved"] - f["exposure"]).total_seconds() / 86400
+            elif done:
                 r["resolved"] += 1
-                r["resolved_on_time"] += d <= sla_at(f["exposure"]).get(f["priority"], 180)
-                r["_ttr"].append(d)
+                r["resolved_on_time"] += on_time
+                r["_ttr"].append(took)
     for r in (*owners.values(), totals):
         ttr = r.pop("_ttr")
         r["mean_days_to_resolve"] = round(sum(ttr) / len(ttr), 1) if ttr else None

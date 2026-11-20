@@ -62,7 +62,7 @@ const PROGRESS: Progress = {
     { owner: null, open: 34, fix_now: 1, overdue: 0, accepted: 1, open_at_start: 32, resolved: 0, resolved_on_time: 0, mean_days_to_resolve: null },
   ],
   totals: { open: 54, fix_now: 4, overdue: 2, accepted: 1, open_at_start: 62, resolved: 10, resolved_on_time: 9, mean_days_to_resolve: 4.2 },
-  basis: { entries: 1234, head_seq: 5678, head_hash: "abcdef0123456789", findings: 70, no_ledger_record: 0, mismatched: 1 },
+  basis: { entries: 1234, head_seq: 5678, head_hash: "abcdef0123456789", findings: 70, no_ledger_record: 0, mismatched: 1, problems: [] },
 };
 
 it("shows the answer, every series with its change, a table view, and owners linked to their findings", async () => {
@@ -86,6 +86,13 @@ it("shows the answer, every series with its change, a table view, and owners lin
   expect(screen.getAllByText("9 of 10")).toHaveLength(2);  // Payments, and everyone
   expect(screen.getByText(/1 finding isn't charted/)).toBeInTheDocument();
   expect(screen.getByText("abcdef0123")).toHaveAttribute("title", "abcdef0123456789");
+});
+
+it("says plainly when the ledger behind the numbers fails its check", async () => {
+  serve({ ...PROGRESS, basis: { ...PROGRESS.basis, problems: ["seq 3: hash mismatch"] } });
+  wrap(<ProgressPage />);
+  expect(await screen.findByText("The evidence ledger failed its integrity check")).toBeInTheDocument();
+  expect(screen.queryByText(/the record your evidence packs are signed from/)).toBeNull();  // no provenance claim next to it
 });
 
 it("says there is nothing to chart rather than drawing empty lines", async () => {

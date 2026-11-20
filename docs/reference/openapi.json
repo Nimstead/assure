@@ -582,7 +582,7 @@
             "anyOf": [
               {
                 "maxLength": 100,
-                "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+                "pattern": "^[^\\x00-\\x1f\\x7f-\\x9f\\u200b-\\u200f\\u202a-\\u202e\\u2060-\\u2069\\ufeff]*$",
                 "type": "string"
               },
               {
@@ -4252,6 +4252,12 @@
           "no_ledger_record": {
             "minimum": 0,
             "type": "integer"
+          },
+          "problems": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           }
         },
         "required": [
@@ -4260,7 +4266,8 @@
           "findings",
           "no_ledger_record",
           "mismatched",
-          "head_hash"
+          "head_hash",
+          "problems"
         ],
         "type": "object"
       },
@@ -5463,7 +5470,7 @@
             "anyOf": [
               {
                 "maxLength": 100,
-                "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+                "pattern": "^[^\\x00-\\x1f\\x7f-\\x9f\\u200b-\\u200f\\u202a-\\u202e\\u2060-\\u2069\\ufeff]*$",
                 "type": "string"
               },
               {
@@ -10784,7 +10791,7 @@
     },
     "/api/progress": {
       "get": {
-        "description": "Return open findings per day, findings opened and resolved per week, and each owner's numbers.\n\nDays are UTC, by priority, with overdue and accepted; rebuilt from the ledger and the current findings, with the\nbasis they rest on (entries read, ledger head, findings left out). The last day equals the open findings now. Range totals use the evidence pack's period rules. Nothing is stored\nor written. Requires a user session or a read-only organisation API token.",
+        "description": "Return open findings per day, findings opened and resolved per week, and each owner's numbers.\n\nDays are UTC, by priority, with overdue and accepted; rebuilt from the ledger and the current findings, with the\nbasis they rest on (entries read, ledger head, findings left out). The last day equals the open findings now. Range totals use the evidence pack's period rules. Nothing is stored\nor written. Requires a user session or a read-only organisation API token. At most PROGRESS_MAX_PER_HOUR reads\nan hour per organisation (429): each one reads the organisation's whole finding history.",
         "operationId": "get_progress_api_progress_get",
         "parameters": [
           {

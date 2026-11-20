@@ -3,6 +3,7 @@ numbers, rebuilt from the hash-chained ledger and the current finding rows on th
 counts at its current priority, against the deadline in force when its exposure began; a deleted asset's findings drop
 out, as they drop out of the pack. Nothing is stored: the same ledger always gives the same chart."""
 
+import logging
 import os
 from bisect import bisect_left, bisect_right
 from datetime import datetime, time, timedelta
@@ -13,6 +14,7 @@ from sqlalchemy.orm import Session
 from nimstead import evidence, notify
 from nimstead.db import Asset, Finding, LedgerEntry, Org, now
 
+log = logging.getLogger(__name__)
 KINDS = ("finding_opened", "finding_reopened", "finding_resolved", "finding_accepted", "finding_acceptance_revoked",
          "acceptance_expired")
 PRIORITIES = ("fix-now", "next", "planned", "low")
@@ -132,8 +134,10 @@ def build(findings: list, days: int, end: datetime, sla_at) -> dict:
 def replay(s: Session, org_id: str, days: int) -> dict:
     """build() for org_id from its ledger, read up to the head it names, and its current finding rows.
 
-    basis says what it rests on: finding events read, the ledger head, and findings left out because they have no
-    ledger record or their history disagrees with their current state (each counted, never guessed). No write."""
+    basis says what it rests on: finding events read, the ledger head, findings left out because they have no ledger
+    record or their history disagrees with their current state (each counted, never guessed), and the ledger's own
+    integrity check (problems; empty when the chain verifies), so a history edited in the database is said, not charted
+    as proof. No write."""
     head = s.execute(select(LedgerEntry.seq, LedgerEntry.hash).where(LedgerEntry.org_id == org_id)
                      .order_by(LedgerEntry.seq.desc()).limit(1)).first()
     rows = {i: (p, st, o) for i, p, st, o in s.execute(
@@ -157,7 +161,8 @@ def replay(s: Session, org_id: str, days: int) -> dict:
         findings.append({"priority": priority, "owner": owner, **h})
     out = build(findings, days, now(), evidence.sla_history(s, org_id))
     out["basis"] = {"entries": read, "head_seq": head.seq if head else 0, "head_hash": head.hash if head else evidence.GENESIS,
-                    "findings": len(rows), "no_ledger_record": len(rows) - len(events), "mismatched": mismatched}
+                    "findings": len(rows), "no_ledger_record": len(rows) - len(events), "mismatched": mismatched,
+                    "problems": evidence.verify_chain(s, org_id, full=False)}  # cached: an unchanged chain isn't re-read
     return out
 
 
@@ -182,6 +187,8 @@ def summary_text(org_name: str, r: dict, base_url: str | None) -> str:
     behind = [o for o in r["owners"] if o["overdue"]][:5]
     if behind:
         lines.append("Most overdue: " + ", ".join(f"{o['owner'] or 'no owner'} {o['overdue']:,}" for o in behind) + ".")
+    if r["basis"]["problems"]:  # the chain didn't verify: these numbers may have been edited in the database
+        lines.append("Warning: the evidence ledger failed its integrity check, so these numbers can't be trusted. See Evidence.")
     if base_url:
         lines.append(f"Progress: {base_url}/progress")
     return "\n".join(lines)
@@ -190,9 +197,11 @@ def summary_text(org_name: str, r: dict, base_url: str | None) -> str:
 def send_weekly_summaries(s: Session, at: datetime | None = None) -> int:
     """For each org with the weekly summary on, send it once per ISO week, from Monday SUMMARY_AT:00 UTC on (DECISIONS 147).
 
-    The week is marked on the org row, under its lock, before the message is queued, so two runs or a restart never send
-    it twice; a delivery that fails is retried by notify.retry_failed like any alert. An org with no destination is
-    marked too (there was nothing to send). Commits per org. Return the number of summaries queued."""
+    The week is marked on the org row, under its lock, and committed before the history is read or the message queued,
+    so two runs or a restart never send it twice and the lock is never held through a replay (every ledger write of the
+    org takes it); a delivery that fails is retried by notify.retry_failed like any alert. An org with no destination is
+    marked too (there was nothing to send). One org's failure is logged and costs only that org its week. Commits per
+    org. Return the number of summaries queued."""
     at = at or now()
     year, week, weekday = at.isocalendar()
     if weekday == 1 and at.hour < SUMMARY_AT:
@@ -203,8 +212,12 @@ def send_weekly_summaries(s: Session, at: datetime | None = None) -> int:
         if org is None or org.weekly_summary_sent == label:
             s.rollback()
             continue
-        org.weekly_summary_sent = label
-        text = summary_text(org.name, replay(s, org_id, SUMMARY_DAYS), (os.environ.get("NIMSTEAD_PUBLIC_URL") or "").rstrip("/") or None)
+        org.weekly_summary_sent, name = label, org.name
         s.commit()
-        sent += notify.notify(s, org_id, "weekly_summary", text)
+        try:
+            text = summary_text(name, replay(s, org_id, SUMMARY_DAYS), (os.environ.get("NIMSTEAD_PUBLIC_URL") or "").rstrip("/") or None)
+            sent += notify.notify(s, org_id, "weekly_summary", text)
+        except Exception:
+            s.rollback()
+            log.exception("weekly summary for org %s not sent", org_id)
     return sent

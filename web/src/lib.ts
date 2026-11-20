@@ -162,7 +162,7 @@ export interface ProgressOwner {
 }
 export interface Progress {
   start: string; end: string; days: ProgressDay[]; weeks: ProgressWeek[]; owners: ProgressOwner[]; totals: Omit<ProgressOwner, "owner">;
-  basis: { entries: number; head_seq: number; head_hash: string; findings: number; no_ledger_record: number; mismatched: number };
+  basis: { entries: number; head_seq: number; head_hash: string; findings: number; no_ledger_record: number; mismatched: number; problems: string[] };
 }
 export const progressQ = (days: number) => queryOptions({ queryKey: ["progress", days], queryFn: () => api<Progress>(`/api/progress?days=${days}`) });
 export interface Settings {

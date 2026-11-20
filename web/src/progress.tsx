@@ -1,7 +1,7 @@
 import { useMemo, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { Download } from "lucide-react";
+import { Download, TriangleAlert } from "lucide-react";
 import clsx from "clsx";
 import { filtersToSearch, parseFilters, plural, PRIORITIES, progressQ, PROGRESS_RANGES, useTitle, type FindingsFilters, type Progress, type ProgressDay, type ProgressOwner } from "./lib";
 import { btnQuiet, EmptyState, ErrorState, HowJudged, Loading } from "./ui";
@@ -97,12 +97,18 @@ function ProgressView({ p, days, updating }: { p: Progress; days: number; updati
       <Owners owners={p.owners} totals={p.totals} days={days} />
       <section aria-labelledby="progress-export" className="flex flex-col gap-3">
         <h2 id="progress-export" className="sr-only">Download and basis</h2>
+        {p.basis.problems.length > 0 && (
+          <p className="flex max-w-prose items-start gap-2 bg-now-bg px-3 py-2 text-sm text-now-fg">
+            <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+            <span><strong className="font-semibold">The evidence ledger failed its integrity check</strong>, so these numbers may have been changed in the database and can't be trusted. <Link to="/evidence" className="font-medium underline">See Evidence</Link></span>
+          </p>
+        )}
         <div className="flex flex-wrap gap-2">
           <a className={btnQuiet} href={`/api/progress.csv?days=${days}`} download><Download className="size-4" aria-hidden />Daily counts (CSV)</a>
           <a className={btnQuiet} href={`/api/progress.csv?days=${days}&table=owners`} download><Download className="size-4" aria-hidden />Owners (CSV)</a>
         </div>
         <HowJudged lead={<>Rebuilt from {plural(p.basis.entries, "ledger entry", "ledger entries")} up to entry {n(p.basis.head_seq)}{" "}
-          (<span className="font-mono" title={p.basis.head_hash}>{p.basis.head_hash.slice(0, 10)}</span>), the record your evidence packs are signed from.
+          (<span className="font-mono" title={p.basis.head_hash}>{p.basis.head_hash.slice(0, 10)}</span>){p.basis.problems.length ? "." : ", the record your evidence packs are signed from."}
           {left > 0 && <> {plural(left, "finding")} {left === 1 ? "isn't" : "aren't"} charted.</>}</>}>
           <p>Each finding counts at its current priority and is overdue once it has been open longer than the deadline in force when it was detected, as the evidence pack judges it. Accepted findings aren't open: they're shown on their own.</p>
           <p>A past day counts what was open at its end (midnight UTC); today counts what is open now, which is what Findings shows. Findings on deleted assets aren't counted, as in the evidence pack.</p>

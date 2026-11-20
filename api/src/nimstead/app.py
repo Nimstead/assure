@@ -219,6 +219,10 @@ INVITE_MAX_PER_HOUR = 20  # per org
 RESET_MAX_PER_HOUR = 10  # per client address
 MFA_MAX_FAILURES = 10  # wrong codes per account in LOGIN_WINDOW, from any address
 EXPORT_MAX_PER_HOUR = 30  # CSV exports per org
+PROGRESS_MAX_PER_HOUR = 120  # whole-ledger replays per org (a page load is one; CSVs count as exports)
+# an owner name (DECISIONS 145): no control characters, and none that hide text or reverse it, so one team can't pass
+# for another in a list, a CSV or a chat message
+OWNER_PATTERN = r"^[^\x00-\x1f\x7f-\x9f\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]*$"
 # Per-tenant quotas: anyone can sign up, so one org mustn't be able to load the shared server
 MAX_ASSETS_PER_ORG = int(os.environ.get("NIMSTEAD_MAX_ASSETS_PER_ORG", "5000"))
 ENROLL_MAX_PER_TOKEN_HOUR = int(os.environ.get("NIMSTEAD_ENROLL_MAX_PER_TOKEN_HOUR", "2000"))  # a fleet rollout enrols fast
@@ -870,7 +874,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     class TokenReq(BaseModel):
         sandbox: bool = False
-        owner: str | None = Field(None, max_length=100, pattern=r"^[^\x00-\x1f\x7f]*$")  # every asset enrolled with it starts with this owner (DECISIONS 145)
+        owner: str | None = Field(None, max_length=100, pattern=OWNER_PATTERN)  # every asset enrolled with it starts with this owner (DECISIONS 145)
 
     def owner_name(s: Session, org_id: str, v: str | None) -> str | None:
         """An owner as typed, tidied: spaces collapsed, empty = no owner, and the spelling the org already uses for the
@@ -1698,7 +1702,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         ring: Literal[0, 1] | None = None
         health_units: list[str] | None = Field(None, max_length=20)
         maintenance_window: dict | None = None  # {} = use the organisation's
-        owner: str | None = Field(None, max_length=100, pattern=r"^[^\x00-\x1f\x7f]*$")  # "" = no owner
+        owner: str | None = Field(None, max_length=100, pattern=OWNER_PATTERN)  # "" = no owner
 
     @app.patch("/api/assets/{asset_id}")
     def update_asset(asset_id: str, body: AssetPatch, user: Admin, s: DB):
@@ -2943,7 +2947,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
         Days are UTC, by priority, with overdue and accepted; rebuilt from the ledger and the current findings, with the
         basis they rest on (entries read, ledger head, findings left out). The last day equals the open findings now. Range totals use the evidence pack's period rules. Nothing is stored
-        or written. Requires a user session or a read-only organisation API token."""
+        or written. Requires a user session or a read-only organisation API token. At most PROGRESS_MAX_PER_HOUR reads
+        an hour per organisation (429): each one reads the organisation's whole finding history."""
+        if over_limit(s, "progress:" + user.org_id, PROGRESS_MAX_PER_HOUR):
+            raise HTTPException(429, "Progress was read too often this hour; try again later")
         return progress.replay(s, user.org_id, days)
 
     PROGRESS_DAY_COLUMNS = ["date", *(f"open_{p}" for p in progress.PRIORITIES), "overdue", "accepted"]

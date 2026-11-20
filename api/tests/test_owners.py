@@ -81,3 +81,12 @@ def test_an_owner_named_only_on_a_token_is_reused_too(env):
     _, a = enrol_as(c, "web-1")
     assert c.patch(f"/api/assets/{a}", json={"owner": "data   platform"}).json()["owner"] == "Data Platform"
     assert c.post("/api/enroll-tokens", json={"owner": "DATA PLATFORM"}).json()["owner"] == "Data Platform"
+
+
+def test_an_owner_cant_hide_or_reverse_characters(env):
+    c = user(env)
+    _, a = enrol_as(c, "web-1")
+    for bad in ("Pay‮ments", "Payments​", "Pay\u0085ments", "﻿Payments", "Pay⁦ments"):
+        assert c.patch(f"/api/assets/{a}", json={"owner": bad}).status_code == 422, repr(bad)
+        assert c.post("/api/enroll-tokens", json={"owner": bad}).status_code == 422, repr(bad)
+    assert c.patch(f"/api/assets/{a}", json={"owner": "Zahlungsverkehr Ä"}).json()["owner"] == "Zahlungsverkehr Ä"  # letters are fine

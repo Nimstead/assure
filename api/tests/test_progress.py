@@ -174,6 +174,7 @@ def test_today_is_the_findings_page_and_the_range_is_the_evidence_pack(env, monk
         assert (tot["resolved"] > 0, tot["overdue"] > 0) == (later == 0, later > 0)  # 200 days on, the fixes are before the range
     b = got["basis"]
     assert b["mismatched"] == b["no_ledger_record"] == 0 and b["entries"] >= b["findings"] > 0 and len(b["head_hash"]) == 64
+    assert b["problems"] == []  # the chain verifies
 
 
 def test_a_finding_whose_history_disagrees_with_its_row_is_counted_not_charted(env):
@@ -243,7 +244,7 @@ def test_the_summary_reads_as_plain_counts():
     days = [{"date": "2026-11-16", "open": {"fix-now": 5, "next": 3, "planned": 10, "low": 2}, "overdue": 4, "accepted": 0},
             {"date": "2026-11-23", "open": {"fix-now": 2, "next": 3, "planned": 10, "low": 2}, "overdue": 4, "accepted": 0}]
     r = {"start": "2026-11-16T00:00:00", "days": days, "owners": [{"owner": "IT", "overdue": 3}, {"owner": None, "overdue": 1}, {"owner": "Data", "overdue": 0}],
-         "totals": {"resolved": 1200, "resolved_on_time": 1100}}
+         "totals": {"resolved": 1200, "resolved_on_time": 1100}, "basis": {"problems": []}}
     assert progress.summary_text("Acme", r, None).splitlines() == [
         "Weekly summary for Acme",
         "Open findings: 17 (−3 since 16 Nov); fix now: 2 (−3); overdue: 4 (no change).",
@@ -261,3 +262,35 @@ def test_a_week_with_nowhere_to_send_is_marked_and_nothing_goes_twice(env):
     assert org.weekly_summary_sent == "2026-W48"
     assert progress.send_weekly_summaries(s, datetime(2026, 12, 31, 12, 0)) == 0
     assert s.get(Org, org_id, populate_existing=True).weekly_summary_sent == "2026-W53"  # ISO year 2026 has 53 weeks
+
+
+# ---- review round (security audit of the branch) ---------------------------------------------------------------------
+
+def test_progress_reads_are_bounded_per_organisation(env, monkeypatch):
+    import nimstead.app as appmod
+    monkeypatch.setattr(appmod, "PROGRESS_MAX_PER_HOUR", 2)
+    c, s, org_id = flow(env)
+    assert [c.get("/api/progress", params={"days": 30}).status_code for _ in range(3)] == [200, 200, 429]
+
+
+def test_a_ledger_that_fails_its_check_is_said_on_progress_and_in_the_summary(env, monkeypatch):
+    c, s, org_id = flow(env)
+    # tampered before the first read: within the hour, a verified prefix is trusted from cache, as on Evidence
+    s.execute(update(LedgerEntry).where(LedgerEntry.org_id == org_id, LedgerEntry.kind == "finding_resolved").values(data={"rewritten": True}))
+    s.commit()
+    got = progress.replay(s, org_id, 30)
+    assert any("hash mismatch" in p for p in got["basis"]["problems"])
+    assert "failed its integrity check" in progress.summary_text("Acme", got, None)
+
+
+def test_one_orgs_failing_summary_costs_no_other_org_its_summary(env, monkeypatch):
+    c1, s, org1 = flow(env)
+    c2 = user(env, "b@example.com")
+    org2 = next(o for o in s.scalars(select(Org.id)) if o != org1)
+    for c in (c1, c2):
+        assert c.put("/api/settings/notifications", json={"weekly_summary": True}).status_code == 200
+    sent, real = [], progress.replay
+    monkeypatch.setattr(progress.notify, "notify", lambda s_, o, kind, text, urgent=False: sent.append(o) or True)
+    monkeypatch.setattr(progress, "replay", lambda s_, o, days: (_ for _ in ()).throw(RuntimeError("bad history")) if o == org1 else real(s_, o, days))
+    assert progress.send_weekly_summaries(s, datetime(2026, 11, 23, 9)) == 1
+    assert sent == [org2]

@@ -279,7 +279,8 @@ def render() -> dict[str, str]:
                     "mean_days_to_resolve": number_or_null}
     owner_row = record("ProgressOwner", {"owner": nullable_text, **owner_counts})
     totals = record("ProgressTotals", owner_counts)
-    basis = record("ProgressBasis", {**{k: count for k in ("entries", "head_seq", "findings", "no_ledger_record", "mismatched")}, "head_hash": string})
+    basis = record("ProgressBasis", {**{k: count for k in ("entries", "head_seq", "findings", "no_ledger_record", "mismatched")}, "head_hash": string,
+                                     "problems": strings})
     record("Progress", {"start": string, "end": string, "days": {"type": "array", "items": day}, "weeks": {"type": "array", "items": week},
                         "owners": {"type": "array", "items": owner_row}, "totals": totals, "basis": basis})
     checkpoint = record("EvidenceCheckpoint", {**{k: string for k in ("org_id", "hash", "ts", "sig")}, "seq": integer})

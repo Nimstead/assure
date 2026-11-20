@@ -73,3 +73,11 @@ def test_only_an_admin_sets_an_owner_and_an_image_takes_one(env):
     assert c.patch(f"/api/assets/{img.id}", json={"owner": "Data"}, headers=ro).status_code in (401, 403)
     assert c.post("/api/enroll-tokens", json={"owner": "Data"}, headers=ro).status_code in (401, 403)
     assert next(a for a in c.get("/api/assets", headers=ro).json() if a["id"] == img.id)["owner"] == "Platform"
+
+
+def test_an_owner_named_only_on_a_token_is_reused_too(env):
+    c = user(env)
+    c.post("/api/enroll-tokens", json={"owner": "Data Platform"})  # no machine has joined with it yet
+    _, a = enrol_as(c, "web-1")
+    assert c.patch(f"/api/assets/{a}", json={"owner": "data   platform"}).json()["owner"] == "Data Platform"
+    assert c.post("/api/enroll-tokens", json={"owner": "DATA PLATFORM"}).json()["owner"] == "Data Platform"

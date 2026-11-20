@@ -8,7 +8,7 @@ from sqlalchemy.orm import sessionmaker
 from test_api import INV, enrol, user
 
 from nimstead import evidence, progress
-from nimstead.db import Asset, Finding, LedgerEntry, make_engine, now
+from nimstead.db import Asset, Finding, LedgerEntry, Org, make_engine, now
 
 SLA = dict(evidence.SLA_DAYS)
 END = datetime(2026, 11, 20, 13, 30, 7)
@@ -250,3 +250,14 @@ def test_the_summary_reads_as_plain_counts():
         "Resolved since 16 Nov: 1,200, 1,100 of them on time.",
         "Most overdue: IT 3, no owner 1.",
     ]
+
+
+def test_a_week_with_nowhere_to_send_is_marked_and_nothing_goes_twice(env):
+    c, s, org_id = flow(env)
+    assert c.put("/api/settings/notifications", json={"weekly_summary": True}).status_code == 200  # but no webhook, no email
+    monday = datetime(2026, 11, 23, 9, 0)
+    assert progress.send_weekly_summaries(s, monday) == 0  # notify() had no destination
+    org = s.get(Org, org_id, populate_existing=True)
+    assert org.weekly_summary_sent == "2026-W48"
+    assert progress.send_weekly_summaries(s, datetime(2026, 12, 31, 12, 0)) == 0
+    assert s.get(Org, org_id, populate_existing=True).weekly_summary_sent == "2026-W53"  # ISO year 2026 has 53 weeks

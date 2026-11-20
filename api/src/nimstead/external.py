@@ -387,6 +387,7 @@ def scan(s: Session, asset: Asset, lookup=None) -> dict:
 def apply(s: Session, asset: Asset, verdicts: list, rep: dict, ecosystem: str = ECOSYSTEM) -> tuple[set, int, int]:
     """Open, reopen, re-score and close asset's findings from a network report's verdicts; no commit.
 
+    A finding seen again after its acceptance ended is open again, as on a host (acceptance_expired).
     Return (seen (vulnerability, endpoint) pairs, resolved count, still-open count). An unseen open or accepted
     finding resolves only on evidence (held_open); otherwise it keeps one "Still open: ..." reason. Each transition
     goes to the ledger. Sets asset.last_seen. Used by the external scan and by devices' network checks."""
@@ -407,6 +408,9 @@ def apply(s: Session, asset: Asset, verdicts: list, rep: dict, ecosystem: str = 
         elif f.status == "resolved":  # a new exposure: due from its return, as the pack times it (DECISIONS 137)
             f.status, f.resolved_at, f.first_seen = "open", None, t
             events.append(("finding_reopened", f))
+        elif f.status == "accepted" and f.accepted_until and f.accepted_until < t:  # as a host rescan does (scan.py)
+            f.status, f.accepted_until = "open", None
+            events.append(("acceptance_expired", f))
         f.summary, f.cvss, f.epss, f.kev = c["summary"], c["cvss"], None, False
         f.installed_version, f.fixed_version = c["installed"], c["fixed"]
         f.score, f.priority, f.reasons, f.last_seen = r.score, r.priority, r.reasons, t

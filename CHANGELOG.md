@@ -4,6 +4,9 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Fixed
+- **An accepted finding on an internet target or a network device never expired.** Only a machine's rescan checked when an acceptance ended, so accepting a risk on a target or a device lasted for ever while it was still seen, and Progress counted it as accepted risk. It now opens again at the target's next scan or the device's next network check after its acceptance ends, recorded in the ledger as `acceptance_expired`, exactly as on a machine (DECISIONS 149).
+
 ## [0.11.0] - 2026-11-20 (preview)
 
 Agent 0.8.1, unchanged. One database migration (`d4f6a8c0e2b4`: an owner on assets and enrolment tokens, and the weekly summary switch): the Docker image applies it on start; without Docker, run `alembic upgrade head`.

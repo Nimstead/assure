@@ -123,7 +123,7 @@ Since 0.7.6 the detection engine's verdicts decide which identities are seen, in
 | Open/accepted identity in the engine's slice is absent, with no such proof | Unchanged; a `Still open: …` reason says why |
 | Open/accepted identity outside the slice (settings, drivers, Windows and app end of support) is absent and its collection guard does not block | Resolved |
 
-Read APIs do not expire acceptance. Expiry is applied to matching identities during reassessment. A blocked or otherwise unreassessed identity can retain its previous state.
+Read APIs do not expire acceptance. Expiry is applied to matching identities during reassessment: a host's or application's rescan, an internet target's scan, and a device's network check (releases up to 0.11.0 expired acceptances on machines and applications only). Each expiry writes an `acceptance_expired` ledger entry. A blocked or otherwise unreassessed identity can retain its previous state.
 
 The expiry rule requires a stored acceptance timestamp. An accepted row without that timestamp is not reopened by this rule.
 

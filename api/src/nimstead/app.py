@@ -47,6 +47,7 @@ from nimstead import (
     remediate,
     sbom,
     sso,
+    tickets,
     updates,
     verify_pack,
     winbaseline,
@@ -69,6 +70,8 @@ from nimstead.db import (
     PendingSignup,
     RemediationJob,
     ScanRecord,
+    Ticket,
+    TicketSettings,
     User,
     WebSession,
     make_sessionmaker,
@@ -2156,6 +2159,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             raise HTTPException(404, "Finding not found")
         a = s.get(Asset, f.asset_id)
         out = {**finding_json(f, a.hostname, due_of(f, evidence.sla_history(s, user.org_id)), a.kind), "owner": a.owner}
+        # the ticket its fix is tracked in (DECISIONS 150), if one reached the tracker
+        out["ticket"] = tickets.ticket_for(tickets.links(s, user.org_id), a.owner, tickets.action_of(a.kind, a.id, f.ecosystem, f.package))
         image = a.kind == "image"  # how it's fixed, and where it runs (DECISIONS 141); null for every other kind
         out["rebuild"] = remediate.REBUILD if image else None
         out["runs_on"] = sorted(set(s.scalars(select(Asset.hostname).join(Container, Container.asset_id == Asset.id)
@@ -2909,6 +2914,178 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             raise HTTPException(409, "No alert destination to test: save a webhook, or confirm a recipient on a server with SMTP configured")
         return {"queued": True}
 
+    # --- tickets (DECISIONS 150-153) ---------------------------------------
+
+    TICKET_ACTIONS_PER_HOUR = 6  # test connection, and sync now: each per org
+    JIRA_PROJECT = re.compile(r"[A-Z][A-Z0-9_]{0,254}")
+    GITLAB_PROJECT = re.compile(r"[A-Za-z0-9_.][A-Za-z0-9_.-]*(/[A-Za-z0-9_.][A-Za-z0-9_.-]*)+")
+
+    class TicketRoute(BaseModel):
+        owner: str = Field(min_length=1, max_length=100, pattern=OWNER_PATTERN)
+        project: str = Field(min_length=1, max_length=255)
+
+    class TicketConfig(BaseModel):
+        kind: Literal["jira", "gitlab"]
+        site: str = Field(max_length=500)
+        user: str = Field("", max_length=320)  # Jira Cloud account email; "" = the token is a bearer token (Data Center, GitLab)
+        token: str | None = Field(None, max_length=2000)  # omit or "" to keep the saved one; never returned
+        default_project: str = Field("", max_length=255)
+        routes: list[TicketRoute] = Field(default_factory=list, max_length=200)
+        min_priority: Literal["fix-now", "next", "planned", "low"] = "fix-now"
+        enabled: bool = False
+
+    def tickets_json(cfg: TicketSettings | None, s: Session, org_id: str) -> dict:
+        rows = s.execute(select(Ticket.project, Ticket.state, func.count()).where(Ticket.org_id == org_id, Ticket.key.is_not(None))
+                         .group_by(Ticket.project, Ticket.state)).all()
+        failing = s.execute(select(Ticket.key, Ticket.project, Ticket.title, Ticket.error).where(Ticket.org_id == org_id, Ticket.error.is_not(None))
+                            .order_by(Ticket.opened_at.desc()).limit(5)).all()
+        owners = sorted(set(s.scalars(select(Asset.owner).where(Asset.org_id == org_id, Asset.owner.is_not(None)).distinct())), key=str.casefold)
+        base = {"kind": "jira", "site": "", "user": "", "token_set": False, "default_project": "", "routes": [], "min_priority": "fix-now",
+                "enabled": False, "last_sync": None}
+        if cfg:
+            base |= {"kind": cfg.kind, "site": cfg.site, "user": cfg.user, "token_set": bool(cfg.token), "default_project": cfg.default_project,
+                     "routes": cfg.routes, "min_priority": cfg.min_priority, "enabled": cfg.enabled, "last_sync": cfg.last_sync}
+        return base | {
+            "open_by_project": {p: n for p, st, n in rows if st == "open"}, "closed": sum(n for _, st, n in rows if st == "closed"),
+            "failing": [{"key": k, "project": p, "title": t, "error": e} for k, p, t, e in failing], "owners": owners,
+            "public_url": public_base() is not None,
+        }
+
+    @app.get("/api/settings/tickets")
+    def get_tickets(user: Admin, s: DB):
+        """Return the org's tracker settings (never the token: token_set says whether one is saved), the last sync, open
+        tickets by project, tickets whose last change failed, and the org's owner names for routing.
+
+        Requires an organisation admin browser session; API tokens are refused."""
+        return tickets_json(s.get(TicketSettings, user.org_id), s, user.org_id)
+
+    @app.put("/api/settings/tickets")
+    def put_tickets(body: TicketConfig, user: Admin, s: DB):
+        """Save the tracker settings (DECISIONS 150-153) and return them as GET does.
+
+        site must be https with no credentials, query or fragment (a path is kept: Jira Data Center may live under one).
+        Jira projects are keys (upper-cased); GitLab projects are namespace/project paths. An owner may have one route;
+        owner names take the org's spelling. A new site or tracker needs a new token (the saved one is never sent to
+        another site) and Nimstead forgets the tickets it opened in the old one. Switching on needs a saved token.
+        Recorded in the ledger without the token.
+
+        Requires an organisation admin browser session; API tokens are refused.
+
+        Operation-specific HTTP errors: 409, 422. See detail in the response.
+        Authentication and request-validation errors also apply where required."""
+        site = body.site.strip().rstrip("/")
+        try:
+            check_public_url(site, resolve=False)  # https and no credentials; the address is checked at every call
+        except ValueError as e:
+            raise HTTPException(422, f"Site URL: {e}") from None
+        u = urlsplit(site)
+        if u.query or u.fragment:
+            raise HTTPException(422, "Site URL: no query or fragment, just the address people open the tracker at")
+        site = f"https://{u.netloc.lower()}{u.path}"  # a host in another case is the same site, not a move
+        secret = (body.token or "").strip()  # a pasted token's stray space would otherwise be sent, and echoed by an HTTP error
+        if secret and not re.fullmatch(r"[\x21-\x7e]+", secret):
+            raise HTTPException(422, "Token: letters, digits and punctuation only, with no spaces")
+        user_name = body.user.strip()
+        if body.kind == "gitlab" and user_name:
+            raise HTTPException(422, "GitLab signs in with the token alone: leave the email empty")
+        if user_name and not re.fullmatch(r"[^@\s]+@[^@\s]+", user_name):
+            raise HTTPException(422, "Email: the Jira Cloud account the API token belongs to")
+
+        def project(p: str) -> str:
+            p = p.strip().upper() if body.kind == "jira" else p.strip().strip("/")
+            if p and not (JIRA_PROJECT if body.kind == "jira" else GITLAB_PROJECT).fullmatch(p):
+                raise HTTPException(422, f"Not a {'Jira project key (like PAY)' if body.kind == 'jira' else 'GitLab project path (like group/project)'}: {p[:60]}")
+            return p
+        routes, seen = [], set()
+        for r in body.routes:
+            owner = owner_name(s, user.org_id, r.owner)
+            if not owner:
+                continue
+            if owner.casefold() in seen:
+                raise HTTPException(422, f"{owner} has two routes: give each team one project")
+            seen.add(owner.casefold())
+            routes.append({"owner": owner, "project": project(r.project)})
+        default_project = project(body.default_project)
+        cfg = s.get(TicketSettings, user.org_id, with_for_update=True)  # the lock a sync's claim takes: a move can't land mid-claim
+        moved = cfg is not None and bool(cfg.site) and (cfg.kind, cfg.site) != (body.kind, site)
+        if moved and not secret:
+            raise HTTPException(422, "A new site or tracker needs its own token: the saved one is never sent elsewhere")
+        if moved and cfg.sync_started and now() - cfg.sync_started < tickets.STALE_CLAIM:
+            raise HTTPException(409, "A sync is running: change the tracker once it has finished, in a few minutes")
+        sealed = sso.seal(secret) if secret else cfg.token if cfg else None
+        if body.enabled and not sealed:
+            raise HTTPException(422, "Save a token before switching ticketing on")
+        if cfg is None:
+            cfg = TicketSettings(org_id=user.org_id)
+            s.add(cfg)
+        forgot = 0
+        if moved:  # the old tracker's tickets are no longer Nimstead's to update
+            forgot = len(s.scalars(select(Ticket.id).where(Ticket.org_id == user.org_id)).all())
+            s.execute(delete(Ticket).where(Ticket.org_id == user.org_id))
+        cfg.kind, cfg.site, cfg.user, cfg.token = body.kind, site, user_name, sealed
+        cfg.default_project, cfg.routes, cfg.min_priority, cfg.enabled = default_project, routes, body.min_priority, body.enabled
+        evidence.append(s, user.org_id, "tickets_configured", user.org_id, {
+            "by": user.email, "kind": cfg.kind, "site": cfg.site, "user": cfg.user, "default_project": cfg.default_project,
+            "routes": routes, "min_priority": cfg.min_priority, "enabled": cfg.enabled, "token": "[redacted]" if sealed else None,
+            "token_changed": bool(secret), "forgot_tickets": forgot,
+        })
+        s.commit()
+        return tickets_json(cfg, s, user.org_id)
+
+    def saved_tickets(s: Session, org_id: str) -> TicketSettings:
+        cfg = s.get(TicketSettings, org_id)
+        if cfg is None or not cfg.site:
+            raise HTTPException(409, "Save the tracker settings first")
+        return cfg
+
+    @app.post("/api/settings/tickets/test")
+    def test_tickets(user: Admin, s: DB):
+        """Sign in to the saved tracker and look up every project tickets can go to; return {ok, message} in words. Writes
+        nothing to the tracker. Six an hour per org.
+
+        Requires an organisation admin browser session; API tokens are refused.
+
+        Operation-specific HTTP errors: 409, 429. See detail in the response.
+        Authentication and request-validation errors also apply where required."""
+        cfg = saved_tickets(s, user.org_id)
+        if over_limit(s, "tickets-test:" + user.org_id, TICKET_ACTIONS_PER_HOUR):
+            raise HTTPException(429, f"At most {TICKET_ACTIONS_PER_HOUR} connection tests an hour")
+        try:
+            return {"ok": True, "message": tickets.test_connection(cfg)}
+        except tickets.TrackerError as e:
+            return {"ok": False, "message": str(e)}
+
+    @app.get("/api/settings/tickets/preview")
+    def preview_tickets(user: Admin, s: DB):
+        """What a sync would do now, with no call to the tracker: the tickets it would open (project, title, priority),
+        how many it would update, close and reopen, and the findings not sent because their owner has no route.
+
+        Requires an organisation admin browser session; API tokens are refused.
+
+        Operation-specific HTTP errors: 409. See detail in the response.
+        Authentication and request-validation errors also apply where required."""
+        return tickets.preview(s, user.org_id, saved_tickets(s, user.org_id))
+
+    @app.post("/api/settings/tickets/sync", status_code=202)
+    def sync_tickets(background: BackgroundTasks, user: Admin, s: DB):
+        """Start a sync now, after the response (it can take minutes on a slow tracker); the result appears as last_sync.
+        A sync already running for the org is left to finish. Six an hour per org.
+
+        Requires an organisation admin browser session; API tokens are refused.
+
+        Operation-specific HTTP errors: 409, 429. See detail in the response.
+        Authentication and request-validation errors also apply where required."""
+        if not saved_tickets(s, user.org_id).enabled:
+            raise HTTPException(409, "Switch ticketing on first")
+        if over_limit(s, "tickets-sync:" + user.org_id, TICKET_ACTIONS_PER_HOUR):
+            raise HTTPException(429, f"At most {TICKET_ACTIONS_PER_HOUR} syncs an hour")
+
+        def run(bind, org_id):
+            with Session(bind, expire_on_commit=False) as s2:  # as the app's sessions: a commit per ticket mustn't reload every row
+                tickets.sync(s2, org_id)
+        background.add_task(run, s.get_bind(), user.org_id)
+        return {"started": True}
+
     # --- AI (optional) -----------------------------------------------------
 
     @app.get("/api/ai/status")
@@ -3123,7 +3300,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         images = select(Asset.id).where(Asset.org_id == org_id, Asset.kind == "image")  # the image's findings by asset_id, not every open one
         ranked = s.execute(select(Finding.asset_id, func.max(Finding.kev.cast(Integer)), func.max(Finding.score), func.count(Finding.id))
                            .where(Finding.asset_id.in_(images), Finding.status == "open").group_by(Finding.asset_id)).all()
-        out = []
+        out, idx = [], tickets.links(s, org_id)
         for aid, kev, max_score, n in sorted(ranked, key=lambda r: (bool(r[1]), r[2] or 0, r[3]), reverse=True)[:limit]:
             a = s.get(Asset, aid)
             fixes: dict[str, set] = defaultdict(set)
@@ -3137,7 +3314,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             order = functools.cmp_to_key(cmp) if (cmp := comparator_for(a.ecosystem)) else None  # the highest fix clears them all, as on Home
             hosts = sorted(set(s.scalars(select(Asset.hostname).join(Container, Container.asset_id == Asset.id).where(Container.image_asset_id == aid))))
             out.append({"asset_id": aid, "name": a.hostname, "os_name": a.os_name, "ecosystem": a.ecosystem, "kev": bool(kev), "max_score": max_score,
-                        "findings": n, "priority": prio, "hosts": hosts,
+                        "findings": n, "priority": prio, "hosts": hosts, "ticket": tickets.ticket_for(idx, a.owner, tickets.action_of("image", aid, "", "")),
                         "fixes": [{"package": p, "fixed_version": max(fixes[p], key=order) if order else sorted(fixes[p])[-1], "vulns": vulns[p]}
                                   for p in sorted(fixes, key=lambda p: -vulns[p])][:8],
                         "unfixed": sum(v for p, v in vulns.items() if p not in fixes)})
@@ -3171,7 +3348,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                    func.count(Finding.vuln_id.distinct()))
             .where(*is_open, fixable, not_image).group_by(Finding.ecosystem, Finding.package)
         ).all()
-        top = []
+        top, idx = [], tickets.links(s, user.org_id)
         for eco, pkg, kev, max_score, _ in sorted(ranked, key=lambda r: (bool(r[2]), r[3], r[4]), reverse=True)[:10]:
             rows = s.execute(select(Finding.fixed_version, Finding.vuln_id, Asset.hostname, Asset.id, Finding.summary).join(Asset, Asset.id == Finding.asset_id)
                              .where(*is_open, Finding.ecosystem == eco, Finding.package == pkg, fixable, not_image)).all()
@@ -3188,7 +3365,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             # The newest finished attempt, if it failed: Home says so rather than offering the same plan blind.
             last = s.scalar(select(RemediationJob).where(*mine, RemediationJob.status.not_in(remediate.ACTIVE))
                             .order_by(RemediationJob.updated.desc()).limit(1))
-            top.append({"ecosystem": eco, "package": pkg, "fixed_version": fixed, "hosts": sorted({r[2] for r in rows}),
+            # one ticket per team behind this fix (DECISIONS 150): the owners of its machines, each team's ticket once
+            owners = sorted(set(s.scalars(select(Asset.owner).where(Asset.id.in_(asset_ids)))), key=lambda o: o or "") if idx[1] else []
+            found = [t for o in owners if (t := tickets.ticket_for(idx, o, tickets.action_of("host", "", eco, pkg)))]
+            top.append({"tickets": list({t["url"]: t for t in found}.values()),
+                        "ecosystem": eco, "package": pkg, "fixed_version": fixed, "hosts": sorted({r[2] for r in rows}),
                         "asset_ids": asset_ids, "busy_asset_ids": sorted({j.asset_id for j in active}),
                         "job": {"id": active[0].id, "status": active[0].status} if active else None,
                         "last_attempt": {"id": last.id, "status": last.status, "error": last.error, "asset_id": last.asset_id} if last and last.status in remediate.ALERT_STATUSES else None,

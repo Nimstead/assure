@@ -1,0 +1,74 @@
+{
+  "assets": 1000,
+  "db": "sqlite",
+  "advisories": 99000,
+  "inventory_ingest": {
+    "median_s": 1.111,
+    "p95_s": 1.517,
+    "max_s": 1.657
+  },
+  "GET /api/summary (home page)": {
+    "median_s": 0.338,
+    "max_s": 0.34
+  },
+  "open_findings": 297000,
+  "GET /api/findings (default 500)": {
+    "median_s": 0.277,
+    "max_s": 0.284
+  },
+  "GET /api/findings?limit=5000": {
+    "median_s": 0.507,
+    "max_s": 0.526
+  },
+  "GET /api/findings?q=pkg42": {
+    "median_s": 0.398,
+    "max_s": 0.399
+  },
+  "GET /api/assets": {
+    "median_s": 0.359,
+    "max_s": 0.361
+  },
+  "GET /api/progress?days=365 (ledger replay)": {
+    "median_s": 2.945,
+    "max_s": 6.082
+  },
+  "GET /api/evidence/pack": {
+    "median_s": 8.722,
+    "max_s": 8.722
+  },
+  "rematch_all_s": 34.1,
+  "tickets: desired (group every open finding)": {
+    "median_s": 3.428,
+    "max_s": 3.434
+  },
+  "tickets_groups": 2846,
+  "tickets: preview": {
+    "median_s": 3.211,
+    "max_s": 3.488
+  },
+  "tickets: first sync (opens every ticket)": {
+    "median_s": 16.554,
+    "max_s": 16.554
+  },
+  "tickets: sync with nothing to change": {
+    "median_s": 3.545,
+    "max_s": 3.91
+  },
+  "tickets_no_change_tracker_calls": {
+    "reads": 200,
+    "writes": 0
+  },
+  "GET /api/windows-updates": {
+    "median_s": 0.121,
+    "max_s": 0.13
+  },
+  "GET /api/windows-updates/{kb} (drill down)": {
+    "median_s": 0.13,
+    "max_s": 0.136
+  },
+  "windows_updates_drilldown_kib": 197,
+  "GET /api/summary (with Windows hosts)": {
+    "median_s": 0.576,
+    "max_s": 0.578
+  }
+}

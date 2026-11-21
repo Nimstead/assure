@@ -6,6 +6,7 @@ import clsx from "clsx";
 import { adminGate, api, assetsQ, meQ, refresh, parseUtc, PRIORITIES, PRIORITY_LABEL, relativeTime, settingsQ, useHashScroll, useIsAdmin, useTitle, type EnrollToken, type MaintenanceWindow, type Priority, type Settings } from "./lib";
 import { NotificationsSection, SsoSection } from "./integrations";
 import { AccountSection, ApiTokensSection, UsersSection } from "./people";
+import { TicketsSection } from "./tickets";
 import { Alert, btnPrimary, btnQuiet, ConfirmDialog, Done, ErrorState, Field, input, Loading, switchRoot, switchThumb, Tag, HowJudged } from "./ui";
 
 const MODES: { value: Settings["remediation_mode"]; title: string; body: string }[] = [
@@ -21,6 +22,7 @@ const GROUPS = [
   { id: "remediation", title: "Remediation" },
   { id: "access", title: "Access" },
   { id: "alerts", title: "Alerts" },
+  { id: "tickets", title: "Ticketing" },
   { id: "account", title: "Your account" },
   { id: "server", title: "This server" },
 ] as const;
@@ -239,6 +241,10 @@ export function SettingsPage() {
 
       <Group id="alerts" title="Alerts">
         {me.data?.admin ? <NotificationsSection /> : <p className="text-sm text-muted">Only organisation admins can change where alerts go.</p>}
+      </Group>
+
+      <Group id="tickets" title="Ticketing">
+        {me.data?.admin ? <TicketsSection /> : <p className="text-sm text-muted">Only organisation admins can change where tickets go. Each finding shows its ticket, if it has one.</p>}
       </Group>
 
       <Group id="account" title="Your account">

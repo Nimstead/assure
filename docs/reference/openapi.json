@@ -2227,6 +2227,33 @@
           "summary": {
             "type": "string"
           },
+          "ticket": {
+            "additionalProperties": false,
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "project": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "key",
+              "url",
+              "state",
+              "project"
+            ],
+            "type": [
+              "object",
+              "null"
+            ]
+          },
           "vuln_id": {
             "type": "string"
           }
@@ -2260,7 +2287,8 @@
           "package_fix",
           "rebuild",
           "runs_on",
-          "owner"
+          "owner",
+          "ticket"
         ],
         "type": "object"
       },
@@ -5295,6 +5323,33 @@
               "null"
             ]
           },
+          "tickets": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "project": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "key",
+                "url",
+                "state",
+                "project"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
           "vulns": {
             "items": {
               "type": "string"
@@ -5317,6 +5372,7 @@
           "person_only",
           "forward_only",
           "max_score",
+          "tickets",
           "job",
           "last_attempt"
         ],
@@ -5384,6 +5440,33 @@
           "priority": {
             "type": "string"
           },
+          "ticket": {
+            "additionalProperties": false,
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "project": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "key",
+              "url",
+              "state",
+              "project"
+            ],
+            "type": [
+              "object",
+              "null"
+            ]
+          },
           "unfixed": {
             "minimum": 0,
             "type": "integer"
@@ -5400,7 +5483,8 @@
           "findings",
           "unfixed",
           "hosts",
-          "fixes"
+          "fixes",
+          "ticket"
         ],
         "type": "object"
       },
@@ -5428,6 +5512,300 @@
           "hostname"
         ],
         "title": "TargetNew",
+        "type": "object"
+      },
+      "TicketConfig": {
+        "properties": {
+          "default_project": {
+            "default": "",
+            "maxLength": 255,
+            "title": "Default Project",
+            "type": "string"
+          },
+          "enabled": {
+            "default": false,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "kind": {
+            "enum": [
+              "jira",
+              "gitlab"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "min_priority": {
+            "default": "fix-now",
+            "enum": [
+              "fix-now",
+              "next",
+              "planned",
+              "low"
+            ],
+            "title": "Min Priority",
+            "type": "string"
+          },
+          "routes": {
+            "items": {
+              "$ref": "#/components/schemas/TicketRoute"
+            },
+            "maxItems": 200,
+            "title": "Routes",
+            "type": "array"
+          },
+          "site": {
+            "maxLength": 500,
+            "title": "Site",
+            "type": "string"
+          },
+          "token": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token"
+          },
+          "user": {
+            "default": "",
+            "maxLength": 320,
+            "title": "User",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "site"
+        ],
+        "title": "TicketConfig",
+        "type": "object"
+      },
+      "TicketPreview": {
+        "additionalProperties": false,
+        "properties": {
+          "close": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "findings": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "open": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "priority": {
+                  "type": "string"
+                },
+                "project": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "project",
+                "title",
+                "priority"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "reopen": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "skipped": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "findings": {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "owner": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "owner",
+                "findings"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "tickets": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "update": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "open",
+          "skipped",
+          "update",
+          "close",
+          "reopen",
+          "tickets",
+          "findings"
+        ],
+        "type": "object"
+      },
+      "TicketRoute": {
+        "properties": {
+          "owner": {
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "^[^\\x00-\\x1f\\x7f-\\x9f\\u200b-\\u200f\\u202a-\\u202e\\u2060-\\u2069\\ufeff]*$",
+            "title": "Owner",
+            "type": "string"
+          },
+          "project": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Project",
+            "type": "string"
+          }
+        },
+        "required": [
+          "owner",
+          "project"
+        ],
+        "title": "TicketRoute",
+        "type": "object"
+      },
+      "TicketSettings": {
+        "additionalProperties": false,
+        "properties": {
+          "closed": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "default_project": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "failing": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "error": {
+                  "type": "string"
+                },
+                "key": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "project": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "key",
+                "project",
+                "title",
+                "error"
+              ],
+              "type": "object"
+            },
+            "maxItems": 5,
+            "type": "array"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "last_sync": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "min_priority": {
+            "type": "string"
+          },
+          "open_by_project": {
+            "additionalProperties": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "owners": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "public_url": {
+            "type": "boolean"
+          },
+          "routes": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "owner": {
+                  "type": "string"
+                },
+                "project": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "owner",
+                "project"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "site": {
+            "type": "string"
+          },
+          "token_set": {
+            "type": "boolean"
+          },
+          "user": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "site",
+          "user",
+          "default_project",
+          "min_priority",
+          "token_set",
+          "enabled",
+          "public_url",
+          "routes",
+          "last_sync",
+          "closed",
+          "open_by_project",
+          "failing",
+          "owners"
+        ],
         "type": "object"
       },
       "TokenNew": {
@@ -11870,6 +12248,322 @@
           }
         ],
         "summary": "Verify Sso Domains",
+        "x-authentication": "Admin browser session"
+      }
+    },
+    "/api/settings/tickets": {
+      "get": {
+        "description": "Return the org's tracker settings (never the token: token_set says whether one is saved), the last sync, open\ntickets by project, tickets whose last change failed, and the org's owner names for routing.\n\nRequires an organisation admin browser session; API tokens are refused.",
+        "operationId": "get_tickets_api_settings_tickets_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketSettings"
+                }
+              }
+            },
+            "description": "Tracker settings (never the token) and the last sync, or what a sync would do; see tickets.md."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Role, browser-session or local MFA requirement refused the operation."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
+          }
+        },
+        "security": [
+          {
+            "SessionCookie": []
+          }
+        ],
+        "summary": "Get Tickets",
+        "x-authentication": "Admin browser session"
+      },
+      "put": {
+        "description": "Save the tracker settings (DECISIONS 150-153) and return them as GET does.\n\nsite must be https with no credentials, query or fragment (a path is kept: Jira Data Center may live under one).\nJira projects are keys (upper-cased); GitLab projects are namespace/project paths. An owner may have one route;\nowner names take the org's spelling. A new site or tracker needs a new token (the saved one is never sent to\nanother site) and Nimstead forgets the tickets it opened in the old one. Switching on needs a saved token.\nRecorded in the ledger without the token.\n\nRequires an organisation admin browser session; API tokens are refused.\n\nOperation-specific HTTP errors: 409, 422. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
+        "operationId": "put_tickets_api_settings_tickets_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketConfig"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketSettings"
+                }
+              }
+            },
+            "description": "Tracker settings (never the token) and the last sync, or what a sync would do; see tickets.md."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Role, browser-session or local MFA requirement refused the operation."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SessionCookie": []
+          }
+        ],
+        "summary": "Put Tickets",
+        "x-authentication": "Admin browser session"
+      }
+    },
+    "/api/settings/tickets/preview": {
+      "get": {
+        "description": "What a sync would do now, with no call to the tracker: the tickets it would open (project, title, priority),\nhow many it would update, close and reopen, and the findings not sent because their owner has no route.\n\nRequires an organisation admin browser session; API tokens are refused.\n\nOperation-specific HTTP errors: 409. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
+        "operationId": "preview_tickets_api_settings_tickets_preview_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketPreview"
+                }
+              }
+            },
+            "description": "Tracker settings (never the token) and the last sync, or what a sync would do; see tickets.md."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Role, browser-session or local MFA requirement refused the operation."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
+          }
+        },
+        "security": [
+          {
+            "SessionCookie": []
+          }
+        ],
+        "summary": "Preview Tickets",
+        "x-authentication": "Admin browser session"
+      }
+    },
+    "/api/settings/tickets/sync": {
+      "post": {
+        "description": "Start a sync now, after the response (it can take minutes on a slow tracker); the result appears as last_sync.\nA sync already running for the org is left to finish. Six an hour per org.\n\nRequires an organisation admin browser session; API tokens are refused.\n\nOperation-specific HTTP errors: 409, 429. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
+        "operationId": "sync_tickets_api_settings_tickets_sync_post",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "started": {
+                      "const": true,
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "started"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Sync started after the response; its result appears as last_sync."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Role, browser-session or local MFA requirement refused the operation."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
+          }
+        },
+        "security": [
+          {
+            "SessionCookie": []
+          }
+        ],
+        "summary": "Sync Tickets",
+        "x-authentication": "Admin browser session"
+      }
+    },
+    "/api/settings/tickets/test": {
+      "post": {
+        "description": "Sign in to the saved tracker and look up every project tickets can go to; return {ok, message} in words. Writes\nnothing to the tracker. Six an hour per org.\n\nRequires an organisation admin browser session; API tokens are refused.\n\nOperation-specific HTTP errors: 409, 429. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
+        "operationId": "test_tickets_api_settings_tickets_test_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    },
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Whether the saved token signs in and every routed project exists, in words."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Role, browser-session or local MFA requirement refused the operation."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
+          }
+        },
+        "security": [
+          {
+            "SessionCookie": []
+          }
+        ],
+        "summary": "Test Tickets",
         "x-authentication": "Admin browser session"
       }
     },

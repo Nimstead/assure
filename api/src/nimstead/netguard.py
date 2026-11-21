@@ -23,6 +23,34 @@ def private_targets_allowed() -> bool:
     return False
 
 
+def named_private_host(host: str) -> bool:
+    """Whether the server operator named host in NIMSTEAD_ALLOW_PRIVATE_HOSTS (comma-separated, exact hostnames, any case;
+    DECISIONS 153): an intranet Jira or GitLab may resolve to a private address. An org admin can't add to the list."""
+    names = {h.strip().lower().rstrip(".") for h in os.environ.get("NIMSTEAD_ALLOW_PRIVATE_HOSTS", "").split(",")}
+    return bool(host) and host.lower().rstrip(".") in names - {""}
+
+
+METADATA = {ipaddress.ip_address(a) for a in ("100.100.100.200", "fd00:ec2::254")}  # Alibaba's and AWS's (IPv6) instance metadata
+
+
+def _inner(a: ipaddress.IPv6Address) -> ipaddress.IPv4Address | None:
+    """The IPv4 address an IPv6 one carries (mapped, 6to4, Teredo, NAT64, compatible), if any."""
+    inner = a.ipv4_mapped or a.sixtofour or (a.teredo[1] if a.teredo else None)
+    if inner is None and (a in NAT64 or a in V4COMPAT) and a != ipaddress.IPv6Address("::1"):
+        inner = ipaddress.IPv4Address(int(a) & 0xFFFFFFFF)
+    return inner
+
+
+def _private_ok(a: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """An address a named private host may use: private or loopback, never link-local or a cloud's metadata address (an
+    IPv4 address inside an IPv6 one is judged as itself), multicast, unspecified or reserved."""
+    if a.version == 6 and (inner := _inner(a)) is not None:
+        return _private_ok(inner)
+    if a in METADATA or a.is_link_local:
+        return False
+    return a.is_loopback or not (a.is_multicast or a.is_unspecified or a.is_reserved)
+
+
 NAT64, V4COMPAT = ipaddress.ip_network("64:ff9b::/96"), ipaddress.ip_network("::/96")
 
 
@@ -37,13 +65,15 @@ def is_public(a: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     return a.is_global
 
 
-def check_public_url(url: str, resolve: bool = True) -> list[str]:
+def check_public_url(url: str, resolve: bool = True, named_ok: bool = False) -> list[str]:
     """Validate HTTPS url and return its checked address strings, preserving resolver order.
 
     url must have a hostname and no nonempty embedded credentials. With resolve=False,
     hostname URLs return [] without a DNS lookup or an address check. Literal IPs are
     checked in either mode. Otherwise every resolved address must pass is_public,
-    unless the explicit development switch allows non-public addresses.
+    unless the explicit development switch allows non-public addresses. With named_ok
+    (webhooks, SSO, trackers; never outside-in scans), a host the operator named in
+    NIMSTEAD_ALLOW_PRIVATE_HOSTS may also resolve to private addresses, never link-local ones.
 
     Raise ValueError for malformed/refused URLs, failed resolution, or an empty
     address list. DNS uses the system resolver without an explicit deadline."""
@@ -59,7 +89,9 @@ def check_public_url(url: str, resolve: bool = True) -> list[str]:
             addrs = [ipaddress.ip_address(i[4][0].split("%")[0]) for i in socket.getaddrinfo(u.hostname, u.port or 443, proto=socket.IPPROTO_TCP)]
         except OSError:
             raise ValueError("Host does not resolve") from None
-    if not addrs or (not all(is_public(a) for a in addrs) and not private_targets_allowed()):  # loopback, private, link-local (169.254.x metadata), CGNAT, ...
+    named = named_ok and named_private_host(u.hostname)
+    if not addrs or (not all(is_public(a) or (named and _private_ok(a)) for a in addrs)  # loopback, private, link-local (169.254.x metadata), CGNAT, ...
+                     and not private_targets_allowed()):
         raise ValueError("URL points at a private or non-public address")
     return [str(a) for a in addrs]
 
@@ -73,7 +105,7 @@ class GuardedTransport(httpx.HTTPTransport):
 
         Mutates request.url and extensions. Raise ValueError for refused URLs; HTTP transport errors propagate."""
         host = request.url.host
-        ip = check_public_url(str(request.url))[0]
+        ip = check_public_url(str(request.url), named_ok=True)[0]
         if ip != host:
             request.url = request.url.copy_with(host=ip)  # the Host header keeps the original name
             request.extensions = {**request.extensions, "sni_hostname": host}

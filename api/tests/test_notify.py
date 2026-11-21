@@ -496,7 +496,7 @@ def test_a_guarded_request_has_a_total_deadline(monkeypatch):
     """httpx's timeouts apply to each read: a server sending its headers a byte at a time held a worker for hours."""
     import socket
     import threading
-    monkeypatch.setattr(netguard, "check_public_url", lambda url: ["127.0.0.1"])  # a local server stands in for a public one
+    monkeypatch.setattr(netguard, "check_public_url", lambda url, **kw: ["127.0.0.1"])  # a local server stands in for a public one
     srv = socket.create_server(("127.0.0.1", 0))
 
     def dribble():

@@ -1,11 +1,12 @@
 """Performance check at realistic scale: N hosts x ~600 packages, ~100k advisories, ~300 findings per host.
 
-Run from api/:  uv run python ../sandbox/perf.py [--assets 1000] [--containers 10] [--db postgresql+psycopg://...]
+Run from api/:  uv run python ../sandbox/perf.py [--assets 1000] [--containers 10] [--tickets] [--db postgresql+psycopg://...]
 Sizes follow the real-host runs (Debian 13: 164 pkgs / 274 findings, Ubuntu 24.04: 523 / 369). Times every
 user-facing endpoint the home page and findings views hit, agent inventory ingest, and the hourly re-match.
 --containers N: each host also reports N running containers drawn from IMAGES shared images (tasks/plan-containers.md
 C12), timing those reports and the hourly re-match before and after the images exist.
-Writes sandbox/last_run_perf_<sqlite|postgresql>[_containers].json.
+--tickets: after the re-match, time a ticket sync's own work against an in-process GitLab fake (tasks/spec-tickets.md).
+Writes sandbox/last_run_perf_<sqlite|postgresql>[_containers][_tickets].json.
 """
 
 import json
@@ -20,7 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 TMP = Path(tempfile.mkdtemp(prefix="nimstead-perf-"))
 os.environ.update(NIMSTEAD_SECURE_COOKIES="0", NIMSTEAD_INVENTORY_MIN_SECONDS="0", NIMSTEAD_SIGNING_KEY_FILE=str(TMP / "k.pem"),
-                  NIMSTEAD_CHECKPOINT_DIR=str(TMP / "cp"))
+                  NIMSTEAD_CHECKPOINT_DIR=str(TMP / "cp"), NIMSTEAD_SECRET_KEY_FILE=str(TMP / "secret.key"))
 
 from agentdoc import with_document  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -32,6 +33,7 @@ from nimstead.db import Advisory, make_sessionmaker  # noqa: E402
 
 ASSETS = int(sys.argv[sys.argv.index("--assets") + 1]) if "--assets" in sys.argv else 1000
 CONTAINERS = int(sys.argv[sys.argv.index("--containers") + 1]) if "--containers" in sys.argv else 0
+TICKETS = "--tickets" in sys.argv
 IMAGES, IMAGE_PKGS, IMAGE_VULN = 50, 200, 5  # a fleet's distinct images: far fewer than its containers
 DB = sys.argv[sys.argv.index("--db") + 1] if "--db" in sys.argv else f"sqlite:///{(TMP / 'perf.db').as_posix()}"
 ECO, UNIVERSE, PER_HOST, ADV_PER_PKG, VULN_PER_HOST = "Debian:12", 3000, 600, 33, 9
@@ -77,6 +79,35 @@ def rematch() -> float:
         took = round(time.perf_counter() - t, 1)
         print(f"re-match all {len(assets)} assets (hourly feed update): {took}s", flush=True)
         return took
+
+
+def tickets_perf():
+    """A sync's own cost at this scale (tasks/spec-tickets.md success criterion 5). GitLab is faked in-process (tests/trackers.py),
+    so only Nimstead's time is measured: reading and grouping every open finding (every priority: the worst case), diffing
+    them against the tickets it opened, rendering each ticket and recording the sync."""
+    sys.path.insert(0, str(ROOT / "api" / "tests"))
+    from trackers import FakeGitLab, client_for
+
+    from nimstead import sso, tickets
+    from nimstead.db import Org, TicketSettings
+    fake = FakeGitLab()
+    with make_sessionmaker(DB)() as s:
+        org_id = s.query(Org.id).scalar()
+        s.add(TicketSettings(org_id=org_id, kind="gitlab", site="https://gitlab.example.com", token=sso.seal("glpat-tok"),
+                             default_project="platform/ops", routes=[], min_priority="low", enabled=True))
+        s.commit()
+        cfg = s.get(TicketSettings, org_id)
+        want = timed("tickets: desired (group every open finding)", lambda: tickets.desired(s, org_id, cfg)[0], 3)
+        result["tickets_groups"] = len(want)
+        timed("tickets: preview", lambda: tickets.preview(s, org_id, cfg), 3)
+        tickets.MAX_WRITES = 10**6  # open them all in one go, so the next syncs have nothing to change
+        first = timed("tickets: first sync (opens every ticket)", lambda: tickets.sync(s, org_id, http=client_for(fake)))
+        assert first["opened"] == len(want) and not first["failed"], first
+        fake.calls.clear()
+        again = timed("tickets: sync with nothing to change", lambda: tickets.sync(s, org_id, http=client_for(fake)), 3)
+        assert not (again["opened"] or again["updated"] or again["failed"]), again
+        result["tickets_no_change_tracker_calls"] = {"reads": sum(m == "GET" for m, _ in fake.calls) // 3, "writes": len(fake.writes)}
+        print("tickets:", len(want), "groups;", result["tickets_no_change_tracker_calls"], flush=True)
 
 
 def main():
@@ -149,6 +180,8 @@ def main():
     timed("GET /api/evidence/pack", lambda: c.get("/api/evidence/pack").content, 1)
 
     result["rematch_all_s"] = rematch()
+    if TICKETS:
+        tickets_perf()
     # Windows fleet view (W22): the same number of Windows hosts, three months of updates, most hosts behind. Last, so the numbers above stay comparable.
     product = "Windows Server 2025"
     with make_sessionmaker(DB)() as s:
@@ -170,7 +203,7 @@ def main():
     hosts = timed("GET /api/windows-updates/{kb} (drill down)", lambda: c.get(f"/api/windows-updates/{rows[0]['kb']}", params={"product": product}), 3)
     result["windows_updates_drilldown_kib"] = round(len(hosts.content) / 1024)
     timed("GET /api/summary (with Windows hosts)", lambda: c.get("/api/summary").json(), 3)
-    (ROOT / "sandbox" / f"last_run_perf_{result['db'].split('+')[0]}{'_containers' if CONTAINERS else ''}.json").write_text(json.dumps(result, indent=2))
+    (ROOT / "sandbox" / f"last_run_perf_{result['db'].split('+')[0]}{'_containers' if CONTAINERS else ''}{'_tickets' if TICKETS else ''}.json").write_text(json.dumps(result, indent=2))
 
 
 if __name__ == "__main__":

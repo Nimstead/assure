@@ -1,0 +1,153 @@
+{
+ "result": "PASS",
+ "failures": [],
+ "distro": "nimstead-sbx-tkt-6216b3",
+ "when": "2026-11-21T11:03:31Z",
+ "steps": [
+  {
+   "step": "distro",
+   "name": "nimstead-sbx-tkt-6216b3",
+   "reused": false
+  },
+  {
+   "step": "GitLab up",
+   "seconds": 141
+  },
+  {
+   "step": "GitLab ready",
+   "version": "19.6.1",
+   "projects": [
+    "payments/app",
+    "platform/ops"
+   ]
+  },
+  {
+   "step": "feeds synced",
+   "seconds": 12,
+   "ecosystem": "Debian:13",
+   "kev": "1790",
+   "epss": "410485",
+   "osv": "{'inserted': 63672, 'updated': 0, 'skipped': 0}"
+  },
+  {
+   "step": "machines reported",
+   "packages": 237,
+   "ecosystem": "Debian:13",
+   "open_by_priority": {
+    "fix-now": 3,
+    "low": 1263,
+    "planned": 24
+   }
+  },
+  {
+   "step": "PASS: a tracker at a private address is refused until the operator names it",
+   "message": "ValueError: URL points at a private or non-public address"
+  },
+  {
+   "step": "PASS: Test connection signs in and finds both projects",
+   "message": "Signed in to GitLab as root; projects payments/app, platform/ops found."
+  },
+  {
+   "step": "PASS: Preview lists tickets and writes nothing",
+   "would_open": 112,
+   "findings": 1290
+  },
+  {
+   "step": "PASS: every open finding at the threshold is in exactly one open issue, and no open issue lacks one",
+   "groups": 112,
+   "open_issues": {
+    "payments/app": 56,
+    "platform/ops": 56
+   },
+   "syncs": [
+    {
+     "at": "2026-11-21T11:02:39.044635",
+     "opened": 100,
+     "updated": 0,
+     "closed": 0,
+     "reopened": 0,
+     "failed": 0,
+     "waiting": 12,
+     "errors": []
+    },
+    {
+     "at": "2026-11-21T11:02:46.168174",
+     "opened": 12,
+     "updated": 0,
+     "closed": 0,
+     "reopened": 0,
+     "failed": 0,
+     "waiting": 0,
+     "errors": []
+    }
+   ]
+  },
+  {
+   "step": "PASS: the first sync stopped at 100 changes and the next finished",
+   "first": {
+    "at": "2026-11-21T11:02:39.044635",
+    "opened": 100,
+    "updated": 0,
+    "closed": 0,
+    "reopened": 0,
+    "failed": 0,
+    "waiting": 12,
+    "errors": []
+   }
+  },
+  {
+   "step": "PASS: a Payments ticket's package can really be upgraded in the distro",
+   "upgradable": 44
+  },
+  {
+   "step": "PASS: a machine fixed by its own inventory leaves the ticket with the version it now has, and the ticket stays open for the other",
+   "package": "pcre2",
+   "binaries": [
+    "libpcre2-8-0"
+   ],
+   "note": "No longer in this ticket (1):\n\n```\n  pay-1  fixed 21 Nov 11:02 UTC: 10.46-1~deb13u3 in the machine's inventory\n```\n\n1 machine left.",
+   "still_open_on_pay1": 0
+  },
+  {
+   "step": "PASS: when no finding is left the ticket closes, saying why each machine left",
+   "note": "No finding in this ticket is open any more, so Nimstead is closing it.\n\n```\n  pay-2  fixed 21 Nov 11:02 UTC: 10.46-1~deb13u3 in the machine's inventory\n```"
+  },
+  {
+   "step": "PASS: a regression reopens the same issue, naming the machine",
+   "note": "Findings in this ticket are open again, so Nimstead has reopened it.\n\nExposed now (1):\n\n```\n  pay-2  10.46-1~deb13u1\n```\n\nNimstead closes it when the machines' own inventory shows the fix. To stop tracking a finding, accept the risk in Nimstead: that's recorded and has an end date."
+  },
+  {
+   "step": "PASS: an issue closed by hand while findings are open is reopened with the evidence",
+   "issue": "1"
+  },
+  {
+   "step": "PASS: an issue deleted in the tracker is opened afresh, once",
+   "old": "2",
+   "new": "57"
+  },
+  {
+   "step": "PASS: a create that reached GitLab before a crash is found by its label, not repeated"
+  },
+  {
+   "step": "PASS: a hostile package name renders inert in GitLab: no link, image, mention or quick action",
+   "state": "opened",
+   "labels": [
+    "nimstead",
+    "nimstead-3a7390eb3641",
+    "nimstead-fix-now"
+   ],
+   "control_sample": "<p data-sourcepos=\"1:1-3:7\" dir=\"auto\">evil``` <a href=\"https://gitlab.sbx.test:8943/root\" title=\"Administrator\" class=\"gfm gfm-project_member js-user-link\" data-user=\"1\" data-original=\"@root\" data-container=\"body\" data-placement=\"top\" data-reference-type=\"user\">@root</a> <a data-sourcepos=\"1:15-1:3",
+   "html_sample": "arkdown-code-block js-markdown-code\"><pre data-sourcepos=\"5:1-8:4\" class=\"code highlight js-syntax-highlight language-plaintext\" v-pre=\"true\"><code><span id=\"LC1\" class=\"line\" data-lang=\"plaintext\">  evil``` @root [x](https://evil.example) &lt;img src=https://evil.example/p.png&gt;/close#1 ~bug (Debian:13): no fixed version is published yet. See the findings for mitigations.</span>\n<span id=\"LC2\" class=\"line\" data-lang=\"plaintext\">  Owner: Payments</span></code></pre><copy-code></copy-code><inse"
+  },
+  {
+   "step": "PASS: every ticket step is in the ledger and the chain verifies",
+   "counted": {
+    "tickets_configured": 2,
+    "ticket_opened": 115,
+    "ticket_closed": 1,
+    "ticket_reopened": 2
+   },
+   "problems": []
+  }
+ ]
+}

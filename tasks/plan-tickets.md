@@ -55,7 +55,7 @@ tests the connection, previews and syncs now. No agent change.
 ## Risks and mitigations
 | Risk | Impact | Mitigation |
 |---|---|---|
-| No real Jira here | High | Fakes follow Atlassian's documented v2 contract (status categories, transitions, Cloud `/search/jql` vs Data Center `/search`, a create screen without a due date); `sandbox/tickets.py --jira` runs the same loop when the owner gives a site; STATUS says Jira is proven against fakes only until then |
+| No real Jira here | High | Fakes follow Atlassian's documented v2 contract (status categories, transitions, Cloud `/search/jql` vs Data Center `/search`, a create screen without a due date); every call checked against Atlassian's published OpenAPI spec (`sandbox/jira_contract.py`, added at review); a live run needs the owner's site; STATUS says so |
 | GitLab CE is heavy (4 GB RAM, minutes to boot) in WSL | Med | 32 GB host; time-box the boot wait; the harness checks `/-/readiness` and fails clearly |
 | Ticket storms on first switch-on | High | Preview first; fix-now default; 100 writes per sync, most urgent first |
 | Fighting a team that closes by hand | Med | Reopen comment says how to stop it (accept the risk in Nimstead); never more than one reopen per ticket per sync |

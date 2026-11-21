@@ -123,7 +123,7 @@ The full, honest list is in [STATUS.md](STATUS.md#not-proven--known-gaps-honest)
 - SBOMs must be JSON (CycloneDX 1.4–1.7, SPDX 2.2/2.3). Findings mean a package is present, not that the vulnerable code is reachable.
 - Containers: Docker and Podman on Linux, running containers only. Kubernetes (containerd, CRI-O), rootless containers, language packages inside containers and RHEL 8-family images (rpm's Berkeley DB) aren't read yet; such an image says "Not assessed".
 - The AI features (optional) have only been tested against a mocked API.
-- Tickets go to Jira or GitLab. GitLab is proven end to end on a real server; Jira is tested against a model of its documented API, not yet a live site. ServiceNow isn't supported yet, and nothing flows back from the tracker except whether a ticket is closed.
+- Tickets go to Jira or GitLab. GitLab is proven end to end on a real server; every Jira call is checked against Atlassian's published API spec and tested against a model of its behaviour, but not yet run against a live site. ServiceNow isn't supported yet, and nothing flows back from the tracker except whether a ticket is closed.
 
 ## Documentation
 

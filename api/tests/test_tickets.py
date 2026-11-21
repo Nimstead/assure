@@ -596,6 +596,31 @@ def test_a_ticket_that_reads_again_loses_its_old_error_even_with_no_write_left(o
     assert t.error is None
 
 
+def test_every_jira_call_the_client_makes_is_checked_against_atlassians_spec(org, monkeypatch):
+    """sandbox/jira_contract.py checks a list of calls against Atlassian's published OpenAPI spec; this keeps the list
+    honest: every call a full lifecycle sends is on it (Data Center's /search, absent from the Cloud spec, aside)."""
+    import jira_contract
+    _, s, oid = org
+    f = finding(s, machine(s, oid, "db-1"))
+    setup(s, oid)
+    fake = FakeJira(resolution_screen=True)
+    run(s, oid, fake)
+    t = s.scalar(select(Ticket))
+    t.key = None  # a crash before the key was saved: the label search, then the issue read by id
+    s.commit()
+    run(s, oid, fake)
+    fake.close_by_hand("OPS-1")
+    run(s, oid, fake)  # reopened
+    resolve(s, f, version="3.0.15-1~deb12u1")
+    run(s, oid, fake)  # comment and close through a Resolution screen
+    monkeypatch.setattr(tickets, "http_client", client_for(fake))
+    tickets.test_connection(s.get(TicketSettings, oid))  # who am I, and the project
+    sent = {(m.lower(), re.sub(r"/issue/[A-Z]+-\d+|/issue/\d+", "/issue/{issueIdOrKey}", re.sub(r"/project/[^/]+", "/project/{projectIdOrKey}", p)))
+            for m, p in fake.calls}
+    listed = {(m, p) for m, p, *_ in jira_contract.CALLS}
+    assert sent - listed - {("get", "/rest/api/2/search")} == set() and {("post", "/rest/api/2/issue/{issueIdOrKey}/transitions")} <= sent
+
+
 def test_a_done_transition_that_asks_for_a_resolution_gets_one(org):
     _, s, oid = org
     f = finding(s, machine(s, oid, "db-1"))

@@ -105,7 +105,8 @@ Web e2e:       cd web && npm run e2e
 Docs checks:   cd api && PYTHONUTF8=1 uv run python ../scripts/check_docs.py && uv run python ../scripts/export_api_docs.py --check
 Migrations:    cd api && uv run pytest -q tests/test_migrations.py   (PostgreSQL: CI, or ../sandbox/pg.py)
 Real tracker:  cd api && uv run python ../sandbox/tickets.py              (GitLab CE in a disposable WSL distro)
-               cd api && uv run python ../sandbox/tickets.py --jira URL   (a real Jira site; email and token from env)
+Jira contract: cd api && uv run python ../sandbox/jira_contract.py      (every Jira call against Atlassian's published spec;
+               a live Jira run needs a site: not built, see STATUS)
 Performance:   cd api && uv run python ../sandbox/perf.py --assets 1000 --tickets
 ```
 

@@ -4,6 +4,26 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+Agent 0.8.1, unchanged. One database migration (`e8b2d4f6a1c3`: ticket settings and tickets): the Docker image applies it on start; without Docker, run `alembic upgrade head`.
+
+### Upgrade notes
+- **Nothing is sent until you switch it on.** Ticketing is off until an admin saves a tracker in **Settings → Ticketing** and turns on **Send tickets**.
+- **`GET /api/findings/{id}` and `GET /api/summary` carry ticket links** (`ticket` on a finding and on each image to rebuild, `tickets` on each Fix first action): `null` or empty until tickets exist.
+- **New server setting `NIMSTEAD_ALLOW_PRIVATE_HOSTS`** for a tracker, identity provider or webhook receiver on a private network. Unset, nothing changes.
+
+### Highlights
+- **Fixes reach the team that owns them, in Jira or GitLab.** One ticket per fix per team, in the team's own project: "Upgrade openssl to 3.0.15 on 14 machines (Payments)", with the machines, the vulnerabilities, the priority and the due date. Hundreds of findings become a handful of tickets, not one per CVE per machine.
+- **A ticket closes only when the machines prove the fix.** As machines are fixed the ticket says so, with the version now in each machine's inventory; when none is left Nimstead closes it, saying machine by machine why each left. If a fix regresses, or someone closes the ticket while machines are still exposed, it reopens with the evidence.
+- **See it before anything is sent.** Preview lists every ticket a sync would open, by project; Test connection says in plain words whether the token and projects work. Every ticket opened, closed and reopened is in the evidence ledger.
+- **Proven on a real GitLab** with the real agent: opened, routed, fixed by a real package upgrade, closed, reopened, and a hostile package name rendered harmless.
+
+### Added
+- **Settings → Ticketing** (DECISIONS 150-153): Jira Cloud (account email and API token) or Data Center (personal access token), gitlab.com or self-managed GitLab (access token); team routes from owner to project and a default project; which findings become tickets (fix now by default, or next, routine or every priority); Test connection, Preview and Sync now; the last sync (opened, updated, closed, reopened, failed, waiting), open tickets by project and the last errors in the tracker's words. The token is sealed at rest, never shown again, and a new site or tracker needs a new one.
+- **The hourly sync**: one ticket per (project, owner, fix), the grouping Fix first uses (a package or setting across the team's machines; a container image as one rebuild). Titles and descriptions kept current, a comment when machines are fixed or join, closed when no finding is open, reopened on a regression or a hand close, opened afresh if deleted. At most 100 ticket changes a sync, most urgent first; at most 5 minutes; a down tracker stops the sync after 5 failures in a row. A crash between the tracker's create and saving it is recovered by the ticket's `nimstead-<id>` label, never duplicated.
+- **Ticket links** on each finding's drawer, each fix on Home and each image to rebuild.
+- **`GET/PUT /api/settings/tickets`, `POST /api/settings/tickets/test`, `GET /api/settings/tickets/preview`, `POST /api/settings/tickets/sync`** (admin sessions; test and sync six an hour). Ledger entries `tickets_configured`, `ticket_opened`, `ticket_closed`, `ticket_reopened`. See [Send fixes to Jira or GitLab](docs/how-to/send-tickets.md) and the [ticket reference](docs/reference/tickets.md).
+- **`NIMSTEAD_ALLOW_PRIVATE_HOSTS`**: hostnames the server operator allows to resolve to private or loopback addresses (never link-local) for trackers, SSO and webhooks; never for outside-in scans. See [configuration](docs/configuration.md#outbound-requests).
+
 ## [0.11.1] - 2026-11-20 (preview)
 
 Agent 0.8.1, unchanged. No database migration. One fix: risk acceptances on internet targets and network devices now end when they say they do.

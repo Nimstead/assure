@@ -75,6 +75,16 @@ Webhook and email recipients are set by an admin in **Settings**.
 
 See [notification reference](reference/notifications.md) for consent, payloads, retries, and transport limits. An unauthenticated `smtp://` connection can send message content without TLS when the server does not advertise STARTTLS.
 
+## Outbound requests
+
+Webhooks, SSO and ticket trackers are called only over HTTPS, at public addresses, with the connection pinned to the address checked.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `NIMSTEAD_ALLOW_PRIVATE_HOSTS` | none | Comma-separated hostnames (exact, any case) that may resolve to private or loopback addresses: an intranet Jira, GitLab, identity provider or webhook receiver. Never link-local (cloud metadata), multicast or reserved addresses. Applies to webhooks, SSO and trackers, not to outside-in scans. Set by the server operator; an org admin can't change it. |
+
+Ticket trackers (Jira or GitLab) are set up by an admin in **Settings**, not with environment variables. See [Send fixes to Jira or GitLab](how-to/send-tickets.md) and the [ticket reference](reference/tickets.md).
+
 ## Single sign-on
 
 Set up in **Settings** by an org admin, not with environment variables. Register `<NIMSTEAD_PUBLIC_URL>/api/auth/sso/callback` at your identity provider. Each email domain must be proven with a DNS TXT record before it routes sign-ins.

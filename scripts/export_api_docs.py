@@ -183,6 +183,9 @@ def render() -> dict[str, str]:
     action_fields |= {name: {"type": "array", "items": {"type": "string"}} for name in ("hosts", "asset_ids", "busy_asset_ids", "vulns")}
     action_fields |= {name: {"type": "boolean"} for name in ("kev", "plannable", "person_only", "forward_only")}
     action_fields["max_score"] = {"type": "integer"}
+    link = {"type": "object", "properties": {name: {"type": "string"} for name in ("key", "url", "state", "project")},
+            "required": ["key", "url", "state", "project"], "additionalProperties": False}
+    action_fields["tickets"] = {"type": "array", "items": link}  # one per team behind the fix (DECISIONS 150)
     for name, fields in (("job", {"id": {"type": "string"}, "status": {"type": "string"}}),
                          ("last_attempt", {"id": {"type": "string"}, "status": {"type": "string"}, "error": {"type": ["string", "null"]}})):
         action_fields[name] = {"type": ["object", "null"], "properties": fields, "required": list(fields), "additionalProperties": False}
@@ -196,7 +199,7 @@ def render() -> dict[str, str]:
     image_summary = {name: {"type": "string"} for name in ("asset_id", "name", "os_name", "ecosystem", "priority")}
     image_summary |= {"kev": {"type": "boolean"}, "max_score": {"type": ["integer", "null"]}, "findings": {"type": "integer", "minimum": 0},
                       "unfixed": {"type": "integer", "minimum": 0}, "hosts": {"type": "array", "items": {"type": "string"}},
-                      "fixes": {"type": "array", "maxItems": 8, "items": fix}}
+                      "fixes": {"type": "array", "maxItems": 8, "items": fix}, "ticket": {**link, "type": ["object", "null"]}}
     containers_result = {name: {"type": "integer", "minimum": 0} for name in ("images", "containers", "new", "stopped", "refused")}
     containers_result["complete"] = {"type": "boolean"}
     for name, fields in (("ApplicationCoverage", coverage_fields), ("SummaryAction", action_fields), ("FleetSummary", summary_fields),

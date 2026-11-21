@@ -67,8 +67,14 @@ export interface Finding {
   resolved_at: string | null;
   /** Deadline from the SLA in force when it was first detected (ISO date); null once resolved or accepted. */
   due: string | null;
+  /** Drawer only: the tracker ticket its fix is in (DECISIONS 150). */
+  ticket?: TicketLink | null;
 }
+/** A ticket in the org's Jira or GitLab; the link is built by the server from the site URL. */
+export interface TicketLink { key: string; url: string; state: "open" | "closed"; project: string }
 export interface Action {
+  /** One ticket per team behind this fix, where they reached the tracker. */
+  tickets?: TicketLink[];
   /** fixed_version is null for a setting, which `summary` then describes. */
   ecosystem: string; package: string; fixed_version: string | null; hosts: string[]; asset_ids: string[]; vulns: string[];
   kev: boolean; max_score: number; summary: string | null;
@@ -85,6 +91,7 @@ export interface Action {
 export interface ImageToRebuild {
   asset_id: string; name: string; os_name: string; ecosystem: string; kev: boolean; max_score: number | null; findings: number;
   priority: Priority; hosts: string[]; fixes: { package: string; fixed_version: string; vulns: number }[]; unfixed: number;
+  ticket?: TicketLink | null;
 }
 export interface Summary {
   assets: number; open_by_priority: Partial<Record<Priority, number>>; top_actions: Action[]; attention: Job[];
@@ -186,6 +193,19 @@ export interface SsoSettings {
 export interface NotifySettings {
   webhook_set: boolean; webhook_host: string | null; webhook_format: "slack" | "json"; emails: string[]; emails_confirmed: string[]; email_available: boolean;
   last_delivery_failed: boolean; weekly_summary?: boolean; recent: { ts: string; kind: string; channel: string; urgent: boolean; ok: boolean; error: string | null }[];
+}
+/** Settings → Ticketing (DECISIONS 150-153). The token is never returned: token_set says whether one is saved. */
+export interface TicketSettings {
+  kind: "jira" | "gitlab"; site: string; user: string; token_set: boolean; default_project: string;
+  routes: { owner: string; project: string }[]; min_priority: Priority; enabled: boolean; public_url: boolean;
+  last_sync: { at: string; opened?: number; updated?: number; closed?: number; reopened?: number; failed?: number; waiting?: number;
+    errors?: { ticket: string | null; title?: string; error: string }[]; error?: string } | null;
+  open_by_project: Record<string, number>; closed: number; owners: string[];
+  failing: { key: string | null; project: string; title: string; error: string }[];
+}
+export interface TicketPreview {
+  open: { project: string; title: string; priority: Priority }[]; update: number; close: number; reopen: number;
+  tickets: number; findings: number; skipped: { owner: string | null; findings: number }[];
 }
 export const settingsQ = queryOptions({ queryKey: ["settings"], queryFn: () => api<Settings>("/api/settings") });
 

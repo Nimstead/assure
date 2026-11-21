@@ -5323,6 +5323,33 @@
               "null"
             ]
           },
+          "tickets": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "project": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "key",
+                "url",
+                "state",
+                "project"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
           "vulns": {
             "items": {
               "type": "string"
@@ -5345,6 +5372,7 @@
           "person_only",
           "forward_only",
           "max_score",
+          "tickets",
           "job",
           "last_attempt"
         ],
@@ -5412,6 +5440,33 @@
           "priority": {
             "type": "string"
           },
+          "ticket": {
+            "additionalProperties": false,
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "project": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "key",
+              "url",
+              "state",
+              "project"
+            ],
+            "type": [
+              "object",
+              "null"
+            ]
+          },
           "unfixed": {
             "minimum": 0,
             "type": "integer"
@@ -5428,7 +5483,8 @@
           "findings",
           "unfixed",
           "hosts",
-          "fixes"
+          "fixes",
+          "ticket"
         ],
         "type": "object"
       },

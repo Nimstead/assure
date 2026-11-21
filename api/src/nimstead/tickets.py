@@ -30,7 +30,7 @@ from nimstead.versions import comparator_for
 log = logging.getLogger(__name__)
 
 PRIORITIES = ("fix-now", "next", "planned", "low")
-LABEL = {"fix-now": "Fix now", "next": "Next", "planned": "Planned", "low": "Low"}
+LABEL = {"fix-now": "Fix now", "next": "Next", "planned": "Routine", "low": "Low"}  # as the UI names them (DECISIONS 49)
 MAX_WRITES = 100  # ticket changes per org per sync, most urgent first; the rest wait for the next run (DECISIONS 152)
 MAX_CHECKS = 200  # open tickets whose tracker state is read per sync, least recently checked first
 STALE_CLAIM = timedelta(minutes=15)  # a sync that claimed the org longer ago than this died; the next one may run

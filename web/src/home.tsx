@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, CheckCircle2, TriangleAlert } from "lucide-react";
 import { api, assetsQ, dependenciesNeeded, filtersToApi, coverageQ, settingsQ, filtersToSearch, jobAnchor, JOB_STATUS_LABEL, parseFilters, plural, PRIORITIES, PRIORITY_LABEL, priorityOf, summaryQ, useTitle, type Action, type ImageToRebuild } from "./lib";
 import { PlanFixButton } from "./planfix";
+import { TicketLinks } from "./tickets";
 import { ActionRow, btnQuiet, ErrorState, KevBadge, Loading, PriorityPill, StatusPill } from "./ui";
 import clsx from "clsx";
 import { Fragment, lazy, Suspense, useState } from "react";
@@ -138,6 +139,7 @@ export function RebuildImages({ images }: { images: ImageToRebuild[] }) {
               <p className="mt-1 text-sm text-muted">{plural(i.findings, "finding")}{i.hosts.length ? <> on {plural(i.hosts.length, "machine")}<span className="hidden md:inline">: {i.hosts.slice(0, 3).join(", ")}{i.hosts.length > 3 && ` and ${i.hosts.length - 3} more`}</span></> : null}</p>
               {i.fixes.length > 0 && <p className="mt-1 max-w-prose break-words text-sm">Bring {i.fixes.slice(0, 3).map((f, n) => <Fragment key={f.package}>{n > 0 && (n === Math.min(3, i.fixes.length) - 1 ? " and " : ", ")}<strong className="font-semibold">{f.package}</strong> to <code className="text-mono whitespace-nowrap bg-sunken px-1 font-mono">{f.fixed_version}</code></Fragment>)}{i.fixes.length > 3 && `, plus ${plural(i.fixes.length - 3, "more package")}`}.</p>}
               {i.unfixed > 0 && <p className="mt-1 text-sm text-muted">{plural(i.unfixed, "finding")} with no fix published yet.</p>}
+              <TicketLinks tickets={i.ticket ? [i.ticket] : null} />
             </div>
             <ActionRow links={[
               <Link key="image" to="/assets" search={{ view: "containers", image: i.asset_id }} className="inline-flex min-h-[44px] items-center gap-1.5 text-sm font-medium text-accent underline md:min-h-9">
@@ -195,6 +197,7 @@ export function ActionCard({ a }: { a: Action }) {
         {a.plannable
           ? (a.person_only || a.forward_only) && <p className="mt-1 text-sm text-muted">{a.person_only && "A person approves this one, never the trust ladder."}{a.forward_only && " It can't be undone."}</p>
           : <p className="mt-1 text-sm text-muted">Nimstead can't plan this one: update it with its own updater or by policy.</p>}
+        <TicketLinks tickets={a.tickets} />
       </div>
       <ActionRow
         primary={a.plannable && free.length > 0 && !needsMore ? (

@@ -10,6 +10,7 @@ import {
   PRIORITIES, PRIORITY_LABEL, refresh, relativeTime, parseUtc, useIsAdmin, useTitle, whyMatched, fixLabel, type AiFilter, type Finding, type FindingGroup, type FindingGroupRow, type FindingSort, type FindingsFilters, type Job, type RawSearch, type Status,
 } from "./lib";
 import { PlanFixButton } from "./planfix";
+import { TicketLinks } from "./tickets";
 import { Alert, btnPrimary, btnQuiet, chip, ConfirmDialog, Done, EmptyState, ErrorState, Field, input, KevBadge, Loading, PriorityPill, StatusPill, useReturnFocus } from "./ui";
 
 /** "org.apache.logging.log4j:log4j-core" → "log4j-core" then the group, muted: the part that tells packages apart comes
@@ -554,6 +555,7 @@ export function FindingDetail({ f }: { f: Finding }) {
       {f.fixed_version && (f.package_fix && f.package_fix.open > 1
         ? <p className="mt-2 text-sm text-muted">Fix: upgrade {f.package} to {f.package_fix.version} or later. That clears all {f.package_fix.open} open findings for {f.package} on this host; {f.fixed_version} fixes only this one.</p>
         : <p className="mt-2 text-sm text-muted">Fix: upgrade {f.package} to {f.fixed_version} or later.</p>)}
+      <TicketLinks tickets={f.ticket ? [f.ticket] : null} className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted" />
       {f.rule_evidence && <p className="mt-2 text-sm text-muted">{RULE_EVIDENCE[f.rule_evidence]}</p>}
 
       <H>Why it's ranked here</H>

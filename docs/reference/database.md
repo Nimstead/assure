@@ -56,6 +56,8 @@ The model does not make the evidence ledger immutable. The unique `(org_id, seq)
 | `PendingSignup` | Hashed signup, invite, or reset link. No requester-chosen password is stored here |
 | `PendingLogin` | SSO state, expiry, and nonce/PKCE flow data |
 | `Notification` | Delivery attempt, channel, result, retry state, and retained message |
+| `TicketSettings` | One per organisation: the tracker (Jira or GitLab), its site, account email and sealed token, team routes, the default project, the priority threshold, the on switch, the sync claim and what the last sync did. See [tickets](tickets.md) |
+| `Ticket` | One per organisation and fingerprint (project, owner, fix): the tracker key, the state Nimstead last set, the title and description digest last written, the machines last listed (so the next sync can say why each left), and the last error. Written before the tracker is called; a key of `null` means not created yet |
 
 Installed-package, neighbour, finding, scan-record, and remediation-job foreign keys request cascade deletion with their asset. Other relationships have their own declarations. Do not assume every organisation or user deletion cascades through all records.
 

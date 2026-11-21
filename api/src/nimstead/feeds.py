@@ -31,6 +31,7 @@ from nimstead import (
     office,
     oui,
     progress,
+    tickets,
     updates,
     winapps,
     windrivers,
@@ -640,6 +641,7 @@ def update_all(session: Session, client=None) -> dict:
     out["alerts_retried"] = guarded("alert retries", lambda: notify.retry_failed(session))
     out["hosts_not_reporting_alerted"] = guarded("not-reporting alerts", lambda: notify.alert_silent_hosts(session))
     out["weekly_summaries"] = guarded("weekly summaries", lambda: progress.send_weekly_summaries(session))
+    out["tickets"] = guarded("tickets", lambda: tickets.sync_all(session))  # after the re-match: a fix verified this hour closes its ticket
     try:  # a release-check problem must never stop the feed update
         out["platform"] = updates.check(session)
     except Exception as e:

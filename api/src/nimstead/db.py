@@ -396,3 +396,43 @@ class Notification(Base):
     text: Mapped[str] = mapped_column(String(2000), default="")  # kept so a failed delivery can be retried
     attempt: Mapped[int] = mapped_column(Integer, default=1)
     retried: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class TicketSettings(Base):
+    """The org's issue tracker (DECISIONS 150): where tickets go, which findings become tickets, and the last sync."""
+
+    __tablename__ = "ticket_settings"
+    org_id: Mapped[str] = mapped_column(ForeignKey("org.id"), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(10), default="jira")  # jira | gitlab
+    site: Mapped[str] = mapped_column(String(500), default="")  # https://example.atlassian.net, https://gitlab.example.com
+    user: Mapped[str] = mapped_column(String(320), default="")  # Jira Cloud account email; "" = the token is a bearer token
+    token: Mapped[str | None] = mapped_column(String(2000))  # sealed (sso.seal); never returned
+    default_project: Mapped[str] = mapped_column(String(255), default="")  # "" = findings of unrouted owners aren't sent
+    routes: Mapped[list] = mapped_column(default=list)  # [{"owner": "Payments", "project": "PAY"}]
+    min_priority: Mapped[str] = mapped_column(String(20), default="fix-now")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)  # nothing is written to the tracker until it's on
+    sync_started: Mapped[datetime | None]  # claimed under this row's lock: one sync per org at a time
+    last_sync: Mapped[dict | None]  # what the last sync did, for Settings
+
+
+class Ticket(Base):
+    """One tracker issue per (project, owner, fix) (DECISIONS 150), with what was last written to it, so the next sync can
+    say which machines left and why. The row is written before the tracker is called; key None = not created yet."""
+
+    __tablename__ = "ticket"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    org_id: Mapped[str] = mapped_column(ForeignKey("org.id"), index=True)
+    fingerprint: Mapped[str] = mapped_column(String(12))  # also the tracker label nimstead-<fingerprint>
+    owner: Mapped[str | None] = mapped_column(String(100))
+    action: Mapped[dict]  # {"kind": "package", "ecosystem", "package"} | {"kind": "image", "asset_id"}
+    project: Mapped[str] = mapped_column(String(255))
+    key: Mapped[str | None] = mapped_column(String(100))  # PAY-12 | the GitLab issue's iid
+    state: Mapped[str] = mapped_column(String(10), default="open")  # open | closed, as Nimstead last set it
+    title: Mapped[str] = mapped_column(String(300), default="")
+    body_sha: Mapped[str] = mapped_column(String(64), default="")
+    machines: Mapped[dict] = mapped_column(default=dict)  # {asset_id: [hostname, installed version]} as last written
+    opened_at: Mapped[datetime] = mapped_column(default=now)
+    closed_at: Mapped[datetime | None]
+    checked_at: Mapped[datetime | None]  # when the tracker's own state was last read
+    error: Mapped[str | None] = mapped_column(String(500))  # the last failure, in the tracker's words
+    __table_args__ = (UniqueConstraint("org_id", "fingerprint"),)

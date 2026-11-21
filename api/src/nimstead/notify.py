@@ -277,7 +277,7 @@ def _deliver(bind, org_id: str, kind: str, text: str, urgent: bool, targets: lis
 
 
 def _send_webhook(url: str, fmt: str, kind: str, text: str, urgent: bool) -> None:
-    check_public_url(url)
+    check_public_url(url, named_ok=True)
     msg = f"URGENT: {text}" if urgent else text
     if fmt == "slack":  # agent-supplied text (hostnames, job errors) must not become links or @channel mentions
         msg = msg.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")

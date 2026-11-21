@@ -299,9 +299,10 @@ def both_runtimes():
                 ("podman", "ps"): (0, POD1 + "\n", ""), ("podman", "inspect"): (0, PODMAN_INSPECT, "")})
 
 
-def report(q, which=lambda n: n in ("docker", "podman"), **kw):
+def report(q, which=lambda n, path=None: n in ("docker", "podman", "containerd", "crio"), **kw):  # no crictl: a Docker/Podman host
     kw.setdefault("root_of", lambda pid, own, cid: FakeRoot(pid))
     kw.setdefault("read", lambda root: image_of(root.pid))
+    kw.setdefault("read_apps", lambda root, budget: ([], {}))  # applications inside images: test_agent_workloads.py
     return agent.containers(q, which, euid=0, **kw)
 
 
@@ -353,15 +354,16 @@ def test_budgets_end_the_pass_early_and_say_so(monkeypatch):
     assert body["complete"] is False and "2 more containers than one report reads (2)" in body["error"]
 
 
-def test_not_root_no_runtime_and_kubernetes_are_said():
+def test_not_root_no_runtime_and_a_failing_crictl_are_said():
     body = agent.containers(cli({}), lambda n: None, euid=1000)
     assert body["complete"] is False and body["line"]["state"] == "failed" and "isn't running as root" in body["error"]
     body = agent.containers(cli({}), lambda n, path=None: None, euid=0)
-    assert body == {"v": 1, "complete": True, "runtimes": {}, "listed": {"docker": [], "podman": []}, "images": [], "error": None,
-                    "line": {"state": "ok", "count": 0}}  # installed nowhere: nothing runs in them
-    body = agent.containers(cli({}), lambda n, path=None: n == "crictl", euid=0)
-    assert body["complete"] is True and body["line"]["state"] == "failed"  # no Docker or Podman containers, but CRI's aren't read
-    assert body["error"] == "crictl: Kubernetes (CRI) containers aren't read yet"
+    assert body == {"v": 1, "complete": True, "runtimes": {}, "listed": {"docker": [], "podman": [], "containerd": [], "cri-o": []},
+                    "images": [], "error": None, "line": {"state": "ok", "count": 0}}  # installed nowhere: nothing runs in them
+    failing = cli({("crictl", "version"): (1, "", 'level=fatal msg="connect: no such file"\n')})
+    body = agent.containers(failing, lambda n, path=None: n == "crictl", euid=0)
+    assert body["complete"] is False and body["line"]["state"] == "failed"  # Kubernetes nodes are read since 0.9.0 (DECISIONS 158)
+    assert body["error"] == 'crictl: crictl version exited 1: level=fatal msg="connect: no such file"'
 
 
 @POSIX
@@ -385,7 +387,9 @@ def test_enrol_records_the_local_opt_out(monkeypatch, tmp_path):
     agent._main(["enroll", "--server", "https://s", "--no-containers"])
     assert saved["containers"] is False
     agent._main(["enroll", "--server", "https://s"])
-    assert saved["containers"] is True
+    assert saved["containers"] is True and saved["container_apps"] is True
+    agent._main(["enroll", "--server", "https://s", "--no-container-apps"])
+    assert saved["containers"] is True and saved["container_apps"] is False
 
 
 # ---- security and code review (DECISIONS 143) ------------------------------------------------------------------------

@@ -436,6 +436,97 @@ class ContainerRoot:
         finally:
             os.close(fd)
 
+    # The walk (DECISIONS 155): folders are opened one at a time from their parent's descriptor, so nothing is ever
+    # resolved by path again; a link is never followed and another mount (a volume, a pod's secrets) is never entered.
+    def open_file(self, dirfd, name, limit=None):
+        """A read-only descriptor for the regular file `name` in the folder dirfd (from walk), or None when it is anything
+        else (a link, FIFO, device, folder, or gone). ContainerReadError when it is larger than limit. The caller closes it."""
+        try:
+            pfd = os.open(name, os.O_PATH | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=dirfd)
+        except OSError:
+            return None
+        try:
+            st = os.fstat(pfd)
+            if not stat.S_ISREG(st.st_mode):
+                return None
+            if limit is not None and st.st_size > limit:
+                raise ContainerReadError(f"{name}: larger than {limit // (1024 * 1024)} MB")
+            return os.open(f"/proc/self/fd/{pfd}", os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)  # the inode just checked
+        except OSError:
+            return None
+        finally:
+            os.close(pfd)
+
+    def _subdir(self, dirfd, name):
+        """An O_PATH descriptor for the folder `name` in dirfd, or None for a link, anything but a folder, or another mount."""
+        try:
+            fd = os.open(name, os.O_PATH | os.O_NOFOLLOW | os.O_DIRECTORY | os.O_CLOEXEC, dir_fd=dirfd)
+        except OSError:
+            return None
+        if stat.S_ISDIR(os.fstat(fd).st_mode) and _mount_id(fd) == self.mount:
+            return fd
+        os.close(fd)
+        return None
+
+    @staticmethod
+    def _entries(fd, budget):
+        """(folder names, other names) in the folder fd, each entry charged to the budget; ([], []) if it can't be listed."""
+        try:
+            rfd = os.open(f"/proc/self/fd/{fd}", os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+        except OSError:
+            budget.unread += 1
+            return [], []
+        dirs, files = [], []
+        try:
+            with os.scandir(rfd) as it:
+                for e in it:
+                    if budget.spent():
+                        break
+                    try:
+                        (dirs if e.is_dir(follow_symlinks=False) else files).append(e.name)
+                    except OSError:
+                        files.append(e.name)
+        except OSError:
+            budget.unread += 1
+        finally:
+            os.close(rfd)
+        return sorted(dirs, reverse=True), sorted(files)  # folders are popped from the end: ascending
+
+    def walk(self, budget, depth=None):
+        """Yield (path, dirfd, names) for each folder of the root, top down, where names are its entries that aren't
+        folders (open them with open_file, never by path) and dirfd is an O_PATH descriptor valid until the next step.
+
+        `budget` is a _Budget with `deep` and `unread` counters: it stops the walk when spent; folders below `depth`
+        levels (CONTAINER_WALK_DEPTH) are counted in `deep`, unlistable ones in `unread`. At most depth + 1 descriptors
+        are open at once, however wide a folder is."""
+        depth = CONTAINER_WALK_DEPTH if depth is None else depth
+        stack, fd, path, level = [], os.dup(self.fd), "", 0
+        try:
+            while True:
+                if fd is not None:
+                    dirs, files = self._entries(fd, budget)
+                    stack.append((path, fd, level, dirs))
+                    fd = None
+                    yield path or "/", stack[-1][1], files
+                    if budget.stopped:
+                        return
+                if not stack:
+                    return
+                top_path, top_fd, top_level, todo = stack[-1]
+                if not todo:
+                    os.close(top_fd)
+                    stack.pop()
+                elif top_level >= depth:
+                    budget.deep += len(todo)
+                    todo.clear()
+                else:
+                    name = todo.pop()
+                    fd = self._subdir(top_fd, name)
+                    path, level = f"{top_path}/{name}", top_level + 1
+        finally:
+            for frame in stack:
+                os.close(frame[1])
+
 
 def parse_dpkg_status(text, require_status=True):
     """Return package dictionaries from a dpkg status file (or a distroless status.d entry) in parse_dpkg's form.
@@ -622,6 +713,304 @@ def read_container(root):
             "packages": pkgs}
 
 
+# ---- applications inside containers (DECISIONS 155-157) ---------------------------------------------------------
+# What an image's build added outside its package manager: Python, npm and Java metadata read by the host scans' own rules
+# (DECISIONS 92, plan T35), and Go binaries' build information. One walk of the root, every byte treated as hostile.
+
+CONTAINER_WALK_ENTRIES = 200_000  # entries one image's walk visits; a node image with a big node_modules has ~100,000
+CONTAINER_WALK_SECONDS = 60       # one image's walk, inside the pass's CONTAINER_SECONDS
+CONTAINER_WALK_DEPTH = 48         # folder levels read; npm's deepest real trees are about 20
+CONTAINER_APPS_MAX = 20_000       # application packages one image carries, as the host scans
+CONTAINER_JAR_MAX = 512 * 1024 * 1024  # a jar is read through its central directory, never whole
+ZIP_MAX_DIRECTORY = 8 * 1024 * 1024    # zipfile parses the central directory into memory whole; a crafted one could take gigabytes
+GO_BUILDINFO_MAX = 64 * 1024
+GO_MAGIC = b"\xff Go buildinf:"
+APP_LINES = {"PyPI": "python_packages", "npm": "npm_packages", "Maven": "java_archives", "Go": "go_modules"}
+_NOT_BINARY = (".py", ".pyc", ".pyi", ".js", ".mjs", ".cjs", ".ts", ".map", ".json", ".md", ".txt", ".html", ".css", ".h",
+               ".c", ".png", ".svg", ".gz", ".jar", ".war", ".ear", ".class", ".xml", ".yml", ".yaml", ".sh", ".pem", ".conf")
+_GO_PATH = re.compile(r"[A-Za-z0-9][A-Za-z0-9._~/+-]{0,254}")
+_GO_TOOLCHAIN = re.compile(r"go(\d+)\.(\d+)(?:\.(\d+))?(?:(rc|beta)(\d+))?(?:\s|$)")
+GO_RPM_TREES = re.compile(r"/usr/(?:s?bin|libexec)/")  # rpm's file lists live in header blobs: as RPM_TREES, its usual places
+
+
+def _uvarint(b, i):
+    """Go's unsigned varint at b[i:]: (value, index after it). ValueError past the end or past 64 bits."""
+    x = shift = 0
+    while i < len(b) and shift < 64:
+        c = b[i]
+        i += 1
+        x |= (c & 0x7F) << shift
+        if c < 0x80:
+            return x, i
+        shift += 7
+    raise ValueError("bad varint")
+
+
+def parse_go_buildinfo(data):
+    """(stdlib version or None, [(module path, version)]) from the bytes of a Go binary's .go.buildinfo section, as
+    debug/buildinfo reads it: Go 1.18+'s inline format only (an older binary's pointer format is None). The main module
+    counts when it carries a version; `=>` replaces the module before it (a local path, with no version, drops it).
+    Versions lose their leading v, as OSV writes Go versions; "(devel)" is dropped. No I/O."""
+    if len(data) < 32 or not data.startswith(GO_MAGIC) or not data[15] & 2:
+        return None
+    try:
+        n, i = _uvarint(data, 32)
+        ver, i = data[i:i + n], i + n
+        m, j = _uvarint(data, i)
+        mod = data[j:j + m]
+    except ValueError:
+        return None
+    if len(ver) != n or len(mod) != m:
+        return None
+    ver, mod = ver.decode("utf-8", "replace"), mod.decode("utf-8", "replace")
+    mod = mod[16:-16] if len(mod) >= 33 and mod[-17] == "\n" else ""  # framed by 16-byte sentinels
+    mods = []
+    for ln in mod.split("\n"):
+        f = ln.split("\t")
+        if f[0] in ("mod", "dep") and len(f) >= 3:
+            mods.append([f[0], f[1], f[2]])
+        elif f[0] == "=>" and mods:
+            if len(f) >= 3 and f[2]:
+                mods[-1][1:] = [f[1], f[2]]
+            else:
+                mods.pop()
+    out = []
+    for _, path, v in mods:
+        v = v.removeprefix("v")
+        if v != "(devel)" and _GO_PATH.fullmatch(path) and len(v) <= 100 and SAFE_VERSION.match(v):
+            out.append((path, v))
+    t = _GO_TOOLCHAIN.match(ver)
+    stdlib = f"{t[1]}.{t[2]}.{t[3] or 0}" + (f"-{t[4]}.{t[5]}" if t and t[4] else "") if t else None
+    return stdlib, out
+
+
+def go_buildinfo_section(f, size):
+    """The first GO_BUILDINFO_MAX bytes of an ELF file's .go.buildinfo section, or None (not ELF, no such section, or
+    headers that don't fit the file). f is a binary file object; every offset is checked against size."""
+    head = f.read(64)
+    if len(head) < 52 or head[:4] != b"\x7fELF" or head[4] not in (1, 2) or head[5] not in (1, 2):
+        return None
+    end = "little" if head[5] == 1 else "big"
+
+    def u(b):
+        return int.from_bytes(b, end)
+    if head[4] == 2:
+        if len(head) < 64:
+            return None
+        shoff, shentsize, shnum, shstrndx, ent = u(head[0x28:0x30]), u(head[0x3A:0x3C]), u(head[0x3C:0x3E]), u(head[0x3E:0x40]), 64
+    else:
+        shoff, shentsize, shnum, shstrndx, ent = u(head[0x20:0x24]), u(head[0x2E:0x30]), u(head[0x30:0x32]), u(head[0x32:0x34]), 40
+    if shentsize != ent or not 0 < shnum <= 4096 or shstrndx >= shnum or shoff + shnum * ent > size:
+        return None
+    f.seek(shoff)
+    table = f.read(shnum * ent)
+
+    def section(k):  # (name offset, file offset, size)
+        e = table[k * ent:(k + 1) * ent]
+        return (u(e[0:4]), u(e[0x18:0x20]), u(e[0x20:0x28])) if ent == 64 else (u(e[0:4]), u(e[0x10:0x14]), u(e[0x14:0x18]))
+    _, stroff, strsize = section(shstrndx)
+    if stroff + min(strsize, 65536) > size:
+        return None
+    f.seek(stroff)
+    names = f.read(min(strsize, 65536))
+    for k in range(shnum):
+        name, off, sz = section(k)
+        if names[name:name + 14] == b".go.buildinfo\0" and off + 32 <= size:
+            f.seek(off)
+            return f.read(min(sz, GO_BUILDINFO_MAX))
+    return None
+
+
+def _zip_too_big(f, size):
+    """Whether a zip's central directory is larger than ZIP_MAX_DIRECTORY (zipfile reads and parses it whole). False when
+    no end record is found: zipfile then refuses the file itself."""
+    tail = min(size, 65536 + 22)
+    f.seek(size - tail)
+    data = f.read(tail)
+    f.seek(0)
+    i = data.rfind(b"PK\x05\x06")
+    if i < 0 or i + 22 > len(data):
+        return False
+    cd = int.from_bytes(data[i + 12:i + 16], "little")
+    j = i - 20
+    if cd == 0xFFFFFFFF and j >= 0 and data[j:j + 4] == b"PK\x06\x07":  # zip64: its locator names the zip64 end record
+        off = int.from_bytes(data[j + 8:j + 16], "little")
+        if off + 56 > size:
+            return True
+        f.seek(off)
+        rec = f.read(56)
+        f.seek(0)
+        cd = int.from_bytes(rec[40:48], "little") if rec[:4] == b"PK\x06\x06" else cd
+    return cd > ZIP_MAX_DIRECTORY
+
+
+def container_owned(root):
+    """(owned(path), problem or None): whether a path in the image was installed by its own package manager, which its
+    OS package list already judges (DECISIONS 156). apk's F:/R: lines, else dpkg's info/*.list files, else for rpm (whose
+    lists live in header blobs) its usual trees. /bin, /sbin and /lib paths count under /usr too (merged /usr)."""
+    owned, rpm = set(), False
+
+    def add(p):
+        owned.add(p)
+        if p.startswith(("/bin/", "/sbin/", "/lib/", "/lib32/", "/lib64/", "/libx32/")):
+            owned.add("/usr" + p)
+    try:
+        if root.exists(APK_DB):
+            d = ""
+            for ln in root.read(APK_DB).decode("utf-8", "replace").splitlines():
+                if ln.startswith("F:"):
+                    d = "/" + ln[2:].strip()
+                    add(d)
+                elif ln.startswith("R:"):
+                    add(f"{d}/{ln[2:].strip()}")
+        elif root.exists(DPKG_INFO):
+            total = 0
+            for n in root.listdir(DPKG_INFO):
+                if n.endswith(".list"):
+                    data = root.read(f"{DPKG_INFO}/{n}")
+                    total += len(data)
+                    if total > CONTAINER_READ_MAX:
+                        raise ContainerReadError(f"{DPKG_INFO}: larger than {CONTAINER_READ_MAX // (1024 * 1024)} MB in all")
+                    for ln in data.decode("utf-8", "replace").splitlines():
+                        add(ln)
+        else:
+            rpm = any(root.exists(p) for p in (*RPM_SQLITE, *RPM_UNREAD))
+    except (OSError, ContainerReadError) as e:  # without the list, the base image's packages would be judged twice: say so
+        problem = f"the package manager's file list couldn't be read: {e if isinstance(e, ContainerReadError) else e.strerror or e}"
+        return (lambda p: p in owned or p + "/package.json" in owned), problem
+    if rpm:
+        return (lambda p: bool(RPM_TREES.match(p + "/") or GO_RPM_TREES.match(p))), None
+    return (lambda p: p in owned or p + "/package.json" in owned), None
+
+
+def _read_head(fd, n):
+    """Up to n bytes from the start of a descriptor, which is closed."""
+    try:
+        chunks, size = [], 0
+        while size < n:
+            b = os.read(fd, min(1 << 20, n - size))
+            if not b:
+                break
+            chunks.append(b)
+            size += len(b)
+        return b"".join(chunks)
+    finally:
+        os.close(fd)
+
+
+def _container_jar(root, dfd, name, where, out, budget):
+    """Maven coordinates from one jar/war/ear and one level of jars nested in it; False if it couldn't be read. A FIFO,
+    device or link named like a jar is skipped (None from open_file), so it's True with nothing found."""
+    fd = root.open_file(dfd, name, CONTAINER_JAR_MAX)
+    if fd is None:
+        return True
+    try:
+        with os.fdopen(fd, "rb") as f:
+            if _zip_too_big(f, os.fstat(f.fileno()).st_size):
+                return False
+            with zipfile.ZipFile(f) as z:
+                _poms(z, where, out)
+                for inner in z.infolist():
+                    if inner.filename.lower().endswith(".jar") and inner.file_size <= MAX_NESTED and not budget.spent():
+                        data = io.BytesIO(z.read(inner))
+                        if not _zip_too_big(data, len(data.getbuffer())):
+                            with zipfile.ZipFile(data) as zz:
+                                _poms(zz, f"{where}!/{inner.filename}", out)
+        return True
+    except Exception:  # noqa: BLE001 — a crafted archive can raise anything from zipfile or zlib; it's one file unread
+        return False
+
+
+def _container_go(root, dfd, name, where, out):
+    """Go modules and the toolchain (`stdlib`) of one executable; None if it isn't a Go 1.18+ binary we can read, False if
+    it is a Go binary whose build information we can't read (pre-1.18's format)."""
+    fd = root.open_file(dfd, name)
+    if fd is None:
+        return None
+    try:
+        with os.fdopen(fd, "rb") as f:
+            data = go_buildinfo_section(f, os.fstat(f.fileno()).st_size)
+    except Exception:  # noqa: BLE001 — a crafted ELF is one file unread, never the walk
+        return None
+    if data is None:
+        return None
+    got = parse_go_buildinfo(data)
+    if got is None:
+        return False
+    stdlib, mods = got
+    for path, v in [*mods, *([("stdlib", stdlib)] if stdlib else [])]:
+        out[("Go", path, v, where)] = None
+    return True
+
+
+def container_apps(root, budget=None, owned=None):
+    """(application package rows, {collection line name: line}) from one walk of a container root (DECISIONS 155).
+
+    Python: *.dist-info/METADATA and *.egg-info (folder or file) directly in site-packages or dist-packages. npm:
+    node_modules/<name>/package.json and node_modules/@scope/<name>/package.json. Java: every .jar, .war and .ear, with one
+    level of nested jars. Go: every executable ELF file's build information. What the image's package manager installed
+    is left to it and counted as owned (container_owned). Rows are (ecosystem, name, version, source = location), sorted,
+    at most CONTAINER_APPS_MAX; the walk's budget, folders too deep and folders or files that couldn't be read make the
+    lines partial, never silently. Never raises for anything inside the container."""
+    b = budget or _Budget(CONTAINER_WALK_SECONDS, CONTAINER_WALK_ENTRIES)
+    b.deep, b.unread = getattr(b, "deep", 0), getattr(b, "unread", 0)
+    is_owned, problem = owned or container_owned(root)
+    out, unread = {}, dict.fromkeys(APP_LINES, 0)  # (ecosystem, name, version, location) -> None
+
+    def keep(eco, path, got):
+        if got:
+            out[(eco, *got, path)] = None
+        else:
+            unread[eco] += 1
+
+    def text(fd, limit):
+        return _read_head(fd, limit).decode("utf-8", "replace") if fd is not None else ""
+    try:
+        for path, dfd, files in root.walk(b):
+            parts = path.rsplit("/", 3)
+            base, parent, grand = parts[-1], parts[-2] if len(parts) > 1 else "", parts[-3] if len(parts) > 2 else ""
+            if parent in ("site-packages", "dist-packages") and base.endswith((".dist-info", ".egg-info")) and not is_owned(path):
+                meta = "METADATA" if base.endswith(".dist-info") else "PKG-INFO"
+                keep("PyPI", path, parse_dist_meta(text(root.open_file(dfd, meta), MAX_METADATA)) if meta in files else None)
+            if "package.json" in files and not base.startswith((".", "@")) and not is_owned(path) and (
+                    parent == "node_modules" or (parent.startswith("@") and grand == "node_modules")):
+                try:
+                    keep("npm", path, parse_package_json(text(root.open_file(dfd, "package.json", MAX_PACKAGE_JSON), MAX_PACKAGE_JSON + 1)))
+                except ContainerReadError:
+                    unread["npm"] += 1
+            for n in files:
+                where, low = f"{path.rstrip('/')}/{n}", n.lower()
+                if is_owned(where):
+                    continue
+                if base in ("site-packages", "dist-packages") and n.endswith(".egg-info"):
+                    fd = root.open_file(dfd, n)
+                    if fd is not None:  # a link or FIFO named like one isn't a package
+                        keep("PyPI", where, parse_dist_meta(text(fd, MAX_METADATA)))
+                elif low.endswith((".jar", ".war", ".ear")):
+                    jars = {}
+                    if not _container_jar(root, dfd, n, where, jars, b):
+                        unread["Maven"] += 1
+                    out.update(dict.fromkeys(("Maven", *k) for k in jars))
+                elif not low.endswith(_NOT_BINARY):
+                    try:
+                        s = os.stat(n, dir_fd=dfd, follow_symlinks=False)
+                    except OSError:
+                        continue
+                    if stat.S_ISREG(s.st_mode) and s.st_mode & 0o111 and s.st_size >= 1024 and _container_go(root, dfd, n, where, out) is False:
+                        unread["Go"] += 1
+            if len(out) > CONTAINER_APPS_MAX:
+                b.stopped = f"stopped at {CONTAINER_APPS_MAX} packages (budget)"
+                break
+    except (OSError, ContainerReadError) as e:  # the root itself went away mid-walk: what was read stands, partial
+        b.stopped = b.stopped or f"walk stopped: {e if isinstance(e, ContainerReadError) else e.strerror or e}"
+    rows = {(e, n, v, _where(w)): None for e, n, v, w in sorted(out)}
+    rows = [{"ecosystem": e, "name": n, "version": v, "source": w} for e, n, v, w in rows][:CONTAINER_APPS_MAX]
+    said = [*([problem] if problem else []), *([f"{b.deep} folders deeper than {CONTAINER_WALK_DEPTH} levels not read"] if b.deep else []),
+            *([f"{b.unread} folders couldn't be listed"] if b.unread else [])]
+    lines = {line: _app_line(sum(r["ecosystem"] == eco for r in rows), unread[eco], b.stopped, said) for eco, line in APP_LINES.items()}
+    return rows, lines
+
+
 CONTAINER_RUNTIMES = ("docker", "podman")  # each asked through its own CLI, read-only: ps and inspect (DECISIONS 138)
 CONTAINER_RUNTIME_DIRS = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"  # systemd's PATH and snap's: cron's is shorter
 CONTAINER_MAX = 128         # containers read per report; the rest wait for the next one
@@ -677,7 +1066,96 @@ def list_containers(runtime, query=_query):
     return found, "; ".join(problems)[:300] or None, whole
 
 
-def containers(query=_query, which=shutil.which, root_of=ContainerRoot.of_pid, read=read_container, clock=time.monotonic, euid=None):
+# Kubernetes nodes (DECISIONS 158): the node's own crictl, through its own configured endpoint, read-only (version, ps,
+# inspect, images); never a socket of ours and never the Kubernetes API.
+CRI_RUNTIMES = {"containerd": "containerd", "cri-o": "crio"}  # crictl's RuntimeName -> its daemon, for "installed nowhere"
+CRI_INSPECT_MAX = 512  # containers described per report: CRI-O's inspect is ~30 KB each, and a node runs 110 pods by default
+_DIGEST = re.compile(r"^(?:sha256:)?([0-9a-f]{64})\Z")
+
+
+def _json_values(text):
+    """Every JSON value in text, one after another (crictl prints one object per container), lists flattened."""
+    dec, i, out = json.JSONDecoder(), 0, []
+    text = text.strip()
+    while i < len(text):
+        v, i = dec.raw_decode(text, i)
+        out += v if isinstance(v, list) else [v]
+        while i < len(text) and text[i].isspace():
+            i += 1
+    return out
+
+
+def _failed(what, rc, err):
+    return f"crictl {what} " + ("couldn't run" if rc is None else f"exited {rc}") + (f": {_last_line(err)}" if err.strip() else "")
+
+
+def list_cri(query=_query):
+    """(runtime, running containers, problem or None, every running container's id or None) from the node's crictl.
+
+    The runtime is crictl's RuntimeName (containerd or cri-o; anything else, such as cri-dockerd's Docker, is read through
+    its own CLI or not at all). Each container's image id is the image config's digest, as Docker and Podman report it:
+    crictl names the image by tag and registry digest, so one `crictl images` maps those to it. The name is
+    namespace/pod/container from the kubelet's labels. The id list is the whole listing, as list_containers'."""
+    rc, out, err = query(["crictl", "version"], timeout=60)
+    m = re.search(r"^RuntimeName:\s*(\S+)", out or "", re.M)
+    if rc != 0 or not m:
+        return None, [], _failed("version", rc, err) if rc != 0 else "crictl version: no runtime name", None
+    runtime = m[1].lower()
+    if runtime not in CRI_RUNTIMES:
+        return None, [], f"crictl talks to {runtime[:40]}, whose containers aren't read through crictl", None
+    rc, out, err = query(["crictl", "ps", "-q", "--state", "running"], timeout=60)
+    if rc != 0:
+        return runtime, [], _failed("ps", rc, err), None
+    listed = [x.strip() for x in out.splitlines() if x.strip()]
+    ids = [x for x in listed if _CONTAINER_ID.match(x)]
+    problems = [f"{len(listed) - len(ids)} unreadable container ids"] if len(ids) != len(listed) else []
+    whole = ids if not problems and len(ids) <= CONTAINER_LISTED_MAX else None
+    if not ids:
+        return runtime, [], "; ".join(problems) or None, whole
+    if len(ids) > CRI_INSPECT_MAX:
+        problems.append(f"{len(ids) - CRI_INSPECT_MAX} more containers than one report describes ({CRI_INSPECT_MAX})")
+    rc, out, err = query(["crictl", "inspect", "-o", "json", *ids[:CRI_INSPECT_MAX]], timeout=120)
+    irc, iout, ierr = query(["crictl", "images", "-o", "json"], timeout=60)
+    try:
+        items = _json_values(out)
+        imgs = (_json_values(iout) or [{}])[0].get("images") or [] if irc == 0 else []
+    except (ValueError, AttributeError):
+        return runtime, [], "crictl: unreadable output", whole
+    by_name = {}
+    for im in imgs if isinstance(imgs, list) else []:
+        d = _DIGEST.match(str(im.get("id") or "")) if isinstance(im, dict) else None
+        if d:
+            for n in [*(im.get("repoTags") or []), *(im.get("repoDigests") or [])]:
+                by_name.setdefault(str(n), "sha256:" + d[1])
+    found = []
+    for it in items:
+        st = it.get("status") if isinstance(it, dict) and isinstance(it.get("status"), dict) else {}
+        if st.get("state") != "CONTAINER_RUNNING":  # stopped since ps: not running, so not a problem
+            continue
+        info = it.get("info") if isinstance(it.get("info"), dict) else {}
+        spec = st.get("image") if isinstance(st.get("image"), dict) else {}
+        labels = st.get("labels") if isinstance(st.get("labels"), dict) else {}
+        cid, pid = st.get("id"), info.get("pid")
+        image_id = None
+        for c in (st.get("imageId"), spec.get("image"), st.get("imageRef")):
+            d = _DIGEST.match(str(c or ""))
+            image_id = image_id or ("sha256:" + d[1] if d else by_name.get(str(c or "")))
+        if not (isinstance(cid, str) and _CONTAINER_ID.match(cid) and type(pid) is int and pid > 0 and image_id):
+            problems.append("crictl described a container without its id, PID or image")
+            continue
+        k8s = [str(labels.get(f"io.kubernetes.{k}") or "") for k in ("pod.namespace", "pod.name", "container.name")]
+        name = "/".join(k8s) if all(k8s) else str((st.get("metadata") or {}).get("name") or "")
+        ref = spec.get("userSpecifiedImage") or ("" if _DIGEST.match(str(spec.get("image") or "")) else spec.get("image")) or st.get("imageRef")
+        found.append({"id": cid, "name": name[:255], "runtime": runtime, "pid": pid, "image_id": image_id, "ref": str(ref or "")[:255]})
+    if rc != 0 and not found:
+        problems.append(_failed("inspect", rc, err))
+    if irc != 0:
+        problems.append(_failed("images", irc, ierr))
+    return runtime, found, "; ".join(problems)[:300] or None, whole
+
+
+def containers(query=_query, which=shutil.which, root_of=ContainerRoot.of_pid, read=read_container, clock=time.monotonic, euid=None,
+               apps=True, read_apps=container_apps):
     """The body for POST /api/agent/containers: each running container's image and what is installed in it.
 
     Containers of one image with the same contents are read and sent once, listed together. `listed` carries each runtime's
@@ -702,8 +1180,15 @@ def containers(query=_query, which=shutil.which, root_of=ContainerRoot.of_pid, r
         elif not which(rt, path=CONTAINER_RUNTIME_DIRS):  # not installed at all: the containers it ran have stopped
             whole[rt] = []
     if which("crictl"):
-        runtimes["crictl"] = {"state": "off", "count": 0, "error": "Kubernetes (CRI) containers aren't read yet"}
-    complete = all(r["state"] == "ok" for name, r in runtimes.items() if name != "crictl")
+        rt, found, problem, ids = list_cri(query)
+        runtimes[rt or "crictl"] = _source(len(found), problem, failed=bool(problem and not found))
+        if rt and ids is not None:
+            whole[rt] = ids
+        for c in found:
+            listed.setdefault(c["id"], c)
+    elif not which("crictl", path=CONTAINER_RUNTIME_DIRS):  # no crictl anywhere: a runtime that isn't installed either runs nothing
+        whole.update({rt: [] for rt, daemon in CRI_RUNTIMES.items() if not which(daemon, path=CONTAINER_RUNTIME_DIRS)})
+    complete = all(r["state"] == "ok" for r in runtimes.values())
     images, size, own = {}, 0, os.stat("/proc/self/ns/mnt").st_ino if listed else None
     todo = sorted(listed.values(), key=lambda c: (c["image_id"], c["id"]))
     if len(todo) > CONTAINER_MAX:
@@ -720,10 +1205,17 @@ def containers(query=_query, which=shutil.which, root_of=ContainerRoot.of_pid, r
             continue
         try:
             got = read(root)
+            key = hashlib.sha256(json.dumps([c["image_id"], got["ecosystem"], got["packages"]], sort_keys=True).encode()).hexdigest()
+            img = images.get(key)
+            if img is None:  # one walk per image: its replicas share its files (DECISIONS 156)
+                if apps:
+                    budget = _Budget(max(1, min(CONTAINER_WALK_SECONDS, CONTAINER_SECONDS - (clock() - start))), CONTAINER_WALK_ENTRIES)
+                    rows, lines = read_apps(root, budget)
+                else:
+                    rows, lines = [], {line: {"state": "off", "count": 0} for line in APP_LINES.values()}
+                got = {**got, "apps": rows, "collection": {**got["collection"], "sources": {**got["collection"]["sources"], **lines}}}
         finally:
             root.close()
-        key = hashlib.sha256(json.dumps([c["image_id"], got["ecosystem"], got["packages"]], sort_keys=True).encode()).hexdigest()
-        img = images.get(key)
         if img is None:
             img = {"image_id": c["image_id"], "ref": c["ref"], **got, "containers": []}
             cost = len(json.dumps(img))
@@ -734,16 +1226,17 @@ def containers(query=_query, which=shutil.which, root_of=ContainerRoot.of_pid, r
         img["containers"].append({"id": c["id"], "name": c["name"], "runtime": c["runtime"]})
         size += 200  # one container's entry, generously
     complete = complete and not problems
-    said = [f"{name}: {r['error']}" for name, r in runtimes.items() if r.get("error")] + problems  # crictl too: coverage, not completeness
+    said = [f"{name}: {r['error']}" for name, r in runtimes.items() if r.get("error")] + problems
     n = sum(len(img["containers"]) for img in images.values())
     return {"v": 1, "complete": complete, "runtimes": runtimes, "listed": whole, "images": list(images.values()),
             "error": "; ".join(said)[:300] or None, "line": _source(n, "; ".join(said) or None)}
 
 
-def safe_containers(read=None):
-    """containers(), but an error it didn't expect becomes a failed body: the host's own inventory goes out regardless."""
+def safe_containers(read=None, apps=True):
+    """containers(), but an error it didn't expect becomes a failed body: the host's own inventory goes out regardless.
+    apps False is the host's local opt-out from reading applications inside containers (DECISIONS 155)."""
     try:
-        return containers() if read is None else read()
+        return containers(apps=apps) if read is None else read()
     except Exception as e:  # noqa: BLE001 — anything at all: a container must never cost the host its report
         why = f"containers not read: {type(e).__name__}: {e}"[:300]
         return {"v": 1, "complete": False, "runtimes": {}, "listed": {}, "images": [], "error": why, "line": _source(0, why, failed=True)}
@@ -4987,6 +5480,11 @@ def _dist_meta(path):
             head = f.read(MAX_METADATA)
     except OSError:
         return None
+    return parse_dist_meta(head)
+
+
+def parse_dist_meta(head):
+    """(normalized name, version) from the start of a METADATA or PKG-INFO file, or None; _dist_meta's rules. No I/O."""
     got = {}
     for ln in head.split("\n"):
         if not ln.strip():  # the headers end at the first blank line; the description follows
@@ -5013,8 +5511,19 @@ def _package_json(path):
         if os.path.getsize(path) > MAX_PACKAGE_JSON:
             return None
         with open(path, encoding="utf-8") as f:
-            d = json.load(f)
+            return parse_package_json(f.read())
     except (OSError, ValueError):
+        return None
+
+
+def parse_package_json(text):
+    """(name, version) from a package.json's text, or None; _package_json's rules. A crafted file nested past Python's
+    recursion limit is None too, since containers are hostile input. No I/O."""
+    if len(text) > MAX_PACKAGE_JSON:
+        return None
+    try:
+        d = json.loads(text)
+    except (ValueError, RecursionError):
         return None
     name, ver = (d.get("name"), d.get("version")) if isinstance(d, dict) else (None, None)
     if isinstance(name, str) and isinstance(ver, str) and len(name) <= 214 and NPM_NAME.fullmatch(name) and len(ver) <= 100 and SAFE_VERSION.match(ver):
@@ -5438,8 +5947,11 @@ def _main(argv):
     en.add_argument("--scan-jars", action="store_true",
                     help="also look for Java libraries (jar/war/ear) on local disks at each report, with a 5-minute soft budget")
     en.add_argument("--no-containers", action="store_true",
-                    help="Linux: don't read the packages inside this host's running Docker and Podman containers "
+                    help="Linux: don't read the packages inside this host's running Docker, Podman and Kubernetes (containerd, CRI-O) containers "
                          "(default: read them at each report; local choice, the server cannot turn it back on)")
+    en.add_argument("--no-container-apps", action="store_true",
+                    help="Linux: read only the OS packages inside containers, not the Python, npm, Java and Go packages their "
+                         "images added (default: read both; local choice, the server cannot turn it back on)")
     app_flags(en)
     en.add_argument("--no-auto-update", action="store_true",
                     help="never replace this agent with newer signed releases (default: update automatically)")
@@ -5501,7 +6013,7 @@ def _main(argv):
             # only the fields we expect from the server, and local choices last: the server can't opt a host in
             cfg = {"asset_id": res.get("asset_id"), "agent_key": res["agent_key"], "server": a.server,
                    "allow_remediation": a.allow_remediation, "network_checks": a.allow_network_checks,
-                   "auto_update": not a.no_auto_update, "channel": a.channel, "containers": not a.no_containers,
+                   "auto_update": not a.no_auto_update, "channel": a.channel, "containers": not a.no_containers, "container_apps": not a.no_container_apps,
                    "scan_jars": a.scan_jars, "scan_apps": a.scan_apps, "app_roots": app_roots(a), "ad_discovery": a.ad_discovery,
                    **({"windows_update_source": "microsoft"} if a.windows_update_source == "microsoft" else {}),
                    **({"proxy": a.proxy} if a.proxy else {})}
@@ -5562,7 +6074,7 @@ def _main(argv):
             inv = inventory(cfg)
             ctr = None
             if os.name != "nt":  # read before the inventory goes, so its collection document can say how far the read got
-                ctr = safe_containers() if cfg.get("containers", True) else None
+                ctr = safe_containers(apps=cfg.get("container_apps", True)) if cfg.get("containers", True) else None
                 if isinstance((inv.get("collection") or {}).get("sources"), dict):
                     inv["collection"]["sources"]["containers"] = ctr.pop("line") if ctr else {"state": "off", "count": 0}
             post(cfg["server"], "/api/agent/inventory", inv, a.insecure_http, cfg["agent_key"])

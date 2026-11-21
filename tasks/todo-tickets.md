@@ -70,4 +70,4 @@
 ### Checkpoint C
 - [x] API, web unit, build, lint, docs, e2e green; `last_run_tickets.json` PASS.
 - [x] Independent code review and security audit; each finding fixed with a test that failed first.
-- [ ] Ship: PR, CI green on SQLite and PostgreSQL 17, release 0.12.0 on preview at the owner's gate approval, verify.
+- [x] Ship: PR, CI green on SQLite and PostgreSQL 17, release 0.12.0 on preview at the owner's gate approval, verify.

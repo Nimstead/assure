@@ -66,8 +66,12 @@ def buildinfo(version="go1.22.3", modinfo="", inline=True):
     return head + uvarint(len(version)) + version.encode() + uvarint(len(mod)) + mod
 
 
+BASE = 0x400000  # each section is loaded at BASE + its file offset
+
+
 def elf(sections: dict[str, bytes], pad=4096) -> bytes:
-    """A little-endian ELF64 file holding the named sections, with a section header string table."""
+    """A little-endian ELF64 file holding the named sections, laid out in order after the header and the section name
+    table, each loaded at BASE + its offset."""
     names = b"\0.shstrtab\0" + b"".join(n.encode() + b"\0" for n in sections)
     blobs, off = [], 64
     layout = [(".shstrtab", 1, names)]
@@ -80,8 +84,8 @@ def elf(sections: dict[str, bytes], pad=4096) -> bytes:
         blobs.append((name_off, off + len(body), len(data)))
         body += data
     shoff = 64 + len(body)
-    table = b"\0" * 64 + b"".join(no.to_bytes(4, "little") + (1).to_bytes(4, "little") + b"\0" * 16 + o.to_bytes(8, "little")
-                                  + s.to_bytes(8, "little") + b"\0" * 24 for no, o, s in blobs)
+    table = b"\0" * 64 + b"".join(no.to_bytes(4, "little") + (1).to_bytes(4, "little") + b"\0" * 8 + (BASE + o).to_bytes(8, "little")
+                                  + o.to_bytes(8, "little") + s.to_bytes(8, "little") + b"\0" * 24 for no, o, s in blobs)
     header = (b"\x7fELF\x02\x01\x01" + b"\0" * 9 + (2).to_bytes(2, "little") + (0x3E).to_bytes(2, "little") + (1).to_bytes(4, "little")
               + b"\0" * 16 + shoff.to_bytes(8, "little") + b"\0" * 4 + (64).to_bytes(2, "little") + b"\0" * 4
               + (64).to_bytes(2, "little") + (len(blobs) + 1).to_bytes(2, "little") + (1).to_bytes(2, "little"))
@@ -253,6 +257,15 @@ def test_hostile_jars_read_nothing_and_finish(tmp_path):
     assert lines["java_archives"]["state"] == "failed" and "2 installs' metadata couldn't be read" in lines["java_archives"]["error"]  # sparse, huge directory
 
 
+@POSIX
+def test_a_jar_whose_central_directory_is_past_the_cap_is_never_parsed(tmp_path, monkeypatch):
+    jar(tmp_path / "app/ok.jar", [("g", "a", "1.0")])
+    assert [r["name"] for r in apps_of(tmp_path)[0]] == ["g:a"]
+    monkeypatch.setattr(agent, "ZIP_MAX_DIRECTORY", 10)  # a real directory is ~100 bytes: past the cap, refused before zipfile reads it
+    got, lines = apps_of(tmp_path)
+    assert got == [] and lines["java_archives"] == {"state": "failed", "count": 0, "error": "1 installs' metadata couldn't be read"}
+
+
 def test_zip_too_big_reads_the_end_record_only():
     small = io.BytesIO()
     with zipfile.ZipFile(small, "w") as z:
@@ -283,7 +296,7 @@ def test_go_buildinfo_parses_deps_replacements_and_the_toolchain():
 
 def test_go_buildinfo_section_is_found_in_an_elf_and_offsets_are_checked():
     data = elf({".text": b"\x90" * 64, ".go.buildinfo": buildinfo("go1.22.3", MODINFO)})
-    assert agent.go_buildinfo_section(io.BytesIO(data), len(data)).startswith(agent.GO_MAGIC)
+    assert agent.go_buildinfo_section(io.BytesIO(data), len(data))[0].startswith(agent.GO_MAGIC)
     assert agent.go_buildinfo_section(io.BytesIO(elf({".text": b"\x90"})), 4096) is None  # a C binary
     assert agent.go_buildinfo_section(io.BytesIO(b"#!/bin/sh\n" * 200), 2000) is None
     bad = bytearray(data)
@@ -291,18 +304,38 @@ def test_go_buildinfo_section_is_found_in_an_elf_and_offsets_are_checked():
     assert agent.go_buildinfo_section(io.BytesIO(bytes(bad)), len(bad)) is None
 
 
+def old_go_elf(version="go1.16.15", modinfo=MODINFO):
+    """A Go binary as Go before 1.18 wrote it: .go.buildinfo holds two pointers, each to a string header (data, length) in .data."""
+    names = b"\0.shstrtab\0.data\0.go.buildinfo\0"
+    addr = BASE + 64 + len(names)  # .data comes right after the header and the name table
+    v, m = version.encode(), START + modinfo.encode() + END
+    data = b"".join(x.to_bytes(8, "little") for x in (addr + 32, len(v), addr + 32 + len(v), len(m))) + v + m
+    return elf({".data": data, ".go.buildinfo": agent.GO_MAGIC + bytes([8, 0]) + addr.to_bytes(8, "little") + (addr + 16).to_bytes(8, "little")})
+
+
+def test_go_before_1_18_is_read_through_its_pointers():
+    x = old_go_elf()
+    assert agent.parse_go_buildinfo(*agent.go_buildinfo_section(io.BytesIO(x), len(x))) == ("1.16.15", [
+        ("golang.org/x/net", "0.17.0"), ("github.com/coredns/dns", "1.1.51"), ("google.golang.org/grpc", "1.56.3-0.20230101000000-abcdefabcdef")])
+    assert agent.parse_go_buildinfo(agent.GO_MAGIC + bytes([8, 0]) + b"\0" * 16, lambda a, n: b"") is None  # pointers to nowhere
+    lying = agent.GO_MAGIC + bytes([8, 0]) + BASE.to_bytes(8, "little") * 2  # a header claiming a gigabyte string is refused unread
+    assert agent.parse_go_buildinfo(lying, lambda a, n: BASE.to_bytes(8, "little") + (10 ** 9).to_bytes(8, "little") if n == 16 else b"") is None
+
+
 @POSIX
 def test_go_binaries_are_read_only_when_executable(tmp_path):
     bi = elf({".go.buildinfo": buildinfo("go1.22.3", MODINFO)})
     executable(tmp_path / "usr/local/bin/coredns", bi)
     write(tmp_path / "srv/not-exec", bi)  # no exec bit: not a program
-    executable(tmp_path / "usr/local/bin/old-go", elf({".go.buildinfo": buildinfo(inline=False)}))
+    executable(tmp_path / "usr/local/bin/old-go", elf({".go.buildinfo": buildinfo(inline=False)}))  # pointers that resolve to nothing
+    executable(tmp_path / "usr/local/bin/git-lfs", old_go_elf("go1.15.15", "path\tgithub.com/git-lfs/git-lfs\nmod\tgithub.com/git-lfs/git-lfs\t(devel)\t\n"
+                                                                  "dep\tgithub.com/git-lfs/gitobj/v2\tv2.0.2\th1:x=\n"))
     executable(tmp_path / "usr/local/bin/c-prog", elf({".text": b"\x90" * 64}))
     got, lines = apps_of(tmp_path)
-    assert rows(got) == [("Go", n, v, "/usr/local/bin/coredns") for n, v in sorted([
+    assert rows(got) == sorted([("Go", n, v, "/usr/local/bin/coredns") for n, v in [
         ("golang.org/x/net", "0.17.0"), ("github.com/coredns/dns", "1.1.51"), ("google.golang.org/grpc", "1.56.3-0.20230101000000-abcdefabcdef"),
-        ("stdlib", "1.22.3")])]
-    assert lines["go_modules"] == {"state": "partial", "count": 4, "error": "1 installs' metadata couldn't be read"}
+        ("stdlib", "1.22.3")]] + [("Go", "github.com/git-lfs/gitobj/v2", "2.0.2", "/usr/local/bin/git-lfs"), ("Go", "stdlib", "1.15.15", "/usr/local/bin/git-lfs")])
+    assert lines["go_modules"] == {"state": "partial", "count": 6, "error": "1 installs' metadata couldn't be read"}
 
 
 # ---- what the image's package manager installed --------------------------------------------------------------------
@@ -462,3 +495,128 @@ def test_no_crictl_and_no_runtime_anywhere_lists_none():
     assert body["listed"] == {"docker": [], "podman": [], "containerd": [], "cri-o": []}
     kept = agent.containers(lambda *a, **k: (1, "", ""), lambda name, path=None: "/usr/bin/containerd" if name == "containerd" else None, euid=0)
     assert "containerd" not in kept["listed"] and kept["listed"]["cri-o"] == []  # containerd is installed: its pods may still run
+
+
+# ---- security audit (DECISIONS 160) --------------------------------------------------------------------------------
+
+@POSIX
+def test_the_budget_holds_while_files_are_read_not_only_while_folders_are_listed(tmp_path, monkeypatch):
+    first = jar(tmp_path / "lib/a0.jar", [("g", "a", "1.0")])
+    for i in range(1, 50):  # hard links in a real image: no disk, one listing, and each name parsed again
+        os.link(tmp_path / "lib/a0.jar", tmp_path / f"lib/a{i}.jar")
+    assert first
+    real = agent._poms
+
+    def slow(*a, **k):
+        time.sleep(0.1)
+        return real(*a, **k)
+    monkeypatch.setattr(agent, "_poms", slow)
+    t = time.monotonic()
+    got, lines = apps_of(tmp_path, b=budget(seconds=1))
+    assert time.monotonic() - t < 3
+    assert lines["java_archives"]["state"] == "partial" and "budget" in lines["java_archives"]["error"]
+
+
+def test_the_zip_guard_reads_the_end_record_zipfile_will_use():
+    cap = agent.ZIP_MAX_DIRECTORY
+    # a comment-free end record whose own offset field holds the end signature: a backwards search stops there
+    eocd = b"PK\x05\x06" + b"\0" * 6 + (1).to_bytes(2, "little") + (cap + 1).to_bytes(4, "little") + b"PK\x05\x06" + b"\0\0"
+    data = b"\0" * 100 + eocd
+    assert agent._zip_too_big(io.BytesIO(data), len(data)) is True
+    # a zip64 locator before a small classic record: zipfile takes the zip64 directory size (a consistent one: Python 3.14
+    # refuses a zip64 record whose directory doesn't end where the record starts, and then refuses the whole file itself)
+    rec64 = (b"PK\x06\x06" + (44).to_bytes(8, "little") + b"\0" * 4 + b"\0" * 8 + (1).to_bytes(8, "little") + (1).to_bytes(8, "little")
+             + (cap + 1).to_bytes(8, "little") + (0).to_bytes(8, "little"))
+    loc = b"PK\x06\x07" + b"\0" * 4 + (cap + 1).to_bytes(8, "little") + (1).to_bytes(4, "little")
+    classic = b"PK\x05\x06" + b"\0" * 6 + (1).to_bytes(2, "little") + (46).to_bytes(4, "little") + (0).to_bytes(4, "little") + b"\0\0"
+    data = b"\0" * (cap + 1) + rec64 + loc + classic
+    assert agent._zip_too_big(io.BytesIO(data), len(data)) is True
+
+
+def test_a_location_that_isnt_utf8_is_sent_with_a_replacement_character():
+    assert agent._where("/srv/site-packages/\udcff-1.0.dist-info") == "/srv/site-packages/�-1.0.dist-info"
+    json.dumps(agent._where("/a/\udcff"), ensure_ascii=False).encode("utf-8")  # encodable: the server can store it
+
+
+@POSIX
+def test_a_huge_file_list_is_said_not_held_in_memory(tmp_path, monkeypatch):
+    monkeypatch.setattr(agent, "CONTAINER_OWNED_MAX", 10)
+    write(tmp_path / "lib/apk/db/installed", "P:x\nV:1\n" + "".join(f"F:bin/{i}\nR:f\n" for i in range(20)))
+    write(tmp_path / "usr/local/lib/python3.12/site-packages/a-1.dist-info/METADATA", "Name: a\nVersion: 1\n")
+    got, lines = apps_of(tmp_path, owned=None)
+    assert len(got) == 1 and "file list couldn't be read" in lines["python_packages"]["error"] and "more than 10" in lines["python_packages"]["error"]
+
+
+@POSIX
+def test_a_file_on_another_mount_is_never_opened():
+    root = agent.ContainerRoot.of_dir("/")
+    proc = os.open("/proc", os.O_PATH | os.O_DIRECTORY)
+    try:
+        assert root.open_file(proc, "version") is None  # procfs: a mount of its own, as a bind-mounted file is
+    finally:
+        os.close(proc)
+        root.close()
+
+
+@POSIX
+def test_a_jar_past_the_size_cap_is_one_unread_jar_and_the_walk_goes_on(tmp_path, monkeypatch):
+    jar(tmp_path / "a/big.jar", [("g", "big", "1.0")])
+    write(tmp_path / "b/site-packages/later-1.dist-info/METADATA", "Name: later\nVersion: 1\n")
+    monkeypatch.setattr(agent, "CONTAINER_JAR_MAX", 10)
+    got, lines = apps_of(tmp_path)
+    assert [r["name"] for r in got] == ["later"]
+    assert lines["java_archives"] == {"state": "failed", "count": 0, "error": "1 installs' metadata couldn't be read"}
+
+
+# ---- code review (DECISIONS 160) -----------------------------------------------------------------------------------
+
+def test_one_container_gone_between_ps_and_inspect_costs_only_itself():
+    """cri-tools' inspect stops at the first id it can't describe and prints nothing: the rest are asked one at a time."""
+    one = json.loads((CRI / "inspect-containerd.json").read_text())
+    ids = ["a" * 64, "b" * 64, "c" * 64]
+    described = {i: {**one, "status": {**one["status"], "id": i}} for i in (ids[0], ids[2])}
+    calls = []
+
+    def q(cmd, timeout=600):
+        calls.append(cmd)
+        if cmd[1] == "version":
+            return 0, (CRI / "version-containerd.txt").read_text(), ""
+        if cmd[1] == "ps":
+            return 0, "\n".join(ids) + "\n", ""
+        if cmd[1] == "images":
+            return 0, (CRI / "images-containerd.json").read_text(), ""
+        if cmd[1] == "inspect" and len(cmd) > 5:  # all at once: one gone, so crictl answers nothing
+            return 1, "", f'level=fatal msg="getting the status of the container {ids[1]}: rpc error: code = NotFound desc = an error occurred when try to find container"'
+        cid = cmd[-1]
+        return (0, json.dumps(described[cid]), "") if cid in described else (1, "", "rpc error: code = NotFound desc = not found")
+    rt, found, problem, listing = agent.list_cri(q)
+    assert [c["id"] for c in found] == [ids[0], ids[2]] and problem is None and listing == ids
+    assert sum(c[1] == "inspect" for c in calls) == 4  # once for all (which printed nothing), then once each
+
+
+def test_the_image_id_comes_from_the_running_images_digest_before_a_tag_that_moved():
+    images = json.loads((CRI / "images-containerd.json").read_text())
+    moved = {"id": "sha256:" + "9" * 64, "repoTags": ["docker.io/library/python:3.12-slim"], "repoDigests": []}  # the tag, re-pulled
+    for im in images["images"]:
+        if "docker.io/library/python:3.12-slim" in im["repoTags"]:
+            im["repoTags"] = []  # the image the container started from keeps only its digest
+    images["images"].insert(0, moved)
+    q = _cri_query("containerd")
+
+    def query(cmd, timeout=600):
+        return (0, json.dumps(images), "") if cmd[1] == "images" else q(cmd, timeout)
+    _, found, _, _ = agent.list_cri(query)
+    assert found[0]["image_id"] == "sha256:78976a69c067520ef8be34cde307ef9f6fea6dcefa50edb57039773d241ca0db"
+
+
+@POSIX
+def test_an_image_cut_short_says_so_in_the_same_words_each_time(tmp_path):
+    for i in range(30):
+        write(tmp_path / f"usr/local/lib/python3.12/site-packages/p{i}-1.dist-info/METADATA", f"Name: p{i}\nVersion: 1\n")
+    first, again = apps_of(tmp_path, b=budget(entries=40))[1], apps_of(tmp_path, b=budget(entries=40))[1]
+    assert first == again and first["python_packages"]["error"] == "stopped at its 200,000-entry budget" or "budget" in first["python_packages"]["error"]
+    assert not any(ch.isdigit() for ch in budget_text(apps_of(tmp_path, b=budget(seconds=0))[1]))
+
+
+def budget_text(lines):
+    return lines["python_packages"]["error"]

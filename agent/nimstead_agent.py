@@ -446,6 +446,8 @@ class ContainerRoot:
         except OSError:
             return None
         try:
+            if _mount_id(pfd) != self.mount:  # a bind-mounted file (a volume, a hostPath, a pod's token) isn't the image's (security audit)
+                return None
             st = os.fstat(pfd)
             if not stat.S_ISREG(st.st_mode):
                 return None
@@ -463,7 +465,7 @@ class ContainerRoot:
             fd = os.open(name, os.O_PATH | os.O_NOFOLLOW | os.O_DIRECTORY | os.O_CLOEXEC, dir_fd=dirfd)
         except OSError:
             return None
-        if stat.S_ISDIR(os.fstat(fd).st_mode) and _mount_id(fd) == self.mount:
+        if _mount_id(fd) == self.mount and stat.S_ISDIR(os.fstat(fd).st_mode):  # the mount first: fstat on FUSE could block
             return fd
         os.close(fd)
         return None
@@ -730,7 +732,8 @@ _NOT_BINARY = (".py", ".pyc", ".pyi", ".js", ".mjs", ".cjs", ".ts", ".map", ".js
                ".c", ".png", ".svg", ".gz", ".jar", ".war", ".ear", ".class", ".xml", ".yml", ".yaml", ".sh", ".pem", ".conf")
 _GO_PATH = re.compile(r"[A-Za-z0-9][A-Za-z0-9._~/+-]{0,254}")
 _GO_TOOLCHAIN = re.compile(r"go(\d+)\.(\d+)(?:\.(\d+))?(?:(rc|beta)(\d+))?(?:\s|$)")
-GO_RPM_TREES = re.compile(r"/usr/(?:s?bin|libexec)/")  # rpm's file lists live in header blobs: as RPM_TREES, its usual places
+GO_RPM_TREES = re.compile(r"/usr/(?:s?bin|libexec)/")
+CONTAINER_OWNED_MAX = 2_000_000  # paths an image's package manager lists; a real one has tens of thousands (security audit)  # rpm's file lists live in header blobs: as RPM_TREES, its usual places
 
 
 def _uvarint(b, i):
@@ -746,24 +749,40 @@ def _uvarint(b, i):
     raise ValueError("bad varint")
 
 
-def parse_go_buildinfo(data):
+def parse_go_buildinfo(data, read_at=None):
     """(stdlib version or None, [(module path, version)]) from the bytes of a Go binary's .go.buildinfo section, as
-    debug/buildinfo reads it: Go 1.18+'s inline format only (an older binary's pointer format is None). The main module
-    counts when it carries a version; `=>` replaces the module before it (a local path, with no version, drops it).
-    Versions lose their leading v, as OSV writes Go versions; "(devel)" is dropped. No I/O."""
-    if len(data) < 32 or not data.startswith(GO_MAGIC) or not data[15] & 2:
+    debug/buildinfo reads it. Go 1.18+ writes the two strings inline; older Go writes two pointers to string headers, which
+    read_at(address, length) resolves in the binary (None without it, or when they don't resolve). The main module counts
+    when it carries a version; `=>` replaces the module before it (a local path, with no version, drops it). Versions lose
+    their leading v, as OSV writes Go versions; "(devel)" is dropped. No I/O of its own."""
+    if len(data) < 32 or not data.startswith(GO_MAGIC):
         return None
-    try:
-        n, i = _uvarint(data, 32)
-        ver, i = data[i:i + n], i + n
-        m, j = _uvarint(data, i)
-        mod = data[j:j + m]
-    except ValueError:
-        return None
-    if len(ver) != n or len(mod) != m:
-        return None
+    if data[15] & 2:  # Go 1.18+: varint-prefixed strings right after the 32-byte header
+        try:
+            n, i = _uvarint(data, 32)
+            ver, i = data[i:i + n], i + n
+            m, j = _uvarint(data, i)
+            mod = data[j:j + m]
+        except ValueError:
+            return None
+        if len(ver) != n or len(mod) != m:
+            return None
+    else:  # before 1.18: pointers to Go string headers (data pointer, length) in the binary's address space
+        ps, end = data[14], "big" if data[15] & 1 else "little"
+        if read_at is None or ps not in (4, 8):
+            return None
+
+        def string(addr):
+            hdr = read_at(addr, 2 * ps)
+            if len(hdr) != 2 * ps or (n := int.from_bytes(hdr[ps:], end)) > GO_BUILDINFO_MAX:
+                return None
+            got = read_at(int.from_bytes(hdr[:ps], end), n)
+            return got if len(got) == n else None
+        ver, mod = string(int.from_bytes(data[16:16 + ps], end)), string(int.from_bytes(data[16 + ps:16 + 2 * ps], end))
+        if ver is None or mod is None:
+            return None
+    mod = mod[16:-16] if len(mod) >= 33 and mod[-17] == 0x0A else b""  # framed by 16-byte sentinels
     ver, mod = ver.decode("utf-8", "replace"), mod.decode("utf-8", "replace")
-    mod = mod[16:-16] if len(mod) >= 33 and mod[-17] == "\n" else ""  # framed by 16-byte sentinels
     mods = []
     for ln in mod.split("\n"):
         f = ln.split("\t")
@@ -785,8 +804,10 @@ def parse_go_buildinfo(data):
 
 
 def go_buildinfo_section(f, size):
-    """The first GO_BUILDINFO_MAX bytes of an ELF file's .go.buildinfo section, or None (not ELF, no such section, or
-    headers that don't fit the file). f is a binary file object; every offset is checked against size."""
+    """(the first GO_BUILDINFO_MAX bytes of an ELF file's .go.buildinfo section, read_at), or None (not ELF, no such
+    section, or headers that don't fit the file). read_at(address, length) reads at most GO_BUILDINFO_MAX bytes at a
+    virtual address from the sections that hold file data, b"" when no one section holds them all (older Go's pointers).
+    f is a binary file object, used again by read_at; every offset is checked against size."""
     head = f.read(64)
     if len(head) < 52 or head[:4] != b"\x7fELF" or head[4] not in (1, 2) or head[5] not in (1, 2):
         return None
@@ -805,46 +826,50 @@ def go_buildinfo_section(f, size):
     f.seek(shoff)
     table = f.read(shnum * ent)
 
-    def section(k):  # (name offset, file offset, size)
+    def section(k):  # (name offset, file offset, size, type, address)
         e = table[k * ent:(k + 1) * ent]
-        return (u(e[0:4]), u(e[0x18:0x20]), u(e[0x20:0x28])) if ent == 64 else (u(e[0:4]), u(e[0x10:0x14]), u(e[0x14:0x18]))
-    _, stroff, strsize = section(shstrndx)
+        if ent == 64:
+            return u(e[0:4]), u(e[0x18:0x20]), u(e[0x20:0x28]), u(e[4:8]), u(e[0x10:0x18])
+        return u(e[0:4]), u(e[0x10:0x14]), u(e[0x14:0x18]), u(e[4:8]), u(e[0x0C:0x10])
+    _, stroff, strsize, _, _ = section(shstrndx)
     if stroff + min(strsize, 65536) > size:
         return None
     f.seek(stroff)
     names = f.read(min(strsize, 65536))
+    mapped = [(a, o, z) for o, z, t, a in (section(k)[1:] for k in range(shnum)) if a and t != 8 and o + z <= size]  # 8: NOBITS (.bss)
+
+    def read_at(addr, n):
+        if n > GO_BUILDINFO_MAX:
+            return b""
+        for a, o, z in mapped:
+            if a <= addr and addr + n <= a + z:
+                f.seek(o + addr - a)
+                return f.read(n)
+        return b""
     for k in range(shnum):
-        name, off, sz = section(k)
+        name, off, sz, _, _ = section(k)
         if names[name:name + 14] == b".go.buildinfo\0" and off + 32 <= size:
             f.seek(off)
-            return f.read(min(sz, GO_BUILDINFO_MAX))
+            return f.read(min(sz, GO_BUILDINFO_MAX)), read_at
     return None
 
 
 def _zip_too_big(f, size):
-    """Whether a zip's central directory is larger than ZIP_MAX_DIRECTORY (zipfile reads and parses it whole). False when
-    no end record is found: zipfile then refuses the file itself."""
-    tail = min(size, 65536 + 22)
-    f.seek(size - tail)
-    data = f.read(tail)
-    f.seek(0)
-    i = data.rfind(b"PK\x05\x06")
-    if i < 0 or i + 22 > len(data):
+    """Whether a zip's central directory is larger than ZIP_MAX_DIRECTORY (zipfile reads and parses it whole). It asks
+    zipfile's own end-record reader, so the size checked is the one zipfile will use, zip64 included: a backwards search of
+    our own could be shown another record (security audit). False when there is no end record: zipfile refuses the file."""
+    try:
+        rec = zipfile._EndRecData(f)  # private, but in every CPython since 2.x; its absence refuses every jar rather than none
+    except AttributeError:
+        return True
+    except (OSError, zipfile.BadZipFile, ValueError, OverflowError):
         return False
-    cd = int.from_bytes(data[i + 12:i + 16], "little")
-    j = i - 20
-    if cd == 0xFFFFFFFF and j >= 0 and data[j:j + 4] == b"PK\x06\x07":  # zip64: its locator names the zip64 end record
-        off = int.from_bytes(data[j + 8:j + 16], "little")
-        if off + 56 > size:
-            return True
-        f.seek(off)
-        rec = f.read(56)
+    finally:
         f.seek(0)
-        cd = int.from_bytes(rec[40:48], "little") if rec[:4] == b"PK\x06\x06" else cd
-    return cd > ZIP_MAX_DIRECTORY
+    return bool(rec) and rec[zipfile._ECD_SIZE] > ZIP_MAX_DIRECTORY
 
 
-def container_owned(root):
+def container_owned(root, budget=None):
     """(owned(path), problem or None): whether a path in the image was installed by its own package manager, which its
     OS package list already judges (DECISIONS 156). apk's F:/R: lines, else dpkg's info/*.list files, else for rpm (whose
     lists live in header blobs) its usual trees. /bin, /sbin and /lib paths count under /usr too (merged /usr)."""
@@ -854,25 +879,33 @@ def container_owned(root):
         owned.add(p)
         if p.startswith(("/bin/", "/sbin/", "/lib/", "/lib32/", "/lib64/", "/libx32/")):
             owned.add("/usr" + p)
+        if len(owned) > CONTAINER_OWNED_MAX:
+            raise ContainerReadError(f"more than {CONTAINER_OWNED_MAX:,} paths, more than any real image")
     try:
         if root.exists(APK_DB):
             d = ""
-            for ln in root.read(APK_DB).decode("utf-8", "replace").splitlines():
+            text = root.read(APK_DB).decode("utf-8", "replace")
+            if text.count("\nF:") + text.count("\nR:") > CONTAINER_OWNED_MAX:  # counted before a set is built (security audit)
+                raise ContainerReadError(f"more than {CONTAINER_OWNED_MAX:,} paths, more than any real image")
+            for ln in text.splitlines():
                 if ln.startswith("F:"):
                     d = "/" + ln[2:].strip()
                     add(d)
                 elif ln.startswith("R:"):
                     add(f"{d}/{ln[2:].strip()}")
         elif root.exists(DPKG_INFO):
-            total = 0
-            for n in root.listdir(DPKG_INFO):
-                if n.endswith(".list"):
-                    data = root.read(f"{DPKG_INFO}/{n}")
-                    total += len(data)
-                    if total > CONTAINER_READ_MAX:
-                        raise ContainerReadError(f"{DPKG_INFO}: larger than {CONTAINER_READ_MAX // (1024 * 1024)} MB in all")
-                    for ln in data.decode("utf-8", "replace").splitlines():
-                        add(ln)
+            total, names = 0, [n for n in root.listdir(DPKG_INFO) if n.endswith(".list")]
+            if len(names) > CONTAINER_MAX_PACKAGES:
+                raise ContainerReadError(f"more than {CONTAINER_MAX_PACKAGES:,} file lists, more than any real image")
+            for n in names:
+                if budget is not None and budget.late():
+                    raise ContainerReadError("the walk's time budget ran out reading them")
+                data = root.read(f"{DPKG_INFO}/{n}")
+                total += len(data)
+                if total > CONTAINER_READ_MAX:
+                    raise ContainerReadError(f"{DPKG_INFO}: larger than {CONTAINER_READ_MAX // (1024 * 1024)} MB in all")
+                for ln in data.decode("utf-8", "replace").splitlines():
+                    add(ln)
         else:
             rpm = any(root.exists(p) for p in (*RPM_SQLITE, *RPM_UNREAD))
     except (OSError, ContainerReadError) as e:  # without the list, the base image's packages would be judged twice: say so
@@ -901,7 +934,10 @@ def _read_head(fd, n):
 def _container_jar(root, dfd, name, where, out, budget):
     """Maven coordinates from one jar/war/ear and one level of jars nested in it; False if it couldn't be read. A FIFO,
     device or link named like a jar is skipped (None from open_file), so it's True with nothing found."""
-    fd = root.open_file(dfd, name, CONTAINER_JAR_MAX)
+    try:
+        fd = root.open_file(dfd, name, CONTAINER_JAR_MAX)
+    except ContainerReadError:  # past the size cap: this jar unread, the walk goes on (security audit)
+        return False
     if fd is None:
         return True
     try:
@@ -909,32 +945,32 @@ def _container_jar(root, dfd, name, where, out, budget):
             if _zip_too_big(f, os.fstat(f.fileno()).st_size):
                 return False
             with zipfile.ZipFile(f) as z:
-                _poms(z, where, out)
+                _poms(z, where, out, budget.late)
                 for inner in z.infolist():
                     if inner.filename.lower().endswith(".jar") and inner.file_size <= MAX_NESTED and not budget.spent():
                         data = io.BytesIO(z.read(inner))
                         if not _zip_too_big(data, len(data.getbuffer())):
                             with zipfile.ZipFile(data) as zz:
-                                _poms(zz, f"{where}!/{inner.filename}", out)
+                                _poms(zz, f"{where}!/{inner.filename}", out, budget.late)
         return True
     except Exception:  # noqa: BLE001 — a crafted archive can raise anything from zipfile or zlib; it's one file unread
         return False
 
 
 def _container_go(root, dfd, name, where, out):
-    """Go modules and the toolchain (`stdlib`) of one executable; None if it isn't a Go 1.18+ binary we can read, False if
-    it is a Go binary whose build information we can't read (pre-1.18's format)."""
+    """Go modules and the toolchain (`stdlib`) of one executable; None if it isn't a Go binary, False if it is one whose
+    build information we can't read (its pointers don't resolve, or it isn't laid out as Go writes it)."""
     fd = root.open_file(dfd, name)
     if fd is None:
         return None
     try:
         with os.fdopen(fd, "rb") as f:
-            data = go_buildinfo_section(f, os.fstat(f.fileno()).st_size)
+            found = go_buildinfo_section(f, os.fstat(f.fileno()).st_size)
+            got = parse_go_buildinfo(*found) if found else None  # inside: read_at reads the file
     except Exception:  # noqa: BLE001 — a crafted ELF is one file unread, never the walk
+        return False
+    if found is None:
         return None
-    if data is None:
-        return None
-    got = parse_go_buildinfo(data)
     if got is None:
         return False
     stdlib, mods = got
@@ -954,7 +990,7 @@ def container_apps(root, budget=None, owned=None):
     lines partial, never silently. Never raises for anything inside the container."""
     b = budget or _Budget(CONTAINER_WALK_SECONDS, CONTAINER_WALK_ENTRIES)
     b.deep, b.unread = getattr(b, "deep", 0), getattr(b, "unread", 0)
-    is_owned, problem = owned or container_owned(root)
+    is_owned, problem = owned or container_owned(root, b)
     out, unread = {}, dict.fromkeys(APP_LINES, 0)  # (ecosystem, name, version, location) -> None
 
     def keep(eco, path, got):
@@ -979,6 +1015,8 @@ def container_apps(root, budget=None, owned=None):
                 except ContainerReadError:
                     unread["npm"] += 1
             for n in files:
+                if b.late() or len(out) > CONTAINER_APPS_MAX:  # per file, not per folder: hard links make one folder endless (security audit)
+                    break
                 where, low = f"{path.rstrip('/')}/{n}", n.lower()
                 if is_owned(where):
                     continue
@@ -999,10 +1037,14 @@ def container_apps(root, budget=None, owned=None):
                     if stat.S_ISREG(s.st_mode) and s.st_mode & 0o111 and s.st_size >= 1024 and _container_go(root, dfd, n, where, out) is False:
                         unread["Go"] += 1
             if len(out) > CONTAINER_APPS_MAX:
-                b.stopped = f"stopped at {CONTAINER_APPS_MAX} packages (budget)"
+                b.stopped = f"stopped at {CONTAINER_APPS_MAX:,} packages (budget)"
+            if b.stopped:
                 break
     except (OSError, ContainerReadError) as e:  # the root itself went away mid-walk: what was read stands, partial
         b.stopped = b.stopped or f"walk stopped: {e if isinstance(e, ContainerReadError) else e.strerror or e}"
+    if b.stopped and not b.stopped.startswith(("stopped at", "walk stopped")):  # _Budget's words carry seconds and counts
+        b.stopped = (f"stopped at its {CONTAINER_WALK_ENTRIES:,}-entry budget" if b.n > CONTAINER_WALK_ENTRIES
+                     else "stopped at its time budget")
     rows = {(e, n, v, _where(w)): None for e, n, v, w in sorted(out)}
     rows = [{"ecosystem": e, "name": n, "version": v, "source": w} for e, n, v, w in rows][:CONTAINER_APPS_MAX]
     said = [*([problem] if problem else []), *([f"{b.deep} folders deeper than {CONTAINER_WALK_DEPTH} levels not read"] if b.deep else []),
@@ -1089,6 +1131,29 @@ def _failed(what, rc, err):
     return f"crictl {what} " + ("couldn't run" if rc is None else f"exited {rc}") + (f": {_last_line(err)}" if err.strip() else "")
 
 
+def _cri_entry(it, runtime, by_name, problems):
+    """One running container from one `crictl inspect` object, or None (stopped since ps, which isn't a problem; anything
+    unexpected is, and is added to problems). by_name maps the tags and registry digests `crictl images` gave to image ids."""
+    st = it.get("status") if isinstance(it, dict) and isinstance(it.get("status"), dict) else {}
+    if st.get("state") != "CONTAINER_RUNNING":
+        return None
+    info = it.get("info") if isinstance(it.get("info"), dict) else {}
+    spec = st.get("image") if isinstance(st.get("image"), dict) else {}
+    labels = st.get("labels") if isinstance(st.get("labels"), dict) else {}
+    cid, pid = st.get("id"), info.get("pid")
+    image_id = None
+    for c in (st.get("imageId"), st.get("imageRef"), spec.get("image")):  # the running image's digest before a tag that may have moved
+        d = _DIGEST.match(str(c or ""))
+        image_id = image_id or ("sha256:" + d[1] if d else by_name.get(str(c or "")))
+    if not (isinstance(cid, str) and _CONTAINER_ID.match(cid) and type(pid) is int and pid > 0 and image_id):
+        problems.append("crictl described a container without its id, PID or image")
+        return None
+    k8s = [str(labels.get(f"io.kubernetes.{k}") or "") for k in ("pod.namespace", "pod.name", "container.name")]
+    name = "/".join(k8s) if all(k8s) else str((st.get("metadata") or {}).get("name") or "")
+    ref = spec.get("userSpecifiedImage") or ("" if _DIGEST.match(str(spec.get("image") or "")) else spec.get("image")) or st.get("imageRef")
+    return {"id": cid, "name": name[:255], "runtime": runtime, "pid": pid, "image_id": image_id, "ref": str(ref or "")[:255]}
+
+
 def list_cri(query=_query):
     """(runtime, running containers, problem or None, every running container's id or None) from the node's crictl.
 
@@ -1127,28 +1192,19 @@ def list_cri(query=_query):
         if d:
             for n in [*(im.get("repoTags") or []), *(im.get("repoDigests") or [])]:
                 by_name.setdefault(str(n), "sha256:" + d[1])
-    found = []
-    for it in items:
-        st = it.get("status") if isinstance(it, dict) and isinstance(it.get("status"), dict) else {}
-        if st.get("state") != "CONTAINER_RUNNING":  # stopped since ps: not running, so not a problem
-            continue
-        info = it.get("info") if isinstance(it.get("info"), dict) else {}
-        spec = st.get("image") if isinstance(st.get("image"), dict) else {}
-        labels = st.get("labels") if isinstance(st.get("labels"), dict) else {}
-        cid, pid = st.get("id"), info.get("pid")
-        image_id = None
-        for c in (st.get("imageId"), spec.get("image"), st.get("imageRef")):
-            d = _DIGEST.match(str(c or ""))
-            image_id = image_id or ("sha256:" + d[1] if d else by_name.get(str(c or "")))
-        if not (isinstance(cid, str) and _CONTAINER_ID.match(cid) and type(pid) is int and pid > 0 and image_id):
-            problems.append("crictl described a container without its id, PID or image")
-            continue
-        k8s = [str(labels.get(f"io.kubernetes.{k}") or "") for k in ("pod.namespace", "pod.name", "container.name")]
-        name = "/".join(k8s) if all(k8s) else str((st.get("metadata") or {}).get("name") or "")
-        ref = spec.get("userSpecifiedImage") or ("" if _DIGEST.match(str(spec.get("image") or "")) else spec.get("image")) or st.get("imageRef")
-        found.append({"id": cid, "name": name[:255], "runtime": runtime, "pid": pid, "image_id": image_id, "ref": str(ref or "")[:255]})
-    if rc != 0 and not found:
-        problems.append(_failed("inspect", rc, err))
+    if rc != 0:  # crictl stops at the first id it can't describe (cri-tools' resourceStatus): ask for the rest one at a time
+        seen = {it["status"].get("id") for it in items if isinstance(it, dict) and isinstance(it.get("status"), dict)}
+        for cid in [x for x in ids[:CRI_INSPECT_MAX] if x not in seen]:
+            orc, oout, oerr = query(["crictl", "inspect", "-o", "json", cid], timeout=60)
+            try:
+                more = _json_values(oout) if orc == 0 else []
+            except ValueError:
+                more = []
+            if more:
+                items += more
+            elif "not found" not in oerr.lower() and "notfound" not in oerr.lower():  # removed meanwhile: not running, not a problem
+                problems.append(_failed("inspect", orc, oerr))
+    found = [c for c in (_cri_entry(it, runtime, by_name, problems) for it in items) if c]
     if irc != 0:
         problems.append(_failed("images", irc, ierr))
     return runtime, found, "; ".join(problems)[:300] or None, whole
@@ -5269,7 +5325,9 @@ def _app_line(count, unread, stopped, problems):
 
 
 def _where(path):
-    """A location as the server stores it (255 characters): the end of a long path says more than its start."""
+    """A location as the server stores it (255 characters): the end of a long path says more than its start. A file name
+    that isn't UTF-8 (scandir returns its bytes as lone surrogates) gets U+FFFD instead, which JSON and the database carry."""
+    path = path.encode("utf-8", "surrogateescape").decode("utf-8", "replace")
     return path if len(path) <= 255 else "..." + path[-252:]
 
 
@@ -5306,14 +5364,17 @@ def local_roots():
     return [f"{d}:\\" for d in "CDEFGHIJKLMNOPQRSTUVWXYZ" if ctypes.windll.kernel32.GetDriveTypeW(f"{d}:\\") == 3]  # DRIVE_FIXED
 
 
-def _poms(z, where, out):
+def _poms(z, where, out, late=None):
     """Add validated Maven coordinate/version/location tuples from ZipFile z to out.
 
     where is the location label. Read matching pom.properties entries with declared size at
     most 64KiB. Later duplicate properties win. Skip listed read/ZIP/key errors. Other failures
-    can propagate. No extraction or package execution occurs.
+    can propagate. No extraction or package execution occurs. late(), when given, is asked before
+    each entry is read and stops the reading when true (a container walk's budget).
     """
     for n in z.namelist():
+        if late is not None and POM.search(n) and late():
+            return
         if (m := POM.search(n)) and z.getinfo(n).file_size <= 64 * 1024:  # no zip bomb in a properties file
             try:
                 props = dict(ln.split("=", 1) for ln in z.read(n).decode("utf-8", "replace").splitlines() if "=" in ln and not ln.startswith("#"))
@@ -5539,6 +5600,12 @@ class _Budget:
         self.n += 1
         if not self.stopped and (self.n > self.entries or time.time() - self.start > self.seconds):
             self.stopped = f"stopped after {self.n - 1} entries / {int(time.time() - self.start)} s (budget)"
+        return bool(self.stopped)
+
+    def late(self):
+        """spent() for work that isn't an entry (reading a file): only the time counts."""
+        if not self.stopped and time.time() - self.start > self.seconds:
+            self.stopped = f"stopped after {self.n} entries / {int(time.time() - self.start)} s (budget)"
         return bool(self.stopped)
 
 

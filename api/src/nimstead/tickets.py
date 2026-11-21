@@ -669,7 +669,7 @@ MAX_FAILURES_IN_A_ROW = 5  # a tracker that's down: stop and try next hour rathe
 def _sync(s: Session, org_id: str, cfg: TicketSettings, c: Client, stats: Counter, errors: list) -> None:
     want, _ = desired(s, org_id, cfg)
     rows = {t.fingerprint: t for t in s.scalars(select(Ticket).where(Ticket.org_id == org_id))}
-    done, gone, start, streak = set(), set(), now(), 0
+    done, start, streak = set(), now(), 0
 
     def stop() -> bool:
         return now() - start > SYNC_DEADLINE or streak >= MAX_FAILURES_IN_A_ROW
@@ -682,13 +682,12 @@ def _sync(s: Session, org_id: str, cfg: TicketSettings, c: Client, stats: Counte
             if c.is_done(t.project, t.key):
                 done.add(t.fingerprint)
             t.checked_at, streak = now(), 0
-        except Missing:
-            gone.add(t.fingerprint)  # deleted in the tracker: opened afresh if still wanted
+        except Missing:  # deleted in the tracker: opened afresh if still wanted (the label search first finds nothing)
             t.key = None
         except TrackerError as e:
             _fail(t, e, stats, errors)
             streak += 1
-        s.commit()
+    s.commit()  # once: the reads changed only when each ticket was checked
     ops = plan(want, rows, done)
     writes = 0
     for i, (op, fp) in enumerate(ops):
@@ -697,7 +696,7 @@ def _sync(s: Session, org_id: str, cfg: TicketSettings, c: Client, stats: Counte
             break
         t, recover = rows.get(fp), False
         if op == "open":
-            recover = t is not None and fp not in gone  # a keyless row from an earlier sync: its create may have reached the tracker
+            recover = t is not None  # a keyless row: its create may have reached the tracker before a crash, or it was deleted there
             if t is None:
                 g = want[fp]
                 t = rows[fp] = Ticket(org_id=org_id, fingerprint=fp, owner=g["owner"], action=g["action"], project=g["project"], machines={})

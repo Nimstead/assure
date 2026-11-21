@@ -137,32 +137,42 @@ class Style:
     """How a tracker shows a ticket. Every value from an agent, a feed or an admin goes in a block or a code span the
     tracker doesn't interpret, so a hostile package name can't add links, mentions, markup or quick actions."""
 
-    def code(self, v: str) -> str:  # a value inside a title
+    def code(self, v: str) -> str:
+        """A value inside a title (Jira titles are plain text)."""
         return clean(v, 120)
 
     def heading(self, text: str) -> str:
+        """A section heading."""
         return f"h3. {text}"
 
-    def block(self, lines: list[str]) -> str:  # {noformat} turns off all markup, links included, until {noformat}
+    def block(self, lines: list[str]) -> str:
+        """Lines in {noformat}, which turns off all markup, links included, until the next {noformat}."""
         return "{noformat}\n" + "\n".join(re.sub(r"(?i)\{noformat", "{no-format", clean(x, 300)) for x in lines) + "\n{noformat}"
 
     def link(self, label: str, url: str) -> str:
+        """A link with a label."""
         return f"[{label}|{url}]"
 
 
 class MarkdownStyle(Style):
+    """GitLab Markdown: code spans and fenced blocks."""
+
     def code(self, v: str) -> str:
+        """A value inside a title."""
         return "`" + clean(v, 120).replace("`", "'") + "`"
 
     def heading(self, text: str) -> str:
+        """A section heading."""
         return f"### {text}"
 
-    def block(self, lines: list[str]) -> str:  # a fence longer than any backtick run inside; indented, so no line is a quick action
+    def block(self, lines: list[str]) -> str:
+        """Lines in a fence longer than any backtick run inside, indented, so no line can close it or be a quick action."""
         text = "\n".join("  " + clean(x, 300) for x in lines)
         fence = "`" * max(3, max((len(m) for m in re.findall(r"`+", text)), default=0) + 1)
         return f"{fence}\n{text}\n{fence}"
 
     def link(self, label: str, url: str) -> str:
+        """A link with a label."""
         return f"[{label}]({url})"
 
 
@@ -245,6 +255,7 @@ def payload(g: dict, cfg: TicketSettings, st: Style) -> dict:
 
 
 def digest(p: dict) -> str:
+    """What a ticket last said, so an unchanged ticket isn't rewritten."""
     return hashlib.sha256(json.dumps([p["title"], p["body"], p["due"]]).encode()).hexdigest()
 
 
@@ -290,6 +301,7 @@ class Client:
             self.http.close()
 
     def headers(self) -> dict:
+        """The request headers that sign in."""
         raise NotImplementedError
 
     def call(self, method: str, path: str, **kw):
@@ -327,17 +339,21 @@ class Jira(Client):
         self._types: dict[str, str] = {}
 
     def headers(self) -> dict:
+        """The request headers that sign in."""
         auth = "Basic " + b64encode(f"{self.user}:{self.token}".encode()).decode() if self.user else f"Bearer {self.token}"
         return {"Authorization": auth, "Accept": "application/json"}
 
     def link(self, project: str, key: str) -> str:
+        """The issue's address, built from the site URL (never from a reply)."""
         return f"{self.site}/browse/{key}"
 
     def whoami(self) -> str:
+        """The name the tracker knows the signed-in account by."""
         d = _dict(self.call("GET", "/rest/api/2/myself"))
         return clean(d.get("displayName") or d.get("name") or d.get("emailAddress") or "?", 100)
 
     def project(self, project: str) -> str:
+        """Look up a project; return its name. Raise Missing when it doesn't exist or can't be seen."""
         d = _dict(self.call("GET", f"/rest/api/2/project/{quote(project, safe='')}"))
         # Task, then Bug, then any standard type: the issue type every ticket here is created as
         types = [t for t in d.get("issueTypes") or [] if isinstance(t, dict) and not t.get("subtask")]
@@ -361,6 +377,7 @@ class Jira(Client):
             return self.call(method, path, json={"fields": {k: v for k, v in fields.items() if k != "duedate"}})
 
     def create(self, project: str, p: dict) -> str:
+        """Open an issue; return its key."""
         if project not in self._types:
             self.project(project)
         fields = self._fields(project, p) | {"project": {"key": project}, "issuetype": {"id": self._types[project]}}
@@ -370,14 +387,17 @@ class Jira(Client):
         return key
 
     def update(self, project: str, key: str, p: dict) -> None:
+        """Rewrite an issue's title, description and due date."""
         f = self._fields(project, p)
         f.pop("labels")  # labels a team added stay
         self._send_fields("PUT", f"/rest/api/2/issue/{key}", f)
 
     def comment(self, project: str, key: str, text: str) -> None:
+        """Add a comment."""
         self.call("POST", f"/rest/api/2/issue/{key}/comment", json={"body": text})
 
     def is_done(self, project: str, key: str) -> bool:
+        """Whether the issue is closed (Jira: in the Done status category)."""
         d = _dict(self.call("GET", f"/rest/api/2/issue/{key}", params={"fields": "status"}))
         return ((((d.get("fields") or {}).get("status") or {}).get("statusCategory") or {}).get("key")) == "done"
 
@@ -393,10 +413,12 @@ class Jira(Client):
         self.call("POST", f"/rest/api/2/issue/{key}/transitions", json={"transition": {"id": str(pick.get("id"))}})
 
     def close(self, project: str, key: str) -> None:
+        """Close the issue (a no-op when it already is)."""
         if not self.is_done(project, key):
             self._move(key, True)
 
     def reopen(self, project: str, key: str) -> None:
+        """Reopen the issue (a no-op when it's open)."""
         if self.is_done(project, key):
             self._move(key, False)
 
@@ -425,45 +447,56 @@ class GitLab(Client):
     style = MarkdownStyle()
 
     def headers(self) -> dict:
+        """The request headers that sign in."""
         return {"PRIVATE-TOKEN": self.token, "Accept": "application/json"}
 
     def link(self, project: str, key: str) -> str:
+        """The issue's address, built from the site URL (never from a reply)."""
         return f"{self.site}/{project}/-/issues/{key}"
 
     def _p(self, project: str) -> str:
         return f"/api/v4/projects/{quote(project, safe='')}"
 
     def whoami(self) -> str:
+        """The name the tracker knows the signed-in account by."""
         return clean(_dict(self.call("GET", "/api/v4/user")).get("username") or "?", 100)
 
     def project(self, project: str) -> str:
+        """Look up a project; return its name. Raise Missing when it doesn't exist or can't be seen."""
         return clean(_dict(self.call("GET", self._p(project))).get("path_with_namespace") or project, 255)
 
     def _data(self, p: dict) -> dict:
         return {"title": p["title"], "description": p["body"]} | ({"due_date": p["due"]} if p["due"] else {})
 
     def create(self, project: str, p: dict) -> str:
+        """Open an issue; return its key."""
         iid = _dict(self.call("POST", f"{self._p(project)}/issues", json=self._data(p) | {"labels": ",".join(p["labels"])})).get("iid")
         if not isinstance(iid, int) or isinstance(iid, bool) or iid < 1:
             raise TrackerError("the tracker answered without a valid issue number")
         return str(iid)
 
     def update(self, project: str, key: str, p: dict) -> None:
+        """Rewrite an issue's title, description and due date."""
         self.call("PUT", f"{self._p(project)}/issues/{int(key)}", json=self._data(p))
 
     def comment(self, project: str, key: str, text: str) -> None:
+        """Add a comment."""
         self.call("POST", f"{self._p(project)}/issues/{int(key)}/notes", json={"body": text})
 
     def is_done(self, project: str, key: str) -> bool:
+        """Whether the issue is closed (Jira: in the Done status category)."""
         return _dict(self.call("GET", f"{self._p(project)}/issues/{int(key)}")).get("state") == "closed"
 
     def close(self, project: str, key: str) -> None:
+        """Close the issue (a no-op when it already is)."""
         self.call("PUT", f"{self._p(project)}/issues/{int(key)}", json={"state_event": "close"})
 
     def reopen(self, project: str, key: str) -> None:
+        """Reopen the issue (a no-op when it's open)."""
         self.call("PUT", f"{self._p(project)}/issues/{int(key)}", json={"state_event": "reopen"})
 
     def find(self, project: str, label: str) -> str | None:
+        """The issue in project carrying label, if any."""
         d = self.call("GET", f"{self._p(project)}/issues", params={"labels": label, "state": "all", "per_page": "1"})
         iids = [i.get("iid") for i in d or [] if isinstance(i, dict)] if isinstance(d, list) else []
         return next((str(i) for i in iids if isinstance(i, int) and not isinstance(i, bool) and i > 0), None)
@@ -512,22 +545,25 @@ def _why_left(s: Session, org_id: str, asset_id: str, t: Ticket, cfg: TicketSett
         q = q.where(Finding.ecosystem == act["ecosystem"], Finding.package == act["package"])
     fs = s.scalars(q).all()
     open_ = [f for f in fs if f.status == "open"]
-    if open_:
+    if any(f.priority in wanted_priorities(cfg) for f in open_):  # still to fix, but not in this ticket
         if (a.owner or "").casefold() != (t.owner or "").casefold():
             return f"now owned by {clean(a.owner, 100) or 'nobody'}"
-        if not any(f.priority in wanted_priorities(cfg) for f in open_):
-            return f"priority now below {LABEL.get(cfg.min_priority, cfg.min_priority)}"
         return f"now tracked in project {clean(route(cfg, a.owner) or 'none', 100)}"
+    fixed = [f.resolved_at for f in fs if f.status == "resolved" and f.resolved_at and f.resolved_at >= t.opened_at]
     accepted = [f.accepted_until for f in fs if f.status == "accepted"]
-    if accepted:
+    rest = f"; {_n(len(open_), 'lower-priority finding')} still open" if open_ else ""
+    if accepted and not fixed:
         until = max((u for u in accepted if u), default=None)
-        return "risk accepted in Nimstead" + (f" until {until:%d %b %Y}" if until else "")
-    resolved = max((f.resolved_at for f in fs if f.resolved_at), default=None)
+        return "risk accepted in Nimstead" + (f" until {until:%d %b %Y}" if until else "") + rest
+    if open_ and not fixed:
+        return f"priority now below {LABEL.get(cfg.min_priority, cfg.min_priority)}"
+    resolved = max(fixed, default=None) or max((f.resolved_at for f in fs if f.resolved_at), default=None)
     when = f" {resolved:%d %b %H:%M} UTC" if resolved else ""
-    if act["kind"] == "package" and a.kind == "host":
-        v = s.scalar(select(InstalledPackage.version).where(InstalledPackage.asset_id == asset_id, InstalledPackage.name == act["package"]).limit(1))
-        return f"fixed{when}: {v} in the machine's inventory" if v else f"fixed{when}: removed, per the machine's inventory"
-    return f"resolved{when} on fresh evidence"
+    if act["kind"] == "package" and a.kind == "host":  # the package itself, else a binary built from it (Debian source names)
+        v = (s.scalar(select(InstalledPackage.version).where(InstalledPackage.asset_id == asset_id, InstalledPackage.name == act["package"]).limit(1))
+             or s.scalar(select(InstalledPackage.version).where(InstalledPackage.asset_id == asset_id, InstalledPackage.source == act["package"]).limit(1)))
+        return (f"fixed{when}: {v} in the machine's inventory" if v else f"fixed{when}: removed, per the machine's inventory") + rest
+    return f"resolved{when} on fresh evidence{rest}"
 
 
 WHY = {"fixed": "fixed", "resolved": "fixed", "risk": "accepted", "now": "moved", "priority": "below_threshold", "removed": "removed"}

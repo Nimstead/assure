@@ -2,6 +2,7 @@
 findings is open (saying why each machine left), reopened on a regression or a hand close; against stateful fakes of
 Jira and GitLab (tests/trackers.py)."""
 
+import json
 import re
 import socket
 from datetime import timedelta
@@ -423,3 +424,114 @@ def test_the_hourly_run_isolates_each_org(org, monkeypatch):
     assert tickets.sync_all(s) == {"orgs_failed": 1} and calls == [oid]
     monkeypatch.setattr(tickets, "sync", lambda sess, org_id: real(sess, org_id, http=client_for(FakeJira())))
     assert tickets.sync_all(s)["opened"] == 1
+
+
+# --- the API -----------------------------------------------------------------------------------------------------------
+
+CFG = {"kind": "jira", "site": "https://acme.atlassian.net/", "user": "bot@example.com", "token": "tok", "default_project": "ops",
+       "routes": [{"owner": "payments", "project": "pay"}], "min_priority": "fix-now", "enabled": False}
+
+
+def member(env, c):
+    from fastapi.testclient import TestClient
+
+    from nimstead.app import ph
+    from nimstead.db import User
+    s = make_sessionmaker(env)()
+    s.add(User(org_id=s.scalar(select(Org.id)), email="staff@example.com", password_hash=ph.hash("correct horse battery"), admin=False))
+    s.commit()
+    staff = TestClient(c.app)
+    assert staff.post("/api/auth/login", json={"email": "staff@example.com", "password": "correct horse battery"}).status_code == 200
+    return staff
+
+
+def test_settings_keep_the_token_write_only_validate_and_are_recorded(org, env):
+    c, s, oid = org
+    machine(s, oid, "pay-1", "Payments")
+    s.commit()
+    r = c.put("/api/settings/tickets", json=CFG | {"token": None, "enabled": True})
+    assert r.status_code == 422 and "Save a token" in r.json()["detail"]
+    got = c.put("/api/settings/tickets", json=CFG).json()
+    assert got["token_set"] and '"tok"' not in json.dumps(got) and got["site"] == "https://acme.atlassian.net"
+    assert (got["default_project"], got["routes"], got["owners"]) == ("OPS", [{"owner": "Payments", "project": "PAY"}], ["Payments"])
+    assert c.get("/api/settings/tickets").json() == got
+    stored = make_sessionmaker(env)().get(TicketSettings, oid)
+    assert stored.token != "tok" and sso.unseal(stored.token) == "tok"
+    assert c.put("/api/settings/tickets", json=CFG | {"token": None}).json()["token_set"]  # omitted: kept
+    logged = ledger(s, "tickets_configured")
+    assert logged[0]["token"] == "[redacted]" and logged[0]["token_changed"] and not logged[1]["token_changed"]
+    assert "tok" not in json.dumps([e.get("token") for e in logged]).replace("[redacted]", "")
+    for patch, msg in (({"site": "http://acme.atlassian.net"}, "Site URL"), ({"site": "https://u:p@acme.atlassian.net"}, "Site URL"),
+                       ({"site": "https://acme.atlassian.net/?x=1"}, "no query"), ({"default_project": "not a key"}, "Jira project key"),
+                       ({"kind": "gitlab", "user": "", "token": "t"}, "GitLab project path"), ({"kind": "gitlab"}, "leave the email empty"),
+                       ({"user": "not-an-email"}, "Email"), ({"routes": [{"owner": "Payments", "project": "PAY"}, {"owner": "PAYMENTS", "project": "OPS"}]}, "two routes"),
+                       ({"site": "https://other.atlassian.net", "token": None}, "its own token")):
+        r = c.put("/api/settings/tickets", json=CFG | {"token": None} | patch)
+        assert r.status_code == 422 and msg in r.json()["detail"], (patch, r.text)
+
+
+def test_a_new_site_needs_a_new_token_and_forgets_the_old_trackers_tickets(org):
+    c, s, oid = org
+    c.put("/api/settings/tickets", json=CFG)
+    s.add(Ticket(org_id=oid, fingerprint="a" * 12, owner=None, action={}, project="OPS", key="OPS-1"))
+    s.commit()
+    r = c.put("/api/settings/tickets", json=CFG | {"kind": "gitlab", "site": "https://gitlab.example.com", "user": "", "token": "glpat",
+                                                  "default_project": "platform/ops", "routes": []})
+    assert r.status_code == 200 and r.json()["open_by_project"] == {}
+    assert s.scalar(select(Ticket.id)) is None and ledger(s, "tickets_configured")[-1]["forgot_tickets"] == 1
+
+
+def test_test_preview_and_sync_now_write_only_when_switched_on(org, monkeypatch):
+    c, s, oid = org
+    finding(s, machine(s, oid, "pay-1", "Payments"))
+    finding(s, machine(s, oid, "web-1"), package="curl", fixed="8.14")
+    s.commit()
+    fake = FakeJira()
+    monkeypatch.setattr(tickets, "http_client", client_for(fake))
+    assert c.post("/api/settings/tickets/test").status_code == 409  # nothing saved yet
+    c.put("/api/settings/tickets", json=CFG)
+    assert c.post("/api/settings/tickets/test").json() == {"ok": True, "message": "Signed in to Jira as Nimstead bot; projects OPS, PAY found."}
+    p = c.get("/api/settings/tickets/preview").json()
+    assert sorted((t["project"], t["title"]) for t in p["open"]) == [
+        ("OPS", "Upgrade curl to 8.14 on 1 machine"), ("PAY", "Upgrade openssl to 3.0.15-1~deb12u1 on 1 machine (Payments)")]
+    assert (p["tickets"], p["findings"], p["skipped"]) == (2, 2, []) and fake.writes == []
+    assert c.post("/api/settings/tickets/sync").status_code == 409  # off
+    c.put("/api/settings/tickets", json=CFG | {"token": None, "enabled": True})
+    assert c.post("/api/settings/tickets/sync").status_code == 202  # runs after the response (the test client waits for it)
+    got = c.get("/api/settings/tickets").json()
+    assert got["last_sync"]["opened"] == 2 and got["open_by_project"] == {"OPS": 1, "PAY": 1} and len(fake.issues) == 2
+    for _ in range(4):
+        c.post("/api/settings/tickets/test")
+    assert c.post("/api/settings/tickets/test").status_code == 200 and c.post("/api/settings/tickets/test").status_code == 429
+
+
+def test_only_admins_change_ticketing_and_members_and_read_only_tokens_see_the_links(org, env, monkeypatch):
+    from test_api import INV
+    c, s, oid = org
+    token = c.post("/api/enroll-tokens", json={"owner": "Payments"}).json()["token"]
+    a = c.post("/api/agent/enroll", json={"token": token, "hostname": "pay-1", "os_name": "Debian 12", "ecosystem": "Debian:12"}).json()
+    h = {"Authorization": f"Bearer {a['agent_key']}"}
+    c.post("/api/agent/inventory", json=INV, headers=h)
+    fake = FakeJira()
+    monkeypatch.setattr(tickets, "http_client", client_for(fake))
+    c.put("/api/settings/tickets", json=CFG | {"enabled": True})
+    c.post("/api/settings/tickets/sync")
+    staff = member(env, c)
+    ro = {"Authorization": "Bearer " + c.post("/api/tokens", json={"name": "ro"}).json()["token"]}
+    for method, path in (("get", ""), ("put", ""), ("post", "/test"), ("get", "/preview"), ("post", "/sync")):
+        kw = {"json": CFG} if method == "put" else {}
+        assert getattr(staff, method)(f"/api/settings/tickets{path}", **kw).status_code == 403
+        assert getattr(c, method)(f"/api/settings/tickets{path}", headers=ro, **kw).status_code in (401, 403)
+    top = next(f for f in c.get("/api/findings", headers=ro).json() if f["package"] == "requests")
+    link = c.get(f"/api/findings/{top['id']}", headers=ro).json()["ticket"]
+    assert link == {"key": "PAY-1", "url": "https://acme.atlassian.net/browse/PAY-1", "state": "open", "project": "PAY"}
+    assert next(x for x in staff.get("/api/summary").json()["top_actions"] if x["package"] == "requests")["tickets"] == [link]
+    assert "fix-now" in fake.issues["PAY-1"]["labels"][1]
+    # the fix lands: the machine's own inventory closes the ticket, naming the version it now has
+    inv2 = {**INV, "packages": INV["packages"][:2] + [{"ecosystem": "PyPI", "name": "requests", "version": "2.32.4"}]}
+    c.post("/api/agent/inventory", json=inv2, headers=h)
+    c.post("/api/settings/tickets/sync")
+    assert fake.status("PAY-1") == "done" and "pay-1  fixed" in fake.issues["PAY-1"]["comments"][-1]
+    assert "2.32.4 in the machine's inventory" in fake.issues["PAY-1"]["comments"][-1]
+    other = user(env, "b@example.com")
+    assert other.get("/api/settings/tickets").json()["open_by_project"] == {} and not other.get("/api/settings/tickets").json()["token_set"]

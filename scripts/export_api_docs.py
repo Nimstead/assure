@@ -72,6 +72,9 @@ def render() -> dict[str, str]:
     # a container image's finding also says how it's fixed and where the image runs (DECISIONS 141); null for other kinds
     detail_fields |= {"rebuild": {"type": ["string", "null"]}, "runs_on": {"type": ["array", "null"], "items": {"type": "string"}}}
     detail_fields |= {"owner": {"type": ["string", "null"]}}  # its asset's owner (DECISIONS 145)
+    ticket_link = {"type": ["object", "null"], "properties": {name: {"type": "string"} for name in ("key", "url", "state", "project")},
+                   "required": ["key", "url", "state", "project"], "additionalProperties": False}
+    detail_fields |= {"ticket": ticket_link}  # the tracker ticket its fix is in (DECISIONS 150)
     for name, fields in (("FindingRow", finding_fields), ("FindingCompact", compact_fields), ("FindingDetail", detail_fields), ("FindingGroup", group_fields)):
         schema["components"]["schemas"][name] = {"type": "object", "properties": fields, "required": list(fields), "additionalProperties": False}
     rule_fields = {name: {"type": "string"} for name in ("id", "v", "severity", "status", "setting", "expected", "found", "note")}
@@ -90,8 +93,21 @@ def render() -> dict[str, str]:
     delivery_fields["error"] = {"type": ["string", "null"]}
     notification_fields["recent"] = {"type": "array", "maxItems": 5, "items": {"type": "object", "properties": delivery_fields,
                                                                             "required": list(delivery_fields), "additionalProperties": False}}
+    obj = lambda fields: {"type": "object", "properties": fields, "required": list(fields), "additionalProperties": False}  # noqa: E731
+    ticket_fields = {name: {"type": "string"} for name in ("kind", "site", "user", "default_project", "min_priority")}
+    ticket_fields |= {name: {"type": "boolean"} for name in ("token_set", "enabled", "public_url")}
+    ticket_fields |= {"routes": {"type": "array", "items": obj({"owner": {"type": "string"}, "project": {"type": "string"}})},
+                      "last_sync": {"type": ["object", "null"]}, "closed": {"type": "integer", "minimum": 0},
+                      "open_by_project": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}},
+                      "failing": {"type": "array", "maxItems": 5, "items": obj({"key": {"type": ["string", "null"]}, "project": {"type": "string"},
+                                                                               "title": {"type": "string"}, "error": {"type": "string"}})},
+                      "owners": {"type": "array", "items": {"type": "string"}}}
+    preview_fields = {"open": {"type": "array", "items": obj({name: {"type": "string"} for name in ("project", "title", "priority")})},
+                      "skipped": {"type": "array", "items": obj({"owner": {"type": ["string", "null"]}, "findings": {"type": "integer", "minimum": 1}})}}
+    preview_fields |= {name: {"type": "integer", "minimum": 0} for name in ("update", "close", "reopen", "tickets", "findings")}
     for name, fields in (("BaselineRule", rule_fields), ("BaselineDetail", baseline_detail), ("BaselineHostSummary", baseline_summary),
-                         ("BaselineAggregate", baseline_aggregate), ("NotificationSettings", notification_fields)):
+                         ("BaselineAggregate", baseline_aggregate), ("NotificationSettings", notification_fields),
+                         ("TicketSettings", ticket_fields), ("TicketPreview", preview_fields)):
         schema["components"]["schemas"][name] = {"type": "object", "properties": fields, "required": list(fields), "additionalProperties": False}
     job_fields = {name: {"type": "string"} for name in (
         "id", "asset_id", "hostname", "status", "manager", "action_key", "summary", "created_by", "created", "updated")}
@@ -527,6 +543,20 @@ def render() -> dict[str, str]:
                 operation["responses"]["202"] = {"description": "Request acknowledged; does not establish durable enqueue or delivery.",
                                                  "content": {"application/json": {"schema": {"type": "object", "required": ["queued"],
                                                                                           "properties": {"queued": {"type": "boolean", "const": True}},
+                                                                                          "additionalProperties": False}}}}
+            if route.path in {"/api/settings/tickets", "/api/settings/tickets/preview"}:
+                name = "TicketPreview" if route.path.endswith("preview") else "TicketSettings"
+                operation["responses"]["200"] = {"description": "Tracker settings (never the token) and the last sync, or what a sync would do; see tickets.md.",
+                                                 "content": {"application/json": {"schema": {"$ref": f"#/components/schemas/{name}"}}}}
+            if route.path == "/api/settings/tickets/test":
+                fields = {"ok": {"type": "boolean"}, "message": {"type": "string"}}
+                operation["responses"]["200"] = {"description": "Whether the saved token signs in and every routed project exists, in words.",
+                                                 "content": {"application/json": {"schema": {"type": "object", "properties": fields,
+                                                                                          "required": list(fields), "additionalProperties": False}}}}
+            if route.path == "/api/settings/tickets/sync":
+                operation["responses"]["202"] = {"description": "Sync started after the response; its result appears as last_sync.",
+                                                 "content": {"application/json": {"schema": {"type": "object", "required": ["started"],
+                                                                                          "properties": {"started": {"type": "boolean", "const": True}},
                                                                                           "additionalProperties": False}}}}
             if route.path == "/api/notify/confirm":
                 for status, description in (("200", "Consent form or confirmation HTML."), ("404", "Invalid confirmation link HTML.")):

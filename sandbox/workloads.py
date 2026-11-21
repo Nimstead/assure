@@ -83,7 +83,7 @@ def put(path, data: bytes):
 
 # ---- what runs ----------------------------------------------------------------------------------------------------
 BUILT = {  # built for the proof: name -> Dockerfile
-    "py-app": "FROM python:3.12-slim\nRUN pip install --no-cache-dir -q requests==2.19.1 urllib3==1.24.1 Django==3.2 Jinja2==2.10.1 PyYAML==5.3\n",
+    "py-app": "FROM python:3.12-slim\nRUN pip install --no-cache-dir -q requests==2.19.1 urllib3==1.23 Django==3.2 Jinja2==2.10.1 Werkzeug==0.15.0\n",
     "node-app": "FROM node:20-slim\nWORKDIR /usr/src/app\nRUN npm init -y >/dev/null && npm install -s --no-audit --no-fund lodash@4.17.20 minimist@1.2.0 express@4.17.1\n",
     "java-app": ("FROM eclipse-temurin:17-jre\n"
                  "ADD https://repo1.maven.org/maven2/org/apache/logging/log4j/log4j-core/2.14.1/log4j-core-2.14.1.jar /opt/app/lib/\n"

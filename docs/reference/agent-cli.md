@@ -41,7 +41,8 @@ Global options precede the command. `--insecure-http` permits plain HTTP for loc
 | `--proxy URL` | Explicit proxy; Windows otherwise uses the machine WinHTTP proxy when available |
 | `--windows-update-source default\|microsoft` | `default`; `microsoft` bypasses WSUS for Assure jobs |
 | `--ad-discovery` | Off; report enabled domain computers from a Windows domain member |
-| `--no-containers` | Containers read by default on Linux; this flag stops the agent reading the packages inside the host's running Docker and Podman containers (DECISIONS 138). The Linux installer takes `--no-containers`. On an enrolled host, set `"containers": false` in the configuration file |
+| `--no-container-apps` | Applications inside containers read by default on Linux (agent 0.9.0); this flag reads only their OS packages, not the Python, npm, Java and Go packages their images added (DECISIONS 155). The Linux installer takes `--no-container-apps`. On an enrolled host, set `"container_apps": false` in the configuration file |
+| `--no-containers` | Containers read by default on Linux; this flag stops the agent reading the packages inside the host's running Docker, Podman and Kubernetes (containerd, CRI-O) containers (DECISIONS 138, 158). The Linux installer takes `--no-containers`. On an enrolled host, set `"containers": false` in the configuration file |
 | `--scan-jars` | Off; inspect local Java archives with a five-minute soft budget |
 | `--scan-apps` | Off; inspect Python and npm metadata with a two-minute soft budget |
 | `--app-root DIR` | Repeatable with `--scan-apps`; only the first 20 extra roots are retained, searched eight levels deep |

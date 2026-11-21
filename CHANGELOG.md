@@ -4,6 +4,31 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-22 (preview)
+
+Agent 0.9.0. No database migration.
+
+### Upgrade notes
+- **Agents read more inside containers once they update to 0.9.0**: the Python, npm, Java and Go packages each image's build added, and Kubernetes nodes' containers. Expect new findings on your images (often many, mostly in application packages and Go toolchains); none of your existing image findings closes because of the update.
+- **To read only containers' OS packages on a machine**, enrol it with `--no-container-apps` or set `"container_apps": false` in `/etc/nimstead/agent.json`. The server can't turn it back on.
+- **`GET /api/findings/{id}` adds `locations`**; each image in `GET /api/summary`'s `images_to_rebuild` names each fix's `ecosystem`; an image in `GET /api/assets` adds `read`. The containers report may add `reread`.
+
+### Highlights
+- **See what your images' builds added, not just their base OS.** The old Django in a venv, lodash in `node_modules`, log4j-core inside a Spring Boot jar, a Go service built with an old toolchain: each is found in the running container, with where it sits in the image (`/app/app.jar!/BOOT-INF/lib/log4j-core-2.14.1.jar`), and the rebuild names it.
+- **Kubernetes nodes, with nothing to install in the cluster.** Enrol a node like any machine: its containerd or CRI-O containers appear as `namespace/pod/container`, read through the node's own `crictl`, with no API token, no DaemonSet and no registry credentials. One image is one image, in a pod or under Podman.
+- **No noise from the base image.** A Python package Debian or Alpine installed is judged once, by its distribution with its backports, never again as a PyPI package. Jars without Maven metadata aren't guessed at.
+- **Honest about what it read.** Each image says what was read, source by source ("Debian packages 96 · Python 41 · npm 0 · Java 3 · Go 52"), and why anything wasn't read in full. Updating agents closes nothing: an image read again with its applications keeps its asset and its findings, so Progress counts no fixes nobody made.
+- **Hostile images stay harmless.** The walk follows no link, crosses no mount (a pod's mounted tokens and volumes are never read), opens only regular files, caps every read and runs nothing; proven against links out, loops, FIFOs, a 200 MB sparse jar, a nested zip bomb and a 210,000-file image.
+
+### Added
+- **Application packages inside containers** (DECISIONS 155-157): Python (`*.dist-info`, `*.egg-info` in any `site-packages` or `dist-packages`), npm (`node_modules`, scoped and nested), Java (`pom.properties` in every jar, war and ear and one level of nested jars) and Go (each executable's build information, Go 1.18+, with the toolchain as `stdlib`), read by one bounded walk per image: 200,000 entries, 60 seconds and 20,000 packages an image, 48 folder levels. New collection line `go_modules`.
+- **Kubernetes nodes** (DECISIONS 158): containerd and CRI-O containers through `crictl` (`version`, `ps`, `inspect`, `images`, read-only); runtimes `containerd` and `cri-o` in the containers report and its listings.
+- **What was read** in each image's drawer; **where it is in the image** on each application finding; each application package's ecosystem beside it in **Container images to rebuild**.
+- **`enroll --no-container-apps`** and `"container_apps": false`, taken by the Linux installer too.
+
+### Fixed
+- **Container images to rebuild picked each fix's highest version by the image's OS order**; with application packages in images it now uses each package's own ecosystem's order (a npm `1.2.0` is newer than `1.2.0-beta.1`, which Debian's order gets backwards).
+
 ## [0.12.0] - 2026-11-21 (preview)
 
 Agent 0.8.1, unchanged. One database migration (`e8b2d4f6a1c3`: ticket settings and tickets): the Docker image applies it on start; without Docker, run `alembic upgrade head`.
@@ -763,7 +788,8 @@ The first early-access release. Everything listed is proven by tests and, for an
 
 Licensed under FSL-1.1-ALv2: this release becomes available under Apache 2.0 on 2028-10-27.
 
-[Unreleased]: https://github.com/Nimstead/assure/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/Nimstead/assure/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/Nimstead/assure/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/Nimstead/assure/compare/v0.11.1...v0.12.0
 [0.11.1]: https://github.com/Nimstead/assure/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/Nimstead/assure/compare/v0.10.1...v0.11.0

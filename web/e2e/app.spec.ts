@@ -340,6 +340,39 @@ test("owners: set on a machine, counted on Progress, and an owner's name opens t
   await context.close();
 });
 
+test("ticketing: saved without showing the token, previewed before anything is sent, a failed test said plainly, and it passes axe", async ({ browser }) => {
+  const { context, page } = await ctx(browser, 1440, "light");
+  // .invalid never resolves (RFC 2606): nothing can leave this test
+  const saved = await page.request.put("/api/settings/tickets", { data: {
+    kind: "jira", site: "https://jira.invalid", user: "bot@example.com", token: "e2e-secret-value", default_project: "ops",
+    routes: [{ owner: "e2e team", project: "pay" }], min_priority: "low", enabled: false } });
+  expect(saved.ok()).toBe(true);
+  expect(await saved.text()).not.toContain("e2e-secret-value");
+  await page.goto("/settings#tickets");
+  const section = page.locator("section[aria-labelledby=tickets-h3]");
+  await expect(section.getByRole("heading", { name: "Jira or GitLab" })).toBeVisible();
+  await expect(section.getByLabel("API token")).toHaveAttribute("placeholder", "Unchanged");
+  await expect(section.getByLabel("API token")).toHaveValue("");
+  await section.getByRole("button", { name: "Preview" }).click();
+  await expect(page.getByText(/^A sync now would open \d+ tickets?/)).toBeVisible();
+  await expect(page.getByText(/^PAY \(\d+\)$|^OPS \(\d+\)$/).first()).toBeVisible();
+  await section.getByRole("button", { name: "Test connection" }).click();
+  await expect(section.getByText(/^Connection failed: /)).toBeVisible();
+  for (const width of [1440, 375] as const) {
+    for (const scheme of ["light", "dark"] as const) {
+      const v = await ctx(browser, width, scheme);
+      await v.page.goto("/settings#tickets");
+      await expect(v.page.getByRole("heading", { name: "Jira or GitLab" })).toBeVisible();
+      await v.page.getByRole("button", { name: "Add a route" }).click();
+      await axe(v.page, `ticketing @${width} ${scheme}`);
+      if (width === 375) expect(await smallTargets(v.page)).toEqual([]);
+      await v.context.close();
+    }
+  }
+  await page.request.put("/api/settings/tickets", { data: { kind: "jira", site: "https://jira.invalid", user: "", default_project: "", routes: [], enabled: false } });
+  await context.close();
+});
+
 test("Windows updates: who has a KB, why the others don't, and planning the rest", async ({ browser }) => {
   const context = await browser.newContext({ storageState: STATE });
   const page = await context.newPage();

@@ -572,12 +572,12 @@ def test_reads_refused_one_by_one_neither_cut_the_read_pass_short_nor_keep_their
     assert fake.status(keys[6]) == "new"  # six refusals in a row don't say the tracker is down: the seventh was read
     monkeypatch.setattr(tickets, "MAX_CHECKS", 1)
     fake.fail = {rf"/rest/api/2/issue/{keys[0]}$": 403}
-    for t in s.scalars(select(Ticket)):
-        t.checked_at = now() - timedelta(days=2 if t.key == keys[0] else 1)
+    for t in s.scalars(select(Ticket)):  # the refused one first, then the one closed by hand, then the rest (no ties: any database orders it so)
+        t.checked_at = now() - timedelta(days={keys[0]: 3, keys[1]: 2}.get(t.key, 1))
     s.commit()
     fake.close_by_hand(keys[1])
     run(s, oid, fake)  # reads only the refused one
-    run(s, oid, fake)  # which went to the back of the queue: the next read reaches another, closed by hand
+    run(s, oid, fake)  # which went to the back of the queue: the next read reaches the one closed by hand
     assert sum(fake.status(k) == "new" for k in keys[1:]) == 6
 
 

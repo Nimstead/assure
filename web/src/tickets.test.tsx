@@ -43,7 +43,7 @@ it("says what the last sync did, the open tickets by project and the errors in t
   expect(screen.getByText("1 failed")).toBeInTheDocument();
   expect(screen.getByText(/4 changes wait for the next run/)).toBeInTheDocument();
   expect(screen.getByText(/Open tickets:/).textContent).toBe("Open tickets: PAY 2 · OPS 1");
-  expect(screen.getByText(/project is required/).textContent).toContain("Upgrade curl to 8.14 on 2 machines: HTTP 400");
+  expect(screen.getByText(/project is required/).textContent).toBe("SEC Upgrade curl to 8.14 on 2 machines: HTTP 400: project is required");  // which project refuses
   expect(screen.getByLabelText("API token")).toHaveAttribute("placeholder", "Unchanged");  // never shown, only "saved"
   expect(screen.getByRole("button", { name: "Save ticket settings" })).toBeDisabled();  // nothing changed yet
 });

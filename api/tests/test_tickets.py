@@ -267,8 +267,8 @@ def test_a_create_that_reached_the_tracker_before_a_crash_is_found_by_its_label_
     (g,) = tickets.desired(s, oid, cfg)[0].values()
     s.add(Ticket(org_id=oid, fingerprint=g["fingerprint"], owner=None, action=g["action"], project="OPS"))  # the row, no key
     s.commit()
-    fake.issues["OPS-7"] = {"project": "OPS", "summary": "x", "description": "", "labels": [f"nimstead-{g['fingerprint']}"],
-                            "duedate": None, "status": "new", "comments": []}
+    fake.issues["OPS-7"] = {"project": "OPS", "summary": "x", "description": "", "labels": [f"nimstead-{g['fingerprint']}"], "id": "10007",
+                            "duedate": None, "status": "new", "comments": [], "resolution": None}
     assert run(s, oid, fake)["opened"] == 1 and list(fake.issues) == ["OPS-7"]
     assert s.scalar(select(Ticket.key)) == "OPS-7" and fake.issues["OPS-7"]["summary"].startswith("Upgrade openssl")
 
@@ -322,7 +322,7 @@ def test_one_failing_project_costs_only_its_tickets_and_a_down_tracker_stops_the
     for n in range(8):
         finding(s, machine(s, oid, f"x-{n}", "Payments"), f"CVE-{n}", package=f"pkg{n}")
     r = tickets.sync(s, oid, http=httpx.Client(transport=httpx.MockTransport(down)))
-    assert r["failed"] == tickets.MAX_FAILURES_IN_A_ROW and r["waiting"] > 0
+    assert r["failed"] == 1 + tickets.MAX_FAILURES_IN_A_ROW and r["waiting"] > 0  # the one read, then five writes in a row
 
 
 def test_a_sync_already_running_is_left_alone_until_its_claim_is_stale(org):
@@ -385,7 +385,7 @@ def test_the_gitlab_lifecycle_with_links_built_from_the_site(org):
     setup(s, oid, kind="gitlab", routes=[{"owner": "Payments", "project": "payments/app"}])
     assert run(s, oid, fake)["opened"] == 1
     issue = fake.issues[("payments/app", 1)]
-    assert issue["title"] == "Upgrade `openssl` to `3.0.15-1~deb12u1` on 1 machine (Payments)" and issue["due_date"]
+    assert issue["title"] == "Upgrade `openssl` to `3.0.15-1~deb12u1` on 1 machine (`Payments`)" and issue["due_date"]  # an owner is a value too
     assert ledger(s, "ticket_opened")[0]["link"] == "https://gitlab.example.com/payments/app/-/issues/1"
     idx = tickets.links(s, oid)
     assert tickets.ticket_for(idx, "payments", tickets.action_of("host", a.id, "Debian:12", "openssl")) == {
@@ -535,3 +535,214 @@ def test_only_admins_change_ticketing_and_members_and_read_only_tokens_see_the_l
     assert "2.32.4 in the machine's inventory" in fake.issues["PAY-1"]["comments"][-1]
     other = user(env, "b@example.com")
     assert other.get("/api/settings/tickets").json()["open_by_project"] == {} and not other.get("/api/settings/tickets").json()["token_set"]
+
+
+# --- the review round (DECISIONS 154): each test failed before its fix ---------------------------------------------------
+
+def test_one_projects_refusals_cost_only_its_tickets_never_the_orgs_sync(org):
+    _, s, oid = org
+    for n in range(6):
+        finding(s, machine(s, oid, f"ops-{n}"), f"CVE-{n}", package=f"pkg{n}", score=90)
+    finding(s, machine(s, oid, "pay-1", "Payments"), package="zlib", score=10)  # least urgent: planned after the six
+    setup(s, oid, routes=[{"owner": "Payments", "project": "PAY"}])
+    fake = FakeJira(refuse=("OPS",))  # OPS's create screen requires a component: every OPS create is refused
+    r = run(s, oid, fake)
+    assert (r["opened"], r["failed"], r["waiting"]) == (1, 6, 0) and "PAY-1" in fake.issues
+    for n in range(2):
+        finding(s, machine(s, oid, f"pay-x{n}", "Payments"), f"CVE-9{n}", package=f"lib{n}")
+    fake.fail[r"/rest/api/2/issue/PAY-1$"] = 403  # a ticket the bot can no longer see: its read fails every hour
+    assert run(s, oid, fake)["opened"] == 2  # a read refused is that ticket's problem, not a dead tracker
+
+
+def test_a_done_transition_that_asks_for_a_resolution_gets_one(org):
+    _, s, oid = org
+    f = finding(s, machine(s, oid, "db-1"))
+    setup(s, oid)
+    fake = FakeJira(cloud=False, resolution_screen=True)
+    s.get(TicketSettings, oid).user = ""
+    s.commit()
+    run(s, oid, fake)
+    resolve(s, f, version="3.0.15-1~deb12u1")
+    assert run(s, oid, fake)["closed"] == 1 and fake.status("OPS-1") == "done" and fake.issues["OPS-1"]["resolution"] == "Done"
+
+
+def test_closing_comments_say_what_happened_when_findings_are_open_but_no_longer_sent(org):
+    _, s, oid = org
+    finding(s, machine(s, oid, "db-1"))
+    cfg = setup(s, oid)
+    fake = FakeJira()
+    run(s, oid, fake)
+    cfg.default_project = ""
+    s.commit()
+    assert run(s, oid, fake)["closed"] == 1
+    said = fake.issues["OPS-1"]["comments"][-1]
+    assert "No finding in this ticket is open" not in said and "no longer sent: its owner has no route and there's no default project" in said
+    assert ledger(s, "ticket_closed")[-1]["why"] == {"unrouted": 1}
+
+
+def test_a_fixed_setting_or_end_of_support_isnt_called_a_removed_package(org):
+    _, s, oid = org
+    a = machine(s, oid, "win-1", eco="Windows")
+    f = finding(s, a, "NIM-SMB1", package="SMBv1", fixed=None, eco="WinConfig")
+    s.add(InstalledPackage(asset_id=a.id, ecosystem="Windows", name="Windows 11", version="10.0.26100.1"))
+    setup(s, oid)
+    fake = FakeJira()
+    run(s, oid, fake)
+    resolve(s, f)
+    run(s, oid, fake)
+    said = fake.issues["OPS-1"]["comments"][-1]
+    assert "win-1  resolved" in said and "on fresh evidence" in said and "removed" not in said
+
+
+def test_an_error_clears_once_the_ticket_reads_again_and_a_priority_change_moves_the_label(org):
+    _, s, oid = org
+    f = finding(s, machine(s, oid, "db-1"), priority="next")
+    setup(s, oid, min_priority="next")
+    for kind, fake, issue in (("jira", FakeJira(), "OPS-1"), ("gitlab", FakeGitLab(), ("platform/ops", 1))):
+        def labels(fake=fake, issue=issue):
+            return fake.issues[issue]["labels"]
+        s.execute(Ticket.__table__.delete())
+        cfg = s.get(TicketSettings, oid)
+        cfg.kind, cfg.default_project, cfg.user = kind, "OPS" if kind == "jira" else "platform/ops", "bot@example.com" if kind == "jira" else ""
+        cfg.token, f.priority = sso.seal("tok" if kind == "jira" else "glpat-tok"), "next"
+        s.commit()
+        run(s, oid, fake)
+        assert "nimstead-next" in labels()
+        f.priority = "fix-now"
+        t = s.scalar(select(Ticket))
+        t.error = "HTTP 500: an old failure"
+        s.commit()
+        assert run(s, oid, fake)["updated"] == 1
+        assert "nimstead-fix-now" in labels() and "nimstead-next" not in labels() and "nimstead" in labels()
+        s.refresh(t)
+        assert t.error is None
+
+
+def test_new_exposures_open_before_old_tickets_close(org, monkeypatch):
+    _, s, oid = org
+    a = machine(s, oid, "db-1")
+    old = finding(s, a, "CVE-1", package="bash")
+    setup(s, oid)
+    fake = FakeJira()
+    run(s, oid, fake)
+    resolve(s, old)
+    finding(s, a, "CVE-2", package="curl", kev=True)
+    monkeypatch.setattr(tickets, "MAX_WRITES", 1)
+    r = run(s, oid, fake)
+    assert (r["opened"], r["closed"], r["waiting"]) == (1, 0, 1)  # the known-exploited one first; the close waits an hour
+
+
+def test_a_crash_recovery_search_on_jira_cloud_reads_the_key_from_the_issue_id(org):
+    _, s, oid = org
+    finding(s, machine(s, oid, "db-1"))
+    cfg = setup(s, oid)
+    (g,) = tickets.desired(s, oid, cfg)[0].values()
+    fake = FakeJira()  # Cloud: /search/jql answers with ids only
+    run(s, oid, fake)
+    t = s.scalar(select(Ticket))
+    t.key = None
+    s.commit()
+    run(s, oid, fake)
+    s.refresh(t)
+    assert t.key == "OPS-1" and list(fake.issues) == ["OPS-1"] and g["fingerprint"] == t.fingerprint
+
+
+def test_a_failed_open_names_its_ticket_and_long_comments_say_how_many_more(org, monkeypatch):
+    _, s, oid = org
+    ms = [machine(s, oid, f"db-{n}") for n in range(3)]
+    fs = [finding(s, m) for m in ms]
+    setup(s, oid)
+    fake = FakeJira(refuse=("OPS",))
+    run(s, oid, fake)
+    assert s.scalar(select(Ticket.title)).startswith("Upgrade openssl")  # Settings can say which ticket failed
+    fake.refuse = set()
+    run(s, oid, fake)
+    monkeypatch.setattr(tickets, "LIST_CAP", 1)
+    resolve(s, *fs, version="3.0.15-1~deb12u1")
+    run(s, oid, fake)
+    assert "and 2 more" in fake.issues["OPS-1"]["comments"][-1]
+
+
+def test_the_token_is_stripped_checked_and_never_echoed_in_an_error(org, env):
+    c, s, oid = org
+    assert c.put("/api/settings/tickets", json=CFG | {"token": "  tok \n"}).status_code == 200
+    assert sso.unseal(make_sessionmaker(env)().get(TicketSettings, oid).token) == "tok"
+    assert c.put("/api/settings/tickets", json=CFG | {"token": "to k"}).status_code == 422
+    finding(s, machine(s, oid, "db-1"))
+    s.get(TicketSettings, oid).enabled = True
+    s.commit()
+
+    def leaky(req):
+        raise httpx.LocalProtocolError(f"Illegal header value b'Basic {req.headers['authorization'][6:]}' tok")
+    r = tickets.sync(s, oid, http=httpx.Client(transport=httpx.MockTransport(leaky)))
+    assert "[token]" in r["errors"][0]["error"] and " tok" not in r["errors"][0]["error"].replace("[token]", "")
+
+
+def test_test_connection_gives_up_after_its_deadline(org, monkeypatch):
+    _, s, oid = org
+    cfg = setup(s, oid, routes=[{"owner": "Payments", "project": "PAY"}])
+    monkeypatch.setattr(tickets, "http_client", client_for(FakeJira()))
+    monkeypatch.setattr(tickets, "TEST_DEADLINE", timedelta(0))
+    with pytest.raises(tickets.TrackerError, match="took too long"):
+        tickets.test_connection(cfg)
+
+
+def test_the_hourly_run_has_a_budget_and_starts_with_the_org_synced_longest_ago(org, env, monkeypatch):
+    _, s, oid = org
+    user(env, "b@example.com")
+    other = s.scalar(select(Org.id).where(Org.id != oid))
+    for o in (oid, other):
+        finding(s, machine(s, o, f"db-{o[:4]}"))
+        setup(s, o)
+    s.get(TicketSettings, other).last_sync = {"at": "2026-01-01T00:00:00"}
+    s.get(TicketSettings, oid).last_sync = {"at": "2026-06-01T00:00:00"}
+    s.commit()
+    order = []
+    monkeypatch.setattr(tickets, "sync", lambda sess, org_id: order.append(org_id) or {"opened": 0})
+    monkeypatch.setattr(tickets, "RUN_BUDGET", timedelta(0))
+    tickets.sync_all(s)
+    assert order == [other]  # the budget is spent after one; the org waiting longest went first
+
+
+def test_gitlab_titles_owner_in_code_and_keys_checked(org):
+    _, s, oid = org
+    finding(s, machine(s, oid, "db-1", owner="@all #1"))
+    cfg = setup(s, oid, kind="gitlab")
+    (g,) = tickets.desired(s, oid, cfg)[0].values()
+    assert tickets.title(g, tickets.MarkdownStyle()).endswith("(`@all #1`)")
+    gl = tickets.GitLab("https://gitlab.example.com", "", "glpat-tok", client_for(FakeGitLab()))
+    with pytest.raises(tickets.TrackerError):
+        gl.is_done("platform/ops", "OPS-9")  # a Jira key left by a move: an error the sync records, not a crash
+
+
+def test_odd_json_from_a_tracker_is_a_tracker_error(org, monkeypatch):
+    _, s, oid = org
+    cfg = setup(s, oid)
+    fake = FakeJira()
+    monkeypatch.setattr(tickets, "http_client", client_for(fake))
+    fake.override = {r"/project/": {"issueTypes": 5}}
+    with pytest.raises(tickets.TrackerError):
+        tickets.test_connection(cfg)
+    fake.override = {r"/myself": {"errorMessages": 1}}
+    tickets.test_connection(cfg)  # odd, not fatal: a name it can't read is "?"
+    fake.override = {r"^/rest/api/2/issue$": {"key": "A" * 200 + "-1"}}
+    finding(s, machine(s, oid, "db-1"))
+    assert run(s, oid, fake)["failed"] == 1 and s.scalar(select(Ticket.key)) is None
+
+
+def test_moving_tracker_while_a_sync_runs_is_refused_and_a_host_in_another_case_is_no_move(org):
+    c, s, oid = org
+    c.put("/api/settings/tickets", json=CFG)
+    assert c.put("/api/settings/tickets", json=CFG | {"token": None, "site": "https://ACME.Atlassian.net/"}).status_code == 200  # not a move
+    s.get(TicketSettings, oid).sync_started = now()
+    s.commit()
+    r = c.put("/api/settings/tickets", json=CFG | {"site": "https://other.atlassian.net"})
+    assert r.status_code == 409 and "sync is running" in r.json()["detail"]
+
+
+def test_named_private_hosts_never_reach_metadata_even_wrapped_and_may_be_loopback(monkeypatch):
+    import ipaddress
+    ok = netguard._private_ok
+    for a, want in (("::1", True), ("127.0.0.1", True), ("10.1.2.3", True), ("fd00:ec2::254", False), ("100.100.100.200", False),
+                    ("::ffff:169.254.169.254", False), ("2002:a9fe:a9fe::1", False), ("169.254.169.254", False), ("fe80::1", False)):
+        assert ok(ipaddress.ip_address(a)) is want, a

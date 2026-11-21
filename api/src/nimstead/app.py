@@ -2971,7 +2971,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
         Requires an organisation admin browser session; API tokens are refused.
 
-        Operation-specific HTTP errors: 422. See detail in the response.
+        Operation-specific HTTP errors: 409, 422. See detail in the response.
         Authentication and request-validation errors also apply where required."""
         site = body.site.strip().rstrip("/")
         try:
@@ -2981,6 +2981,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         u = urlsplit(site)
         if u.query or u.fragment:
             raise HTTPException(422, "Site URL: no query or fragment, just the address people open the tracker at")
+        site = f"https://{u.netloc.lower()}{u.path}"  # a host in another case is the same site, not a move
+        secret = (body.token or "").strip()  # a pasted token's stray space would otherwise be sent, and echoed by an HTTP error
+        if secret and not re.fullmatch(r"[\x21-\x7e]+", secret):
+            raise HTTPException(422, "Token: letters, digits and punctuation only, with no spaces")
         user_name = body.user.strip()
         if body.kind == "gitlab" and user_name:
             raise HTTPException(422, "GitLab signs in with the token alone: leave the email empty")
@@ -3002,11 +3006,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             seen.add(owner.casefold())
             routes.append({"owner": owner, "project": project(r.project)})
         default_project = project(body.default_project)
-        cfg = s.get(TicketSettings, user.org_id)
+        cfg = s.get(TicketSettings, user.org_id, with_for_update=True)  # the lock a sync's claim takes: a move can't land mid-claim
         moved = cfg is not None and bool(cfg.site) and (cfg.kind, cfg.site) != (body.kind, site)
-        if moved and not body.token:
+        if moved and not secret:
             raise HTTPException(422, "A new site or tracker needs its own token: the saved one is never sent elsewhere")
-        sealed = sso.seal(body.token) if body.token else cfg.token if cfg else None
+        if moved and cfg.sync_started and now() - cfg.sync_started < tickets.STALE_CLAIM:
+            raise HTTPException(409, "A sync is running: change the tracker once it has finished, in a few minutes")
+        sealed = sso.seal(secret) if secret else cfg.token if cfg else None
         if body.enabled and not sealed:
             raise HTTPException(422, "Save a token before switching ticketing on")
         if cfg is None:
@@ -3021,7 +3027,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         evidence.append(s, user.org_id, "tickets_configured", user.org_id, {
             "by": user.email, "kind": cfg.kind, "site": cfg.site, "user": cfg.user, "default_project": cfg.default_project,
             "routes": routes, "min_priority": cfg.min_priority, "enabled": cfg.enabled, "token": "[redacted]" if sealed else None,
-            "token_changed": bool(body.token), "forgot_tickets": forgot,
+            "token_changed": bool(secret), "forgot_tickets": forgot,
         })
         s.commit()
         return tickets_json(cfg, s, user.org_id)
@@ -3075,7 +3081,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             raise HTTPException(429, f"At most {TICKET_ACTIONS_PER_HOUR} syncs an hour")
 
         def run(bind, org_id):
-            with Session(bind) as s2:
+            with Session(bind, expire_on_commit=False) as s2:  # as the app's sessions: a commit per ticket mustn't reload every row
                 tickets.sync(s2, org_id)
         background.add_task(run, s.get_bind(), user.org_id)
         return {"started": True}

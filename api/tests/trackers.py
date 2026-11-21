@@ -16,11 +16,14 @@ def reply(status: int, body=None) -> httpx.Response:
 
 class FakeJira:
     """Statuses: To Do (new), In Progress (indeterminate) and a Done-category status named done_name. Cloud serves
-    /rest/api/2/search/jql and 410s /search; Data Center serves /search only."""
+    /rest/api/2/search/jql (issues by id only: a key comes from GET issue/{id}) and 410s /search; Data Center serves
+    /search only. resolution_screen: the Done transition's screen requires a Resolution (Data Center classic workflows).
+    refuse: projects whose create screen requires a field Nimstead doesn't send."""
 
-    def __init__(self, cloud=True, done_name="Done", due_on_screen=True, projects=("PAY", "OPS", "SEC"), email="bot@example.com", token="tok"):  # noqa: S107 (a fake's test value)
-        self.cloud, self.done_name, self.due_on_screen = cloud, done_name, due_on_screen
-        self.projects = set(projects)
+    def __init__(self, cloud=True, done_name="Done", due_on_screen=True, projects=("PAY", "OPS", "SEC"), email="bot@example.com", token="tok",  # noqa: S107 (a fake's test value)
+                 resolution_screen=False, refuse=()):
+        self.cloud, self.done_name, self.due_on_screen, self.resolution_screen = cloud, done_name, due_on_screen, resolution_screen
+        self.projects, self.refuse = set(projects), set(refuse)
         self.auth = ("Basic " + base64.b64encode(f"{email}:{token}".encode()).decode()) if cloud else f"Bearer {token}"
         self.issues: dict[str, dict] = {}
         self.calls: list[tuple[str, str]] = []
@@ -63,20 +66,25 @@ class FakeJira:
             if path.endswith("/jql") != self.cloud:
                 return reply(410 if self.cloud else 404, {"errorMessages": ["gone"]})
             q = re.fullmatch(r'project = "([^"]+)" AND labels = "([^"]+)"', req.url.params["jql"])
-            hits = [k for k, i in self.issues.items() if i["project"] == q[1] and q[2] in i["labels"]]
-            return reply(200, {"issues": [{"key": k} for k in hits[: int(req.url.params.get("maxResults", 50))]]})
+            hits = [k for k, i in self.issues.items() if i["project"] == q[1] and q[2] in i["labels"]][: int(req.url.params.get("maxResults", 50))]
+            return reply(200, {"issues": [{"id": self.issues[k]["id"]} if self.cloud else {"key": k} for k in hits]})
+        if mm := re.fullmatch(r"/rest/api/2/issue/(\d+)", path):  # by id: Cloud's search gives ids
+            key = next((k for k, i in self.issues.items() if i["id"] == mm[1]), None)
+            return reply(200, {"id": mm[1], "key": key}) if key else reply(404, {"errorMessages": ["Issue does not exist"]})
         if path == "/rest/api/2/issue" and m == "POST":
             f = body["fields"]
             if f["project"]["key"] not in self.projects:
                 return reply(400, {"errors": {"project": "project is required"}})
+            if f["project"]["key"] in self.refuse:
+                return reply(400, {"errors": {"components": "Component/s is required."}})
             if f["issuetype"]["id"] not in ("10000", "10001"):
                 return reply(400, {"errors": {"issuetype": "valid issue type is required"}})
             if err := self._check(f):
                 return err
             key = f"{f['project']['key']}-{self.next}"
             self.next += 1
-            self.issues[key] = {"project": f["project"]["key"], "summary": f["summary"], "description": f["description"],
-                                "labels": list(f["labels"]), "duedate": f.get("duedate"), "status": "new", "comments": []}
+            self.issues[key] = {"project": f["project"]["key"], "summary": f["summary"], "description": f["description"], "id": str(10000 + self.next),
+                                "labels": list(f["labels"]), "duedate": f.get("duedate"), "status": "new", "comments": [], "resolution": None}
             return reply(201, {"id": str(self.next), "key": key, "self": f"https://evil.example/{key}"})
         if mm := re.fullmatch(r"/rest/api/2/issue/([A-Z]+-\d+)(/comment|/transitions)?", path):
             key, sub = mm[1], mm[2]
@@ -89,25 +97,35 @@ class FakeJira:
             if sub == "/transitions" and m == "GET":
                 cats = {"new": "To Do", "indeterminate": "In Progress", "done": self.done_name}
                 to = ["indeterminate", "done"] if i["status"] != "done" else ["new"]
+                expand = "transitions.fields" in req.url.params.get("expand", "")
+                res = {"resolution": {"required": True, "allowedValues": [{"id": "1", "name": "Won't Do"}, {"id": "2", "name": "Done"}]}}
                 return reply(200, {"transitions": [{"id": {"new": "11", "indeterminate": "21", "done": "31"}[c], "name": f"Go {c}",
-                                                    "to": {"name": cats[c], "statusCategory": {"key": c}}} for c in to]})
+                                                    "to": {"name": cats[c], "statusCategory": {"key": c}},
+                                                    **({"fields": res if c == "done" and self.resolution_screen else {}} if expand else {})} for c in to]})
             if sub == "/transitions":
                 tid = body["transition"]["id"]
                 allowed = {"11": "new", "21": "indeterminate", "31": "done"}
                 if tid not in allowed or (i["status"] == "done") != (allowed[tid] == "new"):
                     return reply(400, {"errorMessages": ["Transition is not valid for this issue's status."]})
-                i["status"] = allowed[tid]
+                if tid == "31" and self.resolution_screen and not (body.get("fields") or {}).get("resolution"):
+                    return reply(400, {"errors": {"resolution": "Resolution is required."}})
+                i["status"], i["resolution"] = allowed[tid], ((body.get("fields") or {}).get("resolution") or {}).get("name")
                 return reply(204)
             if m == "GET":
                 cat = i["status"]
                 return reply(200, {"key": key, "fields": {"status": {"name": "x", "statusCategory": {"key": cat}}}})
             if m == "PUT":
                 f = body["fields"]
-                if "labels" in f:
+                if "labels" in f:  # a team's own labels must survive: labels change only through "update"
                     return reply(400, {"errors": {"labels": "not expected on update in this test"}})
                 if err := self._check(f, create=False):
                     return err
                 i.update({k: v for k, v in f.items()})
+                for op in (body.get("update") or {}).get("labels", []):
+                    if "remove" in op and op["remove"] in i["labels"]:
+                        i["labels"].remove(op["remove"])
+                    if "add" in op and op["add"] not in i["labels"]:
+                        i["labels"].append(op["add"])
                 return reply(204)
         return reply(404, {"errorMessages": [f"no route {m} {path}"]})
 
@@ -183,6 +201,8 @@ class FakeGitLab:
             ev = body.pop("state_event", None)
             if ev:
                 issue["state"] = {"close": "closed", "reopen": "opened"}[ev]
+            gone, added = body.pop("remove_labels", "").split(","), body.pop("add_labels", "").split(",")
+            issue["labels"] = [x for x in issue["labels"] if x not in gone] + [x for x in added if x and x not in issue["labels"]]
             issue.update(body)
             return reply(200, {"iid": iid, "state": issue["state"]})
         return reply(405, {"error": "405 Method Not Allowed"})

@@ -31,7 +31,7 @@ const THRESHOLDS = [
 
 type Form = { kind: "jira" | "gitlab"; site: string; user: string; token: string; default_project: string; routes: { owner: string; project: string }[]; min_priority: string; enabled: boolean };
 const fromSaved = (s: TicketSettings): Form => ({ kind: s.kind, site: s.site, user: s.user, token: "", default_project: s.default_project,
-  routes: s.routes.length ? s.routes : [], min_priority: s.min_priority, enabled: s.enabled });
+  routes: s.routes, min_priority: s.min_priority, enabled: s.enabled });
 
 /** Render Settings → Ticketing: the tracker, team routes, which findings become tickets, and what the last sync did. */
 export function TicketsSection() {
@@ -66,7 +66,7 @@ export function TicketsSection() {
     else save.mutate(body());
   };
   const last = s.last_sync;
-  const errors = s.failing.length ? s.failing : (last?.errors ?? []).map((x) => ({ key: x.ticket, project: "", title: x.title ?? "", error: x.error }));
+  const errors = s.failing.length ? s.failing : (last?.errors ?? []).map((x) => ({ key: x.ticket, project: x.project ?? "", title: x.title ?? "", error: x.error }));
   return (
     <section aria-labelledby="tickets-h3" className="flex flex-col gap-3">
       <h3 id="tickets-h3" className="text-lg font-semibold">Jira or GitLab</h3>
@@ -87,7 +87,7 @@ export function TicketsSection() {
         <div className="border border-line p-3 text-sm">
           <p className="font-medium">Last errors, in the tracker's words</p>
           <ul className="mt-1 flex flex-col gap-1">{errors.map((x, i) => (
-            <li key={i} className="break-words text-muted">{x.key ? <span className="font-mono text-ink">{x.key}</span> : x.title ? <span className="text-ink">{x.title}</span> : null}{(x.key || x.title) && ": "}{x.error}</li>))}</ul>
+            <li key={i} className="break-words text-muted">{x.project && <span className="font-mono">{x.project} </span>}{x.key ? <span className="font-mono text-ink">{x.key}</span> : x.title ? <span className="text-ink">{x.title}</span> : null}{(x.key || x.title) && ": "}{x.error}</li>))}</ul>
         </div>
       )}
 

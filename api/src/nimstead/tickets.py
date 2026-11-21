@@ -36,7 +36,7 @@ MAX_CHECKS = 200  # open tickets whose tracker state is read per sync, least rec
 STALE_CLAIM = timedelta(minutes=15)  # a sync that claimed the org longer ago than this died; the next one may run
 LIST_CAP = 100  # machines listed in a ticket (vulnerabilities: half); the rest are counted
 NOUN = {"host": "machine", "application": "application", "external": "internet target", "device": "device"}
-JIRA_KEY = re.compile(r"[A-Z][A-Z0-9_]*-[1-9][0-9]{0,9}")
+JIRA_KEY = re.compile(r"[A-Z][A-Z0-9_]{0,49}-[1-9][0-9]{0,9}")  # fits Ticket.key with room
 http_client: httpx.Client | None = None  # injectable for tests; None = netguard's guarded client
 
 
@@ -93,22 +93,23 @@ def desired(s: Session, org_id: str, cfg: TicketSettings) -> tuple[dict, Counter
         if g is None:
             g = groups[fp] = {"fingerprint": fp, "project": project, "owner": r.owner, "action": action, "ecosystem": r.ecosystem,
                               "image": r.hostname if r.kind == "image" else None, "kinds": set(), "machines": {}, "vulns": set(),
-                              "fixes": defaultdict(set), "findings": 0, "priority": "low", "kev": False, "score": 0, "due": None}
+                              "fixes": defaultdict(set), "eco_of": {}, "findings": 0, "priority": "low", "kev": False, "score": 0, "due": None}
         g["findings"] += 1
         g["kinds"].add(r.kind)
         g["machines"][r.asset_id] = [r.hostname, r.installed_version] if r.kind != "image" else [r.hostname, ""]
         g["vulns"].add(r.vuln_id)
         if r.fixed_version:
             g["fixes"][r.package].add(r.fixed_version)
+            g["eco_of"][r.package] = max(g["eco_of"].get(r.package, ""), r.ecosystem)  # whatever order rows come in
         if PRIORITIES.index(r.priority) < PRIORITIES.index(g["priority"]):
             g["priority"] = r.priority
         g["kev"] = g["kev"] or r.kev
         g["score"] = max(g["score"], r.score or 0)
         due = r.first_seen + timedelta(days=sla_at(r.first_seen).get(r.priority, 180))
         g["due"] = min(g["due"], due) if g["due"] else due
-    for g in groups.values():  # the highest fixed version clears them all, as on Home
-        cmp = comparator_for(g["ecosystem"])
-        g["fixes"] = {p: max(v, key=functools.cmp_to_key(cmp)) if cmp else sorted(v)[-1] for p, v in g["fixes"].items()}
+    for g in groups.values():  # the highest fixed version clears them all, as on Home, by each package's own ecosystem's order
+        cmps = {p: comparator_for(e) for p, e in g.pop("eco_of", {}).items()}
+        g["fixes"] = {p: max(v, key=functools.cmp_to_key(cmps[p])) if cmps[p] else sorted(v)[-1] for p, v in g["fixes"].items()}
         if g["image"]:
             g["hosts"] = sorted(set(s.scalars(select(Asset.hostname).join(Container, Container.asset_id == Asset.id)
                                               .where(Container.image_asset_id == g["action"]["asset_id"]))))
@@ -191,7 +192,7 @@ def title(g: dict, st: Style) -> str:
     else:
         t = f"Fix {st.code(pkg)} {where}"
     if g["owner"]:
-        t += f" ({clean(g['owner'], 100)})"
+        t += f" ({st.code(g['owner'])})"  # an admin's value: in code like the rest (GitLab reads mentions in titles)
     return " ".join(t.split())[:250]
 
 
@@ -255,19 +256,37 @@ def payload(g: dict, cfg: TicketSettings, st: Style) -> dict:
 
 
 def digest(p: dict) -> str:
-    """What a ticket last said, so an unchanged ticket isn't rewritten."""
-    return hashlib.sha256(json.dumps([p["title"], p["body"], p["due"]]).encode()).hexdigest()
+    """What a ticket last said (labels included, so a priority change is written), so an unchanged ticket isn't rewritten."""
+    return hashlib.sha256(json.dumps([p["title"], p["body"], p["due"], p["labels"]]).encode()).hexdigest()
+
+
+def link_for(kind: str, site: str, project: str, key: str) -> str:
+    """An issue's address, built from the site URL, never taken from a reply."""
+    site = site.rstrip("/")
+    return f"{site}/browse/{key}" if kind == "jira" else f"{site}/{project}/-/issues/{key}"
 
 
 # --- trackers ----------------------------------------------------------------------------------------------------------
 
 class TrackerError(Exception):
     """A tracker refused or failed a request. str() is safe to show: the tracker's own message, trimmed, or the
-    transport's error; never the token."""
+    transport's error, with the token masked. systemic: the tracker as a whole failed (unreachable, a 5xx, sign-in
+    refused, rate-limited, a redirect or a reply that isn't JSON), not one ticket or project (DECISIONS 154)."""
+
+    def __init__(self, message: str, systemic: bool = False):
+        super().__init__(message)
+        self.systemic = systemic
 
 
 class Missing(TrackerError):
     """The issue or project doesn't exist, or the token can't see it."""
+
+
+def _at(d, *keys):
+    """d[k1][k2]... or None wherever a level isn't a dict: a tracker's reply is read as untrusted."""
+    for k in keys:
+        d = d.get(k) if isinstance(d, dict) else None
+    return d
 
 
 def _message(raw: bytes) -> str:
@@ -277,7 +296,8 @@ def _message(raw: bytes) -> str:
         return clean(raw.decode("utf-8", "replace"), 200)
     if not isinstance(d, dict):
         return clean(json.dumps(d), 200)
-    parts = [str(m) for m in d.get("errorMessages") or [] if isinstance(d.get("errorMessages"), list)]  # Jira
+    msgs = d.get("errorMessages")
+    parts = [str(m) for m in msgs] if isinstance(msgs, list) else []  # Jira
     if isinstance(d.get("errors"), dict):
         parts += [f"{k}: {v}" for k, v in d["errors"].items()]
     parts += [v if isinstance(v, str) else json.dumps(v) for k in ("message", "error") if (v := d.get(k))]  # GitLab
@@ -290,9 +310,9 @@ class Client:
     kind = ""
     style: Style = Style()
 
-    def __init__(self, site: str, user: str, token: str, http: httpx.Client | None = None):
+    def __init__(self, site: str, user: str, token: str, http: httpx.Client | None = None, timeout: float = 10.0):
         self.site, self.user, self.token = site.rstrip("/"), user, token
-        self.http = http or http_client or guarded_client(timeout=10.0)
+        self.http = http or http_client or guarded_client(timeout=timeout)
         self._own = http is None and http_client is None
 
     def shutdown(self) -> None:
@@ -304,29 +324,39 @@ class Client:
         """The request headers that sign in."""
         raise NotImplementedError
 
+    def link(self, project: str, key: str) -> str:
+        """The issue's address, built from the site URL (never from a reply)."""
+        return link_for(self.kind, self.site, project, key)
+
+    def _mask(self, text: str) -> str:  # a transport error can quote a header, and so the token
+        return text.replace(self.token, "[token]") if self.token else text
+
     def call(self, method: str, path: str, **kw):
         """Send one request; return the parsed JSON reply (None when empty). Raise Missing on 404, TrackerError otherwise."""
         try:
             with self.http.stream(method, self.site + path, headers=self.headers(), **kw) as r:
                 raw = read_capped(r)
         except (httpx.HTTPError, ValueError) as e:  # ValueError: a refused address or an oversized reply
-            raise TrackerError(clean(f"{type(e).__name__}: {e}", 300)) from None
+            raise TrackerError(clean(self._mask(f"{type(e).__name__}: {e}"), 300), systemic=True) from None
         if r.status_code == 404:
-            raise Missing(f"not found: {_message(raw)}")
+            raise Missing(self._mask(f"not found: {_message(raw)}"))
         if 300 <= r.status_code < 400:
-            raise TrackerError(f"HTTP {r.status_code}: the site redirected; use its https address with no path")
+            raise TrackerError(f"HTTP {r.status_code}: the site redirected; use its https address with no path", systemic=True)
         if r.status_code >= 400:
-            raise TrackerError(f"HTTP {r.status_code}: {_message(raw)}")
+            raise TrackerError(self._mask(f"HTTP {r.status_code}: {_message(raw)}"), systemic=r.status_code in (401, 429) or r.status_code >= 500)
         try:
             return json.loads(raw) if raw.strip() else None
         except ValueError:
-            raise TrackerError("the tracker's reply isn't JSON") from None
+            raise TrackerError("the tracker's reply isn't JSON", systemic=True) from None
 
 
 def _dict(v) -> dict:
     if not isinstance(v, dict):
         raise TrackerError("unexpected reply from the tracker")
     return v
+
+
+PRIORITY_LABELS = [f"nimstead-{p}" for p in PRIORITIES]
 
 
 class Jira(Client):
@@ -343,54 +373,49 @@ class Jira(Client):
         auth = "Basic " + b64encode(f"{self.user}:{self.token}".encode()).decode() if self.user else f"Bearer {self.token}"
         return {"Authorization": auth, "Accept": "application/json"}
 
-    def link(self, project: str, key: str) -> str:
-        """The issue's address, built from the site URL (never from a reply)."""
-        return f"{self.site}/browse/{key}"
-
     def whoami(self) -> str:
         """The name the tracker knows the signed-in account by."""
         d = _dict(self.call("GET", "/rest/api/2/myself"))
-        return clean(d.get("displayName") or d.get("name") or d.get("emailAddress") or "?", 100)
+        return clean(next((v for v in (d.get("displayName"), d.get("name"), d.get("emailAddress")) if isinstance(v, str) and v), "?"), 100)
 
     def project(self, project: str) -> str:
         """Look up a project; return its name. Raise Missing when it doesn't exist or can't be seen."""
         d = _dict(self.call("GET", f"/rest/api/2/project/{quote(project, safe='')}"))
         # Task, then Bug, then any standard type: the issue type every ticket here is created as
-        types = [t for t in d.get("issueTypes") or [] if isinstance(t, dict) and not t.get("subtask")]
+        types = [t for t in d["issueTypes"] if isinstance(t, dict) and not t.get("subtask")] if isinstance(d.get("issueTypes"), list) else []
         pick = next((t for name in ("Task", "Bug") for t in types if t.get("name") == name), types[0] if types else None)
         if not pick:
             raise TrackerError(f"project {project} has no issue type a ticket can be created as")
         self._types[project] = str(pick.get("id"))
-        return clean(d.get("name") or project, 100)
+        return clean(d.get("name") if isinstance(d.get("name"), str) else project, 100)
 
-    def _fields(self, project: str, p: dict) -> dict:
-        return {"summary": p["title"], "description": p["body"], "labels": p["labels"]} | ({"duedate": p["due"]} if p["due"] else {})
+    def _fields(self, p: dict) -> dict:
+        return {"summary": p["title"], "description": p["body"]} | ({"duedate": p["due"]} if p["due"] else {})
 
-    def _send_fields(self, method: str, path: str, fields: dict):
+    def _send(self, method: str, path: str, body: dict):
         try:
-            return self.call(method, path, json={"fields": fields})
+            return self.call(method, path, json=body)
         except Missing:
             raise
         except TrackerError as e:  # the project's screen may not have a due date: send the rest
-            if "duedate" not in fields or "duedate" not in str(e):
+            if "duedate" not in body["fields"] or "duedate" not in str(e):
                 raise
-            return self.call(method, path, json={"fields": {k: v for k, v in fields.items() if k != "duedate"}})
+            return self.call(method, path, json=body | {"fields": {k: v for k, v in body["fields"].items() if k != "duedate"}})
 
     def create(self, project: str, p: dict) -> str:
         """Open an issue; return its key."""
         if project not in self._types:
             self.project(project)
-        fields = self._fields(project, p) | {"project": {"key": project}, "issuetype": {"id": self._types[project]}}
-        key = _dict(self._send_fields("POST", "/rest/api/2/issue", fields)).get("key")
+        fields = self._fields(p) | {"labels": p["labels"], "project": {"key": project}, "issuetype": {"id": self._types[project]}}
+        key = _dict(self._send("POST", "/rest/api/2/issue", {"fields": fields})).get("key")
         if not isinstance(key, str) or not JIRA_KEY.fullmatch(key):
             raise TrackerError("the tracker answered without a valid issue key")
         return key
 
     def update(self, project: str, key: str, p: dict) -> None:
-        """Rewrite an issue's title, description and due date."""
-        f = self._fields(project, p)
-        f.pop("labels")  # labels a team added stay
-        self._send_fields("PUT", f"/rest/api/2/issue/{key}", f)
+        """Rewrite an issue's title, description and due date, and move its priority label (a team's own labels stay)."""
+        labels = [{"remove": x} for x in PRIORITY_LABELS if x not in p["labels"]] + [{"add": x} for x in p["labels"]]
+        self._send("PUT", f"/rest/api/2/issue/{key}", {"fields": self._fields(p), "update": {"labels": labels}})
 
     def comment(self, project: str, key: str, text: str) -> None:
         """Add a comment."""
@@ -398,19 +423,24 @@ class Jira(Client):
 
     def is_done(self, project: str, key: str) -> bool:
         """Whether the issue is closed (Jira: in the Done status category)."""
-        d = _dict(self.call("GET", f"/rest/api/2/issue/{key}", params={"fields": "status"}))
-        return ((((d.get("fields") or {}).get("status") or {}).get("statusCategory") or {}).get("key")) == "done"
+        return _at(self.call("GET", f"/rest/api/2/issue/{key}", params={"fields": "status"}), "fields", "status", "statusCategory", "key") == "done"
 
     def _move(self, key: str, done: bool) -> None:
         """Move the issue to the first status in the Done category (done) or in To Do, else In Progress (not done):
-        workflows name their statuses as they like, but every status has one of Jira's three categories."""
-        ts = [t for t in _dict(self.call("GET", f"/rest/api/2/issue/{key}/transitions")).get("transitions") or [] if isinstance(t, dict)]
-        cat = lambda t: (((t.get("to") or {}).get("statusCategory") or {}).get("key"))  # noqa: E731
+        workflows name their statuses as they like, but every status has one of Jira's three categories. A transition
+        whose screen asks for a Resolution (Data Center's classic workflows) gets Done, else Fixed, else the first offered."""
+        ts = _at(self.call("GET", f"/rest/api/2/issue/{key}/transitions", params={"expand": "transitions.fields"}), "transitions")
+        ts = [t for t in ts if isinstance(t, dict)] if isinstance(ts, list) else []
         want = ("done",) if done else ("new", "indeterminate")
-        pick = next((t for c in want for t in ts if cat(t) == c), None)
+        pick = next((t for c in want for t in ts if _at(t, "to", "statusCategory", "key") == c), None)
         if not pick:
             raise TrackerError(f"no transition to {'Done' if done else 'To Do or In Progress'} from this issue's status")
-        self.call("POST", f"/rest/api/2/issue/{key}/transitions", json={"transition": {"id": str(pick.get("id"))}})
+        body: dict = {"transition": {"id": str(pick.get("id"))}}
+        offered = _at(pick, "fields", "resolution", "allowedValues")
+        if isinstance(_at(pick, "fields", "resolution"), dict):
+            names = [v["name"] for v in offered if isinstance(v, dict) and isinstance(v.get("name"), str)] if isinstance(offered, list) else []
+            body["fields"] = {"resolution": {"name": next((n for n in ("Done", "Fixed") if n in names), names[0] if names else "Done")}}
+        self.call("POST", f"/rest/api/2/issue/{key}/transitions", json=body)
 
     def close(self, project: str, key: str) -> None:
         """Close the issue (a no-op when it already is)."""
@@ -423,21 +453,31 @@ class Jira(Client):
             self._move(key, False)
 
     def find(self, project: str, label: str) -> str | None:
-        """The issue carrying label in project, if any. Cloud serves /search/jql (its /search is gone); Data Center serves
-        /search."""
-        params = {"jql": f'project = "{project}" AND labels = "{label}"', "fields": "key", "maxResults": "1"}
-        for path in ("/rest/api/2/search/jql", "/rest/api/3/search/jql", "/rest/api/2/search"):
+        """The issue carrying label in project, if any. Cloud serves /search/jql (its /search is gone) and may answer
+        with ids alone, so a key is then read from the issue; Data Center serves /search."""
+        params = {"jql": f'project = "{project}" AND labels = "{label}"', "fields": "summary", "maxResults": "1"}
+        for path in ("/rest/api/2/search/jql", "/rest/api/2/search"):
             try:
-                d = _dict(self.call("GET", path, params=params))
-            except Missing:
-                continue
+                issues = _at(self.call("GET", path, params=params), "issues")
             except TrackerError as e:
-                if str(e).startswith("HTTP 410"):
+                if isinstance(e, Missing) or str(e).startswith("HTTP 410"):
                     continue
                 raise
-            keys = [i.get("key") for i in d.get("issues") or [] if isinstance(i, dict)]
-            return next((k for k in keys if isinstance(k, str) and JIRA_KEY.fullmatch(k)), None)
+            hit = next((i for i in issues if isinstance(i, dict)), None) if isinstance(issues, list) else None
+            if hit is None:
+                return None
+            key = hit.get("key")
+            if not isinstance(key, str) and isinstance(hit.get("id"), str) and hit["id"].isascii() and hit["id"].isdigit():
+                key = _at(self.call("GET", f"/rest/api/2/issue/{hit['id']}", params={"fields": "summary"}), "key")
+            return key if isinstance(key, str) and JIRA_KEY.fullmatch(key) else None
         raise TrackerError("this Jira has no issue search Nimstead knows")
+
+
+def _iid(key: str) -> int:
+    """A GitLab issue number, checked: a key left by another tracker is an error the sync records, not a crash."""
+    if not re.fullmatch(r"[1-9][0-9]{0,9}", str(key)):
+        raise TrackerError(f"not a GitLab issue number: {clean(key, 40)}")
+    return int(key)
 
 
 class GitLab(Client):
@@ -450,20 +490,18 @@ class GitLab(Client):
         """The request headers that sign in."""
         return {"PRIVATE-TOKEN": self.token, "Accept": "application/json"}
 
-    def link(self, project: str, key: str) -> str:
-        """The issue's address, built from the site URL (never from a reply)."""
-        return f"{self.site}/{project}/-/issues/{key}"
-
     def _p(self, project: str) -> str:
         return f"/api/v4/projects/{quote(project, safe='')}"
 
     def whoami(self) -> str:
         """The name the tracker knows the signed-in account by."""
-        return clean(_dict(self.call("GET", "/api/v4/user")).get("username") or "?", 100)
+        name = _dict(self.call("GET", "/api/v4/user")).get("username")
+        return clean(name if isinstance(name, str) and name else "?", 100)
 
     def project(self, project: str) -> str:
         """Look up a project; return its name. Raise Missing when it doesn't exist or can't be seen."""
-        return clean(_dict(self.call("GET", self._p(project))).get("path_with_namespace") or project, 255)
+        name = _dict(self.call("GET", self._p(project))).get("path_with_namespace")
+        return clean(name if isinstance(name, str) else project, 255)
 
     def _data(self, p: dict) -> dict:
         return {"title": p["title"], "description": p["body"]} | ({"due_date": p["due"]} if p["due"] else {})
@@ -476,50 +514,60 @@ class GitLab(Client):
         return str(iid)
 
     def update(self, project: str, key: str, p: dict) -> None:
-        """Rewrite an issue's title, description and due date."""
-        self.call("PUT", f"{self._p(project)}/issues/{int(key)}", json=self._data(p))
+        """Rewrite an issue's title, description and due date, and move its priority label (a team's own labels stay)."""
+        labels = {"add_labels": ",".join(p["labels"]), "remove_labels": ",".join(x for x in PRIORITY_LABELS if x not in p["labels"])}
+        self.call("PUT", f"{self._p(project)}/issues/{_iid(key)}", json=self._data(p) | labels)
 
     def comment(self, project: str, key: str, text: str) -> None:
         """Add a comment."""
-        self.call("POST", f"{self._p(project)}/issues/{int(key)}/notes", json={"body": text})
+        self.call("POST", f"{self._p(project)}/issues/{_iid(key)}/notes", json={"body": text})
 
     def is_done(self, project: str, key: str) -> bool:
         """Whether the issue is closed (Jira: in the Done status category)."""
-        return _dict(self.call("GET", f"{self._p(project)}/issues/{int(key)}")).get("state") == "closed"
+        return _dict(self.call("GET", f"{self._p(project)}/issues/{_iid(key)}")).get("state") == "closed"
 
     def close(self, project: str, key: str) -> None:
         """Close the issue (a no-op when it already is)."""
-        self.call("PUT", f"{self._p(project)}/issues/{int(key)}", json={"state_event": "close"})
+        self.call("PUT", f"{self._p(project)}/issues/{_iid(key)}", json={"state_event": "close"})
 
     def reopen(self, project: str, key: str) -> None:
         """Reopen the issue (a no-op when it's open)."""
-        self.call("PUT", f"{self._p(project)}/issues/{int(key)}", json={"state_event": "reopen"})
+        self.call("PUT", f"{self._p(project)}/issues/{_iid(key)}", json={"state_event": "reopen"})
 
     def find(self, project: str, label: str) -> str | None:
         """The issue in project carrying label, if any."""
         d = self.call("GET", f"{self._p(project)}/issues", params={"labels": label, "state": "all", "per_page": "1"})
-        iids = [i.get("iid") for i in d or [] if isinstance(i, dict)] if isinstance(d, list) else []
+        iids = [i.get("iid") for i in d if isinstance(i, dict)] if isinstance(d, list) else []
         return next((str(i) for i in iids if isinstance(i, int) and not isinstance(i, bool) and i > 0), None)
 
 
 KINDS = {"jira": Jira, "gitlab": GitLab}
 
 
-def client_for(cfg: TicketSettings, http: httpx.Client | None = None) -> Client:
+def client_for(cfg: TicketSettings, http: httpx.Client | None = None, timeout: float = 10.0) -> Client:
     """The org's tracker client with its token unsealed. Raise TrackerError when no token is saved."""
     if not cfg.token or not cfg.site:
         raise TrackerError("no site and token saved")
-    return KINDS[cfg.kind](cfg.site, cfg.user, sso.unseal(cfg.token), http)
+    return KINDS[cfg.kind](cfg.site, cfg.user, sso.unseal(cfg.token), http, timeout)
+
+
+TEST_DEADLINE = timedelta(seconds=60)  # Test connection holds a request thread: it gives up rather than wait on a slow tracker
 
 
 def test_connection(cfg: TicketSettings) -> str:
-    """Sign in and look up every project tickets can go to; return what was found, in words. Raise TrackerError."""
-    c = client_for(cfg)
+    """Sign in and look up every project tickets can go to; return what was found, in words. Raise TrackerError, also when
+    the tracker takes longer than TEST_DEADLINE in all (each call at most 5 s to answer, 20 s in all)."""
+    c, start = client_for(cfg, timeout=5.0), now()
+
+    def in_time():
+        if now() - start >= TEST_DEADLINE:
+            raise TrackerError(f"The tracker took too long to answer (over {TEST_DEADLINE.seconds} seconds in all)")
     try:
         who = c.whoami()
         projects = sorted({cfg.default_project, *(r["project"] for r in cfg.routes)} - {""})
         found = []
         for p in projects[:20]:
+            in_time()
             try:
                 c.project(p)
             except Missing:
@@ -533,12 +581,13 @@ def test_connection(cfg: TicketSettings) -> str:
 
 # --- the sync ----------------------------------------------------------------------------------------------------------
 
-def _why_left(s: Session, org_id: str, asset_id: str, t: Ticket, cfg: TicketSettings) -> str:
-    """Why a machine is no longer in a ticket, from the evidence: fixed (and when), risk accepted (until when), moved to
-    another team or project, below the threshold now, or removed."""
+def _why_left(s: Session, org_id: str, asset_id: str, t: Ticket, cfg: TicketSettings) -> tuple[str, str]:
+    """Why a machine is no longer in a ticket, from the evidence, as (the ledger's code, the comment's words): fixed (and
+    when, with the version now in the machine's inventory where it reports one), risk accepted (until when), moved to
+    another team or project, no longer sent (no route, no default project), below the threshold, or removed."""
     a = s.get(Asset, asset_id)
     if a is None or a.org_id != org_id:
-        return "removed from Nimstead"
+        return "removed", "removed from Nimstead"
     act = t.action
     q = select(Finding).where(Finding.asset_id == asset_id)
     if act["kind"] == "package":
@@ -547,43 +596,42 @@ def _why_left(s: Session, org_id: str, asset_id: str, t: Ticket, cfg: TicketSett
     open_ = [f for f in fs if f.status == "open"]
     if any(f.priority in wanted_priorities(cfg) for f in open_):  # still to fix, but not in this ticket
         if (a.owner or "").casefold() != (t.owner or "").casefold():
-            return f"now owned by {clean(a.owner, 100) or 'nobody'}"
-        return f"now tracked in project {clean(route(cfg, a.owner) or 'none', 100)}"
+            return "moved", f"now owned by {clean(a.owner, 100) or 'nobody'}"
+        if not (project := route(cfg, a.owner)):
+            return "unrouted", "no longer sent: its owner has no route and there's no default project"
+        return "moved", f"now tracked in project {clean(project, 100)}"
     fixed = [f.resolved_at for f in fs if f.status == "resolved" and f.resolved_at and f.resolved_at >= t.opened_at]
     accepted = [f.accepted_until for f in fs if f.status == "accepted"]
     rest = f"; {_n(len(open_), 'lower-priority finding')} still open" if open_ else ""
     if accepted and not fixed:
         until = max((u for u in accepted if u), default=None)
-        return "risk accepted in Nimstead" + (f" until {until:%d %b %Y}" if until else "") + rest
+        return "accepted", "risk accepted in Nimstead" + (f" until {until:%d %b %Y}" if until else "") + rest
     if open_ and not fixed:
-        return f"priority now below {LABEL.get(cfg.min_priority, cfg.min_priority)}"
+        return "below_threshold", f"priority now below {LABEL.get(cfg.min_priority, cfg.min_priority)}"
     resolved = max(fixed, default=None) or max((f.resolved_at for f in fs if f.resolved_at), default=None)
     when = f" {resolved:%d %b %H:%M} UTC" if resolved else ""
-    if act["kind"] == "package" and a.kind == "host":  # the package itself, else a binary built from it (Debian source names)
-        v = (s.scalar(select(InstalledPackage.version).where(InstalledPackage.asset_id == asset_id, InstalledPackage.name == act["package"]).limit(1))
-             or s.scalar(select(InstalledPackage.version).where(InstalledPackage.asset_id == asset_id, InstalledPackage.source == act["package"]).limit(1)))
-        return (f"fixed{when}: {v} in the machine's inventory" if v else f"fixed{when}: removed, per the machine's inventory") + rest
-    return f"resolved{when} on fresh evidence{rest}"
-
-
-WHY = {"fixed": "fixed", "resolved": "fixed", "risk": "accepted", "now": "moved", "priority": "below_threshold", "removed": "removed"}
-
-
-def _why_code(text: str) -> str:
-    """The ledger's word for a _why_left reason."""
-    return WHY.get(re.split(r"[ :]", text, maxsplit=1)[0], "other")
+    if act["kind"] == "package":  # a package the machine reports in that ecosystem: its version now, or its absence
+        mine = (InstalledPackage.asset_id == asset_id, InstalledPackage.ecosystem == act["ecosystem"])
+        v = (s.scalar(select(InstalledPackage.version).where(*mine, InstalledPackage.name == act["package"]).limit(1))
+             or s.scalar(select(InstalledPackage.version).where(*mine, InstalledPackage.source == act["package"]).limit(1)))  # a binary of a source package
+        if v:
+            return "fixed", f"fixed{when}: {v} in the machine's inventory{rest}"
+        if s.scalar(select(InstalledPackage.id).where(*mine).limit(1)) is not None:
+            return "fixed", f"fixed{when}: removed, per the machine's inventory{rest}"
+    return "fixed", f"resolved{when} on fresh evidence{rest}"  # a setting, end of support, a scan, an image: not a package list
 
 
 def _lines(machines: dict, ids, reason) -> list[str]:
-    return [f"{machines[a][0]}  {reason(a)}" for a in sorted(ids, key=lambda a: machines[a][0])][:LIST_CAP]
+    ids = sorted(ids, key=lambda a: machines[a][0])
+    more = [f"and {len(ids) - LIST_CAP:,} more"] if len(ids) > LIST_CAP else []
+    return [f"{machines[a][0]}  {reason(a)}" for a in ids[:LIST_CAP]] + more
 
 
 def plan(want: dict, rows: dict, done_in_tracker: set) -> list[tuple[str, str]]:
-    """The changes that make the tracker match, in the order they're made: closes, reopens, updates, then opens, each
-    most urgent first. Updates are decided at write time (a content digest); here every open, keyed, wanted ticket is a
-    candidate."""
-    closes = [("close", fp) for fp, t in rows.items() if t.state == "open" and fp not in want]
-    reopens, updates, opens = [], [], []
+    """The changes that make the tracker match, in the order they're made: reopens and opens first (exposures with no
+    open ticket), then updates, then closes, each most urgent first. Updates are decided at write time (a content
+    digest); here every open, keyed, wanted ticket is a candidate."""
+    reopens, opens, updates = [], [], []
     for fp in want:
         t = rows.get(fp)
         if t is None or t.key is None:
@@ -592,7 +640,7 @@ def plan(want: dict, rows: dict, done_in_tracker: set) -> list[tuple[str, str]]:
             reopens.append(("reopen", fp))
         else:
             updates.append(("update", fp))
-    return closes + reopens + updates + opens
+    return reopens + opens + updates + [("close", fp) for fp, t in rows.items() if t.state == "open" and fp not in want]
 
 
 def preview(s: Session, org_id: str, cfg: TicketSettings) -> dict:
@@ -659,11 +707,11 @@ def sync(s: Session, org_id: str, http: httpx.Client | None = None) -> dict:
 def _fail(t: Ticket, e: Exception, stats: Counter, errors: list) -> None:
     t.error = clean(str(e), 500)
     stats["failed"] += 1
-    errors.append({"ticket": t.key, "title": t.title, "error": t.error})
+    errors.append({"ticket": t.key, "title": t.title, "project": t.project, "error": t.error})
 
 
 SYNC_DEADLINE = timedelta(minutes=5)  # a slow tracker can't hold the hourly run: what's left waits for the next sync
-MAX_FAILURES_IN_A_ROW = 5  # a tracker that's down: stop and try next hour rather than fail every ticket
+MAX_FAILURES_IN_A_ROW = 5  # a tracker that's down (systemic failures only): stop and try next hour rather than fail every ticket
 
 
 def _sync(s: Session, org_id: str, cfg: TicketSettings, c: Client, stats: Counter, errors: list) -> None:
@@ -678,18 +726,18 @@ def _sync(s: Session, org_id: str, cfg: TicketSettings, c: Client, stats: Counte
     for t in sorted(keyed, key=lambda t: t.checked_at or datetime.min)[:MAX_CHECKS]:  # a hand close is seen before writing
         if stop():
             break
+        t.checked_at = now()  # read or not, it goes to the back of the queue: one unreadable ticket can't starve the rest
         try:
             if c.is_done(t.project, t.key):
                 done.add(t.fingerprint)
-            t.checked_at, streak = now(), 0
+            t.error, streak = None, 0
         except Missing:  # deleted in the tracker: opened afresh if still wanted (the label search first finds nothing)
             t.key = None
         except TrackerError as e:
             _fail(t, e, stats, errors)
-            streak += 1
+            streak += e.systemic  # one ticket's or project's refusal says nothing about the tracker
     s.commit()  # once: the reads changed only when each ticket was checked
-    ops = plan(want, rows, done)
-    writes = 0
+    ops, writes, streak = plan(want, rows, done), 0, 0
     for i, (op, fp) in enumerate(ops):
         if writes >= MAX_WRITES or stop():
             stats["waiting"] = sum(1 for o, f in ops[i:] if o != "update" or digest(payload(want[f], cfg, c.style)) != rows[f].body_sha)
@@ -701,7 +749,7 @@ def _sync(s: Session, org_id: str, cfg: TicketSettings, c: Client, stats: Counte
                 g = want[fp]
                 t = rows[fp] = Ticket(org_id=org_id, fingerprint=fp, owner=g["owner"], action=g["action"], project=g["project"], machines={})
                 s.add(t)
-            t.state, t.error = "open", None
+            t.state, t.error, t.title = "open", None, title(want[fp], c.style)[:300]  # titled, so a failure says which ticket
             s.commit()  # the row before the tracker call: a crash after the create is found by its label next time
         try:
             if op == "close":
@@ -717,7 +765,7 @@ def _sync(s: Session, org_id: str, cfg: TicketSettings, c: Client, stats: Counte
             if isinstance(e, Missing) and op != "open":
                 t.key = None  # deleted between the read and the write: opened afresh next sync
             _fail(t, e, stats, errors)
-            writes, streak = writes + 1, streak + 1
+            writes, streak = writes + 1, streak + e.systemic
         s.commit()
 
 
@@ -745,7 +793,7 @@ def _change_comment(s, org_id, cfg, c: Client, t: Ticket, g: dict) -> str | None
         return None
     st, parts = c.style, []
     if left:
-        parts += [f"No longer in this ticket ({len(left):,}):", st.block(_lines(old, left, lambda a: _why_left(s, org_id, a, t, cfg)))]
+        parts += [f"No longer in this ticket ({len(left):,}):", st.block(_lines(old, left, lambda a: _why_left(s, org_id, a, t, cfg)[1]))]
     if joined:
         parts += [f"Now also on ({len(joined):,}):", st.block(_lines(new, joined, lambda a: new[a][1]))]
     parts.append(f"{_n(len(new), _noun(g))} left.")
@@ -755,6 +803,7 @@ def _change_comment(s, org_id, cfg, c: Client, t: Ticket, g: dict) -> str | None
 def _update(s, org_id, cfg, c: Client, t: Ticket, g: dict, stats) -> int:
     p = payload(g, cfg, c.style)
     if digest(p) == t.body_sha:
+        t.error = None
         return 0
     c.update(t.project, t.key, p)
     if text := _change_comment(s, org_id, cfg, c, t, g):
@@ -771,13 +820,14 @@ def _close(s, org_id, cfg, c: Client, t: Ticket, done_in_tracker: bool, stats) -
         return 0
     old = t.machines or {}
     reasons = {a: _why_left(s, org_id, a, t, cfg) for a in old}
-    c.comment(t.project, key, "No finding in this ticket is open any more, so Nimstead is closing it.\n\n"
-              + c.style.block(_lines(old, old, reasons.get)))
+    codes = Counter(code for code, _ in reasons.values())
+    head = ("No finding in this ticket is open any more, so Nimstead is closing it." if set(codes) <= {"fixed", "accepted", "removed"}
+            else "No machine is left in this ticket, so Nimstead is closing it. Machine by machine:")
+    c.comment(t.project, key, f"{head}\n\n" + c.style.block(_lines(old, old, lambda a: reasons[a][1])))
     if not done_in_tracker:
         c.close(t.project, key)
     t.key, t.state, t.closed_at, t.error = key, "closed", now(), None
-    evidence.append(s, org_id, "ticket_closed", t.id, {"key": key, "project": t.project, "owner": t.owner, "action": t.action,
-                                                       "why": dict(Counter(map(_why_code, reasons.values())))})
+    evidence.append(s, org_id, "ticket_closed", t.id, {"key": key, "project": t.project, "owner": t.owner, "action": t.action, "why": dict(codes)})
     stats["closed"] += 1
     return 1
 
@@ -800,13 +850,22 @@ def _reopen(s, org_id, cfg, c: Client, t: Ticket, g: dict, why: str, stats) -> i
     return 1
 
 
+RUN_BUDGET = timedelta(minutes=20)  # the hourly run starts no new org's sync after this; the orgs left go first next hour
+
+
 def sync_all(s: Session) -> dict:
-    """The hourly run: sync every org with ticketing on, each isolated (one org's failure costs no other org its sync)."""
-    out = Counter()
-    for org_id in s.scalars(select(TicketSettings.org_id).where(TicketSettings.enabled.is_(True))).all():
+    """The hourly run: sync every org with ticketing on, the one synced longest ago first, each isolated (one org's
+    failure costs no other org its sync), starting no new org once RUN_BUDGET is spent, so slow trackers can't hold the
+    feed run: the orgs left wait an hour and go first then."""
+    out, start = Counter(), now()
+    rows = s.execute(select(TicketSettings.org_id, TicketSettings.last_sync).where(TicketSettings.enabled.is_(True))).all()
+    for org_id, _ in sorted(rows, key=lambda r: str((r.last_sync or {}).get("at", ""))):
+        if out["orgs"] + out["orgs_failed"] and now() - start >= RUN_BUDGET:
+            out["orgs_waiting"] += 1
+            continue
         try:
             r = sync(s, org_id)
-            out["orgs"] += "skipped" not in r
+            out["orgs"] += 1
             for k in ("opened", "updated", "closed", "reopened", "failed"):
                 out[k] += r.get(k, 0)
         except Exception:
@@ -832,6 +891,5 @@ def ticket_for(index: tuple, owner: str | None, action: dict) -> dict | None:
     t = rows.get(fingerprint(project, owner, action))
     if t is None:
         return None
-    site = cfg.site.rstrip("/")
-    url = f"{site}/browse/{t.key}" if cfg.kind == "jira" else f"{site}/{t.project}/-/issues/{t.key}"
-    return {"key": t.key if cfg.kind == "jira" else f"#{t.key}", "url": url, "state": t.state, "project": t.project}
+    return {"key": t.key if cfg.kind == "jira" else f"#{t.key}", "url": link_for(cfg.kind, cfg.site, t.project, t.key),
+            "state": t.state, "project": t.project}

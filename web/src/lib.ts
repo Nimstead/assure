@@ -199,7 +199,7 @@ export interface TicketSettings {
   kind: "jira" | "gitlab"; site: string; user: string; token_set: boolean; default_project: string;
   routes: { owner: string; project: string }[]; min_priority: Priority; enabled: boolean; public_url: boolean;
   last_sync: { at: string; opened?: number; updated?: number; closed?: number; reopened?: number; failed?: number; waiting?: number;
-    errors?: { ticket: string | null; title?: string; error: string }[]; error?: string } | null;
+    errors?: { ticket: string | null; title?: string; project?: string; error: string }[]; error?: string } | null;
   open_by_project: Record<string, number>; closed: number; owners: string[];
   failing: { key: string | null; project: string; title: string; error: string }[];
 }

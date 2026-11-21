@@ -30,9 +30,25 @@ def named_private_host(host: str) -> bool:
     return bool(host) and host.lower().rstrip(".") in names - {""}
 
 
+METADATA = {ipaddress.ip_address(a) for a in ("100.100.100.200", "fd00:ec2::254")}  # Alibaba's and AWS's (IPv6) instance metadata
+
+
+def _inner(a: ipaddress.IPv6Address) -> ipaddress.IPv4Address | None:
+    """The IPv4 address an IPv6 one carries (mapped, 6to4, Teredo, NAT64, compatible), if any."""
+    inner = a.ipv4_mapped or a.sixtofour or (a.teredo[1] if a.teredo else None)
+    if inner is None and (a in NAT64 or a in V4COMPAT) and a != ipaddress.IPv6Address("::1"):
+        inner = ipaddress.IPv4Address(int(a) & 0xFFFFFFFF)
+    return inner
+
+
 def _private_ok(a: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
-    """An address a named private host may use: never link-local (cloud metadata lives there), multicast or unspecified."""
-    return not (a.is_link_local or a.is_multicast or a.is_unspecified or a.is_reserved)
+    """An address a named private host may use: private or loopback, never link-local or a cloud's metadata address (an
+    IPv4 address inside an IPv6 one is judged as itself), multicast, unspecified or reserved."""
+    if a.version == 6 and (inner := _inner(a)) is not None:
+        return _private_ok(inner)
+    if a in METADATA or a.is_link_local:
+        return False
+    return a.is_loopback or not (a.is_multicast or a.is_unspecified or a.is_reserved)
 
 
 NAT64, V4COMPAT = ipaddress.ip_network("64:ff9b::/96"), ipaddress.ip_network("::/96")

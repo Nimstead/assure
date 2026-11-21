@@ -77,8 +77,9 @@ def check(criterion, ok, **kw):
 def wsl(script, timeout=1800, ok=(0,)):
     assert NAME.startswith(PREFIX)  # never run commands in a distro this script didn't make
     p = subprocess.run(["wsl", "-d", NAME, "-u", "root", "--", "sh", "-s"], input=script.replace("\r", "").encode(), capture_output=True, timeout=timeout)
-    if p.returncode not in ok:
-        raise RuntimeError(f"sandbox command failed ({p.returncode}): {script[:300]}\n{p.stdout.decode(errors='replace')[-2000:]}\n{p.stderr.decode(errors='replace')[-2000:]}")
+    if p.returncode not in ok:  # the run file is committed: the throwaway GitLab's token never goes in it
+        raise RuntimeError(f"sandbox command failed ({p.returncode}): {script[:300]}\n{p.stdout.decode(errors='replace')[-2000:]}\n"
+                           f"{p.stderr.decode(errors='replace')[-2000:]}".replace(GL_SECRET, "[token]"))
     return p.stdout.decode(errors="replace")
 
 

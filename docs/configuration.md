@@ -81,7 +81,7 @@ Webhooks, SSO and ticket trackers are called only over HTTPS, at public addresse
 
 | Variable | Default | What it does |
 |---|---|---|
-| `NIMSTEAD_ALLOW_PRIVATE_HOSTS` | none | Comma-separated hostnames (exact, any case) that may resolve to private or loopback addresses: an intranet Jira, GitLab, identity provider or webhook receiver. Never link-local (cloud metadata), multicast or reserved addresses. Applies to webhooks, SSO and trackers, not to outside-in scans. Set by the server operator; an org admin can't change it. |
+| `NIMSTEAD_ALLOW_PRIVATE_HOSTS` | none | Comma-separated hostnames (exact, any case) that may resolve to private or loopback addresses: an intranet Jira, GitLab, identity provider or webhook receiver. Never link-local (cloud metadata), multicast or reserved addresses. Applies to webhooks, SSO and trackers, not to outside-in scans. Set by the server operator; an org admin can't change it, but every organisation on the server can reach a named host, on any port and path, so on a shared server name only hosts all of them may use. |
 
 Ticket trackers (Jira or GitLab) are set up by an admin in **Settings**, not with environment variables. See [Send fixes to Jira or GitLab](how-to/send-tickets.md) and the [ticket reference](reference/tickets.md).
 

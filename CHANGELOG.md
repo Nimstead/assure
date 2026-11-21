@@ -4,6 +4,8 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-21 (preview)
+
 Agent 0.8.1, unchanged. One database migration (`e8b2d4f6a1c3`: ticket settings and tickets): the Docker image applies it on start; without Docker, run `alembic upgrade head`.
 
 ### Upgrade notes
@@ -761,7 +763,8 @@ The first early-access release. Everything listed is proven by tests and, for an
 
 Licensed under FSL-1.1-ALv2: this release becomes available under Apache 2.0 on 2028-10-27.
 
-[Unreleased]: https://github.com/Nimstead/assure/compare/v0.11.1...HEAD
+[Unreleased]: https://github.com/Nimstead/assure/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/Nimstead/assure/compare/v0.11.1...v0.12.0
 [0.11.1]: https://github.com/Nimstead/assure/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/Nimstead/assure/compare/v0.10.1...v0.11.0
 [0.10.1]: https://github.com/Nimstead/assure/compare/v0.10.0...v0.10.1

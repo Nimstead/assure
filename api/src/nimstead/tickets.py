@@ -256,8 +256,9 @@ def payload(g: dict, cfg: TicketSettings, st: Style) -> dict:
 
 
 def digest(p: dict) -> str:
-    """What a ticket last said (labels included, so a priority change is written), so an unchanged ticket isn't rewritten."""
-    return hashlib.sha256(json.dumps([p["title"], p["body"], p["due"], p["labels"]]).encode()).hexdigest()
+    """What a ticket last said, so an unchanged ticket isn't rewritten. The body states the priority, so a priority change
+    (and the label it moves) changes this too."""
+    return hashlib.sha256(json.dumps([p["title"], p["body"], p["due"]]).encode()).hexdigest()
 
 
 def link_for(kind: str, site: str, project: str, key: str) -> str:

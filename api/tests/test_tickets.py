@@ -554,6 +554,48 @@ def test_one_projects_refusals_cost_only_its_tickets_never_the_orgs_sync(org):
     assert run(s, oid, fake)["opened"] == 2  # a read refused is that ticket's problem, not a dead tracker
 
 
+def test_reads_refused_one_by_one_neither_cut_the_read_pass_short_nor_keep_their_place(org, monkeypatch):
+    _, s, oid = org
+    for n in range(7):
+        finding(s, machine(s, oid, f"db-{n}"), f"CVE-{n}", package=f"pkg{n}")
+    setup(s, oid)
+    fake = FakeJira()
+    run(s, oid, fake)
+    keys = sorted(fake.issues, key=lambda k: int(k.split("-")[1]))
+    for n, t in enumerate(sorted(s.scalars(select(Ticket)), key=lambda t: int(t.key.split("-")[1]))):
+        t.checked_at = now() - timedelta(days=10 - n)  # the six refused ones are read first
+    s.commit()
+    for k in keys[:6]:
+        fake.fail[rf"/rest/api/2/issue/{k}$"] = 403
+    fake.close_by_hand(keys[6])
+    run(s, oid, fake)
+    assert fake.status(keys[6]) == "new"  # six refusals in a row don't say the tracker is down: the seventh was read
+    monkeypatch.setattr(tickets, "MAX_CHECKS", 1)
+    fake.fail = {rf"/rest/api/2/issue/{keys[0]}$": 403}
+    for t in s.scalars(select(Ticket)):
+        t.checked_at = now() - timedelta(days=2 if t.key == keys[0] else 1)
+    s.commit()
+    fake.close_by_hand(keys[1])
+    run(s, oid, fake)  # reads only the refused one
+    run(s, oid, fake)  # which went to the back of the queue: the next read reaches another, closed by hand
+    assert sum(fake.status(k) == "new" for k in keys[1:]) == 6
+
+
+def test_a_ticket_that_reads_again_loses_its_old_error_even_with_no_write_left(org, monkeypatch):
+    _, s, oid = org
+    finding(s, machine(s, oid, "db-1"))
+    setup(s, oid)
+    fake = FakeJira()
+    run(s, oid, fake)
+    t = s.scalar(select(Ticket))
+    t.error = "HTTP 500: an old failure"
+    s.commit()
+    monkeypatch.setattr(tickets, "MAX_WRITES", 0)
+    run(s, oid, fake)
+    s.refresh(t)
+    assert t.error is None
+
+
 def test_a_done_transition_that_asks_for_a_resolution_gets_one(org):
     _, s, oid = org
     f = finding(s, machine(s, oid, "db-1"))

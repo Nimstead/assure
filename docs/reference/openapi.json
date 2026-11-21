@@ -2147,6 +2147,13 @@
           "last_seen": {
             "type": "string"
           },
+          "locations": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "type": "array"
+          },
           "owner": {
             "type": [
               "string",
@@ -2288,7 +2295,8 @@
           "rebuild",
           "runs_on",
           "owner",
-          "ticket"
+          "ticket",
+          "locations"
         ],
         "type": "object"
       },

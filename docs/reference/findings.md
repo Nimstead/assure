@@ -11,7 +11,7 @@ GET operations accept a user session or an eligible read-only organisation API t
 | `GET /api/findings` | Array of full or compact rows |
 | `GET /api/findings/count` | Object with integer `total` |
 | `GET /api/findings/groups` | Up to 500 group rows |
-| `GET /api/findings/{finding_id}` | Full row plus `package_fix`, `owner` (its asset's owner, or `null`) and `ticket` (the tracker ticket its fix is in: `key`, `url`, `state`, `project`; `null` when none reached the tracker, see [tickets](tickets.md)); for a container image also `rebuild` (how it's fixed) and `runs_on` (the hosts that run it). Unavailable IDs return `404` |
+| `GET /api/findings/{finding_id}` | Full row plus `package_fix`, `owner` (its asset's owner, or `null`) and `ticket` (the tracker ticket its fix is in: `key`, `url`, `state`, `project`; `null` when none reached the tracker, see [tickets](tickets.md)); for a container image also `rebuild` (how it's fixed) and `runs_on` (the hosts that run it); `locations` lists where an application package (PyPI, npm, Maven, Go) sits on the asset, as its agent read it (a jar inside a jar, a venv, a binary; at most 20, empty for a distribution's packages and for SBOM components). Unavailable IDs return `404` |
 | `GET /api/findings.csv` | Streamed CSV attachment |
 
 List, count, group, and CSV operations accept these filters:

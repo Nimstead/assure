@@ -441,6 +441,7 @@ def test_crictl_failures_are_problems_and_prove_nothing():
     assert agent.list_cri(docker)[:3] == (None, [], "crictl talks to docker, whose containers aren't read through crictl")
 
 
+@POSIX
 def test_crictl_takes_part_in_the_pass_and_in_completeness(tmp_path):
     which = lambda name, path=None: "/usr/bin/crictl" if name == "crictl" else None  # noqa: E731
     reads = []

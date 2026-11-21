@@ -75,6 +75,7 @@ def render() -> dict[str, str]:
     ticket_link = {"type": ["object", "null"], "properties": {name: {"type": "string"} for name in ("key", "url", "state", "project")},
                    "required": ["key", "url", "state", "project"], "additionalProperties": False}
     detail_fields |= {"ticket": ticket_link}  # the tracker ticket its fix is in (DECISIONS 150)
+    detail_fields |= {"locations": {"type": "array", "items": {"type": "string"}, "maxItems": 20}}  # where an application package sits (DECISIONS 155)
     for name, fields in (("FindingRow", finding_fields), ("FindingCompact", compact_fields), ("FindingDetail", detail_fields), ("FindingGroup", group_fields)):
         schema["components"]["schemas"][name] = {"type": "object", "properties": fields, "required": list(fields), "additionalProperties": False}
     rule_fields = {name: {"type": "string"} for name in ("id", "v", "severity", "status", "setting", "expected", "found", "note")}

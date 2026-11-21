@@ -572,3 +572,98 @@ def test_a_scratch_images_applications_are_judged_though_no_feed_maps_its_os(env
     assert open_on(s, img.id) == ["CVE-2023-45283"]
     report = c.get(f"/api/assets/{img.id}/scan-report").json()
     assert any(v["reason"] == "unsupported-platform" for v in report.get("not_run", []) + report.get("blocked", [])) or "no advisory feed maps" in json.dumps(report)
+
+
+# ---- review round (DECISIONS 160) ----------------------------------------------------------------------------------
+
+def partial(e, apps, why="stopped at its time budget"):
+    """An entry whose walk stopped short: what it read, and every application line partial with why."""
+    out = with_apps(e, apps)
+    out["collection"]["sources"] |= {n: {**out["collection"]["sources"][n], "state": "partial", "error": why} for n in APP_SOURCES}
+    return out
+
+
+def test_readings_cut_short_differently_share_one_image_and_close_nothing(env):
+    """A walk that reaches its time budget reads a little more or less each time: each report must not be a new image whose
+    arrival closes the last one's findings as 'not running' (code review, critical)."""
+    seed_apps(env)
+    c = user(env)
+    _, a = host(c, "node-1")
+    send(c, a, [partial(entry(), APPS[:2])])
+    s, (img,) = images(env)
+    was = set(open_on(s, img.id))
+    send(c, a, [partial(entry(), APPS[:3])])  # the next report got further
+    send(c, a, [partial(entry(), APPS[:1])])  # and the one after less far
+    s, imgs = images(env)
+    assert [i.id for i in imgs] == [img.id] and opened(s, "finding_resolved") == []
+    assert was <= set(open_on(s, img.id))
+
+
+def test_a_whole_reading_completes_an_image_read_only_partly_and_closes_nothing(env):
+    seed_apps(env)
+    c = user(env)
+    _, a = host(c, "node-1")
+    _, b = host(c, "node-2")
+    send(c, a, [partial(entry(ctrs=((1, "web"),)), APPS[:1])])
+    s, (img,) = images(env)
+    send(c, b, [with_apps(entry(ctrs=((2, "web"),)), APPS)])  # another host read it whole: the same image, completed
+    s, imgs = images(env)
+    assert [i.id for i in imgs] == [img.id] and opened(s, "finding_resolved") == []
+    assert "CVE-2021-44228" in open_on(s, img.id) and imgs[0].collection["sources"]["java_archives"]["state"] == "ok"
+    send(c, a, [partial(entry(ctrs=((1, "web"),)), APPS[:2])])  # a later partial reading joins it, changing nothing
+    s, imgs = images(env)
+    assert [i.id for i in imgs] == [img.id] and imgs[0].collection["sources"]["java_archives"]["state"] == "ok"
+
+
+def test_an_old_agent_joins_an_image_a_new_agent_read_first(env):
+    """The usual order once a fleet updates: a 0.9.0 host stores the image with its applications, then a 0.8.1 host (or one
+    with them turned off) reports it and must join it, through the stored OS key (code review)."""
+    seed_apps(env)
+    c = user(env)
+    _, new = host(c, "web-1")
+    _, old = host(c, "web-2")
+    _, off = host(c, "web-3")
+    send(c, new, [with_apps(entry(ctrs=((1, "web"),)))])
+    send(c, old, [entry(ctrs=((2, "web"),))])
+    send(c, off, [with_apps(entry(ctrs=((3, "web"),)), state="off")])
+    s, imgs = images(env)
+    assert len(imgs) == 1 and len(imgs[0].facts["os_key"]) > 10
+    assert sorted(r.name for r in s.scalars(select(Container).where(Container.image_asset_id == imgs[0].id))) == ["web", "web", "web"]
+
+
+def test_application_rows_no_line_backs_are_never_stored(env):
+    """A host that sends application rows without looking for applications (no lines, or all off) keys the image by its
+    OS alone, so the rows would sit on an asset other hosts share: dropped (security audit, code review)."""
+    seed_apps(env)
+    c = user(env)
+    _, bad = host(c, "web-1")
+    _, good = host(c, "web-2")
+    planted = {**entry(ctrs=((1, "web"),)), "apps": [APPS[2]]}  # log4j, and no application line at all
+    send(c, bad, [planted])
+    s, (img,) = images(env)
+    assert not s.scalars(select(InstalledPackage).where(InstalledPackage.asset_id == img.id, InstalledPackage.ecosystem == "Maven")).all()
+    assert "CVE-2021-44228" not in open_on(s, img.id)
+    send(c, good, [with_apps(entry(ctrs=((2, "web"),)), APPS[:1])])  # an honest reading upgrades it with its own rows only
+    s, imgs = images(env)
+    rows = s.scalars(select(InstalledPackage).where(InstalledPackage.asset_id == imgs[0].id, InstalledPackage.ecosystem.in_(("PyPI", "Maven")))).all()
+    assert [(r.ecosystem, r.name) for r in rows] == [("PyPI", "requests")]
+
+
+def test_a_location_that_isnt_utf8_drops_that_row_not_the_report(env):
+    """The agent's json.dumps escapes a lone surrogate (a file name that isn't UTF-8) as \\udcff, which JSON allows and the
+    database refuses: posted here as the agent posts it (the test client would encode it as UTF-8 and fail first)."""
+    c = user(env)
+    _, a = host(c, "web-1")
+
+    def post(images):
+        body = {"v": 1, "complete": False, "images": images, "runtimes": {}, "listed": {}, "error": None}
+        r = c.post("/api/agent/containers", content=json.dumps(body), headers={**a, "Content-Type": "application/json"})
+        assert r.status_code == 200, r.text
+        return r.json()
+    odd = [*APPS[:1], {"ecosystem": "PyPI", "name": "x", "version": "1", "source": "/srv/site-packages/\udcff-1.dist-info"}]
+    assert post([with_apps(entry(), odd)])["images"] == 1
+    s, (img,) = images(env)
+    assert img.collection["sources"]["python_packages"]["state"] == "partial"
+    bad_ref = {**entry(OTHER, ctrs=((5, "x"),)), "ref": "registry/\udcff:1"}
+    assert post([bad_ref])["images"] == 1  # a name it can't store is replaced, never a 500
+

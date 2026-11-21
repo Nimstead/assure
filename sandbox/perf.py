@@ -93,6 +93,13 @@ def rematch() -> float:
         return took
 
 
+def older(img):
+    """The same image as an agent before 0.9.0 sends it (no application rows or lines): with --apps, every other host, so the
+    lookup that joins an OS-only reading to the image's fuller one is measured too (code review)."""
+    keep = ("os_release", "package_db")
+    return {**{k: v for k, v in img.items() if k != "apps"}, "collection": {**img["collection"], "sources": {k: v for k, v in img["collection"]["sources"].items() if k in keep}}}
+
+
 def tickets_perf():
     """A sync's own cost at this scale (tasks/spec-tickets.md success criterion 5). GitLab is faked in-process (tests/trackers.py),
     so only Nimstead's time is measured: reading and grouping every open finding (every priority: the worst case), diffing
@@ -175,7 +182,8 @@ def main():
         for n, h in enumerate(headers):
             picked = rnd.sample(range(IMAGES), CONTAINERS)
             body = {"v": 1, "complete": True, "runtimes": {}, "error": None,
-                    "images": [{**images[i], "containers": [{"id": f"{n:032x}{i:032x}", "name": f"c{i}", "runtime": "docker"}]} for i in picked]}
+                    "images": [{**(older(images[i]) if APPS and n % 2 else images[i]), "containers": [{"id": f"{n:032x}{i:032x}", "name": f"c{i}", "runtime": "docker"}]}
+                               for i in picked]}
             t = time.perf_counter()
             r = c.post("/api/agent/containers", json=body, headers=h)
             reports.append(time.perf_counter() - t)

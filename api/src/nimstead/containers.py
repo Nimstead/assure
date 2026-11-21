@@ -42,8 +42,18 @@ _CONTAINER_ID = re.compile(r"^[0-9a-f]{64}$")
 _FACTS = ("os_id", "os_version_id", "os_unmatched")
 
 
+def _utf8(v: str) -> bool:
+    """Whether the database can hold v: JSON carries lone surrogates (a file name that isn't UTF-8), UTF-8 can't."""
+    try:
+        v.encode("utf-8")
+        return True
+    except UnicodeEncodeError:
+        return False
+
+
 def _text(v, n: int) -> str:
-    return v[:n] if isinstance(v, str) else ""
+    """v cut to n characters, with any character the database can't hold replaced (security audit)."""
+    return v[:n].encode("utf-8", "replace").decode("utf-8") if isinstance(v, str) else ""
 
 
 def _row(p) -> dict | None:
@@ -54,6 +64,8 @@ def _row(p) -> dict | None:
     if not (isinstance(name, str) and isinstance(ver, str) and 0 < len(name) <= 255 and 0 < len(ver) <= 255):
         return None
     if not all(v is None or (isinstance(v, str) and len(v) <= 255) for v in (src, sv)):
+        return None
+    if not all(_utf8(v) for v in (name, ver, src, sv) if v):  # a row the database would refuse would cost the whole report
         return None
     return {"name": name, "version": ver, "source": src or None, "source_version": sv or None}
 
@@ -85,7 +97,7 @@ def image(raw) -> dict | None:
     ctrs = {}
     for c in raw.get("containers") if isinstance(raw.get("containers"), list) else []:
         if isinstance(c, dict) and isinstance(c.get("id"), str) and _CONTAINER_ID.match(c["id"]) and c.get("runtime") in RUNTIMES:
-            ctrs[c["id"]] = {"id": c["id"], "name": _text(c.get("name"), 255), "runtime": c["runtime"]}
+            ctrs[c["id"]] = {"id": c["id"], "name": _text(c.get("name"), 255), "runtime": c["runtime"]}  # noqa: E501
     if not ctrs:
         return None
     sent = raw.get("packages") if isinstance(raw.get("packages"), list) else []
@@ -100,11 +112,14 @@ def image(raw) -> dict | None:
     if dropped := len(sent_apps) - len(apps):
         collection = _partial(collection, APP_LINES.values(), f"{dropped} application rows didn't fit what the server stores")
     facts = raw.get("facts") if isinstance(raw.get("facts"), dict) else {}
-    return {"image_id": raw["image_id"], "ref": _text(raw.get("ref"), 255), "os_name": _text(raw.get("os_name"), 255),
-            "ecosystem": _text(raw.get("ecosystem"), 100), "facts": {k: facts[k][:300] for k in _FACTS if isinstance(facts.get(k), str)},
-            "collection": collection, "containers": list(ctrs.values()),
-            "packages": sorted(rows, key=lambda r: (r["name"], r["version"], r["source"] or "", r["source_version"] or "")),
-            "apps": sorted(apps, key=lambda r: (r["ecosystem"], r["name"], r["version"], r["source"] or ""))}
+    out = {"image_id": raw["image_id"], "ref": _text(raw.get("ref"), 255), "os_name": _text(raw.get("os_name"), 255),
+           "ecosystem": _text(raw.get("ecosystem"), 100), "facts": {k: _text(facts[k], 300) for k in _FACTS if isinstance(facts.get(k), str)},
+           "collection": collection, "containers": list(ctrs.values()),
+           "packages": sorted(rows, key=lambda r: (r["name"], r["version"], r["source"] or "", r["source_version"] or "")),
+           "apps": sorted(apps, key=lambda r: (r["ecosystem"], r["name"], r["version"], r["source"] or ""))}
+    if not reads_apps(out):  # rows no line backs: an OS-only reading, keyed and shared as one (security audit, code review)
+        out["apps"] = []
+    return out
 
 
 def reads_apps(img: dict) -> bool:
@@ -149,16 +164,45 @@ def _create(s: Session, host: Asset, img: dict, h: str) -> tuple[Asset | None, b
     return a, True
 
 
-def _reread(s: Session, a: Asset, img: dict, h: str) -> tuple[Asset | None, bool]:
-    """(asset, upgraded): an image first read without its applications (an agent before 0.9.0), now read with them, keeps
-    its asset: the application rows and lines are added and its key becomes the fuller reading's (DECISIONS 159). Only
-    additions: the OS reading is the same by construction (same OS key), so nothing another host's report made can close.
-    Another host's report doing the same a moment ago wins, and ours joins it."""
+def whole(collection: dict | None) -> bool:
+    """Whether a collection document says every application line was read to its end."""
+    return bool(collection) and all((collection["sources"].get(n) or {}).get("state") == "ok" for n in APP_LINES.values())
+
+
+def _match(s: Session, org_id: str, img: dict, h: str, os_h: str) -> tuple[Asset | None, Asset | None]:
+    """(asset to join, asset to upgrade with this reading), either or both None (then a new one is made), for an image entry
+    whose full key is h and OS key os_h (DECISIONS 159, 160). The same image read in different ways is one asset: an OS-only
+    reading (an older agent, applications off) or one cut short (a walk that reached its budget reads a little more or less
+    each time) shares the image's asset; the first reading with applications upgrades an asset stored by its OS key; a
+    whole reading completes one read only partly so far. Two whole readings that differ are an asset each, as two OS
+    readings that differ always were."""
+    a = s.scalar(select(Asset).where(Asset.agent_key_hash == h))
+    if a is not None:
+        return a, None
+    if h != os_h and (old := s.scalar(select(Asset).where(Asset.agent_key_hash == os_h).with_for_update())) is not None:
+        return None, old  # stored by its OS key: never read with applications yet
+    fuller = s.scalar(select(Asset).where(Asset.org_id == org_id, Asset.kind == "image", Asset.facts["os_key"].as_string() == os_h)
+                      .order_by(Asset.first_seen, Asset.id).limit(1).with_for_update())
+    if fuller is None:
+        return None, None
+    if h == os_h or not whole(img["collection"]):
+        return fuller, None
+    return (None, fuller) if not whole(fuller.collection) else (None, None)
+
+
+def _reread(s: Session, a: Asset, img: dict, h: str, os_h: str) -> tuple[Asset | None, bool]:
+    """(asset, upgraded): an image read before without its applications, or only partly, keeps its asset when read again
+    with them (DECISIONS 159, 160): rows it doesn't hold yet are added, its lines become this reading's and its key the
+    fuller reading's. Only additions: the OS reading is the same by construction (same OS key) and no row is removed, so
+    nothing another host's report made can close. Another host's report doing the same a moment ago wins; ours joins it."""
+    held = {(p.ecosystem, p.name, p.version, p.source) for p in s.scalars(select(InstalledPackage).where(
+        InstalledPackage.asset_id == a.id, InstalledPackage.ecosystem.in_(APP_LINES)))}
     try:
         with s.begin_nested():
-            a.facts = {**(a.facts or {}), "os_key": a.agent_key_hash}
+            a.facts = {**(a.facts or {}), "os_key": os_h}
             a.agent_key_hash, a.collection = h, img["collection"]
-            s.add_all(InstalledPackage(asset_id=a.id, origin="agent", **r) for r in img["apps"])
+            s.add_all(InstalledPackage(asset_id=a.id, origin="agent", **r) for r in img["apps"]
+                      if (r["ecosystem"], r["name"], r["version"], r["source"]) not in held)
             s.flush()
     except IntegrityError:
         return s.scalar(select(Asset).where(Asset.agent_key_hash == h)), False
@@ -251,19 +295,13 @@ def store(s: Session, host: Asset, body: dict) -> tuple[dict, list[Asset], list[
             refused += 1
             continue
         h, os_h = key(host.org_id, img), key(host.org_id, img, apps=False)
-        a = s.scalar(select(Asset).where(Asset.agent_key_hash == h))
-        old = None
-        if a is None and h == os_h:  # read without applications: share the image's fuller reading, if there is one
-            a = s.scalar(select(Asset).where(Asset.org_id == host.org_id, Asset.kind == "image", Asset.facts["os_key"].as_string() == os_h)
-                         .order_by(Asset.first_seen, Asset.id).limit(1))
-        elif a is None:  # with them, of an image read before without them: that asset, upgraded below
-            old = s.scalar(select(Asset).where(Asset.agent_key_hash == os_h).with_for_update())
+        a, old = _match(s, host.org_id, img, h, os_h)
         if ((a or old) is None or (a or old).id not in held) and len(held) >= MAX_IMAGES_PER_HOST:
             refused += 1
             continue
         if old is not None:
-            a, upgraded = _reread(s, old, img, h)
-            if upgraded:
+            a, upgraded = _reread(s, old, img, h, os_h)
+            if upgraded and a not in reread:
                 reread.append(a)
         if a is None:
             if count is None:

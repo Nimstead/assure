@@ -111,7 +111,7 @@ Not just unit tests. Each of these ran end to end in a disposable VM or WSL dist
 | Windows 10 22H2 | ✓ | ✓ the last free cumulative (2025-10) through the scheduled task; newer updates need an ESU licence and are refused with no change | not tried on 22H2 (see LTSC) |
 | Windows 10 Enterprise LTSC 2021 (English and German) | ✓ | ✓ by hand; the expired evaluation image shut itself down before the scheduled task could | ✓ after an injected failure; a power cut mid-install reported as no change |
 
-Plus real Keycloak SSO, DNS, SMTP and webhook integrations, Vault and S3 object-lock key storage, the Docker Compose install, and 1,000-host performance runs on SQLite and PostgreSQL 17. About 1,620 API tests run on both databases in CI.
+Plus real Keycloak SSO, DNS, SMTP and webhook integrations, the ticket loop on a real GitLab (opened, fixed by a real package upgrade, closed, reopened), Vault and S3 object-lock key storage, the Docker Compose install, and 1,000-host performance runs on SQLite and PostgreSQL 17. About 1,620 API tests run on both databases in CI.
 
 ## Known limitations
 

@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
@@ -498,11 +498,15 @@ function FindingDrawer({ id, ids = [], total, more, onMove, onClose }: {
 function RebuildImage({ f }: { f: Finding }) {
   const to = f.package_fix?.version ?? f.fixed_version;
   const where = f.runs_on?.length ? <> on {f.runs_on.slice(0, 3).join(", ")}{f.runs_on.length > 3 && ` and ${f.runs_on.length - 3} more`}</> : null;
+  const at = f.locations ?? [];  // an application package: the image's build added it, so that's what changes (DECISIONS 155)
+  const from = at.length ? "in the image's build (its lock file, pom.xml or go.mod)" : "from a fixed base image or the package itself";
   return (
     <div className="mb-3 flex max-w-prose flex-col gap-1 text-sm">
       <p><strong className="font-semibold">Rebuild this image.</strong>{" "}
-        {to ? <>Bring {f.package} to <code className="text-mono whitespace-nowrap bg-sunken px-1 font-mono">{to}</code> or later, from a fixed base image or the package itself, and redeploy it{where}.</>
+        {to ? <>Bring {f.package} to <code className="text-mono whitespace-nowrap bg-sunken px-1 font-mono">{to}</code> or later, {from}, and redeploy it{where}.</>
           : <>No fixed version of {f.package} is published yet for {f.ecosystem}; when one is, rebuild with it and redeploy{where}.</>}</p>
+      {at.length > 0 && <p>{at.length === 1 ? "Where it is in the image:" : `Where it is in the image (${at.length} places):`}{" "}
+        {at.slice(0, 3).map((l, n) => <Fragment key={l}>{n > 0 && ", "}<code className="text-mono break-all bg-sunken px-1 font-mono">{l}</code></Fragment>)}{at.length > 3 && `, and ${at.length - 3} more`}</p>}
       <p className="text-muted">Nimstead never changes a running container. This closes once every machine that runs the image reports the rebuilt one instead.{" "}
         <Link to="/assets" search={{ view: "containers", image: f.asset_id }} className="font-medium text-ink underline">The image</Link></p>
     </div>

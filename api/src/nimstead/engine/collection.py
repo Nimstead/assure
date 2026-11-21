@@ -30,7 +30,8 @@ LINUX_SOURCES = ("os_release", "package_db")
 LINUX = ("Debian", "Ubuntu", "Alpine", "Rocky Linux", "AlmaLinux", "Red Hat", "SUSE", "openSUSE")  # the distros' own advisory feeds
 _MANAGER = {"Debian": "dpkg", "Ubuntu": "dpkg", "Alpine": "apk"}  # the rest are rpm
 # what the agent's opt-in scans read outside the OS package manager: (source, ecosystem, label)
-AGENT_APPS = (("python_packages", "PyPI", "Python packages"), ("npm_packages", "npm", "npm packages"), ("java_archives", "Maven", "Java archives"))
+AGENT_APPS = (("python_packages", "PyPI", "Python packages"), ("npm_packages", "npm", "npm packages"), ("java_archives", "Maven", "Java archives"),
+              ("go_modules", "Go", "Go modules"))  # Go: build information in a container image's binaries (DECISIONS 157)
 _APP_SOURCE = {eco: (src, label) for src, eco, label in AGENT_APPS}
 
 

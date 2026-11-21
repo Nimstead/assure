@@ -1,17 +1,17 @@
 {
  "result": "PASS",
  "failures": [],
- "distro": "nimstead-sbx-tkt-98002a",
- "when": "2026-11-21T04:10:43Z",
+ "distro": "nimstead-sbx-tkt-6216b3",
+ "when": "2026-11-21T11:03:31Z",
  "steps": [
   {
    "step": "distro",
-   "name": "nimstead-sbx-tkt-98002a",
+   "name": "nimstead-sbx-tkt-6216b3",
    "reused": false
   },
   {
    "step": "GitLab up",
-   "seconds": 131
+   "seconds": 141
   },
   {
    "step": "GitLab ready",
@@ -23,7 +23,7 @@
   },
   {
    "step": "feeds synced",
-   "seconds": 10,
+   "seconds": 12,
    "ecosystem": "Debian:13",
    "kev": "1790",
    "epss": "410485",
@@ -61,7 +61,7 @@
    },
    "syncs": [
     {
-     "at": "2026-11-21T04:09:52.187121",
+     "at": "2026-11-21T11:02:39.044635",
      "opened": 100,
      "updated": 0,
      "closed": 0,
@@ -71,7 +71,7 @@
      "errors": []
     },
     {
-     "at": "2026-11-21T04:09:59.429683",
+     "at": "2026-11-21T11:02:46.168174",
      "opened": 12,
      "updated": 0,
      "closed": 0,
@@ -85,7 +85,7 @@
   {
    "step": "PASS: the first sync stopped at 100 changes and the next finished",
    "first": {
-    "at": "2026-11-21T04:09:52.187121",
+    "at": "2026-11-21T11:02:39.044635",
     "opened": 100,
     "updated": 0,
     "closed": 0,
@@ -97,7 +97,7 @@
   },
   {
    "step": "PASS: a Payments ticket's package can really be upgraded in the distro",
-   "upgradable": 43
+   "upgradable": 44
   },
   {
    "step": "PASS: a machine fixed by its own inventory leaves the ticket with the version it now has, and the ticket stays open for the other",
@@ -105,12 +105,12 @@
    "binaries": [
     "libpcre2-8-0"
    ],
-   "note": "No longer in this ticket (1):\n\n```\n  pay-1  fixed 21 Nov 04:10 UTC: 10.46-1~deb13u3 in the machine's inventory\n```\n\n1 machine left.",
+   "note": "No longer in this ticket (1):\n\n```\n  pay-1  fixed 21 Nov 11:02 UTC: 10.46-1~deb13u3 in the machine's inventory\n```\n\n1 machine left.",
    "still_open_on_pay1": 0
   },
   {
    "step": "PASS: when no finding is left the ticket closes, saying why each machine left",
-   "note": "No finding in this ticket is open any more, so Nimstead is closing it.\n\n```\n  pay-2  fixed 21 Nov 04:10 UTC: 10.46-1~deb13u3 in the machine's inventory\n```"
+   "note": "No finding in this ticket is open any more, so Nimstead is closing it.\n\n```\n  pay-2  fixed 21 Nov 11:02 UTC: 10.46-1~deb13u3 in the machine's inventory\n```"
   },
   {
    "step": "PASS: a regression reopens the same issue, naming the machine",

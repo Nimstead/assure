@@ -548,6 +548,30 @@ def test_a_huge_file_list_is_said_not_held_in_memory(tmp_path, monkeypatch):
 
 
 @POSIX
+def test_a_huge_dpkg_file_list_is_said_too(tmp_path, monkeypatch):
+    monkeypatch.setattr(agent, "CONTAINER_OWNED_MAX", 10)
+    write(tmp_path / "var/lib/dpkg/info/big.list", "".join(f"/usr/share/doc/x/{i}\n" for i in range(20)))
+    write(tmp_path / "usr/local/lib/python3.12/site-packages/a-1.dist-info/METADATA", "Name: a\nVersion: 1\n")
+    _, lines = apps_of(tmp_path, owned=None)
+    assert "more than 10 paths" in lines["python_packages"]["error"]
+
+
+def test_a_jars_pom_entries_stop_at_the_budget():
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        for i in range(50):
+            z.writestr(f"META-INF/maven/g/a{i}/pom.properties", f"groupId=g\nartifactId=a{i}\nversion=1\n")
+    out, asked = {}, []
+
+    def late():
+        asked.append(1)
+        return len(asked) > 3
+    with zipfile.ZipFile(buf) as z:
+        agent._poms(z, "/app.jar", out, late)
+    assert len(out) == 3  # asked before each entry; the fourth is past the budget
+
+
+@POSIX
 def test_a_file_on_another_mount_is_never_opened():
     root = agent.ContainerRoot.of_dir("/")
     proc = os.open("/proc", os.O_PATH | os.O_DIRECTORY)

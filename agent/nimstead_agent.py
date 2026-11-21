@@ -884,10 +884,8 @@ def container_owned(root, budget=None):
     try:
         if root.exists(APK_DB):
             d = ""
-            text = root.read(APK_DB).decode("utf-8", "replace")
-            if text.count("\nF:") + text.count("\nR:") > CONTAINER_OWNED_MAX:  # counted before a set is built (security audit)
-                raise ContainerReadError(f"more than {CONTAINER_OWNED_MAX:,} paths, more than any real image")
-            for ln in text.splitlines():
+            for ln in io.StringIO(root.read(APK_DB).decode("utf-8", "replace")):  # a line at a time: add() stops it past the cap (security audit)
+                ln = ln.rstrip("\r\n")
                 if ln.startswith("F:"):
                     d = "/" + ln[2:].strip()
                     add(d)
@@ -904,8 +902,8 @@ def container_owned(root, budget=None):
                 total += len(data)
                 if total > CONTAINER_READ_MAX:
                     raise ContainerReadError(f"{DPKG_INFO}: larger than {CONTAINER_READ_MAX // (1024 * 1024)} MB in all")
-                for ln in data.decode("utf-8", "replace").splitlines():
-                    add(ln)
+                for ln in io.StringIO(data.decode("utf-8", "replace")):  # a line at a time: add() stops it past the cap
+                    add(ln.rstrip("\r\n"))
         else:
             rpm = any(root.exists(p) for p in (*RPM_SQLITE, *RPM_UNREAD))
     except (OSError, ContainerReadError) as e:  # without the list, the base image's packages would be judged twice: say so

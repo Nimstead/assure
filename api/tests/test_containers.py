@@ -1,6 +1,7 @@
 """Container images the org's hosts run (tasks/plan-containers.md C4-C6, DECISIONS 139-141): one content-addressed asset per
 image, judged by the engine like a host, running where the hosts' complete lists say, closed only on that evidence."""
 
+import json
 from datetime import datetime, timedelta
 
 import pytest
@@ -554,3 +555,20 @@ def test_an_image_says_what_was_read_where_each_package_sits_and_rebuilds_by_eac
     [rebuild] = c.get("/api/summary").json()["images_to_rebuild"]
     fixes = {(f["ecosystem"], f["package"]): f["fixed_version"] for f in rebuild["fixes"]}
     assert fixes[("npm", "minimist")] == "1.2.0" and fixes[("Maven", "org.apache.logging.log4j:log4j-core")] == "2.15.0"
+
+
+def test_a_scratch_images_applications_are_judged_though_no_feed_maps_its_os(env):
+    """coredns and node-exporter are static Go binaries on scratch: no os-release, no package database. Their OS can't be
+    judged, but their Go modules have Go's own feed (found on the real run, sandbox/workloads.py)."""
+    seed_apps(env)
+    c = user(env)
+    _, a = host(c, "node-1")
+    scratch = with_apps(entry(OTHER, [], ref="registry.k8s.io/coredns/coredns:v1.10.1", eco=""), [APPS[3]])
+    scratch["facts"] = {"os_id": "", "os_version_id": "", "os_unmatched": "no advisory feed maps this platform: ID=? VERSION_ID=?"}
+    scratch["collection"]["sources"]["os_release"] = {"state": "failed", "count": 0, "error": "no os-release file"}
+    scratch["collection"]["sources"]["package_db"] = {"state": "failed", "count": 0, "error": "no package database found (apk, dpkg or rpm SQLite)"}
+    send(c, a, [scratch])
+    s, (img,) = images(env)
+    assert open_on(s, img.id) == ["CVE-2023-45283"]
+    report = c.get(f"/api/assets/{img.id}/scan-report").json()
+    assert any(v["reason"] == "unsupported-platform" for v in report.get("not_run", []) + report.get("blocked", [])) or "no advisory feed maps" in json.dumps(report)

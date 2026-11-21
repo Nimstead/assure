@@ -242,19 +242,42 @@ def syft(ref):
         p = sbom.parse_purl(art.get("purl") or "")
         if p and p[0] in APP_ECOS:
             eco, name, ver = p
-            out.setdefault((eco, name, ver.removeprefix("go") if name == "stdlib" else ver), art)
+            if name == "stdlib":  # Syft writes the toolchain as Go names it (go1.20); the agent in semver form (1.20.0), as OSV compares it
+                ver = ver.removeprefix("go")
+                ver += ".0" if ver.count(".") == 1 else ""
+            out.setdefault((eco, name, ver), art)
     return out, doc.get("descriptor", {}).get("version")
 
 
-def explain(eco, art):
+def owned_paths(container):
+    """Every path the container's own package manager installed (dpkg's lists, or apk's database), for explaining Syft."""
+    text = wsl(f"docker exec {container} sh -c 'cat /var/lib/dpkg/info/*.list 2>/dev/null; cat /lib/apk/db/installed 2>/dev/null' 2>/dev/null || true")
+    out, d = set(), ""
+    for ln in text.splitlines():
+        if ln.startswith("F:"):
+            d = "/" + ln[2:]
+        elif ln.startswith("R:"):
+            out.add(f"{d}/{ln[2:]}")
+        elif ln.startswith("/"):
+            out.add(ln)
+    return out | {"/usr" + p for p in out if p.startswith(("/bin/", "/sbin/", "/lib/"))}
+
+
+def explain(eco, art, owned):
     """Why Syft names something the agent doesn't, from Syft's own record of how it found it; None if unexplained."""
     md, found = art.get("metadata") or {}, art.get("foundBy") or ""
+    where = [loc.get("path") or "" for loc in art.get("locations") or []]
     if eco == "Maven" and not md.get("pomProperties"):
         return "no pom.properties: Syft guessed the coordinates from the manifest or the file name (the agent never guesses)"
     if "lock" in found:
         return "an entry of a lock file, not an installed package's own package.json"
-    if eco == "Go" and art.get("version") in ("(devel)", ""):
-        return "the binary's own main module, with no version"
+    if eco == "Go" and (art.get("version") in ("(devel)", "") or md.get("mainModule") == art.get("name")):
+        return "the binary's own main module: Go records it as (devel), and Syft makes a version up from its VCS stamp"
+    if where and all(p in owned for p in where):
+        return "installed by the image's own package manager, so judged by its distribution's advisories (DECISIONS 156; Trivy does the same)"
+    if eco == "npm" and where and not any("/node_modules/" in p for p in where):
+        return ("a package.json outside node_modules: the image's own project, or a tool unpacked from a tarball (yarn in node images); "
+                "it can be named like a public package it isn't, so it isn't matched")
     return None
 
 
@@ -309,7 +332,8 @@ def main(keep=False):
             ref = PULLED.get(name, name)
             theirs, version = syft(ref)
             ours = apps(by[name])
-            only_syft = {k: explain(k[0], theirs[k]) for k in sorted(set(theirs) - ours)}
+            owned = owned_paths(name) if name not in ("coredns", "node-exporter") else set()  # no shell in those: no package manager either
+            only_syft = {k: explain(k[0], theirs[k], owned) for k in sorted(set(theirs) - ours)}
             only_ours = sorted(ours - set(theirs))
             per[name] = {"image": ref, "agent": len(ours), "syft": len(theirs), "same": len(ours & set(theirs)),
                          "only_agent": [list(k) for k in only_ours][:30],

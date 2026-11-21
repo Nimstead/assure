@@ -454,15 +454,21 @@ test("container images: one row wherever an image runs, rebuilt not planned, unr
   const tok = await (await api.post("/api/enroll-tokens", { data: { sandbox: true } })).json();
   const doc = (n: number, db: object = { state: "ok", count: n }) => ({ v: 1, sources: { os_release: { state: "ok", count: 1 }, package_db: db } });
   const pkgs = [{ name: "libssl3", version: "3.0.11-1~deb12u1", source: "openssl" }, { name: "openssl", version: "3.0.11-1~deb12u1", source: "openssl" }];
-  const image = (n: number, name: string) => ({ image_id: "sha256:" + "e2".repeat(32), ref: "registry.example/billing-api:4.2", os_name: "Debian GNU/Linux 12 (bookworm)",
-    ecosystem: "Debian:12", facts: { os_id: "debian", os_version_id: "12" }, collection: doc(2), packages: pkgs, containers: [{ id: n.toString(16).padStart(64, "0"), name, runtime: "docker" }] });
+  // what its build added, as agent 0.9.0 reads it (DECISIONS 155): a line per ecosystem, one of them partly read
+  const apps = { python_packages: { state: "ok", count: 0 }, npm_packages: { state: "ok", count: 1 }, go_modules: { state: "ok", count: 0 },
+    java_archives: { state: "partial", count: 0, error: "1 installs' metadata couldn't be read" } };
+  const image = (n: number, name: string, runtime = "docker") => ({ image_id: "sha256:" + "e2".repeat(32), ref: "registry.example/billing-api:4.2", os_name: "Debian GNU/Linux 12 (bookworm)",
+    ecosystem: "Debian:12", facts: { os_id: "debian", os_version_id: "12" }, collection: { v: 1, sources: { ...doc(2).sources, ...apps } }, packages: pkgs,
+    apps: [{ ecosystem: "npm", name: "lodash", version: "4.17.20", source: "/srv/node_modules/lodash" }],
+    containers: [{ id: n.toString(16).padStart(64, "0"), name, runtime }] });
   const unread = { image_id: "sha256:" + "bb".repeat(32), ref: "busybox:1.36", os_name: "", ecosystem: "", facts: { os_unmatched: "no advisory feed maps this platform: ID=? VERSION_ID=?" },
     collection: doc(0, { state: "failed", count: 0, error: "no package database found (apk, dpkg or rpm SQLite)" }), packages: [], containers: [{ id: "f".repeat(64), name: "tools", runtime: "podman" }] };
   for (const [hostname, n, extra] of [["ctr-web-1", 1, [unread]], ["ctr-web-2", 2, []]] as const) {
     const a = await (await api.post("/api/agent/enroll", { data: { token: tok.token, hostname, ecosystem: "Debian:12" } })).json();
     const h = { Authorization: `Bearer ${a.agent_key}` };
     expect((await api.post("/api/agent/inventory", { data: current({ os_name: "Debian 12", ecosystem: "Debian:12", packages: [] }), headers: h })).ok()).toBe(true);
-    const r = await api.post("/api/agent/containers", { data: { v: 1, complete: true, images: [image(n, "billing"), ...extra], runtimes: {}, error: null }, headers: h });
+    const own = n === 1 ? image(n, "billing") : image(n, "payments/api-7d9f4-x2k/app", "containerd");  // the second runs it as a Kubernetes pod
+    const r = await api.post("/api/agent/containers", { data: { v: 1, complete: true, images: [own, ...extra], runtimes: {}, error: null }, headers: h });
     expect(r.ok(), await r.text()).toBe(true);
   }
   const assets = await (await api.get("/api/assets")).json();
@@ -481,6 +487,9 @@ test("container images: one row wherever an image runs, rebuilt not planned, unr
       const drawer = page.getByRole("dialog", { name: "registry.example/billing-api:4.2" });
       await expect(drawer.getByText("Runs on 2 machines")).toBeVisible();
       await expect(drawer.getByRole("button", { name: /Plan/ })).toHaveCount(0);
+      await expect(drawer.getByRole("list", { name: "Read in this image" })).toContainText("npm 1");
+      await expect(drawer).toContainText("Java: partly read: 1 installs' metadata couldn't be read.");
+      await expect(drawer).toContainText("payments/api-7d9f4-x2k/app · containerd");
       await axe(page, `image drawer @${width} ${scheme}`);
       const shot = width === 1440 && scheme === "light";
       if (shot) mkdirSync(SHOTS, { recursive: true });

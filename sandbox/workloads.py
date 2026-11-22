@@ -340,8 +340,18 @@ def main(keep=False):
             # a jar Syft named from its manifest or file name (no pom.properties in its record) that the agent named from the
             # pom.properties inside it: the same artifact and version, two names (jaxb-core: com.sun.xml.bind or org.glassfish.jaxb)
             guessed = {(k[1].rsplit(":", 1)[-1], k[2]) for k, why in only_syft.items() if k[0] == "Maven" and why and why.startswith("no pom.properties")}
-            only_ours = {k: ("the same jar Syft named from its manifest or file name; the agent's name is the pom.properties inside it"
-                             if k[0] == "Maven" and (k[1].rsplit(":", 1)[-1], k[2]) in guessed else None) for k in sorted(ours - set(theirs))}
+            # a jar carrying two pom.properties (a shaded or relocated jar: jaxb-core names com.sun.xml.bind and org.glassfish.jaxb):
+            # the agent reports every one, since each names code the jar bundles; Syft the one it takes as the jar's own
+            jars: dict[str, set] = {}
+            for p in s.scalars(select(InstalledPackage).where(InstalledPackage.asset_id == by[name].id, InstalledPackage.ecosystem == "Maven")):
+                jars.setdefault(p.source, set()).add((p.ecosystem, p.name, p.version))
+            both, only_ours = ours & set(theirs), {}
+            for k in sorted(ours - set(theirs)):
+                only_ours[k] = (
+                    "the same jar Syft named from its manifest or file name; the agent's name is the pom.properties inside it"
+                    if k[0] == "Maven" and (k[1].rsplit(":", 1)[-1], k[2]) in guessed else
+                    "a second pom.properties in a jar both read (a shaded or relocated jar): the agent reports each, Syft the jar's own"
+                    if any(k in rows and (rows - {k}) & both for rows in jars.values()) else None)
             per[name] = {"image": ref, "agent": len(ours), "syft": len(theirs), "same": len(ours & set(theirs)),
                          "only_agent_explained": [[*k, why] for k, why in only_ours.items() if why][:300],
                          "only_agent": [list(k) for k, why in only_ours.items() if not why][:300],

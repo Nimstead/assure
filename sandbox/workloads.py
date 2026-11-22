@@ -337,9 +337,14 @@ def main(keep=False):
             ours = apps(by[name])
             owned = owned_paths(name) if name not in ("coredns", "node-exporter") else set()  # no shell in those: no package manager either
             only_syft = {k: explain(k[0], theirs[k], owned) for k in sorted(set(theirs) - ours)}
-            only_ours = sorted(ours - set(theirs))
+            # a jar Syft named from its manifest or file name (no pom.properties in its record) that the agent named from the
+            # pom.properties inside it: the same artifact and version, two names (jaxb-core: com.sun.xml.bind or org.glassfish.jaxb)
+            guessed = {(k[1].rsplit(":", 1)[-1], k[2]) for k, why in only_syft.items() if k[0] == "Maven" and why and why.startswith("no pom.properties")}
+            only_ours = {k: ("the same jar Syft named from its manifest or file name; the agent's name is the pom.properties inside it"
+                             if k[0] == "Maven" and (k[1].rsplit(":", 1)[-1], k[2]) in guessed else None) for k in sorted(ours - set(theirs))}
             per[name] = {"image": ref, "agent": len(ours), "syft": len(theirs), "same": len(ours & set(theirs)),
-                         "only_agent": [list(k) for k in only_ours][:300],
+                         "only_agent_explained": [[*k, why] for k, why in only_ours.items() if why][:300],
+                         "only_agent": [list(k) for k, why in only_ours.items() if not why][:300],
                          "only_syft_explained": [[*k, why] for k, why in only_syft.items() if why][:300],
                          "only_syft_unexplained": [list(k) for k, why in only_syft.items() if not why][:300],
                          "by_ecosystem": {e: sum(k[0] == e for k in ours) for e in APP_ECOS}}

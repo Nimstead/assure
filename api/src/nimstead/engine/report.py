@@ -99,8 +99,12 @@ def _applications(inv: Inventory, content: Content, verdicts: list[Verdict]) -> 
     """R4.4 for software outside the package manager, as counts and as sentences: what wasn't looked for, what the agent left to the
     package manager (R7.9), what has no advisory at all, and what an SBOM couldn't name. Each said, so none of it reads as clean."""
     out, found, sb = [], app_installs(inv), inv.sbom or {}
-    off = [] if inv.kind in ("application", "image") else [label for src, _, label in AGENT_APPS if inv.source(src).state in ("off", NOT_REPORTED)]
-    if off:
+    looked = [x for x in AGENT_APPS if inv.kind == "image" or x[0] != "go_modules"]  # a host's own scans don't read Go binaries
+    off = [] if inv.kind == "application" else [label for src, _, label in looked if inv.source(src).state in ("off", NOT_REPORTED)]
+    if off and inv.kind == "image":  # DECISIONS 155: read with the image's OS packages since agent 0.9.0, unless a host turned it off
+        out.append(f"Not looked for in this image, so not assessed: {', '.join(off)} (the agent that read it reads only OS packages in "
+                   "containers: it predates 0.9.0, or its host turned application reading off).")
+    elif off:
         out.append(f"Not looked for on this host, so not assessed: {', '.join(off)} (the agent's opt-in scans are off, or it predates them).")
     owned = sum(x for x in ((inv.facts.get("app_scan") or {}).get("owned"), (inv.facts.get("jar_scan") or {}).get("owned")) if isinstance(x, int))
     if owned and inv.kind != "application":

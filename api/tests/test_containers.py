@@ -1,14 +1,15 @@
 """Container images the org's hosts run (tasks/plan-containers.md C4-C6, DECISIONS 139-141): one content-addressed asset per
 image, judged by the engine like a host, running where the hosts' complete lists say, closed only on that evidence."""
 
+import json
 from datetime import datetime, timedelta
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 from test_api import user
 
 from nimstead import containers
-from nimstead.db import Advisory, Asset, Container, Finding, LedgerEntry, make_sessionmaker, now
+from nimstead.db import Advisory, Asset, Container, Finding, InstalledPackage, LedgerEntry, make_sessionmaker, now
 from nimstead.scan import rescan
 
 IMG = "sha256:" + "ab" * 32
@@ -408,3 +409,261 @@ def test_images_dont_count_against_the_asset_quota_and_take_no_sbom(env, monkeyp
     _, (img,) = images(env)
     r = c.post(f"/api/assets/{img.id}/sbom", content=b'{"bomFormat": "CycloneDX", "specVersion": "1.5", "components": []}')
     assert r.status_code == 409
+
+
+# ---- workloads: applications inside images and Kubernetes nodes (tasks/spec-workloads.md, DECISIONS 155-159) ------
+
+APP_SOURCES = ("python_packages", "npm_packages", "java_archives", "go_modules")
+APPS = [{"ecosystem": "PyPI", "name": "requests", "version": "2.19.1", "source": "/app/venv/lib/python3.12/site-packages/requests-2.19.1.dist-info"},
+        {"ecosystem": "npm", "name": "lodash", "version": "4.17.20", "source": "/srv/node_modules/lodash"},
+        {"ecosystem": "Maven", "name": "org.apache.logging.log4j:log4j-core", "version": "2.14.1", "source": "/app/app.jar!/BOOT-INF/lib/log4j-core-2.14.1.jar"},
+        {"ecosystem": "Go", "name": "stdlib", "version": "1.21.0", "source": "/usr/local/bin/server"}]
+
+
+def osv(gid, eco, name, fixed, cve, kind="ECOSYSTEM"):
+    return {"id": gid, "aliases": [cve], "modified": "2026-10-01T00:00:00Z", "summary": f"Flaw in {name}",
+            "affected": [{"package": {"ecosystem": eco, "name": name}, "ranges": [{"type": kind, "events": [{"introduced": "0"}, {"fixed": fixed}]}]}]}
+
+
+ADVISORIES = [osv("GHSA-x84v-xcm2-53pg", "PyPI", "requests", "2.20.0", "CVE-2018-18074"),
+              osv("GHSA-35jh-r3h4-6jhm", "npm", "lodash", "4.17.21", "CVE-2021-23337"),
+              osv("GHSA-jfh8-c2jp-5v3q", "Maven", "org.apache.logging.log4j:log4j-core", "2.15.0", "CVE-2021-44228"),
+              osv("GO-2023-2185", "Go", "stdlib", "1.21.4", "CVE-2023-45283", kind="SEMVER")]
+
+
+def seed_apps(env):
+    s = make_sessionmaker(env)()
+    for rec in ADVISORIES:
+        a = rec["affected"][0]["package"]
+        s.merge(Advisory(id=rec["id"], ecosystem=a["ecosystem"], package=a["name"], modified=rec["modified"], record=rec))
+    s.commit()
+
+
+def with_apps(e, apps=APPS, state="ok"):
+    """An image entry as agent 0.9.0 sends it: its application rows, and a line for each ecosystem."""
+    lines = {n: {"state": state, "count": sum(a["ecosystem"] == eco for a in apps)}
+             for eco, n in zip(("PyPI", "npm", "Maven", "Go"), APP_SOURCES, strict=True)}
+    return {**e, "apps": list(apps) if state != "off" else [], "collection": {**e["collection"], "sources": {**e["collection"]["sources"], **lines}}}
+
+
+def opened(s, kind="finding_opened"):
+    return s.scalars(select(LedgerEntry).where(LedgerEntry.kind == kind)).all()
+
+
+def test_an_images_applications_are_stored_with_their_locations_and_judged(env):
+    seed_apps(env)
+    c = user(env)
+    _, a = host(c, "web-1")
+    send(c, a, [with_apps(entry())])
+    s, (img,) = images(env)
+    held = {(p.ecosystem, p.name, p.version, p.source) for p in s.scalars(select(InstalledPackage).where(InstalledPackage.asset_id == img.id))}
+    assert {(x["ecosystem"], x["name"], x["version"], x["source"]) for x in APPS} <= held
+    assert {"CVE-2018-18074", "CVE-2021-23337", "CVE-2021-44228", "CVE-2023-45283"} <= set(open_on(s, img.id))
+    report = c.get(f"/api/assets/{img.id}/scan-report").json()
+    assert any(g["instance"] == "log4j-core 2.14.1 at /app/app.jar!/BOOT-INF/lib/log4j-core-2.14.1.jar" or
+               g["instance"].startswith("org.apache.logging.log4j:log4j-core 2.14.1 at /app/app.jar") for g in report["vulnerable"])
+    assert img.collection["sources"]["go_modules"] == {"state": "ok", "count": 1}
+
+
+def test_application_rows_that_dont_fit_make_the_lines_partial(env):
+    c = user(env)
+    _, a = host(c, "web-1")
+    bad = [*APPS, {"ecosystem": "Cargo", "name": "x", "version": "1"}, {"ecosystem": "npm", "name": "y" * 300, "version": "1"}]
+    send(c, a, [with_apps(entry(), bad)])
+    s, (img,) = images(env)
+    for n in APP_SOURCES:
+        assert img.collection["sources"][n]["state"] == "partial"
+        assert img.collection["sources"][n]["error"] == "2 application rows didn't fit what the server stores"
+
+
+def test_an_old_agents_image_keeps_the_key_it_had_on_0_12():
+    import hashlib
+    import json
+    img = containers.image(entry())
+    body = {k: img[k] for k in ("image_id", "os_name", "ecosystem", "facts", "collection", "packages")}  # 0.12.0's key()
+    assert containers.key("org1", img) == "img:" + hashlib.sha256(("image\0org1\0" + json.dumps(body, sort_keys=True)).encode()).hexdigest()[:60]
+    new = containers.image(with_apps(entry()))
+    assert containers.key("org1", new, apps=False) == containers.key("org1", img) != containers.key("org1", new)
+    off = containers.image(with_apps(entry(), state="off"))
+    assert containers.key("org1", off) == containers.key("org1", img)  # applications turned off: an OS-only reading
+
+
+def test_an_image_read_again_with_its_applications_keeps_its_asset_and_closes_nothing(env):
+    seed_apps(env)
+    c = user(env)
+    _, a = host(c, "web-1")
+    _, b = host(c, "web-2")
+    _, off = host(c, "web-3")
+    send(c, a, [entry(ctrs=((1, "web"),))])  # agent 0.8.1: no application lines
+    s, (img,) = images(env)
+    os_vulns, before = open_on(s, img.id), len(opened(s))
+    assert os_vulns and "CVE-2021-44228" not in os_vulns
+    out = send(c, a, [with_apps(entry(ctrs=((1, "web"),)))])  # the same host on agent 0.9.0
+    assert out["reread"] == 1 and out["new"] == 0
+    s, imgs = images(env)
+    assert [i.id for i in imgs] == [img.id]
+    assert set(os_vulns) < set(open_on(s, img.id)) and "CVE-2021-44228" in open_on(s, img.id)
+    new = opened(s)[before:]  # only the applications' findings are new: no OS finding closed and reopened
+    assert opened(s, "finding_resolved") == [] and new and {e.data["package"] for e in new} <= {x["name"] for x in APPS}
+    assert [e.data["reread"] for e in opened(s, "containers_reported") if "reread" in e.data] == [[img.id]]
+    send(c, b, [entry(ctrs=((2, "web"),))])  # a host still on 0.8.1 joins the fuller reading
+    send(c, off, [with_apps(entry(ctrs=((3, "web"),)), state="off")])  # and so does one that turned applications off
+    s, imgs = images(env)
+    assert [i.id for i in imgs] == [img.id] and s.scalar(select(func.count()).select_from(Container).where(Container.image_asset_id == img.id)) == 3
+    send(c, a, [with_apps(entry(ctrs=((1, "web"),)), APPS[:1])])  # a different application reading of the same image: its own asset
+    s, imgs = images(env)
+    assert len(imgs) == 2 and opened(s, "finding_resolved") == []
+
+
+def test_kubernetes_runtimes_are_stored_and_each_listing_proves_only_its_own(env):
+    c = user(env)
+    h_id, h = host(c, "node-1")
+    pod = entry(ctrs=((1, "payments/api-7d9f4-x2k/app"),), runtime="containerd")
+    pod["containers"].append({"id": cid(2), "name": "web", "runtime": "docker"})
+    crio = entry(OTHER, ctrs=((3, "billing/worker-5c6d-q8r/app"),), runtime="cri-o")
+    send(c, h, [pod, crio], listed={"containerd": [cid(1)], "docker": [cid(2)], "cri-o": [cid(3)]})
+    s = make_sessionmaker(env)()
+    rows = sorted((r.runtime, r.name) for r in s.scalars(select(Container).where(Container.asset_id == h_id)))
+    assert rows == [("containerd", "payments/api-7d9f4-x2k/app"), ("cri-o", "billing/worker-5c6d-q8r/app"), ("docker", "web")]
+    send(c, h, [], complete=False, listed={"containerd": []})  # the pod was deleted; Docker's and CRI-O's listings didn't come
+    s = make_sessionmaker(env)()
+    assert sorted(r.runtime for r in s.scalars(select(Container).where(Container.asset_id == h_id))) == ["cri-o", "docker"]
+
+
+def test_an_image_says_what_was_read_where_each_package_sits_and_rebuilds_by_each_ecosystems_order(env):
+    seed_apps(env)
+    s = make_sessionmaker(env)()
+    for gid, fixed in (("GHSA-aaaa-0001", "1.2.0"), ("GHSA-aaaa-0002", "1.2.0-beta.1")):  # dpkg's order would pick the beta
+        rec = osv(gid, "npm", "minimist", fixed, f"CVE-2099-{gid[-4:]}")
+        s.merge(Advisory(id=gid, ecosystem="npm", package="minimist", modified=rec["modified"], record=rec))
+    s.commit()
+    c = user(env)
+    _, a = host(c, "web-1")
+    apps = [*APPS, {"ecosystem": "npm", "name": "minimist", "version": "1.0.0", "source": "/srv/node_modules/minimist"},
+            {"ecosystem": "Maven", "name": "org.apache.logging.log4j:log4j-core", "version": "2.14.1", "source": "/opt/legacy/log4j-core-2.14.1.jar"}]
+    send(c, a, [with_apps(entry(), apps)])
+    s, (img,) = images(env)
+    row = next(x for x in c.get("/api/assets").json() if x["kind"] == "image")
+    assert row["read"] == [{"source": "package_db", "state": "ok", "count": 3}, {"source": "python_packages", "state": "ok", "count": 1},
+                           {"source": "npm_packages", "state": "ok", "count": 2}, {"source": "java_archives", "state": "ok", "count": 2},
+                           {"source": "go_modules", "state": "ok", "count": 1}]
+    log4j = s.scalar(select(Finding).where(Finding.asset_id == img.id, Finding.vuln_id == "CVE-2021-44228"))
+    detail = c.get(f"/api/findings/{log4j.id}").json()
+    assert detail["locations"] == ["/app/app.jar!/BOOT-INF/lib/log4j-core-2.14.1.jar", "/opt/legacy/log4j-core-2.14.1.jar"]
+    openssl = s.scalar(select(Finding).where(Finding.asset_id == img.id, Finding.package == "openssl").limit(1))
+    assert c.get(f"/api/findings/{openssl.id}").json()["locations"] == []  # a distribution package is the package manager's
+    [rebuild] = c.get("/api/summary").json()["images_to_rebuild"]
+    fixes = {(f["ecosystem"], f["package"]): f["fixed_version"] for f in rebuild["fixes"]}
+    assert fixes[("npm", "minimist")] == "1.2.0" and fixes[("Maven", "org.apache.logging.log4j:log4j-core")] == "2.15.0"
+
+
+def test_a_scratch_images_applications_are_judged_though_no_feed_maps_its_os(env):
+    """coredns and node-exporter are static Go binaries on scratch: no os-release, no package database. Their OS can't be
+    judged, but their Go modules have Go's own feed (found on the real run, sandbox/workloads.py)."""
+    seed_apps(env)
+    c = user(env)
+    _, a = host(c, "node-1")
+    scratch = with_apps(entry(OTHER, [], ref="registry.k8s.io/coredns/coredns:v1.10.1", eco=""), [APPS[3]])
+    scratch["facts"] = {"os_id": "", "os_version_id": "", "os_unmatched": "no advisory feed maps this platform: ID=? VERSION_ID=?"}
+    scratch["collection"]["sources"]["os_release"] = {"state": "failed", "count": 0, "error": "no os-release file"}
+    scratch["collection"]["sources"]["package_db"] = {"state": "failed", "count": 0, "error": "no package database found (apk, dpkg or rpm SQLite)"}
+    send(c, a, [scratch])
+    s, (img,) = images(env)
+    assert open_on(s, img.id) == ["CVE-2023-45283"]
+    report = c.get(f"/api/assets/{img.id}/scan-report").json()
+    assert any(v["reason"] == "unsupported-platform" for v in report.get("not_run", []) + report.get("blocked", [])) or "no advisory feed maps" in json.dumps(report)
+
+
+# ---- review round (DECISIONS 160) ----------------------------------------------------------------------------------
+
+def partial(e, apps, why="stopped at its time budget"):
+    """An entry whose walk stopped short: what it read, and every application line partial with why."""
+    out = with_apps(e, apps)
+    out["collection"]["sources"] |= {n: {**out["collection"]["sources"][n], "state": "partial", "error": why} for n in APP_SOURCES}
+    return out
+
+
+def test_readings_cut_short_differently_share_one_image_and_close_nothing(env):
+    """A walk that reaches its time budget reads a little more or less each time: each report must not be a new image whose
+    arrival closes the last one's findings as 'not running' (code review, critical)."""
+    seed_apps(env)
+    c = user(env)
+    _, a = host(c, "node-1")
+    send(c, a, [partial(entry(), APPS[:2])])
+    s, (img,) = images(env)
+    was = set(open_on(s, img.id))
+    send(c, a, [partial(entry(), APPS[:3])])  # the next report got further
+    send(c, a, [partial(entry(), APPS[:1])])  # and the one after less far
+    s, imgs = images(env)
+    assert [i.id for i in imgs] == [img.id] and opened(s, "finding_resolved") == []
+    assert was <= set(open_on(s, img.id))
+
+
+def test_a_whole_reading_completes_an_image_read_only_partly_and_closes_nothing(env):
+    seed_apps(env)
+    c = user(env)
+    _, a = host(c, "node-1")
+    _, b = host(c, "node-2")
+    send(c, a, [partial(entry(ctrs=((1, "web"),)), APPS[:1])])
+    s, (img,) = images(env)
+    send(c, b, [with_apps(entry(ctrs=((2, "web"),)), APPS)])  # another host read it whole: the same image, completed
+    s, imgs = images(env)
+    assert [i.id for i in imgs] == [img.id] and opened(s, "finding_resolved") == []
+    assert "CVE-2021-44228" in open_on(s, img.id) and imgs[0].collection["sources"]["java_archives"]["state"] == "ok"
+    send(c, a, [partial(entry(ctrs=((1, "web"),)), APPS[:2])])  # a later partial reading joins it, changing nothing
+    s, imgs = images(env)
+    assert [i.id for i in imgs] == [img.id] and imgs[0].collection["sources"]["java_archives"]["state"] == "ok"
+
+
+def test_an_old_agent_joins_an_image_a_new_agent_read_first(env):
+    """The usual order once a fleet updates: a 0.9.0 host stores the image with its applications, then a 0.8.1 host (or one
+    with them turned off) reports it and must join it, through the stored OS key (code review)."""
+    seed_apps(env)
+    c = user(env)
+    _, new = host(c, "web-1")
+    _, old = host(c, "web-2")
+    _, off = host(c, "web-3")
+    send(c, new, [with_apps(entry(ctrs=((1, "web"),)))])
+    send(c, old, [entry(ctrs=((2, "web"),))])
+    send(c, off, [with_apps(entry(ctrs=((3, "web"),)), state="off")])
+    s, imgs = images(env)
+    assert len(imgs) == 1 and len(imgs[0].facts["os_key"]) > 10
+    assert sorted(r.name for r in s.scalars(select(Container).where(Container.image_asset_id == imgs[0].id))) == ["web", "web", "web"]
+
+
+def test_application_rows_no_line_backs_are_never_stored(env):
+    """A host that sends application rows without looking for applications (no lines, or all off) keys the image by its
+    OS alone, so the rows would sit on an asset other hosts share: dropped (security audit, code review)."""
+    seed_apps(env)
+    c = user(env)
+    _, bad = host(c, "web-1")
+    _, good = host(c, "web-2")
+    planted = {**entry(ctrs=((1, "web"),)), "apps": [APPS[2]]}  # log4j, and no application line at all
+    send(c, bad, [planted])
+    s, (img,) = images(env)
+    assert not s.scalars(select(InstalledPackage).where(InstalledPackage.asset_id == img.id, InstalledPackage.ecosystem == "Maven")).all()
+    assert "CVE-2021-44228" not in open_on(s, img.id)
+    send(c, good, [with_apps(entry(ctrs=((2, "web"),)), APPS[:1])])  # an honest reading upgrades it with its own rows only
+    s, imgs = images(env)
+    rows = s.scalars(select(InstalledPackage).where(InstalledPackage.asset_id == imgs[0].id, InstalledPackage.ecosystem.in_(("PyPI", "Maven")))).all()
+    assert [(r.ecosystem, r.name) for r in rows] == [("PyPI", "requests")]
+
+
+def test_a_location_that_isnt_utf8_drops_that_row_not_the_report(env):
+    """The agent's json.dumps escapes a lone surrogate (a file name that isn't UTF-8) as \\udcff, which JSON allows and the
+    database refuses: posted here as the agent posts it (the test client would encode it as UTF-8 and fail first)."""
+    c = user(env)
+    _, a = host(c, "web-1")
+
+    def post(images):
+        body = {"v": 1, "complete": False, "images": images, "runtimes": {}, "listed": {}, "error": None}
+        r = c.post("/api/agent/containers", content=json.dumps(body), headers={**a, "Content-Type": "application/json"})
+        assert r.status_code == 200, r.text
+        return r.json()
+    odd = [*APPS[:1], {"ecosystem": "PyPI", "name": "x", "version": "1", "source": "/srv/site-packages/\udcff-1.dist-info"}]
+    assert post([with_apps(entry(), odd)])["images"] == 1
+    s, (img,) = images(env)
+    assert img.collection["sources"]["python_packages"]["state"] == "partial"
+    bad_ref = {**entry(OTHER, ctrs=((5, "x"),)), "ref": "registry/\udcff:1"}
+    assert post([bad_ref])["images"] == 1  # a name it can't store is replaced, never a 500
+

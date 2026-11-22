@@ -1559,7 +1559,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         if release is None and a.kind == "host":
             release = signed_release() is not None
         runs = runs or []
-        db_line = ((a.collection or {}).get("sources") or {}).get("package_db") or {}
+        sources = (a.collection or {}).get("sources") or {}
+        db_line = sources.get("package_db") or {}
         # read and judged: an empty list counts as unread, as the engine counts it (R4.3), and so does a platform no feed maps
         read = db_line.get("state") == "ok" and bool(db_line.get("count")) and bool(a.ecosystem)
         return {
@@ -1577,6 +1578,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                 "txt_value": external.txt_value(a.org_id, a.hostname), "proof_path": external.PROOF_PATH} if a.kind == "external" else {}),
             **({"image_id": (a.facts or {}).get("image_id"), "running_on": runs[:100], "containers_total": len(runs),
                 "hosts_total": len({r["host_id"] for r in runs}), "packages_read": read,
+                # what was read in the image, source by source: its OS package list and its applications (DECISIONS 155)
+                "read": [{"source": n, **{k: v for k, v in sources[n].items() if k in ("state", "count", "error")}}
+                         for n in ("package_db", *containers.APP_LINES.values()) if isinstance(sources.get(n), dict)],
                 "not_read_why": None if read else (a.facts or {}).get("os_unmatched") or db_line.get("error")
                 or ("read to its end, with nothing in it" if db_line.get("state") == "ok" else "no package list was read")}
                if a.kind == "image" else {}),
@@ -2171,6 +2175,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         known = [v for v in fixes if v]
         # the highest fix clears them all, as on Home
         out["package_fix"] = {"version": max(known, key=functools.cmp_to_key(cmp)) if cmp else sorted(known)[-1], "open": len(fixes)} if known else None
+        # where an application package sits (its own metadata's location: a jar inside a jar, a venv, a binary), from the
+        # asset's package rows; an image's are what its rebuild must change (DECISIONS 155)
+        out["locations"] = sorted(s.scalars(select(InstalledPackage.source).where(
+            InstalledPackage.asset_id == a.id, InstalledPackage.ecosystem == f.ecosystem, InstalledPackage.name == f.package,
+            InstalledPackage.version == f.installed_version, InstalledPackage.source.is_not(None)).distinct()))[:20] if f.ecosystem in sbom.ECOSYSTEMS else []
         return out
 
     class Accept(BaseModel):
@@ -3303,21 +3312,25 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         out, idx = [], tickets.links(s, org_id)
         for aid, kev, max_score, n in sorted(ranked, key=lambda r: (bool(r[1]), r[2] or 0, r[3]), reverse=True)[:limit]:
             a = s.get(Asset, aid)
-            fixes: dict[str, set] = defaultdict(set)
+            fixes: dict[tuple[str, str], set] = defaultdict(set)  # (ecosystem, package): an image carries OS and application packages
             vulns: Counter = Counter()
             prio = "low"
-            for pkg, fixed, p in s.execute(select(Finding.package, Finding.fixed_version, Finding.priority).where(Finding.asset_id == aid, Finding.status == "open")):
-                vulns[pkg] += 1
+            for eco, pkg, fixed, p in s.execute(select(Finding.ecosystem, Finding.package, Finding.fixed_version, Finding.priority)
+                                                .where(Finding.asset_id == aid, Finding.status == "open")):
+                vulns[eco, pkg] += 1
                 if fixed:
-                    fixes[pkg].add(fixed)
+                    fixes[eco, pkg].add(fixed)
                 prio = min(prio, p, key=lambda x: PRIORITY_RANK.get(x, 9))
-            order = functools.cmp_to_key(cmp) if (cmp := comparator_for(a.ecosystem)) else None  # the highest fix clears them all, as on Home
+
+            def highest(eco: str, versions: set) -> str:  # the highest fix clears them all, as on Home, by that ecosystem's own order
+                cmp = comparator_for(eco)
+                return max(versions, key=functools.cmp_to_key(cmp)) if cmp else sorted(versions)[-1]
             hosts = sorted(set(s.scalars(select(Asset.hostname).join(Container, Container.asset_id == Asset.id).where(Container.image_asset_id == aid))))
             out.append({"asset_id": aid, "name": a.hostname, "os_name": a.os_name, "ecosystem": a.ecosystem, "kev": bool(kev), "max_score": max_score,
                         "findings": n, "priority": prio, "hosts": hosts, "ticket": tickets.ticket_for(idx, a.owner, tickets.action_of("image", aid, "", "")),
-                        "fixes": [{"package": p, "fixed_version": max(fixes[p], key=order) if order else sorted(fixes[p])[-1], "vulns": vulns[p]}
-                                  for p in sorted(fixes, key=lambda p: -vulns[p])][:8],
-                        "unfixed": sum(v for p, v in vulns.items() if p not in fixes)})
+                        "fixes": [{"package": p, "ecosystem": e, "fixed_version": highest(e, fixes[e, p]), "vulns": vulns[e, p]}
+                                  for e, p in sorted(fixes, key=lambda k: (-vulns[k], k))][:8],
+                        "unfixed": sum(v for k, v in vulns.items() if k not in fixes)})
         return out
 
     @app.get("/api/summary")

@@ -396,8 +396,14 @@ def evaluate(inv: Inventory, content: Content, prior: tuple | list = ()) -> list
         return _evaluate_linux(inv, content, prior)
     if inv.ecosystem != "Windows":
         why = inv.facts.get("os_unmatched") or f"this host reports {inv.ecosystem or 'nothing'}"
-        return [Verdict("product:platform", "distro" if inv.is_linux else "os", inv.ecosystem, inv.ecosystem or "unknown", Outcome.NOT_RUN,
-                        reason="unsupported-platform", detail=str(why)[:300])]
+        out = [Verdict("product:platform", "distro" if inv.is_linux else "os", inv.ecosystem, inv.ecosystem or "unknown", Outcome.NOT_RUN,
+                       reason="unsupported-platform", detail=str(why)[:300])]
+        if inv.kind != "image":
+            return out
+        # a scratch or distroless-static image (no os-release, or a platform no feed maps): its OS can't be judged, but the
+        # applications in it have their own ecosystems' feeds (static Go binaries, a jar on scratch; DECISIONS 157)
+        out += _applications(inv, content)
+        return _sorted(out + _carry_forward(out, prior, inv, content))
     found = installs(inv)
     out: list[Verdict] = []
     if not any(i.family == "os" for i in found):

@@ -1,12 +1,14 @@
 """Performance check at realistic scale: N hosts x ~600 packages, ~100k advisories, ~300 findings per host.
 
-Run from api/:  uv run python ../sandbox/perf.py [--assets 1000] [--containers 10] [--tickets] [--db postgresql+psycopg://...]
+Run from api/:  uv run python ../sandbox/perf.py [--assets 1000] [--containers 10] [--apps 500] [--tickets] [--db postgresql+psycopg://...]
 Sizes follow the real-host runs (Debian 13: 164 pkgs / 274 findings, Ubuntu 24.04: 523 / 369). Times every
 user-facing endpoint the home page and findings views hit, agent inventory ingest, and the hourly re-match.
 --containers N: each host also reports N running containers drawn from IMAGES shared images (tasks/plan-containers.md
 C12), timing those reports and the hourly re-match before and after the images exist.
+--apps N (with --containers): each image also carries N npm packages read inside it, 5 of them vulnerable
+(tasks/spec-workloads.md success criterion 7).
 --tickets: after the re-match, time a ticket sync's own work against an in-process GitLab fake (tasks/spec-tickets.md).
-Writes sandbox/last_run_perf_<sqlite|postgresql>[_containers][_tickets].json.
+Writes sandbox/last_run_perf_<sqlite|postgresql>[_containers][_apps][_tickets].json.
 """
 
 import json
@@ -34,6 +36,8 @@ from nimstead.db import Advisory, make_sessionmaker  # noqa: E402
 ASSETS = int(sys.argv[sys.argv.index("--assets") + 1]) if "--assets" in sys.argv else 1000
 CONTAINERS = int(sys.argv[sys.argv.index("--containers") + 1]) if "--containers" in sys.argv else 0
 TICKETS = "--tickets" in sys.argv
+APPS = int(sys.argv[sys.argv.index("--apps") + 1]) if "--apps" in sys.argv else 0
+APP_UNIVERSE, APP_VULN = 5000, 5  # npm packages an image's build may add, and how many of an image's are vulnerable
 IMAGES, IMAGE_PKGS, IMAGE_VULN = 50, 200, 5  # a fleet's distinct images: far fewer than its containers
 DB = sys.argv[sys.argv.index("--db") + 1] if "--db" in sys.argv else f"sqlite:///{(TMP / 'perf.db').as_posix()}"
 ECO, UNIVERSE, PER_HOST, ADV_PER_PKG, VULN_PER_HOST = "Debian:12", 3000, 600, 33, 9
@@ -62,6 +66,14 @@ def advisories():
                 "severity": [{"type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"}],
                 "affected": [{"package": {"name": f"pkg{p}", "ecosystem": ECO},
                               "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": f"2.{k}-1"}]}]}]}})
+    for p in range(APP_UNIVERSE if APPS else 0):
+        for k in range(2):
+            ghsa = f"GHSA-perf-{p:05d}-{k}"
+            rows.append({"id": ghsa, "ecosystem": "npm", "package": f"npkg{p}", "record": {
+                "id": ghsa, "aliases": [f"CVE-2026-{p * 2 + k:06d}"],
+                "severity": [{"type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"}],
+                "affected": [{"package": {"name": f"npkg{p}", "ecosystem": "npm"},
+                              "ranges": [{"type": "SEMVER", "events": [{"introduced": "0"}, {"fixed": f"2.{k}.0"}]}]}]}})
     return rows
 
 
@@ -79,6 +91,13 @@ def rematch() -> float:
         took = round(time.perf_counter() - t, 1)
         print(f"re-match all {len(assets)} assets (hourly feed update): {took}s", flush=True)
         return took
+
+
+def older(img):
+    """The same image as an agent before 0.9.0 sends it (no application rows or lines): with --apps, every other host, so the
+    lookup that joins an OS-only reading to the image's fuller one is measured too (code review)."""
+    keep = ("os_release", "package_db")
+    return {**{k: v for k, v in img.items() if k != "apps"}, "collection": {**img["collection"], "sources": {k: v for k, v in img["collection"]["sources"].items() if k in keep}}}
 
 
 def tickets_perf():
@@ -142,7 +161,7 @@ def main():
                                   "max_s": round(ingest[-1], 3)}
     print("inventory ingest", result["inventory_ingest"], flush=True)
     if CONTAINERS:
-        result["containers_per_host"], result["images"] = CONTAINERS, IMAGES
+        result["containers_per_host"], result["images"], result["apps_per_image"] = CONTAINERS, IMAGES, APPS
         result["rematch_before_containers_s"] = rematch()
         images = []
         for i in range(IMAGES):
@@ -152,11 +171,19 @@ def main():
                            "facts": {"os_id": "debian", "os_version_id": "12"},
                            "collection": {"v": 1, "sources": {"os_release": {"state": "ok", "count": 1}, "package_db": {"state": "ok", "count": IMAGE_PKGS}}},
                            "packages": [{"name": f"pkg{p}", "version": "1.0-1" if p in vuln else "9.0-1", "source": f"pkg{p}"} for p in names]})
+            if APPS:  # what the image's build added: npm packages with their locations, and a line for each ecosystem read
+                picked = rnd.sample(range(APP_UNIVERSE), APPS)
+                bad = set(picked[:APP_VULN])
+                images[-1]["apps"] = [{"ecosystem": "npm", "name": f"npkg{p}", "version": "1.0.0" if p in bad else "3.0.0",
+                                       "source": f"/usr/src/app/node_modules/npkg{p}"} for p in picked]
+                images[-1]["collection"]["sources"] |= {"python_packages": {"state": "ok", "count": 0}, "npm_packages": {"state": "ok", "count": APPS},
+                                                        "java_archives": {"state": "ok", "count": 0}, "go_modules": {"state": "ok", "count": 0}}
         reports = []
         for n, h in enumerate(headers):
             picked = rnd.sample(range(IMAGES), CONTAINERS)
             body = {"v": 1, "complete": True, "runtimes": {}, "error": None,
-                    "images": [{**images[i], "containers": [{"id": f"{n:032x}{i:032x}", "name": f"c{i}", "runtime": "docker"}]} for i in picked]}
+                    "images": [{**(older(images[i]) if APPS and n % 2 else images[i]), "containers": [{"id": f"{n:032x}{i:032x}", "name": f"c{i}", "runtime": "docker"}]}
+                               for i in picked]}
             t = time.perf_counter()
             r = c.post("/api/agent/containers", json=body, headers=h)
             reports.append(time.perf_counter() - t)
@@ -203,7 +230,7 @@ def main():
     hosts = timed("GET /api/windows-updates/{kb} (drill down)", lambda: c.get(f"/api/windows-updates/{rows[0]['kb']}", params={"product": product}), 3)
     result["windows_updates_drilldown_kib"] = round(len(hosts.content) / 1024)
     timed("GET /api/summary (with Windows hosts)", lambda: c.get("/api/summary").json(), 3)
-    (ROOT / "sandbox" / f"last_run_perf_{result['db'].split('+')[0]}{'_containers' if CONTAINERS else ''}{'_tickets' if TICKETS else ''}.json").write_text(json.dumps(result, indent=2))
+    (ROOT / "sandbox" / f"last_run_perf_{result['db'].split('+')[0]}{'_containers' if CONTAINERS else ''}{'_apps' if APPS else ''}{'_tickets' if TICKETS else ''}.json").write_text(json.dumps(result, indent=2))
 
 
 if __name__ == "__main__":

@@ -1,0 +1,900 @@
+[
+  {
+    "step": "distro",
+    "name": "nimstead-sbx-wl-a0e738",
+    "reused": false
+  },
+  {
+    "step": "runtimes",
+    "versions": [
+      "Docker version 29.9.3, build 1.fc44",
+      "podman version 5.8.9",
+      "containerd github.com/containerd/containerd/v2 2.4.2 1.fc44",
+      "crio version 1.32.0",
+      "crictl version 1.29.0"
+    ],
+    "os": "Fedora Linux 44 (WSL)"
+  },
+  {
+    "step": "images built and pulled",
+    "seconds": 168
+  },
+  {
+    "step": "docker containers running",
+    "names": [
+      "node-exporter",
+      "coredns",
+      "jenkins",
+      "h-wide",
+      "h-deep",
+      "h-bomb",
+      "h-sparse",
+      "h-fifo",
+      "h-loop",
+      "h-links",
+      "apk-owned",
+      "deb-owned",
+      "java-app",
+      "node-app",
+      "py-app"
+    ]
+  },
+  {
+    "step": "feeds synced",
+    "seconds": 106,
+    "ecosystems": [
+      "",
+      "Alpine:v3.20",
+      "Debian:11",
+      "Debian:12",
+      "Debian:13",
+      "Go",
+      "Maven",
+      "PyPI",
+      "Ubuntu:26.04",
+      "npm"
+    ],
+    "kev": "1790",
+    "epss": "410919",
+    "eol": "{'almalinux': 3, 'alpine-linux': 32, 'clamav': 13, 'confluence': 91, 'debian': 18, 'elasticsearch': 12, 'firefox': 61, '",
+    "": "skipped: HTTPStatusError: Client error '404 Not Found' for url 'https://osv-vulnerabilities.storage.googleapis.com//all.",
+    "Alpine": "{'inserted': 8257, 'updated': 0, 'skipped': 0}",
+    "Debian": "{'inserted': 131061, 'updated': 0, 'skipped': 0}",
+    "Go": "{'inserted': 12999, 'updated': 0, 'skipped': 0}",
+    "Maven": "{'inserted': 8955, 'updated': 0, 'skipped': 61}",
+    "PyPI": "{'inserted': 28127, 'updated': 0, 'skipped': 223}",
+    "Ubuntu": "{'inserted': 106377, 'updated': 0, 'skipped': 0}",
+    "npm": "{'inserted': 233482, 'updated': 0, 'skipped': 270}"
+  },
+  {
+    "step": "first report",
+    "collect_seconds": 3.8,
+    "sent_complete": true,
+    "error": null,
+    "runtimes": {
+      "docker": {
+        "state": "ok",
+        "count": 15
+      },
+      "podman": {
+        "state": "ok",
+        "count": 1
+      },
+      "containerd": {
+        "state": "ok",
+        "count": 1
+      }
+    },
+    "server": {
+      "images": 16,
+      "containers": 17,
+      "new": 16,
+      "stopped": 0,
+      "refused": 0,
+      "complete": true
+    }
+  },
+  {
+    "step": "PASS: 1. each image's application packages equal Syft's, every difference explained",
+    "syft_version": "1.57.2",
+    "images": {
+      "py-app": {
+        "image": "py-app",
+        "agent": 13,
+        "syft": 13,
+        "same": 13,
+        "only_agent_explained": [],
+        "only_agent": [],
+        "only_syft_explained": [],
+        "only_syft_unexplained": [],
+        "by_ecosystem": {
+          "PyPI": 13,
+          "npm": 0,
+          "Maven": 0,
+          "Go": 0
+        }
+      },
+      "node-app": {
+        "image": "node-app",
+        "agent": 242,
+        "syft": 244,
+        "same": 242,
+        "only_agent_explained": [],
+        "only_agent": [],
+        "only_syft_explained": [
+          [
+            "npm",
+            "app",
+            "1.0.0",
+            "a package.json outside node_modules: the image's own project, or a tool unpacked from a tarball (yarn in node images); it can be named like a public package it isn't, so it isn't matched"
+          ],
+          [
+            "npm",
+            "yarn",
+            "1.22.22",
+            "a package.json outside node_modules: the image's own project, or a tool unpacked from a tarball (yarn in node images); it can be named like a public package it isn't, so it isn't matched"
+          ]
+        ],
+        "only_syft_unexplained": [],
+        "by_ecosystem": {
+          "PyPI": 0,
+          "npm": 242,
+          "Maven": 0,
+          "Go": 0
+        }
+      },
+      "java-app": {
+        "image": "java-app",
+        "agent": 13,
+        "syft": 14,
+        "same": 13,
+        "only_agent_explained": [],
+        "only_agent": [],
+        "only_syft_explained": [
+          [
+            "Maven",
+            "jrt-fs:jrt-fs",
+            "17.0.21.1",
+            "no pom.properties: Syft guessed the coordinates from the manifest or the file name (the agent never guesses)"
+          ]
+        ],
+        "only_syft_unexplained": [],
+        "by_ecosystem": {
+          "PyPI": 0,
+          "npm": 0,
+          "Maven": 2,
+          "Go": 11
+        }
+      },
+      "jenkins": {
+        "image": "jenkins/jenkins:2.319.1-lts-jdk11",
+        "agent": 201,
+        "syft": 237,
+        "same": 200,
+        "only_agent_explained": [
+          [
+            "Maven",
+            "org.glassfish.jaxb:jaxb-core",
+            "2.3.0",
+            "a second pom.properties in a jar both read (a shaded or relocated jar): the agent reports each, Syft the jar's own"
+          ]
+        ],
+        "only_agent": [],
+        "only_syft_explained": [
+          [
+            "Maven",
+            "antlr:antlr",
+            "2.7.7",
+            "no pom.properties: Syft guessed the coordinates from the manifest or the file name (the agent never guesses)"
+          ],
+          [
+            "Maven",
+            "asm5:asm5",
+            "5.0.1",
+            "no pom.properties: Syft guessed the coordinates from the manifest or the file name (the agent never guesses)"
+          ],
+          [
+            "Maven",
+            "com.github.ben-manes.caffeine:caffeine",
+            "2.8.2",
+            "no pom.properties: Syft guessed the coordinates from the manifest or the file name (the agent never guesses)"
+          ],
+          [
+            "Maven",
+            "com.github.jnr.jffi.native:native",
+            "1.3.5-native",
+            "no pom.properties: Syft guessed the coordinates from the manifest or the file name (the agent never guesses)"
+          ],
+          [
+            "Maven",
+            "com.github.spotbugs.annotations:spotbugs-annotations",
+            "4.4.1",
+            "no pom.properties: Syft guessed the coordinates from the manifest or the file name (the agent never guesses)"
+          ],
+          [
+            "Maven",
+            "com.google.inject:guice",
+            "4.0",
+            "no pom.properties: Syft guessed the coordinates from the manifest or the file name (the agent never guesses)"
+          ],
+          [
+            "Maven",
+            "com.sun.jna:jna",
+            "5.9.0",
+            "no pom.properties: Syft guessed the coordinates from the manifest or the file name (the agent never guesses)"
+          ],
+          [
+            "Maven",
+            "commons-jelly:commons-jelly-tags-fmt",
+            "1.0",
+            "no pom.properties: Syft guessed the coordinates from the manifest or the file name (the agent never guesses)"
+          ],
+          [
+            "Maven",
+            "commons-jelly:commons-jelly-tags-xml",
+            "1.1",
+            "no pom.properties: Syft guessed the coordinates from the manifest or the file name (the agent never guesses)"
+          ],
+          [
+            "Maven",
+            "dom4j:dom4j",
+            "2.1.3",
+            "no pom.properties: Syft guessed the coordinates from the manifest or the file name (the agent never guesses)"
+          ],
+          [
+            "Maven",
+            "jbcrypt:jbcrypt",
+            "1.0.0",
+            "no pom.properties: Syft guessed the coordinates from the manifest or the file name (the agent never guesses)"
+          ],
+          [
+            "Maven",
+            "jrt-fs:jrt-fs",
+            "11.0.13",
+            "no pom.properties: Syft guessed the coordinates from the manifest or the file name (the agent never guesses)"
+          ],
+          [
+            "Maven",
+            "kxml2:kxml2",
+            "2.3.0",
+            "no pom.properties: Syft guessed the coordinates from the manifest or the file name (the agent never guesses)"
+          ],
+          [
+            "Maven",
+            "org.apache.ant:ant",
+            "1.10.12",
+            "no pom.properties: Syft guessed the coordinates from the manifest or the file name (the agent never guesses)"
+          ],
+          [
+            "Maven",
+            "org.apache.ant:ant-launcher",
+            "1.10.12",
+            "no pom.properties: Syft guessed the coordinates from the manifest or the file name (the agent never guesses)"
+          ],
+          [
+            "Maven",
+            "org.bouncycastle:bcpkix-jdk15on",
+            "1.68",
+            "no pom.properties: Syft guessed the coordinates from the manifest or the file name (the agent never guesses)"
+          ],
+          [
+            "Maven",
+            "org.bouncycastle:bcprov-jdk15on",
+            "1.68",
+            "no pom.properties: Syft guessed the coordinates from the manifest or the file name (the agent never guesses)"
+          ],
+          [
+            "Maven",
+            "org.checkerframework.checker.qual:checker-qual",
+            "3.3.0",
+            "no pom.properties: Syft guessed the coordinates from the manifest or the file name (the agent never guesses)"
+          ],
+          [
+            "Maven",
+            "org.codehaus.groovy:groovy-all",
+            "2.4.12",
+            "no pom.properties: Syft guessed the coordinates from the manifest or the file name (the agent never guesses)"
+          ],
+          [
+            "Maven",
+            "org.objectweb.asm.commons:asm-commons",
+            "9.2",
+            "no pom.properties: Syft guessed the coordinates from the manifest or the file name (the agent never guesses)"
+          ],
+          [
+            "Maven",
+            "org.objectweb.asm.tree.analysis:asm-analysis",
+            "9.2",
+            "no pom.properties: Syft guessed the coordinates from the manifest or the file name (the agent never guesses)"
+          ],
+          [
+            "Maven",
+            "org.objectweb.asm.tree:asm-tree",
+            "9.2",
+            "no pom.properties: Syft guessed the coordinates from the manifest or the file name (the agent never guesses)"
+          ],
+          [
+            "Maven",
+            "org.objectweb.asm.util:asm-util",
+            "9.2",
+            "no pom.properties: Syft guessed the coordinates from the manifest or the file name (the agent never guesses)"
+          ],
+          [
+            "Maven",
+            "org.objectweb.asm:asm",
+            "9.2",
+            "no pom.properties: Syft guessed the coordinates from the manifest or the file name (the agent never guesses)"
+          ],
+          [
+            "Maven",
+            "org.springframework.security:spring-security-core",
+            "5.5.3",
+            "no pom.properties: Syft guessed the coordinates from the manifest or the file name (the agent never guesses)"
+          ],
+          [
+            "Maven",
+            "org.springframework.security:spring-security-crypto",
+            "5.5.3",
+            "no pom.properties: Syft guessed the coordinates from the manifest or the file name (the agent never guesses)"
+          ],
+          [
+            "Maven",
+            "org.springframework.security:spring-security-web",
+            "5.5.3",
+            "no pom.properties: Syft guessed the coordinates from the manifest or the file name (the agent never guesses)"
+          ],
+          [
+            "Maven",
+            "org.springframework:spring-aop",
+            "5.3.11",
+            "no pom.properties: Syft guessed the coordinates from the manifest or the file name (the agent never guesses)"
+          ],
+          [
+            "Maven",
+            "org.springframework:spring-beans",
+            "5.3.11",
+            "no pom.properties: Syft guessed the coordinates from the manifest or the file name (the agent never guesses)"
+          ],
+          [
+            "Maven",
+            "org.springframework:spring-context",
+            "5.3.11",
+            "no pom.properties: Syft guessed the coordinates from the manifest or the file name (the agent never guesses)"
+          ],
+          [
+            "Maven",
+            "org.springframework:spring-core",
+            "5.3.11",
+            "no pom.properties: Syft guessed the coordinates from the manifest or the file name (the agent never guesses)"
+          ],
+          [
+            "Maven",
+            "org.springframework:spring-expression",
+            "5.3.11",
+            "no pom.properties: Syft guessed the coordinates from the manifest or the file name (the agent never guesses)"
+          ],
+          [
+            "Maven",
+            "org.springframework:spring-web",
+            "5.3.11",
+            "no pom.properties: Syft guessed the coordinates from the manifest or the file name (the agent never guesses)"
+          ],
+          [
+            "Maven",
+            "owasp-html-sanitizer:owasp-html-sanitizer",
+            "r88",
+            "no pom.properties: Syft guessed the coordinates from the manifest or the file name (the agent never guesses)"
+          ],
+          [
+            "Maven",
+            "relaxngDatatype:relaxngDatatype",
+            "20020414",
+            "no pom.properties: Syft guessed the coordinates from the manifest or the file name (the agent never guesses)"
+          ],
+          [
+            "Maven",
+            "trilead-ssh2-build:trilead-ssh2-build",
+            "217-jenkins-16",
+            "no pom.properties: Syft guessed the coordinates from the manifest or the file name (the agent never guesses)"
+          ],
+          [
+            "Maven",
+            "xpp3:xpp3",
+            "1.1.4c",
+            "no pom.properties: Syft guessed the coordinates from the manifest or the file name (the agent never guesses)"
+          ]
+        ],
+        "only_syft_unexplained": [],
+        "by_ecosystem": {
+          "PyPI": 0,
+          "npm": 0,
+          "Maven": 176,
+          "Go": 25
+        }
+      },
+      "coredns": {
+        "image": "registry.k8s.io/coredns/coredns:v1.10.1",
+        "agent": 108,
+        "syft": 109,
+        "same": 108,
+        "only_agent_explained": [],
+        "only_agent": [],
+        "only_syft_explained": [
+          [
+            "Go",
+            "github.com/coredns/coredns",
+            "0.0.0-20230206182419-055b2c31a9cf",
+            "the binary's own main module: Go records it as (devel), and Syft makes a version up from its VCS stamp"
+          ]
+        ],
+        "only_syft_unexplained": [],
+        "by_ecosystem": {
+          "PyPI": 0,
+          "npm": 0,
+          "Maven": 0,
+          "Go": 108
+        }
+      },
+      "node-exporter": {
+        "image": "quay.io/prometheus/node-exporter:v1.5.0",
+        "agent": 46,
+        "syft": 47,
+        "same": 46,
+        "only_agent_explained": [],
+        "only_agent": [],
+        "only_syft_explained": [
+          [
+            "Go",
+            "github.com/prometheus/node_exporter",
+            "0.0.0-20221129185750-1b48970ffcf5",
+            "the binary's own main module: Go records it as (devel), and Syft makes a version up from its VCS stamp"
+          ]
+        ],
+        "only_syft_unexplained": [],
+        "by_ecosystem": {
+          "PyPI": 0,
+          "npm": 0,
+          "Maven": 0,
+          "Go": 46
+        }
+      }
+    }
+  },
+  {
+    "step": "PASS: 2. every application package's findings equal the OSV API's",
+    "agreement": {
+      "py-app": {
+        "ours": 80,
+        "osv": 80,
+        "only_ours": [],
+        "only_osv": []
+      },
+      "node-app": {
+        "ours": 60,
+        "osv": 60,
+        "only_ours": [],
+        "only_osv": []
+      },
+      "java-app": {
+        "ours": 59,
+        "osv": 59,
+        "only_ours": [],
+        "only_osv": []
+      },
+      "jenkins": {
+        "ours": 341,
+        "osv": 341,
+        "only_ours": [],
+        "only_osv": []
+      },
+      "coredns": {
+        "ours": 170,
+        "osv": 170,
+        "only_ours": [],
+        "only_osv": []
+      },
+      "node-exporter": {
+        "ours": 161,
+        "osv": 161,
+        "only_ours": [],
+        "only_osv": []
+      }
+    }
+  },
+  {
+    "step": "PASS: 3. Debian's python3-requests and Alpine's py3-requests are left to their package managers; pip's packages are read",
+    "pypi_rows": {
+      "deb-owned": [
+        "click",
+        "flask",
+        "itsdangerous",
+        "jinja2",
+        "markupsafe",
+        "werkzeug"
+      ],
+      "apk-owned": [
+        "jinja2",
+        "markupsafe"
+      ]
+    }
+  },
+  {
+    "step": "PASS: 4. containerd and CRI-O containers are read through crictl as namespace/pod/container, share Podman's image, a deleted pod leaves, a failing crictl closes nothing",
+    "with_containerd": [
+      [
+        "containerd",
+        "payments/api-7d9f4-x2k/app"
+      ],
+      [
+        "podman",
+        "papi"
+      ]
+    ],
+    "with_crio": [
+      [
+        "containerd",
+        "payments/api-7d9f4-x2k/app"
+      ],
+      [
+        "cri-o",
+        "billing/worker-5c6d-q8r/app"
+      ],
+      [
+        "podman",
+        "papi"
+      ]
+    ],
+    "crio_report": {
+      "images": 16,
+      "containers": 17,
+      "new": 0,
+      "stopped": 0,
+      "refused": 0,
+      "complete": false
+    },
+    "after_pod_deleted": [
+      [
+        "cri-o",
+        "billing/worker-5c6d-q8r/app"
+      ],
+      [
+        "podman",
+        "papi"
+      ]
+    ],
+    "deleted_report": {
+      "images": 16,
+      "containers": 16,
+      "new": 0,
+      "stopped": 0,
+      "refused": 0,
+      "complete": false
+    },
+    "crictl_failing": [
+      [
+        "cri-o",
+        "billing/worker-5c6d-q8r/app"
+      ],
+      [
+        "podman",
+        "papi"
+      ]
+    ],
+    "failing": {
+      "state": "failed",
+      "count": 0,
+      "error": "crictl version exited 1: time=\"2026-11-22T00:33:32Z\" level=fatal msg=\"validate service connection: validate CRI v1 runtime API for endpoint \\\"unix:///run/nimstead-nothing.sock\\\": rpc error: code = Unavailable desc = connectio"
+    },
+    "docker_id": "sha256:f8970341f51236fb6a4d5231c2ef8fe22c42ccc08ca1420f45d31a2713c52cc2",
+    "podman_id": "sha256:ad6f9afbcdf8821947d34040b1a1f2bf17b00a417db9b0709df13878e9419ba4"
+  },
+  {
+    "step": "PASS: 5. hostile images (links out and climbing, a loop, FIFOs, a 200 MB sparse jar, a nested zip bomb, 64 levels, 210,000 files) read nothing outside, never hang, and say each limit",
+    "host_file_read": false,
+    "collect_seconds": 3.8,
+    "lines": {
+      "h-links": {
+        "python_packages": {
+          "state": "ok",
+          "count": 0
+        },
+        "npm_packages": {
+          "state": "ok",
+          "count": 0
+        },
+        "java_archives": {
+          "state": "ok",
+          "count": 0
+        },
+        "go_modules": {
+          "state": "ok",
+          "count": 0
+        }
+      },
+      "h-loop": {
+        "python_packages": {
+          "state": "ok",
+          "count": 0
+        },
+        "npm_packages": {
+          "state": "ok",
+          "count": 0
+        },
+        "java_archives": {
+          "state": "ok",
+          "count": 0
+        },
+        "go_modules": {
+          "state": "ok",
+          "count": 0
+        }
+      },
+      "h-fifo": {
+        "python_packages": {
+          "state": "failed",
+          "count": 0,
+          "error": "1 installs' metadata couldn't be read"
+        },
+        "npm_packages": {
+          "state": "failed",
+          "count": 0,
+          "error": "1 installs' metadata couldn't be read"
+        },
+        "java_archives": {
+          "state": "ok",
+          "count": 0
+        },
+        "go_modules": {
+          "state": "ok",
+          "count": 0
+        }
+      },
+      "h-sparse": {
+        "python_packages": {
+          "state": "ok",
+          "count": 0
+        },
+        "npm_packages": {
+          "state": "ok",
+          "count": 0
+        },
+        "java_archives": {
+          "state": "failed",
+          "count": 0,
+          "error": "1 installs' metadata couldn't be read"
+        },
+        "go_modules": {
+          "state": "ok",
+          "count": 0
+        }
+      },
+      "h-bomb": {
+        "python_packages": {
+          "state": "ok",
+          "count": 0
+        },
+        "npm_packages": {
+          "state": "ok",
+          "count": 0
+        },
+        "java_archives": {
+          "state": "ok",
+          "count": 1
+        },
+        "go_modules": {
+          "state": "ok",
+          "count": 0
+        }
+      },
+      "h-deep": {
+        "python_packages": {
+          "state": "failed",
+          "count": 0,
+          "error": "1 folders deeper than 48 levels not read"
+        },
+        "npm_packages": {
+          "state": "failed",
+          "count": 0,
+          "error": "1 folders deeper than 48 levels not read"
+        },
+        "java_archives": {
+          "state": "failed",
+          "count": 0,
+          "error": "1 folders deeper than 48 levels not read"
+        },
+        "go_modules": {
+          "state": "failed",
+          "count": 0,
+          "error": "1 folders deeper than 48 levels not read"
+        }
+      },
+      "h-wide": {
+        "python_packages": {
+          "state": "partial",
+          "count": 0,
+          "error": "stopped at its 200,000-entry budget"
+        },
+        "npm_packages": {
+          "state": "partial",
+          "count": 0,
+          "error": "stopped at its 200,000-entry budget"
+        },
+        "java_archives": {
+          "state": "partial",
+          "count": 0,
+          "error": "stopped at its 200,000-entry budget"
+        },
+        "go_modules": {
+          "state": "partial",
+          "count": 0,
+          "error": "stopped at its 200,000-entry budget"
+        }
+      }
+    }
+  },
+  {
+    "step": "PASS: 7. each image's walk stays inside its budget and the whole pass inside 120 seconds",
+    "collect_seconds": 3.8,
+    "per_image": {
+      "node-exporter": {
+        "seconds": 0.03,
+        "rows": 46,
+        "states": {
+          "python_packages": "ok",
+          "npm_packages": "ok",
+          "java_archives": "ok",
+          "go_modules": "ok"
+        }
+      },
+      "coredns": {
+        "seconds": 0.0,
+        "rows": 108,
+        "states": {
+          "python_packages": "ok",
+          "npm_packages": "ok",
+          "java_archives": "ok",
+          "go_modules": "ok"
+        }
+      },
+      "jenkins": {
+        "seconds": 0.34,
+        "rows": 236,
+        "states": {
+          "python_packages": "ok",
+          "npm_packages": "ok",
+          "java_archives": "ok",
+          "go_modules": "ok"
+        }
+      },
+      "h-wide": {
+        "seconds": 0.15,
+        "rows": 0,
+        "states": {
+          "python_packages": "partial",
+          "npm_packages": "partial",
+          "java_archives": "partial",
+          "go_modules": "partial"
+        }
+      },
+      "h-deep": {
+        "seconds": 0.03,
+        "rows": 0,
+        "states": {
+          "python_packages": "failed",
+          "npm_packages": "failed",
+          "java_archives": "failed",
+          "go_modules": "failed"
+        }
+      },
+      "h-bomb": {
+        "seconds": 0.03,
+        "rows": 1,
+        "states": {
+          "python_packages": "ok",
+          "npm_packages": "ok",
+          "java_archives": "ok",
+          "go_modules": "ok"
+        }
+      },
+      "h-sparse": {
+        "seconds": 0.03,
+        "rows": 0,
+        "states": {
+          "python_packages": "ok",
+          "npm_packages": "ok",
+          "java_archives": "failed",
+          "go_modules": "ok"
+        }
+      },
+      "h-fifo": {
+        "seconds": 0.03,
+        "rows": 0,
+        "states": {
+          "python_packages": "failed",
+          "npm_packages": "failed",
+          "java_archives": "ok",
+          "go_modules": "ok"
+        }
+      },
+      "h-loop": {
+        "seconds": 0.03,
+        "rows": 0,
+        "states": {
+          "python_packages": "ok",
+          "npm_packages": "ok",
+          "java_archives": "ok",
+          "go_modules": "ok"
+        }
+      },
+      "h-links": {
+        "seconds": 0.03,
+        "rows": 0,
+        "states": {
+          "python_packages": "ok",
+          "npm_packages": "ok",
+          "java_archives": "ok",
+          "go_modules": "ok"
+        }
+      },
+      "apk-owned": {
+        "seconds": 0.02,
+        "rows": 2,
+        "states": {
+          "python_packages": "ok",
+          "npm_packages": "ok",
+          "java_archives": "ok",
+          "go_modules": "ok"
+        }
+      },
+      "deb-owned": {
+        "seconds": 0.1,
+        "rows": 6,
+        "states": {
+          "python_packages": "ok",
+          "npm_packages": "ok",
+          "java_archives": "ok",
+          "go_modules": "ok"
+        }
+      },
+      "java-app": {
+        "seconds": 0.05,
+        "rows": 13,
+        "states": {
+          "python_packages": "ok",
+          "npm_packages": "ok",
+          "java_archives": "ok",
+          "go_modules": "ok"
+        }
+      },
+      "node-app": {
+        "seconds": 0.07,
+        "rows": 255,
+        "states": {
+          "python_packages": "ok",
+          "npm_packages": "ok",
+          "java_archives": "ok",
+          "go_modules": "ok"
+        }
+      },
+      "py-app": {
+        "seconds": 0.13,
+        "rows": 13,
+        "states": {
+          "python_packages": "ok",
+          "npm_packages": "ok",
+          "java_archives": "ok",
+          "go_modules": "ok"
+        }
+      }
+    }
+  },
+  {
+    "step": "PASS: evidence pack verifies",
+    "problems": [],
+    "containers_reported": 3
+  },
+  {
+    "result": "PASS",
+    "failures": []
+  }
+]

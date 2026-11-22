@@ -3,7 +3,7 @@ import { Link, useNavigate, useRouter, useSearch } from "@tanstack/react-router"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Dialog, Switch } from "radix-ui";
 import { AppWindow, ArrowRight, Plus, Search, SlidersHorizontal, Trash2, Upload, X } from "lucide-react";
-import { adminGate, AGENT_UPDATE, api, refresh, assetsQ, coverageQ, filtersToApi, filtersToSearch, NO_OWNER, ownersOf, parseFilters, parseUtc, plural, PRIORITIES, PRIORITY_LABEL, relativeTime, sbomSummary, updateSource, useIsAdmin, useTitle, type AgentUpdate, type Asset, type ContainerRun, type Criticality, type Finding, type Priority, type SbomResult } from "./lib";
+import { adminGate, AGENT_UPDATE, api, APP_SOURCES, refresh, assetsQ, coverageQ, filtersToApi, filtersToSearch, NO_OWNER, ownersOf, parseFilters, parseUtc, plural, PRIORITIES, PRIORITY_LABEL, relativeTime, sbomSummary, updateSource, useIsAdmin, useTitle, type AgentUpdate, type Asset, type ContainerRun, type Criticality, type Finding, type Priority, type SbomResult } from "./lib";
 import { Alert, btnPrimary, btnQuiet, chip, ConfirmDialog, CopyBlock, dialogBox, Done, EmptyState, ErrorState, Field, input, Loading, PriorityPill, switchRoot, switchThumb, Tag, useReturnFocus, HowJudged } from "./ui";
 import clsx from "clsx";
 import { ExternalTargets } from "./targets";
@@ -436,6 +436,7 @@ function ImageDrawer({ a, onClose }: { a: Asset | null; onClose: () => void }) {
               <Alert error={owner.error} prefix="Couldn't save the owner: " />
             </div> : a.owner && <p className="text-sm text-muted">Owner: <span className="text-ink">{a.owner}</span></p>}
             {!a.packages_read && <p className="max-w-[60ch] border border-line-strong bg-sunken p-3 text-sm"><strong className="font-semibold">Not assessed:</strong> {a.not_read_why}. No findings here doesn't mean it's clean.</p>}
+            {a.read && a.read.length > 0 && <ImageRead a={a} />}
             <section aria-labelledby="image-fix" className="flex flex-col gap-2">
               <h3 id="image-fix" className="text-base font-semibold">How it's fixed</h3>
               <p className="max-w-[60ch] text-sm">Rebuild it from a fixed base image, or with the fixed packages, and redeploy it. Nimstead never changes a running container. Once every machine that runs it reports the new image instead, these findings close.</p>
@@ -462,6 +463,28 @@ function ImageDrawer({ a, onClose }: { a: Asset | null; onClose: () => void }) {
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
+  );
+}
+
+/** What was read in an image, source by source (DECISIONS 155): its OS packages, then what its build added, and why any
+ * of it wasn't read in full. An image read by an agent before 0.9.0 says its applications weren't looked for. */
+export function ImageRead({ a }: { a: Asset }) {
+  const lines = a.read ?? [];
+  const label = (src: string) => APP_SOURCES[src] ?? `${a.ecosystem?.split(":")[0] || "OS"} packages`;
+  const short = lines.filter((l) => l.state !== "ok");
+  const looked = lines.some((l) => l.source in APP_SOURCES);
+  return (
+    <section aria-labelledby="image-read" className="flex flex-col gap-1">
+      <h3 id="image-read" className="text-base font-semibold">What was read</h3>
+      <ul aria-label="Read in this image" className="flex flex-wrap gap-x-1.5 text-sm">{lines.map((l) => (
+        <li key={l.source} className="whitespace-nowrap after:ml-1.5 after:text-muted after:content-['·'] last:after:content-none">
+          {label(l.source)} <span className="num">{l.state === "off" ? "off" : (l.count ?? 0).toLocaleString()}</span></li>))}</ul>
+      {short.length > 0 && <ul className="flex max-w-[60ch] flex-col gap-0.5 text-sm text-muted">
+        {short.map((l) => <li key={l.source}><span className="text-ink">{label(l.source)}:</span>{" "}
+          {l.state === "off" ? "not looked for: turned off on the machine that read it." : `${l.state === "partial" ? "partly read" : "not read"}${l.error ? `: ${l.error}` : ""}.`}</li>)}
+      </ul>}
+      {!looked && <p className="max-w-[60ch] text-sm text-muted">Its applications (Python, npm, Java and Go packages) weren't looked for: the machine that read it runs an agent older than 0.9.0.</p>}
+    </section>
   );
 }
 

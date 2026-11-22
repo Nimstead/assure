@@ -929,9 +929,30 @@ def _read_head(fd, n):
         os.close(fd)
 
 
+JAVA_ARCHIVES = (".jar", ".war", ".ear", ".hpi", ".jpi")  # Jenkins plugins (.hpi, .jpi) are jars of jars too
+JAR_NESTING = 2  # archives inside an archive: a war's jars, and a war's Jenkins plugins' jars (found on the real run)
+
+
+def _jar_tree(z, where, out, budget, depth=0):
+    """pom.properties in an open archive and in the archives nested in it, JAR_NESTING levels deep, each nested one at most
+    MAX_NESTED bytes and its central directory checked first; one nested archive that can't be read is skipped."""
+    _poms(z, where, out, budget.late)
+    if depth >= JAR_NESTING:
+        return
+    for inner in z.infolist():
+        if inner.filename.lower().endswith(JAVA_ARCHIVES) and inner.file_size <= MAX_NESTED and not budget.spent():
+            try:
+                data = io.BytesIO(z.read(inner))
+                if not _zip_too_big(data, len(data.getbuffer())):
+                    with zipfile.ZipFile(data) as zz:
+                        _jar_tree(zz, f"{where}!/{inner.filename}", out, budget, depth + 1)
+            except Exception:  # noqa: BLE001, S112 — a crafted nested archive is that archive unread, not its parent
+                continue
+
+
 def _container_jar(root, dfd, name, where, out, budget):
-    """Maven coordinates from one jar/war/ear and one level of jars nested in it; False if it couldn't be read. A FIFO,
-    device or link named like a jar is skipped (None from open_file), so it's True with nothing found."""
+    """Maven coordinates from one Java archive (JAVA_ARCHIVES) and the archives nested in it; False if it couldn't be read.
+    A FIFO, device or link named like one is skipped (None from open_file), so it's True with nothing found."""
     try:
         fd = root.open_file(dfd, name, CONTAINER_JAR_MAX)
     except ContainerReadError:  # past the size cap: this jar unread, the walk goes on (security audit)
@@ -943,13 +964,7 @@ def _container_jar(root, dfd, name, where, out, budget):
             if _zip_too_big(f, os.fstat(f.fileno()).st_size):
                 return False
             with zipfile.ZipFile(f) as z:
-                _poms(z, where, out, budget.late)
-                for inner in z.infolist():
-                    if inner.filename.lower().endswith(".jar") and inner.file_size <= MAX_NESTED and not budget.spent():
-                        data = io.BytesIO(z.read(inner))
-                        if not _zip_too_big(data, len(data.getbuffer())):
-                            with zipfile.ZipFile(data) as zz:
-                                _poms(zz, f"{where}!/{inner.filename}", out, budget.late)
+                _jar_tree(z, where, out, budget)
         return True
     except Exception:  # noqa: BLE001 — a crafted archive can raise anything from zipfile or zlib; it's one file unread
         return False
@@ -1022,7 +1037,7 @@ def container_apps(root, budget=None, owned=None):
                     fd = root.open_file(dfd, n)
                     if fd is not None:  # a link or FIFO named like one isn't a package
                         keep("PyPI", where, parse_dist_meta(text(fd, MAX_METADATA)))
-                elif low.endswith((".jar", ".war", ".ear")):
+                elif low.endswith(JAVA_ARCHIVES):
                     jars = {}
                     if not _container_jar(root, dfd, n, where, jars, b):
                         unread["Maven"] += 1

@@ -240,6 +240,23 @@ def test_java_archives_with_nested_jars(tmp_path):
 
 
 @POSIX
+def test_jenkins_plugins_inside_a_war_are_read_two_levels_deep(tmp_path):
+    """jenkins.war carries its detached plugins as .hpi files, each a jar of jars (found on the real run); a running Jenkins
+    keeps its plugins as .jpi files. Two levels are read; a third isn't."""
+    deepest = jar(tmp_path / "scratch/d.jar", [("too", "deep", "1.0")])
+    lib = jar(tmp_path / "scratch/sshd-core.jar", [("org.apache.sshd", "sshd-core", "1.7.0")], {"inner/d.jar": deepest})
+    hpi = jar(tmp_path / "scratch/sshd.hpi", [("org.jenkins-ci.modules", "sshd", "3.1")], {"WEB-INF/lib/sshd-core-1.7.0.jar": lib})
+    jar(tmp_path / "usr/share/jenkins/jenkins.war", [("org.jenkins-ci.main", "jenkins-war", "2.319.1")], {"WEB-INF/detached-plugins/sshd.hpi": hpi})
+    jar(tmp_path / "var/jenkins_home/plugins/git.jpi", [("org.jenkins-ci.plugins", "git", "4.0")])
+    for f in ("d.jar", "sshd-core.jar", "sshd.hpi"):
+        (tmp_path / "scratch" / f).unlink()
+    got, _ = apps_of(tmp_path)
+    names = {r["name"]: r["source"] for r in got}
+    assert names["org.apache.sshd:sshd-core"] == "/usr/share/jenkins/jenkins.war!/WEB-INF/detached-plugins/sshd.hpi!/WEB-INF/lib/sshd-core-1.7.0.jar"
+    assert "org.jenkins-ci.modules:sshd" in names and "org.jenkins-ci.plugins:git" in names and "too:deep" not in names
+
+
+@POSIX
 def test_hostile_jars_read_nothing_and_finish(tmp_path):
     os.mkfifo(tmp_path / "evil.jar")
     with open(tmp_path / "sparse.jar", "wb") as f:  # 200 MB of nothing, no end record

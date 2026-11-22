@@ -25,8 +25,8 @@ Nimstead needs no Kubernetes API token, no DaemonSet and no registry credentials
 | Distribution packages | dpkg (including distroless `status.d`), apk, rpm's SQLite database | Judged by the distribution's own advisories, backports included |
 | Python | `*.dist-info` and `*.egg-info` in any `site-packages` or `dist-packages` folder (system Python, `/usr/local`, virtual environments) | PyPI |
 | npm | `node_modules/<name>/package.json` and `node_modules/@scope/<name>/package.json`, nested ones included | npm |
-| Java | `META-INF/maven/*/*/pom.properties` in every `.jar`, `.war` and `.ear`, and in jars nested one level inside them (Spring Boot's `BOOT-INF/lib`, a war's `WEB-INF/lib`) | Maven |
-| Go | The build information in every executable built with Go 1.18 or later: its modules and its Go version as `stdlib` | Go |
+| Java | `META-INF/maven/*/*/pom.properties` in every `.jar`, `.war`, `.ear` and Jenkins plugin (`.hpi`, `.jpi`), and in archives nested up to two levels inside them (Spring Boot's `BOOT-INF/lib`, a war's `WEB-INF/lib`, a war's Jenkins plugins and their jars) | Maven |
+| Go | The build information in every executable built with Go (Go 1.18's format, and older binaries' through the pointers they store): its modules and its Go version as `stdlib` | Go |
 
 What the image's own package manager installed is left to it: Debian's `python3-requests` is judged as Debian's package with Debian's backports, never a second time as PyPI `requests`. A jar without `pom.properties` isn't guessed from its name. Findings mean a package is present in the image, not that its vulnerable code is called.
 
@@ -52,7 +52,7 @@ An image Nimstead couldn't read is marked **Not assessed**, with the reason. It 
 - Ruby, PHP, .NET and Rust packages inside images. Upload an SBOM of the image from CI to cover them: see [Upload an SBOM from CI](upload-sbom.md#container-images).
 - Which Kubernetes team owns an image: set an image's owner by hand.
 
-A container counts while it runs at report time (every 6 hours), so a short-lived job container may come and go between reports. The agent reads at most 128 containers in 120 seconds a report; each image's walk stops at 200,000 entries, 60 seconds or 20,000 application packages, and says so.
+A container counts while it runs at report time (every 6 hours), so a short-lived job container may come and go between reports. The agent reads at most 128 containers in 120 seconds a report; each image's walk stops at 200,000 entries, its time budget (60 seconds, less when the pass is nearly out of time) or 20,000 application packages, and says so in the same words each time.
 
 ## Turn container reading off on a machine
 

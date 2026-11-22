@@ -63,11 +63,13 @@ in a container):
   folder named `site-packages` or `dist-packages`, anywhere in the image (system Python, `/usr/local`, venvs).
 - **npm:** each `node_modules/<name>/package.json` and `node_modules/@scope/<name>/package.json`, anywhere, including
   nested `node_modules` (6 levels, as on hosts).
-- **Java:** each `.jar`, `.war` and `.ear` anywhere: `META-INF/maven/*/*/pom.properties`, and the same inside one level
-  of nested jars (Spring Boot's `BOOT-INF/lib`, a war's `WEB-INF/lib`).
+- **Java:** each `.jar`, `.war`, `.ear` and Jenkins plugin (`.hpi`, `.jpi`) anywhere: `META-INF/maven/*/*/pom.properties`,
+  and the same inside archives nested up to two levels (Spring Boot's `BOOT-INF/lib`, a war's `WEB-INF/lib`, a war's
+  Jenkins plugins and their jars; widened after the real run, DECISIONS 160).
 - **Go (new):** each regular file that is an ELF executable with Go's build information (Go 1.18+, inline format): the
   main module's dependencies (`dep` lines, with `=>` replacements applied) and the toolchain as `stdlib` at its Go
-  version, as Syft, Trivy and govulncheck name it. Older Go binaries are counted as not read, never silently.
+  version, as Syft, Trivy and govulncheck name it. Binaries older than Go 1.18 are read through the two pointers they store
+  (added after the real run, DECISIONS 160); one whose build information can't be read is counted as not read.
 
 **How it is read.** One bounded walk of the container's root through descriptors, from the root `ContainerRoot`
 already holds: each directory is opened relative to its parent's descriptor with `O_PATH | O_NOFOLLOW | O_DIRECTORY`; a

@@ -8,6 +8,8 @@ Run from api/:  uv run python ../sandbox/workloads.py [--keep] [--reuse nimstead
 - Kubernetes: containers are created through the CRI exactly as the kubelet creates them (its io.kubernetes.* labels, the image
   by its id) on containerd and on CRI-O; a k3s download was refused by the session's safety policy, and the kubelet only
   calls the same CRI.
+- WSL2 distros share one network namespace: run it while no other distro runs Docker or CRI-O (their bridge and CRI-O's
+  metrics port 9537 would collide).
 - The API runs in-process on a throwaway SQLite DB with real OSV, KEV and EPSS data; the real agent's `collect` runs as root
   in the distro and this script relays its bodies as `report` does (as sandbox/containers.py).
 - Oracles: Syft (anchore/syft, run as a container) for what is installed, read through Nimstead's own SBOM parser so names
@@ -139,7 +141,8 @@ def setup():
     setup.keepalive = subprocess.Popen(["wsl", "-d", NAME, "-u", "root", "--", "sleep", "infinity"])  # WSL stops idle distros
     wsl("rpm -q cri-tools crun >/dev/null 2>&1 || dnf -q -y install moby-engine podman containerd cri-o crun cri-tools containernetworking-plugins python3 >/dev/null",
         timeout=3600)
-    wsl("systemctl start containerd crio docker && sleep 2 && systemctl is-active containerd crio docker >/dev/null")
+    wsl("systemctl start containerd crio docker && sleep 2 && systemctl is-active containerd crio docker >/dev/null "
+        "|| { journalctl -u crio -u docker --no-pager -n 20 | cut -c1-300; exit 1; }")
     note("runtimes", versions=wsl("docker --version; podman --version; containerd --version; crio --version | head -1; crictl --version").strip().split("\n"),
          os=wsl(". /etc/os-release; echo $PRETTY_NAME").strip())
     hostleak = io.BytesIO()
@@ -336,9 +339,9 @@ def main(keep=False):
             only_syft = {k: explain(k[0], theirs[k], owned) for k in sorted(set(theirs) - ours)}
             only_ours = sorted(ours - set(theirs))
             per[name] = {"image": ref, "agent": len(ours), "syft": len(theirs), "same": len(ours & set(theirs)),
-                         "only_agent": [list(k) for k in only_ours][:30],
-                         "only_syft_explained": [[*k, why] for k, why in only_syft.items() if why][:30],
-                         "only_syft_unexplained": [list(k) for k, why in only_syft.items() if not why][:30],
+                         "only_agent": [list(k) for k in only_ours][:300],
+                         "only_syft_explained": [[*k, why] for k, why in only_syft.items() if why][:300],
+                         "only_syft_unexplained": [list(k) for k, why in only_syft.items() if not why][:300],
                          "by_ecosystem": {e: sum(k[0] == e for k in ours) for e in APP_ECOS}}
         check("1. each image's application packages equal Syft's, every difference explained", all(
             not v["only_agent"] and not v["only_syft_unexplained"] and v["same"] > 0 for v in per.values()), syft_version=version, images=per)

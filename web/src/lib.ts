@@ -78,7 +78,27 @@ export interface Finding {
   due: string | null;
   /** Drawer only: the tracker ticket its fix is in (DECISIONS 150). */
   ticket?: TicketLink | null;
+  /** What runs (DECISIONS 161): listening, loaded, not loaded, or fixed on disk but still running the old copy; null = unknown. */
+  runtime?: RuntimeState | null;
+  /** Drawer only: the programs behind runtime and the read it rests on; null when the host has never sent a read. */
+  running?: FindingRunning | null;
 }
+export type RuntimeState = "listening" | "loaded" | "not_loaded" | "restart";
+export const RUNTIME_STATES: readonly RuntimeState[] = ["listening", "loaded", "not_loaded", "restart"];
+export const RUNTIME_LABEL: Record<RuntimeState, string> = { listening: "Listening", loaded: "Loaded", not_loaded: "Not loaded", restart: "Restart to finish" };
+export interface RunningProgram { name: string; users: string[]; listen: string[]; loads: string[]; replaced: string[] }
+export interface FindingRunning {
+  state: RuntimeState | null; binary: string | null; binaries: string[]; reason: string | null; programs: RunningProgram[];
+  read_at: string; read_state: "ok" | "partial" | "failed"; read_problem: string | null; since: string | null; covered: boolean;
+}
+/** What runs on a machine, as its agent last read it (GET /api/assets/{id}/runtime). */
+export interface MachineRuntime {
+  read_at: string; state: "ok" | "partial" | "failed"; problem: string | null; since: string | null; covered: boolean;
+  programs: { name: string; unit: boolean; users: string[]; count: number; listen: string[]; replaced: string[]; loads: number }[];
+  replaced: Record<string, { source: string; programs: string[] }>;
+}
+/** Whether a listening address ("0.0.0.0:443/tcp", "[::1]:53/udp") is reachable from other machines: anything but loopback. */
+export const networkAddress = (a: string) => !/^(127\.|\[::1\]:|\[::ffff:127\.)/.test(a);
 /** A ticket in the org's Jira or GitLab; the link is built by the server from the site URL. */
 export interface TicketLink { key: string; url: string; state: "open" | "closed"; project: string }
 export interface Action {
@@ -95,7 +115,11 @@ export interface Action {
   busy_asset_ids: string[];
   /** The newest failed attempt for this package, so Home doesn't offer the same plan blind. */
   last_attempt: { id: string; status: JobStatus; error: string | null; asset_id?: string } | null;
+  /** Machines where a running program has loaded it, and where one listening on the network has (DECISIONS 161). */
+  runtime?: { listening: number; loaded: number; not_loaded: number };
 }
+/** A fix on disk that a running program keeps from counting: restart it to finish (DECISIONS 161). */
+export interface RestartToFinish { package: string; findings: number; kev: boolean; max_score: number; hosts: string[]; asset_ids: string[]; programs: string[] }
 /** A container image with open findings: fixed by a rebuild bringing these packages, never planned (DECISIONS 141). */
 export interface ImageToRebuild {
   asset_id: string; name: string; os_name: string; ecosystem: string; kev: boolean; max_score: number | null; findings: number;
@@ -105,6 +129,7 @@ export interface ImageToRebuild {
 export interface Summary {
   assets: number; open_by_priority: Partial<Record<Priority, number>>; top_actions: Action[]; attention: Job[];
   hosts_not_reporting: number; agents_need_attention: number; devices_with_issues?: number; images_to_rebuild?: ImageToRebuild[];
+  restarts?: RestartToFinish[];
 }
 
 // ---- remediation -----------------------------------------------------------------
@@ -115,6 +140,8 @@ export interface Job {
   packages: unknown; finding_ids: string[]; summary: string; created_by: string; approved_by: string | null;
   created: string; updated: string; steps: JobStep[] | null; error: string | null;
   forward_only?: boolean; waits_for_window?: string | null; // plan T22, T40
+  /** Linux jobs not yet run: the services the fix will restart, and programs it will leave running the old copy (DECISIONS 163). */
+  restarts?: { services: string[]; left: string[] };
 }
 const JOB_GROUPS = [
   // what broke first, as on Fix first; then what waits on you; then what's running
@@ -331,6 +358,8 @@ export interface FindingsFilters {
   overdue: boolean;
   /** The asset's owner ("" for any); noOwner: only assets with none. */
   owner: string; noOwner: boolean;
+  /** What runs (DECISIONS 161): "" for any. */
+  running: RuntimeState | "";
   sort: FindingSort; group: FindingGroup;
 }
 export type FindingSort = "score" | "package" | "host" | "vuln" | "newest";
@@ -346,7 +375,8 @@ export function parseFilters(raw: RawSearch): FindingsFilters {
   const priority = (raw.priority ?? "").split(",").filter((p): p is Priority => (PRIORITIES as readonly string[]).includes(p));
   const sort = (["score", "package", "host", "vuln", "newest"] as const).find((s) => s === raw.sort) ?? "score";
   const group = (["vuln", "package"] as const).find((g) => g === raw.group) ?? "";
-  return { q: raw.q ?? "", priority, fixable: raw.fixable === "1", kev: raw.kev === "1", status, asset: raw.asset ?? "", ecosystem: raw.eco ?? "", open: raw.f ?? "", overdue: raw.overdue === "1", owner: raw.owner ?? "", noOwner: raw.noowner === "1", sort, group };
+  const running = RUNTIME_STATES.find((r) => r === raw.running) ?? "";
+  return { q: raw.q ?? "", priority, fixable: raw.fixable === "1", kev: raw.kev === "1", status, asset: raw.asset ?? "", ecosystem: raw.eco ?? "", open: raw.f ?? "", overdue: raw.overdue === "1", owner: raw.owner ?? "", noOwner: raw.noowner === "1", running, sort, group };
 }
 
 /** Inverse of parseFilters: only non-default values reach the URL. */
@@ -363,6 +393,7 @@ export function filtersToSearch(f: FindingsFilters): RawSearch {
     overdue: f.overdue ? "1" : undefined,
     owner: f.noOwner ? undefined : f.owner || undefined,
     noowner: f.noOwner ? "1" : undefined,
+    running: f.running || undefined,
     sort: f.sort === "score" ? undefined : f.sort,
     group: f.group || undefined,
   };
@@ -384,6 +415,7 @@ export function filtersToApi(f: FindingsFilters, list = true): string {
   if (f.overdue) p.set("overdue", "true");
   if (f.noOwner) p.set("owner", "");
   else if (f.owner) p.set("owner", f.owner);
+  if (f.running) p.set("runtime", f.running);
   return p.toString();
 }
 

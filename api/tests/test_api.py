@@ -450,7 +450,7 @@ def test_findings_page_by_offset_in_a_stable_order_with_only_the_table_columns(e
     every = [f["id"] for f in c.get("/api/findings").json()]
     pages = [c.get("/api/findings", params={"view": "list", "limit": 5, "offset": o}).json() for o in range(0, len(every) + 5, 5)]
     assert [f["id"] for p in pages for f in p] == every  # no gaps or repeats across pages
-    assert set(pages[0][0]) == {"id", "asset_id", "hostname", "asset_kind", "ecosystem", "package", "installed_version", "fixed_version", "vuln_id", "kev", "score", "priority", "reasons"}
+    assert set(pages[0][0]) == {"id", "asset_id", "hostname", "asset_kind", "ecosystem", "package", "installed_version", "fixed_version", "vuln_id", "kev", "score", "priority", "reasons", "runtime"}
 
 
 def test_accept_a_selection_records_each_and_skips_what_isnt_open(env):

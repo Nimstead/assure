@@ -36,9 +36,9 @@ describe("findings filters <-> URL", () => {
     expect(filtersToSearch(f)).toEqual({ q: undefined, priority: undefined, fixable: undefined, status: undefined, asset: undefined, f: undefined });
   });
   it("round-trips non-default state", () => {
-    const raw = { q: "openssl", priority: "fix-now,next", fixable: "1", status: "resolved", asset: "a1", eco: "Debian:13", f: "x9", kev: "1", overdue: "1", owner: "Payments", sort: "host", group: "vuln" };
+    const raw = { q: "openssl", priority: "fix-now,next", fixable: "1", status: "resolved", asset: "a1", eco: "Debian:13", f: "x9", kev: "1", overdue: "1", owner: "Payments", running: "listening", sort: "host", group: "vuln" };
     const f = parseFilters(raw);
-    expect(f).toEqual({ q: "openssl", priority: ["fix-now", "next"], fixable: true, kev: true, status: "resolved", asset: "a1", ecosystem: "Debian:13", open: "x9", overdue: true, owner: "Payments", noOwner: false, sort: "host", group: "vuln" });
+    expect(f).toEqual({ q: "openssl", priority: ["fix-now", "next"], fixable: true, kev: true, status: "resolved", asset: "a1", ecosystem: "Debian:13", open: "x9", overdue: true, owner: "Payments", noOwner: false, running: "listening", sort: "host", group: "vuln" });
     expect(new URLSearchParams(filtersToApi(f)).get("owner")).toBe("Payments");
     expect(new URLSearchParams(filtersToApi(f)).get("ecosystem")).toBe("Debian:13");
     expect(new URLSearchParams(filtersToApi(f)).get("overdue")).toBe("true");

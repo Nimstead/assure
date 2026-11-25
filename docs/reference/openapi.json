@@ -2056,6 +2056,19 @@
             },
             "type": "array"
           },
+          "runtime": {
+            "enum": [
+              "listening",
+              "loaded",
+              "not_loaded",
+              "restart",
+              null
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "score": {
             "type": "integer"
           },
@@ -2076,7 +2089,8 @@
           "kev",
           "score",
           "priority",
-          "reasons"
+          "reasons",
+          "runtime"
         ],
         "type": "object"
       },
@@ -2213,12 +2227,147 @@
               "null"
             ]
           },
+          "running": {
+            "additionalProperties": false,
+            "properties": {
+              "binaries": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "binary": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "covered": {
+                "type": "boolean"
+              },
+              "programs": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "listen": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "loads": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "replaced": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "users": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "users",
+                    "listen",
+                    "loads",
+                    "replaced"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 20,
+                "type": "array"
+              },
+              "read_at": {
+                "type": "string"
+              },
+              "read_problem": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "read_state": {
+                "enum": [
+                  "ok",
+                  "partial",
+                  "failed"
+                ],
+                "type": "string"
+              },
+              "reason": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "since": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "state": {
+                "enum": [
+                  "listening",
+                  "loaded",
+                  "not_loaded",
+                  "restart",
+                  null
+                ],
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "state",
+              "binary",
+              "binaries",
+              "reason",
+              "programs",
+              "read_at",
+              "read_state",
+              "read_problem",
+              "since",
+              "covered"
+            ],
+            "type": [
+              "object",
+              "null"
+            ]
+          },
           "runs_on": {
             "items": {
               "type": "string"
             },
             "type": [
               "array",
+              "null"
+            ]
+          },
+          "runtime": {
+            "enum": [
+              "listening",
+              "loaded",
+              "not_loaded",
+              "restart",
+              null
+            ],
+            "type": [
+              "string",
               "null"
             ]
           },
@@ -2291,12 +2440,14 @@
           "advisory_ids",
           "reasons",
           "score",
+          "runtime",
           "package_fix",
           "rebuild",
           "runs_on",
           "owner",
           "ticket",
-          "locations"
+          "locations",
+          "running"
         ],
         "type": "object"
       },
@@ -2461,6 +2612,19 @@
               "null"
             ]
           },
+          "runtime": {
+            "enum": [
+              "listening",
+              "loaded",
+              "not_loaded",
+              "restart",
+              null
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "score": {
             "type": "integer"
           },
@@ -2502,7 +2666,8 @@
           "epss",
           "advisory_ids",
           "reasons",
-          "score"
+          "score",
+          "runtime"
         ],
         "type": "object"
       },
@@ -2726,6 +2891,13 @@
             },
             "type": "object"
           },
+          "restarts": {
+            "items": {
+              "$ref": "#/components/schemas/SummaryRestart"
+            },
+            "maxItems": 10,
+            "type": "array"
+          },
           "top_actions": {
             "items": {
               "$ref": "#/components/schemas/SummaryAction"
@@ -2742,7 +2914,8 @@
           "open_by_priority",
           "top_actions",
           "images_to_rebuild",
-          "attention"
+          "attention",
+          "restarts"
         ],
         "type": "object"
       },
@@ -3388,6 +3561,9 @@
             "title": "Packages",
             "type": "array"
           },
+          "runtime": {
+            "title": "Runtime"
+          },
           "update_error": {
             "anyOf": [
               {
@@ -3614,6 +3790,120 @@
           "password"
         ],
         "title": "Login",
+        "type": "object"
+      },
+      "MachineRuntime": {
+        "additionalProperties": false,
+        "properties": {
+          "covered": {
+            "type": "boolean"
+          },
+          "problem": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "programs": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "count": {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "listen": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "loads": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "replaced": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "unit": {
+                  "type": "boolean"
+                },
+                "users": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "name",
+                "unit",
+                "users",
+                "count",
+                "listen",
+                "replaced",
+                "loads"
+              ],
+              "type": "object"
+            },
+            "maxItems": 1024,
+            "type": "array"
+          },
+          "read_at": {
+            "type": "string"
+          },
+          "replaced": {
+            "additionalProperties": {
+              "additionalProperties": false,
+              "properties": {
+                "programs": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "source": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "source",
+                "programs"
+              ],
+              "type": "object"
+            },
+            "type": "object"
+          },
+          "since": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "enum": [
+              "ok",
+              "partial",
+              "failed"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "read_at",
+          "state",
+          "problem",
+          "since",
+          "covered",
+          "programs",
+          "replaced"
+        ],
         "type": "object"
       },
       "MfaConfirm": {
@@ -4557,6 +4847,28 @@
             },
             "type": "array"
           },
+          "restarts": {
+            "additionalProperties": false,
+            "properties": {
+              "left": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "services": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "services",
+              "left"
+            ],
+            "type": "object"
+          },
           "result_versions": {
             "additionalProperties": {
               "type": "string"
@@ -4671,6 +4983,28 @@
             },
             "type": "array"
           },
+          "restarts": {
+            "additionalProperties": false,
+            "properties": {
+              "left": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "services": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "services",
+              "left"
+            ],
+            "type": "object"
+          },
           "result_versions": {
             "additionalProperties": {
               "type": "string"
@@ -4736,7 +5070,8 @@
           "finding_ids",
           "forward_only",
           "steps",
-          "result_versions"
+          "result_versions",
+          "restarts"
         ],
         "type": "object"
       },
@@ -5325,6 +5660,29 @@
           "plannable": {
             "type": "boolean"
           },
+          "runtime": {
+            "additionalProperties": false,
+            "properties": {
+              "listening": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "loaded": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "not_loaded": {
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "listening",
+              "loaded",
+              "not_loaded"
+            ],
+            "type": "object"
+          },
           "summary": {
             "type": [
               "string",
@@ -5381,6 +5739,7 @@
           "forward_only",
           "max_score",
           "tickets",
+          "runtime",
           "job",
           "last_attempt"
         ],
@@ -5493,6 +5852,52 @@
           "hosts",
           "fixes",
           "ticket"
+        ],
+        "type": "object"
+      },
+      "SummaryRestart": {
+        "additionalProperties": false,
+        "properties": {
+          "asset_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "findings": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "hosts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "kev": {
+            "type": "boolean"
+          },
+          "max_score": {
+            "type": "integer"
+          },
+          "package": {
+            "type": "string"
+          },
+          "programs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "package",
+          "findings",
+          "kev",
+          "max_score",
+          "hosts",
+          "asset_ids",
+          "programs"
         ],
         "type": "object"
       },
@@ -7646,6 +8051,82 @@
         "x-authentication": "Admin browser session"
       }
     },
+    "/api/assets/{asset_id}/runtime": {
+      "get": {
+        "description": "Return what runs on a host as its agent last read it: programs (listening first) with their users, listening\naddresses and how many packages each loads, the packages each runs a replaced copy of, and how much of the seven days\nof reads is covered. null for a host that has never sent a read, or any other kind of asset (DECISIONS 161).\n\nRequires a user session or a read-only organisation API token. API tokens cannot use write methods.\n\nOperation-specific HTTP errors: 404. See detail in the response.\nAuthentication and request-validation errors also apply where required.",
+        "operationId": "asset_runtime_api_assets__asset_id__runtime_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "title": "Asset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/MachineRuntime"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Asset/inventory contract; see assets-api.md for state and count semantics."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticationError"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid credential."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            },
+            "description": "Declared request body exceeds the shared limit, or a consumed stream crosses it."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SessionCookie": []
+          },
+          {
+            "ReadToken": []
+          }
+        ],
+        "summary": "Asset Runtime",
+        "x-authentication": "Session or read-only API token"
+      }
+    },
     "/api/assets/{asset_id}/sbom": {
       "post": {
         "description": "Read raw CycloneDX/SPDX JSON and return parser plus rescan counts.\n\nasset_id selects the asset. request supplies bytes and either its bearer\nkey or an admin session. Authenticated from the headers before the body is\nread (an anonymous caller can't make the server buffer 10 MiB), then read with\na 10MiB streamed cap and HTTP 413 on excess. Preserve agent-origin rows. Defer parse/store\nwork to ingest_sbom. Invalid formats return 422, wrong keys 401, too many uploads 429. Other\nauthentication/ownership failures and storage/evidence errors can occur.",
@@ -9434,6 +9915,24 @@
           },
           {
             "in": "query",
+            "name": "runtime",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 60,
+                  "pattern": "^(listening|loaded|not_loaded|restart)(,(listening|loaded|not_loaded|restart))*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Runtime"
+            }
+          },
+          {
+            "in": "query",
             "name": "limit",
             "required": false,
             "schema": {
@@ -9703,6 +10202,24 @@
                 }
               ],
               "title": "Owner"
+            }
+          },
+          {
+            "in": "query",
+            "name": "runtime",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 60,
+                  "pattern": "^(listening|loaded|not_loaded|restart)(,(listening|loaded|not_loaded|restart))*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Runtime"
             }
           }
         ],
@@ -10093,6 +10610,24 @@
               ],
               "title": "Owner"
             }
+          },
+          {
+            "in": "query",
+            "name": "runtime",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 60,
+                  "pattern": "^(listening|loaded|not_loaded|restart)(,(listening|loaded|not_loaded|restart))*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Runtime"
+            }
           }
         ],
         "responses": {
@@ -10308,6 +10843,24 @@
                 }
               ],
               "title": "Owner"
+            }
+          },
+          {
+            "in": "query",
+            "name": "runtime",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 60,
+                  "pattern": "^(listening|loaded|not_loaded|restart)(,(listening|loaded|not_loaded|restart))*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Runtime"
             }
           },
           {

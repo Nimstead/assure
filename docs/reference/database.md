@@ -48,7 +48,8 @@ The model does not make the evidence ledger immutable. The unique `(org_id, seq)
 | `Kev` | CVE-keyed known-exploitation metadata |
 | `Epss` | CVE-keyed probability and percentile |
 | `Cvss` | CVE-keyed fallback impact score/vector |
-| `Finding` | Unique asset/ecosystem/package/vulnerability identity, with workflow and risk state |
+| `Finding` | Unique asset/ecosystem/package/vulnerability identity, with workflow and risk state, and `runtime` (listening, loaded, not loaded, restart, or null) from what runs on its host |
+| `AssetRuntime` | One per host: its agent's latest read of what runs (programs, native packages, replaced copies with their source) and seven days of memory of which packages were seen loaded and by network listeners, with the start of the current run of complete reads (DECISIONS 161) |
 | `ScanRecord` | Stored engine inventory/report and reproducibility identifiers |
 | `LedgerEntry` | Per-organisation sequence, canonical event data, previous hash and event hash |
 | `RemediationJob` | Persisted plan, approval/execution state, steps, result versions, and errors |

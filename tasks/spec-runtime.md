@@ -97,7 +97,7 @@ At each inventory, as root, one bounded pass over `/proc`:
   The body is validated like `neighbours`: what doesn't fit is dropped, never the packages with it.
 - **Memory, so a sample doesn't flap.** A package seen loaded stays **loaded** for seven days from the last read that saw
   it, and **listening** for seven days from the last read that saw it loaded by a program listening on a non-loopback
-  address. **Not loaded** needs a native package, complete reads covering the last seven days with no gap over a day,
+  address. **Not loaded** needs a native package, complete reads covering the last seven days with no gap over 36 hours (a day at first; widened in the build so a missed 6-hourly report or a daily schedule doesn't restart the week, DECISIONS 162),
   and none of them seeing it loaded. Anything else is unknown (null), and so is every package of a host whose latest
   runtime read is over a day old for "not loaded" (loaded and listening keep their seven days).
 - **Rank** (`risk.context`, after KEV/EPSS/CVSS as today), for findings on the host's distribution packages:

@@ -70,6 +70,22 @@ From agent 0.8.0, `report` on Linux reads the host's running containers before s
 
 A database with more than 10,000 packages is refused before it is parsed (entries are counted first), and distroless `status.d` entries are capped at 64 MB together. Budgets end a pass early as partial, never silently: 128 containers, 120 seconds and 8 MB a report; each image's walk 200,000 entries, 60 seconds and 20,000 application packages; a jar's central directory at most 8 MB, a nested jar at most 50 MB, `pom.properties` and `METADATA` 64 KB, `package.json` 1 MB, Go build information 64 KB. Nothing from a container runs, and the host's `rpm` is never pointed at a container's database. Requires root; Linux only.
 
+## What runs
+
+From agent 0.10.0, `inventory()` on Linux adds a top-level `runtime` object and a `runtime` collection line, unless the configuration says `"runtime": false` (`enroll --no-runtime`), in which case the line is `off` (DECISIONS 161). Windows adds neither. `collect` prints it too.
+
+| Interface | Contract |
+| --- | --- |
+| `runtime_read(proc, files, euid, clock, user_of, own_pid)` | `{"v": 1, "state", "problem", "programs", "native", "other_roots"}`. One pass over `/proc`: processes under the agent's own root (containers are counted in `other_roots`), each program (systemd system service from the cgroup, else the process's sanitised short name) with `users`, `count`, `listen`, `loads` (packages it has mapped or runs, replaced copies included) and `replaced`. Budgets: 4,096 processes, 4 MB of maps and 65,536 descriptors per process, 2,000,000 listed paths, 20 seconds, 1,024 programs, 100,000 loaded pairs; each stops the pass with the same words and `partial`. Not root is `partial`. Command lines are read only to match an interpreter's script locally; environments are never read |
+| `parse_maps(text)` | `(mapped, replaced)` file paths: lines with an inode other than 0 and a path starting `/`; ` (deleted)` lines are replaced copies, rpm's `;<hex>` suffix dropped |
+| `parse_cgroup_unit(text)` | The `system.slice` service a process runs in (cgroup v2, else v1's `name=systemd`), or `None` for scopes, `init.scope` and anything under `user.slice` |
+| `parse_net(text, proto)` | `[(address, inode)]` for TCP in LISTEN and unconnected UDP in `/proc/net/<proto>` |
+| `package_files(query, which, dpkg_info, apk_db)` | `(package, path)` from apk's database, dpkg's `info/*.list` (architecture dropped) or `rpm -qa --qf '[%{=NAME}	%{FILENAMES}
+]'` |
+| `runtime_owners(wanted, files, late, is_elf)` | `(owners, native, problem)`: owners of the wanted paths only (merged-`/usr` list paths count under `/usr`), and the packages that ship a shared object or an ELF executable in `bin`, `sbin` or `libexec` |
+| `safe_runtime()`, `with_runtime(inv, cfg)` | The read with any error it didn't expect turned into a `failed` read; adding it and its line to an inventory |
+| `Job.restart_replaced()` | After a Linux fix's package step: restart each system service still running a replaced copy of the job's packages (`systemctl restart --`), never one `RESTART_NEVER` names, nothing without systemd; the rest are named in a step (DECISIONS 163) |
+
 ## Collection helpers
 
 `with_apps(inv,cfg)` returns the same inventory object. It replaces the package list, can replace facts, and updates an existing collection-source mapping in place. It does not create that mapping when absent. Local scan_jars/scan_apps flags enable metadata scans. Disabled sources receive off/count-zero entries. No package code is intentionally executed by these metadata collectors.

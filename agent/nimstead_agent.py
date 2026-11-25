@@ -3397,10 +3397,12 @@ class Job:
         systemd = os.path.isdir(self.path("/run/systemd/system"))
         go = sorted(n for n, unit in held.items() if unit and systemd and not RESTART_NEVER.fullmatch(n))
         for u in go:
-            self.step(f"restart {u}: it ran the copy this fix replaced", ["systemctl", "restart", "--", u])
+            # touched before it's tried: one that won't start on the new files is what the rollback must bring back (the real
+            # run found it left down when recorded only after a restart that worked)
             self.restarted.append(u)
             if u not in self.units:
                 self.units.append(u)
+            self.step(f"restart {u}: it ran the copy this fix replaced", ["systemctl", "restart", "--", u])
             self.restarts[u] = self.restart_count(u)  # restarts from here on count against it
         if left := sorted(set(held) - set(go)):
             self.steps.append({"step": "still running the replaced copy", "ok": True,
@@ -3632,7 +3634,7 @@ class Job:
         for u in self.units:  # a service the bad version crashed stays down until restarted on the restored files
             # one this job restarted runs the new files, which the rollback just replaced again: back onto the restored version too
             if u in self.restarted or self.run(["systemctl", "is-active", "--quiet", u])[0] != 0:
-                rc, out = self.run(["systemctl", "restart", u])
+                rc, out = self.run(["systemctl", "restart", "--", u])
                 self.steps.append({"step": f"restart {u} on the restored version", "ok": rc == 0, "output": out[-500:]})
         self.mark_restarts()
         if self.units and self.settle:

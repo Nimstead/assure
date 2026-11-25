@@ -34,7 +34,7 @@ class FakeSuse:
                 if self.breaks and self.installed["openssl-3"] == NEW:
                     self.crashed = True  # like a real service: stays down until restarted
                 return (3, "") if getattr(self, "crashed", False) else (0, "")
-            case ["systemctl", "restart", _]:
+            case ["systemctl", "restart", "--", _]:
                 self.crashed = self.breaks and self.installed["openssl-3"] == NEW
                 return 0, ""
             case ["zypper", "--non-interactive", "--xmlout", "install", "--dry-run", *specs]:
@@ -81,7 +81,7 @@ def test_snapper_undo_reverts_script_side_effects_too(tmp_path):
     assert h.installed["openssl-3"] == OLD
     assert h.config == "original"  # the %post edit outside the package's files is undone as well
     assert any(c[:4] == ["snapper", "-c", "root", "undochange"] for c in h.log)
-    assert ["systemctl", "restart", "sshd.service"] in h.log  # the crashed service is brought back on the old version
+    assert ["systemctl", "restart", "--", "sshd.service"] in h.log  # the crashed service is brought back on the old version
 
 
 def test_zypper_scope_check_refuses_unplanned_changes(tmp_path):

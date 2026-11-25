@@ -90,9 +90,12 @@ def test_a_restart_that_fails_rolls_back_and_restarts_it_on_the_restored_version
     outcome, steps, err = j.execute()
     assert outcome == "rolled_back" and "restart php8.2-fpm.service" in err
     assert host.installed == {"libssl3": "3.0.11-1~deb12u1", "openssl": "3.0.11-1~deb12u1"}
-    # nginx was restarted onto the new files; the rollback put the old ones back, so it's restarted onto those too
-    assert host.restarted == ["nginx.service", "php8.2-fpm.service", "nginx.service"]
-    assert "restart nginx.service on the restored version" in [s["step"] for s in steps]
+    # nginx was restarted onto the new files and php-fpm wouldn't start on them; the rollback put the old ones back, so both are
+    # restarted onto those, and both are health-checked (the real run found php-fpm's stand-in left down when it wasn't)
+    assert host.restarted == ["nginx.service", "php8.2-fpm.service", "nginx.service", "php8.2-fpm.service"]
+    names = [s["step"] for s in steps]
+    assert "restart nginx.service on the restored version" in names and "restart php8.2-fpm.service on the restored version" in names
+    assert "php8.2-fpm.service active after rollback" in names
 
 
 def test_a_partial_read_is_said(tmp_path):

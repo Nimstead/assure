@@ -11,7 +11,7 @@ GET operations accept a user session or an eligible read-only organisation API t
 | `GET /api/findings` | Array of full or compact rows |
 | `GET /api/findings/count` | Object with integer `total` |
 | `GET /api/findings/groups` | Up to 500 group rows |
-| `GET /api/findings/{finding_id}` | Full row plus `package_fix`, `owner` (its asset's owner, or `null`) and `ticket` (the tracker ticket its fix is in: `key`, `url`, `state`, `project`; `null` when none reached the tracker, see [tickets](tickets.md)); for a container image also `rebuild` (how it's fixed) and `runs_on` (the hosts that run it); `locations` lists where an application package (PyPI, npm, Maven, Go) sits on the asset, as its agent read it (a jar inside a jar, a venv, a binary; at most 20, empty for a distribution's packages and for SBOM components). Unavailable IDs return `404` |
+| `GET /api/findings/{finding_id}` | Full row plus `package_fix`, `owner` (its asset's owner, or `null`) and `ticket` (the tracker ticket its fix is in: `key`, `url`, `state`, `project`; `null` when none reached the tracker, see [tickets](tickets.md)); for a container image also `rebuild` (how it's fixed) and `runs_on` (the hosts that run it); `locations` lists where an application package (PyPI, npm, Maven, Go) sits on the asset, as its agent read it (a jar inside a jar, a venv, a binary; at most 20, empty for a distribution's packages and for SBOM components); `running` says what runs it (see [what runs](#what-runs)). Unavailable IDs return `404` |
 | `GET /api/findings.csv` | Streamed CSV attachment |
 
 List, count, group, and CSV operations accept these filters:
@@ -26,6 +26,7 @@ List, count, group, and CSV operations accept these filters:
 | `kev` | No filter. True/false selects the corresponding flag |
 | `overdue` | No filter. True selects open findings past their computed deadline. False behaves like no filter. Groups ignore this parameter |
 | `owner` | No filter. An owner name selects findings on assets with exactly that owner; an empty value (`owner=`) selects findings on assets with no owner. At most 100 characters |
+| `runtime` | No filter. One or more of `listening`, `loaded`, `not_loaded` and `restart`, comma-separated, selects findings in those runtime states (see [what runs](#what-runs)); anything else is `422` |
 
 `q` preserves SQL LIKE wildcards: `%` matches any sequence and `_` matches one character. It is not a literal-substring-only search.
 
@@ -48,6 +49,7 @@ Every full row contains these fields. Compact rows contain only fields marked ye
 | `kev` | Known-exploitation boolean | Yes |
 | `score`, `priority` | Integer score and priority string | Yes |
 | `reasons` | Reason strings. Compact output retains at most one | Yes |
+| `runtime` | `listening`, `loaded`, `not_loaded`, `restart` or `null` (unknown): what runs it, see [what runs](#what-runs) | Yes |
 | `advisory_ids` | Advisory ID strings | No |
 | `summary` | Finding summary string | No |
 | `cvss`, `epss` | Numeric values or `null` | No |
@@ -64,6 +66,20 @@ Every full row contains these fields. Compact rows contain only fields marked ye
 The deadline uses the finding's current priority and the SLA policy at its first-seen time. Unknown priorities use 180 days. Accepted/resolved findings have no computed deadline. Acceptance/revocation responses also return `due=null`; a later list/detail GET computes an open deadline.
 
 The detail-only `package_fix` is `null` or an object with `version` and integer `open`. It uses the highest nonempty fix among currently open findings for the same asset/ecosystem/package. `open` counts those open findings, including ones without fixes. This object does not prove that the selected version fixes every issue.
+
+## What runs
+
+Since 0.14.0 (agent 0.10.0) a Linux agent reads, at each report, which installed packages its running programs have loaded, which of those programs listen on the network, and which run a copy of a package that has since been replaced on disk (DECISIONS 161). For a finding on the host's distribution packages, `runtime` is:
+
+| Value | Meaning |
+| --- | --- |
+| `listening` | A program listening on a non-loopback address loaded one of the source package's binaries, in a read within the last seven days. A flaw whose CVSS attack vector is network, adjacent or unknown gains 15 points (never moved when known exploited) |
+| `loaded` | A program loaded one of its binaries within the last seven days, and none that loaded it was seen listening on the network. Rank unchanged |
+| `not_loaded` | The package ships native code, the host's complete reads cover the last seven days with no gap over 36 hours, and none saw it loaded. When every flaw's vector is network or adjacent and nothing says it's exploited (KEV, Microsoft, a public exploit), the score is multiplied by 0.75 |
+| `restart` | The fixed version is installed (or the package removed), but the latest read names a program still running the copy it replaced: the finding stays open with a `Still open: …` reason until a read no longer does |
+| `null` | Unknown: no read, no native code the agent can see mapped, partial or stale reads, a kernel package, or not a distribution package |
+
+`running` (detail only) is `null` for a host that has never sent a read, or an object with `state` (as above), `binary` (the binary that set the state), `binaries` (the source's installed binaries), `reason` (the words in `reasons`), `programs` (up to 20 programs loading one of them: `name`, `users`, `listen`, `loads`, `replaced`), `read_at`, `read_state` (`ok`, `partial` or `failed`), `read_problem`, `since` (when the current run of complete reads began) and `covered` (seven days of complete reads). Sampling at each report can't see programs that run for a moment, such as cron jobs and commands; the host firewall isn't read. Source: [`runtime.py`](../../api/src/nimstead/runtime.py).
 
 ## Group fields
 
@@ -85,7 +101,7 @@ Version-comparison failures can propagate as server errors in group/detail fix s
 
 ## CSV contract
 
-Columns appear in this order: `hostname`, `package`, `installed_version`, `fixed_version`, `vuln_id`, `priority`, `score`, `cvss`, `epss`, `kev`, `status`, `first_seen`, `last_seen`, `resolved_at`, `summary`, `owner` (the asset's owner, empty when it has none). New columns are added at the end, so a script that reads columns by position keeps working.
+Columns appear in this order: `hostname`, `package`, `installed_version`, `fixed_version`, `vuln_id`, `priority`, `score`, `cvss`, `epss`, `kev`, `status`, `first_seen`, `last_seen`, `resolved_at`, `summary`, `owner` (the asset's owner, empty when it has none), `runtime` (empty when unknown). New columns are added at the end, so a script that reads columns by position keeps working.
 
 The attachment filename is `nimstead-findings-STATUS.csv`. Null cells are empty. Boolean cells use Python's `True`/`False` text. Timestamp cells use the datetime string representation, with a space between date and time.
 
@@ -121,6 +137,7 @@ Since 0.7.6 the detection engine's verdicts decide which identities are seen, in
 | Accepted identity still matches before expiry | Accepted |
 | Open/accepted identity in the engine's slice is absent, and the engine proves it absent (`not-vulnerable`, or `not-applicable`: product gone with its list read in full, `removed`; no live advisory carries the identity, `withdrawn`) | Resolved |
 | Open/accepted identity in the engine's slice is absent, with no such proof | Unchanged; a `Still open: …` reason says why |
+| Open/accepted distribution-package identity is absent, its installed version changed (or the package went), and the latest runtime read names a program running the replaced copy | Unchanged, `runtime` = `restart`, with a `Still open: …` reason naming the programs (DECISIONS 162) |
 | Open/accepted identity outside the slice (settings, drivers, Windows and app end of support) is absent and its collection guard does not block | Resolved |
 
 Read APIs do not expire acceptance. Expiry is applied to matching identities during reassessment: a host's or application's rescan, an internet target's scan, and a device's network check (releases up to 0.11.0 expired acceptances on machines and applications only). Each expiry writes an `acceptance_expired` ledger entry. A blocked or otherwise unreassessed identity can retain its previous state.

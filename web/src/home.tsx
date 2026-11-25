@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, CheckCircle2, TriangleAlert } from "lucide-react";
-import { api, APP_ECOSYSTEMS, assetsQ, dependenciesNeeded, filtersToApi, coverageQ, settingsQ, filtersToSearch, jobAnchor, JOB_STATUS_LABEL, parseFilters, plural, PRIORITIES, PRIORITY_LABEL, priorityOf, summaryQ, useTitle, type Action, type ImageToRebuild } from "./lib";
+import { ArrowRight, CheckCircle2, RotateCw, TriangleAlert } from "lucide-react";
+import { api, APP_ECOSYSTEMS, assetsQ, dependenciesNeeded, filtersToApi, coverageQ, settingsQ, filtersToSearch, jobAnchor, JOB_STATUS_LABEL, parseFilters, plural, PRIORITIES, PRIORITY_LABEL, priorityOf, summaryQ, useTitle, type Action, type ImageToRebuild, type RestartToFinish } from "./lib";
 import { PlanFixButton } from "./planfix";
 import { TicketLinks } from "./tickets";
 import { ActionRow, btnQuiet, ErrorState, KevBadge, Loading, PriorityPill, StatusPill } from "./ui";
@@ -71,6 +71,8 @@ export function Home() {
         </section>
       )}
 
+      {!!s.restarts?.length && <RestartsToFinish rows={s.restarts} />}
+
       {/* one row on phones too, so the first recommended fix starts on the first screen */}
       <p aria-hidden className="-mb-6 text-xs text-muted sm:hidden">Open findings by priority</p>
       <ul className="grid grid-cols-4 gap-1.5 sm:gap-2" aria-label="Open findings by priority">
@@ -121,6 +123,28 @@ export function Home() {
       </section>
       {!!s.images_to_rebuild?.length && <RebuildImages images={s.images_to_rebuild} />}
     </div>
+  );
+}
+
+/** Fixes installed while a program still runs the copy they replaced (DECISIONS 161): applied, not yet in effect. */
+export function RestartsToFinish({ rows }: { rows: RestartToFinish[] }) {
+  const findings = rows.reduce((n, r) => n + r.findings, 0);
+  return (
+    <section aria-labelledby="restarts" className="border border-line-strong bg-surface p-4">
+      <h2 id="restarts" className="flex items-center gap-2 font-semibold"><RotateCw className="size-4" aria-hidden />Restart to finish</h2>
+      <p className="mt-1 max-w-prose text-sm text-muted">{plural(findings, "finding")} {findings === 1 ? "is" : "are"} fixed on disk, but a running program still uses the copy the fix replaced, so the vulnerable code is still in memory. Each closes on the report after the restart.</p>
+      <ul className="mt-2 flex flex-col gap-1.5 text-sm">
+        {rows.map((r) => (
+          <li key={r.package} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <PriorityPill priority={priorityOf(r.max_score, r.kev)} />{r.kev && <KevBadge />}
+            <span className="min-w-0 break-words"><strong className="font-semibold">{r.package}</strong> on {r.hosts.length <= 2 ? r.hosts.join(" and ") : `${r.hosts.slice(0, 2).join(", ")} and ${plural(r.hosts.length - 2, "more machine")}`}
+              {r.programs.length > 0 && <>: restart <span className="font-mono">{r.programs.slice(0, 3).join(", ")}</span>{r.programs.length > 3 && ` and ${r.programs.length - 3} more`}</>}</span>
+            <Link to="/findings" search={filtersToSearch({ ...parseFilters({}), q: r.package, running: "restart" })} className="inline-flex tap items-center text-ink underline decoration-line-strong hover:decoration-ink">
+              {plural(r.findings, "finding")}<span className="sr-only"> waiting for a restart for {r.package}</span></Link>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -194,6 +218,15 @@ export function ActionCard({ a }: { a: Action }) {
           <span className="hidden md:inline">: {(allHosts ? a.hosts : a.hosts.slice(0, 3)).join(", ")}{a.hosts.length > 3 && !allHosts && <>{" "}
             <button className="cursor-pointer text-ink underline decoration-line-strong hover:decoration-ink" onClick={() => setAllHosts(true)}>and {a.hosts.length - 3} more<span className="sr-only"> hosts for {a.package}</span></button></>}</span>
         </p>
+        {a.runtime && a.runtime.loaded > 0 && (
+          <p className="mt-1 text-sm">
+            <Link to="/findings" search={filtersToSearch({ ...parseFilters({}), q: a.package, ecosystem: a.ecosystem, running: a.runtime.listening ? "listening" : "loaded" })}
+              className="text-ink underline decoration-line-strong hover:decoration-ink">
+              {a.runtime.listening > 0 ? `Loaded by a program listening on the network on ${plural(a.runtime.listening, "machine")}` : `Loaded by a running program on ${plural(a.runtime.loaded, "machine")}`}</Link>
+            {a.runtime.listening > 0 && a.runtime.loaded > a.runtime.listening && <span className="text-muted">, by one not listening on {plural(a.runtime.loaded - a.runtime.listening, "more")}</span>}
+          </p>)}
+        {a.runtime && !a.runtime.loaded && a.runtime.not_loaded === a.hosts.length && (
+          <p className="mt-1 text-sm text-muted">Not loaded by any long-running program on these machines in a week of reads.</p>)}
         {a.plannable
           ? (a.person_only || a.forward_only) && <p className="mt-1 text-sm text-muted">{a.person_only && "A person approves this one, never the trust ladder."}{a.forward_only && " It can't be undone."}</p>
           : <p className="mt-1 text-sm text-muted">Nimstead can't plan this one: update it with its own updater or by policy.</p>}

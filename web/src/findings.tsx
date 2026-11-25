@@ -7,7 +7,7 @@ import { ArrowDown, ArrowRight, ArrowUpDown, Bookmark, ChevronDown, ChevronUp, E
 import clsx from "clsx";
 import {
   ACTIVE_JOB_STATUSES, adminGate, announce, ApiError, savedViews, saveViews, settingsQ, type SavedView, aiFilterToPatch, aiStatusQ, api, assetsQ, FINDINGS_CAP, filtersToApi, filtersToSearch, jobAnchor, looksLikeQuestion, NO_OWNER, ownersOf, parseFilters, pct, plural,
-  PRIORITIES, PRIORITY_LABEL, refresh, relativeTime, parseUtc, useIsAdmin, useTitle, whyMatched, fixLabel, type AiFilter, type Finding, type FindingGroup, type FindingGroupRow, type FindingSort, type FindingsFilters, type Job, type RawSearch, type Status,
+  networkAddress, PRIORITIES, PRIORITY_LABEL, refresh, RUNTIME_LABEL, RUNTIME_STATES, type FindingRunning, relativeTime, parseUtc, useIsAdmin, useTitle, whyMatched, fixLabel, type AiFilter, type Finding, type FindingGroup, type FindingGroupRow, type FindingSort, type FindingsFilters, type Job, type RawSearch, type Status,
 } from "./lib";
 import { PlanFixButton } from "./planfix";
 import { TicketLinks } from "./tickets";
@@ -49,7 +49,7 @@ export function FindingsPage({ search }: { search: RawSearch }) {
     onSuccess: (a) => { if (here.current !== "/findings") return; const p = aiFilterToPatch(a); setText(p.q ?? ""); setAsked(true); set(p); },
   });
   const [showFilters, setShowFilters] = useState(false);
-  const moreOn = f.priority.length + Number(f.kev) + Number(f.overdue) + Number(f.fixable) + Number(!!f.owner || f.noOwner);
+  const moreOn = f.priority.length + Number(f.kev) + Number(f.overdue) + Number(f.fixable) + Number(!!f.owner || f.noOwner) + Number(!!f.running);
   const [moreOpen, setMoreOpen] = useState(moreOn > 0);
   const active = moreOn + Number(!!f.asset) + Number(!!f.ecosystem);
   useEffect(() => {
@@ -96,7 +96,7 @@ export function FindingsPage({ search }: { search: RawSearch }) {
   const allQs = filtersToApi({ ...f, fixable: false }, false);
   const all = useQuery({ queryKey: ["findings", "count", allQs], queryFn: () => api<{ total: number }>(`/api/findings/count?${allQs}`), enabled: !f.group && f.fixable, placeholderData: (p) => p });
   // a narrowed list says of how many (DESIGN.md: a filter that hides something says how much)
-  const narrowed = f.priority.length > 0 || f.kev || f.overdue || !!f.asset || !!f.ecosystem || !!f.q || !!f.owner || f.noOwner;
+  const narrowed = f.priority.length > 0 || f.kev || f.overdue || !!f.asset || !!f.ecosystem || !!f.q || !!f.owner || f.noOwner || !!f.running;
   const baseQs = filtersToApi({ ...parseFilters({}), status: f.status, fixable: false }, false);
   const base = useQuery({ queryKey: ["findings", "count", baseQs], queryFn: () => api<{ total: number }>(`/api/findings/count?${baseQs}`), enabled: !f.group && narrowed && !f.fixable, placeholderData: (p) => p });
   const groups = useQuery({ queryKey: ["findings", "groups", f.group, filterQs], queryFn: () => api<FindingGroupRow[]>(`/api/findings/groups?by=${f.group}&${filterQs}`),
@@ -107,7 +107,7 @@ export function FindingsPage({ search }: { search: RawSearch }) {
   const owners = useMemo(() => ownersOf(assets.data ?? []), [assets.data]);
   const updating = f.group ? groups.isPlaceholderData : list.isPlaceholderData;
   // back to the default view: every open finding, by risk
-  const clearAll = () => { setAsked(false); setText(""); set({ fixable: false, kev: false, overdue: false, q: "", priority: [], asset: "", ecosystem: "", owner: "", noOwner: false }); };
+  const clearAll = () => { setAsked(false); setText(""); set({ fixable: false, kev: false, overdue: false, q: "", priority: [], asset: "", ecosystem: "", owner: "", noOwner: false, running: "" }); };
 
   return (
     <div className="flex flex-col gap-4">
@@ -195,6 +195,12 @@ export function FindingsPage({ search }: { search: RawSearch }) {
                 <option value="">Any</option>{[...new Set([...owners, ...(f.owner ? [f.owner] : [])])].map((o) => <option key={o} value={o}>{o}</option>)}<option value={NO_OWNER}>No owner</option>
               </select>
             </label>}
+            <label className="flex items-center gap-2 text-sm" title="What the machine's agent saw running: a program that loaded the package, one listening on the network, or a fix still waiting for a restart">
+              <span className="text-muted">Running</span>
+              <select className={clsx(input, "w-auto max-w-48 md:min-h-8")} value={f.running} onChange={(e) => set({ running: e.target.value as FindingsFilters["running"] })}>
+                <option value="">Any</option>{RUNTIME_STATES.map((r) => <option key={r} value={r}>{RUNTIME_LABEL[r]}</option>)}
+              </select>
+            </label>
           </div>}
           {narrowed && (
             <button className="tap cursor-pointer text-sm underline" onClick={clearAll}>Clear filters</button>
@@ -562,6 +568,8 @@ export function FindingDetail({ f }: { f: Finding }) {
       <TicketLinks tickets={f.ticket ? [f.ticket] : null} className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted" />
       {f.rule_evidence && <p className="mt-2 text-sm text-muted">{RULE_EVIDENCE[f.rule_evidence]}</p>}
 
+      {f.running && <Running r={f.running} pkg={f.package} />}
+
       <H>Why it's ranked here</H>
       <ul className="list-disc space-y-1 pl-5 text-sm">{f.reasons.map((r) => <li key={r}>{r}</li>)}</ul>
 
@@ -592,6 +600,39 @@ export function FindingDetail({ f }: { f: Finding }) {
 }
 
 const H = ({ children }: { children: ReactNode }) => <h3 className="mb-1.5 mt-6 text-sm font-semibold">{children}</h3>;
+
+/** What runs it (DECISIONS 161): the programs the agent saw load this package, where they listen, and what a sample can't see. */
+export function Running({ r, pkg }: { r: FindingRunning; pkg: string }) {
+  const read = <>Read {relativeTime(r.read_at)}{r.read_state !== "ok" && <> (in part: {r.read_problem})</>}.</>;
+  const lib = r.binary && r.binary !== pkg ? <><strong className="font-semibold">{r.binary}</strong> (from {pkg})</> : <strong className="font-semibold">{pkg}</strong>;
+  const said = r.state === "restart"
+    ? <p><strong className="font-semibold">Fixed on disk, still running.</strong> {r.programs.filter((p) => p.replaced.length).map((p) => p.name).join(", ") || "A program"} still runs the copy the fix replaced, so the vulnerable code is still in memory. Restart it (or the machine) and this closes on the next report.</p>
+    : r.state === "listening" ? <p>{lib} is loaded by a program listening on the network. A flaw reached over the network ranks higher for it (the host firewall isn't read).</p>
+    : r.state === "loaded" ? <p>{lib} is loaded by a running program that isn't listening on the network.</p>
+    : r.state === "not_loaded" ? <p>No long-running program has loaded {pkg} in seven days of reads. Programs that run for a moment, like cron jobs and commands, aren't seen, so this lowers only flaws reached over the network, never known-exploited ones or local ones.</p>
+    : r.covered ? <p>Nothing says either way: {pkg} ships no native code the agent can see loaded (a Python or Perl module is read, not mapped), or the latest reads were partial.</p>
+    : <p>No program was seen loading {pkg}. Nimstead says "not loaded" only after seven days of complete reads{r.since && <>; it has been watching since {parseUtc(r.since).toLocaleDateString(undefined, { day: "numeric", month: "short" })}</>}.</p>;
+  return (
+    <>
+      <H>What runs it</H>
+      <div className="flex max-w-prose flex-col gap-2 text-sm">
+        {said}
+        {r.programs.length > 0 && <ul className="flex flex-col gap-1">
+          {r.programs.map((p) => (
+            <li key={p.name} className="break-words">
+              <strong className="break-all font-mono font-medium">{p.name}</strong>
+              <span className="text-muted"> as {p.users.join(", ") || "?"}{p.loads.length > 1 || (r.binary && p.loads[0] !== r.binary) ? ` · loads ${p.loads.join(", ")}` : ""}</span>
+              {p.listen.filter(networkAddress).length > 0 ? <span> · listening on <span className="font-mono">{p.listen.filter(networkAddress).join(", ")}</span></span>
+                : p.listen.length > 0 ? <span className="text-muted"> · listening on this machine only ({p.listen.join(", ")})</span> : null}
+              {p.replaced.length > 0 && <span className="font-medium text-now-fg"> · runs a replaced copy</span>}
+            </li>
+          ))}
+        </ul>}
+        <p className="text-muted">{read}</p>
+      </div>
+    </>
+  );
+}
 
 /** "Due 3 Nov (in 6 days)" or "12 days overdue", from the deadline in force when it was first detected. */
 function Due({ due }: { due: string }) {

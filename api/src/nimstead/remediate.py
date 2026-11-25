@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
-from nimstead import evidence, msproducts
+from nimstead import evidence, msproducts, runtime
 from nimstead.db import Advisory, Asset, Finding, InstalledPackage, LedgerEntry, Org, RemediationJob, now
 from nimstead.match import normalize_ecosystem
 from nimstead.notify import SILENT_AFTER, notify
@@ -43,6 +43,7 @@ CONFIG_FIXES = frozenset({"wdigest", "ntlmv1", "llmnr", "smb-signing", "smb1", "
                           "insecure-guest-auth", "winrm-basic", "winrm-unencrypted", "script-block-logging"})
 FORWARD_ONLY = ("winget",)  # can't be undone: a person approves it as such, never the trust ladder (plan T22)
 MANUAL_ONLY = ("winget", "winconfig")  # setting changes can break old clients: a person decides (plan decision 11)
+LINUX_MANAGERS = ("apt", "apk", "dnf", "zypper")  # the agent's Job: package managers whose fixes restart what ran the old copy
 
 
 def servicing(job: RemediationJob) -> bool:
@@ -71,6 +72,9 @@ WIN_TIMEOUT_MARGIN = timedelta(hours=4)
 WIN_TIMEOUT_ERROR = "Agent did not report a result by 4 hours after the restart deadline; check the host"
 VERIFY_TIMEOUT = timedelta(days=7)
 VERIFY_TIMEOUT_ERROR = "Applied, but no full inventory arrived within 7 days to prove it fixed; check the host"
+WAITING = "Waiting for a restart: "  # applied, and a program still runs the copy it replaced (DECISIONS 161)
+RESTART_TIMEOUT_ERROR = ("Applied, but a program kept running the copy it replaced for 7 days, so the fix never took effect; restart "
+                         "it or the machine (its findings stay open until then)")
 
 
 class RemediationError(Exception):
@@ -615,7 +619,7 @@ def sweep(s: Session, org_id: str) -> None:
     # applied, then only partial inventories (or none): without this the job stays active and blocks that fix for ever
     for job in s.scalars(select(RemediationJob).where(RemediationJob.org_id == org_id, RemediationJob.status == "verifying",
                                                       RemediationJob.updated < now() - VERIFY_TIMEOUT).execution_options(populate_existing=True)):
-        job.status, job.error = "failed", VERIFY_TIMEOUT_ERROR
+        job.status, job.error = "failed", RESTART_TIMEOUT_ERROR if (job.error or "").startswith(WAITING) else VERIFY_TIMEOUT_ERROR
         _log(s, job, "remediation_failed", error=job.error)
     s.commit()
 
@@ -789,8 +793,12 @@ def verify(s: Session, asset: Asset) -> None:
         if job.action_key.split("|", 1)[0] in blocked:  # e.g. a list read in part may just have missed the upgraded app
             continue
         # accepted is not fixed: accepting a risk mid-verification must not turn the job into a success (or a canary proof)
-        still_open = [f.vuln_id for f in s.scalars(select(Finding).where(Finding.id.in_(job.finding_ids),
-                                                                         Finding.status.in_(("open", "accepted"))))]
+        still = s.scalars(select(Finding).where(Finding.id.in_(job.finding_ids), Finding.status.in_(("open", "accepted")))).all()
+        still_open = [f.vuln_id for f in still]
+        if still and all(f.runtime == "restart" for f in still):  # the fix is on disk but the old copy still runs: not judged yet
+            who = runtime.view(s, asset).replaced_by([p.get("name", "") for p in job.packages or []], job.action_key.split("|", 1)[-1])
+            job.error = f"{WAITING}the fix is installed, but {', '.join(who) or 'a program'} still run{'s' * (len(who) < 2)} the copy it replaced"[:500]
+            continue
         if still_open and (step := _stepped(job)):  # what's left needs the next job; those findings stay open (DECISIONS 67)
             job.status = "succeeded"
             _log(s, job, "remediation_stepped", to=step, still_open=still_open)
@@ -798,7 +806,7 @@ def verify(s: Session, asset: Asset) -> None:
             job.status, job.error = "not_fixed", f"Upgrade applied but still vulnerable: {', '.join(still_open[:10])}"
             _log(s, job, "remediation_not_fixed", still_open=still_open)
         else:
-            job.status = "succeeded"
+            job.status, job.error = "succeeded", None  # a "waiting for a restart" note is over
             _log(s, job, "remediation_succeeded", fixed=len(job.finding_ids))
 
 

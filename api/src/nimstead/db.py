@@ -159,6 +159,24 @@ class InstalledPackage(Base):
     origin: Mapped[str] = mapped_column(String(10), default="agent", server_default="agent")  # agent | sbom: each replaces only its own rows
 
 
+class AssetRuntime(Base):
+    """What runs on a host (DECISIONS 161): its agent's latest read, and what was seen loaded in the last seven days, so a
+    sample doesn't flap. One row per host, read by that host's rescan, its drawer and Fix first's restarts, never the assets list."""
+    __tablename__ = "asset_runtime"
+    asset_id: Mapped[str] = mapped_column(ForeignKey("asset.id", ondelete="CASCADE"), primary_key=True)
+    org_id: Mapped[str] = mapped_column(ForeignKey("org.id"), index=True)
+    read_at: Mapped[datetime] = mapped_column(default=now)  # the latest read's arrival
+    state: Mapped[str] = mapped_column(String(10), default="failed")  # the latest read's: ok | partial | failed
+    problem: Mapped[str | None] = mapped_column(String(300))
+    since: Mapped[datetime | None]  # first of the complete reads that followed one another with no gap over a day
+    last_complete: Mapped[datetime | None]
+    programs: Mapped[list] = mapped_column(default=list)  # the latest read's programs
+    native: Mapped[list] = mapped_column(default=list)  # packages that ship native code: only they can be "not loaded"
+    seen: Mapped[dict] = mapped_column(default=dict)  # package -> when last seen loaded, and by a network listener, and by what
+    replaced: Mapped[dict] = mapped_column(default=dict)  # the latest read's package -> programs running a replaced copy
+    replaced_count: Mapped[int] = mapped_column(Integer, default=0)  # so Fix first reads only the hosts that have some
+
+
 class Advisory(Base):
     """Feed data keyed by ID, ecosystem and package, including OSV and auxiliary metadata."""
 
@@ -262,6 +280,8 @@ class Finding(Base):
     last_seen: Mapped[datetime] = mapped_column(default=now)
     resolved_at: Mapped[datetime | None]
     accepted_until: Mapped[datetime | None]
+    # what runs (DECISIONS 161): listening | loaded | not_loaded | restart (fixed on disk, a program still runs the old copy); None = unknown
+    runtime: Mapped[str | None] = mapped_column(String(12))
     __table_args__ = (UniqueConstraint("asset_id", "ecosystem", "package", "vuln_id"),
                       Index("ix_finding_open_actions", "org_id", "status", "ecosystem", "package"))  # home-page summary
 

@@ -65,13 +65,30 @@ def _tier(s: int) -> str:
     return next(p for t, p in PRIORITY if s >= t)
 
 
+def attack_vectors(severity: list[dict] | None, nvd_vectors: list[str] = ()) -> set[str]:
+    """The CVSS attack vectors (N, A, L, P) a finding's flaws are reached by: from the advisory's own CVSS vectors, else
+    NVD's for its CVEs. Empty when none says. Malformed vectors are skipped."""
+    own = [v for x in severity or [] if isinstance(v := x.get("score"), str) and str(x.get("type", "")).startswith("CVSS_V")]
+    found = set()
+    for v in own or list(nvd_vectors):
+        for part in str(v).split("/"):
+            if part.startswith("AV:") and part[3:] in ("N", "A", "L", "P"):
+                found.add(part[3:])
+    return found
+
+
 def context(r: Risk, *, kev: bool, ransomware: bool = False, public_exploit: bool = False, exploit_db: bool = False, msrc: dict | None = None,
-            roles: list | None = None, listening: str | None = None) -> Risk:
+            roles: list | None = None, listening: str | None = None, runtime: tuple[str, str | None] | None = None,
+            vectors: set[str] | None = None) -> Risk:
     """Return r with additional threat and exposure reasons and an adjusted priority.
 
     kev, ransomware, public_exploit, and exploit_db are boolean signals. msrc is optional
     Microsoft threat metadata; roles lists installed Windows features; listening is an optional
-    exposure explanation. Known exploitation is never reduced for an absent role.
+    exposure explanation. Known exploitation is never reduced for an absent role. runtime is (state, reason) from what runs
+    on the host (DECISIONS 161) and vectors the flaws' CVSS attack vectors: a flaw reachable over the network in a package a
+    network listener has loaded gains 15; one in native code nothing has loaded for seven days loses a quarter, only when
+    every vector is network or adjacent and nothing says it's exploited or has a public exploit. A local flaw is never
+    lowered: a local user runs the program themselves.
     Signals are trusted rather than cross-validated. Empty or absent roles do not establish
     that a feature is absent. The input Risk is not mutated; unchanged results reuse it."""
     msrc = msrc or {}
@@ -99,6 +116,17 @@ def context(r: Risk, *, kev: bool, ransomware: bool = False, public_exploit: boo
     if listening:  # this host's copy of the product is reachable over the network, as read by the agent (DECISIONS 72)
         s = min(100, s + 15) if not kev else s
         reasons.append(listening)
+    state, why = runtime or (None, None)
+    vectors = vectors or set()
+    if state == "listening" and (not vectors or vectors & {"N", "A"}):
+        s = min(100, s + 15) if not kev else s
+        reasons.append(why)
+    elif state in ("listening", "loaded") and why:
+        reasons.append(why)
+    elif (state == "not_loaded" and vectors and vectors <= {"N", "A"} and not kev and not msrc.get("exploited")
+          and not public_exploit and not exploit_db):
+        s = round(s * 0.75)
+        reasons.append(why)
     if s == r.score and reasons == r.reasons:
         return r
     return Risk(s, "fix-now" if kev or msrc.get("exploited") else _tier(s), reasons)

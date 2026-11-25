@@ -1,0 +1,48 @@
+5d9c3700f000-5d9c37032000 r--p 00000000 08:30 591                        /usr/sbin/nginx
+5d9c37032000-5d9c370bf000 r-xp 00023000 08:30 591                        /usr/sbin/nginx
+5d9c370bf000-5d9c370ee000 r--p 000b0000 08:30 591                        /usr/sbin/nginx
+5d9c370ee000-5d9c370f0000 r--p 000de000 08:30 591                        /usr/sbin/nginx
+5d9c370f0000-5d9c37108000 rw-p 000e0000 08:30 591                        /usr/sbin/nginx
+5d9c37108000-5d9c37127000 rw-p 00000000 00:00 0 
+5d9c7567d000-5d9c7567e000 ---p 00000000 00:00 0                          [heap]
+5d9c7567e000-5d9c75680000 rw-p 00000000 00:00 0                          [heap]
+7b4d66124000-7b4d66193000 rw-p 00000000 00:00 0 
+7b4d66193000-7b4d66393000 rw-s 00000000 00:01 15405                      /dev/zero (deleted)
+7b4d66393000-7b4d66395000 rw-p 00000000 00:00 0 
+7b4d66396000-7b4d66397000 rw-s 00000000 00:01 15406                      /dev/zero (deleted)
+7b4d66397000-7b4d663c5000 rw-p 00000000 00:00 0 
+7b4d663ca000-7b4d663cc000 rw-p 00000000 00:00 0 
+7b4d663cc000-7b4d663ce000 rw-s 00000000 00:13 46297                      /[aio] (deleted)
+7b4d663ce000-7b4d663e5000 rw-p 00000000 00:00 0 
+7b4d663e5000-7b4d663e8000 r--p 00000000 08:30 345                        /usr/lib/libz.so.1.3.1 (deleted)
+7b4d663e8000-7b4d663f7000 r-xp 00003000 08:30 345                        /usr/lib/libz.so.1.3.1 (deleted)
+7b4d663f7000-7b4d663fe000 r--p 00012000 08:30 345                        /usr/lib/libz.so.1.3.1 (deleted)
+7b4d663fe000-7b4d663ff000 r--p 00018000 08:30 345                        /usr/lib/libz.so.1.3.1 (deleted)
+7b4d663ff000-7b4d66400000 rw-p 00019000 08:30 345                        /usr/lib/libz.so.1.3.1 (deleted)
+7b4d66400000-7b4d6644b000 r--p 00000000 08:30 346                        /usr/lib/libcrypto.so.3 (deleted)
+7b4d6644b000-7b4d66711000 r-xp 0004b000 08:30 346                        /usr/lib/libcrypto.so.3 (deleted)
+7b4d66711000-7b4d667e9000 r--p 00311000 08:30 346                        /usr/lib/libcrypto.so.3 (deleted)
+7b4d667e9000-7b4d66846000 r--p 003e9000 08:30 346                        /usr/lib/libcrypto.so.3 (deleted)
+7b4d66846000-7b4d66849000 rw-p 00446000 08:30 346                        /usr/lib/libcrypto.so.3 (deleted)
+7b4d66849000-7b4d6684d000 rw-p 00000000 00:00 0 
+7b4d6684d000-7b4d66865000 rw-p 00000000 00:00 0 
+7b4d66865000-7b4d66878000 r--p 00000000 08:30 343                        /usr/lib/libssl.so.3 (deleted)
+7b4d66878000-7b4d668eb000 r-xp 00013000 08:30 343                        /usr/lib/libssl.so.3 (deleted)
+7b4d668eb000-7b4d66919000 r--p 00086000 08:30 343                        /usr/lib/libssl.so.3 (deleted)
+7b4d66919000-7b4d66924000 r--p 000b4000 08:30 343                        /usr/lib/libssl.so.3 (deleted)
+7b4d66924000-7b4d66928000 rw-p 000bf000 08:30 343                        /usr/lib/libssl.so.3 (deleted)
+7b4d66928000-7b4d6692a000 r--p 00000000 08:30 573                        /usr/lib/libpcre.so.1.2.13
+7b4d6692a000-7b4d66967000 r-xp 00002000 08:30 573                        /usr/lib/libpcre.so.1.2.13
+7b4d66967000-7b4d66982000 r--p 0003f000 08:30 573                        /usr/lib/libpcre.so.1.2.13
+7b4d66982000-7b4d66983000 r--p 0005a000 08:30 573                        /usr/lib/libpcre.so.1.2.13
+7b4d66983000-7b4d66984000 rw-p 0005b000 08:30 573                        /usr/lib/libpcre.so.1.2.13
+7b4d66984000-7b4d66988000 r--p 00000000 00:00 0                          [vvar]
+7b4d66988000-7b4d6698a000 r--p 00000000 00:00 0                          [vvar_vclock]
+7b4d6698a000-7b4d6698c000 r-xp 00000000 00:00 0                          [vdso]
+7b4d6698c000-7b4d669a0000 r--p 00000000 08:30 116                        /lib/ld-musl-x86_64.so.1 (deleted)
+7b4d669a0000-7b4d669f7000 r-xp 00014000 08:30 116                        /lib/ld-musl-x86_64.so.1 (deleted)
+7b4d669f7000-7b4d66a2d000 r--p 0006b000 08:30 116                        /lib/ld-musl-x86_64.so.1 (deleted)
+7b4d66a2d000-7b4d66a2e000 r--p 000a0000 08:30 116                        /lib/ld-musl-x86_64.so.1 (deleted)
+7b4d66a2e000-7b4d66a2f000 rw-p 000a1000 08:30 116                        /lib/ld-musl-x86_64.so.1 (deleted)
+7b4d66a2f000-7b4d66a32000 rw-p 00000000 00:00 0 
+7ffe81a2e000-7ffe81a4f000 rw-p 00000000 00:00 0                          [stack]

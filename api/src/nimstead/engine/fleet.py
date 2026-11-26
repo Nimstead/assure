@@ -242,7 +242,10 @@ def key_edges(hosts: list[dict]) -> tuple[list[dict], bool]:
                         because.append(why)
                 for weak, why in ((k.get("passphrase"), "the key needs its passphrase"), (t.get("forced"), "B signs this key in only to a forced command"),
                                   (sshd.get("authorizedkeyscommand"), "B also takes keys from a command that isn't read"),
-                                  (k.get("type") in _WEAK_TYPES, _WEAK_TYPES.get(k.get("type"), "")), (user_unjudged, user_unjudged), (from_unjudged, from_unjudged)):
+                                  (k.get("type") in _WEAK_TYPES, _WEAK_TYPES.get(k.get("type"), "")), (user_unjudged, user_unjudged), (from_unjudged, from_unjudged),
+                                  # a user could plant a file showing someone else's public half: only root's word, or a checked key, is believed
+                                  (k["account"] != "root" and not k.get("passphrase") and k.get("checked") is False,
+                                   "the key file's private half couldn't be checked against its public half")):
                     if weak:
                         grade = "unverified"
                         because.append(why)

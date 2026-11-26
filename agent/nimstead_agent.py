@@ -1761,17 +1761,57 @@ def parse_private_key(data):
             _, at = _ssh_string(raw, at)  # kdf options
             if at + 4 > len(raw) or int.from_bytes(raw[at:at + 4], "big") < 1:
                 return None
-            blob, _ = _ssh_string(raw, at + 4)
+            blob, at = _ssh_string(raw, at + 4)
             kind = _blob_type(blob)
+            checked = _private_matches(blob, raw, at) if cipher == b"none" else None
         except (ValueError, UnicodeDecodeError, binascii.Error):
             return None
-        return {"type": kind if kind in KEY_TYPES else "other", "fp": ssh_fingerprint(blob), "passphrase": cipher != b"none", "format": "openssh"}
+        if checked is False:  # its private half belongs to another key: a planted claim, never counted
+            return {"type": kind if kind in KEY_TYPES else "other", "fp": None, "passphrase": False, "format": "openssh", "mismatch": True}
+        return {"type": kind if kind in KEY_TYPES else "other", "fp": ssh_fingerprint(blob), "passphrase": cipher != b"none", "format": "openssh",
+                "checked": checked is True}
     m = re.search(r"-----BEGIN (RSA |EC |DSA |ENCRYPTED |)PRIVATE KEY-----", text)
     if not m:
         return None
     kind = {"RSA ": "ssh-rsa", "EC ": "ecdsa", "DSA ": "ssh-dss"}.get(m.group(1), "other")
     head = text[m.end():m.end() + 200]
     return {"type": kind, "fp": None, "passphrase": m.group(1) == "ENCRYPTED " or "Proc-Type: 4,ENCRYPTED" in head, "format": "pem"}
+
+
+def _mpint(buf, at):
+    b, at = _ssh_string(buf, at)
+    return int.from_bytes(b, "big"), at
+
+
+def _private_matches(blob, raw, at):
+    """Whether an unencrypted OpenSSH key's private half belongs to its public half: Ed25519 by deriving the public key from
+    the seed, RSA by n = p*q with the public n and e. None when it can't be checked here (ECDSA and others: no curve
+    arithmetic in the agent), False on a mismatch. In memory only; nothing of the private half is kept or sent."""
+    try:
+        section, _ = _ssh_string(raw, at)
+        if len(section) < 8 or section[:4] != section[4:8]:  # the two check integers match when the section isn't encrypted
+            return False
+        kind, p = _ssh_string(section, 8)
+        if kind != _blob_type(blob).encode():
+            return False
+        if kind == b"ssh-ed25519":
+            pub, p = _ssh_string(section, p)
+            priv, _ = _ssh_string(section, p)
+            outer, _ = _ssh_string(blob, len(kind) + 4)
+            return pub == outer and len(priv) == 64 and priv[32:] == pub and ed25519_public_of(priv[:32]) == pub
+        if kind == b"ssh-rsa":
+            n, p = _mpint(section, p)
+            e, p = _mpint(section, p)
+            _, p = _mpint(section, p)  # d
+            _, p = _mpint(section, p)  # iqmp
+            q1, p = _mpint(section, p)
+            q2, _ = _mpint(section, p)
+            e_pub, b = _mpint(blob, len(kind) + 4)
+            n_pub, _ = _mpint(blob, b)
+            return n == n_pub == q1 * q2 and e == e_pub and q1 > 1 and q2 > 1
+    except ValueError:
+        return False
+    return None
 
 
 def parse_public_key(line):
@@ -2131,9 +2171,12 @@ def access_read(root="/", run=None, euid=None, clock=time.monotonic):
     shadow = _shadow_states(_text_of(p("/etc/shadow"))) if euid == 0 else {}
     running = _running_uids(p("/proc"))
     by_uid = {u[1]: u for u in reversed(users)}
-    for uid in sorted(running - set(by_uid))[:16]:  # a directory user running a program: getent knows them
-        rc, out = run(["getent", "passwd", str(uid)], 3)
-        for u in parse_passwd(out if rc == 0 else ""):
+    unknown = sorted(running - set(by_uid))[:16]
+    if unknown:  # directory users running a program: one getent call for them all (code review: one each could take 48 s)
+        rc, out = run(["getent", "passwd", *map(str, unknown)], 3)
+        if rc is None:
+            say(f"getent: {out}", stop=True)
+        for u in parse_passwd(out if rc in (0, 2) else ""):  # 2: some weren't found, the rest are listed
             users.append(u)
             by_uid.setdefault(u[1], u)
     homes = set()
@@ -2167,13 +2210,17 @@ def access_read(root="/", run=None, euid=None, clock=time.monotonic):
     if sshd_path:
         rc, out = run([sshd_path, "-T"], 5)
         parsed = parse_sshd_t(out) if rc == 0 else None
-        if parsed is None and "privilege separation directory" in out:  # Debian: /run/sshd exists only while the service runs
+        conf = [_text_of(p("/etc/ssh/sshd_config")) or ""] + [_text_of(f) or "" for f in sorted(glob.glob(p("/etc/ssh/sshd_config.d/*.conf")))[:64]]
+        ports = {m for t in conf for m in re.findall(r"(?im)^\s*port\s+(\d{1,5})\s*$", t)} or {"22"}
+        held_port = any(a.rsplit(":", 1)[1].split("/")[0] in ports for proto in ("tcp", "tcp6")
+                        for a, _ in parse_net(_text_of(p(f"/proc/net/{proto}")) or "", proto))
+        if parsed is None and "privilege separation directory" in out and not held_port:  # Debian: /run/sshd exists only while it runs
             sshd = {"installed": True, "running": False}
-        elif parsed is None:  # its settings unread: nothing about them may be concluded, so the read is partial
+        elif parsed is None:  # its settings unread (or socket activation holds its port): nothing may be concluded, so partial
+            sshd = None
             sshd = None
             say("sshd -T: " + (out.strip().splitlines() or ["no output"])[0][:120], stop=True)
         else:
-            conf = [_text_of(p("/etc/ssh/sshd_config")) or ""] + [_text_of(f) or "" for f in sorted(glob.glob(p("/etc/ssh/sshd_config.d/*.conf")))[:64]]
             sshd = {"installed": True, **parsed, "match": sshd_has_match(conf)}
 
     # sudo: only NOPASSWD: ALL equals root; -n never waits for a password
@@ -2209,9 +2256,13 @@ def access_read(root="/", run=None, euid=None, clock=time.monotonic):
             pass
     if os.path.isdir(p("/run/systemd/system")) and not late():
         rc, out = run(["systemctl", "list-units", "--type=service", "--state=running", "--no-legend", "--plain"], 10)
+        if rc != 0:  # services' files unread: a writable one may be missing, so nothing about them is concluded (code review)
+            say(f"systemctl list-units: {(out or 'failed').strip()[:100]}", stop=True)
         units = [ln.split()[0] for ln in (out if rc == 0 else "").splitlines() if ln.split() and ln.split()[0].endswith(".service")][:ACCESS_ROOT_RUN]
         if units:
-            rc, out = run(["systemctl", "show", "-p", "Id", "-p", "FragmentPath", "-p", "User", "-p", "ExecStart", *units], 10)
+            rc, out = run(["systemctl", "show", "-p", "Id", "-p", "FragmentPath", "-p", "User", "-p", "ExecStart", "--", *units], 10)
+            if rc != 0:
+                say(f"systemctl show: {(out or 'failed').strip()[:100]}", stop=True)
             for u in parse_systemctl_show(out if rc == 0 else ""):
                 if u.get("User", "") in ("", "root", "0"):
                     root_run += [(u["FragmentPath"], "unit")] if u.get("FragmentPath") else []
@@ -2293,6 +2344,9 @@ def access_read(root="/", run=None, euid=None, clock=time.monotonic):
                     k = parse_private_key(data)
                     if k is None:
                         continue
+                    if k.get("mismatch"):
+                        say("a key file whose private half belongs to another key, not counted")
+                        continue
                     if k["fp"] is None and n + ".pub" in names:
                         pub, _, _ = _read_owned(n + ".pub", {uid}, 16384, dfd)
                         pk = parse_public_key(pub.decode("ascii", "replace")) if pub else None
@@ -2302,7 +2356,7 @@ def access_read(root="/", run=None, euid=None, clock=time.monotonic):
                         unidentified += 1
                         continue
                     held.append({"account": a["name"], "path": _where(home.rstrip("/") + "/.ssh/" + n), "type": k["type"], "fp": k["fp"],
-                                 "passphrase": k["passphrase"]})
+                                 "passphrase": k["passphrase"], "checked": k.get("checked") is True})
             mine = 0
             for pat in patterns:
                 path = expand_keys_file(pat, home.rstrip("/"), a["_raw"], uid)
@@ -2311,8 +2365,17 @@ def access_read(root="/", run=None, euid=None, clock=time.monotonic):
                 inside = os.path.dirname(path) == home.rstrip("/") + "/.ssh"
                 if inside and dfd is None:
                     continue  # no readable ~/.ssh: nothing sshd would accept there either
-                data, st, why = _read_owned(os.path.basename(path), {uid, 0}, ACCESS_KEYS_BYTES, dfd) if inside else \
-                    _read_owned(p(path), {uid, 0}, ACCESS_KEYS_BYTES)
+                if inside:
+                    data, st, why = _read_owned(os.path.basename(path), {uid, 0}, ACCESS_KEYS_BYTES, dfd)
+                else:  # elsewhere: each folder opened without following a link (security audit: a user's link in the middle)
+                    pfd = _dir_fd(os.path.dirname(p(path)))
+                    if pfd is None:
+                        say("an authorized_keys file: a folder above it is a link or can't be opened, not read")
+                        continue
+                    try:
+                        data, st, why = _read_owned(os.path.basename(path), {uid, 0}, ACCESS_KEYS_BYTES, pfd)
+                    finally:
+                        os.close(pfd)
                 if data is None:
                     if why:
                         say(f"an authorized_keys file: {why}")
@@ -2333,27 +2396,73 @@ def access_read(root="/", run=None, euid=None, clock=time.monotonic):
             if dfd is not None:
                 os.close(dfd)
         for rel, kind in CREDENTIAL_FILES:
-            try:
-                if stat.S_ISREG(os.lstat(p(home.rstrip("/") + "/" + rel)).st_mode):
-                    creds.append({"kind": kind, "account": a["name"], "path": _where(home.rstrip("/") + "/" + rel)})
-            except OSError:
-                pass
-    try:
-        if stat.S_ISREG(os.lstat(p("/etc/krb5.keytab")).st_mode):
-            creds.append({"kind": "keytab", "account": "root", "path": "/etc/krb5.keytab"})
-    except OSError:
-        pass
-    sockets = 0
-    for s in glob.glob(p("/tmp/ssh-*/agent.*"))[:64]:  # noqa: S108 — where ssh-agent puts its sockets; only counted, never opened
-        try:
-            sockets += stat.S_ISSOCK(os.lstat(s).st_mode)
-        except OSError:
-            pass
+            if _regular_beneath(p(home.rstrip("/") + "/" + rel)):
+                creds.append({"kind": kind, "account": a["name"], "path": _where(home.rstrip("/") + "/" + rel)})
+    if _regular_beneath(p("/etc/krb5.keytab")):
+        creds.append({"kind": "keytab", "account": "root", "path": "/etc/krb5.keytab"})
+    sockets = _agent_sockets(p("/tmp"))  # noqa: S108 — where ssh-agent puts its sockets; only counted, never opened
     for a in accounts:
         del a["_home"], a["_raw"]
     return {"v": 1, "state": "partial" if partial else "ok", "problem": "; ".join(problems)[:300] or None, "sshd": sshd,
             "accounts": accounts, "writable": writable, "shadow_readable_by": shadow_by, "held": held[:256], "trusted": trusted,
             "credentials": creds[:100], "agent_sockets": sockets, "unidentified_keys": unidentified}
+
+
+def _dir_fd(path):
+    """A descriptor for folder path, opened one component at a time without following a link, or None: a link a user put in
+    the middle of a path is refused, never followed (security audit)."""
+    try:
+        fd = os.open("/", _ACCESS_DIR)
+    except OSError:
+        return None
+    try:
+        for part in [x for x in path.split("/") if x]:
+            nfd = os.open(part, _ACCESS_DIR, dir_fd=fd)
+            os.close(fd)
+            fd = nfd
+        return fd
+    except OSError:
+        os.close(fd)
+        return None
+
+
+def _regular_beneath(path):
+    """Whether path is a regular file reached without following a link anywhere on the way."""
+    fd = _dir_fd(os.path.dirname(path))
+    if fd is None:
+        return False
+    try:
+        return stat.S_ISREG(os.stat(os.path.basename(path), dir_fd=fd, follow_symlinks=False).st_mode)
+    except OSError:
+        return False
+    finally:
+        os.close(fd)
+
+
+AGENT_SOCKET_SCAN = 4096  # /tmp entries looked at; a user can fill /tmp, and the count is only a hint
+
+
+def _agent_sockets(tmp):
+    """How many ssh-agent sockets (/tmp/ssh-*/agent.*) there are, at most 64: never through a link, at most AGENT_SOCKET_SCAN
+    entries of /tmp and 16 of each folder (security audit: glob followed links and listed everything before it sliced)."""
+    n = seen = 0
+    try:
+        with os.scandir(tmp) as it:
+            for e in it:
+                seen += 1
+                if seen > AGENT_SOCKET_SCAN or n >= 64:
+                    break
+                if not (e.name.startswith("ssh-") and e.is_dir(follow_symlinks=False)):
+                    continue
+                with os.scandir(e.path) as inner:
+                    for k, s in enumerate(inner):
+                        if k >= 16:
+                            break
+                        if s.name.startswith("agent.") and stat.S_ISSOCK(s.stat(follow_symlinks=False).st_mode):
+                            n += 1
+    except OSError:
+        pass
+    return min(n, 64)
 
 
 def _strict_ok(st, path, stop, uid):
@@ -5676,6 +5785,18 @@ def _ed_decode(b):
 
 
 _ED_BASE = _ed_decode((4 * pow(5, _P - 2, _P) % _P).to_bytes(32, "little"))
+
+
+def ed25519_public_of(seed):
+    """The Ed25519 public key a 32-byte private seed gives (RFC 8032 5.1.5): only to check that a key file's private half
+    matches the public half it shows (security audit: a user could plant a file claiming someone else's public key). Never
+    signs anything."""
+    h = hashlib.sha512(seed).digest()
+    a = int.from_bytes(h[:32], "little") & ((1 << 254) - 8) | (1 << 254)
+    x, y, z, _ = _ed_mul(a, _ED_BASE)
+    zi = pow(z, _P - 2, _P)
+    x, y = x * zi % _P, y * zi % _P
+    return (y | (x & 1) << 255).to_bytes(32, "little")
 
 
 def ed25519_verify(pub, msg, sig):

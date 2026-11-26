@@ -23,7 +23,7 @@ def read(state="ok", **kw):
                          {"name": "www-data", "uid": 33, "groups": ["docker", "www-data"], "login": False, "password": "locked", "sudo_all": False}],
             "writable": [{"path": "/etc/cron.d/backup", "kind": "cron", "by": "everyone", "at": "/etc/cron.d/backup"}],
             "shadow_readable_by": [],
-            "held": [{"account": "root", "path": "/root/.ssh/id_ed25519", "type": "ssh-ed25519", "fp": FP, "passphrase": False}],
+            "held": [{"account": "root", "path": "/root/.ssh/id_ed25519", "type": "ssh-ed25519", "fp": FP, "passphrase": False, "checked": True}],
             "trusted": [{"account": "root", "fp": FP2, "type": "ssh-ed25519", "from": ["10.0.0.0/8"], "forced": False, "restrict": False}],
             "credentials": [{"kind": "keytab", "account": "root", "path": "/etc/krb5.keytab"}], "agent_sockets": 1, "unidentified_keys": 0}
     return {**base, **kw}

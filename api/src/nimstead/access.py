@@ -99,7 +99,8 @@ def valid(raw) -> dict | None:
     writable = [{"path": w["path"], "kind": w["kind"], "by": w["by"], "at": w.get("at") if isinstance(w.get("at"), str) and _PATH.fullmatch(w["at"]) else w["path"]}
                 for w in _rows(raw, "writable", WRITABLE) if isinstance(w.get("path"), str) and _PATH.fullmatch(w["path"])
                 and w.get("kind") in ("unit", "service", "cron") and isinstance(w.get("by"), str) and _BY.fullmatch(w["by"])]
-    held = [{"account": h["account"], "path": h["path"], "type": h["type"], "fp": h["fp"], "passphrase": h.get("passphrase") is True}
+    held = [{"account": h["account"], "path": h["path"], "type": h["type"], "fp": h["fp"], "passphrase": h.get("passphrase") is True,
+             "checked": h.get("checked") is True}
             for h in _rows(raw, "held", HELD) if owner(h.get("account")) and isinstance(h.get("path"), str) and _PATH.fullmatch(h["path"])
             and h.get("type") in KEY_TYPES and isinstance(h.get("fp"), str) and _FP.fullmatch(h["fp"])]
     trusted = [{"account": t["account"], "fp": t["fp"], "type": t["type"], "from": [x[:64] for x in _strs(t.get("from"), FROM, _PATTERN)],

@@ -57,14 +57,47 @@ def test_public_halves_fingerprint_as_ssh_keygen_does(name):
     assert agent.parse_public_key(fx(f"{name}.pub"))[1] == oracle()[name]
 
 
+def ed25519_file(seed, comment=b"lab"):
+    """A real, unencrypted OpenSSH Ed25519 key file from a 32-byte seed, built as OpenSSH writes it: (public line, file)."""
+    pub = agent.ed25519_public_of(seed)
+    blob = _s(b"ssh-ed25519") + _s(pub)
+    section = b"\x07\x07\x07\x07" * 2 + _s(b"ssh-ed25519") + _s(pub) + _s(seed + pub) + _s(comment)
+    section += bytes(range(1, 9 - len(section) % 8)) if len(section) % 8 else b""
+    raw = b"openssh-key-v1\0" + _s(b"none") + _s(b"none") + _s(b"") + (1).to_bytes(4, "big") + _s(blob) + _s(section)
+    line = "ssh-ed25519 " + base64.b64encode(blob).decode()
+    return line, ("-----BEGIN OPENSSH PRIVATE KEY-----\n" + base64.encodebytes(raw).decode() + "-----END OPENSSH PRIVATE KEY-----\n").encode()
+
+
 @pytest.mark.parametrize("name", ["ed25519", "ecdsa", "rsa"])
-def test_an_openssh_key_is_identified_by_its_public_half_alone(name):
+def test_an_openssh_key_is_identified_by_its_public_half_and_a_planted_claim_is_not(name):
     secret_part = b"PRIVATE-PART-NEVER-READ" * 4
-    plain = agent.parse_private_key(openssh_file(fx(f"{name}.pub"), private=secret_part))
+    kind = fx(f"{name}.pub").split()[0].encode()
+    well_formed = b"\x05\x05\x05\x05" * 2 + _s(kind) + _s(secret_part)  # check integers that agree, the key's own type, then its secret
+    plain = agent.parse_private_key(openssh_file(fx(f"{name}.pub"), private=well_formed))
     locked = agent.parse_private_key(openssh_file(fx(f"{name}_enc.pub"), cipher=b"aes256-ctr", private=secret_part))
-    assert plain == {"type": fx(f"{name}.pub").split()[0], "fp": oracle()[name], "passphrase": False, "format": "openssh"}
-    assert locked["fp"] == oracle()[f"{name}_enc"] and locked["passphrase"] is True
+    if name == "ecdsa":  # no curve arithmetic in the agent: identified, said unchecked
+        assert plain == {"type": "ecdsa-sha2-nistp256", "fp": oracle()[name], "passphrase": False, "format": "openssh", "checked": False}
+    else:  # someone else's public half around a private half that isn't its own: a planted claim (security audit)
+        assert plain["fp"] is None and plain["mismatch"] is True
+    assert locked["fp"] == oracle()[f"{name}_enc"] and locked["passphrase"] is True and locked["checked"] is False
     assert "PRIVATE" not in repr(plain) + repr(locked)
+
+
+def test_a_real_ed25519_key_is_checked_against_its_public_half():
+    line, data = ed25519_file(bytes(range(32)))
+    k = agent.parse_private_key(data)
+    assert k["checked"] is True and k["fp"] == agent.parse_public_key(line)[1]
+    other, _ = ed25519_file(bytes(range(1, 33)))
+    raw = base64.b64decode(b"".join(data.splitlines()[1:-1]))
+    swapped = raw.replace(base64.b64decode(line.split()[1]), base64.b64decode(other.split()[1]), 1)  # another key's public half outside
+    fake = ("-----BEGIN OPENSSH PRIVATE KEY-----\n" + base64.encodebytes(swapped).decode() + "-----END OPENSSH PRIVATE KEY-----\n").encode()
+    assert agent.parse_private_key(fake)["mismatch"] is True
+
+
+def test_ed25519_public_of_agrees_with_rfc_8032():
+    # RFC 8032 section 7.1, TEST 1
+    seed = bytes.fromhex("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60")
+    assert agent.ed25519_public_of(seed).hex() == "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a"
 
 
 def test_pem_keys_say_whether_a_passphrase_protects_them_and_carry_no_fingerprint():
@@ -218,6 +251,8 @@ POSIX = pytest.mark.skipif(os.name == "nt", reason="needs links, FIFOs and dir_f
 ROOT_ONLY = pytest.mark.skipif(os.name == "nt" or os.geteuid() != 0, reason="ownership needs root")
 DEPLOY = 1000
 MARK = b"PRIVATE-SECTION-MARKER"
+ROOT_SEED = bytes(range(100, 132))
+ROOT_KEY = ed25519_file(ROOT_SEED, comment=MARK)  # (public line, file): the comment carries the marker, never sent
 
 
 def write(base, path, data, mode=0o644, uid=None):
@@ -245,9 +280,10 @@ def machine(tmp_path):
         write(b, f"/proc/{pid}/status", f"Name:\tx\nUid:\t{uid}\t{uid}\t{uid}\t{uid}\n")
     (b / "home").mkdir()
     (b / "run/systemd/system").mkdir(parents=True)
-    # root's key, no passphrase
+    # root's key, no passphrase: a real one, whose private half the agent checks against its public half
     (b / "root/.ssh").mkdir(parents=True, mode=0o700)
-    write(b, "/root/.ssh/id_ed25519", openssh_file(fx("ed25519.pub"), private=MARK), 0o600)
+    write(b, "/root/.ssh/id_ed25519", ROOT_KEY[1], 0o600)
+    write(b, "/root/.ssh/id_planted", openssh_file(fx("ed25519.pub"), private=b"\x05" * 8 + _s(b"ssh-ed25519") + _s(b"\0" * 32) + _s(b"\0" * 64)), 0o600)
     # deploy: a key with a passphrase, a PEM key with its .pub, a PEM key without one, trusted keys, and planted files
     d = b / "home/deploy/.ssh"
     d.mkdir(parents=True, mode=0o700)
@@ -310,7 +346,9 @@ def test_the_pass_reads_a_machine_as_the_spec_says(tmp_path):
     assert (acc["root"]["password"], acc["deploy"]["password"], acc["www-data"]["password"]) == ("none", "usable", "none")  # "*": no password, not "!"-locked
     assert "sshd" not in acc  # no login shell, nothing running as it, no home
     held = {h["path"]: h for h in a["held"]}
-    assert held["/root/.ssh/id_ed25519"] == {"account": "root", "path": "/root/.ssh/id_ed25519", "type": "ssh-ed25519", "fp": oracle()["ed25519"], "passphrase": False}
+    assert held["/root/.ssh/id_ed25519"] == {"account": "root", "path": "/root/.ssh/id_ed25519", "type": "ssh-ed25519",
+                                             "fp": agent.parse_public_key(ROOT_KEY[0])[1], "passphrase": False, "checked": True}
+    assert "/root/.ssh/id_planted" not in held and "a key file whose private half belongs to another key" in a["problem"]
     assert held["/home/deploy/.ssh/id_rsa"]["passphrase"] is True and held["/home/deploy/.ssh/id_rsa"]["fp"] == oracle()["rsa_enc"]
     assert held["/home/deploy/.ssh/old_pem"]["fp"] == oracle()["rsa_pem"]  # identified by the .pub beside it
     assert a["unidentified_keys"] == 1  # the PEM key with no .pub
@@ -326,7 +364,7 @@ def test_the_pass_reads_a_machine_as_the_spec_says(tmp_path):
     assert a["shadow_readable_by"] == []
     assert {(c["kind"], c["account"]) for c in a["credentials"]} == {("aws", "deploy"), ("keytab", "root")}
     body = json.dumps(a)
-    for never in (MARK.decode(), "root@web-1", "backup --token", "abc123", "AKIAEXAMPLE", "$y$j9T"):
+    for never in (MARK.decode(), ROOT_SEED.hex(), "root@web-1", "backup --token", "abc123", "AKIAEXAMPLE", "$y$j9T"):
         assert never not in body
     assert ["/usr/bin/sudo", "-n", "-l", "-U", "deploy"] in calls
 
@@ -436,3 +474,57 @@ def test_a_failing_command_says_why_from_its_stderr():
     rc, out = agent._access_run(["sh", "-c", "echo out; echo 'Missing privilege separation directory: /run/sshd' >&2; exit 255"], 5)
     assert rc == 255 and "out" in out and "privilege separation directory" in out
     assert agent._access_run(["sh", "-c", "echo fine; echo noise >&2"], 5) == (0, "fine\n")  # a success is its stdout alone
+
+
+# ---- the review round (DECISIONS 170) -------------------------------------------------------------------------------
+
+@ROOT_ONLY
+def test_a_failing_systemctl_makes_the_read_partial(tmp_path):
+    b = machine(tmp_path)
+    run, _ = runner(b)
+    a = agent.access_read(root=str(b), run=lambda argv, t: (1, "Failed to connect to bus") if argv[0] == "systemctl" else run(argv, t), euid=0)
+    assert a["state"] == "partial" and "systemctl list-units: Failed to connect to bus" in a["problem"]
+
+
+@POSIX
+def test_sshd_t_refused_while_something_holds_its_port_is_unread_not_stopped(tmp_path):
+    write(tmp_path, "/etc/passwd", "root:x:0:0:root:/root:/bin/bash\n")
+    write(tmp_path, "/usr/sbin/sshd", "", 0o755)
+    write(tmp_path, "/proc/net/tcp", "  sl  local_address rem_address   st tx rx tr tm retrnsmt uid timeout inode\n"
+                                     "   0: 00000000:0016 00000000:0000 0A 00000000:00000000 00:00000000 00000000 0 0 4242 1\n")  # :22, LISTEN
+    a = agent.access_read(root=str(tmp_path), run=lambda a, t: (255, "Missing privilege separation directory: /run/sshd\n"), euid=0)
+    assert a["sshd"] is None and a["state"] == "partial"  # socket activation: systemd holds :22, settings unread
+
+
+@ROOT_ONLY
+def test_links_in_the_middle_of_a_path_are_refused(tmp_path):
+    b = machine(tmp_path)
+    run, _ = runner(b)
+    cfg = fx("sshd_t_debian13.txt").replace("authorizedkeysfile .ssh/authorized_keys .ssh/authorized_keys2", "authorizedkeysfile .config/ssh/authorized_keys")
+    (b / "home/deploy/.config").mkdir()
+    os.symlink(b / "root/.ssh", b / "home/deploy/.config/ssh")  # deploy points its keys file at root's
+    write(b, "/root/.ssh/authorized_keys", fx("ecdsa.pub"), 0o600)
+    aws = b / "home/deploy/.aws"
+    for f in aws.iterdir():
+        f.unlink()
+    aws.rmdir()
+    os.symlink(b / "root/.aws", aws)
+    write(b, "/root/.aws/config", "x", 0o600)
+    write(b, "/root/.aws/" + "credentials", "x", 0o600)
+    a = agent.access_read(root=str(b), run=lambda argv, t: (0, cfg) if argv[0].endswith("sshd") else run(argv, t), euid=0)
+    assert not [t for t in a["trusted"] if t["account"] == "deploy"] and "a folder above it is a link" in a["problem"]
+    assert not any(c["account"] == "deploy" for c in a["credentials"])
+
+
+@POSIX
+def test_agent_sockets_are_counted_without_following_links(tmp_path):
+    import socket as so
+    real = tmp_path / "ssh-real"
+    real.mkdir()
+    s = so.socket(so.AF_UNIX)
+    try:
+        s.bind(str(real / "agent.1"))
+        os.symlink(real, tmp_path / "ssh-link")  # the same folder again, through a link: not counted twice
+        assert agent._agent_sockets(str(tmp_path)) == 1
+    finally:
+        s.close()

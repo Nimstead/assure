@@ -17,9 +17,9 @@ def path(kind="network", root=True, users=(), grade="reasonable"):
             "then": None, "break_at": {"stage": "entry", "label": "Getting in", "fixes": 1, "refs": []}, "reaches": {"root": root, "users": list(users)}}
 
 
-def held(fp, account="root", passphrase=False):
+def held(fp, account="root", passphrase=False, checked=True):
     return {"account": account, "path": f"/{'root' if account == 'root' else 'home/' + account}/.ssh/id_ed25519", "type": "ssh-ed25519",
-            "fp": fp, "passphrase": passphrase}
+            "fp": fp, "passphrase": passphrase, "checked": checked}
 
 
 def trusts(fp, account="root", frm=(), forced=False, restrict=False):
@@ -338,3 +338,12 @@ def test_a_dsa_or_security_key_link_is_unverified():
     dsa = {**held(K_ROOT), "type": "ssh-dss"}
     e = edge(fleet.build([lhost("a", "10.0.0.1", keys=[dsa], paths=[path()]), lhost("b", "10.0.0.2", trusted=[trusts(K_ROOT)])]))
     assert e["grade"] == "unverified" and "OpenSSH 7.0" in e["ways"][0]["because"]
+
+
+def test_a_users_unchecked_key_is_unverified_roots_is_believed():
+    unchecked = edge(fleet.build([lhost("a", "10.0.0.1", keys=[held(K_DEPLOY, "deploy", checked=False)], paths=[path()]),
+                                  lhost("b", "10.0.0.2", trusted=[trusts(K_DEPLOY, "deploy")])]))
+    assert unchecked["grade"] == "unverified" and "couldn't be checked" in unchecked["ways"][0]["because"]
+    roots = edge(fleet.build([lhost("a", "10.0.0.1", keys=[held(K_ROOT, checked=False)], paths=[path()]),
+                              lhost("b", "10.0.0.2", trusted=[trusts(K_ROOT)])]))
+    assert roots["grade"] == "reasonable"

@@ -547,10 +547,48 @@ export function Baselines() {
   );
 }
 
-interface PathSummary { kind: "network" | "foothold"; start: string; grade: string; steps: string[]; break_at: { label: string; fixes: number; refs: string[] } }
+interface PathSummary {
+  kind: "network" | "foothold"; start: string; grade: string; steps: string[]; break_at: { label: string; fixes: number; refs: string[] };
+  reaches?: { root: boolean; users: string[] };
+}
 interface FleetHost { hostname: string; judged: boolean; paths: PathSummary[] }
-interface Reach { host: string; hops: string[]; grade: string; fix_on_host: string[] }
-interface AttackPathsData { hosts: Record<string, FleetHost>; truncated?: boolean; chains: { start: string; why_start: string; reach: Reach[] }[] }
+interface Reach { host: string; hops: string[]; grade: string; fix_on_host: string[]; as?: "root" | string[] }
+interface EdgeWay { via: string; how: string; because: string; grade: string; gives?: string; account?: string }
+interface Edge { from: string; to: string; grade: string; kind?: "ssh"; ways: EdgeWay[] }
+export interface ChokePoint { kind: "way-in" | "retire-key" | "untrust-key" | "setting"; action: string; cuts: number; hosts: string[]; ways_removed: number; lower_bound: boolean; ref: string }
+interface AttackPathsData {
+  hosts: Record<string, FleetHost>; truncated?: boolean; edges?: Edge[]; chains: { start: string; why_start: string; reach: Reach[] }[]; choke_points?: ChokePoint[];
+}
+
+/** A link's way across in words: an SSH key by its fingerprint's start, a setting by its check. */
+export function viaLabel(via: string) {
+  if (via.startsWith("SSH:")) return `the key ${via.slice(4, 23)}…`;
+  return via.startsWith("SHA256:") ? `the key ${via.slice(0, 19)}…` : via;
+}
+
+/** What an attacker holds on a host reached over SSH: root, or the accounts the keys opened. Windows links give administrator rights, said by the link itself. */
+function heldThere(r: Reach) {
+  if (Array.isArray(r.as)) return ` · as ${r.as.join(", ")}`;
+  return r.as === "root" && r.fix_on_host.some((v) => v.startsWith("SSH:")) ? " · as root" : "";
+}
+
+/** The single actions that cut the most machines off from every way in (DECISIONS 169), largest first. */
+export function ChokePoints({ points, name }: { points: ChokePoint[]; name: (id: string) => string }) {
+  if (!points.length) return null;
+  return (
+    <div className="flex flex-col gap-1">
+      <h3 className="text-sm font-semibold">Cut these first</h3>
+      <ol className="flex flex-col gap-1 text-sm">
+        {points.map((c) => (
+          <li key={`${c.kind}|${c.ref}|${c.action}`} className="break-words">
+            {c.action}
+            <span className="text-muted"> · cuts {c.lower_bound ? "at least " : ""}{plural(c.cuts, "machine")} off: {c.hosts.slice(0, 5).map(name).join(", ")}{c.hosts.length > 5 ? ` and ${c.hosts.length - 5} more` : ""}</span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
 
 /** How weaknesses chain on each host and from one host to the next (DECISIONS 97, 98): every step is evidence, and the grade is the weakest one's. */
 export function AttackPaths() {
@@ -560,32 +598,49 @@ export function AttackPaths() {
   if (!d || (!withPaths.length && !d.chains.length)) return null;
   const name = (id: string) => d.hosts[id]?.hostname ?? id;
   const unjudged = Object.values(d.hosts).filter((h) => !h.judged).length;
+  const keys = (d.edges ?? []).filter((e) => e.kind === "ssh");
   return (
     <section aria-labelledby="attack-paths" className="flex flex-col gap-2 border border-line bg-sunken p-4">
       <h2 id="attack-paths" className="text-base font-semibold">How these weaknesses combine</h2>
-      <HowJudged lead={<>Each step is a vulnerability or a setting read on the host.{d.truncated ? " Only the first links are shown: fix the settings named below first." : ""}</>}>
-        <p>A path is only as sure as its weakest step, and whether one host can route to another isn't seen, so nothing across hosts is better than reasonable.</p>
-        <p>Each host's part rests on what its own agent reported, so a compromised host could make its own links look worse or better.{unjudged ? ` ${plural(unjudged, "host")} ${unjudged === 1 ? "hasn't" : "haven't"} been judged yet.` : ""}</p>
+      <HowJudged lead={<>Each step is a vulnerability, a setting or a key read on the host.{d.truncated ? " Only the first links are listed; the chains and what to cut first use all of them." : ""}</>}>
+        <p>A path is only as sure as its weakest step. Windows links across hosts are no better than reasonable unless the sign-in and a connection were both seen. An SSH key link is confirmed only when the key matches exactly, needs no passphrase, the other machine's sshd lets that account in, and a connection between them was seen.</p>
+        <p>Each host's part rests on what its own agent reported, so a compromised host could make its own links look worse or better. Keys are compared by fingerprint: no key ever leaves a machine, and nothing here signs in anywhere.{unjudged ? ` ${plural(unjudged, "host")} ${unjudged === 1 ? "hasn't" : "haven't"} been judged yet.` : ""}</p>
       </HowJudged>
+      <ChokePoints points={d.choke_points ?? []} name={name} />
       {d.chains.map((c) => (
         <div key={c.start} className="flex flex-col gap-1">
           <h3 className="text-sm font-semibold">From {name(c.start)} ({c.why_start}), an attacker can reach {plural(c.reach.length, "other host")}</h3>
           <ul className="flex flex-col gap-1 text-sm">
             {c.reach.map((r) => (
               <li key={r.host} className="break-words">
-                <span className="font-medium">{name(r.host)}</span> via {[c.start, ...r.hops].map(name).join(" → ")} · how sure: {r.grade} · cut it on {name(r.host)}: {r.fix_on_host.join(", ")}
+                <span className="font-medium">{name(r.host)}</span> via {[c.start, ...r.hops].map(name).join(" → ")}{heldThere(r)} · how sure: {r.grade} · cut it on {name(r.host)}: {r.fix_on_host.map(viaLabel).join(", ")}
               </li>
             ))}
           </ul>
         </div>
       ))}
+      {keys.length > 0 && (
+        <details className="text-sm">
+          <summary className="tap cursor-pointer py-2">SSH key links ({keys.length})</summary>
+          <ul className="mt-2 flex flex-col gap-2">
+            {keys.map((e) => (
+              <li key={`${e.from}>${e.to}`} className="break-words border-t border-line pt-2">
+                <span className="font-medium">{name(e.from)} → {name(e.to)}</span> · how sure: {e.grade}
+                {e.ways.slice(0, 3).map((w) => (
+                  <div key={w.via + w.account} className="text-muted">{w.how.replace(" on A ", ` on ${name(e.from)} `).replace(/ on B$/, ` on ${name(e.to)}`)}, which gives {w.gives === "root" ? "root" : w.gives}: {w.because} ({w.grade})</div>
+                ))}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       <details className="text-sm">
         <summary className="tap cursor-pointer py-2">Paths on each host ({withPaths.length})</summary>
         <ul className="mt-2 flex flex-col gap-2">
           {withPaths.map(([id, h]) => h.paths.map((p) => (
             <li key={id + p.kind} className="break-words border-t border-line pt-2">
-              <span className="font-medium">{h.hostname}</span>, {p.start} · how sure: {p.grade}
-              <div className="text-muted">{p.steps.join(" → ")}. Break it: fix {plural(p.break_at.fixes, "way")} of {p.break_at.label.toLowerCase()} ({p.break_at.refs.join(", ")})</div>
+              <span className="font-medium">{h.hostname}</span>, {p.start} · how sure: {p.grade}{p.reaches ? ` · reaches ${p.reaches.root ? "root" : p.reaches.users.join(", ")}` : ""}
+              <div className="text-muted">{p.steps.join(" → ")}. Break it: fix {plural(p.break_at.fixes, "way")} of {p.break_at.label.toLowerCase()} ({p.break_at.refs.map(viaLabel).join(", ")})</div>
             </li>
           )))}
         </ul>

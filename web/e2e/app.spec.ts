@@ -448,6 +448,37 @@ test("devices with no agent: listed on Assets from agents' neighbour tables, and
   }
 });
 
+test("attack paths: SSH key links, who the attacker is on each machine, and what to cut first, and it passes axe", async ({ browser }) => {
+  const fp = "SHA256:" + "R".repeat(43);
+  const way = { via: `SSH:${fp}`, how: "the key /root/.ssh/id_ed25519 on A is trusted for deploy on B", grade: "confirmed", gives: "deploy", account: "deploy",
+                because: "app-1's sshd ssh.service listens on 10.0.0.2:22; A had a connection open to B" };
+  const body = {
+    hosts: { w: { hostname: "web-1", judged: true, entry: true, paths: [{ kind: "network", start: "from the network", grade: "reasonable",
+                  steps: ["Getting in", "Becoming root", "Taking credentials"], break_at: { label: "Getting in", fixes: 1, refs: ["CVE-2026-0101"] },
+                  reaches: { root: true, users: [] } }] },
+             a: { hostname: "app-1", judged: true, paths: [] }, d: { hostname: "db-1", judged: true, paths: [] } },
+    edges: [{ from: "w", to: "a", grade: "confirmed", kind: "ssh", ways: [way] }], truncated: false,
+    chains: [{ start: "w", why_start: "a path from the network", reach: [{ host: "a", hops: ["a"], grade: "confirmed", fix_on_host: [way.via], as: ["deploy"] },
+                                                                          { host: "d", hops: ["a", "d"], grade: "reasonable", fix_on_host: [`SSH:SHA256:${"O".repeat(43)}`], as: "root" }] }],
+    choke_points: [{ kind: "retire-key", action: `Retire the SSH key ${fp.slice(0, 19)}…: delete it (/root/.ssh/id_ed25519 on web-1) and remove it from the authorized_keys of the 1 machine that trust it`,
+                     cuts: 2, hosts: ["a", "d"], ways_removed: 1, lower_bound: false, ref: fp }] };
+  for (const width of [1440, 375] as const) {
+    for (const scheme of ["light", "dark"] as const) {
+      const { context, page } = await ctx(browser, width, scheme);
+      await page.route("**/api/attack-paths", (route) => route.fulfill({ json: body }));
+      await page.goto("/assets");
+      const section = page.getByRole("region", { name: "How these weaknesses combine" });
+      await expect(section.getByRole("heading", { name: "Cut these first" })).toBeVisible();
+      await expect(section.getByText(/cuts 2 machines off: app-1, db-1/)).toBeVisible();
+      await expect(section.getByText(/· as deploy · how sure: confirmed/)).toBeVisible();
+      await section.getByText("SSH key links (1)").click();
+      await expect(section.getByText(/trusted for deploy on app-1, which gives deploy/)).toBeVisible();
+      await axe(page, `attack paths with SSH keys @${width} ${scheme}`);
+      await context.close();
+    }
+  }
+});
+
 test("container images: one row wherever an image runs, rebuilt not planned, unread never clean, and it passes axe", async ({ browser }) => {
   const setup = await browser.newContext({ storageState: STATE });
   const api = (await setup.newPage()).request;

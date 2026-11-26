@@ -33,10 +33,13 @@ class Content:
     universe: frozenset[str] = frozenset()  # Linux: every package the host's distro release has an advisory for
     eol: dict | None = None  # Linux: endoflife.date's cycles for the host's distro, None when not loaded
     memo: dict = field(default_factory=dict, compare=False, repr=False)  # the feed pass's cache (see make), for evaluate's per-pass reuse
+    # Linux only: NVD's CVSS vectors, for an attack path's stage when the distro's advisory carries none (Debian's rarely do).
+    # Windows content leaves it empty, so its versions and reports don't move (DECISIONS 167)
+    vectors: dict[str, str] = field(default_factory=dict, compare=False, repr=False)
 
     @classmethod
     def make(cls, records: dict, kev=(), cvss: dict | None = None, feeds=None, universe=(), eol: dict | None = None,
-             memo: dict | None = None) -> Content:
+             memo: dict | None = None, vectors: dict | None = None) -> Content:
         """Return a sorted Content snapshot with a hash-derived version.
 
         records maps (ecosystem, product) tuples to OSV dictionaries with id keys. kev and universe
@@ -52,7 +55,8 @@ class Content:
             if (d := memo.get(("engine", "digest", *k))) is None:
                 v = sorted(records[k], key=lambda r: r["id"])
                 ids = sorted(cves(v))
-                body = [v, [c for c in ids if c in kev], {c: cvss[c] for c in ids if c in cvss}]
+                body = [v, [c for c in ids if c in kev], {c: cvss[c] for c in ids if c in cvss},
+                        *([{c: vectors[c] for c in ids if c in vectors}] if vectors else [])]  # vectors change paths, so the version
                 d = memo["engine", "digest", *k] = (v, hashlib.sha256(json.dumps(body, sort_keys=True, default=str).encode()).hexdigest(),
                                                      max((str(r.get("modified", ""))[:10] for r in v), default=""))
             out[k] = d[0]
@@ -62,7 +66,7 @@ class Content:
             u = memo["engine", "udigest", universe] = hashlib.sha256(json.dumps(sorted(universe)).encode()).hexdigest()
         body = json.dumps({"app": updates.current_version(), "records": digests, "feeds": sorted(feeds),
                            "universe": u if universe else None, "eol": eol}, sort_keys=True, default=str)
-        return cls(out, kev, cvss, feeds, f"{newest or 'none'}.{hashlib.sha256(body.encode()).hexdigest()[:12]}", universe, eol, memo)
+        return cls(out, kev, cvss, feeds, f"{newest or 'none'}.{hashlib.sha256(body.encode()).hexdigest()[:12]}", universe, eol, memo, vectors or {})
 
 
 def cves(records: list[dict]) -> set[str]:
@@ -102,14 +106,18 @@ def load(s: Session, inv: Inventory, cache: dict | None = None) -> Content:
     todo = sorted(k for k in records if ("engine", "kev", *k) not in cache)
     cves_of = {k: cves(records[k]) for k in todo}
     ids = sorted(set().union(*cves_of.values()))
-    kev_found, cvss_found = set(), {}
+    kev_found, cvss_found, vec_found = set(), {}, {}
     for i in range(0, len(ids), 500):
         part = ids[i:i + 500]
         kev_found.update(s.scalars(select(Kev.cve).where(Kev.cve.in_(part))))
-        cvss_found |= dict(s.execute(select(Cvss.cve, Cvss.score).where(Cvss.cve.in_(part))).all())
+        for cve, score, vector in s.execute(select(Cvss.cve, Cvss.score, Cvss.vector).where(Cvss.cve.in_(part))):
+            cvss_found[cve] = score
+            if vector:
+                vec_found[cve] = vector
     for k in todo:  # per product, so the next host with the same product asks nothing
         cache["engine", "kev", *k] = frozenset(cves_of[k] & kev_found)
         cache["engine", "cvss", *k] = {c: cvss_found[c] for c in cves_of[k] if c in cvss_found}
+        cache["engine", "vec", *k] = {c: vec_found[c] for c in cves_of[k] if c in vec_found}
     kev = set().union(*(cache["engine", "kev", *k] for k in records))
     cvss = {c: v for k in records for c, v in cache["engine", "cvss", *k].items()}
     loaded = {e for e in (*app_ecos, *([] if distro else ECOSYSTEMS))
@@ -120,4 +128,6 @@ def load(s: Session, inv: Inventory, cache: dict | None = None) -> Content:
                      lambda: frozenset(s.scalars(select(Advisory.package).where(Advisory.ecosystem == distro).distinct())))
     cycle = lifecycle.distro_cycle(distro)
     eol = _once(cache, ("engine", "eol", distro), lambda: s.scalar(select(Advisory.record).where(Advisory.ecosystem == "EOL", Advisory.package == cycle[0])) if cycle else None)
-    return Content.make(records, kev, cvss, loaded | ({distro} if universe else set()), universe, (eol or {}).get("cycles"), memo=cache)
+    vectors = {c: v for k in records if k[0] == distro for c, v in cache.get(("engine", "vec", *k), {}).items()}
+    return Content.make(records, kev, cvss, loaded | ({distro} if universe else set()), universe, (eol or {}).get("cycles"), memo=cache,
+                        vectors=vectors)

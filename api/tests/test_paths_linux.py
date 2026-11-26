@@ -139,3 +139,14 @@ def test_the_context_rides_in_the_document_only_when_there_is_one():
     assert "context" not in bare
     inv.context = {"listening": {}}
     assert inv.to_doc()["context"] == {"listening": {}} and inv.sha256() != Inventory.from_doc(ldoc(*SSL)).sha256()
+
+
+def test_a_debian_advisory_with_no_vector_takes_nvds():
+    rec = deb("CVE-2026-0101", "openssl", "9:9")  # Debian's records carry no severity
+    inv = Inventory.from_doc(ldoc(*SSL))
+    inv.context = {"listening": nginx("root"), "access": access()}
+    plain = Content.make({("Debian:13", "openssl"): [rec]}, feeds={"Debian:13"}, universe={"openssl"})
+    assert paths.build(inv, plain, evaluate(inv, plain)) == []  # nothing says how it would be used
+    nvd = Content.make({("Debian:13", "openssl"): [rec]}, feeds={"Debian:13"}, universe={"openssl"}, vectors={"CVE-2026-0101": REMOTE})
+    assert by_kind(paths.build(inv, nvd, evaluate(inv, nvd)))["network"]["steps"][0]["ways"][0]["ref"] == "CVE-2026-0101"
+    assert nvd.version != plain.version  # what changes a path changes the content version

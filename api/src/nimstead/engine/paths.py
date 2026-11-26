@@ -157,7 +157,8 @@ def build_linux(inv: Inventory, content: Content, verdicts: list[Verdict]) -> li
     for v in verdicts:
         if v.outcome != Outcome.VULNERABLE or not v.vuln_id:
             continue
-        s = _stage(v, vec.get((v.ecosystem, v.product, v.vuln_id), {}))
+        nvd = content.vectors.get(v.vuln_id, "")  # the distro's advisory first, then NVD's vector (Debian's carry none)
+        s = _stage(v, vec.get((v.ecosystem, v.product, v.vuln_id)) or dict(p.split(":", 1) for p in nvd.split("/")[1:] if ":" in p))
         if s:
             found.setdefault((s[0], v.product, v.instance), []).append((v, s[1]))
     for (stage, product, instance), vs in found.items():

@@ -5,12 +5,12 @@ import userEvent from "@testing-library/user-event";
 import { useState, type ReactNode } from "react";
 import { afterEach, vi } from "vitest";
 import { SsoSection } from "./integrations";
-import { ApiError, meQ, NO_OWNER, type Action, type Asset, type Finding, type Job, type Settings } from "./lib";
+import { ApiError, fixLabel, meQ, NO_OWNER, whyMatched, type Action, type Asset, type Finding, type Job, type Settings } from "./lib";
 import { ActionCard, Home } from "./home";
 import { PlanFixButton } from "./planfix";
 import { foldRuns } from "./evidence";
 import { ApproveDialog, byPackage, PackageList, RemediationPage, RolloutCard, ringFailures, sections } from "./remediation";
-import { AgentUpdateSummary, AssetRow, AssetsPage, AttackPaths, Baselines, baselineSummary, filterAssets, NotAssessed, UnmanagedDevices } from "./assets";
+import { AgentUpdateSummary, AssetRow, AssetsPage, AttackPaths, Baselines, baselineSummary, filterAssets, NotAssessed, UnmanagedDevices, viaLabel } from "./assets";
 import { cmdGroup, HelpPanel, Palette } from "./shell";
 import { Done, errorLead } from "./ui";
 import { Onboarding, TROUBLESHOOT_AFTER_MS } from "./onboarding";
@@ -420,6 +420,38 @@ it("Assets: attack paths say how sure, where to cut each edge, and nothing shows
   expect(screen.getByText(/ws-1 → srv-1 · how sure: reasonable · cut it on srv-1: CFG:remote-uac/)).toBeInTheDocument();
   expect(screen.getByText(/1 host hasn't been judged yet/)).toBeInTheDocument();
   expect(screen.getByText(/Break it: fix 1 way of getting in \(CFG:rdp-nla\)/)).toBeInTheDocument();
+});
+
+it("Assets: SSH key links say whose key opens what, chains say who the attacker is there, and choke points come first", async () => {
+  const path = { kind: "network", start: "from the network", grade: "reasonable", steps: ["Getting in", "Becoming root", "Taking credentials"],
+                 break_at: { label: "Getting in", fixes: 1, refs: ["CVE-2026-0101"] }, reaches: { root: true, users: [] } };
+  const way = { via: "SSH:SHA256:RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR", how: "the key /root/.ssh/id_ed25519 on A is trusted for deploy on B",
+                because: "app-1's sshd ssh.service listens on 10.0.0.2:22; A had a connection open to B", grade: "confirmed", gives: "deploy", account: "deploy" };
+  serve({ "GET /api/attack-paths": {
+    hosts: { w: { hostname: "web-1", judged: true, paths: [path] }, a: { hostname: "app-1", judged: true, paths: [] }, d: { hostname: "db-1", judged: true, paths: [] } },
+    edges: [{ from: "w", to: "a", grade: "confirmed", kind: "ssh", ways: [way] }],
+    chains: [{ start: "w", why_start: "a path from the network", reach: [
+      { host: "a", hops: ["a"], grade: "confirmed", fix_on_host: [way.via], as: ["deploy"] },
+      { host: "d", hops: ["a", "d"], grade: "reasonable", fix_on_host: ["SSH:SHA256:OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO"], as: "root" }] }],
+    choke_points: [{ kind: "retire-key", action: "Retire the SSH key SHA256:RRRRRRRRRRRR…: delete it (/root/.ssh/id_ed25519 on web-1)", cuts: 2, hosts: ["a", "d"],
+                     ways_removed: 1, lower_bound: true, ref: "SHA256:RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR" }] } });
+  wrap(<AttackPaths />);
+  expect(await screen.findByRole("heading", { name: "Cut these first" })).toBeInTheDocument();
+  expect(screen.getByText(/cuts at least 2 machines off: app-1, db-1/)).toBeInTheDocument();
+  expect(screen.getByText(/web-1 → app-1 · as deploy · how sure: confirmed · cut it on app-1: the key SHA256:RRRRRRRRRRRR…/)).toBeInTheDocument();
+  expect(screen.getByText(/web-1 → app-1 → db-1 · as root · how sure: reasonable/)).toBeInTheDocument();
+  expect(screen.getByText(/the key \/root\/.ssh\/id_ed25519 on web-1 is trusted for deploy on app-1, which gives deploy: .*A had a connection open to B \(confirmed\)/)).toBeInTheDocument();
+  expect(screen.getByText(/, from the network · how sure: reasonable · reaches root/)).toBeInTheDocument();
+  expect(screen.getByText(/Getting in → Becoming root → Taking credentials/)).toBeInTheDocument();
+});
+
+it("Assets: a key or fingerprint reads short, and Linux settings say to change the setting", () => {
+  expect(viaLabel("SSH:SHA256:abcdefghijklmnopqrstuvwxyzabcdefghijklmnopq")).toBe("the key SHA256:abcdefghijkl…");
+  expect(viaLabel("SHA256:abcdefghijklmnopqrstuvwxyzabcdefghijklmnopq")).toBe("the key SHA256:abcdefghijkl…");
+  expect(viaLabel("CFG:remote-uac")).toBe("CFG:remote-uac");
+  expect(fixLabel({ fixed_version: null, ecosystem: "LinuxConfig" })).toBe("change the setting");
+  expect(whyMatched({ installed_version: "www-data (docker)", fixed_version: null, advisory_ids: [], vuln_id: "CFG:root-equivalent-group", ecosystem: "LinuxConfig" }))
+    .toBe("Found www-data (docker) on this host.");
 });
 
 it("Assets: no attack paths, no section", async () => {

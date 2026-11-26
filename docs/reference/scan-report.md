@@ -99,7 +99,9 @@ Families are `os`, `microsoft`, `app`, `distro`, and `application`. Relevant fam
 
 ## Host attack paths
 
-Linux and application assets return an empty `attack_paths` array. Windows can return one `network` path, followed by one `foothold` path. These are inferred combinations of reported vulnerabilities and settings. They do not prove an exploit succeeded.
+Application assets return an empty `attack_paths` array. Windows and Linux can each return one `network` path, followed by one `foothold` path. These are inferred combinations of reported vulnerabilities, settings and, on Linux, what runs and the access read. They do not prove an exploit succeeded.
+
+On Linux (DECISIONS 167) a way in names the user its listening program runs as. A path whose way in runs as root has no `escalate` step and carries `skipped`: `{"stage": "escalate", "label": "Becoming root", "why"}`. Each Linux path also carries `reaches`: `{"root": true, "users": []}`, or `{"root": false, "users": [...]}` for the accounts it holds. Its `then` counts the SSH keys the path takes; the [fleet view](fleet-paths.md) shows which machines trust them. A Linux report with an access read also has a top-level `ssh`, `{"listening", "how"}`: whether sshd listens beyond loopback, from the runtime read when it saw sshd, else from its configuration (said in `how`), or `null` when neither was read.
 
 | Path field | Value |
 | --- | --- |

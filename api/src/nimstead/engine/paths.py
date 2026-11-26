@@ -155,8 +155,8 @@ def build_linux(inv: Inventory, content: Content, verdicts: list[Verdict]) -> li
     vec = _vectors(content)
     found: dict[tuple, list] = {}
     for v in verdicts:
-        if v.outcome != Outcome.VULNERABLE or not v.vuln_id:
-            continue
+        if v.outcome != Outcome.VULNERABLE or not v.vuln_id or v.vendor_status == "no-fix-planned":
+            continue  # a flaw the distro says it won't fix (Debian's "unimportant") is no way in or up: still a finding, at its rank
         nvd = content.vectors.get(v.vuln_id, "")  # the distro's advisory first, then NVD's vector (Debian's carry none)
         s = _stage(v, vec.get((v.ecosystem, v.product, v.vuln_id)) or dict(p.split(":", 1) for p in nvd.split("/")[1:] if ":" in p))
         if s:

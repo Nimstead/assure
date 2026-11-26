@@ -7234,7 +7234,7 @@ def _main(argv):
             _log_on = True
             log_event(f"run start: {a.cmd}, agent {AGENT_VERSION}")
         if a.cmd == "collect":
-            print(json.dumps({**with_runtime(with_apps(collect(), {"scan_jars": a.scan_jars, "scan_apps": a.scan_apps, "app_roots": app_roots(a)}), {}),
+            print(json.dumps({**with_access(with_runtime(with_apps(collect(), {"scan_jars": a.scan_jars, "scan_apps": a.scan_apps, "app_roots": app_roots(a)}), {}), {}),
                               "neighbours": network_view(), **({"containers": safe_containers()} if os.name != "nt" else {})}, indent=2))
         elif a.cmd == "doctor":
             return doctor(a.insecure_http)

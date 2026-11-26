@@ -4,6 +4,28 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+To be released as 0.15.0 (preview) with agent 0.11.0. One database migration (`a3c5e7f9b1d2`, a table), applied on start.
+
+### Upgrade notes
+- **Linux agents read who can get in once they update to 0.11.0**: sshd's settings, the accounts that matter (groups, whether each password is usable, locked or empty, `sudo -n -l`), files root runs that others can replace, the SSH keys each machine holds and trusts as fingerprints, credential files present, and the machine's own and private-range peer addresses. Private keys, key comments, forced commands, password hashes and what any credential file holds never leave the machine. `sudo -n -l` runs for up to 32 accounts at each report, and sudo logs each call.
+- **Expect new findings** in a `LinuxConfig` group (`CFG:ssh-root-password`, `CFG:ssh-empty-passwords`, `CFG:root-equivalent-group`, `CFG:sudo-nopasswd-all`, `CFG:writable-root-run`, `CFG:shadow-readable`), and attack paths on Linux machines where there were none.
+- **Linux reports' content version and inventory hash change once**: content now carries NVD's CVSS vectors for Linux, and a Linux inventory carries what runs and the access read for its attack paths. Windows reports don't change.
+- **To turn it off on a machine**, enrol with `--no-paths` (the installer takes it too) or set `"paths": false` in `/etc/nimstead/agent.json`. The server can't turn it back on, and it forgets what that machine said before.
+- **API:** `GET /api/attack-paths` adds SSH key edges (`kind: "ssh"`, with `key`, `path`, `account`, `needs` and `gives` on each way), `as` on each chain row, `reaches` on Linux paths, and `choke_points`. Scan reports add `skipped` and `reaches` on Linux paths, and a top-level `ssh`. The inventory body takes `access`.
+
+### Highlights
+- **See how an attacker would move between your Linux machines.** Nimstead joins what runs, what's vulnerable and who can get in, so each machine's report says how someone gets from the network to root. For example: in through a flaw in the libssl a web app loaded, as `www-data`; up through `www-data`'s `NOPASSWD` sudo; then root's SSH keys. A way in through a program that runs as root says it's root at once.
+- **SSH key links, exact.** A machine links to another only when a key it holds has the same fingerprint as one the other trusts, for an account that machine's sshd lets in. That's judged by sshd's own settings (`PermitRootLogin`, `AllowUsers`, `DenyUsers`, groups) and the key line's `from=`. It's confirmed only when a connection between the two was seen. The lab proof checked 14 cases against real `ssh` sign-ins, and every one agreed.
+- **Cut these first.** Choke points rank the single actions that cut the most machines off from every way in: close one machine's way in, retire one key, remove a key from one `authorized_keys`, or change one setting. Each says which machines it cuts off. In the lab, the top one was done for real and cut exactly the machines it said.
+- **Chains that know who you are.** A key works only for root or its owner, so reaching a machine as `deploy` opens only what `deploy`'s keys open.
+- **Six Linux settings as findings**, with who each one helps and how to fix it.
+
+### Added
+- **The access read** (DECISIONS 165), agent 0.11.0.
+- **Linux settings findings** (DECISIONS 166).
+- **Linux attack paths, aware of privilege** (DECISIONS 167). A flaw the distribution says it won't fix (Debian's "unimportant") is no way in or up.
+- **SSH key edges and chains** (DECISIONS 168), and **choke points** (DECISIONS 169) on Assets' attack-path view.
+
 ## [0.14.1] - 2026-11-26 (preview)
 
 Agent 0.10.0, unchanged. One database migration (`d4f6a8c0e2b1`, an index), applied on start.

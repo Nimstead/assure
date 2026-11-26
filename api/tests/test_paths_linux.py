@@ -150,3 +150,14 @@ def test_a_debian_advisory_with_no_vector_takes_nvds():
     nvd = Content.make({("Debian:13", "openssl"): [rec]}, feeds={"Debian:13"}, universe={"openssl"}, vectors={"CVE-2026-0101": REMOTE})
     assert by_kind(paths.build(inv, nvd, evaluate(inv, nvd)))["network"]["steps"][0]["ways"][0]["ref"] == "CVE-2026-0101"
     assert nvd.version != plain.version  # what changes a path changes the content version
+
+
+def test_a_flaw_the_distro_wont_fix_is_no_way_in_or_up():
+    wont = deb("CVE-2019-1010022", "openssl", None, urgency="unimportant")  # Debian: no security impact in practice
+    wont["severity"] = [{"type": "CVSS_V3", "score": REMOTE}]
+    p, *_ = build(wont, listening=nginx("root"), acc=access())
+    assert p == []
+    up = deb("CVE-2026-0202", "sudo", None, urgency="unimportant")
+    up["severity"] = [{"type": "CVSS_V3", "score": LOCAL}]
+    p, *_ = build(flaw("CVE-2026-0101", "openssl", REMOTE), up, listening=nginx(), acc=access())
+    assert "network" not in by_kind(p) and "foothold" not in by_kind(p)

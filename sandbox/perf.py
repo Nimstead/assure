@@ -41,12 +41,41 @@ CONTAINERS = int(sys.argv[sys.argv.index("--containers") + 1]) if "--containers"
 TICKETS = "--tickets" in sys.argv
 APPS = int(sys.argv[sys.argv.index("--apps") + 1]) if "--apps" in sys.argv else 0
 RUNTIME = "--runtime" in sys.argv
+PATHS = "--paths" in sys.argv  # tasks/spec-paths.md criterion 7; implies a runtime read
+HELD, TRUSTED, ENTRY_EVERY = 3, 20, 20  # keys each host holds and trusts; one host in 20 listens on the network (about 50 ways in)
+
+
+def fp(k):
+    return "SHA256:" + f"{k:043d}"
+
+
+def access_read(n):
+    """A host's access read, as agent 0.11.0 sends it: its own keys (root's and deploy's), 20 trusted from the whole fleet's,
+    so each key opens about seven other machines, and on every tenth host a cron file anyone can write (a way up)."""
+    keys = [fp(n * HELD + j) for j in range(HELD)]
+    trusted = rnd.sample(range(ASSETS * HELD), TRUSTED)
+    return {"v": 1, "state": "ok", "problem": None,
+            "sshd": {"installed": True, "permitrootlogin": "prohibit-password", "pubkeyauthentication": "yes", "passwordauthentication": "no",
+                     "kbdinteractiveauthentication": "no", "permitemptypasswords": "no", "strictmodes": "yes", "authorizedkeysfile": [".ssh/authorized_keys"],
+                     "authorizedkeyscommand": False, "allowusers": [], "denyusers": [], "allowgroups": [], "denygroups": [], "port": ["22"],
+                     "listenaddress": ["0.0.0.0:22"], "match": False},
+            "accounts": [{"name": "root", "uid": 0, "groups": ["root"], "login": True, "password": "locked", "sudo_all": None},
+                         {"name": "deploy", "uid": 1000, "groups": ["deploy"], "login": True, "password": "locked", "sudo_all": False}],
+            "writable": [{"path": "/etc/cron.d/backup", "kind": "cron", "by": "everyone", "at": "/etc/cron.d/backup"}] if n % 10 == 0 else [],
+            "shadow_readable_by": [],
+            "held": [{"account": "root" if j == 0 else "deploy", "path": f"/{'root' if j == 0 else 'home/deploy'}/.ssh/id_{j}", "type": "ssh-ed25519",
+                      "fp": keys[j], "passphrase": False} for j in range(HELD)],
+            "trusted": [{"account": "root" if k % HELD == 0 else "deploy", "fp": fp(k), "type": "ssh-ed25519", "from": [], "forced": False, "restrict": False}
+                        for k in trusted if k // HELD != n],
+            "credentials": [], "agent_sockets": 0, "unidentified_keys": 0}
 
 
 def runtime_read(n, names):
-    """A host's read of what runs, as agent 0.10.0 sends it: programs loading packages, a few listening, one replaced copy."""
+    """A host's read of what runs, as agent 0.10.0 sends it: programs loading packages, a few listening, one replaced copy.
+    With --paths only one host in ENTRY_EVERY listens beyond loopback, as a fleet has a handful of ways in."""
+    net = not PATHS or n % ENTRY_EVERY == 0
     progs = [{"name": f"svc{k}.service", "unit": True, "users": ["root"], "count": 2,
-              "listen": [f"0.0.0.0:{8000 + k}/tcp"] if k < 3 else [f"127.0.0.1:{9000 + k}/tcp"] if k < 6 else [],
+              "listen": [f"{'0.0.0.0' if net else '127.0.0.1'}:{8000 + k}/tcp"] if k < 3 else [f"127.0.0.1:{9000 + k}/tcp"] if k < 6 else [],
               "loads": sorted({f"pkg{p}" for p in rnd.sample(names, 25)}), "replaced": []} for k in range(60)]
     if n % 10 == 0:
         progs[5]["replaced"] = progs[5]["loads"][:1]
@@ -165,8 +194,12 @@ def main():
         vuln = set(names[:VULN_PER_HOST])
         pkgs = [{"ecosystem": ECO, "name": f"pkg{p}", "version": "1.0-1" if p in vuln else "9.0-1", "source": f"pkg{p}"} for p in names]
         body = with_document({"ecosystem": ECO, "packages": pkgs})
-        if RUNTIME:
+        if RUNTIME or PATHS:
             body["runtime"] = runtime_read(n, names)
+        if PATHS:
+            body["access"] = access_read(n)
+            body["facts"] = {**(body.get("facts") or {}), "os_id": "debian", "addresses": [f"10.{n // 65536}.{n // 256 % 256}.{n % 256}"], "peers": []}
+            body["collection"]["sources"]["access"] = {"state": "ok", "count": 2}
         t = time.perf_counter()
         r = c.post("/api/agent/inventory", json=body, headers=headers[-1])
         ingest.append(time.perf_counter() - t)
@@ -213,6 +246,13 @@ def main():
                                        "max_s": round(reports[-1], 3), "first_s": round(first, 3)}
         print("containers report", result["containers_report"], flush=True)
 
+    if PATHS:
+        out = timed("GET /api/attack-paths (key edges, chains, choke points)", lambda: c.get("/api/attack-paths").json(), 3)
+        result["attack_paths"] = {"edges_listed": len(out["edges"]), "truncated": out["truncated"], "chains": len(out["chains"]),
+                                  "largest_chain": max((len(ch["reach"]) for ch in out["chains"]), default=0), "choke_points": len(out["choke_points"]),
+                                  "top_choke": out["choke_points"][0]["action"] if out["choke_points"] else None,
+                                  "top_cuts": out["choke_points"][0]["cuts"] if out["choke_points"] else 0}
+        print("attack paths", result["attack_paths"], flush=True)
     summ = timed("GET /api/summary (home page)", lambda: c.get("/api/summary").json(), 3)
     result["open_findings"] = sum(summ["open_by_priority"].values())
     print("open findings:", result["open_findings"], flush=True)
@@ -247,7 +287,7 @@ def main():
     hosts = timed("GET /api/windows-updates/{kb} (drill down)", lambda: c.get(f"/api/windows-updates/{rows[0]['kb']}", params={"product": product}), 3)
     result["windows_updates_drilldown_kib"] = round(len(hosts.content) / 1024)
     timed("GET /api/summary (with Windows hosts)", lambda: c.get("/api/summary").json(), 3)
-    (ROOT / "sandbox" / f"last_run_perf_{result['db'].split('+')[0]}{'_containers' if CONTAINERS else ''}{'_apps' if APPS else ''}{'_tickets' if TICKETS else ''}{'_runtime' if RUNTIME else ''}.json").write_text(json.dumps(result, indent=2))
+    (ROOT / "sandbox" / f"last_run_perf_{result['db'].split('+')[0]}{'_containers' if CONTAINERS else ''}{'_apps' if APPS else ''}{'_tickets' if TICKETS else ''}{'_runtime' if RUNTIME else ''}{'_paths' if PATHS else ''}.json").write_text(json.dumps(result, indent=2))
 
 
 if __name__ == "__main__":

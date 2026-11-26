@@ -4,6 +4,19 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-11-26 (preview)
+
+Agent 0.10.0, unchanged. One database migration (`d4f6a8c0e2b1`, an index), applied on start.
+
+### Upgrade notes
+- **The migration adds one index to the findings table** (`org_id, status, priority`). On a large database it takes a moment on start: 0.6 s for 537,000 findings on SQLite.
+
+### Highlights
+- **The home page is faster than before runtime, not slower.** At 1,000 hosts with 297,000 open findings, Fix first loads in 0.24 s, down from 0.40 s in 0.14.0 and 0.33 s in 0.13.0; with Windows hosts 0.38 s, down from 0.59 s and 0.55 s.
+
+### Fixed
+- **The home page read every open finding to count them by priority** (248 ms of a 0.40 s page at 297,000 open findings). It now counts them from an index alone, in 33 ms. Inventory ingest and the hourly re-match take as long as before.
+
 ## [0.14.0] - 2026-11-26 (preview)
 
 Agent 0.10.0. One database migration (`b7d1e3f5a9c2`), applied on start.
@@ -811,7 +824,8 @@ The first early-access release. Everything listed is proven by tests and, for an
 
 Licensed under FSL-1.1-ALv2: this release becomes available under Apache 2.0 on 2028-10-27.
 
-[Unreleased]: https://github.com/Nimstead/assure/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/Nimstead/assure/compare/v0.14.1...HEAD
+[0.14.1]: https://github.com/Nimstead/assure/compare/v0.14.0...v0.14.1
 [0.14.0]: https://github.com/Nimstead/assure/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/Nimstead/assure/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/Nimstead/assure/compare/v0.11.1...v0.12.0

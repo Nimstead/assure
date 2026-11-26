@@ -75,7 +75,7 @@ def runtime_read(n, names):
     With --paths only one host in ENTRY_EVERY listens beyond loopback, as a fleet has a handful of ways in."""
     net = not PATHS or n % ENTRY_EVERY == 0
     progs = [{"name": f"svc{k}.service", "unit": True, "users": ["root"], "count": 2,
-              "listen": [f"{'0.0.0.0' if net else '127.0.0.1'}:{8000 + k}/tcp"] if k < 3 else [f"127.0.0.1:{9000 + k}/tcp"] if k < 6 else [],
+              "listen": [f"{'0.0.0.0' if net else '127.0.0.1'}:{8000 + k}/tcp"] if k < 3 else [f"127.0.0.1:{9000 + k}/tcp"] if k < 6 else [],  # noqa: S104 — a listen address in test data, nothing binds
               "loads": sorted({f"pkg{p}" for p in rnd.sample(names, 25)}), "replaced": []} for k in range(60)]
     if n % 10 == 0:
         progs[5]["replaced"] = progs[5]["loads"][:1]

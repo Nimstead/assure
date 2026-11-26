@@ -30,7 +30,7 @@ A machine's drawer on **Assets** shows the same under **What runs here**, with i
 
 An approved fix on a Linux machine restarts, after the upgrade, the system services that ran the files it replaced, then runs the machine's health checks on them too. If one won't come back up, the fix rolls back and the service is restarted on the restored version. The approval says which services the fix will restart, from the latest read.
 
-Some programs are never restarted by a fix: the system manager and its own services, D-Bus, login and display managers, terminals and users' sessions, networking, container runtimes, virtualisation, and the agent itself. On a machine without systemd (Alpine), nothing is restarted. When one of those still runs the old copy, the fix shows **Verifying** with "Waiting for a restart: …"; restart the program or the machine and the fix succeeds on the next report. After seven days of waiting it fails and says why.
+Some programs are never restarted by a fix: the system manager and its own services, D-Bus, login and display managers, terminals and users' sessions, networking (NetworkManager, ifupdown, wicked, DHCP clients, VPNs, Open vSwitch), cluster managers (corosync, pacemaker, keepalived), container runtimes, virtualisation, auditd, and the agent itself; nor any unit systemd won't let a person stop by hand (`RefuseManualStop`), nor an instance a socket starts per connection. On a machine without systemd (Alpine), nothing is restarted. When one of those still runs the old copy, the fix shows **Verifying** with "Waiting for a restart: …"; restart the program or the machine and the fix succeeds on the next report. After seven days of waiting it fails and says why.
 
 ## Turn it off on a machine
 

@@ -84,7 +84,7 @@ From agent 0.10.0, `inventory()` on Linux adds a top-level `runtime` object and 
 ]'` |
 | `runtime_owners(wanted, files, late, is_elf)` | `(owners, native, problem)`: owners of the wanted paths only (merged-`/usr` list paths count under `/usr`), and the packages that ship a shared object or an ELF executable in `bin`, `sbin` or `libexec` |
 | `safe_runtime()`, `with_runtime(inv, cfg)` | The read with any error it didn't expect turned into a `failed` read; adding it and its line to an inventory |
-| `Job.restart_replaced()` | After a Linux fix's package step: restart each system service still running a replaced copy of the job's packages (`systemctl restart --`), never one `RESTART_NEVER` names, nothing without systemd; the rest are named in a step (DECISIONS 163) |
+| `Job.restart_replaced()` | After a Linux fix's package step: restart each system service still running a replaced copy of the job's packages (`systemctl restart --`), never one `RESTART_NEVER` names or `can_restart` refuses (`CanStop` not `yes`, or a `TriggeredBy` socket), nothing without systemd; the rest are named in a step, and a read that fails restarts nothing (DECISIONS 163, 164) |
 
 ## Collection helpers
 

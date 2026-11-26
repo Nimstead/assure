@@ -65,16 +65,20 @@ def _tier(s: int) -> str:
     return next(p for t, p in PRIORITY if s >= t)
 
 
-def attack_vectors(severity: list[dict] | None, nvd_vectors: list[str] = ()) -> set[str]:
-    """The CVSS attack vectors (N, A, L, P) a finding's flaws are reached by: from the advisory's own CVSS vectors, else
-    NVD's for its CVEs. Empty when none says. Malformed vectors are skipped."""
-    own = [v for x in severity or [] if isinstance(v := x.get("score"), str) and str(x.get("type", "")).startswith("CVSS_V")]
-    found = set()
-    for v in own or list(nvd_vectors):
-        for part in str(v).split("/"):
-            if part.startswith("AV:") and part[3:] in ("N", "A", "L", "P"):
-                found.add(part[3:])
-    return found
+def _av(vector) -> str | None:
+    return next((part[3:] for part in str(vector).split("/") if part.startswith("AV:") and part[3:] in ("N", "A", "L", "P")), None)
+
+
+def attack_vectors(severity: list[dict] | None, nvd: dict[str, str] | None = None, cves: list[str] = ()) -> set[str]:
+    """The CVSS attack vectors (N, A, L, P) a finding's flaws are reached by: the advisory's own and NVD's for each of its
+    CVEs, together, with "?" for a flaw nobody has scored. One advisory can carry one vector for several CVEs (Rocky's
+    RLSAs), so it speaks for them all only when it covers a single CVE (code review: a bundle's network vector once lowered
+    a local flaw). Malformed vectors are skipped."""
+    own = {v for x in severity or [] if str(x.get("type", "")).startswith("CVSS_V") and (v := _av(x.get("score")))}
+    by_cve = {c: v for c in cves if (v := _av((nvd or {}).get(c)))}
+    unscored = [c for c in cves if c not in by_cve]
+    unknown = not (own or by_cve) or (unscored and (len(cves) > 1 or not own))
+    return own | set(by_cve.values()) | ({"?"} if unknown else set())
 
 
 def context(r: Risk, *, kev: bool, ransomware: bool = False, public_exploit: bool = False, exploit_db: bool = False, msrc: dict | None = None,
@@ -118,7 +122,8 @@ def context(r: Risk, *, kev: bool, ransomware: bool = False, public_exploit: boo
         reasons.append(listening)
     state, why = runtime or (None, None)
     vectors = vectors or set()
-    if state == "listening" and (not vectors or vectors & {"N", "A"}):
+    # "?" is a flaw nobody scored: it may be reached over the network, so a listener raises it, but it never lowers anything
+    if state == "listening" and (not vectors - {"?"} or vectors & {"N", "A"}):
         s = min(100, s + 15) if not kev else s
         reasons.append(why)
     elif state in ("listening", "loaded") and why:

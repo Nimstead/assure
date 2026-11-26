@@ -811,7 +811,8 @@ The first early-access release. Everything listed is proven by tests and, for an
 
 Licensed under FSL-1.1-ALv2: this release becomes available under Apache 2.0 on 2028-10-27.
 
-[Unreleased]: https://github.com/Nimstead/assure/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/Nimstead/assure/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/Nimstead/assure/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/Nimstead/assure/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/Nimstead/assure/compare/v0.11.1...v0.12.0
 [0.11.1]: https://github.com/Nimstead/assure/compare/v0.11.0...v0.11.1

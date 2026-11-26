@@ -65,14 +65,16 @@ def findings(env, asset_id, status="open"):
 def test_valid_keeps_what_fits_and_drops_the_rest():
     assert runtime.valid(None) is None and runtime.valid("x") is None and runtime.valid({"v": 2, "state": "ok"}) is None
     assert runtime.valid({"v": 1, "state": "nonsense"}) is None
-    rt = runtime.valid({"v": 1, "state": "partial", "problem": "p" * 999, "other_roots": True, "native": ["a", 3, "a", "b" * 999],
-                        "programs": ["junk", {"name": ""}, {"name": "n" * 500, "unit": "yes", "count": True, "users": [1, "root"],
-                                                           "listen": ["0.0.0.0:80/tcp"] * 99, "loads": ["libc6", None, "nginx"],
-                                                           "replaced": ["libc6", "not-loaded"], "extra": {"x": 1}}]})
-    assert rt["problem"] == "p" * 300 and rt["other_roots"] == 0 and rt["native"] == ["a", "b" * 255]
-    [p] = rt["programs"]
-    assert p == {"name": "n" * 100, "unit": False, "users": ["root"], "count": 1, "listen": ["0.0.0.0:80/tcp"], "loads": ["libc6", "nginx"],
+    rt = runtime.valid({"v": 1, "state": "partial", "problem": "p" * 999, "other_roots": True, "native": ["a", 3, "a", "b" * 999, "c d"],
+                        "programs": ["junk", {"name": ""}, {"name": "n" * 500}, {"name": "evil‮"},
+                                     {"name": "nginx.service", "unit": "yes", "count": True, "users": [1, "root", "x\ny"],
+                                      "listen": ["0.0.0.0:80/tcp"] * 99 + ["<script>"], "loads": ["libc6", None, "nginx", "a b"],
+                                      "replaced": ["libc6", "not-loaded"], "extra": {"x": 1}}]})
+    assert rt["problem"] == "p" * 300 and rt["other_roots"] == 0 and rt["native"] == ["a"]  # too long or outside the set: dropped
+    [p] = rt["programs"]  # names a host can't have sent honestly are dropped, not cut (security audit)
+    assert p == {"name": "nginx.service", "unit": False, "users": ["root"], "count": 1, "listen": ["0.0.0.0:80/tcp"], "loads": ["libc6", "nginx"],
                  "replaced": ["libc6"]}  # a replaced copy is a loaded one; anything else isn't believed
+    assert runtime.valid({"v": 1, "state": "ok", "native": ["p" * 100 + str(i) for i in range(40_000)]}) is None  # over BODY_MAX
 
 
 def test_valid_caps_the_pairs_across_programs(monkeypatch):
@@ -174,11 +176,11 @@ def test_rank_rules(state, vectors, kw, change):
         assert r.priority == "planned"  # 60 x 0.75 = 45: the tier follows the score
 
 
-def test_attack_vectors_from_the_advisory_then_nvd():
+def test_attack_vectors_from_the_advisory_and_nvd():
     sev = [{"type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"}]
-    assert risk.attack_vectors(sev, ["CVSS:3.1/AV:L/AC:L"]) == {"N"}
-    assert risk.attack_vectors(None, ["CVSS:3.1/AV:L/AC:L", "CVSS:4.0/AV:A/AC:L"]) == {"L", "A"}
-    assert risk.attack_vectors([{"type": "CVSS_V3", "score": "junk"}], []) == set() and risk.attack_vectors(None, ["AV:X"]) == set()
+    assert risk.attack_vectors(sev, {"CVE-1": "CVSS:3.1/AV:L/AC:L"}, ["CVE-1"]) == {"N", "L"}  # both, never one over the other
+    assert risk.attack_vectors(None, {"CVE-1": "CVSS:3.1/AV:L/AC:L", "CVE-2": "CVSS:4.0/AV:A/AC:L"}, ["CVE-1", "CVE-2"]) == {"L", "A"}
+    assert risk.attack_vectors([{"type": "CVSS_V3", "score": "junk"}], {}, ["CVE-1"]) == {"?"} and risk.attack_vectors(None, {"CVE-1": "AV:X"}, ["CVE-1"]) == {"?"}
 
 
 def vectors_of(vuln_id):

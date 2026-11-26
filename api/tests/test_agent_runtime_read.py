@@ -199,19 +199,28 @@ SECRET = "hunter2-do-not-send"
 
 
 def fake_proc(tmp_path, procs, tables="debian13"):
-    """A /proc tree: self, and per pid its files and links. root links say which filesystem the process sees."""
+    """A /proc tree: self, and per pid its files and links. root links say which filesystem the process sees, and ns/mnt
+    links which mount namespace: the host's (default), a container's ("container": True, another root and namespace), a
+    chroot's ("chroot": the host's namespace, another root) or one of its own over the host's root ("own_ns": a systemd
+    sandbox or a user's unshare)."""
     proc, host, other = tmp_path / "proc", tmp_path / "host-root", tmp_path / "container-root"
     host.mkdir()
     other.mkdir()
-    (proc / "self").mkdir(parents=True)
+    (tmp_path / "ns").mkdir()
+    for n in ("host", "container", "own"):
+        (tmp_path / "ns" / n).write_text(n)
+    (proc / "self" / "ns").mkdir(parents=True)
     os.symlink(host, proc / "self" / "root")
+    os.symlink(tmp_path / "ns" / "host", proc / "self" / "ns" / "mnt")
     (proc / "net").mkdir()
     for t in ("tcp", "tcp6", "udp", "udp6"):
         (proc / "net" / t).write_text(fx(f"{tables}-net-{t}.txt"))
     for pid, p in procs.items():
         d = proc / str(pid)
         (d / "fd").mkdir(parents=True)
-        os.symlink(other if p.get("container") else host, d / "root")
+        (d / "ns").mkdir()
+        os.symlink(other if p.get("container") or p.get("chroot") else host, d / "root")
+        os.symlink(tmp_path / "ns" / ("container" if p.get("container") else "own" if p.get("own_ns") else "host"), d / "ns" / "mnt")
         if p.get("exe"):
             os.symlink(p["exe"], d / "exe")
         (d / "maps").write_text(p.get("maps", ""))
@@ -329,3 +338,54 @@ def test_inventory_carries_runtime_unless_the_host_opts_out(monkeypatch):
     assert inv["collection"]["sources"]["runtime"] == {"state": "partial", "count": 1, "error": "x"}
     inv = agent.with_runtime({"collection": {"v": 1, "sources": {}}}, {"runtime": False})
     assert "runtime" not in inv and inv["collection"]["sources"]["runtime"] == {"state": "off", "count": 0}
+
+
+
+# ---- the review round (DECISIONS 164) -------------------------------------------------------------------------------------------
+
+@POSIX
+def test_a_chrooted_daemon_is_read_and_a_users_own_namespace_isnt(tmp_path):
+    # named -t chroots after loading the host's libraries: its maps name host paths (security audit). A user's unshare keeps the
+    # host's root but mounts what it likes over it: not believed unless it's a system service, which systemd sandboxes
+    proc = fake_proc(tmp_path, {
+        10: nginx(chroot=True, cgroup="0::/system.slice/named.service", comm="named"),
+        11: nginx(own_ns=True, cgroup="0::/user.slice/user-1000.slice/session-2.scope", comm="faker", uid=1000),
+        12: nginx(own_ns=True),  # nginx.service under systemd's PrivateTmp
+        13: nginx(container=True, comm="nginx"),
+    })
+    rt = read(proc)
+    names = {p["name"] for p in rt["programs"]}
+    assert names == {"named.service", "nginx.service"} and rt["other_roots"] == 2 and rt["state"] == "ok"
+
+
+@POSIX
+def test_a_process_named_like_a_service_is_its_own_entry(tmp_path):
+    proc = fake_proc(tmp_path, {10: nginx(), 11: {"exe": "/usr/bin/python3.13", "comm": "nginx.service", "uid": 1000,
+                                                  "maps": "7f-80 r-xp 00000000 08:30 1629   /usr/lib/x86_64-linux-gnu/libc.so.6 (deleted)\n"}})
+    rt = read(proc)
+    entries = sorted((p["name"], p["unit"], tuple(p["replaced"])) for p in rt["programs"])
+    assert entries == [("nginx.service", False, ("libc6",)), ("nginx.service", True, ("libc6",))]  # the real one's own (libc upgraded)
+
+
+@POSIX
+def test_the_process_budget_counts_programs_not_kernel_threads(tmp_path, monkeypatch):
+    proc = fake_proc(tmp_path, {1: {"comm": "kthreadd"}, 2: {"comm": "kworker"}, 10: nginx(), 11: nginx()})
+    monkeypatch.setattr(agent, "RUNTIME_PROCESSES", 2)
+    rt = read(proc)
+    assert rt["state"] == "ok" and rt["programs"][0]["count"] == 2
+
+
+@POSIX
+def test_one_descriptor_budget_for_the_whole_pass(tmp_path, monkeypatch):
+    proc = fake_proc(tmp_path, {10: nginx(), 11: nginx(), 12: nginx()})
+    monkeypatch.setattr(agent, "RUNTIME_FDS_TOTAL", 4)
+    rt = read(proc)
+    assert rt["problem"] == "stopped at its descriptor budget (4 descriptors in all)" and rt["programs"][0]["loads"]  # files still matched
+
+
+@POSIX
+def test_a_budget_is_said_once(tmp_path):
+    proc = fake_proc(tmp_path, {10: nginx(), 11: nginx()})
+    ticks = iter(range(0, 10_000, 30))
+    rt = read(proc, clock=lambda: next(ticks))
+    assert rt["problem"].count("time budget") == 1

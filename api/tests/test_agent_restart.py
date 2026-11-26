@@ -7,13 +7,17 @@ from test_agent_remediate import JOB, NEW, FakeApt, agent, fill_cache, job_kw
 
 
 class RestartingApt(FakeApt):
-    """FakeApt that also takes `systemctl restart -- <unit>`, optionally failing one unit's restart."""
+    """FakeApt that also takes `systemctl restart -- <unit>` and `systemctl show -p CanStop -p TriggeredBy -- <unit>`, optionally
+    failing one unit's restart, refusing manual stops (auditd's RefuseManualStop) or naming a socket that starts a unit."""
 
-    def __init__(self, *a, fail_restart=(), **kw):
+    def __init__(self, *a, fail_restart=(), refuse_stop=(), by_socket=(), **kw):
         super().__init__(*a, **kw)
-        self.restarted, self.fail_restart = [], set(fail_restart)
+        self.restarted, self.fail_restart, self.refuse_stop, self.by_socket = [], set(fail_restart), set(refuse_stop), set(by_socket)
 
     def __call__(self, cmd, cwd=None):
+        if cmd[:2] == ["systemctl", "show"] and "CanStop" in cmd:
+            u = cmd[-1]
+            return 0, f"CanStop={'no' if u in self.refuse_stop else 'yes'}\nTriggeredBy={'sshd.socket' if u in self.by_socket else ''}\n"
         if cmd[:3] == ["systemctl", "restart", "--"]:
             self.log.append(cmd)
             self.restarted.append(cmd[3])
@@ -132,3 +136,64 @@ def test_job_files_reads_this_jobs_lists_only(tmp_path):
     assert list(j.job_files()) == [("libssl3", "/usr/lib/x86_64-linux-gnu/libssl.so.3")]
     rpm = agent.Job({**JOB, "manager": "dnf"}, run=lambda cmd, cwd=None: (0, "/usr/lib64/libssl.so.3\n(contains no files)\n") if cmd[:2] == ["rpm", "-ql"] else (1, ""))
     assert ("openssl", "/usr/lib64/libssl.so.3") in list(rpm.job_files())
+
+
+
+# ---- the review round (DECISIONS 164) -------------------------------------------------------------------------------------------
+
+def test_a_unit_that_refuses_a_manual_restart_is_left_not_failed(tmp_path):
+    # auditd on the RHEL family has RefuseManualStop=yes: a glibc or openssl fix must not roll back for it (code review, security audit)
+    fill_cache(tmp_path)
+    host = RestartingApt(tmp_path, {"libssl3": "3.0.11-1~deb12u1", "openssl": "3.0.11-1~deb12u1"}, NEW, refuse_stop={"auditd.service", "sshd@3-10.0.0.1:22-10.0.0.9:51000.service"},
+                         by_socket={"sshd@3-10.0.0.1:22-10.0.0.9:51000.service"})
+    j, _ = job(tmp_path, host, [prog("auditd.service"), prog("sshd@3-10.0.0.1:22-10.0.0.9:51000.service"), prog("nginx.service")], units=())
+    outcome, steps, _ = j.execute()
+    assert outcome == "applied" and host.restarted == ["nginx.service"]
+    [left] = [s for s in steps if s["step"] == "still running the replaced copy"]
+    assert left["output"].startswith("auditd.service, sshd@3-10.0.0.1:22-10.0.0.9:51000.service: not restarted by the agent")
+
+
+def test_a_socket_started_instance_is_left(tmp_path):
+    fill_cache(tmp_path)
+    host = RestartingApt(tmp_path, {"libssl3": "3.0.11-1~deb12u1", "openssl": "3.0.11-1~deb12u1"}, NEW, by_socket={"sshd@1.service"})
+    j, _ = job(tmp_path, host, [prog("sshd@1.service")], units=())
+    assert j.execute()[0] == "applied" and host.restarted == []
+
+
+def test_a_read_that_fails_restarts_nothing_and_keeps_the_fix(tmp_path):
+    fill_cache(tmp_path)
+    host = RestartingApt(tmp_path, {"libssl3": "3.0.11-1~deb12u1", "openssl": "3.0.11-1~deb12u1"}, NEW)
+    j, _ = job(tmp_path, host, [], units=())
+
+    def broken(files):
+        raise OSError(5, "Input/output error")
+    j.read_runtime = broken
+    outcome, steps, _ = j.execute()
+    assert outcome == "applied" and host.restarted == []
+    assert any(s["step"] == "read of running programs" and s["output"].startswith("failed, so nothing was restarted") for s in steps)
+
+
+def test_a_program_that_loads_the_package_but_runs_no_replaced_copy_is_not_restarted(tmp_path):
+    fill_cache(tmp_path)
+    host = RestartingApt(tmp_path, {"libssl3": "3.0.11-1~deb12u1", "openssl": "3.0.11-1~deb12u1"}, NEW)
+    started_after = {**prog("php8.2-fpm.service"), "replaced": []}  # loads libssl3, but the new copy: it started after the change
+    j, _ = job(tmp_path, host, [started_after, prog("nginx.service")], units=())
+    assert j.execute()[0] == "applied" and host.restarted == ["nginx.service"]
+
+
+def test_a_process_named_like_a_service_cant_choose_a_restart(tmp_path):
+    # a user's process can call itself "redis.service": its entry is not a unit, so it restarts nothing (security audit)
+    fill_cache(tmp_path)
+    host = RestartingApt(tmp_path, {"libssl3": "3.0.11-1~deb12u1", "openssl": "3.0.11-1~deb12u1"}, NEW)
+    real = {**prog("redis.service"), "replaced": [], "loads": []}
+    fake = prog("redis.service", unit=False)
+    j, _ = job(tmp_path, host, [real, fake], units=())
+    assert j.execute()[0] == "applied" and host.restarted == []
+
+
+@pytest.mark.parametrize("unit", ["auditd.service", "ifup@eth0.service", "wicked.service", "wickedd-dhcp4.service", "dhcpcd.service",
+                                  "connman.service", "ovs-vswitchd.service", "ovsdb-server.service", "tailscaled.service", "zerotier-one.service",
+                                  "corosync.service", "pacemaker.service", "sbd.service", "keepalived.service", "rc-local.service",
+                                  "unattended-upgrades.service", "apt-daily.service", "apt-daily-upgrade.service", "elogind.service"])
+def test_more_services_never_restarted(unit):
+    assert agent.RESTART_NEVER.fullmatch(unit)

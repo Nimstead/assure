@@ -1321,6 +1321,7 @@ def safe_containers(read=None, apps=True):
 RUNTIME_PROCESSES = 4096            # processes read per report; a busy host runs a few hundred
 RUNTIME_MAPS_MAX = 4 * 1024 * 1024  # one process's /proc/<pid>/maps; a JVM's is under 1 MB
 RUNTIME_FDS = 65536                 # descriptors looked at per process; a database server holds a few thousand
+RUNTIME_FDS_TOTAL = 262144          # and in all: one user's processes full of descriptors can't spend the pass (security audit)
 RUNTIME_PATHS = 2_000_000           # file-list paths streamed; a big host lists a few hundred thousand
 RUNTIME_SECONDS = 20                # the whole pass
 RUNTIME_PROGRAMS = 1024             # programs sent
@@ -1338,14 +1339,18 @@ _RT_ARCHIVES = (".jar", ".war", ".ear")
 _RT_ARCHIVES_GONE = tuple(a + " (deleted)" for a in _RT_ARCHIVES)
 _RT_MERGED = ("/bin/", "/sbin/", "/lib/", "/lib32/", "/lib64/", "/libx32/")  # merged /usr: the kernel names the file under /usr
 RPM_FILES = ["rpm", "-qa", "--qf", "[%{=NAME}\t%{FILENAMES}\n]"]
-# Services a fix never restarts, even when they run a replaced copy (DECISIONS 163): the system manager's own, D-Bus, the
-# login and display managers, terminals, users' sessions, networking (a restart can cut the machine off mid-job), container
-# runtimes and virtualisation (a restart stops what runs under them), and this agent. needrestart's list, plus these.
-RESTART_NEVER = re.compile(r"(?:systemd-.*|dbus.*|getty@.*|serial-getty@.*|console-getty|container-getty@.*|user@.*|user-runtime-dir@.*"
+# Services a fix never restarts, even when they run a replaced copy (DECISIONS 163, 164): the system manager's own, D-Bus, the
+# login and display managers, terminals, users' sessions, networking (a restart can cut the machine off mid-job), clusters (a
+# restart moves resources or fences the node), container runtimes and virtualisation (a restart stops what runs under them),
+# auditd (it refuses a manual stop), and this agent. needrestart's list, plus these; units that refuse a manual stop or that a
+# socket starts per connection are left too, whatever their name.
+RESTART_NEVER = re.compile(r"(?:systemd-.*|dbus.*|getty@.*|serial-getty@.*|console-getty|container-getty@.*|user@.*|user-runtime-dir@.*|elogind"
                            r"|(?:gdm|gdm3|kdm|nodm|sddm|wdm|xdm|lightdm|slim|lxdm|display-manager)"
                            r"|network.*|NetworkManager.*|ModemManager|wpa_supplicant.*|iwd|openvpn.*|wg-quick@.*|(?:open|free|libre|strong)swan.*"
-                           r"|bird.*|quagga|frr|tinc.*|bluetooth|docker.*|containerd|crio|podman.*|kubelet|k3s.*|rke2.*|lxcfs|libvirt.*"
-                           r"|virtlogd|virtlockd|xendomains|emergency|rescue|cloud-init.*|nimstead.*)\.service\Z")
+                           r"|ifup@.*|ifupdown.*|wicked.*|dhcpcd.*|dhclient.*|connman.*|ovs-vswitchd|ovsdb-server|openvswitch.*|tailscaled|zerotier-one"
+                           r"|bird.*|quagga|frr|tinc.*|bluetooth|corosync|pacemaker|sbd|keepalived"
+                           r"|docker.*|containerd|crio|podman.*|kubelet|k3s.*|rke2.*|lxcfs|libvirt.*|virtlogd|virtlockd|xendomains"
+                           r"|emergency|rescue|cloud-init.*|rc-local|unattended-upgrades|apt-daily.*|auditd|nimstead.*)\.service\Z")
 
 
 def parse_maps(text):
@@ -1548,13 +1553,12 @@ def runtime_read(proc="/proc", files=None, euid=None, clock=time.monotonic, user
     try:
         st = os.stat(f"{proc}/self/root")
         own = (st.st_dev, st.st_ino)
+        own_ns = os.stat(f"{proc}/self/ns/mnt").st_ino
         pids = sorted(int(p) for p in os.listdir(proc) if p.isdigit())
     except OSError as e:
         return {**empty, "state": "failed", "problem": f"{proc} couldn't be read: {e.strerror or e}"[:300]}
-    if len(pids) > RUNTIME_PROCESSES:
-        problems.append(f"stopped at its process budget ({RUNTIME_PROCESSES:,} processes)")
-        pids = pids[:RUNTIME_PROCESSES]
     seen = []  # (program, unit, user, mapped, replaced, socket inodes)
+    fds_left, n_read = RUNTIME_FDS_TOTAL, 0
     for pid in pids:
         if pid == own_pid:
             continue
@@ -1563,17 +1567,25 @@ def runtime_read(proc="/proc", files=None, euid=None, clock=time.monotonic, user
             break
         d = f"{proc}/{pid}"
         try:
-            st = os.stat(f"{d}/root")
-            if (st.st_dev, st.st_ino) != own:
-                other += 1
-                continue
             try:
                 exe = os.readlink(f"{d}/exe")
             except FileNotFoundError:
-                continue  # a kernel thread, or a process that has just exited
+                continue  # a kernel thread, or a process that has just exited: not a process the budget counts (code review)
+            if n_read >= RUNTIME_PROCESSES:
+                problems.append(f"stopped at its process budget ({RUNTIME_PROCESSES:,} processes)")
+                break
+            st = os.stat(f"{d}/root")
+            same_root, same_ns = (st.st_dev, st.st_ino) == own, os.stat(f"{d}/ns/mnt").st_ino == own_ns
             unit = parse_cgroup_unit(_rt_read(f"{d}/cgroup", 65536))
+            # A container has a root and a mount namespace of its own: its files are its image's. A chroot (named -t) keeps the
+            # host's namespace, so its mappings name host paths: read. A namespace of its own over the host's root is systemd's
+            # sandboxing of a service (read) or a user's unshare, which can mount anything over a package's path (not believed)
+            if not same_ns and (not same_root or not unit):
+                other += 1
+                continue
             if unit and unit.startswith("nimstead"):
                 continue  # the agent's own run
+            n_read += 1
             comm = _RT_NAME.sub("?", _rt_read(f"{d}/comm", 64).strip())[:64] or "?"
             uid = next((int(ln.split()[1]) for ln in _rt_read(f"{d}/status", 65536).splitlines() if ln.startswith("Uid:")), -1)
             text = _rt_read(f"{d}/maps", RUNTIME_MAPS_MAX)
@@ -1587,6 +1599,10 @@ def runtime_read(proc="/proc", files=None, euid=None, clock=time.monotonic, user
                 for i, e in enumerate(it):
                     if i >= RUNTIME_FDS:
                         break
+                    if fds_left <= 0:
+                        problems.append(f"stopped at its descriptor budget ({RUNTIME_FDS_TOTAL:,} descriptors in all)")
+                        break
+                    fds_left -= 1
                     try:
                         t = os.readlink(e.path)
                     except OSError:
@@ -1622,7 +1638,8 @@ def runtime_read(proc="/proc", files=None, euid=None, clock=time.monotonic, user
             pass  # IPv6 off: no tcp6 table
     gone_paths = set().union(*(r for _, _, _, _, r, _ in seen)) if seen else set()
     wanted = set().union(*(m for _, _, _, m, _, _ in seen), gone_paths, *(_so_names(p) for p in gone_paths)) if seen else set()
-    owners, native, problem = runtime_owners(wanted, files if files is not None else package_files(), late)
+    t1 = clock()  # matching has its own time: a pass that spent its own can still say what it saw (security audit)
+    owners, native, problem = runtime_owners(wanted, files if files is not None else package_files(), lambda: clock() - t1 > RUNTIME_SECONDS)
     if problem:
         problems.append(problem)
     for p in gone_paths:  # a replaced copy whose file was renamed by the upgrade: the package's own shorter name for it
@@ -1630,7 +1647,8 @@ def runtime_read(proc="/proc", files=None, euid=None, clock=time.monotonic, user
             owners[p] = owners[alias]
     programs = {}
     for name, unit, user, mapped, replaced, socks in seen:
-        g = programs.setdefault(name, {"name": name, "unit": unit, "users": set(), "count": 0, "listen": set(), "loads": set(), "replaced": set()})
+        # a service and a process that names itself after it are two entries: a name alone can't steer a restart (security audit)
+        g = programs.setdefault((name, unit), {"name": name, "unit": unit, "users": set(), "count": 0, "listen": set(), "loads": set(), "replaced": set()})
         g["count"] += 1
         g["users"].add(_RT_NAME.sub("?", user)[:32])
         g["listen"] |= {a for s in socks for a in listening.get(s, ())}
@@ -1638,13 +1656,14 @@ def runtime_read(proc="/proc", files=None, euid=None, clock=time.monotonic, user
         g["loads"] |= {pkg for p in mapped for pkg in owners.get(p, ())} | gone
         g["replaced"] |= gone
     out, pairs = [], 0
-    for g in sorted(programs.values(), key=lambda g: g["name"])[:RUNTIME_PROGRAMS]:
+    for g in sorted(programs.values(), key=lambda g: (g["name"], g["unit"]))[:RUNTIME_PROGRAMS]:
         loads = sorted(g["loads"])[:max(0, RUNTIME_LOADS - pairs)]
         pairs += len(loads)
         out.append({**g, "users": sorted(g["users"])[:_RT_USERS], "listen": sorted(g["listen"])[:_RT_LISTEN], "loads": loads,
                     "replaced": sorted(g["replaced"])})
     if len(programs) > RUNTIME_PROGRAMS or pairs >= RUNTIME_LOADS:
         problems.append(f"stopped at its size budget ({RUNTIME_PROGRAMS:,} programs, {RUNTIME_LOADS:,} loaded packages)")
+    problems = list(dict.fromkeys(problems))  # each said once
     return {**empty, "state": "partial" if problems else "ok", **({"problem": "; ".join(problems)[:300]} if problems else {}),
             "programs": out, "native": sorted(native), "other_roots": other}
 
@@ -3367,6 +3386,14 @@ class Job:
             paths |= {ln.strip() for ln in out.splitlines() if ln.startswith("/")}
         return paths
 
+    def can_restart(self, unit):
+        """Whether systemd lets the agent restart a unit: not one that refuses a manual stop (auditd's RefuseManualStop, which
+        would fail the restart and roll back every glibc or openssl fix on the RHEL family), nor an instance a socket starts per
+        connection (it has none to take over after a restart)."""
+        rc, out = self.run(["systemctl", "show", "-p", "CanStop", "-p", "TriggeredBy", "--", unit])
+        props = dict(ln.split("=", 1) for ln in out.splitlines() if "=" in ln)
+        return rc == 0 and props.get("CanStop") == "yes" and not props.get("TriggeredBy", "").strip()
+
     def job_files(self):
         """(package, path) from the file lists of this job's packages only: what runtime_read needs to see who runs them."""
         for n in sorted({str(p["name"]) for p in self.pkgs}):
@@ -3392,11 +3419,18 @@ class Job:
         that aren't system services and machines without systemd are left running and named in a step; the server keeps
         the job waiting for a restart until they are. A restart that fails raises StepFailed (the rollback restarts them on
         the restored version)."""
-        rt = self.read_runtime(files=self.job_files())
-        held = {p["name"]: p["unit"] for p in rt["programs"] if p["replaced"]}
+        try:
+            rt = self.read_runtime(files=self.job_files())
+        except Exception as e:  # noqa: BLE001 — the change itself worked: a read that fails restarts nothing, and says so
+            self.steps.append({"step": "read of running programs", "ok": True, "output": f"failed, so nothing was restarted: {type(e).__name__}: {e}"[:1500]})
+            return
         systemd = os.path.isdir(self.path("/run/systemd/system"))
-        go = sorted(n for n, unit in held.items() if unit and systemd and not RESTART_NEVER.fullmatch(n))
-        for u in go:
+        held = [p for p in rt["programs"] if p["replaced"]]
+        go = set()
+        for p in held:  # only a system service; a process can name itself anything (security audit)
+            if p["unit"] and systemd and not RESTART_NEVER.fullmatch(p["name"]) and self.can_restart(p["name"]):
+                go.add(p["name"])
+        for u in sorted(go):
             # touched before it's tried: one that won't start on the new files is what the rollback must bring back (the real
             # run found it left down when recorded only after a restart that worked)
             self.restarted.append(u)
@@ -3404,7 +3438,7 @@ class Job:
                 self.units.append(u)
             self.step(f"restart {u}: it ran the copy this fix replaced", ["systemctl", "restart", "--", u])
             self.restarts[u] = self.restart_count(u)  # restarts from here on count against it
-        if left := sorted(set(held) - set(go)):
+        if left := sorted({p["name"] for p in held} - go):
             self.steps.append({"step": "still running the replaced copy", "ok": True,
                                "output": f"{', '.join(left)}: not restarted by the agent; restart {'it' if len(left) == 1 else 'them'} (or the machine) to finish the fix"[:1500]})
         if rt["state"] != "ok":

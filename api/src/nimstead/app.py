@@ -1250,6 +1250,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         neighbours.store(s, asset, body.neighbours)
         if body.runtime is not None:  # before the rescan, which ranks findings and holds fixes open by it
             runtime.store(s, asset, body.runtime)
+        elif (((body.collection or {}).get("sources") or {}).get("runtime") or {}).get("state") == "off":
+            runtime.forget_replaced(s, asset)  # the host opted out: its last sighting must not hold fixes open for ever
         db_read = ((asset.collection or {}).get("sources") or {}).get("package_db")
         replaced = not (db_read and (db_read["state"] != "ok" or not db_read.get("count")))  # DECISIONS 83: a Linux list not read in full doesn't replace the last
         if replaced:
@@ -2211,7 +2213,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         return {"state": "restart" if f.runtime == "restart" and f.status != "resolved" else state, "binary": binary, "binaries": bins,
                 "reason": rv.reason(f.package, binary, state), "programs": programs[:20], "read_at": rv.row.read_at,
                 "read_state": rv.row.state, "read_problem": rv.row.problem, "since": rv.row.since,
-                "covered": bool(rv.row.since and rv.row.since <= rv.t - runtime.MEMORY)}
+                "covered": runtime.covered(rv.row, rv.t)}
 
     @app.get("/api/assets/{asset_id}/runtime")
     def asset_runtime(asset_id: str, user: CurrentUser, s: DB):
@@ -2338,8 +2340,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         """job id -> the services its fix would restart and the programs it would leave running, for Linux jobs not yet run,
         from each host's latest read (DECISIONS 163): what the approval names."""
         todo = [j for j in jobs if j.status in ("planned", "approved") and j.manager in remediate.LINUX_MANAGERS]
-        rows = {r.asset_id: r for r in s.scalars(select(AssetRuntime).where(AssetRuntime.asset_id.in_({j.asset_id for j in todo})))} if todo else {}
-        return {j.id: runtime.restarts(rows.get(j.asset_id), [str(p.get("name", "")) for p in j.packages or []]) for j in todo}
+        # the latest programs only, once per host (security audit: the memory columns can be large)
+        programs = dict(s.execute(select(AssetRuntime.asset_id, AssetRuntime.programs).where(
+            AssetRuntime.asset_id.in_({j.asset_id for j in todo}))).all()) if todo else {}
+        return {j.id: runtime.restarts(programs.get(j.asset_id), [str(p.get("name", "")) for p in j.packages or []]) for j in todo}
 
     class PlanReq(BaseModel):
         asset_id: str

@@ -289,11 +289,13 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
             fix_available=m.fixed is not None or eco == "WinConfig",  # a setting is fixed by changing it
         )
         # a distribution package on a host whose agent reads what runs: its state ranks the finding (DECISIONS 161)
-        state, binary = rv.state([b.name for b in binaries.get(name, [])]) if eco == asset.ecosystem and "_risk" not in m.record else (None, None)
+        bins = [b.name for b in binaries.get(name, [])]
+        # a kernel is judged by the engine's running-kernel rule, never by what runs (code review)
+        state, binary = rv.state(bins) if eco == asset.ecosystem and "_risk" not in m.record and not runtime.is_kernel(name, bins) else (None, None)
         if "_risk" not in m.record:
             r = risk.context(r, kev=kev, ransomware=any(c in ransomware for c in ids),
                              runtime=(state, rv.reason(name, binary, state)),
-                             vectors=risk.attack_vectors(m.record.get("severity"), [nvd_vector[c] for c in ids if nvd_vector.get(c)]),
+                             vectors=risk.attack_vectors(m.record.get("severity"), nvd_vector, [c for c in ids if c.startswith("CVE-")]),
                              public_exploit=any(c in exploits.get("metasploit", ()) for c in ids),
                              exploit_db=any(c in exploits.get("exploitdb", ()) for c in ids),
                              msrc=(m.record.get("database_specific") or {}), roles=roles,
@@ -349,6 +351,8 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
                 f.reasons = [r for r in f.reasons or [] if not r.startswith(runtime.RESTART)] + [runtime.restart_reason(who, not bins)]
                 f.runtime = "restart"
                 continue
+            if f.runtime == "restart":  # no longer held for a restart: whatever holds it now says so itself (code review)
+                f.runtime = None
             index = index or _closing_index(verdicts)
             if (why := _held_open(key, index, asset)) is not None:  # phase 4: in the engine's slice, only evidence closes (R4.6)
                 f.reasons = [r for r in f.reasons or [] if not r.startswith("Still open: ")] + [f"Still open: {why}"]

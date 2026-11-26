@@ -36,6 +36,10 @@ The agent reads the distribution packages inside running Docker, Podman and Kube
 
 A container is seen only while it runs at report time, so a short-lived job container's findings can open and close between reports. An image's findings close when every machine that ran it reports its containers without it, or reports that the runtime it ran in (Docker or Podman) is no longer installed; a machine that stops reporting keeps its images open. A package database on a separate mount inside the container (a volume over `/var/lib/dpkg`, say), or one with more than 10,000 packages, isn't read and says so. A compromised enrolled machine can add images of its own invention (at most 48 a day and 256 at once), or stop listing an image only it runs, but it can't change, rename or close an image another machine reported (DECISIONS 139, 140, 143).
 
+## What runs
+
+From agent 0.10.0, a Linux agent reads at each report which packages running programs have loaded, which listen on the network, and which run a replaced copy (DECISIONS 161). It's a sample every six hours, not a continuous sensor: a program that runs for a moment (a cron job, a command) is never seen, so "not loaded" means no long-running program loaded it in seven days of complete reads, and it lowers only flaws reached over the network. Interpreted code (Python, Perl and Node modules) is read, not mapped, so its packages are never called not loaded. The host firewall isn't read: "listening on 0.0.0.0" says the program accepts connections from anywhere the network lets them through. Containers' programs are left to their images, and Windows isn't read yet. A compromised enrolled machine can misreport what runs on it, raising or lowering its own findings' rank or keeping its own findings open, as it could already misreport its packages; it can't change another machine's.
+
 ## Agentless Windows
 
 Agentless Windows scans depend on PowerShell remoting and the caller's permissions. They provide findings, but fixes need an installed agent.

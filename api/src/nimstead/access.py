@@ -9,6 +9,7 @@ that turned the read off loses its row, so no stale key ever links it to anythin
 
 import json
 import re
+import unicodedata
 from datetime import datetime
 
 from sqlalchemy.orm import Session
@@ -18,7 +19,19 @@ from nimstead.db import Asset, AssetAccess, now
 ACCOUNTS, GROUPS, WRITABLE, HELD, TRUSTED, CREDENTIALS, FROM = 64, 64, 50, 256, 5_000, 100, 16
 BODY_MAX = 2 * 1024 * 1024
 _NAME = re.compile(r"[A-Za-z0-9._@+?-]{1,64}")  # the agent's own sanitised set
-_PATH = re.compile(r"[^\x00-\x1f\x7f‎‏‪-‮⁦-⁩]{1,255}")
+_BAD = frozenset(("Cc", "Cf", "Zl", "Zp"))  # control, format (bidirectional overrides, zero-width), line and paragraph separators
+
+
+class _Path:
+    """A path a host may send: 1-255 characters and none in a category that could reorder, hide or break the text it lands in
+    (security audit: C1 controls, U+2028 and zero-width characters passed a narrower filter)."""
+
+    @staticmethod
+    def fullmatch(s: str) -> bool:
+        return 0 < len(s) <= 255 and not any(unicodedata.category(ch) in _BAD for ch in s)
+
+
+_PATH = _Path()
 _FP = re.compile(r"SHA256:[A-Za-z0-9+/]{43}")
 _PATTERN = re.compile(r"[A-Za-z0-9._@*?!%/:\[\]-]{1,100}")  # sshd user and address patterns, from= entries
 _BY = re.compile(r"everyone|(?:group|user):[A-Za-z0-9._@+?-]{1,64}")

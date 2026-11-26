@@ -39,7 +39,7 @@ class Content:
 
     @classmethod
     def make(cls, records: dict, kev=(), cvss: dict | None = None, feeds=None, universe=(), eol: dict | None = None,
-             memo: dict | None = None, vectors: dict | None = None) -> Content:
+             memo: dict | None = None, vectors: dict | None = None, vector_eco: str | None = None) -> Content:
         """Return a sorted Content snapshot with a hash-derived version.
 
         records maps (ecosystem, product) tuples to OSV dictionaries with id keys. kev and universe
@@ -55,8 +55,10 @@ class Content:
             if (d := memo.get(("engine", "digest", *k))) is None:
                 v = sorted(records[k], key=lambda r: r["id"])
                 ids = sorted(cves(v))
+                # only the distro's own products carry NVD's vectors (they change its paths, so its version): an app product
+                # (npm, PyPI) shared with Windows hosts and SBOMs hashes the same whoever is judged first in a pass (code review)
                 body = [v, [c for c in ids if c in kev], {c: cvss[c] for c in ids if c in cvss},
-                        *([{c: vectors[c] for c in ids if c in vectors}] if vectors else [])]  # vectors change paths, so the version
+                        *([{c: vectors[c] for c in ids if c in vectors}] if vectors and k[0] == vector_eco else [])]
                 d = memo["engine", "digest", *k] = (v, hashlib.sha256(json.dumps(body, sort_keys=True, default=str).encode()).hexdigest(),
                                                      max((str(r.get("modified", ""))[:10] for r in v), default=""))
             out[k] = d[0]
@@ -130,4 +132,4 @@ def load(s: Session, inv: Inventory, cache: dict | None = None) -> Content:
     eol = _once(cache, ("engine", "eol", distro), lambda: s.scalar(select(Advisory.record).where(Advisory.ecosystem == "EOL", Advisory.package == cycle[0])) if cycle else None)
     vectors = {c: v for k in records if k[0] == distro for c, v in cache.get(("engine", "vec", *k), {}).items()}
     return Content.make(records, kev, cvss, loaded | ({distro} if universe else set()), universe, (eol or {}).get("cycles"), memo=cache,
-                        vectors=vectors)
+                        vectors=vectors, vector_eco=distro)

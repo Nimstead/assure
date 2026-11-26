@@ -18,7 +18,7 @@ def read(state="ok", **kw):
             "sshd": {"installed": True, "permitrootlogin": "prohibit-password", "pubkeyauthentication": "yes", "passwordauthentication": "no",
                      "kbdinteractiveauthentication": "no", "permitemptypasswords": "no", "strictmodes": "yes", "authorizedkeysfile": [".ssh/authorized_keys"],
                      "authorizedkeyscommand": False, "allowusers": [], "denyusers": [], "allowgroups": [], "denygroups": [], "port": ["22"],
-                     "listenaddress": ["0.0.0.0:22"], "match": False},
+                     "listenaddress": ["0.0.0.0:22"], "match": False, "usepam": "yes"},
             "accounts": [{"name": "root", "uid": 0, "groups": ["root"], "login": True, "password": "locked", "sudo_all": None},
                          {"name": "www-data", "uid": 33, "groups": ["docker", "www-data"], "login": False, "password": "locked", "sudo_all": False}],
             "writable": [{"path": "/etc/cron.d/backup", "kind": "cron", "by": "everyone", "at": "/etc/cron.d/backup"}],
@@ -118,3 +118,14 @@ def test_a_body_from_an_older_agent_stores_nothing(env):
 
 def test_an_installed_sshd_not_running_is_kept_as_such():
     assert access.valid(read(sshd={"installed": True, "running": False}))["sshd"] == {"installed": True, "running": False}
+
+
+@pytest.mark.parametrize("bad", ["/a\u0085b", "/a\u009bb", "/a b", "/a b", "/a؜b", "/a​b", "/a‮b", "/a\nb", "x" * 256, ""])
+def test_a_path_with_any_control_format_or_separator_character_is_dropped(bad):
+    r = read(held=[{"account": "root", "path": bad, "type": "ssh-ed25519", "fp": FP, "passphrase": False}])
+    assert access.valid(r)["held"] == []
+
+
+def test_ordinary_unicode_paths_are_kept():
+    r = read(held=[{"account": "root", "path": "/home/zoë/.ssh/id_日本", "type": "ssh-ed25519", "fp": FP, "passphrase": False}])
+    assert access.valid(r)["held"][0]["path"] == "/home/zoë/.ssh/id_日本"

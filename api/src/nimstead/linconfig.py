@@ -25,12 +25,18 @@ def _beyond_loopback(addr: str) -> bool:
 
 
 def ssh_listening(programs: list | None, sshd: dict | None) -> tuple[bool, str] | None:
-    """(listening beyond loopback, how it's known) for this host's sshd: from the runtime read when it saw sshd (the program
-    and the address), else from sshd's own configuration (said so: whether it runs isn't read); None when neither says."""
+    """(listening beyond loopback, how it's known) for this host's sshd: from a complete, recent runtime read when it saw sshd
+    (the program, or anything listening on sshd's port, as systemd does for a socket-activated sshd), else from sshd's own
+    configuration (said so: whether it runs isn't read); None when neither says. programs None: no such read."""
+    ports = {str(p) for p in (sshd or {}).get("port") or ["22"]}
     for p in programs or []:
-        if str(p.get("name", "")).split(".")[0] in ("ssh", "sshd"):
-            net = [a for a in p.get("listen") or [] if _beyond_loopback(a)]
+        named = str(p.get("name", "")).split(".")[0] in ("ssh", "sshd")
+        mine = [a for a in p.get("listen") or [] if named or (a.split("/")[0].rsplit(":", 1)[-1] in ports and a.endswith("/tcp"))]
+        if mine:
+            net = [a for a in mine if _beyond_loopback(a)]
             return (bool(net), f"{p['name']} listens on {net[0].split('/')[0]}" if net else f"{p['name']} listens only on loopback")
+        if named:
+            return False, f"{p['name']} runs but listens on nothing"
     if programs is not None and sshd and sshd.get("installed"):  # a complete runtime read that didn't see sshd: it isn't running
         return False, "sshd isn't running"
     if sshd and sshd.get("installed"):
@@ -77,6 +83,17 @@ def evaluate(data: dict | None, listening: tuple[bool, str] | None = None) -> li
     if nopass:
         add("sudo-nopasswd-all", _names(nopass), f"{_names(nopass)} can run every command as root with no password (sudo NOPASSWD: ALL), "
             "so whoever runs as them is root", "planned", 45, "Require a password, or limit the rule to the commands they need", nopass)
+    def who(by: list[str]) -> list[str]:
+        """The accounts a "user:X" or "group:X" names: a group's members as the read lists them (code review: a group name
+        never matched an account, so a group-writable file helped no one)."""
+        if "everyone" in by:
+            return [ANYONE]
+        out = set()
+        for b in by:
+            kind, _, name = b.partition(":")
+            out |= {name} if kind == "user" else {a["name"] for a in accounts if name in (a.get("groups") or [])}
+        return sorted(out)
+
     writable = [w for w in data.get("writable") or [] if isinstance(w, dict)]
     if writable:
         anyone = any(w.get("by") == "everyone" for w in writable)
@@ -84,10 +101,12 @@ def evaluate(data: dict | None, listening: tuple[bool, str] | None = None) -> li
                  f"{'it' if w.get('at') in (None, w['path']) else w['at']})" for w in writable]
         add("writable-root-run", f"{len(writable)} file{'s' * (len(writable) > 1)}", f"Files root runs can be replaced by someone else: {_names(shown)}",
             "next" if anyone else "planned", 60 if anyone else 50, "Make each file and the folders above it writable by root only",
-            ["anyone with an account"] if anyone else sorted({w["by"].split(":", 1)[1] for w in writable}))
+            who([w["by"] for w in writable]))
     shadow = data.get("shadow_readable_by")
     if isinstance(shadow, list) and shadow:
         add("shadow-readable", _names(shadow), f"/etc/shadow (every account's password hash) can be read by {_names(shadow)}", "next", 60,
-            "Make /etc/shadow readable by root (and group shadow) only: chmod 640, chown root:shadow",
-            ["anyone with an account"] if "everyone" in shadow else [x.split(":", 1)[1] for x in shadow])
+            "Make /etc/shadow readable by root (and group shadow) only: chmod 640, chown root:shadow", who(shadow))
     return out
+
+
+ANYONE = "anyone with an account"

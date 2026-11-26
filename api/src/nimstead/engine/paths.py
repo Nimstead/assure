@@ -118,8 +118,21 @@ def _listeners(inv: Inventory, product: str) -> list[dict]:
     return [x for b in sorted(binaries) for x in heard.get(b, [])]
 
 
-def _who(listeners: list[dict]) -> set[str]:
-    return {u for x in listeners for u in x.get("users") or []}
+def _who(listeners: list[dict]) -> tuple[set[str], str]:
+    """(the users a way in through these listeners gives, words for them). A program whose processes run as root and as
+    another user (nginx's, Apache's and php-fpm's master and workers) gives the other user: its workers take the connections
+    (code review: the union made every stock nginx a root way in). sshd is the exception: its other users are privilege
+    separation and accounts signed in, and the listener is root."""
+    users, said = set(), []
+    for x in listeners:
+        mine = set(x.get("users") or [])
+        if "root" in mine and len(mine) > 1 and str(x.get("program", "")).split(".")[0] not in ("ssh", "sshd"):
+            workers = sorted(mine - {"root"})
+            users |= set(workers)
+            said.append(f"its master runs as root and its workers, which take connections, as {', '.join(workers)}")
+        else:
+            users |= mine
+    return users, "; ".join(dict.fromkeys(said))
 
 
 def ssh_state(inv: Inventory) -> dict | None:
@@ -127,9 +140,7 @@ def ssh_state(inv: Inventory) -> dict | None:
     when neither was read. Stored in the report, so the fleet view knows whether a key trusted here can be used."""
     from nimstead import linconfig
     acc = inv.context.get("access") or {}
-    heard = inv.context.get("listening")
-    programs = None if heard is None else [{"name": x["program"], "listen": x["listen"]} for xs in heard.values() for x in xs]
-    got = linconfig.ssh_listening(programs, acc.get("sshd")) if acc else None
+    got = linconfig.ssh_listening(inv.context.get("programs_now"), acc.get("sshd")) if acc else None
     return {"listening": got[0], "how": got[1]} if got else None
 
 
@@ -172,9 +183,9 @@ def build_linux(inv: Inventory, content: Content, verdicts: list[Verdict]) -> li
         ls = _listeners(inv, product)
         if ls:
             x = ls[0]
-            users = _who(ls)
+            users, workers = _who(ls)
             what += (f". Loaded by {x['program']}, listening on {', '.join(a.split('/')[0] for a in x['listen'][:2])}"
-                     + (f", running as {', '.join(sorted(users))}" if users else "") + "; the host firewall isn't read")
+                     + (f" ({workers})" if workers else f", running as {', '.join(sorted(users))}" if users else "") + "; the host firewall isn't read")
             entry.append({"what": what, "ref": v.vuln_id, "grade": _grade(grade, "reasonable"), "kev": v.kev, "flaws": len(vs), "users": users})
         elif v.kev:  # exploited in the wild: worth a path without seeing a listener, and said so
             entry.append({"what": what + "; CISA lists it as exploited, no listener was seen", "ref": v.vuln_id, "grade": _grade(grade, "reasonable"),
@@ -212,8 +223,8 @@ def build_linux(inv: Inventory, content: Content, verdicts: list[Verdict]) -> li
         users = set().union(*(w["users"] for w in entry))
         up = order([w for w in escalate if usable(w, users)])
         mine = order(creds(users))
-        if up:
-            ways = {"entry": order(entry), "escalate": up, "credentials": order(creds(None))}
+        if up:  # only the ways in whose users some way up serves: the path's grade must not rest on one that can't go up
+            ways = {"entry": order([w for w in entry if any(usable(u, w["users"]) for u in up)]), "escalate": up, "credentials": order(creds(None))}
             out.append(_path("network", ["entry", "escalate", *(["credentials"] if ways["credentials"] else [])], ways, LINUX_LABELS,
                              reaches={"root": True, "users": []}, keys=len(held)))
         elif mine:

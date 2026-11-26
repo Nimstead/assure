@@ -9,7 +9,7 @@ K_ROOT, K_DEPLOY, K_OTHER = ("SHA256:" + c * 43 for c in "RDO")
 PROHIBIT = {"installed": True, "permitrootlogin": "prohibit-password", "pubkeyauthentication": "yes", "passwordauthentication": "no",
             "kbdinteractiveauthentication": "no", "permitemptypasswords": "no", "strictmodes": "yes", "authorizedkeysfile": [".ssh/authorized_keys"],
             "authorizedkeyscommand": False, "allowusers": [], "denyusers": [], "allowgroups": [], "denygroups": [], "port": ["22"],
-            "listenaddress": ["0.0.0.0:22"], "match": False}
+            "listenaddress": ["0.0.0.0:22"], "match": False, "usepam": "yes"}
 
 
 def path(kind="network", root=True, users=(), grade="reasonable"):
@@ -184,8 +184,10 @@ def test_the_endpoint_links_two_reporting_hosts_by_their_keys(env):
 # ---- choke points ---------------------------------------------------------------------------------------------------
 
 def reached(out):
-    """Every host an attacker holds something on, read from the endpoint's own output: starts and chain reaches."""
-    return {h for h, v in out["hosts"].items() if v["entry"]} | {r["host"] for c in out["chains"] for r in c["reach"]}
+    """Every host an attacker holds something on, read from the endpoint's own output: starts (a way in, or marked
+    internet-facing with any path) and chain reaches."""
+    return ({h for h, v in out["hosts"].items() if v["entry"] or (v["internet_facing"] and v["paths"])}
+            | {r["host"] for c in out["chains"] for r in c["reach"]})
 
 
 def test_retiring_one_deploy_key_cuts_the_machines_it_alone_opened():
@@ -204,7 +206,7 @@ def test_retiring_one_deploy_key_cuts_the_machines_it_alone_opened():
 
 
 def test_a_cut_short_graph_says_its_counts_are_a_lower_bound(monkeypatch):
-    monkeypatch.setattr(fleet, "KEY_EDGES_MAX", 2)
+    monkeypatch.setattr(fleet, "KEY_WAYS_MAX", 2)
     hosts = [A()] + [lhost(f"b{i}", f"10.0.1.{i}", trusted=[trusts(K_ROOT)]) for i in range(4)]
     choke = fleet.build(hosts)["choke_points"]
     assert choke and all(c["lower_bound"] for c in choke)
@@ -239,7 +241,7 @@ def test_choke_point_counts_equal_a_brute_force_recount(seed):
         keys = [held(fp, who) for fp, who in rnd.sample(pool, rnd.randint(0, 2))]
         trusted = [trusts(fp, rnd.choice(["root", "deploy"])) for fp, _ in rnd.sample(pool, rnd.randint(0, 3))]
         accts = [account("root", 0), account("deploy", 1000, ["docker"] if rnd.random() < 0.3 else [])]
-        hosts.append(lhost(f"h{i}", f"10.0.0.{i + 1}", keys=keys, trusted=trusted, accounts=accts, paths=paths))
+        hosts.append(lhost(f"h{i}", f"10.0.0.{i + 1}", keys=keys, trusted=trusted, accounts=accts, paths=paths, internet=rnd.random() < 0.2))
     out = fleet.build(hosts)
     before = reached(out)
     for c in out["choke_points"]:
@@ -292,3 +294,47 @@ def test_a_windows_host_never_links_to_itself():
     from test_engine_paths import LOCAL, WEAK, rec
     both = host("w", {**WEAK, "remote_uac_off": 1}, {"listening": OPEN_445}, recs=[rec("CVE-2026-1001", LOCAL)])
     assert fleet.build([both])["edges"] == []
+
+
+# ---- the review round (DECISIONS 170) -------------------------------------------------------------------------------
+
+def test_every_start_s_way_in_is_scored_however_many_other_candidates(monkeypatch):
+    monkeypatch.setattr(fleet, "MAX_CANDIDATES", 2)
+    keys = ["SHA256:" + f"{i:043d}" for i in range(6)]
+    hosts = [lhost("a", "10.0.0.1", keys=[held(k) for k in keys], paths=[path()])] + \
+        [lhost(f"b{i}", f"10.0.1.{i}", trusted=[trusts(k)]) for i, k in enumerate(keys)]
+    top = fleet.build(hosts)["choke_points"][0]
+    assert (top["kind"], top["ref"], top["cuts"]) == ("way-in", "a", 7)
+
+
+def test_closing_the_way_in_of_a_host_also_marked_internet_facing_leaves_it_a_start():
+    a = lhost("a", "10.0.0.1", keys=[held(K_ROOT)], paths=[path(), path("foothold")], internet=True)
+    out = fleet.build([a, lhost("b", "10.0.0.2", trusted=[trusts(K_ROOT)])])
+    assert not any(c["kind"] == "way-in" for c in out["choke_points"])  # its foothold path still makes it a start, as root
+
+
+def test_duplicate_keys_make_one_way_and_edges_list_at_most_five():
+    dup = [trusts(K_ROOT)] * 1000
+    out = fleet.build([lhost("a", "10.0.0.1", keys=[held(K_ROOT)] * 256, paths=[path()]), lhost("b", "10.0.0.2", trusted=dup)])
+    assert len(edge(out)["ways"]) == 1
+    many = [trusts("SHA256:" + f"{i:043d}") for i in range(8)]
+    out = fleet.build([lhost("a", "10.0.0.1", keys=[held("SHA256:" + f"{i:043d}") for i in range(8)], paths=[path()]), lhost("b", "10.0.0.2", trusted=many)])
+    assert len(edge(out)["ways"]) == fleet.WAYS_SHOWN and edge(out)["ways_count"] == 8
+
+
+def test_allowusers_rules_as_sshd_reads_them():
+    def g(allow):
+        e = edge(fleet.build([A(), lhost("b", "10.0.0.2", trusted=[trusts(K_ROOT)], sshd={**PROHIBIT, "allowusers": allow})]))
+        return e and e["grade"]
+    assert g(["root@jump.example.com"]) == "unverified"  # a host name: let in, said, never resolved
+    assert g(["ro[o]t"]) is None  # sshd has no [...] class: this names no one
+    assert g(["deploy@x@10.0.0.*"]) is None and g(["root@x@10.0.0.*"]) is None  # the host is after the last @, the user before it
+    renamed = [{**account("toor", 0)}, account("deploy", 1000)]  # uid 0 under another name is root to sshd
+    e = edge(fleet.build([A(), lhost("b", "10.0.0.2", trusted=[trusts(K_ROOT, "toor")], sshd={**PROHIBIT, "permitrootlogin": "no"}, accounts=renamed)]))
+    assert e is None
+
+
+def test_a_dsa_or_security_key_link_is_unverified():
+    dsa = {**held(K_ROOT), "type": "ssh-dss"}
+    e = edge(fleet.build([lhost("a", "10.0.0.1", keys=[dsa], paths=[path()]), lhost("b", "10.0.0.2", trusted=[trusts(K_ROOT)])]))
+    assert e["grade"] == "unverified" and "OpenSSH 7.0" in e["ways"][0]["because"]

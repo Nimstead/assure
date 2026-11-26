@@ -254,7 +254,7 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
         advisories[("drivers",)] = stored.get("drivers", {})
     acc = s.get(AssetAccess, asset.id) if asset.kind == "host" else None  # who can get in (DECISIONS 165)
     sshd = acc.data.get("sshd") if acc else None
-    ssh = linconfig.ssh_listening(rv.row.programs if rv.row and rv.row.state == "ok" else None, sshd) if acc else None
+    ssh = linconfig.ssh_listening(runtime.recent_programs(rv.row, t), sshd) if acc else None
     for x in host_checks(pkgs, asset.facts or {}, t.date(), advisories[("eol",)], advisories[("drivers",)], acc.data if acc else None, ssh):
         key = (x["ecosystem"], x["package"], x["vuln_id"])
         seen.add(key)

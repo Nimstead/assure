@@ -147,7 +147,7 @@ def test_a_debian_advisory_with_no_vector_takes_nvds():
     inv.context = {"listening": nginx("root"), "access": access()}
     plain = Content.make({("Debian:13", "openssl"): [rec]}, feeds={"Debian:13"}, universe={"openssl"})
     assert paths.build(inv, plain, evaluate(inv, plain)) == []  # nothing says how it would be used
-    nvd = Content.make({("Debian:13", "openssl"): [rec]}, feeds={"Debian:13"}, universe={"openssl"}, vectors={"CVE-2026-0101": REMOTE})
+    nvd = Content.make({("Debian:13", "openssl"): [rec]}, feeds={"Debian:13"}, universe={"openssl"}, vectors={"CVE-2026-0101": REMOTE}, vector_eco="Debian:13")
     assert by_kind(paths.build(inv, nvd, evaluate(inv, nvd)))["network"]["steps"][0]["ways"][0]["ref"] == "CVE-2026-0101"
     assert nvd.version != plain.version  # what changes a path changes the content version
 
@@ -161,3 +161,34 @@ def test_a_flaw_the_distro_wont_fix_is_no_way_in_or_up():
     up["severity"] = [{"type": "CVSS_V3", "score": LOCAL}]
     p, *_ = build(flaw("CVE-2026-0101", "openssl", REMOTE), up, listening=nginx(), acc=access())
     assert "network" not in by_kind(p) and "foothold" not in by_kind(p)
+
+
+def test_an_app_product_hashes_the_same_whichever_host_a_pass_judges_first():
+    npm = {"id": "GHSA-x", "aliases": ["CVE-2026-0303"], "affected": [{"package": {"ecosystem": "npm", "name": "lodash"}}]}
+    memo = {}
+    linux_first = Content.make({("npm", "lodash"): [npm], ("Debian:13", "openssl"): [deb("CVE-2026-0101", "openssl", "9:9")]}, memo=memo,
+                               vectors={"CVE-2026-0303": REMOTE, "CVE-2026-0101": REMOTE}, vector_eco="Debian:13")
+    alone = Content.make({("npm", "lodash"): [npm]})
+    after = Content.make({("npm", "lodash"): [npm]}, memo=memo)
+    assert alone.version == after.version and linux_first.version != alone.version
+
+
+def test_a_master_running_as_root_beside_workers_is_a_way_in_as_the_workers():
+    stock = {"libssl3t64": [{"program": "nginx.service", "users": ["root", "www-data"], "listen": ["0.0.0.0:443/tcp"]}]}
+    docker = access(accounts=[account("root", 0, login=True), account("www-data", 33, ["docker"])])
+    p, *_ = build(flaw("CVE-2026-0101", "openssl", REMOTE), listening=stock, acc=docker)
+    net = by_kind(p)["network"]
+    assert [s["stage"] for s in net["steps"]][:2] == ["entry", "escalate"] and "skipped" not in net
+    assert "its master runs as root and its workers, which take connections, as www-data" in net["steps"][0]["ways"][0]["what"]
+    sshd = {"openssh-server": [{"program": "ssh.service", "users": ["root", "sshd", "deploy"], "listen": ["0.0.0.0:22/tcp"]}]}
+    remote_ssh = deb("CVE-2026-0404", "openssh-server", "9:9")
+    remote_ssh["severity"] = [{"type": "CVSS_V3", "score": REMOTE}]
+    p, *_ = build(remote_ssh, listening=sshd, acc=access(), extra=(pkg("openssh-server", "1:10.0p1-7"),))
+    assert "skipped" in by_kind(p)["network"]  # sshd's listener is root
+
+
+def test_root_with_no_password_cant_sign_in_with_one():
+    from nimstead import linconfig
+    acc = access(accounts=[{**account("root", 0, login=True), "password": "none"}])
+    acc["sshd"] = {**acc["sshd"], "permitrootlogin": "yes", "passwordauthentication": "yes"}
+    assert linconfig.evaluate(acc, (True, "ssh.service listens on 0.0.0.0:22")) == []  # "*": nothing to guess

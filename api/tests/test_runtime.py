@@ -408,3 +408,13 @@ def test_a_fix_waiting_for_a_restart_is_not_planned_or_recommended_again(env):
     r = c.post("/api/remediation/jobs", json={"asset_id": aid, "ecosystem": ECO, "package": "openssl"})
     assert r.status_code == 409 and "restart nginx.service" in r.json()["detail"]
     assert all(x["package"] != "openssl" or not set(x["vulns"]) & {f["vuln_id"] for f in held} for x in c.get("/api/summary").json()["top_actions"])
+
+
+def test_only_a_complete_recent_read_says_what_listens_now():
+    from types import SimpleNamespace
+    t = now()
+    row = SimpleNamespace(state="ok", read_at=t - timedelta(hours=2), programs=[{"name": "ssh.service", "listen": ["0.0.0.0:22/tcp"]}])
+    assert runtime.recent_programs(row, t) == [{"name": "ssh.service", "listen": ["0.0.0.0:22/tcp"]}]
+    assert runtime.recent_programs(SimpleNamespace(**{**vars(row), "state": "partial"}), t) is None
+    assert runtime.recent_programs(SimpleNamespace(**{**vars(row), "read_at": t - timedelta(days=3)}), t) is None  # left from before an opt-out
+    assert runtime.recent_programs(None, t) is None

@@ -35,6 +35,8 @@ def context(s: Session, asset: Asset) -> dict:
     out = {}
     if (rt := s.get(AssetRuntime, asset.id)) is not None:  # present, even empty: "nothing listens" differs from "never read"
         out["listening"] = runtime.listening(rt)
+        if (now_ := runtime.recent_programs(rt)) is not None:  # what listens now, for whether sshd does: only a complete, recent read
+            out["programs_now"] = now_
     if (acc := s.get(AssetAccess, asset.id)) is not None:
         out["access"] = {"state": acc.state, **{k: v for k, v in (acc.data or {}).items() if k != "trusted"}}
     return out

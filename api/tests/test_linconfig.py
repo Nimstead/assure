@@ -71,14 +71,14 @@ def test_root_equivalent_groups_and_sudo_say_who_they_help():
 def test_writable_files_and_shadow():
     d = data(writable=[{"path": "/etc/cron.d/backup", "kind": "cron", "by": "everyone", "at": "/etc/cron.d/backup"},
                        {"path": "/opt/app/bin/app", "kind": "service", "by": "group:deploy", "at": "/opt/app/bin"}],
-             shadow_readable_by=["group:adm"])
+             shadow_readable_by=["group:adm"], accounts=[ROOT, account("www-data", 33, ["deploy"], login=False), account("syslog", 104, ["adm"], login=False)])
     c = checks(d)
     w = c["writable-root-run"]
     assert w["risk"].priority == "next" and w["helps"] == ["anyone with an account"]
     assert "/opt/app/bin/app (deploy can replace /opt/app/bin)" in w["summary"] and w["version"] == "2 files"
-    assert c["shadow-readable"]["helps"] == ["adm"]
-    only_group = checks(data(writable=[d["writable"][1]]))["writable-root-run"]
-    assert only_group["risk"].priority == "planned" and only_group["helps"] == ["deploy"]
+    assert c["shadow-readable"]["helps"] == ["syslog"]  # the group's members, not its name
+    only_group = checks(data(writable=[d["writable"][1]], accounts=d["accounts"]))["writable-root-run"]
+    assert only_group["risk"].priority == "planned" and only_group["helps"] == ["www-data"]  # a member of deploy
 
 
 def test_nothing_unread_opens_anything():
@@ -94,6 +94,9 @@ def test_nothing_unread_opens_anything():
     (None, {"installed": True, "listenaddress": ["127.0.0.1:22"]}, False),
     (None, {"installed": False}, None),
     (None, None, None),
+    ([{"name": "systemd", "listen": ["0.0.0.0:22/tcp"]}], {"installed": True, "port": ["22"]}, True),  # socket activation: systemd holds :22
+    ([{"name": "systemd", "listen": ["0.0.0.0:2222/tcp"]}], {"installed": True, "port": ["2222"]}, True),
+    ([{"name": "sshd.service", "listen": []}], None, False),
 ])
 def test_whether_sshd_listens_beyond_loopback(programs, sshd, want):
     got = linconfig.ssh_listening(programs, sshd)

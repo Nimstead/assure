@@ -180,3 +180,11 @@ def test_the_drawer_doesnt_call_stale_reads_covered(env):
     s.commit()
     fid = findings(env, aid)[1][0].id
     assert c.get(f"/api/findings/{fid}").json()["running"]["covered"] is False
+
+
+def test_sightings_expire_even_when_no_read_arrives(env):
+    # mutation check: the store forgets old sightings, but a host that stops reporting never stores again; the view must expire them
+    c = user(env)
+    t = Timeline(env, host(c)[0]).add((0, read(NGINX, prog("worker.service", ["openssl"]))))
+    assert t.view(6.9).state(["libssl3"])[0] == "listening" and t.view(6.9).state(["openssl"])[0] == "loaded"
+    assert t.view(7.1).state(["libssl3"]) == (None, None) and t.view(7.1).state(["openssl"]) == (None, None)

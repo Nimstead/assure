@@ -50,6 +50,7 @@ def test_maps_lines_that_are_not_files_are_skipped_and_rpm_temporaries_are_the_f
         "55d0-55d1 r--p 00000000 08:30 14065   /usr/sbin/nginx",
         "7f00-7f01 rw-p 00000000 00:00 0 ",  # anonymous
         "7f01-7f02 rw-p 00000000 00:00 0   [heap]",
+        "7f0a-7f0b r--p 00000000 00:00 0   /usr/lib/not-a-file.so",  # inode 0: not backed by a file, whatever it's called
         "7f02-7f03 r--p 00000000 00:00 0   [vvar]",
         "7f03-7f04 r-xp 00000000 08:30 4161   /usr/lib64/libcrypto.so.3.5.9;6745a1b2 (deleted)",
         "7f04-7f05 r--p 00000000 00:2a 99   /usr/lib64/libssl.so.3.5.9",  # btrfs and overlayfs files sit on 00: devices too

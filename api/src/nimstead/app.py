@@ -34,6 +34,7 @@ from sqlalchemy import Integer, and_, case, delete, func, or_, select
 from sqlalchemy.orm import Session, load_only
 
 from nimstead import (
+    access,
     ai,
     containers,
     engine,
@@ -1166,6 +1167,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         collection: dict | None = None  # checked by engine's valid_document: closed and bounded. None: agent older than this
         neighbours: Any = None  # checked row by row by neighbours.store, which drops what doesn't fit; None: agent older than 0.7.0, or off
         runtime: Any = None  # what runs (DECISIONS 161), checked by runtime.valid; None: agent older than 0.10.0, Windows, or off
+        access: Any = None  # who can get in (DECISIONS 165), checked by access.valid; None: agent older than 0.11.0, Windows, or off
 
     def facts_ok(f: dict) -> bool:
         """Return whether a facts dictionary passes structural and JSON-length bounds.
@@ -1252,6 +1254,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             runtime.store(s, asset, body.runtime)
         elif (((body.collection or {}).get("sources") or {}).get("runtime") or {}).get("state") == "off":
             runtime.forget_replaced(s, asset)  # the host opted out: its last sighting must not hold fixes open for ever
+        if body.access is not None:  # before the rescan, whose settings checks read it
+            access.store(s, asset, body.access)
+        elif (((body.collection or {}).get("sources") or {}).get("access") or {}).get("state") == "off":
+            access.forget(s, asset)  # opted out: no stale key may link this host to anything
         db_read = ((asset.collection or {}).get("sources") or {}).get("package_db")
         replaced = not (db_read and (db_read["state"] != "ok" or not db_read.get("count")))  # DECISIONS 83: a Linux list not read in full doesn't replace the last
         if replaced:

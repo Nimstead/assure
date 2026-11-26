@@ -1,0 +1,1 @@
+User www-data is not allowed to run sudo on web-1.

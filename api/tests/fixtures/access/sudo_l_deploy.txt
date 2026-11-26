@@ -1,0 +1,5 @@
+Matching Defaults entries for deploy on web-1:
+    env_reset, mail_badpass, secure_path=/usr/local/sbin\:/usr/local/bin\:/usr/sbin\:/usr/bin\:/sbin\:/bin, use_pty
+
+User deploy may run the following commands on web-1:
+    (ALL) NOPASSWD: ALL

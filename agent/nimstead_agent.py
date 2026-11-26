@@ -10,6 +10,7 @@
 
 import argparse
 import base64
+import binascii
 import collections
 import email.utils
 import glob
@@ -1688,6 +1689,305 @@ def with_runtime(inv, cfg):
         inv["collection"]["sources"]["runtime"] = (_source(len(rt["programs"]), rt.get("problem"), failed=rt["state"] == "failed")
                                                    if rt is not None else {"state": "off", "count": 0})
     return inv
+
+
+# ---- access (DECISIONS 165) ----------------------------------------------------------------------------------------
+# Who can get in and what they hold, for attack paths (tasks/spec-paths.md): sshd's effective settings, the accounts that
+# matter and which of them equal root, files root runs that someone else can write, the private keys held and the public
+# keys trusted (as SHA-256 fingerprints, exactly as ssh-keygen -l prints them) and which credential files exist. Homes are
+# their owners' to fill, so a file there is opened without following links, must be a regular file owned by its account or
+# root, and is read only up to its cap. A private key is read only as far as its public half; comments, forced commands
+# and credential contents are never sent. Nothing found here is ever used: the agent signs in nowhere.
+
+ACCESS_ACCOUNTS = 64                # accounts read; a server has a handful with homes
+ACCESS_KEY_FILES = 16               # private key files looked at per account
+ACCESS_KEY_BYTES = 64 * 1024        # one private key file: a 16,384-bit RSA key is under 13 KB
+ACCESS_TRUSTED = 1000               # trusted keys per account
+ACCESS_TRUSTED_TOTAL = 5000         # and in all, about 600 KB of JSON
+ACCESS_KEYS_BYTES = 1024 * 1024     # one authorized_keys file
+ACCESS_ROOT_RUN = 512               # files root runs, checked for who else can write them
+ACCESS_WRITABLE = 50                # writable ones sent
+ACCESS_SUDO = 32                    # accounts asked about with sudo -l
+ACCESS_SUDO_SECONDS = 3             # each: -n never waits for a password, but PAM or a directory can be slow
+ACCESS_SECONDS = 10                 # the whole pass
+ACCESS_FROM = 16                    # from= patterns kept per key, each at most 64 characters
+ROOT_EQUIVALENT = ("docker", "lxd", "incus-admin", "disk")  # a member runs as root at will (a container, the raw disk)
+SSHD_SETTINGS = ("permitrootlogin", "pubkeyauthentication", "passwordauthentication", "kbdinteractiveauthentication",
+                 "permitemptypasswords", "authorizedkeysfile", "authorizedkeyscommand", "allowusers", "denyusers", "allowgroups",
+                 "denygroups", "port", "listenaddress")
+_SSHD_LISTS = ("authorizedkeysfile", "allowusers", "denyusers", "allowgroups", "denygroups", "port", "listenaddress")
+KEY_TYPES = ("ssh-ed25519", "ssh-rsa", "ssh-dss", "ecdsa-sha2-nistp256", "ecdsa-sha2-nistp384", "ecdsa-sha2-nistp521",
+             "sk-ssh-ed25519@openssh.com", "sk-ecdsa-sha2-nistp256@openssh.com")
+_ACCESS_NAME = re.compile(r"[^A-Za-z0-9._@+-]")
+
+
+def ssh_fingerprint(blob):
+    """SHA256:<base64, no padding> of a public key blob, as ssh-keygen -l prints it. No I/O."""
+    return "SHA256:" + base64.b64encode(hashlib.sha256(blob).digest()).decode().rstrip("=")
+
+
+def _ssh_string(buf, at):
+    """(bytes, next offset) of an SSH wire string at buf[at:], or raise ValueError past the end."""
+    if at + 4 > len(buf):
+        raise ValueError("short")
+    n = int.from_bytes(buf[at:at + 4], "big")
+    if n > len(buf) - at - 4:
+        raise ValueError("short")
+    return buf[at + 4:at + 4 + n], at + 4 + n
+
+
+def _blob_type(blob):
+    kind, _ = _ssh_string(blob, 0)
+    return kind.decode("ascii")
+
+
+def parse_private_key(data):
+    """{"type", "fp", "passphrase", "format"} for a private key file's bytes, or None when it isn't one.
+
+    OpenSSH's own format stores the public key unencrypted before the private part, so its fingerprint is read without
+    decoding anything secret; "passphrase" is its cipher not being "none". A PEM key (RSA, EC, DSA, PKCS#8) carries no
+    public half: fp is None (the .pub beside it identifies it), and "passphrase" is its ENCRYPTED header. No I/O."""
+    text = data.decode("ascii", "replace")
+    if "-----BEGIN OPENSSH PRIVATE KEY-----" in text:
+        body = text.split("-----BEGIN OPENSSH PRIVATE KEY-----", 1)[1].split("-----END OPENSSH PRIVATE KEY-----", 1)[0]
+        try:
+            raw = base64.b64decode("".join(body.split()), validate=True)
+            if not raw.startswith(b"openssh-key-v1\0"):
+                return None
+            at = len(b"openssh-key-v1\0")
+            cipher, at = _ssh_string(raw, at)
+            _, at = _ssh_string(raw, at)  # kdf name
+            _, at = _ssh_string(raw, at)  # kdf options
+            if at + 4 > len(raw) or int.from_bytes(raw[at:at + 4], "big") < 1:
+                return None
+            blob, _ = _ssh_string(raw, at + 4)
+            kind = _blob_type(blob)
+        except (ValueError, UnicodeDecodeError, binascii.Error):
+            return None
+        return {"type": kind if kind in KEY_TYPES else "other", "fp": ssh_fingerprint(blob), "passphrase": cipher != b"none", "format": "openssh"}
+    m = re.search(r"-----BEGIN (RSA |EC |DSA |ENCRYPTED |)PRIVATE KEY-----", text)
+    if not m:
+        return None
+    kind = {"RSA ": "ssh-rsa", "EC ": "ecdsa", "DSA ": "ssh-dss"}.get(m.group(1), "other")
+    head = text[m.end():m.end() + 200]
+    return {"type": kind, "fp": None, "passphrase": m.group(1) == "ENCRYPTED " or "Proc-Type: 4,ENCRYPTED" in head, "format": "pem"}
+
+
+def parse_public_key(line):
+    """(type, fp) for an OpenSSH public key line ("<type> <base64> [comment]"), or None. The blob must name the same type
+    as the line, as sshd checks. No I/O."""
+    f = line.split()
+    if len(f) < 2 or f[0] not in KEY_TYPES:
+        return None
+    try:
+        blob = base64.b64decode(f[1], validate=True)
+        if _blob_type(blob) != f[0]:
+            return None
+    except (ValueError, UnicodeDecodeError, binascii.Error):
+        return None
+    return f[0], ssh_fingerprint(blob)
+
+
+def _key_options(line):
+    """(options text, rest of the line) when an authorized_keys line starts with options: everything up to the first space
+    or tab outside double quotes (a backslash escapes a quote, as sshd reads it). No I/O."""
+    quoted, i = False, 0
+    while i < len(line):
+        c = line[i]
+        if c == "\\" and quoted and i + 1 < len(line):
+            i += 2
+            continue
+        if c == '"':
+            quoted = not quoted
+        elif c in " \t" and not quoted:
+            return line[:i], line[i:].strip()
+        i += 1
+    return line, ""
+
+
+def _split_options(opts):
+    """[(name, value or None)] from an options text, split on commas outside quotes; values unquoted. No I/O."""
+    out, cur, quoted, i = [], "", False, 0
+    while i < len(opts):
+        c = opts[i]
+        if c == "\\" and quoted and i + 1 < len(opts):
+            cur += opts[i + 1]
+            i += 2
+            continue
+        if c == '"':
+            quoted = not quoted
+        elif c == "," and not quoted:
+            out.append(cur)
+            cur = ""
+        else:
+            cur += c
+        i += 1
+    out.append(cur)
+    pairs = []
+    for o in out:
+        name, eq, value = o.partition("=")
+        pairs.append((name.strip().lower(), value if eq else None))
+    return pairs
+
+
+def parse_authorized_keys(text):
+    """(keys, skipped) from authorized_keys text: each key's fp, type, from= patterns, and whether command= (forced) or
+    restrict applies. Comments are dropped; cert-authority lines (certificate trust, V2) and lines that don't parse are
+    counted as skipped. No I/O."""
+    keys, skipped = [], 0
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        opts = []
+        if line.split(None, 1)[0] not in KEY_TYPES:
+            otext, line = _key_options(line)
+            opts = _split_options(otext)
+        names = {n for n, _ in opts}
+        parsed = parse_public_key(line)
+        if parsed is None or "cert-authority" in names:
+            skipped += 1
+            continue
+        frm = [p.strip()[:64] for n, v in opts if n == "from" and v for p in v.split(",") if p.strip()][:ACCESS_FROM]
+        keys.append({"type": parsed[0], "fp": parsed[1], "from": frm, "forced": "command" in names, "restrict": "restrict" in names})
+    return keys, skipped
+
+
+def expand_keys_file(pattern, home, user, uid):
+    """An AuthorizedKeysFile entry as an absolute path (%h, %u, %U and %% expanded, a relative path taken from the home),
+    or None for "none" or a token sshd wouldn't accept. No I/O."""
+    if pattern.lower() == "none":
+        return None
+    out, i = "", 0
+    while i < len(pattern):
+        c = pattern[i]
+        if c == "%":
+            t = pattern[i + 1:i + 2]
+            rep = {"h": home, "u": user, "U": str(uid), "%": "%"}.get(t)
+            if rep is None:
+                return None
+            out += rep
+            i += 2
+            continue
+        out += c
+        i += 1
+    return out if out.startswith("/") else home.rstrip("/") + "/" + out
+
+
+def parse_sshd_t(text):
+    """The settings in SSHD_SETTINGS from `sshd -T` output, lists for the keywords that take several values (sshd prints
+    some once per value, some on one line), or None when the output isn't sshd's dump (an error, an empty read). No I/O."""
+    out = {}
+    for ln in text.splitlines():
+        k, _, v = ln.strip().partition(" ")
+        k = k.lower()
+        if k not in SSHD_SETTINGS:
+            continue
+        if k in _SSHD_LISTS:
+            out.setdefault(k, []).extend(v.split())
+        else:
+            out[k] = v.strip()
+    if "permitrootlogin" not in out or "port" not in out:
+        return None
+    out["authorizedkeyscommand"] = out.get("authorizedkeyscommand", "none").lower() != "none"
+    for k in _SSHD_LISTS:
+        out.setdefault(k, [])
+        out[k] = out[k][:64]
+    return out
+
+
+def sshd_has_match(texts):
+    """Whether any of the sshd configuration texts has a Match block (settings then differ per user or address). No I/O."""
+    return any(re.match(r"\s*match\s", ln, re.IGNORECASE) for t in texts for ln in t.splitlines())
+
+
+def parse_passwd(text):
+    """[(name, uid, gid, home, shell)] from /etc/passwd text; lines that don't parse are skipped. No I/O."""
+    out = []
+    for ln in text.splitlines():
+        f = ln.split(":")
+        if len(f) >= 7 and f[2].isdigit() and f[3].isdigit() and f[0] and not f[0].startswith(("+", "-")):
+            out.append((f[0], int(f[2]), int(f[3]), f[5], f[6]))
+    return out
+
+
+def parse_group(text):
+    """{group: (gid, [members])} from /etc/group text. No I/O."""
+    out = {}
+    for ln in text.splitlines():
+        f = ln.split(":")
+        if len(f) >= 4 and f[2].isdigit() and f[0]:
+            out[f[0]] = (int(f[2]), [m for m in f[3].split(",") if m])
+    return out
+
+
+def login_shell(shell):
+    """Whether a passwd shell lets someone sign in (not nologin, false or sync). No I/O."""
+    base = shell.rsplit("/", 1)[-1]
+    return bool(shell) and base not in ("nologin", "false", "sync", "shutdown", "halt")
+
+
+def parse_sudo_l(text):
+    """Whether `sudo -l -U <account>` output grants every command with no password (NOPASSWD: ALL, under any runas): only
+    that equals root. Tags combine ("NOPASSWD: SETENV: ALL"); a later PASSWD: undoes NOPASSWD. No I/O."""
+    for ln in text.splitlines():
+        s = ln.strip()
+        if s.startswith("("):
+            s = s.partition(")")[2].strip()
+        nopasswd = False
+        while True:
+            m = re.match(r"([A-Z_]+):\s*", s)
+            if not m:
+                break
+            tag = m.group(1)
+            nopasswd = True if tag == "NOPASSWD" else False if tag == "PASSWD" else nopasswd
+            s = s[m.end():]
+        if nopasswd and "ALL" in [c.strip() for c in s.split(",")]:
+            return True
+    return False
+
+
+def who_can_write(mode, uid, gid, is_dir=False, user_of=None, group_of=None):
+    """Who other than root can replace a file or folder with this mode and owner, the broadest first: "everyone",
+    "group:<name>" or "user:<name>", else None. A sticky folder (as /tmp) lets no one replace another's entry, so its
+    group and other bits don't count; group root (gid 0) is root's. No I/O beyond the name lookups passed in."""
+    def name(n, f):
+        try:
+            return _ACCESS_NAME.sub("?", f(n))[:64] if f else str(n)
+        except (KeyError, OSError):
+            return str(n)
+    sticky = is_dir and mode & 0o1000
+    if mode & 0o002 and not sticky:
+        return "everyone"
+    if mode & 0o020 and gid != 0 and not sticky:
+        return "group:" + name(gid, group_of)
+    if uid != 0:
+        return "user:" + name(uid, user_of)
+    return None
+
+
+_PRIVATE_V4 = (ipaddress.IPv4Network("10.0.0.0/8"), ipaddress.IPv4Network("172.16.0.0/12"), ipaddress.IPv4Network("192.168.0.0/16"))
+
+
+def parse_peers(text):
+    """["addr:port"] of established TCP connections to private-range IPv4 addresses, from /proc/net/tcp text (the remote
+    end), at most 64, as the Windows agent reports them (DECISIONS 112): public addresses are never sent. No I/O."""
+    out = []
+    for ln in text.splitlines()[1:]:
+        f = ln.split()
+        if len(f) < 4 or f[3] != "01":
+            continue
+        try:
+            host, port = f[2].split(":")
+            ip = ipaddress.IPv4Address(bytes.fromhex(host)[::-1])
+        except ValueError:
+            continue
+        p = f"{ip}:{int(port, 16)}"
+        if any(ip in n for n in _PRIVATE_V4) and p not in out:
+            out.append(p)
+            if len(out) == 64:
+                break
+    return out
 
 
 # MSRC names Windows Server by build; client names come from the feature-update version.

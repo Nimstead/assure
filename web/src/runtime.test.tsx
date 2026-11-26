@@ -58,7 +58,7 @@ it("not loaded says what a sample can't see, and an unproven one says how long i
     "No long-running program has loaded openssl in seven days of reads. Programs that run for a moment, like cron jobs and commands, aren't seen, so this lowers only flaws reached over the network, never known-exploited ones or local ones.");
   unmount();
   wrap(<Running r={{ ...R, state: null, programs: [], read_state: "partial", read_problem: "not run as root" }} pkg="openssl" />);
-  expect(screen.getByText(/No program was seen loading openssl/)).toHaveTextContent(/only after seven days of complete reads; it has been watching since 20 Nov/);
+  expect(screen.getByText(/No program was seen loading openssl/)).toHaveTextContent(/only after seven days of complete reads; it has been watching since (20 Nov|Nov 20)/);  // the browser's locale
   expect(screen.getByText(/in part: not run as root/)).toBeInTheDocument();
 });
 

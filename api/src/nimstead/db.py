@@ -284,7 +284,8 @@ class Finding(Base):
     runtime: Mapped[str | None] = mapped_column(String(12))
     __table_args__ = (UniqueConstraint("asset_id", "ecosystem", "package", "vuln_id"),
                       Index("ix_finding_open_actions", "org_id", "status", "ecosystem", "package"),  # home-page summary
-                      Index("ix_finding_runtime", "org_id", "runtime"))  # Restart to finish and the Running filter: 0.2 s to 0.1 ms at 537k findings
+                      Index("ix_finding_runtime", "org_id", "runtime"),  # Restart to finish and the Running filter: 0.2 s to 0.1 ms at 537k findings
+                      Index("ix_finding_open_priority", "org_id", "status", "priority"))  # home page's counts from the index alone: 248 to 33 ms at 297k open
 
 
 def make_engine(url: str = DB_URL):

@@ -1,8 +1,22 @@
 [
   {
     "step": "creating sandbox distro",
-    "name": "nimstead-sbx-rt-4d1c8b",
+    "name": "nimstead-sbx-rt-8b8197",
     "distro": "AlmaLinux-9"
+  },
+  {
+    "step": "earlier builds from the vault",
+    "installed": [
+      "openssl-3.5.5-2.el9_8.x86_64",
+      "krb5-libs-1.21.1-10.el9_8.x86_64",
+      "expat-2.5.0-6.el9.x86_64",
+      "libcurl-7.76.1-40.el9.x86_64",
+      "pcre2-10.40-6.el9.x86_64",
+      "libxml2-2.9.13-14.el9_7.x86_64",
+      "sqlite-libs-3.34.1-10.el9_8.x86_64",
+      "gnutls-3.8.10-3.el9.x86_64",
+      "openssl-fips-provider-3.5.5-2.el9_8.x86_64"
+    ]
   },
   {
     "step": "services up",
@@ -28,7 +42,7 @@
         "loads": 27,
         "listen": []
       },
-      "Relay(6086)": {
+      "Relay(8876)": {
         "loads": 0,
         "listen": []
       },
@@ -115,7 +129,7 @@
       "updated": 0,
       "skipped": 0
     },
-    "seconds": 6
+    "seconds": 4
   },
   {
     "step": "loaded and listening vs the oracle",
@@ -123,9 +137,39 @@
     "oracle_programs": 17,
     "differences": [
       {
-        "program": "Relay(6201)",
+        "program": "(sd-pam)",
+        "package": "openssl-libs",
+        "only": "agent",
+        "why": "a replaced copy the upgrade renamed, owned by the package's shorter name for it"
+      },
+      {
+        "program": "Relay(8994)",
         "only": "agent",
         "why": "the harness's own or WSL's per-command processes (a new relay and shell per wsl.exe call)"
+      },
+      {
+        "program": "login",
+        "package": "openssl-libs",
+        "only": "agent",
+        "why": "a replaced copy the upgrade renamed, owned by the package's shorter name for it"
+      },
+      {
+        "program": "systemd-hostnamed.service",
+        "package": "openssl-libs",
+        "only": "agent",
+        "why": "a replaced copy the upgrade renamed, owned by the package's shorter name for it"
+      },
+      {
+        "program": "systemd-journald.service",
+        "package": "openssl-libs",
+        "only": "agent",
+        "why": "a replaced copy the upgrade renamed, owned by the package's shorter name for it"
+      },
+      {
+        "program": "systemd-logind.service",
+        "package": "openssl-libs",
+        "only": "agent",
+        "why": "a replaced copy the upgrade renamed, owned by the package's shorter name for it"
       }
     ]
   },
@@ -138,64 +182,255 @@
   },
   {
     "step": "first report",
-    "open": 2,
+    "open": 21,
     "resolved": 0
   },
   {
     "step": "findings by runtime state",
     "states": {
-      "null": 1,
-      "loaded": 1
+      "null": 6,
+      "loaded": 9,
+      "listening": 6
     },
-    "listening_with_reason": 0,
-    "sources_on_a_listener": [],
+    "listening_with_reason": 6,
+    "sources_on_a_listener": [
+      "openssl",
+      "pcre2"
+    ],
     "wrong": [],
-    "sample": []
+    "sample": [
+      [
+        "openssl",
+        "CVE-2026-14456",
+        33,
+        [
+          "Fix available",
+          "openssl-libs (from openssl) is loaded by nginx.service, listening on 0.0.0.0:80/tcp and [::]:80/tcp; sshd.service, listening on 0.0.0.0:22/tcp and [::]:22/tcp (read 26 Nov 09:51 UTC; the host firewall isn't read)"
+        ]
+      ],
+      [
+        "openssl",
+        "CVE-2026-2673",
+        34,
+        [
+          "Fix available",
+          "openssl-libs (from openssl) is loaded by nginx.service, listening on 0.0.0.0:80/tcp and [::]:80/tcp; sshd.service, listening on 0.0.0.0:22/tcp and [::]:22/tcp (read 26 Nov 09:51 UTC; the host firewall isn't read)"
+        ]
+      ],
+      [
+        "openssl",
+        "CVE-2026-34180",
+        33,
+        [
+          "Fix available",
+          "openssl-libs (from openssl) is loaded by nginx.service, listening on 0.0.0.0:80/tcp and [::]:80/tcp; sshd.service, listening on 0.0.0.0:22/tcp and [::]:22/tcp (read 26 Nov 09:51 UTC; the host firewall isn't read)"
+        ]
+      ]
+    ]
   },
   {
-    "step": "no open finding on a library a listening program loaded on this host"
+    "step": "CHECK 4 a network listener's library is ranked with the reason: PASS",
+    "listening": 6,
+    "wrong": 0
   },
   {
     "step": "upgrade candidates",
     "candidates": [
       [
+        "openssl",
+        [
+          "(sd-pam)",
+          "login",
+          "nginx.service",
+          "postgresql.service",
+          "sshd.service",
+          "systemd"
+        ]
+      ],
+      [
+        "pcre2",
+        [
+          "(sd-pam)",
+          "crond.service",
+          "dbus-broker.service",
+          "login",
+          "nginx.service",
+          "postgresql.service"
+        ]
+      ],
+      [
         "expat",
         [
           "dbus-broker.service"
         ]
+      ],
+      [
+        "libxml2",
+        [
+          "postgresql.service"
+        ]
       ]
     ],
-    "upgradable": 11
+    "upgradable": 19
   },
   {
     "step": "replaced copies after the upgrade",
-    "package": "expat",
+    "package": "openssl",
     "binaries": [
-      "expat"
+      "openssl-libs",
+      "openssl-fips-provider",
+      "openssl"
     ],
     "agent": [
       [
+        "(sd-pam)",
+        [
+          "openssl-libs",
+          "pcre2"
+        ]
+      ],
+      [
         "dbus-broker.service",
         [
-          "expat"
+          "expat",
+          "pcre2"
+        ]
+      ],
+      [
+        "login",
+        [
+          "openssl-libs",
+          "pcre2"
+        ]
+      ],
+      [
+        "nginx.service",
+        [
+          "openssl-libs"
+        ]
+      ],
+      [
+        "postgresql.service",
+        [
+          "openssl-libs"
+        ]
+      ],
+      [
+        "sshd.service",
+        [
+          "openssl-libs"
+        ]
+      ],
+      [
+        "systemd",
+        [
+          "openssl-libs",
+          "pcre2"
+        ]
+      ],
+      [
+        "systemd-hostnamed.service",
+        [
+          "openssl-libs",
+          "pcre2"
+        ]
+      ],
+      [
+        "systemd-journald.service",
+        [
+          "openssl-libs",
+          "pcre2"
+        ]
+      ],
+      [
+        "systemd-logind.service",
+        [
+          "openssl-libs",
+          "pcre2"
         ]
       ]
     ],
     "lsof_oracle": [
       [
+        "(sd-pam)",
+        [
+          "openssl-libs",
+          "pcre2"
+        ]
+      ],
+      [
         "dbus-broker.service",
         [
-          "expat"
+          "expat",
+          "pcre2"
+        ]
+      ],
+      [
+        "login",
+        [
+          "openssl-libs",
+          "pcre2"
+        ]
+      ],
+      [
+        "systemd",
+        [
+          "openssl-libs",
+          "pcre2"
+        ]
+      ],
+      [
+        "systemd-hostnamed.service",
+        [
+          "openssl-libs",
+          "pcre2"
+        ]
+      ],
+      [
+        "systemd-journald.service",
+        [
+          "openssl-libs",
+          "pcre2"
+        ]
+      ],
+      [
+        "systemd-logind.service",
+        [
+          "openssl-libs",
+          "pcre2"
         ]
       ]
     ],
     "distribution_tool": [
-      "dbus-broker.service"
+      "dbus-broker.service",
+      "systemd-hostnamed.service",
+      "systemd-journald.service",
+      "systemd-logind.service",
+      "user@0.service"
     ]
   },
   {
     "step": "replaced copies: agent vs lsof's deleted package files",
-    "differences": []
+    "differences": [
+      {
+        "program": "nginx.service",
+        "package": "openssl-libs",
+        "only": "agent",
+        "why": "the upgrade renamed the file; the package's own shorter name for it is in its list"
+      },
+      {
+        "program": "postgresql.service",
+        "package": "openssl-libs",
+        "only": "agent",
+        "why": "the upgrade renamed the file; the package's own shorter name for it is in its list"
+      },
+      {
+        "program": "sshd.service",
+        "package": "openssl-libs",
+        "only": "agent",
+        "why": "the upgrade renamed the file; the package's own shorter name for it is in its list"
+      }
+    ]
   },
   {
     "step": "CHECK 3 programs running a replaced copy equal the deleted package files (oracle): PASS",
@@ -203,31 +438,53 @@
   },
   {
     "step": "CHECK 3 services running a replaced copy include every one the distribution's tool names: PASS",
-    "only_tool": [],
-    "only_agent": [],
-    "named_systemd_by_the_agent": []
+    "only_tool": [
+      "user@0.service"
+    ],
+    "only_agent": [
+      "nginx.service",
+      "postgresql.service",
+      "sshd.service"
+    ],
+    "named_systemd_by_the_agent": [
+      "user@0.service"
+    ]
   },
   {
     "step": "report after the upgrade",
-    "open": 1,
+    "open": 16,
     "resolved": 0,
-    "held": 1,
-    "reason": "Still open: the fixed version is installed, but dbus-broker.service still runs the copy it replaced: restart it (or the machine)"
+    "held": 5,
+    "reason": "Still open: the fixed version is installed, but (sd-pam), login, nginx.service, postgresql.service, sshd.service, systemd, systemd-hostnamed.service, systemd-journald.service and systemd-logind.service still run the copy it replaced: restart them (or the machine)"
   },
   {
     "step": "CHECK 3 upgraded findings stay open while the old copy runs: PASS",
-    "held": 1,
-    "fixable_before": 1
+    "held": 5,
+    "fixable_before": 5
   },
   {
     "step": "report after the restart",
     "restarted": [
-      "dbus-broker.service"
+      "(sd-pam)",
+      "login",
+      "nginx.service",
+      "postgresql.service",
+      "sshd.service",
+      "systemd",
+      "systemd-hostnamed.service",
+      "systemd-journald.service",
+      "systemd-logind.service"
     ],
-    "open": 1,
-    "resolved": 1,
-    "still_held": 0,
-    "reason": null
+    "open": 16,
+    "resolved": 0,
+    "still_held": 5,
+    "reason": "Still open: the fixed version is installed, but (sd-pam), login and systemd still run the copy it replaced: restart them (or the machine)"
+  },
+  {
+    "step": "report after restarting the machine",
+    "open": 16,
+    "resolved": 5,
+    "still_held": 0
   },
   {
     "step": "CHECK 3 the restart closes them on the next report: PASS"
@@ -236,7 +493,7 @@
     "step": "not loaded, seven days backdated",
     "lowered": 0,
     "should": 0,
-    "not_loaded": 1,
+    "not_loaded": 6,
     "mismatch": [],
     "sample": []
   },
@@ -244,22 +501,154 @@
     "step": "no not-loaded finding whose own advisories say network only on this host"
   },
   {
-    "step": "only one upgrade candidate: the fix-job scenarios need a second",
-    "candidates": [
-      "expat"
+    "step": "fix whose new version breaks a service",
+    "source": "pcre2",
+    "restarts_named": {
+      "services": [
+        "crond.service",
+        "nginx.service",
+        "postgresql.service",
+        "rt-canary.service",
+        "sshd.service"
+      ],
+      "left": [
+        "(sd-pam)",
+        "dbus-broker.service",
+        "login",
+        "systemd",
+        "systemd-hostnamed.service",
+        "systemd-journald.service",
+        "systemd-logind.service"
+      ]
+    },
+    "outcome": "rolled_back",
+    "steps": [
+      "ok  job validated",
+      "ok  dnf available",
+      "ok  installed versions match plan",
+      "ok  fix is newer than installed",
+      "ok  no rollback copy kept from an earlier job with this id",
+      "ok  free space for the rollback copy",
+      "ok  refresh package index",
+      "ok  simulate upgrade",
+      "ok  no package downgraded",
+      "ok  change limited to planned packages",
+      "ok  repository has a newer version",
+      "ok  rollback snapshot saved",
+      "ok  upgrade",
+      "ok  restart crond.service: it ran the copy this fix replaced",
+      "ok  restart nginx.service: it ran the copy this fix replaced",
+      "ok  restart postgresql.service: it ran the copy this fix replaced",
+      "FAIL restart rt-canary.service: it ran the copy this fix replaced",
+      "ok  rollback artefact intact files.tar",
+      "ok  database backup intact /var/lib/rpm",
+      "ok  rollback restore",
+      "ok  versions restored",
+      "ok  restart crond.service on the restored version",
+      "ok  restart nginx.service on the restored version",
+      "ok  restart postgresql.service on the restored version",
+      "ok  restart rt-canary.service on the restored version",
+      "ok  crond.service active after rollback",
+      "ok  nginx.service active after rollback",
+      "ok  postgresql.service active after rollback",
+      "ok  rt-canary.service active after rollback"
+    ],
+    "canary": "active",
+    "version_now": "0:10.40-6.el9",
+    "version_before": "0:10.40-6.el9"
+  },
+  {
+    "step": "CHECK 5 a service the new version breaks rolls the fix back and runs again on the restored version: PASS"
+  },
+  {
+    "step": "the fix itself",
+    "source": "pcre2",
+    "restarts_named": {
+      "services": [
+        "crond.service",
+        "nginx.service",
+        "postgresql.service",
+        "sshd.service"
+      ],
+      "left": [
+        "(sd-pam)",
+        "dbus-broker.service",
+        "login",
+        "systemd",
+        "systemd-hostnamed.service",
+        "systemd-journald.service",
+        "systemd-logind.service"
+      ]
+    },
+    "outcome": "applied",
+    "status": "verifying",
+    "error": "Waiting for a restart: the fix is installed, but (sd-pam), dbus-broker.service, login, systemd, systemd-journald.service, systemd-logind.service still run the copy it replaced",
+    "restarted": [
+      "crond.service",
+      "nginx.service",
+      "postgresql.service",
+      "sshd.service"
+    ],
+    "left": "(sd-pam), dbus-broker.service, login, systemd, systemd-journald.service, systemd-logind.service: not restarted by the agent; restart them (or the machine) to finish the fix",
+    "steps": [
+      "ok  job validated",
+      "ok  dnf available",
+      "ok  installed versions match plan",
+      "ok  fix is newer than installed",
+      "ok  no rollback copy kept from an earlier job with this id",
+      "ok  free space for the rollback copy",
+      "ok  refresh package index",
+      "ok  simulate upgrade",
+      "ok  no package downgraded",
+      "ok  change limited to planned packages",
+      "ok  repository has a newer version",
+      "ok  rollback snapshot saved",
+      "ok  upgrade",
+      "ok  restart crond.service: it ran the copy this fix replaced",
+      "ok  restart nginx.service: it ran the copy this fix replaced",
+      "ok  restart postgresql.service: it ran the copy this fix replaced",
+      "ok  restart sshd.service: it ran the copy this fix replaced",
+      "ok  still running the replaced copy",
+      "ok  crond.service active after change",
+      "ok  nginx.service active after change",
+      "ok  postgresql.service active after change",
+      "ok  sshd.service active after change"
     ]
   },
   {
+    "step": "CHECK 5 a fix a refused program holds waits for a restart: PASS",
+    "error": "Waiting for a restart: the fix is installed, but (sd-pam), dbus-broker.service, login, systemd, systemd-journald.service, systemd-logind.service still run the copy it replaced"
+  },
+  {
+    "step": "after the machine restarted",
+    "status": "succeeded",
+    "error": null
+  },
+  {
+    "step": "CHECK 5 the fix restarts what ran the old copy and succeeds: PASS",
+    "restarted": [
+      "crond.service",
+      "nginx.service",
+      "postgresql.service",
+      "sshd.service"
+    ],
+    "status": "succeeded"
+  },
+  {
+    "step": "CHECK 5 the distribution's tool names none of the restarted services afterwards: PASS",
+    "left": []
+  },
+  {
     "step": "hostile processes",
-    "processes": 2048,
+    "processes": 2049,
     "read": {
-      "seconds": 0.78,
+      "seconds": 0.81,
       "state": "ok",
       "problem": null,
-      "programs": 22,
+      "programs": 23,
       "names": [
         "(sd-pam)",
-        "Relay(6491)",
+        "Relay(152)",
         "SessionLeader",
         "bash",
         "crond.service",
@@ -275,12 +664,13 @@
         "sh",
         "sshd.service",
         "systemd",
+        "systemd-hostnamed.service",
         "systemd-journald.service",
         "systemd-logind.service"
       ]
     },
     "report": {
-      "open": 1,
+      "open": 15,
       "resolved": 0
     }
   },
@@ -292,8 +682,8 @@
   },
   {
     "step": "CHECK 7 the read takes under 3 s with 2,000 extra processes: PASS",
-    "seconds": 0.78,
-    "processes": 2048
+    "seconds": 0.81,
+    "processes": 2049
   },
   {
     "step": "CHECK evidence pack verifies: PASS",
@@ -304,13 +694,16 @@
     "checks": {
       "1 loaded packages equal the oracle's": "PASS",
       "2 listening addresses equal ss": "PASS",
-      "4 a network listener's library is ranked with the reason": "NOT EXERCISED",
+      "4 a network listener's library is ranked with the reason": "PASS",
       "3 programs running a replaced copy equal the deleted package files (oracle)": "PASS",
       "3 services running a replaced copy include every one the distribution's tool names": "PASS",
       "3 upgraded findings stay open while the old copy runs": "PASS",
       "3 the restart closes them on the next report": "PASS",
       "4 a network flaw in native code nothing loads is lowered, never a KEV one": "NOT EXERCISED",
-      "5 fix jobs": "NOT RUN",
+      "5 a service the new version breaks rolls the fix back and runs again on the restored version": "PASS",
+      "5 a fix a refused program holds waits for a restart": "PASS",
+      "5 the fix restarts what ran the old copy and succeeds": "PASS",
+      "5 the distribution's tool names none of the restarted services afterwards": "PASS",
       "6 a secret in a command line or environment never leaves the machine": "PASS",
       "6 crafted names are sanitised and the report goes through": "PASS",
       "7 the read takes under 3 s with 2,000 extra processes": "PASS",
@@ -319,6 +712,6 @@
   },
   {
     "step": "sandbox destroyed",
-    "name": "nimstead-sbx-rt-4d1c8b"
+    "name": "nimstead-sbx-rt-8b8197"
   }
 ]

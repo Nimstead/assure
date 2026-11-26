@@ -119,10 +119,20 @@ def services():
         wsl("apk add -q python3 nginx openssh iproute2 lsof >/dev/null && ssh-keygen -A >/dev/null && mkdir -p /run/nginx && "
             "(/usr/sbin/sshd; nginx; true)")
     elif RPM:
-        wsl("dnf -q -y install python3 nginx openssh-server postgresql-server cronie iproute lsof dnf-utils >/dev/null && "
-            # the WSL image is fully patched: the release's earlier builds of libraries nginx and sshd load give findings to rank and fix
-            "(dnf -q -y downgrade openssl-libs openssl krb5-libs libcurl curl expat >/dev/null 2>&1; true) && "
+        # the WSL image (9.9) is fully patched and its repositories keep no earlier builds: AlmaLinux's vault, signed with the same
+        # key, holds 9.8's first builds, so libraries nginx, sshd and PostgreSQL load have findings to rank and a newer build to fix
+        # them with. openssl-fips-provider pins openssl-libs to its own version, so they go back together; each group on its own
+        vault = "".join(f"[alma-vault-98-{r.lower()}]\nname=AlmaLinux 9.8 {r} (vault)\nbaseurl=https://vault.almalinux.org/9.8/{r}/x86_64/os/\n"
+                        f"gpgcheck=1\ngpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-AlmaLinux-9\nenabled=0\n\n" for r in ("BaseOS", "AppStream"))
+        wsl("cat > /etc/yum.repos.d/alma-vault-98.repo", input=vault.encode())
+        back = ["openssl-3.5.5-2.el9_8 openssl-libs-3.5.5-2.el9_8 openssl-fips-provider-3.5.5-2.el9_8", "krb5-libs-1.21.1-10.el9_8",
+                "expat-2.5.0-6.el9", "libcurl-7.76.1-40.el9 curl-7.76.1-40.el9", "pcre2-10.40-6.el9", "libxml2-2.9.13-14.el9_7",
+                "sqlite-libs-3.34.1-10.el9_8", "gnutls-3.8.10-3.el9"]
+        wsl("dnf -q -y install python3 nginx openssh-server postgresql-server cronie iproute lsof dnf-utils >/dev/null && " + "".join(
+            f"(dnf -q -y --enablerepo='alma-vault-98-*' downgrade {g} >/dev/null 2>&1; true) && " for g in back) +
             "(postgresql-setup --initdb >/dev/null 2>&1; true) && systemctl enable --now nginx sshd postgresql crond >/dev/null 2>&1; true")
+        _, vers = wsl("rpm -q " + " ".join(g.split()[0].rsplit("-", 2)[0] for g in back) + " openssl-fips-provider", check=False)
+        note("earlier builds from the vault", installed=vers.split())
     else:
         wsl("apt-get update -qq && DEBIAN_FRONTEND=noninteractive NEEDRESTART_SUSPEND=1 apt-get install -y -qq python3-minimal nginx openssh-server "
             "postgresql cron iproute2 lsof needrestart >/dev/null && mkdir -p /etc/needrestart/conf.d && "
@@ -251,10 +261,14 @@ def compare(oracle, rt):
             continue
         only_a, only_o = set(a["loads"]) - set(o["packages"]), set(o["packages"]) - set(a["loads"])
         aliased = {p for owners in o["alias"].values() for p in owners}
+        # a program started before an upgrade renamed a library (libcrypto.so.3.5.9 -> .3.5.5) maps a file no package owns now:
+        # the oracle owns it by the package's shorter name for it, as the replaced-copy check does
+        renamed = {p for owners in o.get("renamed", {}).values() for p in owners}
         for pkg in sorted(only_a):
             why = ("a merged-/usr path dpkg -S didn't resolve, owned under its other name" if pkg in aliased
+                   else "a replaced copy the upgrade renamed, owned by the package's shorter name for it" if pkg in renamed
                    else "the script an interpreter runs, or a jar a JVM holds open (the agent reads these; the oracle reads mappings only)")
-            diffs.append({"program": name, "package": pkg, "only": "agent", "why": why if pkg in aliased or PLUMBING.match(name) else why + " (check)"})
+            diffs.append({"program": name, "package": pkg, "only": "agent", "why": why if pkg in aliased | renamed or PLUMBING.match(name) else why + " (check)"})
         for pkg in sorted(only_o):
             diffs.append({"program": name, "package": pkg, "only": "oracle",
                           "why": "processes of it started or stopped between the two reads" if o["pids"] != a["count"] else None})
@@ -383,8 +397,10 @@ def main(keep=False):
         check("3 programs running a replaced copy equal the deleted package files (oracle)", not [d for d in gone_diffs if not d["why"]],
               unexplained=[d for d in gone_diffs if not d["why"]])
         if not ALPINE:
-            # needrestart's names for the system manager (PID 1) and users' managers, which the agent reports as the program "systemd"
-            pseudo = {"systemd-manager", "systemd-user"} if "systemd" in ours else set()
+            # needrestart's names for the system manager (PID 1) and users' managers, and needs-restarting's user@<uid>.service (a
+            # user's manager and its PAM helper), which the agent reports by process name: "systemd" and "(sd-pam)"
+            pseudo = ({"systemd-manager", "systemd-user"} | {u for u in nr_services if re.fullmatch(r"user@\d+\.service", u)}
+                      if {"systemd", "(sd-pam)"} & set(ours) else set())
             check("3 services running a replaced copy include every one the distribution's tool names",
                   nr_services - pseudo <= units_ours | {"nimstead-agent.service"}, only_tool=sorted(nr_services - units_ours),
                   only_agent=sorted(units_ours - nr_services), named_systemd_by_the_agent=sorted(pseudo & nr_services))

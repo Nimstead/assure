@@ -58,6 +58,7 @@ from nimstead import (
 from nimstead.db import (
     ApiToken,
     Asset,
+    AssetAccess,
     AssetRuntime,
     AuthFailure,
     Container,
@@ -1725,8 +1726,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             latest.setdefault(aid, report)  # two records stored in the same instant: either is the latest
         win = dict(s.execute(select(InstalledPackage.asset_id, InstalledPackage.version).join(Asset, Asset.id == InstalledPackage.asset_id)
                              .where(Asset.org_id == user.org_id, InstalledPackage.ecosystem == "Windows")).all())
+        keys = dict(s.execute(select(AssetAccess.asset_id, AssetAccess.data).where(AssetAccess.org_id == user.org_id)).all())  # one query (DECISIONS 168)
         return engine_fleet.build([{"id": a.id, "hostname": a.hostname, "facts": a.facts or {}, "os_version": win.get(a.id, ""),
-                                    "report": latest.get(a.id), "internet_facing": a.internet_facing}
+                                    "report": latest.get(a.id), "internet_facing": a.internet_facing,
+                                    "linux": "os_id" in (a.facts or {}), **({"access": keys[a.id]} if a.id in keys else {})}
                                    for a in s.scalars(select(Asset).where(Asset.org_id == user.org_id, Asset.kind != "device"))])
 
     class AssetPatch(BaseModel):

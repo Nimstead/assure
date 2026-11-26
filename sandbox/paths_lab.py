@@ -592,6 +592,10 @@ def teardown():
     if KEEP:
         note("kept", distro=NAME)
         return
+    try:  # WSL distros share one network namespace: an unregistered distro's bridge would outlive it and block the next lab
+        wsl(f"podman rm -f -a >/dev/null 2>&1; podman network rm -f {NET} >/dev/null 2>&1; true", timeout=300)
+    except Exception as e:  # noqa: BLE001 — teardown goes on; the distro is going anyway
+        note("network not removed", error=str(e)[:200])
     subprocess.run(["wsl", "--unregister", NAME], capture_output=True, timeout=600)
     note("unregistered", distro=NAME)
 

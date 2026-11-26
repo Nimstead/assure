@@ -626,8 +626,8 @@ export function AttackPaths() {
             {keys.map((e) => (
               <li key={`${e.from}>${e.to}`} className="break-words border-t border-line pt-2">
                 <span className="font-medium">{name(e.from)} → {name(e.to)}</span> · how sure: {e.grade}
-                {e.ways.slice(0, 3).map((w) => (
-                  <div key={w.via + w.account} className="text-muted">{w.how.replace(" on A ", ` on ${name(e.from)} `).replace(/ on B$/, ` on ${name(e.to)}`)}, which gives {w.gives === "root" ? "root" : w.gives}: {w.because} ({w.grade})</div>
+                {e.ways.slice(0, 3).map((w, i) => (
+                  <div key={`${i}:${w.via}:${w.account ?? ""}`} className="text-muted">{w.how.replace(" on A ", ` on ${name(e.from)} `).replace(/ on B$/, ` on ${name(e.to)}`)}, which gives {w.gives === "root" ? "root" : w.gives}: {w.because} ({w.grade})</div>
                 ))}
               </li>
             ))}

@@ -328,3 +328,37 @@ Short log; newest last. Why, not what.
 
     Each way says who must hold the key on A (root or its owner) and what B hands over (root when the account is root, root-equivalent or has `NOPASSWD: ALL`, else the account). Chains walk Windows and key edges together. A key is usable only by root or its owner, a host's own foothold path upgrades any arrival to root, and reaching a host again with more accounts walks on from it. A Linux host is never a source of Windows sign-ins. The response lists at most 2,000 edges, but chains and choke points walk all of them, up to 50,000 key edges, so a busy fleet's chains stay true. Trusted keys are indexed by fingerprint, so finding the targets of a held key is a dictionary lookup, never a scan of every pair.
 169. **Choke points: the single actions that cut the most machines off (2026-11-26; Module 4).** Each candidate is scored by walking the whole graph again without what it removes. The candidates are closing one start's way in, retiring a key (delete it where it's held, untrust it everywhere), untrusting a key for one account on one machine, and changing one Windows setting on one machine. At most 200 are scored, those on the most ways first, and the top ten come back. Each gives the action in words, the machines it cuts off and how many ways it removes, and says the counts are a lower bound when the graph was cut short. A host only marked internet-facing has no way in to close, so it's no candidate. Forty random fleets check the arithmetic: every way-in and retire-key choke point was done in the inputs and the whole view rebuilt, and the machines cut equal the count given.
+170. **The review round on paths: one hostile host can't stall the fleet view, a planted key file is no claim, choke points score every way in, and the lab's real ssh taught the sshd rules (2026-11-26; an independent code review and a security audit of the branch, a mutation check, and the lab's oracles).** Every finding was taken. Each fix has a test that failed first, or a mutation it catches.
+
+    *What the lab's real ssh found:*
+    - An sshd without PAM refuses an account locked with `!`, keys included. Alpine's sshd prints no `UsePAM` line, so a missing line counts as no PAM. The agent now reads UsePAM and tells `!` ("locked") from `*` ("none", which keys still open).
+    - An account whose shell is `nologin` or `false` gets no session, so it's no edge.
+    - With sshd stopped on Debian, `sshd -T` itself refuses: its privilege separation directory exists only while it runs, and it says so on stderr, which the agent now keeps for a failing command.
+    - OpenSSH 9.8+'s PerSourcePenalties shut out the lab's own oracles after failed tries, so the lab exempts its subnet.
+
+    *Security audit:*
+    - **High.** One compromised host could make `/api/attack-paths` take minutes and hundreds of MB for its whole organisation, by trusting one key thousands of times with crafted group lists. Now: one way per (key, account, holder) per pair; sshd's user rules judged once per target account and source addresses; 50,000 key ways in all; at most 5 ways per edge in the response.
+    - **Medium.** A local user could exhaust the root agent's memory through symlinked `/tmp/ssh-*` folders, since glob followed links and listed every match before slicing. The sockets are now counted by a capped scan that follows no link.
+    - **Medium.** A start's way in fell outside the 200 choke candidates. Every start's way in is now scored.
+    - **Low.**
+      - A user could plant a key file showing someone else's public half. Unencrypted Ed25519 keys are checked seed to public key (RFC 8032, test vector 1) and RSA keys by n = p·q; a mismatch is never counted. An edge from a non-root holder of an unchecked key is unverified.
+      - Paths refused only some control characters; now every Cc, Cf, Zl and Zp character is refused.
+      - Links in the middle of an AuthorizedKeysFile, credential or keytab path were followed; folders are now opened one at a time without following a link.
+
+    *Code review:*
+    - **Speed.** `fleet.build` took 5.6 s at 1,000 hosts. Walks now look up a root holder's crossing, and only candidates removing a way the full walk used are walked again. That's exact: removing an unused way leaves every host's derivation standing. Now 1.0 s.
+    - **Choke points.** Closing the way in of a host also marked internet-facing with another path overstated the cut: it stays a start.
+    - **Content versions.** NVD vectors entered every product's digest in Linux content, so a shared npm or PyPI product's version depended on which host a pass judged first. Only the distro's own products carry them now.
+    - **Root ways in that weren't.**
+      - Stock nginx, Apache and php-fpm read as root ways in, from the union of master and worker users. Their workers take connections, so the way in is the workers' user, and says so; sshd's listener stays root.
+      - A group-writable file helped no one, because the group name never matched an account. It now helps the group's members.
+    - **sshd's listening state.** A stale runtime row, after an opt-out, said sshd wasn't running and erased every key edge into its host. Now only a complete read under 36 hours old counts, and anything listening on sshd's port counts too (socket activation). A refused `sshd -T` is "not running" only when nothing holds that port.
+    - **Partial reads.** A failing systemctl or getent left the read ok; it's now partial. One getent call replaces one per account.
+    - **sshd's own rules.**
+      - AllowUsers: a host name lets the account in, unverified; the host comes after the last `@`.
+      - sshd's patterns have no `[...]` class.
+      - uid 0 is root whatever its name.
+      - ssh-dss and security-key keys are unverified.
+    - **Up paths.** A path going up lists only the ways in whose users a way up serves.
+
+    *Mutation check:* 28 mutants of `linconfig.py`, the key-edge grading and privilege tracking, the choke-point count and the Linux paths. The first run reported all 28 caught, but its copied suite failed without any mutant, so it meant nothing; the check now refuses to count until its baseline passes. The gated run caught 24, then 27 once three survivors became tests (NOPASSWD sudo hands over root, a host reached twice holds both accounts, a Windows host never links to itself). The last survivor, a root password of `*` counting as usable, is a test now too.

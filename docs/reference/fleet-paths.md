@@ -52,9 +52,12 @@ If known signed-in accounts do not match target administrators, the way remains 
 
 A key edge exists when a private key held on the source has the same SHA-256 fingerprint as a key the target trusts, and the target's sshd lets that account in. Concretely, all of these hold:
 
-- sshd is installed with public keys on and doesn't refuse the account (DenyUsers, AllowUsers with `user@host` matched against the source's addresses, DenyGroups, AllowGroups, PermitRootLogin)
+- sshd is installed and running, with public keys on, and doesn't refuse the account. That means DenyUsers, AllowUsers (the host after the last `@` matched against the source's addresses), DenyGroups and AllowGroups, with `*` and `?` as the only wildcards, and PermitRootLogin for uid 0, whatever its name.
 - the key line's `from=` allows the source's addresses
-- the target's report doesn't say sshd listens only on loopback
+- the target's report doesn't say sshd listens only on loopback. Only a complete runtime read under 36 hours old can say so; anything listening on sshd's port counts, as systemd does for socket activation.
+- the account can sign in. An sshd without PAM (one that prints no `usepam yes`, like Alpine's) refuses an account whose password is locked with `!`, keys included. An account whose shell is `nologin` or `false` gets no session.
+
+One way is kept per (key, account, who must hold it) per pair, the best graded; a key held or trusted twice is one way. Key ways stop at 50,000 in all (`truncated` then says so). The response lists at most 5 ways per edge, and `ways_count` gives the full number when there are more.
 
 | Way field | Value |
 | --- | --- |
@@ -69,7 +72,16 @@ A key edge exists when a private key held on the source has the same SHA-256 fin
 | `because` | What the grade rests on |
 | `grade` | `unverified`, `reasonable`, or `confirmed` |
 
-A key way is `reasonable`, or `confirmed` when the source was seen connected to one of the target's addresses. A `Match` block in the target's sshd caps it at `reasonable`. It's `unverified` when the key needs its passphrase, the line forces a command, the target also takes keys from an `AuthorizedKeysCommand`, or a `from=` host name decides it (nothing here resolves names). `restrict` alone keeps the grade and is said in `because`. No key, comment or forced command ever leaves a machine: only fingerprints do. Nothing here signs in anywhere.
+A key way is `reasonable`, or `confirmed` when the source was seen connected to one of the target's addresses. A `Match` block in the target's sshd caps it at `reasonable`. It's `unverified` when any of these holds:
+
+- the key needs its passphrase
+- the line forces a command
+- the target also takes keys from an `AuthorizedKeysCommand`
+- a host name in `from=` or AllowUsers decides it (nothing here resolves names)
+- the key is `ssh-dss` (off by default since OpenSSH 7.0) or a security-key type (it also needs its hardware)
+- a non-root account holds the key and its private half couldn't be checked against its public half
+
+The agent checks an unencrypted Ed25519 or RSA key, and doesn't count a file whose private half belongs to another key. `restrict` alone keeps the grade and is said in `because`. No key, comment or forced command ever leaves a machine: only fingerprints do. Nothing here signs in anywhere.
 
 The listener and connection observations can come from different report times. They do not establish current routing, a successful sign-in, or exploitation.
 
@@ -89,7 +101,7 @@ The walk is breadth first and knows what the attacker holds on each host. A key 
 
 ## Choke points
 
-Each candidate is scored by walking the whole graph again without what it removes. There are at most 200 candidates, those on the most ways first. The ten that cut the most machines come back, largest first.
+Each candidate is scored by walking the whole graph again without what it removes. Every start's way in is scored, plus at most 200 other candidates, those on the most ways first, and of those only the ones that remove a way the full walk used: removing an unused way leaves every host's derivation standing, so it cuts nothing. Closing the way in of a start also marked internet-facing with another path leaves it a start, holding what that path gives. The ten that cut the most machines come back, largest first.
 
 | Field | Value |
 | --- | --- |

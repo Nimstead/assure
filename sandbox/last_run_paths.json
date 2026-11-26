@@ -1,0 +1,394 @@
+{
+ "result": "PASS",
+ "failures": [],
+ "log": [
+  {
+   "step": "distro",
+   "name": "nimstead-sbx-paths-4ba024",
+   "reused": false
+  },
+  {
+   "step": "podman",
+   "version": "podman version 5.8.9",
+   "cgroup": "cgroup2fs"
+  },
+  {
+   "step": "booted",
+   "machine": "web-1",
+   "state": "running",
+   "failed": []
+  },
+  {
+   "step": "booted",
+   "machine": "build-1",
+   "state": "running",
+   "failed": []
+  },
+  {
+   "step": "booted",
+   "machine": "db-1",
+   "state": "running",
+   "failed": []
+  },
+  {
+   "step": "booted",
+   "machine": "app-1",
+   "state": "running",
+   "failed": []
+  },
+  {
+   "step": "machines",
+   "web-1": [
+    "10.89.7.11/24"
+   ],
+   "build-1": [
+    "10.89.7.12/24"
+   ],
+   "db-1": [
+    "10.89.7.13/24"
+   ],
+   "edge-1": [
+    "10.89.7.14/24"
+   ],
+   "app-1": [
+    "10.89.7.15/24"
+   ]
+  },
+  {
+   "step": "planted",
+   "keys": {
+    "K_ROOT": "AAAAC3NzaC1lZDI1\u2026",
+    "K_PASS": "AAAAC3NzaC1lZDI1\u2026",
+    "K_DEP": "AAAAC3NzaC1lZDI1\u2026",
+    "K_CASE": "AAAAC3NzaC1lZDI1\u2026",
+    "K_B": "AAAAC3NzaC1lZDI1\u2026",
+    "K_BR": "AAAAC3NzaC1lZDI1\u2026"
+   },
+   "webapp": "active",
+   "web1_sshd": "inactive"
+  },
+  {
+   "step": "feeds",
+   "osv": {
+    "inserted": 102365,
+    "updated": 0,
+    "skipped": 0
+   },
+   "kev": 1805,
+   "nvd": {
+    "2024": 38512,
+    "2025": 43338,
+    "2026": 93182
+   },
+   "seconds": 35
+  },
+  {
+   "step": "reports",
+   "web-1": {
+    "access": "ok",
+    "runtime": "ok",
+    "held": 4,
+    "trusted": 0
+   },
+   "build-1": {
+    "access": "ok",
+    "runtime": "ok",
+    "held": 2,
+    "trusted": 1
+   },
+   "db-1": {
+    "access": "ok",
+    "runtime": "ok",
+    "held": 0,
+    "trusted": 1
+   },
+   "edge-1": {
+    "access": "ok",
+    "runtime": "ok",
+    "held": 0,
+    "trusted": 2
+   },
+   "app-1": {
+    "access": "ok",
+    "runtime": "ok",
+    "held": 0,
+    "trusted": 1
+   }
+  },
+  {
+   "step": "PASS: 1 facts equal the oracles (id -Gn, sshd -T, ssh-keygen -lf, ss)",
+   "differences": {}
+  },
+  {
+   "step": "web-1 paths",
+   "paths": {
+    "network": {
+     "kind": "network",
+     "start": "from the network",
+     "grade": "reasonable",
+     "steps": [
+      "Getting in",
+      "Becoming root",
+      "Taking credentials"
+     ],
+     "break_at": {
+      "stage": "entry",
+      "label": "Getting in",
+      "fixes": 1,
+      "refs": [
+       "CVE-2026-88823"
+      ]
+     },
+     "reaches": {
+      "root": true,
+      "users": []
+     }
+    },
+    "foothold": {
+     "kind": "foothold",
+     "start": "from any program already running on it as a user",
+     "grade": "confirmed",
+     "steps": [
+      "Becoming root",
+      "Taking credentials"
+     ],
+     "break_at": {
+      "stage": "credentials",
+      "label": "Taking credentials",
+      "fixes": 5,
+      "refs": [
+       "/root/.aws/credentials",
+       "SHA256:1nneqd6j6RjggM5xmYnT4SVgh/KgqjyQJrRIXqfYEtE",
+       "SHA256:KZWQPuA5jPFa6dUnWsTdfbH/2k9ca3+S4s0ra1g57xs",
+       "SHA256:Ku+8vj0PKyAUmhyS5aBLRHZslT2P0XKs0BaIBPNdtdU",
+       "SHA256:vSftqPtUYSbDm00GOgNIsIL0/7w8Sr763bB/LZcNPDE"
+      ]
+     },
+     "reaches": {
+      "root": true,
+      "users": []
+     }
+    }
+   }
+  },
+  {
+   "step": "PASS: 3a web-1: in as www-data, up through sudo, then root's keys (and sudo really makes www-data root)",
+   "steps": [
+    "Getting in",
+    "Becoming root",
+    "Taking credentials"
+   ],
+   "sudo": "root:"
+  },
+  {
+   "step": "PASS: 3b build-1: sshd runs as root with a remote flaw in OpenSSH itself, so getting in is becoming root",
+   "way_in": "CVE-2026-106552 in openssh 1:10.0p1-7+deb13u4: runs code over the network with no sign-in once a user opens something (and 4 more like it in the same package). Loaded by ssh.service, listening on 0.0.0.0:22, [::]:22, running as root; the host firewall isn't read",
+   "skipped": {
+    "stage": "escalate",
+    "label": "Becoming root",
+    "why": "the way in runs as root, so getting in is becoming root"
+   }
+  },
+  {
+   "step": "PASS: 4a the chain from web-1 equals the machines a real ssh walk reaches, and as whom",
+   "chain": {
+    "build-1": "root",
+    "db-1": "root",
+    "app-1": "root"
+   },
+   "ssh_walk": {
+    "build-1": "root",
+    "db-1": "root",
+    "app-1": "root"
+   },
+   "taken_from_reports": [
+    "build-1: arrived as deploy, its own foothold path reaches root"
+   ],
+   "choke": [
+    [
+     "way-in",
+     2,
+     "Close web-1's way in: CVE-2026-88823"
+    ],
+    [
+     "retire-key",
+     1,
+     "Retire the SSH key SHA256:Ku+8vj0PKyAU\u2026: delete it (/root/.ssh/id_ed25519 on web-1) and remove it from the authorized_ke"
+    ],
+    [
+     "untrust-key",
+     1,
+     "Remove the key SHA256:Ku+8vj0PKyAU\u2026 from root's authorized_keys on db-1"
+    ]
+   ]
+  },
+  {
+   "step": "PASS: 4b the top key choke point, done for real, cuts exactly the machines it said, and ssh agrees",
+   "choke": "Retire the SSH key SHA256:Ku+8vj0PKyAU\u2026: delete it (/root/.ssh/id_ed25519 on web-1) and remove it from the authorized_keys of the 1 machine that trust it",
+   "predicted": [
+    "db-1"
+   ],
+   "gone": [
+    "db-1"
+   ],
+   "ssh_walk_after": [
+    "app-1",
+    "build-1",
+    "web-1"
+   ]
+  },
+  {
+   "step": "PASS: 2 every key edge (14 cases) agrees with a real ssh sign-in",
+   "cases": [
+    {
+     "case": "plain",
+     "edge": "reasonable",
+     "want_edge": "reasonable",
+     "ssh": "in",
+     "want_ssh": "in",
+     "because": "app-1's sshd ssh.service listens on 0.0.0.0:22"
+    },
+    {
+     "case": "from= allowing web-1",
+     "edge": "reasonable",
+     "want_edge": "reasonable",
+     "ssh": "in",
+     "want_ssh": "in",
+     "because": "app-1's sshd ssh.service listens on 0.0.0.0:22"
+    },
+    {
+     "case": "from= excluding web-1",
+     "edge": null,
+     "want_edge": null,
+     "ssh": "refused",
+     "want_ssh": "refused",
+     "because": null
+    },
+    {
+     "case": "command= forced",
+     "edge": "unverified",
+     "want_edge": "unverified",
+     "ssh": "forced",
+     "want_ssh": "forced",
+     "because": "app-1's sshd ssh.service listens on 0.0.0.0:22; B signs this key in only to a forced command"
+    },
+    {
+     "case": "restrict",
+     "edge": "reasonable",
+     "want_edge": "reasonable",
+     "ssh": "in",
+     "want_ssh": "in",
+     "because": "app-1's sshd ssh.service listens on 0.0.0.0:22; restrict: no terminal or forwarding, though commands still run"
+    },
+    {
+     "case": "PermitRootLogin no",
+     "edge": null,
+     "want_edge": null,
+     "ssh": "refused",
+     "want_ssh": "refused",
+     "because": null
+    },
+    {
+     "case": "PermitRootLogin prohibit-password",
+     "edge": "reasonable",
+     "want_edge": "reasonable",
+     "ssh": "in",
+     "want_ssh": "in",
+     "because": "app-1's sshd ssh.service listens on 0.0.0.0:22"
+    },
+    {
+     "case": "AllowUsers without root",
+     "edge": null,
+     "want_edge": null,
+     "ssh": "refused",
+     "want_ssh": "refused",
+     "because": null
+    },
+    {
+     "case": "DenyUsers root",
+     "edge": null,
+     "want_edge": null,
+     "ssh": "refused",
+     "want_ssh": "refused",
+     "because": null
+    },
+    {
+     "case": "PubkeyAuthentication no",
+     "edge": null,
+     "want_edge": null,
+     "ssh": "refused",
+     "want_ssh": "refused",
+     "because": null
+    },
+    {
+     "case": "a key with a passphrase",
+     "edge": "unverified",
+     "without": false,
+     "with": true
+    },
+    {
+     "case": "seen connected",
+     "edge": "confirmed"
+    },
+    {
+     "case": "key removed",
+     "edge": null,
+     "ssh": false
+    },
+    {
+     "case": "sshd stopped",
+     "edge": null,
+     "ssh": false
+    }
+   ],
+   "wrong": []
+  },
+  {
+   "step": "PASS: 5a stock configurations open no settings finding (web-1's planted sudo rule aside)",
+   "open": [
+    [
+     "web-1",
+     "sudo-nopasswd-all"
+    ]
+   ]
+  },
+  {
+   "step": "PASS: 5b each check opens where planted and closes when fixed for real",
+   "opened": {
+    "ssh-root-password": true,
+    "ssh-empty-passwords": true,
+    "root-equivalent-group": true,
+    "writable-root-run": true,
+    "shadow-readable": true,
+    "sudo-nopasswd-all": true
+   },
+   "closed": {
+    "ssh-root-password": true,
+    "ssh-empty-passwords": true,
+    "root-equivalent-group": true,
+    "writable-root-run": true,
+    "shadow-readable": true
+   }
+  },
+  {
+   "step": "PASS: 6 nothing secret leaves the machine, and hostile files are named, never read",
+   "found": {
+    "private key body": [],
+    "key comment": [],
+    "aws file": [],
+    "forced command": [],
+    "passphrase": []
+   },
+   "hostile": {
+    "link": true,
+    "fifo": true,
+    "link not held": true
+   },
+   "problem": "a file in a ~/.ssh: not a regular file, not read; a file in a ~/.ssh: a link, not read"
+  },
+  {
+   "step": "unregistered",
+   "distro": "nimstead-sbx-paths-4ba024"
+  }
+ ]
+}

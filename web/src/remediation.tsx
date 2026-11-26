@@ -21,6 +21,18 @@ const RECOVERED = /not available|rebuilding|rebuilt from|retry \d/i;
 /** Return failed for a false result, recovered for recognised fallback text, or passed otherwise. */
 export const stepState = (s: { step: string; ok: boolean; output?: string }) => (!s.ok ? "failed" : RECOVERED.test(s.step) || RECOVERED.test(s.output ?? "") ? "recovered" : "passed");
 
+/** The services a fix will restart after its upgrade, and the programs it will leave running the old copy (DECISIONS 163). */
+export function RestartNote({ r }: { r: NonNullable<Job["restarts"]> }) {
+  if (!r.services.length && !r.left.length) return null;
+  const list = (xs: string[]) => xs.map((x, i) => <span key={x}>{i > 0 && (i === xs.length - 1 ? " and " : ", ")}<span className="font-mono">{x}</span></span>);
+  return (
+    <p className="mt-2 max-w-prose text-sm" data-testid="restarts">
+      {r.services.length > 0 && <>Restarts {list(r.services)} after the upgrade: {r.services.length === 1 ? "it" : "they"} ran these packages at the last report, so the fix takes effect, and the health checks include {r.services.length === 1 ? "it" : "them"}.{" "}</>}
+      {r.left.length > 0 && <span className="text-muted">Won't restart {list(r.left)}: the fix waits until {r.left.length === 1 ? "it restarts" : "they restart"} (or the machine does).</span>}
+    </p>
+  );
+}
+
 /** The packages a fix changes, with versions; for several machines, every package any of them changes and on how many. */
 export function PackageList({ job, jobs }: { job: { packages?: unknown; summary?: string }; jobs?: { packages?: unknown; summary?: string; hostname?: string }[] }) {
   // several machines: every package any of them changes, and on how many when not all (DESIGN.md: dialogs list what will change)
@@ -263,8 +275,11 @@ export function JobCard({ job: j, onApprove, onCancel, blocked, inRollout }: { j
         </div>
       </div>
       {j.status === "planned" && <PackageList job={j} />}
-      {/* a cancel is deliberate: said plainly, never in the error box */}
-      {j.error && (j.status === "cancelled" ? <p className="mt-2 text-sm text-muted">{j.error}.</p> : <RefusalNote error={j.error} />)}
+      {(j.status === "planned" || j.status === "approved") && j.restarts && <RestartNote r={j.restarts} />}
+      {/* a cancel is deliberate: said plainly, never in the error box; nor is a fix applied and waiting for a restart (DECISIONS 162) */}
+      {j.error && (j.status === "cancelled" ? <p className="mt-2 text-sm text-muted">{j.error}.</p>
+        : j.status === "verifying" && j.error.startsWith("Waiting for a restart") ? <p className="mt-2 max-w-prose text-sm text-next-fg">{j.error}. It succeeds on the first report after the restart.</p>
+        : <RefusalNote error={j.error} />)}
       {/* the retry advice only where a retry can be planned (one muted line per card) */}
       {j.status === "rolled_back" && !blocked && <p className="mt-2 max-w-prose text-sm">Before planning it again, try it on a test machine; the service's log usually says why it wouldn't start.</p>}
       {AGAIN.includes(j.status) && deps.length === 0 && pkg && (blocked ? <p className="mt-3 text-sm text-muted">Can't plan it again here: {blocked}.</p>
@@ -437,7 +452,7 @@ export const machineContext = (a?: Asset) => a && [a.hostname, `${a.criticality}
 export function ApproveDialog({ job, onOpenChange, onConfirm, pending, error, ownPlan, context, unchecked, production, ahead, ringFailed = [], onGo }: {
   /** machines in this job's ring where the same fix didn't work (their newest job): said first */
   ringFailed?: Job[]; onGo?: () => void;
-  job: (Pick<Job, "summary" | "hostname"> & { forward_only?: boolean; packages?: unknown; manager?: string }) | null; onOpenChange: (o: boolean) => void; onConfirm: () => void; pending?: boolean; error?: string; ownPlan?: boolean; context?: string;
+  job: (Pick<Job, "summary" | "hostname" | "restarts"> & { forward_only?: boolean; packages?: unknown; manager?: string }) | null; onOpenChange: (o: boolean) => void; onConfirm: () => void; pending?: boolean; error?: string; ownPlan?: boolean; context?: string;
   /** the target host has no health checks: say what that means before it runs */
   unchecked?: { assetId: string };
   /** a production machine while this server changes test machines only: approving can't run, so it isn't offered */
@@ -454,6 +469,7 @@ export function ApproveDialog({ job, onOpenChange, onConfirm, pending, error, ow
       {production && <p className="mt-3 border border-now-fg p-3 text-sm">{job?.hostname} is a production machine, and this server changes test machines only, so this fix can't run yet. <Link to="/settings" hash="remediation" className="font-medium underline">How to turn production remediation on</Link></p>}
       {context && <p className="mt-2 text-sm text-muted">{context}</p>}
       {job && <PackageList job={job} />}
+      {job?.restarts && <RestartNote r={job.restarts} />}
       {unchecked && <p className="mt-3 border border-warn-fg bg-warn-bg p-3 text-sm text-warn-fg">No health checks on {job?.hostname}: a service this breaks won't be noticed or rolled back. <Link to="/assets" search={{ machine: unchecked.assetId }} className="font-medium underline">Set its health checks</Link></p>}
       {ownPlan && <p className="mt-3 border border-warn-fg bg-warn-bg p-3 text-sm text-warn-fg">You planned this fix. Approving it yourself is recorded as self-approved: no second person checked the change (SOC 2 CC8.1).</p>}
       {fwd ? <p className="mt-3 border border-now-fg p-3 text-sm">This app's installer can't go back to the version it replaces, so if the new version breaks something there is no automatic rollback. The machine's health checks still run and a failure is reported. Approving records that you accepted this.</p>

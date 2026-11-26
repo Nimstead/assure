@@ -45,6 +45,7 @@ from nimstead import (
     notify,
     progress,
     remediate,
+    runtime,
     sbom,
     sso,
     tickets,
@@ -56,6 +57,7 @@ from nimstead import (
 from nimstead.db import (
     ApiToken,
     Asset,
+    AssetRuntime,
     AuthFailure,
     Container,
     DirectoryComputer,
@@ -1163,6 +1165,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         facts: dict | None = None  # checked by facts_ok: small, flat, plain values
         collection: dict | None = None  # checked by engine's valid_document: closed and bounded. None: agent older than this
         neighbours: Any = None  # checked row by row by neighbours.store, which drops what doesn't fit; None: agent older than 0.7.0, or off
+        runtime: Any = None  # what runs (DECISIONS 161), checked by runtime.valid; None: agent older than 0.10.0, Windows, or off
 
     def facts_ok(f: dict) -> bool:
         """Return whether a facts dictionary passes structural and JSON-length bounds.
@@ -1245,6 +1248,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                 asset.collection = {**asset.collection, "sources": {**asset.collection["sources"], "host_facts": {
                     "state": "failed", "count": 0, "error": "these facts were too large for the server, so older ones are stored"}}}
         neighbours.store(s, asset, body.neighbours)
+        if body.runtime is not None:  # before the rescan, which ranks findings and holds fixes open by it
+            runtime.store(s, asset, body.runtime)
+        elif (((body.collection or {}).get("sources") or {}).get("runtime") or {}).get("state") == "off":
+            runtime.forget_replaced(s, asset)  # the host opted out: its last sighting must not hold fixes open for ever
         db_read = ((asset.collection or {}).get("sources") or {}).get("package_db")
         replaced = not (db_read and (db_read["state"] != "ok" or not db_read.get("count")))  # DECISIONS 83: a Linux list not read in full doesn't replace the last
         if replaced:
@@ -1981,12 +1988,14 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             "package": f.package, "installed_version": f.installed_version, "fixed_version": f.fixed_version,
             "setting_fix": f.ecosystem == "WinConfig" and f.package in remediate.CONFIG_FIXES,
             # the same rule Home's recommended fixes use; only a host is ever planned on (DECISIONS 141)
-            "plannable": kind == "host" and remediate.fix_path(f.ecosystem, f.package)["plannable"],
+            # ... and not a fix already installed that waits for a restart (DECISIONS 162)
+            "plannable": kind == "host" and remediate.fix_path(f.ecosystem, f.package)["plannable"] and f.runtime != "restart",
             # how far the curated rule behind a Windows app finding was proven on a real VM (W13; sandbox/winapps_evidence.py)
             "rule_evidence": (WINAPP_EVIDENCE.get(f.package, ("pattern",))[0] if f.ecosystem == "WinApp" else None),
             "vuln_id": f.vuln_id, "advisory_ids": f.advisory_ids, "summary": f.summary, "cvss": f.cvss,
             "epss": f.epss, "kev": f.kev, "score": f.score, "priority": f.priority, "reasons": f.reasons,
             "status": f.status, "first_seen": f.first_seen, "last_seen": f.last_seen, "resolved_at": f.resolved_at,
+            "runtime": f.runtime,
         }
 
     class FindingFilter(BaseModel):
@@ -1999,6 +2008,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         overdue: bool | None = None  # open and past its deadline
         ecosystem: str | None = Field(None, max_length=100)  # one distribution or ecosystem ("Debian:13"): a package's own fix
         owner: str | None = Field(None, max_length=100)  # the asset's owner; "" = assets with no owner (DECISIONS 145)
+        # what runs (DECISIONS 161): one or more of listening, loaded, not_loaded, restart
+        runtime: str | None = Field(None, max_length=60, pattern=r"^(listening|loaded|not_loaded|restart)(,(listening|loaded|not_loaded|restart))*$")
 
     def with_due(s: Session, org_id: str, f: FindingFilter, limit: int | None = None, sort: str = "score", offset: int = 0):
         """find() plus each finding's deadline; the overdue filter needs the SLA history, so it's applied here."""
@@ -2029,7 +2040,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         if view == "list":  # what the table shows (one reason); the drawer fetches the rest by id
             return [{"id": x.id, "asset_id": x.asset_id, "hostname": h, "asset_kind": kind, "ecosystem": x.ecosystem, "package": x.package,
                      "installed_version": x.installed_version, "fixed_version": x.fixed_version, "vuln_id": x.vuln_id, "kev": x.kev, "score": x.score,
-                     "priority": x.priority, "reasons": x.reasons[:1]} for x, h, _, kind in rows]
+                     "priority": x.priority, "reasons": x.reasons[:1], "runtime": x.runtime} for x, h, _, kind in rows]
         return [finding_json(x, h, due, kind) for x, h, due, kind in rows]
 
     @app.get("/api/findings/count")
@@ -2073,7 +2084,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                  "ecosystem": r[10] if r[11] == 1 else None} for r in rows]  # one distro's rows, or (by vulnerability) several
 
     CSV_COLUMNS = ["hostname", "package", "installed_version", "fixed_version", "vuln_id", "priority", "score", "cvss", "epss",
-                   "kev", "status", "first_seen", "last_seen", "resolved_at", "summary", "owner"]  # new columns go last: scripts read by position
+                   "kev", "status", "first_seen", "last_seen", "resolved_at", "summary", "owner", "runtime"]  # new columns go last: scripts read by position
 
     @app.get("/api/findings.csv")
     def export_findings(user: CurrentUser, s: DB, f: Annotated[FindingFilter, Query()]):
@@ -2136,6 +2147,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             stmt = stmt.where(Asset.owner == f.owner if f.owner else Asset.owner.is_(None))
         if kev is not None:
             stmt = stmt.where(Finding.kev == kev)
+        if f.runtime:
+            stmt = stmt.where(Finding.runtime.in_(f.runtime.split(",")))
         if fixable is not None:
             # a setting, an end of support or an exposure never has a fixed version, but there is always something to do
             has_fix = Finding.fixed_version.is_not(None) | Finding.ecosystem.in_(("WinConfig", lifecycle.ECOSYSTEM, external.ECOSYSTEM, neighbours.ECOSYSTEM, windrivers.ECOSYSTEM))
@@ -2177,10 +2190,42 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         out["package_fix"] = {"version": max(known, key=functools.cmp_to_key(cmp)) if cmp else sorted(known)[-1], "open": len(fixes)} if known else None
         # where an application package sits (its own metadata's location: a jar inside a jar, a venv, a binary), from the
         # asset's package rows; an image's are what its rebuild must change (DECISIONS 155)
+        out["running"] = finding_runtime(s, a, f)
         out["locations"] = sorted(s.scalars(select(InstalledPackage.source).where(
             InstalledPackage.asset_id == a.id, InstalledPackage.ecosystem == f.ecosystem, InstalledPackage.name == f.package,
             InstalledPackage.version == f.installed_version, InstalledPackage.source.is_not(None)).distinct()))[:20] if f.ecosystem in sbom.ECOSYSTEMS else []
         return out
+
+    def finding_runtime(s: Session, a: Asset, f: Finding) -> dict | None:
+        """What runs, for one finding's drawer: its state in words, the source's binaries each program loads or runs replaced,
+        where those programs listen, and the read it rests on; None when the host has never sent a read (DECISIONS 161)."""
+        if a.kind != "host" or f.ecosystem != a.ecosystem:
+            return None
+        rv = runtime.view(s, a)
+        if rv.row is None:
+            return None
+        bins = sorted(set(s.scalars(select(InstalledPackage.name).where(
+            InstalledPackage.asset_id == a.id, InstalledPackage.ecosystem == a.ecosystem,
+            or_(InstalledPackage.source == f.package, and_(InstalledPackage.source.is_(None), InstalledPackage.name == f.package))))) or {f.package})
+        state, binary = rv.state(bins)
+        programs = [{"name": p["name"], "users": p["users"], "listen": p["listen"], "loads": sorted(set(p["loads"]) & set(bins)),
+                     "replaced": sorted(set(p["replaced"]) & set(bins))} for p in rv.row.programs or [] if set(p["loads"]) & set(bins)]
+        return {"state": "restart" if f.runtime == "restart" and f.status != "resolved" else state, "binary": binary, "binaries": bins,
+                "reason": rv.reason(f.package, binary, state), "programs": programs[:20], "read_at": rv.row.read_at,
+                "read_state": rv.row.state, "read_problem": rv.row.problem, "since": rv.row.since,
+                "covered": runtime.covered(rv.row, rv.t)}
+
+    @app.get("/api/assets/{asset_id}/runtime")
+    def asset_runtime(asset_id: str, user: CurrentUser, s: DB):
+        """Return what runs on a host as its agent last read it: programs (listening first) with their users, listening
+        addresses and how many packages each loads, the packages each runs a replaced copy of, and how much of the seven days
+        of reads is covered. null for a host that has never sent a read, or any other kind of asset (DECISIONS 161).
+
+        Requires a user session or a read-only organisation API token. API tokens cannot use write methods.
+
+        Operation-specific HTTP errors: 404. See detail in the response.
+        Authentication and request-validation errors also apply where required."""
+        return runtime.detail(s, owned_asset(s, user, asset_id))
 
     class Accept(BaseModel):
         reason: str = Field(min_length=10, max_length=2000)
@@ -2278,18 +2323,27 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
     # --- remediation -------------------------------------------------------
 
-    def job_json(j: RemediationJob, hostname: str) -> dict:
-        """Return 17 public fields for job j with caller-supplied hostname.
+    def job_json(j: RemediationJob, hostname: str, restarts: dict | None = None) -> dict:
+        """Return 17 public fields for job j with caller-supplied hostname, and restarts when given (job_restarts).
 
         Lists/dictionaries are shared until response serialization. No query or commit
         occurs. Incompatible model/package values can raise errors."""
-        return {
+        return {**({"restarts": restarts} if restarts is not None else {}),
             "id": j.id, "asset_id": j.asset_id, "hostname": hostname, "status": j.status, "manager": j.manager,
             "action_key": j.action_key, "packages": j.packages, "finding_ids": j.finding_ids, "summary": j.summary,
             "created_by": j.created_by, "approved_by": j.approved_by, "created": j.created, "updated": j.updated,
             "steps": j.steps, "error": j.error, "result_versions": j.result_versions,
             "forward_only": remediate.forward_only(j),
         }
+
+    def job_restarts(s: Session, jobs: list[RemediationJob]) -> dict[str, dict]:
+        """job id -> the services its fix would restart and the programs it would leave running, for Linux jobs not yet run,
+        from each host's latest read (DECISIONS 163): what the approval names."""
+        todo = [j for j in jobs if j.status in ("planned", "approved") and j.manager in remediate.LINUX_MANAGERS]
+        # the latest programs only, once per host (security audit: the memory columns can be large)
+        programs = dict(s.execute(select(AssetRuntime.asset_id, AssetRuntime.programs).where(
+            AssetRuntime.asset_id.in_({j.asset_id for j in todo}))).all()) if todo else {}
+        return {j.id: runtime.restarts(programs.get(j.asset_id), [str(p.get("name", "")) for p in j.packages or []]) for j in todo}
 
     class PlanReq(BaseModel):
         asset_id: str
@@ -2313,7 +2367,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         except remediate.RemediationError as e:
             raise HTTPException(409, str(e)) from None
         s.commit()
-        return job_json(job, a.hostname)
+        return job_json(job, a.hostname, job_restarts(s, [job]).get(job.id))
 
     class PlanMany(BaseModel):
         asset_ids: list[str] = Field(min_length=1, max_length=5000)
@@ -2334,7 +2388,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                 a = owned_asset(s, user, aid)
                 job = remediate.plan(s, a, body.ecosystem, body.package, user.email)
                 s.commit()
-                jobs.append(job_json(job, a.hostname))
+                jobs.append(job_json(job, a.hostname, job_restarts(s, [job]).get(job.id)))
             except (remediate.RemediationError, HTTPException) as e:
                 s.rollback()
                 errors.append({"asset_id": aid, "error": str(getattr(e, "detail", e))})
@@ -2355,9 +2409,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         if status:
             stmt = stmt.where(RemediationJob.status.in_(status.split(",")))
         org_window = s.get(Org, user.org_id).maintenance_window
-        out = []
-        for j, h in s.execute(stmt.order_by(RemediationJob.updated.desc()).limit(500)):
-            d = job_json(j, h)
+        out, rows = [], s.execute(stmt.order_by(RemediationJob.updated.desc()).limit(500)).all()
+        restarts = job_restarts(s, [j for j, _ in rows])
+        for j, h in rows:
+            d = job_json(j, h, restarts.get(j.id))
             if j.status == "approved":  # approved but outside its window: say when it can start (plan T40)
                 inside, nxt = remediate.window_state(s.get(Asset, j.asset_id).maintenance_window or org_window)
                 d["waits_for_window"] = None if inside or nxt is None else nxt.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -3303,6 +3358,28 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         return JSONResponse({"status": "ok" if ok else "error", "version": updates.current_version(), "db": "ok", "migrations": at},
                             200 if ok else 503)
 
+    def restarts_to_finish(s: Session, org_id: str, limit: int = 10) -> list[dict]:
+        """Fixes on disk that a running program keeps from counting (DECISIONS 161): per package, the open findings held for a
+        restart, the machines, and the programs on them the latest read saw running the replaced copy. Most urgent first."""
+        rows = s.execute(select(Finding.package, Finding.asset_id, Asset.hostname, func.count(), func.max(Finding.kev.cast(Integer)), func.max(Finding.score))
+                         .join(Asset, Asset.id == Finding.asset_id)
+                         .where(Finding.org_id == org_id, Finding.status.in_(("open", "accepted")), Finding.runtime == "restart")
+                         .group_by(Finding.package, Finding.asset_id, Asset.hostname)).all()
+        if not rows:
+            return []
+        held = runtime.held_programs(s, org_id, sorted({r[1] for r in rows}))
+        out: dict[str, dict] = {}
+        for pkg, aid, host, n, kev, score in rows:
+            o = out.setdefault(pkg, {"package": pkg, "findings": 0, "kev": False, "max_score": 0, "hosts": [], "asset_ids": [], "programs": set()})
+            o["findings"] += n
+            o["kev"] = o["kev"] or bool(kev)
+            o["max_score"] = max(o["max_score"], score or 0)
+            o["hosts"].append(host)
+            o["asset_ids"].append(aid)
+            o["programs"] |= {p for r in (held.get(aid) or {}).values() if r.get("source") == pkg for p in r.get("programs", [])}
+        ranked = sorted(out.values(), key=lambda o: (o["kev"], o["max_score"], o["findings"]), reverse=True)[:limit]
+        return [{**o, "hosts": sorted(o["hosts"]), "asset_ids": sorted(o["asset_ids"]), "programs": sorted(o["programs"])} for o in ranked]
+
     def images_to_rebuild(s: Session, org_id: str, limit: int = 10) -> list[dict]:
         """Container images with open findings, most urgent first (KEV, worst score, count, as Fix first ranks upgrades), each
         with the packages its rebuild must bring (highest fixed version per package) and the hosts that run it."""
@@ -3351,6 +3428,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         is_open = (Finding.org_id == user.org_id, Finding.status == "open")
         # A setting has no fixed version, but one the agent can change is a fix like any other
         fixable = or_(Finding.fixed_version.is_not(None), and_(Finding.ecosystem == "WinConfig", Finding.package.in_(remediate.CONFIG_FIXES)))
+        # a fix already installed that waits for a restart is under restarts, not recommended again (DECISIONS 162): left out of
+        # the ranking here, and of each fix's rows in Python (cheaper than the same condition in every row query)
+        not_held = or_(Finding.runtime.is_(None), Finding.runtime != "restart")
         by_priority = dict(s.execute(select(Finding.priority, func.count()).where(*is_open).group_by(Finding.priority)).all())
         # Group fixes into actions: "upgrade openssl to X" clears N findings on M hosts. Rank in SQL, detail only the top 10.
         # A container image's findings are fixed by a rebuild, never a plan (DECISIONS 141): images_to_rebuild lists them.
@@ -3359,12 +3439,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         ranked = s.execute(
             select(Finding.ecosystem, Finding.package, func.max(Finding.kev.cast(Integer)), func.max(Finding.score),
                    func.count(Finding.vuln_id.distinct()))
-            .where(*is_open, fixable, not_image).group_by(Finding.ecosystem, Finding.package)
+            .where(*is_open, fixable, not_held, not_image).group_by(Finding.ecosystem, Finding.package)
         ).all()
         top, idx = [], tickets.links(s, user.org_id)
         for eco, pkg, kev, max_score, _ in sorted(ranked, key=lambda r: (bool(r[2]), r[3], r[4]), reverse=True)[:10]:
-            rows = s.execute(select(Finding.fixed_version, Finding.vuln_id, Asset.hostname, Asset.id, Finding.summary).join(Asset, Asset.id == Finding.asset_id)
+            rows = s.execute(select(Finding.fixed_version, Finding.vuln_id, Asset.hostname, Asset.id, Finding.summary, Finding.runtime).join(Asset, Asset.id == Finding.asset_id)
                              .where(*is_open, Finding.ecosystem == eco, Finding.package == pkg, fixable, not_image)).all()
+            rows = [r for r in rows if r[5] != "restart"]
             cmp = comparator_for(eco)
             fixes = {r[0] for r in rows if r[0]}
             fixed = None if not fixes else max(fixes, key=functools.cmp_to_key(cmp)) if cmp else sorted(fixes)[-1]  # highest fix clears them all
@@ -3387,6 +3468,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                         "job": {"id": active[0].id, "status": active[0].status} if active else None,
                         "last_attempt": {"id": last.id, "status": last.status, "error": last.error, "asset_id": last.asset_id} if last and last.status in remediate.ALERT_STATUSES else None,
                         "vulns": sorted({r[1] for r in rows}), "kev": bool(kev), "max_score": max_score,
+                        # what runs (DECISIONS 161): machines where a program has loaded it, and where one listening on the network has
+                        "runtime": {"listening": len({r[3] for r in rows if r[5] == "listening"}),
+                                    "loaded": len({r[3] for r in rows if r[5] in ("listening", "loaded")}),
+                                    "not_loaded": len({r[3] for r in rows if r[5] == "not_loaded"})},
                         "summary": rows[0][4] if eco == "WinConfig" else None, **remediate.fix_path(eco, pkg)})
         # only the four columns the counts read: each host row also carries facts and a collection document
         hosts = s.scalars(select(Asset).options(load_only(Asset.last_seen, Asset.agent_version, Asset.auto_update, Asset.agent_update_error))
@@ -3396,6 +3481,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         device_open = s.execute(select(Asset.facts, func.count(Finding.id)).join(Finding, Finding.asset_id == Asset.id).where(
             Asset.org_id == user.org_id, Asset.kind == "device", Finding.status == "open").group_by(Asset.id)).all()
         return {
+            "restarts": restarts_to_finish(s, user.org_id),
             "images_to_rebuild": images_to_rebuild(s, user.org_id),
             "devices_with_issues": len({(facts or {}).get("mac") for facts, _ in device_open}),
             "assets": s.scalar(select(func.count()).select_from(Asset).where(Asset.org_id == user.org_id, Asset.kind != "device")),

@@ -3,7 +3,7 @@ import { Link, useNavigate, useRouter, useSearch } from "@tanstack/react-router"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Dialog, Switch } from "radix-ui";
 import { AppWindow, ArrowRight, Plus, Search, SlidersHorizontal, Trash2, Upload, X } from "lucide-react";
-import { adminGate, AGENT_UPDATE, api, APP_SOURCES, refresh, assetsQ, coverageQ, filtersToApi, filtersToSearch, NO_OWNER, ownersOf, parseFilters, parseUtc, plural, PRIORITIES, PRIORITY_LABEL, relativeTime, sbomSummary, updateSource, useIsAdmin, useTitle, type AgentUpdate, type Asset, type ContainerRun, type Criticality, type Finding, type Priority, type SbomResult } from "./lib";
+import { adminGate, AGENT_UPDATE, api, APP_SOURCES, refresh, assetsQ, coverageQ, filtersToApi, filtersToSearch, networkAddress, NO_OWNER, ownersOf, parseFilters, parseUtc, plural, PRIORITIES, PRIORITY_LABEL, relativeTime, sbomSummary, updateSource, useIsAdmin, useTitle, type AgentUpdate, type Asset, type ContainerRun, type Criticality, type Finding, type MachineRuntime, type Priority, type SbomResult } from "./lib";
 import { Alert, btnPrimary, btnQuiet, chip, ConfirmDialog, CopyBlock, dialogBox, Done, EmptyState, ErrorState, Field, input, Loading, PriorityPill, switchRoot, switchThumb, Tag, useReturnFocus, HowJudged } from "./ui";
 import clsx from "clsx";
 import { ExternalTargets } from "./targets";
@@ -883,6 +883,29 @@ function MachineDrawer({ a, onClose, children }: { a: Asset | null; onClose: () 
   );
 }
 
+/** What runs on a machine (DECISIONS 161): programs running a replaced copy (restart them), then those listening on the network. */
+function MachineRunning({ id }: { id: string }) {
+  const q = useQuery({ queryKey: ["runtime", id], queryFn: () => api<MachineRuntime | null>(`/api/assets/${id}/runtime`) });
+  const r = q.data;
+  if (!r) return null;
+  const restart = Object.entries(r.replaced).flatMap(([bin, x]) => x.programs.map((p) => ({ p, bin, source: x.source })));
+  const byProgram = [...restart.reduce((m, x) => m.set(x.p, [...(m.get(x.p) ?? []), x.bin]), new Map<string, string[]>())];
+  const net = r.programs.filter((p) => p.listen.some(networkAddress));
+  const local = r.programs.filter((p) => p.listen.length && !p.listen.some(networkAddress));
+  return (
+    <div className="mt-3 text-sm">
+      <p className="font-medium">What runs here</p>
+      {byProgram.length > 0 && <ul className="mt-1 flex flex-col gap-0.5">
+        {byProgram.map(([p, bins]) => <li key={p} className="break-words text-now-fg"><span className="font-mono font-medium">{p}</span> runs a replaced copy of {bins.join(", ")}: restart it to finish the fix</li>)}
+      </ul>}
+      {net.length > 0 ? <ul className="mt-1 flex flex-col gap-0.5">
+        {net.map((p) => <li key={p.name} className="break-words"><span className="font-mono">{p.name}</span> <span className="text-muted">as {p.users.join(", ")}</span> · listening on <span className="font-mono">{p.listen.filter(networkAddress).join(", ")}</span></li>)}
+      </ul> : <p className="mt-1 text-muted">Nothing listening on the network.</p>}
+      <p className="mt-1 text-muted">{plural(r.programs.length, "program")} read{local.length > 0 && `, ${local.length} listening on this machine only`} · {relativeTime(r.read_at)}{r.state !== "ok" && ` (in part: ${r.problem})`}</p>
+    </div>
+  );
+}
+
 /** Summarise agents needing attention from assets; onShow optionally opens the relevant view. */
 export function AgentUpdateSummary({ assets, onShow }: { assets: Asset[]; onShow?: () => void }) {
   const groups = new Map<string, { failed: boolean; hosts: string[]; ids: string[] }>();
@@ -953,6 +976,7 @@ export function AssetRow({ a, onPatch, onDelete, saved, error, inDrawer, undo, o
         {updateSource(a.facts) && <p className="mt-1 text-xs text-muted">{updateSource(a.facts)}</p>}
         {inDrawer && a.agent_update && a.agent_update !== "current" && <p className="mt-2 text-sm">{AGENT_UPDATE[a.agent_update].why(a)} <Link to="/add" className="font-medium underline">Install command</Link></p>}
         {inDrawer && open.length > 0 && <p className="mt-2 text-sm"><Link to="/findings" search={filtersToSearch({ ...parseFilters({}), asset: a.id, group: "package" })} className="inline-flex tap items-center font-medium underline">Fixes for this machine, by package</Link></p>}
+        {inDrawer && host && <MachineRunning id={a.id} />}
         {inDrawer && !!a.containers?.length && <div className="mt-3 text-sm">
           <p className="font-medium">{plural(a.containers_total ?? a.containers.length, "container")} running here</p>
           {/* each image's findings are its own (one image, one set of findings, wherever it runs): link to it, never repeat them here */}

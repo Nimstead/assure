@@ -37,7 +37,7 @@ import urllib.request
 import warnings
 import zipfile
 
-AGENT_VERSION = "0.9.0"  # the server reads this line to flag outdated agents; bump on every agent change
+AGENT_VERSION = "0.10.0"  # the server reads this line to flag outdated agents; bump on every agent change
 # Ed25519 public keys (hex) allowed to sign releases (DECISIONS 31): primary (GitHub Actions) and offline backup.
 # The server only relays signed releases, so it can withhold an update but never forge one. Empty = never self-update.
 RELEASE_KEYS = ["a91fa6539c6c2593009fc71b1c1fba341b5685ba7bc97c127c068b1d732b21d2", "2438f2ccebab5bf26edf9e21a8aa8f09abd1861f52fbe0d6641b28b90f8b0e5a"]  # noqa: E501
@@ -1309,6 +1309,385 @@ def safe_containers(read=None, apps=True):
     except Exception as e:  # noqa: BLE001 — anything at all: a container must never cost the host its report
         why = f"containers not read: {type(e).__name__}: {e}"[:300]
         return {"v": 1, "complete": False, "runtimes": {}, "listed": {}, "images": [], "error": why, "line": _source(0, why, failed=True)}
+
+
+# ---- runtime (DECISIONS 161) ---------------------------------------------------------------------------------------
+# What runs, read from /proc at each report: each program's executable and mapped files (what it has loaded), the ones
+# replaced on disk since it started (what a restart would change) and its listening sockets, matched to installed
+# packages by the package manager's own file lists. Process names, file names and cgroup paths are chosen by users, so
+# each is bounded and sanitised. A command line is read only to see which script an interpreter runs, matched here and
+# never sent; environments are never read.
+
+RUNTIME_PROCESSES = 4096            # processes read per report; a busy host runs a few hundred
+RUNTIME_MAPS_MAX = 4 * 1024 * 1024  # one process's /proc/<pid>/maps; a JVM's is under 1 MB
+RUNTIME_FDS = 65536                 # descriptors looked at per process; a database server holds a few thousand
+RUNTIME_FDS_TOTAL = 262144          # and in all: one user's processes full of descriptors can't spend the pass (security audit)
+RUNTIME_PATHS = 2_000_000           # file-list paths streamed; a big host lists a few hundred thousand
+RUNTIME_SECONDS = 20                # the whole pass
+RUNTIME_PROGRAMS = 1024             # programs sent
+RUNTIME_LOADS = 100_000             # (program, package) pairs sent in all, about 2 MB of JSON
+RUNTIME_ELF_CHECKS = 20_000         # executables whose first four bytes are read to tell a package that ships native code
+RUNTIME_CMDLINE_MAX = 64 * 1024
+_RT_LISTEN, _RT_USERS = 32, 8       # kept per program
+_RT_NAME = re.compile(r"[^A-Za-z0-9._@:+() -]")
+_RT_UNIT = re.compile(r"[A-Za-z0-9:_.\\@-]{1,200}\.service")
+_RT_SO = re.compile(r"\.so(?:\.\d[\d.]*)?\Z")
+_RT_BIN = re.compile(r"/(?:s?bin|libexec)/[^/]+\Z")
+_RT_RPM_TMP = re.compile(r";[0-9a-f]{8,}\Z")  # rpm renames a file it replaces to <name>;<hex> just before unlinking it
+_RT_INTERPRETER = re.compile(r"(?:python|perl|ruby|node|nodejs|php|bash|dash|sh|java)[0-9.]*\Z")
+_RT_ARCHIVES = (".jar", ".war", ".ear")
+_RT_ARCHIVES_GONE = tuple(a + " (deleted)" for a in _RT_ARCHIVES)
+_RT_MERGED = ("/bin/", "/sbin/", "/lib/", "/lib32/", "/lib64/", "/libx32/")  # merged /usr: the kernel names the file under /usr
+RPM_FILES = ["rpm", "-qa", "--qf", "[%{=NAME}\t%{FILENAMES}\n]"]
+# Services a fix never restarts, even when they run a replaced copy (DECISIONS 163, 164): the system manager's own, D-Bus, the
+# login and display managers, terminals, users' sessions, networking (a restart can cut the machine off mid-job), clusters (a
+# restart moves resources or fences the node), container runtimes and virtualisation (a restart stops what runs under them),
+# auditd (it refuses a manual stop), and this agent. needrestart's list, plus these; units that refuse a manual stop or that a
+# socket starts per connection are left too, whatever their name.
+RESTART_NEVER = re.compile(r"(?:systemd-.*|dbus.*|getty@.*|serial-getty@.*|console-getty|container-getty@.*|user@.*|user-runtime-dir@.*|elogind"
+                           r"|(?:gdm|gdm3|kdm|nodm|sddm|wdm|xdm|lightdm|slim|lxdm|display-manager)"
+                           r"|network.*|NetworkManager.*|ModemManager|wpa_supplicant.*|iwd|openvpn.*|wg-quick@.*|(?:open|free|libre|strong)swan.*"
+                           r"|ifup@.*|ifupdown.*|wicked.*|dhcpcd.*|dhclient.*|connman.*|ovs-vswitchd|ovsdb-server|openvswitch.*|tailscaled|zerotier-one"
+                           r"|bird.*|quagga|frr|tinc.*|bluetooth|corosync|pacemaker|sbd|keepalived"
+                           r"|docker.*|containerd|crio|podman.*|kubelet|k3s.*|rke2.*|lxcfs|libvirt.*|virtlogd|virtlockd|xendomains"
+                           r"|emergency|rescue|cloud-init.*|rc-local|unattended-upgrades|apt-daily.*|auditd|nimstead.*)\.service\Z")
+
+
+def parse_maps(text):
+    """(mapped, replaced): file paths in /proc/<pid>/maps text. A file-backed line has an inode other than 0 and a path that
+    starts "/" (anonymous memory, the heap and the stack have neither). A path ending " (deleted)" was unlinked or replaced
+    on disk after it was mapped; rpm's temporary "<name>;<hex>" is the file it replaced. The kernel writes a newline in a
+    name as \\012, so a line is one mapping. No I/O."""
+    mapped, replaced = set(), set()
+    for ln in text.splitlines():
+        f = ln.split(None, 5)
+        if len(f) < 6 or f[4] == "0" or not f[5].startswith("/"):
+            continue
+        if f[5].endswith(" (deleted)"):
+            replaced.add(_RT_RPM_TMP.sub("", f[5][:-10]))
+        else:
+            mapped.add(f[5])
+    return mapped, replaced
+
+
+def parse_cgroup_unit(text):
+    """The systemd system service a process runs in, from /proc/<pid>/cgroup text (cgroup v2's "0::" line, else v1's
+    name=systemd hierarchy), or None: under user.slice the names are the user's own choosing, and a scope (a session, a
+    container) or init.scope is not a service. A service's own sub-cgroups count as the service. No I/O."""
+    found = {}
+    for ln in text.splitlines():
+        hid, _, rest = ln.partition(":")
+        ctl, _, path = rest.partition(":")
+        if hid == "0" and ctl == "":
+            found.setdefault("v2", path)
+        elif ctl == "name=systemd":
+            found.setdefault("v1", path)
+    path = next((p for p in (found.get("v2"), found.get("v1")) if p and p != "/"), "")
+    parts = path.strip("/").split("/")
+    if parts[0] != "system.slice":
+        return None
+    unit = next((p for p in parts[1:] if not p.endswith(".slice")), "")
+    return unit if _RT_UNIT.fullmatch(unit) else None
+
+
+def parse_net(text, proto):
+    """[(address, inode)] for the listening sockets in /proc/net/<proto> text (proto: tcp, tcp6, udp or udp6): TCP in LISTEN,
+    UDP bound and unconnected. The address reads "0.0.0.0:443/tcp" or "[::1]:53/udp". Lines that don't parse are skipped.
+    No I/O."""
+    out = []
+    for ln in text.splitlines()[1:]:
+        f = ln.split()
+        if len(f) < 10:
+            continue
+        local, remote, st, inode = f[1], f[2], f[3], f[9]
+        if (st != "0A") if proto.startswith("tcp") else (st != "07" or not remote.endswith(":0000")):
+            continue
+        try:
+            host, port = local.split(":")
+            raw, port = bytes.fromhex(host), int(port, 16)
+            if len(raw) == 4:
+                ip = ipaddress.IPv4Address(raw[::-1])  # one 32-bit word in the host's (little-endian) order
+            elif len(raw) == 16:
+                ip = ipaddress.IPv6Address(b"".join(raw[i:i + 4][::-1] for i in range(0, 16, 4)))
+            else:
+                continue
+        except ValueError:
+            continue
+        if port and inode.isdigit() and inode != "0":
+            where = str(ip) if ip.version == 4 else f"[{ip.compressed}]"
+            out.append((f"{where}:{port}/{proto[:3]}", int(inode)))
+    return out
+
+
+def package_files(query=_query, which=shutil.which, dpkg_info=None, apk_db=APK_DB):
+    """Yield (package, path) from the package manager's own file lists, in package_db's order: apk's installed database,
+    dpkg's info/*.list files (the architecture suffix dropped, as dpkg-query names packages), else rpm's FILENAMES. Raises
+    OSError or AgentError when the list can't be read."""
+    dpkg_info = dpkg_info or DPKG_INFO  # defined with the remediation code, further down
+    if os.path.exists(apk_db):
+        with open(apk_db, encoding="utf-8", errors="replace") as f:
+            pkg, d = None, ""
+            for ln in f:
+                ln = ln.rstrip("\n")
+                if ln.startswith("P:"):
+                    pkg, d = ln[2:], ""
+                elif ln.startswith("F:"):
+                    d = ln[2:].strip("/")
+                elif ln.startswith("R:") and pkg:
+                    yield pkg, f"/{d}/{ln[2:]}" if d else f"/{ln[2:]}"
+    elif which("dpkg-query"):
+        for n in sorted(os.listdir(dpkg_info)):
+            if n.endswith(".list"):
+                with open(os.path.join(dpkg_info, n), encoding="utf-8", errors="replace") as f:
+                    pkg = n[:-5].split(":")[0]
+                    for ln in f:
+                        yield pkg, ln.rstrip("\n")
+    elif which("rpm"):
+        rc, out, err = query(RPM_FILES)
+        if rc != 0:
+            raise AgentError(f"rpm exited {rc}: {(err.strip().splitlines() or [''])[-1]}"[:200])
+        for ln in out.splitlines():
+            name, _, path = ln.partition("\t")
+            if path.startswith("/"):
+                yield name, path
+    else:
+        raise AgentError("no package database found (dpkg, rpm or the apk database)")
+
+
+def _so_names(path):
+    """The shorter names a versioned shared object goes by, longest first (libz.so.1.3.1: libz.so.1.3, libz.so.1; never the
+    bare libz.so, which a -dev package owns). An upgrade that renames the file leaves only these in the package's list, as
+    links, so they name the package a replaced copy came from."""
+    m = re.match(r"(.*\.so)((?:\.\d+)+)\Z", path)
+    parts = m.group(2).split(".")[1:] if m else []
+    return [m.group(1) + "".join("." + x for x in parts[:i]) for i in range(len(parts) - 1, 0, -1)]
+
+
+def _is_elf(path):
+    """Whether a regular file (never through a link, never blocking on a FIFO) starts with the ELF magic."""
+    try:
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0))
+    except OSError:
+        return False
+    try:
+        return stat.S_ISREG(os.fstat(fd).st_mode) and os.read(fd, 4) == b"\x7fELF"
+    except OSError:
+        return False
+    finally:
+        os.close(fd)
+
+
+def runtime_owners(wanted, files, late=lambda: False, is_elf=_is_elf):
+    """(owners, native, problem): owners maps each wanted path to the packages whose lists name it (a merged-/usr list path
+    counts under /usr too); native is every package that ships native code: a shared object, or an ELF executable in a
+    bin, sbin or libexec folder (only native code can be said not loaded: a Python module is read, not mapped). files
+    yields (package, path). problem says why the stream stopped early, or is None."""
+    owners, native, bins, n, problem = {}, set(), {}, 0, None
+    try:
+        for pkg, p in files:
+            n += 1
+            if n > RUNTIME_PATHS or (n % 4096 == 0 and late()):
+                problem = (f"stopped at its file-list budget ({RUNTIME_PATHS:,} paths)" if n > RUNTIME_PATHS
+                           else f"stopped at its time budget ({RUNTIME_SECONDS} s)")
+                break
+            for q in (p, "/usr" + p) if p.startswith(_RT_MERGED) else (p,):
+                if q in wanted:
+                    owners.setdefault(q, set()).add(pkg)
+            if pkg not in native:
+                if _RT_SO.search(p):
+                    native.add(pkg)
+                elif _RT_BIN.search(p) and len(bins.setdefault(pkg, [])) < 8:
+                    bins[pkg].append(p)
+    except (OSError, AgentError) as e:
+        problem = f"the package manager's file list couldn't be read: {e.strerror if isinstance(e, OSError) and e.strerror else e}"[:200]
+    checks = 0
+    for pkg, paths in bins.items():
+        for p in paths if pkg not in native else ():
+            if checks >= RUNTIME_ELF_CHECKS:
+                break
+            checks += 1
+            if is_elf(p):
+                native.add(pkg)
+                break
+    return owners, native, problem
+
+
+def _rt_read(path, cap):
+    """Up to cap + 1 bytes of a /proc file (so a caller can tell it was cut), as text with bad bytes replaced."""
+    with open(path, "rb") as f:
+        return f.read(cap + 1).decode("utf-8", "replace")
+
+
+def runtime_read(proc="/proc", files=None, euid=None, clock=time.monotonic, user_of=None, own_pid=None):
+    """What runs on this host, as the inventory's `runtime` object: {"v", "state", "problem", "programs", "native",
+    "other_roots"}. A program is a systemd system service, else a process's own short name; its processes merge into
+    one entry with users, count, listen (addresses), loads (packages whose files it has mapped or runs, replaced copies
+    included) and replaced (packages it runs a copy of that has since been replaced on disk). Processes under another root
+    (containers, chroots) are counted, not read: their files are their image's. A service systemd sandboxes (PrivateTmp,
+    ProtectSystem) has a mount namespace of its own over the host's root, so the root, not the namespace, is what's
+    compared. The agent's own process and units are left out. Every budget stops the
+    pass with the same words and a partial state: what was seen still counts, nothing is concluded from what wasn't.
+    files yields (package, path) (package_files by default); user_of maps a uid to a name."""
+    t0 = clock()
+    late = lambda: clock() - t0 > RUNTIME_SECONDS  # noqa: E731
+    euid = os.geteuid() if euid is None else euid
+    own_pid = os.getpid() if own_pid is None else own_pid
+    problems, other, unreadable, big = [], 0, 0, 0
+    if euid != 0:
+        problems.append("not run as root: other users' programs can't be read")
+    if user_of is None:
+        try:
+            import pwd
+            names = {}
+
+            def user_of(uid):
+                if uid not in names:
+                    try:
+                        names[uid] = pwd.getpwuid(uid).pw_name
+                    except KeyError:
+                        names[uid] = str(uid)
+                return names[uid]
+        except ImportError:
+            user_of = str
+    empty = {"v": 1, "programs": [], "native": [], "other_roots": 0}
+    try:
+        st = os.stat(f"{proc}/self/root")
+        own = (st.st_dev, st.st_ino)
+        own_ns = os.stat(f"{proc}/self/ns/mnt").st_ino
+        pids = sorted(int(p) for p in os.listdir(proc) if p.isdigit())
+    except OSError as e:
+        return {**empty, "state": "failed", "problem": f"{proc} couldn't be read: {e.strerror or e}"[:300]}
+    seen = []  # (program, unit, user, mapped, replaced, socket inodes)
+    fds_left, n_read = RUNTIME_FDS_TOTAL, 0
+    for pid in pids:
+        if pid == own_pid:
+            continue
+        if late():
+            problems.append(f"stopped at its time budget ({RUNTIME_SECONDS} s)")
+            break
+        d = f"{proc}/{pid}"
+        try:
+            try:
+                exe = os.readlink(f"{d}/exe")
+            except FileNotFoundError:
+                continue  # a kernel thread, or a process that has just exited: not a process the budget counts (code review)
+            if n_read >= RUNTIME_PROCESSES:
+                problems.append(f"stopped at its process budget ({RUNTIME_PROCESSES:,} processes)")
+                break
+            st = os.stat(f"{d}/root")
+            same_root, same_ns = (st.st_dev, st.st_ino) == own, os.stat(f"{d}/ns/mnt").st_ino == own_ns
+            unit = parse_cgroup_unit(_rt_read(f"{d}/cgroup", 65536))
+            # A container has a root and a mount namespace of its own: its files are its image's. A chroot (named -t) keeps the
+            # host's namespace, so its mappings name host paths: read. A namespace of its own over the host's root is systemd's
+            # sandboxing of a service (read) or a user's unshare, which can mount anything over a package's path (not believed)
+            if not same_ns and (not same_root or not unit):
+                other += 1
+                continue
+            if unit and unit.startswith("nimstead"):
+                continue  # the agent's own run
+            n_read += 1
+            comm = _RT_NAME.sub("?", _rt_read(f"{d}/comm", 64).strip())[:64] or "?"
+            uid = next((int(ln.split()[1]) for ln in _rt_read(f"{d}/status", 65536).splitlines() if ln.startswith("Uid:")), -1)
+            text = _rt_read(f"{d}/maps", RUNTIME_MAPS_MAX)
+            if len(text) > RUNTIME_MAPS_MAX:
+                big += 1
+                text = text[:text.rfind("\n", 0, RUNTIME_MAPS_MAX)]
+            mapped, replaced = parse_maps(text)
+            (replaced if exe.endswith(" (deleted)") else mapped).add(_RT_RPM_TMP.sub("", exe.removesuffix(" (deleted)")))
+            socks = set()
+            with os.scandir(f"{d}/fd") as it:
+                for i, e in enumerate(it):
+                    if i >= RUNTIME_FDS:
+                        break
+                    if fds_left <= 0:
+                        problems.append(f"stopped at its descriptor budget ({RUNTIME_FDS_TOTAL:,} descriptors in all)")
+                        break
+                    fds_left -= 1
+                    try:
+                        t = os.readlink(e.path)
+                    except OSError:
+                        continue
+                    if t.startswith("socket:["):
+                        socks.add(int(t[8:-1]) if t[8:-1].isdigit() else 0)
+                    elif t.endswith(_RT_ARCHIVES):
+                        mapped.add(t)  # a JVM reads its jars through descriptors, not mappings
+                    elif t.endswith(_RT_ARCHIVES_GONE):
+                        replaced.add(t[:-10])
+            if _RT_INTERPRETER.fullmatch(os.path.basename(exe.removesuffix(" (deleted)"))):
+                with open(f"{d}/cmdline", "rb") as f:
+                    args = f.read(RUNTIME_CMDLINE_MAX).split(b"\0")[1:4]
+                script = next((a.decode("utf-8", "replace") for a in args if a.startswith(b"/")), None)
+                if script:  # matched against the package lists here; never sent
+                    mapped.add(script)
+        except (FileNotFoundError, ProcessLookupError):
+            continue  # exited while being read
+        except OSError:
+            unreadable += 1
+            continue
+        seen.append((unit or comm, bool(unit), user_of(uid) if uid >= 0 else "?", mapped, replaced, socks))
+    if big:
+        problems.append(f"a program's memory map was larger than {RUNTIME_MAPS_MAX // (1024 * 1024)} MB")
+    if unreadable and euid == 0:
+        problems.append("some programs couldn't be read")
+    listening = collections.defaultdict(set)
+    for t in ("tcp", "tcp6", "udp", "udp6"):
+        try:
+            for where, inode in parse_net(_rt_read(f"{proc}/net/{t}", 64 * 1024 * 1024), t):
+                listening[inode].add(where)
+        except OSError:
+            pass  # IPv6 off: no tcp6 table
+    gone_paths = set().union(*(r for _, _, _, _, r, _ in seen)) if seen else set()
+    wanted = set().union(*(m for _, _, _, m, _, _ in seen), gone_paths, *(_so_names(p) for p in gone_paths)) if seen else set()
+    t1 = clock()  # matching has its own time: a pass that spent its own can still say what it saw (security audit)
+    owners, native, problem = runtime_owners(wanted, files if files is not None else package_files(), lambda: clock() - t1 > RUNTIME_SECONDS)
+    if problem:
+        problems.append(problem)
+    for p in gone_paths:  # a replaced copy whose file was renamed by the upgrade: the package's own shorter name for it
+        if p not in owners and (alias := next((q for q in _so_names(p) if q in owners), None)):
+            owners[p] = owners[alias]
+    programs = {}
+    for name, unit, user, mapped, replaced, socks in seen:
+        # a service and a process that names itself after it are two entries: a name alone can't steer a restart (security audit)
+        g = programs.setdefault((name, unit), {"name": name, "unit": unit, "users": set(), "count": 0, "listen": set(), "loads": set(), "replaced": set()})
+        g["count"] += 1
+        g["users"].add(_RT_NAME.sub("?", user)[:32])
+        g["listen"] |= {a for s in socks for a in listening.get(s, ())}
+        gone = {pkg for p in replaced for pkg in owners.get(p, ())}
+        g["loads"] |= {pkg for p in mapped for pkg in owners.get(p, ())} | gone
+        g["replaced"] |= gone
+    out, pairs = [], 0
+    for g in sorted(programs.values(), key=lambda g: (g["name"], g["unit"]))[:RUNTIME_PROGRAMS]:
+        loads = sorted(g["loads"])[:max(0, RUNTIME_LOADS - pairs)]
+        pairs += len(loads)
+        out.append({**g, "users": sorted(g["users"])[:_RT_USERS], "listen": sorted(g["listen"])[:_RT_LISTEN], "loads": loads,
+                    "replaced": sorted(g["replaced"])})
+    if len(programs) > RUNTIME_PROGRAMS or pairs >= RUNTIME_LOADS:
+        problems.append(f"stopped at its size budget ({RUNTIME_PROGRAMS:,} programs, {RUNTIME_LOADS:,} loaded packages)")
+    problems = list(dict.fromkeys(problems))  # each said once
+    return {**empty, "state": "partial" if problems else "ok", **({"problem": "; ".join(problems)[:300]} if problems else {}),
+            "programs": out, "native": sorted(native), "other_roots": other}
+
+
+def safe_runtime(read=None):
+    """runtime_read(), but an error it didn't expect becomes a failed read: the host's own inventory goes out regardless."""
+    try:
+        return runtime_read() if read is None else read()
+    except Exception as e:  # noqa: BLE001 — anything at all: what runs must never cost the host its report
+        return {"v": 1, "state": "failed", "problem": f"not read: {type(e).__name__}: {e}"[:300], "programs": [], "native": [], "other_roots": 0}
+
+
+def with_runtime(inv, cfg):
+    """Add the runtime read and its collection line to inventory inv on Linux; "runtime": false in the local configuration
+    leaves it out (the server can't turn it back on). Windows sends neither (V2). Returns inv."""
+    if os.name == "nt":
+        return inv
+    rt = safe_runtime() if cfg.get("runtime", True) else None
+    if rt is not None:
+        inv["runtime"] = rt
+    if isinstance((inv.get("collection") or {}).get("sources"), dict):
+        inv["collection"]["sources"]["runtime"] = (_source(len(rt["programs"]), rt.get("problem"), failed=rt["state"] == "failed")
+                                                   if rt is not None else {"state": "off", "count": 0})
+    return inv
 
 
 # MSRC names Windows Server by build; client names come from the feature-update version.
@@ -2930,12 +3309,16 @@ class Job:
     Linux phase journal for resumption after process failure."""
 
     def __init__(self, job, run=sh, rollback_root=ROLLBACK_ROOT, apt_cache=APT_CACHE, dpkg_info=DPKG_INFO, root="/",
-                 fail_after_apply=False):
+                 fail_after_apply=False, read_runtime=None):
         self.run, self.steps, self.artefacts = run, [], []
+        # what runs is the real machine's: with another runner or root (tests, a simulated host) no programs are read unless the
+        # caller says how
+        self.read_runtime = read_runtime or (runtime_read if root == "/" and run is sh else lambda files: {"state": "ok", "programs": []})
         self.mgr = job.get("manager")
         self.pkgs = job.get("packages") or []
         self.units = job.get("health_units") or []
         self.restarts = {}  # unit -> systemd's NRestarts when the change (or rollback) began
+        self.restarted = []  # services this job restarted because they ran a replaced copy of its packages (DECISIONS 163)
         # services often fail a few seconds after a library upgrade, not instantly
         self.settle = min(max(int(job.get("settle_seconds", 15) or 0), 0), 300)
         self.dir = os.path.join(rollback_root, re.sub(r"[^A-Za-z0-9]", "", str(job.get("id", ""))) or "unknown")
@@ -3002,6 +3385,64 @@ class Job:
                 raise StepFailed(f"cannot list files of {n}")
             paths |= {ln.strip() for ln in out.splitlines() if ln.startswith("/")}
         return paths
+
+    def can_restart(self, unit):
+        """Whether systemd lets the agent restart a unit: not one that refuses a manual stop (auditd's RefuseManualStop, which
+        would fail the restart and roll back every glibc or openssl fix on the RHEL family), nor an instance a socket starts per
+        connection (it has none to take over after a restart)."""
+        rc, out = self.run(["systemctl", "show", "-p", "CanStop", "-p", "TriggeredBy", "--", unit])
+        props = dict(ln.split("=", 1) for ln in out.splitlines() if "=" in ln)
+        return rc == 0 and props.get("CanStop") == "yes" and not props.get("TriggeredBy", "").strip()
+
+    def job_files(self):
+        """(package, path) from the file lists of this job's packages only: what runtime_read needs to see who runs them."""
+        for n in sorted({str(p["name"]) for p in self.pkgs}):
+            if self.mgr == "apt":
+                lists = glob.glob(os.path.join(self.dpkg_info, glob.escape(n) + ".list")) + glob.glob(os.path.join(self.dpkg_info, glob.escape(n) + ":*.list"))
+                for path in lists:
+                    with open(path, encoding="utf-8", errors="replace") as f:
+                        for ln in f:
+                            yield n, ln.rstrip("\n")
+            elif self.mgr == "apk":
+                with open(self.path(APK_DB), encoding="utf-8", errors="replace") as f:
+                    for path in apk_owned(f.read(), {n}):
+                        yield n, path
+            else:
+                rc, out = self.run(["rpm", "-ql", n])
+                for ln in out.splitlines() if rc == 0 else ():
+                    if ln.startswith("/"):
+                        yield n, ln
+
+    def restart_replaced(self):
+        """After the package step: restart each system service still running a replaced copy of this job's packages, so the
+        health checks judge the new code and the fix takes effect (DECISIONS 163). Services RESTART_NEVER names, programs
+        that aren't system services and machines without systemd are left running and named in a step; the server keeps
+        the job waiting for a restart until they are. A restart that fails raises StepFailed (the rollback restarts them on
+        the restored version)."""
+        try:
+            rt = self.read_runtime(files=self.job_files())
+        except Exception as e:  # noqa: BLE001 — the change itself worked: a read that fails restarts nothing, and says so
+            self.steps.append({"step": "read of running programs", "ok": True, "output": f"failed, so nothing was restarted: {type(e).__name__}: {e}"[:1500]})
+            return
+        systemd = os.path.isdir(self.path("/run/systemd/system"))
+        held = [p for p in rt["programs"] if p["replaced"]]
+        go = set()
+        for p in held:  # only a system service; a process can name itself anything (security audit)
+            if p["unit"] and systemd and not RESTART_NEVER.fullmatch(p["name"]) and self.can_restart(p["name"]):
+                go.add(p["name"])
+        for u in sorted(go):
+            # touched before it's tried: one that won't start on the new files is what the rollback must bring back (the real
+            # run found it left down when recorded only after a restart that worked)
+            self.restarted.append(u)
+            if u not in self.units:
+                self.units.append(u)
+            self.step(f"restart {u}: it ran the copy this fix replaced", ["systemctl", "restart", "--", u])
+            self.restarts[u] = self.restart_count(u)  # restarts from here on count against it
+        if left := sorted({p["name"] for p in held} - go):
+            self.steps.append({"step": "still running the replaced copy", "ok": True,
+                               "output": f"{', '.join(left)}: not restarted by the agent; restart {'it' if len(left) == 1 else 'them'} (or the machine) to finish the fix"[:1500]})
+        if rt["state"] != "ok":
+            self.steps.append({"step": "read of running programs", "ok": True, "output": f"partial: {rt.get('problem') or 'not all read'}"[:1500]})
 
     def health(self, when):
         """Check each configured service is active without additional restarts since the recorded baseline.
@@ -3225,8 +3666,9 @@ class Job:
         bad = [p["name"] for p in self.pkgs if now_v.get(p["name"]) != p["from"]]
         self.step("versions restored", ok=not bad, output=("mismatch: " + ", ".join(bad)) if bad else "all restored")
         for u in self.units:  # a service the bad version crashed stays down until restarted on the restored files
-            if self.run(["systemctl", "is-active", "--quiet", u])[0] != 0:
-                rc, out = self.run(["systemctl", "restart", u])
+            # one this job restarted runs the new files, which the rollback just replaced again: back onto the restored version too
+            if u in self.restarted or self.run(["systemctl", "is-active", "--quiet", u])[0] != 0:
+                rc, out = self.run(["systemctl", "restart", "--", u])
                 self.steps.append({"step": f"restart {u} on the restored version", "ok": rc == 0, "output": out[-500:]})
         self.mark_restarts()
         if self.units and self.settle:
@@ -3294,6 +3736,7 @@ class Job:
         try:
             self.mark_restarts()
             self.apply()
+            self.restart_replaced()
             if self.units and self.settle:
                 time.sleep(self.settle)
             self.health("after change")
@@ -5296,7 +5739,7 @@ def inventory(cfg):
     inv = {**collect(), "auto_update": bool(cfg.get("auto_update", True)) if RELEASE_KEYS else None, "update_error": _update_error}
     if cfg.get("neighbours", True):
         inv["neighbours"] = network_view()
-    return with_apps(inv, cfg)
+    return with_runtime(with_apps(inv, cfg), cfg)
 
 
 def with_apps(inv, cfg):
@@ -6029,6 +6472,9 @@ def _main(argv):
     en.add_argument("--no-containers", action="store_true",
                     help="Linux: don't read the packages inside this host's running Docker, Podman and Kubernetes (containerd, CRI-O) containers "
                          "(default: read them at each report; local choice, the server cannot turn it back on)")
+    en.add_argument("--no-runtime", action="store_true",
+                    help="Linux: don't read which packages running programs have loaded, which listen on the network and which run "
+                         "a replaced copy (default: read them at each report; local choice, the server cannot turn it back on)")
     en.add_argument("--no-container-apps", action="store_true",
                     help="Linux: read only the OS packages inside containers, not the Python, npm, Java and Go packages their "
                          "images added (default: read both; local choice, the server cannot turn it back on)")
@@ -6069,7 +6515,7 @@ def _main(argv):
             _log_on = True
             log_event(f"run start: {a.cmd}, agent {AGENT_VERSION}")
         if a.cmd == "collect":
-            print(json.dumps({**with_apps(collect(), {"scan_jars": a.scan_jars, "scan_apps": a.scan_apps, "app_roots": app_roots(a)}),
+            print(json.dumps({**with_runtime(with_apps(collect(), {"scan_jars": a.scan_jars, "scan_apps": a.scan_apps, "app_roots": app_roots(a)}), {}),
                               "neighbours": network_view(), **({"containers": safe_containers()} if os.name != "nt" else {})}, indent=2))
         elif a.cmd == "doctor":
             return doctor(a.insecure_http)
@@ -6093,7 +6539,7 @@ def _main(argv):
             # only the fields we expect from the server, and local choices last: the server can't opt a host in
             cfg = {"asset_id": res.get("asset_id"), "agent_key": res["agent_key"], "server": a.server,
                    "allow_remediation": a.allow_remediation, "network_checks": a.allow_network_checks,
-                   "auto_update": not a.no_auto_update, "channel": a.channel, "containers": not a.no_containers, "container_apps": not a.no_container_apps,
+                   "auto_update": not a.no_auto_update, "channel": a.channel, "containers": not a.no_containers, "container_apps": not a.no_container_apps, "runtime": not a.no_runtime,
                    "scan_jars": a.scan_jars, "scan_apps": a.scan_apps, "app_roots": app_roots(a), "ad_discovery": a.ad_discovery,
                    **({"windows_update_source": "microsoft"} if a.windows_update_source == "microsoft" else {}),
                    **({"proxy": a.proxy} if a.proxy else {})}

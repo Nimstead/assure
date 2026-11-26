@@ -1,0 +1,98 @@
+5622f0187000-5622f01aa000 r--p 00000000 08:30 14065                      /usr/sbin/nginx
+5622f01aa000-5622f0277000 r-xp 00023000 08:30 14065                      /usr/sbin/nginx
+5622f0277000-5622f02b0000 r--p 000f0000 08:30 14065                      /usr/sbin/nginx
+5622f02b0000-5622f02b2000 r--p 00129000 08:30 14065                      /usr/sbin/nginx
+5622f02b2000-5622f02ca000 rw-p 0012b000 08:30 14065                      /usr/sbin/nginx
+5622f02ca000-5622f02e9000 rw-p 00000000 00:00 0 
+5623035a0000-562303600000 rw-p 00000000 00:00 0                          [heap]
+562303600000-56230362a000 rw-p 00000000 00:00 0                          [heap]
+7a40c5a31000-7a40c5a70000 r--p 00000000 08:30 4317                       /usr/lib64/libp11-kit.so.0.4.10
+7a40c5a70000-7a40c5b5a000 r-xp 0003f000 08:30 4317                       /usr/lib64/libp11-kit.so.0.4.10
+7a40c5b5a000-7a40c5be1000 r--p 00129000 08:30 4317                       /usr/lib64/libp11-kit.so.0.4.10
+7a40c5be1000-7a40c5bf1000 r--p 001b0000 08:30 4317                       /usr/lib64/libp11-kit.so.0.4.10
+7a40c5bf1000-7a40c5c00000 rw-p 001c0000 08:30 4317                       /usr/lib64/libp11-kit.so.0.4.10
+7a40c5c00000-7a40c5c29000 r--p 00000000 08:30 4143                       /usr/lib64/libc.so.6
+7a40c5c29000-7a40c5d9f000 r-xp 00029000 08:30 4143                       /usr/lib64/libc.so.6
+7a40c5d9f000-7a40c5df8000 r--p 0019f000 08:30 4143                       /usr/lib64/libc.so.6
+7a40c5df8000-7a40c5dfc000 r--p 001f7000 08:30 4143                       /usr/lib64/libc.so.6
+7a40c5dfc000-7a40c5dfe000 rw-p 001fb000 08:30 4143                       /usr/lib64/libc.so.6
+7a40c5dfe000-7a40c5e0b000 rw-p 00000000 00:00 0 
+7a40c5e4a000-7a40c5e87000 rw-p 00000000 00:00 0 
+7a40c5e87000-7a40c5e89000 r--p 00000000 08:30 4332                       /usr/lib64/libpcre2-8.so.0.11.0
+7a40c5e89000-7a40c5ef6000 r-xp 00002000 08:30 4332                       /usr/lib64/libpcre2-8.so.0.11.0
+7a40c5ef6000-7a40c5f21000 r--p 0006f000 08:30 4332                       /usr/lib64/libpcre2-8.so.0.11.0
+7a40c5f21000-7a40c5f22000 r--p 00099000 08:30 4332                       /usr/lib64/libpcre2-8.so.0.11.0
+7a40c5f22000-7a40c5f23000 rw-p 0009a000 08:30 4332                       /usr/lib64/libpcre2-8.so.0.11.0
+7a40c5f23000-7a40c5f30000 r--p 00000000 08:30 4280                       /usr/lib64/libm.so.6
+7a40c5f30000-7a40c5fa2000 r-xp 0000d000 08:30 4280                       /usr/lib64/libm.so.6
+7a40c5fa2000-7a40c5ffe000 r--p 0007f000 08:30 4280                       /usr/lib64/libm.so.6
+7a40c5ffe000-7a40c5fff000 r--p 000da000 08:30 4280                       /usr/lib64/libm.so.6
+7a40c5fff000-7a40c6000000 rw-p 000db000 08:30 4280                       /usr/lib64/libm.so.6
+7a40c6000000-7a40c60dc000 r--p 00000000 08:30 4161                       /usr/lib64/libcrypto.so.3.5.9
+7a40c60dc000-7a40c6426000 r-xp 000dc000 08:30 4161                       /usr/lib64/libcrypto.so.3.5.9
+7a40c6426000-7a40c654a000 r--p 00426000 08:30 4161                       /usr/lib64/libcrypto.so.3.5.9
+7a40c654a000-7a40c65c1000 r--p 0054a000 08:30 4161                       /usr/lib64/libcrypto.so.3.5.9
+7a40c65c1000-7a40c65c4000 rw-p 005c1000 08:30 4161                       /usr/lib64/libcrypto.so.3.5.9
+7a40c65c4000-7a40c65c7000 rw-p 00000000 00:00 0 
+7a40c65d5000-7a40c65d7000 r--p 00000000 08:30 4198                       /usr/lib64/libffi.so.8.1.0
+7a40c65d7000-7a40c65dd000 r-xp 00002000 08:30 4198                       /usr/lib64/libffi.so.8.1.0
+7a40c65dd000-7a40c65de000 r--p 00008000 08:30 4198                       /usr/lib64/libffi.so.8.1.0
+7a40c65de000-7a40c65df000 ---p 00009000 08:30 4198                       /usr/lib64/libffi.so.8.1.0
+7a40c65df000-7a40c65e0000 r--p 00009000 08:30 4198                       /usr/lib64/libffi.so.8.1.0
+7a40c65e0000-7a40c65e1000 rw-p 0000a000 08:30 4198                       /usr/lib64/libffi.so.8.1.0
+7a40c65e1000-7a40c65e4000 r--p 00000000 08:30 4205                       /usr/lib64/libgcc_s-11-20240719.so.1
+7a40c65e4000-7a40c65f8000 r-xp 00003000 08:30 4205                       /usr/lib64/libgcc_s-11-20240719.so.1
+7a40c65f8000-7a40c65fc000 r--p 00017000 08:30 4205                       /usr/lib64/libgcc_s-11-20240719.so.1
+7a40c65fc000-7a40c65fd000 r--p 0001a000 08:30 4205                       /usr/lib64/libgcc_s-11-20240719.so.1
+7a40c65fd000-7a40c65fe000 rw-p 00000000 00:00 0 
+7a40c65fe000-7a40c6604000 r--p 00000000 08:30 4371                       /usr/lib64/libselinux.so.1
+7a40c6604000-7a40c661f000 r-xp 00006000 08:30 4371                       /usr/lib64/libselinux.so.1
+7a40c661f000-7a40c6627000 r--p 00021000 08:30 4371                       /usr/lib64/libselinux.so.1
+7a40c6627000-7a40c6628000 r--p 00028000 08:30 4371                       /usr/lib64/libselinux.so.1
+7a40c6628000-7a40c6629000 rw-p 00029000 08:30 4371                       /usr/lib64/libselinux.so.1
+7a40c6629000-7a40c662b000 rw-p 00000000 00:00 0 
+7a40c662b000-7a40c662d000 r--p 00000000 08:30 4148                       /usr/lib64/libcap.so.2.48
+7a40c662d000-7a40c6631000 r-xp 00002000 08:30 4148                       /usr/lib64/libcap.so.2.48
+7a40c6631000-7a40c6633000 r--p 00006000 08:30 4148                       /usr/lib64/libcap.so.2.48
+7a40c6633000-7a40c6634000 r--p 00007000 08:30 4148                       /usr/lib64/libcap.so.2.48
+7a40c6634000-7a40c6635000 rw-p 00008000 08:30 4148                       /usr/lib64/libcap.so.2.48
+7a40c6635000-7a40c663d000 r--p 00000000 08:30 4312                       /usr/lib64/libnss_systemd.so.2
+7a40c663d000-7a40c6676000 r-xp 00008000 08:30 4312                       /usr/lib64/libnss_systemd.so.2
+7a40c6676000-7a40c6688000 r--p 00041000 08:30 4312                       /usr/lib64/libnss_systemd.so.2
+7a40c6688000-7a40c668c000 r--p 00052000 08:30 4312                       /usr/lib64/libnss_systemd.so.2
+7a40c668c000-7a40c668d000 rw-p 00056000 08:30 4312                       /usr/lib64/libnss_systemd.so.2
+7a40c6690000-7a40c6693000 rw-p 00000000 00:00 0 
+7a40c6693000-7a40c6696000 r--p 00000000 08:30 4443                       /usr/lib64/libz.so.1.2.11
+7a40c6696000-7a40c66a4000 r-xp 00003000 08:30 4443                       /usr/lib64/libz.so.1.2.11
+7a40c66a4000-7a40c66aa000 r--p 00011000 08:30 4443                       /usr/lib64/libz.so.1.2.11
+7a40c66aa000-7a40c66ab000 ---p 00017000 08:30 4443                       /usr/lib64/libz.so.1.2.11
+7a40c66ab000-7a40c66ac000 r--p 00017000 08:30 4443                       /usr/lib64/libz.so.1.2.11
+7a40c66ac000-7a40c66af000 rw-p 00000000 00:00 0 
+7a40c66af000-7a40c66d1000 r--p 00000000 08:30 4389                       /usr/lib64/libssl.so.3.5.9
+7a40c66d1000-7a40c6772000 r-xp 00022000 08:30 4389                       /usr/lib64/libssl.so.3.5.9
+7a40c6772000-7a40c679c000 r--p 000c3000 08:30 4389                       /usr/lib64/libssl.so.3.5.9
+7a40c679c000-7a40c67a6000 r--p 000ed000 08:30 4389                       /usr/lib64/libssl.so.3.5.9
+7a40c67a6000-7a40c67aa000 rw-p 000f7000 08:30 4389                       /usr/lib64/libssl.so.3.5.9
+7a40c67aa000-7a40c67ac000 r--p 00000000 08:30 4330                       /usr/lib64/libpcre.so.1.2.12
+7a40c67ac000-7a40c6803000 r-xp 00002000 08:30 4330                       /usr/lib64/libpcre.so.1.2.12
+7a40c6803000-7a40c6820000 r--p 00059000 08:30 4330                       /usr/lib64/libpcre.so.1.2.12
+7a40c6820000-7a40c6821000 r--p 00075000 08:30 4330                       /usr/lib64/libpcre.so.1.2.12
+7a40c6821000-7a40c6822000 rw-p 00076000 08:30 4330                       /usr/lib64/libpcre.so.1.2.12
+7a40c6822000-7a40c6824000 r--p 00000000 08:30 4159                       /usr/lib64/libcrypt.so.2.0.0
+7a40c6824000-7a40c6838000 r-xp 00002000 08:30 4159                       /usr/lib64/libcrypt.so.2.0.0
+7a40c6838000-7a40c6851000 r--p 00016000 08:30 4159                       /usr/lib64/libcrypt.so.2.0.0
+7a40c6851000-7a40c6852000 ---p 0002f000 08:30 4159                       /usr/lib64/libcrypt.so.2.0.0
+7a40c6852000-7a40c6853000 r--p 0002f000 08:30 4159                       /usr/lib64/libcrypt.so.2.0.0
+7a40c6853000-7a40c685c000 rw-p 00000000 00:00 0 
+7a40c685c000-7a40c685e000 rw-s 00000000 00:13 26312                      /[aio] (deleted)
+7a40c685e000-7a40c685f000 rw-s 00000000 00:01 6178                       /dev/zero (deleted)
+7a40c685f000-7a40c6861000 rw-p 00000000 00:00 0 
+7a40c6861000-7a40c6865000 r--p 00000000 00:00 0                          [vvar]
+7a40c6865000-7a40c6867000 r--p 00000000 00:00 0                          [vvar_vclock]
+7a40c6867000-7a40c6869000 r-xp 00000000 00:00 0                          [vdso]
+7a40c6869000-7a40c686b000 r--p 00000000 08:30 4112                       /usr/lib64/ld-linux-x86-64.so.2
+7a40c686b000-7a40c6894000 r-xp 00002000 08:30 4112                       /usr/lib64/ld-linux-x86-64.so.2
+7a40c6894000-7a40c68a0000 r--p 0002b000 08:30 4112                       /usr/lib64/ld-linux-x86-64.so.2
+7a40c68a0000-7a40c68a2000 r--p 00037000 08:30 4112                       /usr/lib64/ld-linux-x86-64.so.2
+7a40c68a2000-7a40c68a4000 rw-p 00039000 08:30 4112                       /usr/lib64/ld-linux-x86-64.so.2
+7ffcf4f4f000-7ffcf4f70000 rw-p 00000000 00:00 0                          [stack]

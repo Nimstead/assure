@@ -72,6 +72,7 @@ Approval requires `planned` state, an enabled mode, and production permission or
 | `result_versions` | Reported package-version map or null |
 | `forward_only` | Manager/servicing classification, not an independent rollback probe |
 | `waits_for_window` | List-only optional field. Approved rows add the next UTC start or null |
+| `restarts` | Optional, on Linux jobs not yet run: `services` the fix will restart after its upgrade and `left`, programs it won't restart, from the host's latest runtime read (DECISIONS 163). The agent decides again from its own read after the change |
 
 Ordinary API job results have 17 fields. The list's `status` query splits on commas without whitespace removal or enum validation. Unknown names can yield an empty result. `waits_for_window=null` also covers an unavailable next start, not only an open window.
 

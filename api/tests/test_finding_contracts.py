@@ -94,7 +94,7 @@ def test_csv_columns_match_reference(env):
     assert "nimstead-findings-open.csv" in r.headers["content-disposition"]
     rows = list(csv.reader(io.StringIO(r.text)))
     expected = ["hostname", "package", "installed_version", "fixed_version", "vuln_id", "priority", "score", "cvss", "epss",
-                "kev", "status", "first_seen", "last_seen", "resolved_at", "summary", "owner"]
+                "kev", "status", "first_seen", "last_seen", "resolved_at", "summary", "owner", "runtime"]
     assert rows[0] == expected and len(rows) > 1
     assert any(row[14] == "'=SUM(1,2)" for row in rows[1:])
     assert all(" " in row[11] for row in rows[1:])

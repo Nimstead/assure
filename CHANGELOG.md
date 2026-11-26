@@ -4,6 +4,29 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-26 (preview)
+
+Agent 0.10.0. One database migration (`b7d1e3f5a9c2`), applied on start.
+
+### Upgrade notes
+- **Linux agents read what runs once they update to 0.10.0**: which installed packages running programs have loaded, which of those programs listen on the network, and which run a copy of a package replaced since they started. Expect rank changes on Linux findings (up for libraries a network listener has loaded; down, a week later, for network flaws in native code nothing loads) and some fixed findings staying open until the program running the old copy restarts.
+- **Automated Linux fixes now restart the services that ran the files they replace**, then health-check them, and roll back if one won't come up. The approval names those services. D-Bus, the system manager, login and display managers, networking, container runtimes and the agent are never restarted; a fix they hold waits for a restart, said in words.
+- **To turn it off on a machine**, enrol with `--no-runtime` (the installer takes it too) or set `"runtime": false` in `/etc/nimstead/agent.json`. The server can't turn it back on.
+- **API:** findings rows add `runtime` and take `?runtime=listening,loaded,not_loaded,restart`; a finding adds `running`; `GET /api/assets/{id}/runtime` is new; `GET /api/summary` adds `restarts` and each fix's `runtime` counts; jobs not yet run add `restarts`; the findings CSV adds `runtime` as its last column.
+
+### Highlights
+- **See which vulnerable code is actually running.** Each Linux finding says whether its package is loaded by a running program, which programs, and whether one of them listens on the network and where: "libssl3t64 (from openssl) is loaded by nginx.service, listening on 0.0.0.0:443". Read from `/proc` by the agent already there, with no kernel sensor, no eBPF and nothing left running between reports.
+- **Rank by reachability, not just severity.** A network flaw in a library a listening service has loaded ranks higher; one in native code no long-running program has loaded for a week ranks lower, with what a sample can't see said in the same sentence. Known-exploited and local flaws are never lowered, and nothing is hidden.
+- **Fixed means fixed, not just installed.** When `apt` replaces a library, the services using it keep the old copy in memory. Nimstead now keeps those findings open ("the fixed version is installed, but nginx.service still runs the copy it replaced: restart it"), lists them under **Restart to finish** on Fix first, and closes them on the report after the restart, so the evidence pack times each fix to when the vulnerable code stopped running.
+- **Fixes that finish themselves.** An automated fix restarts the services that ran the replaced files, checks them on the new code and rolls back if one fails, restarting it again on the restored version. Proven on real Debian 13 and AlmaLinux 9 hosts against `needrestart`, `needs-restarting` and `lsof`.
+- **Nothing personal leaves the machine.** Command lines and environments are never sent; programs are named by their systemd service or short name.
+
+### Added
+- **What runs** (DECISIONS 161): programs (systemd system service, else the process's name), loaded packages (mapped files, executables, jars a JVM holds open, the script an interpreter runs), replaced copies (including libraries an upgrade renamed) and listening sockets, from one bounded pass over `/proc` at each report; services systemd sandboxes are read, containers are left to their images.
+- **Seven days of memory, rank by runtime and restart to finish** (DECISIONS 162): Findings' **Running** filter (Listening, Loaded, Not loaded, Restart to finish), **What runs it** in the finding drawer, per-fix machine counts and a **Restart to finish** card on Fix first, **What runs here** in the machine drawer, and fix jobs that wait for a restart instead of failing.
+- **Restarts in automated fixes** (DECISIONS 163), named in the approval.
+- **`enroll --no-runtime`** and `"runtime": false`, taken by the Linux installer too.
+
 ## [0.13.0] - 2026-11-22 (preview)
 
 Agent 0.9.0. No database migration.
@@ -788,7 +811,8 @@ The first early-access release. Everything listed is proven by tests and, for an
 
 Licensed under FSL-1.1-ALv2: this release becomes available under Apache 2.0 on 2028-10-27.
 
-[Unreleased]: https://github.com/Nimstead/assure/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/Nimstead/assure/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/Nimstead/assure/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/Nimstead/assure/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/Nimstead/assure/compare/v0.11.1...v0.12.0
 [0.11.1]: https://github.com/Nimstead/assure/compare/v0.11.0...v0.11.1

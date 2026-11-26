@@ -1,0 +1,61 @@
+65545ce7f000-65545cea7000 r--p 00000000 08:30 18955                      /usr/sbin/nginx
+65545cea7000-65545cf8e000 r-xp 00028000 08:30 18955                      /usr/sbin/nginx
+65545cf8e000-65545cfd0000 r--p 0010f000 08:30 18955                      /usr/sbin/nginx
+65545cfd0000-65545cfd2000 r--p 00151000 08:30 18955                      /usr/sbin/nginx
+65545cfd2000-65545cfeb000 rw-p 00153000 08:30 18955                      /usr/sbin/nginx
+65545cfeb000-65545d0aa000 rw-p 00000000 00:00 0 
+6554834fe000-6554835a3000 rw-p 00000000 00:00 0                          [heap]
+6554835a3000-6554835d1000 rw-p 00000000 00:00 0                          [heap]
+7f52ead42000-7f52ead47000 r--p 00000000 08:30 1761                       /usr/lib/x86_64-linux-gnu/libzstd.so.1.5.7
+7f52ead47000-7f52eadf6000 r-xp 00005000 08:30 1761                       /usr/lib/x86_64-linux-gnu/libzstd.so.1.5.7
+7f52eadf6000-7f52eae0a000 r--p 000b4000 08:30 1761                       /usr/lib/x86_64-linux-gnu/libzstd.so.1.5.7
+7f52eae0a000-7f52eae0b000 r--p 000c8000 08:30 1761                       /usr/lib/x86_64-linux-gnu/libzstd.so.1.5.7
+7f52eae0b000-7f52eae0c000 rw-p 000c9000 08:30 1761                       /usr/lib/x86_64-linux-gnu/libzstd.so.1.5.7
+7f52eae0c000-7f52eae34000 r--p 00000000 08:30 1629                       /usr/lib/x86_64-linux-gnu/libc.so.6 (deleted)
+7f52eae34000-7f52eaf97000 r-xp 00028000 08:30 1629                       /usr/lib/x86_64-linux-gnu/libc.so.6 (deleted)
+7f52eaf97000-7f52eafed000 r--p 0018b000 08:30 1629                       /usr/lib/x86_64-linux-gnu/libc.so.6 (deleted)
+7f52eafed000-7f52eaff1000 r--p 001e0000 08:30 1629                       /usr/lib/x86_64-linux-gnu/libc.so.6 (deleted)
+7f52eaff1000-7f52eaff3000 rw-p 001e4000 08:30 1629                       /usr/lib/x86_64-linux-gnu/libc.so.6 (deleted)
+7f52eaff3000-7f52eb000000 rw-p 00000000 00:00 0 
+7f52eb000000-7f52eb0f7000 r--p 00000000 08:30 556                        /usr/lib/x86_64-linux-gnu/libcrypto.so.3
+7f52eb0f7000-7f52eb47a000 r-xp 000f7000 08:30 556                        /usr/lib/x86_64-linux-gnu/libcrypto.so.3
+7f52eb47a000-7f52eb5b1000 r--p 0047a000 08:30 556                        /usr/lib/x86_64-linux-gnu/libcrypto.so.3
+7f52eb5b1000-7f52eb634000 r--p 005b1000 08:30 556                        /usr/lib/x86_64-linux-gnu/libcrypto.so.3
+7f52eb634000-7f52eb637000 rw-p 00634000 08:30 556                        /usr/lib/x86_64-linux-gnu/libcrypto.so.3
+7f52eb637000-7f52eb63a000 rw-p 00000000 00:00 0 
+7f52eb6c0000-7f52eb6ef000 rw-p 00000000 00:00 0 
+7f52eb6ef000-7f52eb6f1000 rw-p 00000000 00:00 0 
+7f52eb6f1000-7f52eb6f4000 r--p 00000000 08:30 1759                       /usr/lib/x86_64-linux-gnu/libz.so.1.3.1
+7f52eb6f4000-7f52eb708000 r-xp 00003000 08:30 1759                       /usr/lib/x86_64-linux-gnu/libz.so.1.3.1
+7f52eb708000-7f52eb70f000 r--p 00017000 08:30 1759                       /usr/lib/x86_64-linux-gnu/libz.so.1.3.1
+7f52eb70f000-7f52eb710000 r--p 0001d000 08:30 1759                       /usr/lib/x86_64-linux-gnu/libz.so.1.3.1
+7f52eb710000-7f52eb711000 rw-p 0001e000 08:30 1759                       /usr/lib/x86_64-linux-gnu/libz.so.1.3.1
+7f52eb711000-7f52eb713000 rw-p 00000000 00:00 0 
+7f52eb713000-7f52eb736000 r--p 00000000 08:30 577                        /usr/lib/x86_64-linux-gnu/libssl.so.3
+7f52eb736000-7f52eb7df000 r-xp 00023000 08:30 577                        /usr/lib/x86_64-linux-gnu/libssl.so.3
+7f52eb7df000-7f52eb812000 r--p 000cc000 08:30 577                        /usr/lib/x86_64-linux-gnu/libssl.so.3
+7f52eb812000-7f52eb81d000 r--p 000fe000 08:30 577                        /usr/lib/x86_64-linux-gnu/libssl.so.3
+7f52eb81d000-7f52eb821000 rw-p 00109000 08:30 577                        /usr/lib/x86_64-linux-gnu/libssl.so.3
+7f52eb821000-7f52eb824000 r--p 00000000 08:30 1624                       /usr/lib/x86_64-linux-gnu/libpcre2-8.so.0.14.0
+7f52eb824000-7f52eb89f000 r-xp 00003000 08:30 1624                       /usr/lib/x86_64-linux-gnu/libpcre2-8.so.0.14.0
+7f52eb89f000-7f52eb8ce000 r--p 0007e000 08:30 1624                       /usr/lib/x86_64-linux-gnu/libpcre2-8.so.0.14.0
+7f52eb8ce000-7f52eb8cf000 r--p 000ac000 08:30 1624                       /usr/lib/x86_64-linux-gnu/libpcre2-8.so.0.14.0
+7f52eb8cf000-7f52eb8d0000 rw-p 000ad000 08:30 1624                       /usr/lib/x86_64-linux-gnu/libpcre2-8.so.0.14.0
+7f52eb8d0000-7f52eb8d2000 r--p 00000000 08:30 547                        /usr/lib/x86_64-linux-gnu/libcrypt.so.1.1.0
+7f52eb8d2000-7f52eb8e8000 r-xp 00002000 08:30 547                        /usr/lib/x86_64-linux-gnu/libcrypt.so.1.1.0
+7f52eb8e8000-7f52eb902000 r--p 00018000 08:30 547                        /usr/lib/x86_64-linux-gnu/libcrypt.so.1.1.0
+7f52eb902000-7f52eb903000 r--p 00031000 08:30 547                        /usr/lib/x86_64-linux-gnu/libcrypt.so.1.1.0
+7f52eb903000-7f52eb904000 rw-p 00032000 08:30 547                        /usr/lib/x86_64-linux-gnu/libcrypt.so.1.1.0
+7f52eb904000-7f52eb90c000 rw-p 00000000 00:00 0 
+7f52eb90d000-7f52eb90e000 rw-s 00000000 00:01 11330                      /dev/zero (deleted)
+7f52eb90e000-7f52eb910000 rw-p 00000000 00:00 0 
+7f52eb910000-7f52eb914000 r--p 00000000 00:00 0                          [vvar]
+7f52eb914000-7f52eb916000 r--p 00000000 00:00 0                          [vvar_vclock]
+7f52eb916000-7f52eb918000 r-xp 00000000 00:00 0                          [vdso]
+7f52eb918000-7f52eb919000 r--p 00000000 08:30 1667                       /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2 (deleted)
+7f52eb919000-7f52eb941000 r-xp 00001000 08:30 1667                       /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2 (deleted)
+7f52eb941000-7f52eb94c000 r--p 00029000 08:30 1667                       /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2 (deleted)
+7f52eb94c000-7f52eb94e000 r--p 00034000 08:30 1667                       /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2 (deleted)
+7f52eb94e000-7f52eb94f000 rw-p 00036000 08:30 1667                       /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2 (deleted)
+7f52eb94f000-7f52eb950000 rw-p 00000000 00:00 0 
+7ffd7b180000-7ffd7b1a1000 rw-p 00000000 00:00 0                          [stack]

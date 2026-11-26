@@ -1,0 +1,324 @@
+[
+  {
+    "step": "creating sandbox distro",
+    "name": "nimstead-sbx-rt-4d1c8b",
+    "distro": "AlmaLinux-9"
+  },
+  {
+    "step": "services up",
+    "listening": [
+      "0.0.0.0:22",
+      "0.0.0.0:80",
+      "10.255.255.254:53",
+      "127.0.0.1:323",
+      "127.0.0.1:5432",
+      "[::1]:323",
+      "[::]:22",
+      "[::]:80"
+    ]
+  },
+  {
+    "step": "collected",
+    "ecosystem": "AlmaLinux:9",
+    "packages": 223,
+    "state": "ok",
+    "problem": null,
+    "programs": {
+      "(sd-pam)": {
+        "loads": 27,
+        "listen": []
+      },
+      "Relay(6086)": {
+        "loads": 0,
+        "listen": []
+      },
+      "SessionLeader": {
+        "loads": 0,
+        "listen": []
+      },
+      "bash": {
+        "loads": 5,
+        "listen": []
+      },
+      "crond.service": {
+        "loads": 10,
+        "listen": []
+      },
+      "dbus-broker.service": {
+        "loads": 15,
+        "listen": []
+      },
+      "getty@tty1.service": {
+        "loads": 3,
+        "listen": []
+      },
+      "init": {
+        "loads": 0,
+        "listen": []
+      },
+      "init-systemd(ni": {
+        "loads": 0,
+        "listen": []
+      },
+      "init-watcher": {
+        "loads": 0,
+        "listen": []
+      },
+      "login": {
+        "loads": 19,
+        "listen": []
+      },
+      "nginx.service": {
+        "loads": 13,
+        "listen": [
+          "0.0.0.0:80/tcp",
+          "[::]:80/tcp"
+        ]
+      },
+      "postgresql.service": {
+        "loads": 30,
+        "listen": [
+          "127.0.0.1:5432/tcp"
+        ]
+      },
+      "sshd.service": {
+        "loads": 11,
+        "listen": [
+          "0.0.0.0:22/tcp",
+          "[::]:22/tcp"
+        ]
+      },
+      "systemd": {
+        "loads": 25,
+        "listen": []
+      },
+      "systemd-hostnamed.service": {
+        "loads": 25,
+        "listen": []
+      },
+      "systemd-journald.service": {
+        "loads": 25,
+        "listen": []
+      },
+      "systemd-logind.service": {
+        "loads": 26,
+        "listen": []
+      }
+    }
+  },
+  {
+    "step": "feeds synced",
+    "kev": 1805,
+    "epss": 412861,
+    "osv": {
+      "inserted": 28887,
+      "updated": 0,
+      "skipped": 0
+    },
+    "seconds": 6
+  },
+  {
+    "step": "loaded and listening vs the oracle",
+    "programs": 18,
+    "oracle_programs": 17,
+    "differences": [
+      {
+        "program": "Relay(6201)",
+        "only": "agent",
+        "why": "the harness's own or WSL's per-command processes (a new relay and shell per wsl.exe call)"
+      }
+    ]
+  },
+  {
+    "step": "CHECK 1 loaded packages equal the oracle's: PASS",
+    "unexplained": []
+  },
+  {
+    "step": "CHECK 2 listening addresses equal ss: PASS"
+  },
+  {
+    "step": "first report",
+    "open": 2,
+    "resolved": 0
+  },
+  {
+    "step": "findings by runtime state",
+    "states": {
+      "null": 1,
+      "loaded": 1
+    },
+    "listening_with_reason": 0,
+    "sources_on_a_listener": [],
+    "wrong": [],
+    "sample": []
+  },
+  {
+    "step": "no open finding on a library a listening program loaded on this host"
+  },
+  {
+    "step": "upgrade candidates",
+    "candidates": [
+      [
+        "expat",
+        [
+          "dbus-broker.service"
+        ]
+      ]
+    ],
+    "upgradable": 11
+  },
+  {
+    "step": "replaced copies after the upgrade",
+    "package": "expat",
+    "binaries": [
+      "expat"
+    ],
+    "agent": [
+      [
+        "dbus-broker.service",
+        [
+          "expat"
+        ]
+      ]
+    ],
+    "lsof_oracle": [
+      [
+        "dbus-broker.service",
+        [
+          "expat"
+        ]
+      ]
+    ],
+    "distribution_tool": [
+      "dbus-broker.service"
+    ]
+  },
+  {
+    "step": "replaced copies: agent vs lsof's deleted package files",
+    "differences": []
+  },
+  {
+    "step": "CHECK 3 programs running a replaced copy equal the deleted package files (oracle): PASS",
+    "unexplained": []
+  },
+  {
+    "step": "CHECK 3 services running a replaced copy include every one the distribution's tool names: PASS",
+    "only_tool": [],
+    "only_agent": [],
+    "named_systemd_by_the_agent": []
+  },
+  {
+    "step": "report after the upgrade",
+    "open": 1,
+    "resolved": 0,
+    "held": 1,
+    "reason": "Still open: the fixed version is installed, but dbus-broker.service still runs the copy it replaced: restart it (or the machine)"
+  },
+  {
+    "step": "CHECK 3 upgraded findings stay open while the old copy runs: PASS",
+    "held": 1,
+    "fixable_before": 1
+  },
+  {
+    "step": "report after the restart",
+    "restarted": [
+      "dbus-broker.service"
+    ],
+    "open": 1,
+    "resolved": 1,
+    "still_held": 0,
+    "reason": null
+  },
+  {
+    "step": "CHECK 3 the restart closes them on the next report: PASS"
+  },
+  {
+    "step": "not loaded, seven days backdated",
+    "lowered": 0,
+    "should": 0,
+    "not_loaded": 1,
+    "mismatch": [],
+    "sample": []
+  },
+  {
+    "step": "no not-loaded finding whose own advisories say network only on this host"
+  },
+  {
+    "step": "only one upgrade candidate: the fix-job scenarios need a second",
+    "candidates": [
+      "expat"
+    ]
+  },
+  {
+    "step": "hostile processes",
+    "processes": 2048,
+    "read": {
+      "seconds": 0.78,
+      "state": "ok",
+      "problem": null,
+      "programs": 22,
+      "names": [
+        "(sd-pam)",
+        "Relay(6491)",
+        "SessionLeader",
+        "bash",
+        "crond.service",
+        "dbus-broker.service",
+        "ev?il??",
+        "getty@tty1.service",
+        "init",
+        "init-systemd(ni",
+        "init-watcher",
+        "login",
+        "many-fds",
+        "python3",
+        "sh",
+        "sshd.service",
+        "systemd",
+        "systemd-journald.service",
+        "systemd-logind.service"
+      ]
+    },
+    "report": {
+      "open": 1,
+      "resolved": 0
+    }
+  },
+  {
+    "step": "CHECK 6 a secret in a command line or environment never leaves the machine: PASS"
+  },
+  {
+    "step": "CHECK 6 crafted names are sanitised and the report goes through: PASS"
+  },
+  {
+    "step": "CHECK 7 the read takes under 3 s with 2,000 extra processes: PASS",
+    "seconds": 0.78,
+    "processes": 2048
+  },
+  {
+    "step": "CHECK evidence pack verifies: PASS",
+    "problems": []
+  },
+  {
+    "step": "RESULT: PASS",
+    "checks": {
+      "1 loaded packages equal the oracle's": "PASS",
+      "2 listening addresses equal ss": "PASS",
+      "4 a network listener's library is ranked with the reason": "NOT EXERCISED",
+      "3 programs running a replaced copy equal the deleted package files (oracle)": "PASS",
+      "3 services running a replaced copy include every one the distribution's tool names": "PASS",
+      "3 upgraded findings stay open while the old copy runs": "PASS",
+      "3 the restart closes them on the next report": "PASS",
+      "4 a network flaw in native code nothing loads is lowered, never a KEV one": "NOT EXERCISED",
+      "5 fix jobs": "NOT RUN",
+      "6 a secret in a command line or environment never leaves the machine": "PASS",
+      "6 crafted names are sanitised and the report goes through": "PASS",
+      "7 the read takes under 3 s with 2,000 extra processes": "PASS",
+      "evidence pack verifies": "PASS"
+    }
+  },
+  {
+    "step": "sandbox destroyed",
+    "name": "nimstead-sbx-rt-4d1c8b"
+  }
+]

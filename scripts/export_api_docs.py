@@ -62,8 +62,11 @@ def render() -> dict[str, str]:
     finding_fields |= {name: {"type": ["number", "null"]} for name in ("cvss", "epss")}
     finding_fields |= {name: {"type": "array", "items": {"type": "string"}} for name in ("advisory_ids", "reasons")}
     finding_fields["score"] = {"type": "integer"}
+    # what runs (DECISIONS 161): null = unknown
+    finding_fields["runtime"] = {"enum": ["listening", "loaded", "not_loaded", "restart", None], "type": ["string", "null"]}
     compact_fields = {name: finding_fields[name] for name in (
-        "id", "asset_id", "hostname", "asset_kind", "ecosystem", "package", "installed_version", "fixed_version", "vuln_id", "kev", "score", "priority", "reasons")}
+        "id", "asset_id", "hostname", "asset_kind", "ecosystem", "package", "installed_version", "fixed_version", "vuln_id", "kev", "score", "priority", "reasons",
+        "runtime")}
     detail_fields = {**finding_fields, "package_fix": {"type": ["object", "null"], "properties": {
         "version": {"type": "string"}, "open": {"type": "integer", "minimum": 0}}, "required": ["version", "open"], "additionalProperties": False}}
     group_fields = {name: {"type": "string"} for name in ("key", "priority", "package", "vuln_id")}
@@ -76,6 +79,14 @@ def render() -> dict[str, str]:
                    "required": ["key", "url", "state", "project"], "additionalProperties": False}
     detail_fields |= {"ticket": ticket_link}  # the tracker ticket its fix is in (DECISIONS 150)
     detail_fields |= {"locations": {"type": "array", "items": {"type": "string"}, "maxItems": 20}}  # where an application package sits (DECISIONS 155)
+    strs = {"type": "array", "items": {"type": "string"}}
+    running_program = {"type": "object", "properties": {"name": {"type": "string"}, "users": strs, "listen": strs, "loads": strs, "replaced": strs},
+                       "required": ["name", "users", "listen", "loads", "replaced"], "additionalProperties": False}
+    running = {"state": finding_fields["runtime"], "binary": {"type": ["string", "null"]}, "binaries": strs, "reason": {"type": ["string", "null"]},
+               "programs": {"type": "array", "maxItems": 20, "items": running_program}, "read_at": {"type": "string"},
+               "read_state": {"enum": ["ok", "partial", "failed"], "type": "string"}, "read_problem": {"type": ["string", "null"]},
+               "since": {"type": ["string", "null"]}, "covered": {"type": "boolean"}}
+    detail_fields |= {"running": {"type": ["object", "null"], "properties": running, "required": list(running), "additionalProperties": False}}  # DECISIONS 161
     for name, fields in (("FindingRow", finding_fields), ("FindingCompact", compact_fields), ("FindingDetail", detail_fields), ("FindingGroup", group_fields)):
         schema["components"]["schemas"][name] = {"type": "object", "properties": fields, "required": list(fields), "additionalProperties": False}
     rule_fields = {name: {"type": "string"} for name in ("id", "v", "severity", "status", "setting", "expected", "found", "note")}
@@ -135,8 +146,11 @@ def render() -> dict[str, str]:
     for name, fields in (("RemediationJob", job_fields), ("WindowsUpdateHost", update_host),
                          ("WindowsUpdateSummary", update_fields), ("OrganisationSettings", settings)):
         schema["components"]["schemas"][name] = {"type": "object", "properties": fields, "required": list(fields), "additionalProperties": False}
+    # a Linux job not yet run: the services its fix will restart and the programs it will leave running (DECISIONS 163)
+    restarts = {"type": "object", "properties": {"services": strs, "left": strs}, "required": ["services", "left"], "additionalProperties": False}
+    schema["components"]["schemas"]["RemediationJob"]["properties"]["restarts"] = restarts
     schema["components"]["schemas"]["RemediationJobListItem"] = {
-        "type": "object", "properties": {**job_fields, "waits_for_window": {"type": ["string", "null"]}},
+        "type": "object", "properties": {**job_fields, "waits_for_window": {"type": ["string", "null"]}, "restarts": restarts},
         "required": list(job_fields), "additionalProperties": False}
     schema["components"]["schemas"]["AgentJobPlan"] = {
         "type": "object", "properties": agent_job, "required": ["id", "manager", "packages", "health_units"], "additionalProperties": False}
@@ -187,6 +201,8 @@ def render() -> dict[str, str]:
     link = {"type": "object", "properties": {name: {"type": "string"} for name in ("key", "url", "state", "project")},
             "required": ["key", "url", "state", "project"], "additionalProperties": False}
     action_fields["tickets"] = {"type": "array", "items": link}  # one per team behind the fix (DECISIONS 150)
+    action_fields["runtime"] = {"type": "object", "properties": {name: {"type": "integer", "minimum": 0} for name in ("listening", "loaded", "not_loaded")},
+                                "required": ["listening", "loaded", "not_loaded"], "additionalProperties": False}  # machines, by what runs (DECISIONS 161)
     for name, fields in (("job", {"id": {"type": "string"}, "status": {"type": "string"}}),
                          ("last_attempt", {"id": {"type": "string"}, "status": {"type": "string"}, "error": {"type": ["string", "null"]}})):
         action_fields[name] = {"type": ["object", "null"], "properties": fields, "required": list(fields), "additionalProperties": False}
@@ -194,7 +210,16 @@ def render() -> dict[str, str]:
     summary_fields |= {"open_by_priority": asset_fields["open_by_priority"],
                        "top_actions": {"type": "array", "maxItems": 10, "items": {"$ref": "#/components/schemas/SummaryAction"}},
                        "images_to_rebuild": {"type": "array", "maxItems": 10, "items": {"$ref": "#/components/schemas/SummaryImage"}},
-                       "attention": {"type": "array", "maxItems": 20, "items": {"$ref": "#/components/schemas/RemediationJob"}}}
+                       "attention": {"type": "array", "maxItems": 20, "items": {"$ref": "#/components/schemas/RemediationJob"}},
+                       "restarts": {"type": "array", "maxItems": 10, "items": {"$ref": "#/components/schemas/SummaryRestart"}}}
+    restart_summary = {"package": {"type": "string"}, "findings": {"type": "integer", "minimum": 1}, "kev": {"type": "boolean"},
+                       "max_score": {"type": "integer"}, "hosts": strs, "asset_ids": strs, "programs": strs}
+    host_program = {"name": {"type": "string"}, "unit": {"type": "boolean"}, "users": strs, "count": {"type": "integer", "minimum": 1},
+                    "listen": strs, "replaced": strs, "loads": {"type": "integer", "minimum": 0}}
+    machine_runtime = {"read_at": {"type": "string"}, "state": {"enum": ["ok", "partial", "failed"], "type": "string"},
+                       "problem": {"type": ["string", "null"]}, "since": {"type": ["string", "null"]}, "covered": {"type": "boolean"},
+                       "programs": {"type": "array", "maxItems": 1024, "items": obj(host_program)},
+                       "replaced": {"type": "object", "additionalProperties": obj({"source": {"type": "string"}, "programs": strs})}}
     fix = {"type": "object", "properties": {"package": {"type": "string"}, "fixed_version": {"type": "string"}, "vulns": {"type": "integer", "minimum": 0}},
            "required": ["package", "fixed_version", "vulns"], "additionalProperties": False}
     image_summary = {name: {"type": "string"} for name in ("asset_id", "name", "os_name", "ecosystem", "priority")}
@@ -204,7 +229,8 @@ def render() -> dict[str, str]:
     containers_result = {name: {"type": "integer", "minimum": 0} for name in ("images", "containers", "new", "stopped", "refused")}
     containers_result["complete"] = {"type": "boolean"}
     for name, fields in (("ApplicationCoverage", coverage_fields), ("SummaryAction", action_fields), ("FleetSummary", summary_fields),
-                         ("SummaryImage", image_summary), ("ContainersResult", containers_result),
+                         ("SummaryImage", image_summary), ("ContainersResult", containers_result), ("SummaryRestart", restart_summary),
+                         ("MachineRuntime", machine_runtime),
                          ("AgentEnrolment", {"asset_id": {"type": "string"}, "agent_key": {"type": "string"}}),
                          ("InventoryResult", {name: {"type": "integer", "minimum": 0} for name in ("open", "resolved")})):
         schema["components"]["schemas"][name] = {"type": "object", "properties": fields, "required": list(fields), "additionalProperties": False}
@@ -477,6 +503,8 @@ def render() -> dict[str, str]:
             elif route.path == "/api/targets" or route.path == "/api/targets/{target_id}/verify":
                 asset_response = {"$ref": "#/components/schemas/ExternalAsset"}
                 asset_status = "201" if route.path == "/api/targets" else "200"
+            elif route.path == "/api/assets/{asset_id}/runtime":  # null for a host that never sent a read (DECISIONS 161)
+                asset_response = {"oneOf": [{"$ref": "#/components/schemas/MachineRuntime"}, {"type": "null"}]}
             elif route.path in {"/api/coverage", "/api/summary", "/api/agent/enroll", "/api/agent/inventory", "/api/agent/containers"}:
                 response_name = {"/api/coverage": "ApplicationCoverage", "/api/summary": "FleetSummary", "/api/agent/enroll": "AgentEnrolment",
                                  "/api/agent/inventory": "InventoryResult", "/api/agent/containers": "ContainersResult"}[route.path]

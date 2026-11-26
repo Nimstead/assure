@@ -509,6 +509,55 @@ test("container images: one row wherever an image runs, rebuilt not planned, unr
   }
 });
 
+test("what runs: a listening service ranks its library, a fix still running says restart, and it passes axe", async ({ browser }) => {
+  test.setTimeout(180_000);  // the server takes one inventory per host every 30 s, and this host reports twice
+  const setup = await browser.newContext({ storageState: STATE });
+  const api = (await setup.newPage()).request;
+  const tok = await (await api.post("/api/enroll-tokens", { data: { sandbox: true } })).json();
+  const a = await (await api.post("/api/agent/enroll", { data: { token: tok.token, hostname: "rt-web-1", ecosystem: "Debian:12" } })).json();
+  const h = { Authorization: `Bearer ${a.agent_key}` };
+  const pkgs = (v: string) => [{ ecosystem: "Debian:12", name: "libssl3", version: v, source: "openssl" }, { ecosystem: "Debian:12", name: "openssl", version: v, source: "openssl" }];
+  // as agent 0.10.0 reads it (DECISIONS 161): nginx on 0.0.0.0:443 loads libssl3; after the upgrade it still runs the old copy
+  const read = (replaced: string[]) => ({ v: 1, state: "ok", native: ["libssl3", "openssl", "nginx"], other_roots: 0, programs: [
+    { name: "nginx.service", unit: true, users: ["root", "www-data"], count: 3, listen: ["0.0.0.0:443/tcp", "[::]:443/tcp"], loads: ["libssl3", "nginx"], replaced },
+    { name: "postgresql@17-main.service", unit: true, users: ["postgres"], count: 6, listen: ["127.0.0.1:5432/tcp"], loads: ["libssl3"], replaced: [] }] });
+  for (const [v, replaced] of [["3.0.11-1~deb12u1", []], ["3.0.99-1~deb12u1", ["libssl3"]]] as const) {
+    if (replaced.length) await new Promise((r) => setTimeout(r, 31_000));
+    const r = await api.post("/api/agent/inventory", { data: { ...current({ os_name: "Debian 12", ecosystem: "Debian:12", packages: pkgs(v) }), runtime: read([...replaced]) }, headers: h });
+    expect(r.ok(), await r.text()).toBe(true);
+  }
+  const held = await (await api.get(`/api/findings?asset_id=${a.asset_id}&runtime=restart`)).json();
+  expect(held.length).toBeGreaterThan(0);
+  await setup.close();
+  for (const width of [1440, 375] as const) {
+    for (const scheme of ["light", "dark"] as const) {
+      const { context, page } = await ctx(browser, width, scheme);
+      const shot = width === 1440 && scheme === "light";
+      if (shot) mkdirSync(SHOTS, { recursive: true });
+      await page.goto("/");
+      const card = page.getByRole("region", { name: "Restart to finish" });
+      await expect(card).toContainText("restart nginx.service");
+      await axe(page, `fix first with restarts @${width} ${scheme}`);
+      if (shot) { await card.scrollIntoViewIfNeeded(); await page.screenshot({ path: `${SHOTS}/home-restart-1440.png` }); }
+      if (width === 375) expect(await smallTargets(page), "controls under 44px on Fix first").toEqual([]);
+      await page.goto(`/findings?running=restart&f=${held[0].id}`);
+      const drawer = page.getByRole("dialog");
+      await expect(drawer.getByRole("heading", { name: "What runs it" })).toBeVisible();
+      await expect(drawer).toContainText("Fixed on disk, still running.");
+      await expect(drawer).toContainText("nginx.service as root, www-data · listening on 0.0.0.0:443/tcp, [::]:443/tcp");
+      await axe(page, `finding still running @${width} ${scheme}`);
+      if (shot) await page.screenshot({ path: `${SHOTS}/finding-runtime-1440.png` });
+      await page.keyboard.press("Escape");
+      await page.goto(`/assets?machine=${a.asset_id}`);
+      const machine = page.getByRole("dialog", { name: "rt-web-1" });
+      await expect(machine).toContainText("nginx.service runs a replaced copy of libssl3: restart it to finish the fix");
+      await expect(machine).toContainText("2 programs read, 1 listening on this machine only");
+      await axe(page, `machine drawer runtime @${width} ${scheme}`);
+      await context.close();
+    }
+  }
+});
+
 test("Baseline view: per host counts, wording that claims no conformance, rules on demand, CSV", async ({ browser }) => {
   const context = await browser.newContext({ storageState: STATE });
   const page = await context.newPage();

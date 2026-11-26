@@ -11,7 +11,7 @@ from datetime import timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from nimstead import containers, evidence, lifecycle, msproducts, risk, winapps, winconfig, windrivers
+from nimstead import containers, evidence, lifecycle, msproducts, risk, runtime, winapps, winconfig, windrivers
 from nimstead.db import Advisory, Asset, Cvss, Epss, Finding, InstalledPackage, Kev, now
 from nimstead.match import Match, canonical_id
 from nimstead.notify import notify
@@ -228,6 +228,11 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
         for f in s.scalars(select(Finding).where(Finding.asset_id == asset.id))
     }
     prior = [k for k, f in existing.items() if f.status in ("open", "accepted")]  # before this rescan changes them
+    rv = runtime.view(s, asset, t)  # what runs (DECISIONS 161): every state unknown for a host that never sent a read
+    binaries = defaultdict(list)  # source package -> its installed binaries: findings name sources, the agent's lists binaries
+    for p in pkgs:
+        if p.ecosystem == asset.ecosystem:
+            binaries[p.source or p.name].append(p)
     seen: set[tuple[str, str, str]] = set()
     inv = sorted((p.ecosystem, p.name, p.version, p.source or "", *([p.source_version] if p.source_version else [])) for p in pkgs)
     events: list[tuple[str, Finding]] = []
@@ -251,7 +256,7 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
     matches, also, verdicts = _engine(s, asset, pkgs, matches, seen, prior, advisories, inventory_received)
     # exploitation and severity context in three queries, not three lookups per CVE
     cves = sorted({c for *_, m in matches for c in cve_ids(m) if c.startswith("CVE-")})
-    kevs, ransomware, epss, nvd = set(), set(), {}, {}
+    kevs, ransomware, epss, nvd, nvd_vector = set(), set(), {}, {}, {}
     for i in range(0, len(cves), 500):
         part = cves[i:i + 500]
         for cve, ransom in s.execute(select(Kev.cve, Kev.ransomware).where(Kev.cve.in_(part))):
@@ -259,7 +264,8 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
             if ransom:
                 ransomware.add(cve)
         epss |= dict(s.execute(select(Epss.cve, Epss.score).where(Epss.cve.in_(part))).all())
-        nvd |= dict(s.execute(select(Cvss.cve, Cvss.score).where(Cvss.cve.in_(part))).all())
+        for cve, score, vector in s.execute(select(Cvss.cve, Cvss.score, Cvss.vector).where(Cvss.cve.in_(part))):
+            nvd[cve], nvd_vector[cve] = score, vector
     if ("exploits",) not in advisories:  # CVEs with a public exploit by source (Metasploit, Exploit-DB), once per pass
         advisories[("exploits",)] = {pkg: set(rec.get("cves", [])) for pkg, rec in s.execute(
             select(Advisory.package, Advisory.record).where(Advisory.ecosystem == "Exploit"))}
@@ -282,8 +288,14 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
             internet_facing=asset.internet_facing,
             fix_available=m.fixed is not None or eco == "WinConfig",  # a setting is fixed by changing it
         )
+        # a distribution package on a host whose agent reads what runs: its state ranks the finding (DECISIONS 161)
+        bins = [b.name for b in binaries.get(name, [])]
+        # a kernel is judged by the engine's running-kernel rule, never by what runs (code review)
+        state, binary = rv.state(bins) if eco == asset.ecosystem and "_risk" not in m.record and not runtime.is_kernel(name, bins) else (None, None)
         if "_risk" not in m.record:
             r = risk.context(r, kev=kev, ransomware=any(c in ransomware for c in ids),
+                             runtime=(state, rv.reason(name, binary, state)),
+                             vectors=risk.attack_vectors(m.record.get("severity"), nvd_vector, [c for c in ids if c.startswith("CVE-")]),
                              public_exploit=any(c in exploits.get("metasploit", ()) for c in ids),
                              exploit_db=any(c in exploits.get("exploitdb", ()) for c in ids),
                              msrc=(m.record.get("database_specific") or {}), roles=roles,
@@ -313,6 +325,7 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
                      + (f" The same fix covers {', '.join(same_fix[:10])}{' and more' if len(same_fix) > 10 else ''}." if same_fix else ""))[:1000]
         f.cvss, f.epss, f.kev = cvss, ep, kev
         f.score, f.priority, f.reasons = r.score, r.priority, r.reasons
+        f.runtime = state
         f.last_seen = t
         if f.priority == "fix-now" and f.status in (None, "open") and not was_fix_now:  # status None: new row, default not yet applied
             fix_now.append(m.vuln_id)
@@ -330,6 +343,16 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
         if key[0] == lifecycle.ECOSYSTEM and not _linux_eol(key) and _eol_unread(key, asset.collection):
             continue
         if key not in seen and f.status in ("open", "accepted"):
+            # the fix is on disk but a program still runs the copy it replaced: the vulnerable code is still running, so it isn't
+            # fixed yet. Only a sighting holds it (the latest read named the program), and only once the version has changed
+            bins = binaries.get(f.package, []) if key[0] == asset.ecosystem else []
+            if ((who := rv.replaced_by([b.name for b in bins], f.package) if key[0] == asset.ecosystem else [])
+                    and f.installed_version not in {v for b in bins for v in (b.version, b.source_version) if v}):
+                f.reasons = [r for r in f.reasons or [] if not r.startswith(runtime.RESTART)] + [runtime.restart_reason(who, not bins)]
+                f.runtime = "restart"
+                continue
+            if f.runtime == "restart":  # no longer held for a restart: whatever holds it now says so itself (code review)
+                f.runtime = None
             index = index or _closing_index(verdicts)
             if (why := _held_open(key, index, asset)) is not None:  # phase 4: in the engine's slice, only evidence closes (R4.6)
                 f.reasons = [r for r in f.reasons or [] if not r.startswith("Still open: ")] + [f"Still open: {why}"]

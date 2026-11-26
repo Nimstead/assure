@@ -141,6 +141,7 @@ See the [SBOM input reference](sbom.md) for formats, parser limits, response cou
 | open_by_priority | Counts of status=open findings by priority |
 | top_actions | Up to ten action groups below |
 | images_to_rebuild | Up to ten container images with open findings, below |
+| restarts | Up to ten packages whose fix is installed while a program still runs the replaced copy (DECISIONS 162): `package`, `findings` held open, `kev`, `max_score`, `hosts`, `asset_ids` and the `programs` the latest reads name, most urgent first |
 | attention | Up to twenty newest failed, rolled_back, rollback_failed, not_fixed or aborted jobs in [public job format](remediation-jobs.md#public-job-fields) |
 
 Action groups use open findings with a fixed version or a supported configuration fix, on every asset kind except container images (an image is rebuilt, never planned). Ranking uses KEV first, maximum score second and distinct vulnerability count third. Ties have no explicit stable ordering.
@@ -157,6 +158,7 @@ Action groups use open findings with a fixed version or a supported configuratio
 | kev, max_score | Group KEV flag and maximum stored score |
 | summary | One selected finding summary for configuration groups, otherwise null |
 | fix, plannable, person_only, forward_only | [Fix-path classification](remediation-jobs.md#python-helper-ownership) |
+| runtime | Machines among its findings' where a program has loaded it (`loaded`, listening included), where one listening on the network has (`listening`), and where nothing has for seven days (`not_loaded`), from each finding's `runtime` |
 
 Each action inspects at most fifty newest matching jobs. Older active or failed attempts can be absent from its hints. The displayed highest fix is a stored-data recommendation, not proof that one upgrade resolves every grouped issue.
 
@@ -169,6 +171,10 @@ GET summary first sweeps job timeouts and commits. It does not collect fresh hos
 | hosts | Sorted hostnames that run it |
 | fixes | Up to eight `{package, ecosystem, fixed_version, vulns}`: the highest fixed version per package by its own ecosystem's version order (an image carries distribution and application packages), most findings first |
 | unfixed | Open findings whose package has no published fix |
+
+## What runs on a host
+
+`GET /api/assets/{asset_id}/runtime` returns a host's latest runtime read, or `null` for a host that has never sent one and for any other asset kind (DECISIONS 161): `read_at`, `state` (`ok`, `partial` or `failed`), `problem`, `since` (when the current run of complete reads began), `covered` (seven days of complete reads), `programs` (listening on the network first: `name`, `unit`, `users`, `count`, `listen`, `replaced`, and `loads` as a count) and `replaced` (binary to `source` and `programs`). It accepts a session or a read-only API token; another organisation's asset is `404`. The inventory body's `runtime` object is validated and capped like `neighbours`: what doesn't fit is dropped, never the packages with it.
 
 ## Container images
 

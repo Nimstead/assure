@@ -1,6 +1,6 @@
 """Performance check at realistic scale: N hosts x ~600 packages, ~100k advisories, ~300 findings per host.
 
-Run from api/:  uv run python ../sandbox/perf.py [--assets 1000] [--containers 10] [--apps 500] [--tickets] [--db postgresql+psycopg://...]
+Run from api/:  uv run python ../sandbox/perf.py [--assets 1000] [--containers 10] [--apps 500] [--tickets] [--runtime] [--db postgresql+psycopg://...]
 Sizes follow the real-host runs (Debian 13: 164 pkgs / 274 findings, Ubuntu 24.04: 523 / 369). Times every
 user-facing endpoint the home page and findings views hit, agent inventory ingest, and the hourly re-match.
 --containers N: each host also reports N running containers drawn from IMAGES shared images (tasks/plan-containers.md
@@ -8,7 +8,10 @@ C12), timing those reports and the hourly re-match before and after the images e
 --apps N (with --containers): each image also carries N npm packages read inside it, 5 of them vulnerable
 (tasks/spec-workloads.md success criterion 7).
 --tickets: after the re-match, time a ticket sync's own work against an in-process GitLab fake (tasks/spec-tickets.md).
-Writes sandbox/last_run_perf_<sqlite|postgresql>[_containers][_apps][_tickets].json.
+--runtime: each inventory also carries what runs (tasks/spec-runtime.md criterion 7): 60 programs loading 25 of the host's
+packages each, 3 of them listening on the network, every package native, and on every tenth host one program running a
+replaced copy; a second report per host 7 days later exercises the memory.
+Writes sandbox/last_run_perf_<sqlite|postgresql>[_containers][_apps][_tickets][_runtime].json.
 """
 
 import json
@@ -37,6 +40,17 @@ ASSETS = int(sys.argv[sys.argv.index("--assets") + 1]) if "--assets" in sys.argv
 CONTAINERS = int(sys.argv[sys.argv.index("--containers") + 1]) if "--containers" in sys.argv else 0
 TICKETS = "--tickets" in sys.argv
 APPS = int(sys.argv[sys.argv.index("--apps") + 1]) if "--apps" in sys.argv else 0
+RUNTIME = "--runtime" in sys.argv
+
+
+def runtime_read(n, names):
+    """A host's read of what runs, as agent 0.10.0 sends it: programs loading packages, a few listening, one replaced copy."""
+    progs = [{"name": f"svc{k}.service", "unit": True, "users": ["root"], "count": 2,
+              "listen": [f"0.0.0.0:{8000 + k}/tcp"] if k < 3 else [f"127.0.0.1:{9000 + k}/tcp"] if k < 6 else [],
+              "loads": sorted({f"pkg{p}" for p in rnd.sample(names, 25)}), "replaced": []} for k in range(60)]
+    if n % 10 == 0:
+        progs[5]["replaced"] = progs[5]["loads"][:1]
+    return {"v": 1, "state": "ok", "programs": progs, "native": sorted(f"pkg{p}" for p in names), "other_roots": 0}
 APP_UNIVERSE, APP_VULN = 5000, 5  # npm packages an image's build may add, and how many of an image's are vulnerable
 IMAGES, IMAGE_PKGS, IMAGE_VULN = 50, 200, 5  # a fleet's distinct images: far fewer than its containers
 DB = sys.argv[sys.argv.index("--db") + 1] if "--db" in sys.argv else f"sqlite:///{(TMP / 'perf.db').as_posix()}"
@@ -150,8 +164,11 @@ def main():
         names = rnd.sample(range(UNIVERSE), PER_HOST)
         vuln = set(names[:VULN_PER_HOST])
         pkgs = [{"ecosystem": ECO, "name": f"pkg{p}", "version": "1.0-1" if p in vuln else "9.0-1", "source": f"pkg{p}"} for p in names]
+        body = with_document({"ecosystem": ECO, "packages": pkgs})
+        if RUNTIME:
+            body["runtime"] = runtime_read(n, names)
         t = time.perf_counter()
-        r = c.post("/api/agent/inventory", json=with_document({"ecosystem": ECO, "packages": pkgs}), headers=headers[-1])
+        r = c.post("/api/agent/inventory", json=body, headers=headers[-1])
         ingest.append(time.perf_counter() - t)
         assert r.status_code == 200, r.text
         if n % 100 == 99:
@@ -230,7 +247,7 @@ def main():
     hosts = timed("GET /api/windows-updates/{kb} (drill down)", lambda: c.get(f"/api/windows-updates/{rows[0]['kb']}", params={"product": product}), 3)
     result["windows_updates_drilldown_kib"] = round(len(hosts.content) / 1024)
     timed("GET /api/summary (with Windows hosts)", lambda: c.get("/api/summary").json(), 3)
-    (ROOT / "sandbox" / f"last_run_perf_{result['db'].split('+')[0]}{'_containers' if CONTAINERS else ''}{'_apps' if APPS else ''}{'_tickets' if TICKETS else ''}.json").write_text(json.dumps(result, indent=2))
+    (ROOT / "sandbox" / f"last_run_perf_{result['db'].split('+')[0]}{'_containers' if CONTAINERS else ''}{'_apps' if APPS else ''}{'_tickets' if TICKETS else ''}{'_runtime' if RUNTIME else ''}.json").write_text(json.dumps(result, indent=2))
 
 
 if __name__ == "__main__":

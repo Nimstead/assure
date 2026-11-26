@@ -1721,17 +1721,19 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         s.commit()
         newest = (select(ScanRecord.asset_id, func.max(ScanRecord.created).label("at")).where(ScanRecord.org_id == user.org_id)
                   .group_by(ScanRecord.asset_id).subquery())
-        latest = {}  # the report only: the stored inventory can be 10 MB a host
-        for aid, report in s.execute(select(ScanRecord.asset_id, ScanRecord.report)
-                                     .join(newest, and_(ScanRecord.asset_id == newest.c.asset_id, ScanRecord.created == newest.c.at)).order_by(ScanRecord.id)):
-            latest.setdefault(aid, report)  # two records stored in the same instant: either is the latest
+        latest = {}  # only the report's attack paths and sshd state: decoding whole reports was most of a 2 s read at 1,000 hosts
+        for aid, paths, ssh in s.execute(select(ScanRecord.asset_id, ScanRecord.report["attack_paths"], ScanRecord.report["ssh"])
+                                         .join(newest, and_(ScanRecord.asset_id == newest.c.asset_id, ScanRecord.created == newest.c.at)).order_by(ScanRecord.id)):
+            if aid not in latest:  # two records stored in the same instant: either is the latest
+                latest[aid] = {"attack_paths": paths, **({"ssh": ssh} if ssh is not None else {})} if paths is not None else {}
         win = dict(s.execute(select(InstalledPackage.asset_id, InstalledPackage.version).join(Asset, Asset.id == InstalledPackage.asset_id)
                              .where(Asset.org_id == user.org_id, InstalledPackage.ecosystem == "Windows")).all())
         keys = dict(s.execute(select(AssetAccess.asset_id, AssetAccess.data).where(AssetAccess.org_id == user.org_id)).all())  # one query (DECISIONS 168)
-        return engine_fleet.build([{"id": a.id, "hostname": a.hostname, "facts": a.facts or {}, "os_version": win.get(a.id, ""),
-                                    "report": latest.get(a.id), "internet_facing": a.internet_facing,
-                                    "linux": "os_id" in (a.facts or {}), **({"access": keys[a.id]} if a.id in keys else {})}
-                                   for a in s.scalars(select(Asset).where(Asset.org_id == user.org_id, Asset.kind != "device"))])
+        rows = s.execute(select(Asset.id, Asset.hostname, Asset.facts, Asset.internet_facing).where(Asset.org_id == user.org_id, Asset.kind != "device"))
+        return engine_fleet.build([{"id": aid, "hostname": hostname, "facts": facts or {}, "os_version": win.get(aid, ""),
+                                    "report": latest.get(aid) or None, "internet_facing": facing,
+                                    "linux": "os_id" in (facts or {}), **({"access": keys[aid]} if aid in keys else {})}
+                                   for aid, hostname, facts, facing in rows])
 
     class AssetPatch(BaseModel):
         criticality: Literal["low", "medium", "high", "critical"] | None = None

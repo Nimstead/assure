@@ -58,7 +58,7 @@ def access_read(n):
             "sshd": {"installed": True, "permitrootlogin": "prohibit-password", "pubkeyauthentication": "yes", "passwordauthentication": "no",
                      "kbdinteractiveauthentication": "no", "permitemptypasswords": "no", "strictmodes": "yes", "authorizedkeysfile": [".ssh/authorized_keys"],
                      "authorizedkeyscommand": False, "allowusers": [], "denyusers": [], "allowgroups": [], "denygroups": [], "port": ["22"],
-                     "listenaddress": ["0.0.0.0:22"], "match": False},
+                     "listenaddress": ["0.0.0.0:22"], "match": False, "usepam": "yes"},
             "accounts": [{"name": "root", "uid": 0, "groups": ["root"], "login": True, "password": "locked", "sudo_all": None},
                          {"name": "deploy", "uid": 1000, "groups": ["deploy"], "login": True, "password": "locked", "sudo_all": False}],
             "writable": [{"path": "/etc/cron.d/backup", "kind": "cron", "by": "everyone", "at": "/etc/cron.d/backup"}] if n % 10 == 0 else [],
@@ -79,6 +79,9 @@ def runtime_read(n, names):
               "loads": sorted({f"pkg{p}" for p in rnd.sample(names, 25)}), "replaced": []} for k in range(60)]
     if n % 10 == 0:
         progs[5]["replaced"] = progs[5]["loads"][:1]
+    if PATHS:  # every host's sshd listens, loading only patched packages (names[:VULN_PER_HOST] are the vulnerable ones), so it opens no way in
+        progs.append({"name": "ssh.service", "unit": True, "users": ["root"], "count": 1, "listen": ["0.0.0.0:22/tcp"],
+                      "loads": sorted(f"pkg{p}" for p in names[-5:]), "replaced": []})
     return {"v": 1, "state": "ok", "programs": progs, "native": sorted(f"pkg{p}" for p in names), "other_roots": 0}
 APP_UNIVERSE, APP_VULN = 5000, 5  # npm packages an image's build may add, and how many of an image's are vulnerable
 IMAGES, IMAGE_PKGS, IMAGE_VULN = 50, 200, 5  # a fleet's distinct images: far fewer than its containers

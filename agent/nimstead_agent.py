@@ -13,6 +13,7 @@ import base64
 import binascii
 import collections
 import email.utils
+import errno
 import glob
 import hashlib
 import io
@@ -38,7 +39,7 @@ import urllib.request
 import warnings
 import zipfile
 
-AGENT_VERSION = "0.10.0"  # the server reads this line to flag outdated agents; bump on every agent change
+AGENT_VERSION = "0.11.0"  # the server reads this line to flag outdated agents; bump on every agent change
 # Ed25519 public keys (hex) allowed to sign releases (DECISIONS 31): primary (GitHub Actions) and offline backup.
 # The server only relays signed releases, so it can withhold an update but never forge one. Empty = never self-update.
 RELEASE_KEYS = ["a91fa6539c6c2593009fc71b1c1fba341b5685ba7bc97c127c068b1d732b21d2", "2438f2ccebab5bf26edf9e21a8aa8f09abd1861f52fbe0d6641b28b90f8b0e5a"]  # noqa: E501
@@ -1714,7 +1715,7 @@ ACCESS_FROM = 16                    # from= patterns kept per key, each at most 
 ROOT_EQUIVALENT = ("docker", "lxd", "incus-admin", "disk")  # a member runs as root at will (a container, the raw disk)
 SSHD_SETTINGS = ("permitrootlogin", "pubkeyauthentication", "passwordauthentication", "kbdinteractiveauthentication",
                  "permitemptypasswords", "authorizedkeysfile", "authorizedkeyscommand", "allowusers", "denyusers", "allowgroups",
-                 "denygroups", "port", "listenaddress")
+                 "denygroups", "port", "listenaddress", "strictmodes")
 _SSHD_LISTS = ("authorizedkeysfile", "allowusers", "denyusers", "allowgroups", "denygroups", "port", "listenaddress")
 KEY_TYPES = ("ssh-ed25519", "ssh-rsa", "ssh-dss", "ecdsa-sha2-nistp256", "ecdsa-sha2-nistp384", "ecdsa-sha2-nistp521",
              "sk-ssh-ed25519@openssh.com", "sk-ecdsa-sha2-nistp256@openssh.com")
@@ -1988,6 +1989,420 @@ def parse_peers(text):
             if len(out) == 64:
                 break
     return out
+
+
+_ACCESS_FILE = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+_ACCESS_DIR = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+_NOT_KEYS = frozenset(("authorized_keys", "authorized_keys2", "known_hosts", "known_hosts.old", "config", "environment", "rc"))
+CREDENTIAL_FILES = ((".aws/credentials", "aws"), (".kube/config", "kubernetes"), (".docker/config.json", "docker"),
+                    (".pgpass", "postgresql"), (".netrc", "netrc"), (".git-credentials", "git"))
+CRON_PLACES = ("/etc/crontab", "/etc/cron.d", "/etc/cron.hourly", "/etc/cron.daily", "/etc/cron.weekly", "/etc/cron.monthly",
+               "/etc/crontabs", "/etc/periodic/15min", "/etc/periodic/hourly", "/etc/periodic/daily", "/etc/periodic/weekly",
+               "/etc/periodic/monthly")
+SUDO_GROUPS = ("sudo", "wheel", "admin")
+
+
+def _read_owned(name, owners, cap, dir_fd=None):
+    """(bytes, stat, why) for a regular file opened without following a link or blocking on a FIFO, owned by one of owners
+    (uids), at most cap bytes (why says so when there was more); (None, None, why) when it isn't such a file, why None when
+    it simply isn't there."""
+    try:
+        fd = os.open(name, _ACCESS_FILE, dir_fd=dir_fd)
+    except OSError as e:
+        return None, None, ("a link, not read" if e.errno == errno.ELOOP else None if e.errno == errno.ENOENT else f"not read ({e.strerror})")
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode):
+            return None, None, "not a regular file, not read"
+        if st.st_uid not in owners:
+            return None, None, "owned by another account, not read"
+        chunks, n = [], 0
+        while n <= cap:
+            b = os.read(fd, min(65536, cap + 1 - n))
+            if not b:
+                break
+            chunks.append(b)
+            n += len(b)
+        data = b"".join(chunks)
+        return data[:cap], st, (f"over {cap // 1024} KB: the first {cap // 1024} KB read" if len(data) > cap else None)
+    except OSError as e:
+        return None, None, f"not read ({e.strerror})"
+    finally:
+        os.close(fd)
+
+
+def _text_of(path, cap=4 * 1024 * 1024):
+    try:
+        with open(path, "rb") as f:
+            return f.read(cap).decode("utf-8", "replace")
+    except OSError:
+        return None
+
+
+def _shadow_states(text):
+    """{account: "usable" | "locked" | "empty"} from /etc/shadow text: only whether a password can be used, never the hash."""
+    out = {}
+    for ln in (text or "").splitlines():
+        f = ln.split(":")
+        if len(f) >= 2 and f[0]:
+            out[f[0]] = "empty" if f[1] == "" else "locked" if f[1][:1] in ("!", "*") else "usable"
+    return out
+
+
+def parse_systemctl_show(text):
+    """[{Id, FragmentPath, User, ExecStart: [paths]}] from `systemctl show -p Id -p FragmentPath -p User -p ExecStart` over
+    several units (blocks separated by blank lines). ExecStart's executables are its "path=" fields. No I/O."""
+    out, cur = [], {}
+    for ln in text.splitlines() + [""]:
+        if not ln.strip():
+            if cur:
+                out.append(cur)
+            cur = {}
+            continue
+        k, _, v = ln.partition("=")
+        if k == "ExecStart":
+            cur.setdefault("ExecStart", []).extend(re.findall(r"path=([^ ;]+)", v))
+        elif k in ("Id", "FragmentPath", "User"):
+            cur[k] = v
+    return out
+
+
+def _access_run(argv, timeout):
+    """(returncode, stdout) of a command, or (None, why) when it couldn't run or ran past timeout seconds."""
+    try:
+        p = subprocess.run(argv, capture_output=True, timeout=timeout, stdin=subprocess.DEVNULL)
+        return p.returncode, p.stdout.decode("utf-8", "replace")
+    except subprocess.TimeoutExpired:
+        return None, "timed out"
+    except OSError as e:
+        return None, e.strerror or "not run"
+
+
+def _running_uids(proc):
+    """Real uids of running processes, from /proc/<pid>/status, at most RUNTIME_PROCESSES read."""
+    out = set()
+    try:
+        pids = [d for d in os.listdir(proc) if d.isdigit()][:RUNTIME_PROCESSES]
+    except OSError:
+        return out
+    for pid in pids:
+        t = _text_of(os.path.join(proc, pid, "status"), 8192) or ""
+        m = re.search(r"^Uid:\s+(\d+)", t, re.MULTILINE)
+        if m:
+            out.add(int(m.group(1)))
+    return out
+
+
+def own_ipv4():
+    """This machine's IPv4 addresses (at most 16) from own_addresses(): the list the Windows agent sends as "addresses"."""
+    return [ip for ip in own_addresses()["ips"] if ipaddress.ip_address(ip).version == 4][:16]
+
+
+def access_read(root="/", run=None, euid=None, clock=time.monotonic):
+    """Return what this machine says about who can get in and what they hold (tasks/spec-paths.md Module 1): sshd's
+    effective settings, the accounts that matter, files root runs that others can write, who can read /etc/shadow, keys
+    held and trusted, credential files present and ssh-agent sockets. root prefixes every path (tests use a fake tree), run
+    runs a command as (argv, timeout) -> (returncode or None, stdout). Each budget stops the pass in the same words and
+    makes it partial; a file a user planted to mislead (a link, a FIFO, another account's file) is named and never read."""
+    start, run = clock(), run or _access_run
+    euid = os.geteuid() if euid is None else euid
+    p = lambda path: os.path.join(root, path.lstrip("/"))  # noqa: E731
+    problems, partial = [], []
+
+    def say(x, stop=False):
+        if x not in problems and len(problems) < 24:
+            problems.append(x)
+        if stop and x not in partial:
+            partial.append(x)
+
+    def late():
+        if clock() - start > ACCESS_SECONDS:
+            say(f"stopped at the {ACCESS_SECONDS}-second limit", stop=True)
+            return True
+        return False
+
+    if euid != 0:
+        say("not run as root: other accounts' files, /etc/shadow and sudo can't be read", stop=True)
+    users = parse_passwd(_text_of(p("/etc/passwd")) or "")
+    groups = parse_group(_text_of(p("/etc/group")) or "")
+    shadow = _shadow_states(_text_of(p("/etc/shadow"))) if euid == 0 else {}
+    running = _running_uids(p("/proc"))
+    by_uid = {u[1]: u for u in reversed(users)}
+    for uid in sorted(running - set(by_uid))[:16]:  # a directory user running a program: getent knows them
+        rc, out = run(["getent", "passwd", str(uid)], 3)
+        for u in parse_passwd(out if rc == 0 else ""):
+            users.append(u)
+            by_uid.setdefault(u[1], u)
+    homes = set()
+    try:
+        for e in os.scandir(p("/home")):
+            if e.is_dir(follow_symlinks=False):
+                homes.add(e.stat(follow_symlinks=False).st_uid)
+    except OSError:
+        pass
+    order = [0, *sorted(running), *(u[1] for u in users if login_shell(u[4])), *sorted(homes)]
+    picked, seen = [], set()
+    for uid in order:
+        if uid in by_uid and uid not in seen:
+            seen.add(uid)
+            picked.append(by_uid[uid])
+    if len(picked) > ACCESS_ACCOUNTS:
+        say(f"more than {ACCESS_ACCOUNTS} accounts: the first {ACCESS_ACCOUNTS} read", stop=True)
+        picked = picked[:ACCESS_ACCOUNTS]
+    gname = {gid: g for g, (gid, _) in groups.items()}
+    uname = {u[1]: u[0] for u in users}
+    accounts = []
+    for name, uid, gid, home, shell in picked:
+        mine = sorted({gname.get(gid, str(gid)), *(g for g, (_, members) in groups.items() if name in members)})
+        accounts.append({"name": _ACCESS_NAME.sub("?", name)[:64], "uid": uid, "groups": [_ACCESS_NAME.sub("?", g)[:64] for g in mine][:64],
+                         "login": login_shell(shell), "password": shadow.get(name), "sudo_all": None,
+                         "_home": home, "_raw": name})
+
+    # sshd's effective settings, and whether a Match block can change them per user or address
+    sshd_path = next((x for x in ("/usr/sbin/sshd", "/usr/bin/sshd", "/sbin/sshd") if os.path.exists(p(x))), None)
+    sshd = {"installed": False}
+    if sshd_path:
+        rc, out = run([sshd_path, "-T"], 5)
+        parsed = parse_sshd_t(out) if rc == 0 else None
+        if parsed is None:
+            sshd = None
+            say("sshd -T: " + (out.strip().splitlines() or ["no output"])[0][:120])
+        else:
+            conf = [_text_of(p("/etc/ssh/sshd_config")) or ""] + [_text_of(f) or "" for f in sorted(glob.glob(p("/etc/ssh/sshd_config.d/*.conf")))[:64]]
+            sshd = {"installed": True, **parsed, "match": sshd_has_match(conf)}
+
+    # sudo: only NOPASSWD: ALL equals root; -n never waits for a password
+    sudo = next((x for x in ("/usr/bin/sudo", "/bin/sudo", "/usr/local/bin/sudo") if os.path.exists(p(x))), None)
+    asked = 0
+    for a in accounts:
+        if a["uid"] == 0:
+            continue
+        if not sudo:
+            a["sudo_all"] = False
+            continue
+        if euid != 0 or late():
+            continue
+        if not (a["login"] or a["uid"] in running or set(a["groups"]) & set(SUDO_GROUPS)):
+            a["sudo_all"] = False  # sudo -l for an account no one signs in as and nothing runs as answers nothing new
+            continue
+        if asked >= ACCESS_SUDO:
+            say(f"sudo -l asked for the first {ACCESS_SUDO} accounts only", stop=True)
+            continue
+        asked += 1
+        rc, out = run([sudo, "-n", "-l", "-U", a["_raw"]], ACCESS_SUDO_SECONDS)
+        if rc is None:
+            say(f"sudo -l: {out}", stop=True)
+        else:
+            a["sudo_all"] = parse_sudo_l(out)
+
+    # files root runs, and whether anyone else can replace them or a folder above them
+    root_run = [(x, "cron") for x in CRON_PLACES]
+    for c in CRON_PLACES[1:]:
+        try:
+            root_run += [(c + "/" + n, "cron") for n in sorted(os.listdir(p(c)))[:64]]
+        except OSError:
+            pass
+    if os.path.isdir(p("/run/systemd/system")) and not late():
+        rc, out = run(["systemctl", "list-units", "--type=service", "--state=running", "--no-legend", "--plain"], 10)
+        units = [ln.split()[0] for ln in (out if rc == 0 else "").splitlines() if ln.split() and ln.split()[0].endswith(".service")][:ACCESS_ROOT_RUN]
+        if units:
+            rc, out = run(["systemctl", "show", "-p", "Id", "-p", "FragmentPath", "-p", "User", "-p", "ExecStart", *units], 10)
+            for u in parse_systemctl_show(out if rc == 0 else ""):
+                if u.get("User", "") in ("", "root", "0"):
+                    root_run += [(u["FragmentPath"], "unit")] if u.get("FragmentPath") else []
+                    root_run += [(x, "service") for x in u.get("ExecStart", [])]
+    if len(root_run) > ACCESS_ROOT_RUN:
+        say(f"more than {ACCESS_ROOT_RUN} files root runs: the first {ACCESS_ROOT_RUN} checked", stop=True)
+    writable, checked = [], set()
+    user_of = lambda n: uname[n]  # noqa: E731
+    group_of = lambda n: gname[n]  # noqa: E731
+    base = os.path.realpath(root)
+    for path, kind in root_run[:ACCESS_ROOT_RUN]:
+        if late():
+            break
+        real = os.path.realpath(p(path))
+        if not os.path.exists(real) or real in checked:
+            continue
+        checked.add(real)
+        at = real
+        while at != base:  # "/" itself is root's on any machine that boots; under a test's root it's the test's folder
+            try:
+                st = os.stat(at)
+            except OSError:
+                break
+            who = who_can_write(st.st_mode, st.st_uid, st.st_gid, stat.S_ISDIR(st.st_mode), user_of, group_of)
+            if who:
+                rel = os.path.relpath(at, base)
+                shown = "/" + ("" if rel == "." else rel.replace(os.sep, "/"))
+                writable.append({"path": _where(path), "kind": kind, "by": who, "at": _where(shown)})
+                break
+            if os.path.dirname(at) == at:
+                break
+            at = os.path.dirname(at)
+    if len(writable) > ACCESS_WRITABLE:
+        say(f"more than {ACCESS_WRITABLE} writable files root runs: the first {ACCESS_WRITABLE} sent")
+        writable = writable[:ACCESS_WRITABLE]
+
+    shadow_by = None
+    try:
+        st = os.stat(p("/etc/shadow"))
+        shadow_by = [*(["everyone"] if st.st_mode & 0o004 else []),
+                     *([f"group:{gname.get(st.st_gid, st.st_gid)}"] if st.st_mode & 0o040 and st.st_gid != 0 and gname.get(st.st_gid) != "shadow" else []),
+                     *([f"user:{uname.get(st.st_uid, st.st_uid)}"] if st.st_uid != 0 else [])]
+    except OSError:
+        pass
+
+    # keys held in each account's ~/.ssh, keys trusted by its authorized_keys files, credential files present
+    held, trusted, creds, unidentified = [], [], [], 0
+    patterns = sshd["authorizedkeysfile"] if sshd and sshd.get("installed") else [".ssh/authorized_keys", ".ssh/authorized_keys2"]
+    strict = not sshd or sshd.get("strictmodes", "yes") != "no"
+    for a in accounts:
+        if late():
+            break
+        uid, home = a["uid"], a["_home"]
+        if not home.startswith("/"):
+            continue
+        sshdir = p(home.rstrip("/") + "/.ssh")
+        dfd = None
+        try:
+            dfd = os.open(sshdir, _ACCESS_DIR)
+            if os.fstat(dfd).st_uid != uid:
+                say("a ~/.ssh owned by another account is not read")
+                os.close(dfd)
+                dfd = None
+        except OSError as e:
+            if e.errno == errno.ELOOP or (e.errno == errno.ENOTDIR and os.path.islink(sshdir)):
+                say("a ~/.ssh that is a link is not read")
+        try:
+            if dfd is not None:
+                names = sorted(os.listdir(dfd))
+                files = [n for n in names if not n.endswith(".pub") and n not in _NOT_KEYS and not n.startswith(".")]
+                if len(files) > ACCESS_KEY_FILES:
+                    say(f"more than {ACCESS_KEY_FILES} files in a ~/.ssh: the first {ACCESS_KEY_FILES} read", stop=True)
+                for n in files[:ACCESS_KEY_FILES]:
+                    data, _, why = _read_owned(n, {uid}, ACCESS_KEY_BYTES, dfd)
+                    if data is None:
+                        if why:
+                            say(f"a file in a ~/.ssh: {why}")
+                        continue
+                    k = parse_private_key(data)
+                    if k is None:
+                        continue
+                    if k["fp"] is None and n + ".pub" in names:
+                        pub, _, _ = _read_owned(n + ".pub", {uid}, 16384, dfd)
+                        pk = parse_public_key(pub.decode("ascii", "replace")) if pub else None
+                        if pk:
+                            k = {**k, "type": pk[0], "fp": pk[1]}
+                    if k["fp"] is None:
+                        unidentified += 1
+                        continue
+                    held.append({"account": a["name"], "path": _where(home.rstrip("/") + "/.ssh/" + n), "type": k["type"], "fp": k["fp"],
+                                 "passphrase": k["passphrase"]})
+            mine = 0
+            for pat in patterns:
+                path = expand_keys_file(pat, home.rstrip("/"), a["_raw"], uid)
+                if path is None:
+                    continue
+                inside = os.path.dirname(path) == home.rstrip("/") + "/.ssh"
+                if inside and dfd is None:
+                    continue  # no readable ~/.ssh: nothing sshd would accept there either
+                data, st, why = _read_owned(os.path.basename(path), {uid, 0}, ACCESS_KEYS_BYTES, dfd) if inside else \
+                    _read_owned(p(path), {uid, 0}, ACCESS_KEYS_BYTES)
+                if data is None:
+                    if why:
+                        say(f"an authorized_keys file: {why}")
+                    continue
+                if why:
+                    say(f"an authorized_keys file {why}", stop=True)
+                if strict and not _strict_ok(st, p(path), p(home.rstrip("/")) if inside else base, uid):
+                    say("sshd ignores an authorized_keys file (StrictModes: bad ownership or modes)")
+                    continue
+                keys, _ = parse_authorized_keys(data.decode("utf-8", "replace"))
+                for k in keys:
+                    if mine >= ACCESS_TRUSTED or len(trusted) >= ACCESS_TRUSTED_TOTAL:
+                        say(f"more than {ACCESS_TRUSTED} trusted keys for an account or {ACCESS_TRUSTED_TOTAL} in all: the rest not read", stop=True)
+                        break
+                    mine += 1
+                    trusted.append({"account": a["name"], **k})
+        finally:
+            if dfd is not None:
+                os.close(dfd)
+        for rel, kind in CREDENTIAL_FILES:
+            try:
+                if stat.S_ISREG(os.lstat(p(home.rstrip("/") + "/" + rel)).st_mode):
+                    creds.append({"kind": kind, "account": a["name"], "path": _where(home.rstrip("/") + "/" + rel)})
+            except OSError:
+                pass
+    try:
+        if stat.S_ISREG(os.lstat(p("/etc/krb5.keytab")).st_mode):
+            creds.append({"kind": "keytab", "account": "root", "path": "/etc/krb5.keytab"})
+    except OSError:
+        pass
+    sockets = 0
+    for s in glob.glob(p("/tmp/ssh-*/agent.*"))[:64]:  # noqa: S108 — where ssh-agent puts its sockets; only counted, never opened
+        try:
+            sockets += stat.S_ISSOCK(os.lstat(s).st_mode)
+        except OSError:
+            pass
+    for a in accounts:
+        del a["_home"], a["_raw"]
+    return {"v": 1, "state": "partial" if partial else "ok", "problem": "; ".join(problems)[:300] or None, "sshd": sshd,
+            "accounts": accounts, "writable": writable, "shadow_readable_by": shadow_by, "held": held[:256], "trusted": trusted,
+            "credentials": creds[:100], "agent_sockets": sockets, "unidentified_keys": unidentified}
+
+
+def _strict_ok(st, path, stop, uid):
+    """Whether sshd's StrictModes accepts an authorized_keys file: it and each folder up to stop (the home, or / for a file
+    outside it) owned by root or the account and not writable by group or others."""
+    if st.st_uid not in (0, uid) or st.st_mode & 0o022:
+        return False
+    at = os.path.dirname(path)
+    for _ in range(64):
+        try:
+            d = os.stat(at)
+        except OSError:
+            return False
+        if d.st_uid not in (0, uid) or d.st_mode & 0o022:
+            return False
+        if at == stop or os.path.dirname(at) == at:
+            return True
+        at = os.path.dirname(at)
+    return False
+
+
+def safe_access(read=None):
+    """access_read(), but an error it didn't expect becomes a failed read: the host's own inventory goes out regardless."""
+    try:
+        return access_read() if read is None else read()
+    except Exception as e:  # noqa: BLE001 — anything at all: who can get in must never cost the host its report
+        return {"v": 1, "state": "failed", "problem": f"not read: {type(e).__name__}: {e}"[:300], "sshd": None, "accounts": [],
+                "writable": [], "shadow_readable_by": None, "held": [], "trusted": [], "credentials": [], "agent_sockets": 0,
+                "unidentified_keys": 0}
+
+
+def with_access(inv, cfg, read=None, addresses=None, peers=None):
+    """Add the access read, this machine's addresses and its private-range peers, and the `access` collection line, to
+    inventory inv on Linux. "paths": false in the local configuration leaves all three out (the server can't turn them back
+    on). Windows sends its own addresses and peers already. Returns inv."""
+    if os.name == "nt":
+        return inv
+    on = cfg.get("paths", True)
+    acc = safe_access(read) if on else None
+    if acc is not None:
+        inv["access"] = acc
+        facts = dict(inv.get("facts") or {})
+        try:
+            facts["addresses"] = own_ipv4() if addresses is None else addresses
+        except Exception:  # noqa: BLE001 — an interface that won't answer: "not read", never "none"
+            facts["addresses"] = None
+        facts["peers"] = parse_peers(_text_of("/proc/net/tcp") or "") if peers is None else peers
+        inv["facts"] = facts
+    if isinstance((inv.get("collection") or {}).get("sources"), dict):
+        line = {"state": "off", "count": 0} if acc is None else {"state": acc["state"], "count": len(acc["accounts"])}
+        if acc is not None and acc.get("problem"):
+            line["error"] = acc["problem"]
+        inv["collection"]["sources"]["access"] = line
+    return inv
 
 
 # MSRC names Windows Server by build; client names come from the feature-update version.
@@ -6039,7 +6454,7 @@ def inventory(cfg):
     inv = {**collect(), "auto_update": bool(cfg.get("auto_update", True)) if RELEASE_KEYS else None, "update_error": _update_error}
     if cfg.get("neighbours", True):
         inv["neighbours"] = network_view()
-    return with_runtime(with_apps(inv, cfg), cfg)
+    return with_access(with_runtime(with_apps(inv, cfg), cfg), cfg)
 
 
 def with_apps(inv, cfg):
@@ -6775,6 +7190,10 @@ def _main(argv):
     en.add_argument("--no-runtime", action="store_true",
                     help="Linux: don't read which packages running programs have loaded, which listen on the network and which run "
                          "a replaced copy (default: read them at each report; local choice, the server cannot turn it back on)")
+    en.add_argument("--no-paths", action="store_true",
+                    help="Linux: don't read sshd's settings, accounts and sudo, files root runs, SSH key fingerprints held and trusted, "
+                         "credential files present, or this machine's addresses and private-range peers, which attack paths use "
+                         "(default: read them at each report; key contents never leave the machine; local choice, the server cannot turn it back on)")
     en.add_argument("--no-container-apps", action="store_true",
                     help="Linux: read only the OS packages inside containers, not the Python, npm, Java and Go packages their "
                          "images added (default: read both; local choice, the server cannot turn it back on)")
@@ -6839,7 +7258,7 @@ def _main(argv):
             # only the fields we expect from the server, and local choices last: the server can't opt a host in
             cfg = {"asset_id": res.get("asset_id"), "agent_key": res["agent_key"], "server": a.server,
                    "allow_remediation": a.allow_remediation, "network_checks": a.allow_network_checks,
-                   "auto_update": not a.no_auto_update, "channel": a.channel, "containers": not a.no_containers, "container_apps": not a.no_container_apps, "runtime": not a.no_runtime,
+                   "auto_update": not a.no_auto_update, "channel": a.channel, "containers": not a.no_containers, "container_apps": not a.no_container_apps, "runtime": not a.no_runtime, "paths": not a.no_paths,
                    "scan_jars": a.scan_jars, "scan_apps": a.scan_apps, "app_roots": app_roots(a), "ad_discovery": a.ad_discovery,
                    **({"windows_update_source": "microsoft"} if a.windows_update_source == "microsoft" else {}),
                    **({"proxy": a.proxy} if a.proxy else {})}

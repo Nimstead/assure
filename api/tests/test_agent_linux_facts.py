@@ -8,6 +8,7 @@ public halves (the format stores the public key before the private part, which i
 
 import base64
 import importlib.util
+import json
 import os
 import shutil
 import subprocess
@@ -207,3 +208,215 @@ def test_peers_are_private_established_tcp_only():
             "   2: 00000000:0016 00000000:0000 0A 0 0 0 0 0 0 0\n"   # listening
             "   3: 0B07590A:D2AA 0D07590A:0016 06 0 0 0 0 0 0 0\n")  # TIME_WAIT
     assert agent.parse_peers(text) == ["10.89.7.13:22"]
+
+
+# ---- the pass, on a fake machine ------------------------------------------------------------------------------------
+# These need a POSIX filesystem (links, FIFOs, dir_fd) and, for ownership, root: they run in the paths lab's distro as root
+# and as a normal user (tasks/todo-paths.md T2).
+
+POSIX = pytest.mark.skipif(os.name == "nt", reason="needs links, FIFOs and dir_fd")
+ROOT_ONLY = pytest.mark.skipif(os.name == "nt" or os.geteuid() != 0, reason="ownership needs root")
+DEPLOY = 1000
+MARK = b"PRIVATE-SECTION-MARKER"
+
+
+def write(base, path, data, mode=0o644, uid=None):
+    f = base / path.lstrip("/")
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_bytes(data if isinstance(data, bytes) else data.encode())
+    os.chmod(f, mode)
+    if uid is not None:
+        os.chown(f, uid, -1)
+    return f
+
+
+def machine(tmp_path):
+    """A fake root: root, deploy (1000, NOPASSWD: ALL) and www-data (33, in docker, running nginx), keys, files."""
+    b = tmp_path
+    write(b, "/etc/passwd", "root:x:0:0:root:/root:/bin/bash\ndeploy:x:1000:1000::/home/deploy:/bin/bash\n"
+                            "www-data:x:33:33:www-data:/var/www:/usr/sbin/nologin\nsshd:x:101:65534::/run/sshd:/usr/sbin/nologin\n")
+    write(b, "/etc/group", "root:x:0:\nshadow:x:42:\ndeploy:x:1000:\nwww-data:x:33:\ndocker:x:999:www-data\nsudo:x:27:deploy\n")
+    write(b, "/etc/shadow", "root:*:20000:0:99999:7:::\ndeploy:$y$j9T$abc$def:20000:0:99999:7:::\nwww-data:*:20000::::::\nsshd:!:20000::::::\n", 0o640)
+    os.chown(b / "etc/shadow", 0, 42)
+    write(b, "/usr/sbin/sshd", "", 0o755)
+    write(b, "/usr/bin/sudo", "", 0o755)
+    write(b, "/etc/ssh/sshd_config", fx("sshd_config_debian13.txt"))
+    for pid, uid in (("1", 0), ("812", 33), ("813", 33)):
+        write(b, f"/proc/{pid}/status", f"Name:\tx\nUid:\t{uid}\t{uid}\t{uid}\t{uid}\n")
+    (b / "home").mkdir()
+    (b / "run/systemd/system").mkdir(parents=True)
+    # root's key, no passphrase
+    (b / "root/.ssh").mkdir(parents=True, mode=0o700)
+    write(b, "/root/.ssh/id_ed25519", openssh_file(fx("ed25519.pub"), private=MARK), 0o600)
+    # deploy: a key with a passphrase, a PEM key with its .pub, a PEM key without one, trusted keys, and planted files
+    d = b / "home/deploy/.ssh"
+    d.mkdir(parents=True, mode=0o700)
+    write(b, "/home/deploy/.ssh/id_rsa", openssh_file(fx("rsa_enc.pub"), cipher=b"aes256-ctr", private=MARK), 0o600)
+    write(b, "/home/deploy/.ssh/old_pem", fx("rsa_pem.head") + "\nAAAA\n", 0o600)
+    write(b, "/home/deploy/.ssh/old_pem.pub", fx("rsa_pem.pub"))
+    write(b, "/home/deploy/.ssh/lost_pem", fx("ecdsa_pem.head") + "\nAAAA\n", 0o600)
+    ed = fx("ed25519.pub").split()[:2]
+    ec = fx("ecdsa.pub").split()[:2]
+    write(b, "/home/deploy/.ssh/authorized_keys", f'{ed[0]} {ed[1]} root@web-1\ncommand="/usr/bin/backup --token=abc123" {ec[0]} {ec[1]}\n', 0o600)
+    write(b, "/home/deploy/.aws/" + "credentials", "[default]\naws_access_key_id=AKIAEXAMPLEEXAMPLE\n", 0o600)
+    os.symlink(b / "root/.ssh/id_ed25519", d / "id_link")
+    os.mkfifo(d / "id_fifo")
+    write(b, "/home/deploy/.ssh/id_rootowned", openssh_file(fx("ecdsa.pub")), 0o600, uid=0)
+    for p in (b / "home/deploy", d, *d.iterdir(), b / "home/deploy/.aws", *(b / "home/deploy/.aws").iterdir()):
+        if p.name != "id_rootowned":
+            os.lchown(p, DEPLOY, DEPLOY)
+    # files root runs: a cron file anyone can write, a unit file deploy owns, a service binary in a folder anyone can write
+    write(b, "/etc/cron.d/backup", "0 3 * * * root /usr/local/bin/backup\n", 0o666)
+    write(b, "/etc/cron.d/safe", "0 4 * * * root true\n", 0o644)
+    write(b, "/etc/systemd/system/app.service", "[Service]\nExecStart=/opt/app/bin/app\n", 0o644, uid=DEPLOY)
+    write(b, "/opt/app/bin/app", "", 0o755)
+    os.chmod(b / "opt/app/bin", 0o777)  # noqa: S103 — the planted weakness under test
+    write(b, "/usr/sbin/nginx", "", 0o755)
+    write(b, "/etc/krb5.keytab", "\x05\x02", 0o600)
+    return b
+
+
+def runner(b):
+    calls = []
+
+    def run(argv, timeout):
+        calls.append(argv)
+        if argv[0].endswith("sshd"):
+            return 0, fx("sshd_t_debian13.txt")
+        if argv[0].endswith("sudo"):
+            who = argv[-1]
+            return (0 if who == "deploy" else 1), (fx(f"sudo_l_{who}.txt") if who in ("deploy", "www-data") else f"User {who} is not allowed to run sudo.\n")
+        if argv[:2] == ["systemctl", "list-units"]:
+            return 0, "app.service loaded active running App\nnginx.service loaded active running nginx\nuser.service loaded active running U\n"
+        if argv[:2] == ["systemctl", "show"]:
+            return 0, ("Id=app.service\nFragmentPath=/etc/systemd/system/app.service\nUser=\nExecStart={ path=/opt/app/bin/app ; argv[]=/opt/app/bin/app ; }\n\n"
+                       "Id=nginx.service\nFragmentPath=/usr/lib/systemd/system/nginx.service\nUser=\nExecStart={ path=/usr/sbin/nginx ; argv[]=/usr/sbin/nginx -g x ; }\n\n"
+                       "Id=user.service\nFragmentPath=/etc/systemd/system/user.service\nUser=deploy\nExecStart={ path=/tmp/whatever ; }\n")
+        return 1, ""
+    return run, calls
+
+
+@ROOT_ONLY
+def test_the_pass_reads_a_machine_as_the_spec_says(tmp_path):
+    b = machine(tmp_path)
+    run, calls = runner(b)
+    a = agent.access_read(root=str(b), run=run, euid=0)
+    assert a["v"] == 1 and a["state"] == "ok", a["problem"]
+    assert a["sshd"]["installed"] and a["sshd"]["permitrootlogin"] == "without-password" and a["sshd"]["match"] is False
+    acc = {x["name"]: x for x in a["accounts"]}
+    assert list(acc)[:2] == ["root", "www-data"]  # root, then what runs, then who signs in
+    assert acc["www-data"]["groups"] == ["docker", "www-data"] and acc["www-data"]["login"] is False
+    assert acc["deploy"]["sudo_all"] is True and acc["www-data"]["sudo_all"] is False and acc["root"]["sudo_all"] is None
+    assert (acc["root"]["password"], acc["deploy"]["password"], acc["www-data"]["password"]) == ("locked", "usable", "locked")
+    assert "sshd" not in acc  # no login shell, nothing running as it, no home
+    held = {h["path"]: h for h in a["held"]}
+    assert held["/root/.ssh/id_ed25519"] == {"account": "root", "path": "/root/.ssh/id_ed25519", "type": "ssh-ed25519", "fp": oracle()["ed25519"], "passphrase": False}
+    assert held["/home/deploy/.ssh/id_rsa"]["passphrase"] is True and held["/home/deploy/.ssh/id_rsa"]["fp"] == oracle()["rsa_enc"]
+    assert held["/home/deploy/.ssh/old_pem"]["fp"] == oracle()["rsa_pem"]  # identified by the .pub beside it
+    assert a["unidentified_keys"] == 1  # the PEM key with no .pub
+    assert not any(k in held for k in ("/home/deploy/.ssh/id_link", "/home/deploy/.ssh/id_fifo", "/home/deploy/.ssh/id_rootowned"))
+    for why in ("a link, not read", "not a regular file, not read", "owned by another account, not read"):
+        assert why in a["problem"]
+    assert [(t["account"], t["fp"], t["forced"]) for t in a["trusted"]] == [("deploy", oracle()["ed25519"], False), ("deploy", oracle()["ecdsa"], True)]
+    w = {x["path"]: x for x in a["writable"]}
+    assert w["/etc/cron.d/backup"]["by"] == "everyone" and "/etc/cron.d/safe" not in w
+    assert w["/etc/systemd/system/app.service"] == {"path": "/etc/systemd/system/app.service", "kind": "unit", "by": "user:deploy", "at": "/etc/systemd/system/app.service"}
+    assert w["/opt/app/bin/app"]["by"] == "everyone" and w["/opt/app/bin/app"]["at"] == "/opt/app/bin"
+    assert not any("whatever" in x["path"] for x in a["writable"])  # deploy's own service isn't root's
+    assert a["shadow_readable_by"] == []
+    assert {(c["kind"], c["account"]) for c in a["credentials"]} == {("aws", "deploy"), ("keytab", "root")}
+    body = json.dumps(a)
+    for never in (MARK.decode(), "root@web-1", "backup --token", "abc123", "AKIAEXAMPLE", "$y$j9T"):
+        assert never not in body
+    assert ["/usr/bin/sudo", "-n", "-l", "-U", "deploy"] in calls
+
+
+@ROOT_ONLY
+def test_sshd_ignores_an_authorized_keys_others_can_write_and_so_does_the_pass(tmp_path):
+    b = machine(tmp_path)
+    os.chmod(b / "home/deploy/.ssh/authorized_keys", 0o666)  # noqa: S103 — the planted weakness under test
+    a = agent.access_read(root=str(b), run=runner(b)[0], euid=0)
+    assert a["trusted"] == [] and "StrictModes" in a["problem"]
+
+
+@ROOT_ONLY
+def test_a_dot_ssh_that_is_a_link_is_not_read(tmp_path):
+    b = machine(tmp_path)
+    d = b / "home/deploy/.ssh"
+    for f in d.iterdir():
+        f.unlink()
+    d.rmdir()
+    os.symlink(b / "root/.ssh", d)
+    a = agent.access_read(root=str(b), run=runner(b)[0], euid=0)
+    assert [h["account"] for h in a["held"]] == ["root"] and "a ~/.ssh that is a link is not read" in a["problem"]
+
+
+@ROOT_ONLY
+def test_budgets_stop_in_stable_words_and_make_the_read_partial(tmp_path, monkeypatch):
+    b = machine(tmp_path)
+    monkeypatch.setattr(agent, "ACCESS_KEY_FILES", 2)
+    monkeypatch.setattr(agent, "ACCESS_TRUSTED", 1)
+    a = agent.access_read(root=str(b), run=runner(b)[0], euid=0)
+    assert a["state"] == "partial"
+    assert "more than 2 files in a ~/.ssh: the first 2 read" in a["problem"]
+    assert "more than 1 trusted keys for an account" in a["problem"]
+    assert len([t for t in a["trusted"] if t["account"] == "deploy"]) == 1
+
+
+@ROOT_ONLY
+def test_an_authorized_keys_past_its_cap_is_read_to_the_cap_and_said(tmp_path, monkeypatch):
+    b = machine(tmp_path)
+    monkeypatch.setattr(agent, "ACCESS_KEYS_BYTES", 2048)
+    ed = fx("ed25519.pub").split()[:2]
+    write(b, "/home/deploy/.ssh/authorized_keys", "".join(f"{ed[0]} {ed[1]} k{i}\n" for i in range(200)), 0o600, uid=DEPLOY)
+    a = agent.access_read(root=str(b), run=runner(b)[0], euid=0)
+    assert a["state"] == "partial" and "an authorized_keys file over 2 KB: the first 2 KB read" in a["problem"]
+    assert 0 < len(a["trusted"]) < 200
+
+
+@ROOT_ONLY
+def test_the_time_budget_stops_the_pass(tmp_path):
+    b = machine(tmp_path)
+    t = iter(range(0, 10_000, 4))
+    a = agent.access_read(root=str(b), run=runner(b)[0], euid=0, clock=lambda: next(t))
+    assert a["state"] == "partial" and f"stopped at the {agent.ACCESS_SECONDS}-second limit" in a["problem"]
+
+
+@POSIX
+def test_not_root_is_partial_and_reads_no_shadow_or_sudo(tmp_path):
+    b = machine(tmp_path) if os.geteuid() == 0 else tmp_path
+    if os.geteuid() != 0:
+        write(b, "/etc/passwd", "root:x:0:0:root:/root:/bin/bash\n")
+        write(b, "/usr/bin/sudo", "", 0o755)
+    run, calls = runner(b)
+    a = agent.access_read(root=str(b), run=run, euid=1000)
+    assert a["state"] == "partial" and "not run as root" in a["problem"]
+    assert all(x["password"] is None for x in a["accounts"])
+    assert not any(c[0].endswith("sudo") for c in calls)
+
+
+@POSIX
+def test_no_sshd_installed_is_said_and_a_failing_sshd_is_unread(tmp_path):
+    write(tmp_path, "/etc/passwd", "root:x:0:0:root:/root:/bin/bash\n")
+    assert agent.access_read(root=str(tmp_path), run=lambda a, t: (1, ""), euid=0)["sshd"] == {"installed": False}
+    write(tmp_path, "/usr/sbin/sshd", "", 0o755)
+    a = agent.access_read(root=str(tmp_path), run=lambda a, t: (255, "sshd: no hostkeys available -- exiting.\n"), euid=0)
+    assert a["sshd"] is None and "sshd -T" in a["problem"]
+
+
+def test_an_unexpected_error_is_a_failed_read_never_a_lost_inventory():
+    def boom():
+        raise RuntimeError("disk on fire")
+    a = agent.safe_access(boom)
+    assert a["state"] == "failed" and "disk on fire" in a["problem"] and a["held"] == []
+
+
+@POSIX
+def test_paths_false_leaves_access_addresses_and_peers_out():
+    inv = {"facts": {"os_id": "debian"}, "collection": {"v": 1, "sources": {}}}
+    off = agent.with_access(json.loads(json.dumps(inv)), {"paths": False})
+    assert "access" not in off and "addresses" not in off["facts"] and off["collection"]["sources"]["access"] == {"state": "off", "count": 0}
+    fake = {"v": 1, "state": "ok", "problem": None, "accounts": [{"name": "root"}]}
+    on = agent.with_access(json.loads(json.dumps(inv)), {}, read=lambda: fake, addresses=["10.89.7.11"], peers=["10.89.7.13:22"])
+    assert on["access"] == fake and on["facts"]["addresses"] == ["10.89.7.11"] and on["facts"]["peers"] == ["10.89.7.13:22"]
+    assert on["collection"]["sources"]["access"] == {"state": "ok", "count": 1}

@@ -3428,8 +3428,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         is_open = (Finding.org_id == user.org_id, Finding.status == "open")
         # A setting has no fixed version, but one the agent can change is a fix like any other
         fixable = or_(Finding.fixed_version.is_not(None), and_(Finding.ecosystem == "WinConfig", Finding.package.in_(remediate.CONFIG_FIXES)))
-        # a fix already installed that waits for a restart is under restarts, not recommended again (DECISIONS 162)
-        fixable = and_(fixable, or_(Finding.runtime.is_(None), Finding.runtime != "restart"))
+        # a fix already installed that waits for a restart is under restarts, not recommended again (DECISIONS 162): left out of
+        # the ranking here, and of each fix's rows in Python (cheaper than the same condition in every row query)
+        not_held = or_(Finding.runtime.is_(None), Finding.runtime != "restart")
         by_priority = dict(s.execute(select(Finding.priority, func.count()).where(*is_open).group_by(Finding.priority)).all())
         # Group fixes into actions: "upgrade openssl to X" clears N findings on M hosts. Rank in SQL, detail only the top 10.
         # A container image's findings are fixed by a rebuild, never a plan (DECISIONS 141): images_to_rebuild lists them.
@@ -3438,12 +3439,13 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         ranked = s.execute(
             select(Finding.ecosystem, Finding.package, func.max(Finding.kev.cast(Integer)), func.max(Finding.score),
                    func.count(Finding.vuln_id.distinct()))
-            .where(*is_open, fixable, not_image).group_by(Finding.ecosystem, Finding.package)
+            .where(*is_open, fixable, not_held, not_image).group_by(Finding.ecosystem, Finding.package)
         ).all()
         top, idx = [], tickets.links(s, user.org_id)
         for eco, pkg, kev, max_score, _ in sorted(ranked, key=lambda r: (bool(r[2]), r[3], r[4]), reverse=True)[:10]:
             rows = s.execute(select(Finding.fixed_version, Finding.vuln_id, Asset.hostname, Asset.id, Finding.summary, Finding.runtime).join(Asset, Asset.id == Finding.asset_id)
                              .where(*is_open, Finding.ecosystem == eco, Finding.package == pkg, fixable, not_image)).all()
+            rows = [r for r in rows if r[5] != "restart"]
             cmp = comparator_for(eco)
             fixes = {r[0] for r in rows if r[0]}
             fixed = None if not fixes else max(fixes, key=functools.cmp_to_key(cmp)) if cmp else sorted(fixes)[-1]  # highest fix clears them all

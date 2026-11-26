@@ -426,7 +426,11 @@ def main(keep=False):
             # one has unknown vectors and must not be lowered)
             def network_only(f):
                 recs = s.scalars(select(Advisory.record).where(Advisory.ecosystem == f.ecosystem, Advisory.package == f.package)).all()
-                v = set().union(*(risk.attack_vectors(r.get("severity")) for r in recs if r.get("id") in f.advisory_ids or f.vuln_id in (r.get("aliases") or [])))
+                # a Debian record names its CVE under "upstream", not "aliases" (the first final run's harness missed one so)
+                mine = [r for r in recs if r.get("id") in f.advisory_ids or f.vuln_id in (r.get("aliases") or []) or f.vuln_id in (r.get("upstream") or [])
+                        or str(r.get("id", "")).removeprefix("DEBIAN-") == f.vuln_id]
+                # the vectors the records carry; a DSA bundle with none adds nothing (it doesn't say the flaw is local)
+                v = {av for r in mine for x in r.get("severity") or [] if (av := risk._av(x.get("score")))}
                 return bool(v) and v <= {"N", "A"}
             should = {f.id for f in fs if f.runtime == "not_loaded" and not f.kev and network_only(f)}
             mismatch = [(f.package, f.vuln_id) for f in fs if (f.id in should) != (f in lowered)]

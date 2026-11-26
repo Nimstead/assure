@@ -1,0 +1,710 @@
+[
+  {
+    "step": "creating sandbox distro",
+    "name": "nimstead-sbx-rt-a8583a",
+    "distro": "Debian"
+  },
+  {
+    "step": "services up",
+    "listening": [
+      "0.0.0.0:22",
+      "0.0.0.0:80",
+      "10.255.255.254:53",
+      "127.0.0.1:323",
+      "127.0.0.1:5432",
+      "[::1]:323",
+      "[::]:22",
+      "[::]:80"
+    ]
+  },
+  {
+    "step": "collected",
+    "ecosystem": "Debian:13",
+    "packages": 230,
+    "state": "ok",
+    "problem": null,
+    "programs": {
+      "(sd-pam)": {
+        "loads": 21,
+        "listen": []
+      },
+      "Relay(4076)": {
+        "loads": 0,
+        "listen": []
+      },
+      "SessionLeader": {
+        "loads": 0,
+        "listen": []
+      },
+      "bash": {
+        "loads": 3,
+        "listen": []
+      },
+      "cron.service": {
+        "loads": 7,
+        "listen": []
+      },
+      "dbus.service": {
+        "loads": 11,
+        "listen": []
+      },
+      "getty@tty1.service": {
+        "loads": 5,
+        "listen": []
+      },
+      "init": {
+        "loads": 0,
+        "listen": []
+      },
+      "init-systemd(ni": {
+        "loads": 0,
+        "listen": []
+      },
+      "init-watcher": {
+        "loads": 0,
+        "listen": []
+      },
+      "login": {
+        "loads": 12,
+        "listen": []
+      },
+      "nginx.service": {
+        "loads": 7,
+        "listen": [
+          "0.0.0.0:80/tcp",
+          "[::]:80/tcp"
+        ]
+      },
+      "postgresql@17-main.service": {
+        "loads": 25,
+        "listen": [
+          "127.0.0.1:5432/tcp"
+        ]
+      },
+      "sh": {
+        "loads": 2,
+        "listen": []
+      },
+      "ssh.service": {
+        "loads": 7,
+        "listen": [
+          "0.0.0.0:22/tcp",
+          "[::]:22/tcp"
+        ]
+      },
+      "systemd": {
+        "loads": 21,
+        "listen": []
+      },
+      "systemd-journald.service": {
+        "loads": 17,
+        "listen": []
+      },
+      "systemd-logind.service": {
+        "loads": 17,
+        "listen": []
+      },
+      "systemd-udevd.service": {
+        "loads": 18,
+        "listen": []
+      }
+    }
+  },
+  {
+    "step": "feeds synced",
+    "kev": 1805,
+    "epss": 412861,
+    "osv": {
+      "inserted": 64238,
+      "updated": 0,
+      "skipped": 0
+    },
+    "seconds": 10
+  },
+  {
+    "step": "loaded and listening vs the oracle",
+    "programs": 19,
+    "oracle_programs": 18,
+    "differences": [
+      {
+        "program": "Relay(4095)",
+        "only": "oracle",
+        "why": "the harness's own or WSL's per-command processes (a new relay and shell per wsl.exe call)"
+      },
+      {
+        "program": "Relay(4201)",
+        "only": "agent",
+        "why": "the harness's own or WSL's per-command processes (a new relay and shell per wsl.exe call)"
+      },
+      {
+        "program": "sh",
+        "only": "agent",
+        "why": "the harness's own or WSL's per-command processes (a new relay and shell per wsl.exe call)"
+      }
+    ]
+  },
+  {
+    "step": "CHECK 1 loaded packages equal the oracle's: PASS",
+    "unexplained": []
+  },
+  {
+    "step": "CHECK 2 listening addresses equal ss: PASS"
+  },
+  {
+    "step": "first report",
+    "open": 410,
+    "resolved": 0
+  },
+  {
+    "step": "findings by runtime state",
+    "states": {
+      "loaded": 125,
+      "null": 158,
+      "listening": 127
+    },
+    "listening_with_reason": 127,
+    "sources_on_a_listener": [
+      "glibc",
+      "libzstd",
+      "nginx",
+      "openssh",
+      "openssl",
+      "pcre2",
+      "zlib"
+    ],
+    "wrong": [],
+    "sample": [
+      [
+        "glibc",
+        "CVE-2010-4756",
+        28,
+        [
+          "No fix yet \u2014 mitigate or accept",
+          "libc6 (from glibc) is loaded by nginx.service, listening on 0.0.0.0:80/tcp and [::]:80/tcp; ssh.service, listening on 0.0.0.0:22/tcp and [::]:22/tcp (read 26 Nov 00:43 UTC; the host firewall isn't read)"
+        ]
+      ],
+      [
+        "glibc",
+        "CVE-2018-20796",
+        35,
+        [
+          "No fix yet \u2014 mitigate or accept",
+          "libc6 (from glibc) is loaded by nginx.service, listening on 0.0.0.0:80/tcp and [::]:80/tcp; ssh.service, listening on 0.0.0.0:22/tcp and [::]:22/tcp (read 26 Nov 00:43 UTC; the host firewall isn't read)"
+        ]
+      ],
+      [
+        "glibc",
+        "CVE-2019-1010022",
+        38,
+        [
+          "Critical severity (CVSS 9.8)",
+          "No fix yet \u2014 mitigate or accept",
+          "libc6 (from glibc) is loaded by nginx.service, listening on 0.0.0.0:80/tcp and [::]:80/tcp; ssh.service, listening on 0.0.0.0:22/tcp and [::]:22/tcp (read 26 Nov 00:43 UTC; the host firewall isn't read)"
+        ]
+      ]
+    ]
+  },
+  {
+    "step": "CHECK 4 a network listener's library is ranked with the reason: PASS",
+    "listening": 127,
+    "wrong": 0
+  },
+  {
+    "step": "upgrade candidates",
+    "candidates": [
+      [
+        "openssl",
+        [
+          "(sd-pam)",
+          "nginx.service",
+          "postgresql@17-main.service",
+          "ssh.service",
+          "systemd",
+          "systemd-journald.service"
+        ]
+      ],
+      [
+        "libzstd",
+        [
+          "(sd-pam)",
+          "nginx.service",
+          "postgresql@17-main.service",
+          "ssh.service",
+          "systemd",
+          "systemd-journald.service"
+        ]
+      ],
+      [
+        "zlib",
+        [
+          "(sd-pam)",
+          "nginx.service",
+          "postgresql@17-main.service",
+          "ssh.service",
+          "systemd",
+          "systemd-journald.service"
+        ]
+      ],
+      [
+        "pcre2",
+        [
+          "(sd-pam)",
+          "cron.service",
+          "dbus.service",
+          "login",
+          "nginx.service",
+          "ssh.service"
+        ]
+      ],
+      [
+        "glibc",
+        [
+          "(sd-pam)",
+          "bash",
+          "cron.service",
+          "dbus.service",
+          "getty@tty1.service",
+          "login"
+        ]
+      ],
+      [
+        "expat",
+        [
+          "dbus.service"
+        ]
+      ],
+      [
+        "krb5",
+        [
+          "postgresql@17-main.service"
+        ]
+      ],
+      [
+        "util-linux",
+        [
+          "(sd-pam)",
+          "getty@tty1.service",
+          "login",
+          "systemd",
+          "systemd-journald.service",
+          "systemd-logind.service"
+        ]
+      ]
+    ],
+    "upgradable": 50
+  },
+  {
+    "step": "replaced copies after the upgrade",
+    "package": "openssl",
+    "binaries": [
+      "libssl3t64",
+      "openssl",
+      "openssl-provider-legacy"
+    ],
+    "agent": [
+      [
+        "(sd-pam)",
+        [
+          "libssl3t64"
+        ]
+      ],
+      [
+        "nginx.service",
+        [
+          "libssl3t64"
+        ]
+      ],
+      [
+        "postgresql@17-main.service",
+        [
+          "libssl3t64"
+        ]
+      ],
+      [
+        "ssh.service",
+        [
+          "libssl3t64"
+        ]
+      ],
+      [
+        "systemd",
+        [
+          "libssl3t64"
+        ]
+      ],
+      [
+        "systemd-journald.service",
+        [
+          "libssl3t64"
+        ]
+      ],
+      [
+        "systemd-logind.service",
+        [
+          "libssl3t64"
+        ]
+      ],
+      [
+        "systemd-udevd.service",
+        [
+          "libssl3t64"
+        ]
+      ]
+    ],
+    "lsof_oracle": [
+      [
+        "(sd-pam)",
+        [
+          "libssl3t64"
+        ]
+      ],
+      [
+        "nginx.service",
+        [
+          "libssl3t64"
+        ]
+      ],
+      [
+        "postgresql@17-main.service",
+        [
+          "libssl3t64"
+        ]
+      ],
+      [
+        "ssh.service",
+        [
+          "libssl3t64"
+        ]
+      ],
+      [
+        "systemd",
+        [
+          "libssl3t64"
+        ]
+      ],
+      [
+        "systemd-journald.service",
+        [
+          "libssl3t64"
+        ]
+      ],
+      [
+        "systemd-logind.service",
+        [
+          "libssl3t64"
+        ]
+      ],
+      [
+        "systemd-udevd.service",
+        [
+          "libssl3t64"
+        ]
+      ]
+    ],
+    "distribution_tool": [
+      "nginx.service",
+      "postgresql@17-main.service",
+      "ssh.service",
+      "systemd-journald.service",
+      "systemd-logind.service",
+      "systemd-manager",
+      "systemd-udevd.service",
+      "systemd-user"
+    ]
+  },
+  {
+    "step": "replaced copies: agent vs lsof's deleted package files",
+    "differences": []
+  },
+  {
+    "step": "CHECK 3 programs running a replaced copy equal the deleted package files (oracle): PASS",
+    "unexplained": []
+  },
+  {
+    "step": "CHECK 3 services running a replaced copy include every one the distribution's tool names: PASS",
+    "only_tool": [
+      "systemd-manager",
+      "systemd-user"
+    ],
+    "only_agent": [],
+    "named_systemd_by_the_agent": [
+      "systemd-manager",
+      "systemd-user"
+    ]
+  },
+  {
+    "step": "report after the upgrade",
+    "open": 372,
+    "resolved": 0,
+    "held": 38,
+    "reason": "Still open: the fixed version is installed, but (sd-pam), nginx.service, postgresql@17-main.service, ssh.service, systemd, systemd-journald.service, systemd-logind.service and systemd-udevd.service still run the copy it replaced: restart them (or the machine)"
+  },
+  {
+    "step": "CHECK 3 upgraded findings stay open while the old copy runs: PASS",
+    "held": 38,
+    "fixable_before": 38
+  },
+  {
+    "step": "report after the restart",
+    "restarted": [
+      "(sd-pam)",
+      "nginx.service",
+      "postgresql@17-main.service",
+      "ssh.service",
+      "systemd",
+      "systemd-journald.service",
+      "systemd-logind.service",
+      "systemd-udevd.service"
+    ],
+    "open": 372,
+    "resolved": 0,
+    "still_held": 38,
+    "reason": "Still open: the fixed version is installed, but (sd-pam) and systemd still run the copy it replaced: restart them (or the machine)"
+  },
+  {
+    "step": "report after restarting the machine",
+    "open": 372,
+    "resolved": 38,
+    "still_held": 0
+  },
+  {
+    "step": "CHECK 3 the restart closes them on the next report: PASS"
+  },
+  {
+    "step": "not loaded, seven days backdated",
+    "lowered": 55,
+    "should": 55,
+    "not_loaded": 157,
+    "mismatch": [],
+    "sample": [
+      [
+        "apt",
+        "CVE-2011-3374",
+        8,
+        "Not loaded by any long-running program in 7 days of reads (programs that run bri"
+      ],
+      [
+        "apt",
+        "CVE-2026-109518",
+        18,
+        "Not loaded by any long-running program in 7 days of reads (programs that run bri"
+      ],
+      [
+        "dhcpcd",
+        "CVE-2025-70102",
+        14,
+        "Not loaded by any long-running program in 7 days of reads (programs that run bri"
+      ]
+    ]
+  },
+  {
+    "step": "CHECK 4 a network flaw in native code nothing loads is lowered, never a KEV one: PASS",
+    "lowered": 55,
+    "kev_lowered": 0
+  },
+  {
+    "step": "fix whose new version breaks a service",
+    "source": "libzstd",
+    "restarts_named": {
+      "services": [
+        "nginx.service",
+        "postgresql@17-main.service",
+        "rt-canary.service",
+        "ssh.service"
+      ],
+      "left": [
+        "(sd-pam)",
+        "systemd",
+        "systemd-journald.service",
+        "systemd-logind.service",
+        "systemd-udevd.service"
+      ]
+    },
+    "outcome": "rolled_back",
+    "steps": [
+      "ok  job validated",
+      "ok  apt-get available",
+      "ok  installed for one architecture only",
+      "ok  installed versions match plan",
+      "ok  fix is newer than installed",
+      "ok  no rollback copy kept from an earlier job with this id",
+      "ok  free space for the rollback copy",
+      "ok  refresh package index",
+      "ok  simulate upgrade",
+      "ok  no package downgraded",
+      "ok  change limited to planned packages",
+      "ok  repository has a newer version",
+      "ok  archive copy of libzstd1=1.5.7+dfsg-1",
+      "ok  rollback package saved libzstd1_1.5.7+dfsg-1_amd64.deb",
+      "ok  upgrade",
+      "ok  package database check",
+      "ok  restart nginx.service: it ran the copy this fix replaced",
+      "ok  restart postgresql@17-main.service: it ran the copy this fix replaced",
+      "FAIL restart rt-canary.service: it ran the copy this fix replaced",
+      "ok  rollback artefact intact libzstd1_1.5.7+dfsg-1_amd64.deb",
+      "ok  rollback install",
+      "ok  versions restored",
+      "ok  restart nginx.service on the restored version",
+      "ok  restart postgresql@17-main.service on the restored version",
+      "ok  restart rt-canary.service on the restored version",
+      "ok  nginx.service active after rollback",
+      "ok  postgresql@17-main.service active after rollback",
+      "ok  rt-canary.service active after rollback"
+    ],
+    "canary": "active",
+    "version_now": "1.5.7+dfsg-1",
+    "version_before": "1.5.7+dfsg-1"
+  },
+  {
+    "step": "CHECK 5 a service the new version breaks rolls the fix back and runs again on the restored version: PASS"
+  },
+  {
+    "step": "the fix itself",
+    "source": "libzstd",
+    "restarts_named": {
+      "services": [
+        "nginx.service",
+        "postgresql@17-main.service",
+        "ssh.service"
+      ],
+      "left": [
+        "(sd-pam)",
+        "systemd",
+        "systemd-journald.service",
+        "systemd-logind.service",
+        "systemd-udevd.service"
+      ]
+    },
+    "outcome": "applied",
+    "status": "verifying",
+    "error": "Waiting for a restart: the fix is installed, but (sd-pam), systemd, systemd-journald.service, systemd-logind.service, systemd-udevd.service still run the copy it replaced",
+    "restarted": [
+      "nginx.service",
+      "postgresql@17-main.service",
+      "ssh.service"
+    ],
+    "left": "(sd-pam), systemd, systemd-journald.service, systemd-logind.service, systemd-udevd.service: not restarted by the agent; restart them (or the machine) to finish the fix",
+    "steps": [
+      "ok  job validated",
+      "ok  apt-get available",
+      "ok  installed for one architecture only",
+      "ok  installed versions match plan",
+      "ok  fix is newer than installed",
+      "ok  no rollback copy kept from an earlier job with this id",
+      "ok  free space for the rollback copy",
+      "ok  refresh package index",
+      "ok  simulate upgrade",
+      "ok  no package downgraded",
+      "ok  change limited to planned packages",
+      "ok  repository has a newer version",
+      "ok  rollback package saved libzstd1_1.5.7+dfsg-1_amd64.deb",
+      "ok  upgrade",
+      "ok  package database check",
+      "ok  restart nginx.service: it ran the copy this fix replaced",
+      "ok  restart postgresql@17-main.service: it ran the copy this fix replaced",
+      "ok  restart ssh.service: it ran the copy this fix replaced",
+      "ok  still running the replaced copy",
+      "ok  nginx.service active after change",
+      "ok  postgresql@17-main.service active after change",
+      "ok  ssh.service active after change"
+    ]
+  },
+  {
+    "step": "CHECK 5 a fix a refused program holds waits for a restart: PASS",
+    "error": "Waiting for a restart: the fix is installed, but (sd-pam), systemd, systemd-journald.service, systemd-logind.service, systemd-udevd.service still run the copy it replaced"
+  },
+  {
+    "step": "after the machine restarted",
+    "status": "succeeded",
+    "error": null
+  },
+  {
+    "step": "CHECK 5 the fix restarts what ran the old copy and succeeds: PASS",
+    "restarted": [
+      "nginx.service",
+      "postgresql@17-main.service",
+      "ssh.service"
+    ],
+    "status": "succeeded"
+  },
+  {
+    "step": "CHECK 5 the distribution's tool names none of the restarted services afterwards: PASS",
+    "left": []
+  },
+  {
+    "step": "hostile processes",
+    "processes": 2046,
+    "read": {
+      "seconds": 0.63,
+      "state": "ok",
+      "problem": null,
+      "programs": 23,
+      "names": [
+        "(sd-pam)",
+        "Relay(351)",
+        "SessionLeader",
+        "bash",
+        "cron.service",
+        "dbus.service",
+        "ev?il??",
+        "getty@tty1.service",
+        "init",
+        "init-systemd(ni",
+        "init-watcher",
+        "login",
+        "many-fds",
+        "python3",
+        "sh",
+        "ssh.service",
+        "systemd",
+        "systemd-journald.service",
+        "systemd-logind.service",
+        "systemd-udevd.service"
+      ]
+    },
+    "report": {
+      "open": 371,
+      "resolved": 0
+    }
+  },
+  {
+    "step": "CHECK 6 a secret in a command line or environment never leaves the machine: PASS"
+  },
+  {
+    "step": "CHECK 6 crafted names are sanitised and the report goes through: PASS"
+  },
+  {
+    "step": "CHECK 7 the read takes under 3 s with 2,000 extra processes: PASS",
+    "seconds": 0.63,
+    "processes": 2046
+  },
+  {
+    "step": "CHECK evidence pack verifies: PASS",
+    "problems": []
+  },
+  {
+    "step": "RESULT: PASS",
+    "checks": {
+      "1 loaded packages equal the oracle's": "PASS",
+      "2 listening addresses equal ss": "PASS",
+      "4 a network listener's library is ranked with the reason": "PASS",
+      "3 programs running a replaced copy equal the deleted package files (oracle)": "PASS",
+      "3 services running a replaced copy include every one the distribution's tool names": "PASS",
+      "3 upgraded findings stay open while the old copy runs": "PASS",
+      "3 the restart closes them on the next report": "PASS",
+      "4 a network flaw in native code nothing loads is lowered, never a KEV one": "PASS",
+      "5 a service the new version breaks rolls the fix back and runs again on the restored version": "PASS",
+      "5 a fix a refused program holds waits for a restart": "PASS",
+      "5 the fix restarts what ran the old copy and succeeds": "PASS",
+      "5 the distribution's tool names none of the restarted services afterwards": "PASS",
+      "6 a secret in a command line or environment never leaves the machine": "PASS",
+      "6 crafted names are sanitised and the report goes through": "PASS",
+      "7 the read takes under 3 s with 2,000 extra processes": "PASS",
+      "evidence pack verifies": "PASS"
+    }
+  },
+  {
+    "step": "sandbox destroyed",
+    "name": "nimstead-sbx-rt-a8583a"
+  }
+]

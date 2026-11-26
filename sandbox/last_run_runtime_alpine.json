@@ -1,0 +1,356 @@
+[
+  {
+    "step": "creating sandbox distro",
+    "name": "nimstead-sbx-rt-4febef",
+    "distro": "alpine-3.21.0"
+  },
+  {
+    "step": "services up",
+    "listening": [
+      "0.0.0.0:22",
+      "0.0.0.0:80",
+      "10.255.255.254:53",
+      "127.0.0.1:323",
+      "[::1]:323",
+      "[::]:22",
+      "[::]:80"
+    ]
+  },
+  {
+    "step": "collected",
+    "ecosystem": "Alpine:v3.21",
+    "packages": 52,
+    "state": "ok",
+    "problem": null,
+    "programs": {
+      "Relay(12)": {
+        "loads": 0,
+        "listen": []
+      },
+      "Relay(65)": {
+        "loads": 0,
+        "listen": []
+      },
+      "SessionLeader": {
+        "loads": 0,
+        "listen": []
+      },
+      "init": {
+        "loads": 0,
+        "listen": []
+      },
+      "init(nimstead-s": {
+        "loads": 0,
+        "listen": []
+      },
+      "nginx": {
+        "loads": 6,
+        "listen": [
+          "0.0.0.0:80/tcp",
+          "[::]:80/tcp"
+        ]
+      },
+      "sshd": {
+        "loads": 3,
+        "listen": [
+          "0.0.0.0:22/tcp",
+          "[::]:22/tcp"
+        ]
+      }
+    }
+  },
+  {
+    "step": "feeds synced",
+    "kev": 1805,
+    "epss": 412861,
+    "osv": {
+      "inserted": 9158,
+      "updated": 0,
+      "skipped": 0
+    },
+    "seconds": 5
+  },
+  {
+    "step": "loaded and listening vs the oracle",
+    "programs": 7,
+    "oracle_programs": 6,
+    "differences": [
+      {
+        "program": "Relay(85)",
+        "only": "agent",
+        "why": "the harness's own or WSL's per-command processes (a new relay and shell per wsl.exe call)"
+      }
+    ]
+  },
+  {
+    "step": "CHECK 1 loaded packages equal the oracle's: PASS",
+    "unexplained": []
+  },
+  {
+    "step": "CHECK 2 listening addresses equal ss: PASS"
+  },
+  {
+    "step": "first report",
+    "open": 55,
+    "resolved": 0
+  },
+  {
+    "step": "findings by runtime state",
+    "states": {
+      "null": 2,
+      "listening": 53
+    },
+    "listening_with_reason": 53,
+    "sources_on_a_listener": [
+      "musl",
+      "nginx",
+      "openssl",
+      "zlib"
+    ],
+    "wrong": [],
+    "sample": [
+      [
+        "musl",
+        "CVE-2025-26519",
+        21,
+        [
+          "Fix available",
+          "Loaded by nginx, listening on 0.0.0.0:80/tcp and [::]:80/tcp; sshd, listening on 0.0.0.0:22/tcp and [::]:22/tcp (read 26 Nov 00:39 UTC; the host firewall isn't read)"
+        ]
+      ],
+      [
+        "musl",
+        "CVE-2026-107891",
+        39,
+        [
+          "Fix available",
+          "Loaded by nginx, listening on 0.0.0.0:80/tcp and [::]:80/tcp; sshd, listening on 0.0.0.0:22/tcp and [::]:22/tcp (read 26 Nov 00:39 UTC; the host firewall isn't read)"
+        ]
+      ],
+      [
+        "musl",
+        "CVE-2026-40200",
+        23,
+        [
+          "Fix available",
+          "Loaded by nginx, listening on 0.0.0.0:80/tcp and [::]:80/tcp; sshd, listening on 0.0.0.0:22/tcp and [::]:22/tcp (read 26 Nov 00:39 UTC; the host firewall isn't read)"
+        ]
+      ]
+    ]
+  },
+  {
+    "step": "CHECK 4 a network listener's library is ranked with the reason: PASS",
+    "listening": 53,
+    "wrong": 0
+  },
+  {
+    "step": "upgrade candidates",
+    "candidates": [
+      [
+        "zlib",
+        [
+          "nginx"
+        ]
+      ],
+      [
+        "openssl",
+        [
+          "nginx",
+          "sshd"
+        ]
+      ],
+      [
+        "musl",
+        [
+          "nginx",
+          "sshd"
+        ]
+      ]
+    ],
+    "upgradable": 13
+  },
+  {
+    "step": "replaced copies after the upgrade",
+    "package": "zlib",
+    "binaries": [
+      "zlib"
+    ],
+    "agent": [
+      [
+        "nginx",
+        [
+          "zlib"
+        ]
+      ]
+    ],
+    "lsof_oracle": [],
+    "distribution_tool": []
+  },
+  {
+    "step": "replaced copies: agent vs lsof's deleted package files",
+    "differences": [
+      {
+        "program": "nginx",
+        "package": "zlib",
+        "only": "agent",
+        "why": "the upgrade renamed the file; the package's own shorter name for it is in its list"
+      }
+    ]
+  },
+  {
+    "step": "CHECK 3 programs running a replaced copy equal the deleted package files (oracle): PASS",
+    "unexplained": []
+  },
+  {
+    "step": "report after the upgrade",
+    "open": 51,
+    "resolved": 0,
+    "held": 4,
+    "reason": "Still open: the fixed version is installed, but nginx still runs the copy it replaced: restart it (or the machine)"
+  },
+  {
+    "step": "CHECK 3 upgraded findings stay open while the old copy runs: PASS",
+    "held": 4,
+    "fixable_before": 4
+  },
+  {
+    "step": "report after the restart",
+    "restarted": [
+      "nginx"
+    ],
+    "open": 51,
+    "resolved": 4,
+    "still_held": 0,
+    "reason": null
+  },
+  {
+    "step": "CHECK 3 the restart closes them on the next report: PASS"
+  },
+  {
+    "step": "not loaded, seven days backdated",
+    "lowered": 0,
+    "should": 0,
+    "not_loaded": 2,
+    "mismatch": [],
+    "sample": []
+  },
+  {
+    "step": "no not-loaded finding whose own advisories say network only on this host"
+  },
+  {
+    "step": "re-planned including the dependencies the dry run named",
+    "include": [
+      "musl"
+    ]
+  },
+  {
+    "step": "the fix itself",
+    "source": "openssl",
+    "restarts_named": {
+      "services": [],
+      "left": [
+        "nginx",
+        "sshd"
+      ]
+    },
+    "outcome": "applied",
+    "status": "verifying",
+    "error": "Waiting for a restart: the fix is installed, but nginx, sshd still run the copy it replaced",
+    "restarted": [],
+    "left": "nginx, sshd: not restarted by the agent; restart them (or the machine) to finish the fix",
+    "steps": [
+      "ok  job validated",
+      "ok  apk available",
+      "ok  installed versions match plan",
+      "ok  fix is newer than installed",
+      "ok  no rollback copy kept from an earlier job with this id",
+      "ok  free space for the rollback copy",
+      "ok  refresh package index",
+      "ok  simulate upgrade",
+      "ok  no package downgraded",
+      "ok  change limited to planned packages",
+      "ok  repository has a newer version",
+      "ok  rollback snapshot saved",
+      "ok  upgrade",
+      "ok  still running the replaced copy"
+    ]
+  },
+  {
+    "step": "CHECK 5 a fix a refused program holds waits for a restart: PASS",
+    "error": "Waiting for a restart: the fix is installed, but nginx, sshd still run the copy it replaced"
+  },
+  {
+    "step": "after the machine restarted",
+    "status": "succeeded",
+    "error": null
+  },
+  {
+    "step": "CHECK 5 the fix restarts what ran the old copy and succeeds: PASS",
+    "restarted": [],
+    "status": "succeeded"
+  },
+  {
+    "step": "hostile processes",
+    "processes": 2030,
+    "read": {
+      "seconds": 0.67,
+      "state": "ok",
+      "problem": null,
+      "programs": 13,
+      "names": [
+        "Relay(181)",
+        "Relay(203)",
+        "Relay(232)",
+        "SessionLeader",
+        "ev?il??",
+        "init",
+        "init(nimstead-s",
+        "many-fds",
+        "python3",
+        "sh",
+        "sshd"
+      ]
+    },
+    "report": {
+      "open": 3,
+      "resolved": 0
+    }
+  },
+  {
+    "step": "CHECK 6 a secret in a command line or environment never leaves the machine: PASS"
+  },
+  {
+    "step": "CHECK 6 crafted names are sanitised and the report goes through: PASS"
+  },
+  {
+    "step": "CHECK 7 the read takes under 3 s with 2,000 extra processes: PASS",
+    "seconds": 0.67,
+    "processes": 2030
+  },
+  {
+    "step": "CHECK evidence pack verifies: PASS",
+    "problems": []
+  },
+  {
+    "step": "RESULT: PASS",
+    "checks": {
+      "1 loaded packages equal the oracle's": "PASS",
+      "2 listening addresses equal ss": "PASS",
+      "4 a network listener's library is ranked with the reason": "PASS",
+      "3 programs running a replaced copy equal the deleted package files (oracle)": "PASS",
+      "3 upgraded findings stay open while the old copy runs": "PASS",
+      "3 the restart closes them on the next report": "PASS",
+      "4 a network flaw in native code nothing loads is lowered, never a KEV one": "NOT EXERCISED",
+      "5 a fix a refused program holds waits for a restart": "PASS",
+      "5 the fix restarts what ran the old copy and succeeds": "PASS",
+      "6 a secret in a command line or environment never leaves the machine": "PASS",
+      "6 crafted names are sanitised and the report goes through": "PASS",
+      "7 the read takes under 3 s with 2,000 extra processes": "PASS",
+      "evidence pack verifies": "PASS"
+    }
+  },
+  {
+    "step": "sandbox destroyed",
+    "name": "nimstead-sbx-rt-4febef"
+  }
+]

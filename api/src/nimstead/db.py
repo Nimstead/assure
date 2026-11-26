@@ -283,7 +283,8 @@ class Finding(Base):
     # what runs (DECISIONS 161): listening | loaded | not_loaded | restart (fixed on disk, a program still runs the old copy); None = unknown
     runtime: Mapped[str | None] = mapped_column(String(12))
     __table_args__ = (UniqueConstraint("asset_id", "ecosystem", "package", "vuln_id"),
-                      Index("ix_finding_open_actions", "org_id", "status", "ecosystem", "package"))  # home-page summary
+                      Index("ix_finding_open_actions", "org_id", "status", "ecosystem", "package"),  # home-page summary
+                      Index("ix_finding_runtime", "org_id", "runtime"))  # Restart to finish and the Running filter: 0.2 s to 0.1 ms at 537k findings
 
 
 def make_engine(url: str = DB_URL):

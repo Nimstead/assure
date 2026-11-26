@@ -37,10 +37,12 @@ def upgrade() -> None:
     op.create_index('ix_asset_runtime_org_id', 'asset_runtime', ['org_id'])
     with op.batch_alter_table('finding') as b:
         b.add_column(sa.Column('runtime', sa.String(length=12), nullable=True))
+    op.create_index('ix_finding_runtime', 'finding', ['org_id', 'runtime'])
 
 
 def downgrade() -> None:
     """Downgrade schema."""
+    op.drop_index('ix_finding_runtime', table_name='finding')
     with op.batch_alter_table('finding') as b:
         b.drop_column('runtime')
     op.drop_index('ix_asset_runtime_org_id', table_name='asset_runtime')

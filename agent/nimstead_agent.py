@@ -1715,7 +1715,7 @@ ACCESS_FROM = 16                    # from= patterns kept per key, each at most 
 ROOT_EQUIVALENT = ("docker", "lxd", "incus-admin", "disk")  # a member runs as root at will (a container, the raw disk)
 SSHD_SETTINGS = ("permitrootlogin", "pubkeyauthentication", "passwordauthentication", "kbdinteractiveauthentication",
                  "permitemptypasswords", "authorizedkeysfile", "authorizedkeyscommand", "allowusers", "denyusers", "allowgroups",
-                 "denygroups", "port", "listenaddress", "strictmodes")
+                 "denygroups", "port", "listenaddress", "strictmodes", "usepam")
 _SSHD_LISTS = ("authorizedkeysfile", "allowusers", "denyusers", "allowgroups", "denygroups", "port", "listenaddress")
 KEY_TYPES = ("ssh-ed25519", "ssh-rsa", "ssh-dss", "ecdsa-sha2-nistp256", "ecdsa-sha2-nistp384", "ecdsa-sha2-nistp521",
              "sk-ssh-ed25519@openssh.com", "sk-ecdsa-sha2-nistp256@openssh.com")
@@ -2040,12 +2040,14 @@ def _text_of(path, cap=4 * 1024 * 1024):
 
 
 def _shadow_states(text):
-    """{account: "usable" | "locked" | "empty"} from /etc/shadow text: only whether a password can be used, never the hash."""
+    """{account: "usable" | "locked" | "none" | "empty"} from /etc/shadow text, never the hash: "locked" is a password
+    disabled with "!" (passwd -l; RHEL's "!!"), which an sshd without PAM refuses even for keys; "none" is "*", no password
+    at all, which keys still open."""
     out = {}
     for ln in (text or "").splitlines():
         f = ln.split(":")
         if len(f) >= 2 and f[0]:
-            out[f[0]] = "empty" if f[1] == "" else "locked" if f[1][:1] in ("!", "*") else "usable"
+            out[f[0]] = "empty" if f[1] == "" else "locked" if f[1][:1] == "!" else "none" if f[1][:1] == "*" else "usable"
     return out
 
 
@@ -2068,10 +2070,11 @@ def parse_systemctl_show(text):
 
 
 def _access_run(argv, timeout):
-    """(returncode, stdout) of a command, or (None, why) when it couldn't run or ran past timeout seconds."""
+    """(returncode, stdout) of a command, with its stderr after stdout when it failed (sshd -T says why there), or (None, why)
+    when it couldn't run or ran past timeout seconds."""
     try:
         p = subprocess.run(argv, capture_output=True, timeout=timeout, stdin=subprocess.DEVNULL)
-        return p.returncode, p.stdout.decode("utf-8", "replace")
+        return p.returncode, (p.stdout + (p.stderr if p.returncode else b"")).decode("utf-8", "replace")
     except subprocess.TimeoutExpired:
         return None, "timed out"
     except OSError as e:
@@ -2256,7 +2259,7 @@ def access_read(root="/", run=None, euid=None, clock=time.monotonic):
 
     # keys held in each account's ~/.ssh, keys trusted by its authorized_keys files, credential files present
     held, trusted, creds, unidentified = [], [], [], 0
-    patterns = sshd["authorizedkeysfile"] if sshd and sshd.get("installed") else [".ssh/authorized_keys", ".ssh/authorized_keys2"]
+    patterns = (sshd or {}).get("authorizedkeysfile") or [".ssh/authorized_keys", ".ssh/authorized_keys2"]  # sshd's default when unread
     strict = not sshd or sshd.get("strictmodes", "yes") != "no"
     for a in accounts:
         if late():

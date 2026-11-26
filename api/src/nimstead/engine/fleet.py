@@ -184,6 +184,10 @@ def key_edges(hosts: list[dict]) -> tuple[list[dict], bool]:
                     continue
                 if t["account"] == "root" and sshd.get("permitrootlogin") == "forced-commands-only" and not t.get("forced"):
                     continue
+                # found by the lab's real ssh: an sshd without PAM refuses an account locked with "!" (passwd -l), keys too; and an
+                # account whose shell is nologin or false signs in to no session, so runs nothing
+                if sshd.get("usepam") == "no" and acct.get("password") == "locked" or acct.get("login") is False:
+                    continue
                 routed = _routed(byid[aid].get("facts") or {}, fb)
                 grade, because = ("confirmed" if routed else "reasonable"), [
                     f"{byid[bid]['hostname']}'s sshd " + (ssh.get("how") or "is installed; whether it listens beyond loopback isn't read")]

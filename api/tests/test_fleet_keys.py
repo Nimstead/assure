@@ -252,3 +252,43 @@ def test_choke_point_counts_equal_a_brute_force_recount(seed):
 def test_an_sshd_that_isnt_running_makes_no_edge():
     stopped = lhost("b", "10.0.0.2", trusted=[trusts(K_ROOT)], sshd={"installed": True, "running": False})
     assert edge(fleet.build([A(), stopped])) is None
+
+
+def test_without_pam_sshd_refuses_a_locked_account_and_no_shell_runs_nothing():
+    # found by the lab's real ssh: Alpine's sshd runs without PAM, and passwd -l's "!" locks keys out too
+    locked = [{**account("root", 0), "password": "locked"}, account("deploy", 1000)]
+    nopam = {**PROHIBIT, "usepam": "no"}
+    assert edge(fleet.build([A(), lhost("b", "10.0.0.2", trusted=[trusts(K_ROOT)], sshd=nopam, accounts=locked)])) is None
+    assert edge(fleet.build([A(), lhost("b", "10.0.0.2", trusted=[trusts(K_ROOT)], sshd={**PROHIBIT, "usepam": "yes"}, accounts=locked)])) is not None
+    none = [{**account("root", 0), "password": "none"}, account("deploy", 1000)]  # "*": no password, keys still open it
+    assert edge(fleet.build([A(), lhost("b", "10.0.0.2", trusted=[trusts(K_ROOT)], sshd=nopam, accounts=none)])) is not None
+    svc = [account("root", 0), {**account("www-data", 33), "login": False}]
+    assert edge(fleet.build([A(), lhost("b", "10.0.0.2", trusted=[trusts(K_ROOT, "www-data")], accounts=svc)])) is None
+
+
+def test_an_account_with_nopasswd_sudo_hands_over_root():
+    accts = [account("root", 0), account("ops", 1001, sudo_all=True)]
+    e = edge(fleet.build([lhost("a", "10.0.0.1", keys=[held(K_OTHER, "ops")], paths=[path()]),
+                          lhost("b", "10.0.0.2", trusted=[trusts(K_OTHER, "ops")], accounts=accts)]))
+    assert e["ways"][0]["gives"] == "root"
+
+
+def test_reaching_a_host_twice_with_different_accounts_holds_both():
+    # s -> x (root) and s -> b (deploy) leave s first; x -> b (ops) arrives before b is walked: b holds deploy and ops,
+    # so deploy's key on b opens c and ops's opens d
+    k_x, k_bd, k_bo, k_c, k_d = ("SHA256:" + ch * 43 for ch in "XYZCE")
+    s = lhost("s", "10.0.0.1", keys=[held(k_x), held(k_bd, "deploy")], paths=[path()])
+    x = lhost("x", "10.0.0.2", keys=[held(k_bo, "ops")], trusted=[trusts(k_x)], accounts=[account("root", 0), account("ops", 1001)])
+    b = lhost("b", "10.0.0.3", keys=[held(k_c, "deploy"), held(k_d, "ops")], trusted=[trusts(k_bd, "deploy"), trusts(k_bo, "ops")],
+              accounts=[account("root", 0), account("deploy", 1000), account("ops", 1001)])
+    c = lhost("c", "10.0.0.4", trusted=[trusts(k_c)])
+    d = lhost("d", "10.0.0.5", trusted=[trusts(k_d)])
+    reach = {r["host"]: r for r in fleet.build([s, x, b, c, d])["chains"][0]["reach"]}
+    assert reach["b"]["as"] == ["deploy", "ops"] and {"c", "d"} <= set(reach)
+
+
+def test_a_windows_host_never_links_to_itself():
+    from test_engine_fleet import OPEN_445, host
+    from test_engine_paths import LOCAL, WEAK, rec
+    both = host("w", {**WEAK, "remote_uac_off": 1}, {"listening": OPEN_445}, recs=[rec("CVE-2026-1001", LOCAL)])
+    assert fleet.build([both])["edges"] == []

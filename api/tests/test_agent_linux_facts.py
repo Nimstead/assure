@@ -307,7 +307,7 @@ def test_the_pass_reads_a_machine_as_the_spec_says(tmp_path):
     assert list(acc)[:2] == ["root", "www-data"]  # root, then what runs, then who signs in
     assert acc["www-data"]["groups"] == ["docker", "www-data"] and acc["www-data"]["login"] is False
     assert acc["deploy"]["sudo_all"] is True and acc["www-data"]["sudo_all"] is False and acc["root"]["sudo_all"] is None
-    assert (acc["root"]["password"], acc["deploy"]["password"], acc["www-data"]["password"]) == ("locked", "usable", "locked")
+    assert (acc["root"]["password"], acc["deploy"]["password"], acc["www-data"]["password"]) == ("none", "usable", "none")  # "*": no password, not "!"-locked
     assert "sshd" not in acc  # no login shell, nothing running as it, no home
     held = {h["path"]: h for h in a["held"]}
     assert held["/root/.ssh/id_ed25519"] == {"account": "root", "path": "/root/.ssh/id_ed25519", "type": "ssh-ed25519", "fp": oracle()["ed25519"], "passphrase": False}
@@ -429,3 +429,10 @@ def test_paths_false_leaves_access_addresses_and_peers_out():
     on = agent.with_access(json.loads(json.dumps(inv)), {}, read=lambda: fake, addresses=["10.89.7.11"], peers=["10.89.7.13:22"])
     assert on["access"] == fake and on["facts"]["addresses"] == ["10.89.7.11"] and on["facts"]["peers"] == ["10.89.7.13:22"]
     assert on["collection"]["sources"]["access"] == {"state": "ok", "count": 1}
+
+
+@pytest.mark.skipif(os.name == "nt", reason="runs a shell")
+def test_a_failing_command_says_why_from_its_stderr():
+    rc, out = agent._access_run(["sh", "-c", "echo out; echo 'Missing privilege separation directory: /run/sshd' >&2; exit 255"], 5)
+    assert rc == 255 and "out" in out and "privilege separation directory" in out
+    assert agent._access_run(["sh", "-c", "echo fine; echo noise >&2"], 5) == (0, "fine\n")  # a success is its stdout alone

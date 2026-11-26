@@ -26,7 +26,7 @@ KEY_TYPES = frozenset(("ssh-ed25519", "ssh-rsa", "ssh-dss", "ecdsa-sha2-nistp256
                        "sk-ssh-ed25519@openssh.com", "sk-ecdsa-sha2-nistp256@openssh.com", "ecdsa", "other"))
 ROOT_LOGIN = frozenset(("yes", "no", "prohibit-password", "without-password", "forced-commands-only"))
 CREDENTIAL_KINDS = frozenset(("aws", "kubernetes", "docker", "postgresql", "netrc", "git", "keytab"))
-_YES_NO = ("pubkeyauthentication", "passwordauthentication", "kbdinteractiveauthentication", "permitemptypasswords", "strictmodes")
+_YES_NO = ("pubkeyauthentication", "passwordauthentication", "kbdinteractiveauthentication", "permitemptypasswords", "strictmodes", "usepam")
 _LISTS = ("authorizedkeysfile", "allowusers", "denyusers", "allowgroups", "denygroups", "listenaddress")
 
 
@@ -80,7 +80,7 @@ def valid(raw) -> dict | None:
             continue
         names.add(a["name"])
         accounts.append({"name": a["name"], "uid": uid, "groups": sorted(set(_strs(a.get("groups"), GROUPS, _NAME))), "login": a.get("login") is True,
-                         "password": a.get("password") if a.get("password") in ("usable", "locked", "empty") else None,
+                         "password": a.get("password") if a.get("password") in ("usable", "locked", "none", "empty") else None,
                          "sudo_all": _bool(a.get("sudo_all"))})
     owner = lambda x: isinstance(x, str) and x in names  # noqa: E731 — a key or file must belong to an account the read lists
     writable = [{"path": w["path"], "kind": w["kind"], "by": w["by"], "at": w.get("at") if isinstance(w.get("at"), str) and _PATH.fullmatch(w["at"]) else w["path"]}

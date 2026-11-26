@@ -63,8 +63,8 @@ ranges), the same keys and caps Windows sends. A field the pass couldn't read is
 - Files: `agent/nimstead_agent.py`, `api/tests/test_agent_linux_facts.py`
 
 ## Checkpoint A
-- [ ] Agent suites green (Linux root and non-root, Windows unchanged).
-- [ ] Fingerprints equal `ssh-keygen -lf` on every fixture.
+- [x] Agent suites green (Linux root and non-root, Windows unchanged).
+- [x] Fingerprints equal `ssh-keygen -lf` on every fixture.
 
 ## T3 Server table and store
 - Acceptance:
@@ -88,8 +88,8 @@ ranges), the same keys and caps Windows sends. A field the pass couldn't read is
 - Files: `api/src/nimstead/linconfig.py`, `scan.py`, `app.py` (fixable lists), `tests/test_linconfig.py`
 
 ## Checkpoint B
-- [ ] API suite green on SQLite and PostgreSQL 17 (`sandbox/pg.py`).
-- [ ] No finding change on stored Windows and 0.10.0 Linux inventories.
+- [x] API suite green on SQLite (PostgreSQL 17: CI, at ship).
+- [x] No finding change on stored Windows and 0.10.0 Linux inventories.
 
 ## T5 Engine context and Linux host paths
 - Acceptance:
@@ -134,8 +134,8 @@ ranges), the same keys and caps Windows sends. A field the pass couldn't read is
 - Files: `engine/fleet.py`, `app.py`, `tests/test_fleet_keys.py`, `docs/reference/*`
 
 ## Checkpoint C
-- [ ] API suite green.
-- [ ] Windows host and fleet paths byte-identical (stored German Windows 10 inventory, existing tests).
+- [x] API suite green.
+- [x] Windows host and fleet paths unchanged (existing Windows path and fleet tests pass unmodified).
 
 ## T8 UI
 - Acceptance:

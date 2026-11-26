@@ -2157,7 +2157,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             stmt = stmt.where(Finding.runtime.in_(f.runtime.split(",")))
         if fixable is not None:
             # a setting, an end of support or an exposure never has a fixed version, but there is always something to do
-            has_fix = Finding.fixed_version.is_not(None) | Finding.ecosystem.in_(("WinConfig", lifecycle.ECOSYSTEM, external.ECOSYSTEM, neighbours.ECOSYSTEM, windrivers.ECOSYSTEM))
+            has_fix = Finding.fixed_version.is_not(None) | Finding.ecosystem.in_(("WinConfig", "LinuxConfig", lifecycle.ECOSYSTEM, external.ECOSYSTEM, neighbours.ECOSYSTEM, windrivers.ECOSYSTEM))
             stmt = stmt.where(has_fix if fixable else ~has_fix)
         if q:
             like = f"%{q.lower()}%"

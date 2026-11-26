@@ -342,6 +342,12 @@ def plan(s: Session, asset: Asset, ecosystem: str, package: str, created_by: str
     findings = s.scalars(select(Finding).where(
         Finding.asset_id == asset.id, Finding.ecosystem == ecosystem, Finding.package == package, Finding.status == "open",
         *([] if manager == "winconfig" else [Finding.fixed_version.is_not(None)]))).all()  # a setting has no fixed version
+    # fixed on disk and waiting for a restart (DECISIONS 162): a plan would only find the fix already installed and abort
+    held = [f for f in findings if f.runtime == "restart"]
+    findings = [f for f in findings if f.runtime != "restart"]
+    if not findings and held:
+        who = runtime.view(s, asset).replaced_by([], package)
+        raise RemediationError(f"The fix is already installed: restart {', '.join(who) or 'the programs still running the old copy'} (or the machine) to finish it")
     if not findings:
         raise RemediationError("No open, fixable findings for this package on this asset")
     key = f"{ecosystem}|{package}"

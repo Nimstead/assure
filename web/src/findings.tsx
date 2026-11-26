@@ -541,6 +541,7 @@ export function FindingDetail({ f }: { f: Finding }) {
           <H>Act on it <span className="ml-2 hidden text-xs font-normal text-muted md:inline">keys: {[(f.fixed_version || f.setting_fix) && !job && f.plannable !== false && !refused && "p then Enter plan", "a accept", "j k next/previous"].filter(Boolean).join(" · ")}</span></H>
           {job && <FixInProgress job={job} />}
           {f.asset_kind === "image" ? <RebuildImage f={f} />
+            : f.runtime === "restart" ? <p className="mb-3 max-w-prose text-sm">The fix is installed. Restart the programs that still run the old copy (or the machine), below, and this closes on the next report.</p>
             : f.fixed_version && f.plannable === false && <p className="mb-3 text-sm text-muted">Nimstead can't plan this one: update it with its own updater or by policy.</p>}
           {refused && f.plannable !== false && <p className="mb-3 text-sm text-muted">This is a production machine, and production remediation is off on this server, so a fix can't be planned here yet. <Link to="/settings" hash="remediation" className="font-medium text-ink underline">How to turn it on</Link></p>}
           <div className="flex flex-wrap items-start gap-2">

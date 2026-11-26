@@ -119,3 +119,17 @@ it("a fix waiting for a restart reads as waiting, not as a failure", () => {
     "Waiting for a restart: the fix is installed, but dbus.service still runs the copy it replaced. It succeeds on the first report after the restart.");
   expect(screen.queryByRole("alert")).toBeNull();
 });
+
+it("a finding waiting for a restart says to restart, not to plan the fix again", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => new Response("[]", { status: 200 })));
+  const { FindingDetail } = await import("./findings");
+  const f = { id: "f1", asset_id: "a", hostname: "web-1", asset_kind: "host", ecosystem: "Debian:13", package: "openssl", installed_version: "3.5.1-1",
+    fixed_version: "3.5.4-1", setting_fix: false, plannable: false, vuln_id: "CVE-2025-1", advisory_ids: [], summary: null, cvss: null, epss: null, kev: false,
+    score: 45, priority: "planned", reasons: ["Still open: the fixed version is installed, but nginx.service still runs the copy it replaced: restart it (or the machine)"],
+    status: "open", first_seen: NOW, last_seen: NOW, resolved_at: null, due: null, runtime: "restart",
+    running: { ...R, state: "restart", programs: [{ ...R.programs[0]!, replaced: ["libssl3t64"] }] } } as unknown as Parameters<typeof FindingDetail>[0]["f"];
+  wrap(<FindingDetail f={f} />);
+  expect(await screen.findByText(/The fix is installed\. Restart the programs/)).toBeInTheDocument();
+  expect(screen.queryByText(/can't plan this one/)).toBeNull();
+  expect(screen.queryByRole("button", { name: /Plan fix/ })).toBeNull();
+});

@@ -1986,7 +1986,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             "package": f.package, "installed_version": f.installed_version, "fixed_version": f.fixed_version,
             "setting_fix": f.ecosystem == "WinConfig" and f.package in remediate.CONFIG_FIXES,
             # the same rule Home's recommended fixes use; only a host is ever planned on (DECISIONS 141)
-            "plannable": kind == "host" and remediate.fix_path(f.ecosystem, f.package)["plannable"],
+            # ... and not a fix already installed that waits for a restart (DECISIONS 162)
+            "plannable": kind == "host" and remediate.fix_path(f.ecosystem, f.package)["plannable"] and f.runtime != "restart",
             # how far the curated rule behind a Windows app finding was proven on a real VM (W13; sandbox/winapps_evidence.py)
             "rule_evidence": (WINAPP_EVIDENCE.get(f.package, ("pattern",))[0] if f.ecosystem == "WinApp" else None),
             "vuln_id": f.vuln_id, "advisory_ids": f.advisory_ids, "summary": f.summary, "cvss": f.cvss,
@@ -3423,6 +3424,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         is_open = (Finding.org_id == user.org_id, Finding.status == "open")
         # A setting has no fixed version, but one the agent can change is a fix like any other
         fixable = or_(Finding.fixed_version.is_not(None), and_(Finding.ecosystem == "WinConfig", Finding.package.in_(remediate.CONFIG_FIXES)))
+        # a fix already installed that waits for a restart is under restarts, not recommended again (DECISIONS 162)
+        fixable = and_(fixable, or_(Finding.runtime.is_(None), Finding.runtime != "restart"))
         by_priority = dict(s.execute(select(Finding.priority, func.count()).where(*is_open).group_by(Finding.priority)).all())
         # Group fixes into actions: "upgrade openssl to X" clears N findings on M hosts. Rank in SQL, detail only the top 10.
         # A container image's findings are fixed by a rebuild, never a plan (DECISIONS 141): images_to_rebuild lists them.

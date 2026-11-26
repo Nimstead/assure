@@ -394,3 +394,15 @@ def test_server_and_agent_never_restart_the_same_services():
     agent = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(agent)
     assert agent.RESTART_NEVER.pattern == runtime.RESTART_NEVER.pattern
+
+
+def test_a_fix_waiting_for_a_restart_is_not_planned_or_recommended_again(env):
+    c = user(env)
+    aid, h = host(c)
+    report(c, h, rt=read(NGINX))
+    report(c, h, packages=pkgs(NEW), rt=read(prog("nginx.service", ["libssl3"], ["0.0.0.0:443/tcp"], replaced=["libssl3"])))
+    held = c.get("/api/findings", params={"runtime": "restart"}).json()
+    assert held and all(f["plannable"] is False for f in held)  # the upgrade is done: a plan would only abort
+    r = c.post("/api/remediation/jobs", json={"asset_id": aid, "ecosystem": ECO, "package": "openssl"})
+    assert r.status_code == 409 and "restart nginx.service" in r.json()["detail"]
+    assert all(x["package"] != "openssl" or not set(x["vulns"]) & {f["vuln_id"] for f in held} for x in c.get("/api/summary").json()["top_actions"])

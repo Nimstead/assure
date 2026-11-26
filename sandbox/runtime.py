@@ -46,9 +46,9 @@ from fastapi.testclient import TestClient  # noqa: E402
 from signin import signup  # noqa: E402
 from sqlalchemy import select  # noqa: E402
 
-from nimstead import feeds  # noqa: E402
+from nimstead import feeds, risk  # noqa: E402
 from nimstead.app import create_app  # noqa: E402
-from nimstead.db import Asset, AssetRuntime, Finding, make_sessionmaker, now  # noqa: E402
+from nimstead.db import Advisory, Asset, AssetRuntime, Finding, make_sessionmaker, now  # noqa: E402
 from nimstead.scan import rescan  # noqa: E402
 from nimstead.verify_pack import verify  # noqa: E402
 
@@ -120,6 +120,8 @@ def services():
             "(/usr/sbin/sshd; nginx; true)")
     elif RPM:
         wsl("dnf -q -y install python3 nginx openssh-server postgresql-server cronie iproute lsof dnf-utils >/dev/null && "
+            # the WSL image is fully patched: the release's earlier builds of libraries nginx and sshd load give findings to rank and fix
+            "(dnf -q -y downgrade openssl-libs openssl krb5-libs libcurl curl expat >/dev/null 2>&1; true) && "
             "(postgresql-setup --initdb >/dev/null 2>&1; true) && systemctl enable --now nginx sshd postgresql crond >/dev/null 2>&1; true")
     else:
         wsl("apt-get update -qq && DEBIAN_FRONTEND=noninteractive NEEDRESTART_SUSPEND=1 apt-get install -y -qq python3-minimal nginx openssh-server "
@@ -315,10 +317,17 @@ def main(keep=False):
             for f in fs:
                 states[f.runtime] = states.get(f.runtime, 0) + 1
             raised = [f for f in fs if f.runtime == "listening" and any(" listening on " in r for r in f.reasons)]
-        note("findings by runtime state", states=states, listening_with_reason=len(raised),
-             sample=[(f.package, f.vuln_id, f.score, f.reasons[:3]) for f in raised[:3]])
-        check("4 a network listener's library is ranked with the reason", bool(raised) or not (loaded_by.keys() & {f.package for f in fs}),
-              listening=len(raised))
+        # exact, finding by finding: listening exactly when a program listening on the network loaded one of its source's binaries
+        on_listener = {src for src, progs in loaded_by.items() if progs & listening_progs}
+        wrong = [(f.package, f.vuln_id, f.runtime) for f in fs if (f.package in on_listener) != (f.runtime == "listening")]
+        note("findings by runtime state", states=states, listening_with_reason=len(raised), sources_on_a_listener=sorted(on_listener & {f.package for f in fs}),
+             wrong=wrong[:20], sample=[(f.package, f.vuln_id, f.score, f.reasons[:3]) for f in raised[:3]])
+        if not on_listener & {f.package for f in fs}:
+            checks["4 a network listener's library is ranked with the reason"] = "NOT EXERCISED"
+            note("no open finding on a library a listening program loaded on this host")
+        else:
+            check("4 a network listener's library is ranked with the reason", not wrong and all(
+                any(" listening on " in r for r in f.reasons) for f in fs if f.package in on_listener), listening=len(raised), wrong=len(wrong))
 
         # candidates: a source a running program loaded, with an upgrade waiting in the repository and findings that upgrade fixes
         if ALPINE:
@@ -413,10 +422,22 @@ def main(keep=False):
             fs = s.scalars(select(Finding).where(Finding.asset_id == a["asset_id"], Finding.status == "open")).all()
             lowered = [f for f in fs if f.runtime == "not_loaded" and any(r.startswith("Not loaded by any long-running program") for r in f.reasons)]
             kev_lowered = [f for f in fs if f.kev and any(r.startswith("Not loaded") for r in f.reasons)]
-        note("not loaded, seven days backdated", lowered=len(lowered), not_loaded=sum(f.runtime == "not_loaded" for f in fs),
-             sample=[(f.package, f.vuln_id, f.score, f.reasons[-1][:80]) for f in lowered[:3]])
-        check("4 a network flaw in native code nothing loads is lowered, never a KEV one", bool(lowered) and not kev_lowered,
-              lowered=len(lowered), kev_lowered=len(kev_lowered))
+            # exact, finding by finding, from its own advisories' CVSS vectors (this harness syncs no NVD, so a record without
+            # one has unknown vectors and must not be lowered)
+            def network_only(f):
+                recs = s.scalars(select(Advisory.record).where(Advisory.ecosystem == f.ecosystem, Advisory.package == f.package)).all()
+                v = set().union(*(risk.attack_vectors(r.get("severity")) for r in recs if r.get("id") in f.advisory_ids or f.vuln_id in (r.get("aliases") or [])))
+                return bool(v) and v <= {"N", "A"}
+            should = {f.id for f in fs if f.runtime == "not_loaded" and not f.kev and network_only(f)}
+            mismatch = [(f.package, f.vuln_id) for f in fs if (f.id in should) != (f in lowered)]
+        note("not loaded, seven days backdated", lowered=len(lowered), should=len(should), not_loaded=sum(f.runtime == "not_loaded" for f in fs),
+             mismatch=mismatch[:20], sample=[(f.package, f.vuln_id, f.score, f.reasons[-1][:80]) for f in lowered[:3]])
+        if not should:
+            checks["4 a network flaw in native code nothing loads is lowered, never a KEV one"] = "NOT EXERCISED"
+            note("no not-loaded finding whose own advisories say network only on this host")
+        else:
+            check("4 a network flaw in native code nothing loads is lowered, never a KEV one", not mismatch and not kev_lowered,
+                  lowered=len(lowered), kev_lowered=len(kev_lowered))
 
         # 5: fixes that restart what ran the old copy
         if len(cands) > 1:
@@ -461,19 +482,28 @@ def restart_programs(names):
 def fix_job(c, h, a, eco, source, by_source, report, Session):
     """5: the agent's own fix job. First a service the new version breaks (the restart fails, the fix rolls back and the
     service runs again on the restored version), then the same fix for real (the services restart, the job succeeds)."""
+    include: list[str] = []
+
     def run(health_units=None):
         if health_units is not None:
             c.patch(f"/api/assets/{a['asset_id']}", json={"health_units": health_units})
-        r = c.post("/api/remediation/jobs", json={"asset_id": a["asset_id"], "ecosystem": eco, "package": source})
-        assert r.status_code == 201, r.text
-        planned = r.json()
-        assert c.post(f"/api/remediation/jobs/{planned['id']}/approve").status_code == 200
-        [job] = c.get("/api/agent/jobs", headers=h).json()
-        rc, out = agent("run-job --yes", input=json.dumps(job).encode(), check=False)
-        res = json.loads([ln for ln in out.splitlines() if ln.startswith("{")][-1])
-        c.post(f"/api/agent/jobs/{planned['id']}/report", json=res, headers=h)
-        report()
-        j = next(x for x in c.get("/api/remediation/jobs").json() if x["id"] == planned["id"])
+        for _ in range(2):
+            r = c.post("/api/remediation/jobs", json={"asset_id": a["asset_id"], "ecosystem": eco, "package": source, "include": include})
+            assert r.status_code == 201, r.text
+            planned = r.json()
+            assert c.post(f"/api/remediation/jobs/{planned['id']}/approve").status_code == 200
+            [job] = c.get("/api/agent/jobs", headers=h).json()
+            rc, out = agent("run-job --yes", input=json.dumps(job).encode(), check=False)
+            res = json.loads([ln for ln in out.splitlines() if ln.startswith("{")][-1])
+            c.post(f"/api/agent/jobs/{planned['id']}/report", json=res, headers=h)
+            report()
+            j = next(x for x in c.get("/api/remediation/jobs").json() if x["id"] == planned["id"])
+            if j["status"] == "aborted" and "would also change: " in (j["error"] or "") and not include:
+                # what the UI's "Plan again including ..." does: add the dependencies the dry run named (Alpine's openssl needs musl)
+                include.extend(d.strip() for d in j["error"].split("would also change: ", 1)[1].split(";")[0].split(",") if d.strip())
+                note("re-planned including the dependencies the dry run named", include=include)
+                continue
+            return planned, res, j
         return planned, res, j
 
     bins = by_source[source]
@@ -535,10 +565,13 @@ def hostile(c, h, report):
     script = (
         "import ctypes, mmap, os, resource, subprocess, sys, time\n"
         "libc = ctypes.CDLL(None)\n"
+        "pids = []\n"
         "def child(name, body):\n"
-        "    if os.fork() == 0:\n"
+        "    pid = os.fork()\n"
+        "    if pid == 0:\n"
         "        libc.prctl(15, name, 0, 0, 0)\n"
         "        body(); time.sleep(600); os._exit(0)\n"
+        "    pids.append(pid)\n"
         "path = '/srv/x (deleted)\\nfoo'\n"
         "open(path, 'wb').write(b'\\0' * 4096)\n"
         "def mapit():\n"
@@ -549,8 +582,9 @@ def hostile(c, h, report):
         "    globals()['keep'] = [os.open('/dev/null', os.O_RDONLY) for _ in range(60000)]\n"
         "child(b'many-fds', fds)\n"
         "for _ in range(2000):\n"
-        "    subprocess.Popen(['sleep', '600'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)\n"
-        f"subprocess.Popen(['/usr/bin/env', 'API_TOKEN={SECRET}', 'python3', '-c', 'import time; time.sleep(600)', '--password={SECRET}'], start_new_session=True)\n"
+        "    pids.append(subprocess.Popen(['sleep', '600'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True).pid)\n"
+        f"pids.append(subprocess.Popen(['/usr/bin/env', 'API_TOKEN={SECRET}', 'python3', '-c', 'import time; time.sleep(600)', '--password={SECRET}'], start_new_session=True).pid)\n"
+        "open('/srv/pids', 'w').write(' '.join(map(str, pids)))\n"
         "time.sleep(3)\n"
     )
     wsl("cat > /srv/hostile.py", input=script.encode())
@@ -563,7 +597,7 @@ def hostile(c, h, report):
         "for i in $(seq 60); do [ $(ls /proc | grep -c '^[0-9]') -gt 2000 ] && break; sleep 1; done; sleep 2; "
         "ls /proc | grep -c '^[0-9]' > /srv/n; python3 /srv/timing.py > /srv/timing.json; "
         "python3 /opt/nimstead/agent.py collect > /srv/collect.json; "
-        "pkill -f 'sleep 600'; pkill -f 'time.sleep'; pkill -f many-fds; true", timeout=600)
+        "kill $(cat /srv/pids) 2>/dev/null; true", timeout=600)  # its own children only: pkill -f would match this command too
     n = wsl("cat /srv/n")[1].strip()
     t = json.loads(wsl("cat /srv/timing.json")[1])
     inv = json.loads(wsl("cat /srv/collect.json")[1])
@@ -575,7 +609,7 @@ def hostile(c, h, report):
     check("6 crafted names are sanitised and the report goes through", all(re.fullmatch(r"[A-Za-z0-9._@:+() ?-]+", p["name"]) for p in rt["programs"])
           and any(p["name"].startswith("ev?il") for p in rt["programs"]))
     check("7 the read takes under 3 s with 2,000 extra processes", t["seconds"] < 3, seconds=t["seconds"], processes=int(n))
-    wsl("pkill -f 'sleep 600'; pkill -f 'time.sleep'; true", check=False)
+    wsl("kill $(cat /srv/pids) 2>/dev/null; true", check=False)
 
 
 if __name__ == "__main__":

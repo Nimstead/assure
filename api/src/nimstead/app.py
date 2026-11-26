@@ -1730,10 +1730,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                              .where(Asset.org_id == user.org_id, InstalledPackage.ecosystem == "Windows")).all())
         keys = dict(s.execute(select(AssetAccess.asset_id, AssetAccess.data).where(AssetAccess.org_id == user.org_id)).all())  # one query (DECISIONS 168)
         rows = s.execute(select(Asset.id, Asset.hostname, Asset.facts, Asset.internet_facing).where(Asset.org_id == user.org_id, Asset.kind != "device"))
-        return engine_fleet.build([{"id": aid, "hostname": hostname, "facts": facts or {}, "os_version": win.get(aid, ""),
-                                    "report": latest.get(aid) or None, "internet_facing": facing,
-                                    "linux": "os_id" in (facts or {}), **({"access": keys[aid]} if aid in keys else {})}
-                                   for aid, hostname, facts, facing in rows])
+        out = engine_fleet.build([{"id": aid, "hostname": hostname, "facts": facts or {}, "os_version": win.get(aid, ""),
+                                   "report": latest.get(aid) or None, "internet_facing": facing,
+                                   "linux": "os_id" in (facts or {}), **({"access": keys[aid]} if aid in keys else {})}
+                                  for aid, hostname, facts, facing in rows])
+        return JSONResponse(out)  # plain JSON types already: no encoder walk over every edge and row
 
     class AssetPatch(BaseModel):
         criticality: Literal["low", "medium", "high", "critical"] | None = None

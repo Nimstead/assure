@@ -180,9 +180,9 @@ ranges), the same keys and caps Windows sends. A field the pass couldn't read is
 - Files: `docs/**`, `README.md`, `CHANGELOG.md`, `DECISIONS.md`, `STATUS.md`, version files
 
 ## Checkpoint D: complete
-- [ ] Every success criterion met with its run record.
-- [ ] All suites, `tsc`, build and e2e green.
-- [ ] Docs checks pass.
+- [x] Every success criterion met with its run record (last_run_paths.json, last_run_perf_sqlite_paths.json).
+- [x] All suites, `tsc`, build and e2e green.
+- [x] Docs checks pass.
 
 ## T12 Review
 - Acceptance:

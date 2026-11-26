@@ -87,7 +87,7 @@ The listener and connection observations can come from different report times. T
 
 ## Chains
 
-Each chain has `start`, `why_start`, and `reach`. A start needs a network path, or an internet-facing flag plus some host path.
+Each chain has `start`, `why_start`, and `reach`, at most 200 rows, nearest first; `reach_count` gives the full number when there are more. A start needs a network path, or an internet-facing flag plus some host path. Chains come largest first.
 
 | Reach field | Value |
 | --- | --- |

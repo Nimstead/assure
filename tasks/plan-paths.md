@@ -94,36 +94,36 @@ a JSON example in the todo. T8 waits for T5–T7's API shapes.
 ## Task list
 
 ### Phase 1: the riskiest part first (the lab, then the agent's read)
-- [ ] T0 Spike: the four-machine lab runs in a disposable WSL distro; real `ssh` between machines; fixtures and the body shape
-- [ ] T1 Agent parsers: `sshd -T`, key headers and fingerprints, `authorized_keys` options, groups, `sudo -l`, writable rule
-- [ ] T2 Agent pass: accounts, keys, writable files, credentials, peers; budgets; hostile files; secrets never sent; opt-out; 0.11.0
+- [x] T0 Spike: the four-machine lab runs in a disposable WSL distro; real `ssh` between machines; fixtures and the body shape
+- [x] T1 Agent parsers: `sshd -T`, key headers and fingerprints, `authorized_keys` options, groups, `sudo -l`, writable rule
+- [x] T2 Agent pass: accounts, keys, writable files, credentials, peers; budgets; hostile files; secrets never sent; opt-out; 0.11.0
 
 ### Checkpoint A
 - Agent suites green on Linux as root and non-root.
 - Every fixture's fingerprints equal `ssh-keygen -lf`.
 
 ### Phase 2: the server
-- [ ] T3 `AssetAccess` + migration; `access.py` validate, cap and store; inventory body; a 0.10.0 body judged exactly as before
-- [ ] T4 `linconfig.py`: six checks as `LinuxConfig` findings, unproven when unread, closing on a complete read
+- [x] T3 `AssetAccess` + migration; `access.py` validate, cap and store; inventory body; a 0.10.0 body judged exactly as before
+- [x] T4 `linconfig.py`: six checks as `LinuxConfig` findings, unproven when unread, closing on a complete read
 
 ### Checkpoint B
 - API suite green on SQLite and PostgreSQL 17.
 - No finding change on stored Windows or 0.10.0 Linux inventories.
 
 ### Phase 3: paths
-- [ ] T5 Engine context; Linux host paths (way-in user, root listener, settings for the user they help, credentials, `reaches`)
-- [ ] T6 Key edges in `fleet.build` (grading, `from=`, Allow/Deny, root login, what B hands over), chains across both systems
-- [ ] T7 Choke points in `fleet.choke_points` and `/api/attack-paths`; OpenAPI regenerated
+- [x] T5 Engine context; Linux host paths (way-in user, root listener, settings for the user they help, credentials, `reaches`)
+- [x] T6 Key edges in `fleet.build` (grading, `from=`, Allow/Deny, root login, what B hands over), chains across both systems
+- [x] T7 Choke points in `fleet.choke_points` and `/api/attack-paths`; OpenAPI regenerated
 
 ### Checkpoint C
 - API suite green.
 - Windows host and fleet paths byte-identical on the stored German Windows 10 inventory and the existing tests.
 
 ### Phase 4: UI, proof, scale, docs
-- [ ] T8 UI: Linux paths in the machine drawer, key edges in words, Choke points card, `LinuxConfig` findings; unit + e2e + axe
-- [ ] T9 Real proof `sandbox/paths_lab.py`, success criteria 1–6, record `sandbox/last_run_paths.json`
-- [ ] T10 `perf.py --paths`, criterion 7, record `sandbox/last_run_perf_sqlite_paths.json`
-- [ ] T11 Docs (design-paths, how-to, reference, explanation), README, CHANGELOG with Highlights, DECISIONS, STATUS, versions
+- [x] T8 UI: Linux paths in the machine drawer, key edges in words, Choke points card, `LinuxConfig` findings; unit + e2e + axe
+- [x] T9 Real proof `sandbox/paths_lab.py`, success criteria 1–6, record `sandbox/last_run_paths.json`
+- [x] T10 `perf.py --paths`, criterion 7, record `sandbox/last_run_perf_sqlite_paths.json`
+- [x] T11 Docs (design-paths, how-to, reference, explanation), README, CHANGELOG with Highlights, DECISIONS, STATUS, versions
 
 ### Checkpoint D: complete
 - Every success criterion met, with its run record.
@@ -131,8 +131,8 @@ a JSON example in the todo. T8 waits for T5–T7's API shapes.
 - Docs checks pass.
 
 ### Phase 5: review and ship
-- [ ] T12 Independent code review and security audit; each finding fixed with a test that fails first; mutation check
-- [ ] T13 Ship 0.15.0:
+- [x] T12 Independent code review and security audit; each finding fixed with a test that fails first; mutation check
+- [ ] T13 Ship 0.15.0 (not in this goal):
   - PR, CI green, squash-merge, tag
   - release gate (the owner's), then verify the release
   - STATUS line

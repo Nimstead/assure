@@ -557,7 +557,7 @@ interface EdgeWay { via: string; how: string; because: string; grade: string; gi
 interface Edge { from: string; to: string; grade: string; kind?: "ssh"; ways: EdgeWay[] }
 export interface ChokePoint { kind: "way-in" | "retire-key" | "untrust-key" | "setting"; action: string; cuts: number; hosts: string[]; ways_removed: number; lower_bound: boolean; ref: string }
 interface AttackPathsData {
-  hosts: Record<string, FleetHost>; truncated?: boolean; edges?: Edge[]; chains: { start: string; why_start: string; reach: Reach[] }[]; choke_points?: ChokePoint[];
+  hosts: Record<string, FleetHost>; truncated?: boolean; edges?: Edge[]; chains: { start: string; why_start: string; reach: Reach[]; reach_count?: number }[]; choke_points?: ChokePoint[];
 }
 
 /** A link's way across in words: an SSH key by its fingerprint's start, a setting by its check. */
@@ -609,7 +609,7 @@ export function AttackPaths() {
       <ChokePoints points={d.choke_points ?? []} name={name} />
       {d.chains.map((c) => (
         <div key={c.start} className="flex flex-col gap-1">
-          <h3 className="text-sm font-semibold">From {name(c.start)} ({c.why_start}), an attacker can reach {plural(c.reach.length, "other host")}</h3>
+          <h3 className="text-sm font-semibold">From {name(c.start)} ({c.why_start}), an attacker can reach {plural(c.reach_count ?? c.reach.length, "other host")}{c.reach_count ? `, the nearest ${c.reach.length} listed` : ""}</h3>
           <ul className="flex flex-col gap-1 text-sm">
             {c.reach.map((r) => (
               <li key={r.host} className="break-words">

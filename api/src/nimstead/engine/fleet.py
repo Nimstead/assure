@@ -447,8 +447,12 @@ def _chains(judged: list[dict], gives: dict, g: _Graph) -> list[dict]:
                  "fix_on_host": sorted({w["via"] for w in edges[hops[-1]]["ways"]}), "as": "root" if v == "root" else sorted(v)}
                 for h, (v, hops) in hosts]
         if rows:
-            out.append({"start": start, "why_start": "a path from the network" if gives[start]["entry"] else "marked internet-facing", "reach": rows})
-    return sorted(out, key=lambda c: -len(c["reach"]))[:MAX_CHAINS]
+            out.append({"start": start, "why_start": "a path from the network" if gives[start]["entry"] else "marked internet-facing",
+                        "reach": rows[:MAX_REACH], **({"reach_count": len(rows)} if len(rows) > MAX_REACH else {})})
+    return sorted(out, key=lambda c: -c.get("reach_count", len(c["reach"])))[:MAX_CHAINS]
+
+
+MAX_REACH = 200  # rows per chain, nearest first: 35 chains of 999 made a 10 MB response no page can show (reach_count says how many)
 
 
 MAX_CANDIDATES = 200  # besides every start's way in; each scored by one walk, and only if it removes a way the walk used

@@ -284,6 +284,7 @@ def build(hosts: list[dict]) -> dict:
     reach = {h["id"]: _own_reach(h.get("report")) for h in judged}
     seen = {h["id"] for h in judged}
     chains = _chains(judged, gives, every, reach)
+    choke = choke_points(judged, gives, every, reach, {h["id"]: h["hostname"] for h in hosts}, truncated or kcut)
     shown = edges + kedges[:max(0, MAX_EDGES - len(edges))]
     return {"hosts": {h["id"]: {"hostname": h["hostname"], "judged": h["id"] in seen, "entry": gives.get(h["id"], {}).get("entry", False),
                                 "internet_facing": bool(h.get("internet_facing")),
@@ -291,7 +292,7 @@ def build(hosts: list[dict]) -> dict:
                                            "break_at": p["break_at"], **({"reaches": p["reaches"]} if "reaches" in p else {})}
                                           for p in (h["report"] or {}).get("attack_paths", [])] if h["id"] in seen else []}
                       for h in hosts},
-            "edges": shown, "truncated": truncated or kcut or len(shown) < len(every), "chains": chains}
+            "edges": shown, "truncated": truncated or kcut or len(shown) < len(every), "chains": chains, "choke_points": choke}
 
 
 def _linux(h: dict) -> bool:
@@ -310,37 +311,115 @@ def _starts(judged: list[dict], gives: dict, reach: dict) -> dict[str, object]:
     return out
 
 
-def _arrive(e: dict, held, reach: dict) -> object | None:
-    """What crossing edge e gives on its target, holding `held` ("root" or a set of users) on its source; None when no way
-    across can be used from there. A Windows edge gives administrator rights; a key gives what the key's account is on B."""
-    ways = [w for w in e["ways"] if "needs" not in w or held == "root" or w["needs"] in held]
+def _arrive(e: dict, i: int, held, reach: dict, gone: frozenset = frozenset()) -> object | None:
+    """What crossing edge e (index i) gives on its target, holding `held` ("root" or a set of users) on its source; None when
+    no way across can be used from there. A Windows edge gives administrator rights; a key gives what the key's account is on
+    B. A way whose (edge, way) index pair is in gone is treated as removed (choke points)."""
+    ways = [w for wi, w in enumerate(e["ways"]) if (i, wi) not in gone and ("needs" not in w or held == "root" or w["needs"] in held)]
     if not ways:
         return None
     got = "root" if any(w.get("gives", "root") == "root" for w in ways) else frozenset(w["gives"] for w in ways)
     return "root" if got == "root" or reach.get(e["to"], {}).get("foothold_root") else got
 
 
-def _better(new, old) -> bool:
-    return old is None or (old != "root" and (new == "root" or not set(new) <= set(old)))
+def _merge(new, old):
+    """What is held on a host reached again: root dominates, otherwise every account held either way; None when nothing grew."""
+    if old is None:
+        return new
+    if old == "root":
+        return None
+    if new == "root":
+        return "root"
+    both = frozenset(old) | frozenset(new)
+    return both if both != frozenset(old) else None
 
 
-def walk(starts: dict, nxt: dict, reach: dict, skip: frozenset = frozenset()) -> dict[str, tuple]:
-    """Every host reachable from the starts by the fewest hops: host -> (what is held there, the edges that led there). An edge
-    whose index is in skip is treated as gone (choke points). Holding more on a host already reached walks on from it again."""
+def walk(starts: dict, nxt: dict, reach: dict, gone: frozenset = frozenset()) -> dict[str, tuple]:
+    """Every host reachable from the starts by the fewest hops: host -> (what is held there, the edges that first led there).
+    Holding more on a host already reached walks on from it again, since more of its keys are usable."""
     best: dict[str, tuple] = {h: (held, []) for h, held in starts.items()}
     q = deque(best)
     while q:
         at = q.popleft()
         held, hops = best[at]
         for i, e in nxt.get(at, []):
-            if i in skip:
+            got = _arrive(e, i, held, reach, gone)
+            if got is None:
                 continue
-            got = _arrive(e, held, reach)
-            if got is None or not _better(got, best.get(e["to"], (None,))[0]):
+            old = best.get(e["to"])
+            merged = _merge(got, old[0] if old else None)
+            if merged is None:
                 continue
-            best[e["to"]] = (got, [*hops, i])
+            best[e["to"]] = (merged, old[1] if old else [*hops, i])
             q.append(e["to"])
     return best
+
+
+MAX_CANDIDATES = 200  # each scored by one walk of the whole graph: 200 x 50,000 edges at worst
+CHOKE_SHOWN = 10
+
+
+def choke_points(judged: list[dict], gives: dict, edges: list[dict], reach: dict, names: dict, truncated: bool = False) -> list[dict]:
+    """Up to ten single actions that cut the most machines off from every way in, largest first (tasks/spec-paths.md Module
+    4, DECISIONS 169): close one start's way in, retire a key everywhere, untrust a key on one machine, or change one setting on
+    one machine. Each is scored by walking the graph again without what it removes. When the edge list was cut short, the
+    counts are a lower bound and say so."""
+    starts = _starts(judged, gives, reach)
+    if not starts:
+        return []
+    nxt: dict[str, list] = defaultdict(list)
+    for i, e in enumerate(edges):
+        nxt[e["from"]].append((i, e))
+    before = set(walk(starts, nxt, reach))
+    cands: dict[tuple, dict] = {}
+    for i, e in enumerate(edges):
+        if e["from"] not in before:
+            continue  # an edge no chain can cross can't cut anything
+        for wi, w in enumerate(e["ways"]):
+            if "key" in w:
+                cands.setdefault(("retire-key", w["key"]), {"ways": set(), "holders": set(), "trusted": set()})
+                c = cands[("retire-key", w["key"])]
+                c["ways"].add((i, wi))
+                c["holders"].add((e["from"], w["path"]))
+                c["trusted"].add(e["to"])
+                u = cands.setdefault(("untrust-key", w["key"], e["to"], w["account"]), {"ways": set()})
+                u["ways"].add((i, wi))
+            else:
+                cands.setdefault(("setting", w["via"], e["to"]), {"ways": set()})["ways"].add((i, wi))
+    for h in starts:
+        if gives[h]["entry"]:  # a host only marked internet-facing has no way in to close
+            cands[("way-in", h)] = {"ways": set()}
+    ranked = sorted(cands.items(), key=lambda kv: (-len(kv[1]["ways"]), kv[0]))[:MAX_CANDIDATES]
+    out = []
+    for key, c in ranked:
+        s = {h: v for h, v in starts.items() if key != ("way-in", h)}
+        after = set(walk(s, nxt, reach, frozenset(c["ways"])))
+        cut = sorted(before - after)
+        if not cut:
+            continue
+        out.append({"kind": key[0], "action": _action(key, c, names, judged), "cuts": len(cut), "hosts": cut[:50], "ways_removed": len(c["ways"]),
+                    "lower_bound": truncated, "ref": key[1]})
+    out.sort(key=lambda x: (-x["cuts"], ("way-in", "retire-key", "untrust-key", "setting").index(x["kind"]), x["action"]))
+    return out[:CHOKE_SHOWN]
+
+
+def _action(key: tuple, c: dict, names: dict, judged: list[dict]) -> str:
+    """A choke point in words: what to do, and where."""
+    n = lambda h: names.get(h, h)  # noqa: E731
+    if key[0] == "way-in":
+        h = next(x for x in judged if x["id"] == key[1])
+        net = next((p for p in (h.get("report") or {}).get("attack_paths") or [] if p["kind"] == "network"), None)
+        refs = [w["ref"] for w in net["steps"][0]["ways"]] if net else []
+        count = net["steps"][0]["count"] if net else 0
+        return (f"Close {n(key[1])}'s way in: " + (", ".join(refs[:3]) + (f" and {count - 3} more" if count > 3 else "")) if refs else
+                f"Close {n(key[1])}'s way in (it's marked internet-facing)")
+    if key[0] == "retire-key":
+        held = sorted(f"{p} on {n(h)}" for h, p in c["holders"])
+        return (f"Retire the SSH key {key[1][:19]}…: delete it ({'; '.join(held[:3])}{' and more' if len(held) > 3 else ''}) and remove it from "
+                f"the authorized_keys of the {len(c['trusted'])} machine{'s' * (len(c['trusted']) != 1)} that trust it")
+    if key[0] == "untrust-key":
+        return f"Remove the key {key[1][:19]}… from {key[3]}'s authorized_keys on {n(key[2])}"
+    return f"Fix {key[1]} on {n(key[2])}"
 
 
 def _chains(judged: list[dict], gives: dict, edges: list[dict], reach: dict) -> list[dict]:
@@ -352,7 +431,7 @@ def _chains(judged: list[dict], gives: dict, edges: list[dict], reach: dict) -> 
     out = []
     for start, held in _starts(judged, gives, reach).items():
         got = walk({start: held}, nxt, reach)
-        hosts = [(h, v) for h, v in got.items() if h != start]
+        hosts = [(h, v) for h, v in got.items() if h != start and v[1]]
         hosts.sort(key=lambda x: (len(x[1][1]), x[0]))
         rows = [{"host": h, "hops": [edges[i]["to"] for i in hops], "grade": _grade(*(edges[i]["grade"] for i in hops)),
                  "fix_on_host": sorted({w["via"] for w in edges[hops[-1]]["ways"]}), "as": "root" if v == "root" else sorted(v)}

@@ -179,3 +179,71 @@ def test_the_endpoint_links_two_reporting_hosts_by_their_keys(env):
     paths = out["hosts"][web]["paths"]
     assert paths and paths[0]["kind"] == "network" and paths[0]["reaches"]["root"] is True
     assert any(ch["start"] == web and ch["reach"][0]["host"] == db for ch in out["chains"])
+
+
+# ---- choke points ---------------------------------------------------------------------------------------------------
+
+def reached(out):
+    """Every host an attacker holds something on, read from the endpoint's own output: starts and chain reaches."""
+    return {h for h, v in out["hosts"].items() if v["entry"]} | {r["host"] for c in out["chains"] for r in c["reach"]}
+
+
+def test_retiring_one_deploy_key_cuts_the_machines_it_alone_opened():
+    hosts = [lhost("web-1", "10.0.0.1", keys=[held(K_DEPLOY, "deploy")], paths=[path()]),
+             *[lhost(f"app-{i}", f"10.0.0.{10 + i}", trusted=[trusts(K_DEPLOY, "deploy")], accounts=[account("root", 0), account("deploy", 1000, ["docker"])])
+               for i in range(3)],
+             lhost("db-1", "10.0.0.20", trusted=[trusts(K_DEPLOY, "deploy"), trusts(K_OTHER)], accounts=[account("root", 0), account("deploy", 1000, ["docker"])]),
+             lhost("bk-1", "10.0.0.30", keys=[held(K_OTHER)], paths=[path()])]
+    choke = fleet.build(hosts)["choke_points"]
+    first, key = choke[0], next(c for c in choke if c["kind"] == "retire-key")
+    assert (first["kind"], first["ref"], first["cuts"]) == ("way-in", "web-1", 4)  # web-1 itself and the three it alone opens
+    assert key["ref"] == K_DEPLOY and key["cuts"] == 3  # db-1 stays reachable through bk-1's key
+    assert key["hosts"] == ["app-0", "app-1", "app-2"] and "trust it" in key["action"] and "web-1" in key["action"]
+    assert all(not c["lower_bound"] for c in choke)
+    assert [c["cuts"] for c in choke] == sorted((c["cuts"] for c in choke), reverse=True)
+
+
+def test_a_cut_short_graph_says_its_counts_are_a_lower_bound(monkeypatch):
+    monkeypatch.setattr(fleet, "KEY_EDGES_MAX", 2)
+    hosts = [A()] + [lhost(f"b{i}", f"10.0.1.{i}", trusted=[trusts(K_ROOT)]) for i in range(4)]
+    choke = fleet.build(hosts)["choke_points"]
+    assert choke and all(c["lower_bound"] for c in choke)
+
+
+def without(hosts, c):
+    """The same fleet with choke point c done for real in its inputs."""
+    out = []
+    for h in hosts:
+        h = {**h, "access": {**h["access"]}, "report": {**h["report"]}}
+        if c["kind"] == "retire-key":
+            h["access"]["held"] = [k for k in h["access"]["held"] if k["fp"] != c["ref"]]
+            h["access"]["trusted"] = [t for t in h["access"]["trusted"] if t["fp"] != c["ref"]]
+        elif c["kind"] == "way-in" and h["id"] == c["ref"]:
+            h["report"]["attack_paths"] = [p for p in h["report"]["attack_paths"] if p["kind"] != "network"]
+        out.append(h)
+    return out
+
+
+@pytest.mark.parametrize("seed", range(40))
+def test_choke_point_counts_equal_a_brute_force_recount(seed):
+    import random
+    rnd = random.Random(seed)  # noqa: S311 — reproducible test graphs
+    pool = [("SHA256:" + chr(65 + i) * 43, rnd.choice(["root", "deploy"])) for i in range(6)]
+    hosts = []
+    for i in range(9):
+        paths = []
+        if rnd.random() < 0.3:
+            paths.append(path(root=rnd.random() < 0.5, users=["deploy"] if rnd.random() < 0.5 else ["www-data"]))
+        if rnd.random() < 0.2:
+            paths.append(path("foothold"))
+        keys = [held(fp, who) for fp, who in rnd.sample(pool, rnd.randint(0, 2))]
+        trusted = [trusts(fp, rnd.choice(["root", "deploy"])) for fp, _ in rnd.sample(pool, rnd.randint(0, 3))]
+        accts = [account("root", 0), account("deploy", 1000, ["docker"] if rnd.random() < 0.3 else [])]
+        hosts.append(lhost(f"h{i}", f"10.0.0.{i + 1}", keys=keys, trusted=trusted, accounts=accts, paths=paths))
+    out = fleet.build(hosts)
+    before = reached(out)
+    for c in out["choke_points"]:
+        if c["kind"] == "untrust-key":
+            continue  # its target is named in words; retire-key and way-in are recounted exactly
+        after = reached(fleet.build(without(hosts, c)))
+        assert len(before - after) == c["cuts"], (seed, c)

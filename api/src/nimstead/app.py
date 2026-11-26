@@ -1713,7 +1713,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
         Requires a session or eligible read-only token. Does not rescan assets.
         The organisation limit is 120 reads per hour, with 429 on refusal.
-        Response has hosts, edges, truncated and chains. At most 2000 edges and
+        Response has hosts, edges, truncated, chains and choke_points (DECISIONS 168-169): SSH key edges between Linux hosts
+        beside Windows ones, and the single actions that cut the most machines off. At most 2000 edges and
         50 chain starts are returned. This GET commits its usage counter."""
         if over_limit(s, "attack-paths:" + user.org_id, 120):  # a whole-fleet read: shared server, so bounded per organisation
             raise HTTPException(429, "Attack paths were read too often this hour; try again later")

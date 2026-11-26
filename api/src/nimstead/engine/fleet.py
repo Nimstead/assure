@@ -175,7 +175,7 @@ def key_edges(hosts: list[dict]) -> tuple[list[dict], bool]:
                 b, fb = acc[bid], byid[bid].get("facts") or {}
                 sshd = b.get("sshd") or {}
                 ssh = (byid[bid].get("report") or {}).get("ssh") or {}
-                if not sshd.get("installed") or sshd.get("pubkeyauthentication") == "no" or ssh.get("listening") is False:
+                if not sshd.get("installed") or sshd.get("running") is False or sshd.get("pubkeyauthentication") == "no" or ssh.get("listening") is False:
                     continue
                 acct = next((x for x in b.get("accounts") or [] if x["name"] == t["account"]), {"groups": []})
                 ok, _ = _user_allowed(sshd, t["account"], acct.get("groups") or [], sorted(addrs))

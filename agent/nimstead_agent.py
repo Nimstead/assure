@@ -2164,9 +2164,11 @@ def access_read(root="/", run=None, euid=None, clock=time.monotonic):
     if sshd_path:
         rc, out = run([sshd_path, "-T"], 5)
         parsed = parse_sshd_t(out) if rc == 0 else None
-        if parsed is None:
+        if parsed is None and "privilege separation directory" in out:  # Debian: /run/sshd exists only while the service runs
+            sshd = {"installed": True, "running": False}
+        elif parsed is None:  # its settings unread: nothing about them may be concluded, so the read is partial
             sshd = None
-            say("sshd -T: " + (out.strip().splitlines() or ["no output"])[0][:120])
+            say("sshd -T: " + (out.strip().splitlines() or ["no output"])[0][:120], stop=True)
         else:
             conf = [_text_of(p("/etc/ssh/sshd_config")) or ""] + [_text_of(f) or "" for f in sorted(glob.glob(p("/etc/ssh/sshd_config.d/*.conf")))[:64]]
             sshd = {"installed": True, **parsed, "match": sshd_has_match(conf)}

@@ -247,3 +247,8 @@ def test_choke_point_counts_equal_a_brute_force_recount(seed):
             continue  # its target is named in words; retire-key and way-in are recounted exactly
         after = reached(fleet.build(without(hosts, c)))
         assert len(before - after) == c["cuts"], (seed, c)
+
+
+def test_an_sshd_that_isnt_running_makes_no_edge():
+    stopped = lhost("b", "10.0.0.2", trusted=[trusts(K_ROOT)], sshd={"installed": True, "running": False})
+    assert edge(fleet.build([A(), stopped])) is None

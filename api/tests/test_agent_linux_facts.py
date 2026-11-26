@@ -401,7 +401,16 @@ def test_no_sshd_installed_is_said_and_a_failing_sshd_is_unread(tmp_path):
     assert agent.access_read(root=str(tmp_path), run=lambda a, t: (1, ""), euid=0)["sshd"] == {"installed": False}
     write(tmp_path, "/usr/sbin/sshd", "", 0o755)
     a = agent.access_read(root=str(tmp_path), run=lambda a, t: (255, "sshd: no hostkeys available -- exiting.\n"), euid=0)
-    assert a["sshd"] is None and "sshd -T" in a["problem"]
+    assert a["sshd"] is None and "sshd -T" in a["problem"] and a["state"] == "partial"  # settings unread: conclude nothing
+
+
+@POSIX
+def test_an_installed_sshd_that_isnt_running_says_so(tmp_path):
+    # Debian: /run/sshd exists only while the service runs, so sshd -T refuses (seen in the paths lab)
+    write(tmp_path, "/etc/passwd", "root:x:0:0:root:/root:/bin/bash\n")
+    write(tmp_path, "/usr/sbin/sshd", "", 0o755)
+    a = agent.access_read(root=str(tmp_path), run=lambda a, t: (255, "Missing privilege separation directory: /run/sshd\r\n"), euid=0)
+    assert a["sshd"] == {"installed": True, "running": False} and a["state"] == "ok"
 
 
 def test_an_unexpected_error_is_a_failed_read_never_a_lost_inventory():

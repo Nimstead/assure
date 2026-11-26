@@ -322,11 +322,15 @@ def facts_check(srv, invs):
             want = sorted(on(m, f"id -Gn {a['name']} 2>/dev/null; true").split())
             if want and a["groups"] != want:
                 d.append({"what": "groups", "account": a["name"], "agent": a["groups"], "oracle": want})
-        t = on(m, "sshd -T 2>&1")
-        oracle = {ln.split(" ", 1)[0]: ln.split(" ", 1)[1].strip() for ln in t.splitlines() if " " in ln}
-        for k in ("permitrootlogin", "pubkeyauthentication", "passwordauthentication", "permitemptypasswords"):
-            if (acc.get("sshd") or {}).get(k) != oracle.get(k):
-                d.append({"what": "sshd", "key": k, "agent": (acc.get("sshd") or {}).get(k), "oracle": oracle.get(k)})
+        t = on(m, "sshd -T 2>&1; true")
+        if "privilege separation directory" in t:  # installed, not running (web-1): sshd -T itself refuses
+            if acc.get("sshd") != {"installed": True, "running": False}:
+                d.append({"what": "sshd", "agent": acc.get("sshd"), "oracle": "installed, not running"})
+        else:
+            oracle = {ln.split(" ", 1)[0]: ln.split(" ", 1)[1].strip() for ln in t.splitlines() if " " in ln}
+            for k in ("permitrootlogin", "pubkeyauthentication", "passwordauthentication", "permitemptypasswords"):
+                if (acc.get("sshd") or {}).get(k) != oracle.get(k):
+                    d.append({"what": "sshd", "key": k, "agent": (acc.get("sshd") or {}).get(k), "oracle": oracle.get(k)})
         files = on(m, "for f in /root/.ssh/* /home/*/.ssh/*; do case $f in *.pub|*authorized_keys*|*known_hosts*|*/config) continue;; esac; "
                       "[ -f \"$f\" ] && [ ! -L \"$f\" ] && head -c 40 \"$f\" | grep -q 'PRIVATE KEY' && "
                       "if [ -f \"$f.pub\" ]; then echo \"$f $(ssh-keygen -lf \"$f.pub\" | cut -d' ' -f2)\"; else echo \"$f $(ssh-keygen -lf \"$f\" 2>/dev/null | cut -d' ' -f2)\"; fi; done; true")

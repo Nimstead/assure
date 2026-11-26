@@ -53,6 +53,8 @@ def _sshd(v) -> dict | None:
         return None
     if v.get("installed") is False:
         return {"installed": False}
+    if v.get("installed") is True and v.get("running") is False:  # installed but not running: no settings to read, nothing to sign in to
+        return {"installed": True, "running": False}
     if v.get("installed") is not True or v.get("permitrootlogin") not in ROOT_LOGIN:
         return None
     out = {"installed": True, "permitrootlogin": v["permitrootlogin"], "authorizedkeyscommand": v.get("authorizedkeyscommand") is True,

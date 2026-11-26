@@ -114,3 +114,7 @@ def test_a_body_from_an_older_agent_stores_nothing(env):
     assert row(env, aid) is None
     report(c, h, {"v": 1, "state": "ok", "accounts": "not a list"})  # reduced, still stored, carrying nothing usable
     assert json.loads(json.dumps(row(env, aid).data))["accounts"] == []
+
+
+def test_an_installed_sshd_not_running_is_kept_as_such():
+    assert access.valid(read(sshd={"installed": True, "running": False}))["sshd"] == {"installed": True, "running": False}

@@ -63,8 +63,10 @@ def build(inv: Inventory, content: Content, verdicts: list[Verdict]) -> list[dic
     plus host settings. Return at most one network path, then one foothold path.
     Each stage shows at most five ways, with its full count. Does not scan or
     modify inputs. Malformed internal models can raise KeyError, TypeError or ValueError."""
-    if inv.is_linux or inv.kind == "application":
-        return []  # shortcut: Windows settings are what make most chains here; Linux needs its own settings facts first
+    if inv.kind == "application":
+        return []
+    if inv.is_linux:
+        return build_linux(inv, content, verdicts)
     facts_grade = Grade.CONFIRMED.value if inv.source("host_facts").state == "ok" else Grade.UNVERIFIED.value
     ways: dict[str, list[dict]] = {s: [] for s in STAGES}
     for f in winconfig.evaluate(inv.facts, next((p["version"] for p in inv.packages if p.get("ecosystem") == "Windows"), "")):
@@ -105,14 +107,150 @@ def build(inv: Inventory, content: Content, verdicts: list[Verdict]) -> list[dic
     return out
 
 
-def _path(kind: str, stages: list[str], ways: dict) -> dict:
-    steps = [{"stage": s, "label": STAGES[s], "ways": ways[s][:_SHOWN], "count": len(ways[s])} for s in stages]
+LINUX_LABELS = {**STAGES, "escalate": "Becoming root"}
+ANYONE = "anyone with an account"
+
+
+def _listeners(inv: Inventory, product: str) -> list[dict]:
+    """The programs listening beyond loopback that loaded any binary of this source package in the last seven days."""
+    binaries = {p["name"] for p in inv.packages if (p.get("source") or p["name"]) == product} or {product}
+    heard = inv.context.get("listening") or {}
+    return [x for b in sorted(binaries) for x in heard.get(b, [])]
+
+
+def _who(listeners: list[dict]) -> set[str]:
+    return {u for x in listeners for u in x.get("users") or []}
+
+
+def ssh_state(inv: Inventory) -> dict | None:
+    """{"listening", "how"} for this Linux host's sshd, from the runtime read when it saw sshd, else its configuration; None
+    when neither was read. Stored in the report, so the fleet view knows whether a key trusted here can be used."""
+    from nimstead import linconfig
+    acc = inv.context.get("access") or {}
+    heard = inv.context.get("listening")
+    programs = None if heard is None else [{"name": x["program"], "listen": x["listen"]} for xs in heard.values() for x in xs]
+    got = linconfig.ssh_listening(programs, acc.get("sshd")) if acc else None
+    return {"listening": got[0], "how": got[1]} if got else None
+
+
+def build_linux(inv: Inventory, content: Content, verdicts: list[Verdict]) -> list[dict]:
+    """Attack paths on one Linux host (tasks/spec-paths.md Module 3, DECISIONS 167), privilege-aware: a way in names the user
+    the listening program runs as; a program running as root skips becoming root; a setting helps only the users it names;
+    credentials are every key on the machine once root, only the way-in user's own before. Each path says what it reaches
+    ("root", or the users), which the fleet view uses to decide whose keys an attacker holds. Returns [] when nothing chains."""
+    from nimstead import linconfig
+    acc = inv.context.get("access") or {}
+    facts_grade = Grade.CONFIRMED.value if acc.get("state") == "ok" else Grade.UNVERIFIED.value
+    st = ssh_state(inv)
+    ssh = (st["listening"], st["how"]) if st else None
+    entry, escalate = [], []
+    for f in linconfig.evaluate(acc, ssh) if acc else []:
+        stage = linconfig.STAGE[f["package"]]
+        way = {"what": f["summary"].split(". ")[0], "ref": f["vuln_id"], "grade": facts_grade, "kev": False, "helps": f["helps"]}
+        if stage == "entry":  # signing in as root, or as the accounts with no password
+            entry.append({**way, "users": {"root"} if f["package"] == "ssh-root-password" else
+                          {a["name"] for a in acc.get("accounts", []) if a.get("password") == "empty" and a.get("login")}})
+        elif stage == "escalate":
+            escalate.append(way)
+    vec = _vectors(content)
+    found: dict[tuple, list] = {}
+    for v in verdicts:
+        if v.outcome != Outcome.VULNERABLE or not v.vuln_id:
+            continue
+        s = _stage(v, vec.get((v.ecosystem, v.product, v.vuln_id), {}))
+        if s:
+            found.setdefault((s[0], v.product, v.instance), []).append((v, s[1]))
+    for (stage, product, instance), vs in found.items():
+        vs.sort(key=lambda x: (not x[0].kev, x[0].vuln_id))
+        v, why = vs[0]
+        more = f" (and {len(vs) - 1} more like it in the same package)" if len(vs) > 1 else ""
+        what, grade = f"{v.vuln_id} in {instance or product}: {why}{more}", v.grade.value if v.grade else None
+        if stage == "escalate":
+            escalate.append({"what": what, "ref": v.vuln_id, "grade": grade, "kev": v.kev, "flaws": len(vs), "helps": [ANYONE]})
+            continue
+        ls = _listeners(inv, product)
+        if ls:
+            x = ls[0]
+            users = _who(ls)
+            what += (f". Loaded by {x['program']}, listening on {', '.join(a.split('/')[0] for a in x['listen'][:2])}"
+                     + (f", running as {', '.join(sorted(users))}" if users else "") + "; the host firewall isn't read")
+            entry.append({"what": what, "ref": v.vuln_id, "grade": _grade(grade, "reasonable"), "kev": v.kev, "flaws": len(vs), "users": users})
+        elif v.kev:  # exploited in the wild: worth a path without seeing a listener, and said so
+            entry.append({"what": what + "; CISA lists it as exploited, no listener was seen", "ref": v.vuln_id, "grade": _grade(grade, "reasonable"),
+                          "kev": True, "flaws": len(vs), "users": set()})
+    held = [h for h in acc.get("held", []) if isinstance(h, dict)]
+
+    def creds(users: set[str] | None) -> list[dict]:
+        """Credentials an attacker holds as root (users None) or as these users."""
+        out = []
+        for h in held:
+            if users is None or h["account"] in users:
+                out.append({"what": f"{h['account']}'s SSH key {h['path']}" + (" (needs its passphrase)" if h["passphrase"] else " (no passphrase)"),
+                            "ref": h["fp"], "grade": "unverified" if h["passphrase"] else facts_grade, "kev": False})
+        for c in acc.get("credentials", []):
+            if users is None or c["account"] in users:
+                out.append({"what": "the machine's Kerberos keytab (its domain account)" if c["kind"] == "keytab" else
+                            f"{c['account']}'s {c['kind']} credentials file {c['path']}: opens something beyond this fleet, not followed",
+                            "ref": c["path"], "grade": facts_grade, "kev": False})
+        return out
+
+    def usable(way: dict, users: set[str]) -> bool:
+        return ANYONE in way["helps"] or bool(users & set(way["helps"]))
+
+    def order(ws):
+        return sorted(ws, key=lambda x: (not x["kev"], -_ORDER.index(x["grade"] or "unverified"), x["ref"]))
+
+    out = []
+    as_root = [w for w in entry if "root" in w["users"]]
+    if as_root:
+        ways = {"entry": order(as_root), "credentials": order(creds(None))}
+        out.append(_path("network", ["entry", *(["credentials"] if ways["credentials"] else [])], ways, LINUX_LABELS,
+                         reaches={"root": True, "users": []}, skipped="the way in runs as root, so getting in is becoming root",
+                         keys=len(held)))
+    elif entry:
+        users = set().union(*(w["users"] for w in entry))
+        up = order([w for w in escalate if usable(w, users)])
+        mine = order(creds(users))
+        if up:
+            ways = {"entry": order(entry), "escalate": up, "credentials": order(creds(None))}
+            out.append(_path("network", ["entry", "escalate", *(["credentials"] if ways["credentials"] else [])], ways, LINUX_LABELS,
+                             reaches={"root": True, "users": []}, keys=len(held)))
+        elif mine:
+            ways = {"entry": order(entry), "credentials": mine}
+            out.append(_path("network", ["entry", "credentials"], ways, LINUX_LABELS, reaches={"root": False, "users": sorted(users)},
+                             keys=len([h for h in held if h["account"] in users])))
+    anyone = order([w for w in escalate if ANYONE in w["helps"]])
+    root_creds = order(creds(None))
+    if anyone and root_creds:
+        out.append(_path("foothold", ["escalate", "credentials"], {"escalate": anyone, "credentials": root_creds}, LINUX_LABELS,
+                         reaches={"root": True, "users": []}, keys=len(held)))
+    for p in out:  # sets and helper keys stay out of the stored report
+        for st in p["steps"]:
+            st["ways"] = [{k: v for k, v in w.items() if k not in ("users", "helps")} for w in st["ways"]]
+    return out
+
+
+def _path(kind: str, stages: list[str], ways: dict, labels: dict = STAGES, reaches: dict | None = None, skipped: str | None = None,
+          keys: int = 0) -> dict:
+    if labels is LINUX_LABELS:
+        lateral = {"label": labels["lateral"], "ways": [{"what": f"{keys} SSH key{'s' * (keys != 1)} this path takes: the fleet view shows which "
+                                                                  "machines trust them", "ref": "SSH keys", "grade": None, "kev": False}],
+                   "count": keys} if keys else None
+        ways = {**ways, "lateral": lateral["ways"] if lateral else []}
+    steps = [{"stage": s, "label": labels[s], "ways": ways[s][:_SHOWN], "count": len(ways[s])} for s in stages]
     narrow = min(steps, key=lambda x: x["count"])  # first of the narrowest: the earliest place to break it
-    return {"kind": kind, "start": "from the network" if kind == "network" else "from any program already running on it as a user",
-            "grade": _grade(*(st["ways"][0]["grade"] for st in steps)), "steps": steps,
-            "then": {"label": STAGES["lateral"], "ways": ways["lateral"][:_SHOWN], "count": len(ways["lateral"])} if ways["lateral"] else None,
-            "break_at": {"stage": narrow["stage"], "label": narrow["label"], "fixes": narrow["count"],
-                         "refs": [w["ref"] for w in ways[narrow["stage"]]][:_SHOWN]}}
+    out = {"kind": kind, "start": "from the network" if kind == "network" else "from any program already running on it as a user",
+           "grade": _grade(*(st["ways"][0]["grade"] for st in steps)), "steps": steps,
+           "then": {"label": STAGES["lateral"], "ways": ways["lateral"][:_SHOWN], "count": len(ways["lateral"])} if ways["lateral"] else None,
+           "break_at": {"stage": narrow["stage"], "label": narrow["label"], "fixes": narrow["count"],
+                        "refs": [w["ref"] for w in ways[narrow["stage"]]][:_SHOWN]}}
+    if labels is LINUX_LABELS:  # Windows reports keep their shape byte for byte
+        out["reaches"] = reaches or {"root": False, "users": []}
+        if lateral:
+            out["then"]["count"] = keys
+        if skipped:
+            out["skipped"] = {"stage": "escalate", "label": labels["escalate"], "why": skipped}
+    return out
 
 
 def render(paths: list[dict]) -> list[str]:
@@ -128,6 +266,8 @@ def render(paths: list[dict]) -> list[str]:
         for st in p["steps"]:
             out.append(f"    {st['label']}: {st['count']} way{'s' * (st['count'] > 1)}")
             out += [f"      - {w['what']}" for w in st["ways"]]
+            if st["stage"] == "entry" and (sk := p.get("skipped")):
+                out.append(f"    {sk['label']}: not needed, {sk['why']}")
         if t := p["then"]:
             out.append(f"    Then {t['label'].lower()}: " + "; ".join(w["what"] for w in t["ways"]))
         b = p["break_at"]

@@ -123,6 +123,10 @@ class Inventory:
     received: bool = True
     kind: str = "host"  # or "application": an SBOM, no agent
     sbom: dict | None = None  # the latest SBOM upload's counts and when it arrived, from the evidence ledger
+    # what the server knows beside the packages, for attack paths (DECISIONS 167): "listening" (binary -> programs listening
+    # beyond loopback that loaded it, and their users) and "access" (the latest access read). Empty for Windows and SBOMs, so
+    # their documents and hashes don't move
+    context: dict = field(default_factory=dict)
 
     @classmethod
     def from_doc(cls, doc: dict) -> Inventory:
@@ -140,7 +144,7 @@ class Inventory:
                    sent if valid_document(sent) else None, "packages" in doc)
 
     @classmethod
-    def from_asset(cls, asset: Asset, pkgs: list[InstalledPackage], sbom: dict | None = None) -> Inventory:
+    def from_asset(cls, asset: Asset, pkgs: list[InstalledPackage], sbom: dict | None = None, context: dict | None = None) -> Inventory:
         """Return an Inventory from an Asset, its InstalledPackage rows pkgs, and optional SBOM metadata.
 
         Sort packages for stable hashing and retain the distinction between agent and SBOM origins.
@@ -155,7 +159,7 @@ class Inventory:
                      **({"source_version": p.source_version} if p.source_version else {}),  # absent for old rows: their hash doesn't move
                      **({"origin": "sbom"} if p.origin == "sbom" else {})}
                     for p in sorted(pkgs, key=lambda p: (p.ecosystem, p.name, p.version, p.source or "", p.origin or ""))],
-                   asset.collection, asset.last_inventory_at is not None, asset.kind or "host", sbom)
+                   asset.collection, asset.last_inventory_at is not None, asset.kind or "host", sbom, context or {})
 
     def to_doc(self) -> dict:
         """Return the inventory dictionary used for stored records and inventory hashes.
@@ -164,7 +168,8 @@ class Inventory:
         serialized. Non-host kind and nonempty sbom metadata are included when present."""
         return {"hostname": self.hostname, "os_name": self.os_name, "ecosystem": self.ecosystem, "agent_version": self.agent_version,
                 "collected_at": self.collected_at, "facts": self.facts, "collection": self.document, "packages": self.packages,
-                **({"kind": self.kind} if self.kind != "host" else {}), **({"sbom": self.sbom} if self.sbom else {})}
+                **({"kind": self.kind} if self.kind != "host" else {}), **({"sbom": self.sbom} if self.sbom else {}),
+                **({"context": self.context} if self.context else {})}
 
     def sha256(self) -> str:
         """Return the SHA-256 hex digest of the sorted-key JSON inventory document."""

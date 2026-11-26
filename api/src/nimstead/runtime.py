@@ -250,6 +250,20 @@ def _day(v) -> str:
     return f"{d.day} {d:%b} {d:%H:%M} UTC" if d else "recently"
 
 
+def listening(row: AssetRuntime | None, t: datetime | None = None) -> dict[str, list[dict]]:
+    """{binary package: [{program, users, listen}]} for each package a program listening beyond loopback was seen loading in
+    the last seven days, with the users that program ran as at the latest read (empty when it wasn't in it): what attack
+    paths need to say who an attacker becomes by getting in (DECISIONS 167)."""
+    if row is None:
+        return {}
+    t, users = t or now(), {p["name"]: p.get("users") or [] for p in row.programs or [] if isinstance(p, dict) and "name" in p}
+    out = {}
+    for pkg, e in (row.seen or {}).items():
+        if (net := _at(e.get("net"))) and net > t - MEMORY:
+            out[pkg] = [{"program": n, "users": users.get(n, []), "listen": addrs} for n, addrs in e.get("net_by") or []]
+    return out
+
+
 def view(s: Session, asset: Asset, t: datetime | None = None) -> View:
     """The host's runtime view; an empty one (every state unknown) for a host without a read, or any other kind of asset."""
     return View(s.get(AssetRuntime, asset.id) if asset.kind == "host" else None, t)

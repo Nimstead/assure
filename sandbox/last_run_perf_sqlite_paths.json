@@ -3,73 +3,65 @@
   "db": "sqlite",
   "advisories": 99000,
   "inventory_ingest": {
-    "median_s": 1.132,
-    "p95_s": 1.272,
-    "max_s": 1.355
+    "median_s": 1.217,
+    "p95_s": 1.381,
+    "max_s": 1.638
   },
   "GET /api/attack-paths (key edges, chains, choke points)": {
-    "median_s": 2.031,
-    "max_s": 2.041
+    "median_s": 0.852,
+    "max_s": 1.221
   },
   "attack_paths": {
     "edges_listed": 2000,
     "truncated": true,
-    "chains": 35,
-    "largest_chain": 999,
+    "partial": false,
+    "chains": 1,
+    "largest_chain": 200,
     "choke_points": 0,
     "top_choke": null,
     "top_cuts": 0
   },
   "GET /api/summary (home page)": {
-    "median_s": 0.243,
-    "max_s": 0.271
+    "median_s": 0.247,
+    "max_s": 0.255
   },
   "open_findings": 297100,
   "GET /api/findings (default 500)": {
-    "median_s": 0.317,
-    "max_s": 0.318
+    "median_s": 0.316,
+    "max_s": 0.323
   },
   "GET /api/findings?limit=5000": {
-    "median_s": 0.559,
-    "max_s": 0.561
+    "median_s": 0.695,
+    "max_s": 0.915
   },
   "GET /api/findings?q=pkg42": {
-    "median_s": 0.38,
-    "max_s": 0.383
+    "median_s": 0.4,
+    "max_s": 0.422
   },
   "GET /api/assets": {
-    "median_s": 0.348,
-    "max_s": 0.349
+    "median_s": 0.342,
+    "max_s": 0.347
   },
   "GET /api/progress?days=365 (ledger replay)": {
-    "median_s": 2.995,
-    "max_s": 5.855
+    "median_s": 3.172,
+    "max_s": 6.006
   },
   "GET /api/evidence/pack": {
-    "median_s": 8.922,
-    "max_s": 8.922
+    "median_s": 9.155,
+    "max_s": 9.155
   },
-  "rematch_all_s": 41.4,
+  "rematch_all_s": 43.2,
   "GET /api/windows-updates": {
-    "median_s": 0.133,
-    "max_s": 0.137
+    "median_s": 0.14,
+    "max_s": 0.143
   },
   "GET /api/windows-updates/{kb} (drill down)": {
-    "median_s": 0.139,
-    "max_s": 0.142
+    "median_s": 0.152,
+    "max_s": 0.351
   },
   "windows_updates_drilldown_kib": 197,
   "GET /api/summary (with Windows hosts)": {
-    "median_s": 0.395,
-    "max_s": 0.398
-  },
-  "attack_paths_after_trims": {
-    "median_s": 1.388,
-    "max_s": 1.39,
-    "edges_listed": 2000,
-    "chains": 35,
-    "largest_chain": 999,
-    "response_mb": 2.9,
-    "note": "GET /api/attack-paths measured again on this run's own database (1,000 hosts, ~20,000 key edges) after the response was trimmed: a JSONResponse with no encoder walk, and chains capped at 200 rows each with reach_count; the 2.031 s above is before those trims"
+    "median_s": 0.394,
+    "max_s": 0.395
   }
 }

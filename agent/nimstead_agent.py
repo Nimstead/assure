@@ -11,6 +11,7 @@
 import argparse
 import base64
 import binascii
+import calendar
 import collections
 import email.utils
 import errno
@@ -18,6 +19,7 @@ import glob
 import hashlib
 import io
 import ipaddress
+import itertools
 import json
 import ntpath
 import os
@@ -1711,12 +1713,17 @@ ACCESS_WRITABLE = 50                # writable ones sent
 ACCESS_SUDO = 32                    # accounts asked about with sudo -l
 ACCESS_SUDO_SECONDS = 3             # each: -n never waits for a password, but PAM or a directory can be slow
 ACCESS_SECONDS = 10                 # the whole pass
-ACCESS_FROM = 16                    # from= patterns kept per key, each at most 64 characters
+ACCESS_FROM = 16                    # from= patterns read per key, each at most 64 characters; a line with more isn't counted
+ACCESS_HELD = 256                   # private keys sent
+ACCESS_CREDS = 100                  # credential files named
+ACCESS_GROUPS = 64                  # groups per account
+ACCESS_LISTED = 64                  # files read from a cron or sshd_config.d folder
+ACCESS_SSH_ENTRIES = 256            # entries listed in one ~/.ssh: a user can fill theirs (security audit)
 ROOT_EQUIVALENT = ("docker", "lxd", "incus-admin", "disk")  # a member runs as root at will (a container, the raw disk)
 SSHD_SETTINGS = ("permitrootlogin", "pubkeyauthentication", "passwordauthentication", "kbdinteractiveauthentication",
                  "permitemptypasswords", "authorizedkeysfile", "authorizedkeyscommand", "allowusers", "denyusers", "allowgroups",
-                 "denygroups", "port", "listenaddress", "strictmodes", "usepam")
-_SSHD_LISTS = ("authorizedkeysfile", "allowusers", "denyusers", "allowgroups", "denygroups", "port", "listenaddress")
+                 "denygroups", "port", "listenaddress", "strictmodes", "usepam", "authenticationmethods", "forcecommand")
+_SSHD_LISTS = ("authorizedkeysfile", "allowusers", "denyusers", "allowgroups", "denygroups", "port", "listenaddress", "authenticationmethods")
 KEY_TYPES = ("ssh-ed25519", "ssh-rsa", "ssh-dss", "ecdsa-sha2-nistp256", "ecdsa-sha2-nistp384", "ecdsa-sha2-nistp521",
              "sk-ssh-ed25519@openssh.com", "sk-ecdsa-sha2-nistp256@openssh.com")
 _ACCESS_NAME = re.compile(r"[^A-Za-z0-9._@+-]")
@@ -1872,10 +1879,10 @@ def _split_options(opts):
 
 
 def parse_authorized_keys(text):
-    """(keys, skipped) from authorized_keys text: each key's fp, type, from= patterns, and whether command= (forced) or
-    restrict applies. Comments are dropped; cert-authority lines (certificate trust, V2) and lines that don't parse are
-    counted as skipped. No I/O."""
-    keys, skipped = [], 0
+    """(keys, skipped, long from=) from authorized_keys text: each key's fp, type, from= patterns, and whether command=
+    (forced) or restrict applies. Comments are dropped; cert-authority lines (certificate trust, V2), expired keys and lines
+    that don't parse are counted as skipped, and lines whose from= is longer than is read are counted apart. No I/O."""
+    keys, skipped, long_from = [], 0, 0
     for raw in text.splitlines():
         line = raw.strip()
         if not line or line.startswith("#"):
@@ -1886,12 +1893,29 @@ def parse_authorized_keys(text):
             opts = _split_options(otext)
         names = {n for n, _ in opts}
         parsed = parse_public_key(line)
-        if parsed is None or "cert-authority" in names:
+        if parsed is None or "cert-authority" in names or any(n == "expiry-time" and _expired(v) for n, v in opts):
             skipped += 1
             continue
-        frm = [p.strip()[:64] for n, v in opts if n == "from" and v for p in v.split(",") if p.strip()][:ACCESS_FROM]
+        frm = [p.strip() for n, v in opts if n == "from" and v for p in v.split(",") if p.strip()]
+        if len(frm) > ACCESS_FROM or any(len(x) > 64 for x in frm):
+            long_from += 1  # read in part, the one left out could be the negation that refuses: not counted (test review)
+            continue
         keys.append({"type": parsed[0], "fp": parsed[1], "from": frm, "forced": "command" in names, "restrict": "restrict" in names})
-    return keys, skipped
+    return keys, skipped, long_from
+
+
+def _expired(value, now=None):
+    """Whether an expiry-time= value has passed, as sshd judges it (YYYYMMDD[HHMM[SS]], local time, or UTC with a Z); one it
+    can't parse refuses the key too (code review: an expired key still made a link). No I/O."""
+    m = re.fullmatch(r"(\d{8})(\d{4})?(\d{2})?(Z?)", (value or "").strip())
+    if not m:
+        return True
+    try:
+        t = time.strptime(m[1] + (m[2] or "0000") + (m[3] or "00"), "%Y%m%d%H%M%S")
+    except ValueError:
+        return True
+    at = calendar.timegm(t) if m[4] else time.mktime(t)
+    return at <= (now if now is not None else time.time())
 
 
 def expand_keys_file(pattern, home, user, uid):
@@ -1931,6 +1955,7 @@ def parse_sshd_t(text):
     if "permitrootlogin" not in out or "port" not in out:
         return None
     out["authorizedkeyscommand"] = out.get("authorizedkeyscommand", "none").lower() != "none"
+    out["forcecommand"] = out.get("forcecommand", "none").lower() != "none"  # whether one is set; what it runs never leaves
     for k in _SSHD_LISTS:
         out.setdefault(k, [])
         out[k] = out[k][:64]
@@ -2200,7 +2225,9 @@ def access_read(root="/", run=None, euid=None, clock=time.monotonic):
     accounts = []
     for name, uid, gid, home, shell in picked:
         mine = sorted({gname.get(gid, str(gid)), *(g for g, (_, members) in groups.items() if name in members)})
-        accounts.append({"name": _ACCESS_NAME.sub("?", name)[:64], "uid": uid, "groups": [_ACCESS_NAME.sub("?", g)[:64] for g in mine][:64],
+        if len(mine) > ACCESS_GROUPS:
+            say(f"an account in more than {ACCESS_GROUPS} groups: the first {ACCESS_GROUPS} read", stop=True)
+        accounts.append({"name": _ACCESS_NAME.sub("?", name)[:64], "uid": uid, "groups": [_ACCESS_NAME.sub("?", g)[:64] for g in mine][:ACCESS_GROUPS],
                          "login": login_shell(shell), "password": shadow.get(name), "sudo_all": None,
                          "_home": home, "_raw": name})
 
@@ -2210,14 +2237,16 @@ def access_read(root="/", run=None, euid=None, clock=time.monotonic):
     if sshd_path:
         rc, out = run([sshd_path, "-T"], 5)
         parsed = parse_sshd_t(out) if rc == 0 else None
-        conf = [_text_of(p("/etc/ssh/sshd_config")) or ""] + [_text_of(f) or "" for f in sorted(glob.glob(p("/etc/ssh/sshd_config.d/*.conf")))[:64]]
+        dropins = sorted(glob.glob(p("/etc/ssh/sshd_config.d/*.conf")))
+        if len(dropins) > ACCESS_LISTED:
+            say(f"more than {ACCESS_LISTED} files in sshd_config.d: the first {ACCESS_LISTED} read", stop=True)
+        conf = [_text_of(p("/etc/ssh/sshd_config")) or ""] + [_text_of(f) or "" for f in dropins[:ACCESS_LISTED]]
         ports = {m for t in conf for m in re.findall(r"(?im)^\s*port\s+(\d{1,5})\s*$", t)} or {"22"}
         held_port = any(a.rsplit(":", 1)[1].split("/")[0] in ports for proto in ("tcp", "tcp6")
                         for a, _ in parse_net(_text_of(p(f"/proc/net/{proto}")) or "", proto))
         if parsed is None and "privilege separation directory" in out and not held_port:  # Debian: /run/sshd exists only while it runs
             sshd = {"installed": True, "running": False}
         elif parsed is None:  # its settings unread (or socket activation holds its port): nothing may be concluded, so partial
-            sshd = None
             sshd = None
             say("sshd -T: " + (out.strip().splitlines() or ["no output"])[0][:120], stop=True)
         else:
@@ -2250,10 +2279,12 @@ def access_read(root="/", run=None, euid=None, clock=time.monotonic):
     # files root runs, and whether anyone else can replace them or a folder above them
     root_run = [(x, "cron") for x in CRON_PLACES]
     for c in CRON_PLACES[1:]:
-        try:
-            root_run += [(c + "/" + n, "cron") for n in sorted(os.listdir(p(c)))[:64]]
-        except OSError:
-            pass
+        names = _listed(p(c), ACCESS_LISTED)
+        if names is None:
+            continue
+        if len(names) > ACCESS_LISTED:
+            say(f"more than {ACCESS_LISTED} files in {c}: the first {ACCESS_LISTED} checked", stop=True)
+        root_run += [(c + "/" + n, "cron") for n in sorted(names)[:ACCESS_LISTED]]
     if os.path.isdir(p("/run/systemd/system")) and not late():
         rc, out = run(["systemctl", "list-units", "--type=service", "--state=running", "--no-legend", "--plain"], 10)
         if rc != 0:  # services' files unread: a writable one may be missing, so nothing about them is concluded (code review)
@@ -2277,24 +2308,30 @@ def access_read(root="/", run=None, euid=None, clock=time.monotonic):
         if late():
             break
         real = os.path.realpath(p(path))
-        if not os.path.exists(real) or real in checked:
+        # and the folder holding the path as written: a link in a folder someone else can write is theirs to point anywhere,
+        # whatever it points at now (security audit)
+        starts = (real,) + tuple({os.path.realpath(os.path.dirname(p(path)))} - {os.path.dirname(real)})
+        if not os.path.exists(real) or starts in checked:
             continue
-        checked.add(real)
-        at = real
-        while at != base:  # "/" itself is root's on any machine that boots; under a test's root it's the test's folder
-            try:
-                st = os.stat(at)
-            except OSError:
-                break
-            who = who_can_write(st.st_mode, st.st_uid, st.st_gid, stat.S_ISDIR(st.st_mode), user_of, group_of)
+        checked.add(starts)
+        for at in starts:
+            who = None
+            while at != base:  # "/" itself is root's on any machine that boots; under a test's root it's the test's folder
+                try:
+                    st = os.stat(at)
+                except OSError:
+                    break
+                who = who_can_write(st.st_mode, st.st_uid, st.st_gid, stat.S_ISDIR(st.st_mode), user_of, group_of)
+                if who:
+                    rel = os.path.relpath(at, base)
+                    shown = "/" + ("" if rel == "." else rel.replace(os.sep, "/"))
+                    writable.append({"path": _where(path), "kind": kind, "by": who, "at": _where(shown)})
+                    break
+                if os.path.dirname(at) == at:
+                    break
+                at = os.path.dirname(at)
             if who:
-                rel = os.path.relpath(at, base)
-                shown = "/" + ("" if rel == "." else rel.replace(os.sep, "/"))
-                writable.append({"path": _where(path), "kind": kind, "by": who, "at": _where(shown)})
                 break
-            if os.path.dirname(at) == at:
-                break
-            at = os.path.dirname(at)
     if len(writable) > ACCESS_WRITABLE:
         say(f"more than {ACCESS_WRITABLE} writable files root runs: the first {ACCESS_WRITABLE} sent")
         writable = writable[:ACCESS_WRITABLE]
@@ -2331,7 +2368,10 @@ def access_read(root="/", run=None, euid=None, clock=time.monotonic):
                 say("a ~/.ssh that is a link is not read")
         try:
             if dfd is not None:
-                names = sorted(os.listdir(dfd))
+                names = _listed(dfd, ACCESS_SSH_ENTRIES) or []
+                if len(names) > ACCESS_SSH_ENTRIES:
+                    say(f"more than {ACCESS_SSH_ENTRIES} entries in a ~/.ssh: the first {ACCESS_SSH_ENTRIES} read", stop=True)
+                names = sorted(names[:ACCESS_SSH_ENTRIES])
                 files = [n for n in names if not n.endswith(".pub") and n not in _NOT_KEYS and not n.startswith(".")]
                 if len(files) > ACCESS_KEY_FILES:
                     say(f"more than {ACCESS_KEY_FILES} files in a ~/.ssh: the first {ACCESS_KEY_FILES} read", stop=True)
@@ -2355,6 +2395,9 @@ def access_read(root="/", run=None, euid=None, clock=time.monotonic):
                     if k["fp"] is None:
                         unidentified += 1
                         continue
+                    if len(held) >= ACCESS_HELD:
+                        say(f"more than {ACCESS_HELD} private keys: the first {ACCESS_HELD} sent", stop=True)
+                        break
                     held.append({"account": a["name"], "path": _where(home.rstrip("/") + "/.ssh/" + n), "type": k["type"], "fp": k["fp"],
                                  "passphrase": k["passphrase"], "checked": k.get("checked") is True})
             mine = 0
@@ -2385,7 +2428,9 @@ def access_read(root="/", run=None, euid=None, clock=time.monotonic):
                 if strict and not _strict_ok(st, p(path), p(home.rstrip("/")) if inside else base, uid):
                     say("sshd ignores an authorized_keys file (StrictModes: bad ownership or modes)")
                     continue
-                keys, _ = parse_authorized_keys(data.decode("utf-8", "replace"))
+                keys, _, long_from = parse_authorized_keys(data.decode("utf-8", "replace"))
+                if long_from:
+                    say(f"an authorized_keys line with more than {ACCESS_FROM} from= patterns or a longer one: not counted", stop=True)
                 for k in keys:
                     if mine >= ACCESS_TRUSTED or len(trusted) >= ACCESS_TRUSTED_TOTAL:
                         say(f"more than {ACCESS_TRUSTED} trusted keys for an account or {ACCESS_TRUSTED_TOTAL} in all: the rest not read", stop=True)
@@ -2397,15 +2442,30 @@ def access_read(root="/", run=None, euid=None, clock=time.monotonic):
                 os.close(dfd)
         for rel, kind in CREDENTIAL_FILES:
             if _regular_beneath(p(home.rstrip("/") + "/" + rel)):
+                if len(creds) >= ACCESS_CREDS:
+                    say(f"more than {ACCESS_CREDS} credential files: the first {ACCESS_CREDS} named", stop=True)
+                    break
                 creds.append({"kind": kind, "account": a["name"], "path": _where(home.rstrip("/") + "/" + rel)})
-    if _regular_beneath(p("/etc/krb5.keytab")):
+    if _regular_beneath(p("/etc/krb5.keytab")) and len(creds) >= ACCESS_CREDS:
+        say(f"more than {ACCESS_CREDS} credential files: the first {ACCESS_CREDS} named", stop=True)
+    elif _regular_beneath(p("/etc/krb5.keytab")):
         creds.append({"kind": "keytab", "account": "root", "path": "/etc/krb5.keytab"})
     sockets = _agent_sockets(p("/tmp"))  # noqa: S108 — where ssh-agent puts its sockets; only counted, never opened
     for a in accounts:
         del a["_home"], a["_raw"]
     return {"v": 1, "state": "partial" if partial else "ok", "problem": "; ".join(problems)[:300] or None, "sshd": sshd,
-            "accounts": accounts, "writable": writable, "shadow_readable_by": shadow_by, "held": held[:256], "trusted": trusted,
-            "credentials": creds[:100], "agent_sockets": sockets, "unidentified_keys": unidentified}
+            "accounts": accounts, "writable": writable, "shadow_readable_by": shadow_by, "held": held, "trusted": trusted,
+            "credentials": creds, "agent_sockets": sockets, "unidentified_keys": unidentified}
+
+
+def _listed(where, cap):
+    """Up to cap + 1 names in a folder (a path or a descriptor), without listing the rest: one more than cap says there are
+    more; None when it can't be opened."""
+    try:
+        with os.scandir(where) as it:
+            return [e.name for e in itertools.islice(it, cap + 1)]
+    except OSError:
+        return None
 
 
 def _dir_fd(path):

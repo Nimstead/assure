@@ -13,8 +13,9 @@ The endpoint limits an organisation to 120 reads per hour. It returns `429` when
 | `truncated` | True when an edge exists beyond the ones listed, or when key edges stopped at their 50,000 limit |
 | `chains` | Up to 50 start-host reachability groups, largest first |
 | `choke_points` | Up to 10 single actions that cut the most machines off from every start, largest first |
+| `partial` | True when chains and choke points may be missing something: Windows edges stopped at 2000, key ways at 50,000, or more than 1,000 starts needed a walk |
 
-Chains and choke points walk every edge found, not only the 2000 listed. Windows edges stop at 2000 when they're found, so past that a Windows route can be missing from both. The 50-chain limit has no separate truncation flag.
+Chains and choke points walk every edge found, not only the 2000 listed. Windows edges stop at 2000 when they're found, so past that a Windows route can be missing from both, and `partial` says so. The 50-chain limit has no separate truncation flag.
 
 ## Host summaries
 
@@ -57,7 +58,7 @@ A key edge exists when a private key held on the source has the same SHA-256 fin
 - the target's report doesn't say sshd listens only on loopback. Only a complete runtime read under 36 hours old can say so; anything listening on sshd's port counts, as systemd does for socket activation.
 - the account can sign in. An sshd without PAM (one that prints no `usepam yes`, like Alpine's) refuses an account whose password is locked with `!`, keys included. An account whose shell is `nologin` or `false` gets no session.
 
-One way is kept per (key, account, who must hold it) per pair, the best graded; a key held or trusted twice is one way. Key ways stop at 50,000 in all (`truncated` then says so). The response lists at most 5 ways per edge, and `ways_count` gives the full number when there are more.
+One way is kept per (key, account, who must hold it) per pair, the best graded; a key held or trusted twice is one way. Key ways stop at 50,000 in all (`truncated` and `partial` then say so). Sources are taken fewest possible ways first, so a host claiming many holders of the fleet's keys spends only what is left, never what other hosts need. The response lists at most 5 ways per edge, and `ways_count` gives the full number when there are more.
 
 | Way field | Value |
 | --- | --- |
@@ -67,27 +68,28 @@ One way is kept per (key, account, who must hold it) per pair, the best graded; 
 | `account` | The account the target trusts the key for |
 | `needs` | Who must hold the key on the source: `root`, or the account that owns the file |
 | `gives` | What the target hands over: `root` when the account is root, in a root-equivalent group or has `NOPASSWD: ALL`, otherwise the account |
-| `port` | 22 |
+| `port` | sshd's first port, 22 unless set otherwise |
 | `how` | The key and the account in words |
 | `because` | What the grade rests on |
 | `grade` | `unverified`, `reasonable`, or `confirmed` |
 
-A key way is `reasonable`, or `confirmed` when the source was seen connected to one of the target's addresses. A `Match` block in the target's sshd caps it at `reasonable`. It's `unverified` when any of these holds:
+A key way is `reasonable`, or `confirmed` when the source was seen connected to one of the target's addresses on sshd's port. A `Match` block in the target's sshd caps it at `reasonable`. There's no way when the target's `AuthenticationMethods` never lists `publickey`, or the key line's `expiry-time` has passed (the agent leaves the line out). It's `unverified` when any of these holds:
 
 - the key needs its passphrase
-- the line forces a command
+- the line forces a command, or the target's sshd sets `ForceCommand`
+- the target's `AuthenticationMethods` asks for another method besides the key in every list
 - the target also takes keys from an `AuthorizedKeysCommand`
 - a host name in `from=` or AllowUsers decides it (nothing here resolves names)
 - the key is `ssh-dss` (off by default since OpenSSH 7.0) or a security-key type (it also needs its hardware)
 - a non-root account holds the key and its private half couldn't be checked against its public half
 
-The agent checks an unencrypted Ed25519 or RSA key, and doesn't count a file whose private half belongs to another key. `restrict` alone keeps the grade and is said in `because`. No key, comment or forced command ever leaves a machine: only fingerprints do. Nothing here signs in anywhere.
+The agent checks an unencrypted Ed25519 or RSA key, and doesn't count a file whose private half belongs to another key. A key line whose `from=` has more than 16 patterns, or one over 64 characters, isn't counted, and the read is partial: the pattern left out could be the negation that refuses. `restrict` alone keeps the grade and is said in `because`. No key, comment or forced command ever leaves a machine: only fingerprints do. Nothing here signs in anywhere.
 
 The listener and connection observations can come from different report times. They do not establish current routing, a successful sign-in, or exploitation.
 
 ## Chains
 
-Each chain has `start`, `why_start`, and `reach`, at most 200 rows, nearest first; `reach_count` gives the full number when there are more. A start needs a network path, or an internet-facing flag plus some host path. Chains come largest first.
+Each chain has `start`, `why_start`, and `reach`, at most 200 rows, nearest first; `reach_count` gives the full number when there are more. A start needs a network path, or an internet-facing flag plus some host path. A start that an earlier start reaches holding at least what its own way in gives has no chain of its own: everything it reaches is in that start's chain. Chains come largest first.
 
 | Reach field | Value |
 | --- | --- |
@@ -101,7 +103,7 @@ The walk is breadth first and knows what the attacker holds on each host. A key 
 
 ## Choke points
 
-Each candidate is scored by walking the whole graph again without what it removes. Every start's way in is scored, plus at most 200 other candidates, those on the most ways first, and of those only the ones that remove a way the full walk used: removing an unused way leaves every host's derivation standing, so it cuts nothing. Closing the way in of a start also marked internet-facing with another path leaves it a start, holding what that path gives. The ten that cut the most machines come back, largest first.
+Each candidate is scored by walking the whole graph again without what it removes. Every start's way in is scored (up to 1,000), except that of a start another start reaches holding as much, which cuts nothing. At most 200 other candidates are scored, those on the most ways first, and of those only the ones that remove a way the full walk used: removing an unused way leaves every host's derivation standing, so it cuts nothing. Closing the way in of a start also marked internet-facing with another path leaves it a start, holding what that path gives. The ten that cut the most machines come back, largest first, after any resting only on unverified ways: someone told to retire a key everywhere on one planted file's word could break real access.
 
 | Field | Value |
 | --- | --- |
@@ -112,6 +114,8 @@ Each candidate is scored by walking the whole graph again without what it remove
 | `ways_removed` | How many ways across the action removes |
 | `lower_bound` | True when the graph was cut short, so `cuts` may be higher |
 | `ref` | The start's asset ID, the key's fingerprint, or the setting reference |
+| `grade` | The best grade among the ways it removes; for `way-in`, the start's network path's grade |
+| `on`, `account` | For `untrust-key`: the asset ID of the machine and the account the key is trusted for there |
 
 ## Related
 

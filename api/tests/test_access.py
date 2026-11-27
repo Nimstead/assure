@@ -18,7 +18,8 @@ def read(state="ok", **kw):
             "sshd": {"installed": True, "permitrootlogin": "prohibit-password", "pubkeyauthentication": "yes", "passwordauthentication": "no",
                      "kbdinteractiveauthentication": "no", "permitemptypasswords": "no", "strictmodes": "yes", "authorizedkeysfile": [".ssh/authorized_keys"],
                      "authorizedkeyscommand": False, "allowusers": [], "denyusers": [], "allowgroups": [], "denygroups": [], "port": ["22"],
-                     "listenaddress": ["0.0.0.0:22"], "match": False, "usepam": "yes"},
+                     "listenaddress": ["0.0.0.0:22"], "match": False, "usepam": "yes",
+                     "authenticationmethods": ["any"], "forcecommand": False},
             "accounts": [{"name": "root", "uid": 0, "groups": ["root"], "login": True, "password": "locked", "sudo_all": None},
                          {"name": "www-data", "uid": 33, "groups": ["docker", "www-data"], "login": False, "password": "locked", "sudo_all": False}],
             "writable": [{"path": "/etc/cron.d/backup", "kind": "cron", "by": "everyone", "at": "/etc/cron.d/backup"}],
@@ -41,7 +42,11 @@ def test_what_doesnt_fit_is_dropped_never_the_read():
                   {"account": "root", "path": "/a‮b", "type": "ssh-ed25519", "fp": FP, "passphrase": False},  # bidirectional override
                   {"account": "root", "path": "/a\nb", "type": "ssh-ed25519", "fp": FP, "passphrase": False},      # control character
                   {"account": "root", "path": "/k", "type": "ssh-ed25519", "fp": "MD5:aa:bb", "passphrase": False}]
-    r["trusted"] += [{"account": "root", "fp": FP, "type": "ssh-ed25519", "from": ["10.0.0.0/8", "evil host", "x" * 200], "forced": "yes"}]
+    r["trusted"] += [{"account": "root", "fp": FP, "type": "ssh-ed25519", "from": ["10.0.0.0/8"], "forced": "yes"},
+                     # a from= entry that can't be read could be the negation that refuses: the line is dropped, never widened
+                     {"account": "root", "fp": FP, "type": "ssh-ed25519", "from": ["10.0.0.0/8", "!evil host"], "forced": False},
+                     {"account": "root", "fp": FP, "type": "ssh-ed25519", "from": ["x" * 200], "forced": False},
+                     {"account": "root", "fp": FP, "type": "ssh-ed25519", "from": "10.0.0.0/8", "forced": False}]
     r["writable"] += [{"path": "/etc/x", "kind": "magic", "by": "everyone"}, {"path": "/etc/y", "kind": "cron", "by": "root"}]
     r["sshd"]["permitrootlogin"] = "yes"
     r["sshd"]["allowusers"] = ["deploy", "bad user", 7]
@@ -63,6 +68,31 @@ def test_lists_are_capped(monkeypatch):
 def test_anything_that_isnt_a_read_is_refused_or_reduced_and_never_raises(raw):
     v = access.valid(raw)
     assert v is None or (v["accounts"] == [] and v["held"] == [] and v["sshd"] is None and v["shadow_readable_by"] is None)
+
+
+def _paths(v, at=()):
+    """Every scalar inside a read, as a path of keys and indexes."""
+    if isinstance(v, dict):
+        for k, x in v.items():
+            yield from _paths(x, (*at, k))
+    elif isinstance(v, list) and v and not isinstance(v[0], str):
+        for i, x in enumerate(v):
+            yield from _paths(x, (*at, i))
+    else:
+        yield at
+
+
+@pytest.mark.parametrize("bad", [[], {}, 1, True, None, "x" * 300])
+def test_any_field_of_any_shape_never_raises(bad):
+    """Test review: a list where a type, kind or setting belonged raised TypeError (an unhashable value tested against a set),
+    so the inventory request failed with a 500 and the host lost its whole report."""
+    for at in _paths(read()):
+        r = json.loads(json.dumps(read()))
+        cur = r
+        for k in at[:-1]:
+            cur = cur[k]
+        cur[at[-1]] = bad
+        access.valid(r)
 
 
 def test_an_sshd_that_isnt_installed_and_one_that_wasnt_read_differ():
@@ -103,6 +133,16 @@ def test_the_inventory_stores_the_read_keeps_it_through_a_failure_and_forgets_it
     r = row(env, aid)
     assert r.state == "partial" and r.data["held"] == []  # what a partial read saw counts
     report(c, h, off=True)
+    assert row(env, aid) is None
+
+
+def test_an_agent_moved_back_to_one_that_doesnt_read_access_leaves_nothing_behind(env):
+    from test_api import user
+    c = user(env)
+    aid, h = host(c)
+    report(c, h, read())
+    assert row(env, aid) is not None
+    report(c, h, agent="0.10.0")  # no access object and no access line: it can't read it
     assert row(env, aid) is None
 
 

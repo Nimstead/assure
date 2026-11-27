@@ -5,6 +5,7 @@ open while the read isn't complete.
 """
 
 import ipaddress
+import re
 
 from nimstead.risk import Risk
 
@@ -13,6 +14,13 @@ ROOT_EQUIVALENT = ("docker", "lxd", "incus-admin", "disk")
 STAGE = {"ssh-root-password": "entry", "ssh-empty-passwords": "entry", "root-equivalent-group": "escalate",
          "sudo-nopasswd-all": "escalate", "writable-root-run": "escalate", "shadow-readable": "credentials"}
 _SHOWN = 5
+_UNSAFE = re.compile(r"[^A-Za-z0-9._/@+-]")
+
+
+def _path(p: str) -> str:
+    """A path a host sent, as finding reasons and AI prompts may carry it: the agent's own name characters only (security audit:
+    a path is free text a compromised host or a user who can plant a file writes)."""
+    return _UNSAFE.sub("?", p)[:120]
 
 
 def _beyond_loopback(addr: str) -> bool:
@@ -24,25 +32,55 @@ def _beyond_loopback(addr: str) -> bool:
         return False
 
 
+_SSH_UNIT = re.compile(r"sshd?(@[^/]*)?\.service")
+
+
 def ssh_listening(programs: list | None, sshd: dict | None) -> tuple[bool, str] | None:
-    """(listening beyond loopback, how it's known) for this host's sshd: from a complete, recent runtime read when it saw sshd
-    (the program, or anything listening on sshd's port, as systemd does for a socket-activated sshd), else from sshd's own
-    configuration (said so: whether it runs isn't read); None when neither says. programs None: no such read."""
+    """(listening beyond loopback, how it's known) for this host's sshd: from a complete, recent runtime read when it saw sshd,
+    else from sshd's own configuration (said so: whether it runs isn't read); None when neither says. programs None: no such
+    read. sshd is its systemd service, or without one a program called sshd running as root; anything root runs that listens
+    on sshd's port counts too, as systemd does for a socket-activated sshd. Every one is read before deciding (code review:
+    the first program called ssh decided, and a signed-in session or a user's ssh client sorted before the service), and a
+    user's own program is never sshd, whatever it calls itself."""
     ports = {str(p) for p in (sshd or {}).get("port") or ["22"]}
+    seen, mine = None, []
     for p in programs or []:
-        named = str(p.get("name", "")).split(".")[0] in ("ssh", "sshd")
-        mine = [a for a in p.get("listen") or [] if named or (a.split("/")[0].rsplit(":", 1)[-1] in ports and a.endswith("/tcp"))]
-        if mine:
-            net = [a for a in mine if _beyond_loopback(a)]
-            return (bool(net), f"{p['name']} listens on {net[0].split('/')[0]}" if net else f"{p['name']} listens only on loopback")
-        if named:
-            return False, f"{p['name']} runs but listens on nothing"
+        name, root = str(p.get("name", "")), "root" in (p.get("users") or [])
+        ours = bool(_SSH_UNIT.fullmatch(name)) if p.get("unit") is True else name == "sshd" and root
+        seen = seen or (name if ours else None)
+        mine += [(name, a) for a in p.get("listen") or [] if ours or root and a.endswith("/tcp") and a.split("/")[0].rsplit(":", 1)[-1] in ports]
+    if mine:
+        net = [(n, a) for n, a in mine if _beyond_loopback(a)]
+        return (True, f"{net[0][0]} listens on {net[0][1].split('/')[0]}") if net else (False, f"{mine[0][0]} listens only on loopback")
+    if seen:
+        return False, f"{seen} runs but listens on nothing"
     if programs is not None and sshd and sshd.get("installed"):  # a complete runtime read that didn't see sshd: it isn't running
         return False, "sshd isn't running"
     if sshd and sshd.get("installed"):
         net = [a for a in sshd.get("listenaddress") or [] if _beyond_loopback(a)]
         return (bool(net), f"sshd's configuration listens on {net[0]}; whether it runs isn't read" if net else "sshd's configuration listens only on loopback")
     return None
+
+
+def _lists(sshd: dict) -> list[list[str]]:
+    """sshd's AuthenticationMethods as lists of methods, each list one way to sign in; [] when any single method will do."""
+    return [m.split(",") for m in sshd.get("authenticationmethods") or [] if m != "any"]
+
+
+def password_alone(sshd: dict) -> bool:
+    """Whether a password by itself signs in: password or keyboard-interactive on, and no AuthenticationMethods list asking
+    for more (code review: a key plus a password, or a password plus a one-time code, isn't a guessable password)."""
+    on = sshd.get("passwordauthentication") == "yes" or sshd.get("kbdinteractiveauthentication") == "yes"
+    lists = _lists(sshd)
+    return on and (not lists or any(len(ms) == 1 and ms[0].split(":")[0] in ("password", "keyboard-interactive") for ms in lists))
+
+
+def key_alone(sshd: dict) -> bool | None:
+    """Whether a key by itself signs in: True, False when it takes another method too, None when keys never sign in."""
+    lists = _lists(sshd)
+    if lists and not any("publickey" in ms for ms in lists):
+        return None
+    return not lists or any(ms == ["publickey"] for ms in lists)
 
 
 def _names(xs: list[str]) -> str:
@@ -64,7 +102,7 @@ def evaluate(data: dict | None, listening: tuple[bool, str] | None = None) -> li
     accounts = [a for a in data.get("accounts") or [] if isinstance(a, dict)]
     if sshd.get("installed") and listening and listening[0]:
         root = next((a for a in accounts if a.get("uid") == 0), None)
-        passwords = sshd.get("passwordauthentication") == "yes" or sshd.get("kbdinteractiveauthentication") == "yes"
+        passwords = password_alone(sshd)
         if sshd.get("permitrootlogin") == "yes" and passwords and root and root.get("password") == "usable":
             add("ssh-root-password", "PermitRootLogin yes", f"root can sign in over SSH with a password ({listening[1]}), so a guessed or "
                 "reused password is root", "next", 65, "Set PermitRootLogin prohibit-password (keys only) and sign in as a named account", ["anyone on the network"])
@@ -97,8 +135,8 @@ def evaluate(data: dict | None, listening: tuple[bool, str] | None = None) -> li
     writable = [w for w in data.get("writable") or [] if isinstance(w, dict)]
     if writable:
         anyone = any(w.get("by") == "everyone" for w in writable)
-        shown = [f"{w['path']} ({'anyone' if w['by'] == 'everyone' else w['by'].split(':', 1)[1]} can replace "
-                 f"{'it' if w.get('at') in (None, w['path']) else w['at']})" for w in writable]
+        shown = [f"{_path(w['path'])} ({'anyone' if w['by'] == 'everyone' else w['by'].split(':', 1)[1]} can replace "
+                 f"{'it' if w.get('at') in (None, w['path']) else _path(w['at'])})" for w in writable]
         add("writable-root-run", f"{len(writable)} file{'s' * (len(writable) > 1)}", f"Files root runs can be replaced by someone else: {_names(shown)}",
             "next" if anyone else "planned", 60 if anyone else 50, "Make each file and the folders above it writable by root only",
             who([w["by"] for w in writable]))

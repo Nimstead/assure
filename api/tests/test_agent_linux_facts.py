@@ -155,10 +155,12 @@ def test_authorized_keys_options_are_read_and_comments_dropped():
         f'restrict {ed[0]} {ed[1]} ci',
         f'cert-authority,principals="ops" {ed[0]} {ed[1]} ca',
         "ssh-ed25519 AAAAnotvalid broken",
+        f'expiry-time="20200101" {ed[0]} {ed[1]} expired',
+        f'expiry-time="tomorrow" {ed[0]} {ed[1]} unreadable',
         "",
     ])
-    keys, skipped = agent.parse_authorized_keys(text)
-    assert skipped == 2  # the certificate authority (V2) and the broken line
+    keys, skipped, long_from = agent.parse_authorized_keys(text)
+    assert skipped == 4 and long_from == 0  # the certificate authority (V2), the broken line, the expired key and its garbled date
     assert keys[0] == {"type": "ssh-ed25519", "fp": oracle()["ed25519"], "from": [], "forced": False, "restrict": False}
     assert keys[1]["from"] == ["10.89.7.0/24", "!10.89.7.99", "*.lab"] and keys[1]["fp"] == oracle()["rsa"]
     assert keys[2]["forced"] and keys[2]["restrict"] and keys[2]["fp"] == oracle()["ecdsa"]
@@ -166,11 +168,21 @@ def test_authorized_keys_options_are_read_and_comments_dropped():
     assert "alice" not in repr(keys) and "rsync" not in repr(keys)
 
 
-def test_from_patterns_are_capped():
+def test_a_from_longer_than_is_read_leaves_the_line_out():
+    """Test review: the patterns past the cap were dropped and the rest kept, so a negation left out made the key trusted from
+    more places than it is."""
     ed = fx("ed25519.pub").split()[:2]
-    many = ",".join(f"10.0.{i}.0/24" for i in range(40)) + "," + "a" * 200
-    keys, _ = agent.parse_authorized_keys(f'from="{many}" {ed[0]} {ed[1]}')
-    assert len(keys[0]["from"]) == agent.ACCESS_FROM and all(len(p) <= 64 for p in keys[0]["from"])
+    many = ",".join(f"10.0.{i}.0/24" for i in range(40)) + ",!10.0.0.5"
+    keys, _, long_from = agent.parse_authorized_keys(f'from="{many}" {ed[0]} {ed[1]}\nfrom="{"a" * 65}" {ed[0]} {ed[1]}\n'
+                                                     f'from="10.0.0.0/8,!10.0.0.5" {ed[0]} {ed[1]}')
+    assert long_from == 2 and [k["from"] for k in keys] == [["10.0.0.0/8", "!10.0.0.5"]]
+
+
+def test_expiry_time_is_judged_as_sshd_does():
+    t = 1_800_000_000  # 2027-01-15 08:00 UTC
+    assert agent._expired("20270115075959Z", t) and not agent._expired("20270115080001Z", t)
+    assert agent._expired("20270114", t) and not agent._expired("202701160000", t)  # local time: a day either side is clear of any zone
+    assert all(agent._expired(v, t) for v in ("", "2027", "20271345", "yesterday", None))
 
 
 def test_authorized_keys_file_patterns_expand_as_sshd_does():
@@ -190,6 +202,11 @@ def test_sshd_t_of_each_distribution(distro):
     assert s["pubkeyauthentication"] == "yes" and s["permitemptypasswords"] == "no"
     assert ".ssh/authorized_keys" in s["authorizedkeysfile"] and s["authorizedkeyscommand"] is False
     assert s["allowusers"] == [] and "22" in s["port"]
+    assert s["authenticationmethods"] == ["any"] and s["forcecommand"] is False
+    forced = agent.parse_sshd_t(fx(f"sshd_t_{distro}.txt").replace("forcecommand none", "forcecommand /usr/local/bin/menu --token=abc")
+                                .replace("authenticationmethods any", "authenticationmethods publickey,password publickey"))
+    assert forced["forcecommand"] is True and "menu" not in repr(forced)  # whether one is set, never what it runs
+    assert forced["authenticationmethods"] == ["publickey,password", "publickey"]
 
 
 def test_a_hardened_sshd_lists_its_allowed_users_and_its_match_block_is_seen():
@@ -399,6 +416,68 @@ def test_budgets_stop_in_stable_words_and_make_the_read_partial(tmp_path, monkey
     assert "more than 2 files in a ~/.ssh: the first 2 read" in a["problem"]
     assert "more than 1 trusted keys for an account" in a["problem"]
     assert len([t for t in a["trusted"] if t["account"] == "deploy"]) == 1
+
+
+@ROOT_ONLY
+@pytest.mark.parametrize("cap,value,words", [
+    ("ACCESS_LISTED", 1, "more than 1 files in /etc/cron.d: the first 1 checked"),
+    ("ACCESS_HELD", 1, "more than 1 private keys: the first 1 sent"),
+    ("ACCESS_CREDS", 1, "more than 1 credential files: the first 1 named"),
+    ("ACCESS_SSH_ENTRIES", 2, "more than 2 entries in a ~/.ssh: the first 2 read"),
+    ("ACCESS_GROUPS", 1, "an account in more than 1 groups: the first 1 read"),
+])
+def test_every_cap_makes_the_read_partial(tmp_path, monkeypatch, cap, value, words):
+    """Test review: cron folders, keys held and credential files were cut short silently, so a writable cron file past the
+    cut could close its finding on a read that called itself complete."""
+    b = machine(tmp_path)
+    monkeypatch.setattr(agent, cap, value)
+    a = agent.access_read(root=str(b), run=runner(b)[0], euid=0)
+    assert a["state"] == "partial" and words in a["problem"], a["problem"]
+
+
+@ROOT_ONLY
+def test_a_long_from_makes_the_read_partial(tmp_path):
+    b = machine(tmp_path)
+    ed = fx("ed25519.pub").split()[:2]
+    write(b, "/home/deploy/.ssh/authorized_keys", f'from="{"a" * 65}" {ed[0]} {ed[1]}\n', 0o600, uid=DEPLOY)
+    a = agent.access_read(root=str(b), run=runner(b)[0], euid=0)
+    assert a["state"] == "partial" and "from= patterns or a longer one: not counted" in a["problem"]
+    assert not [t for t in a["trusted"] if t["account"] == "deploy"]
+
+
+@ROOT_ONLY
+def test_a_link_in_a_folder_someone_else_owns_is_theirs_whatever_it_points_at(tmp_path):
+    """Security audit: the walk started at the link's target, so a root service run through a link in a folder deploy owns
+    passed while the link pointed at a root-owned program, and deploy could point it anywhere."""
+    b = machine(tmp_path)
+    write(b, "/srv/tool/bin/.keep", "", uid=DEPLOY)
+    os.chown(b / "srv/tool/bin", DEPLOY, DEPLOY)
+    os.symlink(b / "usr/sbin/nginx", b / "srv/tool/bin/run")
+    run, _ = runner(b)
+
+    def with_tool(argv, timeout):
+        rc, out = run(argv, timeout)
+        if argv[:2] == ["systemctl", "list-units"]:
+            out += "tool.service loaded active running T\n"
+        if argv[:2] == ["systemctl", "show"]:
+            out += "\nId=tool.service\nFragmentPath=/usr/lib/systemd/system/tool.service\nUser=\nExecStart={ path=/srv/tool/bin/run ; }\n"
+        return rc, out
+    a = agent.access_read(root=str(b), run=with_tool, euid=0)
+    assert {"path": "/srv/tool/bin/run", "kind": "service", "by": "user:deploy", "at": "/srv/tool/bin"} in a["writable"]
+
+
+@ROOT_ONLY
+def test_getent_or_sudo_timing_out_leaves_the_read_partial_and_sudo_unread(tmp_path):
+    """Test review: neither timeout branch had a test."""
+    b = machine(tmp_path)
+    write(b, "/proc/900/status", "Name:\tx\nUid:\t5000\t5000\t5000\t5000\n")  # a directory user running something
+    run, _ = runner(b)
+
+    def slow(argv, timeout):
+        return (None, f"timed out after {timeout} s") if argv[0] == "getent" or argv[0].endswith("sudo") else run(argv, timeout)
+    a = agent.access_read(root=str(b), run=slow, euid=0)
+    assert a["state"] == "partial" and "getent: timed out after 3 s" in a["problem"] and "sudo -l: timed out" in a["problem"]
+    assert next(x for x in a["accounts"] if x["name"] == "deploy")["sudo_all"] is None
 
 
 @ROOT_ONLY

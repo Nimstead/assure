@@ -8,6 +8,8 @@ C12), timing those reports and the hourly re-match before and after the images e
 --apps N (with --containers): each image also carries N npm packages read inside it, 5 of them vulnerable
 (tasks/spec-workloads.md success criterion 7).
 --tickets: after the re-match, time a ticket sync's own work against an in-process GitLab fake (tasks/spec-tickets.md).
+--paths [--entry-every N]: each inventory also carries an access read (tasks/spec-paths.md criterion 7); one host in N (20)
+is a way in.
 --runtime: each inventory also carries what runs (tasks/spec-runtime.md criterion 7): 60 programs loading 25 of the host's
 packages each, 3 of them listening on the network, every package native, and on every tenth host one program running a
 replaced copy; a second report per host 7 days later exercises the memory.
@@ -42,7 +44,10 @@ TICKETS = "--tickets" in sys.argv
 APPS = int(sys.argv[sys.argv.index("--apps") + 1]) if "--apps" in sys.argv else 0
 RUNTIME = "--runtime" in sys.argv
 PATHS = "--paths" in sys.argv  # tasks/spec-paths.md criterion 7; implies a runtime read
-HELD, TRUSTED, ENTRY_EVERY = 3, 20, 20  # keys each host holds and trusts; one host in 20 listens on the network (about 50 ways in)
+HELD, TRUSTED = 3, 20  # keys each host holds and trusts
+# one host in 20 listens on the network (about 50 ways in); --entry-every 1 makes every host a way in, as Debian 13's sshd flaw
+# does on each host whose sshd listens (ship review: a walk per start took 10 s)
+ENTRY_EVERY = int(sys.argv[sys.argv.index("--entry-every") + 1]) if "--entry-every" in sys.argv else 20
 
 
 def fp(k):
@@ -251,7 +256,7 @@ def main():
 
     if PATHS:
         out = timed("GET /api/attack-paths (key edges, chains, choke points)", lambda: c.get("/api/attack-paths").json(), 3)
-        result["attack_paths"] = {"edges_listed": len(out["edges"]), "truncated": out["truncated"], "chains": len(out["chains"]),
+        result["attack_paths"] = {"edges_listed": len(out["edges"]), "truncated": out["truncated"], "partial": out["partial"], "chains": len(out["chains"]),
                                   "largest_chain": max((len(ch["reach"]) for ch in out["chains"]), default=0), "choke_points": len(out["choke_points"]),
                                   "top_choke": out["choke_points"][0]["action"] if out["choke_points"] else None,
                                   "top_cuts": out["choke_points"][0]["cuts"] if out["choke_points"] else 0}
@@ -290,7 +295,7 @@ def main():
     hosts = timed("GET /api/windows-updates/{kb} (drill down)", lambda: c.get(f"/api/windows-updates/{rows[0]['kb']}", params={"product": product}), 3)
     result["windows_updates_drilldown_kib"] = round(len(hosts.content) / 1024)
     timed("GET /api/summary (with Windows hosts)", lambda: c.get("/api/summary").json(), 3)
-    (ROOT / "sandbox" / f"last_run_perf_{result['db'].split('+')[0]}{'_containers' if CONTAINERS else ''}{'_apps' if APPS else ''}{'_tickets' if TICKETS else ''}{'_runtime' if RUNTIME else ''}{'_paths' if PATHS else ''}.json").write_text(json.dumps(result, indent=2))
+    (ROOT / "sandbox" / f"last_run_perf_{result['db'].split('+')[0]}{'_containers' if CONTAINERS else ''}{'_apps' if APPS else ''}{'_tickets' if TICKETS else ''}{'_runtime' if RUNTIME else ''}{'_paths' if PATHS else ''}{'_every' + str(ENTRY_EVERY) if PATHS and ENTRY_EVERY != 20 else ''}.json").write_text(json.dumps(result, indent=2))
 
 
 if __name__ == "__main__":

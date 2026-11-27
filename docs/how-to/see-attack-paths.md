@@ -21,9 +21,11 @@ Nimstead joins that with what runs (0.14) and what's vulnerable. For each machin
 
 ## How sure each link is
 
-- **Confirmed:** the key matches exactly, needs no passphrase, the other machine's sshd lets that account in, and the agent saw a connection open between the two.
+- **Confirmed:** the key matches exactly, needs no passphrase, the other machine's sshd lets that account in with the key alone, and the agent saw a connection open to the other machine's sshd.
 - **Reasonable:** the same, but no connection was seen, or the other machine's sshd has `Match` blocks that could change it per user or address.
-- **Unverified:** the key needs its passphrase, the key's line forces one command, the other machine also takes keys from an `AuthorizedKeysCommand`, or its `from=` names hosts (Nimstead never resolves names).
+- **Unverified:** the key needs its passphrase, the key's line or the other machine's sshd (`ForceCommand`) forces one command, the other machine's `AuthenticationMethods` asks for something besides the key, it also takes keys from an `AuthorizedKeysCommand`, or its `from=` names hosts (Nimstead never resolves names).
+
+**Cut these first** says how sure each action is, and one that rests only on unverified links comes after the rest.
 
 A way in from the network is never better than reasonable, because the host firewall isn't read.
 
@@ -33,7 +35,7 @@ Six settings open a stage of a path and are findings of their own on **Findings*
 
 | Finding | What it means |
 |---|---|
-| `CFG:ssh-root-password` | root can sign in over SSH with a password, and has one |
+| `CFG:ssh-root-password` | root can sign in over SSH with a password alone, and has one |
 | `CFG:ssh-empty-passwords` | sshd accepts empty passwords and an account has none |
 | `CFG:root-equivalent-group` | an account is in `docker`, `lxd`, `incus-admin` or `disk`, so it can run anything as root |
 | `CFG:sudo-nopasswd-all` | an account can run every command as root with no password |

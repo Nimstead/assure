@@ -12,7 +12,7 @@ A link from one machine to another exists only when three things hold:
 
 No link comes from a hostname, a naming habit or a probe. The lab proof checks each link against a real `ssh` sign-in with the same key, including the near misses: a `from=` that excludes the source, `PermitRootLogin no`, an account `AllowUsers` leaves out, a key with a passphrase, and sshd stopped.
 
-The grade says what is still assumed. Only a link whose key needs no passphrase, whose target sshd lets the account in, and between machines the agent saw connected, is confirmed. A `Match` block could change sshd's answer per user or address, so it caps a link at reasonable. A forced command, an `AuthorizedKeysCommand` or a `from=` naming hosts make it unverified, and the link says which.
+The grade says what is still assumed. Only a link whose key needs no passphrase, whose target sshd lets the account in, and between machines the agent saw connected, is confirmed. A `Match` block could change sshd's answer per user or address, so it caps a link at reasonable. A forced command (on the key's line or as sshd's `ForceCommand`), an `AuthenticationMethods` that wants more than the key, an `AuthorizedKeysCommand` or a `from=` naming hosts make it unverified, and the link says which.
 
 ## Who the attacker is matters
 

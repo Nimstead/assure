@@ -555,9 +555,9 @@ interface FleetHost { hostname: string; judged: boolean; paths: PathSummary[] }
 interface Reach { host: string; hops: string[]; grade: string; fix_on_host: string[]; as?: "root" | string[] }
 interface EdgeWay { via: string; how: string; because: string; grade: string; gives?: string; account?: string }
 interface Edge { from: string; to: string; grade: string; kind?: "ssh"; ways: EdgeWay[] }
-export interface ChokePoint { kind: "way-in" | "retire-key" | "untrust-key" | "setting"; action: string; cuts: number; hosts: string[]; ways_removed: number; lower_bound: boolean; ref: string }
+export interface ChokePoint { kind: "way-in" | "retire-key" | "untrust-key" | "setting"; action: string; cuts: number; hosts: string[]; ways_removed: number; lower_bound: boolean; ref: string; grade?: string }
 interface AttackPathsData {
-  hosts: Record<string, FleetHost>; truncated?: boolean; edges?: Edge[]; chains: { start: string; why_start: string; reach: Reach[]; reach_count?: number }[]; choke_points?: ChokePoint[];
+  hosts: Record<string, FleetHost>; truncated?: boolean; partial?: boolean; edges?: Edge[]; chains: { start: string; why_start: string; reach: Reach[]; reach_count?: number }[]; choke_points?: ChokePoint[];
 }
 
 /** A link's way across in words: an SSH key by its fingerprint's start, a setting by its check. */
@@ -582,7 +582,7 @@ export function ChokePoints({ points, name }: { points: ChokePoint[]; name: (id:
         {points.map((c) => (
           <li key={`${c.kind}|${c.ref}|${c.action}`} className="break-words">
             {c.action}
-            <span className="text-muted"> · cuts {c.lower_bound ? "at least " : ""}{plural(c.cuts, "machine")} off: {c.hosts.slice(0, 5).map(name).join(", ")}{c.hosts.length > 5 ? ` and ${c.hosts.length - 5} more` : ""}</span>
+            <span className="text-muted"> · cuts {c.lower_bound ? "at least " : ""}{plural(c.cuts, "machine")} off: {c.hosts.slice(0, 5).map(name).join(", ")}{c.hosts.length > 5 ? ` and ${c.hosts.length - 5} more` : ""}{c.grade ? ` · how sure: ${c.grade}` : ""}</span>
           </li>
         ))}
       </ol>
@@ -602,7 +602,7 @@ export function AttackPaths() {
   return (
     <section aria-labelledby="attack-paths" className="flex flex-col gap-2 border border-line bg-sunken p-4">
       <h2 id="attack-paths" className="text-base font-semibold">How these weaknesses combine</h2>
-      <HowJudged lead={<>Each step is a vulnerability, a setting or a key read on the host.{d.truncated ? " Only the first links are listed; the chains and what to cut first use all of them." : ""}</>}>
+      <HowJudged lead={<>Each step is a vulnerability, a setting or a key read on the host.{d.partial ? " Past the limits not every link was followed, so the chains and what to cut first may be missing some." : d.truncated ? " Only the first links are listed; the chains and what to cut first use all of them." : ""}</>}>
         <p>A path is only as sure as its weakest step. Windows links across hosts are no better than reasonable unless the sign-in and a connection were both seen. An SSH key link is confirmed only when the key matches exactly, needs no passphrase, the other machine's sshd lets that account in, and a connection between them was seen.</p>
         <p>Each host's part rests on what its own agent reported, so a compromised host could make its own links look worse or better. Keys are compared by fingerprint: no key ever leaves a machine, and nothing here signs in anywhere.{unjudged ? ` ${plural(unjudged, "host")} ${unjudged === 1 ? "hasn't" : "haven't"} been judged yet.` : ""}</p>
       </HowJudged>

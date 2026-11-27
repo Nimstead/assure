@@ -14,7 +14,7 @@ import ipaddress
 import re
 from collections import defaultdict, deque
 
-from nimstead import winconfig
+from nimstead import linconfig, winconfig
 from nimstead.engine.paths import _grade
 
 # how B lets an attacker in, -> (B's TCP ports that carry it, what it needs from A, how it reads)
@@ -43,10 +43,11 @@ def _list(facts: dict, key: str, cap: int) -> set[str] | None:
     return {x for x in v[:cap] if isinstance(x, str) and len(x) <= 200} if isinstance(v, list) else None
 
 
-def _routed(fa: dict, fb: dict) -> bool:
-    """A has a connection open to one of B's own addresses: routing from A to B seen, not assumed (DECISIONS 112)."""
+def _routed(fa: dict, fb: dict, ports: set[str] | None = None) -> bool:
+    """A has a connection open to one of B's own addresses (on one of ports, when given): routing from A to B seen, not
+    assumed (DECISIONS 112)."""
     peers, addrs = _list(fa, "peers", 64), _list(fb, "addresses", 16)
-    return bool(peers and addrs and {p.rsplit(":", 1)[0] for p in peers} & addrs)
+    return bool(peers and addrs and {p.rsplit(":", 1)[0] for p in peers if ports is None or p.rsplit(":", 1)[-1] in ports} & addrs)
 
 
 def _refine(ways: list[dict], base: str, fa: dict, fb: dict) -> list[dict]:
@@ -200,13 +201,18 @@ def key_edges(hosts: list[dict]) -> tuple[list[dict], bool]:
     allowed_memo: dict[tuple, tuple] = {}
     pairs: dict[tuple[str, str], dict[tuple, dict]] = {}
     ways_n, cut = 0, False
+    helds = {}
     for aid, a in acc.items():
-        addrs = addrs_of[aid]
         held, seen = [], set()
         for k in a.get("held") or []:
             if (k["account"], k["fp"]) not in seen:
                 seen.add((k["account"], k["fp"]))
                 held.append(k)
+        helds[aid] = held
+    # sources with the fewest possible ways go first: a host claiming many holders of the fleet's keys can only spend what is
+    # left of the budget, never what honest hosts need (security audit: one host's claims erased every real key chain)
+    for aid in sorted(acc, key=lambda x: (sum(len(trusted.get(k["fp"], ())) for k in helds[x]), x)):
+        addrs, held = addrs_of[aid], helds[aid]
         for k in held:
             for bid, t in trusted.get(k["fp"], []):
                 if bid == aid:
@@ -229,18 +235,24 @@ def key_edges(hosts: list[dict]) -> tuple[list[dict], bool]:
                 # "!" (passwd -l), keys too; an account whose shell is nologin or false signs in to no session, so runs nothing
                 if sshd.get("usepam") != "yes" and acct.get("password") == "locked" or acct.get("login") is False:
                     continue
-                routed = _routed(facts[aid], facts[bid])
+                alone = linconfig.key_alone(sshd)
+                if alone is None:  # AuthenticationMethods without publickey: no key signs in here
+                    continue
+                port = next((p for p in sshd.get("port") or [] if p.isdigit()), "22")
+                routed = _routed(facts[aid], facts[bid], {port, *(sshd.get("port") or [])})  # to its sshd: a database connection says nothing of SSH
                 grade, because = ("confirmed" if routed else "reasonable"), [
                     f"{byid[bid]['hostname']}'s sshd " + (ssh.get("how") or "is installed; whether it listens beyond loopback isn't read")]
                 if ssh.get("listening") is None:
                     grade = "reasonable"
                 if routed:
-                    because.append("A had a connection open to B")
+                    because.append("A had a connection open to B's sshd")
                 for weak, why in ((sshd.get("match"), "B's sshd has Match blocks, which can change this per user or address"),):
                     if weak:
                         grade = _grade(grade, "reasonable")
                         because.append(why)
                 for weak, why in ((k.get("passphrase"), "the key needs its passphrase"), (t.get("forced"), "B signs this key in only to a forced command"),
+                                  (not alone, "B's sshd asks for another method besides the key (AuthenticationMethods)"),
+                                  (sshd.get("forcecommand"), "B's sshd runs one forced command for every sign-in (ForceCommand)"),
                                   (sshd.get("authorizedkeyscommand"), "B also takes keys from a command that isn't read"),
                                   (k.get("type") in _WEAK_TYPES, _WEAK_TYPES.get(k.get("type"), "")), (user_unjudged, user_unjudged), (from_unjudged, from_unjudged),
                                   # a user could plant a file showing someone else's public half: only root's word, or a checked key, is believed
@@ -253,7 +265,7 @@ def key_edges(hosts: list[dict]) -> tuple[list[dict], bool]:
                     because.append("restrict: no terminal or forwarding, though commands still run")
                 gives = "root" if is_root or set(acct.get("groups") or []) & set(ROOT_EQUIVALENT) or acct.get("sudo_all") is True else t["account"]
                 way = {"via": f"SSH:{k['fp']}", "key": k["fp"], "path": k["path"], "account": t["account"], "needs": "root" if k["account"] == "root" else k["account"],
-                       "gives": gives, "port": 22, "how": f"the key {k['path']} on A is trusted for {t['account']} on B", "because": "; ".join(because), "grade": grade}
+                       "gives": gives, "port": int(port), "how": f"the key {k['path']} on A is trusted for {t['account']} on B", "because": "; ".join(because), "grade": grade}
                 key = (k["fp"], t["account"], way["needs"])
                 old = pairs.get((aid, bid), {}).get(key)
                 if old is None:
@@ -335,8 +347,9 @@ def build(hosts: list[dict]) -> dict:
     reach = {h["id"]: _own_reach(h.get("report")) for h in judged}
     seen = {h["id"] for h in judged}
     g = _Graph(every, reach)
-    chains = _chains(judged, gives, g)
-    choke = choke_points(judged, gives, g, {h["id"]: h["hostname"] for h in hosts}, truncated or kcut)
+    chains, covered = _chains(judged, gives, g)
+    choke = choke_points(judged, gives, g, {h["id"]: h["hostname"] for h in hosts}, truncated or kcut, covered)
+    ins = sum(1 for h in judged if gives[h["id"]]["entry"] and h["id"] not in covered and _start_held(h, gives[h["id"]], reach[h["id"]]) is not None)
     shown = [e if len(e["ways"]) <= WAYS_SHOWN else {**e, "ways": e["ways"][:WAYS_SHOWN], "ways_count": len(e["ways"])}
              for e in edges + kedges[:max(0, MAX_EDGES - len(edges))]]
     return {"hosts": {h["id"]: {"hostname": h["hostname"], "judged": h["id"] in seen, "entry": gives.get(h["id"], {}).get("entry", False),
@@ -345,7 +358,8 @@ def build(hosts: list[dict]) -> dict:
                                            "break_at": p["break_at"], **({"reaches": p["reaches"]} if "reaches" in p else {})}
                                           for p in (h["report"] or {}).get("attack_paths", [])] if h["id"] in seen else []}
                       for h in hosts},
-            "edges": shown, "truncated": truncated or kcut or len(shown) < len(every), "chains": chains, "choke_points": choke}
+            "edges": shown, "truncated": truncated or kcut or len(shown) < len(every), "chains": chains, "choke_points": choke,
+            "partial": truncated or kcut or None in covered or ins > MAX_WALKS}
 
 
 def _linux(h: dict) -> bool:
@@ -436,12 +450,27 @@ def walk(starts: dict, g: _Graph, gone: frozenset = frozenset(), used: set | Non
     return best
 
 
-def _chains(judged: list[dict], gives: dict, g: _Graph) -> list[dict]:
-    """From each host with a path from the network (or marked internet-facing with any path), every host reachable, by the
-    fewest hops, and what the attacker holds there ("root", or which accounts)."""
-    out, edges = [], g.edges
-    for start, held in _starts(judged, gives, g.reach).items():
+def _covers(have, need) -> bool:
+    """Whether holding `have` on a host gives at least `need` there ("root", or a set of accounts)."""
+    return have == "root" or need != "root" and frozenset(need) <= frozenset(have)
+
+
+def _chains(judged: list[dict], gives: dict, g: _Graph) -> tuple[list[dict], set]:
+    """(chains, covered): from each host with a path from the network (or marked internet-facing with any path), every host
+    reachable, by the fewest hops, and what the attacker holds there ("root", or which accounts). A start that an earlier
+    start reaches holding at least what its own way in gives is covered: everything it reaches, that one reaches too, so it
+    isn't walked and has no chain of its own (code review: a walk per start took 10 s with every host a start)."""
+    out, edges, covered, walked = [], g.edges, set(), 0
+    starts = _starts(judged, gives, g.reach)
+    for start, held in starts.items():
+        if start in covered:
+            continue
+        if walked >= MAX_WALKS:
+            covered.add(None)  # None in covered: some starts weren't walked (the response's `partial` says so)
+            break
+        walked += 1
         got = walk({start: held}, g)
+        covered |= {s for s, need in starts.items() if s != start and s in got and _covers(got[s][0], need)}
         hosts = sorted(((h, v) for h, v in got.items() if h != start and v[1]), key=lambda x: (len(x[1][1]), x[0]))
         rows = [{"host": h, "hops": [edges[i]["to"] for i in hops], "grade": _grade(*(edges[i]["grade"] for i in hops)),
                  "fix_on_host": sorted({w["via"] for w in edges[hops[-1]]["ways"]}), "as": "root" if v == "root" else sorted(v)}
@@ -449,9 +478,10 @@ def _chains(judged: list[dict], gives: dict, g: _Graph) -> list[dict]:
         if rows:
             out.append({"start": start, "why_start": "a path from the network" if gives[start]["entry"] else "marked internet-facing",
                         "reach": rows[:MAX_REACH], **({"reach_count": len(rows)} if len(rows) > MAX_REACH else {})})
-    return sorted(out, key=lambda c: -c.get("reach_count", len(c["reach"])))[:MAX_CHAINS]
+    return sorted(out, key=lambda c: -c.get("reach_count", len(c["reach"])))[:MAX_CHAINS], covered
 
 
+MAX_WALKS = 1_000  # chain walks, and way-in walks, per request: past this the rest aren't walked and `partial` says so
 MAX_REACH = 200  # rows per chain, nearest first: 35 chains of 999 made a 10 MB response no page can show (reach_count says how many)
 
 
@@ -459,14 +489,16 @@ MAX_CANDIDATES = 200  # besides every start's way in; each scored by one walk, a
 CHOKE_SHOWN = 10
 
 
-def choke_points(judged: list[dict], gives: dict, g: _Graph, names: dict, truncated: bool = False) -> list[dict]:
+def choke_points(judged: list[dict], gives: dict, g: _Graph, names: dict, truncated: bool = False, covered: frozenset = frozenset()) -> list[dict]:
     """Up to ten single actions that cut the most machines off from every way in, largest first (tasks/spec-paths.md Module
     4, DECISIONS 169): close one start's way in, retire a key everywhere, untrust a key on one machine, or change one setting on
     one machine. Each is scored by walking the graph again without what it removes. Every start's way in is scored; of the
     rest, the 200 on the most ways, and of those only the ones that remove a way the full walk used (removing an unused way
     leaves every host's derivation standing, so it cuts nothing). Closing a start that is also marked internet-facing with
-    another path leaves it a start, holding what that path gives. When the edge list was cut short, the counts are a lower
-    bound and say so."""
+    another path leaves it a start, holding what that path gives. Each carries the best grade among the ways it removes, and
+    those resting only on unverified ways come last. Closing that of a start another start reaches holding as
+    much (`covered`) cuts nothing, so it isn't walked. When the edge list was cut short, the counts are a lower bound and
+    say so."""
     byid = {h["id"]: h for h in judged}
     starts = _starts(judged, gives, g.reach)
     if not starts:
@@ -487,7 +519,8 @@ def choke_points(judged: list[dict], gives: dict, g: _Graph, names: dict, trunca
             else:
                 cands.setdefault(("setting", w["via"], e["to"]), {"ways": set()})["ways"].add((i, wi))
     ranked = sorted(cands.items(), key=lambda kv: (-len(kv[1]["ways"]), kv[0]))[:MAX_CANDIDATES]
-    ranked += [(("way-in", h), {"ways": set()}) for h in starts if gives[h]["entry"]]  # always scored: at most one per start
+    ins = [h for h in starts if gives[h]["entry"] and h not in covered]
+    ranked += [(("way-in", h), {"ways": set()}) for h in ins[:MAX_WALKS]]  # at most one per start, all but past MAX_WALKS
     out = []
     for key, c in ranked:
         if key[0] == "way-in":
@@ -501,9 +534,12 @@ def choke_points(judged: list[dict], gives: dict, g: _Graph, names: dict, trunca
             s = starts
         cut = sorted(before - set(walk(s, g, frozenset(c["ways"]))))
         if cut:
+            grade = gives[key[1]]["grade"] if key[0] == "way-in" else max((g.edges[i]["ways"][wi]["grade"] for i, wi in c["ways"]), key=_ORDER.index)
             out.append({"kind": key[0], "action": _action(key, c, names, judged), "cuts": len(cut), "hosts": cut[:50], "ways_removed": len(c["ways"]),
-                        "lower_bound": truncated, "ref": key[1]})
-    out.sort(key=lambda x: (-x["cuts"], ("way-in", "retire-key", "untrust-key", "setting").index(x["kind"]), x["action"]))
+                        "lower_bound": truncated, "ref": key[1], "grade": grade, **({"on": key[2], "account": key[3]} if key[0] == "untrust-key" else {})})
+    # resting only on unverified ways (a key that needs its passphrase, a claim a user could plant), it comes after the rest: told
+    # to retire a key everywhere on one planted file's word, someone could break real access (security audit)
+    out.sort(key=lambda x: (x["grade"] == "unverified", -x["cuts"], ("way-in", "retire-key", "untrust-key", "setting").index(x["kind"]), x["action"]))
     return out[:CHOKE_SHOWN]
 
 

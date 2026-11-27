@@ -434,10 +434,12 @@ it("Assets: SSH key links say whose key opens what, chains say who the attacker 
       { host: "a", hops: ["a"], grade: "confirmed", fix_on_host: [way.via], as: ["deploy"] },
       { host: "d", hops: ["a", "d"], grade: "reasonable", fix_on_host: ["SSH:SHA256:OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO"], as: "root" }] }],
     choke_points: [{ kind: "retire-key", action: "Retire the SSH key SHA256:RRRRRRRRRRRR…: delete it (/root/.ssh/id_ed25519 on web-1)", cuts: 2, hosts: ["a", "d"],
-                     ways_removed: 1, lower_bound: true, ref: "SHA256:RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR" }] } });
+                     ways_removed: 1, lower_bound: true, ref: "SHA256:RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR", grade: "confirmed" }],
+    truncated: true, partial: true } });
   wrap(<AttackPaths />);
   expect(await screen.findByRole("heading", { name: "Cut these first" })).toBeInTheDocument();
-  expect(screen.getByText(/cuts at least 2 machines off: app-1, db-1/)).toBeInTheDocument();
+  expect(screen.getByText(/cuts at least 2 machines off: app-1, db-1 · how sure: confirmed/)).toBeInTheDocument();
+  expect(screen.getByText(/not every link was followed, so the chains and what to cut first may be missing some/)).toBeInTheDocument();
   expect(screen.getByText(/web-1 → app-1 · as deploy · how sure: confirmed · cut it on app-1: the key SHA256:RRRRRRRRRRRR…/)).toBeInTheDocument();
   expect(screen.getByText(/web-1 → app-1 → db-1 · as root · how sure: reasonable/)).toBeInTheDocument();
   expect(screen.getByText(/the key \/root\/.ssh\/id_ed25519 on web-1 is trusted for deploy on app-1, which gives deploy: .*A had a connection open to B \(confirmed\)/)).toBeInTheDocument();

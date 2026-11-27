@@ -4,7 +4,7 @@
  "log": [
   {
    "step": "distro",
-   "name": "nimstead-sbx-paths-4ba024",
+   "name": "nimstead-sbx-paths-74c5ce",
    "reused": false
   },
   {
@@ -80,7 +80,7 @@
     "2025": 43338,
     "2026": 93182
    },
-   "seconds": 35
+   "seconds": 41
   },
   {
    "step": "reports",
@@ -158,10 +158,10 @@
       "fixes": 5,
       "refs": [
        "/root/.aws/credentials",
-       "SHA256:1nneqd6j6RjggM5xmYnT4SVgh/KgqjyQJrRIXqfYEtE",
-       "SHA256:KZWQPuA5jPFa6dUnWsTdfbH/2k9ca3+S4s0ra1g57xs",
-       "SHA256:Ku+8vj0PKyAUmhyS5aBLRHZslT2P0XKs0BaIBPNdtdU",
-       "SHA256:vSftqPtUYSbDm00GOgNIsIL0/7w8Sr763bB/LZcNPDE"
+       "SHA256:JzLf2DQKivPUYP+s0DZWIfj/qNuAImXjObvEV2KqtMc",
+       "SHA256:PsQ5YLzbmunfLy3SRTfJg572VUGxpnHNjxYGKnXaBQw",
+       "SHA256:yBLhQmK7NAK81dzB8l/tSxZev0NLFSQNUeuqHw8FsJ8",
+       "SHA256:1v9GaOXZVhFf4DtCMpdkGYipIgO1oDV2/fJKVv+GDO4"
       ]
      },
      "reaches": {
@@ -213,18 +213,18 @@
     [
      "retire-key",
      1,
-     "Retire the SSH key SHA256:Ku+8vj0PKyAU\u2026: delete it (/root/.ssh/id_ed25519 on web-1) and remove it from the authorized_ke"
+     "Retire the SSH key SHA256:yBLhQmK7NAK8\u2026: delete it (/root/.ssh/id_ed25519 on web-1) and remove it from the authorized_ke"
     ],
     [
      "untrust-key",
      1,
-     "Remove the key SHA256:Ku+8vj0PKyAU\u2026 from root's authorized_keys on db-1"
+     "Remove the key SHA256:yBLhQmK7NAK8\u2026 from root's authorized_keys on db-1"
     ]
    ]
   },
   {
    "step": "PASS: 4b the top key choke point, done for real, cuts exactly the machines it said, and ssh agrees",
-   "choke": "Retire the SSH key SHA256:Ku+8vj0PKyAU\u2026: delete it (/root/.ssh/id_ed25519 on web-1) and remove it from the authorized_keys of the 1 machine that trust it",
+   "choke": "Retire the SSH key SHA256:yBLhQmK7NAK8\u2026: delete it (/root/.ssh/id_ed25519 on web-1) and remove it from the authorized_keys of the 1 machine that trust it",
    "predicted": [
     "db-1"
    ],
@@ -388,7 +388,7 @@
   },
   {
    "step": "unregistered",
-   "distro": "nimstead-sbx-paths-4ba024"
+   "distro": "nimstead-sbx-paths-74c5ce"
   }
  ]
 }

@@ -59,8 +59,8 @@ def _grade(*grades: str | None) -> str:
 def build(inv: Inventory, content: Content, verdicts: list[Verdict]) -> list[dict]:
     """Return correlated attack paths from Inventory inv, Content content and verdicts.
 
-    Linux and application inventories return []. Windows uses vulnerable verdicts
-    plus host settings. Return at most one network path, then one foothold path.
+    Application inventories return []; Linux ones are build_linux's. Windows uses
+    vulnerable verdicts plus host settings. Return at most one network path, then one foothold path.
     Each stage shows at most five ways, with its full count. Does not scan or
     modify inputs. Malformed internal models can raise KeyError, TypeError or ValueError."""
     if inv.kind == "application":

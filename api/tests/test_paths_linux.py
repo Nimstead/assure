@@ -133,6 +133,16 @@ def test_no_context_means_no_linux_path_and_windows_is_unchanged():
     assert all("reaches" not in x and "skipped" not in x for x in w)
 
 
+def test_an_agent_older_than_the_access_read_gets_paths_from_verdicts_and_no_ssh_state():
+    """Upgrade path (test review): a 0.10 agent sends what runs but no access read. Its way in and way up come from verdicts
+    alone, no settings finding or SSH state is concluded, and every step says what it rests on."""
+    p, inv, c = build(flaw("CVE-2026-0101", "openssl", REMOTE), flaw("CVE-2025-32463", "sudo", LOCAL), listening=nginx())
+    net = by_kind(p)["network"]
+    assert [s["stage"] for s in net["steps"]][:2] == ["entry", "escalate"] and net["grade"] in ("reasonable", "unverified")
+    assert not [w for s in net["steps"] for w in s["ways"] if w["ref"].startswith("CFG:")]
+    assert paths.ssh_state(inv) is None
+
+
 def test_the_context_rides_in_the_document_only_when_there_is_one():
     inv = Inventory.from_doc(ldoc(*SSL))
     bare = copy.deepcopy(inv.to_doc())

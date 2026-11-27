@@ -34,6 +34,7 @@ class _Path:
 _PATH = _Path()
 _FP = re.compile(r"SHA256:[A-Za-z0-9+/]{43}")
 _PATTERN = re.compile(r"[A-Za-z0-9._@*?!%/:\[\]-]{1,100}")  # sshd user and address patterns, from= entries
+_METHODS = re.compile(r"[a-z0-9:,@.-]{1,200}")  # one AuthenticationMethods list: "publickey,keyboard-interactive:pam", or "any"
 _BY = re.compile(r"everyone|(?:group|user):[A-Za-z0-9._@+?-]{1,64}")
 KEY_TYPES = frozenset(("ssh-ed25519", "ssh-rsa", "ssh-dss", "ecdsa-sha2-nistp256", "ecdsa-sha2-nistp384", "ecdsa-sha2-nistp521",
                        "sk-ssh-ed25519@openssh.com", "sk-ecdsa-sha2-nistp256@openssh.com", "ecdsa", "other"))
@@ -55,6 +56,22 @@ def _strs(v, n: int, pattern: re.Pattern) -> list[str]:
     return [x for x in v[:n] if isinstance(x, str) and pattern.fullmatch(x)] if isinstance(v, list) else []
 
 
+def _one(v, allowed: frozenset) -> bool:
+    """Whether v is one of allowed's strings; a list or dict is never one (test review: an unhashable value raised)."""
+    return isinstance(v, str) and v in allowed
+
+
+def _from(v) -> list[str] | None:
+    """A key line's from= patterns, or None when any can't be read: the one dropped could be the negation that refuses this
+    source, so a line read in part would trust more than it does (test review)."""
+    if v is None:
+        return []
+    if not isinstance(v, list) or len(v) > FROM:
+        return None
+    out = _strs(v, FROM, _PATTERN)
+    return out if len(out) == len(v) and all(len(x) <= 64 for x in out) else None
+
+
 def _rows(raw: dict, key: str, cap: int) -> list[dict]:
     """Up to cap dictionaries from raw[key] when it's a list; anything else is no rows."""
     v = raw.get(key)
@@ -68,10 +85,11 @@ def _sshd(v) -> dict | None:
         return {"installed": False}
     if v.get("installed") is True and v.get("running") is False:  # installed but not running: no settings to read, nothing to sign in to
         return {"installed": True, "running": False}
-    if v.get("installed") is not True or v.get("permitrootlogin") not in ROOT_LOGIN:
+    if v.get("installed") is not True or not _one(v.get("permitrootlogin"), ROOT_LOGIN):
         return None
     out = {"installed": True, "permitrootlogin": v["permitrootlogin"], "authorizedkeyscommand": v.get("authorizedkeyscommand") is True,
-           "match": v.get("match") is True}
+           "match": v.get("match") is True, "forcecommand": v.get("forcecommand") is True,
+           "authenticationmethods": _strs(v.get("authenticationmethods"), 16, _METHODS)}
     for k in _YES_NO:
         out[k] = v.get(k) if v.get(k) in ("yes", "no") else None
     for k in _LISTS:
@@ -102,12 +120,12 @@ def valid(raw) -> dict | None:
     held = [{"account": h["account"], "path": h["path"], "type": h["type"], "fp": h["fp"], "passphrase": h.get("passphrase") is True,
              "checked": h.get("checked") is True}
             for h in _rows(raw, "held", HELD) if owner(h.get("account")) and isinstance(h.get("path"), str) and _PATH.fullmatch(h["path"])
-            and h.get("type") in KEY_TYPES and isinstance(h.get("fp"), str) and _FP.fullmatch(h["fp"])]
-    trusted = [{"account": t["account"], "fp": t["fp"], "type": t["type"], "from": [x[:64] for x in _strs(t.get("from"), FROM, _PATTERN)],
-                "forced": t.get("forced") is True, "restrict": t.get("restrict") is True}
-               for t in _rows(raw, "trusted", TRUSTED) if owner(t.get("account")) and t.get("type") in KEY_TYPES and isinstance(t.get("fp"), str) and _FP.fullmatch(t["fp"])]
+            and _one(h.get("type"), KEY_TYPES) and isinstance(h.get("fp"), str) and _FP.fullmatch(h["fp"])]
+    trusted = [{"account": t["account"], "fp": t["fp"], "type": t["type"], "from": frm, "forced": t.get("forced") is True, "restrict": t.get("restrict") is True}
+               for t in _rows(raw, "trusted", TRUSTED) if owner(t.get("account")) and _one(t.get("type"), KEY_TYPES) and isinstance(t.get("fp"), str)
+               and _FP.fullmatch(t["fp"]) and (frm := _from(t.get("from"))) is not None]
     creds = [{"kind": c["kind"], "account": c["account"], "path": c["path"]}
-             for c in _rows(raw, "credentials", CREDENTIALS) if c.get("kind") in CREDENTIAL_KINDS and owner(c.get("account"))
+             for c in _rows(raw, "credentials", CREDENTIALS) if _one(c.get("kind"), CREDENTIAL_KINDS) and owner(c.get("account"))
              and isinstance(c.get("path"), str) and _PATH.fullmatch(c["path"])]
     shadow = raw.get("shadow_readable_by")
     out = {"v": 1, "state": raw["state"], "problem": raw["problem"][:300] if isinstance(raw.get("problem"), str) and raw["problem"] else None,

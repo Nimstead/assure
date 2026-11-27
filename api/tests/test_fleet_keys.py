@@ -55,7 +55,11 @@ def test_a_key_held_on_a_and_trusted_on_b_is_an_edge_confirmed_when_a_was_seen_r
     assert out["chains"][0]["start"] == "a" and out["chains"][0]["reach"][0] == {"host": "b", "hops": ["b"], "grade": "reasonable",
                                                                                   "fix_on_host": [f"SSH:{K_ROOT}"], "as": "root"}
     seen = fleet.build([A(peers=["10.0.0.2:22"]), lhost("b", "10.0.0.2", trusted=[trusts(K_ROOT)])])
-    assert edge(seen)["grade"] == "confirmed" and "A had a connection open to B" in edge(seen)["ways"][0]["because"]
+    assert edge(seen)["grade"] == "confirmed" and "A had a connection open to B's sshd" in edge(seen)["ways"][0]["because"]
+    # code review: a connection to any of B's ports confirmed it, a database's too
+    assert edge(fleet.build([A(peers=["10.0.0.2:5432"]), lhost("b", "10.0.0.2", trusted=[trusts(K_ROOT)])]))["grade"] == "reasonable"
+    moved = fleet.build([A(peers=["10.0.0.2:2222"]), lhost("b", "10.0.0.2", trusted=[trusts(K_ROOT)], sshd={**PROHIBIT, "port": ["2222"]})])
+    assert edge(moved)["grade"] == "confirmed" and edge(moved)["ways"][0]["port"] == 2222
 
 
 @pytest.mark.parametrize("frm,ok,grade", [
@@ -87,6 +91,12 @@ def test_from_follows_sshds_rules_against_as_own_addresses(frm, ok, grade):
     ({"allowgroups": ["wheel"]}, None),
     ({"match": True}, "reasonable"),                       # a Match block could say otherwise
     ({"authorizedkeyscommand": True}, "unverified"),
+    # code review: AuthenticationMethods and ForceCommand weren't read, so a key that can't sign in alone graded confirmed
+    ({"authenticationmethods": ["any"]}, "confirmed"),
+    ({"authenticationmethods": ["publickey,keyboard-interactive:pam"]}, "unverified"),  # a one-time code too
+    ({"authenticationmethods": ["publickey,password", "publickey"]}, "confirmed"),     # either list: the key alone is one
+    ({"authenticationmethods": ["password"]}, None),                                    # no key ever signs in
+    ({"forcecommand": True}, "unverified"),
 ])
 def test_b_s_sshd_decides(change, want):
     e = edge(fleet.build([A(peers=["10.0.0.2:22"]), lhost("b", "10.0.0.2", trusted=[trusts(K_ROOT)], sshd={**PROHIBIT, **change})]))
@@ -208,8 +218,42 @@ def test_retiring_one_deploy_key_cuts_the_machines_it_alone_opened():
 def test_a_cut_short_graph_says_its_counts_are_a_lower_bound(monkeypatch):
     monkeypatch.setattr(fleet, "KEY_WAYS_MAX", 2)
     hosts = [A()] + [lhost(f"b{i}", f"10.0.1.{i}", trusted=[trusts(K_ROOT)]) for i in range(4)]
-    choke = fleet.build(hosts)["choke_points"]
-    assert choke and all(c["lower_bound"] for c in choke)
+    out = fleet.build(hosts)
+    assert out["choke_points"] and all(c["lower_bound"] for c in out["choke_points"]) and out["partial"]
+    assert not fleet.build(hosts[:2])["partial"]
+
+
+def test_a_host_claiming_many_holders_cant_spend_what_honest_hosts_need(monkeypatch):
+    """Security audit: the key-way budget went first come, first served, so one host listing invented accounts that each
+    "hold" the fleet's common key filled it, and the real bastion's chain disappeared."""
+    monkeypatch.setattr(fleet, "KEY_WAYS_MAX", 10)
+    targets = [lhost(f"b{i}", f"10.0.1.{i}", trusted=[trusts(K_ROOT)]) for i in range(5)]
+    liar = lhost("liar", "10.0.2.1", keys=[held(K_ROOT, f"u{i}") for i in range(20)], accounts=[account(f"u{i}", 1000 + i) for i in range(20)])
+    for order in ([liar, A(), *targets], [A(), liar, *targets]):
+        out = fleet.build(order)
+        assert {e["to"] for e in out["edges"] if e["from"] == "a"} == {f"b{i}" for i in range(5)}
+        assert out["chains"][0]["start"] == "a" and len(out["chains"][0]["reach"]) == 5 and out["partial"]
+
+
+def test_past_its_walks_the_view_says_it_is_partial(monkeypatch):
+    monkeypatch.setattr(fleet, "MAX_WALKS", 1)
+    hosts = [lhost("a1", "10.0.0.1", keys=[held(K_ROOT)], paths=[path()]), lhost("a2", "10.0.0.2", keys=[held(K_DEPLOY)], paths=[path()]),
+             lhost("b", "10.0.0.3", trusted=[trusts(K_ROOT), trusts(K_DEPLOY)])]
+    out = fleet.build(hosts)
+    assert out["partial"] and len(out["chains"]) == 1
+    monkeypatch.setattr(fleet, "MAX_WALKS", 2)
+    assert not fleet.build(hosts)["partial"] and len(fleet.build(hosts)["chains"]) == 2
+
+
+def test_a_start_another_start_reaches_as_root_has_no_chain_of_its_own_and_cuts_nothing():
+    """Code review: a walk per start took 10 s with every host a start. One reached as root from another reaches nothing more."""
+    hosts = [lhost("a", "10.0.0.1", keys=[held(K_ROOT)], paths=[path()]),
+             lhost("b", "10.0.0.2", keys=[held(K_DEPLOY)], trusted=[trusts(K_ROOT)], paths=[path()]),
+             lhost("c", "10.0.0.3", trusted=[trusts(K_DEPLOY)])]
+    out = fleet.build(hosts)
+    assert [c["start"] for c in out["chains"]] == ["a"] and [r["host"] for r in out["chains"][0]["reach"]] == ["b", "c"]
+    assert not [c for c in out["choke_points"] if c["kind"] == "way-in" and c["ref"] == "b"]
+    assert not out["partial"]
 
 
 def without(hosts, c):
@@ -220,13 +264,15 @@ def without(hosts, c):
         if c["kind"] == "retire-key":
             h["access"]["held"] = [k for k in h["access"]["held"] if k["fp"] != c["ref"]]
             h["access"]["trusted"] = [t for t in h["access"]["trusted"] if t["fp"] != c["ref"]]
+        elif c["kind"] == "untrust-key" and h["id"] == c["on"]:
+            h["access"]["trusted"] = [t for t in h["access"]["trusted"] if (t["fp"], t["account"]) != (c["ref"], c["account"])]
         elif c["kind"] == "way-in" and h["id"] == c["ref"]:
             h["report"]["attack_paths"] = [p for p in h["report"]["attack_paths"] if p["kind"] != "network"]
         out.append(h)
     return out
 
 
-@pytest.mark.parametrize("seed", range(40))
+@pytest.mark.parametrize("seed", range(80))
 def test_choke_point_counts_equal_a_brute_force_recount(seed):
     import random
     rnd = random.Random(seed)  # noqa: S311 — reproducible test graphs
@@ -245,8 +291,6 @@ def test_choke_point_counts_equal_a_brute_force_recount(seed):
     out = fleet.build(hosts)
     before = reached(out)
     for c in out["choke_points"]:
-        if c["kind"] == "untrust-key":
-            continue  # its target is named in words; retire-key and way-in are recounted exactly
         after = reached(fleet.build(without(hosts, c)))
         assert len(before - after) == c["cuts"], (seed, c)
 
@@ -347,3 +391,32 @@ def test_a_users_unchecked_key_is_unverified_roots_is_believed():
     roots = edge(fleet.build([lhost("a", "10.0.0.1", keys=[held(K_ROOT, checked=False)], paths=[path()]),
                               lhost("b", "10.0.0.2", trusted=[trusts(K_ROOT)])]))
     assert roots["grade"] == "reasonable"
+
+
+def test_a_choke_point_says_its_grade_and_one_resting_on_unverified_ways_comes_last():
+    """Security audit: a planted key claim (unverified) could top "Cut these first" with "retire this key everywhere"."""
+    planted = lhost("p", "10.0.3.1", keys=[held(K_OTHER, "deploy", checked=False)], paths=[path(root=False, users=["deploy"])])
+    many = [lhost(f"m{i}", f"10.0.4.{i}", trusted=[trusts(K_OTHER)]) for i in range(5)]
+    few = [lhost(f"f{i}", f"10.0.5.{i}", trusted=[trusts(K_ROOT)]) for i in range(2)]
+    choke = fleet.build([A(), planted, *many, *few])["choke_points"]
+    keys = [c for c in choke if c["kind"] == "retire-key"]
+    assert [(c["ref"], c["grade"], c["cuts"]) for c in keys] == [(K_ROOT, "reasonable", 2), (K_OTHER, "unverified", 5)]
+    assert choke.index(keys[0]) < choke.index(keys[1])
+    assert all(c["grade"] in ("unverified", "reasonable", "confirmed") for c in choke)
+
+
+def test_a_target_judged_before_its_ssh_state_was_reported_is_reasonable_at_most():
+    """Upgrade path (test review): a stored report from before 0.15 has no ssh object; seen connected, it still can't confirm."""
+    b = lhost("b", "10.0.0.2", trusted=[trusts(K_ROOT)])
+    b["report"] = {"attack_paths": []}
+    e = edge(fleet.build([A(peers=["10.0.0.2:22"]), b]))
+    assert e["grade"] == "reasonable" and "whether it listens beyond loopback isn't read" in e["ways"][0]["because"]
+
+
+def test_a_host_with_an_access_read_but_no_report_yet_is_reached_and_says_so():
+    """Mid-ingest (test review): the access row is stored before the host's first report."""
+    b = lhost("b", "10.0.0.2", trusted=[trusts(K_ROOT)])
+    b["report"] = None
+    out = fleet.build([A(), b])
+    assert edge(out)["grade"] == "reasonable" and out["hosts"]["b"]["judged"] is False
+    assert [r["host"] for r in out["chains"][0]["reach"]] == ["b"]

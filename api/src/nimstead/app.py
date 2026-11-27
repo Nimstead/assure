@@ -1257,8 +1257,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             runtime.forget_replaced(s, asset)  # the host opted out: its last sighting must not hold fixes open for ever
         if body.access is not None:  # before the rescan, whose settings checks read it
             access.store(s, asset, body.access)
-        elif (((body.collection or {}).get("sources") or {}).get("access") or {}).get("state") == "off":
-            access.forget(s, asset)  # opted out: no stale key may link this host to anything
+        elif (((body.collection or {}).get("sources") or {}).get("access") or {"state": "off"}).get("state") == "off":
+            # opted out, or an agent that doesn't read it (older, or moved back to one): no stale key may link this host to
+            # anything (code review: a downgraded agent's last read linked hosts for ever)
+            access.forget(s, asset)
         db_read = ((asset.collection or {}).get("sources") or {}).get("package_db")
         replaced = not (db_read and (db_read["state"] != "ok" or not db_read.get("count")))  # DECISIONS 83: a Linux list not read in full doesn't replace the last
         if replaced:

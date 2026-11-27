@@ -265,12 +265,13 @@ def listening(row: AssetRuntime | None, t: datetime | None = None) -> dict[str, 
 
 
 def recent_programs(row: AssetRuntime | None, t: datetime | None = None) -> list[dict] | None:
-    """[{name, listen}] of the latest read's programs when that read was complete and is under 36 hours old, else None:
+    """[{name, unit, users, listen}] of the latest read's programs when that read was complete and is under 36 hours old, else None:
     whether sshd listens now can't rest on a partial read or one left from before an opt-out (code review: a stale row made
     every key edge into its host disappear)."""
     if row is None or row.state != "ok" or row.read_at is None or (t or now()) - row.read_at > STALE:
         return None
-    return [{"name": p["name"], "listen": p.get("listen") or []} for p in row.programs or [] if isinstance(p, dict) and "name" in p]
+    return [{"name": p["name"], "unit": p.get("unit"), "users": p.get("users") or [], "listen": p.get("listen") or []}
+            for p in row.programs or [] if isinstance(p, dict) and "name" in p]
 
 
 def view(s: Session, asset: Asset, t: datetime | None = None) -> View:

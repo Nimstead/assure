@@ -283,13 +283,33 @@ def key_edges(hosts: list[dict]) -> tuple[list[dict], bool]:
 
 
 _ORDER = ("unverified", "reasonable", "confirmed")
+LIKELY_EPSS = 0.10  # the risk model names a flaw's EPSS from 10%
+
+
+def _likely(net: dict, epss: dict | None) -> tuple[bool, float | None]:
+    """(whether a host's way in from the network starts chains and choke points, the highest EPSS among its flaws) (DECISIONS
+    172). It does when any of its ways is a setting, known exploited, or has a flaw with an EPSS of 10% or more or none yet.
+    Ways the report didn't keep, or flaws a way didn't list, aren't known, so they count. epss None: not looked up, so all count."""
+    step = net["steps"][0]
+    if epss is None or step.get("count", 0) > len(step["ways"]):
+        return True, None
+    top = None
+    for w in step["ways"]:
+        refs = w.get("refs") or [w["ref"]]
+        scores = [epss.get(r) for r in refs]
+        if w.get("kev") or len(refs) < w.get("flaws", 1) or any(s is None or s >= LIKELY_EPSS for s in scores):
+            return True, None
+        top = max(top or 0.0, *scores)
+    return False, top
 
 
 def build(hosts: list[dict]) -> dict:
     """Return hosts, edges, truncated and chains from stored reports and current facts.
 
     hosts contains dictionaries with unique id, hostname, facts, os_version, report
-    (latest stored engine report or None), and internet_facing. Inputs must follow
+    (latest stored engine report or None), and internet_facing; optional epss maps the
+    host's flaw ids to EPSS (None when unscored), and without it every way in is likely.
+    A host whose way in is unlikely keeps its paths but starts no chain. Inputs must follow
     engine model shapes. No scan, database query or input mutation occurs here.
     Edges stop at 2000 and set truncated when a further edge is found. Return up
     to 50 starting-host chains, each with shortest-hop reachability. No separate
@@ -302,8 +322,9 @@ def build(hosts: list[dict]) -> dict:
         lateral = {w["ref"] for p in h["report"]["attack_paths"] if p.get("then") for w in p["then"]["ways"]}
         net = next((p for p in h["report"]["attack_paths"] if p["kind"] == "network"), None)
         any_path = net or next(iter(h["report"]["attack_paths"]), None)
-        gives[h["id"]] = {"credentials": "credentials" in steps, "poisoning": bool(lateral & set(POISONING)), "entry": bool(net),
-                          "grade": any_path["grade"] if any_path else None}
+        likely, top = _likely(net, h.get("epss")) if net else (False, None)
+        gives[h["id"]] = {"credentials": "credentials" in steps, "poisoning": bool(lateral & set(POISONING)), "entry": likely,
+                          "grade": any_path["grade"] if any_path else None, **({"unlikely": {"epss": top}} if net and not likely else {})}
     # sources that give the same things from the same domain read the same to every target: judged once per group, not once per
     # host pair (a dense 400-host fleet took 12 s and 200 MB per request before; DECISIONS 101)
     groups: dict[tuple, list[str]] = {}
@@ -354,6 +375,7 @@ def build(hosts: list[dict]) -> dict:
              for e in edges + kedges[:max(0, MAX_EDGES - len(edges))]]
     return {"hosts": {h["id"]: {"hostname": h["hostname"], "judged": h["id"] in seen, "entry": gives.get(h["id"], {}).get("entry", False),
                                 "internet_facing": bool(h.get("internet_facing")),
+                                **({"unlikely": gives[h["id"]]["unlikely"]} if "unlikely" in gives.get(h["id"], {}) else {}),
                                 "paths": [{"kind": p["kind"], "start": p["start"], "grade": p["grade"], "steps": [st["label"] for st in p["steps"]],
                                            "break_at": p["break_at"], **({"reaches": p["reaches"]} if "reaches" in p else {})}
                                           for p in (h["report"] or {}).get("attack_paths", [])] if h["id"] in seen else []}
@@ -369,10 +391,10 @@ def _linux(h: dict) -> bool:
 def _start_held(h: dict, g: dict, r: dict, entry: bool = True):
     """What an attacker holds on a start: its network path's reach, upgraded to root by a foothold path; a Windows start is
     administrator ("root"). With entry False (its way in closed), what it holds as a host marked internet-facing with another
-    path, or None when it's no start then."""
+    path, or None when it's no start then. An unlikely way in counts as closed: it makes no start either way (DECISIONS 172)."""
     if entry and g["entry"]:
         held = r["entry"]
-    elif h.get("internet_facing") and (r["other_path"] if entry is False else g["grade"]):
+    elif h.get("internet_facing") and (r["other_path"] if entry is False or "unlikely" in g else g["grade"]):
         held = frozenset()
     else:
         return None

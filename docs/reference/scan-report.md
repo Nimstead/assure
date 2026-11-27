@@ -113,7 +113,7 @@ On Linux (DECISIONS 167) a way in names the user its listening program runs as. 
 
 Each required step has `stage`, `label`, `ways`, and integer `count`. `then` has `label`, `ways`, and `count`. Each array shows at most five ways. The count includes ways beyond those shown.
 
-A way has `what`, `ref`, `grade`, and `kev`. Vulnerability-based ways also have integer `flaws`. Setting-based ways omit `flaws`. Stages use `entry`, `escalate`, `credentials`, or `lateral`.
+A way has `what`, `ref`, `grade`, and `kev`. Vulnerability-based ways also have integer `flaws`. Setting-based ways omit `flaws`. A Linux way in through a flaw also has `refs`: every flaw id of the way, at most 50, known exploited first. The fleet view uses them to judge whether the way in is likely (DECISIONS 172). Stages use `entry`, `escalate`, `credentials`, or `lateral`.
 
 `break_at` has `stage`, `label`, integer `fixes`, and up to five `refs`. Its count identifies the full step, including references omitted from display.
 

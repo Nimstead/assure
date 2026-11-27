@@ -386,3 +386,16 @@ Short log; newest last. Why, not what.
     *Tests added for gaps:* all six settings checks go through the inventory (open, stay open on a partial read and on opt-out, close on a complete one); the access migration goes down and up by its own revision; a report from before 0.15 and a host with an access read but no report yet; a pre-0.11 agent's Linux paths; getent and sudo timing out.
 
     *Left as they are:* two first inventories from one host at the same moment can both insert its access row, and one then fails (the runtime row has done the same since 0.14.0; an agent reports one at a time). A uid-0 account with another name running a listener isn't taken for root by the host path; the runtime read names uid 0 by its first passwd entry, which is root on any standard system. CI doesn't run the agent's root-only tests; they ran in a disposable WSL distro for this round.
+
+172. **Only a likely way in starts chains and choke points (2026-11-27; found on the 0.15.0 demo).** The demo fleet is the 0.9.1 demo's 206 machines, reporting as agent 0.11.0. On it, 112 of 205 Linux machines were starts, and 108 of those rested on three flaws:
+    - pcre2's CVE-2026-86145 on Ubuntu, loaded by sshd through libselinux and by nginx
+    - glibc's CVE-2026-19499 on Debian
+    - gcc-14's CVE-2026-95619 on Debian
+
+    None has a fix, none is known to be exploited, each has an EPSS under 0.5%, and the risk model ranks each "planned". With nearly every machine a start, little could be cut off. Cut these first listed one-machine way-in fixes, and retiring the production ansible key, which 68 machines trust, cut 6. With only likely ways in counted, the same fleet has 2 starts, and retiring that key cuts 61, graded confirmed.
+
+    - **The rule:** a way in starts chains and counts in choke points when any of its ways is a setting, or a flaw that is known to be exploited, has an EPSS of 10% or more, or has no EPSS yet. 10% is where the risk model starts naming a flaw's EPSS. A new flaw without a score is never discounted.
+    - **Unknown counts:** anything not known counts as likely: a way the report didn't keep (past five shown), flaws a way didn't list, and an id with no EPSS row.
+    - **Nothing is hidden:** a machine whose way in isn't likely keeps its paths and key links. The fleet view marks it (`unlikely`, with its highest EPSS) and says how many there are. An unlikely way in makes no start by either route. A machine marked internet-facing starts a chain only through another path, as when its way in is closed. Otherwise the demo's 22 internet-facing machines, whose only path was an unlikely way in, stayed starts that nothing could cut off, and the ansible key cut 39 instead of 61.
+    - **Where it's judged:** in the fleet view, not the engine. EPSS changes daily and lives in the server's feeds, so stored reports and their content versions don't move with it. The endpoint reads EPSS by CVE id, the table's key, because a findings lookup by flaw id has no index.
+    - **Every flaw counts:** Linux ways in now carry every flaw id (`refs`, up to 50) so each is judged. Before, only the first, by id, was kept. Windows ways still carry one, so a Windows way with more than one flaw always counts.

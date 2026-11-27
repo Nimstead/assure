@@ -165,7 +165,8 @@ def test_a_linux_host_is_never_a_windows_sign_in_source():
     assert edge(fleet.build([lin, win]), "a", "w") is None
 
 
-def test_the_endpoint_links_two_reporting_hosts_by_their_keys(env):
+def two_reporting_hosts(env):
+    """web-1, with a way in (nginx as root) and root's key, and db-1, which trusts that key, both reporting through the API."""
     from test_access import read as access_read
     from test_api import user
     from test_runtime import doc, host, pkgs, prog
@@ -183,6 +184,11 @@ def test_the_endpoint_links_two_reporting_hosts_by_their_keys(env):
                 "facts": {"os_id": "debian", "addresses": [addr], "peers": ["10.0.0.2:22"] if addr == "10.0.0.1" else []},
                 "runtime": rt, "access": acc}
         assert c.post("/api/agent/inventory", headers=h, json=body).status_code == 200
+    return c, web, db
+
+
+def test_the_endpoint_links_two_reporting_hosts_by_their_keys(env):
+    c, web, db = two_reporting_hosts(env)
     out = c.get("/api/attack-paths").json()
     e = next(x for x in out["edges"] if (x["from"], x["to"]) == (web, db))
     assert e["kind"] == "ssh" and e["grade"] == "confirmed" and e["ways"][0]["gives"] == "root"
@@ -420,3 +426,80 @@ def test_a_host_with_an_access_read_but_no_report_yet_is_reached_and_says_so():
     out = fleet.build([A(), b])
     assert edge(out)["grade"] == "reasonable" and out["hosts"]["b"]["judged"] is False
     assert [r["host"] for r in out["chains"][0]["reach"]] == ["b"]
+
+
+# ---- likely ways in (DECISIONS 172) ---------------------------------------------------------------------------------
+
+def way(ref="CVE-1", refs=None, kev=False, flaws=1):
+    return {"what": f"{ref} in pcre2", "ref": ref, "refs": [ref] if refs is None else refs, "grade": "reasonable", "kev": kev, "flaws": flaws}
+
+
+def entry(*ways, count=None):
+    p = path()
+    p["steps"][0] |= {"ways": list(ways), "count": len(ways) if count is None else count}
+    return p
+
+
+def test_a_way_in_with_no_sign_of_exploitation_keeps_its_path_but_starts_nothing():
+    a = lhost("a", "10.0.0.1", keys=[held(K_ROOT)], paths=[entry(way("CVE-1", ["CVE-1", "CVE-2"], flaws=2))])
+    b = lhost("b", "10.0.0.2", trusted=[trusts(K_ROOT)])
+    out = fleet.build([{**h, "epss": {"CVE-1": 0.004, "CVE-2": 0.02}} for h in (a, b)])
+    assert out["hosts"]["a"]["entry"] is False and out["hosts"]["a"]["unlikely"] == {"epss": 0.02}
+    assert out["hosts"]["a"]["paths"] and edge(out) is not None  # the path and the key link stay; only the chain and the cut go
+    assert out["chains"] == [] and out["choke_points"] == []
+    assert "unlikely" not in fleet.build([a, b])["hosts"]["a"]  # no EPSS looked up: every way in counts, as before
+
+
+@pytest.mark.parametrize("ways, scores", [
+    ([way(kev=True)], {"CVE-1": 0.004}),  # known exploited
+    ([way()], {"CVE-1": 0.10}),  # EPSS at the risk model's 10%
+    ([way()], {}),  # no score yet: a new flaw is never discounted
+    ([way()], {"CVE-1": None}),
+    ([way("CVE-1", ["CVE-1"], flaws=3)], {"CVE-1": 0.004}),  # flaws the way didn't list aren't known
+    ([way("CVE-1", [])], {"CVE-1": 0.5}),  # an older report without refs: judged by its ref
+    ([way("CFG:ssh-root-password", refs=[])], {}),  # a setting
+    ([way(), way("CVE-2")], {"CVE-1": 0.004, "CVE-2": 0.3}),  # one likely way is enough
+])
+def test_a_way_in_counts_when_any_of_it_could_well_be_used(ways, scores):
+    a = lhost("a", "10.0.0.1", keys=[held(K_ROOT)], paths=[entry(*ways)])
+    out = fleet.build([{**h, "epss": scores} for h in (a, lhost("b", "10.0.0.2", trusted=[trusts(K_ROOT)]))])
+    assert out["hosts"]["a"]["entry"] is True and "unlikely" not in out["hosts"]["a"] and out["chains"][0]["start"] == "a"
+
+
+def test_ways_the_report_didnt_keep_count():
+    a = lhost("a", "10.0.0.1", keys=[held(K_ROOT)], paths=[entry(way(), count=6)])
+    out = fleet.build([{**a, "epss": {"CVE-1": 0.004}}, lhost("b", "10.0.0.2", trusted=[trusts(K_ROOT)])])
+    assert out["hosts"]["a"]["entry"] is True
+
+
+def test_an_internet_facing_host_with_an_unlikely_way_in_and_a_way_up_still_starts():
+    a = lhost("a", "10.0.0.1", keys=[held(K_ROOT)], paths=[entry(way()), path("foothold")], internet=True)
+    out = fleet.build([{**h, "epss": {"CVE-1": 0.004}} for h in (a, lhost("b", "10.0.0.2", trusted=[trusts(K_ROOT)]))])
+    assert out["hosts"]["a"]["entry"] is False and out["chains"][0]["why_start"] == "marked internet-facing"
+
+
+def test_an_internet_facing_host_whose_only_path_is_an_unlikely_way_in_is_no_start():
+    a = lhost("a", "10.0.0.1", trusted=[trusts(K_ROOT)], paths=[entry(way())], internet=True)
+    b = lhost("b", "10.0.0.2", trusted=[trusts(K_ROOT)])
+    c = lhost("c", "10.0.0.3", keys=[held(K_ROOT)], paths=[entry(way("CVE-2"))])
+    out = fleet.build([{**h, "epss": {"CVE-1": 0.004, "CVE-2": 0.5}} for h in (a, b, c)])
+    retire = next(x for x in out["choke_points"] if x["kind"] == "retire-key")
+    assert [ch["start"] for ch in out["chains"]] == ["c"] and retire["hosts"] == ["a", "b"]  # a is reached, so it can be cut off
+
+
+def test_the_endpoint_reads_each_way_ins_epss(env):
+    from sqlalchemy import select
+    from sqlalchemy.orm import sessionmaker
+
+    from nimstead.db import Epss, ScanRecord, make_engine
+    c, web, db = two_reporting_hosts(env)
+    assert c.get("/api/attack-paths").json()["hosts"][web]["entry"] is True  # no EPSS for its flaws: likely
+    s = sessionmaker(make_engine(env))()
+    report = s.scalars(select(ScanRecord.report).where(ScanRecord.asset_id == web).order_by(ScanRecord.created.desc())).first()
+    [w] = next(p for p in report["attack_paths"] if p["kind"] == "network")["steps"][0]["ways"]
+    assert w["refs"] and len(w["refs"]) == w["flaws"]
+    s.add_all(Epss(cve=r, score=0.003, percentile=0.5) for r in w["refs"])
+    s.commit()
+    out = c.get("/api/attack-paths").json()
+    assert out["hosts"][web]["entry"] is False and out["hosts"][web]["unlikely"] == {"epss": 0.003}
+    assert not any(ch["start"] == web for ch in out["chains"])

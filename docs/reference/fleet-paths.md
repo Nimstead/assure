@@ -23,7 +23,8 @@ Chains and choke points walk every edge found, not only the 2000 listed. Windows
 | --- | --- |
 | `hostname` | Asset hostname |
 | `judged` | True when a stored report contains an `attack_paths` key, even if its array is empty |
-| `entry` | True when the report contains a network-start path |
+| `entry` | True when the report contains a network-start path whose way in is likely (see [Chains](#chains)) |
+| `unlikely` | Present when the report has a network-start path but its way in isn't likely: `{"epss": ...}`, the highest EPSS among its flaws |
 | `internet_facing` | Boolean asset context flag |
 | `paths` | Condensed paths, or an empty array for unjudged assets |
 
@@ -89,7 +90,7 @@ The listener and connection observations can come from different report times. T
 
 ## Chains
 
-Each chain has `start`, `why_start`, and `reach`, at most 200 rows, nearest first; `reach_count` gives the full number when there are more. A start needs a network path, or an internet-facing flag plus some host path. A start that an earlier start reaches holding at least what its own way in gives has no chain of its own: everything it reaches is in that start's chain. Chains come largest first.
+Each chain has `start`, `why_start`, and `reach`, at most 200 rows, nearest first; `reach_count` gives the full number when there are more. A start needs a network path whose way in is likely, or an internet-facing flag plus some host path (another path than the network one, when its way in isn't likely). A way in is likely when any of its ways is a setting, or a flaw that is known to be exploited (`kev`), has an EPSS of 10% or more, or has no EPSS row; ways the report didn't keep and flaws a way didn't list count as likely (DECISIONS 172). EPSS is read by CVE id at request time, so this can change as EPSS does without a rescan. A start that an earlier start reaches holding at least what its own way in gives has no chain of its own: everything it reaches is in that start's chain. Chains come largest first.
 
 | Reach field | Value |
 | --- | --- |

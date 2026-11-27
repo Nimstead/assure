@@ -4,7 +4,9 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
-To be released as 0.15.0 (preview) with agent 0.11.0. One database migration (`a3c5e7f9b1d2`, a table), applied on start.
+## [0.15.0] - 2026-11-27 (preview)
+
+Agent 0.11.0. One database migration (`a3c5e7f9b1d2`, a table), applied on start.
 
 ### Upgrade notes
 - **Linux agents read who can get in once they update to 0.11.0**: sshd's settings, the accounts that matter (groups, whether each password is usable, locked or empty, `sudo -n -l`), files root runs that others can replace, the SSH keys each machine holds and trusts as fingerprints, credential files present, and the machine's own and private-range peer addresses. Private keys, key comments, forced commands, password hashes and what any credential file holds never leave the machine. `sudo -n -l` runs for up to 32 accounts at each report, and sudo logs each call.
@@ -847,7 +849,8 @@ The first early-access release. Everything listed is proven by tests and, for an
 
 Licensed under FSL-1.1-ALv2: this release becomes available under Apache 2.0 on 2028-10-27.
 
-[Unreleased]: https://github.com/Nimstead/assure/compare/v0.14.1...HEAD
+[Unreleased]: https://github.com/Nimstead/assure/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/Nimstead/assure/compare/v0.14.1...v0.15.0
 [0.14.1]: https://github.com/Nimstead/assure/compare/v0.14.0...v0.14.1
 [0.14.0]: https://github.com/Nimstead/assure/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/Nimstead/assure/compare/v0.12.0...v0.13.0

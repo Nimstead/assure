@@ -195,6 +195,31 @@ def test_the_endpoint_links_two_reporting_hosts_by_their_keys(env):
     paths = out["hosts"][web]["paths"]
     assert paths and paths[0]["kind"] == "network" and paths[0]["reaches"]["root"] is True
     assert any(ch["start"] == web and ch["reach"][0]["host"] == db for ch in out["chains"])
+    assert out["flow"]["machines"][db]["route"] == [web, db] and out["flow"]["starts"][web]["reaches"] == 1
+
+
+def test_the_flow_holds_every_machine_once_each_start_s_reach_in_full_and_what_cuts_it_off(monkeypatch):
+    """The Attack paths page (DECISIONS 173) groups the flow, so it holds every machine reached, past the rows a chain lists;
+    two ways in reaching the same machines both say so, and a start another reaches says which."""
+    monkeypatch.setattr(fleet, "MAX_REACH", 2)
+    bs = [f"b{i}" for i in range(5)]
+    hosts = [lhost("w1", "10.0.0.1", keys=[held(K_ROOT)], paths=[path()]), lhost("w2", "10.0.0.2", keys=[held(K_ROOT)], paths=[path()]),
+             lhost("w3", "10.0.0.3", trusted=[trusts(K_ROOT)], paths=[path()]),
+             *[lhost(b, f"10.0.1.{i}", trusted=[trusts(K_ROOT)]) for i, b in enumerate(bs)]]
+    out = fleet.build(hosts)
+    f = out["flow"]
+    assert set(f["machines"]) == {"w1", "w2", "w3", *bs}
+    assert len(out["chains"][0]["reach"]) == 2 and out["chains"][0]["reach_count"] == 6  # the chain lists two; the flow holds them all
+    for b in bs:
+        m = f["machines"][b]
+        assert m["route"][0] in ("w1", "w2") and m["route"][-1] == b and (m["via"], m["account"], m["as"]) == ("SSH:" + K_ROOT, "root", "root")
+    assert all("route" not in f["machines"][w] and "via" not in f["machines"][w] for w in ("w1", "w2", "w3"))
+    assert f["starts"]["w1"] == f["starts"]["w2"] == {"reaches": 6, "through": {"SSH:" + K_ROOT: 6}}
+    assert f["starts"]["w3"] == {"covered_by": "w1"}
+    key = next(i for i, c in enumerate(out["choke_points"]) if c["kind"] == "retire-key" and c["ref"] == K_ROOT)
+    assert out["choke_points"][key]["cuts"] == 5 and all(key in f["machines"][b]["cut_by"] for b in bs)
+    assert [(out["choke_points"][i]["kind"], out["choke_points"][i]["ref"]) for i in f["machines"]["w1"]["cut_by"]] == [("way-in", "w1")]  # only its own
+    assert not any("_cut" in c for c in out["choke_points"])
 
 
 # ---- choke points ---------------------------------------------------------------------------------------------------
@@ -217,6 +242,7 @@ def test_retiring_one_deploy_key_cuts_the_machines_it_alone_opened():
     assert (first["kind"], first["ref"], first["cuts"]) == ("way-in", "web-1", 4)  # web-1 itself and the three it alone opens
     assert key["ref"] == K_DEPLOY and key["cuts"] == 3  # db-1 stays reachable through bk-1's key
     assert key["hosts"] == ["app-0", "app-1", "app-2"] and "trust it" in key["action"] and "web-1" in key["action"]
+    assert (key["held_on"], key["trusted_by"], key["accounts"]) == (["web-1"], 4, ["deploy"])  # named without parsing the action
     assert all(not c["lower_bound"] for c in choke)
     assert [c["cuts"] for c in choke] == sorted((c["cuts"] for c in choke), reverse=True)
 

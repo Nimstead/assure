@@ -9,16 +9,18 @@ Nimstead joins that with what runs (0.14) and what's vulnerable. For each machin
 
 ## Read the attack paths
 
-1. Open **Assets**. **How these weaknesses combine** is above the machine list when anything chains.
-2. **Cut these first** lists up to ten single actions, the ones that cut the most machines off from every way in first. For example: "Retire the SSH key SHA256:4kQ2…: delete it (/home/deploy/.ssh/id_ed25519 on build-1) and remove it from the authorized_keys of the 9 machines that trust it · cuts 7 machines off". An action is one of:
-   - closing a machine's way in (one update or setting)
+1. Open **Attack paths** in the sidebar (on a phone, under **More**). The top of the page counts the ways in, the machines they reach, and the machines left out as unlikely. Assets keeps one line about it, linking here.
+2. **Cut these first** lists up to ten single actions, the ones that cut the most machines off from every way in first. For example: "Retire the SSH key SHA256:4kQ2…", with where it's held and trusted, "7 machines cut off" and how sure. An action is one of:
+   - closing a machine's way in (one update or setting), with a link to that machine's findings
    - retiring a key everywhere
    - removing one key from one `authorized_keys`
    - changing one setting
-3. Each **From web-1 (a path from the network)** block lists every machine an attacker who gets in there can reach, by the fewest hops, and what they hold on it: "app-1 via web-1 → app-1 · as deploy · how sure: confirmed".
-4. **SSH key links** says, for each link, whose key on which machine opens which account where, what that gives (root when the account is root, in `docker`, `lxd` or `disk`, or has `NOPASSWD: ALL` sudo), and what the grade rests on.
-5. A machine whose only way in is a flaw with no sign of exploitation (not known to be exploited, EPSS under 10%) starts no chain and isn't counted in **Cut these first**. The view says how many there are, and their paths say "unlikely" with the EPSS. A flaw with no EPSS yet always counts.
-6. **Paths on each host** shows each machine's own path. A Linux path says who the way in runs as, whether it skips becoming root (a listener running as root), and what it reaches. A machine's scan report has the full path in words.
+3. The first action is chosen. Choose another to see what it cuts off instead; choose it again to see the flow alone. The address keeps your choice, so a link you share opens the same view.
+4. The flow below shows the ways in, each with how many machines it reaches, and the links machines are reached through: an SSH key by the account it signs in as, or a setting. On the right are the machines reached, grouped by owner, or by criticality when no machine has an owner. Solid bands are the machines the chosen action cuts off; hatched bands are still reachable. Each column shows seven rows and folds the rest into one, so it reads the same at thousands of machines. Choose a group to list its machines.
+5. **Machines reached** has one row per machine: its route from a way in ("web-1 → app-1"), the link onto it, what an attacker holds there, how sure, and which actions cut it off. Search by name, or show only the machines the chosen action cuts off.
+6. A machine whose only way in is a flaw with no sign of exploitation (not known to be exploited, EPSS under 10%) starts no chain and isn't counted in **Cut these first**. The page counts them, and their paths say "unlikely" with the EPSS. A flaw with no EPSS yet always counts.
+7. **The evidence behind each link** holds the detail. **SSH key links** says whose key on which machine opens which account where, what that gives (root when the account is root, in `docker`, `lxd` or `disk`, or has `NOPASSWD: ALL` sudo), and what the grade rests on. **Paths on each machine** shows each machine's own path: who the way in runs as, whether it skips becoming root (a listener running as root), and what it reaches. A machine's scan report has the full path in words.
+8. On **Assets**, a machine's drawer shows its own paths, how it's reached and which actions cut it off, with a link to it on Attack paths.
 
 ## How sure each link is
 

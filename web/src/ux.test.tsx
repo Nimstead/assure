@@ -10,7 +10,8 @@ import { ActionCard, Home } from "./home";
 import { PlanFixButton } from "./planfix";
 import { foldRuns } from "./evidence";
 import { ApproveDialog, byPackage, PackageList, RemediationPage, RolloutCard, ringFailures, sections } from "./remediation";
-import { AgentUpdateSummary, AssetRow, AssetsPage, AttackPaths, Baselines, baselineSummary, filterAssets, NotAssessed, UnmanagedDevices, viaLabel } from "./assets";
+import { AgentUpdateSummary, AssetRow, AssetsPage, Baselines, baselineSummary, filterAssets, NotAssessed, UnmanagedDevices } from "./assets";
+import { AttackPathsPage, AttackPathsSummary, CRITICALITY, layoutFlow, linkName, pointText, splitAction, viaLabel, type ChokePoint } from "./paths";
 import { cmdGroup, HelpPanel, Palette } from "./shell";
 import { Done, errorLead } from "./ui";
 import { Onboarding, TROUBLESHOOT_AFTER_MS } from "./onboarding";
@@ -27,6 +28,7 @@ vi.mock("@tanstack/react-router", () => ({
     return <a href={`${to}${qs ? `?${qs}` : ""}${hash ? `#${hash}` : ""}`} className={className}>{children}</a>;
   },
   useNavigate: () => vi.fn(),
+  useRouter: () => ({ latestLocation: { pathname: "/" } }),
   useSearch: () => ({}),
   useRouterState: ({ select }: { select: (r: { location: { pathname: string } }) => unknown }) => select({ location: { pathname: "/" } }),
 }));
@@ -409,70 +411,125 @@ it("Assets: nothing shows when every installed app was checked", async () => {
   expect(screen.queryByRole("heading")).toBeNull();
 });
 
-it("Assets: attack paths say how sure, where to cut each edge, and nothing shows without a path", async () => {
-  const path = { kind: "network", start: "from the network", grade: "reasonable", steps: ["Getting in", "Taking credentials"],
-                 break_at: { label: "Getting in", fixes: 1, refs: ["CFG:rdp-nla"] } };
-  serve({ "GET /api/attack-paths": { hosts: { a: { hostname: "ws-1", judged: true, paths: [path] }, b: { hostname: "srv-1", judged: true, paths: [] },
-                                              c: { hostname: "new-1", judged: false, paths: [] } },
-                                     chains: [{ start: "a", why_start: "a path from the network", reach: [{ host: "b", hops: ["b"], grade: "reasonable", fix_on_host: ["CFG:remote-uac"] }] }] } });
-  wrap(<AttackPaths />);
-  expect(await screen.findByText(/From ws-1 \(a path from the network\), an attacker can reach 1 other host/)).toBeInTheDocument();
-  expect(screen.getByText(/ws-1 → srv-1 · how sure: reasonable · cut it on srv-1: CFG:remote-uac/)).toBeInTheDocument();
-  expect(screen.getByText(/1 host hasn't been judged yet/)).toBeInTheDocument();
-  expect(screen.getByText(/Break it: fix 1 way of getting in \(CFG:rdp-nla\)/)).toBeInTheDocument();
-});
-
-it("Assets: SSH key links say whose key opens what, chains say who the attacker is there, and choke points come first", async () => {
-  const path = { kind: "network", start: "from the network", grade: "reasonable", steps: ["Getting in", "Becoming root", "Taking credentials"],
-                 break_at: { label: "Getting in", fixes: 1, refs: ["CVE-2026-0101"] }, reaches: { root: true, users: [] } };
-  const way = { via: "SSH:SHA256:RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR", how: "the key /root/.ssh/id_ed25519 on A is trusted for deploy on B",
+const KEY_R = "SSH:SHA256:RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR";
+const PATH_NET = { kind: "network", start: "from the network", grade: "reasonable", steps: ["Getting in", "Becoming root", "Taking credentials"],
+                   break_at: { label: "Getting in", fixes: 1, refs: ["CVE-2026-0101"] }, reaches: { root: true, users: [] } };
+const WAY_R = { via: KEY_R, how: "the key /root/.ssh/id_ed25519 on A is trusted for deploy on B",
                 because: "app-1's sshd ssh.service listens on 10.0.0.2:22; A had a connection open to B", grade: "confirmed", gives: "deploy", account: "deploy" };
-  serve({ "GET /api/attack-paths": {
-    hosts: { w: { hostname: "web-1", judged: true, paths: [path] }, a: { hostname: "app-1", judged: true, paths: [] }, d: { hostname: "db-1", judged: true, paths: [] } },
-    edges: [{ from: "w", to: "a", grade: "confirmed", kind: "ssh", ways: [way] }],
-    chains: [{ start: "w", why_start: "a path from the network", reach: [
-      { host: "a", hops: ["a"], grade: "confirmed", fix_on_host: [way.via], as: ["deploy"] },
-      { host: "d", hops: ["a", "d"], grade: "reasonable", fix_on_host: ["SSH:SHA256:OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO"], as: "root" }] }],
-    choke_points: [{ kind: "retire-key", action: "Retire the SSH key SHA256:RRRRRRRRRRRR…: delete it (/root/.ssh/id_ed25519 on web-1)", cuts: 2, hosts: ["a", "d"],
-                     ways_removed: 1, lower_bound: true, ref: "SHA256:RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR", grade: "confirmed" }],
-    truncated: true, partial: true } });
-  wrap(<AttackPaths />);
+/** web-1 is a way in; its deploy key reaches app-1, whose root key reaches db-1; vpn-1 is a way in that reaches nothing. */
+const FLEET = {
+  hosts: { w: { hostname: "web-1", judged: true, entry: true, paths: [PATH_NET] }, a: { hostname: "app-1", judged: true, paths: [] },
+           d: { hostname: "db-1", judged: true, paths: [] }, v: { hostname: "vpn-1", judged: true, entry: true, paths: [PATH_NET] },
+           n: { hostname: "new-1", judged: false, paths: [] } },
+  edges: [{ from: "w", to: "a", grade: "confirmed", kind: "ssh", ways: [WAY_R] }],
+  chains: [{ start: "w", why_start: "a path from the network", reach: [] }],
+  choke_points: [
+    { kind: "retire-key", action: "Retire the SSH key SHA256:RRRRRRRRRRRR…: delete it (/root/.ssh/id_ed25519 on web-1)", cuts: 2, hosts: ["a", "d"],
+      ways_removed: 1, lower_bound: true, ref: "SHA256:RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR", grade: "confirmed" },
+    { kind: "way-in", action: "Close vpn-1's way in: CVE-2026-0101", cuts: 1, hosts: ["v"], ways_removed: 0, lower_bound: false, ref: "v", grade: "reasonable" }],
+  flow: {
+    machines: { w: { as: "root", grade: "reasonable" }, v: { as: "root", grade: "reasonable", cut_by: [1] },
+                a: { as: ["deploy"], grade: "confirmed", route: ["w", "a"], via: KEY_R, account: "deploy", cut_by: [0] },
+                d: { as: "root", grade: "reasonable", route: ["w", "a", "d"], via: "SSH:SHA256:OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO", account: "root", cut_by: [0] } },
+    starts: { w: { reaches: 2, through: { [KEY_R]: 1, "SSH:SHA256:OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO": 1 } }, v: { reaches: 0, through: {} } } },
+  truncated: true, partial: true,
+};
+const OWNED = [{ id: "a", owner: "Platform", criticality: "high" }, { id: "d", owner: "Data", criticality: "critical" }];
+
+it("Attack paths: what to cut first leads, and each change says what it cuts off, how sure, and where to act", async () => {
+  serve({ "GET /api/attack-paths": FLEET, "GET /api/assets": OWNED });
+  wrap(<AttackPathsPage />);
   expect(await screen.findByRole("heading", { name: "Cut these first" })).toBeInTheDocument();
-  expect(screen.getByText(/cuts at least 2 machines off: app-1, db-1 · how sure: confirmed/)).toBeInTheDocument();
-  expect(screen.getByText(/not every link was followed, so the chains and what to cut first may be missing some/)).toBeInTheDocument();
-  expect(screen.getByText(/web-1 → app-1 · as deploy · how sure: confirmed · cut it on app-1: the key SHA256:RRRRRRRRRRRR…/)).toBeInTheDocument();
-  expect(screen.getByText(/web-1 → app-1 → db-1 · as root · how sure: reasonable/)).toBeInTheDocument();
-  expect(screen.getByText(/the key \/root\/.ssh\/id_ed25519 on web-1 is trusted for deploy on app-1, which gives deploy: .*A had a connection open to B \(confirmed\)/)).toBeInTheDocument();
-  expect(screen.getByText(/, from the network · how sure: reasonable · reaches root/)).toBeInTheDocument();
-  expect(screen.getByText(/Getting in → Becoming root → Taking credentials/)).toBeInTheDocument();
+  const first = screen.getByRole("button", { name: /Retire the SSH key SHA256:RRRRRRRRRRRR…/ });
+  expect(first).toHaveAttribute("aria-pressed", "true");  // the top change is chosen from the start
+  expect(within(first).getByText("delete it (/root/.ssh/id_ed25519 on web-1)")).toBeInTheDocument();
+  expect(screen.getByText(/at least 2/).closest("li")).toHaveTextContent("at least 2 machines cut off");
+  expect(screen.getByRole("link", { name: "Findings on vpn-1" })).toHaveAttribute("href", expect.stringContaining("asset=v"));
+  expect(screen.getByText(/not every link was followed, so some may be missing/)).toBeInTheDocument();
+  expect(screen.getByText(/1 machine hasn't been judged yet/)).toBeInTheDocument();
+  // the flow: each way in with its own reach, the links machines are reached through, the machines grouped by owner
+  const ways = screen.getByRole("list", { name: "Ways in" });
+  expect(within(ways).getByText(/From the network · reaches 2 machines/)).toBeInTheDocument();
+  expect(within(ways).getByText(/reaches no other/)).toBeInTheDocument();
+  expect(within(screen.getByRole("list", { name: "Through" })).getByText("Key for deploy")).toBeInTheDocument();
+  expect(within(screen.getByRole("list", { name: "Machines reached, by owner" })).getByRole("button", { name: /Platform/ })).toHaveTextContent("1 cut off");
+  // every machine reached, with its route, what's held there and the changes that cut it off
+  const table = screen.getByRole("table");
+  expect(within(table).getByText("web-1 → app-1 → db-1")).toBeInTheDocument();
+  expect(within(table).getByText("deploy")).toBeInTheDocument();
+  expect(within(table).getAllByText("change 1")).toHaveLength(2);
+  // choosing another change re-weights the flow and names it
+  await userEvent.click(screen.getByRole("button", { name: /Close vpn-1's way in/ }));
+  expect(screen.getByRole("heading", { name: "What change 2 cuts off" })).toBeInTheDocument();
 });
 
-it("Assets: a key or fingerprint reads short, and Linux settings say to change the setting", () => {
+it("Attack paths: the flow counts each machine once, whatever the fleet's size, and folds past seven rows", () => {
+  const machines: Record<string, object> = { s: { as: "root", grade: "reasonable" } };
+  const owner: Record<string, string> = {};
+  for (let i = 0; i < 1200; i++) {
+    machines[`m${i}`] = { as: "root", grade: "reasonable", route: ["s", `m${i}`], via: `SSH:SHA256:key${i % 12}`, cut_by: i < 700 ? [0] : [] };
+    owner[`m${i}`] = `team-${i % 10}`;
+  }
+  const d = { hosts: { s: { hostname: "edge", judged: true, paths: [] } }, chains: [], flow: { machines, starts: { s: { reaches: 1200, through: {} } } } };
+  const L = layoutFlow(d as never, (id) => owner[id]!, 0);
+  expect(L.reached).toHaveLength(1200);
+  expect(L.vias).toHaveLength(8);  // seven links and "the rest"
+  expect(L.groups).toHaveLength(8);
+  expect(L.bands.reduce((n, b) => n + b.n, 0)).toBe(1200);  // conserved: no machine counted twice
+  expect(L.groups.reduce((n, g) => n + g.cut, 0)).toBe(700);
+  expect(Math.max(...L.groups.map((g) => g.y + g.slot))).toBeLessThan(600);  // the chart stays one screen tall
+});
+
+it("Attack paths: the evidence behind each link, each machine's own path, and machines left out as unlikely", async () => {
+  const fleet = { ...FLEET, hosts: { ...FLEET.hosts, u: { hostname: "web-9", judged: true, paths: [{ ...PATH_NET, steps: ["Getting in", "Taking credentials"] }], unlikely: { epss: 0.004 } } } };
+  serve({ "GET /api/attack-paths": fleet, "GET /api/assets": OWNED });
+  wrap(<AttackPathsPage />);
+  expect(await screen.findByText(/the key \/root\/.ssh\/id_ed25519 on web-1 is trusted for deploy on app-1, which gives deploy: .*A had a connection open to B \(confirmed\)/)).toBeInTheDocument();
+  expect(screen.getAllByText(/, from the network · how sure: reasonable · reaches root/).length).toBeGreaterThan(0);
+  expect(screen.getByText(/reaches root · unlikely: EPSS <1%, not known to be exploited/)).toBeInTheDocument();
+  expect(screen.getByText("left out as unlikely")).toBeInTheDocument();
+  expect(screen.getByText(/1 machine has a way in only through flaws with no sign of exploitation/)).toBeInTheDocument();
+});
+
+it("Attack paths: with no path anywhere the page says so, and Assets says nothing", async () => {
+  const calls = serve({ "GET /api/attack-paths": { hosts: { a: { hostname: "ws-1", judged: true, paths: [] } }, chains: [], flow: { machines: {}, starts: {} } }, "GET /api/assets": [] });
+  wrap(<AttackPathsPage />);
+  expect(await screen.findByRole("heading", { name: "No attack paths" })).toBeInTheDocument();
+  wrap(<AttackPathsSummary />);
+  await waitFor(() => expect(calls.filter((c) => c.path === "/api/attack-paths").length).toBeGreaterThan(0));
+  expect(screen.queryByRole("link", { name: /reach/ })).toBeNull();
+});
+
+it("Assets: one line says how far the ways in reach and the top change, linking to Attack paths", async () => {
+  serve({ "GET /api/attack-paths": FLEET });
+  wrap(<AttackPathsSummary />);
+  expect(await screen.findByRole("link", { name: "2 ways in reach 2 machines" })).toHaveAttribute("href", "/attack-paths");
+  expect(screen.getByText(/Retire the SSH key SHA256:RRRRRRRRRRRR… cuts 2 machines off/)).toBeInTheDocument();
+});
+
+it("Attack paths: a key or fingerprint reads short, an action splits at its colon, and Linux settings say to change the setting", () => {
   expect(viaLabel("SSH:SHA256:abcdefghijklmnopqrstuvwxyzabcdefghijklmnopq")).toBe("the key SHA256:abcdefghijkl…");
   expect(viaLabel("SHA256:abcdefghijklmnopqrstuvwxyzabcdefghijklmnopq")).toBe("the key SHA256:abcdefghijkl…");
   expect(viaLabel("CFG:remote-uac")).toBe("CFG:remote-uac");
+  expect(linkName("SSH:SHA256:abcdefghijklmnopqrstuvwxyzabcdefghijklmnopq", "ansible")).toEqual({ name: "Key for ansible", id: "SHA256:abcdefghijkl…" });
+  expect(linkName("CFG:remote-uac")).toEqual({ name: "Setting remote-uac" });
+  // a key change is named by its account, its fingerprint apart, with who holds it and how many trust it
+  const key: ChokePoint = { kind: "retire-key", action: "Retire the SSH key SHA256:abcdefghijkl…: delete it (…)", cuts: 61, hosts: [], ways_removed: 9, lower_bound: false,
+                            ref: "SHA256:abcdefghijklmnopqrstuvwxyzabcdefghijklmnopq", held_on: ["b1", "b8"], trusted_by: 68, accounts: ["ansible"] };
+  const names: Record<string, string> = { b1: "bastion-prod-01", b8: "bastion-prod-08", m1: "monitor-prod-01" };
+  const hn = (id: string) => names[id] ?? id;
+  expect(pointText(key, hn)).toEqual({ what: "Retire the key for ansible", id: "SHA256:abcdefghijkl…", detail: "Held on bastion-prod-01, bastion-prod-08 · trusted by 68 machines" });
+  expect(pointText({ ...key, kind: "untrust-key", held_on: undefined, accounts: undefined, on: "m1", account: "ansible" }, hn).what).toBe("Remove the key for ansible from monitor-prod-01");
+  // criticality groups read most critical first, whatever their size
+  const machines = Object.fromEntries([0, 1, 2, 3].map((i) => [`m${i}`, { as: "root", grade: "reasonable", route: ["s", `m${i}`], via: "SSH:k" }]));
+  const crit: Record<string, string> = { m0: "Low", m1: "High", m2: "High", m3: "Critical" };
+  const L = layoutFlow({ hosts: {}, chains: [], flow: { machines, starts: {} } } as never, (id) => crit[id]!, null, CRITICALITY);
+  expect(L.groups.map((g) => g.key)).toEqual(["Critical", "High", "Low"]);
+  expect(splitAction("Retire the SSH key SHA256:abc…: delete it")).toEqual(["Retire the SSH key SHA256:abc…", "delete it"]);
+  expect(splitAction("Remove the key SHA256:abc… from root's authorized_keys on db-1")).toEqual(["Remove the key SHA256:abc… from root's authorized_keys on db-1", ""]);
   expect(fixLabel({ fixed_version: null, ecosystem: "LinuxConfig" })).toBe("change the setting");
   expect(whyMatched({ installed_version: "www-data (docker)", fixed_version: null, advisory_ids: [], vuln_id: "CFG:root-equivalent-group", ecosystem: "LinuxConfig" }))
     .toBe("Found www-data (docker) on this host.");
-});
-
-it("Assets: machines whose only way in is unlikely are counted, and their paths say why", async () => {
-  const path = { kind: "network", start: "from the network", grade: "reasonable", steps: ["Getting in", "Taking credentials"],
-                 break_at: { label: "Getting in", fixes: 1, refs: ["CVE-2026-86145"] }, reaches: { root: true, users: [] } };
-  serve({ "GET /api/attack-paths": { hosts: { a: { hostname: "web-1", judged: true, paths: [path], unlikely: { epss: 0.004 } },
-                                              b: { hostname: "web-2", judged: true, paths: [path], unlikely: { epss: 0.03 } } }, chains: [] } });
-  wrap(<AttackPaths />);
-  expect(await screen.findByText(/2 machines have a way in only through flaws with no sign of exploitation/)).toBeInTheDocument();
-  expect(screen.getByText(/they start no chain and aren't counted in what to cut first/)).toBeInTheDocument();
-  expect(screen.getByText(/reaches root · unlikely: EPSS <1%, not known to be exploited/)).toBeInTheDocument();
-  expect(screen.getByText(/reaches root · unlikely: EPSS 3%, not known to be exploited/)).toBeInTheDocument();
-});
-
-it("Assets: no attack paths, no section", async () => {
-  const calls = serve({ "GET /api/attack-paths": { hosts: { a: { hostname: "ws-1", judged: true, paths: [] } }, chains: [] } });
-  wrap(<AttackPaths />);
-  await waitFor(() => expect(calls.some((c) => c.path === "/api/attack-paths")).toBe(true));
-  expect(screen.queryByRole("heading")).toBeNull();
 });
 
 const BASE = { name: "DISA STIG for Windows Server 2025", version: "V1R4", automated: 156, manual: 135, pass: 100, fail: 20, not_assessed: 16, not_applicable: 20 };

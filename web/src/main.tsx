@@ -31,6 +31,7 @@ const shell = createRoute({ getParentRoute: () => root, id: "app", component: Sh
 const home = createRoute({ getParentRoute: () => shell, path: "/", component: Home });
 const add = createRoute({ getParentRoute: () => shell, path: "/add", component: lazyRouteComponent(() => import("./onboarding"), "Onboarding") });
 const assets = createRoute({ getParentRoute: () => shell, path: "/assets", component: lazyRouteComponent(() => import("./assets"), "AssetsPage") });
+const attackPaths = createRoute({ getParentRoute: () => shell, path: "/attack-paths", component: lazyRouteComponent(() => import("./paths"), "AttackPathsPage") });
 const remediation = createRoute({ getParentRoute: () => shell, path: "/remediation", component: lazyRouteComponent(() => import("./remediation"), "RemediationPage") });
 const evidence = createRoute({
   getParentRoute: () => shell, path: "/evidence",
@@ -51,7 +52,7 @@ const findings = createRoute({
 
 // Plain `?q=openssl&priority=fix-now,next` URLs instead of JSON-encoded values.
 const router = createRouter({
-  routeTree: root.addChildren([signin, signup, shell.addChildren([home, add, assets, findings, remediation, progress, evidence, settings])]),
+  routeTree: root.addChildren([signin, signup, shell.addChildren([home, add, assets, attackPaths, findings, remediation, progress, evidence, settings])]),
   parseSearch: (s) => Object.fromEntries(new URLSearchParams(s)),
   stringifySearch: (o) => {
     const p = new URLSearchParams();

@@ -1720,7 +1720,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         beside Windows ones, and the single actions that cut the most machines off. At most 2000 edges and
         50 chain starts are returned. Only a likely way in (a setting, known exploited, EPSS 10% or more, or no
         EPSS yet) starts chains and choke points; a host whose way in isn't carries `unlikely` with its highest
-        EPSS (DECISIONS 172). This GET commits its usage counter."""
+        EPSS (DECISIONS 172). `flow` holds every machine reached, in full, with its route, the link onto it and which choke
+        points cut it off, and each start's own reach (DECISIONS 173). This GET commits its usage counter."""
         if over_limit(s, "attack-paths:" + user.org_id, 120):  # a whole-fleet read: shared server, so bounded per organisation
             raise HTTPException(429, "Attack paths were read too often this hour; try again later")
         s.commit()

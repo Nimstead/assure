@@ -456,6 +456,18 @@ it("Assets: a key or fingerprint reads short, and Linux settings say to change t
     .toBe("Found www-data (docker) on this host.");
 });
 
+it("Assets: machines whose only way in is unlikely are counted, and their paths say why", async () => {
+  const path = { kind: "network", start: "from the network", grade: "reasonable", steps: ["Getting in", "Taking credentials"],
+                 break_at: { label: "Getting in", fixes: 1, refs: ["CVE-2026-86145"] }, reaches: { root: true, users: [] } };
+  serve({ "GET /api/attack-paths": { hosts: { a: { hostname: "web-1", judged: true, paths: [path], unlikely: { epss: 0.004 } },
+                                              b: { hostname: "web-2", judged: true, paths: [path], unlikely: { epss: 0.03 } } }, chains: [] } });
+  wrap(<AttackPaths />);
+  expect(await screen.findByText(/2 machines have a way in only through flaws with no sign of exploitation/)).toBeInTheDocument();
+  expect(screen.getByText(/they start no chain and aren't counted in what to cut first/)).toBeInTheDocument();
+  expect(screen.getByText(/reaches root · unlikely: EPSS <1%, not known to be exploited/)).toBeInTheDocument();
+  expect(screen.getByText(/reaches root · unlikely: EPSS 3%, not known to be exploited/)).toBeInTheDocument();
+});
+
 it("Assets: no attack paths, no section", async () => {
   const calls = serve({ "GET /api/attack-paths": { hosts: { a: { hostname: "ws-1", judged: true, paths: [] } }, chains: [] } });
   wrap(<AttackPaths />);

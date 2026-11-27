@@ -17,7 +17,8 @@ Nimstead joins that with what runs (0.14) and what's vulnerable. For each machin
    - changing one setting
 3. Each **From web-1 (a path from the network)** block lists every machine an attacker who gets in there can reach, by the fewest hops, and what they hold on it: "app-1 via web-1 → app-1 · as deploy · how sure: confirmed".
 4. **SSH key links** says, for each link, whose key on which machine opens which account where, what that gives (root when the account is root, in `docker`, `lxd` or `disk`, or has `NOPASSWD: ALL` sudo), and what the grade rests on.
-5. **Paths on each host** shows each machine's own path. A Linux path says who the way in runs as, whether it skips becoming root (a listener running as root), and what it reaches. A machine's scan report has the full path in words.
+5. A machine whose only way in is a flaw with no sign of exploitation (not known to be exploited, EPSS under 10%) starts no chain and isn't counted in **Cut these first**. The view says how many there are, and their paths say "unlikely" with the EPSS. A flaw with no EPSS yet always counts.
+6. **Paths on each host** shows each machine's own path. A Linux path says who the way in runs as, whether it skips becoming root (a listener running as root), and what it reaches. A machine's scan report has the full path in words.
 
 ## How sure each link is
 

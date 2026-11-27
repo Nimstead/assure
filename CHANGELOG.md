@@ -4,6 +4,15 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Upgrade notes
+- **API:** `GET /api/attack-paths` adds `unlikely` (`{"epss": ...}`) to a host whose only way in is a flaw with no sign of exploitation. Such a host's `entry` is now false. Linux ways in in scan reports add `refs`, every flaw id of the way.
+
+### Highlights
+- **Cut these first finds the real choke points.** Chains and choke points now start only from a likely way in: a setting, or a flaw that is known to be exploited, has an EPSS of 10% or more, or has no EPSS yet. Before, an unfixed library flaw nobody exploits (one loaded by every sshd, say) made nearly every machine a start, so there was little left to cut. On a 205-machine demo fleet the starts fell from 112 to 2, and retiring the production ansible key now cuts 61 machines instead of 6. Machines left out keep their paths, labelled unlikely, and the view says how many there are.
+
+### Changed
+- **Only likely ways in start chains and choke points** (DECISIONS 172).
+
 ## [0.15.0] - 2026-11-27 (preview)
 
 Agent 0.11.0. One database migration (`a3c5e7f9b1d2`, a table), applied on start.

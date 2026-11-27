@@ -29,6 +29,7 @@ SETTINGS = {"smb1": "entry", "rdp-nla": "entry", "guest-account": "entry",
             "ldap-signing": "lateral", "ldap-channel-binding": "lateral"}
 _ORDER = ("unverified", "reasonable", "confirmed")
 _SHOWN = 5
+REFS = 50  # flaw ids kept on one Linux way in; past this the fleet view counts the way as likely, since the rest aren't known
 
 
 def _vector(rec: dict) -> dict[str, str]:
@@ -180,16 +181,17 @@ def build_linux(inv: Inventory, content: Content, verdicts: list[Verdict]) -> li
         if stage == "escalate":
             escalate.append({"what": what, "ref": v.vuln_id, "grade": grade, "kev": v.kev, "flaws": len(vs), "helps": [ANYONE]})
             continue
+        refs = [x[0].vuln_id for x in vs][:REFS]  # every flaw of the way, so the fleet view can judge how likely it is (DECISIONS 172)
         ls = _listeners(inv, product)
         if ls:
             x = ls[0]
             users, workers = _who(ls)
             what += (f". Loaded by {x['program']}, listening on {', '.join(a.split('/')[0] for a in x['listen'][:2])}"
                      + (f" ({workers})" if workers else f", running as {', '.join(sorted(users))}" if users else "") + "; the host firewall isn't read")
-            entry.append({"what": what, "ref": v.vuln_id, "grade": _grade(grade, "reasonable"), "kev": v.kev, "flaws": len(vs), "users": users})
+            entry.append({"what": what, "ref": v.vuln_id, "refs": refs, "grade": _grade(grade, "reasonable"), "kev": v.kev, "flaws": len(vs), "users": users})
         elif v.kev:  # exploited in the wild: worth a path without seeing a listener, and said so
-            entry.append({"what": what + "; CISA lists it as exploited, no listener was seen", "ref": v.vuln_id, "grade": _grade(grade, "reasonable"),
-                          "kev": True, "flaws": len(vs), "users": set()})
+            entry.append({"what": what + "; CISA lists it as exploited, no listener was seen", "ref": v.vuln_id, "refs": refs,
+                          "grade": _grade(grade, "reasonable"), "kev": True, "flaws": len(vs), "users": set()})
     held = [h for h in acc.get("held", []) if isinstance(h, dict)]
 
     def creds(users: set[str] | None) -> list[dict]:

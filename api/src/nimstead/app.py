@@ -64,6 +64,7 @@ from nimstead.db import (
     Container,
     DirectoryComputer,
     EnrollToken,
+    Epss,
     Finding,
     InstalledPackage,
     LedgerEntry,
@@ -1717,7 +1718,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         The organisation limit is 120 reads per hour, with 429 on refusal.
         Response has hosts, edges, truncated, chains and choke_points (DECISIONS 168-169): SSH key edges between Linux hosts
         beside Windows ones, and the single actions that cut the most machines off. At most 2000 edges and
-        50 chain starts are returned. This GET commits its usage counter."""
+        50 chain starts are returned. Only a likely way in (a setting, known exploited, EPSS 10% or more, or no
+        EPSS yet) starts chains and choke points; a host whose way in isn't carries `unlikely` with its highest
+        EPSS (DECISIONS 172). This GET commits its usage counter."""
         if over_limit(s, "attack-paths:" + user.org_id, 120):  # a whole-fleet read: shared server, so bounded per organisation
             raise HTTPException(429, "Attack paths were read too often this hour; try again later")
         s.commit()
@@ -1731,9 +1734,15 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         win = dict(s.execute(select(InstalledPackage.asset_id, InstalledPackage.version).join(Asset, Asset.id == InstalledPackage.asset_id)
                              .where(Asset.org_id == user.org_id, InstalledPackage.ecosystem == "Windows")).all())
         keys = dict(s.execute(select(AssetAccess.asset_id, AssetAccess.data).where(AssetAccess.org_id == user.org_id)).all())  # one query (DECISIONS 168)
+        # each way in's EPSS, by its CVE ids (the table's key): an id with no score is left out, which counts as likely (DECISIONS 172)
+        cves = sorted({r for v in latest.values() for p in v.get("attack_paths") or [] if p.get("kind") == "network"
+                       for w in p["steps"][0]["ways"] for r in w.get("refs") or [w["ref"]] if r.startswith("CVE-")})
+        epss = {}
+        for i in range(0, len(cves), 500):
+            epss |= dict(s.execute(select(Epss.cve, Epss.score).where(Epss.cve.in_(cves[i:i + 500]))).all())
         rows = s.execute(select(Asset.id, Asset.hostname, Asset.facts, Asset.internet_facing).where(Asset.org_id == user.org_id, Asset.kind != "device"))
         out = engine_fleet.build([{"id": aid, "hostname": hostname, "facts": facts or {}, "os_version": win.get(aid, ""),
-                                   "report": latest.get(aid) or None, "internet_facing": facing,
+                                   "report": latest.get(aid) or None, "internet_facing": facing, "epss": epss,
                                    "linux": "os_id" in (facts or {}), **({"access": keys[aid]} if aid in keys else {})}
                                   for aid, hostname, facts, facing in rows])
         return JSONResponse(out)  # plain JSON types already: no encoder walk over every edge and row

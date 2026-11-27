@@ -3,7 +3,7 @@ import { Link, useNavigate, useRouter, useSearch } from "@tanstack/react-router"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Dialog, Switch } from "radix-ui";
 import { AppWindow, ArrowRight, Plus, Search, SlidersHorizontal, Trash2, Upload, X } from "lucide-react";
-import { adminGate, AGENT_UPDATE, api, APP_SOURCES, refresh, assetsQ, coverageQ, filtersToApi, filtersToSearch, networkAddress, NO_OWNER, ownersOf, parseFilters, parseUtc, plural, PRIORITIES, PRIORITY_LABEL, relativeTime, sbomSummary, updateSource, useIsAdmin, useTitle, type AgentUpdate, type Asset, type ContainerRun, type Criticality, type Finding, type MachineRuntime, type Priority, type SbomResult } from "./lib";
+import { adminGate, AGENT_UPDATE, api, APP_SOURCES, refresh, assetsQ, coverageQ, filtersToApi, filtersToSearch, networkAddress, NO_OWNER, ownersOf, parseFilters, parseUtc, pct, plural, PRIORITIES, PRIORITY_LABEL, relativeTime, sbomSummary, updateSource, useIsAdmin, useTitle, type AgentUpdate, type Asset, type ContainerRun, type Criticality, type Finding, type MachineRuntime, type Priority, type SbomResult } from "./lib";
 import { Alert, btnPrimary, btnQuiet, chip, ConfirmDialog, CopyBlock, dialogBox, Done, EmptyState, ErrorState, Field, input, Loading, PriorityPill, switchRoot, switchThumb, Tag, useReturnFocus, HowJudged } from "./ui";
 import clsx from "clsx";
 import { ExternalTargets } from "./targets";
@@ -551,7 +551,7 @@ interface PathSummary {
   kind: "network" | "foothold"; start: string; grade: string; steps: string[]; break_at: { label: string; fixes: number; refs: string[] };
   reaches?: { root: boolean; users: string[] };
 }
-interface FleetHost { hostname: string; judged: boolean; paths: PathSummary[] }
+interface FleetHost { hostname: string; judged: boolean; paths: PathSummary[]; unlikely?: { epss: number | null } }
 interface Reach { host: string; hops: string[]; grade: string; fix_on_host: string[]; as?: "root" | string[] }
 interface EdgeWay { via: string; how: string; because: string; grade: string; gives?: string; account?: string }
 interface Edge { from: string; to: string; grade: string; kind?: "ssh"; ways: EdgeWay[] }
@@ -599,14 +599,19 @@ export function AttackPaths() {
   const name = (id: string) => d.hosts[id]?.hostname ?? id;
   const unjudged = Object.values(d.hosts).filter((h) => !h.judged).length;
   const keys = (d.edges ?? []).filter((e) => e.kind === "ssh");
+  const unlikely = Object.values(d.hosts).filter((h) => h.unlikely).length;
   return (
     <section aria-labelledby="attack-paths" className="flex flex-col gap-2 border border-line bg-sunken p-4">
       <h2 id="attack-paths" className="text-base font-semibold">How these weaknesses combine</h2>
       <HowJudged lead={<>Each step is a vulnerability, a setting or a key read on the host.{d.partial ? " Past the limits not every link was followed, so the chains and what to cut first may be missing some." : d.truncated ? " Only the first links are listed; the chains and what to cut first use all of them." : ""}</>}>
         <p>A path is only as sure as its weakest step. Windows links across hosts are no better than reasonable unless the sign-in and a connection were both seen. An SSH key link is confirmed only when the key matches exactly, needs no passphrase, the other machine's sshd lets that account in, and a connection between them was seen.</p>
         <p>Each host's part rests on what its own agent reported, so a compromised host could make its own links look worse or better. Keys are compared by fingerprint: no key ever leaves a machine, and nothing here signs in anywhere.{unjudged ? ` ${plural(unjudged, "host")} ${unjudged === 1 ? "hasn't" : "haven't"} been judged yet.` : ""}</p>
+        <p>Chains and what to cut first start only from a likely way in: a setting, or a flaw that is known to be exploited, has an EPSS (the chance of exploitation in 30 days) of 10% or more, or has no EPSS yet.</p>
       </HowJudged>
       <ChokePoints points={d.choke_points ?? []} name={name} />
+      {unlikely > 0 && (
+        <p className="max-w-prose text-sm text-muted">{plural(unlikely, "machine")} {unlikely === 1 ? "has" : "have"} a way in only through flaws with no sign of exploitation: none is known to be exploited, and each has an EPSS under 10%. {unlikely === 1 ? "Its path is" : "Their paths are"} under Paths on each host, but {unlikely === 1 ? "it starts" : "they start"} no chain and {unlikely === 1 ? "isn't" : "aren't"} counted in what to cut first.</p>
+      )}
       {d.chains.map((c) => (
         <div key={c.start} className="flex flex-col gap-1">
           <h3 className="text-sm font-semibold">From {name(c.start)} ({c.why_start}), an attacker can reach {plural(c.reach_count ?? c.reach.length, "other host")}{c.reach_count ? `, the nearest ${c.reach.length} listed` : ""}</h3>
@@ -639,7 +644,7 @@ export function AttackPaths() {
         <ul className="mt-2 flex flex-col gap-2">
           {withPaths.map(([id, h]) => h.paths.map((p) => (
             <li key={id + p.kind} className="break-words border-t border-line pt-2">
-              <span className="font-medium">{h.hostname}</span>, {p.start} · how sure: {p.grade}{p.reaches ? ` · reaches ${p.reaches.root ? "root" : p.reaches.users.join(", ")}` : ""}
+              <span className="font-medium">{h.hostname}</span>, {p.start} · how sure: {p.grade}{p.reaches ? ` · reaches ${p.reaches.root ? "root" : p.reaches.users.join(", ")}` : ""}{p.kind === "network" && h.unlikely ? ` · unlikely: EPSS ${pct(h.unlikely.epss ?? 0)}, not known to be exploited` : ""}
               <div className="text-muted">{p.steps.join(" → ")}. Break it: fix {plural(p.break_at.fixes, "way")} of {p.break_at.label.toLowerCase()} ({p.break_at.refs.map(viaLabel).join(", ")})</div>
             </li>
           )))}

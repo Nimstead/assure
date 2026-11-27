@@ -448,8 +448,8 @@ test("devices with no agent: listed on Assets from agents' neighbour tables, and
   }
 });
 
-test("attack paths: SSH key links, who the attacker is on each machine, and what to cut first, and it passes axe", async ({ browser }) => {
-  const fp = "SHA256:" + "R".repeat(43);
+test("attack paths: its own page leads with what to cut, shows the flow and every machine reached, and it passes axe", async ({ browser }) => {
+  const fp = "SHA256:" + "R".repeat(43), other = `SSH:SHA256:${"O".repeat(43)}`;
   const way = { via: `SSH:${fp}`, how: "the key /root/.ssh/id_ed25519 on A is trusted for deploy on B", grade: "confirmed", gives: "deploy", account: "deploy",
                 because: "app-1's sshd ssh.service listens on 10.0.0.2:22; A had a connection open to B" };
   const body = {
@@ -458,22 +458,26 @@ test("attack paths: SSH key links, who the attacker is on each machine, and what
                   reaches: { root: true, users: [] } }] },
              a: { hostname: "app-1", judged: true, paths: [] }, d: { hostname: "db-1", judged: true, paths: [] } },
     edges: [{ from: "w", to: "a", grade: "confirmed", kind: "ssh", ways: [way] }], truncated: false,
-    chains: [{ start: "w", why_start: "a path from the network", reach: [{ host: "a", hops: ["a"], grade: "confirmed", fix_on_host: [way.via], as: ["deploy"] },
-                                                                          { host: "d", hops: ["a", "d"], grade: "reasonable", fix_on_host: [`SSH:SHA256:${"O".repeat(43)}`], as: "root" }] }],
+    chains: [{ start: "w", why_start: "a path from the network", reach: [] }],
     choke_points: [{ kind: "retire-key", action: `Retire the SSH key ${fp.slice(0, 19)}…: delete it (/root/.ssh/id_ed25519 on web-1) and remove it from the authorized_keys of the 1 machine that trust it`,
-                     cuts: 2, hosts: ["a", "d"], ways_removed: 1, lower_bound: false, ref: fp }] };
+                     cuts: 2, hosts: ["a", "d"], ways_removed: 1, lower_bound: false, ref: fp, grade: "confirmed" }],
+    flow: { machines: { w: { as: "root", grade: "reasonable" },
+                        a: { as: ["deploy"], grade: "confirmed", route: ["w", "a"], via: way.via, account: "deploy", cut_by: [0] },
+                        d: { as: "root", grade: "reasonable", route: ["w", "a", "d"], via: other, account: "root", cut_by: [0] } },
+            starts: { w: { reaches: 2, through: { [way.via]: 1, [other]: 1 } } } } };
   for (const width of [1440, 375] as const) {
     for (const scheme of ["light", "dark"] as const) {
       const { context, page } = await ctx(browser, width, scheme);
       await page.route("**/api/attack-paths", (route) => route.fulfill({ json: body }));
-      await page.goto("/assets");
-      const section = page.getByRole("region", { name: "How these weaknesses combine" });
-      await expect(section.getByRole("heading", { name: "Cut these first" })).toBeVisible();
-      await expect(section.getByText(/cuts 2 machines off: app-1, db-1/)).toBeVisible();
-      await expect(section.getByText(/· as deploy · how sure: confirmed/)).toBeVisible();
-      await section.getByText("SSH key links (1)").click();
-      await expect(section.getByText(/trusted for deploy on app-1, which gives deploy/)).toBeVisible();
-      await axe(page, `attack paths with SSH keys @${width} ${scheme}`);
+      await page.goto("/attack-paths");
+      await expect(page.getByRole("heading", { name: "Cut these first" })).toBeVisible();
+      await expect(page.getByRole("button", { name: /Retire the SSH key SHA256:RRRRRRRRRRRR…/ })).toHaveAttribute("aria-pressed", "true");
+      await expect(page.getByText("2 machines cut off", { exact: true })).toBeVisible();
+      await expect(page.getByRole("list", { name: "Through" }).getByText("Key for deploy")).toBeVisible();
+      await expect(page.getByRole("table").getByText("web-1 → app-1 → db-1")).toBeVisible();
+      await page.getByText("SSH key links (1)").click();
+      await expect(page.getByText(/trusted for deploy on app-1, which gives deploy/)).toBeVisible();
+      await axe(page, `attack paths page @${width} ${scheme}`);
       await context.close();
     }
   }

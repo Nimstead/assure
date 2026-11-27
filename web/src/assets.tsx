@@ -3,10 +3,11 @@ import { Link, useNavigate, useRouter, useSearch } from "@tanstack/react-router"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Dialog, Switch } from "radix-ui";
 import { AppWindow, ArrowRight, Plus, Search, SlidersHorizontal, Trash2, Upload, X } from "lucide-react";
-import { adminGate, AGENT_UPDATE, api, APP_SOURCES, refresh, assetsQ, coverageQ, filtersToApi, filtersToSearch, networkAddress, NO_OWNER, ownersOf, parseFilters, parseUtc, pct, plural, PRIORITIES, PRIORITY_LABEL, relativeTime, sbomSummary, updateSource, useIsAdmin, useTitle, type AgentUpdate, type Asset, type ContainerRun, type Criticality, type Finding, type MachineRuntime, type Priority, type SbomResult } from "./lib";
+import { adminGate, AGENT_UPDATE, api, APP_SOURCES, refresh, assetsQ, coverageQ, filtersToApi, filtersToSearch, networkAddress, NO_OWNER, ownersOf, parseFilters, parseUtc, plural, PRIORITIES, PRIORITY_LABEL, relativeTime, sbomSummary, updateSource, useIsAdmin, useTitle, type AgentUpdate, type Asset, type ContainerRun, type Criticality, type Finding, type MachineRuntime, type Priority, type SbomResult } from "./lib";
 import { Alert, btnPrimary, btnQuiet, chip, ConfirmDialog, CopyBlock, dialogBox, Done, EmptyState, ErrorState, Field, input, Loading, PriorityPill, switchRoot, switchThumb, Tag, useReturnFocus, HowJudged } from "./ui";
 import clsx from "clsx";
 import { ExternalTargets } from "./targets";
+import { AttackPathsSummary, MachinePaths } from "./paths";
 
 type AssetPatch = Partial<Pick<Asset, "criticality" | "internet_facing" | "directory_source" | "ring" | "health_units">> & { owner?: string };  // owner "" = none
 const LEVELS: Criticality[] = ["low", "medium", "high", "critical"];
@@ -68,7 +69,7 @@ export function AssetsPage() {
 
       {view === "machines" && <>
       <Unmanaged />
-      <AttackPaths />
+      <AttackPathsSummary />
       <Baselines />
       <NotAssessed />
 
@@ -547,113 +548,6 @@ export function Baselines() {
   );
 }
 
-interface PathSummary {
-  kind: "network" | "foothold"; start: string; grade: string; steps: string[]; break_at: { label: string; fixes: number; refs: string[] };
-  reaches?: { root: boolean; users: string[] };
-}
-interface FleetHost { hostname: string; judged: boolean; paths: PathSummary[]; unlikely?: { epss: number | null } }
-interface Reach { host: string; hops: string[]; grade: string; fix_on_host: string[]; as?: "root" | string[] }
-interface EdgeWay { via: string; how: string; because: string; grade: string; gives?: string; account?: string }
-interface Edge { from: string; to: string; grade: string; kind?: "ssh"; ways: EdgeWay[] }
-export interface ChokePoint { kind: "way-in" | "retire-key" | "untrust-key" | "setting"; action: string; cuts: number; hosts: string[]; ways_removed: number; lower_bound: boolean; ref: string; grade?: string }
-interface AttackPathsData {
-  hosts: Record<string, FleetHost>; truncated?: boolean; partial?: boolean; edges?: Edge[]; chains: { start: string; why_start: string; reach: Reach[]; reach_count?: number }[]; choke_points?: ChokePoint[];
-}
-
-/** A link's way across in words: an SSH key by its fingerprint's start, a setting by its check. */
-export function viaLabel(via: string) {
-  if (via.startsWith("SSH:")) return `the key ${via.slice(4, 23)}…`;
-  return via.startsWith("SHA256:") ? `the key ${via.slice(0, 19)}…` : via;
-}
-
-/** What an attacker holds on a host reached over SSH: root, or the accounts the keys opened. Windows links give administrator rights, said by the link itself. */
-function heldThere(r: Reach) {
-  if (Array.isArray(r.as)) return ` · as ${r.as.join(", ")}`;
-  return r.as === "root" && r.fix_on_host.some((v) => v.startsWith("SSH:")) ? " · as root" : "";
-}
-
-/** The single actions that cut the most machines off from every way in (DECISIONS 169), largest first. */
-export function ChokePoints({ points, name }: { points: ChokePoint[]; name: (id: string) => string }) {
-  if (!points.length) return null;
-  return (
-    <div className="flex flex-col gap-1">
-      <h3 className="text-sm font-semibold">Cut these first</h3>
-      <ol className="flex flex-col gap-1 text-sm">
-        {points.map((c) => (
-          <li key={`${c.kind}|${c.ref}|${c.action}`} className="break-words">
-            {c.action}
-            <span className="text-muted"> · cuts {c.lower_bound ? "at least " : ""}{plural(c.cuts, "machine")} off: {c.hosts.slice(0, 5).map(name).join(", ")}{c.hosts.length > 5 ? ` and ${c.hosts.length - 5} more` : ""}{c.grade ? ` · how sure: ${c.grade}` : ""}</span>
-          </li>
-        ))}
-      </ol>
-    </div>
-  );
-}
-
-/** How weaknesses chain on each host and from one host to the next (DECISIONS 97, 98): every step is evidence, and the grade is the weakest one's. */
-export function AttackPaths() {
-  const q = useQuery({ queryKey: ["attack-paths"], queryFn: () => api<AttackPathsData>("/api/attack-paths") });
-  const d = q.data;
-  const withPaths = Object.entries(d?.hosts ?? {}).filter(([, h]) => h.paths.length);
-  if (!d || (!withPaths.length && !d.chains.length)) return null;
-  const name = (id: string) => d.hosts[id]?.hostname ?? id;
-  const unjudged = Object.values(d.hosts).filter((h) => !h.judged).length;
-  const keys = (d.edges ?? []).filter((e) => e.kind === "ssh");
-  const unlikely = Object.values(d.hosts).filter((h) => h.unlikely).length;
-  return (
-    <section aria-labelledby="attack-paths" className="flex flex-col gap-2 border border-line bg-sunken p-4">
-      <h2 id="attack-paths" className="text-base font-semibold">How these weaknesses combine</h2>
-      <HowJudged lead={<>Each step is a vulnerability, a setting or a key read on the host.{d.partial ? " Past the limits not every link was followed, so the chains and what to cut first may be missing some." : d.truncated ? " Only the first links are listed; the chains and what to cut first use all of them." : ""}</>}>
-        <p>A path is only as sure as its weakest step. Windows links across hosts are no better than reasonable unless the sign-in and a connection were both seen. An SSH key link is confirmed only when the key matches exactly, needs no passphrase, the other machine's sshd lets that account in, and a connection between them was seen.</p>
-        <p>Each host's part rests on what its own agent reported, so a compromised host could make its own links look worse or better. Keys are compared by fingerprint: no key ever leaves a machine, and nothing here signs in anywhere.{unjudged ? ` ${plural(unjudged, "host")} ${unjudged === 1 ? "hasn't" : "haven't"} been judged yet.` : ""}</p>
-        <p>Chains and what to cut first start only from a likely way in: a setting, or a flaw that is known to be exploited, has an EPSS (the chance of exploitation in 30 days) of 10% or more, or has no EPSS yet.</p>
-      </HowJudged>
-      <ChokePoints points={d.choke_points ?? []} name={name} />
-      {unlikely > 0 && (
-        <p className="max-w-prose text-sm text-muted">{plural(unlikely, "machine")} {unlikely === 1 ? "has" : "have"} a way in only through flaws with no sign of exploitation: none is known to be exploited, and each has an EPSS under 10%. {unlikely === 1 ? "Its path is" : "Their paths are"} under Paths on each host, but {unlikely === 1 ? "it starts" : "they start"} no chain and {unlikely === 1 ? "isn't" : "aren't"} counted in what to cut first.</p>
-      )}
-      {d.chains.map((c) => (
-        <div key={c.start} className="flex flex-col gap-1">
-          <h3 className="text-sm font-semibold">From {name(c.start)} ({c.why_start}), an attacker can reach {plural(c.reach_count ?? c.reach.length, "other host")}{c.reach_count ? `, the nearest ${c.reach.length} listed` : ""}</h3>
-          <ul className="flex flex-col gap-1 text-sm">
-            {c.reach.map((r) => (
-              <li key={r.host} className="break-words">
-                <span className="font-medium">{name(r.host)}</span> via {[c.start, ...r.hops].map(name).join(" → ")}{heldThere(r)} · how sure: {r.grade} · cut it on {name(r.host)}: {r.fix_on_host.map(viaLabel).join(", ")}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ))}
-      {keys.length > 0 && (
-        <details className="text-sm">
-          <summary className="tap cursor-pointer py-2">SSH key links ({keys.length})</summary>
-          <ul className="mt-2 flex flex-col gap-2">
-            {keys.map((e) => (
-              <li key={`${e.from}>${e.to}`} className="break-words border-t border-line pt-2">
-                <span className="font-medium">{name(e.from)} → {name(e.to)}</span> · how sure: {e.grade}
-                {e.ways.slice(0, 3).map((w, i) => (
-                  <div key={`${i}:${w.via}:${w.account ?? ""}`} className="text-muted">{w.how.replace(" on A ", ` on ${name(e.from)} `).replace(/ on B$/, ` on ${name(e.to)}`)}, which gives {w.gives === "root" ? "root" : w.gives}: {w.because} ({w.grade})</div>
-                ))}
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
-      <details className="text-sm">
-        <summary className="tap cursor-pointer py-2">Paths on each host ({withPaths.length})</summary>
-        <ul className="mt-2 flex flex-col gap-2">
-          {withPaths.map(([id, h]) => h.paths.map((p) => (
-            <li key={id + p.kind} className="break-words border-t border-line pt-2">
-              <span className="font-medium">{h.hostname}</span>, {p.start} · how sure: {p.grade}{p.reaches ? ` · reaches ${p.reaches.root ? "root" : p.reaches.users.join(", ")}` : ""}{p.kind === "network" && h.unlikely ? ` · unlikely: EPSS ${pct(h.unlikely.epss ?? 0)}, not known to be exploited` : ""}
-              <div className="text-muted">{p.steps.join(" → ")}. Break it: fix {plural(p.break_at.fixes, "way")} of {p.break_at.label.toLowerCase()} ({p.break_at.refs.map(viaLabel).join(", ")})</div>
-            </li>
-          )))}
-        </ul>
-      </details>
-    </section>
-  );
-}
-
 /** Software the curated rules don't cover (DECISIONS 24): listed, never matched, so saying so is part of every clean result. */
 export function NotAssessed() {
   const q = useQuery(coverageQ);
@@ -1037,6 +931,7 @@ export function AssetRow({ a, onPatch, onDelete, saved, error, inDrawer, undo, o
         {inDrawer && a.agent_update && a.agent_update !== "current" && <p className="mt-2 text-sm">{AGENT_UPDATE[a.agent_update].why(a)} <Link to="/add" className="font-medium underline">Install command</Link></p>}
         {inDrawer && open.length > 0 && <p className="mt-2 text-sm"><Link to="/findings" search={filtersToSearch({ ...parseFilters({}), asset: a.id, group: "package" })} className="inline-flex tap items-center font-medium underline">Fixes for this machine, by package</Link></p>}
         {inDrawer && host && <MachineRunning id={a.id} />}
+        {inDrawer && host && <MachinePaths id={a.id} />}
         {inDrawer && !!a.containers?.length && <div className="mt-3 text-sm">
           <p className="font-medium">{plural(a.containers_total ?? a.containers.length, "container")} running here</p>
           {/* each image's findings are its own (one image, one set of findings, wherever it runs): link to it, never repeat them here */}

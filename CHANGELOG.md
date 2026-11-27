@@ -4,6 +4,15 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Upgrade notes
+- **API:** `GET /api/attack-paths` adds `flow`: every machine reached, in full, with its route, the link onto it and which choke points cut it off, and each way in's own reach.
+
+### Highlights
+- **Attack paths have a page of their own.** It opens on **Cut these first**, with the top change already chosen. Below it, the fleet's exposure is drawn as one flow: the ways in, the keys and settings machines are reached through, and the machines reached by owner or criticality, with what the chosen change cuts off solid and the rest hatched. A row per machine follows, with its route, how sure, and which changes cut it off. Columns fold past seven rows, so it reads the same at thousands of machines.
+
+### Added
+- **The Attack paths page** (DECISIONS 173), in the sidebar after Assets. Assets keeps one line linking to it, and each machine's drawer shows its own paths and how it's reached.
+
 ## [0.15.1] - 2026-11-27 (preview)
 
 Agent 0.11.0, unchanged. No database migration.

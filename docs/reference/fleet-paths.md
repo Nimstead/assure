@@ -14,6 +14,7 @@ The endpoint limits an organisation to 120 reads per hour. It returns `429` when
 | `chains` | Up to 50 start-host reachability groups, largest first |
 | `choke_points` | Up to 10 single actions that cut the most machines off from every start, largest first |
 | `partial` | True when chains and choke points may be missing something: Windows edges stopped at 2000, key ways at 50,000, or more than 1,000 starts needed a walk |
+| `flow` | Every machine reached, in full, and each start's reach (see [Flow](#flow)) |
 
 Chains and choke points walk every edge found, not only the 2000 listed. Windows edges stop at 2000 when they're found, so past that a Windows route can be missing from both, and `partial` says so. The 50-chain limit has no separate truncation flag.
 
@@ -116,7 +117,24 @@ Each candidate is scored by walking the whole graph again without what it remove
 | `lower_bound` | True when the graph was cut short, so `cuts` may be higher |
 | `ref` | The start's asset ID, the key's fingerprint, or the setting reference |
 | `grade` | The best grade among the ways it removes; for `way-in`, the start's network path's grade |
-| `on`, `account` | For `untrust-key`: the asset ID of the machine and the account the key is trusted for there |
+| `on`, `account` | For `untrust-key`: the asset ID of the machine and the account the key is trusted for there. For `setting`, `on` alone: the machine to change |
+| `held_on`, `trusted_by`, `accounts` | For `retire-key`: the asset IDs that hold the key, how many machines trust it, and the accounts it signs in as, so a page can name it without parsing `action` |
+
+## Flow
+
+`flow` sums every machine a likely way in reaches, in full, where a chain lists at most 200 rows. The Attack paths page groups it, so it reads the same at thousands of machines.
+
+`flow.machines` maps each asset ID reached, starts included, to one row. Each machine is reached by the fewest hops from any start.
+
+| Field | Value |
+| --- | --- |
+| `route` | Asset IDs from a start to this machine; absent on a start |
+| `via`, `account` | The link that let an attacker onto it: the strongest way across the route's last hop, and for a key the account it signs in as; absent on a start |
+| `as` | What is held there: `root`, or the accounts |
+| `grade` | The weakest grade along the route; on a start, its path's grade |
+| `cut_by` | Indices into `choke_points` of the actions that cut it off; absent when none does |
+
+`flow.starts` maps each start to its own reach: `reaches` (how many machines, the start excluded) and `through` (how many of them it reaches through each `via`). A start another start reaches holding as much isn't walked; it has `covered_by` with that start's asset ID instead. A start past the 1,000 walks is absent, and `partial` says so.
 
 ## Related
 

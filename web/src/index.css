@@ -82,6 +82,7 @@ a { text-underline-offset: 3px; }
   li[id$="-fail"]:focus { box-shadow: inset 3px 0 0 var(--now-fg); padding-left: 0.5rem; }
 }
 .num { font-variant-numeric: tabular-nums; }
+.flow-band { transition: d 200ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 200ms, fill 200ms, stroke 200ms; }
 @utility tap { min-height: 44px; @media (min-width: 48rem) { min-height: 0; } }
 /* mono runs wide: versions, IDs and hashes sit a step under the text beside them */
 .text-mono { font-size: 0.8667rem; }

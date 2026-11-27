@@ -209,6 +209,7 @@ def build(inv: Inventory, content: Content, verdicts: list[Verdict]) -> dict:
             "not_vulnerable": [{"family": f, "product": p, "instance": i, "grade": g, "checks": n} for (f, p, i, g), n in sorted(per_install.items(), key=str)],
             "not_applicable": sum(v.outcome == Outcome.NOT_APPLICABLE for v in verdicts), "applications": _installs(verdicts),
             "attack_paths": paths.build(inv, content, verdicts),
+            **({"ssh": paths.ssh_state(inv)} if inv.is_linux and inv.context.get("access") else {}),  # whether a key trusted here works
             "coverage": _coverage(inv, content, verdicts)}
 
 

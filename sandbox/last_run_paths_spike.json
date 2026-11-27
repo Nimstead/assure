@@ -1,0 +1,111 @@
+{
+ "result": "PASS",
+ "failures": [],
+ "log": [
+  {
+   "step": "distro",
+   "name": "nimstead-sbx-paths-2c7f15",
+   "reused": false
+  },
+  {
+   "step": "podman",
+   "version": "podman version 5.8.9",
+   "cgroup": "cgroup2fs"
+  },
+  {
+   "step": "booted",
+   "machine": "web-1",
+   "state": "running",
+   "failed": []
+  },
+  {
+   "step": "booted",
+   "machine": "build-1",
+   "state": "running",
+   "failed": []
+  },
+  {
+   "step": "booted",
+   "machine": "db-1",
+   "state": "running",
+   "failed": []
+  },
+  {
+   "step": "machines",
+   "web-1": [
+    "10.89.7.11/24"
+   ],
+   "build-1": [
+    "10.89.7.12/24"
+   ],
+   "db-1": [
+    "10.89.7.13/24"
+   ],
+   "edge-1": [
+    "10.89.7.14/24"
+   ]
+  },
+  {
+   "step": "PASS: T0: ssh with a planted key crosses the bridge",
+   "output": "Warning: Permanently added '10.89.7.13' (ED25519) to the list of known hosts.\r\nsigned-in-as-root"
+  },
+  {
+   "step": "PASS: T0: the target sees the source's own address",
+   "ss": "0      0      10.89.7.13:22 10.89.7.11:53880"
+  },
+  {
+   "step": "PASS: T0: the source's /proc/net/tcp holds the connection",
+   "lines": 5
+  },
+  {
+   "step": "openssh headers kept in the lab only",
+   "count": 4
+  },
+  {
+   "step": "fixtures",
+   "files": [
+    "ecdsa.head",
+    "ecdsa.pub",
+    "ecdsa_enc.head",
+    "ecdsa_enc.pub",
+    "ecdsa_pem.head",
+    "ecdsa_pem.pub",
+    "ecdsa_pem_enc.head",
+    "ecdsa_pem_enc.pub",
+    "ed25519.head",
+    "ed25519.pub",
+    "ed25519_enc.head",
+    "ed25519_enc.pub",
+    "fingerprints.txt",
+    "group_alma9.txt",
+    "group_alpine321.txt",
+    "group_debian13.txt",
+    "passwd_alma9.txt",
+    "passwd_alpine321.txt",
+    "passwd_debian13.txt",
+    "rsa.head",
+    "rsa.pub",
+    "rsa_enc.head",
+    "rsa_enc.pub",
+    "rsa_pem.head",
+    "rsa_pem.pub",
+    "rsa_pem_enc.head",
+    "rsa_pem_enc.pub",
+    "sshd_config_alma9.txt",
+    "sshd_config_alpine321.txt",
+    "sshd_config_debian13.txt",
+    "sshd_t_alma9.txt",
+    "sshd_t_alpine321.txt",
+    "sshd_t_debian13.txt",
+    "sshd_t_debian13_hardened.txt",
+    "sudo_l_deploy.txt",
+    "sudo_l_ops.txt",
+    "sudo_l_www-data.txt"
+   ]
+  },
+  {
+   "step": "kept",
+   "distro": "nimstead-sbx-paths-2c7f15"
+  }
+ ]
+}

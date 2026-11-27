@@ -52,3 +52,13 @@ def test_the_neighbours_migration_goes_down_and_up_again(tmp_path):
                        env={**os.environ, "NIMSTEAD_DB": url}, check=True, capture_output=True)
     with create_engine(url).connect() as conn:
         assert compare_metadata(MigrationContext.configure(conn), Base.metadata) == []
+
+
+def test_the_access_migration_goes_down_and_up_again(tmp_path):
+    """Pinned to its own revision (test review: the neighbours test covered it only while it was head)."""
+    url = f"sqlite:///{(tmp_path / 'm.db').as_posix()}"
+    for cmd, to in (("upgrade", "a3c5e7f9b1d2"), ("downgrade", "d4f6a8c0e2b1"), ("upgrade", "a3c5e7f9b1d2")):
+        subprocess.run([sys.executable, "-m", "alembic", cmd, to], cwd=Path(__file__).parents[1],
+                       env={**os.environ, "NIMSTEAD_DB": url}, check=True, capture_output=True)
+        with create_engine(url).connect() as conn:
+            assert ("asset_access" in {r[0] for r in conn.execute(text("select name from sqlite_master where type='table'"))}) is (cmd == "upgrade")

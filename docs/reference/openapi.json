@@ -3497,6 +3497,9 @@
       },
       "Inventory": {
         "properties": {
+          "access": {
+            "title": "Access"
+          },
           "agent_version": {
             "default": "",
             "maxLength": 50,
@@ -8345,7 +8348,7 @@
     },
     "/api/attack-paths": {
       "get": {
-        "description": "Return organisation fleet paths from latest stored reports and current host facts.\n\nRequires a session or eligible read-only token. Does not rescan assets.\nThe organisation limit is 120 reads per hour, with 429 on refusal.\nResponse has hosts, edges, truncated and chains. At most 2000 edges and\n50 chain starts are returned. This GET commits its usage counter.",
+        "description": "Return organisation fleet paths from latest stored reports and current host facts.\n\nRequires a session or eligible read-only token. Does not rescan assets.\nThe organisation limit is 120 reads per hour, with 429 on refusal.\nResponse has hosts, edges, truncated, chains and choke_points (DECISIONS 168-169): SSH key edges between Linux hosts\nbeside Windows ones, and the single actions that cut the most machines off. At most 2000 edges and\n50 chain starts are returned. This GET commits its usage counter.",
         "operationId": "attack_paths_api_attack_paths_get",
         "responses": {
           "200": {

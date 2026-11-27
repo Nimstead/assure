@@ -8,6 +8,8 @@ C12), timing those reports and the hourly re-match before and after the images e
 --apps N (with --containers): each image also carries N npm packages read inside it, 5 of them vulnerable
 (tasks/spec-workloads.md success criterion 7).
 --tickets: after the re-match, time a ticket sync's own work against an in-process GitLab fake (tasks/spec-tickets.md).
+--paths [--entry-every N]: each inventory also carries an access read (tasks/spec-paths.md criterion 7); one host in N (20)
+is a way in.
 --runtime: each inventory also carries what runs (tasks/spec-runtime.md criterion 7): 60 programs loading 25 of the host's
 packages each, 3 of them listening on the network, every package native, and on every tenth host one program running a
 replaced copy; a second report per host 7 days later exercises the memory.
@@ -41,15 +43,50 @@ CONTAINERS = int(sys.argv[sys.argv.index("--containers") + 1]) if "--containers"
 TICKETS = "--tickets" in sys.argv
 APPS = int(sys.argv[sys.argv.index("--apps") + 1]) if "--apps" in sys.argv else 0
 RUNTIME = "--runtime" in sys.argv
+PATHS = "--paths" in sys.argv  # tasks/spec-paths.md criterion 7; implies a runtime read
+HELD, TRUSTED = 3, 20  # keys each host holds and trusts
+# one host in 20 listens on the network (about 50 ways in); --entry-every 1 makes every host a way in, as Debian 13's sshd flaw
+# does on each host whose sshd listens (ship review: a walk per start took 10 s)
+ENTRY_EVERY = int(sys.argv[sys.argv.index("--entry-every") + 1]) if "--entry-every" in sys.argv else 20
+
+
+def fp(k):
+    return "SHA256:" + f"{k:043d}"
+
+
+def access_read(n):
+    """A host's access read, as agent 0.11.0 sends it: its own keys (root's and deploy's), 20 trusted from the whole fleet's,
+    so each key opens about seven other machines, and on every tenth host a cron file anyone can write (a way up)."""
+    keys = [fp(n * HELD + j) for j in range(HELD)]
+    trusted = rnd.sample(range(ASSETS * HELD), TRUSTED)
+    return {"v": 1, "state": "ok", "problem": None,
+            "sshd": {"installed": True, "permitrootlogin": "prohibit-password", "pubkeyauthentication": "yes", "passwordauthentication": "no",
+                     "kbdinteractiveauthentication": "no", "permitemptypasswords": "no", "strictmodes": "yes", "authorizedkeysfile": [".ssh/authorized_keys"],
+                     "authorizedkeyscommand": False, "allowusers": [], "denyusers": [], "allowgroups": [], "denygroups": [], "port": ["22"],
+                     "listenaddress": ["0.0.0.0:22"], "match": False, "usepam": "yes"},
+            "accounts": [{"name": "root", "uid": 0, "groups": ["root"], "login": True, "password": "locked", "sudo_all": None},
+                         {"name": "deploy", "uid": 1000, "groups": ["deploy"], "login": True, "password": "locked", "sudo_all": False}],
+            "writable": [{"path": "/etc/cron.d/backup", "kind": "cron", "by": "everyone", "at": "/etc/cron.d/backup"}] if n % 10 == 0 else [],
+            "shadow_readable_by": [],
+            "held": [{"account": "root" if j == 0 else "deploy", "path": f"/{'root' if j == 0 else 'home/deploy'}/.ssh/id_{j}", "type": "ssh-ed25519",
+                      "fp": keys[j], "passphrase": False} for j in range(HELD)],
+            "trusted": [{"account": "root" if k % HELD == 0 else "deploy", "fp": fp(k), "type": "ssh-ed25519", "from": [], "forced": False, "restrict": False}
+                        for k in trusted if k // HELD != n],
+            "credentials": [], "agent_sockets": 0, "unidentified_keys": 0}
 
 
 def runtime_read(n, names):
-    """A host's read of what runs, as agent 0.10.0 sends it: programs loading packages, a few listening, one replaced copy."""
+    """A host's read of what runs, as agent 0.10.0 sends it: programs loading packages, a few listening, one replaced copy.
+    With --paths only one host in ENTRY_EVERY listens beyond loopback, as a fleet has a handful of ways in."""
+    net = not PATHS or n % ENTRY_EVERY == 0
     progs = [{"name": f"svc{k}.service", "unit": True, "users": ["root"], "count": 2,
-              "listen": [f"0.0.0.0:{8000 + k}/tcp"] if k < 3 else [f"127.0.0.1:{9000 + k}/tcp"] if k < 6 else [],
+              "listen": [f"{'0.0.0.0' if net else '127.0.0.1'}:{8000 + k}/tcp"] if k < 3 else [f"127.0.0.1:{9000 + k}/tcp"] if k < 6 else [],  # noqa: S104 — a listen address in test data, nothing binds
               "loads": sorted({f"pkg{p}" for p in rnd.sample(names, 25)}), "replaced": []} for k in range(60)]
     if n % 10 == 0:
         progs[5]["replaced"] = progs[5]["loads"][:1]
+    if PATHS:  # every host's sshd listens, loading only patched packages (names[:VULN_PER_HOST] are the vulnerable ones), so it opens no way in
+        progs.append({"name": "ssh.service", "unit": True, "users": ["root"], "count": 1, "listen": ["0.0.0.0:22/tcp"],
+                      "loads": sorted(f"pkg{p}" for p in names[-5:]), "replaced": []})
     return {"v": 1, "state": "ok", "programs": progs, "native": sorted(f"pkg{p}" for p in names), "other_roots": 0}
 APP_UNIVERSE, APP_VULN = 5000, 5  # npm packages an image's build may add, and how many of an image's are vulnerable
 IMAGES, IMAGE_PKGS, IMAGE_VULN = 50, 200, 5  # a fleet's distinct images: far fewer than its containers
@@ -165,8 +202,12 @@ def main():
         vuln = set(names[:VULN_PER_HOST])
         pkgs = [{"ecosystem": ECO, "name": f"pkg{p}", "version": "1.0-1" if p in vuln else "9.0-1", "source": f"pkg{p}"} for p in names]
         body = with_document({"ecosystem": ECO, "packages": pkgs})
-        if RUNTIME:
+        if RUNTIME or PATHS:
             body["runtime"] = runtime_read(n, names)
+        if PATHS:
+            body["access"] = access_read(n)
+            body["facts"] = {**(body.get("facts") or {}), "os_id": "debian", "addresses": [f"10.{n // 65536}.{n // 256 % 256}.{n % 256}"], "peers": []}
+            body["collection"]["sources"]["access"] = {"state": "ok", "count": 2}
         t = time.perf_counter()
         r = c.post("/api/agent/inventory", json=body, headers=headers[-1])
         ingest.append(time.perf_counter() - t)
@@ -213,6 +254,13 @@ def main():
                                        "max_s": round(reports[-1], 3), "first_s": round(first, 3)}
         print("containers report", result["containers_report"], flush=True)
 
+    if PATHS:
+        out = timed("GET /api/attack-paths (key edges, chains, choke points)", lambda: c.get("/api/attack-paths").json(), 3)
+        result["attack_paths"] = {"edges_listed": len(out["edges"]), "truncated": out["truncated"], "partial": out["partial"], "chains": len(out["chains"]),
+                                  "largest_chain": max((len(ch["reach"]) for ch in out["chains"]), default=0), "choke_points": len(out["choke_points"]),
+                                  "top_choke": out["choke_points"][0]["action"] if out["choke_points"] else None,
+                                  "top_cuts": out["choke_points"][0]["cuts"] if out["choke_points"] else 0}
+        print("attack paths", result["attack_paths"], flush=True)
     summ = timed("GET /api/summary (home page)", lambda: c.get("/api/summary").json(), 3)
     result["open_findings"] = sum(summ["open_by_priority"].values())
     print("open findings:", result["open_findings"], flush=True)
@@ -247,7 +295,7 @@ def main():
     hosts = timed("GET /api/windows-updates/{kb} (drill down)", lambda: c.get(f"/api/windows-updates/{rows[0]['kb']}", params={"product": product}), 3)
     result["windows_updates_drilldown_kib"] = round(len(hosts.content) / 1024)
     timed("GET /api/summary (with Windows hosts)", lambda: c.get("/api/summary").json(), 3)
-    (ROOT / "sandbox" / f"last_run_perf_{result['db'].split('+')[0]}{'_containers' if CONTAINERS else ''}{'_apps' if APPS else ''}{'_tickets' if TICKETS else ''}{'_runtime' if RUNTIME else ''}.json").write_text(json.dumps(result, indent=2))
+    (ROOT / "sandbox" / f"last_run_perf_{result['db'].split('+')[0]}{'_containers' if CONTAINERS else ''}{'_apps' if APPS else ''}{'_tickets' if TICKETS else ''}{'_runtime' if RUNTIME else ''}{'_paths' if PATHS else ''}{'_every' + str(ENTRY_EVERY) if PATHS and ENTRY_EVERY != 20 else ''}.json").write_text(json.dumps(result, indent=2))
 
 
 if __name__ == "__main__":

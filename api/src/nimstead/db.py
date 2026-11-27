@@ -177,6 +177,20 @@ class AssetRuntime(Base):
     replaced_count: Mapped[int] = mapped_column(Integer, default=0)  # so Fix first reads only the hosts that have some
 
 
+class AssetAccess(Base):
+    """Who can get in and what they hold on a Linux host (DECISIONS 165): its agent's latest access read (sshd, accounts,
+    files root runs that others can write, key fingerprints held and trusted, credential files present). One row per host,
+    read by its rescan and report, its drawer and the fleet's attack paths, never the assets list: key lists can be large."""
+    __tablename__ = "asset_access"
+    asset_id: Mapped[str] = mapped_column(ForeignKey("asset.id", ondelete="CASCADE"), primary_key=True)
+    org_id: Mapped[str] = mapped_column(ForeignKey("org.id"), index=True)
+    read_at: Mapped[datetime] = mapped_column(default=now)  # the latest read's arrival
+    state: Mapped[str] = mapped_column(String(10), default="failed")  # the latest read's: ok | partial | failed
+    problem: Mapped[str | None] = mapped_column(String(300))
+    data_at: Mapped[datetime | None]  # when `data` was read: a failed read keeps the one before
+    data: Mapped[dict] = mapped_column(default=dict)
+
+
 class Advisory(Base):
     """Feed data keyed by ID, ecosystem and package, including OSV and auxiliary metadata."""
 

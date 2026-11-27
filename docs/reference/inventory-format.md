@@ -16,6 +16,11 @@ This reference covers the internal `Inventory` representation and collection doc
 | `received` | Whether inventory arrived, default true. Not serialized by `to_doc()` |
 | `kind` | `host` by default, or `application` |
 | `sbom` | Upload metadata or `None`. Metadata can include `received`, `components`, `mapped`, and `skipped` |
+| `context` | What attack paths need beside the packages (DECISIONS 167), default empty: `listening` (binary package to the programs listening beyond loopback that loaded it in the last seven days, with their users) and `access` (the latest access read, with its `state`, without its trusted keys). Serialized only when not empty, so Windows and SBOM documents and hashes don't change |
+
+`engine.context(s, asset)` fills `context` for a Linux host from its `asset_runtime` and `asset_access` rows; `judge` and `asset_report` pass it to `Inventory.from_asset()`.
+
+The agent's inventory body carries the access read as a top-level `access` object (agent 0.11.0 on Linux; [agent reference](agent-core.md#who-can-get-in)). The server validates it with `access.valid` and stores it in `asset_access`, not in `facts`: key lists can be large, and the assets list loads `facts` for every row. A failed read keeps the last stored data. An `access` line of `off` deletes the row, and so does an inventory with no `access` object and no `access` line: the agent doesn't read it (an older agent, or one moved back to one), so nothing it said before may link the host to anything.
 
 Direct dataclass construction does not validate nested values. `Inventory.from_doc()` reads agent input. It converts identity fields to strings, retains dictionary facts, and discards package entries without string names and versions.
 

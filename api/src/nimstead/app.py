@@ -34,6 +34,7 @@ from sqlalchemy import Integer, and_, case, delete, func, or_, select
 from sqlalchemy.orm import Session, load_only
 
 from nimstead import (
+    access,
     ai,
     containers,
     engine,
@@ -57,6 +58,7 @@ from nimstead import (
 from nimstead.db import (
     ApiToken,
     Asset,
+    AssetAccess,
     AssetRuntime,
     AuthFailure,
     Container,
@@ -1166,6 +1168,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         collection: dict | None = None  # checked by engine's valid_document: closed and bounded. None: agent older than this
         neighbours: Any = None  # checked row by row by neighbours.store, which drops what doesn't fit; None: agent older than 0.7.0, or off
         runtime: Any = None  # what runs (DECISIONS 161), checked by runtime.valid; None: agent older than 0.10.0, Windows, or off
+        access: Any = None  # who can get in (DECISIONS 165), checked by access.valid; None: agent older than 0.11.0, Windows, or off
 
     def facts_ok(f: dict) -> bool:
         """Return whether a facts dictionary passes structural and JSON-length bounds.
@@ -1252,6 +1255,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             runtime.store(s, asset, body.runtime)
         elif (((body.collection or {}).get("sources") or {}).get("runtime") or {}).get("state") == "off":
             runtime.forget_replaced(s, asset)  # the host opted out: its last sighting must not hold fixes open for ever
+        if body.access is not None:  # before the rescan, whose settings checks read it
+            access.store(s, asset, body.access)
+        elif (((body.collection or {}).get("sources") or {}).get("access") or {"state": "off"}).get("state") == "off":
+            # opted out, or an agent that doesn't read it (older, or moved back to one): no stale key may link this host to
+            # anything (code review: a downgraded agent's last read linked hosts for ever)
+            access.forget(s, asset)
         db_read = ((asset.collection or {}).get("sources") or {}).get("package_db")
         replaced = not (db_read and (db_read["state"] != "ok" or not db_read.get("count")))  # DECISIONS 83: a Linux list not read in full doesn't replace the last
         if replaced:
@@ -1706,22 +1715,28 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
 
         Requires a session or eligible read-only token. Does not rescan assets.
         The organisation limit is 120 reads per hour, with 429 on refusal.
-        Response has hosts, edges, truncated and chains. At most 2000 edges and
+        Response has hosts, edges, truncated, chains and choke_points (DECISIONS 168-169): SSH key edges between Linux hosts
+        beside Windows ones, and the single actions that cut the most machines off. At most 2000 edges and
         50 chain starts are returned. This GET commits its usage counter."""
         if over_limit(s, "attack-paths:" + user.org_id, 120):  # a whole-fleet read: shared server, so bounded per organisation
             raise HTTPException(429, "Attack paths were read too often this hour; try again later")
         s.commit()
         newest = (select(ScanRecord.asset_id, func.max(ScanRecord.created).label("at")).where(ScanRecord.org_id == user.org_id)
                   .group_by(ScanRecord.asset_id).subquery())
-        latest = {}  # the report only: the stored inventory can be 10 MB a host
-        for aid, report in s.execute(select(ScanRecord.asset_id, ScanRecord.report)
-                                     .join(newest, and_(ScanRecord.asset_id == newest.c.asset_id, ScanRecord.created == newest.c.at)).order_by(ScanRecord.id)):
-            latest.setdefault(aid, report)  # two records stored in the same instant: either is the latest
+        latest = {}  # only the report's attack paths and sshd state: decoding whole reports was most of a 2 s read at 1,000 hosts
+        for aid, paths, ssh in s.execute(select(ScanRecord.asset_id, ScanRecord.report["attack_paths"], ScanRecord.report["ssh"])
+                                         .join(newest, and_(ScanRecord.asset_id == newest.c.asset_id, ScanRecord.created == newest.c.at)).order_by(ScanRecord.id)):
+            if aid not in latest:  # two records stored in the same instant: either is the latest
+                latest[aid] = {"attack_paths": paths, **({"ssh": ssh} if ssh is not None else {})} if paths is not None else {}
         win = dict(s.execute(select(InstalledPackage.asset_id, InstalledPackage.version).join(Asset, Asset.id == InstalledPackage.asset_id)
                              .where(Asset.org_id == user.org_id, InstalledPackage.ecosystem == "Windows")).all())
-        return engine_fleet.build([{"id": a.id, "hostname": a.hostname, "facts": a.facts or {}, "os_version": win.get(a.id, ""),
-                                    "report": latest.get(a.id), "internet_facing": a.internet_facing}
-                                   for a in s.scalars(select(Asset).where(Asset.org_id == user.org_id, Asset.kind != "device"))])
+        keys = dict(s.execute(select(AssetAccess.asset_id, AssetAccess.data).where(AssetAccess.org_id == user.org_id)).all())  # one query (DECISIONS 168)
+        rows = s.execute(select(Asset.id, Asset.hostname, Asset.facts, Asset.internet_facing).where(Asset.org_id == user.org_id, Asset.kind != "device"))
+        out = engine_fleet.build([{"id": aid, "hostname": hostname, "facts": facts or {}, "os_version": win.get(aid, ""),
+                                   "report": latest.get(aid) or None, "internet_facing": facing,
+                                   "linux": "os_id" in (facts or {}), **({"access": keys[aid]} if aid in keys else {})}
+                                  for aid, hostname, facts, facing in rows])
+        return JSONResponse(out)  # plain JSON types already: no encoder walk over every edge and row
 
     class AssetPatch(BaseModel):
         criticality: Literal["low", "medium", "high", "critical"] | None = None
@@ -2151,7 +2166,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             stmt = stmt.where(Finding.runtime.in_(f.runtime.split(",")))
         if fixable is not None:
             # a setting, an end of support or an exposure never has a fixed version, but there is always something to do
-            has_fix = Finding.fixed_version.is_not(None) | Finding.ecosystem.in_(("WinConfig", lifecycle.ECOSYSTEM, external.ECOSYSTEM, neighbours.ECOSYSTEM, windrivers.ECOSYSTEM))
+            has_fix = Finding.fixed_version.is_not(None) | Finding.ecosystem.in_(("WinConfig", "LinuxConfig", lifecycle.ECOSYSTEM, external.ECOSYSTEM, neighbours.ECOSYSTEM, windrivers.ECOSYSTEM))
             stmt = stmt.where(has_fix if fixable else ~has_fix)
         if q:
             like = f"%{q.lower()}%"

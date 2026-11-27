@@ -11,8 +11,8 @@ from datetime import timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from nimstead import containers, evidence, lifecycle, msproducts, risk, runtime, winapps, winconfig, windrivers
-from nimstead.db import Advisory, Asset, Cvss, Epss, Finding, InstalledPackage, Kev, now
+from nimstead import containers, evidence, lifecycle, linconfig, msproducts, risk, runtime, winapps, winconfig, windrivers
+from nimstead.db import Advisory, Asset, AssetAccess, Cvss, Epss, Finding, InstalledPackage, Kev, now
 from nimstead.match import Match, canonical_id
 from nimstead.notify import notify
 
@@ -40,6 +40,8 @@ def unproven(asset: Asset) -> set[str]:
     out = unread(asset.collection)
     if not isinstance((asset.facts or {}).get("config"), dict):
         out.add(winconfig.ECOSYSTEM)
+    if (((asset.collection or {}).get("sources") or {}).get("access") or {}).get("state") != "ok":  # Linux settings: only a complete read closes one
+        out.add(linconfig.ECOSYSTEM)
     return out
 
 
@@ -106,9 +108,11 @@ def hotpatch_track(hot: list[dict], version: str) -> tuple[set[str], list[dict]]
     return {a for r in hot for a in r["aliases"]}, hot
 
 
-def host_checks(pkgs: list, facts: dict, today, eol: dict | None = None, drivers: dict | None = None) -> list[dict]:
+def host_checks(pkgs: list, facts: dict, today, eol: dict | None = None, drivers: dict | None = None,
+                access_data: dict | None = None, ssh: tuple[bool, str] | None = None) -> list[dict]:
     """Findings from the host's own state rather than an advisory: end of support (lifecycle.py), Windows
-    configuration (winconfig.py) and listed driver files (windrivers.py). `risk` None = score it as the CVE it names (KEV, EPSS, CVSS)."""
+    configuration (winconfig.py), listed driver files (windrivers.py) and Linux settings from the access read (linconfig.py,
+    with whether sshd listens beyond loopback). `risk` None = score it as the CVE it names (KEV, EPSS, CVSS)."""
     out = []
     for x in lifecycle.findings(pkgs, facts, today, eol):
         out.append({**x, "ecosystem": lifecycle.ECOSYSTEM, "risk": risk.Risk(
@@ -117,6 +121,7 @@ def host_checks(pkgs: list, facts: dict, today, eol: dict | None = None, drivers
     os_version = next((p.version for p in pkgs if p.ecosystem == "Windows"), "")
     out += [{**x, "ecosystem": winconfig.ECOSYSTEM} for x in winconfig.evaluate(facts, os_version, today)]
     out += [{**x, "ecosystem": windrivers.ECOSYSTEM} for x in windrivers.findings(pkgs, drivers or {})]
+    out += [{**x, "ecosystem": linconfig.ECOSYSTEM} for x in linconfig.evaluate(access_data, ssh)]
     return out
 
 
@@ -247,7 +252,10 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
     if ("drivers",) not in advisories:  # LOLDrivers' hashes, once per pass
         stored = s.scalar(select(Advisory.record).where(Advisory.ecosystem == windrivers.ECOSYSTEM)) or {}
         advisories[("drivers",)] = stored.get("drivers", {})
-    for x in host_checks(pkgs, asset.facts or {}, t.date(), advisories[("eol",)], advisories[("drivers",)]):
+    acc = s.get(AssetAccess, asset.id) if asset.kind == "host" else None  # who can get in (DECISIONS 165)
+    sshd = acc.data.get("sshd") if acc else None
+    ssh = linconfig.ssh_listening(runtime.recent_programs(rv.row, t), sshd) if acc else None
+    for x in host_checks(pkgs, asset.facts or {}, t.date(), advisories[("eol",)], advisories[("drivers",)], acc.data if acc else None, ssh):
         key = (x["ecosystem"], x["package"], x["vuln_id"])
         seen.add(key)
         rec = {"_risk": (x["risk"].score, x["risk"].priority, x["risk"].reasons)} if x.get("risk") else {}
@@ -286,7 +294,7 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
             cvss=cvss,
             criticality=asset.criticality,
             internet_facing=asset.internet_facing,
-            fix_available=m.fixed is not None or eco == "WinConfig",  # a setting is fixed by changing it
+            fix_available=m.fixed is not None or eco in ("WinConfig", linconfig.ECOSYSTEM),  # a setting is fixed by changing it
         )
         # a distribution package on a host whose agent reads what runs: its state ranks the finding (DECISIONS 161)
         bins = [b.name for b in binaries.get(name, [])]

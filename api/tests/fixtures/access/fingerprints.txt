@@ -1,0 +1,10 @@
+256 SHA256:NisF1NBmWNui9HELNENX4MjugYPro8sLAYX5tEqTJbw fixture ed25519 (ED25519)  <- ed25519
+256 SHA256:abuswFO7gbdYttpCQFHU1j76D+pH15BO9V3sJyky6Sk fixture ed25519 (ED25519)  <- ed25519_enc
+256 SHA256:ROyQiMf8bMI8C44qs0Rad82tHiaWivgXdWJyA8nXZFI fixture ecdsa (ECDSA)  <- ecdsa
+256 SHA256:wxZcuRItN+rLNl5GOqBdl3ACoE2vXsPH78Vmd6X2wt0 fixture ecdsa (ECDSA)  <- ecdsa_enc
+256 SHA256:tG8jJwGdTrRPDEu738I/xG6z0EAiM1Si1Bf9Jv6sRl0 fixture ecdsa (ECDSA)  <- ecdsa_pem
+256 SHA256:/3ByUMR2Pbdg08cC7UIOjA4sEBEHJMT67Vx+ABITAOo fixture ecdsa (ECDSA)  <- ecdsa_pem_enc
+2048 SHA256:CofLLp4tjONOUcnCVexrLMCb9JuGEHFIcE0R5FNwB3w fixture rsa (RSA)  <- rsa
+2048 SHA256:zjRvWmIT6FJBkJd0ahoDzLjEUhUOWfyelQvyr+n+vXY fixture rsa (RSA)  <- rsa_enc
+2048 SHA256:3WtN1JqTWlD579mKGISuXkv31g6vvOmasuPlAKWILUU fixture rsa (RSA)  <- rsa_pem
+2048 SHA256:JxXi6DFq9nknszOfiAj8ANViZwhq+i71jkcYyH/d6zA fixture rsa (RSA)  <- rsa_pem_enc

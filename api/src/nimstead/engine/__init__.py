@@ -24,6 +24,24 @@ def scan_inventory(s: Session, inv: Inventory, prior=()) -> tuple[list[Verdict],
     return verdicts, report.build(inv, c, verdicts)
 
 
+def context(s: Session, asset: Asset) -> dict:
+    """What attack paths need beside the packages (DECISIONS 167): which packages listening programs loaded and as whom
+    (runtime memory), and the latest access read without its trusted keys (only the fleet view matches those, and records
+    keep the inventory five times). Empty for anything but a Linux host that sent either read."""
+    if asset.kind != "host":
+        return {}
+    from nimstead import runtime
+    from nimstead.db import AssetAccess, AssetRuntime
+    out = {}
+    if (rt := s.get(AssetRuntime, asset.id)) is not None:  # present, even empty: "nothing listens" differs from "never read"
+        out["listening"] = runtime.listening(rt)
+        if (now_ := runtime.recent_programs(rt)) is not None:  # what listens now, for whether sshd does: only a complete, recent read
+            out["programs_now"] = now_
+    if (acc := s.get(AssetAccess, asset.id)) is not None:
+        out["access"] = {"state": acc.state, **{k: v for k, v in (acc.data or {}).items() if k != "trusted"}}
+    return out
+
+
 def judge(s: Session, asset: Asset, pkgs: list, prior: list, cache: dict | None = None,
           keep: bool = False) -> tuple[list[Verdict], content.Content]:
     """(verdicts, content) for the inventory `rescan` is judging: the verdicts decide which findings exist (phase 5 of
@@ -33,7 +51,8 @@ def judge(s: Session, asset: Asset, pkgs: list, prior: list, cache: dict | None 
     if ("engine", "sbom_subjects", asset.org_id) not in cache:  # one ledger read per org per pass, not one per host
         cache["engine", "sbom_subjects", asset.org_id] = set(s.scalars(select(LedgerEntry.subject).where(
             LedgerEntry.org_id == asset.org_id, LedgerEntry.kind == "sbom_received").distinct()))
-    inv = Inventory.from_asset(asset, pkgs, sbom_received(s, asset) if asset.id in cache["engine", "sbom_subjects", asset.org_id] else None)
+    inv = Inventory.from_asset(asset, pkgs, sbom_received(s, asset) if asset.id in cache["engine", "sbom_subjects", asset.org_id] else None,
+                               context(s, asset))
     c = content.load(s, inv, cache)
     verdicts = evaluate(inv, c, prior)
     if keep:
@@ -63,7 +82,8 @@ def asset_report(s: Session, asset: Asset, scanned: tuple | None = None) -> dict
         inv, c, verdicts = scanned
         out = report.build(inv, c, verdicts)
     else:
-        inv = Inventory.from_asset(asset, s.scalars(select(InstalledPackage).where(InstalledPackage.asset_id == asset.id)).all(), sbom_received(s, asset))
+        inv = Inventory.from_asset(asset, s.scalars(select(InstalledPackage).where(InstalledPackage.asset_id == asset.id)).all(), sbom_received(s, asset),
+                                   context(s, asset))
         _, out = scan_inventory(s, inv, prior_findings(s, asset))
     if record(s, asset, out, inv.to_doc()):
         s.commit()

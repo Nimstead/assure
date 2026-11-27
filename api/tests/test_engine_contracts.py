@@ -63,6 +63,11 @@ def test_fleet_reference_covers_emitted_fields():
         _fields_documented(text, *edge["ways"])
     for chain in r["chains"]:
         _fields_documented(text, *chain["reach"])
+    # and an SSH key graph's own fields (DECISIONS 168-169)
+    from test_fleet_keys import K_ROOT, held, lhost, path, trusts
+    k = fleet.build([lhost("a", "10.0.0.1", keys=[held(K_ROOT)], paths=[path()]), lhost("b", "10.0.0.2", trusted=[trusts(K_ROOT)])])
+    assert k["edges"] and k["chains"] and k["choke_points"]
+    _fields_documented(text, k, *k["edges"], *k["edges"][0]["ways"], *k["chains"][0]["reach"], *k["choke_points"], *k["hosts"]["a"]["paths"])
 
 
 def test_collection_validation_accepts_root_extras_but_closes_source_entries():

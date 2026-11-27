@@ -22,7 +22,7 @@ List, count, group, and CSV operations accept these filters:
 | `priority` | No filter. Comma-separated exact priority strings. Values are not trimmed or enum-validated |
 | `asset_id` | No filter. Exact asset ID |
 | `q` | No filter. At most 200 characters, applied to lowercase package, vulnerability ID, or hostname through SQL LIKE |
-| `fixable` | No filter. True selects a nonnull fixed version or a WinConfig, Lifecycle, External, or WinDriver result. False selects the inverse |
+| `fixable` | No filter. True selects a nonnull fixed version or a WinConfig, LinuxConfig, Lifecycle, External, or WinDriver result. False selects the inverse |
 | `kev` | No filter. True/false selects the corresponding flag |
 | `overdue` | No filter. True selects open findings past their computed deadline. False behaves like no filter. Groups ignore this parameter |
 | `owner` | No filter. An owner name selects findings on assets with exactly that owner; an empty value (`owner=`) selects findings on assets with no owner. At most 100 characters |

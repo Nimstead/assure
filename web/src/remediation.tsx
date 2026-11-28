@@ -471,7 +471,7 @@ export function ApproveDialog({ job, onOpenChange, onConfirm, pending, error, ow
 }) {
   const fwd = !!job?.forward_only;
   const [ack, setAck] = useState(false);
-  useEffect(() => setAck(false), [job?.summary, job?.hostname]);  // each approval reads its own ring's failures
+  useEffect(() => setAck(false), [job]);  // each opening reads the ring's failures again: closing (job null) clears it too
   return (
     <ConfirmDialog open={!!job} onOpenChange={onOpenChange} title={fwd ? "Approve a fix that can't be undone?" : "Approve this fix?"} description={<><strong className="font-semibold">{job?.summary}</strong>.</>}
       confirmLabel={fwd ? "Approve: it can't be undone" : "Approve and run"} pendingLabel="Approving…" destructive={fwd} pending={pending} error={error} onConfirm={onConfirm} blocked={production || (ringFailed.length > 0 && !ack)}>

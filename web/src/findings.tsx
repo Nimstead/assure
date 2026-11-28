@@ -221,11 +221,11 @@ export function FindingsPage({ search }: { search: RawSearch }) {
       </div>
 
       {bulkNote && (
-        <p className="flex flex-wrap items-center gap-x-3 gap-y-1 border border-line-strong bg-surface px-3 py-2 text-sm">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border border-line-strong bg-surface px-3 py-2 text-sm">
           <Done>{bulkNote.text}</Done>
           {bulkNote.planned && <Link to="/remediation" className="font-medium underline">Review them in Remediation</Link>}
           <button className="ml-auto cursor-pointer text-muted underline" onClick={() => setBulkNote(null)}>Dismiss</button>
-        </p>
+        </div>
       )}
       {f.group ? (
         groups.isPending ? <TableSkeleton /> : groups.error ? <ErrorState error={groups.error} retry={() => groups.refetch()} /> : (

@@ -322,7 +322,8 @@ test("owners: set on a machine, counted on Progress, and an owner's name opens t
   expect(r.ok()).toBe(true);
   await page.goto("/progress");
   await expect(page.locator("h1")).toHaveText("Progress");
-  await expect(page.getByText(/^Open findings (fell|rose|held)/)).toBeVisible();
+  // a fresh fleet counts from its first day with findings (never "rose from 0")
+  await expect(page.getByText(/^(Open findings (fell|rose|held)|Since findings first appeared on|[\d,]+ open findings?, all found on)/)).toBeVisible();
   const owners = page.locator("section[aria-labelledby=owners]");
   const open = Number((await owners.getByRole("row", { name: /e2e team/ }).getByRole("cell").nth(2).textContent())!.replace(/,/g, ""));
   await owners.getByRole("link", { name: "e2e team" }).click();

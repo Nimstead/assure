@@ -1,7 +1,7 @@
 [
   {
     "step": "creating sandbox distro",
-    "name": "nimstead-sbx-e9254412",
+    "name": "nimstead-sbx-dfdad4ca",
     "distro": "alpine-3.21.0"
   },
   {
@@ -120,9 +120,11 @@
     "count": "0"
   },
   {
-    "step": "rollback keeps the SELinux label",
+    "step": "rollback keeps the SELinux label and capabilities, and follows no planted link",
     "label": true,
     "content": "old sshd",
+    "capability": true,
+    "link_followed": false,
     "new_inode": true,
     "left": [
       "sshd"
@@ -158,6 +160,6 @@
   },
   {
     "step": "sandbox destroyed",
-    "name": "nimstead-sbx-e9254412"
+    "name": "nimstead-sbx-dfdad4ca"
   }
 ]

@@ -966,6 +966,24 @@ it("approve: after a failure in the ring, approving waits until the person says 
   expect(go).toBeEnabled();
 });
 
+it("approve: the several-machines dialog also waits for the review tick, and asks again each time it opens", async () => {
+  const j = (id: string, asset_id: string, status: Job["status"]) => ({ ...job(status), id, asset_id, hostname: asset_id, action_key: "Ubuntu:24.04|curl" });
+  const host = (id: string, ring: number) => ({ id, ring, kind: "host", hostname: id, health_units: ["x"], sandbox: true, open_by_priority: {} });
+  serve({ "GET /api/remediation/jobs": [j("4", "b3", "planned"), j("3", "b2", "planned"), j("2", "b1", "failed"), j("1", "c1", "succeeded")],
+    "GET /api/assets": [host("c1", 0), host("b1", 1), host("b2", 1), host("b3", 1)], "GET /api/settings": {}, "GET /api/me": { email: "a@b.c", admin: true },
+    "GET /api/windows-updates": [] });
+  wrap(<RemediationPage />);
+  const open = async () => userEvent.click(await screen.findByRole("button", { name: /Approve broad/ }));
+  await open();
+  const go = screen.getByRole("button", { name: "Approve 2 machines and run" });
+  expect(go).toBeDisabled();
+  await userEvent.click(screen.getByRole("checkbox", { name: "I've reviewed why it didn't work" }));
+  expect(go).toBeEnabled();
+  await userEvent.keyboard("{Escape}");
+  await open();
+  expect(screen.getByRole("button", { name: "Approve 2 machines and run" })).toBeDisabled();
+});
+
 it("rollouts: the machine a fix didn't work on is named on the card, not only counted inside the folded list", () => {
   const job = (id: string, asset_id: string, status: Job["status"]) => ({ id, asset_id, status, action_key: "Ubuntu:24.04|curl", hostname: asset_id } as unknown as Job);
   render(<ul><RolloutCard jobs={[job("3", "b2", "planned"), job("2", "b1", "failed"), job("1", "c1", "succeeded")]} assets={[{ id: "c1", ring: 0 }, { id: "b1", ring: 1 }, { id: "b2", ring: 1 }] as Asset[]} /></ul>);

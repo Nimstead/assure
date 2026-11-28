@@ -9,15 +9,16 @@ The agent changed (its version goes up at release). One database migration: an i
 ### Upgrade notes
 - **Turning on Require SSO now signs out members whose accounts use a password**, however they signed in. Admins stay signed in (break-glass).
 - **A first authenticator added from Account settings asks for the current password.** API: `POST /api/me/mfa` takes `current_password` when the account has no authenticator yet.
-- **Signed evidence packs are capped at 20 an hour per organisation** (`429` past that). The Evidence page isn't capped.
+- **Signed evidence packs are capped at 20 an hour per person** (`429` past that), so one member can't use up an auditor's. The Evidence page isn't capped.
 - **Everyone signs in once more after upgrading.** With secure cookies on (the default), the session cookie is now `__Host-nimstead_session` and the SSO flow cookie `__Host-nimstead_sso`, so a sibling subdomain can't plant either and sign someone in as the attacker. The old cookie name isn't read: accepting it would keep that door open.
 
 ### Highlights
-- **Safer rollbacks and sturdier reports.** On Alpine, and on RPM systems without snapper, a rollback now restores each file, hardlinks included, as a new file with the old file's SELinux label. It used to write over the running binary, which failed partway through, so the rollback was left half done. One corrupt jar, or a package database with a non-UTF-8 file name, no longer stops a machine's reports.
+- **Safer rollbacks and sturdier reports.** On Alpine, and on RPM systems without snapper, a rollback now restores each file, hardlinks included, as a new file with the old file's SELinux label and file capabilities. It used to write over the running binary, which failed partway through, so the rollback was left half done. One corrupt jar, or a package database with a non-UTF-8 file name, no longer stops a machine's reports.
 - **Fix first leads with what's urgent.** A Fix now or KEV fix that Assure can't plan is named above the recommended fixes, no longer in the last line.
 
 ### Security
-- Sign-in code guesses through API token creation and password change count against the same per-account limit as sign-in. They're counted under a lock, so sending many at once doesn't get past it.
+- Sign-in code guesses through API token creation and password change share one per-account limit, like sign-in's but separate from it: a stolen session can't lock the owner out of signing in to end it. They're counted under a lock, so sending many at once doesn't get past it.
+- A rollback never goes through a link someone other than root could have planted. A service account that owns a package's folder (postgres owns `/var/lib/pgsql`) could swap it for a link to `/etc` and have the rollback hand `/etc` to it, or write package files there.
 - `scan-remote` refuses a host typed by name that reports a different name, so one machine can't report as another.
 - A winget fix trusts only machine-wide installs: a standard user's per-user entry can't get SYSTEM to install an app.
 - The agent opens jars, Python METADATA and npm package.json files without following links or waiting on a FIFO a local user put there.

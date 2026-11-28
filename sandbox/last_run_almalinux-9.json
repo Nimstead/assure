@@ -1,7 +1,7 @@
 [
   {
     "step": "creating sandbox distro",
-    "name": "nimstead-sbx-550b94ce",
+    "name": "nimstead-sbx-3decc22c",
     "distro": "AlmaLinux-9"
   },
   {
@@ -22,7 +22,7 @@
       "updated": 0,
       "skipped": 0
     },
-    "seconds": 4
+    "seconds": 5
   },
   {
     "step": "first inventory",
@@ -67,7 +67,7 @@
     "package": "expat",
     "outcome": "rolled_back",
     "status": "rolled_back",
-    "error": "Change failed and was rolled back: nimstead-canary.service active after change failed: service is activating, restarted 12 times since the change",
+    "error": "Change failed and was rolled back: nimstead-canary.service active after change failed: service is activating, restarted 11 times since the change",
     "steps": [
       "ok  job validated",
       "ok  dnf available",
@@ -99,9 +99,11 @@
     "count": "0"
   },
   {
-    "step": "rollback keeps the SELinux label",
+    "step": "rollback keeps the SELinux label and capabilities, and follows no planted link",
     "label": true,
     "content": "old sshd",
+    "capability": true,
+    "link_followed": false,
     "new_inode": true,
     "left": [
       "sshd"
@@ -111,7 +113,7 @@
   {
     "step": "forged downgrade job",
     "outcome": "aborted",
-    "error": "No changes made: simulate upgrade failed: No match for argument: libcurl-0.0.1-1\nError: No packages marked for upgrade.",
+    "error": "No changes made: simulate upgrade failed: Last metadata expiration check: 0:00:01 ago on Sat Nov 28 11:35:54 2026.\nNo match for argument: libcurl-0.0.1-1\nError: No packages marked for upgrade.",
     "unchanged": true
   },
   {
@@ -137,6 +139,6 @@
   },
   {
     "step": "sandbox destroyed",
-    "name": "nimstead-sbx-550b94ce"
+    "name": "nimstead-sbx-3decc22c"
   }
 ]

@@ -510,8 +510,9 @@ def test_code_guesses_are_capped_per_account_from_any_address(env):
     assert kinds(env).count("mfa_guessing_stopped") == 1
 
 
-def test_code_guesses_on_signed_in_routes_share_the_account_cap(env):
-    # with a stolen session, /api/tokens and /api/me/password must not each add a fresh guess budget
+def test_code_guesses_on_signed_in_routes_share_one_account_cap(env):
+    # with a stolen session, /api/tokens and /api/me/password must not each add a fresh guess budget,
+    # nor lock the owner out of signing in to end that session
     # (a fumbled authenticator replacement on /api/me/mfa stays outside it: see the test above)
     c = user(env)
     secret = mfa_login(TestClient(c.app), "a@example.com").secret
@@ -522,9 +523,9 @@ def test_code_guesses_on_signed_in_routes_share_the_account_cap(env):
         assert c.post(path, json=body).status_code == 403
     r = c.post("/api/tokens", json={"name": "x", "code": now_code(secret, 1)})  # even the right code waits now
     assert r.status_code == 429 and "wrong codes" in r.json()["detail"]
-    r = TestClient(c.app).post("/api/auth/login", json={"email": "a@example.com", "password": PW, "code": now_code(secret, 1)})
-    assert r.status_code == 429
     assert kinds(env).count("mfa_guessing_stopped") == 1
+    r = TestClient(c.app).post("/api/auth/login", json={"email": "a@example.com", "password": PW, "code": now_code(secret, 1)})
+    assert r.status_code == 200
 
 
 def test_no_admin_session_without_a_second_factor(env, monkeypatch):

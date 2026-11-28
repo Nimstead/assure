@@ -237,7 +237,7 @@ RESET_MAX_PER_HOUR = 10  # per client address
 MFA_MAX_FAILURES = 10  # wrong codes per account in LOGIN_WINDOW, from any address
 EXPORT_MAX_PER_HOUR = 30  # CSV exports per org
 PROGRESS_MAX_PER_HOUR = 120  # whole-ledger replays per org (a page load is one; CSVs count as exports)
-EVIDENCE_PACKS_PER_HOUR = 20  # signed packs per org: each holds the period's whole ledger in memory and stores a checkpoint
+EVIDENCE_PACKS_PER_HOUR = 20  # signed packs per person: each holds the period's whole ledger in memory and stores a checkpoint
 # an owner name (DECISIONS 145): no control characters, and none that hide text or reverse it, so one team can't pass
 # for another in a list, a CSV or a chat message
 OWNER_PATTERN = r"^[^\x00-\x1f\x7f-\x9f\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]*$"
@@ -679,29 +679,30 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             return True
         return False
 
-    def code_failed(s: Session, user: User) -> None:
-        """Stage one wrong code against user's account-wide cap; at the cap, alert once a window. Caller commits."""
-        s.add(AuthFailure(key="mfa:" + user.id))
+    def code_failed(s: Session, user: User, kind: str = "mfa") -> None:
+        """Stage one wrong code against user's account-wide cap of this kind; at the cap, alert once a window. Caller commits."""
+        s.add(AuthFailure(key=f"{kind}:{user.id}"))
         s.flush()
-        if failures(s, "mfa:" + user.id) >= MFA_MAX_FAILURES and not failures(s, "mfa-alerted:" + user.id):
-            s.add(AuthFailure(key="mfa-alerted:" + user.id))
+        if failures(s, f"{kind}:{user.id}") >= MFA_MAX_FAILURES and not failures(s, f"{kind}-alerted:{user.id}"):
+            s.add(AuthFailure(key=f"{kind}-alerted:{user.id}"))
             evidence.append(s, user.org_id, "mfa_guessing_stopped", user.id, {"email": user.email})
             notify.notify(s, user.org_id, "mfa_guessing_stopped",
                           f"Sign-in codes for {user.email} were guessed {MFA_MAX_FAILURES} times: "
                           "code entry is paused for 15 minutes. Change that password.", urgent=True)
 
     def capped_factor(s: Session, user: User, given: str | None) -> bool:
-        """second_factor for signed-in routes, under the same per-account cap as sign-in.
+        """second_factor for signed-in routes, under a per-account cap like sign-in's but its own ("mfa-in"):
+        a stolen session's guesses must not lock the owner out of signing in to end it.
 
         The row lock is taken before counting and held until the failure (or the caller's
         success) commits, so simultaneous guesses queue instead of all passing one count.
         Return 429 at the cap; a wrong code is committed here before returning False."""
         s.refresh(user, with_for_update=True)
-        if failures(s, "mfa:" + user.id) >= MFA_MAX_FAILURES:
+        if failures(s, "mfa-in:" + user.id) >= MFA_MAX_FAILURES:
             raise HTTPException(429, "Too many wrong codes for this account; try again in 15 minutes")
         if second_factor(s, user, given):
             return True
-        code_failed(s, user)
+        code_failed(s, user, "mfa-in")
         s.commit()
         return False
 
@@ -1732,6 +1733,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                 s.execute(delete(model).where(model.asset_id == gone.id))
             s.execute(delete(Container).where(Container.image_asset_id == gone.id))
             s.delete(gone)
+        s.commit()  # release the org lock evidence.append took: rescan locks each image, and the hourly pass locks image then org
         rerank_images(s, [i for i in ran if i not in images])  # the hosts left decide how the rest rank
         s.commit()
 
@@ -3386,7 +3388,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         entries again before signing. Integrity refusals return 409. Checkpoint/key
         side effects can precede later failures. The ZIP's key is not an independent
         trust anchor. Database/file/key/backend errors can propagate."""
-        if over_limit(s, "evidence-pack:" + user.org_id, EVIDENCE_PACKS_PER_HOUR, 3600):
+        if over_limit(s, "evidence-pack:" + user.id, EVIDENCE_PACKS_PER_HOUR, 3600):  # per person: one member can't use up an auditor's
             raise HTTPException(429, f"At most {EVIDENCE_PACKS_PER_HOUR} evidence packs an hour; try again later")
         if problems := evidence.verify_chain(s, user.org_id, full=False):
             raise HTTPException(409, f"Ledger integrity check failed; refusing to sign: {problems[:3]}")

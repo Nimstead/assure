@@ -98,6 +98,19 @@ def error_of(cb):
     return parse_qs(urlparse(cb.headers["location"]).query).get("sso_error", [None])[0]
 
 
+def test_sso_works_with_host_only_cookies(env, idp, monkeypatch):
+    # a __Host- cookie with Path=/api/auth/sso is dropped by browsers, so the callback would never see its state
+    import nimstead.app as appmod
+    app, _ = make(env, idp)
+    monkeypatch.setattr(appmod, "SECURE_COOKIES", True)
+    c = TestClient(app, base_url="https://testserver")
+    head = c.post("/api/auth/sso/start", data={"email": "jane@corp.example.com"}, follow_redirects=False).headers["set-cookie"]
+    assert head.startswith("__Host-nimstead_sso=") and "Secure" in head and "Path=/;" in head and "Domain" not in head
+    c, cb = sso_login(app, idp, client=TestClient(app, base_url="https://testserver"))
+    assert cb.status_code == 303 and cb.headers["location"] == "/"
+    assert c.get("/api/me").json()["email"] == "jane@corp.example.com"
+
+
 def test_happy_path_creates_user_in_org_and_starts_session(env, idp):
     app, admin = make(env, idp)
     c, cb = sso_login(app, idp)
@@ -217,10 +230,16 @@ def test_sso_required_blocks_password_login_for_its_users_only(env, idp):
     pw = {"email": "staff@corp.example.com", "password": "correct horse battery"}  # a non-admin password user
     staff = TestClient(app)
     assert staff.post("/api/auth/login", json=pw).status_code == 200
+    member, _ = sso_login(app, idp)  # a member who signed in with SSO
+    other = TestClient(app)  # another organisation's password member
+    other.post("/api/auth/signup", json={"email": "o@elsewhere.example.com", "password": "correct horse battery", "org_name": "Elsewhere"})
+    assert other.get("/api/findings").status_code == 200
     r = admin.put("/api/settings/sso", json={"issuer": ISSUER, "client_id": CLIENT, "domains": ["corp.example.com"], "required": True})
     assert r.json()["required"] is True
     assert staff.get("/api/findings").status_code == 401  # signed-in password members are signed out, not left for 14 days
     assert admin.get("/api/settings/sso").status_code == 200  # the admin who turned it on keeps working
+    assert member.get("/api/findings").status_code == 200  # SSO members stay signed in
+    assert other.get("/api/findings").status_code == 200  # and other organisations are untouched
     r = TestClient(app).post("/api/auth/login", json=pw)
     assert r.status_code == 403 and "single sign-on" in r.json()["detail"]
     assert TestClient(app).post("/api/auth/login", json={**pw, "password": "wrong wrong wrong"}).status_code == 401  # no hint without the password

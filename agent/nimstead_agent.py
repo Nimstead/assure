@@ -13,7 +13,6 @@ import base64
 import binascii
 import calendar
 import collections
-import copy
 import email.utils
 import errno
 import glob
@@ -2627,32 +2626,109 @@ def _list_ended(e):
     return getattr(e, "winerror", None) in (None, 259)
 
 
-def _restore_beside(tar, m, root, kw):
-    """Restore regular file or hardlink member m as a new file beside its path, then rename it over the path. Before 3.13,
-    tarfile writes a hardlink whose path exists into that path's inode, the in-place write this avoids. The new file
-    takes the old one's SELinux label: one created here gets its folder's default (sshd_exec_t would become bin_t)."""
-    dst = os.path.join(root, m.name)
-    tmp = dst + ".nimstead-restore"
+def _parent_fd(root, rel, make=False):
+    """Open rel's folder below root and return its descriptor, never through a link a non-root user could plant.
+
+    A service account that owns a folder a package uses (postgres owns /var/lib/pgsql) could swap a path for a link
+    to /etc and have the root rollback chown or write through it. So each step opens with O_NOFOLLOW, and a link is
+    followed only out of a folder only root can change (merged /usr's /lib -> usr/lib). make creates missing folders
+    as tarfile would; otherwise a missing one raises FileNotFoundError. Linux only (dir_fd)."""
+    fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
     try:
-        if os.path.lexists(tmp):
-            os.remove(tmp)
-        if m.islnk():
-            os.link(os.path.join(root, m.linkname), tmp)
-        else:
-            staged = copy.copy(m)  # TarInfo.replace is 3.12+; the agent runs on 3.9
-            staged.name = m.name + ".nimstead-restore"
-            tar.extract(staged, root, **kw)
+        for part in rel.strip("/").split("/")[:-1]:
+            if part in ("", "."):
+                continue
+            if make:
+                try:
+                    os.mkdir(part, 0o755, dir_fd=fd)
+                except FileExistsError:
+                    pass
             try:
-                os.setxattr(tmp, "security.selinux", os.getxattr(dst, "security.selinux"))
-            except (OSError, AttributeError):  # no SELinux, no label, no old file, or not Linux
-                pass
-        os.replace(tmp, dst)
+                nxt = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=fd)
+            except OSError as e:
+                st = os.fstat(fd)
+                if e.errno not in (errno.ELOOP, errno.ENOTDIR) or st.st_uid != 0 or st.st_mode & 0o022:
+                    raise
+                nxt = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC, dir_fd=fd)  # only root placed this link
+            os.close(fd)
+            fd = nxt
+        return fd
     except BaseException:
-        try:
-            os.remove(tmp)  # never leave a restored copy (setuid bits and all) lying beside the path
-        except OSError:
-            pass
+        os.close(fd)
         raise
+
+
+def _own(fd, m):
+    """Give the open file or folder fd member m's owner, mode and time; owner first, as chown clears setuid."""
+    os.fchown(fd, m.uid, m.gid)
+    os.fchmod(fd, m.mode)
+    os.utime(fd, (m.mtime, m.mtime))
+
+
+def _restore_member(tar, m, root):
+    """Restore member m of our own snapshot below root, as rpm and apk install: a file or hardlink as a new inode
+    renamed over its path (writing in place fails on a running binary, ETXTBSY, and can crash services that map a
+    library), a link replaced, a folder's owner and mode set through its own handle. Nothing goes through a link a
+    non-root user could have planted (_parent_fd; a folder that became a link is left alone), and a new file takes
+    the old one's SELinux label and file capabilities, which tarfile doesn't restore (sshd_exec_t would become bin_t,
+    and newuidmap would lose cap_setuid). Before 3.13, tarfile wrote a hardlink into the existing path's inode."""
+    pfd = _parent_fd(root, m.name, make=True)
+    name, tmp = os.path.basename(m.name.rstrip("/")), os.path.basename(m.name.rstrip("/")) + ".nimstead-restore"
+    try:
+        if m.isdir():
+            try:
+                os.mkdir(name, 0o700, dir_fd=pfd)
+            except FileExistsError:
+                pass
+            try:
+                fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=pfd)
+            except OSError:
+                return  # a link (or file) where the folder was: never chown through it
+            try:
+                _own(fd, m)
+            finally:
+                os.close(fd)
+            return
+        if not (m.isreg() or m.islnk() or m.issym()):
+            raise OSError(f"{m.name}: a device or FIFO in the snapshot; restore it by hand")
+        try:
+            os.unlink(tmp, dir_fd=pfd)
+        except FileNotFoundError:
+            pass
+        try:
+            if m.issym():
+                os.symlink(m.linkname, tmp, dir_fd=pfd)
+                os.chown(tmp, m.uid, m.gid, dir_fd=pfd, follow_symlinks=False)
+            elif m.islnk():  # its target sorts first, so it's already restored
+                spfd = _parent_fd(root, m.linkname)
+                try:
+                    os.link(os.path.basename(m.linkname), tmp, src_dir_fd=spfd, dst_dir_fd=pfd, follow_symlinks=False)
+                finally:
+                    os.close(spfd)
+            else:
+                fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600, dir_fd=pfd)
+                try:
+                    with tar.extractfile(m) as src, os.fdopen(fd, "wb", closefd=False) as out:
+                        shutil.copyfileobj(src, out)
+                    os.fchown(fd, m.uid, m.gid)
+                    os.fchmod(fd, m.mode)
+                    for attr in ("security.selinux", "security.capability"):  # after chown, which clears capabilities
+                        try:
+                            os.setxattr(fd, attr, os.getxattr(f"/proc/self/fd/{pfd}/{name}", attr, follow_symlinks=False))
+                        except OSError:  # no SELinux, no capability, or no old file
+                            pass
+                    os.utime(fd, (m.mtime, m.mtime))
+                finally:
+                    os.close(fd)
+            os.replace(tmp, name, src_dir_fd=pfd, dst_dir_fd=pfd)
+        except BaseException:
+            try:
+                os.unlink(tmp, dir_fd=pfd)  # never leave a restored copy (setuid bits and all) lying beside the path
+            except OSError:
+                pass
+            raise
+    finally:
+        os.close(pfd)
 
 
 def windows_apps(reg, users=None, problems=None, machine_only=False):
@@ -4569,21 +4645,23 @@ class Job:
                 self.step(f"database backup intact {d}", ok=_tree_sha256(bak) == digest, output="sha256 mismatch")
             added = sorted(self.owned_paths() - self.old_paths, reverse=True)  # files the new version brought in
             for p in added:
-                real = self.path(p)
-                if os.path.islink(real) or os.path.isfile(real):
-                    os.remove(real)
-                elif os.path.isdir(real):
-                    try:
-                        os.rmdir(real)  # only if empty; shared dirs stay
-                    except OSError:
-                        pass
-            with tarfile.open(self.artefacts[0][0]) as tar:
-                kw = {"filter": "fully_trusted"} if hasattr(tarfile, "fully_trusted_filter") else {}  # our own, sha-verified
-                for m in tar.getmembers():  # noqa: S202 — exact restore needs owners/setuid; archive verified above
-                    if m.isreg() or m.islnk():  # a new inode, as rpm/apk do: writing in place fails on a running binary
-                        _restore_beside(tar, m, self.root, kw)  # (ETXTBSY) and can crash services that map the library
+                try:
+                    pfd = _parent_fd(self.root, p)  # as the restore: never through a planted link
+                except FileNotFoundError:
+                    continue
+                name = os.path.basename(p.rstrip("/"))
+                try:
+                    if stat.S_ISDIR(os.stat(name, dir_fd=pfd, follow_symlinks=False).st_mode):
+                        os.rmdir(name, dir_fd=pfd)  # only if empty; shared dirs stay
                     else:
-                        tar.extract(m, self.root, **kw)
+                        os.unlink(name, dir_fd=pfd)
+                except OSError:
+                    pass
+                finally:
+                    os.close(pfd)
+            with tarfile.open(self.artefacts[0][0]) as tar:  # our own, sha-verified above
+                for m in tar.getmembers():  # sorted when saved: folders and hardlink targets come first
+                    _restore_member(tar, m, self.root)
             for _d, bak, _, real in self.db_backups:
                 if os.path.isdir(bak):
                     shutil.rmtree(real)

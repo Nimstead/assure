@@ -37,9 +37,10 @@ from nimstead.db import make_sessionmaker  # noqa: E402
 from nimstead.verify_pack import verify  # noqa: E402
 
 log: list[dict] = []
-# run inside the sandbox as root: one "upgraded" sshd labelled sshd_exec_t, rolled back by the agent's _restore_beside
+# run inside the sandbox as root: one "upgraded" sshd labelled sshd_exec_t with cap_setuid, rolled back by the agent's
+# _restore_member; and a folder a service account (nobody) swapped for a link to /etc, which the rollback mustn't follow
 LABEL_CHECK = r"""
-import importlib.util, json, os, sys, tarfile
+import importlib.util, json, os, struct, sys, tarfile
 spec = importlib.util.spec_from_file_location("agent", "/opt/nimstead/agent.py")
 a = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(a)
@@ -55,11 +56,27 @@ with open(dst, "w") as f:
     f.write("new sshd")
 want = b"system_u:object_r:sshd_exec_t:s0\x00"
 os.setxattr(dst, "security.selinux", want)
+cap = struct.pack("<5I", 0x02000001, 1 << 7, 0, 0, 0)  # v2, effective, permitted cap_setuid
+os.setxattr(dst, "security.capability", cap)
 ino = os.stat(dst).st_ino
 with tarfile.open(d + "/rb.tar") as t:
     for m in t.getmembers():
-        a._restore_beside(t, m, d + "/root", {})
+        a._restore_member(t, m, d + "/root")
+os.makedirs(d + "/old/var/lib/data", exist_ok=True)
+os.makedirs(d + "/root/var/lib", exist_ok=True)
+os.makedirs(d + "/etc", mode=0o755, exist_ok=True)
+os.chmod(d + "/etc", 0o755)
+os.chown(d + "/root/var/lib", 65534, 65534)  # the service account's folder
+if not os.path.lexists(d + "/root/var/lib/data"):
+    os.symlink(d + "/etc", d + "/root/var/lib/data")
+os.chmod(d + "/old/var/lib/data", 0o700)
+with tarfile.open(d + "/rb2.tar", "w") as t:
+    t.add(d + "/old/var/lib/data", arcname="var/lib/data", recursive=False)
+with tarfile.open(d + "/rb2.tar") as t:
+    a._restore_member(t, t.getmembers()[0], d + "/root")
 print(json.dumps({"label": os.getxattr(dst, "security.selinux") == want, "content": open(dst).read(),
+                  "capability": os.getxattr(dst, "security.capability") == cap,
+                  "link_followed": oct(os.stat(d + "/etc").st_mode & 0o777) != "0o755",
                   "new_inode": os.stat(dst).st_ino != ino, "left": sorted(os.listdir(d + "/root/usr/sbin")),
                   "python": "%d.%d" % sys.version_info[:2]}))
 """
@@ -235,8 +252,10 @@ def main(keep=False):
         # become bin_t). WSL doesn't enforce SELinux, but root on ext4 stores the attribute: the agent's own code copies it
         rc, out = wsl("python3", "-", input=LABEL_CHECK.encode(), check=False)
         label = json.loads(out.strip().splitlines()[-1]) if rc == 0 and out.strip() else {"error": wsl.last_stderr[-300:]}
-        note("rollback keeps the SELinux label", **label)
-        assert label.get("label") and label.get("content") == "old sshd" and label.get("new_inode") and label.get("left") == ["sshd"],             "a restored file lost its SELinux label, its content, or left a copy beside it"
+        note("rollback keeps the SELinux label and capabilities, and follows no planted link", **label)
+        assert label.get("label") and label.get("capability") and label.get("content") == "old sshd" and label.get("new_inode") \
+            and label.get("left") == ["sshd"] and label.get("link_followed") is False, \
+            "a restored file lost its label, capability or content, left a copy beside it, or the rollback followed a planted link"
         pkg = next(p for p in json.loads(agent("collect")[1])["packages"] if p["name"] == success["job"]["packages"][0]["name"])
         manager = success["job"]["manager"]
         forged = {"id": "forged1", "manager": manager, "settle_seconds": 0, "health_units": [],

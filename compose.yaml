@@ -37,7 +37,7 @@ services:
       disable: true
 
   db:
-    image: postgres:17@sha256:31ba9c94a03ada9988f2bb493a22a75eef3a185884533e5cdbcd498ea835b08f  # pinned by digest
+    image: postgres:18@sha256:eb63372c1e05c755f55fa30cbd07aecc443676fc6c0fa90b9002d01537841e1a  # pinned by digest
     restart: unless-stopped
     environment:
       POSTGRES_USER: nimstead

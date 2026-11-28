@@ -29,10 +29,16 @@ const COARSE = typeof matchMedia !== "undefined" && matchMedia("(pointer: coarse
 /** Render paginated, sortable findings using URL search filters, grouping, selection, and the finding drawer. */
 export function FindingsPage({ search }: { search: RawSearch }) {
   useTitle("Findings");
-  const f = parseFilters(search);
+  // Findings opened plainly shows each vulnerability once (the owner's call, from the critique: one CVE on 35 machines read
+  // as 35 crimson rows); a link that narrows it, or ?group=each, lists each finding. Link builders' parseFilters({}) is unchanged.
+  const bare = Object.values(search).every((v) => v === undefined || v === "");
+  const f: FindingsFilters = { ...parseFilters(search), ...(bare ? { group: "vuln" as const } : {}) };
   const navigate = useNavigate();
-  const set = (patch: Partial<FindingsFilters>, push = false) =>
-    navigate({ to: "/findings", search: filtersToSearch({ ...f, ...patch }), replace: !push });
+  const set = (patch: Partial<FindingsFilters>, push = false) => {
+    const next = filtersToSearch({ ...f, ...patch });
+    if (!next.group && Object.values(next).every((v) => v === undefined)) next.group = "each";  // or it would open grouped again
+    return navigate({ to: "/findings", search: next, replace: !push });
+  };
 
   // The search box is local state, debounced into the URL.
   const [text, setText] = useState(f.q);

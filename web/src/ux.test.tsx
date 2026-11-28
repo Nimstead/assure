@@ -613,6 +613,24 @@ it("Findings: the search box keeps a trailing space while the URL catches up wit
   expect(screen.getByRole("searchbox", { name: /Search findings/ })).toHaveValue("ssl");
 });
 
+it("Findings opened plainly lists each vulnerability once; a link that narrows it, or group=each, lists each finding", async () => {
+  // the owner's call from the critique: one CVE on 35 machines was 35 crimson rows
+  const row = { key: "CVE-1", findings: 35, hosts: 35, score: 100, kev: true, priority: "fix-now", fixed_version: "2", packages: 1, package: "brotli", vuln_id: "CVE-1", vulns: 1, ecosystem: "Ubuntu:24.04" };
+  serve({ "GET /api/findings/groups": [row], "GET /api/findings": [], "GET /api/assets": [] });
+  const urls = () => vi.mocked(fetch).mock.calls.map(([u]) => String(u));
+  const r = wrap(<FindingsPage search={{}} />);
+  expect(await screen.findByRole("list", { name: "Vulnerabilities" })).toHaveTextContent(/CVE-1/);
+  expect(screen.getByRole("combobox", { name: "Show" })).toHaveValue("vuln");
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  qc.setQueryData(meQ.queryKey, ME);
+  for (const search of [{ owner: "Payments" }, { group: "each" }]) {
+    vi.mocked(fetch).mockClear();
+    r.rerender(<QueryClientProvider client={qc}><FindingsPage search={search} /></QueryClientProvider>);
+    await waitFor(() => expect(urls().some((u) => u.startsWith("/api/findings?"))).toBe(true));
+    expect(urls().some((u) => u.startsWith("/api/findings/groups"))).toBe(false);
+  }
+});
+
 it("Findings: the drawer finds a fix in progress among active jobs only, however many finished jobs there are", async () => {
   const f = { id: "f1", asset_id: "a1", hostname: "web-1", ecosystem: "Debian:12", package: "openssl", installed_version: "1", fixed_version: "2",
     vuln_id: "CVE-1", advisory_ids: [], summary: "", cvss: null, epss: null, kev: false, score: 50, priority: "next", reasons: [], status: "open",

@@ -34,6 +34,7 @@ The agent changed (its version goes up at release). One database migration: an i
 - Progress counts from the first day with findings instead of saying they "rose from 0".
 
 ### Changed
+- **Findings opens by vulnerability**: each one once, with how many machines it's on, instead of a row per machine (one CVE on 35 machines was 35 red rows). A link that narrows Findings (a machine, an owner, overdue, a search) still lists each finding, and **Show → Each finding** stays chosen (`?group=each`).
 - SBOM uploads and asset edits release the organisation's ledger lock before rescanning. Every rescan locks its asset, so a report and the hourly re-match can't both add the same finding. Each report no longer reads the organisation's whole ledger.
 - Account emails (reset, invite, sign-up) have their own sender, so they don't wait behind alert deliveries. AI calls time out after 30 seconds.
 
